@@ -1,0 +1,9 @@
+{
+  "name": "bluetube",
+  "version": "1.0.0",
+  "description": "BlueTube — YouTube Shorts transcription tool",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
