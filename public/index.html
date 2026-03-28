@@ -442,8 +442,12 @@ function generateAllScripts(lang) {
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display = 'none';
   });
-  // Generate sequentially to avoid rate limits
-  VERSIONS.reduce((chain, v) => chain.then(() => generateScript(v, lang)), Promise.resolve());
+  // Generate sequentially with delay to respect free tier rate limits
+  generateScript(VERSIONS[0], lang)
+    .then(() => new Promise(r => setTimeout(r, 2000)))
+    .then(() => generateScript(VERSIONS[1], lang))
+    .then(() => new Promise(r => setTimeout(r, 2000)))
+    .then(() => generateScript(VERSIONS[2], lang));
 }
 
 async function generateScript(version, lang) {
