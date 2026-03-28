@@ -229,9 +229,9 @@ footer { position: relative; z-index: 10; border-top: 1px solid rgba(0,170,255,0
 
     <div class="tab-nav">
       <button class="tab-btn active" onclick="switchTab('transcript')">📝 Original</button>
-      <button class="tab-btn" onclick="switchTab('v1')">✨ Version 1</button>
-      <button class="tab-btn" onclick="switchTab('v2')">🔥 Version 2</button>
-      <button class="tab-btn" onclick="switchTab('v3')">💡 Version 3</button>
+      <button class="tab-btn" onclick="switchTab('v1')">🎯 Especialista</button>
+      <button class="tab-btn" onclick="switchTab('v2')">💬 Casual</button>
+      <button class="tab-btn" onclick="switchTab('v3')">🔥 Urgente</button>
     </div>
 
     <!-- Original transcript -->
@@ -258,7 +258,7 @@ footer { position: relative; z-index: 10; border-top: 1px solid rgba(0,170,255,0
       <div class="scripts-loading" id="loadingV1"><div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div><div class="scripts-loading-label">Generating Version 1…</div></div>
       <div class="script-card" id="cardV1" style="display:none;">
         <div class="script-card-top">
-          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v1">Version 1</span><span class="version-title">Informative & engaging</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v1">Roteiro 1</span><span class="version-title">Informativo & especialista</span></div>
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copy</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
@@ -270,7 +270,7 @@ footer { position: relative; z-index: 10; border-top: 1px solid rgba(0,170,255,0
       <div class="scripts-loading" id="loadingV2"><div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div><div class="scripts-loading-label">Generating Version 2…</div></div>
       <div class="script-card" id="cardV2" style="display:none;">
         <div class="script-card-top">
-          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v2">Version 2</span><span class="version-title">Casual & conversational</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v2">Roteiro 2</span><span class="version-title">Casual & conversacional</span></div>
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copy</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
@@ -282,7 +282,7 @@ footer { position: relative; z-index: 10; border-top: 1px solid rgba(0,170,255,0
       <div class="scripts-loading" id="loadingV3"><div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div><div class="scripts-loading-label">Generating Version 3…</div></div>
       <div class="script-card" id="cardV3" style="display:none;">
         <div class="script-card-top">
-          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v3">Version 3</span><span class="version-title">Persuasive & direct</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span class="version-badge v3">Roteiro 3</span><span class="version-title">Provocativo & urgente</span></div>
           <button class="act-btn" onclick="copyEl('scriptV3')">📋 Copy</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV3"></div></div>
@@ -432,9 +432,9 @@ async function startTranscription(e) {
 }
 
 const VERSIONS = [
-  { id:'V1', badge:'v1', label:'Informative & engaging', instruction:'Use an informative, engaging tone. Structure: strong hook → key insights → clear conclusion. Add useful context.' },
-  { id:'V2', badge:'v2', label:'Casual & conversational', instruction:'Write casually, as if talking to a friend. Use simple language, contractions, and natural flow. Keep it relatable.' },
-  { id:'V3', badge:'v3', label:'Persuasive & direct', instruction:'Open with a bold hook, build urgency or curiosity throughout, and close with a compelling call-to-action.' }
+  { id:'V1', badge:'v1', label:'Informativo & especialista', instruction:'informative' },
+  { id:'V2', badge:'v2', label:'Casual & conversacional', instruction:'casual' },
+  { id:'V3', badge:'v3', label:'Provocativo & urgente', instruction:'provocative' }
 ];
 
 function generateAllScripts(lang) {
@@ -442,7 +442,8 @@ function generateAllScripts(lang) {
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display = 'none';
   });
-  VERSIONS.forEach(v => generateScript(v, lang));
+  // Generate sequentially to avoid rate limits
+  VERSIONS.reduce((chain, v) => chain.then(() => generateScript(v, lang)), Promise.resolve());
 }
 
 async function generateScript(version, lang) {
@@ -450,11 +451,20 @@ async function generateScript(version, lang) {
     const res = await fetch('/api/rewrite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript, lang, style: version.instruction })
+      body: JSON.stringify({ transcript, lang, style: version.instruction, version: version.id })
     });
     const data = await res.json();
     if (!res.ok || !data.text) throw new Error(data.error || 'Empty response');
-    document.getElementById('script'+version.id).textContent = data.text;
+
+    // Render with formatting — highlight sections
+    const el = document.getElementById('script'+version.id);
+    el.innerHTML = data.text
+      .replace(/🎬 ROTEIRO/g, '<span style="color:var(--neon);font-weight:600;font-size:12px;letter-spacing:.08em;">🎬 ROTEIRO</span>')
+      .replace(/📋 LEGENDA/g, '<span style="color:#a78bff;font-weight:600;font-size:12px;letter-spacing:.08em;display:block;margin-top:16px;">📋 LEGENDA</span>')
+      .replace(/\[PAUSA\]/g, '<span style="color:rgba(0,170,255,0.5);font-size:11px;"> [PAUSA] </span>')
+      .replace(/\[RESPIRA\]/g, '<span style="color:rgba(0,170,255,0.4);font-size:11px;"> [RESPIRA] </span>')
+      .replace(/\n/g, '<br>');
+
     document.getElementById('loading'+version.id).classList.remove('on');
     document.getElementById('card'+version.id).style.display = 'block';
   } catch(err) {
