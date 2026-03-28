@@ -97,7 +97,7 @@ Escreva agora o roteiro otimizado. Apenas o texto, sem mais nada.`;
           contents: [{ parts: [{ text: fullPrompt }] }],
           generationConfig: {
             temperature: 0.9,
-            maxOutputTokens: 600,
+            maxOutputTokens: 1200,
             topP: 0.95
           }
         })
