@@ -451,20 +451,19 @@ async function generateScript(version, lang) {
     const res = await fetch('/api/rewrite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript, lang, style: version.instruction, version: version.id })
+      body: JSON.stringify({ transcript, lang, version: version.id })
     });
     const data = await res.json();
     if (!res.ok || !data.text) throw new Error(data.error || 'Empty response');
 
-    // Render with formatting — highlight sections
-    const el = document.getElementById('script'+version.id);
-    el.innerHTML = data.text
-      .replace(/🎬 ROTEIRO/g, '<span style="color:var(--neon);font-weight:600;font-size:12px;letter-spacing:.08em;">🎬 ROTEIRO</span>')
-      .replace(/📋 LEGENDA/g, '<span style="color:#a78bff;font-weight:600;font-size:12px;letter-spacing:.08em;display:block;margin-top:16px;">📋 LEGENDA</span>')
-      .replace(/\[PAUSA\]/g, '<span style="color:rgba(0,170,255,0.5);font-size:11px;"> [PAUSA] </span>')
-      .replace(/\[RESPIRA\]/g, '<span style="color:rgba(0,170,255,0.4);font-size:11px;"> [RESPIRA] </span>')
-      .replace(/\n/g, '<br>');
+    // Clean output — remove any stray markdown or titles the model may add
+    const clean = data.text
+      .replace(/^#+\s.*/gm, '')        // remove markdown headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // remove bold markers
+      .replace(/^\s*[-•]\s/gm, '')     // remove bullet points
+      .trim();
 
+    document.getElementById('script'+version.id).textContent = clean;
     document.getElementById('loading'+version.id).classList.remove('on');
     document.getElementById('card'+version.id).style.display = 'block';
   } catch(err) {
