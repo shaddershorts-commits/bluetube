@@ -63,7 +63,8 @@ FORMATO DE ENTREGA:
 - NUNCA explique o que fez
 - NUNCA mostre versão anterior
 - NUNCA use títulos, observações ou marcações
-- Um único parágrafo fluido, pronto para narrar
+- NUNCA interrompa no meio de uma frase — sempre conclua o roteiro completamente
+- Um único parágrafo fluido, com começo, meio e fim bem definidos
 
 O resultado deve parecer: roteiro pronto para viralizar, texto escrito por criador experiente, narração natural de vídeo viral.
 
@@ -71,9 +72,19 @@ IDIOMA DE SAÍDA: ${lang} — escreva como um nativo desse idioma criaria o cont
 
   // ── VERSION-SPECIFIC ANGLE ────────────────────────────────────────────────
   const VERSION_ANGLES = {
-    V1: `ÂNGULO: Informativo e especialista. O gancho deve revelar um fato surpreendente ou insight contraintuitivo. Posicione o criador como referência no tema. Tom: confiante, direto, revelador.`,
-    V2: `ÂNGULO: Casual e conversacional. O gancho deve parecer que o criador está prestes a contar um segredo para um amigo. Use linguagem do dia a dia, contrações, gírias leves. Tom: próximo, autêntico, descontraído.`,
-    V3: `ÂNGULO: Provocativo e urgente. O gancho deve criar tensão ou FOMO imediato. Use verbos de ação, frases curtas e impactantes. Tom: energético, urgente, que provoca reação imediata.`
+    V1: `ÂNGULO — CASUAL:
+Tom leve, próximo, conversacional. Como se o criador estivesse contando uma história para um amigo.
+- Gancho: desperta curiosidade de forma suave, sem pressão
+- Desenvolvimento: fluido, natural, usa linguagem do dia a dia
+- Fechamento: convite genuíno, sem forçar
+- Evite: urgência excessiva, linguagem de vendas, exageros`,
+
+    V2: `ÂNGULO — APELATIVA:
+Tom agressivo, urgente, provocativo. Máximo impacto desde a primeira palavra.
+- Gancho: OBRIGATÓRIO ser chocante, polêmico ou criar FOMO imediato — deve parar o scroll em 2 segundos
+- Desenvolvimento: ritmo acelerado, frases curtas, cada frase aumenta a tensão
+- Fechamento: call-to-action poderoso que provoca reação imediata
+- Use: verbos de ação, números impactantes, perguntas que incomodam, afirmações ousadas`
   };
 
   const angle = VERSION_ANGLES[version] || VERSION_ANGLES.V1;
@@ -97,7 +108,7 @@ Escreva agora o roteiro otimizado. Apenas o texto, sem mais nada.`;
           contents: [{ parts: [{ text: fullPrompt }] }],
           generationConfig: {
             temperature: 0.9,
-            maxOutputTokens: 1200,
+            maxOutputTokens: 2048,
             topP: 0.95
           }
         })
@@ -111,7 +122,15 @@ Escreva agora o roteiro otimizado. Apenas o texto, sem mais nada.`;
       return res.status(502).json({ error: msg });
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
+    const candidate = data.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    let text = candidate?.content?.parts?.map(p => p.text || '').join('').trim() || '';
+
+    // If model was cut mid-sentence due to token limit, append ellipsis gracefully
+    if (finishReason === 'MAX_TOKENS' && text && !text.match(/[.!?…]$/)) {
+      text = text.replace(/[,\s]+$/, '') + '…';
+    }
+
     if (!text) return res.status(502).json({ error: 'Empty response from Gemini' });
 
     return res.status(200).json({ text });
