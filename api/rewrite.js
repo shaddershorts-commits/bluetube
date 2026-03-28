@@ -1,6 +1,6 @@
 // api/rewrite.js — Vercel Serverless Function
-// Calls Claude API server-side to rewrite transcripts into 3 original versions.
-// The Anthropic API key is stored as an environment variable — never exposed to the browser.
+// Uses Google Gemini API (free tier) to rewrite transcripts into original scripts.
+// GEMINI_API_KEY is stored as a Vercel environment variable — never exposed to browser.
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,9 +15,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing transcript, lang or style' });
   }
 
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_KEY) {
-    return res.status(500).json({ error: 'Server misconfigured — Anthropic key missing' });
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) {
+    return res.status(500).json({ error: 'Server misconfigured — Gemini key missing' });
   }
 
   const prompt = `You are an expert content creator for YouTube Shorts.
@@ -36,32 +36,28 @@ TASK: Write a completely ORIGINAL script based on this content.
 Return ONLY the script. No explanations, no meta-comments.`;
 
   try {
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.8, maxOutputTokens: 800 }
+        })
+      }
+    );
 
-    const data = await claudeRes.json();
+    const data = await geminiRes.json();
 
-    if (!claudeRes.ok) {
-      return res.status(502).json({ error: data.error?.message || 'Claude API error' });
+    if (!geminiRes.ok) {
+      const msg = data.error?.message || 'Gemini API error';
+      return res.status(502).json({ error: msg });
     }
 
-    const text = (data.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
 
-    if (!text) return res.status(502).json({ error: 'Empty response from Claude' });
+    if (!text) return res.status(502).json({ error: 'Empty response from Gemini' });
 
     return res.status(200).json({ text });
 
