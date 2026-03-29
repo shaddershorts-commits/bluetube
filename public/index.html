@@ -198,7 +198,25 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .plan-btn.free-btn{background:transparent;border:1px solid rgba(0,170,255,0.25);color:var(--text-secondary)}
 .plan-btn.free-btn:hover{border-color:rgba(0,170,255,0.5);color:var(--neon)}
 
-footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);padding:36px 48px;display:flex;align-items:center;justify-content:space-between}
+/* ── ANNUAL TOGGLE ───────────────────────────────────────────────────────── */
+.billing-toggle{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:40px}
+.billing-label{font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);transition:color .2s}
+.billing-label.active{color:var(--text-primary);font-weight:600}
+.toggle-switch{position:relative;width:52px;height:28px;cursor:pointer}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:rgba(0,170,255,0.15);border:1px solid rgba(0,170,255,0.2);border-radius:100px;transition:all .3s}
+.toggle-slider::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all .3s;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+.toggle-switch input:checked+.toggle-slider{background:linear-gradient(135deg,#92400e,#fbbf24);border-color:#fbbf24}
+.toggle-switch input:checked+.toggle-slider::before{transform:translateX(24px)}
+.annual-badge{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.06em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:3px 10px;border-radius:100px}
+.annual-price-main{font-size:36px;font-weight:800;letter-spacing:-1px}
+.annual-price-sub{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through;margin-left:6px}
+.plan-box.annual{border-color:#fbbf24;box-shadow:0 0 40px rgba(251,191,36,0.15)}
+
+/* ── MASTER HIGHLIGHT in modal ──────────────────────────────────────────── */
+.plan-card.master-highlight{border:2px solid #fbbf24;background:rgba(251,191,36,0.06);position:relative;overflow:hidden}
+.plan-card.master-highlight::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#fbbf24,transparent)}
+.master-unlimited-badge{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 10px;border-radius:100px;display:inline-block;margin-bottom:6px}
 .foot-logo{font-size:17px;font-weight:800;letter-spacing:-.4px}
 .foot-copy{font-family:var(--font-mono);font-size:11px;color:var(--text-dim)}
 
@@ -243,25 +261,26 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
       <span class="live-dot"></span>
       <span id="liveCount">2.847</span> pessoas gerando roteiros agora
     </div>
-    <div class="modal-title">Você vai ficar<br><span>para trás?</span></div>
+    <div class="modal-title" id="upgradeModalTitle">Você vai ficar<br><span>para trás?</span></div>
     <div class="modal-sub" id="upgradeModalSub">Você usou seus 2 roteiros gratuitos de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.</div>
     <div class="modal-timer">
-      <div class="timer-label">Seu limite reseta em</div>
+      <div class="timer-label" id="timerLabel">Seu limite reseta em</div>
       <div class="timer-display" id="timerDisplay">23:59:59</div>
     </div>
-    <div class="modal-plans">
+    <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
         <div class="plan-price">$9,99<span>/mês</span></div>
         <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
       </div>
-      <div class="plan-card" onclick="selectPlan('master')">
+      <div class="plan-card master-highlight" onclick="selectPlan('master')">
+        <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
         <div class="plan-price">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista</div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
       </div>
     </div>
-    <button class="modal-cta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
+    <button class="modal-cta" id="upgradeModalCta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
     <div class="modal-or">ou crie sua conta gratuita</div>
     <div class="modal-auth-btns">
       <button class="auth-btn" onclick="handleGoogleLogin()">
@@ -497,6 +516,18 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
   <div class="plans-inner">
     <div class="sec-eye">Planos</div>
     <h2 class="sec-title">Escolha seu plano.</h2>
+
+    <!-- Annual/Monthly Toggle -->
+    <div class="billing-toggle">
+      <span class="billing-label active" id="labelMonthly">Mensal</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="annualToggle" onchange="toggleBilling(this.checked)"/>
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="billing-label" id="labelAnnual">Anual</span>
+      <span class="annual-badge">Economize 25%</span>
+    </div>
+
     <div class="plans-grid">
       <!-- Free -->
       <div class="plan-box">
@@ -514,12 +545,15 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
         </ul>
         <button class="plan-btn free-btn" onclick="openAuthModal()">Começar grátis</button>
       </div>
+
       <!-- Full -->
-      <div class="plan-box popular">
+      <div class="plan-box popular" id="planBoxFull">
         <div class="plan-tag">Mais popular</div>
-        <div class="plan-name" style="color:var(--neon)">Full</div>
-        <div class="plan-amount">$9<span>,99/mês</span></div>
-        <div class="plan-period">cobrado mensalmente</div>
+        <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
+        <div id="fullPriceDisplay">
+          <div class="plan-amount">$9<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
+        </div>
         <ul class="plan-list">
           <li>9 roteiros por dia</li>
           <li>Todos os 9 idiomas</li>
@@ -531,11 +565,14 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
         </ul>
         <button class="plan-btn" onclick="handleUpgradeClick('full')">Assinar Full →</button>
       </div>
+
       <!-- Master -->
-      <div class="plan-box">
-        <div class="plan-name" style="color:#fbbf24">Master</div>
-        <div class="plan-amount">$29<span>,99/mês</span></div>
-        <div class="plan-period">cobrado mensalmente</div>
+      <div class="plan-box" id="planBoxMaster">
+        <div class="plan-name" style="color:#fbbf24">👑 Master</div>
+        <div id="masterPriceDisplay">
+          <div class="plan-amount">$29<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
+        </div>
         <ul class="plan-list">
           <li>Roteiros ilimitados</li>
           <li>Todos os idiomas</li>
@@ -619,25 +656,108 @@ function openLangLockModal(){document.getElementById('langLockModal').classList.
 function closeLangLockModal(){document.getElementById('langLockModal').classList.remove('on');}
 
 // ── UPGRADE MODAL ──────────────────────────────────────────────────────────
+let selectedUpgradePlan='full';
 function openUpgradeModal(reason){
-  if(reason==='limit'){
-    document.getElementById('upgradeModalSub').innerHTML=`Você usou seus ${dailyLimit} roteiros gratuitos de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.`;
-  }
   startCountdown();
   startLiveCount();
+
+  if(reason==='limit_free'){
+    document.getElementById('upgradeModalTitle').innerHTML='Você vai ficar<br><span>para trás?</span>';
+    document.getElementById('upgradeModalSub').innerHTML=`Você usou seus <strong>${dailyLimit} roteiros gratuitos</strong> de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.`;
+    document.getElementById('timerLabel').textContent='Seu limite reseta em';
+    document.getElementById('upgradeModalPlans').innerHTML=`
+      <div class="plan-card featured" onclick="selectPlan('full')">
+        <div class="plan-badge">⚡ Full</div>
+        <div class="plan-price">$9,99<span>/mês</span></div>
+        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
+      </div>
+      <div class="plan-card master-highlight" onclick="selectPlan('master')">
+        <div class="master-unlimited-badge">ILIMITADO</div>
+        <div class="plan-badge gold">👑 Master</div>
+        <div class="plan-price">$29,99<span>/mês</span></div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
+      </div>`;
+    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
+  } else if(reason==='limit_full'){
+    document.getElementById('upgradeModalTitle').innerHTML='Limite do Full<br><span>atingido hoje.</span>';
+    document.getElementById('upgradeModalSub').innerHTML=`Você é <strong>⚡ Full</strong> e usou seus <strong>9 roteiros</strong> de hoje.<br>Quer roteiros <strong>ilimitados</strong> sem esperar? Vá para o Master.`;
+    document.getElementById('timerLabel').textContent='Limite reseta em';
+    document.getElementById('upgradeModalPlans').innerHTML=`
+      <div class="plan-card master-highlight" style="grid-column:1/-1;max-width:320px;margin:0 auto" onclick="selectPlan('master')">
+        <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
+        <div class="plan-badge gold" style="margin-top:8px">Master</div>
+        <div class="plan-price" style="font-size:28px">$29,99<span>/mês</span></div>
+        <div class="plan-features">✓ Sem limite de roteiros<br>✓ Chat IA personalizado<br>✓ IA de voz hiper realista<br>✓ Download HD<br>✓ Todos os idiomas<br>✓ Suporte prioritário</div>
+      </div>`;
+    document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
+  } else {
+    // Generic upgrade from nav button
+    document.getElementById('upgradeModalTitle').innerHTML='Potencialize seus<br><span>Shorts agora.</span>';
+    document.getElementById('upgradeModalSub').innerHTML='Escolha o plano ideal e comece a criar roteiros virais sem limites.';
+    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
+    document.getElementById('upgradeModalPlans').innerHTML=`
+      <div class="plan-card featured" onclick="selectPlan('full')">
+        <div class="plan-badge">⚡ Full</div>
+        <div class="plan-price">$9,99<span>/mês</span></div>
+        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
+      </div>
+      <div class="plan-card master-highlight" onclick="selectPlan('master')">
+        <div class="master-unlimited-badge">ILIMITADO</div>
+        <div class="plan-badge gold">👑 Master</div>
+        <div class="plan-price">$29,99<span>/mês</span></div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
+      </div>`;
+    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
+  }
+
   document.getElementById('upgradeModal').classList.add('on');
 }
 function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('on');}
-function selectPlan(plan){
-  closeUpgradeModal();
-  closeLangLockModal();
-  // When Stripe is integrated, redirect to checkout
-  alert(`Stripe checkout em breve! Plano ${plan} selecionado.`);
+function selectPlan(plan){selectedUpgradePlan=plan;handleUpgradeClick(plan);}
+function openUpgradeModalGeneric(){openUpgradeModal('generic');}
+let isAnnual = false;
+
+function toggleBilling(annual){
+  isAnnual = annual;
+  document.getElementById('labelMonthly').classList.toggle('active', !annual);
+  document.getElementById('labelAnnual').classList.toggle('active', annual);
+
+  if(annual){
+    document.getElementById('fullPriceDisplay').innerHTML=`
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div class="plan-amount" style="color:#fbbf24">$7<span style="color:#fbbf24">,49/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">$9,99</div>
+      </div>
+      <div class="plan-period" style="color:#fbbf24">$89,99 cobrado anualmente</div>`;
+    document.getElementById('masterPriceDisplay').innerHTML=`
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div class="plan-amount" style="color:#fbbf24">$19<span style="color:#fbbf24">,99/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">$29,99</div>
+      </div>
+      <div class="plan-period" style="color:#fbbf24">$239,88 cobrado anualmente</div>`;
+    document.getElementById('planBoxFull').classList.add('annual');
+    document.getElementById('planBoxMaster').classList.add('annual');
+  }else{
+    document.getElementById('fullPriceDisplay').innerHTML=`
+      <div class="plan-amount">$9<span>,99/mês</span></div>
+      <div class="plan-period">cobrado mensalmente</div>`;
+    document.getElementById('masterPriceDisplay').innerHTML=`
+      <div class="plan-amount">$29<span>,99/mês</span></div>
+      <div class="plan-period">cobrado mensalmente</div>`;
+    document.getElementById('planBoxFull').classList.remove('annual');
+    document.getElementById('planBoxMaster').classList.remove('annual');
+  }
 }
+
 async function handleUpgradeClick(plan){
-  const p=plan||'full';
+  const p = plan || selectedUpgradePlan || 'full';
+  const billing = isAnnual ? 'annual' : 'monthly';
   try{
-    const r=await fetch('/api/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:p})});
+    const r=await fetch('/api/create-checkout',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({plan:p, billing})
+    });
     const d=await r.json();
     if(d.url)window.location.href=d.url;
     else alert('Erro ao iniciar checkout. Tente novamente.');
@@ -759,9 +879,16 @@ async function checkAndIncrementLimit(){
     const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment'})});
     const d=await r.json();
     dailyUsed=d.used||0;dailyLimit=d.limit||2;userPlan=d.plan||'free';
-    if(!d.allowed){openUpgradeModal('limit');return false;}
+    if(!d.allowed){
+      if(userPlan==='full'){
+        openUpgradeModal('limit_full');
+      }else{
+        openUpgradeModal('limit_free');
+      }
+      return false;
+    }
     return true;
-  }catch{return true;} // fail open
+  }catch{return true;}
 }
 
 // ── UI HELPERS ─────────────────────────────────────────────────────────────
@@ -921,18 +1048,24 @@ async function checkSession(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
     const d=await r.json();
     if(r.ok&&d.user){
-      setLoggedIn(d.user.email);
+      // Check subscriber plan
+      userPlan = localStorage.getItem('bt_plan') || 'free';
+      setLoggedIn(d.user.email, userPlan);
     }else{
       localStorage.removeItem('bt_token');
     }
   }catch{}
 }
 
-function setLoggedIn(email){
-  const navRight=document.querySelector('.nav-right');
+function setLoggedIn(email, plan){
+  const p = plan || userPlan || 'free';
+  const planIcon = p === 'master' ? '👑' : p === 'full' ? '⚡' : '';
+  const planColor = p === 'master' ? '#fbbf24' : p === 'full' ? 'var(--neon)' : 'var(--text-dim)';
+  const showUpgrade = p !== 'master';
+  const navRight = document.querySelector('.nav-right');
   navRight.innerHTML=`
-    <span style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:8px;padding:7px 12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${email}">✓ ${email}</span>
-    <button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>
+    <span style="font-family:var(--font-mono);font-size:11px;color:${planColor};background:rgba(0,170,255,0.07);border:1px solid ${planColor}33;border-radius:8px;padding:7px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${email}">${planIcon} ${email}</span>
+    ${showUpgrade ? `<button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>` : ''}
     <button class="nav-login-btn" onclick="doLogout()">Sair</button>
   `;
 }
