@@ -451,15 +451,23 @@ function startAutoRefresh(){
   },1000);
 }
 
-function quickEditPlan(email){
-  const plan=prompt(`Plano atual para ${email}\n\nDigite o novo plano:\n- full\n- master\n- free`,'full');
+async function quickEditPlan(email){
+  const plan=prompt(`Editar plano de: ${email}\n\nDigite o novo plano:\nfull | master | free`,'full');
   if(!plan)return;
   if(!['full','master','free'].includes(plan.toLowerCase())){alert('Plano inválido. Use: full, master ou free');return;}
-  document.getElementById('planEmail').value=email;
-  document.getElementById('planType').value=plan.toLowerCase();
-  setPlan();
-  // Scroll to plan tool
-  document.getElementById('planEmail').scrollIntoView({behavior:'smooth'});
+  try{
+    const r=await fetch('/api/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'set_plan',email,plan:plan.toLowerCase()})
+    });
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error);
+    alert(`✓ Plano ${plan.toUpperCase()} ativado para ${email}`);
+    loadData();
+  }catch(e){
+    alert('Erro: '+e.message);
+  }
 }
 
 async function setPlan(){
