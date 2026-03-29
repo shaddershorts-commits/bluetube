@@ -241,8 +241,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
-    <!-- MANUAL PLAN TOOL -->
+    <!-- Monthly History -->
     <div class="section">
+      <div class="section-header">
+        <div class="section-title">📈 Histórico mensal <span class="section-subtitle">— crescimento mês a mês</span></div>
+      </div>
+      <div id="monthlyChart"></div>
+    </div>
+
+    <!-- PLAN TOOL -->
       <div class="section-header">
         <div class="section-title">🔑 Liberar plano manualmente <span class="section-subtitle">— para você, influencers e parceiros</span></div>
       </div>
@@ -288,6 +295,61 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 <script>
 let adminKey='';
 let lastKnownSubscriberId=null;
+
+function renderMonthlyChart(subscribers){
+  // Group paying subscribers by month of creation
+  const months={};
+  const monthNames=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  subscribers.filter(s=>s.plan!=='free'&&!s.is_manual).forEach(s=>{
+    const d=new Date(s.created_at);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label=`${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
+    if(!months[key])months[key]={label,count:0,mrr:0};
+    months[key].count++;
+    months[key].mrr+=s.plan==='master'?29.99:9.99;
+  });
+
+  const sorted=Object.keys(months).sort();
+  if(sorted.length===0){
+    document.getElementById('monthlyChart').innerHTML='<div class="empty-state">Nenhum assinante pago ainda. Os dados aparecerão aqui após a primeira assinatura.</div>';
+    return;
+  }
+
+  const maxMrr=Math.max(...sorted.map(k=>months[k].mrr),1);
+
+  let html=`<div style="display:flex;align-items:flex-end;gap:8px;padding:16px 0;overflow-x:auto;min-height:120px">`;
+  sorted.forEach((key,i)=>{
+    const m=months[key];
+    const prev=i>0?months[sorted[i-1]]:null;
+    const growth=prev?((m.mrr-prev.mrr)/prev.mrr*100):0;
+    const barH=Math.max(8,Math.round((m.mrr/maxMrr)*80));
+    const growthColor=growth>=0?'var(--green)':'var(--red)';
+    const growthIcon=growth>=0?'↑':'↓';
+    html+=`
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:52px">
+        ${i>0?`<div style="font-family:var(--mono);font-size:9px;color:${growthColor}">${growthIcon}${Math.abs(growth).toFixed(0)}%</div>`:'<div style="font-size:9px">&nbsp;</div>'}
+        <div style="font-family:var(--mono);font-size:9px;color:var(--neon)">$${m.mrr.toFixed(0)}</div>
+        <div style="width:36px;height:${barH}px;background:linear-gradient(to top,#1a6bff,var(--neon));border-radius:4px 4px 0 0;transition:all .3s;position:relative" title="${m.label}: $${m.mrr.toFixed(2)} — ${m.count} assinante(s)"></div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);text-align:center">${m.label}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text)">${m.count} sub${m.count!==1?'s':''}</div>
+      </div>`;
+  });
+  html+=`</div>`;
+
+  // Summary row
+  const totalMrr=sorted.reduce((s,k)=>s+months[k].mrr,0);
+  const lastMonth=months[sorted[sorted.length-1]];
+  const prevMonth=sorted.length>1?months[sorted[sorted.length-2]]:null;
+  const lastGrowth=prevMonth?((lastMonth.mrr-prevMonth.mrr)/prevMonth.mrr*100):0;
+  html+=`<div style="display:flex;gap:16px;padding-top:12px;border-top:1px solid rgba(0,170,255,0.08);flex-wrap:wrap">
+    <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Melhor mês</div><div style="font-family:var(--mono);font-size:13px;color:var(--green);font-weight:600">$${Math.max(...sorted.map(k=>months[k].mrr)).toFixed(2)}</div></div>
+    <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Mês atual</div><div style="font-family:var(--mono);font-size:13px;color:var(--neon);font-weight:600">$${lastMonth.mrr.toFixed(2)} <span style="font-size:10px;color:${lastGrowth>=0?'var(--green)':'var(--red)'}">${lastGrowth>=0?'↑':'↓'}${Math.abs(lastGrowth).toFixed(0)}%</span></div></div>
+    <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Receita total histórica</div><div style="font-family:var(--mono);font-size:13px;color:var(--yellow);font-weight:600">$${totalMrr.toFixed(2)}</div></div>
+  </div>`;
+
+  document.getElementById('monthlyChart').innerHTML=html;
+}
 
 function showNewSubscriberPopup(subscriber){
   const planIcon=subscriber.plan==='master'?'👑':'⚡';
@@ -390,6 +452,9 @@ async function loadData(){
 
     // Store for CSV export
     allSubscribers=d.subscribers.list||[];
+
+    // Monthly history chart
+    renderMonthlyChart(allSubscribers);
 
     // 🔔 Real-time new subscriber detection
     const latest=d.latest_subscriber;
