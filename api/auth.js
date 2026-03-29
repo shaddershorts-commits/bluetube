@@ -141,6 +141,28 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── UPDATE PASSWORD (using recovery token) ────────────────────────────────
+    if (action === 'update_password') {
+      if (!token || !password) return res.status(400).json({ error: 'Token e senha são obrigatórios' });
+      if (password.length < 6) return res.status(400).json({ error: 'Senha mínima de 6 caracteres' });
+
+      const r = await fetch(`${authBase}/user`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        const msg = data.msg || data.error_description || data.error || 'Erro ao atualizar senha';
+        return res.status(400).json({ error: msg });
+      }
+      return res.status(200).json({ success: true });
+    }
+
     // ── RESET PASSWORD (sends email link) ─────────────────────────────────────
     if (action === 'reset_password') {
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
