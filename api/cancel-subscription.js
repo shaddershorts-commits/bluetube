@@ -46,7 +46,30 @@ export default async function handler(req, res) {
     );
 
     const patchData = await patch.json();
-    console.log(`✅ Cancelled subscription for ${email}:`, patch.status);
+    console.log(`Cancel for ${email} - status: ${patch.status} - data:`, JSON.stringify(patchData).slice(0,300));
+
+    if(!patch.ok){
+      return res.status(500).json({ error: 'Failed to update: ' + JSON.stringify(patchData) });
+    }
+
+    // If no rows updated (user not in subscribers table), insert as free
+    if(Array.isArray(patchData) && patchData.length === 0){
+      console.log(`No rows found for ${email}, inserting as free`);
+      await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          email, plan: 'free',
+          is_manual: false,
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
 
     return res.status(200).json({ success: true, email, plan: 'free' });
   } catch (err) {
