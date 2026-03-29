@@ -442,7 +442,7 @@ async function startTranscription(e){
   }
 }
 
-async function generateScript(versionId, lang){
+async function generateScript(versionId, lang, attempt=1){
   try {
     const res=await fetch('/api/rewrite',{
       method:'POST',
@@ -450,15 +450,23 @@ async function generateScript(versionId, lang){
       body:JSON.stringify({transcript,lang,version:versionId})
     });
     const data=await res.json();
-    if(!res.ok||!data.text)throw new Error(data.error||'Resposta vazia');
+    if(!res.ok||!data.text){
+      // Rate limit — retry once after waiting
+      if((res.status===429||data.error?.includes('quota'))&&attempt<3){
+        document.getElementById('loadingV'+versionId.slice(1)).querySelector('.scripts-loading-label')
+          && (document.querySelector(`#loading${versionId} .scripts-loading-label`).textContent='Aguardando API… tentando novamente');
+        await new Promise(r=>setTimeout(r,15000));
+        return generateScript(versionId, lang, attempt+1);
+      }
+      throw new Error(data.error||'Resposta vazia');
+    }
 
-    // Strip any stray markdown
     const clean=data.text
       .replace(/^#+\s.*/gm,'')
       .replace(/\*\*(.*?)\*\*/g,'$1')
       .replace(/\*(.*?)\*/g,'$1')
       .replace(/^\s*[-•]\s/gm,'')
-      .replace(/\n{3,}/g,'\n\n')
+      .replace(/\n{2,}/g,' ')
       .trim();
 
     document.getElementById('script'+versionId).textContent=clean;
@@ -466,7 +474,7 @@ async function generateScript(versionId, lang){
     document.getElementById('card'+versionId).style.display='block';
   }catch(err){
     document.getElementById('loading'+versionId).classList.remove('on');
-    document.getElementById('script'+versionId).textContent='⚠ '+( err.message||'Falha ao gerar. Tente novamente.');
+    document.getElementById('script'+versionId).textContent='⚠ '+(err.message||'Falha ao gerar. Tente novamente.');
     document.getElementById('card'+versionId).style.display='block';
   }
 }
@@ -477,7 +485,7 @@ function generateAllScripts(lang){
     document.getElementById('card'+v).style.display='none';
   });
   generateScript('V1',lang)
-    .then(()=>new Promise(r=>setTimeout(r,2500)))
+    .then(()=>new Promise(r=>setTimeout(r,8000)))
     .then(()=>generateScript('V2',lang));
 }
 
