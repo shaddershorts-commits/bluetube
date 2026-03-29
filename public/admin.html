@@ -112,6 +112,35 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 </head>
 <body>
 
+<!-- EDIT PLAN MODAL -->
+<div id="editModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.25);border-radius:20px;padding:32px;width:100%;max-width:400px;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent);border-radius:20px 20px 0 0"></div>
+    <button onclick="closeEditModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer">✕</button>
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px">✏️ Editar plano</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:20px" id="editModalEmail">—</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px">
+      <div onclick="selectEditPlan('free')" id="editOptFree" style="border:2px solid rgba(150,190,230,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
+        <div style="font-size:18px;margin-bottom:4px">🆓</div>
+        <div style="font-family:var(--mono);font-size:11px;font-weight:600">Free</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$0</div>
+      </div>
+      <div onclick="selectEditPlan('full')" id="editOptFull" style="border:2px solid rgba(0,170,255,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
+        <div style="font-size:18px;margin-bottom:4px">⚡</div>
+        <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--neon)">Full</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$9,99</div>
+      </div>
+      <div onclick="selectEditPlan('master')" id="editOptMaster" style="border:2px solid rgba(251,191,36,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
+        <div style="font-size:18px;margin-bottom:4px">👑</div>
+        <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:#fbbf24">Master</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$29,99</div>
+      </div>
+    </div>
+    <button onclick="saveEditPlan()" style="width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px">Salvar alteração →</button>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;text-align:center" id="editModalMsg"></div>
+  </div>
+</div>
+
 <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
 <!-- LOGIN -->
@@ -384,7 +413,7 @@ async function loadData(){
               <td style="color:var(--dim)">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
               <td>
                 <div style="display:flex;gap:6px">
-                  <button onclick="quickEditPlan('${s.email}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
+                  <button onclick="quickEditPlan('${s.email}','${s.plan}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
                 </div>
               </td>
             </tr>`).join('')}
@@ -451,23 +480,56 @@ function startAutoRefresh(){
   },1000);
 }
 
-async function quickEditPlan(email){
-  const plan=prompt(`Editar plano de: ${email}\n\nDigite o novo plano:\nfull | master | free`,'full');
-  if(!plan)return;
-  if(!['full','master','free'].includes(plan.toLowerCase())){alert('Plano inválido. Use: full, master ou free');return;}
+let editingEmail='';
+let editingPlan='free';
+
+function openEditModal(email, currentPlan){
+  editingEmail=email;
+  editingPlan=currentPlan||'free';
+  document.getElementById('editModalEmail').textContent=email;
+  document.getElementById('editModalMsg').textContent='';
+  selectEditPlan(editingPlan);
+  document.getElementById('editModal').style.display='flex';
+}
+
+function closeEditModal(){
+  document.getElementById('editModal').style.display='none';
+}
+
+function selectEditPlan(plan){
+  editingPlan=plan;
+  ['free','full','master'].forEach(p=>{
+    const el=document.getElementById('editOpt'+p.charAt(0).toUpperCase()+p.slice(1));
+    if(el){
+      el.style.transform=p===plan?'scale(1.05)':'scale(1)';
+      el.style.boxShadow=p===plan?`0 0 20px ${p==='master'?'rgba(251,191,36,0.3)':p==='full'?'rgba(0,170,255,0.3)':'rgba(150,190,230,0.1)'}`:'none';
+      el.style.borderColor=p===plan?(p==='master'?'#fbbf24':p==='full'?'var(--neon)':'rgba(150,190,230,0.4)'):(p==='master'?'rgba(251,191,36,0.15)':p==='full'?'rgba(0,170,255,0.15)':'rgba(150,190,230,0.15)');
+    }
+  });
+}
+
+async function saveEditPlan(){
+  const msg=document.getElementById('editModalMsg');
+  msg.style.color='var(--green)';
+  msg.textContent='Salvando…';
   try{
     const r=await fetch('/api/admin',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
-      body:JSON.stringify({action:'set_plan',email,plan:plan.toLowerCase()})
+      body:JSON.stringify({action:'set_plan',email:editingEmail,plan:editingPlan})
     });
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error);
-    alert(`✓ Plano ${plan.toUpperCase()} ativado para ${email}`);
-    loadData();
+    if(!r.ok)throw new Error(d.error||'Erro desconhecido');
+    msg.textContent=`✓ Plano ${editingPlan.toUpperCase()} ativado!`;
+    setTimeout(()=>{closeEditModal();loadData();},1200);
   }catch(e){
-    alert('Erro: '+e.message);
+    msg.style.color='var(--red)';
+    msg.textContent='Erro: '+e.message;
   }
+}
+
+async function quickEditPlan(email, currentPlan){
+  openEditModal(email, currentPlan);
 }
 
 async function setPlan(){
