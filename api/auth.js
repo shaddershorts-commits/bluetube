@@ -141,6 +141,19 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── RESET PASSWORD (sends email link) ─────────────────────────────────────
+    if (action === 'reset_password') {
+      if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
+      const redirectTo = `${process.env.SITE_URL || 'https://bluetube-ten.vercel.app'}/`;
+      const r = await fetch(`${authBase}/recover`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ email, gotrue_meta_security: {}, options: { redirectTo } })
+      });
+      // Always return success to avoid email enumeration
+      return res.status(200).json({ sent: true });
+    }
+
     // ── GOOGLE OAUTH ──────────────────────────────────────────────────────────
     if (action === 'google') {
       const redirectTo = `${process.env.SITE_URL || 'https://bluetube-ten.vercel.app'}/`;
