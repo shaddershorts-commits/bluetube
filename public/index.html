@@ -1048,11 +1048,20 @@ async function checkSession(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
     const d=await r.json();
     if(r.ok&&d.user){
-      // Check subscriber plan
-      userPlan = localStorage.getItem('bt_plan') || 'free';
-      setLoggedIn(d.user.email, userPlan);
+      // Fetch real plan from Supabase
+      const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+      const planData=await planRes.json();
+      userPlan=planData.plan||'free';
+      localStorage.setItem('bt_plan',userPlan);
+      setLoggedIn(d.user.email,userPlan);
     }else{
       localStorage.removeItem('bt_token');
+      localStorage.removeItem('bt_plan');
+    }
+  }catch{}
+}
+      localStorage.removeItem('bt_token');
+      localStorage.removeItem('bt_plan');
     }
   }catch{}
 }
