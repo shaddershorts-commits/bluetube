@@ -29,6 +29,7 @@ export default async function handler(req, res) {
       headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify({
         email, plan,
+        is_manual: true, // Mark as manually granted — excluded from revenue
         plan_expires_at: plan === 'free' ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -57,20 +58,28 @@ export default async function handler(req, res) {
         free: subscribers.filter(s => s.plan === 'free').length,
         full: subscribers.filter(s => s.plan === 'full').length,
         master: subscribers.filter(s => s.plan === 'master').length,
+        // Paying = not manual and not free
+        paying_full: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length,
+        paying_master: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length,
+        manual_full: subscribers.filter(s => s.plan === 'full' && s.is_manual).length,
+        manual_master: subscribers.filter(s => s.plan === 'master' && s.is_manual).length,
         list: subscribers
       },
       revenue: {
-        monthly_mrr: (subscribers.filter(s => s.plan === 'full').length * 9.99) +
-                     (subscribers.filter(s => s.plan === 'master').length * 29.99),
-        full_revenue: subscribers.filter(s => s.plan === 'full').length * 9.99,
-        master_revenue: subscribers.filter(s => s.plan === 'master').length * 29.99
+        // Only count paying subscribers in revenue
+        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99) +
+                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99),
+        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99,
+        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99
       },
       today: {
         active_ips: todayUsage.length,
         total_scripts_generated: todayUsage.reduce((sum, r) => sum + (r.script_count || 0), 0),
         usage_breakdown: todayUsage
       },
-      top_virals: topVirals
+      top_virals: topVirals,
+      // Latest subscriber for real-time notification
+      latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null
     };
 
     return res.status(200).json(stats);
