@@ -1118,41 +1118,59 @@ function doLogout(){
 }
 
 // ── OAUTH CALLBACK HANDLER ─────────────────────────────────────────────────
-// When Google redirects back, Supabase puts the token in the URL hash
 async function handleOAuthCallback(){
   const hash = window.location.hash;
-  if(!hash) return false;
+  const search = window.location.search;
+  console.log('OAuth check - hash:', hash, 'search:', search);
 
-  // Parse hash params: #access_token=...&token_type=bearer&...
-  const params = new URLSearchParams(hash.replace('#',''));
-  const accessToken = params.get('access_token');
-  const tokenType = params.get('token_type');
-
-  if(accessToken && tokenType === 'bearer'){
-    // Save token
-    localStorage.setItem('bt_token', accessToken);
-
-    // Clean URL without reload
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    // Fetch plan and update UI
-    try{
-      const planRes = await fetch('/api/get-plan', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({token: accessToken})
-      });
-      const planData = await planRes.json();
-      userPlan = planData.plan || 'free';
-      localStorage.setItem('bt_plan', userPlan);
-      setLoggedIn(planData.email, userPlan);
-      updateLangOptions();
-    }catch(e){
-      // Fallback — just verify token
-      await checkSession();
+  // Check hash for token (implicit flow)
+  if(hash){
+    const params = new URLSearchParams(hash.replace('#',''));
+    const accessToken = params.get('access_token');
+    console.log('Hash access_token:', accessToken ? 'found' : 'not found');
+    if(accessToken){
+      localStorage.setItem('bt_token', accessToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      try{
+        const planRes = await fetch('/api/get-plan', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({token: accessToken})
+        });
+        const planData = await planRes.json();
+        console.log('Plan data:', planData);
+        userPlan = planData.plan || 'free';
+        localStorage.setItem('bt_plan', userPlan);
+        setLoggedIn(planData.email, userPlan);
+        updateLangOptions();
+      }catch(e){ console.error('Plan fetch error:', e); await checkSession(); }
+      return true;
     }
-    return true;
   }
+
+  // Check query params for code (PKCE flow)
+  if(search){
+    const params = new URLSearchParams(search);
+    const code = params.get('code');
+    console.log('Query code:', code ? 'found' : 'not found');
+    if(code){
+      // Exchange code for session via Supabase
+      const SUPABASE_URL = 'https://pokpfvjrccviwgguwuck.supabase.co';
+      try{
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=pkce`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json', 'apikey': ''},
+          body: JSON.stringify({auth_code: code})
+        });
+        console.log('PKCE exchange status:', r.status);
+      }catch(e){ console.error('PKCE error:', e); }
+      // Clean URL and check session
+      window.history.replaceState({}, document.title, window.location.pathname);
+      await checkSession();
+      return true;
+    }
+  }
+
   return false;
 }
 
