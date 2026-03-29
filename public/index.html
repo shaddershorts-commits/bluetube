@@ -201,6 +201,69 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 /* ── ANNUAL TOGGLE ───────────────────────────────────────────────────────── */
 .nav-community-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:#fbbf24;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
 .nav-community-btn:hover{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.5);transform:translateY(-1px)}
+.nav-tools-group{display:flex;gap:4px}
+.nav-tool-btn{font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:7px;padding:6px 10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.nav-tool-btn:hover{background:rgba(0,170,255,0.12);border-color:rgba(0,170,255,0.35);transform:translateY(-1px)}
+.nav-user-btn{display:flex;align-items:center;gap:7px;background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:8px;padding:5px 12px 5px 6px;cursor:pointer;transition:all .2s}
+.nav-user-btn:hover{border-color:rgba(0,170,255,0.35);background:rgba(0,170,255,0.1)}
+.nav-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--blue-500),var(--neon));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.nav-user-email{font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* BluBlu mascot */
+.blublu-container{position:fixed;bottom:24px;right:24px;z-index:150;cursor:pointer}
+.blublu-bubble{position:absolute;bottom:70px;right:0;background:rgba(10,22,40,0.97);border:1px solid rgba(0,170,255,0.3);border-radius:16px 16px 4px 16px;padding:14px 16px;width:230px;font-family:var(--font-mono);font-size:12px;color:var(--text-primary);line-height:1.5;box-shadow:0 8px 32px rgba(0,100,255,0.2);animation:fadeUp .4s ease;display:none}
+.blublu-bubble.on{display:block}
+.blublu-bubble::after{content:'';position:absolute;bottom:-8px;right:20px;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:8px solid rgba(0,170,255,0.3)}
+.blublu-avatar{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,#00aaff);display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,170,255,0.4);font-size:28px;transition:transform .2s;border:2px solid rgba(0,170,255,0.4)}
+.blublu-avatar:hover{transform:scale(1.1)}
+.blublu-chat{margin-top:10px;border-top:1px solid rgba(0,170,255,0.1);padding-top:10px}
+.blublu-input{width:100%;background:rgba(2,8,23,0.8);border:1px solid rgba(0,170,255,0.2);border-radius:8px;padding:8px 10px;font-family:var(--font-mono);font-size:11px;color:var(--text-primary);outline:none;resize:none;margin-bottom:6px}
+.blublu-send{width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:7px;padding:7px;font-family:var(--font-display);font-size:11px;font-weight:700;color:#fff;cursor:pointer}
+/* Profile modal */
+.profile-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.9);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.profile-overlay.on{display:flex;animation:fadeIn .3s ease}
+.profile-box{width:100%;max-width:440px;background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.2);border-radius:22px;padding:28px;position:relative;overflow:hidden;max-height:90vh;overflow-y:auto}
+.profile-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent)}
+/* Community modal */
+.community-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.9);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.community-overlay.on{display:flex;animation:fadeIn .3s ease}
+/* Cancel subscription modal */
+.cancel-overlay{display:none;position:fixed;inset:0;z-index:250;background:rgba(2,8,23,0.95);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.cancel-overlay.on{display:flex;animation:fadeIn .3s ease}
+/* Master tool coming soon */
+.tool-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.9);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.tool-overlay.on{display:flex;animation:fadeIn .3s ease}
+/* FAQ */
+.faq-section{position:relative;z-index:10;padding:80px 24px}
+.faq-inner{max-width:720px;margin:0 auto}
+.faq-item{border-bottom:1px solid rgba(0,170,255,0.08);cursor:pointer}
+.faq-q{display:flex;align-items:center;justify-content:space-between;padding:20px 0;font-size:15px;font-weight:600;color:var(--text-primary);transition:color .2s}
+.faq-q:hover{color:var(--neon)}
+.faq-chevron{font-size:12px;color:var(--neon);transition:transform .3s;flex-shrink:0}
+.faq-a{font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.7;max-height:0;overflow:hidden;transition:max-height .4s ease,padding .3s}
+.faq-item.open .faq-a{max-height:300px;padding-bottom:18px}
+.faq-item.open .faq-chevron{transform:rotate(180deg)}
+/* Price increase notice */
+.price-increase-notice{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:#fbbf24;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:8px 14px;margin-top:20px;justify-content:center}
+.blink-dot{width:6px;height:6px;border-radius:50%;background:#fbbf24;animation:blink 1.2s infinite;flex-shrink:0}
+/* Mobile tools menu */
+.mobile-tools-btn{display:none}
+@media(max-width:768px){
+  .nav-tools-group{display:none}
+  .nav-user-email{display:none}
+  .mobile-tools-btn{display:flex}
+}
+@media(max-width:640px){
+  nav{padding:14px 18px}
+  .hero{padding:96px 14px 60px}
+  .hero-title{letter-spacing:-2px}
+  .input-row,.options-row{flex-direction:column}
+  .btn-go{width:100%}
+  .main-card{padding:22px 18px}
+  .feat-grid,.plans-grid{grid-template-columns:1fr}
+  .modal-plans{grid-template-columns:1fr}
+  footer{flex-direction:column;gap:14px;text-align:center}
+  .nav-right{gap:6px}
+}
 .billing-toggle-modal{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;background:rgba(2,8,23,0.4);border-radius:10px;padding:8px 14px}
 .billing-label-modal{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);cursor:pointer;transition:all .2s}
 .billing-label-modal.active{color:var(--text-primary);font-weight:600}
@@ -601,8 +664,197 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <button class="plan-btn" style="background:linear-gradient(135deg,#92400e,#fbbf24);box-shadow:0 0 20px rgba(251,191,36,0.2)" onclick="handleUpgradeClick('master')">Assinar Master →</button>
       </div>
     </div>
+    <!-- Price increase notice -->
+    <div class="price-increase-notice">
+      <span class="blink-dot"></span>
+      A partir do mês que vem o valor aumentará $10 no Full e $20 no Master. Assine agora!
+    </div>
   </div>
 </section>
+
+<!-- ── FAQ ─────────────────────────────────────────────────────────────────── -->
+<section class="faq-section">
+  <div class="faq-inner">
+    <div class="sec-eye">Dúvidas frequentes</div>
+    <h2 class="sec-title" style="text-align:left;margin-bottom:36px">Perguntas frequentes.</h2>
+    <div id="faqList">
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Como o BlueTube funciona? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Cole o link de qualquer YouTube Shorts, escolha o idioma e clique em Transcrever. Nossa IA analisa o áudio, gera a transcrição completa e cria dois roteiros virais adaptados ao estilo do vídeo — um casual e um apelativo. Tudo em menos de 30 segundos.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Preciso criar uma conta para usar? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Não! Você pode usar o BlueTube sem cadastro, com até 2 roteiros gratuitos por dia. Criar uma conta gratuita garante +1 roteiro bônus e salva seu histórico. Para roteiros ilimitados e mais idiomas, escolha um plano pago.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Quais idiomas estão disponíveis? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">No plano gratuito: Português (Brasil) e Inglês. No plano Full: +7 idiomas incluindo Español, Français, Deutsch, Italiano, 日本語, 中文 e العربية. No plano Master: todos os anteriores +7 novos como Türkçe, हिन्दी, 한국어, Русский, Bahasa Indonesia, ภาษาไทย e Tagalog.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Os roteiros são únicos ou copiados do vídeo original? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Os roteiros são 100% originais, gerados por nossa IA a partir da transcrição. Nunca são uma cópia do vídeo original — são uma reescrita viral adaptada para máximo engajamento. Você pode usar sem medo de problemas de direitos autorais.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Posso cancelar minha assinatura a qualquer momento? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Sim, sem burocracia. Você pode cancelar a qualquer momento pelo seu perfil no site. Após o cancelamento, você mantém o acesso premium até o final do período já pago e depois retorna ao plano gratuito automaticamente.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">O que é a Comunidade exclusiva? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Um grupo no WhatsApp exclusivo para assinantes Full e Master com criadores que acumulam milhões de views por mês. Você vai encontrar dicas de nicho, estratégias virais, suporte entre criadores e atualizações antecipadas das novas ferramentas do BlueTube.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Meu conteúdo é armazenado no BlueTube? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">As transcrições dos vídeos mais processados são salvas anonimamente para melhorar nossa IA ao longo do tempo. Nenhum dado pessoal seu é vinculado ao conteúdo processado. Você pode usar o BlueTube com total privacidade.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Qual a diferença entre Full e Master? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">O Full oferece 9 roteiros por dia, todos os idiomas principais e acesso à comunidade. O Master é ilimitado — sem teto de roteiros por dia, +7 idiomas exclusivos, chat IA personalizado, voz hiper-realista, download de vídeos HD e buscador de vídeos virais em alta.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMMUNITY MODAL ────────────────────────────────────────────────────── -->
+<div class="community-overlay" id="communityModal">
+  <div class="modal-box" style="max-width:480px;text-align:left">
+    <button class="modal-close" onclick="closeCommunityModal()">✕</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+      <div style="font-size:36px">🤝</div>
+      <div>
+        <div style="font-size:18px;font-weight:800;letter-spacing:-.5px">Comunidade BlueTube</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--neon)">Exclusivo para assinantes</div>
+      </div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:22px">
+      Você está prestes a entrar num grupo exclusivo no WhatsApp com <strong style="color:var(--text-primary)">criadores dark que fazem milhões de views por mês.</strong><br><br>
+      Dentro do grupo você vai encontrar:<br>
+      ✦ Dicas e estratégias virais em primeira mão<br>
+      ✦ Suporte de criadores experientes<br>
+      ✦ Nichos em alta antes de todo mundo<br>
+      ✦ Ferramentas e atualizações antecipadas
+    </div>
+    <button onclick="joinCommunity()" style="width:100%;background:linear-gradient(135deg,#25D366,#128C7E);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 0 24px rgba(37,211,102,0.3);margin-bottom:10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0 0 20.885 3.488"/></svg>
+      Entrar na Comunidade WhatsApp
+    </button>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:center">Após entrar no grupo, o botão ficará marcado na sua conta</div>
+  </div>
+</div>
+
+<!-- ── PROFILE MODAL ───────────────────────────────────────────────────────── -->
+<div class="profile-overlay" id="profileModal">
+  <div class="profile-box">
+    <button class="modal-close" onclick="closeProfileModal()">✕</button>
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--blue-500),var(--neon));display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;margin:0 auto 10px">
+        <span id="profileAvatar">?</span>
+      </div>
+      <div style="font-size:15px;font-weight:700" id="profileEmail">—</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:4px" id="profilePlanBadge">—</div>
+    </div>
+    <div style="background:rgba(2,8,23,0.5);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">Informações da conta</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Membro desde</span><span style="font-family:var(--font-mono);font-size:12px" id="profileSince">—</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Plano atual</span><span style="font-family:var(--font-mono);font-size:12px" id="profilePlan">—</span></div>
+      <div style="display:flex;justify-content:space-between" id="profilePremiumDays" style="display:none"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Dias premium</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--neon)" id="profileDays">—</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
+      <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
+      <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
+    </div>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(0,170,255,0.07);display:flex;justify-content:space-between;align-items:center">
+      <button onclick="closeProfileModal();doLogout()" style="font-family:var(--font-mono);font-size:12px;color:var(--red,#ff7a5a);background:none;border:none;cursor:pointer">↪ Sair</button>
+      <button id="cancelSubBtn" onclick="openCancelModal()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline;display:none">Cancelar assinatura</button>
+    </div>
+    <div class="profile-support-chat" id="profileSupportChat" style="display:none;margin-top:16px;border-top:1px solid rgba(0,170,255,0.07);padding-top:16px">
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px">Mensagem para o suporte:</div>
+      <textarea id="supportMsg" rows="3" style="width:100%;background:rgba(2,8,23,0.8);border:1px solid rgba(0,170,255,0.15);border-radius:8px;padding:10px;font-family:var(--font-mono);font-size:12px;color:var(--text-primary);outline:none;resize:none" placeholder="Descreva sua dúvida ou problema…"></textarea>
+      <button onclick="sendSupportMsg()" style="width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:8px;padding:10px;font-family:var(--font-display);font-size:12px;font-weight:700;color:#fff;cursor:pointer;margin-top:6px">Enviar mensagem →</button>
+      <div id="supportMsgStatus" style="font-family:var(--font-mono);font-size:11px;text-align:center;margin-top:6px;min-height:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CANCEL SUBSCRIPTION MODAL ──────────────────────────────────────────── -->
+<div class="cancel-overlay" id="cancelModal">
+  <div class="modal-box" style="max-width:460px">
+    <button class="modal-close" onclick="closeCancelModal()">✕</button>
+    <div id="cancelStep1">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+        <div style="font-size:48px">🤖</div>
+        <div style="background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:12px 12px 12px 4px;padding:12px 16px;font-family:var(--font-mono);font-size:13px;line-height:1.6">
+          Não pode ser! Me fala que você clicou por engano?<br>Não me abandone! 😢
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);margin-bottom:14px">Por que você quer cancelar?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px" id="cancelReasons">
+        <label style="display:flex;align-items:center;gap:10px;background:rgba(2,8,23,0.5);border:1px solid rgba(0,170,255,0.1);border-radius:9px;padding:12px;cursor:pointer;font-family:var(--font-mono);font-size:12px;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,0.3)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.1)'">
+          <input type="radio" name="cancelReason" value="difficulty"> Estou tendo dificuldade em usar o BlueTube
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;background:rgba(2,8,23,0.5);border:1px solid rgba(0,170,255,0.1);border-radius:9px;padding:12px;cursor:pointer;font-family:var(--font-mono);font-size:12px;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,0.3)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.1)'">
+          <input type="radio" name="cancelReason" value="expensive"> Muito caro para mim agora
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;background:rgba(2,8,23,0.5);border:1px solid rgba(0,170,255,0.1);border-radius:9px;padding:12px;cursor:pointer;font-family:var(--font-mono);font-size:12px;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,0.3)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.1)'">
+          <input type="radio" name="cancelReason" value="notneed"> Não preciso mais do serviço
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;background:rgba(2,8,23,0.5);border:1px solid rgba(0,170,255,0.1);border-radius:9px;padding:12px;cursor:pointer;font-family:var(--font-mono);font-size:12px;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,0.3)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.1)'">
+          <input type="radio" name="cancelReason" value="other" onclick="document.getElementById('cancelOtherBox').style.display='block'"> Outro motivo
+        </label>
+        <textarea id="cancelOtherBox" rows="2" placeholder="Conte mais…" style="display:none;width:100%;background:rgba(2,8,23,0.8);border:1px solid rgba(0,170,255,0.15);border-radius:8px;padding:10px;font-family:var(--font-mono);font-size:12px;color:var(--text-primary);outline:none;resize:none"></textarea>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeCancelModal()" style="flex:1;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">Dar mais uma chance! 💙</button>
+        <button onclick="confirmCancelStep2()" style="flex:1;background:rgba(255,80,80,0.08);border:1px solid rgba(255,80,80,0.2);border-radius:10px;padding:13px;font-family:var(--font-mono);font-size:12px;color:#ff7a5a;cursor:pointer">Confirmar cancelamento</button>
+      </div>
+    </div>
+    <div id="cancelStep2" style="display:none;text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">🤖</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">Espera! Temos uma oferta especial</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Como você é um cliente especial, queremos oferecer <strong style="color:var(--neon)">$3 de desconto</strong> na sua próxima mensalidade.</div>
+      <div style="background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:12px;padding:18px;margin-bottom:20px">
+        <div style="font-size:28px;font-weight:800;color:var(--neon)" id="discountPrice">$6,99</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">no próximo mês · depois volta ao normal</div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="acceptDiscount()" style="flex:1;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">Aceitar oferta 💙</button>
+        <button onclick="finalCancel()" style="flex:1;background:rgba(255,80,80,0.08);border:1px solid rgba(255,80,80,0.25);border-radius:10px;padding:13px;font-family:var(--font-mono);font-size:12px;color:#ff7a5a;cursor:pointer">Cancelar assinatura</button>
+      </div>
+    </div>
+    <div id="cancelStep3" style="display:none;text-align:center;padding:20px 0">
+      <div style="font-size:48px;margin-bottom:16px">🤖</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:10px">Vou ter saudades do que a gente viveu!</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.6">Sua assinatura foi cancelada. Você continua com acesso premium até o final do período pago.</div>
+      <button onclick="closeCancelModal()" style="margin-top:20px;background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:10px;padding:12px 24px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MASTER TOOL MODAL ───────────────────────────────────────────────────── -->
+<div class="tool-overlay" id="toolModal">
+  <div class="modal-box" style="max-width:420px;text-align:center">
+    <button class="modal-close" onclick="closeToolModal()">✕</button>
+    <div style="font-size:48px;margin-bottom:16px" id="toolModalIcon">🔧</div>
+    <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px" id="toolModalTitle">Em desenvolvimento</div>
+    <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px" id="toolModalDesc">Esta ferramenta está sendo desenvolvida e chegará em breve para assinantes Master.</div>
+    <div style="background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(251,191,36,0.05));border:1px solid rgba(251,191,36,0.2);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:11px;color:#fbbf24">👑 Exclusivo Master · Em breve</div>
+    </div>
+    <button onclick="closeToolModal()" style="width:100%;background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer">Entendido</button>
+  </div>
+</div>
+
+<!-- ── BLUBLU MASCOT ───────────────────────────────────────────────────────── -->
+<div class="blublu-container" id="blubluContainer" style="display:none">
+  <div class="blublu-bubble" id="blubluBubble">
+    <div id="blubluMsg">Olá! Eu sou o <strong>BluBlu</strong> 🤖<br>Como está sendo sua experiência?<br>Está gostando do BlueTube?</div>
+    <div class="blublu-chat" id="blubluChat">
+      <textarea class="blublu-input" id="blubluInput" rows="2" placeholder="Deixe seu feedback…"></textarea>
+      <button class="blublu-send" onclick="sendBluBluFeedback()">Enviar feedback →</button>
+    </div>
+  </div>
+  <div class="blublu-avatar" onclick="toggleBlublu()" title="BluBlu — Assistente BlueTube">🤖</div>
+</div>
 
 <footer>
   <div class="foot-logo">Blue<span style="color:var(--neon)">Tube</span></div>
@@ -1083,6 +1335,8 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('script'+versionId).textContent=clean;
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('card'+versionId).style.display='block';
+    // Show BluBlu after V2 (second script)
+    if(versionId==='V2') setTimeout(showBlublu, 4000);
   }catch(err){
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('script'+versionId).textContent='⚠ '+(err.message||'Falha ao gerar. Tente novamente.');
@@ -1130,7 +1384,10 @@ async function checkSession(){
       const planData=await planRes.json();
       userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
-      setLoggedIn(d.user.email,userPlan);
+      currentUserEmail=planData.email||d.user.email;
+      if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
+      if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
+      setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
     }else{
       localStorage.removeItem('bt_token');
@@ -1144,11 +1401,38 @@ function setLoggedIn(email, plan){
   const planIcon = p === 'master' ? '👑' : p === 'full' ? '⚡' : '';
   const planColor = p === 'master' ? '#fbbf24' : p === 'full' ? 'var(--neon)' : 'var(--text-dim)';
   const showUpgrade = p !== 'master';
+  const isPaid = p === 'full' || p === 'master';
+  const isMaster = p === 'master';
   const navRight = document.querySelector('.nav-right');
+
+  const communityJoined = localStorage.getItem('bt_community_joined');
+
   navRight.innerHTML=`
-    <span style="font-family:var(--font-mono);font-size:11px;color:${planColor};background:rgba(0,170,255,0.07);border:1px solid ${planColor}33;border-radius:8px;padding:7px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${email}">${planIcon} ${email}</span>
+    ${isMaster ? `
+      <div class="nav-tools-group">
+        <button class="nav-tool-btn" onclick="openMasterTool('download')" title="Baixar Vídeos">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Baixar
+        </button>
+        <button class="nav-tool-btn" onclick="openMasterTool('viral')" title="Vídeos Virais">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          Virais
+        </button>
+        <button class="nav-tool-btn" onclick="openMasterTool('voice')" title="Voz Hiper-realista">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          Voz IA
+        </button>
+      </div>` : ''}
+    <button class="nav-community-btn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" id="communityBtnNav">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
+      ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
+    </button>
+    <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">
+      <div class="nav-avatar">${planIcon||email[0].toUpperCase()}</div>
+      <span class="nav-user-email">${email.split('@')[0]}</span>
+    </button>
     ${showUpgrade ? `<button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>` : ''}
-    <button class="nav-login-btn" onclick="doLogout()">Sair</button>
   `;
 }
 
@@ -1241,6 +1525,181 @@ async function handleOAuthCallback(){
   }
 
   return false;
+}
+
+// ── FAQ ────────────────────────────────────────────────────────────────────
+function toggleFaq(item){
+  const isOpen=item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(i=>i.classList.remove('open'));
+  if(!isOpen)item.classList.add('open');
+}
+
+// ── COMMUNITY MODAL ────────────────────────────────────────────────────────
+function openCommunityModal(){document.getElementById('communityModal').classList.add('on');}
+function closeCommunityModal(){document.getElementById('communityModal').classList.remove('on');}
+function joinCommunity(){
+  localStorage.setItem('bt_community_joined','1');
+  window.open('https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh','_blank');
+  closeCommunityModal();
+  // Refresh nav to show joined state
+  const token=localStorage.getItem('bt_token');
+  if(token)checkSession();
+}
+function showCommunityJoinedMsg(){
+  const msg=document.createElement('div');
+  msg.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:400;background:rgba(10,22,40,0.97);border:1px solid rgba(37,211,102,0.4);border-radius:12px;padding:14px 20px;font-family:var(--font-mono);font-size:12px;color:#4ecca3;animation:fadeUp .3s ease;white-space:nowrap';
+  msg.textContent='✓ Você já faz parte da comunidade! Link: chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
+  document.body.appendChild(msg);
+  setTimeout(()=>msg.remove(),4000);
+}
+
+// ── PROFILE MODAL ──────────────────────────────────────────────────────────
+let currentUserEmail='';
+let currentUserCreated='';
+function openProfileModal(){
+  const token=localStorage.getItem('bt_token');
+  if(!token){openAuthModal();return;}
+  const p=userPlan;
+  const planIcon=p==='master'?'👑':p==='full'?'⚡':'🆓';
+  const planLabel=p==='master'?'Master Premium':p==='full'?'Full Premium':'Grátis';
+  const planColor=p==='master'?'#fbbf24':p==='full'?'var(--neon)':'var(--text-dim)';
+  const isPaid=p==='full'||p==='master';
+
+  document.getElementById('profileAvatar').textContent=planIcon||currentUserEmail[0]?.toUpperCase()||'U';
+  document.getElementById('profileEmail').textContent=currentUserEmail;
+  document.getElementById('profilePlanBadge').innerHTML=`<span style="color:${planColor}">${planIcon} ${planLabel}</span>`;
+  document.getElementById('profilePlan').innerHTML=`<span style="color:${planColor}">${planLabel}</span>`;
+
+  // Days premium
+  const premDays=localStorage.getItem('bt_plan_start');
+  if(premDays&&isPaid){
+    const days=Math.floor((Date.now()-parseInt(premDays))/86400000);
+    document.getElementById('profileDays').textContent=`${days} dias`;
+    document.getElementById('profilePremiumDays').style.display='flex';
+  }
+
+  // Since date
+  const since=localStorage.getItem('bt_since');
+  if(since)document.getElementById('profileSince').textContent=new Date(parseInt(since)).toLocaleDateString('pt-BR');
+
+  // Show/hide cancel button
+  document.getElementById('cancelSubBtn').style.display=isPaid?'block':'none';
+
+  // Upgrade button text
+  const upgradeBtn=document.getElementById('profileUpgradeBtn');
+  if(p==='master'){upgradeBtn.style.display='none';}
+  else if(p==='full'){upgradeBtn.textContent='👑 Ir para o Master →';upgradeBtn.style.background='linear-gradient(135deg,#92400e,#fbbf24)';}
+  else{upgradeBtn.textContent='⚡ Fazer upgrade';}
+
+  document.getElementById('profileModal').classList.add('on');
+}
+function closeProfileModal(){document.getElementById('profileModal').classList.remove('on');}
+function openProfileUpgrade(){closeProfileModal();openUpgradeModal();}
+async function sendPasswordReset(){
+  const email=currentUserEmail;
+  if(!email)return;
+  try{
+    await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email})});
+    const s=document.getElementById('supportMsgStatus');
+    if(s){s.style.color='var(--neon)';s.textContent='✓ Link de redefinição enviado para seu email!';}
+    else alert('Link de redefinição enviado para '+email);
+  }catch(e){alert('Erro ao enviar link.');}
+}
+function openSupportChat(){
+  const chat=document.getElementById('profileSupportChat');
+  chat.style.display=chat.style.display==='none'?'block':'none';
+}
+async function sendSupportMsg(){
+  const msg=document.getElementById('supportMsg').value.trim();
+  if(!msg)return;
+  const status=document.getElementById('supportMsgStatus');
+  status.style.color='var(--neon)';status.textContent='Enviando…';
+  try{
+    await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:msg,type:'support',token:localStorage.getItem('bt_token')})
+    });
+    status.textContent='✓ Mensagem enviada! Responderemos em breve.';
+    document.getElementById('supportMsg').value='';
+  }catch(e){status.style.color='var(--red,#ff7a5a)';status.textContent='Erro ao enviar. Tente novamente.';}
+}
+
+// ── CANCEL MODAL ───────────────────────────────────────────────────────────
+function openCancelModal(){closeProfileModal();document.getElementById('cancelModal').classList.add('on');}
+function closeCancelModal(){
+  document.getElementById('cancelModal').classList.remove('on');
+  document.getElementById('cancelStep1').style.display='block';
+  document.getElementById('cancelStep2').style.display='none';
+  document.getElementById('cancelStep3').style.display='none';
+}
+function confirmCancelStep2(){
+  const reason=document.querySelector('input[name="cancelReason"]:checked');
+  if(!reason){alert('Selecione um motivo para continuar.');return;}
+  const other=document.getElementById('cancelOtherBox').value;
+  // Send feedback
+  fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:reason.value==='other'?other:'Cancelamento: '+reason.value,type:'cancel'})
+  }).catch(()=>{});
+  const discountPrice=userPlan==='master'?'$26,99':'$6,99';
+  document.getElementById('discountPrice').textContent=discountPrice;
+  document.getElementById('cancelStep1').style.display='none';
+  document.getElementById('cancelStep2').style.display='block';
+}
+function acceptDiscount(){closeCancelModal();alert('Desconto aplicado! Obrigado por ficar com a gente 💙');}
+async function finalCancel(){
+  document.getElementById('cancelStep2').style.display='none';
+  document.getElementById('cancelStep3').style.display='block';
+  // Downgrade user to free
+  userPlan='free';
+  localStorage.setItem('bt_plan','free');
+  // TODO: Cancel in Stripe via API
+}
+
+// ── MASTER TOOLS ───────────────────────────────────────────────────────────
+function openMasterTool(tool){
+  if(userPlan!=='master'){openUpgradeModal();return;}
+  const tools={
+    download:{icon:'⬇️',title:'Baixar Vídeos HD',desc:'Faça download de qualquer vídeo do YouTube, TikTok e Instagram em alta qualidade. Perfeito para usar como referência nos seus Shorts.'},
+    viral:{icon:'📈',title:'Vídeos Virais em Alta',desc:'Descubra os Shorts mais virais em tempo real por nicho, idioma e região. Encontre tendências antes de todo mundo.'},
+    voice:{icon:'🎙️',title:'Voz Hiper-realista',desc:'Transforme seu roteiro em narração com voz hiper-realista em qualquer idioma. Ideal para criar Shorts sem precisar gravar.'}
+  };
+  const t=tools[tool];
+  document.getElementById('toolModalIcon').textContent=t.icon;
+  document.getElementById('toolModalTitle').textContent=t.title;
+  document.getElementById('toolModalDesc').textContent=t.desc;
+  document.getElementById('toolModal').classList.add('on');
+}
+function closeToolModal(){document.getElementById('toolModal').classList.remove('on');}
+
+// ── BLUBLU MASCOT ──────────────────────────────────────────────────────────
+let blubluShown=false;
+function toggleBlublu(){
+  const bubble=document.getElementById('blubluBubble');
+  bubble.classList.toggle('on');
+}
+function showBlublu(){
+  if(blubluShown)return;
+  blubluShown=true;
+  const container=document.getElementById('blubluContainer');
+  container.style.display='block';
+  setTimeout(()=>{
+    const bubble=document.getElementById('blubluBubble');
+    bubble.classList.add('on');
+  },500);
+}
+async function sendBluBluFeedback(){
+  const msg=document.getElementById('blubluInput').value.trim();
+  if(!msg)return;
+  try{
+    await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:currentUserEmail||'anônimo',plan:userPlan,message:msg,type:'feedback',token:localStorage.getItem('bt_token')})
+    });
+  }catch(e){}
+  document.getElementById('blubluInput').value='';
+  document.getElementById('blubluMsg').innerHTML='Estou levando sua mensagem para meu dono, obrigado pelo seu feedback! 🚀';
+  document.getElementById('blubluChat').style.display='none';
+  setTimeout(()=>{
+    document.getElementById('blubluBubble').classList.remove('on');
+  },4000);
 }
 
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')startTranscription(e);});
