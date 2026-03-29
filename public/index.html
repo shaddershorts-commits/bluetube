@@ -1113,11 +1113,55 @@ function showFreeUserPopup(){
 
 function doLogout(){
   localStorage.removeItem('bt_token');
+  localStorage.removeItem('bt_plan');
   location.reload();
 }
 
+// ── OAUTH CALLBACK HANDLER ─────────────────────────────────────────────────
+// When Google redirects back, Supabase puts the token in the URL hash
+async function handleOAuthCallback(){
+  const hash = window.location.hash;
+  if(!hash) return false;
+
+  // Parse hash params: #access_token=...&token_type=bearer&...
+  const params = new URLSearchParams(hash.replace('#',''));
+  const accessToken = params.get('access_token');
+  const tokenType = params.get('token_type');
+
+  if(accessToken && tokenType === 'bearer'){
+    // Save token
+    localStorage.setItem('bt_token', accessToken);
+
+    // Clean URL without reload
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Fetch plan and update UI
+    try{
+      const planRes = await fetch('/api/get-plan', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({token: accessToken})
+      });
+      const planData = await planRes.json();
+      userPlan = planData.plan || 'free';
+      localStorage.setItem('bt_plan', userPlan);
+      setLoggedIn(planData.email, userPlan);
+      updateLangOptions();
+    }catch(e){
+      // Fallback — just verify token
+      await checkSession();
+    }
+    return true;
+  }
+  return false;
+}
+
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')startTranscription(e);});
-checkSession();
+
+// Handle OAuth callback first, then check existing session
+handleOAuthCallback().then(wasCallback => {
+  if(!wasCallback) checkSession();
+});
 </script>
 </body>
 </html>
