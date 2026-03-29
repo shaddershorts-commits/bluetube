@@ -59,6 +59,12 @@ export default async function handler(req, res) {
         master: subscribers.filter(s => s.plan === 'master').length,
         list: subscribers
       },
+      revenue: {
+        monthly_mrr: (subscribers.filter(s => s.plan === 'full').length * 9.99) +
+                     (subscribers.filter(s => s.plan === 'master').length * 29.99),
+        full_revenue: subscribers.filter(s => s.plan === 'full').length * 9.99,
+        master_revenue: subscribers.filter(s => s.plan === 'master').length * 29.99
+      },
       today: {
         active_ips: todayUsage.length,
         total_scripts_generated: todayUsage.reduce((sum, r) => sum + (r.script_count || 0), 0),
