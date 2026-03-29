@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueTube Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#020817;--card:rgba(10,22,40,0.8);--neon:#00aaff;--text:#e8f4ff;--dim:rgba(150,190,230,0.4);--mono:'DM Mono',monospace;--display:'Syne',sans-serif;--green:#4ecca3;--red:#ff7a5a;--yellow:#fbbf24}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--display);min-height:100vh;padding:0}
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-box{background:var(--card);border:1px solid rgba(0,170,255,0.2);border-radius:20px;padding:40px;width:100%;max-width:360px;text-align:center}
+.login-box h1{font-size:24px;font-weight:800;margin-bottom:6px}
+.login-box p{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:24px}
+.login-input{width:100%;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;margin-bottom:10px}
+.login-btn{width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s}
+.login-btn:hover{transform:translateY(-1px)}
+.login-err{font-family:var(--mono);font-size:12px;color:var(--red);margin-top:10px;min-height:18px}
+
+.dashboard{display:none;min-height:100vh}
+.topbar{background:rgba(2,8,23,0.9);border-bottom:1px solid rgba(0,170,255,0.08);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(20px);position:sticky;top:0;z-index:10}
+.topbar-logo{font-size:18px;font-weight:800}
+.topbar-logo span{color:var(--neon)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.live-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.2);border-radius:100px;padding:5px 12px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.logout-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:none;border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:6px 12px;cursor:pointer;transition:all .2s}
+.logout-btn:hover{color:var(--text);border-color:rgba(255,255,255,0.3)}
+
+.content{padding:32px;max-width:1200px;margin:0 auto}
+.page-title{font-size:28px;font-weight:800;letter-spacing:-1px;margin-bottom:8px}
+.page-sub{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:32px}
+
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+.stat-card{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:16px;padding:22px}
+.stat-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.stat-value{font-size:36px;font-weight:800;letter-spacing:-1px}
+.stat-value.green{color:var(--green)}
+.stat-value.blue{color:var(--neon)}
+.stat-value.yellow{color:var(--yellow)}
+.stat-sub{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+
+.section{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:16px;padding:24px;margin-bottom:24px}
+.section-title{font-size:16px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.section-title span{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400}
+
+/* Manual plan tool */
+.plan-tool{display:flex;gap:10px;margin-bottom:0}
+.plan-input{flex:1;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:9px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none}
+.plan-select{background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:9px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;cursor:pointer}
+.plan-btn{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:9px;padding:11px 20px;font-family:var(--display);font-size:12px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap}
+.plan-btn:hover{transform:translateY(-1px)}
+.plan-msg{font-family:var(--mono);font-size:12px;margin-top:10px;min-height:18px}
+.plan-msg.ok{color:var(--green)}.plan-msg.err{color:var(--red)}
+
+/* Table */
+table{width:100%;border-collapse:collapse}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:8px 12px;text-align:left;border-bottom:1px solid rgba(0,170,255,0.08)}
+td{font-family:var(--mono);font-size:12px;padding:10px 12px;border-bottom:1px solid rgba(0,170,255,0.04);color:var(--text)}
+tr:hover td{background:rgba(0,170,255,0.03)}
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 9px;border-radius:100px}
+.badge-free{background:rgba(150,190,230,0.08);color:var(--dim);border:1px solid rgba(150,190,230,0.15)}
+.badge-full{background:rgba(0,170,255,0.1);color:var(--neon);border:1px solid rgba(0,170,255,0.2)}
+.badge-master{background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)}
+.refresh-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.12);border-radius:7px;padding:5px 12px;cursor:pointer;transition:all .2s}
+.refresh-btn:hover{color:var(--neon);border-color:rgba(0,170,255,0.3)}
+.loading-txt{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:30px}
+
+@media(max-width:768px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .plan-tool{flex-direction:column}
+  .content{padding:16px}
+  .topbar{padding:14px 16px}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h1>Blue<span style="color:var(--neon)">Tube</span></h1>
+    <p>Painel administrativo</p>
+    <input class="login-input" id="adminKey" type="password" placeholder="Chave de acesso admin" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="login-btn" onclick="doLogin()">Entrar no painel →</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard" id="dashboard">
+  <div class="topbar">
+    <div class="topbar-logo">Blue<span>Tube</span> <span style="font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400">admin</span></div>
+    <div class="topbar-right">
+      <div class="live-badge"><span class="live-dot"></span><span id="lastUpdate">—</span></div>
+      <button class="refresh-btn" onclick="loadData()">↻ Atualizar</button>
+      <button class="logout-btn" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="page-title">Dashboard</div>
+    <div class="page-sub">Visão geral do BlueTube em tempo real</div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total de contas</div>
+        <div class="stat-value blue" id="statTotal">—</div>
+        <div class="stat-sub">usuários cadastrados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Assinantes pagos</div>
+        <div class="stat-value green" id="statPaid">—</div>
+        <div class="stat-sub">Full + Master ativos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">IPs ativos hoje</div>
+        <div class="stat-value blue" id="statIPs">—</div>
+        <div class="stat-sub">usuários sem conta</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Roteiros hoje</div>
+        <div class="stat-value yellow" id="statScripts">—</div>
+        <div class="stat-sub">gerados nas últimas 24h</div>
+      </div>
+    </div>
+
+    <!-- Plan breakdown -->
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
+      <div class="stat-card">
+        <div class="stat-label">Plano Grátis</div>
+        <div class="stat-value" id="statFree">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Plano Full $9,99</div>
+        <div class="stat-value blue" id="statFull">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Plano Master $29,99</div>
+        <div class="stat-value yellow" id="statMaster">—</div>
+      </div>
+    </div>
+
+    <!-- Manual plan tool -->
+    <div class="section">
+      <div class="section-title">🔑 Liberar plano manualmente <span>— para você, influencers e parceiros</span></div>
+      <div class="plan-tool">
+        <input class="plan-input" id="planEmail" type="email" placeholder="email@exemplo.com"/>
+        <select class="plan-select" id="planType">
+          <option value="full">Full — $9,99</option>
+          <option value="master">Master — $29,99</option>
+          <option value="free">Rebaixar para Free</option>
+        </select>
+        <button class="plan-btn" onclick="setPlan()">Liberar acesso</button>
+      </div>
+      <div class="plan-msg" id="planMsg"></div>
+    </div>
+
+    <!-- Subscribers table -->
+    <div class="section">
+      <div class="section-title">👥 Contas cadastradas <span>— dados para email marketing</span></div>
+      <div id="subsTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
+    <!-- Top virals -->
+    <div class="section">
+      <div class="section-title">🔥 Shorts mais processados <span>— maior copy_count</span></div>
+      <div id="viralsTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
+    <!-- Today's usage -->
+    <div class="section">
+      <div class="section-title">📊 Atividade de hoje por IP</div>
+      <div id="usageTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminKey='';
+
+function doLogin(){
+  const key=document.getElementById('adminKey').value.trim();
+  if(!key){document.getElementById('loginErr').textContent='Digite a chave de acesso.';return;}
+  adminKey=key;
+  loadData();
+}
+
+function doLogout(){
+  adminKey='';
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('adminKey').value='';
+}
+
+async function loadData(){
+  try{
+    const r=await fetch('/api/admin',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(r.status===401){
+      document.getElementById('loginErr').textContent='Chave incorreta. Tente novamente.';
+      return;
+    }
+    const d=await r.json();
+
+    // Show dashboard
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+
+    // Update stats
+    document.getElementById('statTotal').textContent=d.subscribers.total;
+    document.getElementById('statPaid').textContent=d.subscribers.full+d.subscribers.master;
+    document.getElementById('statIPs').textContent=d.today.active_ips;
+    document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
+    document.getElementById('statFree').textContent=d.subscribers.free;
+    document.getElementById('statFull').textContent=d.subscribers.full;
+    document.getElementById('statMaster').textContent=d.subscribers.master;
+    document.getElementById('lastUpdate').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+
+    // Subscribers table
+    if(d.subscribers.list.length){
+      document.getElementById('subsTable').innerHTML=`
+        <table>
+          <thead><tr><th>Email</th><th>Plano</th><th>Cadastro</th><th>Expira</th></tr></thead>
+          <tbody>${d.subscribers.list.map(s=>`
+            <tr>
+              <td>${s.email}</td>
+              <td><span class="badge badge-${s.plan}">${s.plan.toUpperCase()}</span></td>
+              <td>${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+              <td>${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }else{
+      document.getElementById('subsTable').innerHTML='<div class="loading-txt">Nenhuma conta cadastrada ainda.</div>';
+    }
+
+    // Top virals
+    if(d.top_virals.length){
+      document.getElementById('viralsTable').innerHTML=`
+        <table>
+          <thead><tr><th>Video ID</th><th>Idioma</th><th>Copiado</th><th>Processado</th></tr></thead>
+          <tbody>${d.top_virals.map(v=>`
+            <tr>
+              <td><a href="https://youtube.com/shorts/${v.video_id}" target="_blank" style="color:var(--neon)">${v.video_id}</a></td>
+              <td>${v.lang||'—'}</td>
+              <td style="color:var(--green);font-weight:600">${v.copy_count}x</td>
+              <td>${new Date(v.processed_at).toLocaleDateString('pt-BR')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }else{
+      document.getElementById('viralsTable').innerHTML='<div class="loading-txt">Nenhum Short processado ainda.</div>';
+    }
+
+    // Today's usage
+    if(d.today.usage_breakdown.length){
+      document.getElementById('usageTable').innerHTML=`
+        <table>
+          <thead><tr><th>IP</th><th>Plano</th><th>Roteiros hoje</th></tr></thead>
+          <tbody>${d.today.usage_breakdown.map(u=>`
+            <tr>
+              <td style="color:var(--dim)">${u.ip_address?.replace(/(\d+)\.(\d+)\.\d+\.\d+/,'$1.$2.xxx.xxx')}</td>
+              <td><span class="badge badge-${u.plan||'free'}">${(u.plan||'free').toUpperCase()}</span></td>
+              <td>${u.script_count}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }else{
+      document.getElementById('usageTable').innerHTML='<div class="loading-txt">Nenhuma atividade hoje ainda.</div>';
+    }
+
+  }catch(err){
+    console.error(err);
+    document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave.';
+  }
+}
+
+async function setPlan(){
+  const email=document.getElementById('planEmail').value.trim();
+  const plan=document.getElementById('planType').value;
+  const msg=document.getElementById('planMsg');
+  if(!email){msg.className='plan-msg err';msg.textContent='Digite um email válido.';return;}
+  msg.className='plan-msg ok';msg.textContent='Aplicando…';
+  try{
+    const r=await fetch('/api/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'set_plan',email,plan})
+    });
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error);
+    msg.className='plan-msg ok';msg.textContent=`✓ Plano ${plan.toUpperCase()} ativado para ${email}`;
+    loadData();
+  }catch(e){
+    msg.className='plan-msg err';msg.textContent='Erro: '+e.message;
+  }
+}
+</script>
+</body>
+</html>
