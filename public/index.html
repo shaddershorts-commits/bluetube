@@ -1060,11 +1060,6 @@ async function checkSession(){
     }
   }catch{}
 }
-      localStorage.removeItem('bt_token');
-      localStorage.removeItem('bt_plan');
-    }
-  }catch{}
-}
 
 function setLoggedIn(email, plan){
   const p = plan || userPlan || 'free';
