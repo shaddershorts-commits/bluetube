@@ -511,6 +511,25 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   </div>
 </div>
 
+<!-- ── RESET PASSWORD MODAL ────────────────────────────────────────────────── -->
+<div class="auth-modal-overlay" id="resetPasswordModal">
+  <div class="auth-modal-box">
+    <div style="font-size:28px;font-weight:800;margin-bottom:6px">Blue<span style="color:var(--neon)">Tube</span></div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px">Criar nova senha</div>
+    <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);margin-bottom:20px">Digite e confirme sua nova senha abaixo.</div>
+    <div style="position:relative;margin-bottom:10px">
+      <input class="auth-input" id="newPassword" type="password" placeholder="Nova senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px"/>
+      <button onclick="togglePwd('newPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+    </div>
+    <div style="position:relative;margin-bottom:10px">
+      <input class="auth-input" id="newPasswordConfirm" type="password" placeholder="Confirmar nova senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
+      <button onclick="togglePwd('newPasswordConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+    </div>
+    <button class="auth-submit" onclick="handleResetPassword()">Salvar nova senha →</button>
+    <div class="auth-msg" id="resetPasswordMsg"></div>
+  </div>
+</div>
+
 <!-- ── HERO ───────────────────────────────────────────────────────────────── -->
 <section class="hero" id="top">
   <div class="hero-badge"><span class="badge-dot"></span>Grátis · 2 roteiros/dia · Sem cadastro</div>
@@ -1559,19 +1578,29 @@ function doLogout(){
 }
 
 // ── OAUTH CALLBACK HANDLER ─────────────────────────────────────────────────
+let recoveryToken = null;
+
 async function handleOAuthCallback(){
   const hash = window.location.hash;
   const search = window.location.search;
-  console.log('OAuth check - hash:', hash, 'search:', search);
 
-  // Check hash for token (implicit flow)
   if(hash){
     const params = new URLSearchParams(hash.replace('#',''));
     const accessToken = params.get('access_token');
-    console.log('Hash access_token:', accessToken ? 'found' : 'not found');
+    const type = params.get('type');
+
     if(accessToken){
-      localStorage.setItem('bt_token', accessToken);
       window.history.replaceState({}, document.title, window.location.pathname);
+
+      // ── PASSWORD RECOVERY — show new password form ──────────────────────
+      if(type === 'recovery'){
+        recoveryToken = accessToken;
+        document.getElementById('resetPasswordModal').classList.add('on');
+        return true;
+      }
+
+      // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
+      localStorage.setItem('bt_token', accessToken);
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
@@ -1579,33 +1608,21 @@ async function handleOAuthCallback(){
           body: JSON.stringify({token: accessToken})
         });
         const planData = await planRes.json();
-        console.log('Plan data:', planData);
         userPlan = planData.plan || 'free';
         localStorage.setItem('bt_plan', userPlan);
+        currentUserEmail = planData.email;
+        if(planData.plan_expires_at) localStorage.setItem('bt_plan_expiry', new Date(planData.plan_expires_at).getTime().toString());
         setLoggedIn(planData.email, userPlan);
         updateLangOptions();
-      }catch(e){ console.error('Plan fetch error:', e); await checkSession(); }
+      }catch(e){ await checkSession(); }
       return true;
     }
   }
 
-  // Check query params for code (PKCE flow)
   if(search){
     const params = new URLSearchParams(search);
     const code = params.get('code');
-    console.log('Query code:', code ? 'found' : 'not found');
     if(code){
-      // Exchange code for session via Supabase
-      const SUPABASE_URL = 'https://pokpfvjrccviwgguwuck.supabase.co';
-      try{
-        const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=pkce`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json', 'apikey': ''},
-          body: JSON.stringify({auth_code: code})
-        });
-        console.log('PKCE exchange status:', r.status);
-      }catch(e){ console.error('PKCE error:', e); }
-      // Clean URL and check session
       window.history.replaceState({}, document.title, window.location.pathname);
       await checkSession();
       return true;
@@ -1613,6 +1630,38 @@ async function handleOAuthCallback(){
   }
 
   return false;
+}
+
+async function handleResetPassword(){
+  const newPwd = document.getElementById('newPassword').value;
+  const confirmPwd = document.getElementById('newPasswordConfirm').value;
+  const msgEl = document.getElementById('resetPasswordMsg');
+  const setMsg = (msg, ok) => { msgEl.textContent=msg; msgEl.className='auth-msg '+(ok?'ok':'err'); };
+
+  if(!newPwd || newPwd.length < 6){setMsg('Senha mínima de 6 caracteres.','');return;}
+  if(newPwd !== confirmPwd){setMsg('As senhas não coincidem.','');return;}
+  if(!recoveryToken){setMsg('Sessão expirada. Solicite um novo link.','');return;}
+
+  setMsg('Salvando nova senha…','ok');
+  try{
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'update_password', token:recoveryToken, password:newPwd})
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Erro ao salvar senha');
+
+    setMsg('✓ Senha alterada! Fazendo login…','ok');
+    localStorage.setItem('bt_token', recoveryToken);
+    recoveryToken = null;
+    setTimeout(async()=>{
+      document.getElementById('resetPasswordModal').classList.remove('on');
+      await checkSession();
+    }, 1500);
+  }catch(e){
+    setMsg(e.message || 'Erro ao alterar senha.','');
+  }
 }
 
 // ── FAQ ────────────────────────────────────────────────────────────────────
