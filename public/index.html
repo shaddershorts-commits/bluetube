@@ -442,11 +442,27 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div style="position:relative;margin-bottom:10px">
         <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%"/>
       </div>
-      <div style="position:relative;margin-bottom:10px">
+      <div style="position:relative;margin-bottom:6px">
         <input class="auth-input" id="loginPassword" type="password" placeholder="Senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
         <button onclick="togglePwd('loginPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
+      <div style="text-align:right;margin-bottom:10px">
+        <button onclick="showForgotPassword()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Esqueci minha senha</button>
+      </div>
       <button class="auth-submit" onclick="handleEmailLogin()">Entrar →</button>
+    </div>
+
+    <!-- FORGOT PASSWORD FORM -->
+    <div id="authForgotForm" style="display:none">
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:28px;margin-bottom:8px">🔑</div>
+        <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);line-height:1.6">Digite seu email e enviaremos<br>um link para redefinir sua senha.</div>
+      </div>
+      <input class="auth-input" id="forgotEmail" type="email" placeholder="seu@email.com" style="margin-bottom:10px"/>
+      <button class="auth-submit" onclick="handleForgotPassword()">Enviar link de redefinição →</button>
+      <div style="text-align:center;margin-top:10px">
+        <button onclick="switchAuthTab('login')" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer">← Voltar ao login</button>
+      </div>
     </div>
 
     <!-- SIGNUP FORM -->
@@ -1121,10 +1137,31 @@ function switchAuthTab(tab){
   document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
   document.getElementById('authLoginForm').style.display=tab==='login'?'block':'none';
   document.getElementById('authSignupForm').style.display=tab==='signup'?'block':'none';
+  document.getElementById('authForgotForm').style.display='none';
   document.getElementById('authOTPForm').style.display='none';
   document.getElementById('authDivider').style.display='block';
   document.getElementById('googleBtn').style.display='flex';
   document.getElementById('authMsg').textContent='';
+}
+function showForgotPassword(){
+  document.getElementById('authLoginForm').style.display='none';
+  document.getElementById('authForgotForm').style.display='block';
+  document.getElementById('authDivider').style.display='none';
+  document.getElementById('googleBtn').style.display='none';
+  document.getElementById('authMsg').textContent='';
+  // Pre-fill email if already typed
+  const email=document.getElementById('loginEmail').value;
+  if(email)document.getElementById('forgotEmail').value=email;
+}
+async function handleForgotPassword(){
+  const email=document.getElementById('forgotEmail').value.trim();
+  if(!email){setAuthMsg('Digite seu email.','');return;}
+  setAuthMsg('Enviando link…','ok');
+  try{
+    await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email})});
+    setAuthMsg('✓ Link enviado! Verifique seu email.','ok');
+    setTimeout(()=>switchAuthTab('login'),3000);
+  }catch(e){setAuthMsg('Erro ao enviar. Tente novamente.','');}
 }
 function togglePwd(id,btn){
   const inp=document.getElementById(id);
@@ -1663,13 +1700,18 @@ function closeProfileModal(){document.getElementById('profileModal').classList.r
 function openProfileUpgrade(){closeProfileModal();openUpgradeModal();}
 async function sendPasswordReset(){
   const email=currentUserEmail;
-  if(!email)return;
+  if(!email){alert('Email não encontrado. Faça login novamente.');return;}
   try{
     await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email})});
-    const s=document.getElementById('supportMsgStatus');
-    if(s){s.style.color='var(--neon)';s.textContent='✓ Link de redefinição enviado para seu email!';}
-    else alert('Link de redefinição enviado para '+email);
-  }catch(e){alert('Erro ao enviar link.');}
+    // Show success in profile
+    const btn=document.querySelector('[onclick="sendPasswordReset()"]');
+    if(btn){
+      const orig=btn.textContent;
+      btn.textContent='✓ Link enviado para '+email;
+      btn.style.color='var(--neon)';
+      setTimeout(()=>{btn.textContent=orig;btn.style.color='';},4000);
+    }
+  }catch(e){alert('Erro ao enviar link. Tente novamente.');}
 }
 function openSupportChat(){
   const chat=document.getElementById('profileSupportChat');
@@ -1715,23 +1757,24 @@ async function finalCancel(){
   document.getElementById('cancelStep2').style.display='none';
   document.getElementById('cancelStep3').style.display='block';
 
-  // Call admin API to downgrade plan
   const token=localStorage.getItem('bt_token');
   try{
-    await fetch('/api/admin',{
+    const r=await fetch('/api/cancel-subscription',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body:JSON.stringify({action:'set_plan',email:currentUserEmail,plan:'free'})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token})
     });
-  }catch(e){console.log('Cancel API error:',e);}
+    const d=await r.json();
+    console.log('Cancel result:',d);
+  }catch(e){console.error('Cancel error:',e);}
 
-  // Downgrade locally
+  // Downgrade locally immediately
   userPlan='free';
   localStorage.setItem('bt_plan','free');
   localStorage.removeItem('bt_plan_start');
   localStorage.removeItem('bt_plan_expiry');
 
-  // Update navbar after 2s
+  // Update navbar after showing goodbye message
   setTimeout(()=>{
     closeCancelModal();
     setLoggedIn(currentUserEmail,'free');
