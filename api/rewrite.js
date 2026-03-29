@@ -1,7 +1,6 @@
-// api/rewrite.js — BlueTube Viral Script Agent v6
-// Rotates through 6 Gemini API keys automatically.
-// When one hits rate limit, switches to next key instantly.
-// 6 keys × 20 requests/day = 120 free scripts/day.
+// api/rewrite.js — BlueTube Viral Script Agent v7
+// Primary: OpenAI GPT-4o mini (reliable, no daily limit, never truncates)
+// Fallback: Gemini 2.5 Flash with 10-key rotation (if OpenAI unavailable)
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,33 +12,14 @@ export default async function handler(req, res) {
   const { transcript, lang, version } = req.body;
   if (!transcript || !lang) return res.status(400).json({ error: 'Missing fields' });
 
-  // ── COLLECT ALL AVAILABLE KEYS ────────────────────────────────────────────
-  const KEYS = [
-    process.env.GEMINI_KEY_1,
-    process.env.GEMINI_KEY_2,
-    process.env.GEMINI_KEY_3,
-    process.env.GEMINI_KEY_4,
-    process.env.GEMINI_KEY_5,
-    process.env.GEMINI_KEY_6,
-    process.env.GEMINI_KEY_7,
-    process.env.GEMINI_KEY_8,
-    process.env.GEMINI_KEY_9,
-    process.env.GEMINI_KEY_10,
-  ].filter(Boolean); // ignore undefined keys
-
-  if (KEYS.length === 0) {
-    return res.status(500).json({ error: 'No Gemini API keys configured' });
-  }
-
   // ── SUPABASE VIRAL CONTEXT ────────────────────────────────────────────────
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
   let viralContext = '';
-
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/viral_shorts?order=copy_count.desc&limit=5&select=transcript,copy_count&copy_count=gte.1`,
+        `${SUPABASE_URL}/rest/v1/viral_shorts?order=copy_count.desc&limit=4&select=transcript,copy_count&copy_count=gte.1`,
         { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
       );
       if (r.ok) {
@@ -69,7 +49,7 @@ Tom leve, próximo, como conversa entre amigos.
 - Evite: urgência excessiva, linguagem de vendas, exageros`;
 
   // ── MASTER PROMPT ──────────────────────────────────────────────────────────
-  const prompt = `Você é um especialista nativo em criação, adaptação e otimização de roteiros curtos para YouTube Shorts, TikTok e Reels, com foco extremo em retenção, naturalidade e impacto emocional.
+  const systemPrompt = `Você é um especialista nativo em criação, adaptação e otimização de roteiros curtos para YouTube Shorts, TikTok e Reels, com foco extremo em retenção, naturalidade e impacto emocional.
 
 Sua função é transformar qualquer texto enviado em uma versão mais viral, mais natural e mais envolvente, como se tivesse sido criado originalmente por um roteirista profissional de conteúdo curto.
 
@@ -108,72 +88,89 @@ AJUSTES AUTOMÁTICOS:
 FORMATO DE ENTREGA — CRÍTICO:
 - Entregue APENAS o texto do roteiro final
 - NUNCA explique o que fez, NUNCA use títulos ou marcações
-- O roteiro deve ter exatamente entre 60 e 90 palavras — escreva de forma concisa
+- O roteiro deve ter entre 60 e 90 palavras
 - OBRIGATÓRIO: termine sempre com ponto final. Nunca corte no meio de uma frase
 - Um único parágrafo corrido, sem quebras de linha, pronto para narrar do início ao fim
 
-IDIOMA: ${lang} — escreva como nativo, não como tradução.
-${viralContext}
-${ANGLE}
+IDIOMA: ${lang} — escreva como nativo, não como tradução.`;
+
+  const userPrompt = `${viralContext}${ANGLE}
 
 TRANSCRIÇÃO ORIGINAL:
 "${transcript.slice(0, 3000)}"
 
 Escreva o roteiro agora. Apenas o texto, nada mais.`;
 
-  // ── KEY ROTATION WITH AUTO-RETRY ──────────────────────────────────────────
-  // Try each key in order. If one hits rate limit (429), move to next immediately.
-  // Shuffles order each request to distribute load evenly across keys.
-  const shuffledKeys = [...KEYS].sort(() => Math.random() - 0.5);
+  // ── PRIMARY: OPENAI GPT-4o mini ───────────────────────────────────────────
+  const OPENAI_KEY = process.env.OPENAI_API_KEY;
+  if (OPENAI_KEY) {
+    try {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: 300,
+          temperature: 0.9
+        })
+      });
 
-  for (let i = 0; i < shuffledKeys.length; i++) {
-    const key = shuffledKeys[i];
+      const data = await r.json();
+      if (r.ok && data.choices?.[0]?.message?.content) {
+        let text = data.choices[0].message.content.trim();
+        text = text
+          .replace(/^#+\s.*/gm, '')
+          .replace(/\*\*(.*?)\*\*/g, '$1')
+          .replace(/\*(.*?)\*/g, '$1')
+          .replace(/^\s*[-•]\s/gm, '')
+          .replace(/\n{2,}/g, ' ')
+          .trim();
+        return res.status(200).json({ text, engine: 'openai' });
+      }
+      console.log('OpenAI failed, falling back to Gemini:', data.error?.message);
+    } catch (err) {
+      console.log('OpenAI error, falling back to Gemini:', err.message);
+    }
+  }
+
+  // ── FALLBACK: GEMINI with key rotation ───────────────────────────────────
+  const GEMINI_KEYS = [
+    process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
+    process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5, process.env.GEMINI_KEY_6,
+    process.env.GEMINI_KEY_7, process.env.GEMINI_KEY_8, process.env.GEMINI_KEY_9,
+    process.env.GEMINI_KEY_10,
+  ].filter(Boolean);
+
+  const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+  const shuffledKeys = [...GEMINI_KEYS].sort(() => Math.random() - 0.5);
+
+  for (const key of shuffledKeys) {
     try {
       const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.9,
-              maxOutputTokens: 800,
-              topP: 0.95,
-              stopSequences: []
-            }
+            contents: [{ parts: [{ text: fullPrompt }] }],
+            generationConfig: { temperature: 0.9, maxOutputTokens: 800, topP: 0.95 }
           })
         }
       );
-
       const data = await r.json();
+      if (r.status === 429 || data.error?.code === 429) continue;
+      if (!r.ok) continue;
 
-      // Rate limit on this key → try next key immediately
-      if (r.status === 429 || data.error?.code === 429) {
-        console.log(`Key ${i+1} rate limited, trying next...`);
-        continue;
-      }
-
-      if (!r.ok) {
-        console.log(`Key ${i+1} error ${r.status}, trying next...`);
-        continue;
-      }
-
-      const finishReason = data.candidates?.[0]?.finishReason;
       let text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
+      if (!text) continue;
 
-      if (!text) {
-        console.log(`Key ${i+1} returned empty, trying next...`);
-        continue;
-      }
-
-      // If model stopped mid-sentence due to token limit, try next key for a fresh attempt
-      if (finishReason === 'MAX_TOKENS' && !text.match(/[.!?]$/)) {
-        console.log(`Key ${i+1} truncated (MAX_TOKENS), trying next key for fresh attempt...`);
-        continue;
-      }
-
-      // Clean stray markdown
       text = text
         .replace(/^#+\s.*/gm, '')
         .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -182,16 +179,11 @@ Escreva o roteiro agora. Apenas o texto, nada mais.`;
         .replace(/\n{2,}/g, ' ')
         .trim();
 
-      return res.status(200).json({ text, keyUsed: i + 1 });
-
-    } catch (err) {
-      console.log(`Key ${i+1} threw error, trying next:`, err.message);
-      continue;
-    }
+      return res.status(200).json({ text, engine: 'gemini' });
+    } catch (e) { continue; }
   }
 
-  // All keys exhausted
   return res.status(429).json({
-    error: 'Limite diário atingido em todas as contas. Tente novamente amanhã ou entre em contato com o suporte.'
+    error: 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.'
   });
 }
