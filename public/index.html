@@ -308,21 +308,56 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
     <div style="font-size:28px;font-weight:800;margin-bottom:6px">Blue<span style="color:var(--neon)">Tube</span></div>
     <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);margin-bottom:20px">Crie sua conta ou entre</div>
     <div class="auth-tabs">
-      <button class="auth-tab active" onclick="switchAuthTab('login')">Entrar</button>
-      <button class="auth-tab" onclick="switchAuthTab('signup')">Criar conta</button>
+      <button class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</button>
+      <button class="auth-tab" id="tabSignup" onclick="switchAuthTab('signup')">Criar conta</button>
     </div>
+
+    <!-- LOGIN FORM -->
     <div id="authLoginForm">
-      <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com"/>
-      <input class="auth-input" id="loginPassword" type="password" placeholder="Senha"/>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%"/>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="auth-input" id="loginPassword" type="password" placeholder="Senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
+        <button onclick="togglePwd('loginPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+      </div>
       <button class="auth-submit" onclick="handleEmailLogin()">Entrar →</button>
     </div>
+
+    <!-- SIGNUP FORM -->
     <div id="authSignupForm" style="display:none">
-      <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com"/>
-      <input class="auth-input" id="signupPassword" type="password" placeholder="Criar senha"/>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%"/>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="auth-input" id="signupPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px"/>
+        <button onclick="togglePwd('signupPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="auth-input" id="signupConfirm" type="password" placeholder="Confirmar senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
+        <button onclick="togglePwd('signupConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+      </div>
       <button class="auth-submit" onclick="handleEmailSignup()">Criar conta →</button>
     </div>
-    <div class="auth-divider">ou continue com</div>
-    <button class="google-btn" onclick="handleGoogleLogin()">
+
+    <!-- OTP VERIFICATION FORM (shown after signup) -->
+    <div id="authOTPForm" style="display:none">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:32px;margin-bottom:10px">📧</div>
+        <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary);font-weight:600">Verifique seu email</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:6px">Enviamos um código de 6 dígitos para<br><span id="otpEmailDisplay" style="color:var(--neon)"></span></div>
+      </div>
+      <input class="auth-input" id="otpCode" type="text" placeholder="000000" maxlength="6"
+        style="text-align:center;font-size:24px;font-weight:700;letter-spacing:.3em;margin-bottom:10px"
+        oninput="this.value=this.value.replace(/\D/g,'')"/>
+      <button class="auth-submit" onclick="handleOTPVerify()">Verificar código →</button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="resendOTP()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Reenviar código</button>
+      </div>
+    </div>
+
+    <div class="auth-divider" id="authDivider">ou continue com</div>
+    <button class="google-btn" id="googleBtn" onclick="handleGoogleLogin()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
       Continuar com Google
     </button>
@@ -605,51 +640,103 @@ async function handleUpgradeClick(plan){
 }
 
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
+let pendingOTPEmail='';
 function openAuthModal(){document.getElementById('authModal').classList.add('on');}
-function closeAuthModal(){document.getElementById('authModal').classList.remove('on');}
+function closeAuthModal(){document.getElementById('authModal').classList.remove('on');document.getElementById('authMsg').textContent='';}
 function switchAuthTab(tab){
-  document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',['login','signup'][i]===tab));
+  document.getElementById('tabLogin').classList.toggle('active',tab==='login');
+  document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
   document.getElementById('authLoginForm').style.display=tab==='login'?'block':'none';
   document.getElementById('authSignupForm').style.display=tab==='signup'?'block':'none';
+  document.getElementById('authOTPForm').style.display='none';
+  document.getElementById('authDivider').style.display='block';
+  document.getElementById('googleBtn').style.display='flex';
   document.getElementById('authMsg').textContent='';
+}
+function togglePwd(id,btn){
+  const inp=document.getElementById(id);
+  inp.type=inp.type==='password'?'text':'password';
+  btn.textContent=inp.type==='password'?'👁':'🙈';
 }
 function setAuthMsg(msg,ok){
   const el=document.getElementById('authMsg');
   el.textContent=msg;el.className='auth-msg '+(ok?'ok':'err');
 }
+function showOTPForm(email){
+  pendingOTPEmail=email;
+  document.getElementById('otpEmailDisplay').textContent=email;
+  document.getElementById('authLoginForm').style.display='none';
+  document.getElementById('authSignupForm').style.display='none';
+  document.getElementById('authOTPForm').style.display='block';
+  document.getElementById('authDivider').style.display='none';
+  document.getElementById('googleBtn').style.display='none';
+  document.getElementById('authMsg').textContent='';
+  setTimeout(()=>document.getElementById('otpCode').focus(),100);
+}
 async function handleEmailLogin(){
   const email=document.getElementById('loginEmail').value.trim();
   const password=document.getElementById('loginPassword').value;
-  if(!email||!password){setAuthMsg('Preencha email e senha','');return;}
+  if(!email||!password){setAuthMsg('Preencha email e senha.','');return;}
   setAuthMsg('Entrando…','ok');
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email,password})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
-    localStorage.setItem('bt_token',d.session.access_token);
-    setAuthMsg('Bem-vindo!','ok');
-    setTimeout(()=>{closeAuthModal();location.reload();},1000);
+    if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+    setAuthMsg('Bem-vindo! 🎉','ok');
+    setTimeout(()=>{closeAuthModal();},1200);
   }catch(e){setAuthMsg(e.message,'');}
 }
 async function handleEmailSignup(){
   const email=document.getElementById('signupEmail').value.trim();
   const password=document.getElementById('signupPassword').value;
-  if(!email||!password){setAuthMsg('Preencha email e senha','');return;}
-  if(password.length<6){setAuthMsg('Senha mínima de 6 caracteres','');return;}
+  const confirm=document.getElementById('signupConfirm').value;
+  if(!email||!password||!confirm){setAuthMsg('Preencha todos os campos.','');return;}
+  if(password.length<6){setAuthMsg('Senha mínima de 6 caracteres.','');return;}
+  if(password!==confirm){setAuthMsg('As senhas não coincidem.','');return;}
   setAuthMsg('Criando conta…','ok');
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
-    setAuthMsg('Conta criada! Verifique seu email.','ok');
+    if(d.needsConfirmation){
+      showOTPForm(email);
+      setAuthMsg('Código enviado! Verifique seu email.','ok');
+    }else{
+      if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+      setAuthMsg('Conta criada com sucesso! 🎉','ok');
+      setTimeout(()=>closeAuthModal(),1200);
+    }
   }catch(e){setAuthMsg(e.message,'');}
+}
+async function handleOTPVerify(){
+  const otp=document.getElementById('otpCode').value.trim();
+  if(otp.length!==6){setAuthMsg('Digite os 6 dígitos do código.','');return;}
+  setAuthMsg('Verificando…','ok');
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_otp',email:pendingOTPEmail,otp})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Código inválido');
+    if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+    setAuthMsg('Email verificado! Bem-vindo 🎉','ok');
+    setTimeout(()=>closeAuthModal(),1200);
+  }catch(e){setAuthMsg(e.message,'');}
+}
+async function resendOTP(){
+  if(!pendingOTPEmail)return;
+  setAuthMsg('Reenviando…','ok');
+  try{
+    await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send_otp',email:pendingOTPEmail})});
+    setAuthMsg('Código reenviado! Verifique seu email.','ok');
+  }catch(e){setAuthMsg('Erro ao reenviar.','');}
 }
 async function handleGoogleLogin(){
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'google'})});
     const d=await r.json();
     if(d.url)window.location.href=d.url;
-  }catch(e){setAuthMsg('Erro ao conectar com Google','');}
+    else setAuthMsg('Erro ao conectar com Google.','');
+  }catch(e){setAuthMsg('Erro ao conectar com Google.','');}
 }
 
 // ── LEARNING LOOP ──────────────────────────────────────────────────────────
