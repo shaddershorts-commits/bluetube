@@ -144,7 +144,7 @@ export default async function handler(req, res) {
     // ── GOOGLE OAUTH ──────────────────────────────────────────────────────────
     if (action === 'google') {
       const redirectTo = `${process.env.SITE_URL || 'https://bluetube-ten.vercel.app'}/`;
-      const url = `${authBase}/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+      const url = `${authBase}/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&flow_type=implicit`;
       return res.status(200).json({ url });
     }
 
