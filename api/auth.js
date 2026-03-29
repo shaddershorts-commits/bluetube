@@ -64,7 +64,6 @@ export default async function handler(req, res) {
           message: 'Conta criada! Verifique seu email e clique no link de confirmação.'
         });
       }
-
       return res.status(200).json({ user: data.user, session: data.session });
     }
 
