@@ -95,8 +95,9 @@ AJUSTES AUTOMÁTICOS:
 FORMATO DE ENTREGA — CRÍTICO:
 - Entregue APENAS o texto do roteiro final
 - NUNCA explique o que fez, NUNCA use títulos ou marcações
-- NUNCA interrompa no meio — sempre termine com fechamento completo
-- Um único parágrafo corrido, sem quebras de linha, pronto para narrar
+- O roteiro deve ter entre 60 e 90 palavras — nem mais, nem menos
+- SEMPRE termine com uma frase de conclusão completa — NUNCA corte no meio
+- Um único parágrafo corrido, sem quebras de linha, pronto para narrar do início ao fim
 
 IDIOMA: ${lang} — escreva como nativo, não como tradução.
 ${viralContext}
@@ -115,7 +116,7 @@ Escreva o roteiro agora. Apenas o texto, nada mais.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 2048, topP: 0.95 }
+          generationConfig: { temperature: 0.9, maxOutputTokens: 400, topP: 0.95 }
         })
       }
     );
