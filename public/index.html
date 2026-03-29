@@ -199,6 +199,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .plan-btn.free-btn:hover{border-color:rgba(0,170,255,0.5);color:var(--neon)}
 
 /* ── ANNUAL TOGGLE ───────────────────────────────────────────────────────── */
+.billing-toggle{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:0;flex-wrap:nowrap}
+.billing-label{font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);transition:color .2s;cursor:pointer;user-select:none;white-space:nowrap;line-height:28px}
+.billing-label.active{color:var(--text-primary);font-weight:600}
+.toggle-switch{position:relative;width:52px;height:28px;cursor:pointer;flex-shrink:0;display:inline-block}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{position:absolute;inset:0;background:rgba(0,170,255,0.15);border:1px solid rgba(0,170,255,0.2);border-radius:100px;transition:all .3s}
+.toggle-slider::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all .3s;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+.toggle-switch input:checked+.toggle-slider{background:linear-gradient(135deg,#92400e,#fbbf24);border-color:#fbbf24}
+.toggle-switch input:checked+.toggle-slider::before{transform:translateX(24px)}
+.locked-tool{opacity:.55}
+.locked-tool:hover{opacity:1}
 .nav-community-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:#fbbf24;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
 .nav-community-btn:hover{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.5);transform:translateY(-1px)}
 .nav-tools-group{display:flex;gap:4px}
@@ -273,14 +284,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .toggle-slider-sm::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
 .toggle-switch-sm input:checked+.toggle-slider-sm{background:linear-gradient(135deg,#92400e,#fbbf24)}
 .toggle-switch-sm input:checked+.toggle-slider-sm::before{transform:translateX(16px)}
-.billing-label{font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);transition:color .2s}
-.billing-label.active{color:var(--text-primary);font-weight:600}
-.toggle-switch{position:relative;width:52px;height:28px;cursor:pointer}
-.toggle-switch input{opacity:0;width:0;height:0}
-.toggle-slider{position:absolute;inset:0;background:rgba(0,170,255,0.15);border:1px solid rgba(0,170,255,0.2);border-radius:100px;transition:all .3s}
-.toggle-slider::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all .3s;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
-.toggle-switch input:checked+.toggle-slider{background:linear-gradient(135deg,#92400e,#fbbf24);border-color:#fbbf24}
-.toggle-switch input:checked+.toggle-slider::before{transform:translateX(24px)}
 .annual-badge{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.06em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:3px 10px;border-radius:100px}
 .annual-price-main{font-size:36px;font-weight:800;letter-spacing:-1px}
 .annual-price-sub{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through;margin-left:6px}
@@ -320,7 +323,22 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
     Blue<span class="logo-accent">Tube</span>
   </a>
-  <div class="nav-right">
+  <div class="nav-right" id="navRight">
+    <!-- Master tools — visible to all, locked for non-master -->
+    <div class="nav-tools-group" id="navToolsGroup">
+      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('download')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Baixar <span style="font-size:9px">🔒</span>
+      </button>
+      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('viral')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Virais <span style="font-size:9px">🔒</span>
+      </button>
+      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('voice')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        Voz IA <span style="font-size:9px">🔒</span>
+      </button>
+    </div>
     <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Comunidade
@@ -756,7 +774,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">Informações da conta</div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Membro desde</span><span style="font-family:var(--font-mono);font-size:12px" id="profileSince">—</span></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Plano atual</span><span style="font-family:var(--font-mono);font-size:12px" id="profilePlan">—</span></div>
-      <div style="display:flex;justify-content:space-between" id="profilePremiumDays" style="display:none"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Dias premium</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--neon)" id="profileDays">—</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px" id="profilePremiumDays"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Dias como premium</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--neon)" id="profileDays">—</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px" id="profileNextPaymentRow" style="display:none"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Próxima cobrança</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--neon)" id="profileNextPayment">—</span></div>
+      <div style="display:flex;justify-content:space-between" id="profileDaysLeftRow" style="display:none"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Acesso premium até</span><span style="font-family:var(--font-mono);font-size:12px;color:#fbbf24" id="profileDaysLeft">—</span></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
@@ -1001,6 +1021,11 @@ function openUpgradeModal(reason){
     document.getElementById('upgradeModalSub').innerHTML='A comunidade BlueTube é exclusiva para assinantes.<br>Entre, conecte-se e cresça junto com outros criadores virais.';
     document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
     document.getElementById('upgradeModalCta').textContent='Quero entrar na comunidade →';
+  } else if(reason==='master_tool'){
+    document.getElementById('upgradeModalTitle').innerHTML='Ferramenta<br><span>exclusiva Master.</span>';
+    document.getElementById('upgradeModalSub').innerHTML='Esta ferramenta é exclusiva do plano 👑 Master.<br>Assine agora e tenha acesso a todas as ferramentas avançadas.';
+    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
+    document.getElementById('upgradeModalCta').textContent='👑 Assinar Master →';
   } else if(reason==='limit_free'){
     document.getElementById('upgradeModalTitle').innerHTML='Você vai ficar<br><span>para trás?</span>';
     document.getElementById('upgradeModalSub').innerHTML=`Você usou seus <strong>${dailyLimit} roteiros gratuitos</strong> de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.`;
@@ -1387,6 +1412,8 @@ async function checkSession(){
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
+      // Store plan expiry for profile display
+      if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
       setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
     }else{
@@ -1404,36 +1431,60 @@ function setLoggedIn(email, plan){
   const isPaid = p === 'full' || p === 'master';
   const isMaster = p === 'master';
   const navRight = document.querySelector('.nav-right');
-
   const communityJoined = localStorage.getItem('bt_community_joined');
 
-  navRight.innerHTML=`
-    ${isMaster ? `
-      <div class="nav-tools-group">
-        <button class="nav-tool-btn" onclick="openMasterTool('download')" title="Baixar Vídeos">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Baixar
-        </button>
-        <button class="nav-tool-btn" onclick="openMasterTool('viral')" title="Vídeos Virais">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          Virais
-        </button>
-        <button class="nav-tool-btn" onclick="openMasterTool('voice')" title="Voz Hiper-realista">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          Voz IA
-        </button>
-      </div>` : ''}
-    <button class="nav-community-btn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" id="communityBtnNav">
+  // Update tool buttons — unlock for master
+  const toolBtns = document.querySelectorAll('.nav-tool-btn');
+  toolBtns.forEach(btn => {
+    const lockSpan = btn.querySelector('span');
+    if(isMaster){
+      btn.classList.remove('locked-tool');
+      btn.style.color = 'var(--neon)';
+      btn.style.borderColor = 'rgba(0,170,255,0.3)';
+      if(lockSpan) lockSpan.style.display = 'none';
+    } else {
+      btn.classList.add('locked-tool');
+      if(lockSpan) lockSpan.style.display = 'inline';
+    }
+  });
+
+  // Update community button
+  const commBtn = document.getElementById('communityBtn');
+  if(commBtn){
+    commBtn.onclick = isPaid
+      ? (communityJoined ? showCommunityJoinedMsg : openCommunityModal)
+      : openUpgradeModal;
+    const lock = document.getElementById('communityLock');
+    if(lock) lock.style.display = isPaid ? 'none' : 'inline';
+    commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
+  }
+
+  // Rebuild right side of nav keeping tool buttons
+  const toolsGroup = document.getElementById('navToolsGroup');
+  const toolsHTML = toolsGroup ? toolsGroup.outerHTML : '';
+
+  navRight.innerHTML = `
+    ${toolsHTML}
+    <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
       ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
     </button>
     <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">
-      <div class="nav-avatar">${planIcon||email[0].toUpperCase()}</div>
+      <div class="nav-avatar">${planIcon || email[0].toUpperCase()}</div>
       <span class="nav-user-email">${email.split('@')[0]}</span>
     </button>
     ${showUpgrade ? `<button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>` : ''}
   `;
+
+  // Re-unlock tools if master (after innerHTML reset)
+  if(isMaster){
+    document.querySelectorAll('.nav-tool-btn').forEach(btn => {
+      btn.classList.remove('locked-tool');
+      const lockSpan = btn.querySelector('span');
+      if(lockSpan) lockSpan.style.display = 'none';
+    });
+  }
 }
 
 function showFreeUserPopup(){
@@ -1570,26 +1621,41 @@ function openProfileModal(){
   document.getElementById('profilePlanBadge').innerHTML=`<span style="color:${planColor}">${planIcon} ${planLabel}</span>`;
   document.getElementById('profilePlan').innerHTML=`<span style="color:${planColor}">${planLabel}</span>`;
 
-  // Days premium
-  const premDays=localStorage.getItem('bt_plan_start');
-  if(premDays&&isPaid){
-    const days=Math.floor((Date.now()-parseInt(premDays))/86400000);
-    document.getElementById('profileDays').textContent=`${days} dias`;
+  // Days as premium member
+  const premStart=localStorage.getItem('bt_plan_start');
+  if(premStart&&isPaid){
+    const days=Math.floor((Date.now()-parseInt(premStart))/86400000);
+    document.getElementById('profileDays').textContent=`${days} dia${days!==1?'s':''}`;
     document.getElementById('profilePremiumDays').style.display='flex';
+  }else{
+    document.getElementById('profilePremiumDays').style.display='none';
   }
 
-  // Since date
+  // Next billing date — stored when plan is activated
+  const planExpiry=localStorage.getItem('bt_plan_expiry');
+  const daysLeftRow=document.getElementById('profileDaysLeftRow');
+  if(planExpiry&&isPaid){
+    const expDate=new Date(parseInt(planExpiry));
+    const daysLeft=Math.ceil((expDate-Date.now())/86400000);
+    document.getElementById('profileDaysLeft').innerHTML=
+      `${expDate.toLocaleDateString('pt-BR')} <span style="color:var(--neon);font-size:10px">(${daysLeft} dia${daysLeft!==1?'s':''} restante${daysLeft!==1?'s':''})</span>`;
+    daysLeftRow.style.display='flex';
+  }else{
+    if(daysLeftRow)daysLeftRow.style.display='none';
+  }
+
+  // Member since
   const since=localStorage.getItem('bt_since');
   if(since)document.getElementById('profileSince').textContent=new Date(parseInt(since)).toLocaleDateString('pt-BR');
 
-  // Show/hide cancel button
+  // Cancel button — only for paid
   document.getElementById('cancelSubBtn').style.display=isPaid?'block':'none';
 
-  // Upgrade button text
+  // Upgrade button
   const upgradeBtn=document.getElementById('profileUpgradeBtn');
   if(p==='master'){upgradeBtn.style.display='none';}
   else if(p==='full'){upgradeBtn.textContent='👑 Ir para o Master →';upgradeBtn.style.background='linear-gradient(135deg,#92400e,#fbbf24)';}
-  else{upgradeBtn.textContent='⚡ Fazer upgrade';}
+  else{upgradeBtn.textContent='⚡ Fazer upgrade';upgradeBtn.style.background='linear-gradient(135deg,var(--blue-500),var(--neon))';}
 
   document.getElementById('profileModal').classList.add('on');
 }
@@ -1648,15 +1714,38 @@ function acceptDiscount(){closeCancelModal();alert('Desconto aplicado! Obrigado 
 async function finalCancel(){
   document.getElementById('cancelStep2').style.display='none';
   document.getElementById('cancelStep3').style.display='block';
-  // Downgrade user to free
+
+  // Call admin API to downgrade plan
+  const token=localStorage.getItem('bt_token');
+  try{
+    await fetch('/api/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body:JSON.stringify({action:'set_plan',email:currentUserEmail,plan:'free'})
+    });
+  }catch(e){console.log('Cancel API error:',e);}
+
+  // Downgrade locally
   userPlan='free';
   localStorage.setItem('bt_plan','free');
-  // TODO: Cancel in Stripe via API
+  localStorage.removeItem('bt_plan_start');
+  localStorage.removeItem('bt_plan_expiry');
+
+  // Update navbar after 2s
+  setTimeout(()=>{
+    closeCancelModal();
+    setLoggedIn(currentUserEmail,'free');
+    updateLangOptions();
+  },3000);
 }
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
-  if(userPlan!=='master'){openUpgradeModal();return;}
+  if(userPlan !== 'master'){
+    // Show upgrade modal highlighting Master
+    openUpgradeModal('master_tool');
+    return;
+  }
   const tools={
     download:{icon:'⬇️',title:'Baixar Vídeos HD',desc:'Faça download de qualquer vídeo do YouTube, TikTok e Instagram em alta qualidade. Perfeito para usar como referência nos seus Shorts.'},
     viral:{icon:'📈',title:'Vídeos Virais em Alta',desc:'Descubra os Shorts mais virais em tempo real por nicho, idioma e região. Encontre tendências antes de todo mundo.'},
