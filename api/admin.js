@@ -69,15 +69,26 @@ export default async function handler(req, res) {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    const [subsRes, usageRes, viralsRes] = await Promise.all([
+    const [subsRes, usageRes, viralsRes, feedbackRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers })
+      fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers })
     ]);
 
-    const [subscribers, todayUsage, topVirals] = await Promise.all([
-      subsRes.json(), usageRes.json(), viralsRes.json()
+    const [subscribers, todayUsage, topVirals, feedbackRaw] = await Promise.all([
+      subsRes.json(), usageRes.json(), viralsRes.json(),
+      feedbackRes.ok ? feedbackRes.json() : []
     ]);
+
+    // Sort feedback: master first, then support, then others
+    const feedback = Array.isArray(feedbackRaw) ? feedbackRaw.sort((a,b)=>{
+      if(a.plan==='master'&&b.plan!=='master')return -1;
+      if(b.plan==='master'&&a.plan!=='master')return 1;
+      if(a.type==='support'&&b.type!=='support')return -1;
+      if(b.type==='support'&&a.type!=='support')return 1;
+      return new Date(b.created_at)-new Date(a.created_at);
+    }) : [];
 
     const stats = {
       subscribers: {
@@ -105,6 +116,7 @@ export default async function handler(req, res) {
         usage_breakdown: todayUsage
       },
       top_virals: topVirals,
+      feedback,
       // Latest subscriber for real-time notification
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null
     };
