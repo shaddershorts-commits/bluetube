@@ -21,20 +21,47 @@ export default async function handler(req, res) {
 
   const { action, email, plan } = req.method === 'POST' ? req.body : req.query;
 
-  // ── SET PLAN MANUALLY (for influencers, partners, yourself) ──────────────
+  // ── SET PLAN MANUALLY ────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_plan') {
     if (!email || !plan) return res.status(400).json({ error: 'Missing email or plan' });
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({
-        email, plan,
-        is_manual: true, // Mark as manually granted — excluded from revenue
-        plan_expires_at: plan === 'free' ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString()
-      })
-    });
-    if (!r.ok) return res.status(500).json({ error: 'Failed to update plan' });
+
+    const payload = {
+      plan,
+      is_manual: true,
+      plan_expires_at: plan === 'free' ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Try PATCH first (update existing)
+    const patch = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
+      {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const patchData = await patch.json();
+    console.log('PATCH result:', patch.status, JSON.stringify(patchData).slice(0,200));
+
+    // If no rows updated, INSERT new record
+    if (patch.ok && Array.isArray(patchData) && patchData.length === 0) {
+      const insert = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({ email, ...payload })
+      });
+      if (!insert.ok) {
+        const err = await insert.json();
+        console.error('INSERT error:', err);
+        return res.status(500).json({ error: 'Failed to insert plan: ' + JSON.stringify(err) });
+      }
+    } else if (!patch.ok) {
+      console.error('PATCH error:', patchData);
+      return res.status(500).json({ error: 'Failed to update plan: ' + JSON.stringify(patchData) });
+    }
+
     return res.status(200).json({ success: true, email, plan });
   }
 
