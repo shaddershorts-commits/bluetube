@@ -130,13 +130,18 @@ Escreva o roteiro agora. Apenas o texto, nada mais.`;
     const key = shuffledKeys[i];
     try {
       const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${key}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.9, maxOutputTokens: 500, topP: 0.95 }
+            generationConfig: {
+              temperature: 0.9,
+              maxOutputTokens: 800,
+              topP: 0.95,
+              stopSequences: []
+            }
           })
         }
       );
@@ -154,10 +159,17 @@ Escreva o roteiro agora. Apenas o texto, nada mais.`;
         continue;
       }
 
+      const finishReason = data.candidates?.[0]?.finishReason;
       let text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
 
       if (!text) {
         console.log(`Key ${i+1} returned empty, trying next...`);
+        continue;
+      }
+
+      // If model stopped mid-sentence due to token limit, try next key for a fresh attempt
+      if (finishReason === 'MAX_TOKENS' && !text.match(/[.!?]$/)) {
+        console.log(`Key ${i+1} truncated (MAX_TOKENS), trying next key for fresh attempt...`);
         continue;
       }
 
