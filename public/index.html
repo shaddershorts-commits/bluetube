@@ -501,6 +501,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
           <li>Todos os idiomas</li>
           <li>Chat IA personalizado</li>
           <li>IA de voz hiper realista</li>
+          <li>Download de vídeo HD</li>
           <li>Buscador de vídeo viral</li>
           <li>Comunidade exclusiva</li>
           <li>Suporte prioritário</li>
@@ -593,7 +594,15 @@ function selectPlan(plan){
   // When Stripe is integrated, redirect to checkout
   alert(`Stripe checkout em breve! Plano ${plan} selecionado.`);
 }
-function handleUpgradeClick(plan){selectPlan(plan||'full');}
+async function handleUpgradeClick(plan){
+  const p=plan||'full';
+  try{
+    const r=await fetch('/api/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:p})});
+    const d=await r.json();
+    if(d.url)window.location.href=d.url;
+    else alert('Erro ao iniciar checkout. Tente novamente.');
+  }catch(e){alert('Erro ao conectar com Stripe. Tente novamente.');}
+}
 
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
 function openAuthModal(){document.getElementById('authModal').classList.add('on');}
