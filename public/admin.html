@@ -289,6 +289,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
       <div class="table-wrap" id="usageTable"><div class="loading-txt">Carregando…</div></div>
     </div>
+
+    <!-- Feedback & Support -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">💬 Mensagens dos usuários <span class="section-subtitle">— feedback e suporte · Master priorizado</span></div>
+      </div>
+      <div class="table-wrap" id="feedbackTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
   </div>
 </div>
 
@@ -521,6 +530,29 @@ async function loadData(){
         </table>`;
     }else{
       document.getElementById('usageTable').innerHTML='<div class="empty-state">Nenhuma atividade registrada hoje.</div>';
+    }
+
+    // Feedback table
+    if(d.feedback?.length){
+      document.getElementById('feedbackTable').innerHTML=`
+        <table>
+          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Mensagem</th><th>Data/Hora</th></tr></thead>
+          <tbody>${d.feedback.map(f=>{
+            const typeLabel=f.type==='support'?'🆘 Suporte':f.type==='cancel'?'❌ Cancelamento':'💬 Feedback';
+            const planBadge=f.plan==='master'?'badge-master':f.plan==='full'?'badge-full':'badge-free';
+            const dt=new Date(f.created_at);
+            return`<tr>
+              <td style="color:var(--text)">${f.email||'—'}</td>
+              <td><span class="badge ${planBadge}">${(f.plan||'free').toUpperCase()}</span></td>
+              <td style="font-family:var(--mono);font-size:11px">${typeLabel}</td>
+              <td style="color:var(--text-secondary);max-width:300px;word-break:break-word">${f.message}</td>
+              <td style="color:var(--dim);font-size:11px;white-space:nowrap">${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>`;
+    }else{
+      document.getElementById('feedbackTable').innerHTML='<div class="empty-state">Nenhuma mensagem ainda. Quando usuários interagirem com o BluBlu ou o suporte, as mensagens aparecerão aqui.</div>';
     }
 
     showProgress(100);
