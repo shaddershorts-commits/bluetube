@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ plan, email: user.email });
+    return res.status(200).json({ plan, email: user.email, plan_expires_at: sub?.plan_expires_at || null });
   } catch (err) {
     console.error('get-plan error:', err);
     return res.status(500).json({ error: 'Internal error' });
