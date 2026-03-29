@@ -6,83 +6,119 @@
 <title>BlueTube Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
-:root{--bg:#020817;--card:rgba(10,22,40,0.8);--neon:#00aaff;--text:#e8f4ff;--dim:rgba(150,190,230,0.4);--mono:'DM Mono',monospace;--display:'Syne',sans-serif;--green:#4ecca3;--red:#ff7a5a;--yellow:#fbbf24}
+:root{--bg:#020817;--card:rgba(10,22,40,0.8);--neon:#00aaff;--text:#e8f4ff;--dim:rgba(150,190,230,0.4);--mono:'DM Mono',monospace;--display:'Syne',sans-serif;--green:#4ecca3;--red:#ff7a5a;--yellow:#fbbf24;--purple:#a78bff}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--display);min-height:100vh;padding:0}
-.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.login-box{background:var(--card);border:1px solid rgba(0,170,255,0.2);border-radius:20px;padding:40px;width:100%;max-width:360px;text-align:center}
-.login-box h1{font-size:24px;font-weight:800;margin-bottom:6px}
-.login-box p{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:24px}
-.login-input{width:100%;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;margin-bottom:10px}
-.login-btn{width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s}
-.login-btn:hover{transform:translateY(-1px)}
+body{background:var(--bg);color:var(--text);font-family:var(--display);min-height:100vh}
+
+/* LOGIN */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 50% 0%,rgba(0,90,255,0.1) 0%,transparent 60%)}
+.login-box{background:var(--card);border:1px solid rgba(0,170,255,0.2);border-radius:20px;padding:40px;width:100%;max-width:360px;text-align:center;position:relative;overflow:hidden}
+.login-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent)}
+.login-box h1{font-size:26px;font-weight:800;margin-bottom:6px}
+.login-box h1 span{color:var(--neon)}
+.login-box p{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:28px}
+.login-input{width:100%;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:13px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;margin-bottom:10px;transition:all .2s}
+.login-input:focus{border-color:rgba(0,170,255,0.4);box-shadow:0 0 0 3px rgba(0,170,255,0.07)}
+.login-btn{width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;box-shadow:0 0 20px rgba(0,170,255,0.3)}
+.login-btn:hover{transform:translateY(-1px);box-shadow:0 0 30px rgba(0,170,255,0.5)}
 .login-err{font-family:var(--mono);font-size:12px;color:var(--red);margin-top:10px;min-height:18px}
 
+/* DASHBOARD */
 .dashboard{display:none;min-height:100vh}
-.topbar{background:rgba(2,8,23,0.9);border-bottom:1px solid rgba(0,170,255,0.08);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(20px);position:sticky;top:0;z-index:10}
-.topbar-logo{font-size:18px;font-weight:800}
+.topbar{background:rgba(2,8,23,0.95);border-bottom:1px solid rgba(0,170,255,0.08);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(20px);position:sticky;top:0;z-index:10}
+.topbar-logo{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
 .topbar-logo span{color:var(--neon)}
-.topbar-right{display:flex;align-items:center;gap:12px}
-.live-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.2);border-radius:100px;padding:5px 12px}
-.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.5s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-.logout-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:none;border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:6px 12px;cursor:pointer;transition:all .2s}
-.logout-btn:hover{color:var(--text);border-color:rgba(255,255,255,0.3)}
+.admin-tag{font-family:var(--mono);font-size:10px;color:var(--dim);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.12);border-radius:4px;padding:2px 7px;letter-spacing:.06em}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.refresh-indicator{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--green)}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.last-update{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.action-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.12);border-radius:7px;padding:6px 12px;cursor:pointer;transition:all .2s}
+.action-btn:hover{color:var(--neon);border-color:rgba(0,170,255,0.3)}
+.logout-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:none;border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:6px 12px;cursor:pointer;transition:all .2s}
+.logout-btn:hover{color:var(--red);border-color:rgba(255,80,80,0.3)}
 
-.content{padding:32px;max-width:1200px;margin:0 auto}
-.page-title{font-size:28px;font-weight:800;letter-spacing:-1px;margin-bottom:8px}
-.page-sub{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:32px}
+.content{padding:28px 32px;max-width:1300px;margin:0 auto}
+.page-header{margin-bottom:28px}
+.page-title{font-size:26px;font-weight:800;letter-spacing:-1px;margin-bottom:4px}
+.page-sub{font-family:var(--mono);font-size:12px;color:var(--dim)}
 
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
-.stat-card{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:16px;padding:22px}
-.stat-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
-.stat-value{font-size:36px;font-weight:800;letter-spacing:-1px}
+/* REVENUE HIGHLIGHT */
+.revenue-bar{background:linear-gradient(135deg,rgba(0,80,200,0.15),rgba(0,170,255,0.1));border:1px solid rgba(0,170,255,0.2);border-radius:16px;padding:22px 28px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative;overflow:hidden}
+.revenue-bar::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,170,255,0.5),transparent)}
+.revenue-item{text-align:center}
+.revenue-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.revenue-value{font-size:28px;font-weight:800;letter-spacing:-1px}
+.revenue-value.mrr{color:var(--green)}
+.revenue-value.arr{color:var(--neon)}
+.revenue-divider{width:1px;height:50px;background:rgba(0,170,255,0.1)}
+
+/* STATS GRID */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:14px;padding:20px;transition:all .2s;position:relative;overflow:hidden}
+.stat-card:hover{border-color:rgba(0,170,255,0.2);transform:translateY(-1px)}
+.stat-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.stat-value{font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1}
 .stat-value.green{color:var(--green)}
 .stat-value.blue{color:var(--neon)}
 .stat-value.yellow{color:var(--yellow)}
-.stat-sub{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+.stat-value.purple{color:var(--purple)}
+.stat-sub{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px}
 
-.section{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:16px;padding:24px;margin-bottom:24px}
-.section-title{font-size:16px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
-.section-title span{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400}
+.plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
 
-/* Manual plan tool */
-.plan-tool{display:flex;gap:10px;margin-bottom:0}
-.plan-input{flex:1;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:9px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none}
+/* SECTION */
+.section{background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:14px;padding:22px;margin-bottom:20px;overflow:hidden}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.section-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.section-subtitle{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400}
+.export-btn{font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:6px;padding:5px 10px;cursor:pointer;transition:all .2s;text-decoration:none}
+.export-btn:hover{background:rgba(0,170,255,0.12)}
+
+/* PLAN TOOL */
+.plan-tool{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.plan-input{flex:1;min-width:200px;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:9px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;transition:all .2s}
+.plan-input:focus{border-color:rgba(0,170,255,0.4)}
 .plan-select{background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.15);border-radius:9px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;cursor:pointer}
-.plan-btn{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:9px;padding:11px 20px;font-family:var(--display);font-size:12px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap}
-.plan-btn:hover{transform:translateY(-1px)}
+.plan-select option{background:#0a1628}
+.plan-btn{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:9px;padding:11px 20px;font-family:var(--display);font-size:12px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap;box-shadow:0 0 14px rgba(0,170,255,0.2)}
+.plan-btn:hover{transform:translateY(-1px);box-shadow:0 0 22px rgba(0,170,255,0.4)}
 .plan-msg{font-family:var(--mono);font-size:12px;margin-top:10px;min-height:18px}
 .plan-msg.ok{color:var(--green)}.plan-msg.err{color:var(--red)}
 
-/* Table */
-table{width:100%;border-collapse:collapse}
-th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:8px 12px;text-align:left;border-bottom:1px solid rgba(0,170,255,0.08)}
-td{font-family:var(--mono);font-size:12px;padding:10px 12px;border-bottom:1px solid rgba(0,170,255,0.04);color:var(--text)}
-tr:hover td{background:rgba(0,170,255,0.03)}
-.badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 9px;border-radius:100px}
-.badge-free{background:rgba(150,190,230,0.08);color:var(--dim);border:1px solid rgba(150,190,230,0.15)}
+/* TABLE */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:500px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:8px 12px;text-align:left;border-bottom:1px solid rgba(0,170,255,0.08);white-space:nowrap}
+td{font-family:var(--mono);font-size:12px;padding:10px 12px;border-bottom:1px solid rgba(0,170,255,0.04);color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(0,170,255,0.02)}
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 9px;border-radius:100px;white-space:nowrap}
+.badge-free{background:rgba(150,190,230,0.06);color:var(--dim);border:1px solid rgba(150,190,230,0.12)}
 .badge-full{background:rgba(0,170,255,0.1);color:var(--neon);border:1px solid rgba(0,170,255,0.2)}
 .badge-master{background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)}
-.refresh-btn{font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.12);border-radius:7px;padding:5px 12px;cursor:pointer;transition:all .2s}
-.refresh-btn:hover{color:var(--neon);border-color:rgba(0,170,255,0.3)}
-.loading-txt{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:30px}
+.empty-state{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:36px}
+.loading-txt{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:30px;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 
-@media(max-width:768px){
-  .stats-grid{grid-template-columns:repeat(2,1fr)}
-  .plan-tool{flex-direction:column}
-  .content{padding:16px}
-  .topbar{padding:14px 16px}
-}
+/* PROGRESS BAR */
+.progress-bar{height:3px;background:rgba(0,170,255,0.1);border-radius:2px;overflow:hidden;position:fixed;top:0;left:0;right:0;z-index:200}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--neon),var(--neon-bright,#33ccff));transition:width .3s ease}
+
+@media(max-width:900px){.stats-grid{grid-template-columns:repeat(2,1fr)}.plans-grid{grid-template-columns:repeat(3,1fr)}.content{padding:16px}.topbar{padding:12px 16px}}
+@media(max-width:600px){.plans-grid{grid-template-columns:1fr}.revenue-bar{flex-direction:column;text-align:center}.revenue-divider{display:none}}
 </style>
 </head>
 <body>
 
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
 <!-- LOGIN -->
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
-    <h1>Blue<span style="color:var(--neon)">Tube</span></h1>
-    <p>Painel administrativo</p>
+    <h1>Blue<span>Tube</span></h1>
+    <p>Painel administrativo · Acesso restrito</p>
     <input class="login-input" id="adminKey" type="password" placeholder="Chave de acesso admin" onkeydown="if(event.key==='Enter')doLogin()"/>
     <button class="login-btn" onclick="doLogin()">Entrar no painel →</button>
     <div class="login-err" id="loginErr"></div>
@@ -92,19 +128,48 @@ tr:hover td{background:rgba(0,170,255,0.03)}
 <!-- DASHBOARD -->
 <div class="dashboard" id="dashboard">
   <div class="topbar">
-    <div class="topbar-logo">Blue<span>Tube</span> <span style="font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400">admin</span></div>
+    <div class="topbar-logo">
+      Blue<span>Tube</span>
+      <span class="admin-tag">ADMIN</span>
+    </div>
     <div class="topbar-right">
-      <div class="live-badge"><span class="live-dot"></span><span id="lastUpdate">—</span></div>
-      <button class="refresh-btn" onclick="loadData()">↻ Atualizar</button>
+      <div class="refresh-indicator"><span class="pulse"></span><span id="lastUpdate">Carregando…</span></div>
+      <button class="action-btn" onclick="loadData()">↻ Atualizar</button>
+      <button class="action-btn" onclick="exportCSV()">↓ Exportar CSV</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
     </div>
   </div>
 
   <div class="content">
-    <div class="page-title">Dashboard</div>
-    <div class="page-sub">Visão geral do BlueTube em tempo real</div>
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Atualiza automaticamente a cada 30 segundos · <span id="nextRefresh">—</span></div>
+    </div>
 
-    <!-- Stats -->
+    <!-- REVENUE -->
+    <div class="revenue-bar">
+      <div class="revenue-item">
+        <div class="revenue-label">MRR — Receita mensal</div>
+        <div class="revenue-value mrr" id="revMRR">$0,00</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">ARR — Receita anual projetada</div>
+        <div class="revenue-value arr" id="revARR">$0,00</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">Full ($9,99 × assinantes)</div>
+        <div class="revenue-value" style="color:var(--neon);font-size:22px" id="revFull">$0,00</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">Master ($29,99 × assinantes)</div>
+        <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">$0,00</div>
+      </div>
+    </div>
+
+    <!-- MAIN STATS -->
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Total de contas</div>
@@ -119,68 +184,85 @@ tr:hover td{background:rgba(0,170,255,0.03)}
       <div class="stat-card">
         <div class="stat-label">IPs ativos hoje</div>
         <div class="stat-value blue" id="statIPs">—</div>
-        <div class="stat-sub">usuários sem conta</div>
+        <div class="stat-sub">sem conta criada</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Roteiros hoje</div>
         <div class="stat-value yellow" id="statScripts">—</div>
-        <div class="stat-sub">gerados nas últimas 24h</div>
+        <div class="stat-sub">nas últimas 24h</div>
       </div>
     </div>
 
-    <!-- Plan breakdown -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
+    <!-- PLAN BREAKDOWN -->
+    <div class="plans-grid">
       <div class="stat-card">
         <div class="stat-label">Plano Grátis</div>
         <div class="stat-value" id="statFree">—</div>
+        <div class="stat-sub">$0/mês</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Plano Full $9,99</div>
         <div class="stat-value blue" id="statFull">—</div>
+        <div class="stat-sub" id="statFullRev">—</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Plano Master $29,99</div>
         <div class="stat-value yellow" id="statMaster">—</div>
+        <div class="stat-sub" id="statMasterRev">—</div>
       </div>
     </div>
 
-    <!-- Manual plan tool -->
+    <!-- MANUAL PLAN TOOL -->
     <div class="section">
-      <div class="section-title">🔑 Liberar plano manualmente <span>— para você, influencers e parceiros</span></div>
+      <div class="section-header">
+        <div class="section-title">🔑 Liberar plano manualmente <span class="section-subtitle">— para você, influencers e parceiros</span></div>
+      </div>
       <div class="plan-tool">
         <input class="plan-input" id="planEmail" type="email" placeholder="email@exemplo.com"/>
         <select class="plan-select" id="planType">
-          <option value="full">Full — $9,99</option>
-          <option value="master">Master — $29,99</option>
-          <option value="free">Rebaixar para Free</option>
+          <option value="full">⚡ Full — $9,99/mês</option>
+          <option value="master">👑 Master — $29,99/mês</option>
+          <option value="free">↓ Rebaixar para Free</option>
         </select>
-        <button class="plan-btn" onclick="setPlan()">Liberar acesso</button>
+        <button class="plan-btn" onclick="setPlan()">Liberar acesso →</button>
       </div>
       <div class="plan-msg" id="planMsg"></div>
     </div>
 
-    <!-- Subscribers table -->
+    <!-- SUBSCRIBERS TABLE -->
     <div class="section">
-      <div class="section-title">👥 Contas cadastradas <span>— dados para email marketing</span></div>
-      <div id="subsTable"><div class="loading-txt">Carregando…</div></div>
+      <div class="section-header">
+        <div class="section-title">👥 Contas cadastradas <span class="section-subtitle">— dados para email marketing</span></div>
+        <a class="export-btn" onclick="exportCSV()" href="#">↓ Exportar CSV</a>
+      </div>
+      <div class="table-wrap" id="subsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
-    <!-- Top virals -->
+    <!-- TOP VIRALS -->
     <div class="section">
-      <div class="section-title">🔥 Shorts mais processados <span>— maior copy_count</span></div>
-      <div id="viralsTable"><div class="loading-txt">Carregando…</div></div>
+      <div class="section-header">
+        <div class="section-title">🔥 Shorts mais processados <span class="section-subtitle">— maior copy_count = mais viral</span></div>
+      </div>
+      <div class="table-wrap" id="viralsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
-    <!-- Today's usage -->
+    <!-- TODAY'S USAGE -->
     <div class="section">
-      <div class="section-title">📊 Atividade de hoje por IP</div>
-      <div id="usageTable"><div class="loading-txt">Carregando…</div></div>
+      <div class="section-header">
+        <div class="section-title">📊 Atividade de hoje por IP <span class="section-subtitle">— usuários anônimos</span></div>
+      </div>
+      <div class="table-wrap" id="usageTable"><div class="loading-txt">Carregando…</div></div>
     </div>
   </div>
 </div>
 
 <script>
 let adminKey='';
+let refreshInterval=null;
+let nextRefreshSecs=30;
+let allSubscribers=[];
+
+function fmt(n){return'$'+Number(n).toFixed(2).replace('.',',')}
 
 function doLogin(){
   const key=document.getElementById('adminKey').value.trim();
@@ -191,25 +273,38 @@ function doLogin(){
 
 function doLogout(){
   adminKey='';
+  clearInterval(refreshInterval);
   document.getElementById('dashboard').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('adminKey').value='';
 }
 
+function showProgress(pct){document.getElementById('progressFill').style.width=pct+'%';}
+
 async function loadData(){
+  showProgress(20);
   try{
     const r=await fetch('/api/admin',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    showProgress(60);
     if(r.status===401){
       document.getElementById('loginErr').textContent='Chave incorreta. Tente novamente.';
-      return;
+      showProgress(0);return;
     }
     const d=await r.json();
+    showProgress(90);
 
     // Show dashboard
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('dashboard').style.display='block';
 
-    // Update stats
+    // Revenue
+    const mrr=d.revenue?.monthly_mrr||0;
+    document.getElementById('revMRR').textContent=fmt(mrr);
+    document.getElementById('revARR').textContent=fmt(mrr*12);
+    document.getElementById('revFull').textContent=fmt(d.revenue?.full_revenue||0);
+    document.getElementById('revMaster').textContent=fmt(d.revenue?.master_revenue||0);
+
+    // Stats
     document.getElementById('statTotal').textContent=d.subscribers.total;
     document.getElementById('statPaid').textContent=d.subscribers.full+d.subscribers.master;
     document.getElementById('statIPs').textContent=d.today.active_ips;
@@ -217,65 +312,89 @@ async function loadData(){
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=d.subscribers.full;
     document.getElementById('statMaster').textContent=d.subscribers.master;
+    document.getElementById('statFullRev').textContent=fmt(d.revenue?.full_revenue||0)+'/mês';
+    document.getElementById('statMasterRev').textContent=fmt(d.revenue?.master_revenue||0)+'/mês';
+
+    // Last update
     document.getElementById('lastUpdate').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
 
+    // Store for CSV export
+    allSubscribers=d.subscribers.list||[];
+
     // Subscribers table
-    if(d.subscribers.list.length){
+    if(allSubscribers.length){
       document.getElementById('subsTable').innerHTML=`
         <table>
-          <thead><tr><th>Email</th><th>Plano</th><th>Cadastro</th><th>Expira</th></tr></thead>
-          <tbody>${d.subscribers.list.map(s=>`
+          <thead><tr><th>Email</th><th>Plano</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th></tr></thead>
+          <tbody>${allSubscribers.map(s=>`
             <tr>
-              <td>${s.email}</td>
+              <td style="color:var(--text)">${s.email}</td>
               <td><span class="badge badge-${s.plan}">${s.plan.toUpperCase()}</span></td>
-              <td>${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-              <td>${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
+              <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
+              <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+              <td style="color:var(--dim)">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
             </tr>`).join('')}
           </tbody>
         </table>`;
     }else{
-      document.getElementById('subsTable').innerHTML='<div class="loading-txt">Nenhuma conta cadastrada ainda.</div>';
+      document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhuma conta cadastrada ainda.<br>Quando usuários criarem contas, aparecerão aqui.</div>';
     }
 
     // Top virals
-    if(d.top_virals.length){
+    if(d.top_virals?.length){
       document.getElementById('viralsTable').innerHTML=`
         <table>
-          <thead><tr><th>Video ID</th><th>Idioma</th><th>Copiado</th><th>Processado</th></tr></thead>
+          <thead><tr><th>Video ID</th><th>Idioma</th><th>Copiado</th><th>Processado em</th></tr></thead>
           <tbody>${d.top_virals.map(v=>`
             <tr>
-              <td><a href="https://youtube.com/shorts/${v.video_id}" target="_blank" style="color:var(--neon)">${v.video_id}</a></td>
-              <td>${v.lang||'—'}</td>
+              <td><a href="https://youtube.com/shorts/${v.video_id}" target="_blank" style="color:var(--neon);text-decoration:none">${v.video_id}</a></td>
+              <td style="color:var(--dim)">${v.lang||'—'}</td>
               <td style="color:var(--green);font-weight:600">${v.copy_count}x</td>
-              <td>${new Date(v.processed_at).toLocaleDateString('pt-BR')}</td>
+              <td style="color:var(--dim)">${new Date(v.processed_at).toLocaleDateString('pt-BR')}</td>
             </tr>`).join('')}
           </tbody>
         </table>`;
     }else{
-      document.getElementById('viralsTable').innerHTML='<div class="loading-txt">Nenhum Short processado ainda.</div>';
+      document.getElementById('viralsTable').innerHTML='<div class="empty-state">Nenhum Short processado ainda.</div>';
     }
 
-    // Today's usage
-    if(d.today.usage_breakdown.length){
+    // Today usage
+    if(d.today.usage_breakdown?.length){
       document.getElementById('usageTable').innerHTML=`
         <table>
-          <thead><tr><th>IP</th><th>Plano</th><th>Roteiros hoje</th></tr></thead>
+          <thead><tr><th>IP (anonimizado)</th><th>Plano</th><th>Roteiros hoje</th></tr></thead>
           <tbody>${d.today.usage_breakdown.map(u=>`
             <tr>
-              <td style="color:var(--dim)">${u.ip_address?.replace(/(\d+)\.(\d+)\.\d+\.\d+/,'$1.$2.xxx.xxx')}</td>
+              <td style="color:var(--dim)">${(u.ip_address||'').replace(/(\d+)\.(\d+)\.\d+\.\d+/,'$1.$2.xxx.xxx')}</td>
               <td><span class="badge badge-${u.plan||'free'}">${(u.plan||'free').toUpperCase()}</span></td>
-              <td>${u.script_count}</td>
+              <td style="color:var(--yellow)">${u.script_count}</td>
             </tr>`).join('')}
           </tbody>
         </table>`;
     }else{
-      document.getElementById('usageTable').innerHTML='<div class="loading-txt">Nenhuma atividade hoje ainda.</div>';
+      document.getElementById('usageTable').innerHTML='<div class="empty-state">Nenhuma atividade registrada hoje.</div>';
     }
+
+    showProgress(100);
+    setTimeout(()=>showProgress(0),500);
+
+    // Start auto-refresh
+    if(!refreshInterval) startAutoRefresh();
 
   }catch(err){
     console.error(err);
     document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave.';
+    showProgress(0);
   }
+}
+
+function startAutoRefresh(){
+  nextRefreshSecs=30;
+  refreshInterval=setInterval(()=>{
+    nextRefreshSecs--;
+    document.getElementById('nextRefresh').textContent=`próxima atualização em ${nextRefreshSecs}s`;
+    if(nextRefreshSecs<=0){nextRefreshSecs=30;loadData();}
+  },1000);
 }
 
 async function setPlan(){
@@ -292,11 +411,28 @@ async function setPlan(){
     });
     const d=await r.json();
     if(!r.ok)throw new Error(d.error);
-    msg.className='plan-msg ok';msg.textContent=`✓ Plano ${plan.toUpperCase()} ativado para ${email}`;
-    loadData();
+    msg.className='plan-msg ok';
+    msg.textContent=`✓ Plano ${plan.toUpperCase()} ativado para ${email}`;
+    document.getElementById('planEmail').value='';
+    setTimeout(loadData,1000);
   }catch(e){
     msg.className='plan-msg err';msg.textContent='Erro: '+e.message;
   }
+}
+
+function exportCSV(){
+  if(!allSubscribers.length){alert('Nenhuma conta para exportar ainda.');return;}
+  const rows=[['Email','Plano','Stripe Customer ID','Cadastro','Expira'],...allSubscribers.map(s=>[
+    s.email,s.plan,s.stripe_customer_id||'',
+    new Date(s.created_at).toLocaleDateString('pt-BR'),
+    s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):''
+  ])];
+  const csv=rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a=Object.assign(document.createElement('a'),{
+    href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),
+    download:`bluetube-usuarios-${new Date().toISOString().split('T')[0]}.csv`
+  });
+  a.click();URL.revokeObjectURL(a.href);
 }
 </script>
 </body>
