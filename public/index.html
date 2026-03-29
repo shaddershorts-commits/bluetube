@@ -689,7 +689,7 @@ async function handleEmailLogin(){
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
     setAuthMsg('Bem-vindo! 🎉','ok');
-    setTimeout(()=>{closeAuthModal();},1200);
+    setTimeout(()=>{closeAuthModal();setLoggedIn(email);},1200);
   }catch(e){setAuthMsg(e.message,'');}
 }
 async function handleEmailSignup(){
@@ -913,7 +913,37 @@ function downloadSrt(){
   a.click();URL.revokeObjectURL(a.href);
 }
 
+// ── SESSION CHECK ──────────────────────────────────────────────────────────
+async function checkSession(){
+  const token=localStorage.getItem('bt_token');
+  if(!token)return;
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
+    const d=await r.json();
+    if(r.ok&&d.user){
+      setLoggedIn(d.user.email);
+    }else{
+      localStorage.removeItem('bt_token');
+    }
+  }catch{}
+}
+
+function setLoggedIn(email){
+  const navRight=document.querySelector('.nav-right');
+  navRight.innerHTML=`
+    <span style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:8px;padding:7px 12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${email}">✓ ${email}</span>
+    <button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>
+    <button class="nav-login-btn" onclick="doLogout()">Sair</button>
+  `;
+}
+
+function doLogout(){
+  localStorage.removeItem('bt_token');
+  location.reload();
+}
+
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')startTranscription(e);});
+checkSession();
 </script>
 </body>
 </html>
