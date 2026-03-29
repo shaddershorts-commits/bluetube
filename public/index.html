@@ -251,7 +251,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
     <div class="tab-panel" id="panel-v1">
       <div class="scripts-loading" id="loadingV1">
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
-        <div class="scripts-loading-label">Criando roteiro casual…</div>
+        <div class="scripts-loading-label" id="labelV1">Criando seu próximo roteiro viral…</div>
       </div>
       <div class="script-card" id="cardV1" style="display:none;">
         <div class="script-card-top">
@@ -269,7 +269,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
     <div class="tab-panel" id="panel-v2">
       <div class="scripts-loading" id="loadingV2">
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
-        <div class="scripts-loading-label">Criando roteiro apelativo…</div>
+        <div class="scripts-loading-label" id="labelV2">Criando seu próximo roteiro viral…</div>
       </div>
       <div class="script-card" id="cardV2" style="display:none;">
         <div class="script-card-top">
@@ -444,18 +444,23 @@ async function startTranscription(e){
 
 async function generateScript(versionId, lang, attempt=1){
   try {
+    // Update loading label
+    const label = document.getElementById('label'+versionId);
+    if(label) label.textContent = attempt > 1
+      ? 'Criando seu próximo roteiro viral…'
+      : 'Criando seu próximo roteiro viral…';
+
     const res=await fetch('/api/rewrite',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({transcript,lang,version:versionId})
     });
     const data=await res.json();
+
     if(!res.ok||!data.text){
-      // Rate limit — retry once after waiting
-      if((res.status===429||data.error?.includes('quota'))&&attempt<3){
-        document.getElementById('loadingV'+versionId.slice(1)).querySelector('.scripts-loading-label')
-          && (document.querySelector(`#loading${versionId} .scripts-loading-label`).textContent='Aguardando API… tentando novamente');
-        await new Promise(r=>setTimeout(r,15000));
+      if((res.status===429||(data.error&&data.error.includes('quota')))&&attempt<3){
+        if(label) label.textContent='Criando seu próximo roteiro viral…';
+        await new Promise(r=>setTimeout(r,5000));
         return generateScript(versionId, lang, attempt+1);
       }
       throw new Error(data.error||'Resposta vazia');
@@ -484,9 +489,9 @@ function generateAllScripts(lang){
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
-  generateScript('V1',lang)
-    .then(()=>new Promise(r=>setTimeout(r,8000)))
-    .then(()=>generateScript('V2',lang));
+  // Generate both with 3s gap — enough to avoid rate limit, fast enough for UX
+  generateScript('V1',lang);
+  setTimeout(()=>generateScript('V2',lang), 3000);
 }
 
 function copyEl(id){
