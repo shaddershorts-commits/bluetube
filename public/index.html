@@ -199,7 +199,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .plan-btn.free-btn:hover{border-color:rgba(0,170,255,0.5);color:var(--neon)}
 
 /* ── ANNUAL TOGGLE ───────────────────────────────────────────────────────── */
-.billing-toggle{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:40px}
+.nav-community-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:#fbbf24;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.nav-community-btn:hover{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.5);transform:translateY(-1px)}
+.billing-toggle-modal{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;background:rgba(2,8,23,0.4);border-radius:10px;padding:8px 14px}
+.billing-label-modal{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);cursor:pointer;transition:all .2s}
+.billing-label-modal.active{color:var(--text-primary);font-weight:600}
+.toggle-switch-sm{position:relative;width:36px;height:20px;cursor:pointer}
+.toggle-switch-sm input{opacity:0;width:0;height:0}
+.toggle-slider-sm{position:absolute;inset:0;background:rgba(0,170,255,0.2);border-radius:20px;transition:.3s}
+.toggle-slider-sm::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
+.toggle-switch-sm input:checked+.toggle-slider-sm{background:linear-gradient(135deg,#92400e,#fbbf24)}
+.toggle-switch-sm input:checked+.toggle-slider-sm::before{transform:translateX(16px)}
 .billing-label{font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);transition:color .2s}
 .billing-label.active{color:var(--text-primary);font-weight:600}
 .toggle-switch{position:relative;width:52px;height:28px;cursor:pointer}
@@ -248,6 +258,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     Blue<span class="logo-accent">Tube</span>
   </a>
   <div class="nav-right">
+    <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Comunidade
+      <span id="communityLock" style="font-size:10px">🔒</span>
+    </button>
     <button class="nav-login-btn" onclick="openAuthModal()">Entrar</button>
     <button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>
   </div>
@@ -267,16 +282,26 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div class="timer-label" id="timerLabel">Seu limite reseta em</div>
       <div class="timer-display" id="timerDisplay">23:59:59</div>
     </div>
+    <!-- Annual toggle in modal -->
+    <div class="billing-toggle-modal">
+      <span class="billing-label-modal active" id="modalLabelMonthly" onclick="setModalBilling(false)">Mensal</span>
+      <label class="toggle-switch-sm">
+        <input type="checkbox" id="modalAnnualToggle" onchange="setModalBilling(this.checked)"/>
+        <span class="toggle-slider-sm"></span>
+      </label>
+      <span class="billing-label-modal" id="modalLabelAnnual" onclick="setModalBilling(true)">Anual</span>
+      <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
+    </div>
     <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">$9,99<span>/mês</span></div>
+        <div class="plan-price" id="modalFullPrice">$9,99<span>/mês</span></div>
         <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
       </div>
       <div class="plan-card master-highlight" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">$29,99<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice">$29,99<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
       </div>
     </div>
@@ -415,6 +440,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <option value="日本語" class="locked-option">🔒 日本語 — Full</option>
         <option value="中文" class="locked-option">🔒 中文 — Full</option>
         <option value="العربية" class="locked-option">🔒 العربية — Full</option>
+        <option value="Türkçe" class="locked-option master-only">🔒 Türkçe — Master</option>
+        <option value="हिन्दी" class="locked-option master-only">🔒 हिन्दी — Master</option>
+        <option value="한국어" class="locked-option master-only">🔒 한국어 — Master</option>
+        <option value="Русский" class="locked-option master-only">🔒 Русский — Master</option>
+        <option value="Bahasa Indonesia" class="locked-option master-only">🔒 Bahasa Indonesia — Master</option>
+        <option value="Thai" class="locked-option master-only">🔒 ภาษาไทย — Master</option>
+        <option value="Tagalog" class="locked-option master-only">🔒 Tagalog — Master</option>
       </select>
       <button class="btn-go" id="btnGo" onclick="startTranscription(event)">
         Transcrever + Roteiro ↗
@@ -583,6 +615,42 @@ let transcript='', segments=[], currentVideoId='';
 let dailyUsed=0, dailyLimit=2, userPlan='free';
 let countdownInterval=null;
 const FREE_LANGS=['Português (Brasil)','English'];
+const FULL_LANGS=['Español','Français','Deutsch','Italiano','日本語','中文','العربية'];
+const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский','Bahasa Indonesia','Thai','Tagalog'];
+
+// ── COMMUNITY ──────────────────────────────────────────────────────────────
+const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
+function openCommunity(){
+  const isPaid=userPlan==='full'||userPlan==='master';
+  if(isPaid){
+    window.open(COMMUNITY_URL,'_blank');
+  }else{
+    // Show upgrade modal with community message
+    openUpgradeModal('community');
+  }
+}
+function updateCommunityBtn(){
+  const isPaid=userPlan==='full'||userPlan==='master';
+  const lock=document.getElementById('communityLock');
+  if(lock)lock.style.display=isPaid?'none':'inline';
+}
+
+// ── MODAL BILLING TOGGLE ───────────────────────────────────────────────────
+let modalIsAnnual=false;
+function setModalBilling(annual){
+  modalIsAnnual=annual;
+  document.getElementById('modalLabelMonthly').classList.toggle('active',!annual);
+  document.getElementById('modalLabelAnnual').classList.toggle('active',annual);
+  document.getElementById('modalAnnualToggle').checked=annual;
+  const fullEl=document.getElementById('modalFullPrice');
+  const masterEl=document.getElementById('modalMasterPrice');
+  if(fullEl)fullEl.innerHTML=annual
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$7,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$89,99 cobrado anualmente</span>'
+    :'$9,99<span>/mês</span>';
+  if(masterEl)masterEl.innerHTML=annual
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$19,99</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$239,88 cobrado anualmente</span>'
+    :'$29,99<span>/mês</span>';
+}
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
@@ -628,29 +696,40 @@ function startCountdown(){
 
 // ── LANGUAGE LOCK ──────────────────────────────────────────────────────────
 function updateLangOptions(){
-  const isPaid = userPlan === 'full' || userPlan === 'master';
-  const select = document.getElementById('langSelect');
-  Array.from(select.options).forEach(opt => {
-    if(opt.classList.contains('locked-option')){
-      if(isPaid){
-        // Unlock — show native language name
-        opt.text = opt.text.replace(/🔒\s*/,'').replace(/\s*—\s*Full/,'');
-        opt.disabled = false;
-        opt.style.color = '';
-      } else {
-        // Keep locked
-        opt.disabled = false; // allow clicking to trigger modal
+  const isFull = userPlan==='full'||userPlan==='master';
+  const isMaster = userPlan==='master';
+  const select=document.getElementById('langSelect');
+  Array.from(select.options).forEach(opt=>{
+    const isFullLang=FULL_LANGS.includes(opt.value);
+    const isMasterLang=MASTER_LANGS.includes(opt.value);
+    if(isFullLang){
+      if(isFull){
+        opt.text=opt.text.replace(/🔒\s*/,'').replace(/\s*—\s*Full/,'');
+        opt.disabled=false;
+      }
+    }
+    if(isMasterLang){
+      if(isMaster){
+        opt.text=opt.text.replace(/🔒\s*/,'').replace(/\s*—\s*Master/,'');
+        opt.disabled=false;
       }
     }
   });
+  updateCommunityBtn();
 }
 
 function handleLangChange(select){
-  const val = select.value;
-  const isPaid = userPlan === 'full' || userPlan === 'master';
-  if(!FREE_LANGS.includes(val) && !isPaid){
-    select.value = FREE_LANGS[0];
-    openLangLockModal();
+  const val=select.value;
+  const isFull=userPlan==='full'||userPlan==='master';
+  const isMaster=userPlan==='master';
+  if(MASTER_LANGS.includes(val)&&!isMaster){
+    select.value=FREE_LANGS[0];
+    openLangLockModal('master');
+    return;
+  }
+  if(FULL_LANGS.includes(val)&&!isFull){
+    select.value=FREE_LANGS[0];
+    openLangLockModal('full');
   }
 }
 
@@ -662,23 +741,23 @@ let selectedUpgradePlan='full';
 function openUpgradeModal(reason){
   startCountdown();
   startLiveCount();
+  // Reset annual toggle
+  setModalBilling(false);
 
-  if(reason==='limit_free'){
+  if(reason==='community'){
+    document.getElementById('upgradeModalTitle').innerHTML='Comunidade<br><span>exclusiva.</span>';
+    document.getElementById('upgradeModalSub').innerHTML='A comunidade BlueTube é exclusiva para assinantes.<br>Entre, conecte-se e cresça junto com outros criadores virais.';
+    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
+    document.getElementById('upgradeModalCta').textContent='Quero entrar na comunidade →';
+  } else if(reason==='limit_free'){
     document.getElementById('upgradeModalTitle').innerHTML='Você vai ficar<br><span>para trás?</span>';
     document.getElementById('upgradeModalSub').innerHTML=`Você usou seus <strong>${dailyLimit} roteiros gratuitos</strong> de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.`;
     document.getElementById('timerLabel').textContent='Seu limite reseta em';
-    document.getElementById('upgradeModalPlans').innerHTML=`
-      <div class="plan-card featured" onclick="selectPlan('full')">
-        <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">$9,99<span>/mês</span></div>
-        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
-      </div>
-      <div class="plan-card master-highlight" onclick="selectPlan('master')">
-        <div class="master-unlimited-badge">ILIMITADO</div>
-        <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
-      </div>`;
+    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
+  } else if(reason==='limit_free_no_account'){
+    document.getElementById('upgradeModalTitle').innerHTML='Crie sua conta e<br><span>continue criando!</span>';
+    document.getElementById('upgradeModalSub').innerHTML=`Você gerou ${dailyLimit} roteiros hoje.<br>Crie uma conta grátis e ganhe +1 roteiro bônus agora.`;
+    document.getElementById('timerLabel').textContent='Seu limite reseta em';
     document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
   } else if(reason==='limit_full'){
     document.getElementById('upgradeModalTitle').innerHTML='Limite do Full<br><span>atingido hoje.</span>';
@@ -688,34 +767,24 @@ function openUpgradeModal(reason){
       <div class="plan-card master-highlight" style="grid-column:1/-1;max-width:320px;margin:0 auto" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
         <div class="plan-badge gold" style="margin-top:8px">Master</div>
-        <div class="plan-price" style="font-size:28px">$29,99<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">$29,99<span>/mês</span></div>
         <div class="plan-features">✓ Sem limite de roteiros<br>✓ Chat IA personalizado<br>✓ IA de voz hiper realista<br>✓ Download HD<br>✓ Todos os idiomas<br>✓ Suporte prioritário</div>
       </div>`;
     document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
   } else {
-    // Generic upgrade from nav button
     document.getElementById('upgradeModalTitle').innerHTML='Potencialize seus<br><span>Shorts agora.</span>';
     document.getElementById('upgradeModalSub').innerHTML='Escolha o plano ideal e comece a criar roteiros virais sem limites.';
     document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
-    document.getElementById('upgradeModalPlans').innerHTML=`
-      <div class="plan-card featured" onclick="selectPlan('full')">
-        <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">$9,99<span>/mês</span></div>
-        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
-      </div>
-      <div class="plan-card master-highlight" onclick="selectPlan('master')">
-        <div class="master-unlimited-badge">ILIMITADO</div>
-        <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
-      </div>`;
     document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
   }
 
   document.getElementById('upgradeModal').classList.add('on');
 }
 function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('on');}
-function selectPlan(plan){selectedUpgradePlan=plan;handleUpgradeClick(plan);}
+function selectPlan(plan){
+  selectedUpgradePlan=plan;
+  handleUpgradeClick(plan);
+}
 function openUpgradeModalGeneric(){openUpgradeModal('generic');}
 let isAnnual = false;
 
@@ -753,7 +822,7 @@ function toggleBilling(annual){
 
 async function handleUpgradeClick(plan){
   const p = plan || selectedUpgradePlan || 'full';
-  const billing = isAnnual ? 'annual' : 'monthly';
+  const billing = (modalIsAnnual || isAnnual) ? 'annual' : 'monthly';
   try{
     const r=await fetch('/api/create-checkout',{
       method:'POST',
