@@ -369,11 +369,11 @@ async function loadData(){
     }
     if(latest) lastKnownSubscriberId=latest.email;
 
-    // Subscribers table — show manual badge
+    // Subscribers table — show manual badge + edit button
     if(allSubscribers.length){
       document.getElementById('subsTable').innerHTML=`
         <table>
-          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th></tr></thead>
+          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
           <tbody>${allSubscribers.map(s=>`
             <tr>
               <td style="color:var(--text)">${s.email}</td>
@@ -382,6 +382,11 @@ async function loadData(){
               <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
               <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
               <td style="color:var(--dim)">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
+              <td>
+                <div style="display:flex;gap:6px">
+                  <button onclick="quickEditPlan('${s.email}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
+                </div>
+              </td>
             </tr>`).join('')}
           </tbody>
         </table>`;
@@ -444,6 +449,17 @@ function startAutoRefresh(){
     document.getElementById('nextRefresh').textContent=`próxima atualização em ${nextRefreshSecs}s`;
     if(nextRefreshSecs<=0){nextRefreshSecs=30;loadData();}
   },1000);
+}
+
+function quickEditPlan(email){
+  const plan=prompt(`Plano atual para ${email}\n\nDigite o novo plano:\n- full\n- master\n- free`,'full');
+  if(!plan)return;
+  if(!['full','master','free'].includes(plan.toLowerCase())){alert('Plano inválido. Use: full, master ou free');return;}
+  document.getElementById('planEmail').value=email;
+  document.getElementById('planType').value=plan.toLowerCase();
+  setPlan();
+  // Scroll to plan tool
+  document.getElementById('planEmail').scrollIntoView({behavior:'smooth'});
 }
 
 async function setPlan(){
