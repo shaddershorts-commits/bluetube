@@ -16,7 +16,8 @@ export default async function handler(req, res) {
   const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    return res.status(500).json({ error: 'Serviço de autenticação não configurado' });
+    console.error('Missing env vars:', { hasUrl: !!SUPABASE_URL, hasKey: !!SUPABASE_KEY });
+    return res.status(500).json({ error: `Configuração incompleta: URL=${!!SUPABASE_URL} KEY=${!!SUPABASE_KEY}` });
   }
 
   const authBase = `${SUPABASE_URL}/auth/v1`;
@@ -33,7 +34,10 @@ export default async function handler(req, res) {
       if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter mínimo 6 caracteres' });
 
-      const r = await fetch(`${authBase}/signup`, {
+      const signupUrl = `${authBase}/signup`;
+      console.log('Signing up:', email, 'URL:', signupUrl);
+
+      const r = await fetch(signupUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -45,6 +49,7 @@ export default async function handler(req, res) {
         })
       });
       const data = await r.json();
+      console.log('Signup response status:', r.status, 'data:', JSON.stringify(data).slice(0, 200));
 
       if (!r.ok) {
         const msg = data.msg || data.error_description || data.error || 'Erro ao criar conta';
