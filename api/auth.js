@@ -95,22 +95,29 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── SEND OTP (magic link / email code) ────────────────────────────────────
+    // ── RESEND CONFIRMATION EMAIL ─────────────────────────────────────────────
     if (action === 'send_otp') {
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
 
-      const r = await fetch(`${authBase}/otp`, {
+      // Resend confirmation email (not magic link)
+      const r = await fetch(`${authBase}/resend`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ email, create_user: true })
+        body: JSON.stringify({
+          type: 'signup',
+          email,
+          options: {
+            emailRedirectTo: `${process.env.SITE_URL || 'https://bluetube-ten.vercel.app'}/`
+          }
+        })
       });
 
       if (!r.ok) {
         const data = await r.json();
-        return res.status(400).json({ error: data.msg || 'Erro ao enviar código' });
+        return res.status(400).json({ error: data.msg || 'Erro ao reenviar email' });
       }
 
-      return res.status(200).json({ sent: true, message: 'Código enviado para seu email!' });
+      return res.status(200).json({ sent: true, message: 'Email de confirmação reenviado!' });
     }
 
     // ── VERIFY OTP ────────────────────────────────────────────────────────────
