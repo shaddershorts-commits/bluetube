@@ -340,19 +340,24 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,0.07);pa
       <button class="auth-submit" onclick="handleEmailSignup()">Criar conta →</button>
     </div>
 
-    <!-- OTP VERIFICATION FORM (shown after signup) -->
+    <!-- EMAIL CONFIRMATION SCREEN (shown after signup) -->
     <div id="authOTPForm" style="display:none">
-      <div style="text-align:center;margin-bottom:20px">
-        <div style="font-size:32px;margin-bottom:10px">📧</div>
-        <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary);font-weight:600">Verifique seu email</div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:6px">Enviamos um código de 6 dígitos para<br><span id="otpEmailDisplay" style="color:var(--neon)"></span></div>
-      </div>
-      <input class="auth-input" id="otpCode" type="text" placeholder="000000" maxlength="6"
-        style="text-align:center;font-size:24px;font-weight:700;letter-spacing:.3em;margin-bottom:10px"
-        oninput="this.value=this.value.replace(/\D/g,'')"/>
-      <button class="auth-submit" onclick="handleOTPVerify()">Verificar código →</button>
-      <div style="text-align:center;margin-top:12px">
-        <button onclick="resendOTP()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Reenviar código</button>
+      <div style="text-align:center;padding:10px 0">
+        <div style="font-size:48px;margin-bottom:16px">📧</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:10px">Verifique seu email</div>
+        <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:20px">
+          Enviamos um link de confirmação para<br>
+          <span id="otpEmailDisplay" style="color:var(--neon);font-weight:600"></span><br><br>
+          Clique no link no email para ativar sua conta.<br>
+          Após confirmar, volte aqui e faça login.
+        </div>
+        <button class="auth-submit" onclick="switchAuthTab('login')" style="margin-bottom:10px">
+          Já confirmei → Fazer login
+        </button>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+          Não recebeu? Verifique a caixa de spam ou
+          <button onclick="resendOTP()" style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline">reenvie o email</button>
+        </div>
       </div>
     </div>
 
