@@ -258,6 +258,45 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 
 <script>
 let adminKey='';
+let lastKnownSubscriberId=null;
+
+function showNewSubscriberPopup(subscriber){
+  const planIcon=subscriber.plan==='master'?'👑':'⚡';
+  const planColor=subscriber.plan==='master'?'#fbbf24':'#00aaff';
+  const planPrice=subscriber.plan==='master'?'$29,99':'$9,99';
+
+  // Create popup
+  const popup=document.createElement('div');
+  popup.style.cssText=`
+    position:fixed;bottom:24px;right:24px;z-index:999;
+    background:rgba(10,22,40,0.98);border:1px solid ${planColor};
+    border-radius:16px;padding:20px 24px;max-width:320px;
+    box-shadow:0 0 40px ${planColor}44;animation:slideIn .4s ease;
+  `;
+  popup.innerHTML=`
+    <style>@keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}</style>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="font-size:28px;animation:pulse 1s infinite">${planIcon}</div>
+      <div>
+        <div style="font-family:var(--display);font-size:14px;font-weight:700;color:${planColor}">Novo assinante! 🎉</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">agora mesmo</div>
+      </div>
+      <button onclick="this.closest('div[style]').remove()" style="margin-left:auto;background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text);margin-bottom:6px">${subscriber.email}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span style="font-family:var(--mono);font-size:11px;background:rgba(0,0,0,0.3);border:1px solid ${planColor}44;color:${planColor};padding:3px 10px;border-radius:100px">${planIcon} ${subscriber.plan.toUpperCase()}</span>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${planColor}">${planPrice}/mês</span>
+    </div>
+  `;
+  document.body.appendChild(popup);
+
+  // Play notification sound
+  try{const ctx=new AudioContext();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(800,ctx.currentTime);o.frequency.setValueAtTime(1000,ctx.currentTime+0.1);g.gain.setValueAtTime(0.1,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);o.start();o.stop(ctx.currentTime+0.5);}catch{}
+
+  // Auto remove after 8 seconds
+  setTimeout(()=>popup.remove(),8000);
+}
 let refreshInterval=null;
 let nextRefreshSecs=30;
 let allSubscribers=[];
@@ -297,7 +336,7 @@ async function loadData(){
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('dashboard').style.display='block';
 
-    // Revenue
+    // Revenue (only paying, not manual)
     const mrr=d.revenue?.monthly_mrr||0;
     document.getElementById('revMRR').textContent=fmt(mrr);
     document.getElementById('revARR').textContent=fmt(mrr*12);
@@ -305,15 +344,17 @@ async function loadData(){
     document.getElementById('revMaster').textContent=fmt(d.revenue?.master_revenue||0);
 
     // Stats
+    const payingTotal=(d.subscribers.paying_full||0)+(d.subscribers.paying_master||0);
+    const manualTotal=(d.subscribers.manual_full||0)+(d.subscribers.manual_master||0);
     document.getElementById('statTotal').textContent=d.subscribers.total;
-    document.getElementById('statPaid').textContent=d.subscribers.full+d.subscribers.master;
+    document.getElementById('statPaid').textContent=payingTotal;
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
     document.getElementById('statFree').textContent=d.subscribers.free;
-    document.getElementById('statFull').textContent=d.subscribers.full;
-    document.getElementById('statMaster').textContent=d.subscribers.master;
-    document.getElementById('statFullRev').textContent=fmt(d.revenue?.full_revenue||0)+'/mês';
-    document.getElementById('statMasterRev').textContent=fmt(d.revenue?.master_revenue||0)+'/mês';
+    document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
+    document.getElementById('statMaster').textContent=`${d.subscribers.master} (${d.subscribers.paying_master||0} pagos, ${d.subscribers.manual_master||0} manuais)`;
+    document.getElementById('statFullRev').textContent=fmt(d.revenue?.full_revenue||0)+'/mês (pagos)';
+    document.getElementById('statMasterRev').textContent=fmt(d.revenue?.master_revenue||0)+'/mês (pagos)';
 
     // Last update
     document.getElementById('lastUpdate').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
@@ -321,15 +362,23 @@ async function loadData(){
     // Store for CSV export
     allSubscribers=d.subscribers.list||[];
 
-    // Subscribers table
+    // 🔔 Real-time new subscriber detection
+    const latest=d.latest_subscriber;
+    if(latest&&lastKnownSubscriberId&&latest.email!==lastKnownSubscriberId){
+      showNewSubscriberPopup(latest);
+    }
+    if(latest) lastKnownSubscriberId=latest.email;
+
+    // Subscribers table — show manual badge
     if(allSubscribers.length){
       document.getElementById('subsTable').innerHTML=`
         <table>
-          <thead><tr><th>Email</th><th>Plano</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th></tr></thead>
+          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th></tr></thead>
           <tbody>${allSubscribers.map(s=>`
             <tr>
               <td style="color:var(--text)">${s.email}</td>
               <td><span class="badge badge-${s.plan}">${s.plan.toUpperCase()}</span></td>
+              <td><span style="font-family:var(--mono);font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</span></td>
               <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
               <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
               <td style="color:var(--dim)">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
