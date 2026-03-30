@@ -251,6 +251,14 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- Weekly Visitors Chart -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">📈 Visitantes únicos — últimos 7 dias</div>
+      </div>
+      <div id="weeklyChart" style="padding:16px 0"></div>
+    </div>
+
     <!-- Monthly History -->
     <div class="section">
       <div class="section-header">
@@ -460,9 +468,33 @@ async function loadData(){
     document.getElementById('statPaid').textContent=payingTotal;
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
-    // Real online count from visits table
+    // Online count from ip_online table
     document.getElementById('onlineCount').textContent=d.visits?.online_now||0;
     document.getElementById('visitsTodayCount').textContent=d.visits?.today_unique||0;
+
+    // Weekly visitors chart
+    if(d.visits?.weekly?.length){
+      const weekly=d.visits.weekly;
+      const maxCount=Math.max(...weekly.map(w=>w.count),1);
+      const days=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+      document.getElementById('weeklyChart').innerHTML=`
+        <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">
+          ${weekly.map(w=>{
+            const date=new Date(w.date+'T12:00:00');
+            const dayName=days[date.getDay()];
+            const dateLabel=`${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}`;
+            const isToday=w.date===today;
+            const pct=maxCount>0?Math.max((w.count/maxCount)*100,4):4;
+            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">${w.count}</div>
+              <div style="width:100%;height:${pct}%;background:${isToday?'var(--blue)':'rgba(0,170,255,0.3)'};border-radius:4px 4px 0 0;min-height:4px;transition:height .4s"></div>
+              <div style="font-family:var(--mono);font-size:10px;color:${isToday?'var(--blue)':'var(--dim)';font-weight:${isToday?'700':'400'}">${dayName}</div>
+              <div style="font-family:var(--mono);font-size:9px;color:var(--dim)">${dateLabel}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
     document.getElementById('statMaster').textContent=`${d.subscribers.master} (${d.subscribers.paying_master||0} pagos, ${d.subscribers.manual_master||0} manuais)`;
