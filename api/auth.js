@@ -378,52 +378,60 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
     const YT_KEY = process.env.YOUTUBE_API_KEY;
-    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada. Adicione YOUTUBE_API_KEY no Vercel.' });
+    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API nao configurada. Adicione YOUTUBE_API_KEY no Vercel.' });
 
     const { period = '7d', category = '', region = 'BR', q = '' } = req.query;
 
     const now = new Date();
-    // Cutoff para filtro HARD no servidor (YouTube API ignora publishedAfter com regionCode)
     const cutoffMs = period === '24h' ? 24*60*60*1000
       : period === '7d' ? 7*24*60*60*1000
       : 30*24*60*60*1000;
     const cutoffDate = new Date(now - cutoffMs);
     const publishedAfter = cutoffDate.toISOString();
 
-    // Queries NO IDIOMA LOCAL — força conteúdo do país sem depender de regionCode
+    // Config por região: idioma + queries altamente específicas no idioma local
+    // "ALL" = sem filtro de idioma, busca global
     const REGION_CONFIG = {
-      BR: { lang:'pt', queries:['shorts viral', 'shorts viralizando', 'shorts bombando', 'shorts tendencia brasil'] },
-      US: { lang:'en', queries:['shorts viral', 'shorts trending', 'viral shorts', 'shorts blowing up'] },
-      GB: { lang:'en', queries:['shorts viral uk', 'shorts trending uk', 'viral shorts britain'] },
-      IN: { lang:'hi', queries:['shorts viral', 'shorts trending india', 'viral video shorts', 'शॉर्ट्स वायरल'] },
-      MX: { lang:'es', queries:['shorts viral', 'shorts virales mexico', 'shorts tendencia', 'shorts se esta haciendo viral'] },
-      JP: { lang:'ja', queries:['ショート 急上昇', 'ショート バズった', 'shorts 人気', 'バイラル ショート'] },
-      KR: { lang:'ko', queries:['쇼츠 인기', '쇼츠 바이럴', 'shorts 인기급상승', '쇼츠 화제'] },
-      DE: { lang:'de', queries:['shorts viral', 'shorts trending deutschland', 'shorts geht viral', 'viral shorts deutsch'] },
-      FR: { lang:'fr', queries:['shorts viral', 'shorts tendance france', 'shorts qui buzze', 'viral shorts français'] },
-      ES: { lang:'es', queries:['shorts viral', 'shorts virales españa', 'shorts tendencia españa', 'viral shorts español'] },
-      AR: { lang:'es', queries:['shorts viral', 'shorts virales argentina', 'shorts tendencia argentina'] },
-      CO: { lang:'es', queries:['shorts viral', 'shorts virales colombia', 'shorts tendencia colombia'] },
-      TR: { lang:'tr', queries:['shorts viral', 'shorts trend türkiye', 'viral shorts türkçe', 'shorts yükseliyor'] },
+      ALL: { lang: null, queries: ['#shorts viral', 'shorts viral trending', 'shorts blowing up', 'viral short video'] },
+      BR:  { lang:'pt', queries: ['shorts viral brasil', 'shorts viralizando brasil', 'short bombando agora', 'curta viral'] },
+      US:  { lang:'en', queries: ['shorts viral usa', 'viral shorts america', 'shorts blowing up usa', 'trending shorts usa'] },
+      GB:  { lang:'en', queries: ['shorts viral uk', 'viral shorts britain', 'trending shorts england', 'shorts going viral uk'] },
+      IN:  { lang:'hi', queries: ['shorts viral india', 'viral shorts hindi', 'trending shorts india', 'shorts trending india'] },
+      MX:  { lang:'es', queries: ['shorts viral mexico', 'shorts virales mexico', 'shorts tendencia mexico', 'cortos virales mexico'] },
+      JP:  { lang:'ja', queries: ['ショート 急上昇 日本', 'ショート バズ 日本', '日本 バイラル ショート', 'ショート動画 人気'] },
+      KR:  { lang:'ko', queries: ['쇼츠 인기 한국', '한국 쇼츠 바이럴', '인기급상승 쇼츠', '한국 쇼츠 화제'] },
+      DE:  { lang:'de', queries: ['shorts viral deutschland', 'shorts geht viral deutsch', 'trending shorts deutsch', 'virale shorts deutschland'] },
+      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts qui buzze france', 'tendance shorts france', 'viral shorts français'] },
+      ES:  { lang:'es', queries: ['shorts viral espana', 'shorts virales espana', 'tendencia shorts espana', 'shorts trending espana'] },
+      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts virales argentina', 'tendencia shorts argentina'] },
+      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts virales colombia', 'tendencia shorts colombia'] },
+      TR:  { lang:'tr', queries: ['shorts viral turkiye', 'trend shorts turkce', 'viral shorts turkiye', 'shorts yukseliyor turkiye'] },
     };
 
-    const cfg = REGION_CONFIG[region] || REGION_CONFIG['US'];
+    const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
     const { lang, queries: regionQueries } = cfg;
-    const searchQueries = q ? [`${q} shorts`, `${q} viral`, q] : regionQueries;
+    const searchQueries = q
+      ? [`${q} shorts`, `${q} viral shorts`, `${q} short video`]
+      : regionQueries;
+
+    const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
 
     try {
-      // Busca paralela: cada query com publishedAfter para forçar recência
-      const makeSearch = (searchQ) => {
+      // Busca paralela com publishedAfter em todas as queries
+      const makeSearch = async (searchQ) => {
         const params = new URLSearchParams({
           part: 'snippet', type: 'video', videoDuration: 'short',
           order: 'viewCount', maxResults: '50',
-          relevanceLanguage: lang,
           key: YT_KEY, q: searchQ,
-          publishedAfter,  // SEMPRE com data — garantia de recência
+          publishedAfter,
+          ...(lang ? { relevanceLanguage: lang } : {}),
+          ...(region !== 'ALL' ? { regionCode: region } : {}),
           ...(category ? { videoCategoryId: category } : {}),
         });
-        return fetch(`https://www.googleapis.com/youtube/v3/search?${params}`)
-          .then(r => r.json()).then(d => d.items || []).catch(() => []);
+        const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
+        const d = await r.json();
+        if (!r.ok) { console.log('YT search error:', d.error?.message); return []; }
+        return d.items || [];
       };
 
       const allSearches = await Promise.all(searchQueries.map(q => makeSearch(q)));
@@ -451,33 +459,58 @@ export default async function handler(req, res) {
         )
       );
 
-      const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
-
       const videos = statsResults.flat().map(v => {
         const stats = v.statistics || {}, snippet = v.snippet || {};
         const dur = v.contentDetails?.duration || '';
         const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
         const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
         const views = parseInt(stats.viewCount||0);
-        const publishedAt = snippet.publishedAt;
-        return { id: v.id, title: snippet.title, channel: snippet.channelTitle,
+        return {
+          id: v.id, title: snippet.title, channel: snippet.channelTitle,
           thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
           views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
-          publishedAt, duration: secs,
-          url: `https://www.youtube.com/shorts/${v.id}` };
+          publishedAt: snippet.publishedAt, duration: secs,
+          url: `https://www.youtube.com/shorts/${v.id}`
+        };
       })
-      // FILTRO HARD no servidor: remove qualquer vídeo fora do período
       .filter(v => {
+        // Remove vídeos longos demais
         if (v.duration > 60 && v.duration !== 0) return false;
-        if (!v.publishedAt) return true; // mantém se não tem data
-        return new Date(v.publishedAt) >= cutoffDate;
+        // Filtro de data HARD — remove vídeos fora do período selecionado
+        if (v.publishedAt && new Date(v.publishedAt) < cutoffDate) return false;
+        return true;
       })
       .sort((a,b) => b.views - a.views)
       .slice(0, 100);
 
+      // Se filtro hard zerou tudo (API ignorou publishedAfter), retorna sem filtro de data
+      // mas avisa o frontend
+      if (videos.length === 0 && allItems.length > 0) {
+        const fallback = statsResults.flat().map(v => {
+          const stats = v.statistics || {}, snippet = v.snippet || {};
+          const dur = v.contentDetails?.duration || '';
+          const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
+          const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
+          return {
+            id: v.id, title: snippet.title, channel: snippet.channelTitle,
+            thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
+            views: parseInt(stats.viewCount||0),
+            viewsFormatted: fmtViews(parseInt(stats.viewCount||0)),
+            likes: parseInt(stats.likeCount||0),
+            publishedAt: snippet.publishedAt, duration: secs,
+            url: `https://www.youtube.com/shorts/${v.id}`
+          };
+        })
+        .filter(v => v.duration <= 60 || v.duration === 0)
+        .sort((a,b) => b.views - a.views)
+        .slice(0, 100);
+        return res.status(200).json({ videos: fallback, total: fallback.length, region, period, dateFilterFailed: true });
+      }
+
       return res.status(200).json({ videos, total: videos.length, region, period });
     } catch(e) {
-      return res.status(500).json({ error: 'Falha ao buscar vídeos virais: ' + e.message });
+      console.error('viral-shorts error:', e.message);
+      return res.status(500).json({ error: 'Falha ao buscar videos virais: ' + e.message });
     }
   }
 
