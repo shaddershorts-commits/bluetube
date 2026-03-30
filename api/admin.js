@@ -68,8 +68,8 @@ export default async function handler(req, res) {
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];
-    // "Online" = visited in last 3 minutes (precise live view)
-    const fiveMinAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    // "Online" = visited in last 2 minutes
+    const fiveMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
 
     const [subsRes, usageRes, viralsRes, feedbackRes, visitsRes, onlineRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers }),
