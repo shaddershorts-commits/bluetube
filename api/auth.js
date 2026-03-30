@@ -668,32 +668,65 @@ Responda APENAS em JSON válido sem markdown:
   }
 }`;
 
-    const shuffledKeys = [...GEMINI_KEYS].sort(() => Math.random() - 0.5);
-    for (const key of shuffledKeys) {
+    // Helper para extrair JSON da resposta
+    const extractJson = (text) => {
+      text = text.split('```json').join('').split('```').join('').trim();
+      const s = text.indexOf('{');
+      const e = text.lastIndexOf('}');
+      if (s === -1 || e === -1) return null;
+      try { return JSON.parse(text.slice(s, e + 1)); }
+      catch(e) { return null; }
+    };
+
+    // Tenta OpenAI primeiro (mais rápido, menos timeout)
+    let parsed = null;
+    const OPENAI_KEY = process.env.OPENAI_API_KEY;
+    if (OPENAI_KEY && !parsed) {
       try {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_KEY}` },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 1500 }
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: systemPrompt }],
+            max_tokens: 1200,
+            temperature: 0.4
           })
         });
         const d = await r.json();
-        if (d.error?.code === 429) continue;
-        if (!r.ok) continue;
-        let text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
-        console.log('Gemini BlueScore raw:', text.slice(0, 300));
-        // Limpa markdown
-               text = text.split('```json').join('').split('```').join('').trim();
-        // Extrai primeiro objeto JSON válido
-        const start = text.indexOf('{');
-        const end = text.lastIndexOf('}');
-        if (start === -1 || end === -1) { console.log('No JSON found in:', text.slice(0,200)); continue; }
-        const jsonStr = text.slice(start, end + 1);
-        let parsed;
-        try { parsed = JSON.parse(jsonStr); }
-        catch(pe) { console.log('JSON parse error:', pe.message, 'text:', jsonStr.slice(0,200)); continue; }
+        if (r.ok && d.choices?.[0]?.message?.content) {
+          parsed = extractJson(d.choices[0].message.content);
+          if (parsed) console.log('BlueScore AI: OpenAI OK');
+        }
+      } catch(e) { console.log('OpenAI BlueScore error:', e.message); }
+    }
+
+    // Fallback: Gemini (tenta até 3 chaves para não dar timeout)
+    if (!parsed) {
+      const keysToTry = GEMINI_KEYS.slice(0, 3);
+      for (const key of keysToTry) {
+        if (parsed) break;
+        try {
+          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: systemPrompt }] }],
+              generationConfig: { temperature: 0.4, maxOutputTokens: 1200 }
+            })
+          });
+          const d = await r.json();
+          if (d.error?.code === 429) continue;
+          if (!r.ok) continue;
+          const text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
+          console.log('Gemini BlueScore raw:', text.slice(0, 200));
+          parsed = extractJson(text);
+          if (parsed) console.log('BlueScore AI: Gemini OK');
+        } catch(e) { console.log('Gemini error:', e.message); continue; }
+      }
+    }
+
+    if (parsed) {
         
         // Salva no Supabase para retroalimentação
         const SUPA_URL = process.env.SUPABASE_URL;
@@ -723,7 +756,6 @@ Responda APENAS em JSON válido sem markdown:
         }
         
         return res.status(200).json(parsed);
-      } catch(e) { console.log('Gemini error:', e.message); continue; }
     }
 
     return res.status(200).json({ insights: [], riskFlags: [], recommendations: [], summary: 'Análise indisponível no momento.', ytpCompliance: { score: 0, status: 'atenção', notes: '' } });
