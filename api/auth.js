@@ -497,9 +497,7 @@ export default async function handler(req, res) {
         if (!r.ok) continue;
         let text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
         // Limpa markdown code blocks
-        text = text.replace(/```json
-?/g,'').replace(/```
-?/g,'').trim();
+               text = text.replace(/[`]{3}json[\r\n]*/g,'').replace(/[`]{3}[\r\n]*/g,'').trim();
         const parsed = JSON.parse(text);
         return res.status(200).json(parsed);
       } catch(e) { continue; }
