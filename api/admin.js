@@ -71,51 +71,43 @@ export default async function handler(req, res) {
     const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    // Fetch all data — each one fails gracefully
-    const safeJson = async (res) => {
-      try { return res.ok ? await res.json() : []; } catch(e) { return []; }
+    // safeJson: always returns an array, never throws
+    const safeJson = async (resPromise) => {
+      try {
+        const res = await resPromise;
+        if (!res || !res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch(e) { return []; }
     };
 
-    const [subsRes, usageRes, viralsRes, feedbackRes, visitsRes, onlineRes, weeklyRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers }).catch(()=>({ok:false})),
-      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc`, { headers }),
-    ]);
-
     const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, weeklyRaw] = await Promise.all([
-      safeJson(subsRes),
-      safeJson(usageRes),
-      safeJson(viralsRes),
-      safeJson(feedbackRes),
-      safeJson(visitsRes),
-      safeJson(onlineRes),
-      safeJson(weeklyRes),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc`, { headers })),
     ]);
 
     // Group weekly visits by date
     const weeklyMap = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-      const key = d.toISOString().split('T')[0];
-      weeklyMap[key] = 0;
+      weeklyMap[d.toISOString().split('T')[0]] = 0;
     }
-    if (Array.isArray(weeklyRaw)) {
-      weeklyRaw.forEach(r => { if (weeklyMap[r.visit_date] !== undefined) weeklyMap[r.visit_date]++; });
-    }
+    weeklyRaw.forEach(r => { if (weeklyMap[r.visit_date] !== undefined) weeklyMap[r.visit_date]++; });
     const weeklyVisits = Object.entries(weeklyMap).map(([date, count]) => ({ date, count }));
 
-    // Sort feedback: master first, then support, then others
-    const feedback = Array.isArray(feedbackRaw) ? feedbackRaw.sort((a,b)=>{
+    // Sort feedback
+    const feedback = feedbackRaw.sort((a,b)=>{
       if(a.plan==='master'&&b.plan!=='master')return -1;
       if(b.plan==='master'&&a.plan!=='master')return 1;
       if(a.type==='support'&&b.type!=='support')return -1;
       if(b.type==='support'&&a.type!=='support')return 1;
       return new Date(b.created_at)-new Date(a.created_at);
-    }) : [];
+    });
 
     const stats = {
       subscribers: {
@@ -123,7 +115,6 @@ export default async function handler(req, res) {
         free: subscribers.filter(s => s.plan === 'free').length,
         full: subscribers.filter(s => s.plan === 'full').length,
         master: subscribers.filter(s => s.plan === 'master').length,
-        // Paying = not manual and not free
         paying_full: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length,
         paying_master: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length,
         manual_full: subscribers.filter(s => s.plan === 'full' && s.is_manual).length,
@@ -131,7 +122,6 @@ export default async function handler(req, res) {
         list: subscribers
       },
       revenue: {
-        // Only count paying subscribers in revenue
         monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99) +
                      (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99),
         full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99,
@@ -145,17 +135,16 @@ export default async function handler(req, res) {
       top_virals: topVirals,
       feedback,
       visits: {
-        today_unique: Array.isArray(visitsToday) ? visitsToday.length : 0,
-        online_now: Array.isArray(onlineNow) ? onlineNow.length : 0,
+        today_unique: visitsToday.length,
+        online_now: onlineNow.length,
         weekly: weeklyVisits,
       },
-      // Latest subscriber for real-time notification
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null
     };
 
     return res.status(200).json(stats);
   } catch (err) {
     console.error('Admin error:', err);
-    return res.status(500).json({ error: 'Failed to fetch admin data' });
+    return res.status(500).json({ error: 'Failed to fetch admin data: ' + err.message });
   }
 }
