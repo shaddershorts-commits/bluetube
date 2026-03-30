@@ -439,6 +439,7 @@ function doLogout(){
 function showProgress(pct){document.getElementById('progressFill').style.width=pct+'%';}
 
 async function loadData(){
+  const today = new Date().toISOString().split('T')[0];
   showProgress(20);
   try{
     const r=await fetch('/api/admin',{headers:{'Authorization':`Bearer ${adminKey}`}});
