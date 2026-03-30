@@ -414,7 +414,6 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
   document.getElementById('resultTitle').textContent = title || (source.name + ' — Vídeo encontrado');
   document.getElementById('resultSource').textContent = source.name + ' · ' + new URL(originalUrl).hostname;
 
-  // Show thumbnail if available
   const thumbEl = document.getElementById('resultThumb');
   if(thumbnail){
     thumbEl.outerHTML = `<img id="resultThumb" src="${thumbnail}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.outerHTML='<div id=resultThumb class=result-thumb-placeholder>${source.emoji}</div>'"/>`;
@@ -424,13 +423,17 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
 
   document.getElementById('resultQuality').textContent = 'HD · Sem marca d\'água · Download direto';
 
-  // Store URL for download button
+  const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
+  const filename = `BaixaBlue_${source.name}_${safeTitle}.mp4`;
+
+  // Always use our proxy — forces file download bypassing CORS
+  const proxyUrl = `/api/auth?action=proxy-download&filename=${encodeURIComponent(filename)}&fileUrl=${encodeURIComponent(downloadUrl)}`;
+
   const dlBtn = document.getElementById('downloadLink');
-  dlBtn.onclick = (e) => {
-    e.preventDefault();
-    triggerDownload(downloadUrl, title, source.name);
-  };
-  dlBtn.href = '#';
+  dlBtn.href = proxyUrl;
+  dlBtn.download = filename;
+  dlBtn.removeAttribute('target');
+  dlBtn.onclick = null;
 
   document.getElementById('resultCard').style.display = 'block';
 }
