@@ -376,108 +376,172 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── BLUESCORE: RESOLVE CHANNEL ─────────────────────────────────────────────
-  if (req.method === 'GET' && req.query?.action === 'bluescore-channel') {
-    const YT_KEY = process.env.YOUTUBE_API_KEY;
-    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada.' });
-    const { type, id } = req.query;
-    if (!id) return res.status(400).json({ error: 'ID obrigatório' });
+  // ── BLUESCORE: RESOLVE CHANNEL + VIDEOS (com cache 6h + rate limit) ─────────
+  if (req.method === 'GET' && (req.query?.action === 'bluescore-channel' || req.query?.action === 'bluescore-videos')) {
+    const YT_KEYS = [
+      process.env.YOUTUBE_API_KEY,
+      process.env.YOUTUBE_API_KEY_2,
+      process.env.YOUTUBE_API_KEY_3,
+    ].filter(Boolean);
+    if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
 
-    try {
-      let channelId = null;
-      // Se já é um channelId (começa com UC)
-      if (type === 'channelId' || id.startsWith('UC')) {
-        channelId = id;
-      } else if (type === 'video') {
-        // Resolve canal via videoId
-        const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${YT_KEY}`);
-        const vd = await vr.json();
-        channelId = vd.items?.[0]?.snippet?.channelId;
-      } else {
-        // Handle ou custom URL — tenta forChannelType search
-        const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(id)}&maxResults=1&key=${YT_KEY}`);
-        const sd = await sr.json();
-        if (sd.error) {
-          const isQuota = sd.error.code === 403 || sd.error.message?.toLowerCase().includes('quota');
-          return res.status(400).json({ error: isQuota
-            ? 'Limite diário de análises atingido. Tente novamente amanhã.'
-            : sd.error.message });
+    const SUPA_URL = process.env.SUPABASE_URL;
+    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+    const supaH = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' };
+
+    // Rotação de chave por minuto para distribuir cota
+    const YT_KEY = YT_KEYS[Math.floor(Date.now() / 60000) % YT_KEYS.length];
+
+    // Helper: chama YouTube com fallback de chaves se quota esgotar
+    const ytFetch = async (url) => {
+      for (const key of YT_KEYS) {
+        const fullUrl = url + (url.includes('?') ? '&' : '?') + 'key=' + key;
+        const r = await fetch(fullUrl);
+        const d = await r.json();
+        if (d.error?.code === 403 || d.error?.message?.toLowerCase().includes('quota')) {
+          console.log('BlueScore: quota esgotada, tentando próxima chave...');
+          continue;
         }
-        channelId = sd.items?.[0]?.snippet?.channelId;
+        return { r, d };
+      }
+      return { r: null, d: { error: { message: 'quota_all', code: 403 } } };
+    };
+
+    const quotaError = (d) => d?.error?.code === 403 || d?.error?.message?.toLowerCase().includes('quota');
+    const quotaMsg = 'Análises temporariamente pausadas por alta demanda. Tente novamente em alguns minutos.';
+
+    // ── CHANNEL ──────────────────────────────────────────────────────────────
+    if (req.query?.action === 'bluescore-channel') {
+      const { type, id } = req.query;
+      if (!id) return res.status(400).json({ error: 'ID obrigatório' });
+
+      // Cache no Supabase (6h)
+      const cacheKey = `bs_ch_${type}_${id.toLowerCase().replace(/[^a-z0-9]/g,'_')}`;
+      if (SUPA_URL && SUPA_KEY) {
+        try {
+          const cr = await fetch(`${SUPA_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=data,cached_at`, { headers: supaH });
+          if (cr.ok) {
+            const rows = await cr.json();
+            if (rows?.[0] && (Date.now() - new Date(rows[0].cached_at).getTime()) < 6*60*60*1000) {
+              console.log('BlueScore channel: CACHE HIT', cacheKey);
+              return res.status(200).json({ ...rows[0].data, fromCache: true });
+            }
+          }
+        } catch(e) { /* cache miss */ }
       }
 
-      if (!channelId) return res.status(404).json({ error: 'Canal não encontrado.' });
+      try {
+        let channelId = null;
+        if (type === 'channelId' || id.startsWith('UC')) {
+          channelId = id;
+        } else if (type === 'video') {
+          const { d } = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}`);
+          if (quotaError(d)) return res.status(429).json({ error: quotaMsg });
+          channelId = d.items?.[0]?.snippet?.channelId;
+        } else {
+          const { d } = await ytFetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(id)}&maxResults=1`);
+          if (quotaError(d)) return res.status(429).json({ error: quotaMsg });
+          if (d.error) return res.status(400).json({ error: d.error.message });
+          channelId = d.items?.[0]?.snippet?.channelId;
+        }
 
-      // Busca detalhes do canal
-      const cr = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelId}&key=${YT_KEY}`);
-      const cd = await cr.json();
-      const ch = cd.items?.[0];
-      if (!ch) return res.status(404).json({ error: 'Canal não encontrado.' });
+        if (!channelId) return res.status(404).json({ error: 'Canal não encontrado. Verifique o link.' });
 
-      return res.status(200).json({
-        channelId,
-        title: ch.snippet?.title || 'Canal',
-        description: ch.snippet?.description?.slice(0,200) || '',
-        thumbnail: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url,
-        subscribers: parseInt(ch.statistics?.subscriberCount || 0),
-        videoCount: parseInt(ch.statistics?.videoCount || 0),
-        totalViews: parseInt(ch.statistics?.viewCount || 0),
-        country: ch.snippet?.country || '',
-        publishedAt: ch.snippet?.publishedAt,
-      });
-    } catch(e) {
-      console.error('BlueScore channel error:', e.message);
-      return res.status(500).json({ error: 'Erro ao buscar canal: ' + e.message });
-    }
-  }
+        const { d: cd } = await ytFetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}`);
+        if (quotaError(cd)) return res.status(429).json({ error: quotaMsg });
+        const ch = cd.items?.[0];
+        if (!ch) return res.status(404).json({ error: 'Canal não encontrado.' });
 
-  // ── BLUESCORE: FETCH VIDEOS ──────────────────────────────────────────────────
-  if (req.method === 'GET' && req.query?.action === 'bluescore-videos') {
-    const YT_KEY = process.env.YOUTUBE_API_KEY;
-    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada.' });
-    const { channelId } = req.query;
-    if (!channelId) return res.status(400).json({ error: 'channelId obrigatório' });
-
-    try {
-      // Busca últimos 12 vídeos do canal
-      const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=12&key=${YT_KEY}`);
-      const sd = await sr.json();
-      if (sd.error) {
-        const isQuota = sd.error.code === 403 || sd.error.message?.toLowerCase().includes('quota');
-        return res.status(400).json({ error: isQuota
-          ? 'Limite diário de análises atingido. Tente novamente amanhã.'
-          : sd.error.message });
-      }
-
-      const videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
-      if (!videoIds) return res.status(200).json({ videos: [] });
-
-      // Busca stats
-      const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}&key=${YT_KEY}`);
-      const vd = await vr.json();
-
-      const videos = (vd.items || []).map(v => {
-        const stats = v.statistics || {}, snippet = v.snippet || {};
-        const dur = v.contentDetails?.duration || '';
-        const m = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-        const secs = (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
-        return {
-          id: v.id,
-          title: snippet.title || 'Sem título',
-          publishedAt: snippet.publishedAt,
-          thumbnail: snippet.thumbnails?.medium?.url,
-          views: parseInt(stats.viewCount || 0),
-          likes: parseInt(stats.likeCount || 0),
-          comments: parseInt(stats.commentCount || 0),
-          duration: secs,
-          isShort: secs > 0 && secs <= 60,
+        const result = {
+          channelId,
+          title: ch.snippet?.title || 'Canal',
+          thumbnail: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url,
+          subscribers: parseInt(ch.statistics?.subscriberCount || 0),
+          videoCount: parseInt(ch.statistics?.videoCount || 0),
+          totalViews: parseInt(ch.statistics?.viewCount || 0),
+          country: ch.snippet?.country || '',
+          publishedAt: ch.snippet?.publishedAt,
         };
-      }).sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
-      return res.status(200).json({ videos });
-    } catch(e) {
-      console.error('BlueScore videos error:', e.message);
-      return res.status(500).json({ error: 'Erro ao buscar vídeos: ' + e.message });
+        // Salva cache
+        if (SUPA_URL && SUPA_KEY) {
+          fetch(`${SUPA_URL}/rest/v1/viral_cache`, {
+            method: 'POST',
+            headers: { ...supaH, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify({ cache_key: cacheKey, data: result, cached_at: new Date().toISOString() })
+          }).catch(()=>{});
+        }
+
+        return res.status(200).json(result);
+      } catch(e) {
+        console.error('BlueScore channel error:', e.message);
+        return res.status(500).json({ error: 'Erro ao buscar canal.' });
+      }
+    }
+
+    // ── VIDEOS ────────────────────────────────────────────────────────────────
+    if (req.query?.action === 'bluescore-videos') {
+      const { channelId } = req.query;
+      if (!channelId) return res.status(400).json({ error: 'channelId obrigatório' });
+
+      // Cache 6h
+      const cacheKey = `bs_vids_${channelId}`;
+      if (SUPA_URL && SUPA_KEY) {
+        try {
+          const cr = await fetch(`${SUPA_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=data,cached_at`, { headers: supaH });
+          if (cr.ok) {
+            const rows = await cr.json();
+            if (rows?.[0] && (Date.now() - new Date(rows[0].cached_at).getTime()) < 6*60*60*1000) {
+              console.log('BlueScore videos: CACHE HIT', channelId);
+              return res.status(200).json({ ...rows[0].data, fromCache: true });
+            }
+          }
+        } catch(e) { /* cache miss */ }
+      }
+
+      try {
+        const { d: sd } = await ytFetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=12`);
+        if (quotaError(sd)) return res.status(429).json({ error: quotaMsg });
+        if (sd.error) return res.status(400).json({ error: sd.error.message });
+
+        const videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
+        if (!videoIds) return res.status(200).json({ videos: [] });
+
+        const { d: vd } = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}`);
+        if (quotaError(vd)) return res.status(429).json({ error: quotaMsg });
+
+        const videos = (vd.items || []).map(v => {
+          const stats = v.statistics || {}, snippet = v.snippet || {};
+          const dur = v.contentDetails?.duration || '';
+          const m = dur.match(/PT(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)S)?/);
+          const secs = (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
+          return {
+            id: v.id, title: snippet.title || 'Sem título',
+            publishedAt: snippet.publishedAt,
+            thumbnail: snippet.thumbnails?.medium?.url,
+            views: parseInt(stats.viewCount || 0),
+            likes: parseInt(stats.likeCount || 0),
+            comments: parseInt(stats.commentCount || 0),
+            duration: secs, isShort: secs > 0 && secs <= 60,
+          };
+        }).sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+        const result = { videos };
+
+        // Salva cache
+        if (SUPA_URL && SUPA_KEY) {
+          fetch(`${SUPA_URL}/rest/v1/viral_cache`, {
+            method: 'POST',
+            headers: { ...supaH, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify({ cache_key: cacheKey, data: result, cached_at: new Date().toISOString() })
+          }).catch(()=>{});
+        }
+
+        return res.status(200).json(result);
+      } catch(e) {
+        console.error('BlueScore videos error:', e.message);
+        return res.status(500).json({ error: 'Erro ao buscar vídeos.' });
+      }
     }
   }
 
@@ -543,7 +607,7 @@ export default async function handler(req, res) {
 
     // Cache no Supabase: chave = region+period+category+q, TTL = 1h (24h para período 30d)
     const cacheKey = `virais_${region}_${period}_${category}_${q.slice(0,20).replace(/\s/g,'_')}`;
-    const cacheTTL = period === '30d' ? 4*60*60*1000 : 60*60*1000; // 4h ou 1h
+    const cacheTTL = period === '30d' ? 6*60*60*1000 : period === '7d' ? 3*60*60*1000 : 2*60*60*1000; // 6h, 3h ou 2h
 
     // Tenta ler cache do Supabase
     if (SUPABASE_URL && SUPABASE_KEY && !q) {
