@@ -2246,6 +2246,11 @@ pingVisit();
 // Then every 2 minutes to keep "online now" counter accurate
 setInterval(pingVisit, 2 * 60 * 1000);
 
+// When user closes tab/browser — send offline signal
+window.addEventListener('beforeunload', ()=>{
+  navigator.sendBeacon('/api/check-limit', JSON.stringify({action: 'offline'}));
+});
+
 // ── MOUSE GLOW ─────────────────────────────────────────────────────────────
 const mouseGlow = document.getElementById('mouseGlow');
 document.addEventListener('mousemove', e => {
