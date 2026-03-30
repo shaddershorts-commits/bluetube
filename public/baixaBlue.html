@@ -243,7 +243,7 @@ footer a{color:var(--neon);text-decoration:none}
       </div>
       <div class="download-options">
         <div class="download-label">Download disponível</div>
-        <a id="downloadLink" href="#" class="download-btn" target="_blank" rel="noopener" download>
+        <a id="downloadLink" href="#" class="download-btn" target="_blank" rel="noopener">
           <div class="download-btn-left">
             <div class="download-icon">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -257,6 +257,17 @@ footer a{color:var(--neon);text-decoration:none}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </div>
         </a>
+        <!-- YouTube save tip -->
+        <div id="downloadTip" style="display:none;margin-top:10px;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:12px 14px;gap:10px;align-items:flex-start">
+          <div style="font-size:20px;flex-shrink:0">💡</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-sec);line-height:1.6">
+            <strong style="color:var(--text)">Como salvar o vídeo do YouTube:</strong><br>
+            1. Clique no botão acima — o vídeo abre em nova aba<br>
+            2. Clique com o <strong style="color:var(--neon)">botão direito</strong> sobre o vídeo<br>
+            3. Selecione <strong style="color:var(--neon)">"Salvar vídeo como…"</strong><br>
+            4. Escolha onde salvar e pronto! ✓
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -421,19 +432,33 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     thumbEl.textContent = source.emoji;
   }
 
-  document.getElementById('resultQuality').textContent = 'HD · Sem marca d\'água · Download direto';
-
+  const isYouTube = source.name.toLowerCase().includes('youtube');
   const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
   const filename = `BaixaBlue_${source.name}_${safeTitle}.mp4`;
 
-  // Always use our proxy — forces file download bypassing CORS
-  const proxyUrl = `/api/auth?action=proxy-download&filename=${encodeURIComponent(filename)}&fileUrl=${encodeURIComponent(downloadUrl)}`;
-
   const dlBtn = document.getElementById('downloadLink');
-  dlBtn.href = proxyUrl;
-  dlBtn.download = filename;
-  dlBtn.removeAttribute('target');
-  dlBtn.onclick = null;
+  const qualityEl = document.getElementById('resultQuality');
+
+  if(isYouTube){
+    // YouTube: link direto, usuário clica e salva com botão direito
+    qualityEl.innerHTML = 'HD · Clique → abre o vídeo → botão direito → <strong style="color:var(--neon)">Salvar vídeo como…</strong>';
+    dlBtn.href = downloadUrl;
+    dlBtn.target = '_blank';
+    dlBtn.download = '';
+    dlBtn.onclick = null;
+    // Show tip
+    const tip = document.getElementById('downloadTip');
+    if(tip) tip.style.display = 'flex';
+  } else {
+    // TikTok, Instagram etc: download direto funciona
+    qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
+    dlBtn.href = downloadUrl;
+    dlBtn.download = filename;
+    dlBtn.removeAttribute('target');
+    dlBtn.onclick = null;
+    const tip = document.getElementById('downloadTip');
+    if(tip) tip.style.display = 'none';
+  }
 
   document.getElementById('resultCard').style.display = 'block';
 }
