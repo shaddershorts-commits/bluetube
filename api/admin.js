@@ -68,8 +68,8 @@ export default async function handler(req, res) {
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];
-    // "Online" = visited in last 30 minutes
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    // "Online" = visited in last 5 minutes
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
     const [subsRes, usageRes, viralsRes, feedbackRes, visitsRes, onlineRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers }),
@@ -78,8 +78,8 @@ export default async function handler(req, res) {
       fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers }),
       // All unique visitors today
       fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address,visited_at`, { headers }),
-      // Online now = visited in last 30 min
-      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&visited_at=gte.${thirtyMinAgo}&select=ip_address`, { headers }),
+      // Online now = visited in last 5 min
+      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&visited_at=gte.${fiveMinAgo}&select=ip_address`, { headers }),
     ]);
 
     const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow] = await Promise.all([
