@@ -2176,21 +2176,13 @@ function openMasterTool(tool){
     openUpgradeModal('master_tool');
     return;
   }
-  if(tool === 'download'){
-    window.location.href = '/baixaBlue.html';
-    return;
-  }
-  if(tool === 'viral'){
-    window.location.href = '/virais.html';
-    return;
-  }
-  const tools={
-    voice:{icon:'🎙️',title:'Voz Hiper-realista',desc:'Transforme seu roteiro em narração com voz hiper-realista em qualquer idioma. Ideal para criar Shorts sem precisar gravar. Em breve!'}
-  };
-  const t=tools[tool];
-  document.getElementById('toolModalIcon').textContent=t.icon;
-  document.getElementById('toolModalTitle').textContent=t.title;
-  document.getElementById('toolModalDesc').textContent=t.desc;
+  if(tool === 'download'){ window.location.href = '/baixaBlue.html'; return; }
+  if(tool === 'viral'){ window.location.href = '/virais.html'; return; }
+  if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
+  // Fallback modal for future tools
+  document.getElementById('toolModalIcon').textContent = '🔧';
+  document.getElementById('toolModalTitle').textContent = 'Em breve';
+  document.getElementById('toolModalDesc').textContent = 'Esta ferramenta está sendo desenvolvida. Disponível em breve para assinantes Master.';
   document.getElementById('toolModal').classList.add('on');
 }
 function closeToolModal(){document.getElementById('toolModal').classList.remove('on');}
