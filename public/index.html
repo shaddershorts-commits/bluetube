@@ -2173,14 +2173,16 @@ async function finalCancel(){
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
   if(userPlan !== 'master'){
-    // Show upgrade modal highlighting Master
     openUpgradeModal('master_tool');
     return;
   }
+  if(tool === 'download'){
+    window.location.href = '/baixaBlue.html';
+    return;
+  }
   const tools={
-    download:{icon:'⬇️',title:'Baixar Vídeos HD',desc:'Faça download de qualquer vídeo do YouTube, TikTok e Instagram em alta qualidade. Perfeito para usar como referência nos seus Shorts.'},
-    viral:{icon:'📈',title:'Vídeos Virais em Alta',desc:'Descubra os Shorts mais virais em tempo real por nicho, idioma e região. Encontre tendências antes de todo mundo.'},
-    voice:{icon:'🎙️',title:'Voz Hiper-realista',desc:'Transforme seu roteiro em narração com voz hiper-realista em qualquer idioma. Ideal para criar Shorts sem precisar gravar.'}
+    viral:{icon:'📈',title:'Vídeos Virais em Alta',desc:'Descubra os Shorts mais virais em tempo real por nicho, idioma e região. Encontre tendências antes de todo mundo. Em breve!'},
+    voice:{icon:'🎙️',title:'Voz Hiper-realista',desc:'Transforme seu roteiro em narração com voz hiper-realista em qualquer idioma. Ideal para criar Shorts sem precisar gravar. Em breve!'}
   };
   const t=tools[tool];
   document.getElementById('toolModalIcon').textContent=t.icon;
