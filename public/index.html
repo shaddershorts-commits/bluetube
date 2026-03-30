@@ -322,7 +322,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .price-increase-notice{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:#fbbf24;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:8px 14px;margin-top:20px;justify-content:center}
 .blink-dot{width:6px;height:6px;border-radius:50%;background:#fbbf24;animation:blink 1.2s infinite;flex-shrink:0}
 /* Mobile tools menu */
-.mobile-tools-btn{display:none}
+.mobile-tools-btn{display:none;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:7px 12px;cursor:pointer;transition:all .2s}
+.mobile-tools-btn:hover{background:rgba(0,170,255,.15)}
+.mobile-tools-dropdown{display:none;position:absolute;top:calc(100% + 8px);right:16px;background:rgba(2,8,23,.97);border:1px solid rgba(0,170,255,.2);border-radius:14px;padding:8px;min-width:200px;z-index:200;backdrop-filter:blur(20px);box-shadow:0 16px 48px rgba(0,0,0,.6)}
+.mobile-tools-dropdown.open{display:block;animation:fadeDown .18s ease}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.mobile-tool-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;color:var(--text-primary);width:100%;background:none;border:none;text-align:left}
+.mobile-tool-item:hover{background:rgba(0,170,255,.1)}
+.mobile-tool-item .tool-icon{width:30px;height:30px;border-radius:8px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.mobile-tool-item.bluescore-item .tool-icon{background:rgba(0,80,255,.15);border-color:rgba(251,191,36,.3)}
+.mobile-tool-item-sub{font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);display:block;font-weight:400;margin-top:1px}
+.mobile-tools-sep{height:1px;background:rgba(0,170,255,.08);margin:4px 0}
 @media(max-width:768px){
   .nav-tools-group{display:none}
   .nav-user-email{display:none}
@@ -417,6 +427,39 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         BlueScore <span style="font-size:9px">🔒</span>
       </button>
     </div>
+    <!-- Mobile: menu suspenso de ferramentas Master -->
+    <div style="position:relative">
+      <button class="mobile-tools-btn" id="mobileToolsBtn" onclick="toggleMobileTools(event)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Ferramentas
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" id="mobileChevron"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="mobile-tools-dropdown" id="mobileToolsDropdown">
+        <button class="mobile-tool-item" onclick="openMasterTool('download');closeMobileTools()">
+          <div class="tool-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00aaff" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+          <div><span>BaixaBlue</span><span class="mobile-tool-item-sub">Download HD sem marca d'água</span></div>
+        </button>
+        <button class="mobile-tool-item" onclick="openMasterTool('viral');closeMobileTools()">
+          <div class="tool-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00aaff" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+          <div><span>Virais</span><span class="mobile-tool-item-sub">Shorts em alta agora</span></div>
+        </button>
+        <button class="mobile-tool-item" onclick="openMasterTool('voice');closeMobileTools()">
+          <div class="tool-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00aaff" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+          <div><span>BlueVoice</span><span class="mobile-tool-item-sub">Narração IA hiper-realista</span></div>
+        </button>
+        <div class="mobile-tools-sep"></div>
+        <button class="mobile-tool-item bluescore-item" onclick="openMasterTool('bluescore');closeMobileTools()">
+          <div class="tool-icon" style="background:rgba(0,80,255,.2);border-color:rgba(251,191,36,.4)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <span style="display:flex;align-items:center;gap:6px">BlueScore <span style="font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700">NOVO</span></span>
+            <span class="mobile-tool-item-sub">Análise algorítmica do canal</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Comunidade
@@ -461,7 +504,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
         <div class="plan-price" id="modalMasterPrice">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Chat personalizado<br>✓ IA de voz realista<br>✓ Download HD</div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br><span style="color:var(--gold);display:flex;align-items:center;gap:4px;margin-top:4px">★ BlueScore — Análise algorítmica <span style="font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:1px 5px;border-radius:100px">NOVO</span></span></div>
       </div>
     </div>
     <button class="modal-cta" id="upgradeModalCta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
@@ -491,7 +534,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div class="plan-card" onclick="selectPlan('master')">
         <div class="plan-badge gold">👑 Master</div>
         <div class="plan-price">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Ilimitado<br>✓ Chat IA<br>✓ Voz realista</div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ Voz IA · Download HD<br>✓ Virais · BlueScore ★</div>
       </div>
     </div>
     <button class="modal-cta" onclick="handleUpgradeClick()">Desbloquear todos os idiomas →</button>
@@ -739,12 +782,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="sec-eye">Por que BlueTube</div>
     <h2 class="sec-title">Feito para criadores de Shorts.</h2>
     <div class="feat-grid">
-      <div class="feat-card"><div class="feat-icon">⚡</div><div class="feat-title">Instantâneo, sem cadastro</div><div class="feat-desc">Cole, clique, pronto. Sem conta, sem email, sem cartão. Só o Short e o roteiro.</div></div>
-      <div class="feat-card"><div class="feat-icon">🌐</div><div class="feat-title">9 idiomas</div><div class="feat-desc">PT e EN gratuitos. Upgrade para Español, Français, Deutsch, Italiano, JP, CN e AR.</div></div>
-      <div class="feat-card"><div class="feat-icon">✍️</div><div class="feat-title">2 estilos de roteiro</div><div class="feat-desc">Casual para proximidade. Apelativo para hook agressivo e máximo impacto viral.</div></div>
-      <div class="feat-card"><div class="feat-icon">🧠</div><div class="feat-title">IA que aprende</div><div class="feat-desc">Cada roteiro copiado treina o agente. Quanto mais uso, mais viral fica.</div></div>
-      <div class="feat-card"><div class="feat-icon">🔒</div><div class="feat-title">100% privado</div><div class="feat-desc">Seu conteúdo nunca é armazenado. Processe e siga — sem rastro.</div></div>
-      <div class="feat-card"><div class="feat-icon">🚀</div><div class="feat-title">Pronto para narrar</div><div class="feat-desc">Parágrafo único, fluido e natural. É só ler e gravar — sem edição.</div></div>
+      <div class="feat-card"><div class="feat-icon">📝</div><div class="feat-title">Roteiro viral em segundos</div><div class="feat-desc">Cole o Short, clique, receba 2 versões prontas para narrar. Sem edição, sem perda de tempo.</div></div>
+      <div class="feat-card"><div class="feat-icon">🎙️</div><div class="feat-title">Voz IA hiper-realista</div><div class="feat-desc">Gere narrações em português, inglês e espanhol que soam humanas. Baixe o MP3 e poste diretamente.</div></div>
+      <div class="feat-card" style="border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.04);position:relative">
+        <div style="position:absolute;top:12px;right:12px;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700">NOVO</div>
+        <div class="feat-icon">📊</div>
+        <div class="feat-title" style="color:var(--gold)">BlueScore — Análise Algorítmica</div>
+        <div class="feat-desc">Descubra o nível de confiança que o YouTube tem no seu canal. Score 0-100 com diagnóstico IA e recomendações acionáveis.</div>
+      </div>
+      <div class="feat-card"><div class="feat-icon">🔥</div><div class="feat-title">Shorts virais em tempo real</div><div class="feat-desc">Monitore os vídeos explodindo agora por país e nicho. Surfe o hype antes que todo mundo descubra.</div></div>
+      <div class="feat-card"><div class="feat-icon">⬇️</div><div class="feat-title">Download HD sem marca d'água</div><div class="feat-desc">Baixe qualquer vídeo do TikTok, Instagram e YouTube em alta qualidade para reutilizar legalmente.</div></div>
+      <div class="feat-card" style="border-color:rgba(0,170,255,.25);background:rgba(0,170,255,.04)"><div class="feat-icon">⚡</div><div class="feat-title">Assine agora — preço sobe em breve</div><div class="feat-desc">O plano Master está no preço de lançamento. Cada semana sem assinar é uma semana de vantagem que seu concorrente pode ter.</div></div>
     </div>
   </div>
 </section>
@@ -1172,7 +1220,7 @@ function openUpgradeModal(reason){
         <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
         <div class="plan-badge gold" style="margin-top:8px">Master</div>
         <div class="plan-price" id="modalMasterPrice" style="font-size:28px">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Sem limite de roteiros<br>✓ Chat IA personalizado<br>✓ IA de voz hiper realista<br>✓ Download HD<br>✓ Todos os idiomas<br>✓ Suporte prioritário</div>
+        <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="color:var(--gold);display:flex;align-items:center;gap:4px;margin-top:4px;padding:5px 8px;border:1px solid rgba(251,191,36,.3);border-radius:8px;background:rgba(251,191,36,.06)">★ BlueScore — Análise algorítmica <span style="font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:1px 6px;border-radius:100px">NOVO</span></span></div>
       </div>`;
     document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
   } else {
@@ -2173,6 +2221,25 @@ async function finalCancel(){
     updateLangOptions();
   },3000);
 }
+
+// ── MOBILE TOOLS DROPDOWN ────────────────────────────────────────────────────
+function toggleMobileTools(event) {
+  event.stopPropagation();
+  const dd = document.getElementById('mobileToolsDropdown');
+  const chevron = document.getElementById('mobileChevron');
+  const isOpen = dd.classList.contains('open');
+  dd.classList.toggle('open', !isOpen);
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+function closeMobileTools() {
+  const dd = document.getElementById('mobileToolsDropdown');
+  const chevron = document.getElementById('mobileChevron');
+  dd?.classList.remove('open');
+  if (chevron) chevron.style.transform = '';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#mobileToolsBtn') && !e.target.closest('#mobileToolsDropdown')) closeMobileTools();
+});
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
