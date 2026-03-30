@@ -423,7 +423,17 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
   }
 
   document.getElementById('resultQuality').textContent = 'HD · Sem marca d\'água · Download direto';
-  document.getElementById('downloadLink').href = downloadUrl;
+
+  // Use proxy to force download instead of opening in new tab
+  const safeTitle = (title || 'video').replace(/[^a-z0-9]/gi,'_').toLowerCase().slice(0,40);
+  const filename = `blueBlue_${source.name.toLowerCase()}_${safeTitle}.mp4`;
+  const proxyUrl = `/api/auth?action=proxy-download&filename=${encodeURIComponent(filename)}&fileUrl=${encodeURIComponent(downloadUrl)}`;
+
+  const dlBtn = document.getElementById('downloadLink');
+  dlBtn.href = proxyUrl;
+  dlBtn.download = filename;
+  dlBtn.removeAttribute('target'); // don't open in new tab
+
   document.getElementById('resultCard').style.display = 'block';
 }
 
