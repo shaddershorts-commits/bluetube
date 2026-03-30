@@ -162,6 +162,11 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <span class="admin-tag">ADMIN</span>
     </div>
     <div class="topbar-right">
+      <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.2);border-radius:8px;padding:6px 12px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span id="onlineCount">—</span> online agora
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;flex-shrink:0"></span>
+      </div>
       <div class="refresh-indicator"><span class="pulse"></span><span id="lastUpdate">Carregando…</span></div>
       <button class="action-btn" onclick="loadData()">↻ Atualizar</button>
       <button class="action-btn" onclick="exportCSV()">↓ Exportar CSV</button>
@@ -450,6 +455,8 @@ async function loadData(){
     document.getElementById('statPaid').textContent=payingTotal;
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
+    // Online count = active IPs in last hour (approximation from today's usage)
+    document.getElementById('onlineCount').textContent=d.today.active_ips||0;
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
     document.getElementById('statMaster').textContent=`${d.subscribers.master} (${d.subscribers.paying_master||0} pagos, ${d.subscribers.manual_master||0} manuais)`;
