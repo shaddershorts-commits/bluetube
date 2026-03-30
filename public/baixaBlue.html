@@ -450,20 +450,14 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     const tip = document.getElementById('downloadTip');
     if(tip) tip.style.display = 'flex';
   } else {
-    qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
-    const tip = document.getElementById('downloadTip');
-    if(tip) tip.style.display = 'none';
-
-    // Usar fetch+blob para baixar sem CORS e sem limite do proxy Vercel
-    dlBtn.href = '#';
+    // TikTok/Instagram: abre o link direto em nova aba, usuário salva com botão direito
+    qualityEl.innerHTML = 'HD · Clique → abre o vídeo → botão direito → <strong style="color:var(--neon)">Salvar vídeo como…</strong>';
+    dlBtn.href = downloadUrl;
+    dlBtn.target = '_blank';
     dlBtn.removeAttribute('download');
-    dlBtn.removeAttribute('target');
-    // Usar <a href> direto para o proxy — browser faz streaming sem limite de 4.5MB
-    const proxyUrl = `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
-    dlBtn.href = proxyUrl;
-    dlBtn.download = filename;
-    dlBtn.removeAttribute('target');
     dlBtn.onclick = null;
+    const tip = document.getElementById('downloadTip');
+    if(tip) tip.style.display = 'flex';
   }
 
   document.getElementById('resultCard').style.display = 'block';
