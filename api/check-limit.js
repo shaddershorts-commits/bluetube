@@ -26,9 +26,36 @@ export default async function handler(req, res) {
   // ── VISIT TRACKING ─────────────────────────────────────────────────────────
   if (action === 'visit') {
     try {
+      // Block private, internal, and known datacenter IP ranges
+      const isInvalid = !ip || ip === 'unknown' || ip === '0.0.0.0' ||
+        ip === '127.0.0.1' || ip === '::1' ||
+        ip.startsWith('10.') ||
+        ip.startsWith('172.') ||
+        ip.startsWith('192.168.') ||
+        ip.startsWith('169.254.') ||
+        ip.startsWith('::ffff:');
+
+      // Known datacenter ASN IP ranges (AWS, DigitalOcean, Google Cloud, Vercel, etc.)
+      // These produce false positives from bots/crawlers/health checks
+      const isDatacenter =
+        // AWS us-west regions
+        (ip.startsWith('13.') && (ip.startsWith('13.56.') || ip.startsWith('13.57.'))) ||
+        (ip.startsWith('18.') && ip.startsWith('18.144.')) ||
+        (ip.startsWith('54.') && (ip.startsWith('54.67.') || ip.startsWith('54.153.'))) ||
+        (ip.startsWith('3.') && ip.startsWith('3.101.')) ||
+        // DigitalOcean
+        ip.startsWith('137.184.') ||
+        ip.startsWith('164.92.') ||
+        ip.startsWith('134.199.') ||
+        ip.startsWith('64.23.') ||
+        ip.startsWith('24.144.');
+
+      if (isInvalid || isDatacenter) {
+        return res.status(200).json({ ok: false, reason: 'filtered' });
+      }
+
       const now = new Date().toISOString();
-      // Upsert: insert or update visited_at for this IP today
-      const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
