@@ -48,16 +48,28 @@ export default async function handler(req, res) {
     const decodedUrl = decodeURIComponent(fileUrl);
     const decodedName = decodeURIComponent(filename);
 
+    // Detect platform from URL to set correct Referer
+    const isTikTok = decodedUrl.includes('tiktok') || decodedUrl.includes('tikwm') || decodedUrl.includes('muscdn');
+    const isInstagram = decodedUrl.includes('instagram') || decodedUrl.includes('cdninstagram') || decodedUrl.includes('fbcdn');
+    const referer = isTikTok ? 'https://www.tiktok.com/'
+      : isInstagram ? 'https://www.instagram.com/'
+      : 'https://www.youtube.com/';
+    const origin = isTikTok ? 'https://www.tiktok.com'
+      : isInstagram ? 'https://www.instagram.com'
+      : 'https://www.youtube.com';
+
     try {
+      console.log('Proxy downloading from:', decodedUrl.slice(0, 80), '| platform:', isTikTok ? 'tiktok' : isInstagram ? 'instagram' : 'other');
       const fileRes = await fetch(decodedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
+          'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
           'Accept-Encoding': 'identity',
-          'Referer': 'https://www.youtube.com/',
-          'Origin': 'https://www.youtube.com',
+          'Referer': referer,
+          'Origin': origin,
           'Sec-Fetch-Dest': 'video',
           'Sec-Fetch-Mode': 'no-cors',
+          'Sec-Fetch-Site': 'same-site',
         }
       });
 
@@ -190,34 +202,90 @@ export default async function handler(req, res) {
 
       // ── TIKTOK ──────────────────────────────────────────────────────────
       else if (platform === 'tiktok') {
-        // Use tikwm.com API (free, no watermark)
-        const r = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&count=12&cursor=0&web=1&hd=1`);
-        if (r.ok) {
-          const d = await r.json();
-          if (d.code === 0 && d.data) {
-            downloadUrl = d.data.hdplay || d.data.play;
-            title = d.data.title || 'TikTok';
-            thumbnail = d.data.cover;
+        const rapidKey = process.env.RAPIDAPI_KEY;
+
+        // Method 1: tikwm.com (free, no key needed)
+        try {
+          const r = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&count=12&cursor=0&web=1&hd=1`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            console.log('TikWM response code:', d.code, 'has data:', !!d.data);
+            if (d.code === 0 && d.data) {
+              downloadUrl = d.data.hdplay || d.data.play || d.data.wmplay;
+              title = d.data.title || 'TikTok';
+              thumbnail = d.data.cover || d.data.origin_cover;
+            }
           }
+        } catch(e) { console.log('tikwm failed:', e.message); }
+
+        // Method 2: RapidAPI TikTok downloader
+        if (!downloadUrl && rapidKey) {
+          try {
+            const r = await fetch(`https://tiktok-download-without-watermark.p.rapidapi.com/analysis?url=${encodeURIComponent(url)}&hd=1`, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'tiktok-download-without-watermark.p.rapidapi.com'
+              }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              console.log('TikTok RapidAPI:', JSON.stringify(d).slice(0, 200));
+              downloadUrl = d.data?.hdplay || d.data?.play || d.data?.wmplay;
+              title = d.data?.title || 'TikTok';
+              thumbnail = d.data?.cover;
+            }
+          } catch(e) { console.log('tiktok rapidapi failed:', e.message); }
         }
       }
 
       // ── INSTAGRAM ───────────────────────────────────────────────────────
       else if (platform === 'instagram') {
         const rapidKey = process.env.RAPIDAPI_KEY;
-        if (rapidKey) {
+        if (!rapidKey) {
+          return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada.' });
+        }
+
+        // Method 1: instagram-downloader-download-instagram-videos-stories
+        try {
           const r = await fetch(`https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
               'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com'
             }
           });
+          console.log('Instagram API 1 status:', r.status);
           if (r.ok) {
             const d = await r.json();
-            downloadUrl = d.media || d.video || d.url;
+            console.log('Instagram API 1 response:', JSON.stringify(d).slice(0, 300));
+            downloadUrl = d.media || d.video || d.url || (Array.isArray(d) && d[0]?.url);
             title = d.title || 'Instagram';
-            thumbnail = d.thumbnail;
+            thumbnail = d.thumbnail || d.cover;
           }
+        } catch(e) { console.log('instagram api1 failed:', e.message); }
+
+        // Method 2: instagram-scraper-api2
+        if (!downloadUrl) {
+          try {
+            const r = await fetch(`https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${encodeURIComponent(url)}`, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
+              }
+            });
+            console.log('Instagram API 2 status:', r.status);
+            if (r.ok) {
+              const d = await r.json();
+              console.log('Instagram API 2 response keys:', Object.keys(d));
+              const media = d.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0];
+              if (media) {
+                downloadUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
+                title = media.caption?.text?.slice(0, 60) || 'Instagram';
+                thumbnail = media.image_versions2?.candidates?.[0]?.url;
+              }
+            }
+          } catch(e) { console.log('instagram api2 failed:', e.message); }
         }
       }
 
@@ -241,6 +309,7 @@ export default async function handler(req, res) {
       }
 
       if (!downloadUrl) {
+        console.error(`[download] FAILED platform=${platform} url=${url.slice(0,80)}`);
         return res.status(400).json({
           error: 'Não foi possível extrair o vídeo.',
           platform,
