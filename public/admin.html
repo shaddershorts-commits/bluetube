@@ -608,31 +608,27 @@ async function loadData(){
     if(!refreshInterval) startAutoRefresh();
 
   }catch(err){
-    console.error(err);
-    document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave.';
+    console.error('Admin loadData error:', err);
     showProgress(0);
+    // Don't hide dashboard if already shown — just show error in lastUpdate
+    const lastUpdateEl = document.getElementById('lastUpdate');
+    if(lastUpdateEl) lastUpdateEl.textContent = '⚠ Erro ao atualizar — '+new Date().toLocaleTimeString('pt-BR');
+    // Only show login error if dashboard isn't visible yet
+    if(document.getElementById('dashboard').style.display==='none'){
+      document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave e tente novamente.';
+    }
   }
 }
 
 function startAutoRefresh(){
   nextRefreshSecs=30;
+  if(refreshInterval) clearInterval(refreshInterval);
   refreshInterval=setInterval(()=>{
     nextRefreshSecs--;
-    document.getElementById('nextRefresh').textContent=`próxima atualização em ${nextRefreshSecs}s`;
+    const el=document.getElementById('nextRefresh');
+    if(el) el.textContent=`próxima atualização em ${nextRefreshSecs}s`;
     if(nextRefreshSecs<=0){nextRefreshSecs=30;loadData();}
   },1000);
-
-  // Refresh ONLY online count every 10 seconds (lightweight)
-  setInterval(async()=>{
-    if(!adminKey) return;
-    try{
-      const r = await fetch('/api/admin', {headers:{'x-admin-key': adminKey}});
-      if(!r.ok) return;
-      const d = await r.json();
-      const onlineEl = document.getElementById('onlineCount');
-      if(onlineEl && d.visits) onlineEl.textContent = d.visits.online_now || 0;
-    }catch(e){}
-  }, 10000);
 }
 
 let editingEmail='';
