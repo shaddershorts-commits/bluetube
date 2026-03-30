@@ -56,6 +56,16 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .credit-reset{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
 .btn-preview{display:flex;align-items:center;gap:4px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.25);border-radius:6px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--neon);cursor:pointer;transition:all .2s;white-space:nowrap}
 .btn-preview:hover{background:rgba(0,170,255,.2);border-color:rgba(0,170,255,.5)}
+/* ── WAVE PLAYER ── */
+.wave-player{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:12px}
+.wp-btn{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;box-shadow:0 0 16px rgba(0,170,255,.3)}
+.wp-btn:hover{transform:scale(1.08);box-shadow:0 0 24px rgba(0,170,255,.5)}
+.wp-btn svg{color:#fff;margin-left:2px}
+.wp-btn.playing svg{margin-left:0}
+.wp-track{flex:1;position:relative;cursor:pointer;height:48px}
+.wp-canvas{width:100%;height:48px;display:block}
+.wp-progress{position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(0,170,255,.15);border-radius:4px;pointer-events:none;transition:width .1s linear}
+.wp-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);flex-shrink:0;min-width:32px;text-align:right}
 
 /* MAIN CARD */
 .main-card{background:var(--card);border:1px solid var(--neon-border);border-radius:20px;padding:28px;position:relative;overflow:hidden}
@@ -280,39 +290,61 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         </div>
 
         <!-- Version 1 -->
+        <!-- Versão A -->
         <div class="result-card fade-in" id="result1">
           <div class="result-header">
-            <div class="result-num">1</div>
-            <div>
+            <div class="result-num">A</div>
+            <div style="flex:1">
               <div class="result-voice-name" id="r1VoiceName">—</div>
-              <div class="result-tag" id="r1Tag">Versão A</div>
+              <div class="result-tag" id="r1Tag">Versão A · Balanceada</div>
             </div>
             <div class="result-actions">
-              <a id="r1Download" class="btn-dl" download="blueVoice-v1.mp3">
+              <a id="r1Download" class="btn-dl" download="BlueTube-v1.mp3">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Baixar
               </a>
             </div>
           </div>
-          <audio id="audio1" controls></audio>
+          <!-- Player moderno -->
+          <div class="wave-player" id="wp1">
+            <button class="wp-btn" id="wpBtn1" onclick="togglePlay(1)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <div class="wp-track">
+              <canvas class="wp-canvas" id="wpCanvas1" height="48"></canvas>
+              <div class="wp-progress" id="wpProgress1"></div>
+            </div>
+            <span class="wp-time" id="wpTime1">0:00</span>
+          </div>
+          <audio id="audio1" style="display:none"></audio>
         </div>
 
-        <!-- Version 2 -->
+        <!-- Versão B -->
         <div class="result-card fade-in" id="result2" style="animation-delay:.1s">
           <div class="result-header">
-            <div class="result-num" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.25);color:var(--gold)">2</div>
-            <div>
+            <div class="result-num" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.25);color:var(--gold)">B</div>
+            <div style="flex:1">
               <div class="result-voice-name" id="r2VoiceName">—</div>
-              <div class="result-tag" id="r2Tag">Versão B</div>
+              <div class="result-tag" id="r2Tag">Versão B · Expressiva</div>
             </div>
             <div class="result-actions">
-              <a id="r2Download" class="btn-dl" download="blueVoice-v2.mp3">
+              <a id="r2Download" class="btn-dl" download="BlueTube-v2.mp3">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Baixar
               </a>
             </div>
           </div>
-          <audio id="audio2" controls></audio>
+          <div class="wave-player" id="wp2">
+            <button class="wp-btn" id="wpBtn2" onclick="togglePlay(2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <div class="wp-track" onclick="seekAudio(event, 2)">
+              <canvas class="wp-canvas" id="wpCanvas2" height="48"></canvas>
+              <div class="wp-progress" id="wpProgress2"></div>
+            </div>
+            <span class="wp-time" id="wpTime2">0:00</span>
+          </div>
+          <audio id="audio2" style="display:none"></audio>
         </div>
 
         <!-- Regen row -->
@@ -395,103 +427,26 @@ if (!token || plan !== 'master') {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA ───────────────────────────────────────────────────────────────
-// Vozes curadas — as mais naturais para narração de Shorts
-// preview: sample MP3 público do ElevenLabs (10s, sem gastar crédito)
+// ── VOICES DATA — IDs verificados ElevenLabs ─────────────────────────────────
+// Preview carregado via /api/auth?action=voice-preview (sem CORS, sem custo)
 const VOICES = [
   // ── PT-BR ──────────────────────────────────────────────────────────────────
-  {
-    id: 'XrExE9yKIg1WjnnlVkGX', name: 'Mateus', lang: 'pt', flag: '🇧🇷',
-    gender: 'Masculino', age: 'Jovem', style: 'Energético',
-    desc: 'Empolgante, viral, perfeito para Shorts',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b7f1bedc-8cd4-46ea-b7b1-8da0fbbec0c0.mp3'
-  },
-  {
-    id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', lang: 'pt', flag: '🇧🇷',
-    gender: 'Masculino', age: 'Adulto', style: 'Profissional',
-    desc: 'Profissional, claro, autoridade',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/onwK4e9ZLuTAKqWW03F9/7eee0236-1a6d-4b23-9f7a-0cd67b28a7cd.mp3'
-  },
-  {
-    id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos', lang: 'pt', flag: '🇧🇷',
-    gender: 'Masculino', age: 'Adulto', style: 'Narração',
-    desc: 'Grave, impactante, storytelling',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/IKne3meq5aSn9XLyUdCD/102da9a0-8a0a-4b79-8fd0-d7e01b3f5e91.mp3'
-  },
-  {
-    id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', lang: 'pt', flag: '🇧🇷',
-    gender: 'Feminino', age: 'Adulto', style: 'Profissional',
-    desc: 'Clara, confiante, apresentadora',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/d10f7534-11f6-41fe-a012-2de1e482d336.mp3'
-  },
-  {
-    id: 'XB0fDUnXU5powFXDhCwa', name: 'Ana', lang: 'pt', flag: '🇧🇷',
-    gender: 'Feminino', age: 'Jovem', style: 'Casual',
-    desc: 'Natural, jovem, casual',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/XB0fDUnXU5powFXDhCwa/942356dc-f10d-4d89-b58b-9b99fec7b65a.mp3'
-  },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Profissional, autoridade, narração' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Voz grave, storytelling, impacto' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',    lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem', style: 'Energético',   desc: 'Intenso, animado, Shorts virais' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',   lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', desc: 'Clara, confiante, apresentadora' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem', style: 'Casual',       desc: 'Natural, jovem, casual' },
   // ── ENGLISH ────────────────────────────────────────────────────────────────
-  {
-    id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', lang: 'en', flag: '🇺🇸',
-    gender: 'Masculino', age: 'Adulto', style: 'Narração',
-    desc: 'Deep, authoritative, narrative',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9c-a036-8515714d2653.mp3'
-  },
-  {
-    id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', lang: 'en', flag: '🇺🇸',
-    gender: 'Feminino', age: 'Adulto', style: 'Energético',
-    desc: 'Energetic, young, upbeat',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a3e33c-6e99-4ee7-8543-d45adf7d4d2a.mp3'
-  },
-  {
-    id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', lang: 'en', flag: '🇺🇸',
-    gender: 'Masculino', age: 'Jovem', style: 'Casual',
-    desc: 'Warm, natural, conversational',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/TxGEqnHWrfWFTfGW9XjX/cae54cfc-6b17-4cad-83e4-24dd62895f6e.mp3'
-  },
-  {
-    id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', lang: 'en', flag: '🇺🇸',
-    gender: 'Feminino', age: 'Adulto', style: 'Narração',
-    desc: 'Calm, versatile, professional',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3'
-  },
-  {
-    id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', lang: 'en', flag: '🇺🇸',
-    gender: 'Masculino', age: 'Adulto', style: 'Profissional',
-    desc: 'Crisp, authoritative, documentary',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/VR6AewLTigWG4xSOukaG/316050d5-a26a-4d74-a2dd-0f9c4e98e5c9.mp3'
-  },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Deep, authoritative, documentary' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   desc: 'Energetic, upbeat, social media' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Warm, natural, conversational' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',  lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     desc: 'Calm, versatile, professional' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Crisp, authoritative, impactful' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Smooth, well-rounded, natural' },
   // ── ESPAÑOL ────────────────────────────────────────────────────────────────
-  {
-    id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego', lang: 'es', flag: '🇲🇽',
-    gender: 'Masculino', age: 'Adulto', style: 'Casual',
-    desc: 'Natural, neutro, versátil',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/GBv7mTt0atIp3Br8iCZy/98542988-1081-4b7c-8913-5b4b3cddc785.mp3'
-  },
-  {
-    id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina', lang: 'es', flag: '🇲🇽',
-    gender: 'Feminino', age: 'Jovem', style: 'Energético',
-    desc: 'Energética, jovem, social media',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/oWAxZDx7w5VEj9dCyTzz/eb54f75e-db66-4af8-a358-f46d07f64d5f.mp3'
-  },
-  {
-    id: 'ErXwobaYiN019PkySvjV', name: 'Marco', lang: 'es', flag: '🇪🇸',
-    gender: 'Masculino', age: 'Adulto', style: 'Profissional',
-    desc: 'Profesional, claro, presentador',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/ErXwobaYiN019PkySvjV/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3'
-  },
-  {
-    id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan', lang: 'es', flag: '🇲🇽',
-    gender: 'Masculino', age: 'Jovem', style: 'Casual',
-    desc: 'Jovem, natural, conversacional',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/CwhRBWXzGAHq8TQ4Fs17/33a4d923-40bf-4a7b-8065-6c11a3f1f9c7.mp3'
-  },
-  {
-    id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex', lang: 'pt', flag: '🇧🇷',
-    gender: 'Masculino', age: 'Jovem', style: 'Energético',
-    desc: 'Intenso, animado, perfeito para shorts virais',
-    preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/dff5c7ef-0e7f-4b63-a10c-7e0cec9d7b87.mp3'
-  },
+  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',   lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Natural, neutro, versátil' },
+  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina',lang:'es', flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem', style: 'Energético',   desc: 'Energética, jovem, redes sociais' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',     lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Jovem, natural, conversacional' },
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -609,29 +564,48 @@ function focusVoicePanel() {
   document.getElementById('voiceSearch').focus();
 }
 
-// ── PREVIEW DA VOZ (amostra fixa, sem gastar crédito) ────────────────────────
+// ── PREVIEW DA VOZ (via backend proxy — sem CORS) ────────────────────────────
 let currentPreview = null;
-function previewVoice(id, event) {
+async function previewVoice(id, event) {
   event?.stopPropagation();
-  const voice = VOICES.find(v => v.id === id);
-  if (!voice?.preview) { showToast('Prévia não disponível para esta voz.'); return; }
+
+  // Reseta todos os botões
+  document.querySelectorAll('.btn-preview').forEach(b => {
+    b.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+    b.disabled = false;
+  });
 
   if (currentPreview) { currentPreview.pause(); currentPreview = null; }
 
-  // Atualiza ícone do botão de preview
-  document.querySelectorAll('.btn-preview').forEach(b => {
-    b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
-  });
-
-  const audio = new Audio(voice.preview);
-  currentPreview = audio;
   const btn = document.querySelector(`[data-preview="${id}"]`);
-  if (btn) btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
-  audio.play().catch(() => showToast('Prévia indisponível. Tente selecionar a voz e gerar.'));
-  audio.onended = () => {
-    if (btn) btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
-    currentPreview = null;
-  };
+  if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
+
+  try {
+    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
+    const data = await r.json();
+    if (!r.ok || !data.audio) throw new Error(data.error || 'Prévia indisponível');
+
+    const bin = atob(data.audio);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    currentPreview = audio;
+    if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Parar`;
+    btn && (btn.disabled = false);
+
+    audio.play();
+    audio.onended = () => {
+      if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+      currentPreview = null;
+      URL.revokeObjectURL(url);
+    };
+  } catch(e) {
+    if (btn) { btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`; btn.disabled = false; }
+    showToast('Prévia indisponível para esta voz.');
+  }
 }
 
 // ── GENERATE ──────────────────────────────────────────────────────────────────
@@ -784,6 +758,124 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lastText) updateRegenBadge();
   });
 });
+
+// ── WAVE PLAYER ENGINE ───────────────────────────────────────────────────────
+const wpState = { 1: { playing: false }, 2: { playing: false } };
+
+function drawWaveform(canvasId, audioBuffer) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 400;
+  canvas.width = W * window.devicePixelRatio;
+  canvas.style.width = W + 'px';
+  ctx.scale(window.devicePixelRatio, 1);
+  const H = 48;
+  const data = audioBuffer.getChannelData(0);
+  const bars = Math.floor(W / 3);
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < bars; i++) {
+    const start = Math.floor(i * (data.length / bars));
+    const end = Math.floor((i + 1) * (data.length / bars));
+    let max = 0;
+    for (let j = start; j < end; j++) max = Math.max(max, Math.abs(data[j] || 0));
+    const h = Math.max(3, max * 42);
+    const x = i * 3;
+    const y = (H - h) / 2;
+    const alpha = 0.25 + max * 0.75;
+    ctx.fillStyle = `rgba(0,170,255,${alpha})`;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, 2, h, 1);
+    else ctx.rect(x, y, 2, h);
+    ctx.fill();
+  }
+}
+
+function animateProgress(n) {
+  const audio = document.getElementById('audio' + n);
+  const progress = document.getElementById('wpProgress' + n);
+  const timeEl = document.getElementById('wpTime' + n);
+  if (!audio) return;
+  function frame() {
+    if (!wpState[n].playing) return;
+    const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+    if (progress) progress.style.width = pct + '%';
+    const s = Math.floor(audio.currentTime);
+    const total = Math.floor(audio.duration || 0);
+    if (timeEl) timeEl.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} / ${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function togglePlay(n) {
+  const audio = document.getElementById('audio' + n);
+  const btn = document.getElementById('wpBtn' + n);
+  if (!audio || !audio.src) return;
+  const other = n === 1 ? 2 : 1;
+  // Pausa o outro player
+  const otherAudio = document.getElementById('audio' + other);
+  if (wpState[other].playing && otherAudio) {
+    otherAudio.pause();
+    wpState[other].playing = false;
+    const ob = document.getElementById('wpBtn' + other);
+    if (ob) { ob.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'; ob.classList.remove('playing'); }
+  }
+  if (wpState[n].playing) {
+    audio.pause();
+    wpState[n].playing = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+    btn.classList.remove('playing');
+  } else {
+    audio.play();
+    wpState[n].playing = true;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    btn.classList.add('playing');
+    animateProgress(n);
+    audio.onended = () => {
+      wpState[n].playing = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+      btn.classList.remove('playing');
+      const p = document.getElementById('wpProgress' + n);
+      if (p) p.style.width = '0%';
+      const t = document.getElementById('wpTime' + n);
+      if (t) t.textContent = '0:00';
+    };
+  }
+}
+
+function seekAudio(event, n) {
+  const audio = document.getElementById('audio' + n);
+  if (!audio?.duration) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  audio.currentTime = ((event.clientX - rect.left) / rect.width) * audio.duration;
+}
+
+function setAudio(audioId, dlId, base64, filename) {
+  const blob = b64ToBlob(base64, 'audio/mpeg');
+  const url = URL.createObjectURL(blob);
+  const audioEl = document.getElementById(audioId);
+  if (audioEl) audioEl.src = url;
+  const dl = document.getElementById(dlId);
+  if (dl) { dl.href = url; dl.download = filename; }
+
+  const n = audioId === 'audio1' ? 1 : 2;
+  wpState[n].playing = false;
+  const btn = document.getElementById('wpBtn' + n);
+  if (btn) { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'; btn.classList.remove('playing'); }
+  const prog = document.getElementById('wpProgress' + n);
+  if (prog) prog.style.width = '0%';
+  const timeEl = document.getElementById('wpTime' + n);
+  if (timeEl) timeEl.textContent = '0:00';
+
+  // Decodifica e desenha waveform
+  blob.arrayBuffer().then(buf => {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    ac.decodeAudioData(buf, decoded => {
+      requestAnimationFrame(() => drawWaveform('wpCanvas' + n, decoded));
+    });
+  }).catch(() => {});
+}
 
 // ── TOAST ────────────────────────────────────────────────────────────────────
 let toastTimer;
