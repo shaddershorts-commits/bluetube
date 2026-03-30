@@ -386,41 +386,23 @@ async function startDownload(){
   startProgress();
 
   try{
-    // Use cobalt.tools API — free, open, no watermark
-    const apiUrl = 'https://api.cobalt.tools/';
-    const r = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        url: url,
-        videoQuality: '1080',
-        audioFormat: 'mp3',
-        filenameStyle: 'pretty',
-        disableMetadata: false,
-      })
-    });
-
+    // Call our backend proxy
+    const r = await fetch(`/api/auth?action=download&url=${encodeURIComponent(url)}`);
     const data = await r.json();
-    finishProgress(true);
 
-    if(data.status === 'stream' || data.status === 'redirect' || data.url || data.tunnel){
-      const downloadUrl = data.url || data.tunnel;
-      const source = detectSource(url);
-      showResult(downloadUrl, source, url);
-    } else if(data.status === 'picker' && data.picker?.length > 0){
-      // Multiple options (Instagram carousels etc) — take first
-      const downloadUrl = data.picker[0].url;
-      const source = detectSource(url);
-      showResult(downloadUrl, source, url);
-    } else {
-      showError('Não foi possível extrair o vídeo. Verifique se o link é público e tente novamente.');
+    finishProgress(r.ok && data.url);
+
+    if(!r.ok || !data.url){
+      showError(data.error || 'Não foi possível extrair o vídeo. Verifique se o link é público.');
+      return;
     }
+
+    const source = detectSource(url);
+    showResult(data.url, { name: data.platform ? data.platform.charAt(0).toUpperCase() + data.platform.slice(1) : source.name, emoji: source.emoji }, url, data.title, data.thumbnail);
+
   }catch(e){
     finishProgress(false);
-    showError('Erro ao processar o link. Verifique sua conexão e tente novamente.');
+    showError('Erro de conexão. Verifique sua internet e tente novamente.');
     console.error(e);
   }finally{
     btn.disabled = false;
@@ -428,10 +410,18 @@ async function startDownload(){
   }
 }
 
-function showResult(downloadUrl, source, originalUrl){
-  document.getElementById('resultTitle').textContent = source.name + ' — Vídeo encontrado';
+function showResult(downloadUrl, source, originalUrl, title, thumbnail){
+  document.getElementById('resultTitle').textContent = title || (source.name + ' — Vídeo encontrado');
   document.getElementById('resultSource').textContent = source.name + ' · ' + new URL(originalUrl).hostname;
-  document.getElementById('resultThumb').textContent = source.emoji;
+
+  // Show thumbnail if available
+  const thumbEl = document.getElementById('resultThumb');
+  if(thumbnail){
+    thumbEl.outerHTML = `<img id="resultThumb" src="${thumbnail}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.outerHTML='<div id=resultThumb class=result-thumb-placeholder>${source.emoji}</div>'"/>`;
+  } else {
+    thumbEl.textContent = source.emoji;
+  }
+
   document.getElementById('resultQuality').textContent = 'HD · Sem marca d\'água · Download direto';
   document.getElementById('downloadLink').href = downloadUrl;
   document.getElementById('resultCard').style.display = 'block';
