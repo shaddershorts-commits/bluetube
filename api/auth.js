@@ -577,6 +577,36 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'voice-preview') {
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+    const { voiceId } = req.query;
+    if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
+
+    try {
+      // Busca metadados da voz incluindo preview_url
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
+        headers: { 'xi-api-key': XI_KEY }
+      });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
+      const data = await r.json();
+      const previewUrl = data.preview_url;
+      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
+
+      // Faz proxy do áudio para evitar CORS
+      const audioRes = await fetch(previewUrl);
+      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
+
+      const audioBuffer = await audioRes.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString('base64');
+      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
+    } catch(e) {
+      console.error('Preview error:', e.message);
+      return res.status(500).json({ error: 'Prévia indisponível' });
+    }
+  }
+
   // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
   if (req.body?.action === 'tts') {
     const XI_KEY = process.env.ELEVENLABS_API_KEY;
