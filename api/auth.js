@@ -111,41 +111,55 @@ export default async function handler(req, res) {
         title = 'YouTube Short';
 
         const rapidKey = process.env.RAPIDAPI_KEY;
-        if (!rapidKey) {
-          return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada no Vercel. Adicione a variável de ambiente.' });
-        }
+        if (!rapidKey) return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada no Vercel.' });
 
-        // Try YouTube Media Downloader API
-        const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+        // Try YTStream API first — returns direct downloadable links
+        let r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
           headers: {
             'x-rapidapi-key': rapidKey,
-            'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
+            'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
           }
         });
 
-        const d = await r.json();
-        console.log('YouTube API response status:', r.status, 'data keys:', Object.keys(d));
-
-        if (!r.ok) {
-          return res.status(400).json({ error: `Erro YouTube API: ${d.message || d.error || r.status}` });
+        if (r.ok) {
+          const d = await r.json();
+          title = d.title || title;
+          // YTStream returns formats with direct URLs
+          const formats = d.formats || {};
+          // Pick best quality: 1080p > 720p > 480p > 360p
+          const preferred = ['1080', '720', '480', '360', '240'];
+          for (const q of preferred) {
+            if (formats[q]?.url) { downloadUrl = formats[q].url; break; }
+          }
+          // Fallback to adaptiveFormats
+          if (!downloadUrl && d.adaptiveFormats) {
+            const videoFormats = d.adaptiveFormats.filter(f => f.mimeType?.includes('video/mp4'));
+            const best = videoFormats.sort((a, b) => (parseInt(b.height)||0) - (parseInt(a.height)||0))[0];
+            downloadUrl = best?.url;
+          }
         }
 
-        title = d.title || title;
-        thumbnail = d.thumbnails?.quality?.[0]?.url || thumbnail;
-
-        // Get best video format with audio
-        const videos = d.videos?.items || [];
-        console.log('Available formats:', videos.map(v => `${v.height}p ${v.extension}`));
-
-        const best = videos.find(f => f.height >= 720 && f.extension === 'mp4')
-          || videos.find(f => f.height >= 480 && f.extension === 'mp4')
-          || videos.find(f => f.extension === 'mp4')
-          || videos[0];
-
-        downloadUrl = best?.url;
+        // Fallback to youtube-media-downloader
+        if (!downloadUrl) {
+          r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
+            }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            title = d.title || title;
+            thumbnail = d.thumbnails?.quality?.[0]?.url || thumbnail;
+            const videos = d.videos?.items || [];
+            const best = videos.find(f => f.height >= 720 && f.extension === 'mp4')
+              || videos.find(f => f.extension === 'mp4') || videos[0];
+            downloadUrl = best?.url;
+          }
+        }
 
         if (!downloadUrl) {
-          return res.status(400).json({ error: 'Nenhum formato de download disponível para este vídeo.' });
+          return res.status(400).json({ error: 'Não foi possível obter link de download para este vídeo. Tente novamente.' });
         }
       }
 
