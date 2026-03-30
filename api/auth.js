@@ -40,6 +40,49 @@ export default async function handler(req, res) {
 
   // ── LANGUAGE DETECTION (GET) ───────────────────────────────────────────────
   // ── VIRAL SHORTS ──────────────────────────────────────────────────────────
+  // ── FILE DOWNLOAD PROXY (streams the file through our server) ─────────────
+  if (req.method === 'GET' && req.query?.action === 'proxy-download') {
+    const { fileUrl, filename = 'video.mp4' } = req.query;
+    if (!fileUrl) return res.status(400).json({ error: 'fileUrl obrigatória' });
+
+    try {
+      const fileRes = await fetch(decodeURIComponent(fileUrl), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.youtube.com/',
+          'Origin': 'https://www.youtube.com'
+        }
+      });
+
+      if (!fileRes.ok) {
+        return res.status(400).json({ error: 'Não foi possível baixar o arquivo.' });
+      }
+
+      const contentType = fileRes.headers.get('content-type') || 'video/mp4';
+      const contentLength = fileRes.headers.get('content-length');
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${decodeURIComponent(filename)}"`);
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
+      // Stream the response
+      const reader = fileRes.body.getReader();
+      const pump = async () => {
+        const { done, value } = await reader.read();
+        if (done) { res.end(); return; }
+        res.write(Buffer.from(value));
+        return pump();
+      };
+      await pump();
+
+    } catch(e) {
+      console.error('Proxy download error:', e);
+      return res.status(500).json({ error: 'Erro ao fazer proxy do download.' });
+    }
+    return;
+  }
+
   // ── VIDEO DOWNLOAD PROXY ──────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'download') {
     const { url } = req.query;
