@@ -209,7 +209,7 @@ export default async function handler(req, res) {
 
         // Method 1: tiktok-download-without-watermark4 (subscribed)
         try {
-          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/tiktok?search=${encodeURIComponent(url)}`, {
+          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/tiktok?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
               'x-rapidapi-host': 'tiktok-download-without-watermark4.p.rapidapi.com'
