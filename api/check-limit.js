@@ -24,28 +24,20 @@ export default async function handler(req, res) {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
   // ── VISIT TRACKING ─────────────────────────────────────────────────────────
-  // Register a unique IP visit for the day (no script generation needed)
   if (action === 'visit') {
     try {
-      // Check if this IP already visited today in ip_visits
-      const checkRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/ip_visits?ip_address=eq.${encodeURIComponent(ip)}&visit_date=eq.${today}&select=id`,
-        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
-      );
-      const existing = await checkRes.json();
-      if (!existing?.length) {
-        // New visit — insert
-        await fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: new Date().toISOString() })
-        });
-      }
+      const now = new Date().toISOString();
+      // Upsert: insert or update visited_at for this IP today
+      const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: now })
+      });
       return res.status(200).json({ ok: true });
     } catch (e) {
       return res.status(200).json({ ok: false });
