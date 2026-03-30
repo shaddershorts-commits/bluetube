@@ -588,6 +588,18 @@ function startAutoRefresh(){
     document.getElementById('nextRefresh').textContent=`próxima atualização em ${nextRefreshSecs}s`;
     if(nextRefreshSecs<=0){nextRefreshSecs=30;loadData();}
   },1000);
+
+  // Refresh ONLY online count every 10 seconds (lightweight)
+  setInterval(async()=>{
+    if(!adminKey) return;
+    try{
+      const r = await fetch('/api/admin', {headers:{'x-admin-key': adminKey}});
+      if(!r.ok) return;
+      const d = await r.json();
+      const onlineEl = document.getElementById('onlineCount');
+      if(onlineEl && d.visits) onlineEl.textContent = d.visits.online_now || 0;
+    }catch(e){}
+  }, 10000);
 }
 
 let editingEmail='';
