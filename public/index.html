@@ -2234,20 +2234,17 @@ addHeroIds();
 detectAndTranslate();
 
 // ── VISIT TRACKING ─────────────────────────────────────────────────────────
-// Track unique IP visit — called once per session, cached for 30 min
-(function trackVisit(){
-  const lastVisit = localStorage.getItem('bt_last_visit');
-  const now = Date.now();
-  // Only ping every 25 minutes to match the 30min "online" window in admin
-  if(!lastVisit || now - parseInt(lastVisit) > 25 * 60 * 1000){
-    localStorage.setItem('bt_last_visit', now.toString());
-    fetch('/api/check-limit', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({action: 'visit'})
-    }).catch(()=>{});
-  }
-})();
+function pingVisit(){
+  fetch('/api/check-limit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'visit'})
+  }).catch(()=>{});
+}
+// Ping immediately on load
+pingVisit();
+// Then every 2 minutes to keep "online now" counter accurate
+setInterval(pingVisit, 2 * 60 * 1000);
 
 // ── MOUSE GLOW ─────────────────────────────────────────────────────────────
 const mouseGlow = document.getElementById('mouseGlow');
