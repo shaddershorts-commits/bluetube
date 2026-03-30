@@ -209,14 +209,15 @@ export default async function handler(req, res) {
 
         // Method 1: tiktok-download-without-watermark4 (subscribed)
         try {
-          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/getVideoInfo?url=${encodeURIComponent(url)}`, {
+          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/tiktok?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
               'x-rapidapi-host': 'tiktok-download-without-watermark4.p.rapidapi.com'
             }
           });
           const d = await r.json();
-          console.log('TikTok API1 status:', r.status, JSON.stringify(d).slice(0,300));
+          console.log('TikTok API1 status:', r.status, JSON.stringify(d).slice(0,400));
+          if (!r.ok) { console.log('TikTok API1 error body:', JSON.stringify(d)); }
           // Try multiple possible response shapes
           const videoData = d.data || d.result || d;
           const hdUrl = videoData.hdplay || videoData.play || videoData.wmplay
