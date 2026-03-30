@@ -54,8 +54,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .credit-bar-wrap{flex:1;background:rgba(251,191,36,.1);border-radius:100px;height:4px;overflow:hidden}
 .credit-bar-fill{height:100%;background:linear-gradient(90deg,#92400e,var(--gold));border-radius:100px;transition:width .5s ease}
 .credit-reset{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
-.btn-preview{display:flex;align-items:center;gap:4px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.25);border-radius:6px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--neon);cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-preview{display:flex;align-items:center;gap:4px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--neon);cursor:pointer;transition:all .2s;white-space:nowrap}
 .btn-preview:hover{background:rgba(0,170,255,.2);border-color:rgba(0,170,255,.5)}
+.btn-fav{background:none;border:none;font-size:16px;cursor:pointer;color:rgba(255,255,255,.25);line-height:1;padding:2px 4px;transition:all .2s;flex-shrink:0}
+.btn-fav:hover{color:var(--gold);transform:scale(1.2)}
+.btn-fav.faved{color:var(--gold)}
+.fav-tab{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.06);color:var(--gold);transition:all .2s;white-space:nowrap}
+.fav-tab:hover,.fav-tab.active{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.4)}
+.fav-tab.active{font-weight:700}
 /* ── WAVE PLAYER ── */
 .wave-player{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:12px}
 .wp-btn{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;box-shadow:0 0 16px rgba(0,170,255,.3)}
@@ -368,6 +374,14 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         <input class="vp-search" id="voiceSearch" type="text" placeholder="Buscar por nome…" oninput="filterVoices()"/>
       </div>
 
+      <!-- FAVORITOS -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <button class="fav-tab" id="favTab" onclick="toggleFavFilter()" title="Mostrar só favoritas">
+          ★ Favoritas <span id="favCount" style="opacity:.7;font-size:10px"></span>
+        </button>
+        <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">Clique na ☆ para favoritar</span>
+      </div>
+
       <!-- FILTERS -->
       <div class="vp-filters">
         <!-- Gender -->
@@ -451,13 +465,16 @@ const VOICES = [
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let selectedVoice = null;
-let regenCount = 0;       // quantas regenerações grátis já usou (max 2)
-const MAX_REGEN = 2;      // 2 regenerações grátis sem alterar texto
-let lastText = '';         // texto da última geração (para detectar alteração)
+let regenCount = 0;
+const MAX_REGEN = 2;
+let lastText = '';
 let lastVoiceId = '';
 let filters = { gender: '', age: '', style: '', lang: '' };
 let narrationsUsed = parseInt(localStorage.getItem('bv_narrations') || '0');
-const NARRATION_LIMIT = plan === 'master' ? 20 : 5; // Master: 20/mês, Full: 5/mês
+const NARRATION_LIMIT = plan === 'master' ? 20 : 5;
+// Favoritos persistidos no localStorage
+let favorites = new Set(JSON.parse(localStorage.getItem('bv_favorites') || '[]'));
+let showOnlyFavs = false;
 
 // ── NARRATION COUNTER ─────────────────────────────────────────────────────────
 function updateNarrationCounter(increment = false) {
@@ -500,6 +517,7 @@ function renderVoices() {
   const list = document.getElementById('voiceList');
 
   const filtered = VOICES.filter(v => {
+    if (showOnlyFavs && !favorites.has(v.id)) return false;
     if (filters.gender && v.gender !== filters.gender) return false;
     if (filters.age && v.age !== filters.age) return false;
     if (filters.style && v.style !== filters.style) return false;
@@ -515,20 +533,23 @@ function renderVoices() {
 
   list.innerHTML = filtered.map(v => `
     <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}" onclick="selectVoice('${v.id}')">
+      <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
+        ${favorites.has(v.id) ? '★' : '☆'}
+      </button>
       <div class="vi-flag">${v.flag}</div>
       <div class="vi-info">
         <div class="vi-name">${v.name}</div>
         <div class="vi-meta">${v.desc}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
         <div style="display:flex;gap:4px">
           <div class="vi-badge age">${v.age}</div>
           <div class="vi-badge style">${v.style}</div>
         </div>
-        ${v.preview ? `<button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia (10s)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
           Ouvir
-        </button>` : ''}
+        </button>
       </div>
     </div>
   `).join('');
@@ -541,6 +562,31 @@ function setFilter(type, val, btn) {
   renderVoices();
 }
 function filterVoices() { renderVoices(); }
+
+// ── FAVORITOS ─────────────────────────────────────────────────────────────────
+function toggleFav(id, event) {
+  event?.stopPropagation();
+  if (favorites.has(id)) {
+    favorites.delete(id);
+  } else {
+    favorites.add(id);
+  }
+  localStorage.setItem('bv_favorites', JSON.stringify([...favorites]));
+  updateFavCount();
+  renderVoices();
+}
+
+function toggleFavFilter() {
+  showOnlyFavs = !showOnlyFavs;
+  const tab = document.getElementById('favTab');
+  if (tab) tab.classList.toggle('active', showOnlyFavs);
+  renderVoices();
+}
+
+function updateFavCount() {
+  const el = document.getElementById('favCount');
+  if (el) el.textContent = favorites.size > 0 ? `(${favorites.size})` : '';
+}
 
 function selectVoice(id) {
   selectedVoice = VOICES.find(v => v.id === id);
@@ -889,6 +935,7 @@ function showToast(msg) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 renderVoices();
+updateFavCount();
 checkReady();
 
 // Pre-fill if coming from main page
