@@ -113,33 +113,44 @@ export default async function handler(req, res) {
         const rapidKey = process.env.RAPIDAPI_KEY;
         if (!rapidKey) return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada no Vercel.' });
 
-        // Try YTStream API first — returns direct downloadable links
-        let r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+        // Use youtube-to-mp4-mp3 API — returns links from their own CDN (no CORS issues)
+        let r = await fetch(`https://youtube-to-mp4-mp3.p.rapidapi.com/v1/videoInfo?videoId=${videoId}`, {
           headers: {
             'x-rapidapi-key': rapidKey,
-            'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
+            'x-rapidapi-host': 'youtube-to-mp4-mp3.p.rapidapi.com'
           }
         });
 
         if (r.ok) {
           const d = await r.json();
           title = d.title || title;
-          // YTStream returns formats with direct URLs
-          const formats = d.formats || {};
-          // Pick best quality: 1080p > 720p > 480p > 360p
-          const preferred = ['1080', '720', '480', '360', '240'];
-          for (const q of preferred) {
-            if (formats[q]?.url) { downloadUrl = formats[q].url; break; }
-          }
-          // Fallback to adaptiveFormats
-          if (!downloadUrl && d.adaptiveFormats) {
-            const videoFormats = d.adaptiveFormats.filter(f => f.mimeType?.includes('video/mp4'));
-            const best = videoFormats.sort((a, b) => (parseInt(b.height)||0) - (parseInt(a.height)||0))[0];
-            downloadUrl = best?.url;
+          thumbnail = d.thumbnail || thumbnail;
+          // Get best mp4 format
+          const fmts = d.formats || [];
+          const mp4 = fmts.filter(f => f.ext === 'mp4' || f.format_note?.includes('p'))
+            .sort((a,b) => (parseInt(b.height)||0) - (parseInt(a.height)||0));
+          downloadUrl = mp4[0]?.url || fmts[0]?.url;
+        }
+
+        // Fallback: YTStream
+        if (!downloadUrl) {
+          r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
+            }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            title = d.title || title;
+            const fmts = d.formats || {};
+            for (const q of ['1080','720','480','360']) {
+              if (fmts[q]?.url) { downloadUrl = fmts[q].url; break; }
+            }
           }
         }
 
-        // Fallback to youtube-media-downloader
+        // Fallback: youtube-media-downloader
         if (!downloadUrl) {
           r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
             headers: {
@@ -150,16 +161,14 @@ export default async function handler(req, res) {
           if (r.ok) {
             const d = await r.json();
             title = d.title || title;
-            thumbnail = d.thumbnails?.quality?.[0]?.url || thumbnail;
             const videos = d.videos?.items || [];
-            const best = videos.find(f => f.height >= 720 && f.extension === 'mp4')
-              || videos.find(f => f.extension === 'mp4') || videos[0];
+            const best = videos.find(f => f.height >= 720) || videos[0];
             downloadUrl = best?.url;
           }
         }
 
         if (!downloadUrl) {
-          return res.status(400).json({ error: 'Não foi possível obter link de download para este vídeo. Tente novamente.' });
+          return res.status(400).json({ error: 'Não foi possível obter link. Verifique se a API youtube-to-mp4-mp3 está ativada no RapidAPI.' });
         }
       }
 
