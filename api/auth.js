@@ -376,6 +376,138 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── BLUESCORE: RESOLVE CHANNEL ─────────────────────────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'bluescore-channel') {
+    const YT_KEY = process.env.YOUTUBE_API_KEY;
+    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada.' });
+    const { type, id } = req.query;
+    if (!id) return res.status(400).json({ error: 'ID obrigatório' });
+
+    try {
+      let channelId = null;
+      // Se já é um channelId (começa com UC)
+      if (type === 'channelId' || id.startsWith('UC')) {
+        channelId = id;
+      } else if (type === 'video') {
+        // Resolve canal via videoId
+        const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${YT_KEY}`);
+        const vd = await vr.json();
+        channelId = vd.items?.[0]?.snippet?.channelId;
+      } else {
+        // Handle ou custom URL — tenta forChannelType search
+        const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(id)}&maxResults=1&key=${YT_KEY}`);
+        const sd = await sr.json();
+        if (sd.error) return res.status(400).json({ error: sd.error.message });
+        channelId = sd.items?.[0]?.snippet?.channelId;
+      }
+
+      if (!channelId) return res.status(404).json({ error: 'Canal não encontrado.' });
+
+      // Busca detalhes do canal
+      const cr = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelId}&key=${YT_KEY}`);
+      const cd = await cr.json();
+      const ch = cd.items?.[0];
+      if (!ch) return res.status(404).json({ error: 'Canal não encontrado.' });
+
+      return res.status(200).json({
+        channelId,
+        title: ch.snippet?.title || 'Canal',
+        description: ch.snippet?.description?.slice(0,200) || '',
+        thumbnail: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url,
+        subscribers: parseInt(ch.statistics?.subscriberCount || 0),
+        videoCount: parseInt(ch.statistics?.videoCount || 0),
+        totalViews: parseInt(ch.statistics?.viewCount || 0),
+        country: ch.snippet?.country || '',
+        publishedAt: ch.snippet?.publishedAt,
+      });
+    } catch(e) {
+      console.error('BlueScore channel error:', e.message);
+      return res.status(500).json({ error: 'Erro ao buscar canal: ' + e.message });
+    }
+  }
+
+  // ── BLUESCORE: FETCH VIDEOS ──────────────────────────────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'bluescore-videos') {
+    const YT_KEY = process.env.YOUTUBE_API_KEY;
+    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada.' });
+    const { channelId } = req.query;
+    if (!channelId) return res.status(400).json({ error: 'channelId obrigatório' });
+
+    try {
+      // Busca últimos 12 vídeos do canal
+      const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=12&key=${YT_KEY}`);
+      const sd = await sr.json();
+      if (sd.error) return res.status(400).json({ error: sd.error.message });
+
+      const videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
+      if (!videoIds) return res.status(200).json({ videos: [] });
+
+      // Busca stats
+      const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}&key=${YT_KEY}`);
+      const vd = await vr.json();
+
+      const videos = (vd.items || []).map(v => {
+        const stats = v.statistics || {}, snippet = v.snippet || {};
+        const dur = v.contentDetails?.duration || '';
+        const m = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        const secs = (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
+        return {
+          id: v.id,
+          title: snippet.title || 'Sem título',
+          publishedAt: snippet.publishedAt,
+          thumbnail: snippet.thumbnails?.medium?.url,
+          views: parseInt(stats.viewCount || 0),
+          likes: parseInt(stats.likeCount || 0),
+          comments: parseInt(stats.commentCount || 0),
+          duration: secs,
+          isShort: secs > 0 && secs <= 60,
+        };
+      }).sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+      return res.status(200).json({ videos });
+    } catch(e) {
+      console.error('BlueScore videos error:', e.message);
+      return res.status(500).json({ error: 'Erro ao buscar vídeos: ' + e.message });
+    }
+  }
+
+  // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório' });
+
+    // Tenta Gemini (gratuito, temos 10 chaves)
+    const GEMINI_KEYS = [
+      process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
+      process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5,
+    ].filter(Boolean);
+
+    for (const key of GEMINI_KEYS) {
+      try {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
+          })
+        });
+        const d = await r.json();
+        if (d.error?.code === 429) continue;
+        if (!r.ok) continue;
+        let text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
+        // Limpa markdown code blocks
+        text = text.replace(/```json
+?/g,'').replace(/```
+?/g,'').trim();
+        const parsed = JSON.parse(text);
+        return res.status(200).json(parsed);
+      } catch(e) { continue; }
+    }
+
+    return res.status(200).json({ insights: [], recommendations: [], summary: '' });
+  }
+
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
     // Rotação de 3 chaves para triplicar a cota diária (30.000 unidades/dia)
     const YT_KEYS = [
