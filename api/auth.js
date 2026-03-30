@@ -397,7 +397,12 @@ export default async function handler(req, res) {
         // Handle ou custom URL — tenta forChannelType search
         const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(id)}&maxResults=1&key=${YT_KEY}`);
         const sd = await sr.json();
-        if (sd.error) return res.status(400).json({ error: sd.error.message });
+        if (sd.error) {
+          const isQuota = sd.error.code === 403 || sd.error.message?.toLowerCase().includes('quota');
+          return res.status(400).json({ error: isQuota
+            ? 'Limite diário de análises atingido. Tente novamente amanhã.'
+            : sd.error.message });
+        }
         channelId = sd.items?.[0]?.snippet?.channelId;
       }
 
@@ -437,7 +442,12 @@ export default async function handler(req, res) {
       // Busca últimos 12 vídeos do canal
       const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=12&key=${YT_KEY}`);
       const sd = await sr.json();
-      if (sd.error) return res.status(400).json({ error: sd.error.message });
+      if (sd.error) {
+        const isQuota = sd.error.code === 403 || sd.error.message?.toLowerCase().includes('quota');
+        return res.status(400).json({ error: isQuota
+          ? 'Limite diário de análises atingido. Tente novamente amanhã.'
+          : sd.error.message });
+      }
 
       const videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
       if (!videoIds) return res.status(200).json({ videos: [] });
