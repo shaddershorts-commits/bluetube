@@ -1772,7 +1772,7 @@ async function detectAndTranslate(){
   }
 
   try{
-    const r = await fetch('/api/detect-language');
+    const r = await fetch('/api/auth?action=lang');
     const data = await r.json();
     siteLang = data.lang || 'pt';
     siteTranslations = data.translations || {};
