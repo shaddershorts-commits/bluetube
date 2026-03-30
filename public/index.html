@@ -1755,6 +1755,199 @@ async function handleResetPassword(){
   }
 }
 
+// ── AUTO TRANSLATION SYSTEM ────────────────────────────────────────────────
+let siteTranslations = {};
+let siteLang = 'pt';
+
+async function detectAndTranslate(){
+  // Check cache first (1 hour)
+  const cached = localStorage.getItem('bt_lang_cache');
+  const cacheTime = localStorage.getItem('bt_lang_cache_time');
+  if(cached && cacheTime && Date.now() - parseInt(cacheTime) < 3600000){
+    const data = JSON.parse(cached);
+    siteLang = data.lang;
+    siteTranslations = data.translations;
+    if(siteLang !== 'pt') applyTranslations();
+    return;
+  }
+
+  try{
+    const r = await fetch('/api/detect-language');
+    const data = await r.json();
+    siteLang = data.lang || 'pt';
+    siteTranslations = data.translations || {};
+
+    // Cache result
+    localStorage.setItem('bt_lang_cache', JSON.stringify(data));
+    localStorage.setItem('bt_lang_cache_time', Date.now().toString());
+
+    if(siteLang !== 'pt') applyTranslations();
+  }catch(e){
+    console.log('Translation detection failed, keeping Portuguese');
+  }
+}
+
+function t(key){
+  return siteTranslations[key] || null;
+}
+
+function applyTranslations(){
+  const s = siteTranslations;
+  if(!s || Object.keys(s).length === 0) return;
+
+  const set = (id, val) => { const el=document.getElementById(id); if(el&&val) el.textContent=val; };
+  const setHTML = (id, val) => { const el=document.getElementById(id); if(el&&val) el.innerHTML=val; };
+  const setPH = (id, val) => { const el=document.getElementById(id); if(el&&val) el.placeholder=val; };
+  const setQ = (sel, val) => { const el=document.querySelector(sel); if(el&&val) el.textContent=val; };
+  const setQHTML = (sel, val) => { const el=document.querySelector(sel); if(el&&val) el.innerHTML=val; };
+  const setAll = (sel, val) => { if(!val) return; document.querySelectorAll(sel).forEach(el=>el.textContent=val); };
+
+  // ── HERO ──────────────────────────────────────────────────────────────────
+  set('heroTitle1', s.hero_1); set('heroTitle2', s.hero_2); set('heroTitle3', s.hero_3);
+  setQ('.hero-sub', s.hero_sub);
+  setQ('.hero-badge', s.hero_badge && `● ${s.hero_badge}`);
+
+  // ── NAV ───────────────────────────────────────────────────────────────────
+  setPH('urlInput', s.placeholder);
+  setAll('.nav-login-btn:not([onclick*="doLogout"])', s.nav_enter);
+  setAll('.nav-upgrade-btn', s.nav_upgrade ? `⚡ ${s.nav_upgrade.replace('⚡ ','').replace('⚡','').trim()}` : null);
+
+  // Community button
+  const commBtn = document.getElementById('communityBtn');
+  if(commBtn && s.nav_community){
+    const lockSpan = commBtn.querySelector('span');
+    commBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${s.nav_community}<span id="communityLock" style="font-size:10px">🔒</span>`;
+  }
+
+  // ── MAIN BUTTON ───────────────────────────────────────────────────────────
+  const btnGo = document.getElementById('btnGo');
+  if(btnGo && s.btn_go) btnGo.textContent = s.btn_go;
+
+  // Loading messages
+  if(s.l1) window.MSGS = [s.l1, s.l2, s.l3, s.l4, s.l5].filter(Boolean);
+
+  // ── TABS ──────────────────────────────────────────────────────────────────
+  const tabs = document.querySelectorAll('.tab-btn');
+  if(tabs[0] && s.tab_transcript) tabs[0].textContent = s.tab_transcript;
+  if(tabs[1] && s.tab_casual) tabs[1].textContent = s.tab_casual;
+  if(tabs[2] && s.tab_appeal) tabs[2].textContent = s.tab_appeal;
+
+  // Result cards labels
+  setAll('.result-label', s.tab_transcript ? s.tab_transcript.replace('📝 ','') : null);
+  setAll('.scripts-loading-label', s.generating);
+  setAll('[id^="label"]', s.generating);
+
+  // Copy/download buttons
+  document.querySelectorAll('.act-btn').forEach(btn=>{
+    if(btn.textContent.includes('Copiar') || btn.textContent.includes('Copy')) btn.textContent = s.copy;
+    if(btn.textContent.includes('Novo') || btn.textContent.includes('New')) btn.textContent = s.new_short;
+  });
+
+  // ── AUTH MODAL ────────────────────────────────────────────────────────────
+  const authSubtitle = document.querySelector('#authModal .auth-modal-box > div:nth-child(3)');
+  if(authSubtitle && s.auth_title) authSubtitle.textContent = s.auth_title;
+
+  const tabLogin = document.getElementById('tabLogin');
+  if(tabLogin && s.tab_login) tabLogin.textContent = s.tab_login;
+  const tabSignup = document.getElementById('tabSignup');
+  if(tabSignup && s.tab_signup) tabSignup.textContent = s.tab_signup;
+
+  setPH('loginEmail', s.email_ph); setPH('signupEmail', s.email_ph); setPH('forgotEmail', s.email_ph);
+  setPH('loginPassword', s.pwd_ph); setPH('signupPassword', s.pwd_min); setPH('signupConfirm', s.confirm_ph);
+
+  setQ('#authLoginForm .auth-submit', s.btn_login);
+  setQ('#authSignupForm .auth-submit', s.btn_signup);
+  setQ('[onclick="showForgotPassword()"]', s.forgot);
+  setQ('#authForgotForm .auth-submit', s.forgot_btn);
+  setQ('[onclick="switchAuthTab(\'login\')"]', s.back_login);
+
+  // Reset pwd modal
+  setQ('#resetPasswordModal .auth-modal-box > div:nth-child(2)', s.new_pwd);
+  setQ('#resetPasswordModal .auth-modal-box > div:nth-child(3)', s.new_pwd_sub);
+  setPH('newPassword', s.pwd_new_ph); setPH('newPasswordConfirm', s.pwd_confirm_new);
+  setQ('#resetPasswordModal .auth-submit', s.save_pwd);
+
+  // ── UPGRADE MODAL ─────────────────────────────────────────────────────────
+  set('liveCount', document.getElementById('liveCount')?.textContent);
+  setQ('#upgradeModal .modal-live-count', document.getElementById('liveCount')?.textContent + ' ' + (s.up_live||''));
+  set('timerLabel', s.up_timer);
+  setQ('#upgradeModalCta', s.up_cta);
+  setQ('#upgradeModal .modal-or', s.up_or);
+  setQ('#upgradeModal .auth-btn', s.up_email_btn);
+
+  // ── PLANS SECTION ─────────────────────────────────────────────────────────
+  setQ('.plans-section .sec-eye', s.plans_eye);
+  setQ('.plans-section .sec-title', s.plans_title);
+  setQ('#labelMonthly', s.plan_monthly); setQ('#labelAnnual', s.plan_annual);
+  setQ('.annual-badge', s.plan_save);
+  setQ('.plan-tag', s.plan_popular);
+  setQ('#fullPriceDisplay .plan-period', s.plan_monthly_label);
+  setQ('#masterPriceDisplay .plan-period', s.plan_monthly_label);
+  setQ('#planBoxFull .plan-btn', s.plan_full_btn);
+  setQ('#planBoxMaster .plan-btn', s.plan_master_btn);
+  setQ('.price-increase-notice', s.price_increase ? `● ${s.price_increase}` : null);
+
+  // ── FEATURES SECTION ──────────────────────────────────────────────────────
+  setQ('.features .sec-eye', s.feat_eye);
+  setQ('.features .sec-title', s.feat_title);
+
+  // ── COMMUNITY MODAL ───────────────────────────────────────────────────────
+  setQ('#communityModal .modal-title', s.comm_title ? `<span>${s.comm_title}</span>` : null);
+  setQ('#communityModal .modal-sub', s.comm_sub);
+
+  // ── FAQ ───────────────────────────────────────────────────────────────────
+  setQ('.faq-section .sec-eye', s.faq_eye);
+  setQ('.faq-section .sec-title', s.faq_title);
+
+  // ── PROFILE MODAL ─────────────────────────────────────────────────────────
+  setQ('[onclick="sendPasswordReset()"]', s.profile_pwd);
+  setQ('[onclick="openSupportChat()"]', s.profile_support);
+  setQ('[onclick="doLogout()"]', s.profile_logout);
+  setQ('#cancelSubBtn', s.profile_cancel);
+  setPH('supportMsg', s.support_ph);
+  setQ('.profile-support-chat button.plan-btn, #profileSupportChat button', s.support_btn);
+  setQ('#profileUpgradeBtn', s.profile_upgrade);
+
+  // ── BLUBLU ────────────────────────────────────────────────────────────────
+  setHTML('blubluMsg', s.blublu_hello);
+  setPH('blubluInput', s.blublu_ph);
+  setQ('.blublu-send', s.blublu_send);
+
+  // ── CANCEL MODAL ──────────────────────────────────────────────────────────
+  const cancelBubble = document.querySelector('#cancelStep1 .script-body, #cancelStep1 > div:first-child > div:last-child');
+  // Set cancel reasons
+  const reasons = document.querySelectorAll('#cancelReasons label');
+  const cancelTexts = [s.cancel_r1, s.cancel_r2, s.cancel_r3, s.cancel_r4].filter(Boolean);
+  reasons.forEach((label, i) => { if(cancelTexts[i]) { const input=label.querySelector('input'); label.textContent=cancelTexts[i]; if(input)label.prepend(input); }});
+  setQ('#cancelStep1 [onclick*="closeCancelModal"]', s.cancel_give_chance);
+  setQ('#cancelStep1 [onclick*="confirmCancelStep2"]', s.cancel_confirm);
+  setQ('#cancelStep2 > div:nth-child(3)', s.cancel_offer_title);
+  setQ('#cancelStep2 > div:nth-child(4)', s.cancel_offer_sub);
+  setQ('#cancelStep2 [onclick*="acceptDiscount"]', s.cancel_accept);
+  setQ('#cancelStep2 [onclick*="finalCancel"]', s.cancel_proceed);
+  setQ('#cancelStep3 > div:nth-child(3)', s.cancel_bye);
+  setQ('#cancelStep3 > div:nth-child(4)', s.cancel_bye_sub);
+  setQ('#cancelStep3 button', s.cancel_close);
+
+  // ── FOOTER ────────────────────────────────────────────────────────────────
+  setQ('.foot-copy', s.footer_copy);
+
+  // ── FOMO ──────────────────────────────────────────────────────────────────
+  if(s.fomo_censored) window.FOMO_SUB_CENSORED = s.fomo_censored;
+  if(s.fomo_protected) window.FOMO_SUB_PROTECTED = s.fomo_protected;
+  if(s.fomo_anon) window.FOMO_SUB_ANON = s.fomo_anon;
+
+  console.log(`🌍 Site fully translated to: ${siteLang} (${Object.keys(s).length} strings)`);
+}
+
+// Also update hero title spans with IDs for translation targeting
+function addHeroIds(){
+  const titleSpans = document.querySelectorAll('.hero-title span');
+  if(titleSpans[0]) titleSpans[0].id = 'heroTitle1';
+  if(titleSpans[1]) titleSpans[1].id = 'heroTitle2';
+  if(titleSpans[2]) titleSpans[2].id = 'heroTitle3';
+}
+
 // ── FAQ ────────────────────────────────────────────────────────────────────
 function toggleFaq(item){
   const isOpen=item.classList.contains('open');
@@ -1980,6 +2173,10 @@ document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='E
 handleOAuthCallback().then(wasCallback => {
   if(!wasCallback) checkSession();
 });
+
+// Init translations
+addHeroIds();
+detectAndTranslate();
 
 // ── MOUSE GLOW ─────────────────────────────────────────────────────────────
 const mouseGlow = document.getElementById('mouseGlow');
