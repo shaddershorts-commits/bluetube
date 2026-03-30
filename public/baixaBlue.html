@@ -450,15 +450,39 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     const tip = document.getElementById('downloadTip');
     if(tip) tip.style.display = 'flex';
   } else {
-    // TikTok, Instagram etc: proxy do servidor garante download correto
     qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
-    const proxyUrl = `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
-    dlBtn.href = proxyUrl;
-    dlBtn.download = filename;
-    dlBtn.removeAttribute('target');
-    dlBtn.onclick = null;
     const tip = document.getElementById('downloadTip');
     if(tip) tip.style.display = 'none';
+
+    // Usar fetch+blob para baixar sem CORS e sem limite do proxy Vercel
+    dlBtn.href = '#';
+    dlBtn.removeAttribute('download');
+    dlBtn.removeAttribute('target');
+    dlBtn.onclick = async (e) => {
+      e.preventDefault();
+      const origContent = dlBtn.innerHTML;
+      dlBtn.style.pointerEvents = 'none';
+      dlBtn.innerHTML = `<div class="download-btn-left"><div class="download-icon"><span class="spinner"></span></div><div class="download-info"><div class="quality">Baixando vídeo…</div><div class="size">Aguarde, pode levar alguns segundos</div></div></div>`;
+      try {
+        // Tenta fetch direto primeiro (funciona se CORS permitido)
+        const resp = await fetch(downloadUrl);
+        if (!resp.ok) throw new Error('fetch failed');
+        const blob = await resp.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        document.body.removeChild(a);
+        dlBtn.innerHTML = `<div class="download-btn-left"><div class="download-icon" style="font-size:16px">✓</div><div class="download-info"><div class="quality" style="color:var(--green)">Download concluído!</div></div></div>`;
+      } catch {
+        // Fallback: proxy do servidor
+        window.location.href = `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
+        dlBtn.innerHTML = origContent;
+      }
+      dlBtn.style.pointerEvents = '';
+    };
   }
 
   document.getElementById('resultCard').style.display = 'block';
