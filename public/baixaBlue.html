@@ -450,9 +450,10 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     const tip = document.getElementById('downloadTip');
     if(tip) tip.style.display = 'flex';
   } else {
-    // TikTok, Instagram etc: download direto funciona
+    // TikTok, Instagram etc: usar proxy do servidor para evitar CORS do browser
     qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
-    dlBtn.href = downloadUrl;
+    const proxyUrl = `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
+    dlBtn.href = proxyUrl;
     dlBtn.download = filename;
     dlBtn.removeAttribute('target');
     dlBtn.onclick = null;
