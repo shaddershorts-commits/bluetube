@@ -170,7 +170,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 
       <!-- Region -->
       <select class="filter-select" id="regionSelect" onchange="fetchVirals()">
-        <option value="BR">🇧🇷 Brasil</option>
+        <option value="ALL">🌍 Todos os países</option>
+        <option value="BR" selected>🇧🇷 Brasil</option>
         <option value="US">🇺🇸 EUA</option>
         <option value="GB">🇬🇧 Reino Unido</option>
         <option value="IN">🇮🇳 Índia</option>
@@ -220,6 +221,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     <div class="stat-item">Top views: <strong id="statTopViews">—</strong></div>
     <div class="stat-dot"></div>
     <div class="stat-item" id="statLastUpdate"></div>
+  </div>
+
+  <!-- Aviso filtro de data -->
+  <div id="dateFilterWarn" style="display:none;background:rgba(255,170,0,.1);border:1px solid rgba(255,170,0,.3);border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:#ffaa00;">
+    ⚠ A API do YouTube ignorou o filtro de data nessa busca — os resultados podem incluir vídeos mais antigos.
   </div>
 
   <!-- GRID -->
@@ -335,6 +341,13 @@ function renderVideos(videos) {
 
   const periodLabels = { '24h': 'Últimas 24h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias' };
   document.getElementById('statTotal').textContent = videos.length;
+  // Aviso se filtro de data falhou
+  const dateWarn = document.getElementById('dateFilterWarn');
+  if (data.dateFilterFailed && dateWarn) {
+    dateWarn.style.display = 'block';
+  } else if (dateWarn) {
+    dateWarn.style.display = 'none';
+  }
   document.getElementById('statPeriod').textContent = periodLabels[currentPeriod];
   document.getElementById('statTopViews').textContent = videos[0]?.viewsFormatted || '—';
   // Atualiza horário e inicia contador regressivo
