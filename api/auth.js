@@ -257,25 +257,26 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada.' });
         }
 
-        // Method 1: YouTube Media Downloader (DataFanatic) — suporta Instagram Reels
+        // Method 1: Instagram Reels Downloader API (endpoint dedicado para Reels)
         try {
-          const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/social/auto?url=${encodeURIComponent(url)}`, {
+          const r = await fetch(`https://instagram-reels-downloader-api.p.rapidapi.com/download?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
+              'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com'
             }
           });
           const d = await r.json();
-          console.log('Instagram API1 (yt-media) status:', r.status, JSON.stringify(d).slice(0,400));
-          if (r.ok && d.videos?.items?.length > 0) {
-            const best = d.videos.items.find(v => v.height >= 720) || d.videos.items[0];
-            downloadUrl = best?.url;
-            title = d.title || 'Instagram';
-            thumbnail = d.thumbnail?.url || d.thumbnail;
+          console.log('Instagram API1 (reels) status:', r.status, JSON.stringify(d).slice(0,400));
+          if (r.ok) {
+            // API retorna: { download_url, thumbnail, title } ou { url, ... }
+            downloadUrl = d.download_url || d.url || d.video_url
+              || (Array.isArray(d.data) ? d.data[0]?.url : d.data?.url);
+            title = d.title || d.caption || 'Instagram';
+            thumbnail = d.thumbnail || d.cover;
           }
         } catch(e) { console.log('instagram api1 failed:', e.message); }
 
-        // Method 2: instagram-downloader-stories5 (funciona para Stories/Highlights)
+        // Method 2: instagram-downloader-stories5 (fallback)
         if (!downloadUrl) {
           const instaHost = 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com';
           try {
