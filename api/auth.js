@@ -203,40 +203,49 @@ export default async function handler(req, res) {
       // ── TIKTOK ──────────────────────────────────────────────────────────
       else if (platform === 'tiktok') {
         const rapidKey = process.env.RAPIDAPI_KEY;
+        if (!rapidKey) {
+          return res.status(400).json({ error: 'RAPIDAPI_KEY nao configurada no Vercel.' });
+        }
 
-        // Method 1: tikwm.com (free, no key needed)
+        // Method 1: tiktok-download-without-watermark4 (subscribed)
         try {
-          const r = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&count=12&cursor=0&web=1&hd=1`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-          });
-          if (r.ok) {
-            const d = await r.json();
-            console.log('TikWM response code:', d.code, 'has data:', !!d.data);
-            if (d.code === 0 && d.data) {
-              downloadUrl = d.data.hdplay || d.data.play || d.data.wmplay;
-              title = d.data.title || 'TikTok';
-              thumbnail = d.data.cover || d.data.origin_cover;
+          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/tiktok?search=${encodeURIComponent(url)}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'tiktok-download-without-watermark4.p.rapidapi.com'
             }
+          });
+          const d = await r.json();
+          console.log('TikTok API1 status:', r.status, JSON.stringify(d).slice(0,300));
+          // Try multiple possible response shapes
+          const videoData = d.data || d.result || d;
+          const hdUrl = videoData.hdplay || videoData.play || videoData.wmplay
+            || videoData.video?.noWatermark || videoData.video?.play
+            || (Array.isArray(videoData.video) ? videoData.video[0] : null);
+          if (r.ok && hdUrl) {
+            downloadUrl = hdUrl;
+            title = videoData.title || videoData.desc || 'TikTok';
+            thumbnail = videoData.cover || videoData.thumbnail || videoData.origin_cover;
           }
-        } catch(e) { console.log('tikwm failed:', e.message); }
+        } catch(e) { console.log('tiktok api1 failed:', e.message); }
 
-        // Method 2: RapidAPI TikTok downloader
-        if (!downloadUrl && rapidKey) {
+        // Method 2: tiktok-scraper7
+        if (!downloadUrl) {
           try {
-            const r = await fetch(`https://tiktok-download-without-watermark.p.rapidapi.com/analysis?url=${encodeURIComponent(url)}&hd=1`, {
+            const r = await fetch(`https://tiktok-scraper7.p.rapidapi.com/?url=${encodeURIComponent(url)}&hd=1`, {
               headers: {
                 'x-rapidapi-key': rapidKey,
-                'x-rapidapi-host': 'tiktok-download-without-watermark.p.rapidapi.com'
+                'x-rapidapi-host': 'tiktok-scraper7.p.rapidapi.com'
               }
             });
-            if (r.ok) {
-              const d = await r.json();
-              console.log('TikTok RapidAPI:', JSON.stringify(d).slice(0, 200));
-              downloadUrl = d.data?.hdplay || d.data?.play || d.data?.wmplay;
-              title = d.data?.title || 'TikTok';
-              thumbnail = d.data?.cover;
+            const d = await r.json();
+            console.log('TikTok API2 status:', r.status, JSON.stringify(d).slice(0,200));
+            if (r.ok && d.data) {
+              downloadUrl = d.data.hdplay || d.data.play || d.data.wmplay;
+              title = d.data.title || 'TikTok';
+              thumbnail = d.data.cover;
             }
-          } catch(e) { console.log('tiktok rapidapi failed:', e.message); }
+          } catch(e) { console.log('tiktok api2 failed:', e.message); }
         }
       }
 
