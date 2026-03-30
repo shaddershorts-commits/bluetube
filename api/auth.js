@@ -587,25 +587,34 @@ export default async function handler(req, res) {
     if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
 
     try {
-      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      // eleven_v3 usa endpoint diferente (turbo/v3 preview)
+      const isV3 = model === 'eleven_v3';
+      const modelId = isV3 ? 'eleven_v3' : (model || 'eleven_multilingual_v2');
+      const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+
+      const ttsRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
         body: JSON.stringify({
-          text, model_id: model,
-          voice_settings: { stability, similarity_boost: similarity, style: 0.5, use_speaker_boost: true }
+          text, model_id: modelId,
+          voice_settings: { stability, similarity_boost: similarity, style: 0.4, use_speaker_boost: true }
         })
       });
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(()=>({}));
-        return res.status(400).json({ error: err.detail?.message || err.detail || 'Erro ElevenLabs' });
+        const errMsg = err.detail?.message || err.detail?.status || err.detail || 'Serviço de voz indisponível';
+        // Nunca expõe nome do provedor ao usuário
+        console.error('TTS error:', errMsg);
+        return res.status(400).json({ error: 'Falha ao gerar narração. Verifique o texto e tente novamente.' });
       }
 
       const audioBuffer = await ttsRes.arrayBuffer();
       const base64 = Buffer.from(audioBuffer).toString('base64');
       return res.status(200).json({ audio: base64, format: 'mp3' });
     } catch(e) {
-      return res.status(500).json({ error: 'Falha ao gerar voz: ' + e.message });
+      console.error('TTS exception:', e.message);
+      return res.status(500).json({ error: 'Falha ao gerar narração. Tente novamente.' });
     }
   }
 
