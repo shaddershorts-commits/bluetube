@@ -116,6 +116,38 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
+  if (req.body?.action === 'tts') {
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado. Adicione ELEVENLABS_API_KEY no Vercel.' });
+
+    const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
+    if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
+    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
+
+    try {
+      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({
+          text, model_id: model,
+          voice_settings: { stability, similarity_boost: similarity, style: 0.5, use_speaker_boost: true }
+        })
+      });
+
+      if (!ttsRes.ok) {
+        const err = await ttsRes.json().catch(()=>({}));
+        return res.status(400).json({ error: err.detail?.message || err.detail || 'Erro ElevenLabs' });
+      }
+
+      const audioBuffer = await ttsRes.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString('base64');
+      return res.status(200).json({ audio: base64, format: 'mp3' });
+    } catch(e) {
+      return res.status(500).json({ error: 'Falha ao gerar voz: ' + e.message });
+    }
+  }
+
   const { action, email, password, token, otp } = req.body;
   const SUPABASE_URL = process.env.SUPABASE_URL;
 
