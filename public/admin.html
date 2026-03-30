@@ -216,9 +216,14 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-sub">Full + Master ativos</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">IPs ativos hoje</div>
+        <div class="stat-label">🟢 Visitantes hoje</div>
+        <div class="stat-value blue" id="visitsTodayCount">—</div>
+        <div class="stat-sub">IPs únicos no dia</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">IPs gerando roteiros</div>
         <div class="stat-value blue" id="statIPs">—</div>
-        <div class="stat-sub">sem conta criada</div>
+        <div class="stat-sub">usaram a ferramenta hoje</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Roteiros hoje</div>
@@ -455,8 +460,9 @@ async function loadData(){
     document.getElementById('statPaid').textContent=payingTotal;
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
-    // Online count = active IPs in last hour (approximation from today's usage)
-    document.getElementById('onlineCount').textContent=d.today.active_ips||0;
+    // Real online count from visits table
+    document.getElementById('onlineCount').textContent=d.visits?.online_now||0;
+    document.getElementById('visitsTodayCount').textContent=d.visits?.today_unique||0;
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
     document.getElementById('statMaster').textContent=`${d.subscribers.master} (${d.subscribers.paying_master||0} pagos, ${d.subscribers.manual_master||0} manuais)`;
