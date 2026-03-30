@@ -60,33 +60,49 @@ export default async function handler(req, res) {
 
       // ── YOUTUBE / SHORTS ────────────────────────────────────────────────
       if (platform === 'youtube') {
-        // Extract video ID
         const ytMatch = url.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
         const videoId = ytMatch?.[1];
         if (!videoId) return res.status(400).json({ error: 'ID do vídeo do YouTube não encontrado.' });
 
-        // Use yt-dlp compatible API via RapidAPI
+        thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        title = 'YouTube Short';
+
         const rapidKey = process.env.RAPIDAPI_KEY;
-        if (rapidKey) {
-          const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
-            headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com' }
-          });
-          if (r.ok) {
-            const d = await r.json();
-            title = d.title || 'YouTube Short';
-            thumbnail = d.thumbnails?.quality?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-            // Get best video+audio format
-            const formats = d.videos?.items || [];
-            const best = formats.find(f => f.height >= 720) || formats[0];
-            downloadUrl = best?.url;
-          }
+        if (!rapidKey) {
+          return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada no Vercel. Adicione a variável de ambiente.' });
         }
-        // Fallback: use y2mate-compatible service
+
+        // Try YouTube Media Downloader API
+        const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+          headers: {
+            'x-rapidapi-key': rapidKey,
+            'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
+          }
+        });
+
+        const d = await r.json();
+        console.log('YouTube API response status:', r.status, 'data keys:', Object.keys(d));
+
+        if (!r.ok) {
+          return res.status(400).json({ error: `Erro YouTube API: ${d.message || d.error || r.status}` });
+        }
+
+        title = d.title || title;
+        thumbnail = d.thumbnails?.quality?.[0]?.url || thumbnail;
+
+        // Get best video format with audio
+        const videos = d.videos?.items || [];
+        console.log('Available formats:', videos.map(v => `${v.height}p ${v.extension}`));
+
+        const best = videos.find(f => f.height >= 720 && f.extension === 'mp4')
+          || videos.find(f => f.height >= 480 && f.extension === 'mp4')
+          || videos.find(f => f.extension === 'mp4')
+          || videos[0];
+
+        downloadUrl = best?.url;
+
         if (!downloadUrl) {
-          thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-          title = 'YouTube Short';
-          // Return a redirect to a working yt downloader
-          downloadUrl = `https://ytshorts.savetube.me/api/v1/savetube/download?url=${encodeURIComponent(url)}`;
+          return res.status(400).json({ error: 'Nenhum formato de download disponível para este vídeo.' });
         }
       }
 
