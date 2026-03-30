@@ -40,6 +40,128 @@ export default async function handler(req, res) {
 
   // ── LANGUAGE DETECTION (GET) ───────────────────────────────────────────────
   // ── VIRAL SHORTS ──────────────────────────────────────────────────────────
+  // ── VIDEO DOWNLOAD PROXY ──────────────────────────────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'download') {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL obrigatória' });
+
+    try {
+      // Detect platform
+      const platform = url.includes('tiktok.com') ? 'tiktok'
+        : url.includes('instagram.com') ? 'instagram'
+        : url.includes('twitter.com') || url.includes('x.com') ? 'twitter'
+        : url.includes('facebook.com') || url.includes('fb.watch') ? 'facebook'
+        : url.includes('youtube.com') || url.includes('youtu.be') ? 'youtube'
+        : 'generic';
+
+      let downloadUrl = null;
+      let title = 'Vídeo';
+      let thumbnail = null;
+
+      // ── YOUTUBE / SHORTS ────────────────────────────────────────────────
+      if (platform === 'youtube') {
+        // Extract video ID
+        const ytMatch = url.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        const videoId = ytMatch?.[1];
+        if (!videoId) return res.status(400).json({ error: 'ID do vídeo do YouTube não encontrado.' });
+
+        // Use yt-dlp compatible API via RapidAPI
+        const rapidKey = process.env.RAPIDAPI_KEY;
+        if (rapidKey) {
+          const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+            headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com' }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            title = d.title || 'YouTube Short';
+            thumbnail = d.thumbnails?.quality?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            // Get best video+audio format
+            const formats = d.videos?.items || [];
+            const best = formats.find(f => f.height >= 720) || formats[0];
+            downloadUrl = best?.url;
+          }
+        }
+        // Fallback: use y2mate-compatible service
+        if (!downloadUrl) {
+          thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          title = 'YouTube Short';
+          // Return a redirect to a working yt downloader
+          downloadUrl = `https://ytshorts.savetube.me/api/v1/savetube/download?url=${encodeURIComponent(url)}`;
+        }
+      }
+
+      // ── TIKTOK ──────────────────────────────────────────────────────────
+      else if (platform === 'tiktok') {
+        // Use tikwm.com API (free, no watermark)
+        const r = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&count=12&cursor=0&web=1&hd=1`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d.code === 0 && d.data) {
+            downloadUrl = d.data.hdplay || d.data.play;
+            title = d.data.title || 'TikTok';
+            thumbnail = d.data.cover;
+          }
+        }
+      }
+
+      // ── INSTAGRAM ───────────────────────────────────────────────────────
+      else if (platform === 'instagram') {
+        const rapidKey = process.env.RAPIDAPI_KEY;
+        if (rapidKey) {
+          const r = await fetch(`https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index?url=${encodeURIComponent(url)}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com'
+            }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            downloadUrl = d.media || d.video || d.url;
+            title = d.title || 'Instagram';
+            thumbnail = d.thumbnail;
+          }
+        }
+      }
+
+      // ── TWITTER/X ────────────────────────────────────────────────────────
+      else if (platform === 'twitter') {
+        const rapidKey = process.env.RAPIDAPI_KEY;
+        if (rapidKey) {
+          const r = await fetch(`https://twitter-video-downloader10.p.rapidapi.com/?url=${encodeURIComponent(url)}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'twitter-video-downloader10.p.rapidapi.com'
+            }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            const variants = d.media_url_https || d.variants || [];
+            downloadUrl = Array.isArray(variants) ? variants.find(v => v.content_type === 'video/mp4')?.url : variants;
+            title = d.text || 'Twitter/X';
+          }
+        }
+      }
+
+      if (!downloadUrl) {
+        return res.status(400).json({
+          error: 'Não foi possível extrair o vídeo.',
+          platform,
+          hint: platform === 'youtube'
+            ? 'Configure RAPIDAPI_KEY no Vercel para YouTube.'
+            : platform === 'instagram' || platform === 'twitter'
+            ? 'Configure RAPIDAPI_KEY no Vercel para esta plataforma.'
+            : 'Verifique se o link é público e tente novamente.'
+        });
+      }
+
+      return res.status(200).json({ url: downloadUrl, title, thumbnail, platform });
+
+    } catch(e) {
+      console.error('Download error:', e);
+      return res.status(500).json({ error: 'Erro ao processar: ' + e.message });
+    }
+  }
+
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
     const YT_KEY = process.env.YOUTUBE_API_KEY;
     if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada. Adicione YOUTUBE_API_KEY no Vercel.' });
