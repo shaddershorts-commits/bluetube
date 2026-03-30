@@ -213,24 +213,28 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .logo-text-group{display:flex;flex-direction:column;line-height:1}
 .logo-tagline{font-family:var(--font-mono);font-size:9px;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--neon);opacity:.7;margin-top:1px}
 
-/* Chess pieces in hero */
-.chess-hero-piece{position:absolute;pointer-events:none;z-index:1}
+/* Chess pieces in hero - FIXED: position fixed so they overflow hero */
+.chess-hero-piece{position:fixed;pointer-events:none;z-index:5}
 .chess-hero-piece img{width:100%;height:100%;object-fit:contain}
-.chess-piece-1{width:320px;height:320px;right:4%;top:8%;animation:chessFloat1 7s ease-in-out infinite;filter:drop-shadow(0 30px 60px rgba(251,191,36,0.25))}
-.chess-piece-2{width:110px;height:110px;left:4%;bottom:22%;animation:chessFloat2 9s ease-in-out infinite 1.5s;filter:blur(2px) drop-shadow(0 8px 20px rgba(0,0,0,0.4))}
-.chess-piece-3{width:90px;height:90px;right:2%;bottom:28%;animation:chessFloat3 8s ease-in-out infinite 3s;filter:blur(3px) drop-shadow(0 6px 16px rgba(0,0,0,0.3))}
+.chess-piece-1{width:420px;height:420px;right:-40px;top:5vh;animation:chessFloat1 7s ease-in-out infinite;filter:drop-shadow(0 40px 80px rgba(251,191,36,0.3))}
+.chess-piece-2{width:200px;height:200px;left:-30px;bottom:15vh;animation:chessFloat2 9s ease-in-out infinite 1.5s;filter:blur(4px) drop-shadow(0 8px 20px rgba(0,0,0,0.4));transform:rotate(28deg)}
+.chess-piece-3{width:160px;height:160px;right:2%;bottom:25vh;animation:chessFloat3 8s ease-in-out infinite 3s;filter:blur(5px) drop-shadow(0 6px 16px rgba(0,0,0,0.3));transform:rotate(-22deg)}
 @keyframes chessFloat1{
-  0%,100%{opacity:.9;transform:translateY(0px) rotate(-6deg)}
-  50%{opacity:1;transform:translateY(-18px) rotate(-4deg)}
+  0%,100%{opacity:.92;transform:translateY(0px) rotate(-8deg)}
+  50%{opacity:1;transform:translateY(-22px) rotate(-5deg)}
 }
 @keyframes chessFloat2{
-  0%,100%{opacity:.5;transform:translateY(0px) rotate(5deg)}
-  50%{opacity:.65;transform:translateY(10px) rotate(8deg)}
+  0%,100%{opacity:.55;transform:translateY(0px) rotate(28deg)}
+  50%{opacity:.7;transform:translateY(14px) rotate(34deg)}
 }
 @keyframes chessFloat3{
-  0%,100%{opacity:.4;transform:translateY(0px) rotate(-3deg)}
-  50%{opacity:.55;transform:translateY(-8px) rotate(1deg)}
+  0%,100%{opacity:.45;transform:translateY(0px) rotate(-22deg)}
+  50%{opacity:.6;transform:translateY(-10px) rotate(-16deg)}
 }
+
+/* Community button - restored */
+.nav-community-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:#fbbf24;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.nav-community-btn:hover{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.5);transform:translateY(-1px)}
 
 /* Scroll-reveal animations */
 .reveal{opacity:0;transform:translateY(40px);transition:opacity .8s ease,transform .8s ease}
@@ -267,8 +271,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .blublu-avatar-img:hover{transform:scale(1.1) translateY(-2px)}
 
 @media(max-width:640px){
-  .chess-piece-1{width:140px;height:140px;right:1%;top:8%;opacity:.6}
-  .chess-piece-2{display:none}
+  .chess-piece-1{width:180px;height:180px;right:-20px;top:8vh;opacity:.7}
+  .chess-piece-2{width:100px;height:100px;left:-20px;bottom:18vh}
   .chess-piece-3{display:none}
   .fomo-container{left:8px;bottom:80px}
   .fomo-popup{max-width:260px;padding:10px 12px}
