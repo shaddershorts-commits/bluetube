@@ -449,17 +449,8 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     // Show tip
     const tip = document.getElementById('downloadTip');
     if(tip) tip.style.display = 'flex';
-  } else if (source.name.toLowerCase().includes('instagram')) {
-    // Instagram: link direto funciona sem proxy (CDN público)
-    qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
-    dlBtn.href = downloadUrl;
-    dlBtn.download = filename;
-    dlBtn.target = '_blank';
-    dlBtn.onclick = null;
-    const tip = document.getElementById('downloadTip');
-    if(tip) tip.style.display = 'none';
   } else {
-    // TikTok etc: usar proxy do servidor para evitar CORS
+    // TikTok, Instagram etc: proxy do servidor garante download correto
     qualityEl.textContent = 'HD · Sem marca d\'água · Download direto';
     const proxyUrl = `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
     dlBtn.href = proxyUrl;
