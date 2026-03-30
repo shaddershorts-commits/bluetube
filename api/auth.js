@@ -388,21 +388,50 @@ export default async function handler(req, res) {
     else if (period === '7d') publishedAfter = new Date(now - 7*24*60*60*1000).toISOString();
     else if (period === '30d') publishedAfter = new Date(now - 30*24*60*60*1000).toISOString();
 
+    // Query localizada por região para forçar conteúdo do país
+    const REGION_QUERY = {
+      BR: '#shorts viral', US: '#shorts viral', GB: '#shorts viral',
+      IN: '#shorts viral', MX: '#shorts viral', JP: '#shorts',
+      DE: '#shorts', FR: '#shorts', ES: '#shorts viral',
+      AR: '#shorts viral', CO: '#shorts viral', TR: '#shorts',
+      KR: '#shorts',
+    };
+
     try {
-      const searchQuery = q ? q + ' #shorts' : '#shorts #viral';
-      const params = new URLSearchParams({
+      const baseQuery = q || REGION_QUERY[region] || '#shorts viral';
+      const searchQuery = q ? `${q} #shorts` : baseQuery;
+
+      // Faz 2 buscas paralelas: uma com publishedAfter, outra sem (mais views)
+      // A YouTube API às vezes ignora regionCode com publishedAfter — busca dupla garante resultados
+      const makeParams = (withDate) => new URLSearchParams({
         part: 'snippet', type: 'video', videoDuration: 'short',
         order: 'viewCount', maxResults: '24', regionCode: region,
+        relevanceLanguage: region === 'BR'||region === 'MX'||region === 'AR'||region === 'CO'||region === 'ES' ? 'pt' :
+          region === 'JP' ? 'ja' : region === 'KR' ? 'ko' : region === 'DE' ? 'de' :
+          region === 'FR' ? 'fr' : region === 'TR' ? 'tr' : region === 'IN' ? 'hi' : 'en',
         key: YT_KEY, q: searchQuery,
-        ...(publishedAfter && { publishedAfter }),
+        ...(withDate && publishedAfter && { publishedAfter }),
         ...(category && { videoCategoryId: category }),
       });
 
-      const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-      const searchData = await searchRes.json();
-      if (!searchRes.ok) return res.status(400).json({ error: searchData.error?.message || 'Erro YouTube API' });
+      // Busca paralela com e sem filtro de data
+      const [searchRes1, searchRes2] = await Promise.all([
+        fetch(`https://www.googleapis.com/youtube/v3/search?${makeParams(true)}`),
+        publishedAfter ? fetch(`https://www.googleapis.com/youtube/v3/search?${makeParams(false)}`) : Promise.resolve(null),
+      ]);
 
-      const videoIds = (searchData.items || []).filter(i => i.id?.videoId).map(i => i.id.videoId).join(',');
+      const searchData1 = await searchRes1.json();
+      if (!searchRes1.ok) return res.status(400).json({ error: searchData1.error?.message || 'Erro YouTube API' });
+
+      // Merge e deduplica IDs
+      let allItems = [...(searchData1.items || [])];
+      if (searchRes2?.ok) {
+        const searchData2 = await searchRes2.json();
+        const existingIds = new Set(allItems.map(i => i.id?.videoId));
+        (searchData2.items || []).forEach(i => { if (!existingIds.has(i.id?.videoId)) allItems.push(i); });
+      }
+
+      const videoIds = allItems.filter(i => i.id?.videoId).map(i => i.id.videoId).slice(0,24).join(',');
       if (!videoIds) return res.status(200).json({ videos: [] });
 
       const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}&key=${YT_KEY}`);
@@ -423,7 +452,7 @@ export default async function handler(req, res) {
           url: `https://www.youtube.com/shorts/${v.id}` };
       }).filter(v => v.duration <= 60 || v.duration === 0).sort((a,b) => b.views - a.views);
 
-      return res.status(200).json({ videos, total: videos.length });
+      return res.status(200).json({ videos, total: videos.length, region, period });
     } catch(e) {
       return res.status(500).json({ error: 'Falha ao buscar vídeos virais: ' + e.message });
     }
