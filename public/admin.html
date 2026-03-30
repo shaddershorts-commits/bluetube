@@ -477,23 +477,24 @@ async function loadData(){
       const weekly=d.visits.weekly;
       const maxCount=Math.max(...weekly.map(w=>w.count),1);
       const days=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-      document.getElementById('weeklyChart').innerHTML=`
-        <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">
-          ${weekly.map(w=>{
-            const date=new Date(w.date+'T12:00:00');
-            const dayName=days[date.getDay()];
-            const dateLabel=`${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}`;
-            const isToday=w.date===today;
-            const pct=maxCount>0?Math.max((w.count/maxCount)*100,4):4;
-            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">${w.count}</div>
-              <div style="width:100%;height:${pct}%;background:${isToday?'var(--blue)':'rgba(0,170,255,0.3)'};border-radius:4px 4px 0 0;min-height:4px;transition:height .4s"></div>
-              <div style="font-family:var(--mono);font-size:10px;color:${isToday?'var(--blue)':'var(--dim)';font-weight:${isToday?'700':'400'}">${dayName}</div>
-              <div style="font-family:var(--mono);font-size:9px;color:var(--dim)">${dateLabel}</div>
-            </div>`;
-          }).join('')}
-        </div>
-      `;
+      const bars=weekly.map(w=>{
+        const date=new Date(w.date+'T12:00:00');
+        const dayName=days[date.getDay()];
+        const dateLabel=String(date.getDate()).padStart(2,'0')+'/'+String(date.getMonth()+1).padStart(2,'0');
+        const isToday=w.date===today;
+        const pct=Math.max((w.count/maxCount)*100,4);
+        const color=isToday?'var(--blue)':'rgba(0,170,255,0.3)';
+        const textColor=isToday?'var(--blue)':'var(--dim)';
+        const fw=isToday?'700':'400';
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">'+
+          '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">'+w.count+'</div>'+
+          '<div style="width:100%;height:'+pct+'%;background:'+color+';border-radius:4px 4px 0 0;min-height:4px"></div>'+
+          '<div style="font-family:var(--mono);font-size:10px;color:'+textColor+';font-weight:'+fw+'">'+dayName+'</div>'+
+          '<div style="font-family:var(--mono);font-size:9px;color:var(--dim)">'+dateLabel+'</div>'+
+          '</div>';
+      }).join('');
+      document.getElementById('weeklyChart').innerHTML=
+        '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">'+bars+'</div>';
     }
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
