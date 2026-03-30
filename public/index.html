@@ -2243,8 +2243,8 @@ function pingVisit(){
 }
 // Ping immediately on load
 pingVisit();
-// Then every 2 minutes to keep "online now" counter accurate
-setInterval(pingVisit, 2 * 60 * 1000);
+// Ping every 90 seconds to stay within the 2-minute online window
+setInterval(pingVisit, 90 * 1000);
 
 // When user closes tab/browser — send offline signal
 window.addEventListener('beforeunload', ()=>{
