@@ -34,7 +34,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .nav-login-btn:hover{color:var(--neon);border-color:rgba(0,170,255,0.5)}
 .nav-upgrade-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:8px;padding:7px 16px;cursor:pointer;transition:all .2s;box-shadow:0 0 14px rgba(0,170,255,0.3)}
 .nav-upgrade-btn:hover{transform:translateY(-1px);box-shadow:0 0 22px rgba(0,170,255,0.5)}
-.hero{position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:110px 20px 80px;text-align:center}
+.hero{position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:110px 20px 80px;text-align:center;overflow:visible}
 .hero-badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--neon);border:1px solid rgba(0,170,255,0.22);background:rgba(0,170,255,0.06);padding:6px 18px;border-radius:100px;margin-bottom:36px;animation:fadeUp .7s .15s ease both}
 .badge-dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon);animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
@@ -213,12 +213,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .logo-text-group{display:flex;flex-direction:column;line-height:1}
 .logo-tagline{font-family:var(--font-mono);font-size:9px;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--neon);opacity:.7;margin-top:1px}
 
-/* Chess pieces in hero - FIXED: position fixed so they overflow hero */
-.chess-hero-piece{position:fixed;pointer-events:none;z-index:5}
+/* Chess pieces in hero - absolute so they scroll with page */
+.chess-hero-piece{position:absolute;pointer-events:none;z-index:2}
 .chess-hero-piece img{width:100%;height:100%;object-fit:contain}
-.chess-piece-1{width:420px;height:420px;right:-40px;top:5vh;animation:chessFloat1 7s ease-in-out infinite;filter:drop-shadow(0 40px 80px rgba(251,191,36,0.3))}
-.chess-piece-2{width:200px;height:200px;left:-30px;bottom:15vh;animation:chessFloat2 9s ease-in-out infinite 1.5s;filter:blur(4px) drop-shadow(0 8px 20px rgba(0,0,0,0.4));transform:rotate(28deg)}
-.chess-piece-3{width:160px;height:160px;right:2%;bottom:25vh;animation:chessFloat3 8s ease-in-out infinite 3s;filter:blur(5px) drop-shadow(0 6px 16px rgba(0,0,0,0.3));transform:rotate(-22deg)}
+.chess-piece-1{width:420px;height:420px;right:-60px;top:50px;animation:chessFloat1 7s ease-in-out infinite;filter:drop-shadow(0 40px 80px rgba(251,191,36,0.3))}
+.chess-piece-2{width:200px;height:200px;left:-50px;bottom:100px;animation:chessFloat2 9s ease-in-out infinite 1.5s;filter:blur(4px) drop-shadow(0 8px 20px rgba(0,0,0,0.4));transform:rotate(28deg)}
+.chess-piece-3{width:160px;height:160px;right:20px;bottom:160px;animation:chessFloat3 8s ease-in-out infinite 3s;filter:blur(5px) drop-shadow(0 6px 16px rgba(0,0,0,0.3));transform:rotate(-22deg)}
 @keyframes chessFloat1{
   0%,100%{opacity:.92;transform:translateY(0px) rotate(-8deg)}
   50%{opacity:1;transform:translateY(-22px) rotate(-5deg)}
@@ -463,13 +463,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <button class="modal-cta" id="upgradeModalCta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
     <div class="modal-or">ou crie sua conta gratuita</div>
     <div class="modal-auth-btns">
-      <button class="auth-btn" onclick="handleGoogleLogin()">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-        Google
-      </button>
-      <button class="auth-btn" onclick="closeUpgradeModal();openAuthModal()">
+      <button class="auth-btn" style="width:100%;justify-content:center" onclick="closeUpgradeModal();openAuthModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
-        E-mail
+        Criar conta por E-mail
       </button>
     </div>
   </div>
@@ -576,11 +572,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </div>
     </div>
 
-    <div class="auth-divider" id="authDivider">ou continue com</div>
-    <button class="google-btn" id="googleBtn" onclick="handleGoogleLogin()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-      Continuar com Google
-    </button>
+    <div class="auth-divider" id="authDivider" style="display:none"></div>
+    <div id="googleBtn" style="display:none"></div>
     <div class="auth-msg" id="authMsg"></div>
   </div>
 </div>
@@ -825,7 +818,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <h2 class="sec-title" style="text-align:left;margin-bottom:36px">Perguntas frequentes.</h2>
     <div id="faqList">
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Como o BlueTube funciona? <span class="faq-chevron">▼</span></div>
+        <div class="faq-q">O que é a BlueTube? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">A BlueTube nasceu de uma crença simples: todo criador merece as mesmas ferramentas que os grandes canais usam. Somos uma plataforma de inteligência artificial criada para transformar qualquer vídeo do YouTube Shorts em roteiros virais prontos para narrar — em segundos, em qualquer idioma do mundo.<br><br>Nossa missão vai além da tecnologia. Acreditamos que o conteúdo certo, na hora certa, pode mudar a trajetória de um criador. Já entregamos resultados reais para mais de <strong>129 canais do YouTube</strong> — do criador iniciante ao produtor profissional. Cada roteiro gerado é um passo a mais em direção a resultados reais: mais views, mais seguidores, mais impacto. A BlueTube é seu parceiro estratégico no jogo do conteúdo.</div>
+      </div>
         <div class="faq-a">Cole o link de qualquer YouTube Shorts, escolha o idioma e clique em Transcrever. Nossa IA analisa o áudio, gera a transcrição completa e cria dois roteiros virais adaptados ao estilo do vídeo — um casual e um apelativo. Tudo em menos de 30 segundos.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
@@ -1306,7 +1301,10 @@ async function handleEmailLogin(){
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
     setAuthMsg('Bem-vindo! 🎉','ok');
-    setTimeout(()=>{closeAuthModal();setLoggedIn(email);},1200);
+    setTimeout(async()=>{
+      closeAuthModal();
+      await checkSession(); // fetch real plan and update nav immediately
+    },1000);
   }catch(e){setAuthMsg(e.message,'');}
 }
 async function handleEmailSignup(){
