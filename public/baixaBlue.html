@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BaixaBlue — Baixar vídeos de qualquer rede social</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817;
+  --card:rgba(10,22,40,0.9);
+  --blue:rgba(0,170,255,1);
+  --blue-dim:rgba(0,170,255,0.15);
+  --blue-border:rgba(0,170,255,0.2);
+  --neon:#00aaff;
+  --gold:#fbbf24;
+  --text:#e8f4ff;
+  --text-dim:rgba(150,190,230,0.5);
+  --text-sec:rgba(150,190,230,0.75);
+  --font:'Syne',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+  --radius:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
+
+/* BG */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.03) 1px,transparent 1px);background-size:48px 48px}
+.bg-orb{position:absolute;border-radius:50%;filter:blur(120px);opacity:.35}
+.bg-orb-1{width:600px;height:600px;background:radial-gradient(circle,rgba(0,80,255,.4),transparent 70%);top:-100px;right:-100px}
+.bg-orb-2{width:500px;height:500px;background:radial-gradient(circle,rgba(0,170,255,.25),transparent 70%);bottom:-100px;left:-100px}
+.mouse-glow{position:fixed;pointer-events:none;z-index:1;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.05) 0%,transparent 70%);transform:translate(-50%,-50%);transition:left .12s ease,top .12s ease}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:18px 32px;background:rgba(2,8,23,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.4px}
+.logo-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(0,170,255,.4)}
+.logo-mark svg{width:14px;height:14px;fill:#fff}
+.logo-accent{color:var(--neon)}
+.logo-tagline{font-family:var(--mono);font-size:8px;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--neon);opacity:.7;display:block;margin-top:1px}
+.logo-text{display:flex;flex-direction:column;line-height:1}
+.nav-back{font-family:var(--mono);font-size:11px;color:var(--text-sec);background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:8px;padding:7px 14px;cursor:pointer;text-decoration:none;transition:all .2s;display:flex;align-items:center;gap:6px}
+.nav-back:hover{border-color:rgba(0,170,255,.5);color:var(--text)}
+.master-badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:4px 12px;border-radius:100px}
+
+/* HERO */
+.hero{position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 24px 80px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--neon);border:1px solid rgba(0,170,255,.22);background:rgba(0,170,255,.06);padding:6px 18px;border-radius:100px;margin-bottom:36px;animation:fadeUp .6s ease both}
+.badge-dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon);animation:pulse 1.5s infinite}
+
+.hero-title{font-size:clamp(40px,6vw,80px);font-weight:800;line-height:1.0;letter-spacing:-3px;margin-bottom:24px;animation:fadeUp .6s .1s ease both}
+.hero-title .accent{color:var(--neon);text-shadow:0 0 40px rgba(0,170,255,.4)}
+.hero-title .small{font-size:clamp(22px,3.5vw,48px);letter-spacing:-1.5px;font-weight:700;opacity:.85;display:block}
+
+.hero-sub{font-size:16px;color:var(--text-sec);line-height:1.7;max-width:480px;margin:0 auto 52px;animation:fadeUp .6s .2s ease both}
+
+/* NETWORKS */
+.networks{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:48px;animation:fadeUp .6s .25s ease both;flex-wrap:wrap}
+.net-pill{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 14px;border-radius:100px;border:1px solid}
+.net-yt{color:#ff4444;border-color:rgba(255,68,68,.3);background:rgba(255,68,68,.07)}
+.net-tt{color:#fff;border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.05)}
+.net-ig{color:#e1306c;border-color:rgba(225,48,108,.3);background:rgba(225,48,108,.07)}
+.net-tw{color:#1d9bf0;border-color:rgba(29,155,240,.3);background:rgba(29,155,240,.07)}
+.net-fb{color:#1877f2;border-color:rgba(24,119,242,.3);background:rgba(24,119,242,.07)}
+.net-more{color:var(--text-dim);border-color:rgba(150,190,230,.15);background:rgba(150,190,230,.05)}
+
+/* MAIN CARD */
+.main-card{width:100%;max-width:680px;background:var(--card);border:1px solid var(--blue-border);border-radius:24px;padding:36px;backdrop-filter:blur(24px);box-shadow:0 0 0 1px rgba(0,170,255,.04),0 8px 60px rgba(0,50,160,.22),inset 0 1px 0 rgba(255,255,255,.04);animation:fadeUp .6s .3s ease both;position:relative;overflow:hidden}
+.main-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent)}
+
+.input-group{display:flex;gap:10px;margin-bottom:12px}
+.url-input{flex:1;background:rgba(2,8,23,.8);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:14px 18px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:border-color .2s}
+.url-input:focus{border-color:rgba(0,170,255,.5);box-shadow:0 0 0 3px rgba(0,170,255,.08)}
+.url-input::placeholder{color:var(--text-dim)}
+.btn-fetch{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap;box-shadow:0 0 28px rgba(0,170,255,.35)}
+.btn-fetch:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(0,170,255,.5)}
+.btn-fetch:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center}
+.hint span{color:var(--neon);opacity:.8}
+
+/* PROGRESS */
+.progress-wrap{margin:20px 0;display:none}
+.progress-bar{height:2px;background:rgba(0,170,255,.1);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--neon),#1a6bff);border-radius:2px;width:0;transition:width .4s ease}
+.progress-label{font-family:var(--mono);font-size:11px;color:var(--text-sec);margin-top:8px;text-align:center}
+
+/* RESULT */
+.result-card{display:none;margin-top:24px;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:16px;overflow:hidden}
+.result-header{display:flex;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid rgba(0,170,255,.08)}
+.result-thumb{width:80px;height:56px;border-radius:8px;object-fit:cover;background:rgba(0,170,255,.1);flex-shrink:0}
+.result-thumb-placeholder{width:80px;height:56px;border-radius:8px;background:linear-gradient(135deg,rgba(0,170,255,.15),rgba(0,170,255,.05));display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px}
+.result-meta{flex:1;min-width:0}
+.result-title{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.result-source{font-family:var(--mono);font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
+.result-source-dot{width:5px;height:5px;border-radius:50%;background:var(--neon)}
+
+.download-options{padding:20px}
+.download-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:14px}
+.download-btn{width:100%;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,rgba(0,170,255,.12),rgba(0,170,255,.06));border:1px solid rgba(0,170,255,.25);border-radius:12px;padding:16px 20px;cursor:pointer;transition:all .25s;text-decoration:none;color:var(--text)}
+.download-btn:hover{border-color:rgba(0,170,255,.5);background:linear-gradient(135deg,rgba(0,170,255,.2),rgba(0,170,255,.1));transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,170,255,.15)}
+.download-btn-left{display:flex;align-items:center;gap:12px}
+.download-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center}
+.download-info .quality{font-size:14px;font-weight:700;color:var(--text)}
+.download-info .size{font-family:var(--mono);font-size:11px;color:var(--text-sec);margin-top:2px}
+.download-arrow{width:32px;height:32px;border-radius:8px;border:1px solid rgba(0,170,255,.2);display:flex;align-items:center;justify-content:center;color:var(--neon);transition:all .2s}
+.download-btn:hover .download-arrow{background:rgba(0,170,255,.15);border-color:rgba(0,170,255,.4)}
+
+/* ERROR */
+.error-box{display:none;margin-top:16px;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.2);border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:12px;color:#ff9a9a;text-align:center}
+
+/* FEATURES */
+.features{position:relative;z-index:10;padding:80px 24px;max-width:900px;margin:0 auto}
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.feat{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:24px;transition:all .25s}
+.feat:hover{border-color:rgba(0,170,255,.35);transform:translateY(-2px)}
+.feat-icon{font-size:28px;margin-bottom:14px}
+.feat-title{font-size:14px;font-weight:700;margin-bottom:6px}
+.feat-desc{font-family:var(--mono);font-size:11px;color:var(--text-sec);line-height:1.6}
+
+/* FOOTER */
+footer{position:relative;z-index:10;text-align:center;padding:32px 24px;border-top:1px solid var(--blue-border)}
+footer a{color:var(--neon);text-decoration:none}
+
+/* ANIMATIONS */
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+
+@media(max-width:640px){
+  nav{padding:14px 18px}
+  .hero{padding:100px 16px 60px}
+  .hero-title{letter-spacing:-2px}
+  .input-group{flex-direction:column}
+  .btn-fetch{width:100%}
+  .features-grid{grid-template-columns:1fr}
+  .main-card{padding:22px 18px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+</div>
+<div class="mouse-glow" id="mouseGlow"></div>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
+    <div class="logo-text">Blue<span class="logo-accent">Tube</span><span class="logo-tagline">Criador Viral</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="master-badge">👑 Master</span>
+    <a href="/" class="nav-back">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Voltar
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge"><span class="badge-dot"></span>Exclusivo Master · YouTube · TikTok · Instagram · e mais</div>
+
+  <h1 class="hero-title">
+    <span class="small">Você precisa colar que o</span>
+    <span class="accent">BaixaBlue</span>
+    <span class="small">faz o resto.</span>
+  </h1>
+
+  <p class="hero-sub">Cole o link de qualquer vídeo do YouTube, TikTok, Instagram, Twitter ou Facebook e baixe na melhor qualidade possível em segundos.</p>
+
+  <!-- Networks -->
+  <div class="networks">
+    <div class="net-pill net-yt">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.38.55A3.02 3.02 0 0 0 .5 6.19C0 8.07 0 12 0 12s0 3.93.5 5.81a3.02 3.02 0 0 0 2.12 2.14C4.5 20.5 12 20.5 12 20.5s7.5 0 9.38-.55a3.02 3.02 0 0 0 2.12-2.14C24 15.93 24 12 24 12s0-3.93-.5-5.81zM9.75 15.02V8.98L15.5 12l-5.75 3.02z"/></svg>
+      YouTube
+    </div>
+    <div class="net-pill net-tt">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/></svg>
+      TikTok
+    </div>
+    <div class="net-pill net-ig">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" fill="none" stroke="currentColor" stroke-width="2"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+      Instagram
+    </div>
+    <div class="net-pill net-tw">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      Twitter/X
+    </div>
+    <div class="net-pill net-fb">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+      Facebook
+    </div>
+    <div class="net-pill net-more">+ outras redes</div>
+  </div>
+
+  <!-- MAIN CARD -->
+  <div class="main-card">
+    <div class="input-group">
+      <input
+        id="videoUrl"
+        type="url"
+        class="url-input"
+        placeholder="Cole o link do vídeo aqui… youtube.com/shorts, tiktok.com, instagram.com/reels…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="btn-fetch" id="fetchBtn" onclick="startDownload()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Baixar
+      </button>
+    </div>
+    <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Facebook · Kwai</span> e mais de 1000 sites</div>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">Analisando link…</div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Result -->
+    <div class="result-card" id="resultCard">
+      <div class="result-header">
+        <div class="result-thumb-placeholder" id="resultThumb">🎬</div>
+        <div class="result-meta">
+          <div class="result-title" id="resultTitle">Vídeo encontrado</div>
+          <div class="result-source">
+            <span class="result-source-dot"></span>
+            <span id="resultSource">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="download-options">
+        <div class="download-label">Download disponível</div>
+        <a id="downloadLink" href="#" class="download-btn" target="_blank" rel="noopener" download>
+          <div class="download-btn-left">
+            <div class="download-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <div class="download-info">
+              <div class="quality">Download na melhor qualidade possível</div>
+              <div class="size" id="resultQuality">HD · Sem marca d'água</div>
+            </div>
+          </div>
+          <div class="download-arrow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </div>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <div class="features-grid">
+    <div class="feat">
+      <div class="feat-icon">⚡</div>
+      <div class="feat-title">Sem marca d'água</div>
+      <div class="feat-desc">TikTok, Instagram e Kwai sem watermark. Limpo e pronto para reusar.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🎯</div>
+      <div class="feat-title">Melhor qualidade</div>
+      <div class="feat-desc">Sempre baixa a melhor resolução disponível — até 4K quando o vídeo suportar.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🌐</div>
+      <div class="feat-title">1000+ plataformas</div>
+      <div class="feat-desc">YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai, Pinterest e muito mais.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">🔒</div>
+      <div class="feat-title">100% privado</div>
+      <div class="feat-desc">Seus links não são armazenados. O download vai direto para o seu dispositivo.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">📱</div>
+      <div class="feat-title">Funciona no celular</div>
+      <div class="feat-desc">Acesse do iPhone ou Android. Interface otimizada para mobile.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">♾️</div>
+      <div class="feat-title">Downloads ilimitados</div>
+      <div class="feat-desc">Exclusivo Master — sem limite de downloads por dia.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div style="font-size:14px;font-weight:700;margin-bottom:6px">Blue<span style="color:var(--neon)">Tube</span> · <span style="color:var(--neon)">BaixaBlue</span></div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Ferramenta exclusiva do plano Master · <a href="/">← Voltar ao BlueTube</a></div>
+</footer>
+
+<script>
+// ── MOUSE GLOW ──────────────────────────────────────────────────────────────
+const glow = document.getElementById('mouseGlow');
+document.addEventListener('mousemove', e => {
+  glow.style.left = e.clientX + 'px';
+  glow.style.top = e.clientY + 'px';
+});
+
+// ── AUTH CHECK — redirect if not master ─────────────────────────────────────
+const token = localStorage.getItem('bt_token');
+const plan = localStorage.getItem('bt_plan');
+if(!token || plan !== 'master'){
+  // Show locked overlay
+  document.querySelector('.main-card').innerHTML = `
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:48px;margin-bottom:16px">👑</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px">Exclusivo para assinantes Master</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-bottom:24px">O BaixaBlue está disponível apenas no plano Master.</div>
+      <a href="/#plans" style="display:inline-block;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;text-decoration:none">Ver planos →</a>
+    </div>
+  `;
+}
+
+// ── DETECT SOURCE ────────────────────────────────────────────────────────────
+function detectSource(url){
+  if(url.includes('youtube.com')||url.includes('youtu.be')) return {name:'YouTube',emoji:'▶️'};
+  if(url.includes('tiktok.com')) return {name:'TikTok',emoji:'🎵'};
+  if(url.includes('instagram.com')) return {name:'Instagram',emoji:'📸'};
+  if(url.includes('twitter.com')||url.includes('x.com')) return {name:'Twitter/X',emoji:'𝕏'};
+  if(url.includes('facebook.com')||url.includes('fb.watch')) return {name:'Facebook',emoji:'👍'};
+  if(url.includes('kwai.com')) return {name:'Kwai',emoji:'🎬'};
+  if(url.includes('pinterest.com')) return {name:'Pinterest',emoji:'📌'};
+  return {name:'Vídeo',emoji:'🎬'};
+}
+
+// ── PROGRESS ANIMATION ───────────────────────────────────────────────────────
+let progressTimer = null;
+function startProgress(){
+  const fill = document.getElementById('progressFill');
+  const label = document.getElementById('progressLabel');
+  const msgs = ['Analisando link…','Conectando ao servidor…','Extraindo vídeo…','Preparando download…'];
+  let i = 0, pct = 0;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  fill.style.width = '0%';
+  progressTimer = setInterval(()=>{
+    pct = Math.min(pct + (Math.random() * 8 + 2), 85);
+    fill.style.width = pct + '%';
+    if(msgs[i]) label.textContent = msgs[Math.min(i++, msgs.length-1)];
+  }, 600);
+}
+function finishProgress(success){
+  clearInterval(progressTimer);
+  const fill = document.getElementById('progressFill');
+  fill.style.width = success ? '100%' : '100%';
+  fill.style.background = success ? 'linear-gradient(90deg,var(--neon),#1a6bff)' : 'linear-gradient(90deg,#ff4444,#ff7a5a)';
+  setTimeout(()=>{
+    document.getElementById('progressWrap').style.display = 'none';
+    fill.style.width = '0%';
+    fill.style.background = 'linear-gradient(90deg,var(--neon),#1a6bff)';
+  }, 600);
+}
+
+// ── MAIN DOWNLOAD FUNCTION ───────────────────────────────────────────────────
+async function startDownload(){
+  const url = document.getElementById('videoUrl').value.trim();
+  const btn = document.getElementById('fetchBtn');
+
+  if(!url){
+    showError('Cole o link do vídeo antes de continuar.');
+    return;
+  }
+  if(!url.startsWith('http')){
+    showError('Link inválido. Certifique-se de copiar o link completo do vídeo.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  startProgress();
+
+  try{
+    // Use cobalt.tools API — free, open, no watermark
+    const apiUrl = 'https://api.cobalt.tools/';
+    const r = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        url: url,
+        videoQuality: '1080',
+        audioFormat: 'mp3',
+        filenameStyle: 'pretty',
+        disableMetadata: false,
+      })
+    });
+
+    const data = await r.json();
+    finishProgress(true);
+
+    if(data.status === 'stream' || data.status === 'redirect' || data.url || data.tunnel){
+      const downloadUrl = data.url || data.tunnel;
+      const source = detectSource(url);
+      showResult(downloadUrl, source, url);
+    } else if(data.status === 'picker' && data.picker?.length > 0){
+      // Multiple options (Instagram carousels etc) — take first
+      const downloadUrl = data.picker[0].url;
+      const source = detectSource(url);
+      showResult(downloadUrl, source, url);
+    } else {
+      showError('Não foi possível extrair o vídeo. Verifique se o link é público e tente novamente.');
+    }
+  }catch(e){
+    finishProgress(false);
+    showError('Erro ao processar o link. Verifique sua conexão e tente novamente.');
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Baixar`;
+  }
+}
+
+function showResult(downloadUrl, source, originalUrl){
+  document.getElementById('resultTitle').textContent = source.name + ' — Vídeo encontrado';
+  document.getElementById('resultSource').textContent = source.name + ' · ' + new URL(originalUrl).hostname;
+  document.getElementById('resultThumb').textContent = source.emoji;
+  document.getElementById('resultQuality').textContent = 'HD · Sem marca d\'água · Download direto';
+  document.getElementById('downloadLink').href = downloadUrl;
+  document.getElementById('resultCard').style.display = 'block';
+}
+
+function showError(msg){
+  const box = document.getElementById('errorBox');
+  box.textContent = '⚠ ' + msg;
+  box.style.display = 'block';
+  document.getElementById('resultCard').style.display = 'none';
+}
+
+// Enter key
+document.getElementById('videoUrl').addEventListener('keydown', e => {
+  if(e.key === 'Enter') startDownload();
+});
+</script>
+</body>
+</html>
