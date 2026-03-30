@@ -257,63 +257,47 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada.' });
         }
 
-        // Method 1: instagram-downloader-download-instagram-videos-stories5
-        // Tenta os dois endpoints possíveis: index e reels-posts
-        const instaHost = 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com';
-        const instaEndpoints = [
-          `https://${instaHost}/index?url=${encodeURIComponent(url)}`,
-          `https://${instaHost}/reels-posts?url=${encodeURIComponent(url)}`,
-        ];
-        for (const endpoint of instaEndpoints) {
-          if (downloadUrl) break;
-          try {
-            const r = await fetch(endpoint, {
-              headers: {
-                'x-rapidapi-key': rapidKey,
-                'x-rapidapi-host': instaHost
-              }
-            });
-            console.log('Instagram endpoint:', endpoint.split('.com')[1], 'status:', r.status);
-            if (r.ok) {
-              const d = await r.json();
-              console.log('Instagram response:', JSON.stringify(d).slice(0, 400));
-              if (Array.isArray(d)) {
-                downloadUrl = d[0]?.url || d[0]?.video_url || d[0]?.download_url;
-                thumbnail = d[0]?.thumbnail || d[0]?.display_url;
-                title = d[0]?.title || 'Instagram';
-              } else {
-                downloadUrl = d.url || d.video_url || d.download_url || d.media
-                  || d.result?.url || d.data?.url || d.data?.video_url;
-                title = d.title || d.caption || 'Instagram';
-                thumbnail = d.thumbnail || d.display_url || d.cover;
-              }
+        // Method 1: YouTube Media Downloader (DataFanatic) — suporta Instagram Reels
+        try {
+          const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/social/auto?url=${encodeURIComponent(url)}`, {
+            headers: {
+              'x-rapidapi-key': rapidKey,
+              'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
             }
-          } catch(e) { console.log('instagram endpoint failed:', e.message); }
-        }
-        if (downloadUrl) console.log('Instagram URL found:', downloadUrl.slice(0,80));
+          });
+          const d = await r.json();
+          console.log('Instagram API1 (yt-media) status:', r.status, JSON.stringify(d).slice(0,400));
+          if (r.ok && d.videos?.items?.length > 0) {
+            const best = d.videos.items.find(v => v.height >= 720) || d.videos.items[0];
+            downloadUrl = best?.url;
+            title = d.title || 'Instagram';
+            thumbnail = d.thumbnail?.url || d.thumbnail;
+          }
+        } catch(e) { console.log('instagram api1 failed:', e.message); }
 
-        // Method 2: instagram-scraper-api2
+        // Method 2: instagram-downloader-stories5 (funciona para Stories/Highlights)
         if (!downloadUrl) {
+          const instaHost = 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com';
           try {
-            const r = await fetch(`https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${encodeURIComponent(url)}`, {
-              headers: {
-                'x-rapidapi-key': rapidKey,
-                'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com'
-              }
+            const r = await fetch(`https://${instaHost}/reels-posts?url=${encodeURIComponent(url)}`, {
+              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': instaHost }
             });
-            console.log('Instagram API 2 status:', r.status);
+            const d = await r.json();
+            console.log('Instagram API2 (stories5) status:', r.status, JSON.stringify(d).slice(0,300));
             if (r.ok) {
-              const d = await r.json();
-              console.log('Instagram API 2 response keys:', Object.keys(d));
-              const media = d.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0];
-              if (media) {
-                downloadUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
-                title = media.caption?.text?.slice(0, 60) || 'Instagram';
-                thumbnail = media.image_versions2?.candidates?.[0]?.url;
+              if (Array.isArray(d)) {
+                downloadUrl = d[0]?.url || d[0]?.video_url;
+                thumbnail = d[0]?.thumbnail || d[0]?.display_url;
+              } else {
+                downloadUrl = d.url || d.video_url || d.download_url || d.media;
+                thumbnail = d.thumbnail || d.display_url;
               }
+              title = 'Instagram';
             }
           } catch(e) { console.log('instagram api2 failed:', e.message); }
         }
+
+
       }
 
       // ── TWITTER/X ────────────────────────────────────────────────────────
