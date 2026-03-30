@@ -209,7 +209,7 @@ export default async function handler(req, res) {
 
         // Method 1: tiktok-download-without-watermark4 (subscribed)
         try {
-          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/tiktok?url=${encodeURIComponent(url)}`, {
+          const r = await fetch(`https://tiktok-download-without-watermark4.p.rapidapi.com/getVideoInfo?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
               'x-rapidapi-host': 'tiktok-download-without-watermark4.p.rapidapi.com'
@@ -258,19 +258,27 @@ export default async function handler(req, res) {
 
         // Method 1: instagram-downloader-download-instagram-videos-stories
         try {
-          const r = await fetch(`https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index?url=${encodeURIComponent(url)}`, {
+          const r = await fetch(`https://instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com/reels-posts?url=${encodeURIComponent(url)}`, {
             headers: {
               'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com'
+              'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com'
             }
           });
           console.log('Instagram API 1 status:', r.status);
           if (r.ok) {
             const d = await r.json();
-            console.log('Instagram API 1 response:', JSON.stringify(d).slice(0, 300));
-            downloadUrl = d.media || d.video || d.url || (Array.isArray(d) && d[0]?.url);
-            title = d.title || 'Instagram';
-            thumbnail = d.thumbnail || d.cover;
+            console.log('Instagram API 1 response:', JSON.stringify(d).slice(0, 400));
+            // stories5 API returns various shapes
+            if (Array.isArray(d)) {
+              downloadUrl = d[0]?.url || d[0]?.video_url || d[0]?.download_url;
+              thumbnail = d[0]?.thumbnail || d[0]?.display_url;
+              title = d[0]?.title || 'Instagram';
+            } else {
+              downloadUrl = d.url || d.video_url || d.download_url || d.media
+                || d.result?.url || d.data?.url || d.data?.video_url;
+              title = d.title || d.caption || 'Instagram';
+              thumbnail = d.thumbnail || d.display_url || d.cover;
+            }
           }
         } catch(e) { console.log('instagram api1 failed:', e.message); }
 
