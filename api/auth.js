@@ -74,12 +74,18 @@ export default async function handler(req, res) {
       });
 
       if (!fileRes.ok) {
-        console.error('Proxy fetch failed:', fileRes.status, await fileRes.text().catch(()=>''));
+        const errText = await fileRes.text().catch(()=>'');
+        console.error('Proxy fetch failed:', fileRes.status, errText.slice(0,200));
         return res.status(502).json({ error: `Servidor retornou ${fileRes.status}` });
       }
 
-      const contentType = fileRes.headers.get('content-type') || 'video/mp4';
+      let contentType = fileRes.headers.get('content-type') || 'video/mp4';
+      // Force video/mp4 if server returns wrong content-type (e.g. text/html redirect)
+      if (!contentType.includes('video') && !contentType.includes('octet')) {
+        contentType = 'video/mp4';
+      }
       const contentLength = fileRes.headers.get('content-length');
+      console.log('Proxy content-type:', contentType, 'length:', contentLength);
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${decodedName}"`);
