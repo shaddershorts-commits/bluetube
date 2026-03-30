@@ -263,43 +263,52 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada.' });
         }
 
-        // Method 1: Instagram Reels Downloader API (endpoint dedicado para Reels)
+        // Method 1: Social Media Video Downloader — Instagram-Media endpoint
         try {
-          const r = await fetch(`https://instagram-reels-downloader-api.p.rapidapi.com/download?url=${encodeURIComponent(url)}`, {
+          // Extract shortcode from Instagram URL
+          // Formats: /p/CODE/, /reel/CODE/, /reels/CODE/, /tv/CODE/
+          const scMatch = url.match(/\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+          const shortcode = scMatch?.[1];
+          if (!shortcode) throw new Error('Could not extract shortcode from URL: ' + url);
+
+          const smvdUrl = `https://social-media-video-downloader.p.rapidapi.com/instagram/v3/media/post/details?shortcode=${shortcode}&renderableFormats=720p%2Chighres`;
+          const r = await fetch(smvdUrl, {
             headers: {
               'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com'
+              'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
             }
           });
           const d = await r.json();
-          console.log('Instagram API1 (reels) status:', r.status, JSON.stringify(d).slice(0,400));
-          if (r.ok) {
-            // API retorna: { download_url, thumbnail, title } ou { url, ... }
-            downloadUrl = d.download_url || d.url || d.video_url
-              || (Array.isArray(d.data) ? d.data[0]?.url : d.data?.url);
-            title = d.title || d.caption || 'Instagram';
-            thumbnail = d.thumbnail || d.cover;
+          console.log('Instagram API1 (smvd) status:', r.status, JSON.stringify(d).slice(0,400));
+          if (r.ok && d) {
+            // Try to find video URL in response
+            const items = d.data?.items || d.items || [];
+            const media = Array.isArray(items) ? items[0] : d.data || d;
+            downloadUrl = media?.video_url || media?.url
+              || d.data?.video_url || d.video_url || d.url
+              || d.renderableMedia?.[0]?.url;
+            title = d.data?.caption?.text?.slice(0,60) || media?.caption?.text?.slice(0,60) || 'Instagram';
+            thumbnail = d.data?.thumbnail_url || media?.thumbnail_url || media?.display_url;
+            console.log('Instagram shortcode:', shortcode, 'downloadUrl found:', !!downloadUrl);
           }
         } catch(e) { console.log('instagram api1 failed:', e.message); }
 
-        // Method 2: instagram-downloader-stories5 (fallback)
+        // Method 2: Instagram Reels Downloader API (fallback)
         if (!downloadUrl) {
-          const instaHost = 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com';
           try {
-            const r = await fetch(`https://${instaHost}/reels-posts?url=${encodeURIComponent(url)}`, {
-              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': instaHost }
+            const r = await fetch(`https://instagram-reels-downloader-api.p.rapidapi.com/download?url=${encodeURIComponent(url)}`, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com'
+              }
             });
             const d = await r.json();
-            console.log('Instagram API2 (stories5) status:', r.status, JSON.stringify(d).slice(0,300));
-            if (r.ok) {
-              if (Array.isArray(d)) {
-                downloadUrl = d[0]?.url || d[0]?.video_url;
-                thumbnail = d[0]?.thumbnail || d[0]?.display_url;
-              } else {
-                downloadUrl = d.url || d.video_url || d.download_url || d.media;
-                thumbnail = d.thumbnail || d.display_url;
-              }
-              title = 'Instagram';
+            console.log('Instagram API2 (reels) status:', r.status, JSON.stringify(d).slice(0,300));
+            if (r.ok && d.success !== false) {
+              downloadUrl = d.download_url || d.url || d.video_url
+                || (Array.isArray(d.data) ? d.data[0]?.url : d.data?.url);
+              title = d.title || d.caption || 'Instagram';
+              thumbnail = d.thumbnail || d.cover;
             }
           } catch(e) { console.log('instagram api2 failed:', e.message); }
         }
