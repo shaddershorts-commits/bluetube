@@ -68,26 +68,43 @@ export default async function handler(req, res) {
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];
-    // "Online" = visited in last 2 minutes
-    const fiveMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    // "Online" = in ip_online table (cleaned by visit pings, deleted on offline)
+    const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    // Weekly visits — last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const [subsRes, usageRes, viralsRes, feedbackRes, visitsRes, onlineRes] = await Promise.all([
+    const [subsRes, usageRes, viralsRes, feedbackRes, visitsRes, onlineRes, weeklyRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers }),
-      // All unique visitors today
-      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address,visited_at`, { headers }),
-      // Online now = visited in last 5 min
-      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&visited_at=gte.${fiveMinAgo}&select=ip_address`, { headers }),
+      // Unique visitors today
+      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address`, { headers }),
+      // Online now — from ip_online table (pinged in last 2 min)
+      fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers }),
+      // Weekly unique visitors per day
+      fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc`, { headers }),
     ]);
 
-    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow] = await Promise.all([
+    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, weeklyRaw] = await Promise.all([
       subsRes.json(), usageRes.json(), viralsRes.json(),
       feedbackRes.ok ? feedbackRes.json() : [],
       visitsRes.ok ? visitsRes.json() : [],
       onlineRes.ok ? onlineRes.json() : [],
+      weeklyRes.ok ? weeklyRes.json() : [],
     ]);
+
+    // Group weekly visits by date
+    const weeklyMap = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().split('T')[0];
+      weeklyMap[key] = 0;
+    }
+    if (Array.isArray(weeklyRaw)) {
+      weeklyRaw.forEach(r => { if (weeklyMap[r.visit_date] !== undefined) weeklyMap[r.visit_date]++; });
+    }
+    const weeklyVisits = Object.entries(weeklyMap).map(([date, count]) => ({ date, count }));
 
     // Sort feedback: master first, then support, then others
     const feedback = Array.isArray(feedbackRaw) ? feedbackRaw.sort((a,b)=>{
@@ -128,6 +145,7 @@ export default async function handler(req, res) {
       visits: {
         today_unique: Array.isArray(visitsToday) ? visitsToday.length : 0,
         online_now: Array.isArray(onlineNow) ? onlineNow.length : 0,
+        weekly: weeklyVisits,
       },
       // Latest subscriber for real-time notification
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null
