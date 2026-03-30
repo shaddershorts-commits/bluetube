@@ -257,31 +257,40 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada.' });
         }
 
-        // Method 1: instagram-downloader-download-instagram-videos-stories
-        try {
-          const r = await fetch(`https://instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com/reels-posts?url=${encodeURIComponent(url)}`, {
-            headers: {
-              'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com'
+        // Method 1: instagram-downloader-download-instagram-videos-stories5
+        // Tenta os dois endpoints possíveis: index e reels-posts
+        const instaHost = 'instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com';
+        const instaEndpoints = [
+          `https://${instaHost}/index?url=${encodeURIComponent(url)}`,
+          `https://${instaHost}/reels-posts?url=${encodeURIComponent(url)}`,
+        ];
+        for (const endpoint of instaEndpoints) {
+          if (downloadUrl) break;
+          try {
+            const r = await fetch(endpoint, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': instaHost
+              }
+            });
+            console.log('Instagram endpoint:', endpoint.split('.com')[1], 'status:', r.status);
+            if (r.ok) {
+              const d = await r.json();
+              console.log('Instagram response:', JSON.stringify(d).slice(0, 400));
+              if (Array.isArray(d)) {
+                downloadUrl = d[0]?.url || d[0]?.video_url || d[0]?.download_url;
+                thumbnail = d[0]?.thumbnail || d[0]?.display_url;
+                title = d[0]?.title || 'Instagram';
+              } else {
+                downloadUrl = d.url || d.video_url || d.download_url || d.media
+                  || d.result?.url || d.data?.url || d.data?.video_url;
+                title = d.title || d.caption || 'Instagram';
+                thumbnail = d.thumbnail || d.display_url || d.cover;
+              }
             }
-          });
-          console.log('Instagram API 1 status:', r.status);
-          if (r.ok) {
-            const d = await r.json();
-            console.log('Instagram API 1 response:', JSON.stringify(d).slice(0, 400));
-            // stories5 API returns various shapes
-            if (Array.isArray(d)) {
-              downloadUrl = d[0]?.url || d[0]?.video_url || d[0]?.download_url;
-              thumbnail = d[0]?.thumbnail || d[0]?.display_url;
-              title = d[0]?.title || 'Instagram';
-            } else {
-              downloadUrl = d.url || d.video_url || d.download_url || d.media
-                || d.result?.url || d.data?.url || d.data?.video_url;
-              title = d.title || d.caption || 'Instagram';
-              thumbnail = d.thumbnail || d.display_url || d.cover;
-            }
-          }
-        } catch(e) { console.log('instagram api1 failed:', e.message); }
+          } catch(e) { console.log('instagram endpoint failed:', e.message); }
+        }
+        if (downloadUrl) console.log('Instagram URL found:', downloadUrl.slice(0,80));
 
         // Method 2: instagram-scraper-api2
         if (!downloadUrl) {
