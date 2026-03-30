@@ -683,11 +683,17 @@ Responda APENAS em JSON válido sem markdown:
         if (d.error?.code === 429) continue;
         if (!r.ok) continue;
         let text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
-        text = text.replace(/[`]{3}json[\r\n]*/g,'').replace(/[`]{3}[\r\n]*/g,'').trim();
-        // Extrai JSON mesmo se vier com texto ao redor
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) continue;
-        const parsed = JSON.parse(jsonMatch[0]);
+        console.log('Gemini BlueScore raw:', text.slice(0, 300));
+        // Limpa markdown
+               text = text.split('```json').join('').split('```').join('').trim();
+        // Extrai primeiro objeto JSON válido
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start === -1 || end === -1) { console.log('No JSON found in:', text.slice(0,200)); continue; }
+        const jsonStr = text.slice(start, end + 1);
+        let parsed;
+        try { parsed = JSON.parse(jsonStr); }
+        catch(pe) { console.log('JSON parse error:', pe.message, 'text:', jsonStr.slice(0,200)); continue; }
         
         // Salva no Supabase para retroalimentação
         const SUPA_URL = process.env.SUPABASE_URL;
