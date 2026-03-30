@@ -554,37 +554,173 @@ export default async function handler(req, res) {
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
-    const { prompt } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório' });
+    const { channelData, videos, scoreData } = req.body;
+    if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
 
-    // Tenta Gemini (gratuito, temos 10 chaves)
     const GEMINI_KEYS = [
       process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
-      process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5,
+      process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5, process.env.GEMINI_KEY_6,
+      process.env.GEMINI_KEY_7, process.env.GEMINI_KEY_8, process.env.GEMINI_KEY_9,
+      process.env.GEMINI_KEY_10,
     ].filter(Boolean);
 
-    for (const key of GEMINI_KEYS) {
+    // Análise inferencial de padrões de conteúdo reutilizado
+    const titles = videos.map(v => v.title || '');
+    const avgTitleLen = titles.reduce((s,t) => s+t.length, 0) / (titles.length || 1);
+    
+    // Detecta padrões de título repetitivo (sinal de conteúdo reutilizado)
+    const titleWords = titles.flatMap(t => t.toLowerCase().split(/\s+/));
+    const wordFreq = {};
+    titleWords.forEach(w => { if(w.length > 3) wordFreq[w] = (wordFreq[w]||0)+1; });
+    const topWords = Object.entries(wordFreq).filter(([,n]) => n >= 3).sort((a,b) => b[1]-a[1]).slice(0,5);
+    const hasRepetitivePattern = topWords.length >= 2;
+    
+    // Detecta variação anormal de views (possível conteúdo viral de terceiros)
+    const viewsArr = videos.map(v => v.views);
+    const maxViews = Math.max(...viewsArr);
+    const avgViews = viewsArr.reduce((s,v) => s+v, 0) / viewsArr.length;
+    const hasOutlier = maxViews > avgViews * 5;
+    
+    // Detecta shorts vs longos
+    const shorts = videos.filter(v => v.duration <= 60 && v.duration > 0);
+    const shortsRatio = shorts.length / (videos.length || 1);
+    
+    // Frequência de postagem
+    const dates = videos.map(v => new Date(v.publishedAt)).sort((a,b) => b-a);
+    const daysBetween = dates.length > 1 
+      ? (dates[0] - dates[dates.length-1]) / (1000*60*60*24) / (dates.length-1)
+      : 7;
+
+    // Engagement por vídeo para detectar inconsistência
+    const engRates = videos.map(v => v.views > 0 ? ((v.likes + v.comments) / v.views * 100) : 0);
+    const avgEng = engRates.reduce((s,e) => s+e, 0) / (engRates.length || 1);
+    const lowEngVideos = engRates.filter(e => e < avgEng * 0.3).length;
+    const commentRatio = videos.reduce((s,v) => s + v.comments, 0) / (videos.reduce((s,v) => s + v.likes, 0) || 1);
+
+    const systemPrompt = `Você é o BlueScore Engine — um sistema de IA especializado em análise de confiança algorítmica do YouTube, baseado nas diretrizes oficiais do YouTube Partner Program (YPP) e nos padrões de distribuição do algoritmo.
+
+DIRETRIZES YPP QUE VOCÊ CONHECE PROFUNDAMENTE:
+1. CONTEÚDO REUTILIZADO: O YouTube penaliza canais que republicam conteúdo de terceiros sem transformação substancial. Sinais: vídeos com views inconsistentes, padrões de título repetitivos, spikes isolados de views.
+2. ORIGINALIDADE: Canais precisam demonstrar valor criativo único. Edição mínima, narração sintética óbvia e conteúdo compilado sem comentário original reduzem distribuição.
+3. ENGAJAMENTO REAL: O algoritmo prioriza engajamento orgânico. Baixa razão comentário/like pode indicar engajamento artificial. Responder comentários tem correlação positiva com distribuição comprovada.
+4. CONSISTÊNCIA: Canais com postagem irregular perdem posição nos feeds. O algoritmo valoriza previsibilidade.
+5. RETENÇÃO INICIAL: Os primeiros 30 segundos determinam a distribuição. Vídeos com alto abandono inicial recebem menos impressões.
+6. SINAIS DE VOZ SINTÉTICA: Canais dark-face que usam narração IA sem disclosure podem ser penalizados. O YPP exige transparência sobre conteúdo gerado por IA desde 2024.
+7. CTR: Thumbnails e títulos com CTR abaixo de 2% recebem menos impressões orgânicas.
+
+DADOS DO CANAL PARA ANÁLISE:
+- Nome: ${channelData.title}
+- Inscritos: ${channelData.subscribers?.toLocaleString()}
+- Total de vídeos: ${channelData.videoCount}
+- País: ${channelData.country || 'não informado'}
+- BlueScore calculado: ${scoreData.score}/100
+- Classificação: ${scoreData.classLabel}
+
+MÉTRICAS CALCULADAS:
+- Média de views (últimos ${videos.length} vídeos): ${Math.round(scoreData.metrics?.avgViews || 0).toLocaleString()}
+- Taxa de engajamento médio: ${(scoreData.metrics?.avgEngRate || 0).toFixed(2)}%
+- Razão comentário/like: ${commentRatio.toFixed(3)} ${commentRatio < 0.05 ? '(BAIXA — possível engajamento artificial ou ausência de resposta a comentários)' : commentRatio > 0.15 ? '(ALTA — boa interação)' : '(normal)'}
+- Frequência de postagem: 1 vídeo a cada ~${Math.round(daysBetween)} dias
+- Tendência: ${(scoreData.metrics?.trendRatio || 1) > 1.1 ? 'CRESCENDO' : (scoreData.metrics?.trendRatio || 1) < 0.9 ? 'CAINDO' : 'ESTÁVEL'} (${Math.round(((scoreData.metrics?.trendRatio || 1) - 1) * 100)}% vs período anterior)
+- Consistência de views: ${scoreData.metrics?.cv < 0.5 ? 'ALTA (bom)' : scoreData.metrics?.cv < 1 ? 'MODERADA' : 'BAIXA — variação suspeita'}
+- Proporção Shorts: ${Math.round(shortsRatio * 100)}% dos vídeos são Shorts
+- Vídeos com engajamento anormalmente baixo: ${lowEngVideos} de ${videos.length}
+- Padrão de título repetitivo detectado: ${hasRepetitivePattern ? 'SIM — palavras: ' + topWords.map(([w,n]) => w+'('+n+'x)').join(', ') : 'NÃO'}
+- Spike anormal de views detectado: ${hasOutlier ? 'SIM — um vídeo tem ' + Math.round(maxViews/avgViews) + 'x a média (possível viral de terceiro ou compra de views)' : 'NÃO'}
+
+TÍTULOS DOS ÚLTIMOS VÍDEOS:
+${titles.slice(0, 8).map((t,i) => (i+1) + '. ' + t).join('\n')}
+')}
+
+INSTRUÇÃO:
+Gere uma análise profunda, honesta e acionável. NÃO seja genérico. Use os dados específicos do canal. Identifique padrões reais. Se detectar sinais de conteúdo reutilizado, diga claramente. Se a razão comentário/like for baixa, mencione que responder comentários tem impacto comprovado.
+
+Responda APENAS em JSON válido sem markdown:
+{
+  "insights": [
+    {
+      "type": "pos|neg|warn",
+      "title": "título direto e específico",
+      "desc": "análise detalhada de 2-3 frases com dados reais do canal e conexão com as diretrizes do YouTube"
+    }
+  ],
+  "riskFlags": [
+    {
+      "flag": "nome_do_risco",
+      "severity": "high|medium|low",
+      "title": "título do risco",
+      "desc": "explicação do risco baseada nas diretrizes YPP"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": 1,
+      "action": "ação específica e mensurável",
+      "why": "por que isso vai melhorar o score com base em dados reais do canal",
+      "impact": "high|medium|low"
+    }
+  ],
+  "summary": "diagnóstico executivo em 2 frases, honesto, com o principal problema e principal oportunidade do canal",
+  "ytpCompliance": {
+    "score": 0-100,
+    "status": "aprovado|atenção|risco",
+    "notes": "avaliação de conformidade com o YouTube Partner Program"
+  }
+}`;
+
+    const shuffledKeys = [...GEMINI_KEYS].sort(() => Math.random() - 0.5);
+    for (const key of shuffledKeys) {
       try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
+            contents: [{ parts: [{ text: systemPrompt }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 1500 }
           })
         });
         const d = await r.json();
         if (d.error?.code === 429) continue;
         if (!r.ok) continue;
         let text = d.candidates?.[0]?.content?.parts?.map(p => p.text||'').join('').trim() || '';
-        // Limpa markdown code blocks
-               text = text.replace(/[`]{3}json[\r\n]*/g,'').replace(/[`]{3}[\r\n]*/g,'').trim();
-        const parsed = JSON.parse(text);
+        text = text.replace(/[`]{3}json[\r\n]*/g,'').replace(/[`]{3}[\r\n]*/g,'').trim();
+        // Extrai JSON mesmo se vier com texto ao redor
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) continue;
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Salva no Supabase para retroalimentação
+        const SUPA_URL = process.env.SUPABASE_URL;
+        const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+        if (SUPA_URL && SUPA_KEY) {
+          fetch(`${SUPA_URL}/rest/v1/bluescore_analyses`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SUPA_KEY,
+              'Authorization': `Bearer ${SUPA_KEY}`,
+              'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify({
+              channel_id: channelData.channelId,
+              channel_name: channelData.title,
+              score: scoreData.score,
+              classification: scoreData.classification,
+              avg_views: Math.round(scoreData.metrics?.avgViews || 0),
+              engagement_rate: scoreData.metrics?.avgEngRate || 0,
+              trend_ratio: scoreData.metrics?.trendRatio || 1,
+              risk_flags: parsed.riskFlags || [],
+              ytp_compliance: parsed.ytpCompliance || {},
+              analyzed_at: new Date().toISOString()
+            })
+          }).catch(()=>{});
+        }
+        
         return res.status(200).json(parsed);
-      } catch(e) { continue; }
+      } catch(e) { console.log('Gemini error:', e.message); continue; }
     }
 
-    return res.status(200).json({ insights: [], recommendations: [], summary: '' });
+    return res.status(200).json({ insights: [], riskFlags: [], recommendations: [], summary: 'Análise indisponível no momento.', ytpCompliance: { score: 0, status: 'atenção', notes: '' } });
   }
 
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
