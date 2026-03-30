@@ -279,17 +279,37 @@ export default async function handler(req, res) {
             }
           });
           const d = await r.json();
-          console.log('Instagram API1 (smvd) status:', r.status, JSON.stringify(d).slice(0,400));
+          console.log('Instagram API1 (smvd) status:', r.status, JSON.stringify(d).slice(0,800));
           if (r.ok && d) {
-            // Try to find video URL in response
-            const items = d.data?.items || d.items || [];
-            const media = Array.isArray(items) ? items[0] : d.data || d;
-            downloadUrl = media?.video_url || media?.url
-              || d.data?.video_url || d.video_url || d.url
-              || d.renderableMedia?.[0]?.url;
-            title = d.data?.caption?.text?.slice(0,60) || media?.caption?.text?.slice(0,60) || 'Instagram';
-            thumbnail = d.data?.thumbnail_url || media?.thumbnail_url || media?.display_url;
-            console.log('Instagram shortcode:', shortcode, 'downloadUrl found:', !!downloadUrl);
+            // smvd API: busca recursiva por URL de vídeo no JSON
+            const findVideoUrl = (obj, depth=0) => {
+              if (!obj || depth > 5) return null;
+              if (typeof obj === 'string' && obj.includes('.mp4') && obj.startsWith('http')) return obj;
+              if (Array.isArray(obj)) {
+                for (const item of obj) { const r = findVideoUrl(item, depth+1); if (r) return r; }
+              } else if (typeof obj === 'object') {
+                // Prioriza campos com nome de vídeo
+                for (const k of ['video_url','playback_url','src','url','download_url','hdplay','play']) {
+                  if (obj[k] && typeof obj[k] === 'string' && obj[k].includes('http')) {
+                    if (obj[k].includes('.mp4') || obj[k].includes('video') || obj[k].includes('cdn')) return obj[k];
+                  }
+                }
+                for (const v of Object.values(obj)) { const r = findVideoUrl(v, depth+1); if (r) return r; }
+              }
+              return null;
+            };
+            downloadUrl = findVideoUrl(d);
+            // Thumbnail
+            const findImg = (obj, depth=0) => {
+              if (!obj || depth > 5) return null;
+              if (typeof obj === 'string' && (obj.includes('.jpg')||obj.includes('.jpeg')||obj.includes('thumbnail')) && obj.startsWith('http')) return obj;
+              if (Array.isArray(obj)) { for (const i of obj) { const r = findImg(i, depth+1); if (r) return r; } }
+              else if (typeof obj === 'object') { for (const v of Object.values(obj)) { const r = findImg(v, depth+1); if (r) return r; } }
+              return null;
+            };
+            thumbnail = findImg(d);
+            title = d.data?.caption?.text?.slice(0,60) || d.caption?.text?.slice(0,60) || 'Instagram';
+            console.log('Instagram shortcode:', shortcode, 'downloadUrl found:', !!downloadUrl, downloadUrl?.slice(0,60));
           }
         } catch(e) { console.log('instagram api1 failed:', e.message); }
 
