@@ -410,7 +410,14 @@ async function analyze() {
   setStep(1);
 
   try {
-    // 1. Resolve channel ID
+    // 1. Verifica se o backend está atualizado
+    const testR = await fetch('/api/auth?action=bluescore-channel&type=handle&id=test123');
+    const testText = await testR.text();
+    if (testText.startsWith('A server') || testText.includes('<!DOCTYPE')) {
+      throw new Error('Serviço temporariamente indisponível. Aguarde o deploy completo e tente novamente.');
+    }
+
+    // 2. Resolve channel ID
     const channelData = await resolveChannel(parsed);
     if (!channelData) throw new Error('Canal não encontrado. Verifique o link e tente novamente.');
     setStep(2);
@@ -442,19 +449,26 @@ async function analyze() {
 }
 
 // ── RESOLVE CHANNEL ───────────────────────────────────────────────────────────
+async function safeJson(r) {
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch(e) {
+    console.error('Resposta não-JSON:', text.slice(0, 200));
+    throw new Error('Erro de comunicação com o servidor. Tente novamente.');
+  }
+}
+
 async function resolveChannel(parsed) {
   const r = await fetch(`/api/auth?action=bluescore-channel&type=${parsed.type}&id=${encodeURIComponent(parsed.id)}`);
-  if (!r.ok) {
-    const d = await r.json().catch(()=>({}));
-    throw new Error(d.error || 'Erro ao buscar canal.');
-  }
-  return r.json();
+  const d = await safeJson(r);
+  if (!r.ok) throw new Error(d.error || 'Canal não encontrado. Verifique o link.');
+  return d;
 }
 
 async function fetchRecentVideos(channelId) {
   const r = await fetch(`/api/auth?action=bluescore-videos&channelId=${encodeURIComponent(channelId)}`);
-  if (!r.ok) throw new Error('Erro ao buscar vídeos do canal.');
-  const d = await r.json();
+  const d = await safeJson(r);
+  if (!r.ok) throw new Error(d.error || 'Erro ao buscar vídeos do canal.');
   return d.videos || [];
 }
 
