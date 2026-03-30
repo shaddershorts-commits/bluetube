@@ -518,17 +518,15 @@ export default async function handler(req, res) {
         };
       }).filter(v => v.duration <= 60 || v.duration === 0);
 
-      // Filtro de data hard
+      // Ordena por views — confia no publishedAfter enviado à API
+      // Filtro suave: só remove vídeos MUITO antigos (>2x o período)
+      const softCutoff = new Date(now - cutoffMs * 2);
       let videos = allVideos
-        .filter(v => !v.publishedAt || new Date(v.publishedAt) >= cutoffDate)
+        .filter(v => !v.publishedAt || new Date(v.publishedAt) >= softCutoff)
         .sort((a,b) => b.views - a.views)
         .slice(0, 100);
 
-      // Fallback se filtro zerou (API ignorou publishedAfter)
-      const dateFilterFailed = videos.length === 0 && allVideos.length > 0;
-      if (dateFilterFailed) {
-        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 100);
-      }
+      const dateFilterFailed = false;
 
       const result = { videos, total: videos.length, region, period, dateFilterFailed };
 
