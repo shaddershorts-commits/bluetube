@@ -430,11 +430,12 @@ export default async function handler(req, res) {
         });
         const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
         const d = await r.json();
-        if (!r.ok) { console.log('YT search error:', d.error?.message); return []; }
+        console.log('YT search q:', searchQ.slice(0,30), 'status:', r.status, 'items:', d.items?.length || 0, 'error:', d.error?.message || 'none');
+        if (!r.ok) return [];
         return d.items || [];
       };
 
-      const allSearches = await Promise.all(searchQueries.map(q => makeSearch(q)));
+      const allSearches = await Promise.all(searchQueries.map(sq => makeSearch(sq)));
 
       // Deduplica
       const seen = new Set();
@@ -445,6 +446,7 @@ export default async function handler(req, res) {
         return true;
       });
 
+      console.log('viral-shorts total bruto:', allItems.length, '| região:', region, '| período:', period, '| cutoff:', cutoffDate.toISOString());
       if (!allItems.length) return res.status(200).json({ videos: [], total: 0 });
 
       // Busca stats em lotes de 50
@@ -483,6 +485,7 @@ export default async function handler(req, res) {
       .sort((a,b) => b.views - a.views)
       .slice(0, 100);
 
+      console.log('viral-shorts após filtro data:', videos.length, 'vídeos');
       // Se filtro hard zerou tudo (API ignorou publishedAfter), retorna sem filtro de data
       // mas avisa o frontend
       if (videos.length === 0 && allItems.length > 0) {
