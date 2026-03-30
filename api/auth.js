@@ -39,6 +39,60 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   // ── LANGUAGE DETECTION (GET) ───────────────────────────────────────────────
+  // ── VIRAL SHORTS ──────────────────────────────────────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
+    const YT_KEY = process.env.YOUTUBE_API_KEY;
+    if (!YT_KEY) return res.status(500).json({ error: 'YouTube API não configurada. Adicione YOUTUBE_API_KEY no Vercel.' });
+
+    const { period = '7d', category = '', region = 'BR', q = '' } = req.query;
+
+    const now = new Date();
+    let publishedAfter;
+    if (period === '24h') publishedAfter = new Date(now - 24*60*60*1000).toISOString();
+    else if (period === '7d') publishedAfter = new Date(now - 7*24*60*60*1000).toISOString();
+    else if (period === '30d') publishedAfter = new Date(now - 30*24*60*60*1000).toISOString();
+
+    try {
+      const searchQuery = q ? q + ' #shorts' : '#shorts #viral';
+      const params = new URLSearchParams({
+        part: 'snippet', type: 'video', videoDuration: 'short',
+        order: 'viewCount', maxResults: '24', regionCode: region,
+        key: YT_KEY, q: searchQuery,
+        ...(publishedAfter && { publishedAfter }),
+        ...(category && { videoCategoryId: category }),
+      });
+
+      const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
+      const searchData = await searchRes.json();
+      if (!searchRes.ok) return res.status(400).json({ error: searchData.error?.message || 'Erro YouTube API' });
+
+      const videoIds = (searchData.items || []).filter(i => i.id?.videoId).map(i => i.id.videoId).join(',');
+      if (!videoIds) return res.status(200).json({ videos: [] });
+
+      const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}&key=${YT_KEY}`);
+      const statsData = await statsRes.json();
+
+      const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
+
+      const videos = (statsData.items || []).map(v => {
+        const stats = v.statistics || {}, snippet = v.snippet || {};
+        const dur = v.contentDetails?.duration || '';
+        const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
+        const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
+        const views = parseInt(stats.viewCount||0);
+        return { id: v.id, title: snippet.title, channel: snippet.channelTitle,
+          thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
+          views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
+          publishedAt: snippet.publishedAt, duration: secs,
+          url: `https://www.youtube.com/shorts/${v.id}` };
+      }).filter(v => v.duration <= 60 || v.duration === 0).sort((a,b) => b.views - a.views);
+
+      return res.status(200).json({ videos, total: videos.length });
+    } catch(e) {
+      return res.status(500).json({ error: 'Falha ao buscar vídeos virais: ' + e.message });
+    }
+  }
+
   if (req.method === 'GET' && req.query?.action === 'lang') {
     try {
       const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
