@@ -3,6 +3,9 @@
   "functions": {
     "api/transcript.js": {
       "maxDuration": 60
+    },
+    "api/auth.js": {
+      "maxDuration": 60
     }
   }
 }
