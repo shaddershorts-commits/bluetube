@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueScore — Confiança Algorítmica · BlueTube Master</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817;--card:rgba(10,22,40,0.9);--blue:rgba(0,170,255,1);
+  --blue-dim:rgba(0,170,255,0.12);--blue-border:rgba(0,170,255,0.18);
+  --neon:#00aaff;--gold:#fbbf24;--red:#ef4444;--green:#22c55e;
+  --text:#e8f4ff;--text-dim:rgba(150,190,230,0.45);--text-sec:rgba(150,190,230,0.72);
+  --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.025) 1px,transparent 1px);background-size:48px 48px}
+.bg-orb{position:absolute;border-radius:50%;filter:blur(130px);opacity:.3}
+.orb1{width:700px;height:700px;background:radial-gradient(circle,rgba(0,80,255,.35),transparent 70%);top:-200px;right:-200px}
+.orb2{width:400px;height:400px;background:radial-gradient(circle,rgba(0,170,255,.2),transparent 70%);bottom:-100px;left:-100px}
+.mouse-glow{position:fixed;pointer-events:none;z-index:1;width:450px;height:450px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.045) 0%,transparent 70%);transform:translate(-50%,-50%);transition:left .12s,top .12s}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:17px;font-weight:800;color:var(--text);letter-spacing:-.4px}
+.logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,170,255,.4)}
+.logo-mark svg{width:13px;height:13px;fill:#fff}
+.logo-sub{font-size:11px;font-family:var(--mono);color:var(--text-dim);letter-spacing:.06em;display:block;line-height:1}
+.master-badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:4px 12px;border-radius:100px}
+.btn-back{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-sec);text-decoration:none;border:1px solid var(--blue-border);border-radius:8px;padding:7px 14px;transition:all .2s}
+.btn-back:hover{border-color:var(--neon);color:var(--text)}
+
+/* LAYOUT */
+main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:0 auto}
+
+/* HERO */
+.hero{text-align:center;margin-bottom:48px}
+.hero-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--neon);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.score-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:var(--neon);border-radius:50%;color:#000;font-size:9px;font-weight:800;flex-shrink:0}
+.hero h1{font-size:clamp(36px,6vw,58px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;margin-bottom:14px}
+.hero h1 span{background:linear-gradient(135deg,#00aaff,#60cfff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{font-size:15px;color:var(--text-sec);max-width:520px;margin:0 auto;line-height:1.6}
+
+/* INPUT CARD */
+.input-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:28px;margin-bottom:32px;backdrop-filter:blur(20px)}
+.input-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+.input-row{display:flex;gap:10px}
+.url-input{flex:1;background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:all .2s}
+.url-input::placeholder{color:var(--text-dim)}
+.url-input:focus{border-color:rgba(0,170,255,.5);background:rgba(0,170,255,.08)}
+.btn-analyze{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 0 28px rgba(0,170,255,.3)}
+.btn-analyze:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(0,170,255,.5)}
+.btn-analyze:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.input-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:10px}
+.input-hint a{color:var(--neon);text-decoration:none}
+
+/* LOADING */
+#loadingSection{display:none;text-align:center;padding:48px 0}
+.loading-orb{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.15));border:2px solid rgba(0,170,255,.3);margin:0 auto 24px;display:flex;align-items:center;justify-content:center;animation:pulse-orb 2s ease-in-out infinite}
+@keyframes pulse-orb{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(0,170,255,.3)}50%{transform:scale(1.08);box-shadow:0 0 0 20px rgba(0,170,255,0)}}
+.loading-steps{display:flex;flex-direction:column;gap:8px;max-width:300px;margin:20px auto 0}
+.loading-step{font-family:var(--mono);font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;transition:all .4s}
+.loading-step.active{color:var(--neon)}
+.loading-step.done{color:var(--green)}
+.step-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* RESULTS */
+#resultsSection{display:none}
+
+/* SCORE CARD */
+.score-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:32px;margin-bottom:20px;backdrop-filter:blur(20px);text-align:center;position:relative;overflow:hidden}
+.score-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -20%,rgba(0,170,255,.08),transparent 60%);pointer-events:none}
+.channel-info{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:28px}
+.channel-thumb{width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--blue-border)}
+.channel-thumb-placeholder{width:52px;height:52px;border-radius:50%;background:var(--blue-dim);border:2px solid var(--blue-border);display:flex;align-items:center;justify-content:center;font-size:20px}
+.channel-name{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.channel-meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:2px}
+
+/* SCORE GAUGE */
+.gauge-wrap{position:relative;width:200px;height:110px;margin:0 auto 20px}
+.gauge-svg{width:200px;height:110px}
+.gauge-bg{fill:none;stroke:rgba(0,170,255,.1);stroke-width:16;stroke-linecap:round}
+.gauge-fill{fill:none;stroke-width:16;stroke-linecap:round;transition:stroke-dashoffset 1.5s cubic-bezier(.4,0,.2,1),stroke 1s ease}
+.gauge-number{position:absolute;bottom:0;left:50%;transform:translateX(-50%);text-align:center}
+.gauge-score{font-size:52px;font-weight:800;letter-spacing:-2px;line-height:1}
+.gauge-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+
+/* CLASSIFICATION */
+.score-class{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:100px;font-weight:700;font-size:14px;margin-bottom:8px;letter-spacing:-.2px}
+.score-class.low{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#ef4444}
+.score-class.moderate{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--gold)}
+.score-class.good{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);color:#22c55e}
+.score-class.high{background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.3);color:var(--neon)}
+.score-disclaimer{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px}
+
+/* PILLARS */
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+.pillar-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;backdrop-filter:blur(20px)}
+.pillar-name{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+.pillar-score{font-size:28px;font-weight:800;letter-spacing:-1px;margin-bottom:8px}
+.pillar-bar{height:4px;background:rgba(255,255,255,.08);border-radius:100px;overflow:hidden;margin-bottom:10px}
+.pillar-fill{height:100%;border-radius:100px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.pillar-desc{font-size:12px;color:var(--text-sec);line-height:1.5}
+
+/* INSIGHTS */
+.insights-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:24px;margin-bottom:20px;backdrop-filter:blur(20px)}
+.section-title{font-size:16px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.insight-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid rgba(0,170,255,.06)}
+.insight-item:last-child{border-bottom:none;padding-bottom:0}
+.insight-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.insight-icon.pos{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.2)}
+.insight-icon.neg{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
+.insight-icon.warn{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2)}
+.insight-text{flex:1}
+.insight-title{font-size:13px;font-weight:600;margin-bottom:3px;letter-spacing:-.1px}
+.insight-desc{font-size:12px;color:var(--text-sec);line-height:1.5}
+
+/* RECS */
+.rec-item{display:flex;gap:12px;padding:12px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.08);border-radius:12px;margin-bottom:8px}
+.rec-num{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0}
+.rec-text{font-size:13px;color:var(--text-sec);line-height:1.5}
+.rec-text strong{color:var(--text);font-weight:600}
+
+/* METRICS GRID */
+.metrics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}
+.metric-box{background:var(--card);border:1px solid var(--blue-border);border-radius:14px;padding:16px;backdrop-filter:blur(20px)}
+.metric-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.metric-value{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.metric-sub{font-size:11px;color:var(--text-sec);margin-top:2px}
+
+/* ERROR */
+.error-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:14px;padding:16px 20px;font-family:var(--mono);font-size:12px;color:#fca5a5;margin-bottom:20px}
+
+/* LOCKED */
+.locked-overlay{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:60px 40px;text-align:center;backdrop-filter:blur(20px)}
+.locked-icon{font-size:48px;margin-bottom:20px}
+.locked-title{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
+.locked-sub{font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:28px}
+.btn-upgrade{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none;transition:all .25s}
+.btn-upgrade:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(251,191,36,.3)}
+
+/* AI BADGE */
+.ai-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:100px;padding:4px 10px;margin-left:8px}
+
+/* TRAJECTORY */
+.traj-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,170,255,.06)}
+.traj-row:last-child{border-bottom:none}
+.traj-bar-wrap{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
+.traj-bar-fill{height:100%;border-radius:100px}
+.traj-label{font-family:var(--mono);font-size:11px;color:var(--text-sec);min-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.traj-views{font-family:var(--mono);font-size:11px;color:var(--text-dim);min-width:52px;text-align:right}
+
+@media(max-width:640px){
+  nav{padding:12px 16px}
+  .input-row{flex-direction:column}
+  .pillars{grid-template-columns:1fr}
+  .metrics-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="bg"><div class="bg-grid"></div><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div></div>
+<div class="mouse-glow" id="glow"></div>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4z"/><path d="M8 8l8 4-8 4z" fill="rgba(0,0,0,0)"/><circle cx="16" cy="10" r="2"/></svg></div>
+    <div><span>BlueTube</span><span class="logo-sub">CRIADOR VIRAL</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="master-badge">👑 Master</span>
+    <a href="/" class="btn-back">← Voltar</a>
+  </div>
+</nav>
+
+<main>
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-eyebrow">
+      <span class="score-icon">B</span>
+      BlueScore Engine · Exclusivo Master
+    </div>
+    <h1>Confiança<br><span>Algorítmica</span></h1>
+    <p class="hero-sub">Estimativa probabilística de como o algoritmo do YouTube enxerga um canal — baseada em dados reais de performance, comportamento e padrões de conteúdo.</p>
+  </div>
+
+  <!-- INPUT -->
+  <div class="input-card" id="inputSection">
+    <div class="input-label">Link do canal ou vídeo</div>
+    <div class="input-row">
+      <input class="url-input" id="urlInput" type="text"
+        placeholder="youtube.com/c/seucanal · youtube.com/@handle · youtube.com/watch?v=..."
+        onkeydown="if(event.key==='Enter')analyze()"/>
+      <button class="btn-analyze" id="btnAnalyze" onclick="analyze()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Analisar
+      </button>
+    </div>
+    <div class="input-hint">Funciona com canais, vídeos e handles (@). Dados analisados: últimos 10 vídeos públicos.</div>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loadingSection">
+    <div class="loading-orb">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00aaff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </div>
+    <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Analisando canal…</div>
+    <div style="font-size:13px;color:var(--text-sec);margin-bottom:20px">Coletando e processando dados do YouTube</div>
+    <div class="loading-steps">
+      <div class="loading-step" id="step1"><div class="step-dot"></div>Identificando canal</div>
+      <div class="loading-step" id="step2"><div class="step-dot"></div>Coletando vídeos recentes</div>
+      <div class="loading-step" id="step3"><div class="step-dot"></div>Calculando métricas de performance</div>
+      <div class="loading-step" id="step4"><div class="step-dot"></div>Gerando diagnóstico com IA</div>
+      <div class="loading-step" id="step5"><div class="step-dot"></div>Construindo BlueScore</div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="resultsSection">
+    <div id="errorBox" class="error-box" style="display:none"></div>
+
+    <!-- SCORE PRINCIPAL -->
+    <div class="score-card" id="scoreCard">
+      <div class="channel-info">
+        <div class="channel-thumb-placeholder" id="channelThumb">📺</div>
+        <div>
+          <div class="channel-name" id="channelName">—</div>
+          <div class="channel-meta" id="channelMeta">—</div>
+        </div>
+      </div>
+
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 200 110">
+          <!-- Background arc (semicircle) -->
+          <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" stroke-dasharray="251" stroke-dashoffset="0"/>
+          <!-- Fill arc -->
+          <path class="gauge-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100"
+            stroke-dasharray="251" stroke-dashoffset="251"/>
+        </svg>
+        <div class="gauge-number">
+          <div class="gauge-score" id="gaugeScore" style="color:var(--neon)">—</div>
+          <div class="gauge-label">BlueScore</div>
+        </div>
+      </div>
+
+      <div id="scoreClass" class="score-class">—</div>
+      <div class="score-disclaimer">⚠ Estimativa probabilística — não é um dado oficial do YouTube</div>
+    </div>
+
+    <!-- MÉTRICAS RÁPIDAS -->
+    <div class="metrics-grid" id="metricsGrid" style="display:none">
+      <div class="metric-box">
+        <div class="metric-label">Média de views</div>
+        <div class="metric-value" id="mAvgViews">—</div>
+        <div class="metric-sub" id="mAvgViewsSub">por vídeo recente</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Taxa de engajamento</div>
+        <div class="metric-value" id="mEngagement">—</div>
+        <div class="metric-sub" id="mEngagementSub">likes+comments / views</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Consistência</div>
+        <div class="metric-value" id="mConsistency">—</div>
+        <div class="metric-sub">frequência de postagem</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Tendência</div>
+        <div class="metric-value" id="mTrend">—</div>
+        <div class="metric-sub" id="mTrendSub">últimos 30 dias</div>
+      </div>
+    </div>
+
+    <!-- 3 PILARES -->
+    <div class="pillars" id="pillarsSection" style="display:none">
+      <div class="pillar-card">
+        <div class="pillar-name">Performance · 45%</div>
+        <div class="pillar-score" id="p1Score">—</div>
+        <div class="pillar-bar"><div class="pillar-fill" id="p1Bar" style="width:0%"></div></div>
+        <div class="pillar-desc" id="p1Desc">Análise de views, engajamento e crescimento recente.</div>
+      </div>
+      <div class="pillar-card">
+        <div class="pillar-name">Risco de Conteúdo · 35%</div>
+        <div class="pillar-score" id="p2Score">—</div>
+        <div class="pillar-bar"><div class="pillar-fill" id="p2Bar" style="width:0%"></div></div>
+        <div class="pillar-desc" id="p2Desc">Padrões que podem limitar a distribuição algorítmica.</div>
+      </div>
+      <div class="pillar-card">
+        <div class="pillar-name">Comportamento · 20%</div>
+        <div class="pillar-score" id="p3Score">—</div>
+        <div class="pillar-bar"><div class="pillar-fill" id="p3Bar" style="width:0%"></div></div>
+        <div class="pillar-desc" id="p3Desc">Frequência, consistência e variação de performance.</div>
+      </div>
+    </div>
+
+    <!-- TRAJETÓRIA -->
+    <div class="insights-card" id="trajectorySection" style="display:none">
+      <div class="section-title">📈 Trajetória dos últimos vídeos</div>
+      <div id="trajectoryList"></div>
+    </div>
+
+    <!-- INSIGHTS IA -->
+    <div class="insights-card" id="insightsSection" style="display:none">
+      <div class="section-title">
+        🧠 Diagnóstico
+        <span class="ai-badge">✦ IA</span>
+      </div>
+      <div id="insightsList"></div>
+    </div>
+
+    <!-- RECOMENDAÇÕES -->
+    <div class="insights-card" id="recsSection" style="display:none">
+      <div class="section-title">⚡ Recomendações acionáveis</div>
+      <div id="recsList"></div>
+    </div>
+
+    <!-- NOVO SCAN -->
+    <div style="text-align:center;margin-top:24px">
+      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">
+        ↩ Analisar outro canal
+      </button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const token = localStorage.getItem('bt_token');
+const plan = localStorage.getItem('bt_plan');
+
+// Verificação de plano — mostra versão bloqueada para não-Master
+if (!token || plan !== 'master') {
+  document.getElementById('inputSection').innerHTML = `
+    <div class="locked-overlay">
+      <div class="locked-icon">🔒</div>
+      <div class="locked-title">BlueScore é exclusivo Master</div>
+      <div class="locked-sub">
+        O BlueScore analisa a confiança algorítmica do seu canal com base em dados reais.<br>
+        Disponível apenas no plano Master.
+      </div>
+      <a href="/#plans" class="btn-upgrade">👑 Ver plano Master →</a>
+    </div>`;
+}
+
+// ── MOUSE GLOW ────────────────────────────────────────────────────────────────
+document.addEventListener('mousemove', e => {
+  const g = document.getElementById('glow');
+  g.style.left = e.clientX + 'px';
+  g.style.top = e.clientY + 'px';
+});
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const fmtNum = n => {
+  if (!n) return '0';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+  return n.toString();
+};
+
+function setStep(n) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('step' + i);
+    if (i < n) { el.classList.remove('active'); el.classList.add('done'); el.querySelector('.step-dot').textContent = '✓'; }
+    else if (i === n) { el.classList.add('active'); el.classList.remove('done'); }
+    else { el.classList.remove('active','done'); }
+  }
+}
+
+// ── EXTRACT IDs FROM URL ──────────────────────────────────────────────────────
+function parseYouTubeInput(url) {
+  url = url.trim();
+  // Video ID
+  let m = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  if (m) return { type: 'video', id: m[1] };
+  // Channel handle @
+  m = url.match(/@([a-zA-Z0-9_.-]+)/);
+  if (m) return { type: 'handle', id: m[1] };
+  // Channel ID
+  m = url.match(/channel\/([UC][a-zA-Z0-9_-]+)/);
+  if (m) return { type: 'channelId', id: m[1] };
+  // Custom URL /c/
+  m = url.match(/\/c\/([a-zA-Z0-9_.-]+)/);
+  if (m) return { type: 'handle', id: m[1] };
+  // Bare handle or channel name
+  if (/^[a-zA-Z0-9_.-]+$/.test(url)) return { type: 'handle', id: url };
+  return null;
+}
+
+// ── MAIN ANALYZE ──────────────────────────────────────────────────────────────
+async function analyze() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+
+  const parsed = parseYouTubeInput(url);
+  if (!parsed) {
+    showError('Link inválido. Cole um link de canal ou vídeo do YouTube.');
+    return;
+  }
+
+  // UI: loading
+  document.getElementById('inputSection').style.display = 'none';
+  document.getElementById('loadingSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('btnAnalyze').disabled = true;
+
+  setStep(1);
+
+  try {
+    // 1. Resolve channel ID
+    const channelData = await resolveChannel(parsed);
+    if (!channelData) throw new Error('Canal não encontrado. Verifique o link e tente novamente.');
+    setStep(2);
+
+    // 2. Fetch recent videos
+    const videos = await fetchRecentVideos(channelData.channelId);
+    if (!videos || videos.length === 0) throw new Error('Nenhum vídeo público encontrado neste canal.');
+    setStep(3);
+
+    // 3. Calculate score
+    const scoreData = calculateBlueScore(videos, channelData);
+    setStep(4);
+
+    // 4. AI diagnosis
+    const aiInsights = await generateAIDiagnosis(scoreData, channelData, videos);
+    setStep(5);
+    await sleep(600);
+
+    // 5. Render
+    renderResults(scoreData, channelData, videos, aiInsights);
+
+  } catch(e) {
+    console.error('BlueScore error:', e);
+    showError(e.message || 'Erro ao analisar canal. Tente novamente.');
+  } finally {
+    document.getElementById('loadingSection').style.display = 'none';
+    document.getElementById('btnAnalyze').disabled = false;
+  }
+}
+
+// ── RESOLVE CHANNEL ───────────────────────────────────────────────────────────
+async function resolveChannel(parsed) {
+  const r = await fetch(`/api/auth?action=bluescore-channel&type=${parsed.type}&id=${encodeURIComponent(parsed.id)}`);
+  if (!r.ok) {
+    const d = await r.json().catch(()=>({}));
+    throw new Error(d.error || 'Erro ao buscar canal.');
+  }
+  return r.json();
+}
+
+async function fetchRecentVideos(channelId) {
+  const r = await fetch(`/api/auth?action=bluescore-videos&channelId=${encodeURIComponent(channelId)}`);
+  if (!r.ok) throw new Error('Erro ao buscar vídeos do canal.');
+  const d = await r.json();
+  return d.videos || [];
+}
+
+// ── SCORE ENGINE ──────────────────────────────────────────────────────────────
+function calculateBlueScore(videos, channel) {
+  const v = videos;
+  const N = v.length;
+  if (N === 0) return null;
+
+  // Médias
+  const avgViews = v.reduce((s,x) => s + x.views, 0) / N;
+  const avgLikes = v.reduce((s,x) => s + x.likes, 0) / N;
+  const avgComments = v.reduce((s,x) => s + x.comments, 0) / N;
+  const avgEngRate = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
+
+  // Tendência: compara primeira metade vs segunda metade
+  const half = Math.floor(N / 2);
+  const recentAvg = v.slice(0, half || 1).reduce((s,x) => s + x.views, 0) / (half || 1);
+  const olderAvg = v.slice(half).reduce((s,x) => s + x.views, 0) / (N - half || 1);
+  const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
+
+  // Consistência: desvio padrão de views
+  const stdDev = Math.sqrt(v.reduce((s,x) => s + Math.pow(x.views - avgViews, 2), 0) / N);
+  const cv = avgViews > 0 ? stdDev / avgViews : 1; // coeficiente de variação (menor = mais consistente)
+
+  // Frequência: dias entre vídeos
+  const sortedDates = v.map(x => new Date(x.publishedAt)).sort((a,b) => b-a);
+  let avgDaysBetween = 7;
+  if (sortedDates.length > 1) {
+    const diffs = [];
+    for (let i = 0; i < sortedDates.length - 1; i++) {
+      diffs.push((sortedDates[i] - sortedDates[i+1]) / (1000*60*60*24));
+    }
+    avgDaysBetween = diffs.reduce((s,x) => s+x, 0) / diffs.length;
+  }
+
+  // PILAR 1: Performance (0-100)
+  let perf = 0;
+  // Views score (log scale, 1K=20, 10K=40, 100K=60, 1M=80, 10M=100)
+  const viewsScore = Math.min(100, Math.max(0, (Math.log10(Math.max(avgViews, 1)) / 7) * 100));
+  // Engagement score (>2% excelente, >0.5% bom, <0.1% ruim)
+  const engScore = Math.min(100, Math.max(0, avgEngRate < 0.1 ? 10 : avgEngRate < 0.5 ? 30 : avgEngRate < 1 ? 55 : avgEngRate < 2 ? 75 : avgEngRate < 5 ? 90 : 100));
+  // Trend score
+  const trendScore = trendRatio >= 1.5 ? 100 : trendRatio >= 1.1 ? 75 : trendRatio >= 0.9 ? 55 : trendRatio >= 0.7 ? 35 : 15;
+  perf = viewsScore * 0.5 + engScore * 0.3 + trendScore * 0.2;
+
+  // PILAR 2: Risco de conteúdo (0-100 onde 100 = baixo risco = bom)
+  let risk = 70; // base score
+  // Penaliza alta variação (sinal de inconsistência de qualidade)
+  if (cv > 2) risk -= 25;
+  else if (cv > 1.5) risk -= 15;
+  else if (cv > 1) risk -= 8;
+  // Bônus por engajamento sólido
+  if (avgEngRate > 1) risk += 15;
+  else if (avgEngRate > 0.5) risk += 8;
+  // Penaliza views muito baixos (possível limitação algorítmica)
+  if (avgViews < 100) risk -= 30;
+  else if (avgViews < 500) risk -= 15;
+  risk = Math.min(100, Math.max(0, risk));
+
+  // PILAR 3: Comportamento (0-100)
+  let behavior = 50;
+  // Frequência ótima: 2-7 dias
+  if (avgDaysBetween <= 7 && avgDaysBetween >= 1) behavior += 30;
+  else if (avgDaysBetween <= 14) behavior += 15;
+  else if (avgDaysBetween <= 30) behavior += 5;
+  else behavior -= 10;
+  // Consistência (baixo CV = mais consistente)
+  if (cv < 0.5) behavior += 20;
+  else if (cv < 1) behavior += 10;
+  else behavior -= 5;
+  behavior = Math.min(100, Math.max(0, behavior));
+
+  // SCORE FINAL PONDERADO
+  const raw = perf * 0.45 + risk * 0.35 + behavior * 0.20;
+
+  // Ajustes não-lineares
+  let finalScore = raw;
+  // Penalização forte se engajamento muito baixo
+  if (avgEngRate < 0.1 && avgViews < 1000) finalScore *= 0.7;
+  // Bônus se tudo está bem
+  if (perf > 70 && risk > 75 && behavior > 65) finalScore = Math.min(100, finalScore * 1.08);
+
+  finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
+
+  // Classificação
+  const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
+  const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' };
+
+  return {
+    score: finalScore,
+    classification,
+    classLabel: classLabel[classification],
+    pillars: {
+      performance: { score: Math.round(perf), desc: `Views médias ${fmtNum(avgViews)} · Engajamento ${avgEngRate.toFixed(2)}%` },
+      risk: { score: Math.round(risk), desc: `Variação de performance ${cv < 0.5 ? 'baixa ✓' : cv < 1 ? 'moderada' : 'alta ⚠'}` },
+      behavior: { score: Math.round(behavior), desc: `Postagem a cada ~${Math.round(avgDaysBetween)} dias` },
+    },
+    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween },
+    trendScore, viewsScore, engScore,
+  };
+}
+
+// ── AI DIAGNOSIS ──────────────────────────────────────────────────────────────
+async function generateAIDiagnosis(scoreData, channelData, videos) {
+  try {
+    const prompt = `Você é um especialista em algoritmo do YouTube.
+Analise estes dados de um canal e gere um diagnóstico preciso e acionável.
+
+DADOS DO CANAL:
+- Nome: ${channelData.title}
+- Inscritos: ${fmtNum(channelData.subscribers)}
+- BlueScore: ${scoreData.score}/100 (${scoreData.classLabel})
+- Performance: ${scoreData.pillars.performance.score}/100
+- Risco de Conteúdo: ${scoreData.pillars.risk.score}/100
+- Comportamento: ${scoreData.pillars.behavior.score}/100
+- Views médias: ${fmtNum(scoreData.metrics.avgViews)}
+- Engajamento: ${scoreData.metrics.avgEngRate.toFixed(2)}%
+- Tendência: ${scoreData.metrics.trendRatio > 1.1 ? 'crescendo' : scoreData.metrics.trendRatio < 0.9 ? 'caindo' : 'estável'}
+- Frequência: a cada ~${Math.round(scoreData.metrics.avgDaysBetween)} dias
+- Variação de views: ${scoreData.metrics.cv < 0.5 ? 'baixa (consistente)' : scoreData.metrics.cv < 1 ? 'moderada' : 'alta (inconsistente)'}
+- Últimos ${videos.length} vídeos analisados
+
+Responda APENAS em JSON válido, sem markdown:
+{
+  "insights": [
+    {"type": "pos|neg|warn", "title": "título curto", "desc": "explicação de 1-2 frases com raciocínio algorítmico"},
+    ... (3-5 insights)
+  ],
+  "recommendations": [
+    "recomendação direta e acionável (1-2 frases)",
+    ... (3-4 recomendações)
+  ],
+  "summary": "resumo executivo em 1 frase sobre o estado algorítmico do canal"
+}`;
+
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bluescore-ai', prompt })
+    });
+    if (!r.ok) throw new Error('AI indisponível');
+    return await r.json();
+  } catch(e) {
+    // Fallback: insights baseados em regras
+    return generateRuleBasedInsights(scoreData);
+  }
+}
+
+function generateRuleBasedInsights(s) {
+  const m = s.metrics;
+  const insights = [];
+  const recs = [];
+
+  if (m.trendRatio > 1.2) insights.push({ type:'pos', title:'Crescimento detectado', desc:'Seus vídeos mais recentes estão superando a média histórica — sinal positivo de momentum algorítmico.' });
+  else if (m.trendRatio < 0.8) insights.push({ type:'neg', title:'Queda de performance', desc:'Vídeos recentes estão abaixo da média — o algoritmo pode estar reduzindo a distribuição.' });
+
+  if (m.avgEngRate > 1) insights.push({ type:'pos', title:'Engajamento acima da média', desc:`${m.avgEngRate.toFixed(2)}% de engajamento é um sinal forte de qualidade percebida pelo algoritmo.` });
+  else if (m.avgEngRate < 0.3) insights.push({ type:'neg', title:'Engajamento baixo', desc:'Baixo engajamento reduz a confiança do algoritmo na qualidade do conteúdo.' });
+
+  if (m.cv > 1.5) insights.push({ type:'warn', title:'Alta variação de views', desc:'Views muito inconsistentes sugerem conteúdo sem identidade clara — o algoritmo prefere canais previsíveis.' });
+  else insights.push({ type:'pos', title:'Performance consistente', desc:'Variação baixa nas views indica que o algoritmo tem boa previsibilidade sobre seu conteúdo.' });
+
+  if (m.avgDaysBetween <= 7) insights.push({ type:'pos', title:'Frequência de postagem saudável', desc:'Postagem regular mantém o canal ativo no radar do algoritmo.' });
+  else if (m.avgDaysBetween > 21) insights.push({ type:'warn', title:'Baixa frequência de postagem', desc:'Intervalos longos entre vídeos podem reduzir a distribuição algorítmica.' });
+
+  recs.push('Mantenha uma frequência mínima de 1-2 vídeos por semana para manter o canal ativo no algoritmo.');
+  recs.push('Foque nos primeiros 30 segundos — retenção inicial é o principal fator de distribuição.');
+  if (m.avgEngRate < 0.5) recs.push('Inclua calls-to-action claros nos primeiros 60 segundos para aumentar engajamento.');
+  if (m.cv > 1) recs.push('Padronize o formato dos vídeos — consistência ajuda o algoritmo a identificar e distribuir seu conteúdo.');
+
+  return { insights, recommendations: recs, summary: `Canal com BlueScore ${s.score}/100 — ${s.classLabel}.` };
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderResults(scoreData, channelData, videos, aiData) {
+  document.getElementById('resultsSection').style.display = 'block';
+
+  // Channel info
+  document.getElementById('channelName').textContent = channelData.title;
+  document.getElementById('channelMeta').textContent = `${fmtNum(channelData.subscribers)} inscritos · ${channelData.videoCount} vídeos`;
+  if (channelData.thumbnail) {
+    document.getElementById('channelThumb').outerHTML = `<img class="channel-thumb" id="channelThumb" src="${channelData.thumbnail}" onerror="this.outerHTML='<div class=channel-thumb-placeholder id=channelThumb>📺</div>'"/>`;
+  }
+
+  // Gauge animation
+  const score = scoreData.score;
+  const colorMap = { low:'#ef4444', moderate:'#fbbf24', good:'#22c55e', high:'#00aaff' };
+  const color = colorMap[scoreData.classification];
+  const offset = 251 - (score / 100) * 251;
+  setTimeout(() => {
+    const fill = document.getElementById('gaugeFill');
+    fill.style.strokeDashoffset = offset;
+    fill.style.stroke = color;
+    document.getElementById('gaugeScore').style.color = color;
+  }, 100);
+
+  // Animate number
+  let current = 0;
+  const target = score;
+  const interval = setInterval(() => {
+    current = Math.min(target, current + Math.ceil((target - current) / 8) || 1);
+    document.getElementById('gaugeScore').textContent = current;
+    if (current >= target) clearInterval(interval);
+  }, 40);
+
+  // Classification
+  const sc = document.getElementById('scoreClass');
+  sc.textContent = scoreData.classLabel;
+  sc.className = 'score-class ' + scoreData.classification;
+
+  // Metrics
+  const m = scoreData.metrics;
+  document.getElementById('mAvgViews').textContent = fmtNum(Math.round(m.avgViews));
+  document.getElementById('mEngagement').textContent = m.avgEngRate.toFixed(2) + '%';
+  document.getElementById('mEngagementSub').textContent = m.avgEngRate > 1 ? '✅ Acima da média' : m.avgEngRate > 0.3 ? 'Na média' : '⚠ Abaixo da média';
+  document.getElementById('mConsistency').textContent = m.cv < 0.5 ? 'Alta' : m.cv < 1 ? 'Moderada' : 'Baixa';
+  document.getElementById('mTrend').textContent = m.trendRatio > 1.15 ? '📈 Crescendo' : m.trendRatio < 0.85 ? '📉 Caindo' : '➡ Estável';
+  document.getElementById('mTrendSub').textContent = `${m.trendRatio > 1 ? '+' : ''}${Math.round((m.trendRatio - 1) * 100)}% vs período anterior`;
+  document.getElementById('metricsGrid').style.display = 'grid';
+
+  // Pillars
+  const pillarColors = {
+    performance: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
+    risk: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
+    behavior: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
+  };
+  ['performance','risk','behavior'].forEach((key, i) => {
+    const n = i + 1;
+    const p = scoreData.pillars[key];
+    document.getElementById(`p${n}Score`).textContent = p.score + '/100';
+    document.getElementById(`p${n}Score`).style.color = pillarColors[key](p.score);
+    document.getElementById(`p${n}Desc`).textContent = p.desc;
+    setTimeout(() => {
+      document.getElementById(`p${n}Bar`).style.width = p.score + '%';
+      document.getElementById(`p${n}Bar`).style.background = pillarColors[key](p.score);
+    }, 300 + i * 150);
+  });
+  document.getElementById('pillarsSection').style.display = 'grid';
+
+  // Trajectory
+  const maxViews = Math.max(...videos.map(v => v.views), 1);
+  document.getElementById('trajectoryList').innerHTML = videos.slice(0, 8).map(v => {
+    const pct = (v.views / maxViews) * 100;
+    const col = pct > 70 ? '#22c55e' : pct > 40 ? '#00aaff' : '#fbbf24';
+    return `<div class="traj-row">
+      <div class="traj-label" title="${v.title}">${v.title.slice(0,28)}${v.title.length>28?'…':''}</div>
+      <div class="traj-bar-wrap"><div class="traj-bar-fill" style="width:${pct}%;background:${col};transition:width 1s ease"></div></div>
+      <div class="traj-views">${fmtNum(v.views)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('trajectorySection').style.display = 'block';
+  setTimeout(() => {
+    document.querySelectorAll('.traj-bar-fill').forEach(b => b.style.width = b.style.width);
+  }, 200);
+
+  // AI Insights
+  if (aiData?.insights?.length) {
+    const iconMap = { pos:'✅', neg:'❌', warn:'⚠️' };
+    document.getElementById('insightsList').innerHTML = aiData.insights.map(ins => `
+      <div class="insight-item">
+        <div class="insight-icon ${ins.type}">${iconMap[ins.type] || '•'}</div>
+        <div class="insight-text">
+          <div class="insight-title">${ins.title}</div>
+          <div class="insight-desc">${ins.desc}</div>
+        </div>
+      </div>`).join('');
+    document.getElementById('insightsSection').style.display = 'block';
+  }
+
+  // Recommendations
+  if (aiData?.recommendations?.length) {
+    document.getElementById('recsList').innerHTML = aiData.recommendations.map((rec, i) => `
+      <div class="rec-item">
+        <div class="rec-num">${i+1}</div>
+        <div class="rec-text">${rec}</div>
+      </div>`).join('');
+    document.getElementById('recsSection').style.display = 'block';
+  }
+
+  // Scroll to results
+  document.getElementById('resultsSection').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function showError(msg) {
+  document.getElementById('loadingSection').style.display = 'none';
+  document.getElementById('resultsSection').style.display = 'block';
+  const eb = document.getElementById('errorBox');
+  eb.textContent = '⚠ ' + msg;
+  eb.style.display = 'block';
+  // Hide all result sections
+  ['metricsGrid','pillarsSection','trajectorySection','insightsSection','recsSection','scoreCard'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+function reset() {
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('inputSection').style.display = 'block';
+  document.getElementById('urlInput').value = '';
+  document.getElementById('urlInput').focus();
+  // Re-show all sections for next run
+  ['metricsGrid','pillarsSection','trajectorySection','insightsSection','recsSection','scoreCard'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = '';
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
