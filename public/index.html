@@ -1220,17 +1220,41 @@ function toggleBilling(annual){
   }
 }
 
+let pendingUpgradePlan = null;
+let pendingUpgradeBilling = null;
+
 async function handleUpgradeClick(plan){
   const p = plan || selectedUpgradePlan || 'full';
   const billing = (modalIsAnnual || isAnnual) ? 'annual' : 'monthly';
+
+  // ── REQUIRE ACCOUNT BEFORE CHECKOUT ───────────────────────────────────────
+  const token = localStorage.getItem('bt_token');
+  if(!token){
+    // Save intent and show signup modal
+    pendingUpgradePlan = p;
+    pendingUpgradeBilling = billing;
+    closeUpgradeModal();
+    // Show signup tab with message explaining why
+    openAuthModal();
+    switchAuthTab('signup');
+    setAuthMsg('Crie sua conta para continuar com o pagamento 👇','ok');
+    return;
+  }
+
+  // Has account — go straight to Stripe
+  await goToCheckout(p, billing);
+}
+
+async function goToCheckout(plan, billing){
+  const token = localStorage.getItem('bt_token');
   try{
     const r=await fetch('/api/create-checkout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({plan:p, billing})
+      body:JSON.stringify({plan, billing, token})
     });
     const d=await r.json();
-    if(d.url)window.location.href=d.url;
+    if(d.url) window.location.href=d.url;
     else alert('Erro ao iniciar checkout. Tente novamente.');
   }catch(e){alert('Erro ao conectar com Stripe. Tente novamente.');}
 }
@@ -1303,7 +1327,15 @@ async function handleEmailLogin(){
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
       closeAuthModal();
-      await checkSession(); // fetch real plan and update nav immediately
+      await checkSession();
+      // Auto-proceed to checkout if user came from a plan click
+      if(pendingUpgradePlan){
+        const plan = pendingUpgradePlan;
+        const billing = pendingUpgradeBilling || 'monthly';
+        pendingUpgradePlan = null;
+        pendingUpgradeBilling = null;
+        setTimeout(()=>goToCheckout(plan, billing), 800);
+      }
     },1000);
   }catch(e){setAuthMsg(e.message,'');}
 }
@@ -1320,12 +1352,27 @@ async function handleEmailSignup(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
     if(d.needsConfirmation){
+      // Save pending plan to localStorage so it survives email confirmation redirect
+      if(pendingUpgradePlan){
+        localStorage.setItem('bt_pending_plan', pendingUpgradePlan);
+        localStorage.setItem('bt_pending_billing', pendingUpgradeBilling||'monthly');
+      }
       showOTPForm(email);
-      setAuthMsg('Código enviado! Verifique seu email.','ok');
+      setAuthMsg(pendingUpgradePlan
+        ? '✓ Confirme seu email e voltaremos ao pagamento automaticamente!'
+        : 'Código enviado! Verifique seu email.','ok');
     }else{
       if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
-      setTimeout(()=>closeAuthModal(),1200);
+      setTimeout(async()=>{
+        closeAuthModal();
+        await checkSession();
+        if(pendingUpgradePlan){
+          const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
+          pendingUpgradePlan=null; pendingUpgradeBilling=null;
+          setTimeout(()=>goToCheckout(plan,billing),800);
+        }
+      },1000);
     }
   }catch(e){setAuthMsg(e.message,'');}
 }
@@ -1563,6 +1610,14 @@ async function checkSession(){
       if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
       setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
+      // Check if user was redirected here after signup to complete a purchase
+      const pendingPlan = localStorage.getItem('bt_pending_plan');
+      if(pendingPlan && userPlan === 'free'){
+        const pendingBilling = localStorage.getItem('bt_pending_billing') || 'monthly';
+        localStorage.removeItem('bt_pending_plan');
+        localStorage.removeItem('bt_pending_billing');
+        setTimeout(()=>goToCheckout(pendingPlan, pendingBilling), 1000);
+      }
     }else{
       localStorage.removeItem('bt_token');
       localStorage.removeItem('bt_plan');
