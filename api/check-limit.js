@@ -23,21 +23,15 @@ export default async function handler(req, res) {
   const { action } = req.body; // 'check', 'increment', or 'visit'
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-  // ── OFFLINE SIGNAL ─────────────────────────────────────────────────────────
-  // Called via sendBeacon when user closes tab — set visited_at to past so they leave "online"
+  // ── OFFLINE SIGNAL — instant removal from online ───────────────────────────
   if (action === 'offline') {
     try {
+      // Delete this IP from ip_online immediately
       await fetch(
-        `${SUPABASE_URL}/rest/v1/ip_visits?ip_address=eq.${encodeURIComponent(ip)}&visit_date=eq.${today}`,
+        `${SUPABASE_URL}/rest/v1/ip_online?ip_address=eq.${encodeURIComponent(ip)}`,
         {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({ visited_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() })
+          method: 'DELETE',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         }
       );
     } catch(e) {}
@@ -47,55 +41,65 @@ export default async function handler(req, res) {
   // ── VISIT TRACKING ─────────────────────────────────────────────────────────
   if (action === 'visit') {
     try {
-      // Only block clearly private/internal IPs
+      // Block private/internal IPs
       const isPrivate = !ip || ip === 'unknown' || ip === '0.0.0.0' ||
         ip === '127.0.0.1' || ip === '::1' ||
-        ip.startsWith('10.') ||
-        ip.startsWith('192.168.') ||
-        ip.startsWith('169.254.') ||
-        ip.startsWith('::ffff:');
+        ip.startsWith('10.') || ip.startsWith('192.168.') ||
+        ip.startsWith('169.254.') || ip.startsWith('::ffff:');
 
-      if (isPrivate) {
-        return res.status(200).json({ ok: false, reason: 'private' });
-      }
+      if (isPrivate) return res.status(200).json({ ok: false, reason: 'private' });
 
-      // Block only the most common bot/datacenter ranges that we've confirmed are not users
+      // Block confirmed bot datacenter ranges
       const parts = ip.split('.');
-      const o1 = parseInt(parts[0]);
-      const o2 = parseInt(parts[1]);
-      const o3 = parseInt(parts[2]);
-
-      // AWS, DigitalOcean, GCP confirmed bot ranges
+      const o1 = parseInt(parts[0]), o2 = parseInt(parts[1]);
       const isBot =
-        // AWS (confirmed bot ranges only)
-        (o1===13&&(o2===56||o2===57||o2===52)) ||
-        (o1===18&&o2===144) ||
-        (o1===54&&(o2===67||o2===153||o2===183||o2===36)) ||
-        (o1===52&&o2===8) ||
-        // DigitalOcean (confirmed)
-        (o1===137&&o2===184) ||
-        (o1===143&&o2===198) ||
-        (o1===64&&o2===227) ||
-        (o1===134&&o2===199) ||
-        (o1===24&&o2===144) ||
-        (o1===164&&o2===92) ||
-        (o1===159&&o2===65);
+        (o1===13&&(o2===56||o2===57||o2===52)) || (o1===18&&o2===144) ||
+        (o1===54&&(o2===67||o2===153||o2===183||o2===36)) || (o1===52&&o2===8) ||
+        (o1===137&&o2===184) || (o1===143&&o2===198) || (o1===64&&o2===227) ||
+        (o1===134&&o2===199) || (o1===24&&o2===144) ||
+        (o1===164&&o2===92) || (o1===159&&o2===65);
 
-      if (isBot) {
-        return res.status(200).json({ ok: false, reason: 'bot' });
-      }
+      if (isBot) return res.status(200).json({ ok: false, reason: 'bot' });
 
       const now = new Date().toISOString();
-      await fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: now })
-      });
+
+      // 1. ip_online — upsert by IP (no unique constraint, just update/insert for this IP)
+      //    Delete old entry for this IP then insert fresh (acts as upsert)
+      await Promise.all([
+        // Update pinged_at in ip_online (delete + insert = instant upsert)
+        fetch(`${SUPABASE_URL}/rest/v1/ip_online?ip_address=eq.${encodeURIComponent(ip)}`, {
+          method: 'DELETE',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        }).then(() => fetch(`${SUPABASE_URL}/rest/v1/ip_online`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ ip_address: ip, pinged_at: now })
+        })),
+
+        // 2. ip_visits — upsert unique IP per day (for daily visitor count)
+        fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: now })
+        }),
+
+        // 3. Clean old ip_online entries (older than 3 minutes) to avoid stale data
+        fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=lt.${new Date(Date.now() - 3*60*1000).toISOString()}`, {
+          method: 'DELETE',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        })
+      ]);
+
       return res.status(200).json({ ok: true });
     } catch (e) {
       return res.status(200).json({ ok: false });
