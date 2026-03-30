@@ -3,9 +3,6 @@
   "functions": {
     "api/transcript.js": {
       "maxDuration": 60
-    },
-    "api/detect-language.js": {
-      "maxDuration": 10
     }
   }
 }
