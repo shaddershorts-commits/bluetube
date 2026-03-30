@@ -302,6 +302,30 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div id="trajectoryList"></div>
     </div>
 
+    <!-- YTP COMPLIANCE -->
+    <div class="insights-card" id="ytpSection" style="display:none;border-color:rgba(251,191,36,.2);background:rgba(251,191,36,.03)">
+      <div class="section-title">📋 Conformidade com YouTube Partner Program</div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">COMPLIANCE SCORE</div>
+          <div style="font-size:32px;font-weight:800;letter-spacing:-1px" id="ytpScore">—</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">STATUS</div>
+          <div style="font-size:14px;font-weight:700" id="ytpStatus">—</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:13px;color:var(--text-sec);line-height:1.5" id="ytpNotes"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RISK FLAGS -->
+    <div class="insights-card" id="riskSection" style="display:none;border-color:rgba(239,68,68,.15)">
+      <div class="section-title">🚨 Alertas de Risco Detectados</div>
+      <div id="riskList"></div>
+    </div>
+
     <!-- INSIGHTS IA -->
     <div class="insights-card" id="insightsSection" style="display:none">
       <div class="section-title">
@@ -315,6 +339,12 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     <div class="insights-card" id="recsSection" style="display:none">
       <div class="section-title">⚡ Recomendações acionáveis</div>
       <div id="recsList"></div>
+    </div>
+
+    <!-- SUMMARY EXECUTIVO -->
+    <div class="insights-card" id="summarySection" style="display:none;background:rgba(0,170,255,.04);border-color:rgba(0,170,255,.2);text-align:center;padding:24px 32px">
+      <div style="font-size:13px;font-family:var(--mono);color:var(--neon);margin-bottom:10px;letter-spacing:.06em">DIAGNÓSTICO EXECUTIVO</div>
+      <div style="font-size:16px;line-height:1.6;color:var(--text);font-weight:500;max-width:600px;margin:0 auto" id="summaryText"></div>
     </div>
 
     <!-- NOVO SCAN -->
@@ -575,45 +605,20 @@ function calculateBlueScore(videos, channel) {
 // ── AI DIAGNOSIS ──────────────────────────────────────────────────────────────
 async function generateAIDiagnosis(scoreData, channelData, videos) {
   try {
-    const prompt = `Você é um especialista em algoritmo do YouTube.
-Analise estes dados de um canal e gere um diagnóstico preciso e acionável.
-
-DADOS DO CANAL:
-- Nome: ${channelData.title}
-- Inscritos: ${fmtNum(channelData.subscribers)}
-- BlueScore: ${scoreData.score}/100 (${scoreData.classLabel})
-- Performance: ${scoreData.pillars.performance.score}/100
-- Risco de Conteúdo: ${scoreData.pillars.risk.score}/100
-- Comportamento: ${scoreData.pillars.behavior.score}/100
-- Views médias: ${fmtNum(scoreData.metrics.avgViews)}
-- Engajamento: ${scoreData.metrics.avgEngRate.toFixed(2)}%
-- Tendência: ${scoreData.metrics.trendRatio > 1.1 ? 'crescendo' : scoreData.metrics.trendRatio < 0.9 ? 'caindo' : 'estável'}
-- Frequência: a cada ~${Math.round(scoreData.metrics.avgDaysBetween)} dias
-- Variação de views: ${scoreData.metrics.cv < 0.5 ? 'baixa (consistente)' : scoreData.metrics.cv < 1 ? 'moderada' : 'alta (inconsistente)'}
-- Últimos ${videos.length} vídeos analisados
-
-Responda APENAS em JSON válido, sem markdown:
-{
-  "insights": [
-    {"type": "pos|neg|warn", "title": "título curto", "desc": "explicação de 1-2 frases com raciocínio algorítmico"},
-    ... (3-5 insights)
-  ],
-  "recommendations": [
-    "recomendação direta e acionável (1-2 frases)",
-    ... (3-4 recomendações)
-  ],
-  "summary": "resumo executivo em 1 frase sobre o estado algorítmico do canal"
-}`;
-
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'bluescore-ai', prompt })
+      body: JSON.stringify({
+        action: 'bluescore-ai',
+        channelData, videos, scoreData
+      })
     });
     if (!r.ok) throw new Error('AI indisponível');
-    return await r.json();
+    const data = await safeJson(r);
+    if (data.error) throw new Error(data.error);
+    return data;
   } catch(e) {
-    // Fallback: insights baseados em regras
+    console.log('AI fallback:', e.message);
     return generateRuleBasedInsights(scoreData);
   }
 }
@@ -725,6 +730,37 @@ function renderResults(scoreData, channelData, videos, aiData) {
     document.querySelectorAll('.traj-bar-fill').forEach(b => b.style.width = b.style.width);
   }, 200);
 
+  // YTP Compliance badge
+  if (aiData?.ytpCompliance) {
+    const ytp = aiData.ytpCompliance;
+    const ytpColors = { aprovado:'#22c55e', atenção:'#fbbf24', risco:'#ef4444' };
+    const ytpIcons = { aprovado:'✅', atenção:'⚠️', risco:'🚨' };
+    const ytpEl = document.getElementById('ytpSection');
+    if (ytpEl) {
+      ytpEl.style.display = 'block';
+      document.getElementById('ytpScore').textContent = ytp.score + '/100';
+      document.getElementById('ytpScore').style.color = ytpColors[ytp.status] || '#fbbf24';
+      document.getElementById('ytpStatus').textContent = ytpIcons[ytp.status] + ' ' + (ytp.status || '').toUpperCase();
+      document.getElementById('ytpStatus').style.color = ytpColors[ytp.status] || '#fbbf24';
+      document.getElementById('ytpNotes').textContent = ytp.notes || '';
+    }
+  }
+
+  // Risk Flags
+  if (aiData?.riskFlags?.length) {
+    const sevColors = { high:'#ef4444', medium:'#fbbf24', low:'#00aaff' };
+    const sevIcons = { high:'🚨', medium:'⚠️', low:'ℹ️' };
+    document.getElementById('riskList').innerHTML = aiData.riskFlags.map(f => `
+      <div class="insight-item" style="border-left:3px solid ${sevColors[f.severity]||'#fbbf24'};padding-left:14px;margin-left:-4px">
+        <div class="insight-icon warn" style="background:${sevColors[f.severity]}18;border-color:${sevColors[f.severity]}40">${sevIcons[f.severity]||'⚠️'}</div>
+        <div class="insight-text">
+          <div class="insight-title" style="color:${sevColors[f.severity]}">${f.title}</div>
+          <div class="insight-desc">${f.desc}</div>
+        </div>
+      </div>`).join('');
+    document.getElementById('riskSection').style.display = 'block';
+  }
+
   // AI Insights
   if (aiData?.insights?.length) {
     const iconMap = { pos:'✅', neg:'❌', warn:'⚠️' };
@@ -739,14 +775,34 @@ function renderResults(scoreData, channelData, videos, aiData) {
     document.getElementById('insightsSection').style.display = 'block';
   }
 
-  // Recommendations
+  // Recommendations — agora com prioridade, ação e impacto
   if (aiData?.recommendations?.length) {
-    document.getElementById('recsList').innerHTML = aiData.recommendations.map((rec, i) => `
-      <div class="rec-item">
-        <div class="rec-num">${i+1}</div>
-        <div class="rec-text">${rec}</div>
-      </div>`).join('');
+    const impactColors = { high:'#22c55e', medium:'#fbbf24', low:'#00aaff' };
+    const impactLabels = { high:'Alto impacto', medium:'Médio impacto', low:'Baixo impacto' };
+    document.getElementById('recsList').innerHTML = aiData.recommendations.map((rec, i) => {
+      const isObj = typeof rec === 'object';
+      const action = isObj ? rec.action : rec;
+      const why = isObj ? rec.why : '';
+      const impact = isObj ? rec.impact : 'medium';
+      return `<div class="rec-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div class="rec-num">${i+1}</div>
+          <div class="rec-text" style="font-weight:600;color:var(--text)">${action}</div>
+          ${impact ? `<span style="margin-left:auto;font-size:10px;font-family:var(--mono);color:${impactColors[impact]||'#fbbf24'};background:${impactColors[impact]||'#fbbf24'}18;padding:2px 8px;border-radius:100px;white-space:nowrap">${impactLabels[impact]||''}</span>` : ''}
+        </div>
+        ${why ? `<div style="font-size:12px;color:var(--text-sec);padding-left:32px;line-height:1.5">${why}</div>` : ''}
+      </div>`;
+    }).join('');
     document.getElementById('recsSection').style.display = 'block';
+  }
+
+  // Summary final
+  if (aiData?.summary) {
+    const sumEl = document.getElementById('summarySection');
+    if (sumEl) {
+      sumEl.style.display = 'block';
+      document.getElementById('summaryText').textContent = aiData.summary;
+    }
   }
 
   // Scroll to results
