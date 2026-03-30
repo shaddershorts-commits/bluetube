@@ -337,7 +337,22 @@ function renderVideos(videos) {
   document.getElementById('statTotal').textContent = videos.length;
   document.getElementById('statPeriod').textContent = periodLabels[currentPeriod];
   document.getElementById('statTopViews').textContent = videos[0]?.viewsFormatted || '—';
-  document.getElementById('statLastUpdate').textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  // Atualiza horário e inicia contador regressivo
+  const updateTime = new Date();
+  const timeStr = updateTime.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('statLastUpdate').textContent = `🔴 Ao vivo · Atualizado às ${timeStr}`;
+
+  // Contador regressivo até próximo refresh
+  if (window._refreshCountdown) clearInterval(window._refreshCountdown);
+  let secsLeft = 300;
+  window._refreshCountdown = setInterval(() => {
+    secsLeft--;
+    if (secsLeft <= 0) { clearInterval(window._refreshCountdown); return; }
+    const mins = Math.floor(secsLeft/60);
+    const secs = secsLeft % 60;
+    const el = document.getElementById('statLastUpdate');
+    if (el) el.textContent = `🔴 Ao vivo · Atualizado às ${timeStr} · próximo em ${mins}:${String(secs).padStart(2,'0')}`;
+  }, 1000);
   document.getElementById('statsBar').style.display = 'flex';
 
   grid.innerHTML = videos.map((v, i) => {
@@ -408,8 +423,14 @@ function escHtml(s) {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
-// Pre-fill URL input if user clicked "Usar no BlueTube" 
-if (plan === 'master') fetchVirals();
+if (plan === 'master') {
+  fetchVirals();
+  // Auto-refresh a cada 5 minutos para manter monitoramento em tempo real
+  setInterval(() => {
+    console.log('[Virais] Auto-refresh...');
+    fetchVirals();
+  }, 5 * 60 * 1000);
+}
 
 // Also handle prefill on main page
 window.addEventListener('load', () => {
