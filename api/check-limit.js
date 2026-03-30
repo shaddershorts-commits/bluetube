@@ -23,6 +23,27 @@ export default async function handler(req, res) {
   const { action } = req.body; // 'check', 'increment', or 'visit'
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
+  // ── OFFLINE SIGNAL ─────────────────────────────────────────────────────────
+  // Called via sendBeacon when user closes tab — set visited_at to past so they leave "online"
+  if (action === 'offline') {
+    try {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/ip_visits?ip_address=eq.${encodeURIComponent(ip)}&visit_date=eq.${today}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ visited_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() })
+        }
+      );
+    } catch(e) {}
+    return res.status(200).json({ ok: true });
+  }
+
   // ── VISIT TRACKING ─────────────────────────────────────────────────────────
   if (action === 'visit') {
     try {
