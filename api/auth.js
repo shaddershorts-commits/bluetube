@@ -388,58 +388,79 @@ export default async function handler(req, res) {
     else if (period === '7d') publishedAfter = new Date(now - 7*24*60*60*1000).toISOString();
     else if (period === '30d') publishedAfter = new Date(now - 30*24*60*60*1000).toISOString();
 
-    // Query localizada por região para forçar conteúdo do país
-    const REGION_QUERY = {
-      BR: '#shorts viral', US: '#shorts viral', GB: '#shorts viral',
-      IN: '#shorts viral', MX: '#shorts viral', JP: '#shorts',
-      DE: '#shorts', FR: '#shorts', ES: '#shorts viral',
-      AR: '#shorts viral', CO: '#shorts viral', TR: '#shorts',
-      KR: '#shorts',
+    // Idioma e queries localizadas por região
+    const REGION_LANG = {
+      BR:'pt', PT:'pt', MX:'es', AR:'es', CO:'es', ES:'es', CL:'es',
+      US:'en', GB:'en', AU:'en', CA:'en',
+      JP:'ja', KR:'ko', DE:'de', FR:'fr', TR:'tr', IN:'hi', IT:'it',
+    };
+    const REGION_QUERIES = {
+      BR: ['shorts viral brasil', 'shorts trending brasil', 'shorts viral 2025'],
+      US: ['shorts viral usa', 'shorts trending', 'viral shorts 2025'],
+      GB: ['shorts viral uk', 'shorts trending uk', 'viral shorts'],
+      IN: ['shorts viral india', 'shorts trending india'],
+      MX: ['shorts viral mexico', 'shorts tendencia mexico'],
+      JP: ['ショート 急上昇', 'shorts バズ', 'viral shorts japan'],
+      KR: ['쇼츠 인기', 'shorts 한국 인기', 'viral shorts korea'],
+      DE: ['shorts viral deutschland', 'shorts trending', 'viral shorts germany'],
+      FR: ['shorts viral france', 'shorts tendance', 'viral shorts france'],
+      ES: ['shorts viral españa', 'shorts tendencia', 'viral shorts spain'],
+      AR: ['shorts viral argentina', 'shorts tendencia argentina'],
+      CO: ['shorts viral colombia', 'shorts tendencia colombia'],
+      TR: ['shorts viral türkiye', 'shorts trend', 'viral shorts turkey'],
     };
 
+    const lang = REGION_LANG[region] || 'en';
+    const queries = q
+      ? [`${q} shorts`, `${q} viral`, q]
+      : (REGION_QUERIES[region] || ['shorts viral', 'trending shorts', 'viral shorts 2025']);
+
     try {
-      const baseQuery = q || REGION_QUERY[region] || '#shorts viral';
-      const searchQuery = q ? `${q} #shorts` : baseQuery;
+      // Faz múltiplas buscas paralelas com queries diferentes → muito mais vídeos
+      const makeSearch = (searchQ, withDate = true) => {
+        const params = new URLSearchParams({
+          part: 'snippet', type: 'video', videoDuration: 'short',
+          order: 'viewCount', maxResults: '50', regionCode: region,
+          relevanceLanguage: lang, key: YT_KEY, q: searchQ,
+          ...(withDate && publishedAfter ? { publishedAfter } : {}),
+          ...(category ? { videoCategoryId: category } : {}),
+        });
+        return fetch(`https://www.googleapis.com/youtube/v3/search?${params}`)
+          .then(r => r.json()).then(d => d.items || []).catch(() => []);
+      };
 
-      // Faz 2 buscas paralelas: uma com publishedAfter, outra sem (mais views)
-      // A YouTube API às vezes ignora regionCode com publishedAfter — busca dupla garante resultados
-      const makeParams = (withDate) => new URLSearchParams({
-        part: 'snippet', type: 'video', videoDuration: 'short',
-        order: 'viewCount', maxResults: '24', regionCode: region,
-        relevanceLanguage: region === 'BR'||region === 'MX'||region === 'AR'||region === 'CO'||region === 'ES' ? 'pt' :
-          region === 'JP' ? 'ja' : region === 'KR' ? 'ko' : region === 'DE' ? 'de' :
-          region === 'FR' ? 'fr' : region === 'TR' ? 'tr' : region === 'IN' ? 'hi' : 'en',
-        key: YT_KEY, q: searchQuery,
-        ...(withDate && publishedAfter && { publishedAfter }),
-        ...(category && { videoCategoryId: category }),
-      });
-
-      // Busca paralela com e sem filtro de data
-      const [searchRes1, searchRes2] = await Promise.all([
-        fetch(`https://www.googleapis.com/youtube/v3/search?${makeParams(true)}`),
-        publishedAfter ? fetch(`https://www.googleapis.com/youtube/v3/search?${makeParams(false)}`) : Promise.resolve(null),
+      // Busca com data + sem data para cada query → até 300 resultados brutos
+      const allSearches = await Promise.all([
+        ...queries.map(q => makeSearch(q, true)),
+        ...queries.map(q => makeSearch(q, false)),
       ]);
 
-      const searchData1 = await searchRes1.json();
-      if (!searchRes1.ok) return res.status(400).json({ error: searchData1.error?.message || 'Erro YouTube API' });
+      // Deduplica por videoId
+      const seen = new Set();
+      const allItems = allSearches.flat().filter(i => {
+        const id = i.id?.videoId;
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
 
-      // Merge e deduplica IDs
-      let allItems = [...(searchData1.items || [])];
-      if (searchRes2?.ok) {
-        const searchData2 = await searchRes2.json();
-        const existingIds = new Set(allItems.map(i => i.id?.videoId));
-        (searchData2.items || []).forEach(i => { if (!existingIds.has(i.id?.videoId)) allItems.push(i); });
-      }
+      if (!allItems.length) return res.status(200).json({ videos: [], total: 0 });
 
-      const videoIds = allItems.filter(i => i.id?.videoId).map(i => i.id.videoId).slice(0,24).join(',');
-      if (!videoIds) return res.status(200).json({ videos: [] });
+      // Busca stats em lotes de 50 (limite da API)
+      const allVideoIds = allItems.map(i => i.id.videoId);
+      const chunks = [];
+      for (let i = 0; i < allVideoIds.length; i += 50) chunks.push(allVideoIds.slice(i, i+50));
 
-      const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}&key=${YT_KEY}`);
-      const statsData = await statsRes.json();
+      const statsResults = await Promise.all(
+        chunks.map(ids =>
+          fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${ids.join(',')}&key=${YT_KEY}`)
+            .then(r => r.json()).then(d => d.items || []).catch(() => [])
+        )
+      );
 
       const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
 
-      const videos = (statsData.items || []).map(v => {
+      const videos = statsResults.flat().map(v => {
         const stats = v.statistics || {}, snippet = v.snippet || {};
         const dur = v.contentDetails?.duration || '';
         const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
@@ -450,7 +471,10 @@ export default async function handler(req, res) {
           views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
           publishedAt: snippet.publishedAt, duration: secs,
           url: `https://www.youtube.com/shorts/${v.id}` };
-      }).filter(v => v.duration <= 60 || v.duration === 0).sort((a,b) => b.views - a.views);
+      })
+      .filter(v => v.duration <= 60 || v.duration === 0)
+      .sort((a,b) => b.views - a.views)
+      .slice(0, 100); // Retorna top 100
 
       return res.status(200).json({ videos, total: videos.length, region, period });
     } catch(e) {
