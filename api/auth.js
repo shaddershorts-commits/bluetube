@@ -559,6 +559,48 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
+  // ── TITLE SUGGEST ─────────────────────────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'title-suggest') {
+    const { transcript, lang = 'pt' } = req.body;
+    if (!transcript) return res.status(400).json({ casual: '', apelativo: '' });
+    const GEMINI_KEYS = [
+      process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2,
+      process.env.GEMINI_KEY_3, process.env.GEMINI_KEY_4,
+    ].filter(Boolean);
+    const prompt = 'Crie 2 titulos virais para YouTube Shorts baseado nesta transcricao: "' + transcript.slice(0,500) + '". Idioma: ' + lang + '. Responda APENAS com 2 linhas: linha 1 = titulo casual (max 60 chars), linha 2 = titulo apelativo (max 60 chars). Sem numeracao, sem explicacao.';
+    let casual = '', apelativo = '';
+    for (const key of GEMINI_KEYS) {
+      try {
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key;
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
+        const d = await r.json();
+        const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) {
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
+          break;
+        }
+      } catch(e) { continue; }
+    }
+    if (!casual && process.env.OPENAI_API_KEY) {
+      try {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY },
+          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 80, messages: [{ role: 'user', content: prompt }] })
+        });
+        const d = await r.json();
+        const text = d.choices?.[0]?.message?.content?.trim();
+        if (text) {
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
+        }
+      } catch(e) {}
+    }
+    return res.status(200).json({ casual, apelativo });
+  }
+
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
@@ -1071,7 +1113,7 @@ Responda APENAS em JSON válido sem markdown:
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
+    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
 
     try {
       // eleven_v3 usa endpoint diferente (turbo/v3 preview)
