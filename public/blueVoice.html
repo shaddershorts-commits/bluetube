@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueVoice — Voz Hiper-realista com IA · BlueTube Master</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817;--card:rgba(10,22,40,0.92);
+  --neon:#00aaff;--neon-dim:rgba(0,170,255,0.12);--neon-border:rgba(0,170,255,0.18);
+  --gold:#fbbf24;--green:#4ecca3;--red:#ff6b6b;
+  --text:#e8f4ff;--text-dim:rgba(150,190,230,0.42);--text-sec:rgba(150,190,230,0.72);
+  --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.022) 1px,transparent 1px);background-size:48px 48px}
+.orb{position:absolute;border-radius:50%;filter:blur(140px)}
+.orb1{width:800px;height:800px;background:radial-gradient(circle,rgba(0,60,200,.3),transparent 70%);top:-300px;right:-200px;opacity:.4}
+.orb2{width:500px;height:500px;background:radial-gradient(circle,rgba(0,200,180,.18),transparent 70%);bottom:-100px;left:-100px;opacity:.5}
+.mouse-glow{position:fixed;pointer-events:none;z-index:1;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.04) 0%,transparent 70%);transform:translate(-50%,-50%);transition:left .1s,top .1s}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.9);backdrop-filter:blur(24px);border-bottom:1px solid var(--neon-border)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:17px;font-weight:800;color:var(--text);letter-spacing:-.4px}
+.logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,170,255,.4)}
+.logo-mark svg{width:13px;height:13px;fill:#fff}
+.logo-acc{color:var(--neon)}
+.logo-sub{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--neon);opacity:.65;display:block}
+.logo-txt{display:flex;flex-direction:column;line-height:1}
+.master-badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:4px 12px;border-radius:100px}
+.btn-back{font-family:var(--mono);font-size:11px;color:var(--text-sec);background:var(--neon-dim);border:1px solid var(--neon-border);border-radius:8px;padding:7px 14px;cursor:pointer;text-decoration:none;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn-back:hover{border-color:rgba(0,170,255,.4);color:var(--text)}
+
+/* LAYOUT */
+.page{position:relative;z-index:10;padding:90px 24px 60px;max-width:1200px;margin:0 auto}
+.cols{display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+
+/* PAGE HEADER */
+.page-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--neon);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.page-title{font-size:clamp(28px,4vw,52px);font-weight:800;letter-spacing:-2px;line-height:1;margin-bottom:8px}
+.page-title .accent{color:var(--neon)}
+.page-sub{font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-bottom:28px;line-height:1.6}
+
+/* CREDIT BAR */
+.credit-bar{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--neon-border);border-radius:12px;padding:14px 18px;margin-bottom:20px}
+.credit-icon{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(251,191,36,.08));border:1px solid rgba(251,191,36,.25);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.credit-info{flex:1}
+.credit-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase}
+.credit-count{font-size:18px;font-weight:800;letter-spacing:-.5px;color:var(--gold)}
+.credit-bar-wrap{flex:1;background:rgba(251,191,36,.1);border-radius:100px;height:4px;overflow:hidden}
+.credit-bar-fill{height:100%;background:linear-gradient(90deg,#92400e,var(--gold));border-radius:100px;transition:width .5s ease}
+.credit-reset{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
+.btn-preview{display:flex;align-items:center;gap:4px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--neon);cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-preview:hover{background:rgba(0,170,255,.2);border-color:rgba(0,170,255,.5)}
+.btn-fav{background:none;border:none;font-size:16px;cursor:pointer;color:rgba(255,255,255,.25);line-height:1;padding:2px 4px;transition:all .2s;flex-shrink:0}
+.btn-fav:hover{color:var(--gold);transform:scale(1.2)}
+.btn-fav.faved{color:var(--gold)}
+.fav-tab{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.06);color:var(--gold);transition:all .2s;white-space:nowrap}
+.fav-tab:hover,.fav-tab.active{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.4)}
+.fav-tab.active{font-weight:700}
+/* ── WAVE PLAYER ── */
+.wave-player{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:12px}
+.wp-btn{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;box-shadow:0 0 16px rgba(0,170,255,.3)}
+.wp-btn:hover{transform:scale(1.08);box-shadow:0 0 24px rgba(0,170,255,.5)}
+.wp-btn svg{color:#fff;margin-left:2px}
+.wp-btn.playing svg{margin-left:0}
+.wp-track{flex:1;position:relative;cursor:pointer;height:48px}
+.wp-canvas{width:100%;height:48px;display:block}
+.wp-progress{position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(0,170,255,.15);border-radius:4px;pointer-events:none;transition:width .1s linear}
+.wp-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);flex-shrink:0;min-width:32px;text-align:right}
+
+/* MAIN CARD */
+.main-card{background:var(--card);border:1px solid var(--neon-border);border-radius:20px;padding:28px;position:relative;overflow:hidden}
+.main-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent)}
+
+.section-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.section-label span{flex:1;height:1px;background:rgba(0,170,255,.08)}
+
+/* TEXTAREA */
+.text-area-wrap{position:relative;margin-bottom:16px}
+textarea#scriptText{width:100%;min-height:200px;resize:vertical;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:border-color .2s;line-height:1.6}
+textarea#scriptText:focus{border-color:rgba(0,170,255,.4);box-shadow:0 0 0 3px rgba(0,170,255,.06)}
+textarea#scriptText::placeholder{color:var(--text-dim)}
+.char-counter{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.char-count{font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+.char-count.warn{color:var(--gold)}
+.char-count.over{color:var(--red)}
+.char-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
+
+/* SELECTED VOICE STRIP */
+.selected-voice{display:flex;align-items:center;gap:12px;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:12px 16px;margin-bottom:16px;cursor:pointer;transition:all .2s}
+.selected-voice:hover{border-color:rgba(0,170,255,.3)}
+.sel-flag{font-size:20px}
+.sel-info{flex:1}
+.sel-name{font-size:13px;font-weight:700}
+.sel-tags{font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px}
+.sel-change{font-family:var(--mono);font-size:10px;color:var(--neon);white-space:nowrap}
+.sel-wave{display:flex;align-items:center;gap:2px;height:20px}
+.wave-bar{width:3px;border-radius:2px;background:var(--neon);animation:wave 1s ease-in-out infinite}
+.wave-bar:nth-child(2){animation-delay:.1s;height:60%}
+.wave-bar:nth-child(3){animation-delay:.2s;height:100%}
+.wave-bar:nth-child(4){animation-delay:.3s;height:40%}
+.wave-bar:nth-child(5){animation-delay:.4s;height:80%}
+@keyframes wave{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+
+/* GENERATE BUTTON */
+.btn-generate{width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:12px;padding:16px;font-family:var(--font);font-size:15px;font-weight:700;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 0 28px rgba(0,170,255,.3);display:flex;align-items:center;justify-content:center;gap:10px;position:relative;overflow:hidden}
+.btn-generate::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent,rgba(255,255,255,.08),transparent);transform:translateX(-100%);transition:transform .4s}
+.btn-generate:hover::before{transform:translateX(100%)}
+.btn-generate:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(0,170,255,.45)}
+.btn-generate:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* RESULTS */
+.results-section{margin-top:20px}
+.result-card{background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:14px;padding:18px;margin-bottom:12px;transition:all .2s}
+.result-card.selected{border-color:rgba(0,170,255,.5);background:rgba(0,170,255,.06)}
+.result-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.result-num{width:28px;height:28px;border-radius:50%;background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.25);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--neon);flex-shrink:0}
+.result-voice-name{font-size:13px;font-weight:700}
+.result-tag{font-family:var(--mono);font-size:10px;color:var(--text-sec)}
+.result-actions{display:flex;gap:8px;margin-left:auto;align-items:center}
+.btn-dl{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:7px;padding:5px 10px;cursor:pointer;transition:all .2s;text-decoration:none;display:flex;align-items:center;gap:4px}
+.btn-dl:hover{background:rgba(0,170,255,.16);border-color:rgba(0,170,255,.4)}
+audio{width:100%;height:36px;border-radius:8px;outline:none}
+audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius:8px}
+
+.regen-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,170,255,.08)}
+.regen-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
+.regen-free{font-family:var(--mono);font-size:10px;background:rgba(78,204,163,.1);border:1px solid rgba(78,204,163,.25);color:var(--green);padding:3px 8px;border-radius:5px}
+.btn-regen{font-family:var(--mono);font-size:11px;color:var(--text-sec);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.12);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn-regen:hover{color:var(--text);border-color:rgba(150,190,230,.25)}
+.btn-regen:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── RIGHT PANEL — VOICE PICKER ─────────────────────────────────────────── */
+.voice-panel{background:var(--card);border:1px solid var(--neon-border);border-radius:20px;overflow:hidden;position:sticky;top:80px}
+.vp-header{padding:18px 20px;border-bottom:1px solid rgba(0,170,255,.08)}
+.vp-title{font-size:15px;font-weight:700;margin-bottom:12px}
+.vp-search{width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.12);border-radius:9px;padding:9px 14px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;transition:border-color .2s}
+.vp-search:focus{border-color:rgba(0,170,255,.35)}
+.vp-search::placeholder{color:var(--text-dim)}
+
+.vp-filters{padding:12px 20px;border-bottom:1px solid rgba(0,170,255,.08);display:flex;flex-direction:column;gap:8px}
+.vf-row{display:flex;gap:6px;flex-wrap:wrap}
+.vf-chip{font-family:var(--mono);font-size:10px;font-weight:500;padding:4px 10px;border-radius:100px;border:1px solid rgba(0,170,255,.12);color:var(--text-dim);cursor:pointer;transition:all .15s;background:transparent;white-space:nowrap}
+.vf-chip.on{background:rgba(0,170,255,.15);border-color:rgba(0,170,255,.4);color:var(--neon)}
+.vf-chip:hover:not(.on){border-color:rgba(0,170,255,.25);color:var(--text-sec)}
+
+.vp-list{max-height:480px;overflow-y:auto;padding:8px}
+.vp-list::-webkit-scrollbar{width:4px}
+.vp-list::-webkit-scrollbar-track{background:transparent}
+.vp-list::-webkit-scrollbar-thumb{background:rgba(0,170,255,.2);border-radius:2px}
+
+.voice-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;transition:all .15s;border:1px solid transparent}
+.voice-item:hover{background:rgba(0,170,255,.06);border-color:rgba(0,170,255,.1)}
+.voice-item.active{background:rgba(0,170,255,.1);border-color:rgba(0,170,255,.3)}
+.vi-flag{font-size:18px;flex-shrink:0;width:28px;text-align:center}
+.vi-info{flex:1;min-width:0}
+.vi-name{font-size:12px;font-weight:700}
+.vi-meta{font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vi-badge{font-family:var(--mono);font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;flex-shrink:0}
+.vi-badge.age{background:rgba(0,170,255,.1);color:var(--neon);border:1px solid rgba(0,170,255,.2)}
+.vi-badge.style{background:rgba(78,204,163,.1);color:var(--green);border:1px solid rgba(78,204,163,.2)}
+
+/* LOADING SPINNER */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+
+/* WAVEFORM ANIMATION */
+.generating-wave{display:flex;align-items:center;gap:3px;height:28px}
+.gw-bar{width:4px;border-radius:2px;background:var(--neon);animation:gwave 1.2s ease-in-out infinite}
+.gw-bar:nth-child(1){animation-delay:0s;height:40%}
+.gw-bar:nth-child(2){animation-delay:.1s;height:70%}
+.gw-bar:nth-child(3){animation-delay:.2s;height:100%}
+.gw-bar:nth-child(4){animation-delay:.3s;height:60%}
+.gw-bar:nth-child(5){animation-delay:.4s;height:80%}
+.gw-bar:nth-child(6){animation-delay:.5s;height:45%}
+.gw-bar:nth-child(7){animation-delay:.6s;height:90%}
+@keyframes gwave{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;z-index:500;background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:12px 20px;font-family:var(--mono);font-size:12px;color:var(--neon);pointer-events:none;transition:all .3s;white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.fade-in{animation:fadeUp .4s ease both}
+
+@media(max-width:900px){
+  .cols{grid-template-columns:1fr}
+  .voice-panel{position:static}
+  .vp-list{max-height:300px}
+}
+@media(max-width:640px){
+  nav{padding:12px 16px}
+  .page{padding:80px 14px 40px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg"><div class="bg-grid"></div><div class="orb orb1"></div><div class="orb orb2"></div></div>
+<div class="mouse-glow" id="glow"></div>
+<div class="toast" id="toast"></div>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
+    <div class="logo-txt">Blue<span class="logo-acc">Tube</span><span class="logo-sub">Criador Viral</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="master-badge">👑 Master</span>
+    <a href="/" class="btn-back">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Voltar
+    </a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="page-eyebrow">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+    Exclusivo Master · Powered by ElevenLabs
+  </div>
+  <h1 class="page-title">Blue<span class="accent">Voice</span></h1>
+  <p class="page-sub">Cole seu roteiro, escolha uma voz e gere narração hiper-realista em segundos.<br>5.500 créditos mensais · 2 versões por geração · 1 regeneração grátis</p>
+
+  <!-- CREDIT BAR -->
+  <div class="credit-bar">
+    <div class="credit-icon">⚡</div>
+    <div class="credit-info">
+      <div class="credit-label">Narrações disponíveis este mês</div>
+      <div class="credit-count" id="creditCount">5.500</div>
+    </div>
+    <div style="flex:2;display:flex;flex-direction:column;gap:4px">
+      <div class="credit-bar-wrap"><div class="credit-bar-fill" id="creditFill" style="width:100%"></div></div>
+      <div style="display:flex;justify-content:space-between">
+        <div class="credit-reset">Renova mensalmente</div>
+        <div class="credit-reset" id="creditUsed">0 usados</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+
+    <!-- LEFT: EDITOR + OUTPUT -->
+    <div>
+      <div class="main-card">
+
+        <!-- TEXT INPUT -->
+        <div class="section-label">Texto para narrar <span></span></div>
+        <div class="text-area-wrap">
+          <textarea id="scriptText" maxlength="5000" placeholder="Cole aqui o roteiro que você quer transformar em voz…
+
+Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje vou te mostrar a técnica que mudou minha vida…"></textarea>
+        </div>
+        <div class="char-counter">
+          <div class="char-count" id="charCount">0 / 5.000 caracteres</div>
+          <div class="char-hint">Cada caractere = 1 crédito</div>
+        </div>
+
+        <!-- SELECTED VOICE -->
+        <div style="margin:18px 0 0">
+          <div class="section-label">Voz selecionada <span></span></div>
+          <div class="selected-voice" id="selectedVoiceStrip" onclick="focusVoicePanel()">
+            <div class="sel-flag" id="selFlag">🇧🇷</div>
+            <div class="sel-info">
+              <div class="sel-name" id="selName">Escolha uma voz →</div>
+              <div class="sel-tags" id="selTags">Clique para selecionar no painel ao lado</div>
+            </div>
+            <div class="sel-wave" id="selWave" style="opacity:0">
+              <div class="wave-bar" style="height:40%"></div>
+              <div class="wave-bar" style="height:70%"></div>
+              <div class="wave-bar" style="height:100%"></div>
+              <div class="wave-bar" style="height:55%"></div>
+              <div class="wave-bar" style="height:80%"></div>
+            </div>
+            <div class="sel-change">Trocar voz ›</div>
+          </div>
+        </div>
+
+        <!-- GENERATE BUTTON -->
+        <button class="btn-generate" id="btnGenerate" onclick="generateVoice()" disabled>
+          <svg id="btnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <span id="btnLabel">Escolha uma voz para continuar</span>
+        </button>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="results-section" id="resultsSection" style="display:none">
+        <div class="section-label" style="margin-bottom:14px">Versões geradas <span></span>
+          <span style="font-size:9px;color:var(--green);background:rgba(78,204,163,.1);border:1px solid rgba(78,204,163,.2);padding:2px 7px;border-radius:4px">2 versões</span>
+        </div>
+
+        <!-- Version 1 -->
+        <!-- Versão A -->
+        <div class="result-card fade-in" id="result1">
+          <div class="result-header">
+            <div class="result-num">A</div>
+            <div style="flex:1">
+              <div class="result-voice-name" id="r1VoiceName">—</div>
+              <div class="result-tag" id="r1Tag">Versão A · Balanceada</div>
+            </div>
+            <div class="result-actions">
+              <a id="r1Download" class="btn-dl" download="BlueTube-v1.mp3">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar
+              </a>
+            </div>
+          </div>
+          <!-- Player moderno -->
+          <div class="wave-player" id="wp1">
+            <button class="wp-btn" id="wpBtn1" onclick="togglePlay(1)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <div class="wp-track">
+              <canvas class="wp-canvas" id="wpCanvas1" height="48"></canvas>
+              <div class="wp-progress" id="wpProgress1"></div>
+            </div>
+            <span class="wp-time" id="wpTime1">0:00</span>
+          </div>
+          <audio id="audio1" style="display:none"></audio>
+        </div>
+
+        <!-- Versão B -->
+        <div class="result-card fade-in" id="result2" style="animation-delay:.1s">
+          <div class="result-header">
+            <div class="result-num" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.25);color:var(--gold)">B</div>
+            <div style="flex:1">
+              <div class="result-voice-name" id="r2VoiceName">—</div>
+              <div class="result-tag" id="r2Tag">Versão B · Expressiva</div>
+            </div>
+            <div class="result-actions">
+              <a id="r2Download" class="btn-dl" download="BlueTube-v2.mp3">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar
+              </a>
+            </div>
+          </div>
+          <div class="wave-player" id="wp2">
+            <button class="wp-btn" id="wpBtn2" onclick="togglePlay(2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <div class="wp-track" onclick="seekAudio(event, 2)">
+              <canvas class="wp-canvas" id="wpCanvas2" height="48"></canvas>
+              <div class="wp-progress" id="wpProgress2"></div>
+            </div>
+            <span class="wp-time" id="wpTime2">0:00</span>
+          </div>
+          <audio id="audio2" style="display:none"></audio>
+        </div>
+
+        <!-- Regen row -->
+        <div class="regen-row">
+          <div class="regen-hint">
+            <span class="regen-free" id="regenBadge">1 regeneração grátis disponível</span>
+          </div>
+          <button class="btn-regen" id="btnRegen" onclick="regenerate()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Regenerar
+          </button>
+        </div>
+      </div>
+
+    </div><!-- end left -->
+
+    <!-- RIGHT: VOICE PANEL -->
+    <div class="voice-panel" id="voicePanel">
+      <div class="vp-header">
+        <div class="vp-title">Escolher voz</div>
+        <input class="vp-search" id="voiceSearch" type="text" placeholder="Buscar por nome…" oninput="filterVoices()"/>
+      </div>
+
+      <!-- FAVORITOS -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <button class="fav-tab" id="favTab" onclick="toggleFavFilter()" title="Mostrar só favoritas">
+          ★ Favoritas <span id="favCount" style="opacity:.7;font-size:10px"></span>
+        </button>
+        <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">Clique na ☆ para favoritar</span>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="vp-filters">
+        <!-- Gender -->
+        <div class="vf-row" id="filterGender">
+          <button class="vf-chip on" data-f="gender" data-v="" onclick="setFilter('gender','',this)">Todos</button>
+          <button class="vf-chip" data-f="gender" data-v="Masculino" onclick="setFilter('gender','Masculino',this)">♂ Masculino</button>
+          <button class="vf-chip" data-f="gender" data-v="Feminino" onclick="setFilter('gender','Feminino',this)">♀ Feminino</button>
+        </div>
+        <!-- Age -->
+        <div class="vf-row" id="filterAge">
+          <button class="vf-chip on" data-f="age" data-v="" onclick="setFilter('age','',this)">Qualquer idade</button>
+          <button class="vf-chip" data-f="age" data-v="Jovem" onclick="setFilter('age','Jovem',this)">Jovem</button>
+          <button class="vf-chip" data-f="age" data-v="Adulto" onclick="setFilter('age','Adulto',this)">Adulto</button>
+          <button class="vf-chip" data-f="age" data-v="Sênior" onclick="setFilter('age','Sênior',this)">Sênior</button>
+        </div>
+        <!-- Style -->
+        <div class="vf-row" id="filterStyle">
+          <button class="vf-chip on" data-f="style" data-v="" onclick="setFilter('style','',this)">Qualquer estilo</button>
+          <button class="vf-chip" data-f="style" data-v="Narração" onclick="setFilter('style','Narração',this)">Narração</button>
+          <button class="vf-chip" data-f="style" data-v="Energético" onclick="setFilter('style','Energético',this)">Energético</button>
+          <button class="vf-chip" data-f="style" data-v="Casual" onclick="setFilter('style','Casual',this)">Casual</button>
+          <button class="vf-chip" data-f="style" data-v="Profissional" onclick="setFilter('style','Profissional',this)">Profissional</button>
+        </div>
+        <!-- Language -->
+        <div class="vf-row" id="filterLang">
+          <button class="vf-chip on" data-f="lang" data-v="" onclick="setFilter('lang','',this)">Todos idiomas</button>
+          <button class="vf-chip" data-f="lang" data-v="pt" onclick="setFilter('lang','pt',this)">🇧🇷 PT</button>
+          <button class="vf-chip" data-f="lang" data-v="en" onclick="setFilter('lang','en',this)">🇺🇸 EN</button>
+          <button class="vf-chip" data-f="lang" data-v="es" onclick="setFilter('lang','es',this)">🇪🇸 ES</button>
+          <button class="vf-chip" data-f="lang" data-v="fr" onclick="setFilter('lang','fr',this)">🇫🇷 FR</button>
+          <button class="vf-chip" data-f="lang" data-v="de" onclick="setFilter('lang','de',this)">🇩🇪 DE</button>
+          <button class="vf-chip" data-f="lang" data-v="ja" onclick="setFilter('lang','ja',this)">🇯🇵 JA</button>
+        </div>
+      </div>
+
+      <!-- ADICIONAR VOZ PERSONALIZADA -->
+      <div id="addVoiceBox" style="background:rgba(0,170,255,.04);border:1px dashed rgba(0,170,255,.22);border-radius:12px;padding:14px;margin-bottom:10px">
+        <div style="font-size:11px;font-family:var(--mono);color:var(--neon);font-weight:600;margin-bottom:10px">
+          ✦ Adicionar voz personalizada <span style="font-weight:400;color:var(--text-dim)">— cole o ID da voz</span>
+        </div>
+        <input type="text" id="customVoiceUrl" placeholder="ID da voz (ex: onwK4e9ZLuTAKqWW03F9)" oninput="validateCustomUrl()"
+          style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
+        <input type="text" id="customVoiceName" placeholder="Nome da voz (opcional)"
+          style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
+        <button id="btnAddVoice" onclick="addCustomVoice()" disabled
+          style="width:100%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.2));border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:8px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--neon);cursor:pointer;opacity:.5">
+          + Adicionar voz
+        </button>
+        <div id="addVoiceMsg" style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5"></div>
+      </div>
+
+      <div class="vp-list" id="voiceList"></div>
+    </div>
+
+  </div><!-- end cols -->
+</div>
+
+<script>
+// ── AUTH CHECK ───────────────────────────────────────────────────────────────
+const token = localStorage.getItem('bt_token');
+const plan = localStorage.getItem('bt_plan');
+if (!token || plan !== 'master') {
+  document.querySelector('.cols').innerHTML = `
+    <div style="text-align:center;padding:60px 20px;grid-column:1/-1">
+      <div style="font-size:48px;margin-bottom:16px">👑</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px">Exclusivo para assinantes Master</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-bottom:24px">O BlueVoice está disponível apenas no plano Master.</div>
+      <a href="/#plans" style="display:inline-block;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;text-decoration:none">Ver planos →</a>
+    </div>`;
+}
+
+// ── MOUSE GLOW ───────────────────────────────────────────────────────────────
+const glow = document.getElementById('glow');
+document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
+
+// ── VOICES DATA ────────────────────────────────────────────────────────────────
+// Preview carregado via /api/auth?action=voice-preview (sem CORS, sem custo)
+const VOICES = [
+  // ── PT-BR ──────────────────────────────────────────────────────────────────
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Profissional, autoridade, narração' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Voz grave, storytelling, impacto' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',    lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem', style: 'Energético',   desc: 'Intenso, animado, Shorts virais' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',   lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', desc: 'Clara, confiante, apresentadora' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem', style: 'Casual',       desc: 'Natural, jovem, casual' },
+  // ── ENGLISH ────────────────────────────────────────────────────────────────
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Deep, authoritative, documentary' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   desc: 'Energetic, upbeat, social media' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Warm, natural, conversational' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',  lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     desc: 'Calm, versatile, professional' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Crisp, authoritative, impactful' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Smooth, well-rounded, natural' },
+  // ── ESPAÑOL ────────────────────────────────────────────────────────────────
+  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',   lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Natural, neutro, versátil' },
+  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina',lang:'es', flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem', style: 'Energético',   desc: 'Energética, jovem, redes sociais' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',     lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Jovem, natural, conversacional' },
+];
+
+// Vozes personalizadas do usuário + helper
+let customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
+function getAllVoices() { return [...VOICES, ...customVoices]; }
+const previewCache = {};
+
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let selectedVoice = null;
+let regenCount = 0;
+const MAX_REGEN = 2;
+let lastText = '';
+let lastVoiceId = '';
+let filters = { gender: '', age: '', style: '', lang: '' };
+let narrationsUsed = parseInt(localStorage.getItem('bv_narrations') || '0');
+const NARRATION_LIMIT = plan === 'master' ? 55 : 5;
+// Favoritos persistidos no localStorage
+let favorites = new Set(JSON.parse(localStorage.getItem('bv_favorites') || '[]'));
+let showOnlyFavs = false;
+
+// ── NARRATION COUNTER ─────────────────────────────────────────────────────────
+function updateNarrationCounter(increment = false) {
+  if (increment) {
+    narrationsUsed++;
+    localStorage.setItem('bv_narrations', narrationsUsed.toString());
+  }
+  const remaining = Math.max(0, NARRATION_LIMIT - narrationsUsed);
+  document.getElementById('creditCount').textContent = remaining;
+  document.getElementById('creditUsed').textContent = narrationsUsed + ' usadas este mês';
+  document.getElementById('creditFill').style.width = Math.max(4, (remaining / NARRATION_LIMIT) * 100) + '%';
+  if (remaining === 0) document.getElementById('creditCount').style.color = 'var(--red)';
+  else if (remaining <= 3) document.getElementById('creditCount').style.color = 'var(--gold)';
+  else document.getElementById('creditCount').style.color = 'var(--gold)';
+}
+updateNarrationCounter();
+
+// ── CHAR COUNTER ──────────────────────────────────────────────────────────────
+document.getElementById('scriptText').addEventListener('input', function() {
+  const len = this.value.length;
+  const el = document.getElementById('charCount');
+  el.textContent = len.toLocaleString('pt-BR') + ' / 5.000 caracteres';
+  el.className = 'char-count' + (len > 4500 ? (len >= 5000 ? ' over' : ' warn') : '');
+  checkReady();
+});
+
+function checkReady() {
+  const hasText = document.getElementById('scriptText').value.trim().length > 0;
+  const hasVoice = !!selectedVoice;
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = !(hasText && hasVoice);
+  btn.querySelector('#btnLabel').textContent = hasVoice
+    ? (hasText ? 'Gerar narração' : 'Digite o texto para continuar')
+    : 'Escolha uma voz para continuar';
+}
+
+// ── VOICE FILTER & RENDER ────────────────────────────────────────────────────
+function renderVoices() {
+  const search = document.getElementById('voiceSearch').value.toLowerCase();
+  const list = document.getElementById('voiceList');
+
+  const filtered = getAllVoices().filter(v => {
+    if (showOnlyFavs && !favorites.has(v.id)) return false;
+    if (filters.gender && v.gender !== filters.gender) return false;
+    if (filters.age && v.age !== filters.age) return false;
+    if (filters.style && v.style !== filters.style) return false;
+    if (filters.lang && v.lang !== filters.lang) return false;
+    if (search && !v.name.toLowerCase().includes(search) && !v.desc.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = `<div style="text-align:center;padding:24px;font-family:var(--mono);font-size:11px;color:var(--text-dim)">Nenhuma voz encontrada.<br>Tente outro filtro.</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(v => `
+    <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}" onclick="selectVoice('${v.id}')">
+      <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
+        ${favorites.has(v.id) ? '★' : '☆'}
+      </button>
+      <div class="vi-flag">${v.flag}</div>
+      <div class="vi-info">
+        <div class="vi-name">${v.name}</div>
+        <div class="vi-meta">${v.desc}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+          ${v.custom ? '<span style="font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-weight:600">CUSTOM</span>' : `<div class="vi-badge age">${v.age}</div>`}
+          <div class="vi-badge style">${v.style}</div>
+        </div>
+        <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          Ouvir
+        </button>
+        ${v.custom ? `<button style="background:none;border:none;color:rgba(239,68,68,.5);font-size:13px;cursor:pointer;padding:2px 6px;transition:color .2s" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(239,68,68,.5)'" onclick="removeCustomVoice('${v.id}',event)" title="Remover voz">✕</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function setFilter(type, val, btn) {
+  filters[type] = val;
+  document.querySelectorAll(`[data-f="${type}"]`).forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderVoices();
+}
+function filterVoices() { renderVoices(); }
+
+// ── FAVORITOS ─────────────────────────────────────────────────────────────────
+function toggleFav(id, event) {
+  event?.stopPropagation();
+  if (favorites.has(id)) {
+    favorites.delete(id);
+  } else {
+    favorites.add(id);
+  }
+  localStorage.setItem('bv_favorites', JSON.stringify([...favorites]));
+  updateFavCount();
+  renderVoices();
+}
+
+function toggleFavFilter() {
+  showOnlyFavs = !showOnlyFavs;
+  const tab = document.getElementById('favTab');
+  if (tab) tab.classList.toggle('active', showOnlyFavs);
+  renderVoices();
+}
+
+function updateFavCount() {
+  const el = document.getElementById('favCount');
+  if (el) el.textContent = favorites.size > 0 ? `(${favorites.size})` : '';
+}
+
+function selectVoice(id) {
+  selectedVoice = getAllVoices().find(v => v.id === id);
+  if (!selectedVoice) return;
+  // Update selected strip
+  document.getElementById('selFlag').textContent = selectedVoice.flag;
+  document.getElementById('selName').textContent = selectedVoice.name;
+  document.getElementById('selTags').textContent = `${selectedVoice.lang.toUpperCase()} · ${selectedVoice.gender} · ${selectedVoice.age} · ${selectedVoice.style}`;
+  document.getElementById('selWave').style.opacity = '1';
+  // Re-render list
+  renderVoices();
+  checkReady();
+  // Flash the strip
+  const strip = document.getElementById('selectedVoiceStrip');
+  strip.style.borderColor = 'rgba(0,170,255,.5)';
+  setTimeout(() => strip.style.borderColor = '', 600);
+}
+
+function focusVoicePanel() {
+  document.getElementById('voicePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('voiceSearch').focus();
+}
+
+// ── PREVIEW DA VOZ (via backend proxy — sem CORS) ────────────────────────────
+let currentPreview = null;
+async function previewVoice(id, event) {
+  event?.stopPropagation();
+
+  // Reseta todos os botões
+  document.querySelectorAll('.btn-preview').forEach(b => {
+    b.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+    b.disabled = false;
+  });
+
+  if (currentPreview) { currentPreview.pause(); currentPreview = null; }
+
+  const btn = document.querySelector(`[data-preview="${id}"]`);
+  if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
+
+  try {
+    const voice = getAllVoices().find(v => v.id === id);
+    const provider = voice?.provider || 'elevenlabs';
+    const r = await fetch('/api/auth?action=voice-preview&voiceId=' + encodeURIComponent(id) + '&provider=' + provider);
+    const data = await r.json();
+    if (!r.ok || !data.audio) throw new Error(data.error || 'Prévia indisponível');
+
+    const bin = atob(data.audio);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    currentPreview = audio;
+    if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Parar`;
+    btn && (btn.disabled = false);
+
+    audio.play();
+    audio.onended = () => {
+      if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+      currentPreview = null;
+      URL.revokeObjectURL(url);
+    };
+  } catch(e) {
+    if (btn) { btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`; btn.disabled = false; }
+    showToast('Prévia indisponível para esta voz.');
+  }
+}
+
+// ── GENERATE ──────────────────────────────────────────────────────────────────
+async function generateVoice(isFreeRegen = false) {
+  const text = document.getElementById('scriptText').value.trim();
+  if (!text || !selectedVoice) return;
+
+  // Verificar limite mensal (só para geração nova, não regeneração grátis)
+  if (!isFreeRegen && narrationsUsed >= NARRATION_LIMIT) {
+    showToast('⚠ Limite mensal de narrações atingido. Renova no próximo mês.');
+    return;
+  }
+
+  lastText = text;
+  lastVoiceId = selectedVoice.id;
+
+  const btn = document.getElementById('btnGenerate');
+  const btnLabel = document.getElementById('btnLabel');
+  const btnIcon = document.getElementById('btnIcon');
+  btn.disabled = true;
+  btnIcon.outerHTML = `<div class="generating-wave" id="btnIcon">
+    <div class="gw-bar"></div><div class="gw-bar"></div><div class="gw-bar"></div>
+    <div class="gw-bar"></div><div class="gw-bar"></div><div class="gw-bar"></div><div class="gw-bar"></div>
+  </div>`;
+  btnLabel.textContent = 'Gerando narração…';
+  document.getElementById('resultsSection').style.display = 'none';
+
+  try {
+    // 2 versões em paralelo — variações sutis de estabilidade
+    const [r1, r2] = await Promise.all([
+      callTTS(selectedVoice.id, text, 0.5, 0.75),   // Versão A: balanceada
+      callTTS(selectedVoice.id, text, 0.3, 0.88),   // Versão B: mais expressiva
+    ]);
+
+    if (r1.error) throw new Error(r1.error);
+    if (r2.error) throw new Error(r2.error);
+
+    setAudio('audio1', 'r1Download', r1.audio, `BlueTube-${selectedVoice.name}-A.mp3`);
+    setAudio('audio2', 'r2Download', r2.audio, `BlueTube-${selectedVoice.name}-B.mp3`);
+
+    document.getElementById('r1VoiceName').textContent = `${selectedVoice.name} — Versão A`;
+    document.getElementById('r1Tag').textContent = `${selectedVoice.flag} ${selectedVoice.lang.toUpperCase()} · ${selectedVoice.style} · Balanceada`;
+    document.getElementById('r2VoiceName').textContent = `${selectedVoice.name} — Versão B`;
+    document.getElementById('r2Tag').textContent = `${selectedVoice.flag} ${selectedVoice.lang.toUpperCase()} · ${selectedVoice.style} · Expressiva`;
+
+    document.getElementById('resultsSection').style.display = 'block';
+    document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    if (!isFreeRegen) {
+      updateNarrationCounter(true);
+      regenCount = 0;
+      updateRegenBadge();
+    }
+
+    showToast('✓ 2 versões geradas!');
+  } catch(e) {
+    showToast('⚠ Falha ao gerar narração. Tente novamente.');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('btnIcon').outerHTML = `<svg id="btnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+    btnLabel.textContent = 'Gerar narração';
+  }
+}
+
+async function callTTS(voiceId, text, stability, similarity) {
+  const voice = getAllVoices().find(v => v.id === voiceId);
+  const provider = voice?.provider || 'elevenlabs';
+  const r = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'tts', voiceId, text,
+      stability, similarity, provider,
+      model: provider === 'elevenlabs' ? 'eleven_v3' : undefined
+    })
+  });
+  return r.json();
+}
+
+function setAudio(audioId, dlId, base64, filename) {
+  const blob = b64ToBlob(base64, 'audio/mpeg');
+  const url = URL.createObjectURL(blob);
+  document.getElementById(audioId).src = url;
+  const dl = document.getElementById(dlId);
+  dl.href = url;
+  dl.download = filename;
+}
+
+function b64ToBlob(b64, type) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type });
+}
+
+// ── REGENERATE — 2x grátis sem alterar texto ─────────────────────────────────
+function regenerate() {
+  const currentText = document.getElementById('scriptText').value.trim();
+  const textChanged = currentText !== lastText;
+
+  if (textChanged) {
+    // Texto alterado — regenerar desconta narração
+    if (narrationsUsed >= NARRATION_LIMIT) {
+      showToast('⚠ Limite mensal de narrações atingido.');
+      return;
+    }
+    regenCount = 0; // reseta contagem de regens grátis
+    generateVoice(false); // cobra
+    return;
+  }
+
+  if (regenCount >= MAX_REGEN) {
+    showToast('⚠ Limite de regenerações grátis atingido. Edite o texto para gerar novamente.');
+    return;
+  }
+
+  regenCount++;
+  updateRegenBadge();
+  generateVoice(true); // grátis
+}
+
+function updateRegenBadge() {
+  const badge = document.getElementById('regenBadge');
+  const btn = document.getElementById('btnRegen');
+  const currentText = document.getElementById('scriptText')?.value?.trim() || '';
+  const textChanged = lastText && currentText !== lastText;
+  const remaining = MAX_REGEN - regenCount;
+
+  if (textChanged) {
+    // Texto alterado — botão vira "Gerar" e desconta crédito
+    btn.textContent = '↻ Gerar nova versão';
+    btn.style.borderColor = 'rgba(0,170,255,.4)';
+    btn.style.color = 'var(--neon)';
+    btn.disabled = false;
+    badge.textContent = '⚠ Texto alterado — irá descontar uma narração';
+    badge.style.color = 'var(--gold)';
+  } else if (regenCount >= MAX_REGEN) {
+    badge.textContent = '✓ 2 regenerações grátis usadas';
+    badge.style.color = 'var(--text-dim)';
+    btn.disabled = true;
+  } else {
+    badge.textContent = `${remaining} regeneração${remaining > 1 ? 'ões' : ''} grátis disponível${remaining > 1 ? 'eis' : ''}`;
+    badge.style.color = 'var(--text-sec)';
+    btn.disabled = false;
+  }
+}
+
+// Detecta alteração no texto para atualizar o botão de regenerar
+document.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('scriptText');
+  if (ta) ta.addEventListener('input', () => {
+    if (lastText) updateRegenBadge();
+  });
+});
+
+// ── WAVE PLAYER ENGINE ───────────────────────────────────────────────────────
+const wpState = { 1: { playing: false }, 2: { playing: false } };
+
+function drawWaveform(canvasId, audioBuffer) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 400;
+  canvas.width = W * window.devicePixelRatio;
+  canvas.style.width = W + 'px';
+  ctx.scale(window.devicePixelRatio, 1);
+  const H = 48;
+  const data = audioBuffer.getChannelData(0);
+  const bars = Math.floor(W / 3);
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < bars; i++) {
+    const start = Math.floor(i * (data.length / bars));
+    const end = Math.floor((i + 1) * (data.length / bars));
+    let max = 0;
+    for (let j = start; j < end; j++) max = Math.max(max, Math.abs(data[j] || 0));
+    const h = Math.max(3, max * 42);
+    const x = i * 3;
+    const y = (H - h) / 2;
+    const alpha = 0.25 + max * 0.75;
+    ctx.fillStyle = `rgba(0,170,255,${alpha})`;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, 2, h, 1);
+    else ctx.rect(x, y, 2, h);
+    ctx.fill();
+  }
+}
+
+function animateProgress(n) {
+  const audio = document.getElementById('audio' + n);
+  const progress = document.getElementById('wpProgress' + n);
+  const timeEl = document.getElementById('wpTime' + n);
+  if (!audio) return;
+  function frame() {
+    if (!wpState[n].playing) return;
+    const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+    if (progress) progress.style.width = pct + '%';
+    const s = Math.floor(audio.currentTime);
+    const total = Math.floor(audio.duration || 0);
+    if (timeEl) timeEl.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} / ${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function togglePlay(n) {
+  const audio = document.getElementById('audio' + n);
+  const btn = document.getElementById('wpBtn' + n);
+  if (!audio || !audio.src) return;
+  const other = n === 1 ? 2 : 1;
+  // Pausa o outro player
+  const otherAudio = document.getElementById('audio' + other);
+  if (wpState[other].playing && otherAudio) {
+    otherAudio.pause();
+    wpState[other].playing = false;
+    const ob = document.getElementById('wpBtn' + other);
+    if (ob) { ob.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'; ob.classList.remove('playing'); }
+  }
+  if (wpState[n].playing) {
+    audio.pause();
+    wpState[n].playing = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+    btn.classList.remove('playing');
+  } else {
+    audio.play();
+    wpState[n].playing = true;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    btn.classList.add('playing');
+    animateProgress(n);
+    audio.onended = () => {
+      wpState[n].playing = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+      btn.classList.remove('playing');
+      const p = document.getElementById('wpProgress' + n);
+      if (p) p.style.width = '0%';
+      const t = document.getElementById('wpTime' + n);
+      if (t) t.textContent = '0:00';
+    };
+  }
+}
+
+function seekAudio(event, n) {
+  const audio = document.getElementById('audio' + n);
+  if (!audio?.duration) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  audio.currentTime = ((event.clientX - rect.left) / rect.width) * audio.duration;
+}
+
+function setAudio(audioId, dlId, base64, filename) {
+  const blob = b64ToBlob(base64, 'audio/mpeg');
+  const url = URL.createObjectURL(blob);
+  const audioEl = document.getElementById(audioId);
+  if (audioEl) audioEl.src = url;
+  const dl = document.getElementById(dlId);
+  if (dl) { dl.href = url; dl.download = filename; }
+
+  const n = audioId === 'audio1' ? 1 : 2;
+  wpState[n].playing = false;
+  const btn = document.getElementById('wpBtn' + n);
+  if (btn) { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'; btn.classList.remove('playing'); }
+  const prog = document.getElementById('wpProgress' + n);
+  if (prog) prog.style.width = '0%';
+  const timeEl = document.getElementById('wpTime' + n);
+  if (timeEl) timeEl.textContent = '0:00';
+
+  // Decodifica e desenha waveform
+  blob.arrayBuffer().then(buf => {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    ac.decodeAudioData(buf, decoded => {
+      requestAnimationFrame(() => drawWaveform('wpCanvas' + n, decoded));
+    });
+  }).catch(() => {});
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+
+// ── VOZES PERSONALIZADAS ──────────────────────────────────────────────────────
+function parseVoiceUrl(raw) {
+  const url = (raw || '').trim();
+  if (!url) return null;
+  // Link compartilhado ElevenLabs: share/{hash}/{voiceId}
+  const parts = url.split('/');
+  const shareIdx = parts.indexOf('share');
+  if (shareIdx >= 0 && parts.length > shareIdx + 2) {
+    const id = parts[shareIdx + 2];
+    if (id && /^[A-Za-z0-9_]{10,40}$/.test(id)) return id;
+  }
+  // URL de voz: voices/{voiceId}
+  const voicesIdx = parts.indexOf('voices');
+  if (voicesIdx >= 0 && parts[voicesIdx + 1]) {
+    const id = parts[voicesIdx + 1];
+    if (/^[A-Za-z0-9_]{10,40}$/.test(id)) return id;
+  }
+  // ID puro
+  if (/^[A-Za-z0-9_]{10,40}$/.test(url)) return url;
+  return null;
+}
+
+function validateCustomUrl() {
+  const raw = document.getElementById('customVoiceUrl').value;
+  const voiceId = parseVoiceUrl(raw);
+  const btn = document.getElementById('btnAddVoice');
+  const msg = document.getElementById('addVoiceMsg');
+  if (voiceId) {
+    btn.disabled = false; btn.style.opacity = '1';
+    msg.textContent = 'ID: ' + voiceId; msg.style.color = 'var(--neon)';
+  } else if (raw.trim()) {
+    btn.disabled = true; btn.style.opacity = '.5';
+    msg.textContent = 'ID inválido.'; msg.style.color = '#ef4444';
+  } else {
+    btn.disabled = true; btn.style.opacity = '.5'; msg.textContent = '';
+  }
+}
+
+async function addCustomVoice() {
+  const raw = document.getElementById('customVoiceUrl').value;
+  const nameInput = document.getElementById('customVoiceName').value.trim();
+  const msg = document.getElementById('addVoiceMsg');
+  const btn = document.getElementById('btnAddVoice');
+  const voiceId = parseVoiceUrl(raw);
+  if (!voiceId) return;
+
+  if (getAllVoices().some(v => v.id === voiceId)) {
+    msg.textContent = 'Esta voz já está na lista.'; msg.style.color = '#fbbf24'; return;
+  }
+
+  btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = 'Testando…';
+  msg.textContent = 'Verificando disponibilidade…'; msg.style.color = 'var(--text-dim)';
+
+  try {
+    const r = await fetch('/api/auth?action=voice-preview&voiceId=' + encodeURIComponent(voiceId) + '&provider=elevenlabs');
+    const data = await r.json();
+    btn.textContent = '+ Adicionar voz'; btn.disabled = false; btn.style.opacity = '1';
+
+    if (!r.ok || !data.audio) {
+      msg.innerHTML = data.planRestriction
+        ? '⚠ Voz de biblioteca — requer upgrade da conta.<br><span style="opacity:.7;font-size:10px">Acesse elevenlabs.io e faça upgrade para Creator.</span>'
+        : data.notInAccount
+          ? '⚠ Voz não disponível.<br><span style="opacity:.7;font-size:10px">Fale com o suporte para adicionar.</span>'
+          : (data.error || 'Voz inválida ou inacessível.');
+      msg.style.color = '#ef4444'; return;
+    }
+
+    const bin = atob(data.audio), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    previewCache[voiceId] = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
+
+    const voiceName = nameInput || 'Voz personalizada';
+    customVoices.push({ id: voiceId, name: voiceName, lang: 'custom', flag: '⭐',
+      gender: 'Personalizado', age: '', style: 'Custom', desc: 'Adicionada manualmente',
+      provider: 'elevenlabs', custom: true });
+    localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
+
+    document.getElementById('customVoiceUrl').value = '';
+    document.getElementById('customVoiceName').value = '';
+    btn.disabled = true; btn.style.opacity = '.5';
+    msg.textContent = '✅ "' + voiceName + '" adicionada!'; msg.style.color = '#22c55e';
+    renderVoices();
+    setTimeout(() => previewVoice(voiceId, null), 400);
+  } catch(e) {
+    msg.textContent = 'Erro: ' + (e.message || 'tente novamente'); msg.style.color = '#ef4444';
+    btn.textContent = '+ Adicionar voz'; btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+function removeCustomVoice(id, event) {
+  event?.stopPropagation();
+  customVoices = customVoices.filter(v => v.id !== id);
+  localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
+  delete previewCache[id];
+  renderVoices();
+  showToast('Voz removida.');
+}
+
+renderVoices();
+updateFavCount();
+checkReady();
+
+// Pre-fill if coming from main page
+const prefill = localStorage.getItem('bt_prefill_script') || localStorage.getItem('bv_prefill_text');
+if (prefill) {
+  const ta = document.getElementById('scriptText');
+  if(ta) ta.value = prefill;
+  localStorage.removeItem('bt_prefill_script');
+  localStorage.removeItem('bv_prefill_text');
+  // Dispara contador de chars
+  if(ta) ta.dispatchEvent(new Event('input', {bubbles:true}));
+  // Scroll para o textarea e mostra toast
+  setTimeout(()=>{
+    if(ta) ta.scrollIntoView({behavior:'smooth',block:'center'});
+    if(typeof showToast==='function') showToast('Roteiro carregado! Escolha a voz e gere a narração. 🎙️');
+  }, 600);
+  document.getElementById('scriptText').dispatchEvent(new Event('input'));
+}
+</script>
+</body>
+</html>
