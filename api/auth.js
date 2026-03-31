@@ -1010,54 +1010,43 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE LIST (GET, retorna vozes disponíveis na conta + preview_url) ─────
-  // Uma chamada só ao carregar a página — mapeia quais IDs existem e seus previews
-  if (req.method === 'GET' && req.query?.action === 'voice-list') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado.' });
-
-    try {
-      const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-        headers: { 'xi-api-key': XI_KEY }
-      });
-      if (!r.ok) return res.status(502).json({ error: 'Falha ao buscar vozes.' });
-      const data = await r.json();
-      const voices = (data.voices || []).map(v => ({
-        id: v.voice_id,
-        name: v.name,
-        previewUrl: v.preview_url || null
-      }));
-      return res.status(200).json({ voices });
-    } catch(e) {
-      console.error('voice-list error:', e.message);
-      return res.status(500).json({ error: 'Erro ao buscar lista de vozes.' });
-    }
-  }
-
   // ── VOICE PREVIEW (GET) ──────────────────────────────────────────────────
-  // Se o frontend passar previewUrl (CDN ElevenLabs), faz proxy direto.
-  // Caso contrário, gera TTS curto como fallback (funciona para qualquer voz da conta).
+  // Gera sample curto via TTS. Suporta provider=minimax|elevenlabs.
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-    const { voiceId, previewUrl } = req.query;
+    const { voiceId, provider: previewProvider = 'elevenlabs' } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
+    const SAMPLE = 'Olá! Esta é a minha voz.';
+
     try {
-      // Estratégia 1: preview_url da CDN ElevenLabs (sem custo de TTS)
-      if (previewUrl) {
-        const decoded = decodeURIComponent(previewUrl);
-        const audioRes = await fetch(decoded);
-        if (audioRes.ok) {
-          const buf = await audioRes.arrayBuffer();
-          const base64 = Buffer.from(buf).toString('base64');
-          return res.status(200).json({ audio: base64, format: 'mp3' });
+      // ── MiniMax ────────────────────────────────────────────────────────────
+      if (previewProvider === 'minimax') {
+        const MM_KEY   = process.env.MINIMAX_API_KEY;
+        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
+        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
+
+        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'speech-02-hd', text: SAMPLE,
+            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
+            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
+          })
+        });
+        const mmData = await mmRes.json();
+        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio) {
+          console.error('MiniMax preview error:', mmData.base_resp?.status_msg, voiceId);
+          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
         }
-        console.log('CDN preview failed for', voiceId, '— falling back to TTS');
+        const base64 = Buffer.from(mmData.data.audio, 'hex').toString('base64');
+        return res.status(200).json({ audio: base64, format: 'mp3' });
       }
 
-      // Estratégia 2: TTS com frase curta fixa
-      const SAMPLE = 'Olá! Esta é a minha voz.';
+      // ── ElevenLabs (default) ───────────────────────────────────────────────
+      const XI_KEY = process.env.ELEVENLABS_API_KEY;
+      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+
       const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
@@ -1070,39 +1059,70 @@ Responda APENAS em JSON válido sem markdown:
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : err?.detail?.message || '';
-        console.error('Voice preview TTS error:', ttsRes.status, voiceId, detail);
-        const isNotFound = ttsRes.status === 422 || ttsRes.status === 404 || detail.toLowerCase().includes('not found') || detail.toLowerCase().includes('invalid');
-        const msg = isNotFound ? 'Esta voz não está disponível na conta BlueTube.' : 'Prévia indisponível para esta voz.';
-        return res.status(502).json({ error: msg, notInAccount: isNotFound });
+        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
+        console.error('Voice preview error:', ttsRes.status, voiceId, detail);
+        const isNotFound = ttsRes.status === 404 || ttsRes.status === 422
+          || detail.toLowerCase().includes('not found') || detail.toLowerCase().includes('invalid');
+        return res.status(502).json({
+          error: isNotFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
+          notInAccount: isNotFound
+        });
       }
 
       const audioBuffer = await ttsRes.arrayBuffer();
       const base64 = Buffer.from(audioBuffer).toString('base64');
       return res.status(200).json({ audio: base64, format: 'mp3' });
     } catch(e) {
-      console.error('Voice preview error:', e.message);
+      console.error('Preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
 
-
-  // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
+  // ── TEXT TO SPEECH ───────────────────────────────────────────────────────────
+  // provider: 'elevenlabs' (default) | 'minimax'
   if (req.body?.action === 'tts') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado. Adicione ELEVENLABS_API_KEY no Vercel.' });
-
-    const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
+    const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75, provider = 'elevenlabs' } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
     if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
 
     try {
-      // eleven_v3 usa endpoint diferente (turbo/v3 preview)
+      // ── MINIMAX ──────────────────────────────────────────────────────────────
+      if (provider === 'minimax') {
+        const MM_KEY   = process.env.MINIMAX_API_KEY;
+        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
+        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não configurada no servidor.' });
+
+        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'speech-02-hd',
+            text,
+            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
+            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
+          })
+        });
+
+        const mmData = await mmRes.json();
+        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio) {
+          console.error('MiniMax TTS error:', mmData.base_resp?.status_msg, voiceId);
+          return res.status(400).json({ error: 'Falha ao gerar narração. Tente novamente.' });
+        }
+
+        // MiniMax retorna áudio em hex — converte para base64
+        const audioBuffer = Buffer.from(mmData.data.audio, 'hex');
+        const base64 = audioBuffer.toString('base64');
+        return res.status(200).json({ audio: base64, format: 'mp3' });
+      }
+
+      // ── ELEVENLABS (default) ──────────────────────────────────────────────────
+      const XI_KEY = process.env.ELEVENLABS_API_KEY;
+      if (!XI_KEY) return res.status(500).json({ error: 'Voz não configurada no servidor.' });
+
       const isV3 = model === 'eleven_v3';
       const modelId = isV3 ? 'eleven_v3' : (model || 'eleven_multilingual_v2');
-      const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
-      const ttsRes = await fetch(endpoint, {
+      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
         body: JSON.stringify({
@@ -1113,9 +1133,7 @@ Responda APENAS em JSON válido sem markdown:
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(()=>({}));
-        const errMsg = err.detail?.message || err.detail?.status || err.detail || 'Serviço de voz indisponível';
-        // Nunca expõe nome do provedor ao usuário
-        console.error('TTS error:', errMsg);
+        console.error('TTS error:', err.detail?.message || err.detail || ttsRes.status);
         return res.status(400).json({ error: 'Falha ao gerar narração. Verifique o texto e tente novamente.' });
       }
 
