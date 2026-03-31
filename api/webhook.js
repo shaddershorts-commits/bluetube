@@ -27,15 +27,25 @@ export default async function handler(req, res) {
   // Verify webhook signature
   let event;
   try {
-    // Simple HMAC verification without stripe SDK
+    // HMAC verification — formato Stripe: t=timestamp,v1=signature
     const crypto = await import('crypto');
-    const [, timestamp] = sig.split('t=');
-    const ts = timestamp?.split(',')[0];
+    // Extrai timestamp e assinatura do header
+    const parts = {};
+    sig.split(',').forEach(part => {
+      const [k, v] = part.split('=');
+      parts[k.trim()] = v?.trim();
+    });
+    const ts = parts['t'];
+    const received = parts['v1'];
+    if (!ts || !received) throw new Error('Malformed signature header');
     const payload = `${ts}.${rawBody.toString()}`;
     const expected = crypto.createHmac('sha256', WEBHOOK_SECRET)
-      .update(payload).digest('hex');
-    const received = sig.split('v1=')[1]?.split(',')[0];
-    if (expected !== received) throw new Error('Invalid signature');
+      .update(payload, 'utf8').digest('hex');
+    // Comparação segura contra timing attacks
+    if (expected.length !== received.length || 
+        !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received))) {
+      throw new Error('Invalid signature');
+    }
     event = JSON.parse(rawBody.toString());
   } catch (err) {
     console.error('Webhook signature error:', err.message);
