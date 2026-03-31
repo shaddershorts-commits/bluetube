@@ -1941,38 +1941,40 @@ Responda APENAS em JSON válido sem markdown:
             const isColorCaption = hasColorCaption(rTitle);
             const isRepost = hasRepostSignal(rTitle);
 
+            // ── FILTRO PRIMÁRIO: DURAÇÃO ────────────────────────────────────
+            // Vídeos com duração muito diferente são irrelevantes — descarte imediato
+            // Tolerância: ±40% da duração do vídeo analisado
+            const durDiff = videoMeta.duration > 0 && secs > 0
+              ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs)
+              : 1;
+            const durTooFar = durDiff > 0.40; // mais de 40% diferente = provavelmente outro vídeo
+
+            // ── SIMILARIDADE ────────────────────────────────────────────────
             const rWords = new Set(rTitle.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)));
-            const inter=[...inputWords].filter(w=>rWords.has(w)).length;
-            const union=new Set([...inputWords,...rWords]).size;
-            const titleSim=union>0?inter/union:0;
+            const inter = [...inputWords].filter(w=>rWords.has(w)).length;
+            const union = new Set([...inputWords,...rWords]).size;
+            const titleSim = union > 0 ? inter/union : 0;
 
-            // Duração similar = forte sinal do mesmo vídeo (peso 45%)
-            const durSim=videoMeta.duration>0&&secs>0?Math.max(0,1-Math.abs(videoMeta.duration-secs)/Math.max(videoMeta.duration,secs,1)):0.3;
-            const viewBonus=views>1000000?0.3:views>100000?0.15:0;
+            // Duração — filtro mais estrito: ±20% = similar, ±40% = possível, >40% = descarte
+            const durSim = 1 - durDiff;
 
-            let similarity=Math.round((titleSim*0.35+durSim*0.45+viewBonus*0.2)*100);
-            if(isColorCaption) similarity=0;
-            else if(isRepost) similarity=Math.max(0,similarity-20);
-            similarity=Math.max(0,Math.min(100,similarity));
+            // Score combinado — duração tem peso 60% (mais confiável que título traduzido)
+            let similarity = Math.round((titleSim * 0.40 + durSim * 0.60) * 100);
+            if (isColorCaption) similarity = 0;
+            similarity = Math.max(0, Math.min(100, similarity));
 
             const publishedBefore = videoMeta.publishedAt
               ? new Date(snip.publishedAt) < new Date(videoMeta.publishedAt) : false;
-
-            // Original APENAS se: publicado ANTES + sem repost + duração muito similar (±15%)
-            // Badge conservador — melhor não marcar do que marcar errado
-            const durVeryClose = videoMeta.duration > 0 && secs > 0
-              ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs) < 0.15
-              : false;
-            // "Publicado primeiro" — indica quem postou antes, não necessariamente o criador do conteúdo
+            const durVeryClose = durDiff < 0.15;
             const isLikelyOriginal = !isColorCaption && publishedBefore && durVeryClose;
 
             return {id:v.id, url:`https://www.youtube.com/shorts/${v.id}`, title:rTitle,
               channel:snip.channelTitle||'', thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
               views, viewsFormatted:fmtViews(views), duration:secs, publishedAt:snip.publishedAt,
               platform:'youtube', similarity, isLikelyOriginal, isColorCaption, isRepost,
-              publishedBefore};
+              publishedBefore, durDiff, durTooFar: durDiff > 0.40};
           })
-          .filter(v => !v.isColorCaption && !v.isRepost) // exclui repost garantidos
+          .filter(v => !v.isColorCaption && !v.durTooFar) // descarta legenda colorida E duração muito diferente
           .sort((a,b) => {
             // Prioridade: publicado antes + sem repost + duração similar + data antiga absoluta
             const pb = (v) => v.publishedBefore ? 50 : 0;
