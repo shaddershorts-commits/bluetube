@@ -223,7 +223,7 @@ audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius
 
   <div class="page-eyebrow">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-    Exclusivo Master · Narração IA BlueTube
+    Exclusivo Master · Powered by ElevenLabs
   </div>
   <h1 class="page-title">Blue<span class="accent">Voice</span></h1>
   <p class="page-sub">Cole seu roteiro, escolha uma voz e gere narração hiper-realista em segundos.<br>5.500 créditos mensais · 2 versões por geração · 1 regeneração grátis</p>
@@ -417,15 +417,6 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         </div>
       </div>
 
-      <!-- ADICIONAR VOZ CUSTOMIZADA -->
-      <div style="background:rgba(0,170,255,.04);border:1px dashed rgba(0,170,255,.22);border-radius:12px;padding:14px;margin-bottom:12px" id="addVoiceBox">
-        <div style="font-size:11px;font-family:var(--mono);color:var(--neon);font-weight:600;margin-bottom:8px">✦ Adicionar voz personalizada <span style="font-weight:400;color:var(--text-dim)">— cole o ID da sua voz</span></div>
-        <input type="text" id="customVoiceUrl" placeholder="ID ou link da voz personalizada" oninput="validateCustomUrl()" style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
-        <input type="text" id="customVoiceName" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
-        <button id="btnAddVoice" onclick="addCustomVoice()" disabled style="width:100%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.2));border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:8px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s;opacity:.5" onmouseover="if(!this.disabled)this.style.opacity=1" onmouseout="if(!this.disabled)this.style.opacity=.8">+ Adicionar ao BlueVoice</button>
-        <div id="addVoiceMsg" style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5"></div>
-      </div>
-
       <div class="vp-list" id="voiceList"></div>
     </div>
 
@@ -450,27 +441,31 @@ if (!token || plan !== 'master') {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA ─────────────────────────────────
+// ── VOICES DATA — IDs verificados ElevenLabs ─────────────────────────────────
 // Preview carregado via /api/auth?action=voice-preview (sem CORS, sem custo)
+// provider: 'elevenlabs' | 'minimax'
 const VOICES = [
   // ── PT-BR ──────────────────────────────────────────────────────────────────
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Profissional, autoridade, narração' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',  lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Voz grave, storytelling, impacto' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',    lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem', style: 'Energético',   desc: 'Intenso, animado, Shorts virais' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',   lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', desc: 'Clara, confiante, apresentadora' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem', style: 'Casual',       desc: 'Natural, jovem, casual' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',   lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Profissional, autoridade, narração',    provider: 'elevenlabs' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',   lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Voz grave, storytelling, impacto',     provider: 'elevenlabs' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',     lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem', style: 'Energético',   desc: 'Intenso, animado, Shorts virais',      provider: 'elevenlabs' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', desc: 'Clara, confiante, apresentadora',      provider: 'elevenlabs' },
+  { id: 'Calm_Woman',           name: 'Sofia',    lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem', style: 'Casual',       desc: 'Natural, jovem, descontraída',         provider: 'minimax' },
   // ── ENGLISH ────────────────────────────────────────────────────────────────
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Deep, authoritative, documentary' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   desc: 'Energetic, upbeat, social media' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',    lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Warm, natural, conversational' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',  lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     desc: 'Calm, versatile, professional' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Crisp, authoritative, impactful' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',  lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Smooth, well-rounded, natural' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',     lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Deep, authoritative, documentary',     provider: 'elevenlabs' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',    lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   desc: 'Energetic, upbeat, social media',      provider: 'elevenlabs' },
+  { id: 'Casual_Guy',           name: 'Ryan',     lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Warm, natural, conversational',        provider: 'minimax' },
+  { id: 'Wise_Woman',           name: 'Rachel',   lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     desc: 'Calm, versatile, professional',        provider: 'minimax' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',   lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Crisp, authoritative, impactful',      provider: 'elevenlabs' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',   lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Smooth, well-rounded, natural',        provider: 'elevenlabs' },
   // ── ESPAÑOL ────────────────────────────────────────────────────────────────
-  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',   lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Natural, neutro, versátil' },
-  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina',lang:'es', flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem', style: 'Energético',   desc: 'Energética, jovem, redes sociais' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',     lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Jovem, natural, conversacional' },
+  { id: 'Friendly_Person',      name: 'Diego',    lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Natural, neutro, versátil',            provider: 'minimax' },
+  { id: 'Lively_Girl',          name: 'Valentina',lang: 'es', flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem', style: 'Energético',   desc: 'Energética, jovem, redes sociais',     provider: 'minimax' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',      lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Jovem, natural, conversacional',       provider: 'elevenlabs' },
 ];
+
+function getAllVoices() { return VOICES; } // estendida por customVoices se necessário
+
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let selectedVoice = null;
@@ -525,8 +520,7 @@ function renderVoices() {
   const search = document.getElementById('voiceSearch').value.toLowerCase();
   const list = document.getElementById('voiceList');
 
-  const filtered = getAllVoices().filter(v => {
-    if (!v.custom && unavailableVoices.has(v.id)) return false;
+  const filtered = VOICES.filter(v => {
     if (showOnlyFavs && !favorites.has(v.id)) return false;
     if (filters.gender && v.gender !== filters.gender) return false;
     if (filters.age && v.age !== filters.age) return false;
@@ -552,15 +546,14 @@ function renderVoices() {
         <div class="vi-meta">${v.desc}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
-        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
-          ${v.custom ? '<span style="font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-family:var(--mono);font-weight:600">CUSTOM</span>' : `<div class="vi-badge age">${v.age}</div>`}
+        <div style="display:flex;gap:4px">
+          <div class="vi-badge age">${v.age}</div>
           <div class="vi-badge style">${v.style}</div>
         </div>
         <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
           Ouvir
         </button>
-        ${v.custom ? `<button style="background:none;border:none;color:rgba(239,68,68,.4);font-size:13px;cursor:pointer;padding:2px 5px;line-height:1;transition:color .2s" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(239,68,68,.4)'" onclick="removeCustomVoice('${v.id}', event)" title="Remover voz">✕</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -623,30 +616,22 @@ function focusVoicePanel() {
 
 // ── PREVIEW DA VOZ (via backend proxy — sem CORS) ────────────────────────────
 let currentPreview = null;
-// Cache de previews: evita gerar de novo ao clicar pela 2ª vez
-const previewCache = {};
-const unavailableVoices = new Set(JSON.parse(localStorage.getItem('bv_unavailable') || '[]'));
-const ICON_PLAY = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
-const ICON_STOP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-
 async function previewVoice(id, event) {
   event?.stopPropagation();
 
-  // Clicou na mesma voz que está tocando → para
+  const ICON_PLAY = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
+  const ICON_STOP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+
+  // Clicou na mesma voz tocando → para
   if (currentPreview && currentPreview._voiceId === id) {
-    currentPreview.pause();
-    currentPreview = null;
+    currentPreview.pause(); currentPreview = null;
     const btn = document.querySelector(`[data-preview="${id}"]`);
     if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
     return;
   }
 
-  // Para preview anterior, reseta botões
   if (currentPreview) { currentPreview.pause(); currentPreview = null; }
-  document.querySelectorAll('.btn-preview').forEach(b => {
-    b.innerHTML = `${ICON_PLAY} Ouvir`;
-    b.disabled = false;
-  });
+  document.querySelectorAll('.btn-preview').forEach(b => { b.innerHTML = `${ICON_PLAY} Ouvir`; b.disabled = false; });
 
   const btn = document.querySelector(`[data-preview="${id}"]`);
   if (btn) { btn.innerHTML = `<span style="opacity:.7;font-size:10px">Gerando…</span>`; btn.disabled = true; }
@@ -655,20 +640,18 @@ async function previewVoice(id, event) {
     let blobUrl = previewCache[id];
 
     if (!blobUrl) {
-      // Se temos o previewUrl da CDN (carregado via voice-list), manda junto
-      const cdnUrl = (typeof availableVoices !== 'undefined' && availableVoices[id]) ? availableVoices[id] : null;
-      const params = new URLSearchParams({ voiceId: id });
-      if (cdnUrl) params.set('previewUrl', cdnUrl);
+      const voice = getAllVoices().find(v => v.id === id);
+      const provider = voice?.provider || 'elevenlabs';
+      const params = new URLSearchParams({ voiceId: id, provider });
 
       const r = await fetch(`/api/auth?action=voice-preview&${params}`);
       const data = await r.json();
 
       if (!r.ok || !data.audio) {
-        // Marca voz como indisponível se for erro de conta
         if (data.notInAccount) {
           unavailableVoices.add(id);
           localStorage.setItem('bv_unavailable', JSON.stringify([...unavailableVoices]));
-          renderVoices(); // re-render para mostrar badge "Indisponível"
+          renderVoices();
         }
         throw new Error(data.error || 'Prévia indisponível');
       }
@@ -676,18 +659,15 @@ async function previewVoice(id, event) {
       const bin = atob(data.audio);
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'audio/mpeg' });
-      blobUrl = URL.createObjectURL(blob);
+      blobUrl = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
       previewCache[id] = blobUrl;
     }
 
     const audio = new Audio(blobUrl);
     audio._voiceId = id;
     currentPreview = audio;
-
     if (btn) { btn.innerHTML = `${ICON_STOP} Parar`; btn.disabled = false; }
     await audio.play();
-
     audio.onended = () => {
       if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
       currentPreview = null;
@@ -699,107 +679,10 @@ async function previewVoice(id, event) {
   }
 }
 
-// ── VOZES CUSTOMIZADAS ────────────────────────────────────────────────────────
-const customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
+// Cache de previews e vozes indisponíveis
+const previewCache = {};
+const unavailableVoices = new Set(JSON.parse(localStorage.getItem('bv_unavailable') || '[]'));
 
-function getAllVoices() { return [...VOICES, ...customVoices]; }
-
-function parseVoiceUrl(url) {
-  url = (url || '').trim();
-  if (!url) return null;
-  const shareMatch = url.match(/share\/[a-f0-9]+\/([A-Za-z0-9]{10,30})/);
-  if (shareMatch) return shareMatch[1];
-  const directMatch = url.match(/voices\/([A-Za-z0-9]{10,30})/);
-  if (directMatch) return directMatch[1];
-  if (/^[A-Za-z0-9]{10,30}$/.test(url)) return url;
-  return null;
-}
-
-function validateCustomUrl() {
-  const url = document.getElementById('customVoiceUrl').value;
-  const voiceId = parseVoiceUrl(url);
-  const btn = document.getElementById('btnAddVoice');
-  const msg = document.getElementById('addVoiceMsg');
-  if (voiceId) {
-    btn.disabled = false;
-    msg.textContent = `ID: ${voiceId}`;
-    msg.style.color = 'var(--neon)';
-  } else if (url.trim()) {
-    btn.disabled = true;
-    msg.textContent = 'Link inválido. Cole o link de compartilhamento.';
-    msg.style.color = '#ef4444';
-  } else {
-    btn.disabled = true;
-    msg.textContent = '';
-  }
-}
-
-async function addCustomVoice() {
-  const url = document.getElementById('customVoiceUrl').value;
-  const nameInput = document.getElementById('customVoiceName').value.trim();
-  const msg = document.getElementById('addVoiceMsg');
-  const btn = document.getElementById('btnAddVoice');
-  const voiceId = parseVoiceUrl(url);
-  if (!voiceId) return;
-
-  if (getAllVoices().some(v => v.id === voiceId)) {
-    msg.textContent = 'Esta voz já está na sua lista.';
-    msg.style.color = '#fbbf24';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Testando voz…';
-  msg.textContent = 'Verificando disponibilidade…';
-  msg.style.color = 'var(--text-dim)';
-
-  const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(voiceId)}`);
-  const data = await r.json();
-
-  if (!r.ok || !data.audio) {
-    const isAccountError = data.notInAccount;
-    msg.innerHTML = isAccountError
-      ? '⚠ Esta voz não está disponível no BlueTube.<br><span style="font-size:10px;opacity:.7">Fale com o suporte para solicitar a adição desta voz.</span>'
-      : (data.error || 'Voz inválida ou inacessível.');
-    msg.style.color = '#ef4444';
-    btn.textContent = '+ Adicionar ao BlueVoice';
-    btn.disabled = false;
-    return;
-  }
-
-  // Salva preview no cache
-  const bin = atob(data.audio);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  previewCache[voiceId] = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
-
-  const voiceName = nameInput || 'Voz personalizada';
-  customVoices.push({ id: voiceId, name: voiceName, lang: 'custom', flag: '⭐', gender: 'Personalizado', age: '', style: 'Custom', desc: 'Voz adicionada manualmente', custom: true });
-  localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
-
-  document.getElementById('customVoiceUrl').value = '';
-  document.getElementById('customVoiceName').value = '';
-  msg.textContent = `✅ "${voiceName}" adicionada!`;
-  msg.style.color = '#22c55e';
-  btn.textContent = '+ Adicionar ao BlueVoice';
-  btn.disabled = true;
-  renderVoices();
-  setTimeout(() => previewVoice(voiceId, null), 400);
-}
-
-function removeCustomVoice(id, event) {
-  event?.stopPropagation();
-  const idx = customVoices.findIndex(v => v.id === id);
-  if (idx !== -1) customVoices.splice(idx, 1);
-  localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
-  favorites.delete(id);
-  localStorage.setItem('bv_favorites', JSON.stringify([...favorites]));
-  delete previewCache[id];
-  unavailableVoices.delete(id);
-  localStorage.setItem('bv_unavailable', JSON.stringify([...unavailableVoices]));
-  renderVoices();
-  showToast('Voz removida.');
-}
 
 // ── GENERATE ──────────────────────────────────────────────────────────────────
 async function generateVoice(isFreeRegen = false) {
@@ -864,13 +747,16 @@ async function generateVoice(isFreeRegen = false) {
 }
 
 async function callTTS(voiceId, text, stability, similarity) {
+  const voice = getAllVoices().find(v => v.id === voiceId);
+  const provider = voice?.provider || 'elevenlabs';
   const r = await fetch('/api/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'tts', voiceId, text,
       stability, similarity,
-      model: 'eleven_v3'  // Modelo v3 — mais natural
+      provider,
+      model: provider === 'elevenlabs' ? 'eleven_v3' : undefined
     })
   });
   return r.json();
@@ -1082,26 +968,6 @@ function showToast(msg) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 renderVoices();
-
-// ── CARREGA LISTA DE VOZES DISPONÍVEIS NA CONTA ELEVENLABS ───────────────────
-// Detecta quais IDs existem + pega preview_url real (CDN, sem custo de TTS)
-const availableVoices = {}; // { voiceId: previewUrl | null }
-
-async function loadVoiceList() {
-  try {
-    const r = await fetch('/api/auth?action=voice-list');
-    if (!r.ok) return;
-    const data = await r.json();
-    (data.voices || []).forEach(v => {
-      availableVoices[v.id] = v.previewUrl || null;
-    });
-    console.log('BlueVoice list loaded:', Object.keys(availableVoices).length, 'voices');
-    renderVoices(); // re-render com status de disponibilidade correto
-  } catch(e) {
-    console.log('voice-list failed (non-fatal):', e.message);
-  }
-}
-loadVoiceList();
 updateFavCount();
 checkReady();
 
