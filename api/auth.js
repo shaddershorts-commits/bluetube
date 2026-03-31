@@ -45,6 +45,9 @@ export default async function handler(req, res) {
   const ANON_KEY = process.env.SUPABASE_ANON_KEY || SUPA_KEY;
   const supaH = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' };
 
+  // ── HELPERS GLOBAIS ───────────────────────────────────────────────────────
+  const fmtViews = n => !n ? '0' : n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
+
   // ── LANGUAGE DETECTION (GET) ───────────────────────────────────────────────
   // ── VIRAL SHORTS ──────────────────────────────────────────────────────────
   // ── FILE DOWNLOAD PROXY ───────────────────────────────────────────────────
