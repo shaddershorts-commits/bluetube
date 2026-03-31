@@ -65,6 +65,26 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, email, plan });
   }
 
+  // ── AFFILIATE MANAGEMENT ─────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'set_affiliate_status') {
+    const { email, status } = req.body; // status: active | pending | suspended
+    if (!email || !status) return res.status(400).json({ error: 'email e status obrigatórios' });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status, updated_at: new Date().toISOString() })
+    });
+    const data = await r.json();
+    console.log(`Affiliate ${status}: ${email}`);
+    return res.status(200).json({ success: true, email, status });
+  }
+
+  if (req.method === 'GET' && action === 'list_affiliates') {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*&order=created_at.desc`, { headers });
+    const data = await r.json();
+    return res.status(200).json(Array.isArray(data) ? data : []);
+  }
+
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];
