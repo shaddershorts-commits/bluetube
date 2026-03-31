@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueTube — Criador Viral</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#020817;font-family:sans-serif}
+
+/* ── TOOLBAR SUPERIOR ─────────────────────────────────────────────────── */
+#toolbar{
+  position:fixed;top:0;left:0;right:0;z-index:9999;
+  display:none; /* só aparece pra master */
+  align-items:center;gap:6px;
+  padding:6px 16px;
+  background:rgba(2,8,23,.95);
+  border-bottom:1px solid rgba(0,170,255,.15);
+  backdrop-filter:blur(20px);
+}
+#toolbar.visible{display:flex}
+.tb-btn{
+  display:flex;align-items:center;gap:5px;
+  font-family:monospace;font-size:11px;font-weight:600;
+  padding:5px 12px;border-radius:7px;cursor:pointer;
+  border:1px solid rgba(0,170,255,.2);
+  background:rgba(0,170,255,.06);color:rgba(0,170,255,.7);
+  transition:all .2s;white-space:nowrap;text-decoration:none;
+}
+.tb-btn:hover{background:rgba(0,170,255,.15);color:#00aaff;border-color:rgba(0,170,255,.4)}
+.tb-btn.active{background:rgba(0,170,255,.2);color:#00aaff;border-color:rgba(0,170,255,.5)}
+.tb-label{font-family:monospace;font-size:10px;color:rgba(0,170,255,.35);margin-right:4px;white-space:nowrap}
+
+/* ── IFRAME CONTAINER ─────────────────────────────────────────────────── */
+#frames{position:fixed;top:0;left:0;right:0;bottom:0}
+#frames.with-toolbar{top:36px}
+iframe{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  border:none;display:none;
+}
+iframe.active{display:block}
+</style>
+</head>
+<body>
+
+<!-- Toolbar só aparece após login como master -->
+<div id="toolbar">
+  <span class="tb-label">FERRAMENTAS</span>
+  <button class="tb-btn active" data-tool="roteiros" onclick="switchTool('roteiros',this)">📝 Roteiros</button>
+  <button class="tb-btn" data-tool="virais"   onclick="switchTool('virais',this)">🔥 Virais</button>
+  <button class="tb-btn" data-tool="voice"    onclick="switchTool('voice',this)">🎙️ BlueVoice</button>
+  <button class="tb-btn" data-tool="score"    onclick="switchTool('score',this)">📊 BlueScore</button>
+  <button class="tb-btn" data-tool="baixa"    onclick="switchTool('baixa',this)">⬇️ BaixaBlue</button>
+</div>
+
+<!-- Iframes — cada ferramenta vive aqui permanentemente -->
+<div id="frames">
+  <iframe id="f-roteiros" src="/index.html"       class="active" title="Roteiros"></iframe>
+  <iframe id="f-virais"   src=""                  title="Virais"></iframe>
+  <iframe id="f-voice"    src=""                  title="BlueVoice"></iframe>
+  <iframe id="f-score"    src=""                  title="BlueScore"></iframe>
+  <iframe id="f-baixa"    src=""                  title="BaixaBlue"></iframe>
+</div>
+
+<script>
+const TOOLS = {
+  roteiros: { frame: 'f-roteiros', src: '/index.html' },
+  virais:   { frame: 'f-virais',   src: '/virais.html' },
+  voice:    { frame: 'f-voice',    src: '/blueVoice.html' },
+  score:    { frame: 'f-score',    src: '/blueScore.html' },
+  baixa:    { frame: 'f-baixa',    src: '/baixaBlue.html' },
+};
+
+let current = 'roteiros';
+let isMaster = false;
+
+// Detecta plano lendo o localStorage do próprio frame
+function checkPlan(){
+  const plan = localStorage.getItem('bt_plan');
+  if(plan === 'master' && !isMaster){
+    isMaster = true;
+    document.getElementById('toolbar').classList.add('visible');
+    document.getElementById('frames').classList.add('with-toolbar');
+  }
+}
+
+// Troca de ferramenta
+function switchTool(name, btn){
+  if(name === current) return;
+
+  // Lazy load: só carrega o iframe quando acessado pela primeira vez
+  const t = TOOLS[name];
+  const frame = document.getElementById(t.frame);
+  if(!frame.src || frame.src === window.location.href || frame.src === 'about:blank' || frame.getAttribute('src') === ''){
+    frame.src = t.src;
+  }
+
+  // Esconde atual, mostra novo
+  document.getElementById(TOOLS[current].frame).classList.remove('active');
+  frame.classList.add('active');
+  current = name;
+
+  // Atualiza botões
+  document.querySelectorAll('.tb-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === name);
+  });
+
+  // Salva ferramenta ativa
+  localStorage.setItem('bt_active_tool', name);
+}
+
+// Expõe para os iframes chamarem (ex: ao clicar em "Narrar no BlueVoice")
+window.btSwitchTool = switchTool;
+
+// Escuta mensagens dos iframes
+window.addEventListener('message', function(e){
+  if(e.data?.type === 'bt-switch'){
+    switchTool(e.data.tool, null);
+  }
+  if(e.data?.type === 'bt-plan' && e.data.plan === 'master'){
+    isMaster = true;
+    document.getElementById('toolbar').classList.add('visible');
+    document.getElementById('frames').classList.add('with-toolbar');
+  }
+});
+
+// Verifica plano periodicamente (para aparecer a toolbar após login)
+setInterval(checkPlan, 1000);
+checkPlan();
+
+// Restaura ferramenta ativa da última sessão
+const lastTool = localStorage.getItem('bt_active_tool');
+if(lastTool && TOOLS[lastTool] && lastTool !== 'roteiros'){
+  // Pequeño delay para o iframe principal carregar primeiro
+  setTimeout(() => switchTool(lastTool, document.querySelector('[data-tool="'+lastTool+'"]')), 500);
+}
+
+// Gerencia URL hash para deep linking
+window.addEventListener('hashchange', function(){
+  const h = location.hash.replace('#','');
+  if(TOOLS[h]) switchTool(h, null);
+});
+if(location.hash){
+  const h = location.hash.replace('#','');
+  if(TOOLS[h]) setTimeout(()=>switchTool(h,null),300);
+}
+</script>
+</body>
+</html>
