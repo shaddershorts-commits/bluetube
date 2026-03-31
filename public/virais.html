@@ -203,6 +203,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       <!-- Search -->
       <input class="search-input" id="searchInput" type="text" placeholder="Buscar nicho…" onkeydown="if(event.key==='Enter')fetchVirals()"/>
 
+      <!-- Filtro canais de Shorts -->
+      <button id="shortsChBtn" onclick="toggleShortsChannels()" title="Mostrar apenas canais dedicados a Shorts"
+        style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--dim);cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0">
+        📱 Canais de Shorts
+      </button>
+
       <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
         <span id="fetchBtnIcon">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -268,6 +274,16 @@ document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; gl
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let currentPeriod = '24h';
+
+function toggleShortsChannels() {
+  const btn = document.getElementById('shortsChBtn');
+  if (!btn) return;
+  const active = btn.classList.toggle('active');
+  btn.style.background = active ? 'rgba(0,170,255,.25)' : 'rgba(0,170,255,.08)';
+  btn.style.borderColor = active ? 'rgba(0,170,255,.6)'  : 'rgba(0,170,255,.2)';
+  btn.style.color       = active ? 'var(--neon)'         : 'var(--dim)';
+  fetchVirals();
+}
 let lastResults = [];
 
 function setPeriod(p, btn) {
@@ -292,7 +308,8 @@ async function fetchVirals() {
   showSkeletons();
 
   try {
-    const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
+    const shortsChannels = document.getElementById('shortsChBtn')?.classList.contains('active') ? '1' : '0';
+    const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q, shortsChannels });
     const url = `/api/auth?${params}&_t=${Date.now()}`;
     
     let r, data;
@@ -319,26 +336,8 @@ async function fetchVirals() {
     }
 
     const newVideos = data.videos || [];
-    // Stale cache — serve com aviso discreto
-    if (data.stale && newVideos.length > 0) {
-      lastResults = newVideos;
-      renderVideos(lastResults);
-      showStaleNotice(data.cacheAge);
-      return;
-    }
-
-    // Quota esgotada sem cache
-    if (data.quotaError && !newVideos.length) {
-      if (lastResults.length) {
-        renderVideos(lastResults);
-        showStaleNotice(null);
-      } else {
-        showError('Serviço temporariamente sobrecarregado. Tente novamente em alguns minutos.');
-      }
-      return;
-    }
-
     if (!newVideos.length) {
+      // Se tem cache local, mostra ele em vez de erro
       if (lastResults.length) {
         renderVideos(lastResults);
       } else {
@@ -457,19 +456,6 @@ function useShort(e, videoId, url) {
   const shortUrl = `https://www.youtube.com/shorts/${videoId}`;
   localStorage.setItem('bt_prefill_url', shortUrl);
   window.location.href = '/';
-}
-
-function showStaleNotice(ageMin) {
-  // Remove aviso anterior se houver
-  const old = document.getElementById('staleNotice');
-  if (old) old.remove();
-  const notice = document.createElement('div');
-  notice.id = 'staleNotice';
-  const msg = ageMin ? `Exibindo resultados salvos há ${ageMin} min — atualizando em breve` : 'Exibindo últimos resultados salvos';
-  notice.style.cssText = 'text-align:center;padding:8px;font-family:var(--mono,monospace);font-size:11px;color:rgba(251,191,36,.8);background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.15);';
-  notice.textContent = '⏱ ' + msg;
-  const grid = document.getElementById('videosGrid');
-  if (grid) grid.parentNode.insertBefore(notice, grid);
 }
 
 function showError(msg) {
