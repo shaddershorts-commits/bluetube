@@ -81,7 +81,9 @@ export default async function handler(req, res) {
       } catch(e) { return []; }
     };
 
-    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, weeklyRaw] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, weeklyRaw, bluescoreRaw, recentSubs] = await Promise.all([
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers })),
@@ -89,6 +91,8 @@ export default async function handler(req, res) {
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/bluescore_analyses?select=channel_name,score,classification,avg_views,analyzed_at&order=analyzed_at.desc&limit=20`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=email,plan,created_at&order=created_at.desc&limit=10`, { headers })),
     ]);
 
     // Group weekly visits by date
@@ -139,7 +143,16 @@ export default async function handler(req, res) {
         online_now: onlineNow.length,
         weekly: weeklyVisits,
       },
-      latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null
+      latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
+      latest_signup: recentSubs[0] || null, // último cadastro (qualquer plano)
+      recent_signups: recentSubs, // últimos 10 cadastros
+      bluescore: {
+        total_analyses: bluescoreRaw.length,
+        recent: bluescoreRaw,
+        avg_score: bluescoreRaw.length > 0
+          ? Math.round(bluescoreRaw.reduce((s,a) => s + (a.score||0), 0) / bluescoreRaw.length)
+          : 0,
+      },
     };
 
     return res.status(200).json(stats);
