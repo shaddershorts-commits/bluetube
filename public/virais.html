@@ -138,12 +138,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
     <div class="logo-txt">Blue<span class="logo-accent">Tube</span><span class="logo-sub">Criador Viral</span></div>
   </a>
-  <div class="nav-right">
-    <span class="master-badge">👑 Master</span>
-    <a href="/" class="btn-back">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-      Voltar
-    </a>
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <a href="/" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📝 Roteiros</a>
+    <a href="/virais.html" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s">🔥 Virais</a>
+    <a href="/blueVoice.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🎙️ BlueVoice</a>
+    <a href="/blueScore.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📊 BlueScore</a>
+    <a href="/baixaBlue.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">⬇️ BaixaBlue</a>
+    <span class="master-badge" style="margin-left:2px">👑 Master</span>
   </div>
 </nav>
 
@@ -202,12 +203,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 
       <!-- Search -->
       <input class="search-input" id="searchInput" type="text" placeholder="Buscar nicho…" onkeydown="if(event.key==='Enter')fetchVirals()"/>
-
-      <!-- Filtro canais de Shorts -->
-      <button id="shortsChBtn" onclick="toggleShortsChannels()" title="Mostrar apenas canais dedicados a Shorts"
-        style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--dim);cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0">
-        📱 Canais de Shorts
-      </button>
 
       <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
         <span id="fetchBtnIcon">
@@ -274,16 +269,6 @@ document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; gl
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let currentPeriod = '24h';
-
-function toggleShortsChannels() {
-  const btn = document.getElementById('shortsChBtn');
-  if (!btn) return;
-  const active = btn.classList.toggle('active');
-  btn.style.background = active ? 'rgba(0,170,255,.25)' : 'rgba(0,170,255,.08)';
-  btn.style.borderColor = active ? 'rgba(0,170,255,.6)'  : 'rgba(0,170,255,.2)';
-  btn.style.color       = active ? 'var(--neon)'         : 'var(--dim)';
-  fetchVirals();
-}
 let lastResults = [];
 
 function setPeriod(p, btn) {
@@ -308,8 +293,7 @@ async function fetchVirals() {
   showSkeletons();
 
   try {
-    const shortsChannels = document.getElementById('shortsChBtn')?.classList.contains('active') ? '1' : '0';
-    const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q, shortsChannels });
+    const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
     const url = `/api/auth?${params}&_t=${Date.now()}`;
     
     let r, data;
