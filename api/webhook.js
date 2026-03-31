@@ -78,20 +78,43 @@ export default async function handler(req, res) {
         ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
         : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString(); // +5 dias de margem
 
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
-        method: 'POST',
-        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+      // Tenta PATCH primeiro (atualiza se existe), depois POST (cria se não existe)
+      const patchR = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+        method: 'PATCH',
+        headers: { ...supaHeaders, 'Prefer': 'return=representation' },
         body: JSON.stringify({
-          email,
           plan,
           is_manual: false,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           plan_expires_at: expiresAt,
-          created_at: new Date().toISOString(), // garante created_at no upsert
           updated_at: new Date().toISOString()
         })
       });
+      const patchData = await patchR.json();
+
+      let r;
+      if (Array.isArray(patchData) && patchData.length > 0) {
+        // PATCH funcionou — subscriber existia
+        r = patchR;
+        console.log(`✅ Plan updated via PATCH: ${email} → ${plan}`);
+      } else {
+        // Subscriber não existe — cria
+        r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+          method: 'POST',
+          headers: { ...supaHeaders, 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            email,
+            plan,
+            is_manual: false,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscriptionId,
+            plan_expires_at: expiresAt,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        });
+      }
 
       if (!r.ok) {
         const err = await r.text();
