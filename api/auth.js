@@ -908,15 +908,21 @@ Responda APENAS em JSON válido sem markdown:
           publishedAt: snippet.publishedAt, duration: secs,
           url: `https://www.youtube.com/shorts/${v.id}`
         };
-      }).filter(v => v.duration <= 60 || v.duration === 0);
+      }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
-      // Ordena por views — confia no publishedAfter enviado à API
-      // Filtro suave: só remove vídeos MUITO antigos (>2x o período)
-      const softCutoff = new Date(now - cutoffMs * 2);
+      // Filtro de data suave — remove apenas vídeos com mais de 3x o período
+      // Confia no publishedAfter que já foi enviado à API
+      const softCutoff = new Date(now - cutoffMs * 3);
       let videos = allVideos
         .filter(v => !v.publishedAt || new Date(v.publishedAt) >= softCutoff)
         .sort((a,b) => b.views - a.views)
         .slice(0, 100);
+
+      // Fallback: se filtro zerou, retorna sem filtro de data (API já filtrou)
+      if (videos.length === 0 && allVideos.length > 0) {
+        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 100);
+        console.log('viral-shorts: fallback sem filtro de data, total:', videos.length);
+      }
 
       const dateFilterFailed = false;
 
