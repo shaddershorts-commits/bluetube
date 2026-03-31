@@ -935,31 +935,23 @@ function showToast(msg) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 renderVoices();
-
-// ── PRÉ-PREENCHIMENTO VINDO DO INDEX (botão "Narrar no BlueVoice") ─────────
-(function(){
-  const prefill = localStorage.getItem('bv_prefill_text');
-  if(!prefill) return;
-  localStorage.removeItem('bv_prefill_text'); // limpa após usar
-  const textarea = document.getElementById('scriptText');
-  if(!textarea) return;
-  textarea.value = prefill;
-  // Dispara o contador de caracteres
-  const ev = new Event('input', {bubbles:true});
-  textarea.dispatchEvent(ev);
-  // Scroll suave para o textarea
-  setTimeout(()=> textarea.scrollIntoView({behavior:'smooth', block:'center'}), 500);
-  // Toast de confirmação
-  setTimeout(()=> showToast && showToast('Roteiro carregado! Escolha a voz e gere a narração.'), 800);
-})();
 updateFavCount();
 checkReady();
 
 // Pre-fill if coming from main page
-const prefill = localStorage.getItem('bt_prefill_script');
+const prefill = localStorage.getItem('bt_prefill_script') || localStorage.getItem('bv_prefill_text');
 if (prefill) {
-  document.getElementById('scriptText').value = prefill;
+  const ta = document.getElementById('scriptText');
+  if(ta) ta.value = prefill;
   localStorage.removeItem('bt_prefill_script');
+  localStorage.removeItem('bv_prefill_text');
+  // Dispara contador de chars
+  if(ta) ta.dispatchEvent(new Event('input', {bubbles:true}));
+  // Scroll para o textarea e mostra toast
+  setTimeout(()=>{
+    if(ta) ta.scrollIntoView({behavior:'smooth',block:'center'});
+    if(typeof showToast==='function') showToast('Roteiro carregado! Escolha a voz e gere a narração. 🎙️');
+  }, 600);
   document.getElementById('scriptText').dispatchEvent(new Event('input'));
 }
 </script>
