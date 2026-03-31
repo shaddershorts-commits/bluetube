@@ -170,8 +170,14 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4z"/><path d="M8 8l8 4-8 4z" fill="rgba(0,0,0,0)"/><circle cx="16" cy="10" r="2"/></svg></div>
     <div><span>BlueTube</span><span class="logo-sub">CRIADOR VIRAL</span></div>
   </a>
-  <div style="display:flex;align-items:center;gap:10px">
-    <span class="master-badge">👑 Master</span>
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <a href="/" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📝 Roteiros</a>
+    <a href="/virais.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🔥 Virais</a>
+    <a href="/blueVoice.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🎙️ BlueVoice</a>
+    <a href="/blueScore.html" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s">📊 BlueScore</a>
+    <a href="/baixaBlue.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">⬇️ BaixaBlue</a>
+    <span class="master-badge" style="margin-left:2px">👑 Master</span>
+  </div>
     <a href="/" class="btn-back">← Voltar</a>
   </div>
 </nav>
@@ -309,46 +315,22 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div id="trajectoryList"></div>
     </div>
 
-    <!-- DEMONETIZATION RISK -->
-    <div class="insights-card" id="demonetSection" style="display:none;border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.03)">
-      <div class="section-title">🔐 Risco de Desmonetização</div>
-      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
-        <div style="flex-shrink:0">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px;letter-spacing:.06em">NÍVEL DE RISCO</div>
-          <div style="font-size:20px;font-weight:800;padding:6px 16px;border-radius:10px;border:1px solid" id="demonetLevel">—</div>
-        </div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px;line-height:1.5" id="demonetVerdict"></div>
-          <div id="demonetReasons" style="display:flex;flex-direction:column;gap:6px"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- YTP COMPLIANCE -->
     <div class="insights-card" id="ytpSection" style="display:none;border-color:rgba(251,191,36,.2);background:rgba(251,191,36,.03)">
-      <div class="section-title">📋 Status YPP — YouTube Partner Program</div>
-      <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
-        <div style="flex-shrink:0">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px;letter-spacing:.06em">ELEGIBILIDADE</div>
-          <div style="font-size:15px;font-weight:800" id="ytpScore">—</div>
-          <div style="font-size:13px;font-weight:700;margin-top:4px" id="ytpStatus">—</div>
+      <div class="section-title">📋 Conformidade com YouTube Partner Program</div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">COMPLIANCE SCORE</div>
+          <div style="font-size:32px;font-weight:800;letter-spacing:-1px" id="ytpScore">—</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">STATUS</div>
+          <div style="font-size:14px;font-weight:700" id="ytpStatus">—</div>
         </div>
         <div style="flex:1;min-width:200px">
-          <div id="ytpReqs" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
-          <div style="font-size:12px;color:var(--text-sec);line-height:1.5" id="ytpNotes"></div>
+          <div style="font-size:13px;color:var(--text-sec);line-height:1.5" id="ytpNotes"></div>
         </div>
       </div>
-    </div>
-
-    <!-- VIEWS ANALYSIS -->
-    <div class="insights-card" id="viewsAnalysisSection" style="display:none;border-color:rgba(0,170,255,.2);background:rgba(0,170,255,.03)">
-      <div class="section-title">📊 Por que estou com poucas views?</div>
-      <div style="background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:14px 18px;margin-bottom:16px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--neon);letter-spacing:.06em;margin-bottom:6px">PRINCIPAL CAUSA</div>
-        <div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.5" id="viewsMainCause"></div>
-      </div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;margin-bottom:10px">O QUE FAZER:</div>
-      <div id="viewsFixList" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
 
     <!-- RISK FLAGS -->
@@ -574,164 +556,103 @@ async function fetchRecentVideos(channelId) {
 
 // ── SCORE ENGINE ──────────────────────────────────────────────────────────────
 function calculateBlueScore(videos, channel) {
-  const v = videos; // sorted by date desc (most recent first)
+  const v = videos;
   const N = v.length;
   if (N === 0) return null;
 
-  // ── MÉTRICAS BASE ─────────────────────────────────────────────────────────
-  const sortedByViews = [...v].sort((a,b) => b.views - a.views);
-  const avgViews    = v.reduce((s,x) => s + x.views, 0) / N;
-  const medianViews = sortedByViews[Math.floor(N / 2)]?.views || 0;
-  const maxViews    = sortedByViews[0]?.views || 0;
-  const top3Avg     = sortedByViews.slice(0, 3).reduce((s,x) => s + x.views, 0) / Math.min(3, N);
-  const avgLikes    = v.reduce((s,x) => s + x.likes, 0) / N;
+  // Médias
+  const avgViews = v.reduce((s,x) => s + x.views, 0) / N;
+  const avgLikes = v.reduce((s,x) => s + x.likes, 0) / N;
   const avgComments = v.reduce((s,x) => s + x.comments, 0) / N;
-  const avgEngRate  = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
-  const commentRatio = v.reduce((s,x)=>s+x.comments,0) / (v.reduce((s,x)=>s+x.likes,0) || 1);
+  const avgEngRate = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
 
-  // Datas e frequência
+  // Tendência: compara primeira metade vs segunda metade
+  const half = Math.floor(N / 2);
+  const recentAvg = v.slice(0, half || 1).reduce((s,x) => s + x.views, 0) / (half || 1);
+  const olderAvg = v.slice(half).reduce((s,x) => s + x.views, 0) / (N - half || 1);
+  const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
+
+  // Consistência: desvio padrão de views
+  const stdDev = Math.sqrt(v.reduce((s,x) => s + Math.pow(x.views - avgViews, 2), 0) / N);
+  const cv = avgViews > 0 ? stdDev / avgViews : 1; // coeficiente de variação (menor = mais consistente)
+
+  // Frequência: dias entre vídeos
   const sortedDates = v.map(x => new Date(x.publishedAt)).sort((a,b) => b-a);
-  const avgDaysBetween = sortedDates.length > 1
-    ? (sortedDates[0] - sortedDates[sortedDates.length-1]) / (1000*60*60*24) / (sortedDates.length - 1)
-    : 30;
-  const daysSinceLastVideo = sortedDates[0]
-    ? Math.round((Date.now() - sortedDates[0].getTime()) / (1000*60*60*24))
-    : 999;
-
-  // Tendência: mediana dos últimos 4 vs mediana dos 4 anteriores
-  // Mediana é robusta a outliers — evita que um viral distorça o trend
-  const getMedian = arr => {
-    const s = [...arr].sort((a,b) => b-a);
-    return s[Math.floor(s.length / 2)] || 0;
-  };
-  const recent4Views = v.slice(0, Math.min(4, N)).map(x => x.views);
-  const older4Views  = v.slice(4, Math.min(8, N)).map(x => x.views);
-  const recent4Med = getMedian(recent4Views);
-  const older4Med  = older4Views.length > 0 ? getMedian(older4Views) : recent4Med;
-  const trendRatio = older4Med > 0 ? recent4Med / older4Med : 1;
-
-  // Declínio brusco: só dispara se performance absoluta também é baixa
-  // Evita falso positivo quando canal volta ao normal após um viral
-  const last3Avg = v.slice(0,3).reduce((s,x)=>s+x.views,0) / Math.min(3,N);
-  const prev3Avg = v.slice(3,6).length > 0 ? v.slice(3,6).reduce((s,x)=>s+x.views,0)/v.slice(3,6).length : last3Avg;
-  const sharpDeclineRatio = prev3Avg > 0 ? last3Avg / prev3Avg : 1;
-  const hasSharpDecline = sharpDeclineRatio < 0.5 && last3Avg < 200000;
-
-  // Proporção de Shorts
-  const shortsCount = v.filter(x => x.isShort || (x.duration > 0 && x.duration <= 65)).length;
-  const shortsRatio = shortsCount / N;
-
-  // Títulos repetitivos
-  const titles = v.map(x => x.title || '');
-  const allWords = titles.flatMap(t => t.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-  const wf = {};
-  allWords.forEach(w => { wf[w] = (wf[w]||0)+1; });
-  const hasRepetitiveTitles = Object.values(wf).filter(n => n >= 3).length >= 2;
-
-  // ── PILAR 1: PERFORMANCE ABSOLUTA (45%) ──────────────────────────────────
-  // Usa MEDIANA de views — robusta a outliers.
-  // Um viral de 60M não infla artificialmente; canal com mediana de 3M score alto.
-  // top3 entra com 30% para reconhecer potencial de viralização.
-  const benchmarkViews = (views) => {
-    if (views >= 20000000) return 100;
-    if (views >= 10000000) return 95;
-    if (views >= 5000000)  return 90;
-    if (views >= 2000000)  return 84;
-    if (views >= 1000000)  return 78;
-    if (views >= 500000)   return 70;
-    if (views >= 200000)   return 60;
-    if (views >= 50000)    return 48;
-    if (views >= 10000)    return 34;
-    if (views >= 1000)     return 18;
-    return 6;
-  };
-  const perfScore = Math.min(100, benchmarkViews(medianViews) * 0.70 + benchmarkViews(top3Avg) * 0.30);
-
-  // ── PILAR 2: MOMENTUM (35%) ───────────────────────────────────────────────
-  let momentumScore = 50;
-
-  if (trendRatio >= 2.0)      momentumScore += 35;
-  else if (trendRatio >= 1.3) momentumScore += 25;
-  else if (trendRatio >= 1.0) momentumScore += 15;
-  else if (trendRatio >= 0.7) momentumScore += 0;
-  else if (trendRatio >= 0.5) momentumScore -= 15;
-  else                        momentumScore -= 30;
-
-  // Frequência ideal para Shorts: postar todo dia ou em dias alternados
-  if (avgDaysBetween <= 2)       momentumScore += 20;
-  else if (avgDaysBetween <= 5)  momentumScore += 14;
-  else if (avgDaysBetween <= 10) momentumScore += 7;
-  else if (avgDaysBetween <= 21) momentumScore += 0;
-  else                            momentumScore -= 12;
-
-  // Inatividade recente
-  if (daysSinceLastVideo > 60)      momentumScore -= 30;
-  else if (daysSinceLastVideo > 30) momentumScore -= 20;
-  else if (daysSinceLastVideo > 14) momentumScore -= 8;
-
-  // Títulos repetitivos = spam signal
-  if (hasRepetitiveTitles) momentumScore -= 14;
-
-  momentumScore = Math.min(100, Math.max(0, momentumScore));
-
-  // ── PILAR 3: ENGAJAMENTO (20%) ────────────────────────────────────────────
-  // Calibrado para Shorts (naturalmente menor que long-form)
-  const engScore = avgEngRate >= 3   ? 100
-    : avgEngRate >= 2   ? 88
-    : avgEngRate >= 1   ? 74
-    : avgEngRate >= 0.5 ? 58
-    : avgEngRate >= 0.2 ? 38
-    : avgEngRate >= 0.05 ? 20
-    : 6;
-
-  // ── SCORE FINAL ───────────────────────────────────────────────────────────
-  const raw = perfScore * 0.45 + momentumScore * 0.35 + engScore * 0.20;
-  let finalScore = raw;
-
-  // ── PISOS POR PERFORMANCE ABSOLUTA ──────────────────────────────────────────
-  // Total de views do canal (dado histórico do YouTube, mais confiável que amostra)
-  const totalViews = channel?.totalViews || 0;
-  const subs       = channel?.subscribers || 0;
-
-  // Garantias por total de views acumuladas no canal
-  if      (totalViews >= 1000000000) finalScore = Math.max(finalScore, 95); // 1B+
-  else if (totalViews >= 500000000)  finalScore = Math.max(finalScore, 92); // 500M+
-  else if (totalViews >= 100000000)  finalScore = Math.max(finalScore, 87); // 100M+
-  else if (totalViews >= 50000000)   finalScore = Math.max(finalScore, 80); // 50M+
-  else if (totalViews >= 10000000)   finalScore = Math.max(finalScore, 70); // 10M+
-  else if (medianViews >= 1000000)   finalScore = Math.max(finalScore, 57); // mediana >1M
-
-  // Teto por inatividade — só aplica se canal não tem histórico massivo
-  if (totalViews < 50000000) {
-    if (daysSinceLastVideo > 60)      finalScore = Math.min(finalScore, 48);
-    else if (daysSinceLastVideo > 30) finalScore = Math.min(finalScore, 62);
+  let avgDaysBetween = 7;
+  if (sortedDates.length > 1) {
+    const diffs = [];
+    for (let i = 0; i < sortedDates.length - 1; i++) {
+      diffs.push((sortedDates[i] - sortedDates[i+1]) / (1000*60*60*24));
+    }
+    avgDaysBetween = diffs.reduce((s,x) => s+x, 0) / diffs.length;
   }
+
+  // PILAR 1: Performance (0-100)
+  let perf = 0;
+  // Views score (log scale, 1K=20, 10K=40, 100K=60, 1M=80, 10M=100)
+  const viewsScore = Math.min(100, Math.max(0, (Math.log10(Math.max(avgViews, 1)) / 7) * 100));
+  // Engagement score (>2% excelente, >0.5% bom, <0.1% ruim)
+  const engScore = Math.min(100, Math.max(0, avgEngRate < 0.1 ? 10 : avgEngRate < 0.5 ? 30 : avgEngRate < 1 ? 55 : avgEngRate < 2 ? 75 : avgEngRate < 5 ? 90 : 100));
+  // Trend score
+  const trendScore = trendRatio >= 1.5 ? 100 : trendRatio >= 1.1 ? 75 : trendRatio >= 0.9 ? 55 : trendRatio >= 0.7 ? 35 : 15;
+  perf = viewsScore * 0.5 + engScore * 0.3 + trendScore * 0.2;
+
+  // PILAR 2: Risco de conteúdo (0-100 onde 100 = baixo risco = bom)
+  let risk = 70; // base score
+  // Penaliza alta variação (sinal de inconsistência de qualidade)
+  if (cv > 2) risk -= 25;
+  else if (cv > 1.5) risk -= 15;
+  else if (cv > 1) risk -= 8;
+  // Bônus por engajamento sólido
+  if (avgEngRate > 1) risk += 15;
+  else if (avgEngRate > 0.5) risk += 8;
+  // Penaliza views muito baixos (possível limitação algorítmica)
+  if (avgViews < 100) risk -= 30;
+  else if (avgViews < 500) risk -= 15;
+  risk = Math.min(100, Math.max(0, risk));
+
+  // PILAR 3: Comportamento (0-100)
+  let behavior = 50;
+  // Frequência ótima: 2-7 dias
+  if (avgDaysBetween <= 7 && avgDaysBetween >= 1) behavior += 30;
+  else if (avgDaysBetween <= 14) behavior += 15;
+  else if (avgDaysBetween <= 30) behavior += 5;
+  else behavior -= 10;
+  // Consistência (baixo CV = mais consistente)
+  if (cv < 0.5) behavior += 20;
+  else if (cv < 1) behavior += 10;
+  else behavior -= 5;
+  behavior = Math.min(100, Math.max(0, behavior));
+
+  // SCORE FINAL PONDERADO
+  const raw = perf * 0.45 + risk * 0.35 + behavior * 0.20;
+
+  // Ajustes não-lineares
+  let finalScore = raw;
+  // Penalização forte se engajamento muito baixo
+  if (avgEngRate < 0.1 && avgViews < 1000) finalScore *= 0.7;
+  // Bônus se tudo está bem
+  if (perf > 70 && risk > 75 && behavior > 65) finalScore = Math.min(100, finalScore * 1.08);
 
   finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
 
-  const classification = finalScore >= 80 ? 'high'
-    : finalScore >= 65 ? 'good'
-    : finalScore >= 45 ? 'moderate' : 'low';
-  const classLabels = {
-    high: '🚀 Alta Confiança', good: '✅ Boa Performance',
-    moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança'
-  };
+  // Classificação
+  const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
+  const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' };
 
   return {
     score: finalScore,
     classification,
-    classLabel: classLabels[classification],
+    classLabel: classLabel[classification],
     pillars: {
-      performance: { score: Math.round(perfScore),    desc: `Mediana ${fmtNum(Math.round(medianViews))} · Melhor vídeo ${fmtNum(maxViews)}` },
-      risk:        { score: Math.round(momentumScore), desc: `Tendência ${trendRatio >= 1.1 ? '📈 +' : trendRatio < 0.9 ? '📉 ' : '➡ '}${Math.round((trendRatio-1)*100)}% · A cada ~${Math.round(avgDaysBetween)}d` },
-      behavior:    { score: Math.round(engScore),      desc: `Engajamento ${avgEngRate.toFixed(2)}% · Último vídeo há ${daysSinceLastVideo}d` },
+      performance: { score: Math.round(perf), desc: `Views médias ${fmtNum(avgViews)} · Engajamento ${avgEngRate.toFixed(2)}%` },
+      risk: { score: Math.round(risk), desc: `Variação de performance ${cv < 0.5 ? 'baixa ✓' : cv < 1 ? 'moderada' : 'alta ⚠'}` },
+      behavior: { score: Math.round(behavior), desc: `Postagem a cada ~${Math.round(avgDaysBetween)} dias` },
     },
-    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv: 0, avgDaysBetween, daysSinceLastVideo, shortsRatio, hasSharpDecline, sharpDeclineRatio, commentRatio },
-    trendScore: momentumScore, viewsScore: perfScore, engScore,
+    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween },
+    trendScore, viewsScore, engScore,
   };
 }
-
-
 
 // ── AI DIAGNOSIS ──────────────────────────────────────────────────────────────
 async function generateAIDiagnosis(scoreData, channelData, videos) {
@@ -776,14 +697,7 @@ function generateRuleBasedInsights(s) {
   if (m.avgEngRate < 0.5) recs.push('Inclua calls-to-action claros nos primeiros 60 segundos para aumentar engajamento.');
   if (m.cv > 1) recs.push('Padronize o formato dos vídeos — consistência ajuda o algoritmo a identificar e distribuir seu conteúdo.');
 
-  const drLevel = m.trendRatio < 0.7 || m.avgEngRate < 0.1 ? 'alto' : m.trendRatio < 0.9 ? 'médio' : 'baixo';
-  return {
-    insights, recommendations: recs,
-    summary: `Canal com BlueScore ${s.score}/100 — ${s.classLabel}.`,
-    demonetizationRisk: { level: drLevel, verdict: drLevel === 'alto' ? 'Canal com sinais de risco — queda de views e engajamento baixo indicam possível penalização.' : 'Risco moderado. Acompanhe a tendência.', mainReasons: m.trendRatio < 0.8 ? ['Queda de performance nos vídeos recentes'] : [] },
-    viewsAnalysis: { mainCause: m.avgDaysBetween > 14 ? 'Frequência de postagem irregular' : m.avgEngRate < 0.3 ? 'Engajamento abaixo do esperado para Shorts' : 'Diagnóstico completo requer IA disponível.', topFixes: recs.slice(0,3).map(r => ({ action: r, expectedImpact: 'Resultado em 30-60 dias' })) },
-    ytpCompliance: { score: 50, status: 'atenção', notes: 'Análise completa requer IA disponível.' }
-  };
+  return { insights, recommendations: recs, summary: `Canal com BlueScore ${s.score}/100 — ${s.classLabel}.` };
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -868,81 +782,19 @@ function renderResults(scoreData, channelData, videos, aiData) {
     document.querySelectorAll('.traj-bar-fill').forEach(b => b.style.width = b.style.width);
   }, 200);
 
-  // ── RISCO DE DESMONETIZAÇÃO ─────────────────────────────────────────────────
-  if (aiData?.demonetizationRisk) {
-    const dr = aiData.demonetizationRisk;
-    const drC = { alto:'#ef4444', médio:'#fbbf24', baixo:'#22c55e' };
-    const drI = { alto:'🚨', médio:'⚠️', baixo:'✅' };
-    const col = drC[dr.level] || '#fbbf24';
-    const el = document.getElementById('demonetSection');
-    if (el) {
-      el.style.display = 'block';
-      el.style.borderColor = col + '40';
-      el.style.background = col + '08';
-      const lvlEl = document.getElementById('demonetLevel');
-      lvlEl.textContent = (drI[dr.level]||'⚠️') + ' ' + (dr.level||'').toUpperCase();
-      lvlEl.style.color = col;
-      lvlEl.style.borderColor = col + '50';
-      lvlEl.style.background = col + '12';
-      document.getElementById('demonetVerdict').textContent = dr.verdict || '';
-      document.getElementById('demonetReasons').innerHTML = (dr.mainReasons||[]).map(r =>
-        `<div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-sec)">
-          <span style="color:${col};flex-shrink:0">•</span><span>${r}</span></div>`
-      ).join('');
-    }
-  }
-
-  // ── YPP COMPLIANCE ───────────────────────────────────────────────────────────
+  // YTP Compliance badge
   if (aiData?.ytpCompliance) {
     const ytp = aiData.ytpCompliance;
-    const ytpC = { aprovado:'#22c55e', atenção:'#fbbf24', risco:'#ef4444' };
-    const ytpI = { aprovado:'✅', atenção:'⚠️', risco:'🚨' };
-    const col = ytpC[ytp.status] || '#fbbf24';
+    const ytpColors = { aprovado:'#22c55e', atenção:'#fbbf24', risco:'#ef4444' };
+    const ytpIcons = { aprovado:'✅', atenção:'⚠️', risco:'🚨' };
     const ytpEl = document.getElementById('ytpSection');
     if (ytpEl) {
       ytpEl.style.display = 'block';
-      document.getElementById('ytpScore').textContent = ytp.isLikelyMonetized ? '✅ Provavelmente monetizado' : '❌ Não monetizado ainda';
-      document.getElementById('ytpScore').style.color = ytp.isLikelyMonetized ? '#22c55e' : '#ef4444';
-      document.getElementById('ytpScore').style.fontSize = '14px';
-      document.getElementById('ytpStatus').textContent = (ytpI[ytp.status]||'⚠️') + ' ' + (ytp.status||'').toUpperCase();
-      document.getElementById('ytpStatus').style.color = col;
-      const reqsEl = document.getElementById('ytpReqs');
-      if (reqsEl) {
-        const subOk = ytp.meetsSubRequirement;
-        const viewsOk = ytp.meetsViewsRequirement;
-        const est = ytp.estimatedShorts90dViews || '—';
-        reqsEl.innerHTML = `
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px">
-            <span>${subOk ? '✅' : '❌'}</span>
-            <span style="color:var(--text-sec)">1.000+ inscritos — ${subOk ? 'atendido' : 'NÃO atendido'}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px">
-            <span>${viewsOk ? '✅' : '❌'}</span>
-            <span style="color:var(--text-sec)">10M views Shorts/90d — estimativa: <strong style="color:var(--text)">${est}</strong></span>
-          </div>`;
-      }
+      document.getElementById('ytpScore').textContent = ytp.score + '/100';
+      document.getElementById('ytpScore').style.color = ytpColors[ytp.status] || '#fbbf24';
+      document.getElementById('ytpStatus').textContent = ytpIcons[ytp.status] + ' ' + (ytp.status || '').toUpperCase();
+      document.getElementById('ytpStatus').style.color = ytpColors[ytp.status] || '#fbbf24';
       document.getElementById('ytpNotes').textContent = ytp.notes || '';
-    }
-  }
-
-  // ── VIEWS ANALYSIS ───────────────────────────────────────────────────────────
-  if (aiData?.viewsAnalysis) {
-    const va = aiData.viewsAnalysis;
-    const vaEl = document.getElementById('viewsAnalysisSection');
-    if (vaEl && (va.mainCause || va.topFixes?.length)) {
-      vaEl.style.display = 'block';
-      document.getElementById('viewsMainCause').textContent = va.mainCause || '';
-      document.getElementById('viewsFixList').innerHTML = (va.topFixes||[]).map((fix, i) => {
-        const action = typeof fix === 'object' ? fix.action : fix;
-        const impact = typeof fix === 'object' ? fix.expectedImpact : '';
-        return `<div style="display:flex;align-items:flex-start;gap:12px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:10px;padding:12px 14px">
-          <div style="width:22px;height:22px;border-radius:50%;background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--neon);flex-shrink:0">${i+1}</div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">${action}</div>
-            ${impact ? `<div style="font-size:11px;font-family:var(--mono);color:var(--neon)">→ ${impact}</div>` : ''}
-          </div>
-        </div>`;
-      }).join('');
     }
   }
 
