@@ -1924,19 +1924,31 @@ Responda APENAS em JSON válido sem markdown:
             else if(isRepost) similarity=Math.max(0,similarity-20);
             similarity=Math.max(0,Math.min(100,similarity));
 
-            const publishedBefore=videoMeta.publishedAt?new Date(snip.publishedAt)<new Date(videoMeta.publishedAt):false;
-            const isLikelyOriginal=!isColorCaption&&!isRepost&&(publishedBefore||views>(videoMeta.views||0)*0.5);
+            const publishedBefore = videoMeta.publishedAt
+              ? new Date(snip.publishedAt) < new Date(videoMeta.publishedAt) : false;
 
-            return {id:v.id,url:`https://www.youtube.com/shorts/${v.id}`,title:rTitle,
-              channel:snip.channelTitle||'',thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
-              views,viewsFormatted:fmtViews(views),duration:secs,publishedAt:snip.publishedAt,
-              platform:'youtube',similarity,isLikelyOriginal,isColorCaption,isRepost};
+            // Original: publicado ANTES + sem sinais de repost + duração similar
+            // NÃO usa views como critério — repost editado quase sempre tem MAIS views
+            const isLikelyOriginal = !isColorCaption && !isRepost && publishedBefore;
+
+            return {id:v.id, url:`https://www.youtube.com/shorts/${v.id}`, title:rTitle,
+              channel:snip.channelTitle||'', thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
+              views, viewsFormatted:fmtViews(views), duration:secs, publishedAt:snip.publishedAt,
+              platform:'youtube', similarity, isLikelyOriginal, isColorCaption, isRepost,
+              publishedBefore};
           })
-          .filter(v=>!v.isColorCaption) // exclui legendas coloridas = garantidamente reposts
-          .sort((a,b)=>{
-            const pb=(v)=>v.publishedAt&&videoMeta.publishedAt?(new Date(v.publishedAt)<new Date(videoMeta.publishedAt)?30:0):0;
-            const sc=(v)=>(v.isLikelyOriginal?35:0)+pb(v)+v.similarity*0.35+Math.min(30,Math.log10(v.views+1)*8);
-            return sc(b)-sc(a);
+          .filter(v => !v.isColorCaption) // exclui legendas coloridas = repost garantido
+          .sort((a,b) => {
+            // Prioridade: publicado antes + sem repost + duração similar + data antiga absoluta
+            const pb = (v) => v.publishedBefore ? 50 : 0;
+            const noRepost = (v) => !v.isRepost ? 20 : 0;
+            const durScore = (v) => v.similarity; // duração similar = mesmo vídeo
+            // Mais antigo = maior chance de ser original (timestamp absoluto)
+            const ageScore = (v) => v.publishedAt
+              ? Math.min(20, (Date.now() - new Date(v.publishedAt).getTime()) / (1000*60*60*24*30)) // dias desde publicação / 30
+              : 0;
+            const sc = (v) => pb(v) + noRepost(v) + durScore(v)*0.4 + ageScore(v);
+            return sc(b) - sc(a);
           });
         }
         if(inputHasRepost) console.log('BlueLens: video analisado tem legenda colorida (repost)');
@@ -1960,7 +1972,11 @@ VÍDEO ANALISADO:
 - Plataforma: ${platform}
 - Sinais de repost no título: ${inputHasRepost ? 'SIM (legenda colorida ou compilation detectada)' : 'não detectado'}
 
-REGRA CRÍTICA: Se o título do vídeo analisado contém emojis de cor de legenda (🟥🟧🟨🟩🟦🟪) ou palavras como "compilation", é DEFINITIVAMENTE um repost editado. Emita veredicto "edited_repost" com alta confiança.
+REGRAS CRÍTICAS:
+1. Legenda colorida (emojis 🟥🟧🟨🟩🟦🟪) no título = DEFINITIVAMENTE repost editado. Veredicto: "edited_repost".
+2. O vídeo ORIGINAL quase sempre tem MENOS views que o repost — o repost viraliza mais por ter edição (zoom, legenda, música).
+3. O indicador mais forte de original é: publicado ANTES + sem emojis coloridos + título simples sem múltiplos @.
+4. Se nenhum resultado foi encontrado no YouTube, o original provavelmente está no TikTok ou Instagram.
 
 ${topResult ? `RESULTADO MAIS PROVÁVEL DE ORIGEM:
 - Título: "${topResult.title}"
