@@ -752,13 +752,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV1">Criando seu próximo roteiro viral…</div>
       </div>
-      <!-- Título Casual -->
       <div id="titleCasualBox" style="display:none;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.18);border-radius:12px;padding:12px 16px;margin-bottom:10px">
         <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);opacity:.7;margin-bottom:6px;letter-spacing:.08em">💬 TÍTULO CASUAL</div>
         <div id="titleCasualText" style="font-size:14px;font-weight:600;color:var(--text,#e2e8f0)"></div>
         <button onclick="copyTitleEl('titleCasualText',this)" style="margin-top:8px;background:none;border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:var(--neon);cursor:pointer">📋 Copiar título</button>
       </div>
-
       <div class="script-card" id="cardV1" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -770,10 +768,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
           <div style="position:relative;display:inline-block" id="bvWrap1">
-            <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')"
-              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">
-              🎙️ Narrar no BlueVoice
-            </button>
+            <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">🎙️ Narrar no BlueVoice</button>
           </div>
         </div>
       </div>
@@ -783,13 +778,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV2">Criando seu próximo roteiro viral…</div>
       </div>
-      <!-- Título Apelativo -->
       <div id="titleApelatBox" style="display:none;background:rgba(255,80,50,.05);border:1px solid rgba(255,80,50,.2);border-radius:12px;padding:12px 16px;margin-bottom:10px">
         <div style="font-family:var(--font-mono,monospace);font-size:10px;color:#ff7a5a;opacity:.8;margin-bottom:6px;letter-spacing:.08em">🔥 TÍTULO APELATIVO</div>
         <div id="titleApelatText" style="font-size:14px;font-weight:600;color:var(--text,#e2e8f0)"></div>
         <button onclick="copyTitleEl('titleApelatText',this)" style="margin-top:8px;background:none;border:1px solid rgba(255,80,50,.25);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:#ff7a5a;cursor:pointer">📋 Copiar título</button>
       </div>
-
       <div class="script-card" id="cardV2" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -801,10 +794,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
           <div style="position:relative;display:inline-block" id="bvWrap2">
-            <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')"
-              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">
-              🎙️ Narrar no BlueVoice
-            </button>
+            <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">🎙️ Narrar no BlueVoice</button>
           </div>
         </div>
       </div>
@@ -1528,24 +1518,15 @@ function signalCopy(videoId){
 // ── IP LIMIT ───────────────────────────────────────────────────────────────
 async function checkAndIncrementLimit(){
   try{
-    const token = localStorage.getItem('bt_token');
-    const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'increment', token})});
+    const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment'})});
     const d=await r.json();
     dailyUsed=d.used||0; dailyLimit=d.limit||2;
-    // Nunca deixa check-limit rebaixar o plano — usa o plano atual se não vier um melhor
-    const returnedPlan = d.plan||'free';
-    const currentPlan  = userPlan || localStorage.getItem('bt_plan') || 'free';
-    const planRank = {free:0, full:1, master:2};
-    if((planRank[returnedPlan]||0) > (planRank[currentPlan]||0)){
-      userPlan = returnedPlan;
-      localStorage.setItem('bt_plan', userPlan);
-    }
-    // Usa o plano efetivo (memória ou localStorage) para o modal correto
-    const effectivePlan = userPlan || localStorage.getItem('bt_plan') || 'free';
-    // Master = ilimitado — nunca bloqueia, independente do que o servidor retorne
-    if(!d.allowed && effectivePlan !== 'master'){
-      if(effectivePlan==='full'){ openUpgradeModal('limit_full'); }
+    const _retPlan=d.plan||'free', _curPlan=userPlan||localStorage.getItem('bt_plan')||'free';
+    const _rank={free:0,full:1,master:2};
+    if((_rank[_retPlan]||0)>(_rank[_curPlan]||0)){ userPlan=_retPlan; localStorage.setItem('bt_plan',_retPlan); }
+    const _effPlan = userPlan||localStorage.getItem('bt_plan')||'free';
+    if(!d.allowed && _effPlan !== 'master'){
+      if(_effPlan==='full'){ openUpgradeModal('limit_full'); }
       else{ openUpgradeModal('limit_free'); }
       return false;
     }
@@ -1601,6 +1582,7 @@ async function startTranscription(e){
   const isPaid = userPlan === 'full' || userPlan === 'master';
   if(!FREE_LANGS.includes(lang) && !isPaid){openLangLockModal();return;}
 
+  btSave('bt_last_url', raw);
   const videoId=extractId(raw);
   if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
   currentVideoId=videoId;
@@ -1672,9 +1654,11 @@ async function generateScript(versionId,lang,attempt=1){
     }
     const clean=data.text.replace(/^#+\s.*/gm,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/^\s*[-•]\s/gm,'').replace(/\n{2,}/g,' ').trim();
     document.getElementById('script'+versionId).textContent=clean;
+    btSave('bt_last_script_'+versionId, clean);
+    btSave('bt_last_script_ts', Date.now());
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('card'+versionId).style.display='block';
-    if(typeof updateBlueVoiceButtons==='function') updateBlueVoiceButtons();
+    if(typeof updateBlueVoiceButtons==='function')updateBlueVoiceButtons();
     // Show BluBlu after V2 (second script)
     if(versionId==='V2') setTimeout(showBlublu, 4000);
   }catch(err){
@@ -1683,8 +1667,12 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('card'+versionId).style.display='block';
   }
 }
+// ── HELPERS DE PERSISTÊNCIA (12h) ─────────────────────────────────────────
+const BT_12H = 12*60*60*1000;
+function btSave(key,val){ localStorage.setItem(key,JSON.stringify({v:val,ts:Date.now()})); }
+function btLoad(key,maxAge=BT_12H){ try{ const d=JSON.parse(localStorage.getItem(key)); return d&&Date.now()-d.ts<maxAge?d.v:null; }catch{return null;} }
+
 function generateAllScripts(lang){
-  // Reset title boxes
   ['titleCasualBox','titleApelatBox'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
@@ -1697,12 +1685,20 @@ function generateAllScripts(lang){
   setTimeout(()=>generateTitles(lang),1200);
 }
 
-// ── GERAR TÍTULOS ──────────────────────────────────────────────────────────
+// ── ESTADO PERSISTIDO (24h) ───────────────────────────────────────────────────
+const BT_STATE_TTL = 24*60*60*1000;
+function btSave(key,val){localStorage.setItem(key,JSON.stringify({v:val,ts:Date.now()}));}
+function btLoad(key){
+  try{const r=localStorage.getItem(key);if(!r)return null;
+    const o=JSON.parse(r);if(Date.now()-o.ts>BT_STATE_TTL){localStorage.removeItem(key);return null;}
+    return o.v;}catch(e){return null;}
+}
+
+// ── GERAR TÍTULOS ─────────────────────────────────────────────────────────────
 async function generateTitles(lang){
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'title-suggest',transcript,lang,
-        originalTitle:document.getElementById('transcriptOut')?.innerText?.slice(0,80)||''})});
+      body:JSON.stringify({action:'title-suggest',transcript,lang,originalTitle:''})});
     const d=await r.json();
     if(d.casual){
       document.getElementById('titleCasualText').textContent=d.casual;
@@ -1712,13 +1708,85 @@ async function generateTitles(lang){
       document.getElementById('titleApelatText').textContent=d.apelativo;
       document.getElementById('titleApelatBox').style.display='block';
     }
+    saveLastRoteiro();
   }catch(e){console.log('titles error:',e.message);}
+}
+
+// ── SALVAR / RESTAURAR ÚLTIMO ROTEIRO (24h) ───────────────────────────────────
+function saveLastRoteiro(){
+  const v1=document.getElementById('scriptV1')?.textContent?.trim();
+  const v2=document.getElementById('scriptV2')?.textContent?.trim();
+  const tc=document.getElementById('titleCasualText')?.textContent?.trim();
+  const ta=document.getElementById('titleApelatText')?.textContent?.trim();
+  if(!v1&&!v2) return;
+  btSave('bt_last_roteiro',{v1,v2,tc,ta,videoId:currentVideoId});
+}
+
+function restoreLastRoteiro(){
+  const saved=btLoad('bt_last_roteiro');
+  if(!saved) return;
+  if(saved.v1){document.getElementById('scriptV1').textContent=saved.v1;document.getElementById('cardV1').style.display='block';}
+  if(saved.v2){document.getElementById('scriptV2').textContent=saved.v2;document.getElementById('cardV2').style.display='block';}
+  if(saved.tc){document.getElementById('titleCasualText').textContent=saved.tc;document.getElementById('titleCasualBox').style.display='block';}
+  if(saved.ta){document.getElementById('titleApelatText').textContent=saved.ta;document.getElementById('titleApelatBox').style.display='block';}
+  document.getElementById('resultsArea')?.classList.add('on');
+  currentVideoId=saved.videoId||'';
+  updateBlueVoiceButtons();
+  // Banner "último roteiro restaurado"
+  const badge=document.createElement('div');
+  badge.id='lastRoteiroBadge';
+  badge.style.cssText='text-align:center;padding:8px 16px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(251,191,36,.8);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px';
+  badge.innerHTML='⏱ Último roteiro restaurado &nbsp;<button onclick="this.closest('[id]').remove()" style="background:none;border:none;color:rgba(251,191,36,.6);cursor:pointer;font-size:13px">✕</button>';
+  const panel=document.getElementById('panel-v1');
+  if(panel) panel.insertBefore(badge,panel.firstChild);
+}
+
+// ── NARRAR NO BLUEVOICE ───────────────────────────────────────────────────────
+function sendToBlueVoice(scriptId){
+  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
+  if(!isMaster){openUpgradeModal('master_tool');return;}
+  const text=document.getElementById(scriptId)?.textContent?.trim();
+  if(!text) return;
+  localStorage.setItem('bt_prefill_script',text);
+  window.location.href='/blueVoice.html';
+}
+function copyTitleEl(id,btn){
+  navigator.clipboard.writeText(document.getElementById(id)?.textContent||'').catch(()=>{});
+  const orig=btn.textContent;btn.textContent='✓ Copiado!';setTimeout(()=>btn.textContent=orig,2000);
+}
+function updateBlueVoiceButtons(){
+  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
+  ['1','2'].forEach(n=>{
+    const btn=document.getElementById('bvBtn'+n),wrap=document.getElementById('bvWrap'+n);
+    if(!btn||!wrap) return;
+    if(isMaster){btn.style.filter='';btn.style.opacity='1';btn.style.cursor='pointer';const l=wrap.querySelector('.bv-lock');if(l)l.remove();}
+    else{btn.style.filter='blur(1.5px)';btn.style.opacity='0.55';btn.style.cursor='default';
+      if(!wrap.querySelector('.bv-lock')){const l=document.createElement('span');l.className='bv-lock';l.style.cssText='position:absolute;top:-7px;right:-7px;background:#fbbf24;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;pointer-events:none';l.textContent='🔒';wrap.appendChild(l);}}
+  });
+}
+
+// ── GERAR TÍTULOS ──────────────────────────────────────────────────────────
+async function generateTitles(lang){
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'title-suggest',transcript,lang,originalTitle:''})});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(d.casual){
+      document.getElementById('titleCasualText').textContent=d.casual;
+      document.getElementById('titleCasualBox').style.display='block';
+    }
+    if(d.apelativo){
+      document.getElementById('titleApelatText').textContent=d.apelativo;
+      document.getElementById('titleApelatBox').style.display='block';
+    }
+  }catch(e){console.log('titles:',e.message);}
 }
 
 // ── NARRAR NO BLUEVOICE ────────────────────────────────────────────────────
 function sendToBlueVoice(scriptId){
   const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
-  if(!isMaster){ openUpgradeModal('master_tool'); return; }
+  if(!isMaster){openUpgradeModal('master_tool');return;}
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
@@ -1727,27 +1795,25 @@ function sendToBlueVoice(scriptId){
 
 function copyTitleEl(id,btn){
   navigator.clipboard.writeText(document.getElementById(id)?.textContent||'').catch(()=>{});
-  const orig=btn.textContent; btn.textContent='✓ Copiado!';
+  const orig=btn.textContent;btn.textContent='✓ Copiado!';
   setTimeout(()=>btn.textContent=orig,2000);
 }
 
-// ── ESTILO DO BOTÃO BLUEVOICE (master vs outros) ───────────────────────────
 function updateBlueVoiceButtons(){
   const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
   ['1','2'].forEach(n=>{
     const btn=document.getElementById('bvBtn'+n);
     const wrap=document.getElementById('bvWrap'+n);
     if(!btn||!wrap) return;
-    const lock=wrap.querySelector('.bv-lock');
     if(isMaster){
-      btn.style.filter=''; btn.style.opacity='1'; btn.style.cursor='pointer';
-      if(lock) lock.remove();
-    }else{
-      btn.style.filter='blur(1.5px)'; btn.style.opacity='0.55'; btn.style.cursor='default';
+      btn.style.filter='';btn.style.opacity='1';
+      const l=wrap.querySelector('.bv-lock');if(l)l.remove();
+    } else {
+      btn.style.filter='blur(1.5px)';btn.style.opacity='0.55';
       if(!wrap.querySelector('.bv-lock')){
-        const l=document.createElement('span'); l.className='bv-lock';
+        const l=document.createElement('span');l.className='bv-lock';
         l.style.cssText='position:absolute;top:-7px;right:-7px;background:#fbbf24;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;pointer-events:none';
-        l.textContent='🔒'; wrap.appendChild(l);
+        l.textContent='🔒';wrap.appendChild(l);
       }
     }
   });
@@ -1783,17 +1849,8 @@ async function checkSession(){
       // Fetch real plan from Supabase
       const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
       const planData=await planRes.json();
-      // Só atualiza se veio plano válido — nunca sobrescreve com 'free' em erro de API
-      if(planData.plan && planData.plan !== 'free'){
-        userPlan = planData.plan;
-        localStorage.setItem('bt_plan', userPlan);
-      } else if(planData.plan === 'free') {
-        userPlan = 'free';
-        localStorage.setItem('bt_plan', 'free');
-      } else {
-        // API falhou ou não retornou plano — usa cache
-        userPlan = localStorage.getItem('bt_plan') || 'free';
-      }
+      userPlan=planData.plan||'free';
+      localStorage.setItem('bt_plan',userPlan);
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
@@ -1910,7 +1967,6 @@ function showFreeUserPopup(){
 
 function doLogout(){
   localStorage.removeItem('bt_token');
-  localStorage.removeItem('bt_refresh_token');
   localStorage.removeItem('bt_plan');
   location.reload();
 }
@@ -2212,6 +2268,32 @@ function joinCommunity(){
   // Refresh nav to show joined state
   const token=localStorage.getItem('bt_token');
   if(token)checkSession();
+
+  // ── RESTAURA ÚLTIMA SESSÃO (até 12h) ───────────────────────────────────
+  if(typeof btLoad==='function'){
+    const lastUrl=btLoad('bt_last_url');
+    const lastV1=btLoad('bt_last_script_V1');
+    const lastV2=btLoad('bt_last_script_V2');
+    if(lastUrl){
+      const urlInput=document.getElementById('urlInput');
+      if(urlInput && !urlInput.value) urlInput.value=lastUrl;
+    }
+    if(lastV1 || lastV2){
+      // Mostra os roteiros salvos discretamente
+      const resultsArea=document.getElementById('resultsArea');
+      if(resultsArea && lastV1){
+        resultsArea.classList.add('on');
+        if(lastV1){ document.getElementById('scriptV1').textContent=lastV1; document.getElementById('cardV1').style.display='block'; }
+        if(lastV2){ document.getElementById('scriptV2').textContent=lastV2; document.getElementById('cardV2').style.display='block'; }
+        // Mostra badge de sessão restaurada
+        const badge=document.createElement('div');
+        badge.style.cssText='text-align:center;padding:6px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(0,170,255,.6);margin-bottom:8px';
+        badge.innerHTML='⏱ Roteiros da sessão anterior restaurados &nbsp;<button onclick="this.parentElement.remove();['V1','V2'].forEach(v=>{document.getElementById('card'+v).style.display='none'});document.getElementById('resultsArea').classList.remove('on')" style="background:none;border:none;color:rgba(0,170,255,.4);cursor:pointer;font-size:10px">✕ Limpar</button>';
+        resultsArea.insertBefore(badge, resultsArea.firstChild);
+        if(typeof updateBlueVoiceButtons==='function') updateBlueVoiceButtons();
+      }
+    }
+  }
 }
 function showCommunityJoinedMsg(){
   const msg=document.createElement('div');
@@ -2383,13 +2465,12 @@ document.addEventListener('click', e => {
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
-  // Verifica memória E localStorage — evita falso bloqueio se userPlan foi corrompido
-  const effectivePlan = userPlan === 'master' || localStorage.getItem('bt_plan') === 'master' ? 'master' : userPlan;
+  const effectivePlan = userPlan==='master' || localStorage.getItem('bt_plan')==='master' ? 'master' : userPlan;
   if(effectivePlan !== 'master'){
     openUpgradeModal('master_tool');
     return;
   }
-  if(userPlan !== 'master') userPlan = 'master'; // re-sincroniza memória
+  if(userPlan !== 'master') userPlan = 'master';
   if(tool === 'download'){ window.location.href = '/baixaBlue.html'; return; }
   if(tool === 'viral'){ window.location.href = '/virais.html'; return; }
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
