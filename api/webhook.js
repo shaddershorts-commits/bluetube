@@ -90,6 +90,14 @@ export default async function handler(req, res) {
       }
 
       console.log(`✅ Plan activated: ${email} → ${plan} (${billing})`);
+
+      // Notifica sistema de afiliados — conversão paga
+      const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+      fetch(`${SITE_URL}/api/affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` })
+      }).catch(() => {});
     }
 
     // ── RENOVAÇÃO → Atualiza plan_expires_at ─────────────────────────────────
@@ -118,6 +126,14 @@ export default async function handler(req, res) {
       });
 
       console.log(`🔄 Renewal: ${subs[0].email} → expires ${expiresAt.split('T')[0]}`);
+
+      // Comissão recorrente do afiliado
+      const SITE_URL_R = process.env.SITE_URL || 'https://bluetubeviral.com';
+      fetch(`${SITE_URL_R}/api/affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'renewal', email: subs[0].email, plan: subs[0].plan })
+      }).catch(() => {});
     }
 
     // ── FALHA DE PAGAMENTO → Loga para acompanhar ────────────────────────────
@@ -160,7 +176,18 @@ export default async function handler(req, res) {
 
       const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email`, { headers: supaHeaders });
       const subs = await subRes.json();
-      console.log(`⬇️ Subscription cancelled: ${subs?.[0]?.email || customerId}`);
+      const cancelledEmail = subs?.[0]?.email;
+      console.log(`⬇️ Subscription cancelled: ${cancelledEmail || customerId}`);
+
+      // Cancela comissões do afiliado
+      if (cancelledEmail) {
+        const SITE_URL_C = process.env.SITE_URL || 'https://bluetubeviral.com';
+        fetch(`${SITE_URL_C}/api/affiliate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cancel', email: cancelledEmail })
+        }).catch(() => {});
+      }
     }
 
     return res.status(200).json({ received: true });
