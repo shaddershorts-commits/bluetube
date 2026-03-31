@@ -292,6 +292,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="subsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- ÚLTIMOS CADASTROS -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🆕 Últimos cadastros <span class="section-subtitle">— todos os planos, tempo real</span></div>
+      </div>
+      <div class="table-wrap" id="recentSignups"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
+    <!-- BLUESCORE ANALYTICS -->
+    <div class="section" id="bluescoreStats" style="display:none">
+      <div class="section-header">
+        <div class="section-title">📊 BlueScore — Análises realizadas <span class="section-subtitle">— últimas 30 dias</span></div>
+      </div>
+    </div>
+
     <!-- TOP VIRALS -->
     <div class="section">
       <div class="section-header">
@@ -512,12 +527,49 @@ async function loadData(){
     // Monthly history chart
     renderMonthlyChart(allSubscribers);
 
-    // 🔔 Real-time new subscriber detection
-    const latest=d.latest_subscriber;
-    if(latest&&lastKnownSubscriberId&&latest.email!==lastKnownSubscriberId){
+    // 🔔 Detecção em tempo real de novo cadastro (qualquer plano)
+    const latest = d.latest_signup || d.latest_subscriber;
+    if(latest && lastKnownSubscriberId && latest.email !== lastKnownSubscriberId){
       showNewSubscriberPopup(latest);
     }
-    if(latest) lastKnownSubscriberId=latest.email;
+    if(latest) lastKnownSubscriberId = latest.email;
+
+    // 📊 BlueScore stats
+    if(d.bluescore?.total_analyses > 0){
+      const bsEl = document.getElementById('bluescoreStats');
+      if(bsEl){
+        bsEl.innerHTML = `
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES (30 dias)</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${d.bluescore.total_analyses}</div></div>
+            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">SCORE MÉDIO</div><div style="font-size:22px;font-weight:800;color:var(--yellow)">${d.bluescore.avg_score}/100</div></div>
+          </div>
+          <table><thead><tr><th>Canal</th><th>Score</th><th>Classificação</th><th>Views Médias</th><th>Quando</th></tr></thead>
+          <tbody>${(d.bluescore.recent||[]).map(a=>`
+            <tr>
+              <td style="color:var(--text)">${a.channel_name||'—'}</td>
+              <td><span style="font-weight:800;color:${a.score>=70?'var(--green)':a.score>=50?'var(--yellow)':'var(--red)'}">${a.score||0}</span></td>
+              <td style="color:var(--dim);font-size:11px">${a.classification||'—'}</td>
+              <td style="color:var(--dim)">${a.avg_views?Number(a.avg_views).toLocaleString('pt-BR'):'—'}</td>
+              <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+            </tr>`).join('')}
+          </tbody></table>`;
+        bsEl.style.display = 'block';
+      }
+    }
+
+    // 🆕 Últimos cadastros (inclui free)
+    if(d.recent_signups?.length){
+      const rsEl = document.getElementById('recentSignups');
+      if(rsEl){
+        rsEl.innerHTML = d.recent_signups.map(s => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(0,170,255,0.06)">
+            <span style="width:8px;height:8px;border-radius:50%;background:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};flex-shrink:0"></span>
+            <span style="flex:1;font-size:13px">${s.email}</span>
+            <span class="badge badge-${s.plan}" style="font-size:10px">${s.plan.toUpperCase()}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--dim)">${s.created_at?new Date(s.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span>
+          </div>`).join('');
+      }
+    }
 
     // Subscribers table — show manual badge + edit button
     if(allSubscribers.length){
