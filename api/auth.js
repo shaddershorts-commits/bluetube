@@ -777,164 +777,129 @@ Responda APENAS em JSON válido sem markdown:
     ].filter(Boolean);
     if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
 
-    const keyIndex = Math.floor(Date.now() / (60*60*1000)) % YT_KEYS.length;
+    const keyIndex = Math.floor(Date.now() / (60 * 60 * 1000)) % YT_KEYS.length;
 
-    const { period = '7d', category = '', region = 'BR', q = '' } = req.query;
-    const now = new Date();
+    const { period = '7d', category = '', region = 'BR', q = '', shortsChannels = '' } = req.query;
+    const filterShortsChannels = shortsChannels === '1';
+
+    const now = Date.now();
+    const cutoffMs = period === '24h' ? 24*60*60*1000
+                   : period === '7d'  ?  7*24*60*60*1000
+                   : 30*24*60*60*1000;
+    const publishedAfter = new Date(now - cutoffMs).toISOString();
 
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-    const supaHeaders  = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+    const supaH = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
 
-    const cacheKey = `virais_${region}_${period}_${category}_${q.slice(0,20).replace(/\s/g,'_')}`;
-    const cacheTTL = 6*60*60*1000; // 6h
+    // Cache key inclui todos os filtros ativos
+    const cacheKey = `virais2_${region}_${period}_${category}_${filterShortsChannels?'sc':''}_${q.slice(0,20).replace(/\s/g,'_')}`;
+    const cacheTTL = 6 * 60 * 60 * 1000; // 6h
 
-    // ── LEITURA DE CACHE ──────────────────────────────────────────────────────
+    // ── STALE CACHE — lê antes de qualquer coisa ──────────────────────────────
     let staleCache = null;
-    if (SUPABASE_URL && SUPABASE_KEY && !q) {
+    if (SUPABASE_URL && SUPABASE_KEY) {
       try {
         const cr = await fetch(
           `${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=data,cached_at`,
-          { headers: supaHeaders }
+          { headers: supaH }
         );
         if (cr.ok) {
           const rows = await cr.json();
           if (rows?.[0]) {
-            const cachedVideos = rows[0].data?.videos || [];
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
+            const cachedVideos = rows[0].data?.videos || [];
             if (cachedVideos.length > 0) {
-              staleCache = { videos: cachedVideos, cacheAge: Math.round(age/60000) };
-            }
-            // Cache fresco → serve direto
-            if (age < cacheTTL && cachedVideos.length > 0) {
-              console.log('viral-shorts CACHE HIT:', cacheKey, Math.round(age/60000)+'min', cachedVideos.length, 'vídeos');
-              return res.status(200).json({
-                videos: cachedVideos, total: cachedVideos.length,
-                region, period, fromCache: true, cacheAge: Math.round(age/60000)
-              });
+              staleCache = { videos: cachedVideos, cacheAge: Math.round(age / 60000) };
+              // Cache fresco → serve direto, sem ir à API
+              if (age < cacheTTL) {
+                console.log('viral-shorts CACHE HIT:', cacheKey, Math.round(age/60000)+'min', cachedVideos.length+'v');
+                return res.status(200).json({
+                  videos: cachedVideos, total: cachedVideos.length,
+                  region, period, fromCache: true, cacheAge: Math.round(age/60000)
+                });
+              }
             }
           }
         }
       } catch(e) { /* cache miss */ }
     }
 
+    // ── CONFIGURAÇÃO POR REGIÃO ───────────────────────────────────────────────
+    // Uma query principal + uma de backup por região, idioma nativo
+    const REGION_CFG = {
+      BR:  { lang: 'pt', hl: 'pt-BR', q1: 'shorts virais',        q2: 'curtos viralizando' },
+      US:  { lang: 'en', hl: 'en-US', q1: 'viral shorts',         q2: 'shorts blowing up' },
+      GB:  { lang: 'en', hl: 'en-GB', q1: 'viral shorts uk',      q2: 'trending shorts uk' },
+      IN:  { lang: 'hi', hl: 'hi-IN', q1: 'shorts viral india',   q2: 'viral shorts hindi' },
+      MX:  { lang: 'es', hl: 'es-MX', q1: 'shorts virales',       q2: 'cortos virales mexico' },
+      AR:  { lang: 'es', hl: 'es-AR', q1: 'shorts virales',       q2: 'shorts virales argentina' },
+      CO:  { lang: 'es', hl: 'es-CO', q1: 'shorts virales',       q2: 'shorts virales colombia' },
+      JP:  { lang: 'ja', hl: 'ja-JP', q1: 'ショート急上昇',       q2: 'バズったショート動画' },
+      KR:  { lang: 'ko', hl: 'ko-KR', q1: '쇼츠 인기',           q2: '바이럴 쇼츠 한국' },
+      DE:  { lang: 'de', hl: 'de-DE', q1: 'shorts viral deutsch', q2: 'virale shorts deutschland' },
+      FR:  { lang: 'fr', hl: 'fr-FR', q1: 'shorts viral france',  q2: 'shorts qui buzz france' },
+      ES:  { lang: 'es', hl: 'es-ES', q1: 'shorts virales',       q2: 'shorts virales espana' },
+      TR:  { lang: 'tr', hl: 'tr-TR', q1: 'shorts viral turkiye', q2: 'trend shorts turkce' },
+      ALL: { lang: null, hl: null,    q1: 'viral shorts trending', q2: 'shorts blowing up' },
+    };
+    const cfg = REGION_CFG[region] || REGION_CFG['ALL'];
+
     const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B'
       : n >= 1e6 ? (n/1e6).toFixed(1)+'M'
-      : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
+      : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n);
 
-    // Helper: tenta chaves em sequência, para na primeira que funcionar
-    const ytFetchWithFallback = async (url) => {
+    // ── SEARCH COM ROTAÇÃO DE CHAVE ───────────────────────────────────────────
+    const ytSearch = async (query, extraParams = {}) => {
       for (let ki = 0; ki < YT_KEYS.length; ki++) {
         const key = YT_KEYS[(keyIndex + ki) % YT_KEYS.length];
-        const sep = url.includes('?') ? '&' : '?';
-        const r = await fetch(`${url}${sep}key=${key}`).catch(() => null);
-        if (!r) continue;
+        const p = new URLSearchParams({
+          part: 'snippet', type: 'video',
+          videoDuration: 'short',       // ESSENCIAL — só retorna vídeos curtos
+          order: 'viewCount',
+          maxResults: '50',
+          publishedAfter,
+          q: query,
+          key,
+          ...(region !== 'ALL' ? { regionCode: region } : {}),     // filtra por país
+          ...(cfg.lang        ? { relevanceLanguage: cfg.lang } : {}), // filtra por idioma
+          ...(category        ? { videoCategoryId: category } : {}),
+          ...extraParams,
+        });
+        const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
         const d = await r.json().catch(() => ({}));
         if (d.error?.code === 403 || d.error?.message?.toLowerCase().includes('quota')) {
           console.log('viral-shorts: quota chave', ki, '— próxima');
           continue;
         }
-        if (!r.ok) continue;
-        return d;
+        if (!r.ok || d.error) { console.log('viral-shorts search err:', d.error?.message); return []; }
+        console.log('viral-shorts search:', query.slice(0,30), '| região:', region, '| key:', ki, '| items:', d.items?.length || 0);
+        return d.items || [];
       }
-      console.log('viral-shorts: todas as chaves com quota esgotada');
-      return null;
+      console.log('viral-shorts: TODAS as chaves esgotadas!');
+      return null; // null = quota total esgotada
     };
 
-    // Mapeia regionCode para categorias e língua
-    const REGION_MAP = {
-      BR:  { lang: 'pt' }, US:  { lang: 'en' }, GB:  { lang: 'en' },
-      IN:  { lang: 'hi' }, MX:  { lang: 'es' }, AR:  { lang: 'es' },
-      CO:  { lang: 'es' }, JP:  { lang: 'ja' }, KR:  { lang: 'ko' },
-      DE:  { lang: 'de' }, FR:  { lang: 'fr' }, ES:  { lang: 'es' },
-      TR:  { lang: 'tr' }, ALL: { lang: null  },
+    // Busca stats de vídeos (1 unidade por batch de 50)
+    const ytStats = async (ids) => {
+      if (!ids.length) return [];
+      const key = YT_KEYS[keyIndex % YT_KEYS.length];
+      const r = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails,snippet&id=${ids.join(',')}&key=${key}`
+      );
+      const d = await r.json().catch(() => ({}));
+      return d.items || [];
     };
-    const { lang } = REGION_MAP[region] || { lang: null };
 
     try {
-      let allVideos = [];
+      // ── BUSCA PRINCIPAL ───────────────────────────────────────────────────
+      const searchQuery = q ? q : cfg.q1;
+      let items = await ytSearch(searchQuery);
 
-      if (q) {
-        // ── BUSCA POR TERMO (search API — 100 unidades) ─────────────────────
-        const cutoffMs = period === '24h' ? 24*60*60*1000
-          : period === '7d' ? 7*24*60*60*1000 : 30*24*60*60*1000;
-        const publishedAfter = new Date(Date.now() - cutoffMs).toISOString();
-
-        const params = new URLSearchParams({
-          part: 'snippet', type: 'video', videoDuration: 'short',
-          order: 'viewCount', maxResults: '50', q,
-          publishedAfter,
-          ...(lang ? { relevanceLanguage: lang } : {}),
-          ...(region !== 'ALL' ? { regionCode: region } : {}),
-          ...(category ? { videoCategoryId: category } : {}),
-        });
-        const sd = await ytFetchWithFallback(`https://www.googleapis.com/youtube/v3/search?${params}`);
-        const videoIds = (sd?.items || []).map(i => i.id?.videoId).filter(Boolean);
-
-        if (videoIds.length) {
-          const vd = await ytFetchWithFallback(
-            `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds.join(',')}`
-          );
-          allVideos = (vd?.items || []).map(v => {
-            const stats = v.statistics || {}, snip = v.snippet || {};
-            const dur = v.contentDetails?.duration || '';
-            const m = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-            const secs = (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
-            const views = parseInt(stats.viewCount||0);
-            return { id: v.id, title: snip.title, channel: snip.channelTitle,
-              thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url,
-              views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
-              publishedAt: snip.publishedAt, duration: secs,
-              url: `https://www.youtube.com/shorts/${v.id}` };
-          }).filter(v => v.duration <= 65 || v.duration === 0);
-        }
-
-      } else {
-        // ── TRENDING (chart=mostPopular — apenas 1 unidade!) ────────────────
-        // Muito mais eficiente que search (100x menos quota)
-        // Busca em batches de 50, pega os primeiros 150 vídeos trending
-        const batches = ['', '&pageToken=SECOND', '&pageToken=THIRD'];
-        let pageToken = '';
-
-        for (let batch = 0; batch < 3; batch++) {
-          const params = new URLSearchParams({
-            part: 'snippet,statistics,contentDetails',
-            chart: 'mostPopular',
-            maxResults: '50',
-            ...(region !== 'ALL' ? { regionCode: region } : {}),
-            ...(category ? { videoCategoryId: category } : {}),
-            ...(pageToken ? { pageToken } : {}),
-          });
-          const d = await ytFetchWithFallback(
-            `https://www.googleapis.com/youtube/v3/videos?${params}`
-          );
-          if (!d) break;
-          pageToken = d.nextPageToken || '';
-
-          const batch_videos = (d.items || []).map(v => {
-            const stats = v.statistics || {}, snip = v.snippet || {};
-            const dur = v.contentDetails?.duration || '';
-            const m = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-            const secs = (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
-            const views = parseInt(stats.viewCount||0);
-            return { id: v.id, title: snip.title, channel: snip.channelTitle,
-              thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url,
-              views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
-              publishedAt: snip.publishedAt, duration: secs,
-              url: `https://www.youtube.com/shorts/${v.id}` };
-          }).filter(v => v.duration > 0 && v.duration <= 65); // apenas Shorts
-
-          allVideos.push(...batch_videos);
-          if (!pageToken) break;
-        }
-      }
-
-      console.log('viral-shorts bruto (Shorts filtrados):', allVideos.length, '| região:', region);
-
-      // Se API retornou 0 — serve stale cache
-      if (!allVideos.length) {
+      // Se quota esgotada → stale cache
+      if (items === null) {
         if (staleCache) {
-          console.log('viral-shorts: API vazia, servindo stale cache', staleCache.videos.length, 'vídeos');
+          console.log('viral-shorts: quota esgotada, servindo stale cache', staleCache.videos.length+'v');
           return res.status(200).json({
             videos: staleCache.videos, total: staleCache.videos.length,
             region, period, fromCache: true, stale: true, cacheAge: staleCache.cacheAge
@@ -943,19 +908,86 @@ Responda APENAS em JSON válido sem markdown:
         return res.status(200).json({ videos: [], total: 0, quotaError: true });
       }
 
-      // Ordena por views e pega top 50
-      const videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 50);
+      // Se poucos resultados na query principal, complementa com query de backup
+      if (!q && items.length < 20) {
+        const backup = await ytSearch(cfg.q2);
+        if (backup && backup.length) {
+          const existingIds = new Set(items.map(i => i.id?.videoId));
+          items.push(...backup.filter(i => !existingIds.has(i.id?.videoId)));
+        }
+      }
 
-      const result = { videos, total: videos.length, region, period };
+      if (!items.length) {
+        if (staleCache) {
+          return res.status(200).json({
+            videos: staleCache.videos, total: staleCache.videos.length,
+            region, period, fromCache: true, stale: true, cacheAge: staleCache.cacheAge
+          });
+        }
+        return res.status(200).json({ videos: [], total: 0 });
+      }
+
+      // ── BUSCA STATS ───────────────────────────────────────────────────────
+      const videoIds = [...new Set(items.map(i => i.id?.videoId).filter(Boolean))];
+      const statsItems = await ytStats(videoIds);
+
+      // ── PROCESSA E FILTRA ─────────────────────────────────────────────────
+      const statsMap = {};
+      statsItems.forEach(v => { statsMap[v.id] = v; });
+
+      let videos = videoIds.map(id => {
+        const s = statsMap[id];
+        const snip = s?.snippet || items.find(i => i.id?.videoId === id)?.snippet || {};
+        const stats = s?.statistics || {};
+        const dur   = s?.contentDetails?.duration || '';
+        const m     = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        const secs  = (parseInt(m?.[1]||0)*3600) + (parseInt(m?.[2]||0)*60) + parseInt(m?.[3]||0);
+        const views = parseInt(stats.viewCount || 0);
+        const ch    = snip.channelTitle || '';
+
+        return {
+          id, title: snip.title || '', channel: ch,
+          thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || '',
+          views, viewsFormatted: fmtViews(views),
+          likes: parseInt(stats.likeCount || 0),
+          publishedAt: snip.publishedAt || '',
+          duration: secs,
+          url: `https://www.youtube.com/shorts/${id}`
+        };
+      })
+      .filter(v => {
+        // Duração: só Shorts reais (≤60s). Se duração=0, mantém (duração desconhecida)
+        if (v.duration > 60) return false;
+        // Filtro de canais de Shorts: se ativado, só canais com "short/shorts/curto" no nome
+        if (filterShortsChannels) {
+          const ch = v.channel.toLowerCase();
+          if (!ch.includes('short') && !ch.includes('curto') && !ch.includes('reel') && !ch.includes('viral')) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 50);
+
+      // Views mínimas realistas — garante que são de fato virais
+      const MIN_VIEWS = period === '24h' ? 10000   // 10K em 24h
+                      : period === '7d'  ? 50000   // 50K em 7 dias
+                      : 100000;                    // 100K em 30 dias
+
+      let filtered = videos.filter(v => v.views >= MIN_VIEWS);
+      // Fallback: se filtro deixou muito vazio, mostra top sem mínimo
+      if (filtered.length < 5 && videos.length > 0) filtered = videos;
+
+      console.log(`viral-shorts resultado: ${filtered.length}v | região:${region} | período:${period} | shortsChannels:${filterShortsChannels}`);
+
+      const result = { videos: filtered, total: filtered.length, region, period };
 
       // Salva cache
-      if (SUPABASE_URL && SUPABASE_KEY && videos.length > 0 && !q) {
+      if (SUPABASE_URL && SUPABASE_KEY && filtered.length > 0) {
         fetch(`${SUPABASE_URL}/rest/v1/viral_cache`, {
           method: 'POST',
-          headers: { ...supaHeaders, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+          headers: { ...supaH, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
           body: JSON.stringify({ cache_key: cacheKey, data: result, cached_at: new Date().toISOString() })
-        }).catch(()=>{});
-        console.log('viral-shorts cache salvo:', cacheKey, videos.length, 'vídeos');
+        }).catch(() => {});
       }
 
       return res.status(200).json(result);
