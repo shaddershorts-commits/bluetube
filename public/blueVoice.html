@@ -481,7 +481,8 @@ const VOICES = [
 
 // Vozes personalizadas do usuário + helper
 let customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
-function getAllVoices() { return [...VOICES, ...customVoices]; }
+let communityVoices = []; // carregadas da API ao iniciar
+function getAllVoices() { return [...VOICES, ...communityVoices, ...customVoices]; }
 const previewCache = {};
 
 
@@ -565,7 +566,7 @@ function renderVoices() {
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
-          ${v.custom ? '<span style="font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-weight:600">CUSTOM</span>' : `<div class="vi-badge age">${v.age}</div>`}
+          ${v.custom ? '<span style="font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-weight:600">CUSTOM</span>' : v.community ? '<span style="font-size:9px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:#22c55e;border-radius:100px;padding:2px 7px;font-weight:600">🌐 COMUNIDADE</span>' : `<div class="vi-badge age">${v.age}</div>`}
           <div class="vi-badge style">${v.style}</div>
         </div>
         <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
@@ -1045,6 +1046,17 @@ async function addCustomVoice() {
     msg.textContent = '✅ "' + voiceName + '" adicionada!'; msg.style.color = '#22c55e';
     renderVoices();
     setTimeout(() => previewVoice(voiceId, null), 400);
+
+    // Compartilha com a comunidade em segundo plano
+    const userEmail = localStorage.getItem('bt_user_email') || '';
+    fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'community-voice-add', voiceId, name: voiceName,
+        provider: 'elevenlabs', userEmail })
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        msg.textContent = '✅ "' + voiceName + '" adicionada e compartilhada com a comunidade!';
+      }
+    }).catch(() => {});
   } catch(e) {
     msg.textContent = 'Erro: ' + (e.message || 'tente novamente'); msg.style.color = '#ef4444';
     btn.textContent = '+ Adicionar voz'; btn.disabled = false; btn.style.opacity = '1';
@@ -1063,6 +1075,31 @@ function removeCustomVoice(id, event) {
 renderVoices();
 updateFavCount();
 checkReady();
+
+// ── VOZES DA COMUNIDADE ───────────────────────────────────────────────────────
+async function loadCommunityVoices() {
+  try {
+    const r = await fetch('/api/auth?action=community-voices');
+    if (!r.ok) return;
+    const data = await r.json();
+    const voices = data.voices || [];
+    if (!voices.length) return;
+    const existingIds = new Set([...VOICES, ...customVoices].map(v => v.id));
+    communityVoices = voices
+      .filter(v => !existingIds.has(v.voice_id))
+      .map(v => ({
+        id: v.voice_id, name: v.name,
+        lang: 'community', flag: '🌐',
+        gender: 'Comunidade', age: '', style: 'Community',
+        desc: 'Voz da comunidade · ' + (v.uses_count || 1) + ' uso' + (v.uses_count !== 1 ? 's' : ''),
+        provider: v.provider || 'elevenlabs',
+        community: true
+      }));
+    if (communityVoices.length) renderVoices();
+    console.log('Community voices:', communityVoices.length);
+  } catch(e) { console.log('community voices error:', e.message); }
+}
+loadCommunityVoices();
 
 // Pre-fill if coming from main page
 const prefill = localStorage.getItem('bt_prefill_script') || localStorage.getItem('bv_prefill_text');
