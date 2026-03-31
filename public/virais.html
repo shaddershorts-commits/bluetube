@@ -319,8 +319,26 @@ async function fetchVirals() {
     }
 
     const newVideos = data.videos || [];
+    // Stale cache — serve com aviso discreto
+    if (data.stale && newVideos.length > 0) {
+      lastResults = newVideos;
+      renderVideos(lastResults);
+      showStaleNotice(data.cacheAge);
+      return;
+    }
+
+    // Quota esgotada sem cache
+    if (data.quotaError && !newVideos.length) {
+      if (lastResults.length) {
+        renderVideos(lastResults);
+        showStaleNotice(null);
+      } else {
+        showError('Serviço temporariamente sobrecarregado. Tente novamente em alguns minutos.');
+      }
+      return;
+    }
+
     if (!newVideos.length) {
-      // Se tem cache local, mostra ele em vez de erro
       if (lastResults.length) {
         renderVideos(lastResults);
       } else {
@@ -439,6 +457,19 @@ function useShort(e, videoId, url) {
   const shortUrl = `https://www.youtube.com/shorts/${videoId}`;
   localStorage.setItem('bt_prefill_url', shortUrl);
   window.location.href = '/';
+}
+
+function showStaleNotice(ageMin) {
+  // Remove aviso anterior se houver
+  const old = document.getElementById('staleNotice');
+  if (old) old.remove();
+  const notice = document.createElement('div');
+  notice.id = 'staleNotice';
+  const msg = ageMin ? `Exibindo resultados salvos há ${ageMin} min — atualizando em breve` : 'Exibindo últimos resultados salvos';
+  notice.style.cssText = 'text-align:center;padding:8px;font-family:var(--mono,monospace);font-size:11px;color:rgba(251,191,36,.8);background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.15);';
+  notice.textContent = '⏱ ' + msg;
+  const grid = document.getElementById('videosGrid');
+  if (grid) grid.parentNode.insertBefore(notice, grid);
 }
 
 function showError(msg) {
