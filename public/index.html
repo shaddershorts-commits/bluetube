@@ -110,9 +110,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .modal-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
 .modal-overlay.on{display:flex;animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.modal-box{width:100%;max-width:520px;background:rgba(10,22,40,0.95);border:1px solid rgba(0,170,255,0.2);border-radius:24px;padding:36px;position:relative;text-align:center;box-shadow:0 0 80px rgba(0,100,255,0.2)}
+.modal-box{width:100%;max-width:520px;background:rgba(10,22,40,0.95);border:1px solid rgba(0,170,255,0.2);border-radius:24px;padding:36px;position:relative;text-align:center;box-shadow:0 0 80px rgba(0,100,255,0.2);max-height:90vh;overflow-y:auto}
 .modal-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent);border-radius:24px 24px 0 0}
-.modal-close{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:4px;line-height:1}
+.modal-close{position:sticky;float:right;top:0;right:0;margin-top:-8px;margin-right:-8px;background:rgba(10,22,40,.95);border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:6px;line-height:1;border-radius:50%;z-index:10}
 .modal-close:hover{color:var(--text-primary)}
 .modal-live-count{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:#4ecca3;background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.2);border-radius:100px;padding:5px 14px;margin-bottom:20px}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#4ecca3;box-shadow:0 0 6px #4ecca3;animation:blink 1.5s infinite}
