@@ -398,10 +398,6 @@ export default async function handler(req, res) {
     ].filter(Boolean);
     if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
 
-    const SUPA_URL = process.env.SUPABASE_URL;
-    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-    const supaH = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' };
-
     // Rotação de chave por minuto para distribuir cota
     const YT_KEY = YT_KEYS[Math.floor(Date.now() / 60000) % YT_KEYS.length];
 
@@ -735,7 +731,7 @@ Responda APENAS em JSON válido sem markdown:
     if (parsed) {
         
         // Salva no Supabase para retroalimentação
-        const SUPA_URL = process.env.SUPABASE_URL;
+        // SUPA_URL já declarada globalmente
         const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
         if (SUPA_URL && SUPA_KEY) {
           fetch(`${SUPA_URL}/rest/v1/bluescore_analyses`, {
@@ -1292,10 +1288,7 @@ Responda APENAS em JSON válido sem markdown:
   // ══════════════════════════════════════════════════════════════════════════
   // ── AFFILIATE SYSTEM ──────────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════════
-  const AFF_SUPA_URL = process.env.SUPABASE_URL;
-  const AFF_SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-  const AFF_ANON_KEY = process.env.SUPABASE_ANON_KEY || AFF_SUPA_KEY;
-  const affH = { 'apikey': AFF_SUPA_KEY, 'Authorization': `Bearer ${AFF_SUPA_KEY}`, 'Content-Type': 'application/json' };
+  // Usa as vars globais SUPA_URL, SUPA_KEY, ANON_KEY, supaH declaradas no topo
   const COMMISSION_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
   const PLAN_AMOUNTS = { full: 9.99, master: 29.99 };
   const getAffLevel = (p) => p >= 1000 ? 'gold' : p >= 380 ? 'silver' : 'bronze';
@@ -1313,7 +1306,7 @@ Responda APENAS em JSON válido sem markdown:
 
     try {
       // Busca afiliado pelo ref_code
-      const ar = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}&select=id,status`, { headers: affH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}&select=id,status`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate || affiliate.status === 'suspended') {
@@ -1330,9 +1323,9 @@ Responda APENAS em JSON válido sem markdown:
       const fingerprint = crypto.createHash('sha256').update(ua + lang).digest('hex').slice(0, 16);
 
       // Registra clique
-      await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_clicks`, {
+      await fetch(`${SUPA_URL}/rest/v1/affiliate_clicks`, {
         method: 'POST',
-        headers: { ...affH, 'Prefer': 'return=minimal' },
+        headers: { ...supaH, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           affiliate_id: affiliate.id,
           ref_code: ref,
@@ -1344,15 +1337,15 @@ Responda APENAS em JSON válido sem markdown:
       });
 
       // Incrementa total_clicks
-      await fetch(`${AFF_SUPA_URL}/rest/v1/rpc/increment_affiliate_clicks`, {
+      await fetch(`${SUPA_URL}/rest/v1/rpc/increment_affiliate_clicks`, {
         method: 'POST',
-        headers: affH,
+        headers: supaH,
         body: JSON.stringify({ ref: ref })
       }).catch(() => {
         // Fallback se RPC não existir
-        fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}`, {
+        fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}`, {
           method: 'PATCH',
-          headers: { ...affH, 'Prefer': 'return=minimal' },
+          headers: { ...supaH, 'Prefer': 'return=minimal' },
           body: JSON.stringify({ updated_at: new Date().toISOString() })
         });
       });
@@ -1372,8 +1365,8 @@ Responda APENAS em JSON válido sem markdown:
 
     try {
       // Valida token e pega email
-      const ur = await fetch(`${AFF_SUPA_URL}/auth/v1/user`, {
-        headers: { 'apikey': AFF_ANON_KEY, 'Authorization': `Bearer ${token}` }
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, {
+        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
       });
       if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
       const user = await ur.json();
@@ -1381,7 +1374,7 @@ Responda APENAS em JSON válido sem markdown:
       if (!email) return res.status(400).json({ error: 'Email não encontrado' });
 
       // Verifica se já é afiliado
-      const existing = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(email)}&select=id,ref_code,status,level`, { headers: affH });
+      const existing = await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(email)}&select=id,ref_code,status,level`, { headers: supaH });
       const existingData = await existing.json();
       if (existingData?.[0]) {
         return res.status(200).json({ affiliate: existingData[0], alreadyExists: true });
@@ -1389,9 +1382,9 @@ Responda APENAS em JSON válido sem markdown:
 
       // Cria afiliado
       const refCode = genRefCode(email);
-      const r = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates`, {
+      const r = await fetch(`${SUPA_URL}/rest/v1/affiliates`, {
         method: 'POST',
-        headers: { ...affH, 'Prefer': 'return=representation' },
+        headers: { ...supaH, 'Prefer': 'return=representation' },
         body: JSON.stringify({
           email,
           name: name || email.split('@')[0],
@@ -1416,13 +1409,13 @@ Responda APENAS em JSON válido sem markdown:
     if (!token) return res.status(401).json({ error: 'Token obrigatório' });
 
     try {
-      const ur = await fetch(`${AFF_SUPA_URL}/auth/v1/user`, {
-        headers: { 'apikey': AFF_ANON_KEY, 'Authorization': `Bearer ${token}` }
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, {
+        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
       });
       if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
       const user = await ur.json();
 
-      const ar = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=*`, { headers: affH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=*`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate) return res.status(404).json({ error: 'not_affiliate' });
@@ -1430,21 +1423,21 @@ Responda APENAS em JSON válido sem markdown:
       if (affiliate.status === 'suspended') return res.status(403).json({ error: 'suspended' });
 
       // Busca conversões
-      const cr = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_conversions?affiliate_id=eq.${affiliate.id}&select=*&order=converted_at.desc&limit=50`, { headers: affH });
+      const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?affiliate_id=eq.${affiliate.id}&select=*&order=converted_at.desc&limit=50`, { headers: supaH });
       const conversions = await cr.json() || [];
 
       // Busca comissões
-      const cmr = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&select=*&order=created_at.desc&limit=100`, { headers: affH });
+      const cmr = await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&select=*&order=created_at.desc&limit=100`, { headers: supaH });
       const commissions = await cmr.json() || [];
 
       // Busca clicks dos últimos 30 dias
       const thirtyDaysAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString();
-      const clkr = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${thirtyDaysAgo}&select=landed_at`, { headers: affH });
+      const clkr = await fetch(`${SUPA_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${thirtyDaysAgo}&select=landed_at`, { headers: supaH });
       const clicks = await clkr.json() || [];
 
       // Histórico de comissões por mês (últimos 12 meses)
       const twelveMonthsAgo = new Date(Date.now() - 365*24*60*60*1000).toISOString();
-      const histR = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&created_at=gte.${twelveMonthsAgo}&select=commission_amount,status,created_at,plan,subscriber_email&order=created_at.desc`, { headers: affH });
+      const histR = await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&created_at=gte.${twelveMonthsAgo}&select=commission_amount,status,created_at,plan,subscriber_email&order=created_at.desc`, { headers: supaH });
       const allCommissions = await histR.json() || [];
 
       // Agrupa por mês
@@ -1498,9 +1491,9 @@ Responda APENAS em JSON válido sem markdown:
 
       // Atualiza nível se mudou
       if (affiliate.level !== level) {
-        fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
+        fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
           method: 'PATCH',
-          headers: affH,
+          headers: supaH,
           body: JSON.stringify({ level, updated_at: new Date().toISOString() })
         });
       }
@@ -1544,13 +1537,13 @@ Responda APENAS em JSON válido sem markdown:
 
     try {
       // Busca subscriber para pegar affiliate_ref
-      const sr = await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: affH });
+      const sr = await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: supaH });
       const subs = await sr.json();
       const refCode = subs?.[0]?.affiliate_ref;
       if (!refCode) return res.status(200).json({ ok: true, skipped: 'no_ref' });
 
       // Busca afiliado
-      const ar = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=*`, { headers: affH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=*`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate) return res.status(200).json({ ok: true, skipped: 'affiliate_not_found' });
@@ -1559,16 +1552,16 @@ Responda APENAS em JSON válido sem markdown:
       if (affiliate.email === email) return res.status(200).json({ ok: true, skipped: 'self_referral' });
 
       // Verifica se já existe conversão para este email
-      const existingConv = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&affiliate_id=eq.${affiliate.id}`, { headers: affH });
+      const existingConv = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&affiliate_id=eq.${affiliate.id}`, { headers: supaH });
       const existing = await existingConv.json();
 
       const type = conversion_type || (plan === 'free' ? 'signup' : `upgrade_${plan}`);
 
       if (!existing?.length || type !== 'signup') {
         // Registra conversão
-        const convR = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_conversions`, {
+        const convR = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions`, {
           method: 'POST',
-          headers: { ...affH, 'Prefer': 'return=representation' },
+          headers: { ...supaH, 'Prefer': 'return=representation' },
           body: JSON.stringify({
             affiliate_id: affiliate.id,
             ref_code: refCode,
@@ -1589,9 +1582,9 @@ Responda APENAS em JSON válido sem markdown:
           const planAmount = PLAN_AMOUNTS[plan];
           const commissionAmount = planAmount * rate;
 
-          await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_commissions`, {
+          await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions`, {
             method: 'POST',
-            headers: { ...affH, 'Prefer': 'return=minimal' },
+            headers: { ...supaH, 'Prefer': 'return=minimal' },
             body: JSON.stringify({
               affiliate_id: affiliate.id,
               conversion_id: conv?.[0]?.id || null,
@@ -1608,9 +1601,9 @@ Responda APENAS em JSON válido sem markdown:
 
           // Atualiza stats do afiliado
           const field = plan === 'full' ? 'total_full' : 'total_master';
-          await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
+          await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
             method: 'PATCH',
-            headers: affH,
+            headers: supaH,
             body: JSON.stringify({
               [field]: (affiliate[field] || 0) + 1,
               total_earnings: parseFloat((affiliate.total_earnings || 0) + commissionAmount).toFixed(2),
@@ -1622,9 +1615,9 @@ Responda APENAS em JSON válido sem markdown:
           console.log(`💰 Commission: ${affiliate.email} ← ${email} (${plan}) = $${commissionAmount.toFixed(2)}`);
         } else if (plan === 'free') {
           // Incrementa total_free
-          await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
+          await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
             method: 'PATCH',
-            headers: affH,
+            headers: supaH,
             body: JSON.stringify({
               total_free: (affiliate.total_free || 0) + 1,
               updated_at: new Date().toISOString()
@@ -1648,12 +1641,12 @@ Responda APENAS em JSON válido sem markdown:
 
     try {
       // Busca conversão do afiliado para este email
-      const cr = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&select=affiliate_id`, { headers: affH });
+      const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&select=affiliate_id`, { headers: supaH });
       const convs = await cr.json();
       if (!convs?.length) return res.status(200).json({ ok: true, skipped: 'no_conversion' });
 
       const affiliateId = convs[0].affiliate_id;
-      const ar = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliateId}&select=*`, { headers: affH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliateId}&select=*`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate) return res.status(200).json({ ok: true, skipped: 'no_affiliate' });
@@ -1664,9 +1657,9 @@ Responda APENAS em JSON válido sem markdown:
       const planAmount = PLAN_AMOUNTS[plan] || 0;
       const commissionAmount = planAmount * rate;
 
-      await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_commissions`, {
+      await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions`, {
         method: 'POST',
-        headers: { ...affH, 'Prefer': 'return=minimal' },
+        headers: { ...supaH, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           affiliate_id: affiliateId,
           subscriber_email: email,
@@ -1681,9 +1674,9 @@ Responda APENAS em JSON válido sem markdown:
       });
 
       // Atualiza total_earnings
-      await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliateId}`, {
+      await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliateId}`, {
         method: 'PATCH',
-        headers: affH,
+        headers: supaH,
         body: JSON.stringify({
           total_earnings: parseFloat((affiliate.total_earnings || 0) + commissionAmount).toFixed(2),
           updated_at: new Date().toISOString()
@@ -1706,30 +1699,30 @@ Responda APENAS em JSON válido sem markdown:
 
     try {
       // Busca conversão
-      const cr = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&select=affiliate_id,plan`, { headers: affH });
+      const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&select=affiliate_id,plan`, { headers: supaH });
       const convs = await cr.json();
       if (!convs?.length) return res.status(200).json({ ok: true, skipped: 'no_conversion' });
 
       const { affiliate_id, plan } = convs[0];
 
       // Cancela comissões pendentes futuras
-      await fetch(`${AFF_SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&subscriber_email=eq.${encodeURIComponent(email)}&status=eq.pending`, {
+      await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&subscriber_email=eq.${encodeURIComponent(email)}&status=eq.pending`, {
         method: 'PATCH',
-        headers: affH,
+        headers: supaH,
         body: JSON.stringify({ status: 'cancelled' })
       });
 
       // Decrementa contador do afiliado
-      const ar = await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*`, { headers: affH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (affiliate) {
         const field = plan === 'full' ? 'total_full' : 'total_master';
         const newCount = Math.max(0, (affiliate[field] || 0) - 1);
         const totalPaying = Math.max(0, (affiliate.total_full||0) + (affiliate.total_master||0) - 1);
-        await fetch(`${AFF_SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}`, {
+        await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}`, {
           method: 'PATCH',
-          headers: affH,
+          headers: supaH,
           body: JSON.stringify({
             [field]: newCount,
             level: getLevel(totalPaying),
