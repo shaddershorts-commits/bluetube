@@ -629,7 +629,7 @@ export default async function handler(req, res) {
     const last3Avg = last3.reduce((s,v) => s+v.views, 0) / (last3.length || 1);
     const prev3Avg = prev3.length > 0 ? prev3.reduce((s,v) => s+v.views, 0) / prev3.length : last3Avg;
     const sharpDeclineRatio = prev3Avg > 0 ? last3Avg / prev3Avg : 1;
-    const hasSharpDecline = sharpDeclineRatio < 0.5;
+    const hasSharpDecline = sharpDeclineRatio < 0.5 && last3Avg < 200000; // só dispara se absoluto também é baixo
 
     // Dias desde último vídeo
     const lastVideoDate = videos[0]?.publishedAt ? new Date(videos[0].publishedAt) : null;
