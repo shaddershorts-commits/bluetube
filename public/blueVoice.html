@@ -493,6 +493,13 @@ const MAX_REGEN = 2;
 let lastText = '';
 let lastVoiceId = '';
 let filters = { gender: '', age: '', style: '', lang: '' };
+// Reset mensal automático — zera o contador no início de cada mês
+const _currentMonth = new Date().toISOString().slice(0, 7); // ex: "2025-03"
+const _storedMonth  = localStorage.getItem('bv_narrations_month');
+if (_storedMonth !== _currentMonth) {
+  localStorage.setItem('bv_narrations', '0');
+  localStorage.setItem('bv_narrations_month', _currentMonth);
+}
 let narrationsUsed = parseInt(localStorage.getItem('bv_narrations') || '0');
 const NARRATION_LIMIT = plan === 'master' ? 55 : 5;
 // Favoritos persistidos no localStorage
