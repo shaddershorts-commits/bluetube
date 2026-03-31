@@ -559,86 +559,6 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
-  // ── COMMUNITY VOICES — lista vozes da comunidade ─────────────────────────
-  if (req.method === 'GET' && req.query?.action === 'community-voices') {
-    const SUPA_URL = process.env.SUPABASE_URL;
-    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-    if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ voices: [] });
-    try {
-      const r = await fetch(
-        SUPA_URL + '/rest/v1/community_voices?select=voice_id,name,provider,uses_count&order=uses_count.desc&limit=50',
-        { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } }
-      );
-      if (!r.ok) return res.status(200).json({ voices: [] });
-      const rows = await r.json();
-      return res.status(200).json({ voices: Array.isArray(rows) ? rows : [] });
-    } catch(e) {
-      return res.status(200).json({ voices: [] });
-    }
-  }
-
-  // ── COMMUNITY VOICE ADD — testa e salva voz na comunidade ─────────────────
-  if (req.method === 'POST' && req.body?.action === 'community-voice-add') {
-    const { voiceId, name, provider = 'elevenlabs', userEmail = '' } = req.body;
-    if (!voiceId || !name) return res.status(400).json({ error: 'voiceId e name obrigatórios' });
-
-    const SUPA_URL = process.env.SUPABASE_URL;
-    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-    const XI_KEY   = process.env.ELEVENLABS_API_KEY;
-
-    if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ error: 'Servidor não configurado.' });
-
-    // Testa se a voz funciona antes de salvar
-    if (provider === 'elevenlabs') {
-      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-      const testRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
-        method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-        body: JSON.stringify({ text: 'Teste.', model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
-      });
-      if (!testRes.ok) {
-        const err = await testRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
-        const isPlan = testRes.status === 402 || detail.toLowerCase().includes('upgrade');
-        return res.status(400).json({
-          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta.' : 'Esta voz não está disponível.',
-          planRestriction: isPlan
-        });
-      }
-    }
-
-    // Salva ou incrementa uso no Supabase
-    try {
-      const supaH = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
-
-      // Tenta inserir; se já existe, incrementa uses_count
-      const upsertRes = await fetch(SUPA_URL + '/rest/v1/community_voices', {
-        method: 'POST',
-        headers: { ...supaH, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({
-          voice_id: voiceId, name, provider,
-          added_by: userEmail || 'anon',
-          uses_count: 1,
-          created_at: new Date().toISOString()
-        })
-      });
-
-      // Se já existia (conflict), incrementa o contador
-      if (upsertRes.status === 409 || upsertRes.status === 200) {
-        await fetch(
-          SUPA_URL + '/rest/v1/rpc/increment_voice_uses',
-          { method: 'POST', headers: supaH, body: JSON.stringify({ p_voice_id: voiceId }) }
-        ).catch(() => {});
-      }
-
-      return res.status(200).json({ ok: true, shared: true });
-    } catch(e) {
-      console.error('community-voice-add error:', e.message);
-      return res.status(500).json({ error: 'Erro ao salvar voz.' });
-    }
-  }
-
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
@@ -1090,32 +1010,56 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
+  // ── VOICE PREVIEW (GET) ─────────────────────────────────────────────────
+  // Usa TTS direto com frase curta — funciona para qualquer voiceId válido,
+  // incluindo vozes de links compartilhados e biblioteca paga.
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-    const { voiceId } = req.query;
+    const { voiceId, provider = 'elevenlabs' } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
-
+    const SAMPLE = 'Olá! Esta é a minha voz.';
     try {
-      // Busca metadados da voz incluindo preview_url
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-        headers: { 'xi-api-key': XI_KEY }
+      if (provider === 'minimax') {
+        const MM_KEY = process.env.MINIMAX_API_KEY;
+        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
+        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
+        const mmRes = await fetch('https://api.minimax.chat/v1/t2a_v2?GroupId=' + MM_GROUP, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + MM_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'speech-02-hd', text: SAMPLE,
+            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
+            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' } })
+        });
+        const mmData = await mmRes.json();
+        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio)
+          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
+        return res.status(200).json({
+          audio: Buffer.from(mmData.data.audio, 'hex').toString('base64'), format: 'mp3'
+        });
+      }
+      // ElevenLabs — gera TTS direto sem buscar metadados
+      const XI_KEY = process.env.ELEVENLABS_API_KEY;
+      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+      const ttsRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
+        method: 'POST',
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({ text: SAMPLE, model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
       });
-      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
-      const data = await r.json();
-      const previewUrl = data.preview_url;
-      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
-
-      // Faz proxy do áudio para evitar CORS
-      const audioRes = await fetch(previewUrl);
-      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
-
-      const audioBuffer = await audioRes.arrayBuffer();
-      const base64 = Buffer.from(audioBuffer).toString('base64');
-      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
+      if (!ttsRes.ok) {
+        const err = await ttsRes.json().catch(() => ({}));
+        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
+        const isPlan = ttsRes.status === 402 || detail.toLowerCase().includes('upgrade') || detail.toLowerCase().includes('free users');
+        const notFound = !isPlan && (ttsRes.status === 404 || ttsRes.status === 422);
+        console.error('voice-preview error:', ttsRes.status, voiceId, detail);
+        return res.status(502).json({
+          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta de voz.' : notFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
+          notInAccount: notFound, planRestriction: isPlan
+        });
+      }
+      const buf = await ttsRes.arrayBuffer();
+      return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3' });
     } catch(e) {
-      console.error('Preview error:', e.message);
+      console.error('voice-preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
