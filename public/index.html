@@ -1752,7 +1752,11 @@ function sendToBlueVoice(scriptId){
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
-  window.location.href='/blueVoice.html';
+  // Se estiver no shell (iframe), troca de aba; senão navega
+  try{
+    if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:'voice'},'*'); }
+    else { window.location.href='/blueVoice.html'; }
+  }catch(e){ window.location.href='/blueVoice.html'; }
 }
 function copyTitleEl(id,btn){
   navigator.clipboard.writeText(document.getElementById(id)?.textContent||'').catch(()=>{});
@@ -1824,6 +1828,8 @@ async function checkSession(){
 }
 
 function setLoggedIn(email, plan){
+  // Notifica shell pai (se estiver em iframe) que o plano mudou
+  try{ if(window.parent!==window) window.parent.postMessage({type:'bt-plan',plan:plan||userPlan},'*'); }catch(e){}
   const p = plan || userPlan || 'free';
   const planIcon = p === 'master' ? '👑' : p === 'full' ? '⚡' : '';
   const planColor = p === 'master' ? '#fbbf24' : p === 'full' ? 'var(--neon)' : 'var(--text-dim)';
@@ -2392,6 +2398,10 @@ function openMasterTool(tool){
   const _ep=userPlan==='master'||localStorage.getItem('bt_plan')==='master'?'master':userPlan;
   if(_ep!=='master'){openUpgradeModal('master_tool');return;}
   if(userPlan!=='master')userPlan='master';
+  const _toolMap={download:'baixa',viral:'virais',voice:'voice',bluescore:'score',bluelens:'score'};
+  try{
+    if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:_toolMap[tool]||tool},'*'); return; }
+  }catch(e){}
   if(tool === 'download'){ window.location.href = '/baixaBlue.html'; return; }
   if(tool === 'viral'){ window.location.href = '/virais.html'; return; }
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
