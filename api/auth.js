@@ -916,18 +916,32 @@ Responda APENAS em JSON válido sem markdown:
         };
       }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
+      // Views mínimas por período — só mostra o que está realmente viral
+      const MIN_VIEWS = period === '24h' ? 1_000_000
+                      : period === '7d'  ? 5_000_000
+                      : 10_000_000; // 30d
+
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
-      // Confia no publishedAfter que já foi enviado à API
       const softCutoff = new Date(now - cutoffMs * 3);
       let videos = allVideos
         .filter(v => !v.publishedAt || new Date(v.publishedAt) >= softCutoff)
+        .filter(v => v.views >= MIN_VIEWS)
         .sort((a,b) => b.views - a.views)
-        .slice(0, 100);
+        .slice(0, 50); // max 50 — todos são top
 
-      // Fallback: se filtro zerou, retorna sem filtro de data (API já filtrou)
+      // Fallback 1: sem filtro de data mas mantém views mínimas
       if (videos.length === 0 && allVideos.length > 0) {
-        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 100);
-        console.log('viral-shorts: fallback sem filtro de data, total:', videos.length);
+        videos = allVideos
+          .filter(v => v.views >= MIN_VIEWS)
+          .sort((a,b) => b.views - a.views)
+          .slice(0, 50);
+        console.log('viral-shorts: fallback sem data, total:', videos.length);
+      }
+
+      // Fallback 2: sem filtro nenhum (quota esgotada ou região com poucos virais)
+      if (videos.length === 0 && allVideos.length > 0) {
+        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 30);
+        console.log('viral-shorts: fallback sem filtro, top:', videos.length);
       }
 
       const dateFilterFailed = false;
