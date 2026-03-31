@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueLens — Rastreador de Origem · BlueTube Master</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817;--card:rgba(10,22,40,0.9);--neon:#00aaff;--gold:#fbbf24;
+  --green:#22c55e;--red:#ef4444;--purple:#a78bfa;
+  --blue-border:rgba(0,170,255,0.15);
+  --text:#e8f4ff;--text-sec:rgba(150,190,230,0.72);--text-dim:rgba(150,190,230,0.4);
+  --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.02) 1px,transparent 1px);background-size:48px 48px}
+.orb{position:absolute;border-radius:50%;filter:blur(140px)}
+.orb1{width:600px;height:600px;background:radial-gradient(circle,rgba(0,80,255,.25),transparent 70%);top:-150px;right:-150px}
+.orb2{width:400px;height:400px;background:radial-gradient(circle,rgba(167,139,250,.2),transparent 70%);bottom:-100px;left:-100px}
+.glow{position:fixed;pointer-events:none;z-index:1;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.04),transparent 70%);transform:translate(-50%,-50%);transition:left .12s,top .12s}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:17px;font-weight:800;color:var(--text)}
+.logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,170,255,.4)}
+.logo-mark svg{width:13px;height:13px;fill:#fff}
+.logo-sub{font-size:10px;font-family:var(--mono);color:var(--text-dim);letter-spacing:.06em}
+.master-badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:4px 12px;border-radius:100px}
+.btn-back{font-size:13px;color:var(--text-sec);text-decoration:none;border:1px solid var(--blue-border);border-radius:8px;padding:7px 14px;transition:all .2s}
+.btn-back:hover{border-color:var(--neon);color:var(--text)}
+
+main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:0 auto}
+
+/* HERO */
+.hero{text-align:center;margin-bottom:40px}
+.hero-eye{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--neon);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.lens-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:var(--neon);border-radius:50%;color:#000;font-size:11px;font-weight:800}
+.hero h1{font-size:clamp(34px,5vw,54px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;margin-bottom:12px}
+.hero h1 span{background:linear-gradient(135deg,var(--neon),#60cfff,var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{font-size:15px;color:var(--text-sec);max-width:500px;margin:0 auto;line-height:1.6}
+
+/* INPUT */
+.input-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:28px;margin-bottom:28px;backdrop-filter:blur(20px)}
+.input-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+.input-row{display:flex;gap:10px}
+.url-input{flex:1;background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:all .2s}
+.url-input::placeholder{color:var(--text-dim)}
+.url-input:focus{border-color:rgba(0,170,255,.5);background:rgba(0,170,255,.08)}
+.btn-analyze{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 0 28px rgba(0,170,255,.3)}
+.btn-analyze:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(0,170,255,.5)}
+.btn-analyze:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.input-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:10px}
+
+/* LOADING */
+#loadingSection{display:none;text-align:center;padding:48px 0}
+.scan-ring{width:80px;height:80px;border-radius:50%;border:2px solid rgba(0,170,255,.2);border-top-color:var(--neon);animation:spin 1s linear infinite;margin:0 auto 24px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.scan-steps{display:flex;flex-direction:column;gap:8px;max-width:280px;margin:16px auto 0}
+.scan-step{font-family:var(--mono);font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;transition:all .3s}
+.scan-step.active{color:var(--neon)}
+.scan-step.done{color:var(--green)}
+.step-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* RESULTS */
+#resultsSection{display:none}
+
+/* VEREDICTO */
+.verdict-card{border-radius:20px;padding:28px 32px;margin-bottom:20px;position:relative;overflow:hidden;backdrop-filter:blur(20px)}
+.verdict-card.original{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(10,22,40,.9));border:1px solid rgba(34,197,94,.25)}
+.verdict-card.repost{background:linear-gradient(135deg,rgba(239,68,68,.08),rgba(10,22,40,.9));border:1px solid rgba(239,68,68,.25)}
+.verdict-card.edited_repost{background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(10,22,40,.9));border:1px solid rgba(251,191,36,.25)}
+.verdict-card.unknown{background:var(--card);border:1px solid var(--blue-border)}
+.verdict-top{display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.verdict-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:100px;font-weight:800;font-size:14px}
+.verdict-badge.original{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--green)}
+.verdict-badge.repost{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:var(--red)}
+.verdict-badge.edited_repost{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--gold)}
+.verdict-badge.unknown{background:rgba(150,190,230,.08);border:1px solid rgba(150,190,230,.2);color:var(--text-sec)}
+.confidence-bar{flex:1;max-width:200px}
+.confidence-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px}
+.confidence-track{height:6px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:100px;transition:width 1s ease}
+.verdict-reasoning{font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:12px}
+.verdict-patterns{display:flex;flex-wrap:wrap;gap:6px}
+.pattern-tag{font-family:var(--mono);font-size:11px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:6px;padding:3px 10px;color:var(--text-sec)}
+
+/* VIDEO META */
+.video-meta-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;margin-bottom:20px;display:flex;gap:16px;align-items:flex-start}
+.meta-thumb{width:120px;height:68px;border-radius:10px;object-fit:cover;flex-shrink:0;background:rgba(0,170,255,.08)}
+.meta-info{flex:1}
+.meta-title{font-size:14px;font-weight:700;margin-bottom:6px;line-height:1.4}
+.meta-channel{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px}
+.meta-stats{display:flex;gap:12px;flex-wrap:wrap}
+.meta-stat{font-family:var(--mono);font-size:11px;color:var(--text-sec)}
+
+/* RESULTS LIST */
+.results-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;margin-bottom:20px;backdrop-filter:blur(20px)}
+.section-title{font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.result-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(0,170,255,.06);cursor:pointer;transition:all .2s;border-radius:8px}
+.result-item:last-child{border-bottom:none;padding-bottom:0}
+.result-item:hover{background:rgba(0,170,255,.04);padding-left:8px;padding-right:8px;margin:0 -8px}
+.result-rank{width:28px;height:28px;border-radius:8px;background:rgba(0,170,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;font-family:var(--mono)}
+.result-rank.top{background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(251,191,36,.1));border:1px solid rgba(251,191,36,.3);color:var(--gold)}
+.result-thumb{width:96px;height:54px;border-radius:8px;object-fit:cover;flex-shrink:0;background:rgba(0,170,255,.06)}
+.result-info{flex:1;min-width:0}
+.result-title{font-size:13px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result-meta{font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+.result-sim{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.sim-pct{font-family:var(--mono);font-size:13px;font-weight:700}
+.sim-bar{width:50px;height:4px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
+.sim-fill{height:100%;border-radius:100px}
+.origin-badge{font-family:var(--mono);font-size:9px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);border-radius:4px;padding:2px 6px;color:var(--green);white-space:nowrap}
+
+/* LOCKED */
+.locked-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:60px 40px;text-align:center;backdrop-filter:blur(20px)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:13px 18px;font-size:13px;z-index:999;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+.ai-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:100px;padding:3px 10px;margin-left:8px}
+
+@media(max-width:640px){
+  nav{padding:12px 16px}
+  .input-row{flex-direction:column}
+  .video-meta-card{flex-direction:column}
+  .meta-thumb{width:100%;height:160px}
+}
+</style>
+</head>
+<body>
+<div class="bg"><div class="bg-grid"></div><div class="orb orb1"></div><div class="orb orb2"></div></div>
+<div class="glow" id="glow"></div>
+<div class="toast" id="toast"></div>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4z"/></svg></div>
+    <div><div>BlueTube</div><div class="logo-sub">CRIADOR VIRAL</div></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="master-badge">👑 Master</span>
+    <a href="/" class="btn-back">← Voltar</a>
+  </div>
+</nav>
+
+<main>
+  <div class="hero">
+    <div class="hero-eye">
+      <span class="lens-icon">🔍</span>
+      BlueLens · Rastreador de Origem
+    </div>
+    <h1>Encontre o vídeo<br><span>original</span></h1>
+    <p class="hero-sub">Cole o link de qualquer Short e o BlueLens rastreia a origem, analisa se é repost e encontra onde o conteúdo foi criado primeiro.</p>
+  </div>
+
+  <!-- INPUT -->
+  <div class="input-card" id="inputSection">
+    <div class="input-label">Link do vídeo para analisar</div>
+    <div class="input-row">
+      <input class="url-input" id="urlInput" type="text"
+        placeholder="youtube.com/shorts/... · tiktok.com/... · instagram.com/reel/..."
+        onkeydown="if(event.key==='Enter')analyze()"/>
+      <button class="btn-analyze" id="btnAnalyze" onclick="analyze()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Rastrear origem
+      </button>
+    </div>
+    <div class="input-hint">Suporta YouTube Shorts, TikTok e Instagram Reels · Aprende com cada análise</div>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loadingSection">
+    <div class="scan-ring"></div>
+    <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Rastreando origem…</div>
+    <div style="font-size:13px;color:var(--text-sec)">Analisando padrões e buscando correspondências</div>
+    <div class="scan-steps">
+      <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando plataforma</div>
+      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo metadados</div>
+      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando correspondências</div>
+      <div class="scan-step" id="s4"><div class="step-dot"></div>IA analisando padrões</div>
+      <div class="scan-step" id="s5"><div class="step-dot"></div>Construindo veredicto</div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="resultsSection">
+
+    <!-- VEREDICTO -->
+    <div class="verdict-card" id="verdictCard">
+      <div class="verdict-top">
+        <div class="verdict-badge" id="verdictBadge">—</div>
+        <div class="confidence-bar">
+          <div class="confidence-label">CONFIANÇA DA ANÁLISE</div>
+          <div class="confidence-track"><div class="confidence-fill" id="confFill" style="width:0%"></div></div>
+        </div>
+        <span class="ai-badge">✦ IA</span>
+      </div>
+      <div class="verdict-reasoning" id="verdictReasoning"></div>
+      <div class="verdict-patterns" id="verdictPatterns"></div>
+    </div>
+
+    <!-- META DO VÍDEO ANALISADO -->
+    <div class="video-meta-card" id="videoMetaCard" style="display:none">
+      <img class="meta-thumb" id="metaThumb" src="" alt="" onerror="this.style.display='none'"/>
+      <div class="meta-info">
+        <div class="meta-title" id="metaTitle">—</div>
+        <div class="meta-channel" id="metaChannel">—</div>
+        <div class="meta-stats">
+          <span class="meta-stat" id="metaViews">—</span>
+          <span class="meta-stat" id="metaDur">—</span>
+          <span class="meta-stat" id="metaDate">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULTADOS / POSSÍVEIS ORIGENS -->
+    <div class="results-card" id="resultsCard" style="display:none">
+      <div class="section-title">
+        🎯 Possíveis origens encontradas
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="resultsCount"></span>
+      </div>
+      <div id="resultsList"></div>
+    </div>
+
+    <!-- NOVA ANÁLISE -->
+    <div style="text-align:center;margin-top:20px">
+      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↩ Analisar outro vídeo</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const token = localStorage.getItem('bt_token');
+const plan = localStorage.getItem('bt_plan');
+
+// Bloquear não-Master
+if (!token || plan !== 'master') {
+  document.getElementById('inputSection').innerHTML = `
+    <div class="locked-card">
+      <div style="font-size:48px;margin-bottom:20px">🔒</div>
+      <div style="font-size:22px;font-weight:800;margin-bottom:10px">BlueLens é exclusivo Master</div>
+      <div style="font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:28px">Rastreie a origem de qualquer vídeo viral e descubra se é repost.<br>Disponível apenas no plano Master.</div>
+      <a href="/#plans" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none">👑 Ver plano Master →</a>
+    </div>`;
+}
+
+document.addEventListener('mousemove', e => {
+  const g = document.getElementById('glow');
+  g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px';
+});
+
+let currentAnalysisId = null;
+
+const fmtNum = n => {
+  if (!n) return '0';
+  if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return ''+n;
+};
+const fmtDate = dt => dt ? new Date(dt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+const fmtSecs = s => s >= 60 ? Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s' : s+'s';
+
+function setStep(n) {
+  for (let i=1;i<=5;i++) {
+    const el = document.getElementById('s'+i);
+    if(i<n){el.classList.remove('active');el.classList.add('done');el.querySelector('.step-dot').textContent='✓';}
+    else if(i===n){el.classList.add('active');el.classList.remove('done');}
+    else{el.classList.remove('active','done');}
+  }
+}
+
+function showToast(msg, d=3500) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), d);
+}
+
+async function analyze() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+
+  document.getElementById('inputSection').style.display = 'none';
+  document.getElementById('loadingSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('btnAnalyze').disabled = true;
+  setStep(1);
+
+  try {
+    await sleep(400); setStep(2);
+    await sleep(400); setStep(3);
+
+    const r = await fetch(`/api/auth?action=bluelens-analyze&url=${encodeURIComponent(url)}&token=${encodeURIComponent(token||'')}`, { cache: 'no-store' });
+
+    setStep(4);
+    await sleep(300); setStep(5);
+    await sleep(400);
+
+    let data;
+    try { data = await r.json(); } catch(e) { throw new Error('Resposta inválida do servidor'); }
+    if (!r.ok) throw new Error(data.error || 'Erro na análise');
+
+    renderResults(data);
+
+  } catch(e) {
+    console.error('BlueLens error:', e);
+    // Volta para input com erro
+    document.getElementById('loadingSection').style.display = 'none';
+    document.getElementById('inputSection').style.display = 'block';
+    document.getElementById('btnAnalyze').disabled = false;
+    showToast('⚠ ' + (e.message || 'Erro ao analisar. Tente novamente.'));
+  } finally {
+    document.getElementById('loadingSection').style.display = 'none';
+    document.getElementById('btnAnalyze').disabled = false;
+  }
+}
+
+function renderResults(data) {
+  document.getElementById('resultsSection').style.display = 'block';
+  currentAnalysisId = data.analysisId;
+
+  const ai = data.aiAnalysis || {};
+  const meta = data.videoMeta || {};
+  const results = data.results || [];
+
+  // Veredicto
+  const vCard = document.getElementById('verdictCard');
+  vCard.className = 'verdict-card ' + (ai.verdict || 'unknown');
+
+  const vLabels = {
+    original: '✅ Vídeo Original',
+    repost: '🔴 Repost Detectado',
+    edited_repost: '⚠ Repost Editado',
+    unknown: '❓ Origem Incerta'
+  };
+  const vColors = {
+    original: 'var(--green)', repost: 'var(--red)',
+    edited_repost: 'var(--gold)', unknown: 'var(--text-sec)'
+  };
+  const vb = document.getElementById('verdictBadge');
+  vb.className = 'verdict-badge ' + (ai.verdict || 'unknown');
+  vb.textContent = vLabels[ai.verdict] || '❓ Origem Incerta';
+
+  const conf = Math.round((ai.confidence || 0) * 100);
+  const cfill = document.getElementById('confFill');
+  cfill.style.background = vColors[ai.verdict] || 'var(--neon)';
+  setTimeout(() => cfill.style.width = conf + '%', 200);
+
+  document.getElementById('verdictReasoning').textContent = ai.reasoning || 'Análise concluída.';
+  if (ai.recommendation) {
+    const rec = document.createElement('div');
+    rec.style.cssText = 'margin-top:10px;font-size:12px;font-family:var(--mono);color:var(--neon);background:rgba(0,170,255,.06);border-radius:8px;padding:8px 12px';
+    rec.textContent = '💡 ' + ai.recommendation;
+    document.getElementById('verdictReasoning').after(rec);
+  }
+
+  const pats = document.getElementById('verdictPatterns');
+  if (ai.patterns?.length) {
+    pats.innerHTML = ai.patterns.map(p => `<span class="pattern-tag">${p}</span>`).join('');
+  }
+
+  // Meta do vídeo
+  if (meta.title) {
+    document.getElementById('videoMetaCard').style.display = 'flex';
+    const thumb = document.getElementById('metaThumb');
+    if (meta.thumbnail) thumb.src = meta.thumbnail;
+    document.getElementById('metaTitle').textContent = meta.title;
+    document.getElementById('metaChannel').textContent = meta.channel || '—';
+    document.getElementById('metaViews').textContent = meta.views ? '👁 ' + fmtNum(meta.views) + ' views' : '';
+    document.getElementById('metaDur').textContent = meta.duration ? '⏱ ' + fmtSecs(meta.duration) : '';
+    document.getElementById('metaDate').textContent = meta.publishedAt ? '📅 ' + fmtDate(meta.publishedAt) : '';
+  }
+
+  // Resultados
+  if (results.length > 0) {
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsCount').textContent = results.length + ' encontrado' + (results.length>1?'s':'');
+
+    document.getElementById('resultsList').innerHTML = results.map((r, i) => {
+      const isTop = i === 0;
+      const simColor = r.similarity >= 60 ? 'var(--green)' : r.similarity >= 30 ? 'var(--gold)' : 'var(--text-dim)';
+      return `
+        <div class="result-item" onclick="handleResultClick('${r.url}', '${r.id}')">
+          <div class="result-rank ${isTop?'top':''}">${isTop?'★':(i+1)}</div>
+          ${r.thumbnail ? `<img class="result-thumb" src="${r.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>` : ''}
+          <div class="result-info">
+            <div class="result-title">${r.title || '—'}</div>
+            <div class="result-meta">${r.channel || '—'} · ${fmtNum(r.views)} views · ${fmtDate(r.publishedAt)}</div>
+            ${r.isLikelyOriginal ? '<div style="margin-top:4px"><span class="origin-badge">✓ Provável original</span></div>' : ''}
+          </div>
+          <div class="result-sim">
+            <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
+            <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">similar</div>
+          </div>
+        </div>`;
+    }).join('');
+  } else {
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsList').innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">Nenhuma correspondência encontrada. O vídeo pode ser inédito ou a origem é de outra plataforma.</div>';
+  }
+
+  document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function handleResultClick(url, videoId) {
+  // Retroalimentação: registra qual resultado o usuário clicou
+  if (currentAnalysisId) {
+    fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bluelens-feedback', analysisId: currentAnalysisId, clickedUrl: url })
+    }).catch(()=>{});
+  }
+  window.open(url, '_blank', 'noopener');
+}
+
+function reset() {
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('inputSection').style.display = 'block';
+  document.getElementById('urlInput').value = '';
+  document.getElementById('urlInput').focus();
+  // Limpa elementos dinâmicos
+  const rec = document.querySelector('.verdict-card div[style*="neon"]');
+  if (rec) rec.remove();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
