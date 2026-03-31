@@ -559,73 +559,57 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
-  // ── TITLE SUGGEST — gera 2 títulos (casual + apelativo) a partir da transcrição ──
+  // ── TITLE SUGGEST ──────────────────────────────────────────────────────────
   if (req.method === 'POST' && req.body?.action === 'title-suggest') {
-    const { transcript, originalTitle, lang = 'pt' } = req.body;
+    const { transcript, originalTitle = '', lang = 'pt' } = req.body;
     if (!transcript) return res.status(400).json({ error: 'transcript obrigatório' });
-
     const GEMINI_KEYS = [
       process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
       process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5,
     ].filter(Boolean);
-
     const OPENAI_KEY = process.env.OPENAI_API_KEY;
-
     const prompt = `Você é especialista em títulos virais para YouTube Shorts.
 
-Transcrição do vídeo: "${transcript.slice(0, 600)}"
-Título original: "${originalTitle || 'Sem título'}"
+Transcrição: "${transcript.slice(0, 500)}"
+Título original: "${originalTitle}"
 Idioma: ${lang}
 
-Crie EXATAMENTE 2 títulos para este Short. Cada um em uma linha, sem numeração, sem explicação:
-1. CASUAL: tom leve, natural, próximo do público, máximo 60 caracteres
-2. APELATIVO: hook forte, curioso, gera clique, máximo 60 caracteres
-
-Responda APENAS com os 2 títulos, um por linha.`;
-
-    let casualTitle = '', apelatTitle = '';
-
-    // Tenta Gemini primeiro
+Crie 2 títulos. Um por linha, sem número, sem explicação:
+Linha 1: tom casual e próximo do público (máx 60 chars)
+Linha 2: hook forte e apelativo (máx 60 chars)`;
+    let casual = '', apelativo = '';
     for (const key of GEMINI_KEYS) {
       try {
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-        );
+        const r = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${key}\`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
         const d = await r.json();
         const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
-          const lines = text.split('
-').map(l => l.trim()).filter(Boolean);
-          casualTitle = lines[0] || '';
-          apelatTitle = lines[1] || lines[0] || '';
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
           break;
         }
       } catch(e) { continue; }
     }
-
-    // Fallback OpenAI
-    if (!casualTitle && OPENAI_KEY) {
+    if (!casual && OPENAI_KEY) {
       try {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${OPENAI_KEY}\` },
           body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 100,
             messages: [{ role: 'user', content: prompt }] })
         });
         const d = await r.json();
         const text = d.choices?.[0]?.message?.content?.trim();
         if (text) {
-          const lines = text.split('
-').map(l => l.trim()).filter(Boolean);
-          casualTitle = lines[0] || '';
-          apelatTitle = lines[1] || lines[0] || '';
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
         }
       } catch(e) {}
     }
-
-    return res.status(200).json({ casual: casualTitle, apelativo: apelatTitle });
+    return res.status(200).json({ casual, apelativo });
   }
 
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
@@ -1079,32 +1063,52 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
+  // ── VOICE PREVIEW (GET) ─────────────────────────────────────────────────
+  // Usa TTS direto — funciona para qualquer voiceId, inclusive de links compartilhados
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-    const { voiceId } = req.query;
+    const { voiceId, provider = 'elevenlabs' } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
-
+    const SAMPLE = 'Olá! Esta é a minha voz.';
     try {
-      // Busca metadados da voz incluindo preview_url
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-        headers: { 'xi-api-key': XI_KEY }
+      if (provider === 'minimax') {
+        const MM_KEY = process.env.MINIMAX_API_KEY;
+        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
+        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
+        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'speech-02-hd', text: SAMPLE,
+            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
+            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' } })
+        });
+        const mmData = await mmRes.json();
+        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio)
+          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
+        return res.status(200).json({ audio: Buffer.from(mmData.data.audio, 'hex').toString('base64'), format: 'mp3' });
+      }
+      // ElevenLabs
+      const XI_KEY = process.env.ELEVENLABS_API_KEY;
+      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({ text: SAMPLE, model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
       });
-      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
-      const data = await r.json();
-      const previewUrl = data.preview_url;
-      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
-
-      // Faz proxy do áudio para evitar CORS
-      const audioRes = await fetch(previewUrl);
-      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
-
-      const audioBuffer = await audioRes.arrayBuffer();
-      const base64 = Buffer.from(audioBuffer).toString('base64');
-      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
+      if (!ttsRes.ok) {
+        const err = await ttsRes.json().catch(() => ({}));
+        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
+        const isPlan = ttsRes.status === 402 || detail.toLowerCase().includes('upgrade') || detail.toLowerCase().includes('free users');
+        const notFound = !isPlan && (ttsRes.status === 404 || ttsRes.status === 422);
+        return res.status(502).json({
+          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta de voz.' : notFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
+          notInAccount: notFound, planRestriction: isPlan
+        });
+      }
+      const buf = await ttsRes.arrayBuffer();
+      return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3' });
     } catch(e) {
-      console.error('Preview error:', e.message);
+      console.error('voice-preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
@@ -1116,7 +1120,7 @@ Responda APENAS em JSON válido sem markdown:
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
+    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
 
     try {
       // eleven_v3 usa endpoint diferente (turbo/v3 preview)
