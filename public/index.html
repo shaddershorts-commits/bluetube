@@ -865,7 +865,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <li>Comunidade exclusiva</li>
           <li>Suporte prioritário</li>
         </ul>
-        <a href="#" onclick="openMasterTool('bluescore');return false" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 12px;border:1px solid rgba(251,191,36,.45);border-radius:11px;background:rgba(251,191,36,.07);text-decoration:none;transition:all .2s;cursor:pointer" onmouseover="this.style.background='rgba(251,191,36,.14)';this.style.borderColor='rgba(251,191,36,.7)'" onmouseout="this.style.background='rgba(251,191,36,.07)';this.style.borderColor='rgba(251,191,36,.45)'">
+        <a href="#" onclick="openMasterTool('bluelens');return false" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px 12px;border:1px solid rgba(167,139,250,.35);border-radius:11px;background:rgba(167,139,250,.06);text-decoration:none;transition:all .2s;cursor:pointer" onmouseover="this.style.background='rgba(167,139,250,.12)';this.style.borderColor='rgba(167,139,250,.6)'" onmouseout="this.style.background='rgba(167,139,250,.06)';this.style.borderColor='rgba(167,139,250,.35)'">
+          <span style="font-size:16px">🔍</span>
+          <div style="flex:1">
+            <div style="color:#a78bfa;font-weight:800;font-size:13px;letter-spacing:-.2px">BlueLens</div>
+            <div style="color:rgba(167,139,250,.65);font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:1px">Detecta quem já publicou o mesmo conteúdo</div>
+          </div>
+          <span style="font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:3px 8px;border-radius:100px;font-weight:700;white-space:nowrap;flex-shrink:0">NOVO</span>
+        </a>
+        <a href="#" onclick="openMasterTool('bluescore');return false" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px 12px;border:1px solid rgba(251,191,36,.45);border-radius:11px;background:rgba(251,191,36,.07);text-decoration:none;transition:all .2s;cursor:pointer" onmouseover="this.style.background='rgba(251,191,36,.14)';this.style.borderColor='rgba(251,191,36,.7)'" onmouseout="this.style.background='rgba(251,191,36,.07)';this.style.borderColor='rgba(251,191,36,.45)'">
           <span style="font-size:16px">★</span>
           <div style="flex:1">
             <div style="color:#fbbf24;font-weight:800;font-size:13px;letter-spacing:-.2px">BlueScore</div>
@@ -1241,7 +1249,7 @@ function openUpgradeModal(reason){
         <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
         <div class="plan-badge gold" style="margin-top:8px">Master</div>
         <div class="plan-price" id="modalMasterPrice" style="font-size:28px">$29,99<span>/mês</span></div>
-        <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid rgba(251,191,36,.4);border-radius:10px;background:rgba(251,191,36,.08)"><span style="color:var(--gold);font-weight:800;font-size:12px">★ BlueScore</span><span style="color:rgba(251,191,36,.8);font-size:11px;font-family:var(--font-mono)">Revelamos a confiança do YouTube no seu canal</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span></div>
+        <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid rgba(251,191,36,.4);border-radius:10px;background:rgba(251,191,36,.08)"><span style="color:var(--gold);font-weight:800;font-size:12px">★ BlueScore</span><span style="color:rgba(251,191,36,.8);font-size:11px;font-family:var(--font-mono)">Revelamos a confiança do YouTube no seu canal</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span><span style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;border:1px solid rgba(167,139,250,.35);border-radius:10px;background:rgba(167,139,250,.06)"><span style="color:#a78bfa;font-weight:800;font-size:12px">🔍 BlueLens</span><span style="color:rgba(167,139,250,.8);font-size:11px;font-family:var(--font-mono)">Detecta quem já publicou o mesmo conteúdo</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span></div>
       </div>`;
     document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
   } else {
