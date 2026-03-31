@@ -74,6 +74,7 @@ export default async function handler(req, res) {
         'line_items[0][quantity]': '1',
         'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
         'cancel_url': `${SITE_URL}?payment=cancelled`,
+        'allow_promotion_codes': 'true',
         'metadata[plan]': plan,
         'metadata[billing]': billing || 'monthly',
         ...(customerEmail ? { 'customer_email': customerEmail } : {})
