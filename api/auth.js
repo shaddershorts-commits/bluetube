@@ -1781,6 +1781,297 @@ Responda APENAS em JSON válido sem markdown:
   }
 
 
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── BLUELENS: BUSCA DE ORIGEM DE VÍDEO ───────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET ?action=bluelens-analyze&url=...&token=...
+  if (req.method === 'GET' && req.query?.action === 'bluelens-analyze') {
+    const { url: videoUrl, token: userToken } = req.query;
+    if (!videoUrl) return res.status(400).json({ error: 'URL obrigatória' });
+
+    // Valida token
+    let userEmail = null;
+    if (userToken) {
+      try {
+        const ur = await fetch(`${SUPA_URL}/auth/v1/user`, {
+          headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${userToken}` }
+        });
+        if (ur.ok) { const u = await ur.json(); userEmail = u.email; }
+      } catch(e) {}
+    }
+
+    try {
+      const decodedUrl = decodeURIComponent(videoUrl);
+
+      // 1. Detecta plataforma e extrai metadados básicos
+      const platform = decodedUrl.includes('tiktok.com') ? 'tiktok'
+        : decodedUrl.includes('instagram.com') ? 'instagram'
+        : decodedUrl.includes('youtube.com') || decodedUrl.includes('youtu.be') ? 'youtube'
+        : 'unknown';
+
+      // 2. Extrai ID do vídeo e metadados via YouTube API (para YT) ou metadados OG
+      let videoMeta = { title: '', thumbnail: '', duration: 0, channel: '' };
+      let ytVideoId = null;
+
+      if (platform === 'youtube') {
+        const m = decodedUrl.match(/(?:v=|shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        ytVideoId = m?.[1];
+        if (ytVideoId) {
+          const YT_KEY = process.env.YOUTUBE_API_KEY;
+          const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${ytVideoId}&key=${YT_KEY}`);
+          const vd = await vr.json();
+          const v = vd.items?.[0];
+          if (v) {
+            const dur = v.contentDetails?.duration || '';
+            const dm = dur.match(/PT(?:([0-9]+)M)?(?:([0-9]+)S)?/);
+            videoMeta = {
+              title: v.snippet?.title || '',
+              thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url || '',
+              duration: (parseInt(dm?.[1]||0)*60)+parseInt(dm?.[2]||0),
+              channel: v.snippet?.channelTitle || '',
+              views: parseInt(v.statistics?.viewCount || 0),
+              publishedAt: v.snippet?.publishedAt
+            };
+          }
+        }
+      }
+
+      // 3. Busca base interna (vídeos já analisados com hash similar)
+      let internalMatches = [];
+      if (SUPA_URL && SUPA_KEY) {
+        try {
+          // Busca por URL exata primeiro
+          const dbR = await fetch(`${SUPA_URL}/rest/v1/bluelens_video_db?url=eq.${encodeURIComponent(decodedUrl)}&select=*`, { headers: supaH });
+          const dbData = await dbR.json();
+          if (dbData?.[0]) {
+            dbData[0].times_matched = (dbData[0].times_matched || 0) + 1;
+            fetch(`${SUPA_URL}/rest/v1/bluelens_video_db?url=eq.${encodeURIComponent(decodedUrl)}`, {
+              method: 'PATCH', headers: supaH,
+              body: JSON.stringify({ times_matched: dbData[0].times_matched, last_seen: new Date().toISOString() })
+            }).catch(()=>{});
+            internalMatches = dbData;
+          }
+        } catch(e) {}
+      }
+
+      // 4. Busca YouTube por título similar (find origin)
+      let searchResults = [];
+      if (videoMeta.title && process.env.YOUTUBE_API_KEY) {
+        // Remove palavras de canal e hashtags para busca mais limpa
+        const cleanTitle = videoMeta.title
+          .replace(/#\w+/g, '')
+          .replace(/\|.*$/,'')
+          .replace(/@\w+/g,'')
+          .trim()
+          .slice(0, 100);
+
+        const searches = [
+          // Busca pelo título limpo
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=8&order=viewCount&key=${process.env.YOUTUBE_API_KEY}`).then(r=>r.json()).catch(()=>({items:[]})),
+          // Busca só o Short original
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&videoDuration=short&maxResults=5&order=date&key=${process.env.YOUTUBE_API_KEY_2||process.env.YOUTUBE_API_KEY}`).then(r=>r.json()).catch(()=>({items:[]})),
+        ];
+
+        const [byViews, byDate] = await Promise.all(searches);
+        const allItems = [...(byViews.items||[]), ...(byDate.items||[])];
+        const seen = new Set();
+        const unique = allItems.filter(i => {
+          const id = i.id?.videoId;
+          if (!id || seen.has(id) || id === ytVideoId) return false;
+          seen.add(id); return true;
+        });
+
+        if (unique.length > 0) {
+          const ids = unique.map(i => i.id.videoId).join(',');
+          const sr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${ids}&key=${process.env.YOUTUBE_API_KEY}`);
+          const sd = await sr.json();
+
+          searchResults = (sd.items || []).map(v => {
+            const stats = v.statistics || {};
+            const snip = v.snippet || {};
+            const dur = v.contentDetails?.duration || '';
+            const dm = dur.match(/PT(?:([0-9]+)M)?(?:([0-9]+)S)?/);
+            const secs = (parseInt(dm?.[1]||0)*60)+parseInt(dm?.[2]||0);
+            const views = parseInt(stats.viewCount||0);
+
+            // Calcula similaridade por título (Jaccard simplificado)
+            const titleWords = new Set(videoMeta.title.toLowerCase().split(/\s+/).filter(w=>w.length>3));
+            const resultWords = new Set(snip.title?.toLowerCase().split(/\s+/).filter(w=>w.length>3)||[]);
+            const intersection = [...titleWords].filter(w=>resultWords.has(w)).length;
+            const union = new Set([...titleWords, ...resultWords]).size;
+            const titleSim = union > 0 ? intersection / union : 0;
+
+            // Bônus de similaridade por duração similar
+            const durSim = videoMeta.duration > 0 && secs > 0
+              ? Math.max(0, 1 - Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs))
+              : 0.5;
+
+            const similarity = Math.round((titleSim * 0.6 + durSim * 0.4) * 100);
+
+            return {
+              id: v.id,
+              url: `https://www.youtube.com/shorts/${v.id}`,
+              youtubeUrl: `https://www.youtube.com/watch?v=${v.id}`,
+              title: snip.title || '',
+              channel: snip.channelTitle || '',
+              thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || '',
+              views, viewsFormatted: fmtViews(views),
+              duration: secs,
+              publishedAt: snip.publishedAt,
+              platform: 'youtube',
+              similarity,
+              isLikelyOriginal: views > (videoMeta.views || 0) && new Date(snip.publishedAt) < new Date(videoMeta.publishedAt || Date.now())
+            };
+          }).sort((a,b) => {
+            // Prioriza: mais views + mais antigo + maior similaridade
+            const aScore = (a.isLikelyOriginal ? 40 : 0) + a.similarity * 0.4 + Math.min(40, Math.log10(a.views+1)*10);
+            const bScore = (b.isLikelyOriginal ? 40 : 0) + b.similarity * 0.4 + Math.min(40, Math.log10(b.views+1)*10);
+            return bScore - aScore;
+          });
+        }
+      }
+
+      // 5. IA analisa padrões e emite veredicto
+      let aiAnalysis = { verdict: 'unknown', confidence: 0, reasoning: '', patterns: [] };
+      const GEMINI_KEYS = [
+        process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3
+      ].filter(Boolean);
+
+      if (GEMINI_KEYS.length && videoMeta.title) {
+        const topResult = searchResults[0];
+        const prompt = `Você é um especialista em análise de vídeos virais e detecção de conteúdo reutilizado.
+
+VÍDEO ANALISADO:
+- Título: "${videoMeta.title}"
+- Canal: "${videoMeta.channel}"
+- Duração: ${videoMeta.duration}s
+- Views: ${videoMeta.views?.toLocaleString() || 'desconhecido'}
+- Publicado: ${videoMeta.publishedAt || 'desconhecido'}
+- Plataforma: ${platform}
+
+${topResult ? `RESULTADO MAIS PROVÁVEL DE ORIGEM:
+- Título: "${topResult.title}"
+- Canal: "${topResult.channel}"
+- Views: ${topResult.views?.toLocaleString()}
+- Publicado: ${topResult.publishedAt}
+- Similaridade calculada: ${topResult.similarity}%
+- Publicado ANTES do analisado: ${topResult.isLikelyOriginal}` : 'Nenhum resultado de busca encontrado.'}
+
+TOTAL DE RESULTADOS ENCONTRADOS: ${searchResults.length}
+
+Analise e responda APENAS em JSON válido sem markdown:
+{
+  "verdict": "original|repost|edited_repost|unknown",
+  "confidence": 0.0-1.0,
+  "reasoning": "explicação em 2-3 frases sobre por que este vídeo é ou não original",
+  "patterns": ["padrão1 detectado no título/metadata", "padrão2"],
+  "originChannel": "nome do canal que provavelmente criou o original ou null",
+  "recommendation": "o que o usuário deve fazer com essa informação"
+}`;
+
+        for (const key of GEMINI_KEYS) {
+          try {
+            const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 600 } })
+            });
+            const gd = await gr.json();
+            if (gd.error?.code === 429) continue;
+            let text = gd.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('').trim()||'';
+            text = text.split('```json').join('').split('```').join('').trim();
+            const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+            if (s >= 0 && e >= 0) {
+              aiAnalysis = JSON.parse(text.slice(s, e+1));
+              break;
+            }
+          } catch(e) { continue; }
+        }
+      }
+
+      // 6. Salva análise no Supabase para retroalimentação
+      const analysisId = crypto.randomBytes(8).toString('hex');
+      if (SUPA_URL && SUPA_KEY) {
+        fetch(`${SUPA_URL}/rest/v1/bluelens_analyses`, {
+          method: 'POST',
+          headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            user_email: userEmail,
+            input_url: decodedUrl,
+            input_platform: platform,
+            video_title: videoMeta.title,
+            video_duration: videoMeta.duration,
+            thumbnail_url: videoMeta.thumbnail,
+            results: searchResults.slice(0, 5),
+            best_match_url: searchResults[0]?.url || null,
+            best_match_similarity: searchResults[0]?.similarity || 0,
+            ai_verdict: aiAnalysis.verdict,
+            ai_confidence: aiAnalysis.confidence,
+            ai_reasoning: aiAnalysis.reasoning,
+            visual_patterns: aiAnalysis.patterns || []
+          })
+        }).catch(()=>{});
+
+        // Adiciona vídeo ao banco interno se não existir
+        if (ytVideoId && videoMeta.title) {
+          fetch(`${SUPA_URL}/rest/v1/bluelens_video_db`, {
+            method: 'POST',
+            headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
+            body: JSON.stringify({
+              url: decodedUrl,
+              platform,
+              title: videoMeta.title,
+              channel: videoMeta.channel,
+              duration: videoMeta.duration,
+              thumbnail_url: videoMeta.thumbnail,
+              is_original: aiAnalysis.verdict === 'original',
+              confidence: aiAnalysis.confidence
+            })
+          }).catch(()=>{});
+        }
+      }
+
+      return res.status(200).json({
+        analysisId,
+        platform,
+        videoMeta,
+        results: searchResults.slice(0, 8),
+        aiAnalysis,
+        internalMatch: internalMatches[0] || null,
+        totalFound: searchResults.length
+      });
+
+    } catch(e) {
+      console.error('BlueLens error:', e.message);
+      return res.status(500).json({ error: 'Erro na análise: ' + e.message });
+    }
+  }
+
+  // POST { action: 'bluelens-feedback', analysisId, clickedUrl }
+  if (req.method === 'POST' && _action === 'bluelens-feedback') {
+    const { analysisId, clickedUrl } = req.body || {};
+    if (!analysisId || !clickedUrl) return res.status(400).json({ error: 'Dados obrigatórios' });
+    try {
+      // Atualiza análise com feedback do usuário
+      await fetch(`${SUPA_URL}/rest/v1/bluelens_analyses?id=eq.${analysisId}`, {
+        method: 'PATCH',
+        headers: supaH,
+        body: JSON.stringify({ user_clicked_result: clickedUrl })
+      });
+      // Incrementa score do vídeo clicado no banco interno
+      fetch(`${SUPA_URL}/rest/v1/bluelens_video_db?url=eq.${encodeURIComponent(clickedUrl)}`, {
+        method: 'PATCH',
+        headers: supaH,
+        body: JSON.stringify({ times_matched: 999, last_seen: new Date().toISOString() })
+      }).catch(()=>{});
+      return res.status(200).json({ ok: true });
+    } catch(e) {
+      return res.status(200).json({ ok: false });
+    }
+  }
+
     return res.status(400).json({ error: 'Ação inválida' });
 
   } catch (err) {
