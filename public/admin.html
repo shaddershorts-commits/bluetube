@@ -292,6 +292,14 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="subsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- AFILIADOS -->
+    <div class="section" id="affiliatesSection">
+      <div class="section-header">
+        <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— aprovar e gerenciar afiliados</span></div>
+      </div>
+      <div class="table-wrap" id="affiliatesTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <!-- ÚLTIMOS CADASTROS -->
     <div class="section">
       <div class="section-header">
@@ -557,6 +565,38 @@ async function loadData(){
       }
     }
 
+    // 🤝 Afiliados
+    fetch(`/api/admin?action=list_affiliates`, { headers: { 'Authorization': `Bearer ${secret}` } })
+      .then(r => r.json()).then(affiliates => {
+        if (!Array.isArray(affiliates) || !affiliates.length) {
+          document.getElementById('affiliatesTable').innerHTML = '<div class="empty-state">Nenhum afiliado cadastrado ainda.</div>';
+          return;
+        }
+        const statusColor = { active:'var(--green)', pending:'var(--yellow)', suspended:'var(--red)' };
+        const statusLabel = { active:'✅ Ativo', pending:'⏳ Aguardando', suspended:'🚫 Suspenso' };
+        document.getElementById('affiliatesTable').innerHTML = `
+          <table>
+            <thead><tr><th>Email</th><th>Código</th><th>Nível</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ação</th></tr></thead>
+            <tbody>${affiliates.map(a => `
+              <tr>
+                <td style="color:var(--text)">${a.email}</td>
+                <td style="font-family:var(--mono);font-size:11px;color:var(--neon)">${a.ref_code}</td>
+                <td><span style="font-family:var(--mono);font-size:11px;color:${a.level==='gold'?'var(--yellow)':a.level==='silver'?'#c0c0c0':'#cd7f32'}">${a.level?.toUpperCase()}</span></td>
+                <td style="color:var(--text)">${(a.total_full||0)+(a.total_master||0)}</td>
+                <td style="color:var(--green)">$${parseFloat(a.total_earnings||0).toFixed(2)}</td>
+                <td><span style="color:${statusColor[a.status]||'var(--dim)';font-family:var(--mono);font-size:11px}">${statusLabel[a.status]||a.status}</span></td>
+                <td>
+                  <div style="display:flex;gap:6px">
+                    ${a.status !== 'active' ? `<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅ Aprovar</button>` : ''}
+                    ${a.status !== 'suspended' ? `<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫 Suspender</button>` : ''}
+                    ${a.status !== 'pending' ? `<button onclick="setAffiliateStatus('${a.email}','pending')" style="font-family:var(--mono);font-size:10px;color:var(--yellow);background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:5px;padding:4px 8px;cursor:pointer">⏳ Pendente</button>` : ''}
+                  </div>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`;
+      }).catch(() => {});
+
     // 🆕 Últimos cadastros (inclui free)
     if(d.recent_signups?.length){
       const rsEl = document.getElementById('recentSignups');
@@ -730,6 +770,18 @@ async function saveEditPlan(){
     msg.style.color='var(--red)';
     msg.textContent='Erro: '+e.message;
   }
+}
+
+async function setAffiliateStatus(email, status) {
+  const secret = localStorage.getItem('admin_secret') || prompt('Admin secret:');
+  if (!confirm(`${status === 'active' ? '✅ Aprovar' : status === 'suspended' ? '🚫 Suspender' : '⏳ Pendente'}: ${email}?`)) return;
+  const r = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${secret}` },
+    body: JSON.stringify({ action: 'set_affiliate_status', email, status })
+  });
+  if (r.ok) { location.reload(); }
+  else alert('Erro ao atualizar status');
 }
 
 async function quickEditPlan(email, currentPlan){
