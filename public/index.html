@@ -3,8 +3,55 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BlueTube — Transcritor de YouTube Shorts</title>
-<meta name="description" content="Cole qualquer link de YouTube Shorts e receba transcrição + 2 roteiros virais prontos para narrar."/>
+
+<!-- SEO primário -->
+<title>BlueTube — Crie Roteiros Virais para YouTube Shorts com IA</title>
+<meta name="description" content="Gere roteiros virais para YouTube Shorts em segundos. Cole qualquer link, escolha o idioma e receba transcrição + 2 roteiros prontos para narrar. Grátis, sem cadastro."/>
+<meta name="keywords" content="roteiro viral, youtube shorts, transcritor shorts, roteiro para shorts, criar shorts virais, IA para criadores, script youtube"/>
+<link rel="canonical" href="https://bluetubeviral.com/"/>
+<meta name="robots" content="index, follow"/>
+<meta name="author" content="BlueTube"/>
+<meta name="language" content="pt-BR"/>
+
+<!-- Open Graph (WhatsApp, Facebook, LinkedIn) -->
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://bluetubeviral.com/"/>
+<meta property="og:title" content="BlueTube — Crie Roteiros Virais para YouTube Shorts com IA"/>
+<meta property="og:description" content="Gere roteiros virais para YouTube Shorts em segundos. Cole qualquer link, escolha o idioma e receba transcrição + 2 roteiros prontos para narrar. Grátis, sem cadastro."/>
+<meta property="og:image" content="https://bluetubeviral.com/og-image.jpg"/>
+<meta property="og:site_name" content="BlueTube"/>
+<meta property="og:locale" content="pt_BR"/>
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:url" content="https://bluetubeviral.com/"/>
+<meta name="twitter:title" content="BlueTube — Roteiros Virais para YouTube Shorts com IA"/>
+<meta name="twitter:description" content="Gere roteiros virais para YouTube Shorts em segundos. Cole qualquer link e receba 2 roteiros prontos para narrar."/>
+<meta name="twitter:image" content="https://bluetubeviral.com/og-image.jpg"/>
+
+<!-- Schema.org JSON-LD (aparece em rich results do Google) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "BlueTube",
+  "url": "https://bluetubeviral.com",
+  "description": "Plataforma de inteligência artificial para criadores de YouTube Shorts. Gere roteiros virais, analise canais, baixe vídeos e descubra os Shorts em alta.",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "All",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "BRL"
+  },
+  "inLanguage": "pt-BR",
+  "creator": {
+    "@type": "Organization",
+    "name": "BlueTube",
+    "url": "https://bluetubeviral.com"
+  }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -1404,7 +1451,6 @@ async function handleEmailLogin(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
-    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
       closeAuthModal();
@@ -1444,7 +1490,6 @@ async function handleEmailSignup(){
         : 'Código enviado! Verifique seu email.','ok');
     }else{
       if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
-      if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
       setTimeout(async()=>{
         closeAuthModal();
@@ -1467,7 +1512,6 @@ async function handleOTPVerify(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Código inválido');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
-    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     setAuthMsg('Email verificado! Bem-vindo 🎉','ok');
     setTimeout(()=>closeAuthModal(),1200);
   }catch(e){setAuthMsg(e.message,'');}
@@ -1675,72 +1719,37 @@ function downloadSrt(){
 
 // ── SESSION CHECK ──────────────────────────────────────────────────────────
 async function checkSession(){
-  let token=localStorage.getItem('bt_token');
+  const token=localStorage.getItem('bt_token');
   if(!token)return;
-  const H={'Content-Type':'application/json'};
   try{
-    let r=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'verify',token})});
-    let d=await r.json();
-
-    // Se token expirou, tenta renovar com refresh_token antes de deslogar
-    if(!r.ok||!d.user){
-      const refreshToken=localStorage.getItem('bt_refresh_token');
-      if(refreshToken){
-        const rr=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'refresh_session',refresh_token:refreshToken})});
-        const rd=await rr.json();
-        if(rr.ok&&rd.access_token){
-          token=rd.access_token;
-          localStorage.setItem('bt_token',token);
-          if(rd.refresh_token)localStorage.setItem('bt_refresh_token',rd.refresh_token);
-          // Re-verifica com token novo
-          r=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'verify',token})});
-          d=await r.json();
-        }
-      }
-    }
-
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
+    const d=await r.json();
     if(r.ok&&d.user){
-      // Busca plano — com fallback no cache se a API falhar
-      try{
-        const planRes=await fetch('/api/get-plan',{method:'POST',headers:H,body:JSON.stringify({token})});
-        if(planRes.ok){
-          const planData=await planRes.json();
-          if(planData.plan){
-            // Só atualiza se veio um plano válido — nunca sobrescreve com undefined
-            userPlan=planData.plan;
-            localStorage.setItem('bt_plan',userPlan);
-            if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
-          } else {
-            // API retornou mas sem .plan — usa cache
-            userPlan=localStorage.getItem('bt_plan')||'free';
-          }
-        } else {
-          // Erro na API (500, timeout) — NÃO sobrescreve o plano com 'free'
-          userPlan=localStorage.getItem('bt_plan')||'free';
-        }
-      }catch(planErr){
-        // Falha de rede — usa plano em cache
-        userPlan=localStorage.getItem('bt_plan')||'free';
-      }
-      currentUserEmail=d.user.email;
+      // Fetch real plan from Supabase
+      const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+      const planData=await planRes.json();
+      userPlan=planData.plan||'free';
+      localStorage.setItem('bt_plan',userPlan);
+      currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
+      // Store plan expiry for profile display
+      if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
       setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
-      const pendingPlan=localStorage.getItem('bt_pending_plan');
-      if(pendingPlan&&userPlan==='free'){
-        const pendingBilling=localStorage.getItem('bt_pending_billing')||'monthly';
+      // Check if user was redirected here after signup to complete a purchase
+      const pendingPlan = localStorage.getItem('bt_pending_plan');
+      if(pendingPlan && userPlan === 'free'){
+        const pendingBilling = localStorage.getItem('bt_pending_billing') || 'monthly';
         localStorage.removeItem('bt_pending_plan');
         localStorage.removeItem('bt_pending_billing');
-        setTimeout(()=>goToCheckout(pendingPlan,pendingBilling),1000);
+        setTimeout(()=>goToCheckout(pendingPlan, pendingBilling), 1000);
       }
     }else{
-      // Sessão inválida e não recuperável — desloga
       localStorage.removeItem('bt_token');
-      localStorage.removeItem('bt_refresh_token');
       localStorage.removeItem('bt_plan');
     }
-  }catch(e){console.error('checkSession error:',e);}
+  }catch{}
 }
 
 function setLoggedIn(email, plan){
@@ -1837,7 +1846,6 @@ function showFreeUserPopup(){
 
 function doLogout(){
   localStorage.removeItem('bt_token');
-  localStorage.removeItem('bt_refresh_token');
   localStorage.removeItem('bt_plan');
   location.reload();
 }
@@ -2545,5 +2553,3 @@ window.sendBluBluFeedback = async function(){
 </script>
 </body>
 </html>
-
-if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
