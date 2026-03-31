@@ -1094,6 +1094,27 @@ Responda APENAS em JSON válido sem markdown:
         return res.status(400).json({ error: msg });
       }
 
+      // Insere usuário na tabela subscribers como 'free' (aparece no admin)
+      const newEmail = data.user?.email || email;
+      if (newEmail && SUPABASE_URL && SUPABASE_KEY) {
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify({
+            email: newEmail,
+            plan: 'free',
+            is_manual: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        }).catch(e => console.error('Subscriber insert error:', e.message));
+      }
+
       // If email confirmation is enabled in Supabase, session will be null
       if (!data.session) {
         return res.status(200).json({
@@ -1124,6 +1145,26 @@ Responda APENAS em JSON válido sem markdown:
           return res.status(400).json({ error: 'Email não confirmado. Verifique sua caixa de entrada.' });
         }
         return res.status(400).json({ error: msg });
+      }
+
+      // Garante que usuário existe na tabela subscribers (upsert seguro)
+      if (email && SUPABASE_URL && SUPABASE_KEY) {
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'resolution=ignore,return=minimal' // ignora se já existe
+          },
+          body: JSON.stringify({
+            email,
+            plan: 'free',
+            is_manual: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        }).catch(() => {});
       }
 
       return res.status(200).json({
