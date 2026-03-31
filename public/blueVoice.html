@@ -253,12 +253,12 @@ audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius
         <!-- TEXT INPUT -->
         <div class="section-label">Texto para narrar <span></span></div>
         <div class="text-area-wrap">
-          <textarea id="scriptText" maxlength="3000" placeholder="Cole aqui o roteiro que você quer transformar em voz…
+          <textarea id="scriptText" maxlength="5000" placeholder="Cole aqui o roteiro que você quer transformar em voz…
 
 Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje vou te mostrar a técnica que mudou minha vida…"></textarea>
         </div>
         <div class="char-counter">
-          <div class="char-count" id="charCount">0 / 3.000 caracteres</div>
+          <div class="char-count" id="charCount">0 / 5.000 caracteres</div>
           <div class="char-hint">Cada caractere = 1 crédito</div>
         </div>
 
@@ -498,7 +498,7 @@ let lastText = '';
 let lastVoiceId = '';
 let filters = { gender: '', age: '', style: '', lang: '' };
 let narrationsUsed = parseInt(localStorage.getItem('bv_narrations') || '0');
-const NARRATION_LIMIT = plan === 'master' ? 20 : 5;
+const NARRATION_LIMIT = plan === 'master' ? 55 : 5;
 // Favoritos persistidos no localStorage
 let favorites = new Set(JSON.parse(localStorage.getItem('bv_favorites') || '[]'));
 let showOnlyFavs = false;
@@ -523,8 +523,8 @@ updateNarrationCounter();
 document.getElementById('scriptText').addEventListener('input', function() {
   const len = this.value.length;
   const el = document.getElementById('charCount');
-  el.textContent = len.toLocaleString('pt-BR') + ' / 3.000 caracteres';
-  el.className = 'char-count' + (len > 2700 ? (len >= 3000 ? ' over' : ' warn') : '');
+  el.textContent = len.toLocaleString('pt-BR') + ' / 5.000 caracteres';
+  el.className = 'char-count' + (len > 4500 ? (len >= 5000 ? ' over' : ' warn') : '');
   checkReady();
 });
 
