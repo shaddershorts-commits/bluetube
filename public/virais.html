@@ -363,13 +363,9 @@ function renderVideos(videos) {
 
   const periodLabels = { '24h': 'Últimas 24h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias' };
   document.getElementById('statTotal').textContent = videos.length;
-  // Aviso se filtro de data falhou
+  // Ocultar aviso de data (não relevante)
   const dateWarn = document.getElementById('dateFilterWarn');
-  if (data.dateFilterFailed && dateWarn) {
-    dateWarn.style.display = 'block';
-  } else if (dateWarn) {
-    dateWarn.style.display = 'none';
-  }
+  if (dateWarn) dateWarn.style.display = 'none';
   document.getElementById('statPeriod').textContent = periodLabels[currentPeriod];
   document.getElementById('statTopViews').textContent = videos[0]?.viewsFormatted || '—';
   // Atualiza horário e inicia contador regressivo
