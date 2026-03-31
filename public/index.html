@@ -426,6 +426,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         BlueScore <span style="font-size:9px">🔒</span>
       </button>
+      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('bluelens')" style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(0,170,255,.06));border-color:rgba(167,139,250,.3)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        BlueLens <span style="font-size:9px">🔒</span>
+      </button>
     </div>
     <!-- Mobile: menu suspenso de ferramentas Master -->
     <div style="position:relative">
@@ -455,6 +459,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <div>
             <span style="display:flex;align-items:center;gap:6px">BlueScore <span style="font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700">NOVO</span></span>
             <span class="mobile-tool-item-sub">Análise algorítmica do canal</span>
+          </div>
+        </button>
+        <button class="mobile-tool-item" onclick="openMasterTool('bluelens');closeMobileTools()">
+          <div class="tool-icon" style="background:rgba(167,139,250,.15);border-color:rgba(167,139,250,.3)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </div>
+          <div>
+            <span style="display:flex;align-items:center;gap:6px">BlueLens <span style="font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700">NOVO</span></span>
+            <span class="mobile-tool-item-sub">Rastreador de origem do vídeo</span>
           </div>
         </button>
       </div>
@@ -2259,6 +2272,7 @@ function openMasterTool(tool){
   if(tool === 'viral'){ window.location.href = '/virais.html'; return; }
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
   if(tool === 'bluescore'){ window.location.href = '/blueScore.html'; return; }
+  if(tool === 'bluelens'){ window.location.href = '/blueLens.html'; return; }
   // Fallback modal for future tools
   document.getElementById('toolModalIcon').textContent = '🔧';
   document.getElementById('toolModalTitle').textContent = 'Em breve';
@@ -2279,7 +2293,7 @@ function closeToolModal(){document.getElementById('toolModal').classList.remove(
   let cid = localStorage.getItem('bt_cookie_id');
   if (!cid) { cid = 'ck_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('bt_cookie_id', cid); }
   // Registra clique no backend
-  fetch(`/api/affiliate?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}&referrer=${encodeURIComponent(document.referrer)}`).catch(()=>{});
+  fetch(`/api/auth?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}&referrer=${encodeURIComponent(document.referrer)}`).catch(()=>{});
 })();
 
 // ── BLUBLU MASCOT ──────────────────────────────────────────────────────────
