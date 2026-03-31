@@ -3,533 +3,486 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Painel de Afiliado · BlueTube</title>
+<title>BlueAfiliados · Ganhe comissão recorrente</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
-:root{
-  --bg:#020817;--card:rgba(10,22,40,0.9);--neon:#00aaff;--gold:#fbbf24;
-  --green:#22c55e;--red:#ef4444;--purple:#a78bfa;
-  --blue-border:rgba(0,170,255,0.18);--blue-dim:rgba(0,170,255,0.1);
-  --text:#e8f4ff;--text-sec:rgba(150,190,230,0.72);--text-dim:rgba(150,190,230,0.4);
-  --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
-  --bronze:#cd7f32;--silver:#c0c0c0;--gold-c:#fbbf24;
-}
+:root{--bg:#020817;--card:rgba(10,22,40,0.92);--neon:#00aaff;--gold:#fbbf24;--green:#22c55e;--red:#ef4444;--purple:#a78bfa;--blue-border:rgba(0,170,255,0.15);--text:#e8f4ff;--text-sec:rgba(150,190,230,0.72);--text-dim:rgba(150,190,230,0.4);--font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;--bronze:#cd7f32;--silver:#c0c0c0}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
 .bg{position:fixed;inset:0;z-index:0;pointer-events:none}
-.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.025) 1px,transparent 1px);background-size:48px 48px}
-.orb{position:absolute;border-radius:50%;filter:blur(120px);opacity:.25}
-.orb1{width:600px;height:600px;background:radial-gradient(circle,rgba(0,80,255,.4),transparent 70%);top:-200px;right:-100px}
-.orb2{width:400px;height:400px;background:radial-gradient(circle,rgba(167,139,250,.3),transparent 70%);bottom:-100px;left:-100px}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.02) 1px,transparent 1px);background-size:48px 48px}
+.orb{position:absolute;border-radius:50%;filter:blur(140px)}
+.orb1{width:700px;height:700px;background:radial-gradient(circle,rgba(0,60,255,.2),transparent 70%);top:-200px;right:-200px}
+.orb2{width:500px;height:500px;background:radial-gradient(circle,rgba(167,139,250,.15),transparent 70%);bottom:-100px;left:-100px}
 .glow{position:fixed;pointer-events:none;z-index:1;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.04),transparent 70%);transform:translate(-50%,-50%);transition:left .12s,top .12s}
-
-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:17px;font-weight:800;color:var(--text)}
-.logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,170,255,.4)}
+.logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center}
 .logo-mark svg{width:13px;height:13px;fill:#fff}
-.logo-sub{font-size:11px;font-family:var(--mono);color:var(--text-dim);letter-spacing:.06em}
+.logo-sub{font-size:10px;font-family:var(--mono);color:var(--text-dim);letter-spacing:.06em}
+.aff-badge{font-family:var(--mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:4px 12px;border-radius:100px}
 .btn-back{font-size:13px;color:var(--text-sec);text-decoration:none;border:1px solid var(--blue-border);border-radius:8px;padding:7px 14px;transition:all .2s}
 .btn-back:hover{border-color:var(--neon);color:var(--text)}
-
-main{position:relative;z-index:2;padding:100px 24px 60px;max-width:960px;margin:0 auto}
-
-/* HERO */
-.hero{text-align:center;margin-bottom:48px}
-.hero-eye{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--neon);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px}
-.hero h1{font-size:clamp(32px,5vw,52px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;margin-bottom:12px}
-.hero h1 span{background:linear-gradient(135deg,#a78bfa,var(--neon));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero-sub{font-size:15px;color:var(--text-sec);max-width:540px;margin:0 auto;line-height:1.6}
-
-/* LEVEL CARD */
-.level-card{background:var(--card);border-radius:20px;padding:28px 32px;margin-bottom:24px;backdrop-filter:blur(20px);position:relative;overflow:hidden}
-.level-card.bronze{border:1px solid rgba(205,127,50,.3);background:linear-gradient(135deg,rgba(205,127,50,.06),rgba(10,22,40,.9))}
-.level-card.silver{border:1px solid rgba(192,192,192,.3);background:linear-gradient(135deg,rgba(192,192,192,.06),rgba(10,22,40,.9))}
-.level-card.gold{border:1px solid rgba(251,191,36,.4);background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(10,22,40,.9))}
-.level-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:100px;font-weight:800;font-size:13px;margin-bottom:16px}
-.level-badge.bronze{background:rgba(205,127,50,.15);border:1px solid rgba(205,127,50,.4);color:var(--bronze)}
-.level-badge.silver{background:rgba(192,192,192,.12);border:1px solid rgba(192,192,192,.35);color:var(--silver)}
-.level-badge.gold{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:var(--gold-c)}
-.level-info{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px}
-.level-rate{font-size:42px;font-weight:800;letter-spacing:-2px;line-height:1}
-.level-rate span{font-size:20px;font-weight:600;opacity:.7}
-.level-motivation{font-size:14px;color:var(--text-sec);line-height:1.6;max-width:400px}
-.progress-wrap{margin-top:4px}
-.progress-label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:6px}
-.progress-bar{height:8px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
-.progress-fill{height:100%;border-radius:100px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
-
-/* LINK CARD */
-.link-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:24px;margin-bottom:24px;backdrop-filter:blur(20px)}
-.link-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:0 auto}
+/* AUTH OVERLAY */
+.auth-overlay{position:fixed;inset:0;background:rgba(2,8,23,.88);backdrop-filter:blur(16px);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px}
+.auth-box{background:rgba(10,22,40,.99);border:1px solid rgba(124,58,237,.3);border-radius:24px;padding:40px;width:100%;max-width:420px}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-icon{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 0 30px rgba(124,58,237,.4)}
+.auth-icon svg{width:22px;height:22px}
+.auth-title{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.auth-sub{font-size:13px;color:var(--text-sec);margin-top:4px}
+.auth-tabs{display:flex;background:rgba(0,170,255,.06);border-radius:10px;padding:4px;margin:20px 0}
+.auth-tab{flex:1;padding:8px;border:none;background:none;border-radius:7px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--text-sec);cursor:pointer;transition:all .2s}
+.auth-tab.active{background:rgba(124,58,237,.3);color:var(--text);border:1px solid rgba(124,58,237,.3)}
+.auth-input{width:100%;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;margin-bottom:10px;transition:all .2s}
+.auth-input:focus{border-color:rgba(124,58,237,.5)}
+.auth-input::placeholder{color:var(--text-dim)}
+.btn-auth{width:100%;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;padding:14px;font-family:var(--font);font-size:14px;font-weight:800;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 0 24px rgba(124,58,237,.3)}
+.btn-auth:hover{transform:translateY(-1px)}
+.btn-auth:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.auth-err{font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px;text-align:center}
+/* LANDING */
+.landing-hero{text-align:center;padding:40px 0 60px}
+.landing-badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--purple);text-transform:uppercase;margin-bottom:20px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);padding:6px 16px;border-radius:100px}
+.landing-h1{font-size:clamp(40px,7vw,70px);font-weight:800;letter-spacing:-2.5px;line-height:1.02;margin-bottom:20px}
+.grad{background:linear-gradient(135deg,#a78bfa,#7c3aed,var(--neon));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.landing-sub{font-size:16px;color:var(--text-sec);max-width:540px;margin:0 auto 40px;line-height:1.7}
+.landing-cta{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;font-weight:800;font-size:16px;padding:18px 40px;border-radius:14px;border:none;cursor:pointer;transition:all .25s;box-shadow:0 0 40px rgba(124,58,237,.4)}
+.landing-cta:hover{transform:translateY(-2px);box-shadow:0 0 60px rgba(124,58,237,.6)}
+.levels-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:50px 0}
+.lev-card{border-radius:18px;padding:28px 20px;text-align:center}
+.lev-card.bronze{background:linear-gradient(135deg,rgba(205,127,50,.1),rgba(10,22,40,.8));border:1px solid rgba(205,127,50,.25)}
+.lev-card.silver{background:linear-gradient(135deg,rgba(192,192,192,.1),rgba(10,22,40,.8));border:1px solid rgba(192,192,192,.25)}
+.lev-card.gold{background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(10,22,40,.8));border:1px solid rgba(251,191,36,.3)}
+.lev-emoji{font-size:36px;margin-bottom:10px}
+.lev-name{font-size:14px;font-weight:700;margin-bottom:4px}
+.lev-rate{font-size:40px;font-weight:800;letter-spacing:-2px;margin-bottom:4px}
+.lev-req{font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:40px 0 60px}
+.step{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:24px}
+.step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,var(--neon));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;margin-bottom:14px}
+.step-title{font-size:14px;font-weight:700;margin-bottom:6px}
+.step-desc{font-size:13px;color:var(--text-sec);line-height:1.5}
+/* PENDING */
+.pending-card{background:var(--card);border:1px solid rgba(251,191,36,.25);border-radius:20px;padding:52px 40px;text-align:center;max-width:500px;margin:40px auto 0}
+/* DASHBOARD */
+#dashboardSection{display:none}
+.prog-card{border-radius:20px;padding:28px 32px;margin-bottom:20px;position:relative}
+.prog-card.bronze{background:linear-gradient(135deg,rgba(205,127,50,.08),rgba(10,22,40,.9));border:1px solid rgba(205,127,50,.3)}
+.prog-card.silver{background:linear-gradient(135deg,rgba(192,192,192,.08),rgba(10,22,40,.9));border:1px solid rgba(192,192,192,.3)}
+.prog-card.gold{background:linear-gradient(135deg,rgba(251,191,36,.1),rgba(10,22,40,.9));border:1px solid rgba(251,191,36,.4)}
+.lvl-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:100px;font-weight:800;font-size:12px;margin-bottom:12px}
+.lvl-badge.bronze{background:rgba(205,127,50,.15);border:1px solid rgba(205,127,50,.3);color:var(--bronze)}
+.lvl-badge.silver{background:rgba(192,192,192,.1);border:1px solid rgba(192,192,192,.3);color:var(--silver)}
+.lvl-badge.gold{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:var(--gold)}
+.lvl-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.lvl-rate{font-size:52px;font-weight:800;letter-spacing:-2px;line-height:1}
+.lvl-motivation{font-size:14px;color:var(--text-sec);line-height:1.6;max-width:420px}
+.prog-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:6px}
+.prog-bar{height:8px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
+.prog-fill{height:100%;border-radius:100px;transition:width 1.4s cubic-bezier(.4,0,.2,1)}
+.gold-tip{font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:10px;display:flex;align-items:center;gap:6px}
+.link-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;margin-bottom:18px}
+.link-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
 .link-box{display:flex;align-items:center;gap:10px}
-.link-url{flex:1;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:13px;color:var(--neon);word-break:break-all}
-.btn-copy{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:12px 20px;font-family:var(--font);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap;box-shadow:0 0 20px rgba(0,170,255,.25)}
-.btn-copy:hover{transform:translateY(-1px);box-shadow:0 0 32px rgba(0,170,255,.4)}
-.link-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px}
-
-/* METRICS GRID */
-.metrics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px}
-.metric-box{background:var(--card);border:1px solid var(--blue-border);border-radius:14px;padding:20px;backdrop-filter:blur(20px);transition:all .2s}
-.metric-box:hover{border-color:rgba(0,170,255,.35)}
-.metric-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
-.metric-value{font-size:28px;font-weight:800;letter-spacing:-1px;line-height:1}
-.metric-sub{font-size:11px;color:var(--text-sec);margin-top:4px}
-
-/* REVENUE CARD */
-.revenue-card{background:var(--card);border:1px solid rgba(34,197,94,.2);border-radius:16px;padding:24px;margin-bottom:24px;backdrop-filter:blur(20px)}
-.revenue-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.link-url{flex:1;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--neon);word-break:break-all}
+.btn-copy{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:11px 20px;font-family:var(--font);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-copy:hover{transform:translateY(-1px);box-shadow:0 0 20px rgba(0,170,255,.4)}
+.today-card{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(10,22,40,.8));border:1px solid rgba(34,197,94,.2);border-radius:14px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px}
+.metrics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+.metric-box{background:var(--card);border:1px solid var(--blue-border);border-radius:14px;padding:18px}
+.metric-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.metric-value{font-size:26px;font-weight:800;letter-spacing:-1px}
+.metric-sub{font-size:11px;color:var(--text-sec);margin-top:3px}
+.revenue-card{background:var(--card);border:1px solid rgba(34,197,94,.2);border-radius:16px;padding:22px;margin-bottom:18px}
+.rev-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .rev-item{text-align:center}
-.rev-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
-.rev-value{font-size:24px;font-weight:800;letter-spacing:-1px}
-.rev-divider{width:1px;background:rgba(255,255,255,.06)}
-
-/* CHART */
-.chart-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:24px;margin-bottom:24px;backdrop-filter:blur(20px)}
-.section-title{font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.chart-bars{display:flex;align-items:flex-end;gap:6px;height:80px}
-.chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
-.chart-bar{width:100%;border-radius:4px 4px 0 0;background:rgba(0,170,255,.3);transition:height .8s ease;min-height:2px}
+.rev-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+.rev-value{font-size:20px;font-weight:800;letter-spacing:-.5px}
+.rev-div{width:1px;background:rgba(255,255,255,.05)}
+.chart-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:22px;margin-bottom:18px}
+.sec-title{font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.chart-bars{display:flex;align-items:flex-end;gap:5px;height:72px}
+.chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.chart-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px;transition:height .8s ease}
 .chart-day{font-family:var(--mono);font-size:9px;color:var(--text-dim)}
-
-/* CONVERSIONS TABLE */
-.table-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:24px;margin-bottom:24px;backdrop-filter:blur(20px);overflow:hidden}
+.history-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:22px;margin-bottom:18px}
+.hist-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(0,170,255,.05)}
+.hist-row:last-child{border-bottom:none;padding-bottom:0}
+.hist-month{font-family:var(--mono);font-size:12px;color:var(--text-sec);min-width:70px}
+.hist-bar-wrap{flex:1;height:6px;background:rgba(255,255,255,.05);border-radius:100px;overflow:hidden}
+.hist-bar{height:100%;border-radius:100px;background:linear-gradient(90deg,#4f46e5,var(--neon));transition:width 1s ease}
+.hist-total{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);min-width:60px;text-align:right}
+.hist-status{font-family:var(--mono);font-size:10px;min-width:80px;text-align:right}
+.table-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:22px;margin-bottom:18px;overflow:hidden}
 .conv-table{width:100%;border-collapse:collapse;font-size:12px}
-.conv-table th{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;padding:0 12px 10px;text-align:left;border-bottom:1px solid rgba(0,170,255,.08)}
-.conv-table td{padding:10px 12px;border-bottom:1px solid rgba(0,170,255,.05);color:var(--text-sec)}
+.conv-table th{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;padding:0 10px 10px;text-align:left;border-bottom:1px solid rgba(0,170,255,.08)}
+.conv-table td{padding:9px 10px;border-bottom:1px solid rgba(0,170,255,.04);color:var(--text-sec)}
 .conv-table tr:last-child td{border-bottom:none}
-.badge-plan{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px}
-.badge-free{background:rgba(150,190,230,.1);color:var(--text-dim)}
-.badge-full{background:rgba(0,170,255,.12);color:var(--neon)}
-.badge-master{background:rgba(251,191,36,.1);color:var(--gold-c)}
-
-/* REGISTER CARD */
-.register-card{background:var(--card);border:1px solid rgba(167,139,250,.3);border-radius:20px;padding:40px;text-align:center;backdrop-filter:blur(20px)}
-.register-icon{font-size:48px;margin-bottom:20px}
-.register-title{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
-.register-sub{font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:28px;max-width:480px;margin-left:auto;margin-right:auto}
-.levels-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px}
-.level-prev{padding:16px;border-radius:12px;text-align:center}
-.level-prev.bronze{background:rgba(205,127,50,.08);border:1px solid rgba(205,127,50,.2)}
-.level-prev.silver{background:rgba(192,192,192,.06);border:1px solid rgba(192,192,192,.2)}
-.level-prev.gold{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25)}
-.level-prev-name{font-weight:800;font-size:13px;margin-bottom:4px}
-.level-prev-rate{font-size:22px;font-weight:800}
-.level-prev-req{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:4px}
-.btn-register{background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;border-radius:12px;padding:16px 40px;font-family:var(--font);font-size:15px;font-weight:800;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 0 28px rgba(167,139,250,.3)}
-.btn-register:hover{transform:translateY(-2px);box-shadow:0 0 40px rgba(167,139,250,.5)}
-.btn-register:disabled{opacity:.5;cursor:not-allowed;transform:none}
-
-/* TOAST */
-.toast{position:fixed;bottom:24px;right:24px;background:rgba(10,22,40,.95);border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:14px 20px;font-size:13px;z-index:999;transition:all .3s;opacity:0;transform:translateY(10px);pointer-events:none;max-width:320px}
+.bp{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px}
+.bp-free{background:rgba(150,190,230,.08);color:var(--text-dim)}
+.bp-full{background:rgba(0,170,255,.12);color:var(--neon)}
+.bp-master{background:rgba(251,191,36,.1);color:var(--gold)}
+.toast{position:fixed;bottom:24px;right:24px;background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:13px 18px;font-size:13px;z-index:999;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none}
 .toast.show{opacity:1;transform:translateY(0)}
-
-/* NOTIFICATION POPUP */
-.notif-popup{position:fixed;top:80px;right:24px;background:rgba(10,22,40,.97);border-radius:14px;padding:16px 20px;z-index:999;max-width:300px;transition:all .4s;opacity:0;transform:translateX(20px);pointer-events:none}
-.notif-popup.show{opacity:1;transform:translateX(0)}
-.notif-popup.success{border:1px solid rgba(34,197,94,.4)}
-.notif-popup.cancel{border:1px solid rgba(239,68,68,.3)}
-
-/* LOGIN CARD */
-.login-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:40px;text-align:center;backdrop-filter:blur(20px);max-width:400px;margin:0 auto}
-
-@media(max-width:640px){
-  nav{padding:12px 16px}
-  .metrics-grid{grid-template-columns:1fr}
-  .revenue-grid{grid-template-columns:1fr}
-  .levels-preview{grid-template-columns:1fr}
-  .rev-divider{display:none}
-}
+.notif{position:fixed;top:80px;right:24px;background:rgba(10,22,40,.98);border-radius:14px;padding:16px 20px;z-index:999;max-width:290px;opacity:0;transform:translateX(16px);transition:all .4s;pointer-events:none}
+.notif.show{opacity:1;transform:translateX(0)}
+.notif.success{border:1px solid rgba(34,197,94,.4)}
+.notif.upgrade{border:1px solid rgba(251,191,36,.4)}
+@media(max-width:640px){nav{padding:12px 16px}.levels-grid,.steps,.rev-grid{grid-template-columns:1fr}.metrics-grid{grid-template-columns:1fr}.rev-div{display:none}.landing-h1{font-size:38px}}
 </style>
 </head>
 <body>
 <div class="bg"><div class="bg-grid"></div><div class="orb orb1"></div><div class="orb orb2"></div></div>
 <div class="glow" id="glow"></div>
 <div class="toast" id="toast"></div>
-<div class="notif-popup" id="notifPopup"></div>
+<div class="notif" id="notif"></div>
 
 <nav>
   <a href="/" class="logo">
     <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4z"/></svg></div>
     <div><div>BlueTube</div><div class="logo-sub">CRIADOR VIRAL</div></div>
   </a>
-  <a href="/" class="btn-back">← Voltar</a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="aff-badge">🤝 BlueAfiliados</span>
+    <a href="/" class="btn-back">← Início</a>
+  </div>
 </nav>
 
-<main id="mainContent">
-  <!-- Carregando -->
-  <div id="loadingState" style="text-align:center;padding:80px 0">
-    <div style="font-size:32px;margin-bottom:16px;animation:spin 1s linear infinite;display:inline-block">⚙</div>
-    <div style="color:var(--text-sec)">Carregando…</div>
+<!-- AUTH OVERLAY -->
+<div class="auth-overlay" id="authOverlay" style="display:none">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="auth-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="auth-title">Entrar no BlueAfiliados</div>
+      <div class="auth-sub">Use sua conta BlueTube</div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Entrar</button>
+      <button class="auth-tab" id="tabSignup" onclick="switchTab('signup')">Criar conta</button>
+    </div>
+    <div id="authLoginForm">
+      <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com"/>
+      <input class="auth-input" id="loginPwd" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <div class="auth-err" id="loginErr"></div>
+      <button class="btn-auth" id="btnLogin" onclick="doLogin()">Entrar →</button>
+    </div>
+    <div id="authSignupForm" style="display:none">
+      <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com"/>
+      <input class="auth-input" id="signupPwd" type="password" placeholder="Senha (mín. 6 caracteres)" onkeydown="if(event.key==='Enter')doSignup()"/>
+      <div class="auth-err" id="signupErr"></div>
+      <button class="btn-auth" id="btnSignup" onclick="doSignup()">Criar conta →</button>
+    </div>
   </div>
-</main>
+</div>
 
-<style>
-@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-</style>
-
-<script>
-const SITE = 'https://bluetubeviral.com';
-const token = localStorage.getItem('bt_token');
-const plan = localStorage.getItem('bt_plan');
-
-document.addEventListener('mousemove', e => {
-  const g = document.getElementById('glow');
-  g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px';
-});
-
-// ── TRACKING DO LINK DE AFILIADO ──────────────────────────────────────────────
-// Quando alguém acessa com ?ref=CODE, salva cookie
-(function trackRef() {
-  const params = new URLSearchParams(window.location.search);
-  const ref = params.get('ref');
-  if (!ref) return;
-  // Cookie persistente de 60 dias
-  const expires = new Date(Date.now() + 60*24*60*60*1000).toUTCString();
-  document.cookie = `bt_ref=${ref};expires=${expires};path=/;SameSite=Lax`;
-  // Cookie ID para rastreamento
-  let cookieId = localStorage.getItem('bt_cookie_id');
-  if (!cookieId) {
-    cookieId = 'ck_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('bt_cookie_id', cookieId);
-  }
-  // Notifica backend do clique
-  fetch(`/api/affiliate?action=click&ref=${ref}&cookie_id=${cookieId}&referrer=${encodeURIComponent(document.referrer)}`).catch(()=>{});
-})();
-
-function getRefCookie() {
-  return document.cookie.split(';').find(c => c.trim().startsWith('bt_ref='))?.split('=')?.[1] || null;
-}
-
-const fmtMoney = n => '$' + parseFloat(n||0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-const fmtNum = n => {
-  if (!n) return '0';
-  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
-  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
-  return n.toString();
-};
-
-function showToast(msg, duration=3500) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), duration);
-}
-
-function showNotif(msg, type='success') {
-  const p = document.getElementById('notifPopup');
-  p.innerHTML = `<div style="font-size:18px;margin-bottom:6px">${type==='success'?'🎉':'⚠️'}</div><div style="font-size:13px;font-weight:600">${msg}</div>`;
-  p.className = `notif-popup show ${type}`;
-  setTimeout(() => p.classList.remove('show'), 5000);
-}
-
-// ── INIT ───────────────────────────────────────────────────────────────────────
-async function init() {
-  if (!token) {
-    renderLoginPrompt();
-    return;
-  }
-  try {
-    const r = await fetch(`/api/affiliate?action=dashboard&token=${token}`);
-    const data = await r.json();
-    if (data.error === 'not_affiliate') {
-      renderRegister();
-    } else if (r.ok && data.affiliate) {
-      renderDashboard(data);
-    } else {
-      renderLoginPrompt();
-    }
-  } catch(e) {
-    renderLoginPrompt();
-  }
-}
-
-// ── RENDER LOGIN ───────────────────────────────────────────────────────────────
-function renderLoginPrompt() {
-  document.getElementById('mainContent').innerHTML = `
-    <div class="login-card">
-      <div style="font-size:40px;margin-bottom:16px">🔐</div>
-      <div style="font-size:20px;font-weight:800;margin-bottom:8px">Faça login primeiro</div>
-      <div style="font-size:14px;color:var(--text-sec);margin-bottom:24px">Você precisa ter uma conta BlueTube para se tornar afiliado.</div>
-      <a href="/" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;font-weight:700;padding:14px 32px;border-radius:12px;text-decoration:none">Entrar na BlueTube →</a>
-    </div>`;
-}
-
-// ── RENDER REGISTER ────────────────────────────────────────────────────────────
-function renderRegister() {
-  document.getElementById('mainContent').innerHTML = `
-    <div class="hero">
-      <div class="hero-eye">★ Programa de Afiliados</div>
-      <h1>Ganhe comissão<br><span>recorrente</span></h1>
-      <p class="hero-sub">Indique criadores para o BlueTube e receba uma porcentagem de cada assinatura — todo mês, enquanto o usuário estiver ativo.</p>
+<main>
+  <!-- LANDING -->
+  <div id="landingSection">
+    <div class="landing-hero">
+      <div class="landing-badge">🤝 Programa de parceiros</div>
+      <h1 class="landing-h1">Indique e <span class="grad">ganhe</span><br>todo mês</h1>
+      <p class="landing-sub">Compartilhe seu link exclusivo. Cada criador que assinar pela sua indicação gera comissão recorrente para você — enquanto ele estiver ativo.</p>
+      <button class="landing-cta" id="mainCta" onclick="handleCta()">🚀 Quero ser afiliado</button>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:14px">Gratuito · Recorrente · Aprovação necessária</div>
     </div>
-
-    <div class="register-card">
-      <div class="register-icon">🚀</div>
-      <div class="register-title">Comece a ganhar hoje</div>
-      <div class="register-sub">Compartilhe seu link exclusivo. Quando alguém assinar pelo seu link, você recebe comissão recorrente automaticamente. Quanto mais você indica, maior sua porcentagem.</div>
-      
-      <div class="levels-preview">
-        <div class="level-prev bronze">
-          <div class="level-prev-name" style="color:var(--bronze)">🥉 Bronze</div>
-          <div class="level-prev-rate" style="color:var(--bronze)">35%</div>
-          <div class="level-prev-req">Até 380 pagantes</div>
-        </div>
-        <div class="level-prev silver">
-          <div class="level-prev-name" style="color:var(--silver)">🥈 Prata</div>
-          <div class="level-prev-rate" style="color:var(--silver)">40%</div>
-          <div class="level-prev-req">380–690 pagantes</div>
-        </div>
-        <div class="level-prev gold">
-          <div class="level-prev-name" style="color:var(--gold-c)">🥇 Ouro</div>
-          <div class="level-prev-rate" style="color:var(--gold-c)">58%</div>
-          <div class="level-prev-req">1000+ pagantes</div>
-        </div>
-      </div>
-
-      <button class="btn-register" id="btnRegister" onclick="registerAffiliate()">
-        Quero ser afiliado →
-      </button>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:12px">Gratuito · Sem taxa de adesão · Pagamentos mensais</div>
-    </div>`;
-}
-
-async function registerAffiliate() {
-  const btn = document.getElementById('btnRegister');
-  btn.disabled = true; btn.textContent = 'Criando seu link…';
-  try {
-    const r = await fetch('/api/affiliate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'register', token })
-    });
-    const data = await r.json();
-    if (r.ok && data.affiliate) {
-      showToast('✅ Conta de afiliado criada!');
-      setTimeout(() => init(), 800);
-    } else {
-      showToast('Erro: ' + (data.error || 'tente novamente'));
-      btn.disabled = false; btn.textContent = 'Quero ser afiliado →';
-    }
-  } catch(e) {
-    showToast('Erro de conexão');
-    btn.disabled = false; btn.textContent = 'Quero ser afiliado →';
-  }
-}
-
-// ── RENDER DASHBOARD ───────────────────────────────────────────────────────────
-function renderDashboard(data) {
-  const { affiliate, stats, conversions, recentCommissions } = data;
-  const refLink = `${SITE}/?ref=${affiliate.ref_code}`;
-  const level = stats.level;
-  const levelColors = { bronze: 'var(--bronze)', silver: 'var(--silver)', gold: 'var(--gold-c)' };
-  const levelEmojis = { bronze: '🥉', silver: '🥈', gold: '🥇' };
-  const levelNames = { bronze: 'Bronze', silver: 'Prata', gold: 'Ouro' };
-  const nextLevelNames = { silver: 'Prata', gold: 'Ouro', null: '' };
-  const lc = levelColors[level];
-
-  // Progresso para próximo nível
-  const next = stats.nextLevel;
-  const progressPct = next?.needed > 0
-    ? Math.min(100, Math.round(((next.total - next.needed) / next.total) * 100))
-    : 100;
-  const motivationText = level === 'gold'
-    ? '🏆 Você está no nível máximo! Continue indicando para maximizar seus ganhos.'
-    : `Faltam <strong>${next.needed} assinantes pagantes</strong> para você atingir o nível <strong>${nextLevelNames[next.next]}</strong> e ganhar <strong>${(next.nextRate*100).toFixed(0)}%</strong> de comissão.`;
-
-  document.getElementById('mainContent').innerHTML = `
-    <!-- HERO -->
-    <div class="hero" style="margin-bottom:32px">
-      <div class="hero-eye">★ Painel do Afiliado</div>
-      <h1>Seus <span>ganhos</span></h1>
-      <p class="hero-sub">Acompanhe suas indicações, comissões e evolução de nível em tempo real.</p>
+    <div class="levels-grid">
+      <div class="lev-card bronze"><div class="lev-emoji">🥉</div><div class="lev-name" style="color:var(--bronze)">Bronze</div><div class="lev-rate" style="color:var(--bronze)">35%</div><div class="lev-req">comissão recorrente<br>até 380 pagantes</div></div>
+      <div class="lev-card silver"><div class="lev-emoji">🥈</div><div class="lev-name" style="color:var(--silver)">Prata</div><div class="lev-rate" style="color:var(--silver)">40%</div><div class="lev-req">comissão recorrente<br>380–690 pagantes</div></div>
+      <div class="lev-card gold"><div class="lev-emoji">🥇</div><div class="lev-name" style="color:var(--gold)">Ouro</div><div class="lev-rate" style="color:var(--gold)">58%</div><div class="lev-req">comissão recorrente<br>1000+ pagantes</div></div>
     </div>
+    <div style="text-align:center;margin-bottom:24px"><div style="font-size:20px;font-weight:800;letter-spacing:-.4px">Como funciona</div></div>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-title">Cadastre-se</div><div class="step-desc">Crie conta e solicite acesso. Aprovamos manualmente para garantir qualidade dos parceiros.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-title">Compartilhe seu link</div><div class="step-desc">Link exclusivo com cookie de 60 dias. Quem entrar pelo seu link fica atribuído a você.</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-title">Receba comissão</div><div class="step-desc">A cada assinatura ativa, você ganha % recorrente todo mês — automaticamente registrado.</div></div>
+    </div>
+    <div style="text-align:center"><button class="landing-cta" onclick="handleCta()" style="font-size:15px;padding:16px 36px">Começar agora →</button></div>
+  </div>
 
-    <!-- LEVEL CARD -->
-    <div class="level-card ${level}">
-      <div class="level-badge ${level}">${levelEmojis[level]} ${levelNames[level]}</div>
-      <div class="level-info">
+  <!-- PENDENTE -->
+  <div id="pendingSection" style="display:none;padding-top:40px">
+    <div class="pending-card">
+      <div style="font-size:52px;margin-bottom:20px">⏳</div>
+      <div style="font-size:22px;font-weight:800;margin-bottom:10px">Pedido em análise</div>
+      <div style="font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:24px">Seu pedido foi recebido e está aguardando aprovação manual.<br>Você recebe acesso em até 24 horas.</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-dim);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:12px">💡 Enquanto isso, acesse a <a href="/" style="color:var(--neon);text-decoration:none">BlueTube</a> e crie roteiros virais.</div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboardSection">
+    <!-- NÍVEL -->
+    <div class="prog-card" id="levelCard">
+      <div class="lvl-badge" id="levelBadge">Bronze</div>
+      <div class="lvl-top">
         <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">SUA COMISSÃO</div>
-          <div class="level-rate" style="color:${lc}">${(stats.commissionRate*100).toFixed(0)}<span>%</span></div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px">SUA COMISSÃO</div>
+          <div class="lvl-rate" id="levelRate">35%</div>
         </div>
-        <div class="level-motivation" style="font-size:14px;color:var(--text-sec);line-height:1.6">${motivationText}</div>
+        <div class="lvl-motivation" id="levelMotivation"></div>
       </div>
-      ${level !== 'gold' ? `
-      <div class="progress-wrap">
-        <div class="progress-label">
-          <span>${stats.totalPaying} pagantes ativos</span>
-          <span>${next.total} para ${nextLevelNames[next.next]}</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" id="progressFill" style="width:0%;background:${lc}"></div>
-        </div>
-      </div>` : ''}
+      <div id="progressWrap">
+        <div class="prog-labels"><span id="progLeft"></span><span id="progRight"></span></div>
+        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+        <div class="gold-tip">🏆 Afiliados Nível Ouro ganham 58% de comissão — o máximo do programa</div>
+      </div>
     </div>
 
     <!-- LINK -->
     <div class="link-card">
-      <div class="link-label">Seu link exclusivo</div>
+      <div class="link-label">Seu link exclusivo BlueAfiliados</div>
       <div class="link-box">
-        <div class="link-url" id="refLink">${refLink}</div>
-        <button class="btn-copy" onclick="copyLink('${refLink}')">📋 Copiar</button>
+        <div class="link-url" id="refLinkDisplay">—</div>
+        <button class="btn-copy" id="btnCopy">📋 Copiar</button>
       </div>
-      <div class="link-hint">Compartilhe em redes sociais, grupos e conteúdos. Cada clique é rastreado automaticamente.</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px">Cookie 60 dias · Rastreamento automático · Compartilhe em qualquer plataforma</div>
+    </div>
+
+    <!-- HOJE -->
+    <div class="today-card">
+      <div style="font-size:30px">💰</div>
+      <div style="flex:1">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px">GANHOS HOJE</div>
+        <div style="font-size:26px;font-weight:800;color:var(--green)" id="todayEarnings">$0,00</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:3px">ATUALIZADO</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-sec)" id="lastUpdated">—</div>
+      </div>
     </div>
 
     <!-- MÉTRICAS -->
     <div class="metrics-grid">
-      <div class="metric-box">
-        <div class="metric-label">Total de cliques</div>
-        <div class="metric-value" style="color:var(--neon)">${fmtNum(stats.totalClicks)}</div>
-        <div class="metric-sub">${stats.clicksLast30} nos últimos 30 dias</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Assinantes ativos</div>
-        <div class="metric-value" style="color:var(--green)">${stats.totalPaying}</div>
-        <div class="metric-sub">${stats.totalFull} Full · ${stats.totalMaster} Master</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Usuários free indicados</div>
-        <div class="metric-value" style="color:var(--text-sec)">${fmtNum(stats.totalFree)}</div>
-        <div class="metric-sub">Potenciais upgrades</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Taxa de conversão</div>
-        <div class="metric-value" style="color:var(--purple)">${stats.totalClicks > 0 ? ((stats.totalFree + stats.totalPaying) / stats.totalClicks * 100).toFixed(1) : 0}%</div>
-        <div class="metric-sub">cliques → cadastros</div>
-      </div>
+      <div class="metric-box"><div class="metric-label">Total de cliques</div><div class="metric-value" id="mClicks" style="color:var(--neon)">—</div><div class="metric-sub" id="mClicksSub"></div></div>
+      <div class="metric-box"><div class="metric-label">Assinantes ativos</div><div class="metric-value" id="mPaying" style="color:var(--green)">—</div><div class="metric-sub" id="mPayingSub"></div></div>
+      <div class="metric-box"><div class="metric-label">Free indicados</div><div class="metric-value" id="mFree" style="color:var(--text-sec)">—</div><div class="metric-sub">potenciais upgrades</div></div>
+      <div class="metric-box"><div class="metric-label">Taxa de conversão</div><div class="metric-value" id="mConv" style="color:var(--purple)">—</div><div class="metric-sub">cliques → cadastros</div></div>
     </div>
 
     <!-- RECEITA -->
     <div class="revenue-card">
-      <div class="section-title">💰 Seus ganhos</div>
-      <div class="revenue-grid">
-        <div class="rev-item">
-          <div class="rev-label">MRR Afiliado</div>
-          <div class="rev-value" style="color:var(--green)">${fmtMoney(stats.mrrAffiliate)}</div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">por mês</div>
-        </div>
-        <div class="rev-divider"></div>
-        <div class="rev-item">
-          <div class="rev-label">A receber</div>
-          <div class="rev-value" style="color:var(--gold-c)">${fmtMoney(stats.pendingAmount)}</div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">pendente</div>
-        </div>
-        <div class="rev-divider"></div>
-        <div class="rev-item">
-          <div class="rev-label">Total acumulado</div>
-          <div class="rev-value" style="color:var(--neon)">${fmtMoney(stats.totalEarnings)}</div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">histórico</div>
-        </div>
+      <div class="sec-title">💰 Resumo de ganhos</div>
+      <div class="rev-grid">
+        <div class="rev-item"><div class="rev-label">MRR Afiliado</div><div class="rev-value" id="rMrr" style="color:var(--green)">$0</div><div style="font-size:10px;color:var(--text-dim);margin-top:3px">por mês</div></div>
+        <div class="rev-div"></div>
+        <div class="rev-item"><div class="rev-label">A receber</div><div class="rev-value" id="rPending" style="color:var(--gold)">$0</div><div style="font-size:10px;color:var(--text-dim);margin-top:3px">pendente</div></div>
+        <div class="rev-div"></div>
+        <div class="rev-item"><div class="rev-label">Já pago</div><div class="rev-value" id="rPaid" style="color:var(--neon)">$0</div><div style="font-size:10px;color:var(--text-dim);margin-top:3px">recebido</div></div>
+        <div class="rev-div"></div>
+        <div class="rev-item"><div class="rev-label">Total acumulado</div><div class="rev-value" id="rTotal" style="color:var(--text)">$0</div><div style="font-size:10px;color:var(--text-dim);margin-top:3px">histórico</div></div>
       </div>
     </div>
 
-    <!-- CLIQUES POR DIA -->
+    <!-- CLIQUES -->
     <div class="chart-card">
-      <div class="section-title">📈 Cliques nos últimos 7 dias</div>
+      <div class="sec-title">📈 Cliques — últimos 7 dias</div>
       <div class="chart-bars" id="chartBars"></div>
     </div>
 
-    <!-- CONVERSÕES RECENTES -->
-    <div class="table-card">
-      <div class="section-title">🎯 Conversões recentes</div>
-      ${conversions.length ? `
-      <table class="conv-table">
-        <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Data</th></tr></thead>
-        <tbody>
-          ${conversions.map(c => `
-          <tr>
-            <td>${maskEmail(c.converted_email)}</td>
-            <td><span class="badge-plan badge-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span></td>
-            <td style="font-size:11px">${formatConvType(c.conversion_type)}</td>
-            <td style="font-family:var(--mono);font-size:11px">${formatDate(c.converted_at)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>` : '<div style="color:var(--text-dim);font-size:13px;padding:16px 0">Nenhuma conversão ainda. Compartilhe seu link!</div>'}
+    <!-- HISTÓRICO MENSAL -->
+    <div class="history-card">
+      <div class="sec-title">📅 Histórico de ganhos por mês</div>
+      <div id="monthlyHistEl"></div>
     </div>
 
-    <!-- REFRESH -->
-    <div style="text-align:center;margin-top:24px">
-      <button onclick="init()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">
-        ↻ Atualizar dados
-      </button>
-    </div>`;
+    <!-- CONVERSÕES -->
+    <div class="table-card">
+      <div class="sec-title">🎯 Conversões recentes</div>
+      <div id="convEl"></div>
+    </div>
 
-  // Anima progress bar
-  setTimeout(() => {
-    const pf = document.getElementById('progressFill');
-    if (pf) pf.style.width = progressPct + '%';
-  }, 200);
+    <div style="text-align:center;margin-top:20px">
+      <button onclick="loadDash()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:11px 28px;color:var(--text-sec);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↻ Atualizar dados</button>
+    </div>
+  </div>
+</main>
 
-  // Renderiza gráfico de cliques
-  renderChart(stats.clicksByDay);
+<script>
+const SITE=window.location.origin;
+let token=localStorage.getItem('bt_token');
+let lastCC=0,pollT=null;
 
-  // Polling para notificações em tempo real (a cada 30s)
-  startPolling(data);
+document.addEventListener('mousemove',e=>{const g=document.getElementById('glow');g.style.left=e.clientX+'px';g.style.top=e.clientY+'px';});
+
+// Tracking ref
+(function(){const ref=new URLSearchParams(window.location.search).get('ref');if(!ref)return;document.cookie=`bt_ref=${ref};expires=${new Date(Date.now()+60*24*60*60*1000).toUTCString()};path=/;SameSite=Lax`;let cid=localStorage.getItem('bt_cookie_id');if(!cid){cid='ck_'+Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem('bt_cookie_id',cid);}fetch(`/api/auth?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}`).catch(()=>{});})();
+
+const fm=n=>'$'+parseFloat(n||0).toFixed(2).replace('.',',');
+const fn=n=>{if(!n)return'0';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return''+n;};
+const me=e=>{if(!e)return'—';const[u,d]=e.split('@');return u.slice(0,2)+'***@'+d;};
+const fd=dt=>dt?new Date(dt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const fmo=m=>{const[y,mo]=m.split('-');return['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(mo)]+'/'+y.slice(2);};
+function toast(msg,d=3500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+function notif(msg,type='success'){const n=document.getElementById('notif');n.innerHTML=`<div style="font-size:20px;margin-bottom:6px">${type==='upgrade'?'👑':'🎉'}</div><div style="font-size:13px;font-weight:600;line-height:1.4">${msg}</div>`;n.className=`notif show ${type}`;setTimeout(()=>n.classList.remove('show'),6000);}
+
+// Auth
+function switchTab(tab){
+  document.getElementById('tabLogin').classList.toggle('active',tab==='login');
+  document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
+  document.getElementById('authLoginForm').style.display=tab==='login'?'':'none';
+  document.getElementById('authSignupForm').style.display=tab==='signup'?'':'none';
+}
+function showAuth(){document.getElementById('authOverlay').style.display='flex';}
+function hideAuth(){document.getElementById('authOverlay').style.display='none';}
+
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pwd=document.getElementById('loginPwd').value;
+  const err=document.getElementById('loginErr');
+  const btn=document.getElementById('btnLogin');
+  if(!email||!pwd){err.textContent='Preencha email e senha';return;}
+  btn.disabled=true;btn.textContent='Entrando…';err.textContent='';
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email,password:pwd})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error||'Credenciais inválidas';btn.disabled=false;btn.textContent='Entrar →';return;}
+    token=d.session?.access_token;localStorage.setItem('bt_token',token);
+    hideAuth();init();
+  }catch(e){err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
 }
 
-function renderChart(clicksByDay) {
-  const bars = document.getElementById('chartBars');
-  if (!bars || !clicksByDay?.length) return;
-  const max = Math.max(...clicksByDay.map(d => d.count), 1);
-  bars.innerHTML = clicksByDay.map(d => {
-    const pct = (d.count / max) * 100;
-    const day = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' });
-    return `<div class="chart-bar-wrap">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:2px">${d.count}</div>
-      <div class="chart-bar" style="height:${Math.max(pct, 2)}%;background:${pct > 60 ? 'var(--neon)' : 'rgba(0,170,255,.3)'}"></div>
-      <div class="chart-day">${day}</div>
-    </div>`;
-  }).join('');
+async function doSignup(){
+  const email=document.getElementById('signupEmail').value.trim();
+  const pwd=document.getElementById('signupPwd').value;
+  const err=document.getElementById('signupErr');
+  const btn=document.getElementById('btnSignup');
+  if(!email||!pwd){err.textContent='Preencha todos os campos';return;}
+  if(pwd.length<6){err.textContent='Senha mínimo 6 caracteres';return;}
+  btn.disabled=true;btn.textContent='Criando conta…';err.textContent='';
+  try{
+    const ref=document.cookie.split(';').find(c=>c.trim().startsWith('bt_ref='))?.split('=')?.[1]||null;
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password:pwd,ref_code:ref})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error||'Erro ao criar conta';btn.disabled=false;btn.textContent='Criar conta →';return;}
+    if(d.needsConfirmation){err.style.color='var(--green)';err.textContent='✅ Verifique seu email!';btn.disabled=false;btn.textContent='Criar conta →';return;}
+    token=d.session?.access_token;localStorage.setItem('bt_token',token);
+    hideAuth();init();
+  }catch(e){err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Criar conta →';}
 }
 
-// ── POLLING PARA NOTIFICAÇÕES ──────────────────────────────────────────────────
-let lastConversionCount = 0;
-function startPolling(initialData) {
-  lastConversionCount = initialData.conversions?.length || 0;
-  setInterval(async () => {
-    try {
-      const r = await fetch(`/api/affiliate?action=dashboard&token=${token}`);
-      const data = await r.json();
-      if (!r.ok) return;
-      const newCount = data.conversions?.length || 0;
-      if (newCount > lastConversionCount) {
-        const newest = data.conversions[0];
-        const planLabel = newest.plan === 'master' ? '👑 Master' : newest.plan === 'full' ? '⚡ Full' : '🆓 Free';
-        showNotif(`Novo ${planLabel} via seu link!`, 'success');
-        lastConversionCount = newCount;
-        // Atualiza MRR silenciosamente
-        const mrrEl = document.querySelector('.rev-value');
-        if (mrrEl && data.stats) mrrEl.textContent = fmtMoney(data.stats.mrrAffiliate);
+function handleCta(){if(!token){showAuth();return;}regAffiliate();}
+
+async function regAffiliate(){
+  const btn=document.getElementById('mainCta');
+  if(btn){btn.disabled=true;btn.textContent='Enviando pedido…';}
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'register',token})});
+    const d=await r.json();
+    if(r.ok&&d.affiliate){d.alreadyExists?init():showPending();}
+    else{if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro: '+(d.error||'tente novamente'));}
+  }catch(e){if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro de conexão');}
+}
+
+const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>document.getElementById(s).style.display=s===id?'':'none');};
+function showPending(){show('pendingSection');}
+
+async function init(){
+  if(!token){show('landingSection');return;}
+  try{
+    const r=await fetch(`/api/auth?action=dashboard&token=${encodeURIComponent(token)}`);
+    const d=await r.json();
+    if(d.error==='not_affiliate'){show('landingSection');return;}
+    if(d.error==='pending_approval'){showPending();return;}
+    if(d.error==='suspended'){show('landingSection');toast('⚠ Conta suspensa.');return;}
+    if(r.ok&&d.affiliate){lastCC=d.conversions?.length||0;renderDash(d);show('dashboardSection');startPoll();}
+    else show('landingSection');
+  }catch(e){show('landingSection');}
+}
+
+async function loadDash(){
+  if(!token)return;
+  try{
+    const r=await fetch(`/api/auth?action=dashboard&token=${encodeURIComponent(token)}`);
+    const d=await r.json();
+    if(r.ok&&d.affiliate){renderDash(d);document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('pt-BR');toast('✅ Dados atualizados');}
+  }catch(e){}
+}
+
+function renderDash(data){
+  const{affiliate,stats,conversions,monthlyHistory,todayEarnings}=data;
+  const lv=stats.level;
+  const lc={bronze:'var(--bronze)',silver:'var(--silver)',gold:'var(--gold)'}[lv];
+  const ln={bronze:'🥉 Bronze',silver:'🥈 Prata',gold:'🥇 Ouro'}[lv];
+  // Level card
+  const lcard=document.getElementById('levelCard');lcard.className=`prog-card ${lv}`;
+  const lb=document.getElementById('levelBadge');lb.className=`lvl-badge ${lv}`;lb.textContent=ln;
+  document.getElementById('levelRate').textContent=(stats.commissionRate*100).toFixed(0)+'%';
+  document.getElementById('levelRate').style.color=lc;
+  const nx=stats.nextLevel;const nxn={silver:'Prata',gold:'Ouro',null:''}[nx?.next];
+  const mot=lv==='gold'?'🏆 Nível máximo! Continue indicando para maximizar seus ganhos recorrentes.':
+    `Faltam <strong>${nx.needed} pagantes</strong> para atingir <strong>${nxn}</strong> e ganhar <strong>${(nx.nextRate*100).toFixed(0)}%</strong> de comissão.`;
+  document.getElementById('levelMotivation').innerHTML=mot;
+  const pct=nx?.needed>0?Math.min(100,Math.round(((nx.total-nx.needed)/nx.total)*100)):100;
+  document.getElementById('progLeft').textContent=`${stats.totalPaying} pagantes`;
+  document.getElementById('progRight').textContent=lv!=='gold'?`${nx.total} para ${nxn}`:'Nível máximo';
+  setTimeout(()=>{const pf=document.getElementById('progFill');pf.style.width=pct+'%';pf.style.background=lc;},200);
+  if(lv==='gold')document.getElementById('progressWrap').style.display='none';
+  // Link
+  const rl=`${SITE}/?ref=${affiliate.ref_code}`;
+  document.getElementById('refLinkDisplay').textContent=rl;
+  document.getElementById('btnCopy').onclick=()=>{navigator.clipboard.writeText(rl).catch(()=>{});toast('✅ Link copiado!');};
+  // Hoje
+  document.getElementById('todayEarnings').textContent=fm(todayEarnings);
+  document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('pt-BR');
+  // Métricas
+  document.getElementById('mClicks').textContent=fn(stats.totalClicks);
+  document.getElementById('mClicksSub').textContent=`${stats.clicksLast30} nos últimos 30 dias`;
+  document.getElementById('mPaying').textContent=stats.totalPaying;
+  document.getElementById('mPayingSub').textContent=`${stats.totalFull} Full · ${stats.totalMaster} Master`;
+  document.getElementById('mFree').textContent=fn(stats.totalFree);
+  document.getElementById('mConv').textContent=(stats.totalClicks>0?((stats.totalFree+stats.totalPaying)/stats.totalClicks*100).toFixed(1):0)+'%';
+  // Receita
+  document.getElementById('rMrr').textContent=fm(stats.mrrAffiliate);
+  document.getElementById('rPending').textContent=fm(stats.pendingAmount);
+  document.getElementById('rPaid').textContent=fm(stats.paidAmount);
+  document.getElementById('rTotal').textContent=fm(stats.totalEarnings);
+  // Chart
+  const cb=document.getElementById('chartBars');
+  if(stats.clicksByDay?.length){const mx=Math.max(...stats.clicksByDay.map(d=>d.count),1);
+    cb.innerHTML=stats.clicksByDay.map(d=>{const p=(d.count/mx)*100;const dy=new Date(d.date+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short'});
+    return`<div class="chart-bar-wrap"><div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:2px">${d.count||''}</div><div class="chart-bar" style="height:${Math.max(p,2)}%;background:${p>60?'var(--neon)':'rgba(0,170,255,.3)'}"></div><div class="chart-day">${dy}</div></div>`;}).join('');}
+  // Histórico mensal
+  const mhEl=document.getElementById('monthlyHistEl');
+  if(monthlyHistory?.length){const mxT=Math.max(...monthlyHistory.map(h=>h.total),1);
+    mhEl.innerHTML=monthlyHistory.map(h=>{const p=(h.total/mxT)*100;
+    const sc=h.pending>0?'var(--gold)':'var(--green)';
+    const st=h.paid>0&&h.pending>0?`${fm(h.paid)} pago · ${fm(h.pending)} pendente`:h.paid>0?`✅ ${fm(h.paid)} pago`:`⏳ ${fm(h.pending)} pendente`;
+    return`<div class="hist-row"><div class="hist-month">${fmo(h.month)}</div><div class="hist-bar-wrap"><div class="hist-bar" style="width:${p}%"></div></div><div class="hist-total">${fm(h.total)}</div><div class="hist-status" style="color:${sc}">${st}</div></div>`;}).join('');
+    setTimeout(()=>{document.querySelectorAll('.hist-bar').forEach(b=>{b.style.width=b.style.width;});},100);
+  }else{mhEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhum ganho registrado ainda.</div>';}
+  // Conversões
+  const cvEl=document.getElementById('convEl');
+  const tl={signup:'Cadastro',upgrade_full:'⚡ Full',upgrade_master:'👑 Master'};
+  if(conversions?.length){cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Data</th></tr></thead><tbody>${conversions.map(c=>`<tr><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span></td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`).join('')}</tbody></table>`;}
+  else cvEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhuma conversão ainda. Compartilhe seu link!</div>';
+}
+
+function startPoll(){
+  if(pollT)clearInterval(pollT);
+  pollT=setInterval(async()=>{
+    if(!token)return;
+    try{
+      const r=await fetch(`/api/auth?action=dashboard&token=${encodeURIComponent(token)}`);
+      if(!r.ok)return;
+      const d=await r.json();
+      if(!d.affiliate)return;
+      const nc=d.conversions?.length||0;
+      if(nc>lastCC){
+        const nw=d.conversions[0];
+        const pl=nw.plan==='master'?'👑 Master':nw.plan==='full'?'⚡ Full':'🆓 Free';
+        if(nw.plan==='master'||nw.plan==='full'){
+          notif(`Novo assinante ${pl} via seu link!<br><span style="color:var(--green);font-size:11px">+${fm((d.stats?.commissionRate||0.35)*(nw.plan==='master'?29.99:9.99))} de comissão</span>`,'upgrade');
+        }else{notif(`Novo cadastro via seu link!`,'success');}
+        lastCC=nc;
       }
-    } catch(e) {}
-  }, 30000);
-}
-
-// ── UTILS ──────────────────────────────────────────────────────────────────────
-function copyLink(link) {
-  navigator.clipboard.writeText(link).then(() => showToast('✅ Link copiado!')).catch(() => {
-    const el = document.createElement('textarea');
-    el.value = link; document.body.appendChild(el); el.select();
-    document.execCommand('copy'); document.body.removeChild(el);
-    showToast('✅ Link copiado!');
-  });
-}
-
-function maskEmail(email) {
-  if (!email) return '—';
-  const [user, domain] = email.split('@');
-  return user.slice(0,2) + '***@' + domain;
-}
-
-function formatConvType(type) {
-  const map = { signup:'Cadastro', upgrade_full:'Upgrade Full', upgrade_master:'Upgrade Master' };
-  return map[type] || type;
-}
-
-function formatDate(dt) {
-  if (!dt) return '—';
-  return new Date(dt).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      renderDash(d);
+    }catch(e){}
+  },20000);
 }
 
 init();
