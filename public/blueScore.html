@@ -200,6 +200,13 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       </button>
     </div>
     <div class="input-hint">Funciona com canais, vídeos e handles (@). Dados analisados: últimos 10 vídeos públicos.</div>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Análises hoje:</div>
+    <div id="usageBadge" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--neon)">— / 3</div>
+    <div id="usageBar" style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:100px;max-width:80px;overflow:hidden">
+      <div id="usageBarFill" style="height:100%;background:var(--neon);border-radius:100px;width:0%;transition:width .4s ease"></div>
+    </div>
+  </div>
   </div>
 
   <!-- LOADING -->
@@ -375,6 +382,25 @@ if (!token || plan !== 'master') {
     </div>`;
 }
 
+// ── USAGE BADGE ──────────────────────────────────────────────────────────────
+function updateUsageBadge(count) {
+  const el = document.getElementById('usageBadge');
+  const fill = document.getElementById('usageBarFill');
+  if (!el) return;
+  const remaining = Math.max(0, 3 - count);
+  el.textContent = count + ' / 3';
+  el.style.color = remaining === 0 ? 'var(--red)' : remaining === 1 ? 'var(--gold)' : 'var(--neon)';
+  if (fill) fill.style.width = (count / 3 * 100) + '%';
+  if (fill) fill.style.background = remaining === 0 ? 'var(--red)' : remaining === 1 ? 'var(--gold)' : 'var(--neon)';
+}
+
+// Inicializa badge com uso do dia atual
+(function initUsage() {
+  const today = new Date().toISOString().split('T')[0];
+  const data = JSON.parse(localStorage.getItem('bs_daily_' + today) || '{"count":0,"channels":[]}');
+  updateUsageBadge(data.count);
+})();
+
 // ── MOUSE GLOW ────────────────────────────────────────────────────────────────
 document.addEventListener('mousemove', e => {
   const g = document.getElementById('glow');
@@ -431,6 +457,18 @@ async function analyze() {
     return;
   }
 
+  // Verificar limite diário (3 análises/dia por conta Master)
+  const today = new Date().toISOString().split('T')[0];
+  const usageKey = 'bs_daily_' + today;
+  const usageData = JSON.parse(localStorage.getItem(usageKey) || '{"count":0,"channels":[]}');
+  const channelKey = (parsed.id || url).toLowerCase().replace(/[^a-z0-9]/g,'').slice(0, 30);
+  const alreadyAnalyzed = usageData.channels.includes(channelKey);
+
+  if (!alreadyAnalyzed && usageData.count >= 3) {
+    showError('Limite de 3 análises de canais diferentes por dia atingido. Volte amanhã para analisar novos canais.');
+    return;
+  }
+
   // UI: loading
   document.getElementById('inputSection').style.display = 'none';
   document.getElementById('loadingSection').style.display = 'block';
@@ -468,6 +506,14 @@ async function analyze() {
 
     // 5. Render
     renderResults(scoreData, channelData, videos, aiInsights);
+
+    // Registrar uso diário
+    if (!alreadyAnalyzed) {
+      usageData.count++;
+      usageData.channels.push(channelKey);
+      localStorage.setItem(usageKey, JSON.stringify(usageData));
+    }
+    updateUsageBadge(usageData.count);
 
   } catch(e) {
     console.error('BlueScore error:', e);
