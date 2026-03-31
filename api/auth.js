@@ -497,30 +497,76 @@ export default async function handler(req, res) {
       const { channelId } = req.query;
       if (!channelId) return res.status(400).json({ error: 'channelId obrigatório' });
 
-      // Cache 6h
+      // Cache 6h (ignorado se nocache=1 ou cache tem videos vazios)
       const cacheKey = `bs_vids_${channelId}`;
-      if (SUPA_URL && SUPA_KEY) {
+      const skipCache = req.query?.nocache === '1';
+      if (!skipCache && SUPA_URL && SUPA_KEY) {
         try {
           const cr = await fetch(`${SUPA_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=data,cached_at`, { headers: supaH });
           if (cr.ok) {
             const rows = await cr.json();
             if (rows?.[0] && (Date.now() - new Date(rows[0].cached_at).getTime()) < 6*60*60*1000) {
-              console.log('BlueScore videos: CACHE HIT', channelId);
-              return res.status(200).json({ ...rows[0].data, fromCache: true });
+              const cachedVideos = rows[0].data?.videos || [];
+              // Não usa cache vazio — pode ser resultado de análise falha anterior
+              if (cachedVideos.length > 0) {
+                console.log('BlueScore videos: CACHE HIT', channelId, cachedVideos.length, 'videos');
+                return res.status(200).json({ ...rows[0].data, fromCache: true });
+              } else {
+                console.log('BlueScore videos: cache vazio ignorado, rebuscando...');
+              }
             }
           }
         } catch(e) { /* cache miss */ }
       }
 
       try {
-        const { d: sd } = await ytFetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=12`);
-        if (quotaError(sd)) return res.status(429).json({ error: quotaMsg });
-        if (sd.error) return res.status(400).json({ error: sd.error.message });
+        // Usa playlistItems (uploads playlist) — muito mais confiável que search por channelId
+        // O ID da playlist de uploads é o channelId com UC → UU
+        const uploadsPlaylistId = channelId.startsWith('UC')
+          ? 'UU' + channelId.slice(2)
+          : channelId;
 
-        const videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
-        if (!videoIds) return res.status(200).json({ videos: [] });
+        let videoIds = '';
+        let playlistOk = false;
 
-        const { d: vd } = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}`);
+        // Tentativa 1: playlistItems (preferencial — não consome cota de search)
+        const { d: pd } = await ytFetch(
+          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=24`
+        );
+
+        if (!quotaError(pd) && !pd.error && pd.items?.length) {
+          videoIds = pd.items.map(i => i.snippet?.resourceId?.videoId).filter(Boolean).join(',');
+          playlistOk = true;
+          console.log('BlueScore videos: playlistItems OK', pd.items.length, 'items');
+        } else {
+          console.log('BlueScore videos: playlistItems fallback', pd.error?.message || 'empty');
+        }
+
+        // Tentativa 2: search como fallback (menos confiável, mais cota)
+        if (!videoIds) {
+          const { d: sd } = await ytFetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=24`
+          );
+          if (quotaError(sd)) return res.status(429).json({ error: quotaMsg });
+          if (sd.error) return res.status(400).json({ error: sd.error.message });
+          videoIds = (sd.items || []).map(i => i.id?.videoId).filter(Boolean).join(',');
+          console.log('BlueScore videos: search fallback', sd.items?.length || 0, 'items');
+        }
+
+        if (!videoIds) {
+          // Apaga cache vazio para não travar futuros retries
+          if (SUPA_URL && SUPA_KEY) {
+            fetch(`${SUPA_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}`, {
+              method: 'DELETE', headers: supaH
+            }).catch(()=>{});
+          }
+          return res.status(200).json({ videos: [], noVideosFound: true });
+        }
+
+        // Busca stats, snippet e duração de todos os vídeos encontrados
+        const { d: vd } = await ytFetch(
+          `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoIds}`
+        );
         if (quotaError(vd)) return res.status(429).json({ error: quotaMsg });
 
         const videos = (vd.items || []).map(v => {
@@ -535,14 +581,14 @@ export default async function handler(req, res) {
             views: parseInt(stats.viewCount || 0),
             likes: parseInt(stats.likeCount || 0),
             comments: parseInt(stats.commentCount || 0),
-            duration: secs, isShort: secs > 0 && secs <= 60,
+            duration: secs, isShort: secs > 0 && secs <= 65,
           };
         }).sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
         const result = { videos };
 
-        // Salva cache
-        if (SUPA_URL && SUPA_KEY) {
+        // Só salva cache se encontrou vídeos (evita cachear resultado vazio)
+        if (videos.length > 0 && SUPA_URL && SUPA_KEY) {
           fetch(`${SUPA_URL}/rest/v1/viral_cache`, {
             method: 'POST',
             headers: { ...supaH, 'Prefer': 'resolution=merge-duplicates' },
