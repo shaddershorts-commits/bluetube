@@ -357,7 +357,7 @@ function renderVideos(videos) {
 
   // Contador regressivo até próximo refresh
   if (window._refreshCountdown) clearInterval(window._refreshCountdown);
-  let secsLeft = 1800;
+  let secsLeft = 18000;
   window._refreshCountdown = setInterval(() => {
     secsLeft--;
     if (secsLeft <= 0) { clearInterval(window._refreshCountdown); return; }
@@ -438,11 +438,11 @@ function escHtml(s) {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 if (plan === 'master') {
   fetchVirals();
-  // Auto-refresh a cada 30 minutos (cache de 2h no servidor economiza quota)
+  // Auto-refresh a cada 5 horas (cache de 3h no servidor economiza quota)
   setInterval(() => {
     console.log('[Virais] Auto-refresh...');
     fetchVirals();
-  }, 30 * 60 * 1000);
+  }, 5 * 60 * 60 * 1000);
 }
 
 // Also handle prefill on main page
