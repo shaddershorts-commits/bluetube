@@ -1408,7 +1408,7 @@ async function handleEmailSignup(){
   if(password!==confirm){setAuthMsg('As senhas não coincidem.','');return;}
   setAuthMsg('Criando conta…','ok');
   try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password})});
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:(()=>{const c=document.cookie.split(';').find(x=>x.trim().startsWith('bt_ref='));return c?c.split('=')[1].trim():null;})()} )});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
     if(d.needsConfirmation){
@@ -2266,6 +2266,21 @@ function openMasterTool(tool){
   document.getElementById('toolModal').classList.add('on');
 }
 function closeToolModal(){document.getElementById('toolModal').classList.remove('on');}
+
+// ── AFFILIATE TRACKING ─────────────────────────────────────────────────────
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  if (!ref) return;
+  // Salva cookie de 60 dias
+  const exp = new Date(Date.now() + 60*24*60*60*1000).toUTCString();
+  document.cookie = `bt_ref=${ref};expires=${exp};path=/;SameSite=Lax`;
+  // Cookie ID único para rastrear a sessão
+  let cid = localStorage.getItem('bt_cookie_id');
+  if (!cid) { cid = 'ck_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('bt_cookie_id', cid); }
+  // Registra clique no backend
+  fetch(`/api/affiliate?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}&referrer=${encodeURIComponent(document.referrer)}`).catch(()=>{});
+})();
 
 // ── BLUBLU MASCOT ──────────────────────────────────────────────────────────
 let blubluShown=false;
