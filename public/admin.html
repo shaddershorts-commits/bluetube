@@ -141,6 +141,14 @@ tr:hover td{background:rgba(0,170,255,0.02)}
   </div>
 </div>
 
+    <!-- BLUELENS ANALYSES -->
+    <div class="card">
+      <div class="card-title">🔍 BlueLens — Análises de origem</div>
+      <div id="bluelensStats">
+        <div class="empty-state">Carregando…</div>
+      </div>
+    </div>
+
 <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
 <!-- LOGIN -->
@@ -167,7 +175,11 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <span id="onlineCount">—</span> online agora
         <span style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;flex-shrink:0"></span>
       </div>
-      <div class="refresh-indicator"><span class="pulse"></span><span id="lastUpdate">Carregando…</span></div>
+      <div class="refresh-indicator" style="gap:12px">
+        <span class="pulse"></span>
+        <span id="lastUpdate">Carregando…</span>
+        <button onclick="loadData()" title="Forçar atualização agora" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.25);border-radius:6px;padding:3px 10px;font-family:var(--mono);font-size:10px;color:var(--neon);cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(0,170,255,.2)'" onmouseout="this.style.background='rgba(0,170,255,.1)'">↻ Atualizar agora</button>
+      </div>
       <button class="action-btn" onclick="loadData()">↻ Atualizar</button>
       <button class="action-btn" onclick="exportCSV()">↓ Exportar CSV</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
@@ -177,7 +189,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
   <div class="content">
     <div class="page-header">
       <div class="page-title">Dashboard</div>
-      <div class="page-sub">Atualiza automaticamente a cada 30 segundos · <span id="nextRefresh">—</span></div>
+      <div class="page-sub">Atualiza automaticamente a cada 15 segundos · <span id="nextRefresh">—</span></div>
     </div>
 
     <!-- REVENUE -->
@@ -440,7 +452,7 @@ function showNewSubscriberPopup(subscriber){
   setTimeout(()=>popup.remove(),8000);
 }
 let refreshInterval=null;
-let nextRefreshSecs=30;
+let nextRefreshSecs=15;
 let allSubscribers=[];
 
 function fmt(n){return'$'+Number(n).toFixed(2).replace('.',',')}
@@ -543,30 +555,63 @@ async function loadData(){
     }
     if(latest) lastKnownSubscriberId = latest.email;
 
-    // 📊 BlueScore stats
-    if(d.bluescore?.total_analyses > 0){
-      const bsEl = document.getElementById('bluescoreStats');
-      if(bsEl){
-        bsEl.innerHTML = `
-          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES (30 dias)</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${d.bluescore.total_analyses}</div></div>
-            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">SCORE MÉDIO</div><div style="font-size:22px;font-weight:800;color:var(--yellow)">${d.bluescore.avg_score}/100</div></div>
-          </div>
-          <table><thead><tr><th>Canal</th><th>Score</th><th>Classificação</th><th>Views Médias</th><th>Quando</th></tr></thead>
-          <tbody>${(d.bluescore.recent||[]).map(a=>`
-            <tr>
-              <td style="color:var(--text)">${a.channel_name||'—'}</td>
-              <td><span style="font-weight:800;color:${a.score>=70?'var(--green)':a.score>=50?'var(--yellow)':'var(--red)'}">${a.score||0}</span></td>
-              <td style="color:var(--dim);font-size:11px">${a.classification||'—'}</td>
-              <td style="color:var(--dim)">${a.avg_views?Number(a.avg_views).toLocaleString('pt-BR'):'—'}</td>
-              <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
-            </tr>`).join('')}
-          </tbody></table>`;
-        bsEl.style.display = 'block';
-      }
+    // 📊 BlueScore stats — sempre renderiza, mesmo sem dados
+    const bsEl = document.getElementById('bluescoreStats');
+    if(bsEl){
+      const bsTotal = d.bluescore?.total_analyses || 0;
+      const bsAvg   = d.bluescore?.avg_score || 0;
+      const bsList  = d.bluescore?.recent || [];
+      bsEl.style.display = 'block';
+      bsEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+          <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES (20 mais recentes)</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${bsTotal}</div></div>
+          <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">SCORE MÉDIO</div><div style="font-size:22px;font-weight:800;color:var(--yellow)">${bsAvg}/100</div></div>
+        </div>
+        ${bsList.length ? `<table><thead><tr><th>Canal</th><th>Score</th><th>Classificação</th><th>Views Médias</th><th>Quando</th></tr></thead>
+        <tbody>${bsList.map(a=>`
+          <tr>
+            <td style="color:var(--text)">${a.channel_name||'—'}</td>
+            <td><span style="font-weight:800;color:${a.score>=70?'var(--green)':a.score>=50?'var(--yellow)':'var(--red)'}">${a.score||0}</span></td>
+            <td style="color:var(--dim);font-size:11px">${a.classification||'—'}</td>
+            <td style="color:var(--dim)">${a.avg_views?Number(a.avg_views).toLocaleString('pt-BR'):'—'}</td>
+            <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state">Nenhuma análise registrada ainda.</div>'}`;
     }
 
-    // 🤝 Afiliados
+    // 🔍 BlueLens stats — análises de origem de vídeo
+    const blEl = document.getElementById('bluelensStats');
+    if(blEl){
+      const blTotal = d.bluelens?.total_analyses || 0;
+      const blList  = d.bluelens?.recent || [];
+      const blV     = d.bluelens?.verdicts || {};
+      blEl.style.display = 'block';
+      const verdictColor = { original:'var(--green)', repost:'var(--yellow)', edited_repost:'var(--red)', unknown:'var(--dim)' };
+      const verdictLabel = { original:'✅ Original', repost:'⚠️ Repost', edited_repost:'🚨 Repost editado', unknown:'❓ Indefinido' };
+      blEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+          <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES RECENTES</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${blTotal}</div></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--green)">✅ Original: ${blV.original||0}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--yellow)">⚠️ Repost: ${blV.repost||0}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--red)">🚨 Editado: ${blV.edited_repost||0}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">❓ Indefinido: ${blV.unknown||0}</span>
+          </div>
+        </div>
+        ${blList.length ? `<table><thead><tr><th>Usuário</th><th>Título do vídeo</th><th>Plataforma</th><th>Veredicto IA</th><th>Confiança</th><th>Quando</th></tr></thead>
+        <tbody>${blList.map(a=>`
+          <tr>
+            <td style="color:var(--dim);font-size:11px">${a.user_email||'Anônimo'}</td>
+            <td style="color:var(--text);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.video_title||''}">${a.video_title||'—'}</td>
+            <td style="color:var(--dim);font-size:11px">${a.input_platform||'—'}</td>
+            <td><span style="font-family:var(--mono);font-size:11px;color:${verdictColor[a.ai_verdict]||'var(--dim)'}">${verdictLabel[a.ai_verdict]||a.ai_verdict||'—'}</span></td>
+            <td style="color:var(--dim);font-size:11px">${a.ai_confidence?Math.round(a.ai_confidence*100)+'%':'—'}</td>
+            <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state">Nenhuma análise registrada ainda.</div>'}`;
+    }
+
+        // 🤝 Afiliados
     fetch(`/api/admin?action=list_affiliates`, { headers: { 'Authorization': `Bearer ${adminKey}` } })
       .then(r => r.json()).then(affiliates => {
         if (!Array.isArray(affiliates) || !affiliates.length) {
@@ -729,7 +774,7 @@ function startAutoRefresh(){
     nextRefreshSecs--;
     const el=document.getElementById('nextRefresh');
     if(el) el.textContent=`próxima atualização em ${nextRefreshSecs}s`;
-    if(nextRefreshSecs<=0){nextRefreshSecs=30;loadData();}
+    if(nextRefreshSecs<=0){nextRefreshSecs=15;loadData();}
   },1000);
 }
 
