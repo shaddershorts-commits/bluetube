@@ -559,6 +559,75 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
+  // ── TITLE SUGGEST — gera 2 títulos (casual + apelativo) a partir da transcrição ──
+  if (req.method === 'POST' && req.body?.action === 'title-suggest') {
+    const { transcript, originalTitle, lang = 'pt' } = req.body;
+    if (!transcript) return res.status(400).json({ error: 'transcript obrigatório' });
+
+    const GEMINI_KEYS = [
+      process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
+      process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5,
+    ].filter(Boolean);
+
+    const OPENAI_KEY = process.env.OPENAI_API_KEY;
+
+    const prompt = `Você é especialista em títulos virais para YouTube Shorts.
+
+Transcrição do vídeo: "${transcript.slice(0, 600)}"
+Título original: "${originalTitle || 'Sem título'}"
+Idioma: ${lang}
+
+Crie EXATAMENTE 2 títulos para este Short. Cada um em uma linha, sem numeração, sem explicação:
+1. CASUAL: tom leve, natural, próximo do público, máximo 60 caracteres
+2. APELATIVO: hook forte, curioso, gera clique, máximo 60 caracteres
+
+Responda APENAS com os 2 títulos, um por linha.`;
+
+    let casualTitle = '', apelatTitle = '';
+
+    // Tenta Gemini primeiro
+    for (const key of GEMINI_KEYS) {
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
+        );
+        const d = await r.json();
+        const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) {
+          const lines = text.split('
+').map(l => l.trim()).filter(Boolean);
+          casualTitle = lines[0] || '';
+          apelatTitle = lines[1] || lines[0] || '';
+          break;
+        }
+      } catch(e) { continue; }
+    }
+
+    // Fallback OpenAI
+    if (!casualTitle && OPENAI_KEY) {
+      try {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_KEY}` },
+          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 100,
+            messages: [{ role: 'user', content: prompt }] })
+        });
+        const d = await r.json();
+        const text = d.choices?.[0]?.message?.content?.trim();
+        if (text) {
+          const lines = text.split('
+').map(l => l.trim()).filter(Boolean);
+          casualTitle = lines[0] || '';
+          apelatTitle = lines[1] || lines[0] || '';
+        }
+      } catch(e) {}
+    }
+
+    return res.status(200).json({ casual: casualTitle, apelativo: apelatTitle });
+  }
+
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
@@ -768,248 +837,224 @@ Responda APENAS em JSON válido sem markdown:
   }
 
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
+    // Rotação de 3 chaves para triplicar a cota diária (30.000 unidades/dia)
     const YT_KEYS = [
-      process.env.YOUTUBE_API_KEY,    process.env.YOUTUBE_API_KEY_2,
-      process.env.YOUTUBE_API_KEY_3,  process.env.YOUTUBE_API_KEY_4,
-      process.env.YOUTUBE_API_KEY_5,  process.env.YOUTUBE_API_KEY_6,
-      process.env.YOUTUBE_API_KEY_7,  process.env.YOUTUBE_API_KEY_8,
-      process.env.YOUTUBE_API_KEY_9,  process.env.YOUTUBE_API_KEY_10,
-      process.env.YOUTUBE_API_KEY_11,
+      process.env.YOUTUBE_API_KEY,
+      process.env.YOUTUBE_API_KEY_2,
+      process.env.YOUTUBE_API_KEY_3,
+      process.env.YOUTUBE_API_KEY_4,
+      process.env.YOUTUBE_API_KEY_5,
+      process.env.YOUTUBE_API_KEY_6,
+      process.env.YOUTUBE_API_KEY_7,
+      process.env.YOUTUBE_API_KEY_8,
+      process.env.YOUTUBE_API_KEY_9,
+      process.env.YOUTUBE_API_KEY_10,
     ].filter(Boolean);
-    if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
+    if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API nao configurada.' });
 
-    const keyIndex = Math.floor(Date.now() / (60 * 60 * 1000)) % YT_KEYS.length;
-    const { period = '7d', category = '', region = 'BR', q = '', shortsChannels = '' } = req.query;
-    const filterShortsChannels = shortsChannels === '1';
+    // Rotaciona chave por hora para distribuir cota ao longo do dia
+    const keyIndex = Math.floor(Date.now() / (60*60*1000)) % YT_KEYS.length;
+    let YT_KEY = YT_KEYS[keyIndex];
 
-    const MIN_VIEWS = period === '24h' ?  500000
-                    : period === '7d'  ? 3000000
-                    :                   9000000;
+    const { period = '7d', category = '', region = 'BR', q = '' } = req.query;
 
+    const now = new Date();
     const cutoffMs = period === '24h' ? 24*60*60*1000
-                   : period === '7d'  ?  7*24*60*60*1000
-                   : 30*24*60*60*1000;
-    const publishedAfter = new Date(Date.now() - cutoffMs).toISOString();
+      : period === '7d' ? 7*24*60*60*1000
+      : 30*24*60*60*1000;
+    const cutoffDate = new Date(now - cutoffMs);
+    const publishedAfter = cutoffDate.toISOString();
 
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-    const supaH = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
 
-    const cacheKey = `virais4_${region}_${period}_${category}_${filterShortsChannels?'sc':''}_${q.slice(0,20).replace(/\s/g,'_')}`;
-    const cacheTTL = 6 * 60 * 60 * 1000;
+    // Cache no Supabase: chave = region+period+category+q, TTL = 1h (24h para período 30d)
+    const cacheKey = `virais_${region}_${period}_${category}_${q.slice(0,20).replace(/\s/g,'_')}`;
+    const cacheTTL = 14*60*60*1000; // 14h para todos os períodos
 
-    // ── STALE CACHE — lê antes de qualquer chamada ────────────────────────────
-    let staleCache = null;
-    if (SUPABASE_URL && SUPABASE_KEY) {
+    // Tenta ler cache do Supabase
+    if (SUPABASE_URL && SUPABASE_KEY && !q) {
       try {
-        // Tenta cache exato primeiro
-        for (const ck of [cacheKey, `virais4_${region}_${period}__`]) {
-          const cr = await fetch(
-            `${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(ck)}&select=data,cached_at`,
-            { headers: supaH }
-          );
-          if (!cr.ok) continue;
-          const rows = await cr.json();
-          if (!rows?.[0]) continue;
-          const age  = Date.now() - new Date(rows[0].cached_at).getTime();
-          const vids = rows[0].data?.videos || [];
-          if (!vids.length) continue;
-          staleCache = { videos: vids, cacheAge: Math.round(age / 60000) };
-          // Cache fresco com a chave exata → serve direto
-          if (ck === cacheKey && age < cacheTTL) {
-            console.log('viral-shorts CACHE HIT:', cacheKey, Math.round(age/60000)+'min', vids.length+'v');
-            return res.status(200).json({
-              videos: vids, total: vids.length,
-              region, period, fromCache: true, cacheAge: Math.round(age/60000)
-            });
+        const cacheRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=data,cached_at`,
+          { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+        );
+        if (cacheRes.ok) {
+          const rows = await cacheRes.json();
+          if (rows?.[0]) {
+            const age = Date.now() - new Date(rows[0].cached_at).getTime();
+            if (age < cacheTTL) {
+              // Aplica filtro de views mínimas no cache também
+              const minV = period === '24h' ? 1000000 : period === '7d' ? 5000000 : 10000000;
+              const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
+              // Se cache ficou vazio após filtro, ignora e rebusca
+              if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
+                console.log('viral-shorts CACHE STALE (views abaixo do mínimo), rebuscando...');
+                // Apaga cache antigo para forçar nova busca
+                fetch(`${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}`, {
+                  method: 'DELETE',
+                  headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                }).catch(()=>{});
+              } else {
+                console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min', '| vídeos:', cachedVideos.length);
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                return res.status(200).json({ ...rows[0].data, videos: cachedVideos, total: cachedVideos.length, fromCache: true, cacheAge: Math.round(age/60000) });
+              }
+            }
           }
-          break; // encontrou stale, para de buscar
         }
-      } catch(e) { /* ignora */ }
+      } catch(e) { /* cache miss, continua */ }
     }
 
-    const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B'
-      : n >= 1e6 ? (n/1e6).toFixed(1)+'M'
-      : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n);
+    const REGION_CONFIG = {
+      ALL: { lang: null, queries: ['viral shorts trending', 'shorts viral global', 'shorts blowing up'] },
+      BR:  { lang:'pt', queries: ['shorts viral brasil', 'shorts viralizando', 'curta viral brasil'] },
+      US:  { lang:'en', queries: ['viral shorts usa', 'shorts blowing up', 'trending shorts america'] },
+      GB:  { lang:'en', queries: ['viral shorts uk', 'trending shorts britain', 'shorts going viral uk'] },
+      IN:  { lang:'hi', queries: ['shorts viral india', 'viral shorts hindi', 'trending shorts india'] },
+      MX:  { lang:'es', queries: ['shorts viral mexico', 'cortos virales mexico', 'shorts tendencia mexico'] },
+      JP:  { lang:'ja', queries: ['ショート 急上昇 日本', 'ショート バズ 日本', 'ショート動画 人気'] },
+      KR:  { lang:'ko', queries: ['쇼츠 인기 한국', '한국 쇼츠 바이럴', '인기급상승 쇼츠'] },
+      DE:  { lang:'de', queries: ['shorts viral deutschland', 'virale shorts deutsch', 'trending shorts deutsch'] },
+      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts qui buzze france', 'tendance shorts france'] },
+      ES:  { lang:'es', queries: ['shorts viral espana', 'shorts virales espana', 'tendencia shorts espana'] },
+      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts virales argentina'] },
+      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts virales colombia'] },
+      TR:  { lang:'tr', queries: ['shorts viral turkiye', 'trend shorts turkce', 'viral shorts turkiye'] },
+    };
 
-    // Helper: tenta uma chamada YouTube com rotação de chave
-    // cost=1 para videos.list, cost=100 para search.list
-    const ytFetch = async (buildUrl) => {
+    const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
+    const { lang, queries: regionQueries } = cfg;
+    const searchQueries = q
+      ? [`${q} shorts`, `${q} viral`, q]
+      : regionQueries;
+
+    const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
+
+    // Tenta busca com uma chave, se der 403/quota error tenta a próxima
+    const makeSearch = async (searchQ) => {
       for (let ki = 0; ki < YT_KEYS.length; ki++) {
         const key = YT_KEYS[(keyIndex + ki) % YT_KEYS.length];
-        const url = buildUrl(key);
-        const r   = await fetch(url).catch(() => null);
-        if (!r) continue;
-        const d = await r.json().catch(() => ({}));
-        if (d.error?.code === 403 || d.error?.message?.toLowerCase().includes('quota')) {
-          console.log('viral-shorts quota chave', ki, '— próxima');
-          continue;
-        }
-        if (!r.ok || d.error) return null;
-        return d;
-      }
-      return null; // todas esgotadas
-    };
-
-    const serveStale = (msg) => {
-      if (staleCache?.videos?.length) {
-        console.log('viral-shorts STALE CACHE:', msg, staleCache.videos.length+'v');
-        return res.status(200).json({
-          videos: staleCache.videos, total: staleCache.videos.length,
-          region, period, fromCache: true, stale: true, cacheAge: staleCache.cacheAge
-        });
-      }
-      console.log('viral-shorts VAZIO:', msg);
-      return res.status(200).json({ videos: [], total: 0, quotaError: true });
-    };
-
-    // Mapeia duração ISO para segundos
-    const parseDur = (dur) => {
-      const m = (dur||'').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-      return (parseInt(m?.[1]||0)*3600)+(parseInt(m?.[2]||0)*60)+parseInt(m?.[3]||0);
-    };
-
-    // Converte item de stats em objeto de vídeo
-    const toVideo = (v) => {
-      const stats = v.statistics||{}, snip = v.snippet||{};
-      const views = parseInt(stats.viewCount||0);
-      return {
-        id: v.id, title: snip.title||'', channel: snip.channelTitle||'',
-        thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || '',
-        views, viewsFormatted: fmtViews(views),
-        likes: parseInt(stats.likeCount||0),
-        publishedAt: snip.publishedAt||'',
-        duration: parseDur(v.contentDetails?.duration),
-        url: `https://www.youtube.com/shorts/${v.id}`
-      };
-    };
-
-    const REGION_CFG = {
-      BR:  { lang:'pt', q1:'shorts virais brasil',     q2:'curtos viralizando' },
-      US:  { lang:'en', q1:'viral shorts',             q2:'shorts blowing up' },
-      GB:  { lang:'en', q1:'viral shorts uk',          q2:'trending shorts uk' },
-      IN:  { lang:'hi', q1:'viral shorts india',       q2:'shorts viral hindi' },
-      MX:  { lang:'es', q1:'shorts virales mexico',    q2:'cortos virales mexico' },
-      AR:  { lang:'es', q1:'shorts virales argentina', q2:'cortos virales argentina' },
-      CO:  { lang:'es', q1:'shorts virales colombia',  q2:'cortos virales colombia' },
-      JP:  { lang:'ja', q1:'ショート急上昇',           q2:'バズったショート動画' },
-      KR:  { lang:'ko', q1:'쇼츠 인기 한국',          q2:'바이럴 쇼츠' },
-      DE:  { lang:'de', q1:'shorts viral deutschland', q2:'virale shorts deutsch' },
-      FR:  { lang:'fr', q1:'shorts viral france',      q2:'shorts qui buzz france' },
-      ES:  { lang:'es', q1:'shorts virales espana',    q2:'cortos virales espana' },
-      TR:  { lang:'tr', q1:'shorts viral turkiye',     q2:'trend shorts turkce' },
-      ALL: { lang:null, q1:'viral shorts trending',    q2:'most viral shorts' },
-    };
-    const cfg = REGION_CFG[region] || REGION_CFG['ALL'];
-
-    try {
-      let allVideos = [];
-
-      // ════════════════════════════════════════════════════════════════════════
-      // ESTRATÉGIA 1: chart=mostPopular — custa 1 unidade por chamada
-      // Busca os vídeos mais populares da região e filtra Shorts por duração
-      // ════════════════════════════════════════════════════════════════════════
-      const popularPages = q ? 0 : 3; // 3 páginas × 50 = 150 candidatos
-      let pageToken = '';
-      for (let pg = 0; pg < popularPages; pg++) {
-        const d = await ytFetch(key => {
-          const p = new URLSearchParams({
-            part: 'snippet,statistics,contentDetails',
-            chart: 'mostPopular', maxResults: '50',
-            ...(region !== 'ALL' ? { regionCode: region } : {}),
-            ...(category         ? { videoCategoryId: category } : {}),
-            ...(pageToken        ? { pageToken } : {}),
-            key,
-          });
-          return `https://www.googleapis.com/youtube/v3/videos?${p}`;
-        });
-        if (!d) break;
-        const shorts = (d.items||[]).map(toVideo).filter(v => v.duration > 0 && v.duration <= 60);
-        allVideos.push(...shorts);
-        pageToken = d.nextPageToken || '';
-        if (!pageToken) break;
-      }
-      console.log('viral-shorts mostPopular Shorts:', allVideos.length, '| região:', region);
-
-      // ════════════════════════════════════════════════════════════════════════
-      // ESTRATÉGIA 2: search — custa 100 unidades, mais preciso para região/idioma
-      // Tenta sempre; falha silenciosa se quota esgotada
-      // ════════════════════════════════════════════════════════════════════════
-      const searchQuery = q || cfg.q1;
-      const searchD = await ytFetch(key => {
-        const p = new URLSearchParams({
+        const params = new URLSearchParams({
           part: 'snippet', type: 'video', videoDuration: 'short',
           order: 'viewCount', maxResults: '50',
-          publishedAfter, q: searchQuery, key,
+          key, q: searchQ, publishedAfter,
+          ...(lang ? { relevanceLanguage: lang } : {}),
           ...(region !== 'ALL' ? { regionCode: region } : {}),
-          ...(cfg.lang         ? { relevanceLanguage: cfg.lang } : {}),
-          ...(category         ? { videoCategoryId: category } : {}),
+          ...(category ? { videoCategoryId: category } : {}),
         });
-        return `https://www.googleapis.com/youtube/v3/search?${p}`;
+        const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
+        const d = await r.json();
+        if (d.error?.code === 403 || d.error?.message?.includes('quota')) {
+          console.log('Quota esgotada na chave', ki, '- tentando próxima...');
+          continue; // tenta próxima chave
+        }
+        console.log('YT search:', searchQ.slice(0,25), '| key:', ki, '| items:', d.items?.length || 0, '| err:', d.error?.message || 'ok');
+        if (!r.ok) return [];
+        return d.items || [];
+      }
+      console.log('Todas as chaves com quota esgotada!');
+      return [];
+    };
+
+    try {
+      const allSearches = await Promise.all(searchQueries.map(sq => makeSearch(sq)));
+
+      const seen = new Set();
+      const allItems = allSearches.flat().filter(i => {
+        const id = i.id?.videoId;
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
       });
 
-      if (searchD?.items?.length) {
-        const searchIds = searchD.items.map(i => i.id?.videoId).filter(Boolean);
-        const existingIds = new Set(allVideos.map(v => v.id));
-        const newIds = searchIds.filter(id => !existingIds.has(id));
-        if (newIds.length) {
-          const statsD = await ytFetch(key =>
-            `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails,snippet&id=${newIds.join(',')}&key=${key}`
-          );
-          if (statsD?.items) {
-            const newShorts = statsD.items.map(toVideo).filter(v => v.duration > 0 && v.duration <= 60);
-            allVideos.push(...newShorts);
-          }
-        }
-        console.log('viral-shorts search complementou:', newIds.length, 'novos vídeos');
-      }
+      console.log('viral-shorts bruto:', allItems.length, '| região:', region, '| período:', period);
+      if (!allItems.length) return res.status(200).json({ videos: [], total: 0, quotaError: true });
 
-      // Sem nenhum resultado de nenhuma estratégia → stale cache
-      if (!allVideos.length) return serveStale('ambas estratégias falharam');
+      // Stats em lotes de 50 com rotação de chave
+      const allVideoIds = allItems.map(i => i.id.videoId);
+      const chunks = [];
+      for (let i = 0; i < allVideoIds.length; i += 50) chunks.push(allVideoIds.slice(i, i+50));
 
-      // ── FILTROS ───────────────────────────────────────────────────────────
-      const seen = new Set();
-      let videos = allVideos
-        .filter(v => {
-          if (v.views <= 0 || seen.has(v.id)) return false;
-          seen.add(v.id);
-          if (filterShortsChannels) {
-            const ch = v.channel.toLowerCase();
-            if (!ch.includes('short') && !ch.includes('curto') &&
-                !ch.includes('reel')  && !ch.includes('viral')) return false;
-          }
-          return true;
+      const statsResults = await Promise.all(
+        chunks.map((ids, ci) => {
+          const key = YT_KEYS[(keyIndex + ci) % YT_KEYS.length];
+          return fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${ids.join(',')}&key=${key}`)
+            .then(r => r.json()).then(d => d.items || []).catch(() => []);
         })
-        .sort((a, b) => b.views - a.views);
+      );
 
-      // Aplica MIN_VIEWS — remove vídeos que não estão explodindo
-      let result = videos.filter(v => v.views >= MIN_VIEWS);
+      const allVideos = statsResults.flat().map(v => {
+        const stats = v.statistics || {}, snippet = v.snippet || {};
+        const dur = v.contentDetails?.duration || '';
+        const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
+        const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
+        const views = parseInt(stats.viewCount||0);
+        return {
+          id: v.id, title: snippet.title, channel: snippet.channelTitle,
+          thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
+          views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
+          publishedAt: snippet.publishedAt, duration: secs,
+          url: `https://www.youtube.com/shorts/${v.id}`
+        };
+      }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
-      // Se MIN_VIEWS filtrou tudo: mostra top disponível (nunca vazio)
-      if (!result.length) {
-        result = videos.slice(0, 15);
-        console.log('viral-shorts: MIN_VIEWS zerou tudo, servindo top', result.length, 'sem mínimo');
+      // Views mínimas por período — só mostra o que está realmente viral
+      const MIN_VIEWS = period === '24h' ? 1000000
+                      : period === '7d'  ? 5000000
+                      : 10000000; // 30d
+      console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
+
+      // Filtro de data suave — remove apenas vídeos com mais de 3x o período
+      const softCutoff = new Date(now - cutoffMs * 3);
+      let videos = allVideos
+        .filter(v => !v.publishedAt || new Date(v.publishedAt) >= softCutoff)
+        .filter(v => v.views >= MIN_VIEWS)
+        .sort((a,b) => b.views - a.views)
+        .slice(0, 50); // max 50 — todos são top
+
+      // Fallback 1: sem filtro de data mas mantém views mínimas
+      if (videos.length === 0 && allVideos.length > 0) {
+        videos = allVideos
+          .filter(v => v.views >= MIN_VIEWS)
+          .sort((a,b) => b.views - a.views)
+          .slice(0, 50);
+        console.log('viral-shorts: fallback sem data, total:', videos.length);
       }
 
-      result = result.slice(0, 50);
-      console.log(`viral-shorts OK: ${result.length}v | ${region}/${period} | min:${fmtViews(MIN_VIEWS)}`);
-
-      const payload = { videos: result, total: result.length, region, period };
-
-      // Salva cache
-      if (SUPABASE_URL && SUPABASE_KEY && result.length > 0) {
-        fetch(`${SUPABASE_URL}/rest/v1/viral_cache`, {
-          method: 'POST',
-          headers: { ...supaH, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify({ cache_key: cacheKey, data: payload, cached_at: new Date().toISOString() })
-        }).catch(() => {});
+      // Fallback 2: sem filtro nenhum (quota esgotada ou região com poucos virais)
+      if (videos.length === 0 && allVideos.length > 0) {
+        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 30);
+        console.log('viral-shorts: fallback sem filtro, top:', videos.length);
       }
 
-      return res.status(200).json(payload);
+      const dateFilterFailed = false;
 
+      const result = { videos, total: videos.length, region, period, dateFilterFailed };
+
+      // Salva cache no Supabase
+      if (SUPABASE_URL && SUPABASE_KEY && videos.length > 0 && !q) {
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/viral_cache`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`,
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({ cache_key: cacheKey, data: result, cached_at: new Date().toISOString() })
+          });
+          console.log('viral-shorts cache salvo:', cacheKey, videos.length, 'vídeos');
+        } catch(e) { /* non-blocking */ }
+      }
+
+      return res.status(200).json(result);
     } catch(e) {
       console.error('viral-shorts error:', e.message);
-      return serveStale('erro: ' + e.message);
+      return res.status(500).json({ error: 'Falha ao buscar videos virais: ' + e.message });
     }
   }
 
@@ -1034,77 +1079,32 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET) ──────────────────────────────────────────────────
-  // Gera sample curto via TTS — funciona para qualquer voiceId válido,
-  // incluindo vozes de links compartilhados. Não usa /v1/voices/{id}
-  // pois esse endpoint só retorna vozes da conta e quebra IDs externos.
+  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const { voiceId, provider = 'elevenlabs' } = req.query;
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+    const { voiceId } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
-    const SAMPLE = 'Olá! Esta é a minha voz.';
-
     try {
-      // ── MiniMax ────────────────────────────────────────────────────────────
-      if (provider === 'minimax') {
-        const MM_KEY   = process.env.MINIMAX_API_KEY;
-        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
-        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
-        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'speech-02-hd', text: SAMPLE,
-            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
-            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
-          })
-        });
-        const mmData = await mmRes.json();
-        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio)
-          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
-        return res.status(200).json({
-          audio: Buffer.from(mmData.data.audio, 'hex').toString('base64'), format: 'mp3'
-        });
-      }
-
-      // ── ElevenLabs (default) ───────────────────────────────────────────────
-      const XI_KEY = process.env.ELEVENLABS_API_KEY;
-      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-
-      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-        body: JSON.stringify({
-          text: SAMPLE,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-        })
+      // Busca metadados da voz incluindo preview_url
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
+        headers: { 'xi-api-key': XI_KEY }
       });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
+      const data = await r.json();
+      const previewUrl = data.preview_url;
+      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
 
-      if (!ttsRes.ok) {
-        const err = await ttsRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
-        console.error('voice-preview TTS error:', ttsRes.status, voiceId, detail);
-        const isPlanRestriction = ttsRes.status === 402
-          || detail.toLowerCase().includes('upgrade')
-          || detail.toLowerCase().includes('free users cannot');
-        const notFound = !isPlanRestriction && (ttsRes.status === 404 || ttsRes.status === 422
-          || detail.toLowerCase().includes('not found')
-          || detail.toLowerCase().includes('invalid'));
-        const errorMsg = isPlanRestriction
-          ? 'Voz de biblioteca — requer upgrade da conta de voz.'
-          : notFound
-            ? 'Esta voz não está disponível.'
-            : 'Prévia indisponível.';
-        return res.status(502).json({ error: errorMsg, notInAccount: notFound, planRestriction: isPlanRestriction });
-      }
+      // Faz proxy do áudio para evitar CORS
+      const audioRes = await fetch(previewUrl);
+      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
 
-      const buf = await ttsRes.arrayBuffer();
-      return res.status(200).json({
-        audio: Buffer.from(buf).toString('base64'), format: 'mp3'
-      });
+      const audioBuffer = await audioRes.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString('base64');
+      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
     } catch(e) {
-      console.error('voice-preview error:', e.message);
+      console.error('Preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
@@ -1116,7 +1116,7 @@ Responda APENAS em JSON válido sem markdown:
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
+    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
 
     try {
       // eleven_v3 usa endpoint diferente (turbo/v3 preview)
