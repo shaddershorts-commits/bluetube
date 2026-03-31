@@ -293,23 +293,41 @@ async function fetchVirals() {
 
   try {
     const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
-    // cache: 'no-store' evita 304 sem body que causava erro
-    const r = await fetch(`/api/auth?${params}`, { cache: 'no-store' });
+    const url = `/api/auth?${params}&_t=${Date.now()}`;
+    
+    let r, data;
+    try {
+      r = await fetch(url);
+    } catch(fe) {
+      console.error('Fetch network error:', fe);
+      showError('Erro de rede. Verifique sua conexão.');
+      return;
+    }
 
-    let data;
-    try { data = await r.json(); }
-    catch(je) { showError('Erro ao processar resposta. Tente novamente.'); return; }
+    // Tenta parsear mesmo se não for ok
+    const text = await r.text();
+    try { data = JSON.parse(text); }
+    catch(je) {
+      console.error('JSON parse error, status:', r.status, 'body:', text.slice(0,200));
+      showError('Erro ao processar resposta do servidor (HTTP ' + r.status + ').');
+      return;
+    }
 
     if (!r.ok || data.error) {
-      showError(data.error || 'Erro ao buscar vídeos.');
+      showError(data.error || 'Erro ao buscar vídeos (HTTP ' + r.status + ').');
       return;
     }
 
     lastResults = data.videos || [];
+    if (!lastResults.length) {
+      showError('Nenhum vídeo encontrado para este filtro. Tente outro período ou região.');
+      return;
+    }
     renderVideos(lastResults);
 
   } catch(e) {
-    showError('Erro de conexão. Verifique sua internet e tente novamente.');
+    console.error('fetchVirals error:', e);
+    showError('Erro inesperado: ' + e.message);
   } finally {
     btn.disabled = false;
     icon.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
