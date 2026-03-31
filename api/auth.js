@@ -1,6 +1,7 @@
 // api/auth.js — BlueTube Auth + Language Detection
 // Supabase Auth: signup, signin, OTP verify, reset password
 // Also handles GET /api/auth?action=lang for language detection
+import crypto from 'crypto';
 
 // ── LANGUAGE DETECTION DATA ────────────────────────────────────────────────
 const COUNTRY_LANG = {
@@ -1360,7 +1361,8 @@ Responda APENAS em JSON válido sem markdown:
   // ── REGISTER AFFILIATE ─────────────────────────────────────────────────────
   // POST { action: 'register', token, name }
   if (req.method === 'POST' && _action === 'register') {
-    const { token, name } = req.body;
+    const { token, name } = req.body || {};
+    console.log('Register affiliate called, token present:', !!token, 'SUPA_URL:', !!SUPA_URL);
     if (!token) return res.status(401).json({ error: 'Token obrigatório' });
 
     try {
@@ -1395,10 +1397,18 @@ Responda APENAS em JSON válido sem markdown:
         })
       });
       const data = await r.json();
+      if (!r.ok) {
+        console.error('Supabase insert error:', JSON.stringify(data).slice(0,300));
+        return res.status(500).json({ error: 'Erro ao salvar afiliado: ' + (data.message || data.details || JSON.stringify(data)) });
+      }
+      if (!data[0]) {
+        console.error('Supabase insert returned empty:', JSON.stringify(data));
+        return res.status(500).json({ error: 'Afiliado criado mas sem retorno do banco' });
+      }
       return res.status(201).json({ affiliate: data[0] });
     } catch(e) {
-      console.error('Register affiliate error:', e.message);
-      return res.status(500).json({ error: 'Erro ao criar afiliado' });
+      console.error('Register affiliate error:', e.message, e.stack?.slice(0,300));
+      return res.status(500).json({ error: 'Erro ao criar afiliado: ' + e.message });
     }
   }
 
