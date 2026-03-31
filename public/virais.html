@@ -293,18 +293,8 @@ async function fetchVirals() {
 
   try {
     const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
-    const r = await fetch(`/api/auth?${params}`);
-
-    // 304 = cache do browser, sem body — tenta de novo sem cache
-    if (r.status === 304) {
-      const r2 = await fetch(`/api/auth?${params}&_t=${Date.now()}`);
-      if (r2.ok) {
-        const data2 = await r2.json();
-        lastResults = data2.videos || [];
-        renderVideos(lastResults);
-        return;
-      }
-    }
+    // cache: 'no-store' evita 304 sem body que causava erro
+    const r = await fetch(`/api/auth?${params}`, { cache: 'no-store' });
 
     let data;
     try { data = await r.json(); }
