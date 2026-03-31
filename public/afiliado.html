@@ -342,9 +342,13 @@ async function doLogin(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email,password:pwd})});
     const d=await r.json();
     if(!r.ok){err.textContent=d.error||'Credenciais inválidas';btn.disabled=false;btn.textContent='Entrar →';return;}
-    token=d.session?.access_token;localStorage.setItem('bt_token',token);
-    hideAuth();init();
-  }catch(e){err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
+    token=d.session?.access_token;
+    if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Entrar →';return;}
+    localStorage.setItem('bt_token',token);
+    hideAuth();
+    // Verifica se já é afiliado ou precisa se cadastrar
+    init();
+  }catch(e){console.error('Login error:',e);err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
 }
 
 async function doSignup(){
@@ -361,9 +365,13 @@ async function doSignup(){
     const d=await r.json();
     if(!r.ok){err.textContent=d.error||'Erro ao criar conta';btn.disabled=false;btn.textContent='Criar conta →';return;}
     if(d.needsConfirmation){err.style.color='var(--green)';err.textContent='✅ Verifique seu email!';btn.disabled=false;btn.textContent='Criar conta →';return;}
-    token=d.session?.access_token;localStorage.setItem('bt_token',token);
-    hideAuth();init();
-  }catch(e){err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Criar conta →';}
+    token=d.session?.access_token;
+    if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Criar conta →';return;}
+    localStorage.setItem('bt_token',token);
+    hideAuth();
+    // Novo usuário — vai direto para registro de afiliado
+    regAffiliate();
+  }catch(e){console.error('Signup error:',e);err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Criar conta →';}
 }
 
 function handleCta(){if(!token){showAuth();return;}regAffiliate();}
@@ -374,9 +382,22 @@ async function regAffiliate(){
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'register',token})});
     const d=await r.json();
-    if(r.ok&&d.affiliate){d.alreadyExists?init():showPending();}
-    else{if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro: '+(d.error||'tente novamente'));}
-  }catch(e){if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro de conexão');}
+    if(r.ok&&d.affiliate){
+      if(d.alreadyExists){
+        // Já existe — verifica status
+        if(d.affiliate.status==='active') init();
+        else if(d.affiliate.status==='pending') showPending();
+        else{toast('Conta suspensa.');show('landingSection');}
+      } else {
+        // Recém criado — status pending
+        showPending();
+      }
+    } else {
+      console.error('Register failed:', r.status, d);
+      if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}
+      toast('Erro: '+(d.error||'tente novamente'));
+    }
+  }catch(e){console.error('regAffiliate error:',e);if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro de conexão: '+e.message);}
 }
 
 const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.display=s===id?'block':'none';});};
