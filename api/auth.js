@@ -812,11 +812,24 @@ Responda APENAS em JSON válido sem markdown:
           if (rows?.[0]) {
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
             if (age < cacheTTL) {
-              console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min');
-              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-              res.setHeader('Pragma', 'no-cache');
-              res.setHeader('Expires', '0');
-              return res.status(200).json({ ...rows[0].data, fromCache: true, cacheAge: Math.round(age/60000) });
+              // Aplica filtro de views mínimas no cache também
+              const minV = period === '24h' ? 1000000 : period === '7d' ? 5000000 : 10000000;
+              const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
+              // Se cache ficou vazio após filtro, ignora e rebusca
+              if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
+                console.log('viral-shorts CACHE STALE (views abaixo do mínimo), rebuscando...');
+                // Apaga cache antigo para forçar nova busca
+                fetch(`${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}`, {
+                  method: 'DELETE',
+                  headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                }).catch(()=>{});
+              } else {
+                console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min', '| vídeos:', cachedVideos.length);
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                return res.status(200).json({ ...rows[0].data, videos: cachedVideos, total: cachedVideos.length, fromCache: true, cacheAge: Math.round(age/60000) });
+              }
             }
           }
         }
@@ -917,9 +930,10 @@ Responda APENAS em JSON válido sem markdown:
       }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
       // Views mínimas por período — só mostra o que está realmente viral
-      const MIN_VIEWS = period === '24h' ? 1_000_000
-                      : period === '7d'  ? 5_000_000
-                      : 10_000_000; // 30d
+      const MIN_VIEWS = period === '24h' ? 1000000
+                      : period === '7d'  ? 5000000
+                      : 10000000; // 30d
+      console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
 
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
       const softCutoff = new Date(now - cutoffMs * 3);
