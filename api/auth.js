@@ -795,7 +795,7 @@ Responda APENAS em JSON válido sem markdown:
 
     // Cache no Supabase: chave = region+period+category+q, TTL = 1h (24h para período 30d)
     const cacheKey = `virais_${region}_${period}_${category}_${q.slice(0,20).replace(/\s/g,'_')}`;
-    const cacheTTL = period === '30d' ? 6*60*60*1000 : period === '7d' ? 3*60*60*1000 : 2*60*60*1000; // 6h, 3h ou 2h
+    const cacheTTL = period === '30d' ? 6*60*60*1000 : 3*60*60*1000; // 6h para 30d, 3h para os demais
 
     // Tenta ler cache do Supabase
     if (SUPABASE_URL && SUPABASE_KEY && !q) {
