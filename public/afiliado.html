@@ -192,8 +192,8 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
     </div>
     <div class="levels-grid">
       <div class="lev-card bronze"><div class="lev-emoji">🥉</div><div class="lev-name" style="color:var(--bronze)">Bronze</div><div class="lev-rate" style="color:var(--bronze)">35%</div><div class="lev-req">comissão recorrente<br>até 380 pagantes</div></div>
-      <div class="lev-card silver"><div class="lev-emoji">🥈</div><div class="lev-name" style="color:var(--silver)">Prata</div><div class="lev-rate" style="color:var(--silver)">40%</div><div class="lev-req">comissão recorrente<br>380–690 pagantes</div></div>
-      <div class="lev-card gold"><div class="lev-emoji">🥇</div><div class="lev-name" style="color:var(--gold)">Ouro</div><div class="lev-rate" style="color:var(--gold)">58%</div><div class="lev-req">comissão recorrente<br>1000+ pagantes</div></div>
+      <div class="lev-card silver" style="position:relative"><div class="lev-emoji">🥈</div><div class="lev-name" style="color:var(--silver)">Prata</div><div class="lev-rate" style="color:var(--silver)">40%</div><div class="lev-req">comissão recorrente<br>380–690 pagantes</div><div style="margin-top:10px;background:rgba(192,192,192,.12);border:1px solid rgba(192,192,192,.25);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--silver)">🎁 Bônus de <strong>R$ 3.680</strong> ao atingir</div></div>
+      <div class="lev-card gold" style="position:relative"><div class="lev-emoji">🥇</div><div class="lev-name" style="color:var(--gold)">Ouro</div><div class="lev-rate" style="color:var(--gold)">58%</div><div class="lev-req">comissão recorrente<br>1000+ pagantes</div><div style="margin-top:10px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--gold)">🎁 Bônus de <strong>R$ 5.780</strong> ao atingir</div></div>
     </div>
     <div style="text-align:center;margin-bottom:24px"><div style="font-size:20px;font-weight:800;letter-spacing:-.4px">Como funciona</div></div>
     <div class="steps">
@@ -230,6 +230,7 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
         <div class="prog-labels"><span id="progLeft"></span><span id="progRight"></span></div>
         <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
         <div class="gold-tip">🏆 Afiliados Nível Ouro ganham 58% de comissão — o máximo do programa</div>
+        <div id="bonusTip" style="display:none;margin-top:8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--gold)"></div>
       </div>
     </div>
 
@@ -422,6 +423,13 @@ function renderDash(data){
   document.getElementById('progRight').textContent=lv!=='gold'?`${nx.total} para ${nxn}`:'Nível máximo';
   setTimeout(()=>{const pf=document.getElementById('progFill');pf.style.width=pct+'%';pf.style.background=lc;},200);
   if(lv==='gold')document.getElementById('progressWrap').style.display='none';
+  // Bônus por nível
+  const bonusEl=document.getElementById('bonusTip');
+  if(bonusEl){
+    if(lv==='bronze'){bonusEl.style.display='block';bonusEl.innerHTML='🎁 Bônus de <strong>R$ 3.680</strong> ao atingir Prata + <strong>R$ 5.780</strong> ao atingir Ouro';}
+    else if(lv==='silver'){bonusEl.style.display='block';bonusEl.innerHTML='🎁 Bônus de <strong>R$ 5.780</strong> ao atingir o Nível Ouro!';}
+    else{bonusEl.style.display='none';}
+  }
   // Link
   const rl=`${SITE}/?ref=${affiliate.ref_code}`;
   document.getElementById('refLinkDisplay').textContent=rl;
