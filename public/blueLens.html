@@ -360,8 +360,17 @@ function renderResults(data) {
   }
 
   const pats = document.getElementById('verdictPatterns');
-  if (ai.patterns?.length) {
-    pats.innerHTML = ai.patterns.map(p => `<span class="pattern-tag">${p}</span>`).join('');
+  const allFlags = [...(ai.patterns||[]), ...(data.thumbnailFlags||[])];
+  if (allFlags.length) {
+    pats.innerHTML = allFlags.map(p => `<span class="pattern-tag">${p}</span>`).join('');
+  }
+
+  // Aviso se thumbnail tem sinais de edição
+  if (data.thumbnailFlags?.length > 0) {
+    const thumbWarn = document.createElement('div');
+    thumbWarn.style.cssText = 'margin-top:10px;font-size:12px;font-family:var(--mono);color:var(--gold);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:8px 12px;display:flex;gap:6px;align-items:flex-start';
+    thumbWarn.innerHTML = '<span style="flex-shrink:0">⚠</span><span>Thumbnail analisada: ' + data.thumbnailFlags.join(' · ') + '</span>';
+    document.getElementById('verdictPatterns').before(thumbWarn);
   }
 
   // Meta do vídeo
