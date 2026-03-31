@@ -1951,9 +1951,12 @@ Responda APENAS em JSON válido sem markdown:
             const publishedBefore = videoMeta.publishedAt
               ? new Date(snip.publishedAt) < new Date(videoMeta.publishedAt) : false;
 
-            // Original: publicado ANTES + sem sinais de repost + duração similar
-            // NÃO usa views como critério — repost editado quase sempre tem MAIS views
-            const isLikelyOriginal = !isColorCaption && !isRepost && publishedBefore;
+            // Original APENAS se: publicado ANTES + sem repost + duração muito similar (±15%)
+            // Badge conservador — melhor não marcar do que marcar errado
+            const durVeryClose = videoMeta.duration > 0 && secs > 0
+              ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs) < 0.15
+              : false;
+            const isLikelyOriginal = !isColorCaption && !isRepost && publishedBefore && durVeryClose;
 
             return {id:v.id, url:`https://www.youtube.com/shorts/${v.id}`, title:rTitle,
               channel:snip.channelTitle||'', thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
