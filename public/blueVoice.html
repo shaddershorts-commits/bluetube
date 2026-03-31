@@ -55,13 +55,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .credit-bar-fill{height:100%;background:linear-gradient(90deg,#92400e,var(--gold));border-radius:100px;transition:width .5s ease}
 .credit-reset{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
 .btn-preview{display:flex;align-items:center;gap:4px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--neon);cursor:pointer;transition:all .2s;white-space:nowrap}
-.add-voice-box{background:rgba(0,170,255,.04);border:1px dashed rgba(0,170,255,.25);border-radius:12px;padding:14px;margin-bottom:12px}
-.add-voice-box input{width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box}
-.add-voice-box input::placeholder{color:var(--text-dim)}
-.add-voice-box input:focus{border-color:rgba(0,170,255,.5)}
-.btn-add-voice{width:100%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.2));border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:8px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s}
-.btn-add-voice:hover{background:linear-gradient(135deg,rgba(0,80,255,.45),rgba(0,170,255,.35))}
-.custom-badge{font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-family:var(--mono);font-weight:600;letter-spacing:.04em}
 .btn-preview:hover{background:rgba(0,170,255,.2);border-color:rgba(0,170,255,.5)}
 .btn-fav{background:none;border:none;font-size:16px;cursor:pointer;color:rgba(255,255,255,.25);line-height:1;padding:2px 4px;transition:all .2s;flex-shrink:0}
 .btn-fav:hover{color:var(--gold);transform:scale(1.2)}
@@ -230,7 +223,7 @@ audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius
 
   <div class="page-eyebrow">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-    Exclusivo Master · Powered by ElevenLabs
+    Exclusivo Master · Narração IA BlueTube
   </div>
   <h1 class="page-title">Blue<span class="accent">Voice</span></h1>
   <p class="page-sub">Cole seu roteiro, escolha uma voz e gere narração hiper-realista em segundos.<br>5.500 créditos mensais · 2 versões por geração · 1 regeneração grátis</p>
@@ -425,17 +418,12 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
       </div>
 
       <!-- ADICIONAR VOZ CUSTOMIZADA -->
-      <div class="add-voice-box" id="addVoiceBox">
-        <div style="font-size:11px;font-family:var(--mono);color:var(--neon);font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-          ✦ Adicionar voz do ElevenLabs
-          <span style="font-size:10px;font-weight:400;color:var(--text-dim)">Cole o link de compartilhamento</span>
-        </div>
-        <input type="text" id="customVoiceUrl" placeholder="https://elevenlabs.io/app/voice-lab/share/…" oninput="validateCustomUrl()"/>
-        <input type="text" id="customVoiceName" placeholder="Nome da voz (ex: Minha Voz Preferida)" style="margin-top:0"/>
-        <button class="btn-add-voice" id="btnAddVoice" onclick="addCustomVoice()" disabled>
-          + Adicionar ao BlueVoice
-        </button>
-        <div id="addVoiceMsg" style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:6px;text-align:center"></div>
+      <div style="background:rgba(0,170,255,.04);border:1px dashed rgba(0,170,255,.22);border-radius:12px;padding:14px;margin-bottom:12px" id="addVoiceBox">
+        <div style="font-size:11px;font-family:var(--mono);color:var(--neon);font-weight:600;margin-bottom:8px">✦ Adicionar voz personalizada <span style="font-weight:400;color:var(--text-dim)">— cole o ID da sua voz</span></div>
+        <input type="text" id="customVoiceUrl" placeholder="ID ou link da voz personalizada" oninput="validateCustomUrl()" style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
+        <input type="text" id="customVoiceName" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
+        <button id="btnAddVoice" onclick="addCustomVoice()" disabled style="width:100%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.2));border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:8px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s;opacity:.5" onmouseover="if(!this.disabled)this.style.opacity=1" onmouseout="if(!this.disabled)this.style.opacity=.8">+ Adicionar ao BlueVoice</button>
+        <div id="addVoiceMsg" style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5"></div>
       </div>
 
       <div class="vp-list" id="voiceList"></div>
@@ -462,7 +450,7 @@ if (!token || plan !== 'master') {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA — IDs verificados ElevenLabs ─────────────────────────────────
+// ── VOICES DATA ─────────────────────────────────
 // Preview carregado via /api/auth?action=voice-preview (sem CORS, sem custo)
 const VOICES = [
   // ── PT-BR ──────────────────────────────────────────────────────────────────
@@ -538,6 +526,7 @@ function renderVoices() {
   const list = document.getElementById('voiceList');
 
   const filtered = getAllVoices().filter(v => {
+    if (!v.custom && unavailableVoices.has(v.id)) return false;
     if (showOnlyFavs && !favorites.has(v.id)) return false;
     if (filters.gender && v.gender !== filters.gender) return false;
     if (filters.age && v.age !== filters.age) return false;
@@ -564,16 +553,14 @@ function renderVoices() {
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
-          ${v.custom ? '<span class="custom-badge">CUSTOM</span>' : `<div class="vi-badge age">${v.age}</div>`}
+          ${v.custom ? '<span style="font-size:9px;background:rgba(167,139,250,.2);border:1px solid rgba(167,139,250,.4);color:#a78bfa;border-radius:100px;padding:2px 7px;font-family:var(--mono);font-weight:600">CUSTOM</span>' : `<div class="vi-badge age">${v.age}</div>`}
           <div class="vi-badge style">${v.style}</div>
         </div>
-        <div style="display:flex;gap:4px;align-items:center">
-          <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-            Ouvir
-          </button>
-          ${v.custom ? `<button style="background:none;border:none;color:rgba(239,68,68,.5);font-size:13px;cursor:pointer;padding:2px 5px;line-height:1;transition:color .2s" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(239,68,68,.5)'" onclick="removeCustomVoice('${v.id}', event)" title="Remover voz">✕</button>` : ''}
-        </div>
+        <button class="btn-preview" data-preview="${v.id}" onclick="previewVoice('${v.id}', event)" title="Ouvir prévia">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          Ouvir
+        </button>
+        ${v.custom ? `<button style="background:none;border:none;color:rgba(239,68,68,.4);font-size:13px;cursor:pointer;padding:2px 5px;line-height:1;transition:color .2s" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(239,68,68,.4)'" onclick="removeCustomVoice('${v.id}', event)" title="Remover voz">✕</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -638,6 +625,7 @@ function focusVoicePanel() {
 let currentPreview = null;
 // Cache de previews: evita gerar de novo ao clicar pela 2ª vez
 const previewCache = {};
+const unavailableVoices = new Set(JSON.parse(localStorage.getItem('bv_unavailable') || '[]'));
 const ICON_PLAY = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
 const ICON_STOP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
 
@@ -653,7 +641,7 @@ async function previewVoice(id, event) {
     return;
   }
 
-  // Para preview anterior, reseta todos os botões
+  // Para preview anterior, reseta botões
   if (currentPreview) { currentPreview.pause(); currentPreview = null; }
   document.querySelectorAll('.btn-preview').forEach(b => {
     b.innerHTML = `${ICON_PLAY} Ouvir`;
@@ -661,16 +649,29 @@ async function previewVoice(id, event) {
   });
 
   const btn = document.querySelector(`[data-preview="${id}"]`);
-  if (btn) { btn.innerHTML = `<span style="opacity:.7;font-size:10px">Gerando prévia…</span>`; btn.disabled = true; }
+  if (btn) { btn.innerHTML = `<span style="opacity:.7;font-size:10px">Gerando…</span>`; btn.disabled = true; }
 
   try {
-    // Usa cache se já gerou antes nesta sessão
     let blobUrl = previewCache[id];
 
     if (!blobUrl) {
-      const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(id)}`);
+      // Se temos o previewUrl da CDN (carregado via voice-list), manda junto
+      const cdnUrl = (typeof availableVoices !== 'undefined' && availableVoices[id]) ? availableVoices[id] : null;
+      const params = new URLSearchParams({ voiceId: id });
+      if (cdnUrl) params.set('previewUrl', cdnUrl);
+
+      const r = await fetch(`/api/auth?action=voice-preview&${params}`);
       const data = await r.json();
-      if (!r.ok || !data.audio) throw new Error(data.error || 'Prévia indisponível');
+
+      if (!r.ok || !data.audio) {
+        // Marca voz como indisponível se for erro de conta
+        if (data.notInAccount) {
+          unavailableVoices.add(id);
+          localStorage.setItem('bv_unavailable', JSON.stringify([...unavailableVoices]));
+          renderVoices(); // re-render para mostrar badge "Indisponível"
+        }
+        throw new Error(data.error || 'Prévia indisponível');
+      }
 
       const bin = atob(data.audio);
       const arr = new Uint8Array(bin.length);
@@ -685,62 +686,47 @@ async function previewVoice(id, event) {
     currentPreview = audio;
 
     if (btn) { btn.innerHTML = `${ICON_STOP} Parar`; btn.disabled = false; }
-
     await audio.play();
 
     audio.onended = () => {
       if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
       currentPreview = null;
     };
-
   } catch(e) {
     console.error('Preview error:', e.message);
     if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
-    showToast('Prévia indisponível. Tente novamente em instantes.');
+    showToast(e.message || 'Prévia indisponível. Tente novamente.');
   }
 }
 
 // ── VOZES CUSTOMIZADAS ────────────────────────────────────────────────────────
-// Armazenadas em localStorage: [{id, name, lang, custom: true}]
-let customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
+const customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
 
-function getAllVoices() {
-  return [...VOICES, ...customVoices];
-}
+function getAllVoices() { return [...VOICES, ...customVoices]; }
 
-function parseElevenLabsUrl(url) {
-  // Suporta formato: https://elevenlabs.io/app/voice-lab/share/{hash}/{voiceId}
-  // E também: só o voiceId diretamente (ex: vnUSJFFoxRr5JFjw51pu)
-  url = url.trim();
+function parseVoiceUrl(url) {
+  url = (url || '').trim();
   if (!url) return null;
-
-  // URL de compartilhamento
-  const shareMatch = url.match(/share\/[a-f0-9]+\/([A-Za-z0-9]+)\s*$/);
+  const shareMatch = url.match(/share\/[a-f0-9]+\/([A-Za-z0-9]{10,30})/);
   if (shareMatch) return shareMatch[1];
-
-  // URL de voz direta
-  const directMatch = url.match(/voices\/([A-Za-z0-9]+)/);
+  const directMatch = url.match(/voices\/([A-Za-z0-9]{10,30})/);
   if (directMatch) return directMatch[1];
-
-  // Se parecer um ID válido (só alfanumérico, 15-25 chars)
   if (/^[A-Za-z0-9]{10,30}$/.test(url)) return url;
-
   return null;
 }
 
 function validateCustomUrl() {
   const url = document.getElementById('customVoiceUrl').value;
-  const voiceId = parseElevenLabsUrl(url);
+  const voiceId = parseVoiceUrl(url);
   const btn = document.getElementById('btnAddVoice');
   const msg = document.getElementById('addVoiceMsg');
-
   if (voiceId) {
     btn.disabled = false;
-    msg.textContent = `ID detectado: ${voiceId}`;
+    msg.textContent = `ID: ${voiceId}`;
     msg.style.color = 'var(--neon)';
   } else if (url.trim()) {
     btn.disabled = true;
-    msg.textContent = 'Link inválido. Cole o link de compartilhamento do ElevenLabs.';
+    msg.textContent = 'Link inválido. Cole o link de compartilhamento.';
     msg.style.color = '#ef4444';
   } else {
     btn.disabled = true;
@@ -753,11 +739,9 @@ async function addCustomVoice() {
   const nameInput = document.getElementById('customVoiceName').value.trim();
   const msg = document.getElementById('addVoiceMsg');
   const btn = document.getElementById('btnAddVoice');
-
-  const voiceId = parseElevenLabsUrl(url);
+  const voiceId = parseVoiceUrl(url);
   if (!voiceId) return;
 
-  // Verifica se já foi adicionada
   if (getAllVoices().some(v => v.id === voiceId)) {
     msg.textContent = 'Esta voz já está na sua lista.';
     msg.style.color = '#fbbf24';
@@ -766,66 +750,53 @@ async function addCustomVoice() {
 
   btn.disabled = true;
   btn.textContent = 'Testando voz…';
-  msg.textContent = 'Gerando amostra para confirmar que a voz funciona…';
+  msg.textContent = 'Verificando disponibilidade…';
   msg.style.color = 'var(--text-dim)';
 
-  try {
-    // Testa se a voz funciona gerando uma prévia
-    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(voiceId)}`);
-    const data = await r.json();
-    if (!r.ok || !data.audio) throw new Error(data.error || 'Voz inválida ou inacessível');
+  const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(voiceId)}`);
+  const data = await r.json();
 
-    // Salva no cache pra já tocar na hora
-    const bin = atob(data.audio);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    const blob = new Blob([arr], { type: 'audio/mpeg' });
-    previewCache[voiceId] = URL.createObjectURL(blob);
-
-    const voiceName = nameInput || `Voz personalizada`;
-    const newVoice = {
-      id: voiceId,
-      name: voiceName,
-      lang: 'custom',
-      flag: '⭐',
-      gender: 'Personalizado',
-      age: '',
-      style: 'Custom',
-      desc: 'Voz adicionada manualmente',
-      custom: true
-    };
-
-    customVoices.push(newVoice);
-    localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
-
-    // Limpa campos
-    document.getElementById('customVoiceUrl').value = '';
-    document.getElementById('customVoiceName').value = '';
-    msg.textContent = `✅ "${voiceName}" adicionada com sucesso!`;
-    msg.style.color = '#22c55e';
-    btn.textContent = '+ Adicionar ao BlueVoice';
-    btn.disabled = true;
-
-    renderVoices();
-
-    // Abre o preview automaticamente
-    setTimeout(() => previewVoice(voiceId, null), 400);
-
-  } catch(e) {
-    msg.textContent = 'Erro: ' + (e.message || 'Voz não encontrada. Verifique o link.');
+  if (!r.ok || !data.audio) {
+    const isAccountError = data.notInAccount;
+    msg.innerHTML = isAccountError
+      ? '⚠ Esta voz não está disponível no BlueTube.<br><span style="font-size:10px;opacity:.7">Fale com o suporte para solicitar a adição desta voz.</span>'
+      : (data.error || 'Voz inválida ou inacessível.');
     msg.style.color = '#ef4444';
     btn.textContent = '+ Adicionar ao BlueVoice';
     btn.disabled = false;
+    return;
   }
+
+  // Salva preview no cache
+  const bin = atob(data.audio);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  previewCache[voiceId] = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
+
+  const voiceName = nameInput || 'Voz personalizada';
+  customVoices.push({ id: voiceId, name: voiceName, lang: 'custom', flag: '⭐', gender: 'Personalizado', age: '', style: 'Custom', desc: 'Voz adicionada manualmente', custom: true });
+  localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
+
+  document.getElementById('customVoiceUrl').value = '';
+  document.getElementById('customVoiceName').value = '';
+  msg.textContent = `✅ "${voiceName}" adicionada!`;
+  msg.style.color = '#22c55e';
+  btn.textContent = '+ Adicionar ao BlueVoice';
+  btn.disabled = true;
+  renderVoices();
+  setTimeout(() => previewVoice(voiceId, null), 400);
 }
 
 function removeCustomVoice(id, event) {
   event?.stopPropagation();
-  customVoices = customVoices.filter(v => v.id !== id);
+  const idx = customVoices.findIndex(v => v.id === id);
+  if (idx !== -1) customVoices.splice(idx, 1);
   localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
   favorites.delete(id);
   localStorage.setItem('bv_favorites', JSON.stringify([...favorites]));
   delete previewCache[id];
+  unavailableVoices.delete(id);
+  localStorage.setItem('bv_unavailable', JSON.stringify([...unavailableVoices]));
   renderVoices();
   showToast('Voz removida.');
 }
@@ -1111,6 +1082,26 @@ function showToast(msg) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 renderVoices();
+
+// ── CARREGA LISTA DE VOZES DISPONÍVEIS NA CONTA ELEVENLABS ───────────────────
+// Detecta quais IDs existem + pega preview_url real (CDN, sem custo de TTS)
+const availableVoices = {}; // { voiceId: previewUrl | null }
+
+async function loadVoiceList() {
+  try {
+    const r = await fetch('/api/auth?action=voice-list');
+    if (!r.ok) return;
+    const data = await r.json();
+    (data.voices || []).forEach(v => {
+      availableVoices[v.id] = v.previewUrl || null;
+    });
+    console.log('BlueVoice list loaded:', Object.keys(availableVoices).length, 'voices');
+    renderVoices(); // re-render com status de disponibilidade correto
+  } catch(e) {
+    console.log('voice-list failed (non-fatal):', e.message);
+  }
+}
+loadVoiceList();
 updateFavCount();
 checkReady();
 
