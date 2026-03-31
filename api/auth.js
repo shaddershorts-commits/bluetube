@@ -799,11 +799,13 @@ Responda APENAS em JSON válido sem markdown:
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-    // Cache no Supabase: chave = region+period+category+q, TTL = 1h (24h para período 30d)
     const cacheKey = `virais_${region}_${period}_${category}_${q.slice(0,20).replace(/\s/g,'_')}`;
-    const cacheTTL = 14*60*60*1000; // 14h para todos os períodos
+    const cacheTTL = 6*60*60*1000; // 6h — refresca mais frequente quando API disponível
 
-    // Tenta ler cache do Supabase
+    // ── LEITURA DE CACHE ──────────────────────────────────────────────────────
+    // staleCache guarda qualquer resultado existente — servido como fallback se API falhar
+    let staleCache = null;
+
     if (SUPABASE_URL && SUPABASE_KEY && !q) {
       try {
         const cacheRes = await fetch(
@@ -813,30 +815,27 @@ Responda APENAS em JSON válido sem markdown:
         if (cacheRes.ok) {
           const rows = await cacheRes.json();
           if (rows?.[0]) {
+            const cachedVideos = rows[0].data?.videos || [];
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
-            if (age < cacheTTL) {
-              // Aplica filtro de views mínimas no cache também
-              const minV = period === '24h' ? 1000000 : period === '7d' ? 5000000 : 10000000;
-              const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
-              // Se cache ficou vazio após filtro, ignora e rebusca
-              if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
-                console.log('viral-shorts CACHE STALE (views abaixo do mínimo), rebuscando...');
-                // Apaga cache antigo para forçar nova busca
-                fetch(`${SUPABASE_URL}/rest/v1/viral_cache?cache_key=eq.${encodeURIComponent(cacheKey)}`, {
-                  method: 'DELETE',
-                  headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                }).catch(()=>{});
-              } else {
-                console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min', '| vídeos:', cachedVideos.length);
-                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
-                return res.status(200).json({ ...rows[0].data, videos: cachedVideos, total: cachedVideos.length, fromCache: true, cacheAge: Math.round(age/60000) });
-              }
+
+            // Guarda stale cache SEMPRE — será usado como fallback se API falhar
+            if (cachedVideos.length > 0) {
+              staleCache = { videos: cachedVideos, age, cacheAge: Math.round(age/60000) };
+            }
+
+            // Cache fresco → serve direto sem ir à API
+            if (age < cacheTTL && cachedVideos.length > 0) {
+              console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min', '| vídeos:', cachedVideos.length);
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+              return res.status(200).json({
+                ...rows[0].data, videos: cachedVideos,
+                total: cachedVideos.length, fromCache: true,
+                cacheAge: Math.round(age/60000)
+              });
             }
           }
         }
-      } catch(e) { /* cache miss, continua */ }
+      } catch(e) { /* cache miss */ }
     }
 
     const REGION_CONFIG = {
@@ -902,7 +901,18 @@ Responda APENAS em JSON válido sem markdown:
       });
 
       console.log('viral-shorts bruto:', allItems.length, '| região:', region, '| período:', period);
-      if (!allItems.length) return res.status(200).json({ videos: [], total: 0, quotaError: true });
+      if (!allItems.length) {
+        // API falhou (quota esgotada) — serve cache antigo se existir
+        if (staleCache) {
+          console.log('viral-shorts: quota esgotada, servindo stale cache | vídeos:', staleCache.videos.length);
+          return res.status(200).json({
+            videos: staleCache.videos, total: staleCache.videos.length,
+            region, period, fromCache: true, stale: true,
+            cacheAge: staleCache.cacheAge, quotaError: true
+          });
+        }
+        return res.status(200).json({ videos: [], total: 0, quotaError: true });
+      }
 
       // Stats em lotes de 50 com rotação de chave
       const allVideoIds = allItems.map(i => i.id.videoId);
@@ -932,10 +942,11 @@ Responda APENAS em JSON válido sem markdown:
         };
       }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
-      // Views mínimas por período — só mostra o que está realmente viral
-      const MIN_VIEWS = period === '24h' ? 1000000
-                      : period === '7d'  ? 5000000
-                      : 10000000; // 30d
+      // Views mínimas por período — realistas para Shorts virais em qualquer região
+      // 24h: 50K | 7d: 200K | 30d: 500K  (era 1M/5M/10M — irrealmente alto)
+      const MIN_VIEWS = period === '24h' ? 50000
+                      : period === '7d'  ? 200000
+                      : 500000; // 30d
       console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
 
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
@@ -985,6 +996,15 @@ Responda APENAS em JSON válido sem markdown:
       return res.status(200).json(result);
     } catch(e) {
       console.error('viral-shorts error:', e.message);
+      // Serve cache antigo em vez de retornar erro — usuário nunca vê página vazia
+      if (staleCache) {
+        console.log('viral-shorts: erro inesperado, servindo stale cache | vídeos:', staleCache.videos.length);
+        return res.status(200).json({
+          videos: staleCache.videos, total: staleCache.videos.length,
+          region, period, fromCache: true, stale: true,
+          cacheAge: staleCache.cacheAge
+        });
+      }
       return res.status(500).json({ error: 'Falha ao buscar videos virais: ' + e.message });
     }
   }
@@ -1217,10 +1237,7 @@ Responda APENAS em JSON válido sem markdown:
 
       return res.status(200).json({
         user: data.user,
-        session: {
-          access_token: data.access_token,
-          refresh_token: data.refresh_token  // necessário para renovar sessão sem novo login
-        }
+        session: { access_token: data.access_token }
       });
     }
 
@@ -1311,24 +1328,6 @@ Responda APENAS em JSON válido sem markdown:
       const url = `${authBase}/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
       return res.status(200).json({ url });
     }
-
-    // ── REFRESH SESSION ────────────────────────────────────────────────────────────
-    if (action === 'refresh_session') {
-      const { refresh_token } = req.body;
-      if (!refresh_token) return res.status(400).json({ error: 'refresh_token obrigatório' });
-      const rr = await fetch(`${authBase}/token?grant_type=refresh_token`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ refresh_token })
-      });
-      const rData = await rr.json();
-      if (!rr.ok) return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
-      return res.status(200).json({
-        access_token: rData.access_token,
-        refresh_token: rData.refresh_token,
-        user: rData.user
-      });
-    }
-
 
     // ── VERIFY TOKEN ──────────────────────────────────────────────────────────
     if (action === 'verify' && token) {
