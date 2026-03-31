@@ -1096,6 +1096,7 @@ Responda APENAS em JSON válido sem markdown:
 
       // Insere usuário na tabela subscribers como 'free' (aparece no admin)
       const newEmail = data.user?.email || email;
+      const refCode = req.body?.ref_code || null; // código de afiliado se veio no signup
       if (newEmail && SUPABASE_URL && SUPABASE_KEY) {
         fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
           method: 'POST',
@@ -1109,10 +1110,20 @@ Responda APENAS em JSON válido sem markdown:
             email: newEmail,
             plan: 'free',
             is_manual: false,
+            affiliate_ref: refCode,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
         }).catch(e => console.error('Subscriber insert error:', e.message));
+
+        // Registra conversão de afiliado (signup free)
+        if (refCode) {
+          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/affiliate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'conversion', email: newEmail, plan: 'free', conversion_type: 'signup' })
+          }).catch(() => {});
+        }
       }
 
       // If email confirmation is enabled in Supabase, session will be null
