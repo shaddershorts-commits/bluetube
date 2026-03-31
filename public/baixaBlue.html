@@ -507,6 +507,19 @@ function showError(msg){
 document.getElementById('videoUrl').addEventListener('keydown', e => {
   if(e.key === 'Enter') startDownload();
 });
+
+// ── PERSISTÊNCIA (24h) ──────────────────────────────────────────────────────
+const _TTL=24*60*60*1000;
+function _save(k,v){try{localStorage.setItem(k,JSON.stringify({v,ts:Date.now()}))}catch(e){}}
+function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=JSON.parse(r);if(Date.now()-o.ts>_TTL){localStorage.removeItem(k);return null;}return o.v;}catch(e){return null;}}
+
+(function(){
+  const inp=document.querySelector('input[type=text],input[type=url],#urlInput,#videoUrl');
+  if(!inp) return;
+  const s=_load('bt_baixa');
+  if(s&&!inp.value) inp.value=s;
+  inp.addEventListener('input',()=>_save('bt_baixa',inp.value));
+})();
 </script>
 </body>
 </html>
