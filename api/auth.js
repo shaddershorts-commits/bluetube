@@ -1860,13 +1860,14 @@ Responda APENAS em JSON válido sem markdown:
       }
 
       // 4. Busca YouTube por título similar (find origin)
+      // Detectores de repost — declarados globalmente para uso no prompt da IA
+      const hasColorCaption = (t) => /\u{1F7E5}|\u{1F7E7}|\u{1F7E8}|\u{1F7E9}|\u{1F7E6}|\u{1F7EA}|\u{1F7EB}/u.test(t);
+      const hasRepostSignal = (t) => hasColorCaption(t) || /compilation|compilacao|parte \d|part \d/i.test(t);
+      const inputHasRepost = videoMeta.title ? hasRepostSignal(videoMeta.title) : false;
+
       let searchResults = [];
       if (videoMeta.title && process.env.YOUTUBE_API_KEY) {
 
-        // Legenda colorida = emojis quadrados coloridos = sinal FORTE de repost compilado
-        const hasColorCaption = (t) => /\u{1F7E5}|\u{1F7E7}|\u{1F7E8}|\u{1F7E9}|\u{1F7E6}|\u{1F7EA}|\u{1F7EB}/u.test(t);
-        const hasRepostSignal = (t) => hasColorCaption(t) || /compilation|compilacao|parte \d|part \d/i.test(t);
-        const inputHasRepost = hasRepostSignal(videoMeta.title);
 
         // Limpa título para busca
         const cleanTitle = videoMeta.title
