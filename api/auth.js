@@ -1046,7 +1046,9 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  const { action, email, password, token, otp } = req.body;
+  // action vem de body (POST) ou query (GET)
+  const { action, email, password, token, otp } = req.body || {};
+  const _action = action || req.query?.action;
   const SUPABASE_URL = process.env.SUPABASE_URL;
 
   // Use anon key if available, fallback to service key
@@ -1298,7 +1300,7 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── TRACK CLICK ────────────────────────────────────────────────────────────
   // GET /api/affiliate?action=click&ref=CODE&cookie_id=X
-  if (req.method === 'GET' && action === 'click') {
+  if (req.method === 'GET' && _action === 'click') {
     const { ref, cookie_id, referrer } = req.query;
     if (!ref) return res.status(400).json({ error: 'ref obrigatório' });
 
@@ -1357,7 +1359,7 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── REGISTER AFFILIATE ─────────────────────────────────────────────────────
   // POST { action: 'register', token, name }
-  if (req.method === 'POST' && action === 'register') {
+  if (req.method === 'POST' && _action === 'register') {
     const { token, name } = req.body;
     if (!token) return res.status(401).json({ error: 'Token obrigatório' });
 
@@ -1402,7 +1404,7 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── GET DASHBOARD DATA ─────────────────────────────────────────────────────
   // GET ?action=dashboard&token=X
-  if (req.method === 'GET' && action === 'dashboard') {
+  if (req.method === 'GET' && _action === 'dashboard') {
     const { token } = req.query;
     if (!token) return res.status(401).json({ error: 'Token obrigatório' });
 
@@ -1529,7 +1531,7 @@ Responda APENAS em JSON válido sem markdown:
   // ── RECORD CONVERSION ──────────────────────────────────────────────────────
   // POST { action: 'conversion', email, plan, cookie_id, stripe_customer_id }
   // Chamado internamente pelo auth.js no signup/pagamento
-  if (req.method === 'POST' && action === 'conversion') {
+  if (req.method === 'POST' && _action === 'conversion') {
     const { email, plan, cookie_id, stripe_customer_id, conversion_type } = req.body;
     if (!email) return res.status(400).json({ error: 'email obrigatório' });
 
@@ -1633,7 +1635,7 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── PROCESS RENEWAL COMMISSION ─────────────────────────────────────────────
   // POST { action: 'renewal', email, plan } — chamado pelo webhook.js
-  if (req.method === 'POST' && action === 'renewal') {
+  if (req.method === 'POST' && _action === 'renewal') {
     const { email, plan } = req.body;
     if (!email || !plan) return res.status(400).json({ error: 'email e plan obrigatórios' });
 
@@ -1691,7 +1693,7 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── CANCEL COMMISSION ──────────────────────────────────────────────────────
   // POST { action: 'cancel', email } — chamado pelo webhook.js no cancelamento
-  if (req.method === 'POST' && action === 'cancel') {
+  if (req.method === 'POST' && _action === 'cancel') {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'email obrigatório' });
 
