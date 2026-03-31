@@ -253,12 +253,12 @@ audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius
         <!-- TEXT INPUT -->
         <div class="section-label">Texto para narrar <span></span></div>
         <div class="text-area-wrap">
-          <textarea id="scriptText" maxlength="5000" placeholder="Cole aqui o roteiro que você quer transformar em voz…
+          <textarea id="scriptText" maxlength="3000" placeholder="Cole aqui o roteiro que você quer transformar em voz…
 
 Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje vou te mostrar a técnica que mudou minha vida…"></textarea>
         </div>
         <div class="char-counter">
-          <div class="char-count" id="charCount">0 / 5.000 caracteres</div>
+          <div class="char-count" id="charCount">0 / 3.000 caracteres</div>
           <div class="char-hint">Cada caractere = 1 crédito</div>
         </div>
 
@@ -417,26 +417,6 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         </div>
       </div>
 
-      <!-- ✦ ADICIONAR VOZ PERSONALIZADA -->
-      <div id="addVoiceBox" style="background:rgba(0,170,255,.04);border:1px dashed rgba(0,170,255,.22);border-radius:12px;padding:14px;margin-bottom:10px">
-        <div style="font-size:11px;font-family:var(--mono);color:var(--neon);font-weight:600;margin-bottom:10px">
-          ✦ Adicionar voz personalizada
-          <span style="font-weight:400;color:var(--text-dim)">— cole o ID da voz</span>
-        </div>
-        <input type="text" id="customVoiceUrl"
-          placeholder="ID da voz (ex: onwK4e9ZLuTAKqWW03F9)"
-          oninput="validateCustomUrl()"
-          style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
-        <input type="text" id="customVoiceName"
-          placeholder="Nome da voz (opcional)"
-          style="width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
-        <button id="btnAddVoice" onclick="addCustomVoice()" disabled
-          style="width:100%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.2));border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:8px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--neon);cursor:pointer;opacity:.5">
-          + Adicionar voz
-        </button>
-        <div id="addVoiceMsg" style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5"></div>
-      </div>
-
       <div class="vp-list" id="voiceList"></div>
     </div>
 
@@ -461,8 +441,7 @@ if (!token || plan !== 'master') {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA ────────────────────────────────────────────────────────────────
-// provider: elevenlabs | minimax
+// ── VOICES DATA — IDs verificados ElevenLabs ─────────────────────────────────
 // Preview carregado via /api/auth?action=voice-preview (sem CORS, sem custo)
 const VOICES = [
   // ── PT-BR ──────────────────────────────────────────────────────────────────
@@ -484,12 +463,6 @@ const VOICES = [
   { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',     lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem', style: 'Casual',       desc: 'Jovem, natural, conversacional' },
 ];
 
-// Vozes personalizadas adicionadas pelo usuário (salvas no localStorage)
-let customVoices = JSON.parse(localStorage.getItem('bv_custom_voices') || '[]');
-function getAllVoices() { return [...VOICES, ...customVoices]; }
-const previewCache = {};
-
-
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let selectedVoice = null;
 let regenCount = 0;
@@ -498,7 +471,7 @@ let lastText = '';
 let lastVoiceId = '';
 let filters = { gender: '', age: '', style: '', lang: '' };
 let narrationsUsed = parseInt(localStorage.getItem('bv_narrations') || '0');
-const NARRATION_LIMIT = plan === 'master' ? 55 : 5;
+const NARRATION_LIMIT = plan === 'master' ? 20 : 5;
 // Favoritos persistidos no localStorage
 let favorites = new Set(JSON.parse(localStorage.getItem('bv_favorites') || '[]'));
 let showOnlyFavs = false;
@@ -523,8 +496,8 @@ updateNarrationCounter();
 document.getElementById('scriptText').addEventListener('input', function() {
   const len = this.value.length;
   const el = document.getElementById('charCount');
-  el.textContent = len.toLocaleString('pt-BR') + ' / 5.000 caracteres';
-  el.className = 'char-count' + (len > 4500 ? (len >= 5000 ? ' over' : ' warn') : '');
+  el.textContent = len.toLocaleString('pt-BR') + ' / 3.000 caracteres';
+  el.className = 'char-count' + (len > 2700 ? (len >= 3000 ? ' over' : ' warn') : '');
   checkReady();
 });
 
@@ -543,7 +516,7 @@ function renderVoices() {
   const search = document.getElementById('voiceSearch').value.toLowerCase();
   const list = document.getElementById('voiceList');
 
-  const filtered = getAllVoices().filter(v => {
+  const filtered = VOICES.filter(v => {
     if (showOnlyFavs && !favorites.has(v.id)) return false;
     if (filters.gender && v.gender !== filters.gender) return false;
     if (filters.age && v.age !== filters.age) return false;
@@ -577,7 +550,6 @@ function renderVoices() {
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
           Ouvir
         </button>
-        ${v.custom ? `<button style="background:none;border:none;color:rgba(239,68,68,.5);font-size:13px;cursor:pointer;padding:2px 6px" onclick="removeCustomVoice('${v.id}',event)" title="Remover">✕</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -617,7 +589,7 @@ function updateFavCount() {
 }
 
 function selectVoice(id) {
-  selectedVoice = getAllVoices().find(v => v.id === id);
+  selectedVoice = VOICES.find(v => v.id === id);
   if (!selectedVoice) return;
   // Update selected strip
   document.getElementById('selFlag').textContent = selectedVoice.flag;
@@ -655,9 +627,7 @@ async function previewVoice(id, event) {
   if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
 
   try {
-    const voice = getAllVoices().find(v => v.id === id);
-    const provider = voice?.provider || 'elevenlabs';
-    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(id)}&provider=${provider}`);
+    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
     const data = await r.json();
     if (!r.ok || !data.audio) throw new Error(data.error || 'Prévia indisponível');
 
@@ -964,99 +934,24 @@ function showToast(msg) {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
-
-// ── VOZES PERSONALIZADAS ──────────────────────────────────────────────────────
-function parseVoiceUrl(raw) {
-  const url = (raw || '').trim();
-  if (!url) return null;
-  // Link compartilhado: .../share/{hash}/{voiceId}
-  const shareMatch = url.match(/share\/[a-f0-9]+\/([A-Za-z0-9_]{10,40})/);
-  if (shareMatch) return shareMatch[1];
-  // URL direta: .../voices/{voiceId}
-  const directMatch = url.match(/voices\/([A-Za-z0-9_]{10,40})/);
-  if (directMatch) return directMatch[1];
-  // ID puro
-  if (/^[A-Za-z0-9_]{10,40}$/.test(url)) return url;
-  return null;
-}
-
-function validateCustomUrl() {
-  const raw = document.getElementById('customVoiceUrl').value;
-  const voiceId = parseVoiceUrl(raw);
-  const btn = document.getElementById('btnAddVoice');
-  const msg = document.getElementById('addVoiceMsg');
-  if (voiceId) {
-    btn.disabled = false; btn.style.opacity = '1';
-    msg.textContent = 'ID: ' + voiceId; msg.style.color = 'var(--neon)';
-  } else if (raw.trim()) {
-    btn.disabled = true; btn.style.opacity = '.5';
-    msg.textContent = 'ID inválido.'; msg.style.color = '#ef4444';
-  } else {
-    btn.disabled = true; btn.style.opacity = '.5'; msg.textContent = '';
-  }
-}
-
-async function addCustomVoice() {
-  const raw = document.getElementById('customVoiceUrl').value;
-  const nameInput = document.getElementById('customVoiceName').value.trim();
-  const msg = document.getElementById('addVoiceMsg');
-  const btn = document.getElementById('btnAddVoice');
-  const voiceId = parseVoiceUrl(raw);
-  if (!voiceId) return;
-
-  if (getAllVoices().some(v => v.id === voiceId)) {
-    msg.textContent = 'Esta voz já está na lista.'; msg.style.color = '#fbbf24'; return;
-  }
-
-  btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = 'Testando voz…';
-  msg.textContent = 'Verificando disponibilidade…'; msg.style.color = 'var(--text-dim)';
-
-  try {
-    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${encodeURIComponent(voiceId)}&provider=elevenlabs`);
-    const data = await r.json();
-
-    if (!r.ok || !data.audio) {
-      msg.innerHTML = data.notInAccount
-        ? '⚠ Voz não disponível no BlueTube.<br><span style="opacity:.7;font-size:10px">Fale com o suporte para adicionar.</span>'
-        : (data.error || 'Voz inválida ou inacessível.');
-      msg.style.color = '#ef4444';
-      btn.textContent = '+ Adicionar voz'; btn.disabled = false; btn.style.opacity = '1';
-      return;
-    }
-
-    // Salva preview no cache
-    const bin = atob(data.audio), arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    previewCache[voiceId] = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
-
-    const voiceName = nameInput || 'Voz personalizada';
-    customVoices.push({ id: voiceId, name: voiceName, lang: 'custom', flag: '⭐',
-      gender: 'Personalizado', age: '', style: 'Custom', desc: 'Adicionada manualmente',
-      provider: 'elevenlabs', custom: true });
-    localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
-
-    document.getElementById('customVoiceUrl').value = '';
-    document.getElementById('customVoiceName').value = '';
-    msg.textContent = '✅ "' + voiceName + '" adicionada!'; msg.style.color = '#22c55e';
-    btn.textContent = '+ Adicionar voz'; btn.disabled = true; btn.style.opacity = '.5';
-    renderVoices();
-    setTimeout(() => previewVoice(voiceId, null), 400);
-  } catch(e) {
-    msg.textContent = 'Erro: ' + (e.message || 'tente novamente'); msg.style.color = '#ef4444';
-    btn.textContent = '+ Adicionar voz'; btn.disabled = false; btn.style.opacity = '1';
-  }
-}
-
-function removeCustomVoice(id, event) {
-  event?.stopPropagation();
-  customVoices = customVoices.filter(v => v.id !== id);
-  localStorage.setItem('bv_custom_voices', JSON.stringify(customVoices));
-  delete previewCache[id];
-  renderVoices();
-  showToast('Voz removida.');
-}
-
 renderVoices();
+
+// ── PRÉ-PREENCHIMENTO VINDO DO INDEX (botão "Narrar no BlueVoice") ─────────
+(function(){
+  const prefill = localStorage.getItem('bv_prefill_text');
+  if(!prefill) return;
+  localStorage.removeItem('bv_prefill_text'); // limpa após usar
+  const textarea = document.getElementById('scriptText');
+  if(!textarea) return;
+  textarea.value = prefill;
+  // Dispara o contador de caracteres
+  const ev = new Event('input', {bubbles:true});
+  textarea.dispatchEvent(ev);
+  // Scroll suave para o textarea
+  setTimeout(()=> textarea.scrollIntoView({behavior:'smooth', block:'center'}), 500);
+  // Toast de confirmação
+  setTimeout(()=> showToast && showToast('Roteiro carregado! Escolha a voz e gere a narração.'), 800);
+})();
 updateFavCount();
 checkReady();
 
