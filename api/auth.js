@@ -1083,7 +1083,7 @@ Responda APENAS em JSON válido sem markdown:
   if (req.body?.action === 'tts') {
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75, provider = 'elevenlabs' } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
+    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
 
     try {
       // ── MINIMAX ──────────────────────────────────────────────────────────────
