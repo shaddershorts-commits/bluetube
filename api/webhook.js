@@ -49,46 +49,124 @@ export default async function handler(req, res) {
   };
 
   try {
+
+    // ── CHECKOUT CONCLUÍDO → Ativa plano ─────────────────────────────────────
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const plan = session.metadata?.plan || 'full';
+      const billing = session.metadata?.billing || 'monthly';
       const email = session.customer_details?.email;
       const customerId = session.customer;
       const subscriptionId = session.subscription;
 
-      if (email) {
-        await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
-          method: 'POST',
-          headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify({
-            email,
-            plan,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscriptionId,
-            plan_expires_at: new Date(Date.now() + 32 * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date().toISOString()
-          })
+      if (!email) {
+        console.error('❌ checkout.session.completed sem email:', session.id);
+        return res.status(200).json({ received: true });
+      }
+
+      const expiresAt = billing === 'annual'
+        ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
+        : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString(); // +5 dias de margem
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+        method: 'POST',
+        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          email,
+          plan,
+          is_manual: false,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          plan_expires_at: expiresAt,
+          created_at: new Date().toISOString(), // garante created_at no upsert
+          updated_at: new Date().toISOString()
+        })
+      });
+
+      if (!r.ok) {
+        const err = await r.text();
+        console.error('❌ Supabase upsert error:', err);
+        return res.status(500).json({ error: 'DB update failed' });
+      }
+
+      console.log(`✅ Plan activated: ${email} → ${plan} (${billing})`);
+    }
+
+    // ── RENOVAÇÃO → Atualiza plan_expires_at ─────────────────────────────────
+    if (event.type === 'invoice.payment_succeeded') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      if (!subscriptionId) return res.status(200).json({ received: true });
+
+      // Busca email pelo customer_id
+      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`, {
+        headers: supaHeaders
+      });
+      const subs = await subRes.json();
+      if (!subs?.length) return res.status(200).json({ received: true });
+
+      const billing = invoice.lines?.data?.[0]?.plan?.interval === 'year' ? 'annual' : 'monthly';
+      const expiresAt = billing === 'annual'
+        ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
+        : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
+
+      await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+        method: 'PATCH',
+        headers: supaHeaders,
+        body: JSON.stringify({ plan_expires_at: expiresAt, updated_at: new Date().toISOString() })
+      });
+
+      console.log(`🔄 Renewal: ${subs[0].email} → expires ${expiresAt.split('T')[0]}`);
+    }
+
+    // ── FALHA DE PAGAMENTO → Loga para acompanhar ────────────────────────────
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      const attemptCount = invoice.attempt_count;
+
+      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`, {
+        headers: supaHeaders
+      });
+      const subs = await subRes.json();
+      const email = subs?.[0]?.email || 'desconhecido';
+
+      // Após 3 tentativas falhas o Stripe cancela automaticamente
+      // Loga para visibilidade no admin
+      console.log(`⚠️ Payment failed: ${email} — tentativa ${attemptCount}/3`);
+
+      // Na 3ª falha, faz downgrade preventivo
+      if (attemptCount >= 3) {
+        await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+          method: 'PATCH',
+          headers: supaHeaders,
+          body: JSON.stringify({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
         });
-        // Also update IP limit for this subscriber if possible
-        console.log(`✅ Plan activated: ${email} → ${plan}`);
+        console.log(`⬇️ Downgrade por falha de pagamento: ${email}`);
       }
     }
 
+    // ── CANCELAMENTO → Downgrade para free ───────────────────────────────────
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object;
       const customerId = sub.customer;
-      // Downgrade to free when subscription cancelled
-      await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
         method: 'PATCH',
         headers: supaHeaders,
         body: JSON.stringify({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
       });
-      console.log(`⬇️ Plan cancelled for customer: ${customerId}`);
+
+      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email`, { headers: supaHeaders });
+      const subs = await subRes.json();
+      console.log(`⬇️ Subscription cancelled: ${subs?.[0]?.email || customerId}`);
     }
 
     return res.status(200).json({ received: true });
   } catch (err) {
     console.error('Webhook processing error:', err);
-    return res.status(500).json({ error: 'Webhook processing failed' });
+    // Retorna 200 para o Stripe não ficar tentando reenviar
+    return res.status(200).json({ received: true, warning: err.message });
   }
 }
