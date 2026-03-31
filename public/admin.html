@@ -584,7 +584,7 @@ async function loadData(){
                 <td><span style="font-family:var(--mono);font-size:11px;color:${a.level==='gold'?'var(--yellow)':a.level==='silver'?'#c0c0c0':'#cd7f32'}">${a.level?.toUpperCase()}</span></td>
                 <td style="color:var(--text)">${(a.total_full||0)+(a.total_master||0)}</td>
                 <td style="color:var(--green)">$${parseFloat(a.total_earnings||0).toFixed(2)}</td>
-                <td><span style="color:${statusColor[a.status]||'var(--dim)';font-family:var(--mono);font-size:11px}">${statusLabel[a.status]||a.status}</span></td>
+                <td><span style="font-family:var(--mono);font-size:11px;color:${statusColor[a.status]||'var(--dim)'}">${statusLabel[a.status]||a.status}</span></td>
                 <td>
                   <div style="display:flex;gap:6px">
                     ${a.status !== 'active' ? `<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅ Aprovar</button>` : ''}
