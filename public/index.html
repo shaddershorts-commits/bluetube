@@ -432,7 +432,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </button>
     </div>
     <!-- Mobile: menu suspenso de ferramentas Master -->
-    <div style="position:relative" id="mobileToolsWrapper">
+    <div style="position:relative">
       <button class="mobile-tools-btn" id="mobileToolsBtn" onclick="toggleMobileTools(event)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Ferramentas
@@ -1404,6 +1404,7 @@ async function handleEmailLogin(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
       closeAuthModal();
@@ -1443,6 +1444,7 @@ async function handleEmailSignup(){
         : 'Código enviado! Verifique seu email.','ok');
     }else{
       if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+      if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
       setTimeout(async()=>{
         closeAuthModal();
@@ -1465,6 +1467,7 @@ async function handleOTPVerify(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Código inválido');
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     setAuthMsg('Email verificado! Bem-vindo 🎉','ok');
     setTimeout(()=>closeAuthModal(),1200);
   }catch(e){setAuthMsg(e.message,'');}
@@ -1672,37 +1675,72 @@ function downloadSrt(){
 
 // ── SESSION CHECK ──────────────────────────────────────────────────────────
 async function checkSession(){
-  const token=localStorage.getItem('bt_token');
+  let token=localStorage.getItem('bt_token');
   if(!token)return;
+  const H={'Content-Type':'application/json'};
   try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
-    const d=await r.json();
+    let r=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'verify',token})});
+    let d=await r.json();
+
+    // Se token expirou, tenta renovar com refresh_token antes de deslogar
+    if(!r.ok||!d.user){
+      const refreshToken=localStorage.getItem('bt_refresh_token');
+      if(refreshToken){
+        const rr=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'refresh_session',refresh_token:refreshToken})});
+        const rd=await rr.json();
+        if(rr.ok&&rd.access_token){
+          token=rd.access_token;
+          localStorage.setItem('bt_token',token);
+          if(rd.refresh_token)localStorage.setItem('bt_refresh_token',rd.refresh_token);
+          // Re-verifica com token novo
+          r=await fetch('/api/auth',{method:'POST',headers:H,body:JSON.stringify({action:'verify',token})});
+          d=await r.json();
+        }
+      }
+    }
+
     if(r.ok&&d.user){
-      // Fetch real plan from Supabase
-      const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-      const planData=await planRes.json();
-      userPlan=planData.plan||'free';
-      localStorage.setItem('bt_plan',userPlan);
-      currentUserEmail=planData.email||d.user.email;
+      // Busca plano — com fallback no cache se a API falhar
+      try{
+        const planRes=await fetch('/api/get-plan',{method:'POST',headers:H,body:JSON.stringify({token})});
+        if(planRes.ok){
+          const planData=await planRes.json();
+          if(planData.plan){
+            // Só atualiza se veio um plano válido — nunca sobrescreve com undefined
+            userPlan=planData.plan;
+            localStorage.setItem('bt_plan',userPlan);
+            if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
+          } else {
+            // API retornou mas sem .plan — usa cache
+            userPlan=localStorage.getItem('bt_plan')||'free';
+          }
+        } else {
+          // Erro na API (500, timeout) — NÃO sobrescreve o plano com 'free'
+          userPlan=localStorage.getItem('bt_plan')||'free';
+        }
+      }catch(planErr){
+        // Falha de rede — usa plano em cache
+        userPlan=localStorage.getItem('bt_plan')||'free';
+      }
+      currentUserEmail=d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
-      // Store plan expiry for profile display
-      if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
       setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
-      // Check if user was redirected here after signup to complete a purchase
-      const pendingPlan = localStorage.getItem('bt_pending_plan');
-      if(pendingPlan && userPlan === 'free'){
-        const pendingBilling = localStorage.getItem('bt_pending_billing') || 'monthly';
+      const pendingPlan=localStorage.getItem('bt_pending_plan');
+      if(pendingPlan&&userPlan==='free'){
+        const pendingBilling=localStorage.getItem('bt_pending_billing')||'monthly';
         localStorage.removeItem('bt_pending_plan');
         localStorage.removeItem('bt_pending_billing');
-        setTimeout(()=>goToCheckout(pendingPlan, pendingBilling), 1000);
+        setTimeout(()=>goToCheckout(pendingPlan,pendingBilling),1000);
       }
     }else{
+      // Sessão inválida e não recuperável — desloga
       localStorage.removeItem('bt_token');
+      localStorage.removeItem('bt_refresh_token');
       localStorage.removeItem('bt_plan');
     }
-  }catch{}
+  }catch(e){console.error('checkSession error:',e);}
 }
 
 function setLoggedIn(email, plan){
@@ -1741,15 +1779,12 @@ function setLoggedIn(email, plan){
     commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
   }
 
-  // Rebuild right side of nav keeping tool buttons (desktop + mobile wrapper)
+  // Rebuild right side of nav keeping tool buttons
   const toolsGroup = document.getElementById('navToolsGroup');
-  const mobileWrapper = document.getElementById('mobileToolsWrapper');
   const toolsHTML = toolsGroup ? toolsGroup.outerHTML : '';
-  const mobileToolsHTML = mobileWrapper ? mobileWrapper.outerHTML : '';
 
   navRight.innerHTML = `
     ${toolsHTML}
-    ${mobileToolsHTML}
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
@@ -1802,6 +1837,7 @@ function showFreeUserPopup(){
 
 function doLogout(){
   localStorage.removeItem('bt_token');
+  localStorage.removeItem('bt_refresh_token');
   localStorage.removeItem('bt_plan');
   location.reload();
 }
@@ -2509,3 +2545,5 @@ window.sendBluBluFeedback = async function(){
 </script>
 </body>
 </html>
+
+if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
