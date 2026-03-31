@@ -651,7 +651,10 @@ export default async function handler(req, res) {
     const estimatedShorts90d = Math.round((shortsViewsTotal / daysInSample) * 90);
 
     // YPP Shorts: 1.000 inscritos + 10M views de Shorts nos últimos 90 dias
+    const totalViews = channelData.totalViews || 0;
     const meetsSubReq = channelData.subscribers >= 1000;
+    // Canal com 100M+ views totais: excelente histórico — score mínimo 87
+    const isHighPerformer = totalViews >= 100000000;
     const meetsShorts90dReq = estimatedShorts90d >= 10000000;
     const isLikelyMonetized = meetsSubReq && (meetsShorts90dReq || channelData.totalViews >= 14400000);
 
@@ -742,6 +745,7 @@ DADOS DO CANAL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Canal: "${channelData.title}"
+Total de views acumuladas no canal: ${totalViews.toLocaleString('pt-BR')}${isHighPerformer ? ' ✅ CANAL DE ALTO HISTÓRICO (100M+ views)' : ''}
 Inscritos: ${(channelData.subscribers||0).toLocaleString('pt-BR')}
 Vídeos públicos: ${channelData.videoCount}
 País: ${channelData.country || 'não informado'}
@@ -780,6 +784,7 @@ ${titlesText}
 INSTRUÇÕES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+${isHighPerformer ? 'IMPORTANTE: Este canal tem mais de 100M de views totais — isso é um excelente indicador histórico. Mesmo que os últimos vídeos estejam abaixo do pico, o diagnóstico deve reconhecer que é um canal estabelecido e consolidado. O risco de desmonetização só deve ser alto se houver sinais muito claros de violação de política.' : ''}
 SEJA HONESTO. Não infle o diagnóstico. Score ${scoreData.score}/100 já reflete os dados — explique POR QUE. Se tiver declínio brusco, títulos repetitivos, ou engajamento crítico, aponte diretamente. Todas as recomendações devem ser específicas para criadores de Shorts.
 
 Responda APENAS em JSON válido sem markdown:
