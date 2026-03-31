@@ -380,22 +380,34 @@ async function regAffiliate(){
   const btn=document.getElementById('mainCta');
   if(btn){btn.disabled=true;btn.textContent='Enviando pedido…';}
   try{
+    console.log('Registering affiliate, token:', token ? token.slice(0,20)+'...' : 'MISSING');
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'register',token})});
-    const d=await r.json();
+    let d={};
+    try{ d=await r.json(); }catch(je){ d={error:'Resposta inválida do servidor'}; }
+    console.log('Register response:', r.status, d);
     if(r.ok&&d.affiliate){
       if(d.alreadyExists){
-        // Já existe — verifica status
         if(d.affiliate.status==='active') init();
         else if(d.affiliate.status==='pending') showPending();
-        else{toast('Conta suspensa.');show('landingSection');}
+        else{show('landingSection');toast('Conta suspensa.');}
       } else {
-        // Recém criado — status pending
         showPending();
       }
     } else {
-      console.error('Register failed:', r.status, d);
       if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}
-      toast('Erro: '+(d.error||'tente novamente'));
+      // Mostra erro visível na página
+      const errMsg = d.error || ('HTTP '+r.status);
+      show('landingSection');
+      setTimeout(()=>{
+        const cta = document.querySelector('.landing-cta');
+        if(cta){
+          const errEl = document.createElement('div');
+          errEl.style.cssText='background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px;font-family:var(--mono);font-size:12px;color:#fca5a5;margin-top:12px;max-width:400px;margin-left:auto;margin-right:auto';
+          errEl.textContent='⚠ '+errMsg;
+          cta.parentNode.insertBefore(errEl, cta.nextSibling);
+          setTimeout(()=>errEl.remove(), 8000);
+        }
+      }, 100);
     }
   }catch(e){console.error('regAffiliate error:',e);if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro de conexão: '+e.message);}
 }
