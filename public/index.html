@@ -752,6 +752,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV1">Criando seu próximo roteiro viral…</div>
       </div>
+      <!-- Título Casual -->
+      <div id="titleCasualBox" style="display:none;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.18);border-radius:12px;padding:12px 16px;margin-bottom:10px">
+        <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);opacity:.7;margin-bottom:6px;letter-spacing:.08em">💬 TÍTULO CASUAL</div>
+        <div id="titleCasualText" style="font-size:14px;font-weight:600;color:var(--text,#e2e8f0)"></div>
+        <button onclick="copyTitleEl('titleCasualText',this)" style="margin-top:8px;background:none;border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:var(--neon);cursor:pointer">📋 Copiar título</button>
+      </div>
+
       <div class="script-card" id="cardV1" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -761,6 +768,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+          <div style="position:relative;display:inline-block" id="bvWrap1">
+            <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')"
+              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">
+              🎙️ Narrar no BlueVoice
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="tab-panel" id="panel-v2">
@@ -768,6 +783,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV2">Criando seu próximo roteiro viral…</div>
       </div>
+      <!-- Título Apelativo -->
+      <div id="titleApelatBox" style="display:none;background:rgba(255,80,50,.05);border:1px solid rgba(255,80,50,.2);border-radius:12px;padding:12px 16px;margin-bottom:10px">
+        <div style="font-family:var(--font-mono,monospace);font-size:10px;color:#ff7a5a;opacity:.8;margin-bottom:6px;letter-spacing:.08em">🔥 TÍTULO APELATIVO</div>
+        <div id="titleApelatText" style="font-size:14px;font-weight:600;color:var(--text,#e2e8f0)"></div>
+        <button onclick="copyTitleEl('titleApelatText',this)" style="margin-top:8px;background:none;border:1px solid rgba(255,80,50,.25);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:#ff7a5a;cursor:pointer">📋 Copiar título</button>
+      </div>
+
       <div class="script-card" id="cardV2" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -777,6 +799,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+          <div style="position:relative;display:inline-block" id="bvWrap2">
+            <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')"
+              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">
+              🎙️ Narrar no BlueVoice
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1644,6 +1674,7 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('script'+versionId).textContent=clean;
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('card'+versionId).style.display='block';
+    if(typeof updateBlueVoiceButtons==='function') updateBlueVoiceButtons();
     // Show BluBlu after V2 (second script)
     if(versionId==='V2') setTimeout(showBlublu, 4000);
   }catch(err){
@@ -1653,12 +1684,73 @@ async function generateScript(versionId,lang,attempt=1){
   }
 }
 function generateAllScripts(lang){
+  // Reset title boxes
+  ['titleCasualBox','titleApelatBox'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
   ['V1','V2'].forEach(v=>{
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
+  setTimeout(()=>generateTitles(lang),1200);
+}
+
+// ── GERAR TÍTULOS ──────────────────────────────────────────────────────────
+async function generateTitles(lang){
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'title-suggest',transcript,lang,
+        originalTitle:document.getElementById('transcriptOut')?.innerText?.slice(0,80)||''})});
+    const d=await r.json();
+    if(d.casual){
+      document.getElementById('titleCasualText').textContent=d.casual;
+      document.getElementById('titleCasualBox').style.display='block';
+    }
+    if(d.apelativo){
+      document.getElementById('titleApelatText').textContent=d.apelativo;
+      document.getElementById('titleApelatBox').style.display='block';
+    }
+  }catch(e){console.log('titles error:',e.message);}
+}
+
+// ── NARRAR NO BLUEVOICE ────────────────────────────────────────────────────
+function sendToBlueVoice(scriptId){
+  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
+  if(!isMaster){ openUpgradeModal('master_tool'); return; }
+  const text=document.getElementById(scriptId)?.textContent?.trim();
+  if(!text) return;
+  localStorage.setItem('bt_prefill_script',text);
+  window.location.href='/blueVoice.html';
+}
+
+function copyTitleEl(id,btn){
+  navigator.clipboard.writeText(document.getElementById(id)?.textContent||'').catch(()=>{});
+  const orig=btn.textContent; btn.textContent='✓ Copiado!';
+  setTimeout(()=>btn.textContent=orig,2000);
+}
+
+// ── ESTILO DO BOTÃO BLUEVOICE (master vs outros) ───────────────────────────
+function updateBlueVoiceButtons(){
+  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
+  ['1','2'].forEach(n=>{
+    const btn=document.getElementById('bvBtn'+n);
+    const wrap=document.getElementById('bvWrap'+n);
+    if(!btn||!wrap) return;
+    const lock=wrap.querySelector('.bv-lock');
+    if(isMaster){
+      btn.style.filter=''; btn.style.opacity='1'; btn.style.cursor='pointer';
+      if(lock) lock.remove();
+    }else{
+      btn.style.filter='blur(1.5px)'; btn.style.opacity='0.55'; btn.style.cursor='default';
+      if(!wrap.querySelector('.bv-lock')){
+        const l=document.createElement('span'); l.className='bv-lock';
+        l.style.cssText='position:absolute;top:-7px;right:-7px;background:#fbbf24;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;pointer-events:none';
+        l.textContent='🔒'; wrap.appendChild(l);
+      }
+    }
+  });
 }
 
 // ── COPY & DOWNLOAD ────────────────────────────────────────────────────────
