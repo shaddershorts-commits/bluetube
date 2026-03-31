@@ -509,6 +509,24 @@ function _saveViraisState(){
     q:document.getElementById('searchInput')?.value||''
   });
 }
+
+// ── COMUNICAÇÃO COM O SHELL ───────────────────────────────────────────────────
+// Notifica o shell pai quando o plano muda, para mostrar a toolbar
+function _notifyShellPlan(plan){
+  try{ window.parent.postMessage({type:'bt-plan',plan}, '*'); }catch(e){}
+}
+// Troca de ferramenta via shell (não faz navegação se estiver em iframe)
+function _switchTool(name){
+  try{
+    if(window.parent !== window){
+      window.parent.postMessage({type:'bt-switch',tool:name}, '*');
+    } else {
+      const map={roteiros:'/',virais:'/virais.html',voice:'/blueVoice.html',score:'/blueScore.html',baixa:'/baixaBlue.html'};
+      if(map[name]) window.location.href = map[name];
+    }
+  }catch(e){ window.location.href='/'; }
+}
+
 </script>
 </body>
 </html>
