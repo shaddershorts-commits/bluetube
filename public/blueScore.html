@@ -371,6 +371,20 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 </main>
 
 <script>
+// ── PERSISTÊNCIA DE ESTADO (24h) ──────────────────────────────────────────────
+const _TTL=24*60*60*1000;
+function _save(k,v){try{localStorage.setItem(k,JSON.stringify({v,ts:Date.now()}))}catch(e){}}
+function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=JSON.parse(r);if(Date.now()-o.ts>_TTL){localStorage.removeItem(k);return null;}return o.v;}catch(e){return null;}}
+
+// Restaura último canal ao carregar
+(function(){
+  const saved = _load('bt_bluescore_url');
+  if(saved){
+    const inp = document.querySelector('input[type=text],input[type=url],#channelInput,#urlInput,#channelUrl');
+    if(inp && !inp.value) inp.value = saved;
+  }
+})();
+
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
 
@@ -888,6 +902,13 @@ function reset() {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Salva URL ao digitar
+document.addEventListener('input', function(e){
+  if(e.target && (e.target.type==='text'||e.target.type==='url')&&e.target.id!=='search'){
+    _save('bt_bluescore_url', e.target.value);
+  }
+});
 </script>
 </body>
 </html>
