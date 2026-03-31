@@ -399,6 +399,7 @@ export default async function handler(req, res) {
       process.env.YOUTUBE_API_KEY_8,
       process.env.YOUTUBE_API_KEY_9,
       process.env.YOUTUBE_API_KEY_10,
+      process.env.YOUTUBE_API_KEY_11,
     ].filter(Boolean);
     if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
 
@@ -773,7 +774,8 @@ Responda APENAS em JSON válido sem markdown:
       process.env.YOUTUBE_API_KEY_3, process.env.YOUTUBE_API_KEY_4,
       process.env.YOUTUBE_API_KEY_5, process.env.YOUTUBE_API_KEY_6,
       process.env.YOUTUBE_API_KEY_7, process.env.YOUTUBE_API_KEY_8,
-      process.env.YOUTUBE_API_KEY_9, process.env.YOUTUBE_API_KEY_10,
+      process.env.YOUTUBE_API_KEY_9,  process.env.YOUTUBE_API_KEY_10,
+      process.env.YOUTUBE_API_KEY_11,
     ].filter(Boolean);
     if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API não configurada.' });
 
