@@ -93,7 +93,7 @@ export default async function handler(req, res) {
 
       // Notifica sistema de afiliados — conversão paga
       const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
-      fetch(`${SITE_URL}/api/affiliate`, {
+      fetch(`${SITE_URL}/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` })
@@ -129,7 +129,7 @@ export default async function handler(req, res) {
 
       // Comissão recorrente do afiliado
       const SITE_URL_R = process.env.SITE_URL || 'https://bluetubeviral.com';
-      fetch(`${SITE_URL_R}/api/affiliate`, {
+      fetch(`${SITE_URL_R}/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'renewal', email: subs[0].email, plan: subs[0].plan })
@@ -182,7 +182,7 @@ export default async function handler(req, res) {
       // Cancela comissões do afiliado
       if (cancelledEmail) {
         const SITE_URL_C = process.env.SITE_URL || 'https://bluetubeviral.com';
-        fetch(`${SITE_URL_C}/api/affiliate`, {
+        fetch(`${SITE_URL_C}/api/auth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'cancel', email: cancelledEmail })
