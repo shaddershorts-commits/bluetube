@@ -152,10 +152,14 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
   <div class="hero">
     <div class="hero-eye">
       <span class="lens-icon">🔍</span>
-      BlueLens · Rastreador de Origem
+      BlueLens · Detector de Concorrência
     </div>
-    <h1>Encontre o vídeo<br><span>original</span></h1>
-    <p class="hero-sub">Cole o link de qualquer Short e o BlueLens rastreia a origem, analisa se é repost e encontra onde o conteúdo foi criado primeiro.</p>
+    <h1>Quantos criadores já<br><span>publicaram isso?</span></h1>
+    <p class="hero-sub">Cole o link do seu Short ou de um vídeo que quer usar. O BlueLens encontra todos os canais dark que já publicaram o mesmo conteúdo no YouTube — para você saber se o nicho está saturado antes de postar.</p>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap">
+      <div style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">🎯 Foco: YouTube Shorts</div>
+      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">⚠ Muitas cópias = menos views para você</div>
+    </div>
   </div>
 
   <!-- INPUT -->
@@ -167,10 +171,10 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         onkeydown="if(event.key==='Enter')analyze()"/>
       <button class="btn-analyze" id="btnAnalyze" onclick="analyze()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        Rastrear origem
+        Detectar cópias
       </button>
     </div>
-    <div class="input-hint">Suporta YouTube Shorts, TikTok e Instagram Reels · Aprende com cada análise</div>
+    <div class="input-hint">Cole qualquer link do YouTube Shorts · Detecta criadores dark com o mesmo conteúdo · Quanto mais cópias, mais saturado o nicho</div>
   </div>
 
   <!-- LOADING -->
@@ -179,11 +183,11 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Rastreando origem…</div>
     <div style="font-size:13px;color:var(--text-sec)">Analisando padrões e buscando correspondências</div>
     <div class="scan-steps">
-      <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando plataforma</div>
-      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo metadados</div>
-      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando correspondências</div>
-      <div class="scan-step" id="s4"><div class="step-dot"></div>IA analisando padrões</div>
-      <div class="scan-step" id="s5"><div class="step-dot"></div>Construindo veredicto</div>
+      <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando vídeo</div>
+      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo metadados e thumbnail</div>
+      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando cópias no YouTube</div>
+      <div class="scan-step" id="s4"><div class="step-dot"></div>Analisando elementos visuais</div>
+      <div class="scan-step" id="s5"><div class="step-dot"></div>Calculando saturação do nicho</div>
     </div>
   </div>
 
@@ -221,15 +225,19 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     <!-- RESULTADOS / POSSÍVEIS ORIGENS -->
     <div class="results-card" id="resultsCard" style="display:none">
       <div class="section-title">
-        🎯 Possíveis origens encontradas
+        📋 Outros canais com o mesmo conteúdo
         <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="resultsCount"></span>
       </div>
       <div id="resultsList"></div>
     </div>
 
     <!-- NOVA ANÁLISE -->
-    <div style="text-align:center;margin-top:20px">
-      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↩ Analisar outro vídeo</button>
+    <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button id="btnRefineSearch" onclick="refineSearch()" style="background:linear-gradient(135deg,rgba(0,170,255,.15),rgba(0,170,255,.08));border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:12px 24px;color:var(--neon);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px">
+        🔄 Buscar mais resultados
+        <span style="font-family:var(--mono);font-size:10px;opacity:.6">descarta os já mostrados</span>
+      </button>
+      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 24px;color:var(--text-sec);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↩ Analisar outro vídeo</button>
     </div>
   </div>
 
@@ -256,6 +264,9 @@ document.addEventListener('mousemove', e => {
 });
 
 let currentAnalysisId = null;
+let currentVideoUrl = null;
+let seenVideoIds = new Set(); // IDs já mostrados — descartados na busca refinada
+let refineOffset = 0;
 
 const fmtNum = n => {
   if (!n) return '0';
@@ -284,6 +295,11 @@ function showToast(msg, d=3500) {
 async function analyze() {
   const url = document.getElementById('urlInput').value.trim();
   if (!url) return;
+
+  // Nova busca — reseta estado
+  currentVideoUrl = url;
+  seenVideoIds = new Set();
+  refineOffset = 0;
 
   document.getElementById('inputSection').style.display = 'none';
   document.getElementById('loadingSection').style.display = 'block';
@@ -390,31 +406,79 @@ function renderResults(data) {
     document.getElementById('resultsCard').style.display = 'block';
     document.getElementById('resultsCount').textContent = results.length + ' encontrado' + (results.length>1?'s':'');
 
-    document.getElementById('resultsList').innerHTML = results.map((r, i) => {
-      const isTop = i === 0;
-      const simColor = r.similarity >= 60 ? 'var(--green)' : r.similarity >= 30 ? 'var(--gold)' : 'var(--text-dim)';
-      return `
-        <div class="result-item" onclick="handleResultClick('${r.url}', '${r.id}')">
-          <div class="result-rank ${isTop?'top':''}">${isTop?'★':(i+1)}</div>
-          ${r.thumbnail ? `<img class="result-thumb" src="${r.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>` : ''}
-          <div class="result-info">
-            <div class="result-title">${r.title || '—'}</div>
-            <div class="result-meta">${r.channel || '—'} · ${fmtNum(r.views)} views · ${fmtDate(r.publishedAt)}</div>
-            ${r.isLikelyOriginal ? '<div style="margin-top:4px"><span class="origin-badge">✓ Provável original</span></div>' : ''}
-          </div>
-          <div class="result-sim">
-            <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
-            <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">similar</div>
-          </div>
-        </div>`;
-    }).join('');
+    // Registra IDs vistos e renderiza usando buildResultItem
+  results.forEach(r => seenVideoIds.add(r.id));
+  document.getElementById('resultsList').innerHTML = results.map((r,i) => buildResultItem(r,i)).join('');
   } else {
     document.getElementById('resultsCard').style.display = 'block';
     document.getElementById('resultsList').innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">Nenhuma correspondência encontrada. O vídeo pode ser inédito ou a origem é de outra plataforma.</div>';
   }
 
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function refineSearch() {
+  if (!currentVideoUrl) return;
+  const btn = document.getElementById('btnRefineSearch');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Buscando mais…';
+  refineOffset++;
+
+  try {
+    const r = await fetch(`/api/auth?action=bluelens-analyze&url=${encodeURIComponent(currentVideoUrl)}&token=${encodeURIComponent(token||'')}&offset=${refineOffset}&exclude=${encodeURIComponent(JSON.stringify([...seenVideoIds]))}`, { cache: 'no-store' });
+    let data;
+    try { data = await r.json(); } catch(e) { throw new Error('Erro na resposta'); }
+    if (!r.ok) throw new Error(data.error||'Erro na busca');
+
+    // Filtra resultados já mostrados
+    const newResults = (data.results||[]).filter(r => !seenVideoIds.has(r.id));
+
+    if (newResults.length === 0) {
+      showToast('Nenhum resultado novo encontrado. Tente outro link.');
+    } else {
+      // Adiciona ao final da lista atual
+      const list = document.getElementById('resultsList');
+      const divider = document.createElement('div');
+      divider.style.cssText = 'text-align:center;font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:12px 0;border-top:1px solid rgba(0,170,255,.08)';
+      divider.textContent = `— ${newResults.length} novo${newResults.length>1?'s':''} resultado${newResults.length>1?'s':''} —`;
+      list.appendChild(divider);
+
+      newResults.forEach((r, i) => {
+        seenVideoIds.add(r.id);
+        const div = document.createElement('div');
+        div.innerHTML = buildResultItem(r, document.querySelectorAll('.result-item').length + i);
+        list.appendChild(div.firstElementChild);
+      });
+
+      const count = document.getElementById('resultsCount');
+      if (count) count.textContent = document.querySelectorAll('.result-item').length + ' encontrados';
+      showToast(`✅ +${newResults.length} novos resultados adicionados`);
+    }
+  } catch(e) {
+    showToast('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Buscar mais resultados <span style="font-family:var(--mono);font-size:10px;opacity:.6">descarta os já mostrados</span>';
+  }
+}
+
+function buildResultItem(r, idx) {
+  const isTop = idx === 0;
+  const simColor = r.similarity >= 60 ? 'var(--green)' : r.similarity >= 30 ? 'var(--gold)' : 'var(--text-dim)';
+  return `<div class="result-item" onclick="handleResultClick('${r.url}','${r.id}')">
+    <div class="result-rank ${isTop?'top':''}">${isTop?'★':(idx+1)}</div>
+    ${r.thumbnail?`<img class="result-thumb" src="${r.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>`:''}
+    <div class="result-info">
+      <div class="result-title">${r.title||'—'}</div>
+      <div class="result-meta">${r.channel||'—'} · ${fmtNum(r.views)} views · ${fmtDate(r.publishedAt)}</div>
+      ${r.isLikelyOriginal?'<div style="margin-top:4px"><span class="origin-badge">✓ Publicado primeiro</span></div>':''}
+    </div>
+    <div class="result-sim">
+      <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
+      <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">similar</div>
+    </div>
+  </div>`;
 }
 
 function handleResultClick(url, videoId) {
