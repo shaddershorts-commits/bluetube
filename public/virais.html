@@ -294,7 +294,21 @@ async function fetchVirals() {
   try {
     const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
     const r = await fetch(`/api/auth?${params}`);
-    const data = await r.json();
+
+    // 304 = cache do browser, sem body — tenta de novo sem cache
+    if (r.status === 304) {
+      const r2 = await fetch(`/api/auth?${params}&_t=${Date.now()}`);
+      if (r2.ok) {
+        const data2 = await r2.json();
+        lastResults = data2.videos || [];
+        renderVideos(lastResults);
+        return;
+      }
+    }
+
+    let data;
+    try { data = await r.json(); }
+    catch(je) { showError('Erro ao processar resposta. Tente novamente.'); return; }
 
     if (!r.ok || data.error) {
       showError(data.error || 'Erro ao buscar vídeos.');
