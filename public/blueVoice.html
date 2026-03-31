@@ -966,10 +966,20 @@ function showToast(msg) {
 function parseVoiceUrl(raw) {
   const url = (raw || '').trim();
   if (!url) return null;
-  const m1 = url.match(/share\/[a-f0-9]+\/([A-Za-z0-9_]{10,40})/);
-  if (m1) return m1[1];
-  const m2 = url.match(/voices\/([A-Za-z0-9_]{10,40})/);
-  if (m2) return m2[1];
+  // Link compartilhado ElevenLabs: share/{hash}/{voiceId}
+  const parts = url.split('/');
+  const shareIdx = parts.indexOf('share');
+  if (shareIdx >= 0 && parts.length > shareIdx + 2) {
+    const id = parts[shareIdx + 2];
+    if (id && /^[A-Za-z0-9_]{10,40}$/.test(id)) return id;
+  }
+  // URL de voz: voices/{voiceId}
+  const voicesIdx = parts.indexOf('voices');
+  if (voicesIdx >= 0 && parts[voicesIdx + 1]) {
+    const id = parts[voicesIdx + 1];
+    if (/^[A-Za-z0-9_]{10,40}$/.test(id)) return id;
+  }
+  // ID puro
   if (/^[A-Za-z0-9_]{10,40}$/.test(url)) return url;
   return null;
 }
