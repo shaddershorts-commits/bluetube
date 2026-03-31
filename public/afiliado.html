@@ -379,7 +379,7 @@ async function regAffiliate(){
   }catch(e){if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}toast('Erro de conexão');}
 }
 
-const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>document.getElementById(s).style.display=s===id?'':'none');};
+const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.display=s===id?'block':'none';});};
 function showPending(){show('pendingSection');}
 
 async function init(){
