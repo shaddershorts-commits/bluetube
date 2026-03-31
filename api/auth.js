@@ -1010,26 +1010,57 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET, sem custo de créditos) ──────────────────────────────
-  // Gera sample curto via TTS (mesma rota da geração real — sempre funciona).
-  // Não usa /v1/voices/{id} pois muitas vozes não estão na conta e retornam 404.
+  // ── VOICE LIST (GET, retorna vozes disponíveis na conta + preview_url) ─────
+  // Uma chamada só ao carregar a página — mapeia quais IDs existem e seus previews
+  if (req.method === 'GET' && req.query?.action === 'voice-list') {
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado.' });
+
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': XI_KEY }
+      });
+      if (!r.ok) return res.status(502).json({ error: 'Falha ao buscar vozes.' });
+      const data = await r.json();
+      const voices = (data.voices || []).map(v => ({
+        id: v.voice_id,
+        name: v.name,
+        previewUrl: v.preview_url || null
+      }));
+      return res.status(200).json({ voices });
+    } catch(e) {
+      console.error('voice-list error:', e.message);
+      return res.status(500).json({ error: 'Erro ao buscar lista de vozes.' });
+    }
+  }
+
+  // ── VOICE PREVIEW (GET) ──────────────────────────────────────────────────
+  // Se o frontend passar previewUrl (CDN ElevenLabs), faz proxy direto.
+  // Caso contrário, gera TTS curto como fallback (funciona para qualquer voz da conta).
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
     const XI_KEY = process.env.ELEVENLABS_API_KEY;
     if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-    const { voiceId } = req.query;
+    const { voiceId, previewUrl } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
-    // Frase curta fixa — ~25 caracteres, custo mínimo, multilíngue
-    const SAMPLE = 'Olá! Esta é a minha voz.';
-
     try {
+      // Estratégia 1: preview_url da CDN ElevenLabs (sem custo de TTS)
+      if (previewUrl) {
+        const decoded = decodeURIComponent(previewUrl);
+        const audioRes = await fetch(decoded);
+        if (audioRes.ok) {
+          const buf = await audioRes.arrayBuffer();
+          const base64 = Buffer.from(buf).toString('base64');
+          return res.status(200).json({ audio: base64, format: 'mp3' });
+        }
+        console.log('CDN preview failed for', voiceId, '— falling back to TTS');
+      }
+
+      // Estratégia 2: TTS com frase curta fixa
+      const SAMPLE = 'Olá! Esta é a minha voz.';
       const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
-        headers: {
-          'xi-api-key': XI_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'audio/mpeg'
-        },
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
         body: JSON.stringify({
           text: SAMPLE,
           model_id: 'eleven_multilingual_v2',
@@ -1039,8 +1070,11 @@ Responda APENAS em JSON válido sem markdown:
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(() => ({}));
-        console.error('Voice preview TTS error:', ttsRes.status, voiceId, err?.detail || '');
-        return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
+        const detail = typeof err?.detail === 'string' ? err.detail : err?.detail?.message || '';
+        console.error('Voice preview TTS error:', ttsRes.status, voiceId, detail);
+        const isNotFound = ttsRes.status === 422 || ttsRes.status === 404 || detail.toLowerCase().includes('not found') || detail.toLowerCase().includes('invalid');
+        const msg = isNotFound ? 'Esta voz não está disponível na conta BlueTube.' : 'Prévia indisponível para esta voz.';
+        return res.status(502).json({ error: msg, notInAccount: isNotFound });
       }
 
       const audioBuffer = await ttsRes.arrayBuffer();
@@ -1051,6 +1085,7 @@ Responda APENAS em JSON válido sem markdown:
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
+
 
   // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
   if (req.body?.action === 'tts') {
