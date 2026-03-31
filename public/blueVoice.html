@@ -523,7 +523,16 @@ function updateNarrationCounter(increment = false) {
 updateNarrationCounter();
 
 // ── CHAR COUNTER ──────────────────────────────────────────────────────────────
+// Salva texto do textarea a cada mudança (throttled) — restaura em 24h
+let _bvSaveTimer = null;
 document.getElementById('scriptText').addEventListener('input', function() {
+  clearTimeout(_bvSaveTimer);
+  _bvSaveTimer = setTimeout(() => {
+    const txt = this.value.trim();
+    if(txt.length > 10) {
+      localStorage.setItem('bv_last_text', JSON.stringify({v:txt,ts:Date.now()}));
+    }
+  }, 800);
   const len = this.value.length;
   const el = document.getElementById('charCount');
   el.textContent = len.toLocaleString('pt-BR') + ' / 5.000 caracteres';
@@ -622,6 +631,7 @@ function updateFavCount() {
 function selectVoice(id) {
   selectedVoice = getAllVoices().find(v => v.id === id);
   if (!selectedVoice) return;
+  localStorage.setItem('bv_last_voice', id); // persiste seleção
   // Update selected strip
   document.getElementById('selFlag').textContent = selectedVoice.flag;
   document.getElementById('selName').textContent = selectedVoice.name;
@@ -1103,6 +1113,35 @@ async function loadCommunityVoices() {
         community: true
       }));
     if (communityVoices.length) renderVoices();
+
+// ── RESTAURAR ÚLTIMO TEXTO (24h) ──────────────────────────────────────────
+(function(){
+  const BV_TTL = 24*60*60*1000;
+  // Restaura texto do textarea
+  try{
+    const raw = localStorage.getItem('bv_last_text');
+    if(raw){
+      const obj = JSON.parse(raw);
+      if(Date.now()-obj.ts < BV_TTL && obj.v){
+        const ta = document.getElementById('scriptText');
+        if(ta && !ta.value){
+          ta.value = obj.v;
+          ta.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+      }
+    }
+  }catch(e){}
+
+  // Restaura voz selecionada
+  try{
+    const savedVoiceId = localStorage.getItem('bv_last_voice');
+    if(savedVoiceId){
+      setTimeout(()=>{
+        if(typeof selectVoice==='function') selectVoice(savedVoiceId);
+      }, 300);
+    }
+  }catch(e){}
+})();
     console.log('Community voices:', communityVoices.length);
   } catch(e) { console.log('community voices error:', e.message); }
 }
