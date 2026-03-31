@@ -1461,7 +1461,7 @@ Responda APENAS em JSON válido sem markdown:
 
       // Calcula stats
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
-      const level = getLevel(totalPaying);
+      const level = getAffLevel(totalPaying);
       const rate = COMMISSION_RATES[level];
 
       const pendingCommissions = commissions.filter(c => c.status === 'pending');
@@ -1523,8 +1523,8 @@ Responda APENAS em JSON válido sem markdown:
         allCommissions: allCommissions.slice(0, 50),
       });
     } catch(e) {
-      console.error('Dashboard error:', e.message);
-      return res.status(500).json({ error: 'Erro ao carregar dashboard' });
+      console.error('Dashboard error:', e.message, e.stack?.slice(0,300));
+      return res.status(500).json({ error: 'Erro ao carregar dashboard: ' + e.message });
     }
   }
 
@@ -1577,7 +1577,7 @@ Responda APENAS em JSON válido sem markdown:
         // Se plano pago, cria comissão
         if (plan === 'full' || plan === 'master') {
           const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0) + 1;
-          const level = getLevel(totalPaying);
+          const level = getAffLevel(totalPaying);
           const rate = COMMISSION_RATES[level];
           const planAmount = PLAN_AMOUNTS[plan];
           const commissionAmount = planAmount * rate;
@@ -1607,7 +1607,7 @@ Responda APENAS em JSON válido sem markdown:
             body: JSON.stringify({
               [field]: (affiliate[field] || 0) + 1,
               total_earnings: parseFloat((affiliate.total_earnings || 0) + commissionAmount).toFixed(2),
-              level: getLevel(totalPaying),
+              level: getAffLevel(totalPaying),
               updated_at: new Date().toISOString()
             })
           });
@@ -1652,7 +1652,7 @@ Responda APENAS em JSON válido sem markdown:
       if (!affiliate) return res.status(200).json({ ok: true, skipped: 'no_affiliate' });
 
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
-      const level = getLevel(totalPaying);
+      const level = getAffLevel(totalPaying);
       const rate = COMMISSION_RATES[level];
       const planAmount = PLAN_AMOUNTS[plan] || 0;
       const commissionAmount = planAmount * rate;
@@ -1725,7 +1725,7 @@ Responda APENAS em JSON válido sem markdown:
           headers: supaH,
           body: JSON.stringify({
             [field]: newCount,
-            level: getLevel(totalPaying),
+            level: getAffLevel(totalPaying),
             updated_at: new Date().toISOString()
           })
         });
