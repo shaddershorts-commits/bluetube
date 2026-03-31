@@ -215,7 +215,7 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
   </div>
 
   <!-- DASHBOARD -->
-  <div id="dashboardSection">
+  <div id="dashboardSection" style="display:none">
     <!-- NÍVEL -->
     <div class="prog-card" id="levelCard">
       <div class="lvl-badge" id="levelBadge">Bronze</div>
@@ -390,9 +390,16 @@ async function init(){
     if(d.error==='not_affiliate'){show('landingSection');return;}
     if(d.error==='pending_approval'){showPending();return;}
     if(d.error==='suspended'){show('landingSection');toast('⚠ Conta suspensa.');return;}
-    if(r.ok&&d.affiliate){lastCC=d.conversions?.length||0;renderDash(d);show('dashboardSection');startPoll();}
-    else show('landingSection');
-  }catch(e){show('landingSection');}
+    if(r.ok&&d.affiliate){
+      lastCC=d.conversions?.length||0;
+      try{renderDash(d);}catch(re){console.error('renderDash error:',re);show('landingSection');return;}
+      show('dashboardSection');
+      startPoll();
+    }else{
+      console.log('Dashboard response:', r.status, d.error);
+      show('landingSection');
+    }
+  }catch(e){console.error('init error:',e);show('landingSection');}
 }
 
 async function loadDash(){
