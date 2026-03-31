@@ -688,14 +688,24 @@ function calculateBlueScore(videos, channel) {
   const raw = perfScore * 0.45 + momentumScore * 0.35 + engScore * 0.20;
   let finalScore = raw;
 
-  // Pisos por performance absoluta (canal de milhões de views NUNCA pode ser "baixo")
-  if (medianViews >= 20000000)     finalScore = Math.max(finalScore, 84);
-  else if (medianViews >= 5000000) finalScore = Math.max(finalScore, 70);
-  else if (medianViews >= 1000000) finalScore = Math.max(finalScore, 57);
+  // ── PISOS POR PERFORMANCE ABSOLUTA ──────────────────────────────────────────
+  // Total de views do canal (dado histórico do YouTube, mais confiável que amostra)
+  const totalViews = channel?.totalViews || 0;
+  const subs       = channel?.subscribers || 0;
 
-  // Teto por inatividade
-  if (daysSinceLastVideo > 60)      finalScore = Math.min(finalScore, 48);
-  else if (daysSinceLastVideo > 30) finalScore = Math.min(finalScore, 62);
+  // Garantias por total de views acumuladas no canal
+  if      (totalViews >= 1000000000) finalScore = Math.max(finalScore, 95); // 1B+
+  else if (totalViews >= 500000000)  finalScore = Math.max(finalScore, 92); // 500M+
+  else if (totalViews >= 100000000)  finalScore = Math.max(finalScore, 87); // 100M+
+  else if (totalViews >= 50000000)   finalScore = Math.max(finalScore, 80); // 50M+
+  else if (totalViews >= 10000000)   finalScore = Math.max(finalScore, 70); // 10M+
+  else if (medianViews >= 1000000)   finalScore = Math.max(finalScore, 57); // mediana >1M
+
+  // Teto por inatividade — só aplica se canal não tem histórico massivo
+  if (totalViews < 50000000) {
+    if (daysSinceLastVideo > 60)      finalScore = Math.min(finalScore, 48);
+    else if (daysSinceLastVideo > 30) finalScore = Math.min(finalScore, 62);
+  }
 
   finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
 
