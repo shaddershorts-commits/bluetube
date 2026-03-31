@@ -1011,42 +1011,27 @@ Responda APENAS em JSON válido sem markdown:
   }
 
   // ── VOICE PREVIEW (GET, sem custo de créditos) ──────────────────────────────
+  // Gera sample curto via TTS (mesma rota da geração real — sempre funciona).
+  // Não usa /v1/voices/{id} pois muitas vozes não estão na conta e retornam 404.
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
     const XI_KEY = process.env.ELEVENLABS_API_KEY;
     if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
     const { voiceId } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
+    // Frase curta fixa — ~25 caracteres, custo mínimo, multilíngue
+    const SAMPLE = 'Olá! Esta é a minha voz.';
+
     try {
-      // Busca metadados da voz para pegar preview_url
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-        headers: { 'xi-api-key': XI_KEY }
-      });
-      if (!r.ok) {
-        console.error('ElevenLabs voice fetch error:', r.status, voiceId);
-        return res.status(404).json({ error: 'Voz não encontrada' });
-      }
-      const data = await r.json();
-      const voiceName = data.name || 'Voz';
-
-      // Estratégia 1: preview_url da ElevenLabs (CDN pública, browser toca direto — sem proxy)
-      if (data.preview_url) {
-        return res.status(200).json({
-          previewUrl: data.preview_url,
-          name: voiceName,
-          method: 'cdn'
-        });
-      }
-
-      // Estratégia 2: voz não tem preview_url (comum em vozes clonadas/customizadas)
-      // Gera sample curto com TTS — frase fixa de ~20 chars, custo mínimo
-      console.log(`Preview fallback TTS for voice ${voiceId} (${voiceName})`);
-      const sampleText = 'Olá! Esta é minha voz.';
       const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        headers: {
+          'xi-api-key': XI_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
         body: JSON.stringify({
-          text: sampleText,
+          text: SAMPLE,
           model_id: 'eleven_multilingual_v2',
           voice_settings: { stability: 0.5, similarity_boost: 0.75 }
         })
@@ -1054,16 +1039,15 @@ Responda APENAS em JSON válido sem markdown:
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(() => ({}));
-        console.error('TTS fallback error:', err);
+        console.error('Voice preview TTS error:', ttsRes.status, voiceId, err?.detail || '');
         return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
       }
 
       const audioBuffer = await ttsRes.arrayBuffer();
       const base64 = Buffer.from(audioBuffer).toString('base64');
-      return res.status(200).json({ audio: base64, format: 'mp3', name: voiceName, method: 'tts' });
-
+      return res.status(200).json({ audio: base64, format: 'mp3' });
     } catch(e) {
-      console.error('Preview error:', e.message);
+      console.error('Voice preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
