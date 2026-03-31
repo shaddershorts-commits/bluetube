@@ -1862,80 +1862,85 @@ Responda APENAS em JSON válido sem markdown:
       // 4. Busca YouTube por título similar (find origin)
       let searchResults = [];
       if (videoMeta.title && process.env.YOUTUBE_API_KEY) {
-        // Remove palavras de canal e hashtags para busca mais limpa
+
+        // Legenda colorida = emojis quadrados coloridos = sinal FORTE de repost compilado
+        const hasColorCaption = (t) => /\u{1F7E5}|\u{1F7E7}|\u{1F7E8}|\u{1F7E9}|\u{1F7E6}|\u{1F7EA}|\u{1F7EB}/u.test(t);
+        const hasRepostSignal = (t) => hasColorCaption(t) || /compilation|compilacao|parte \d|part \d/i.test(t);
+        const inputHasRepost = hasRepostSignal(videoMeta.title);
+
+        // Limpa título para busca
         const cleanTitle = videoMeta.title
-          .replace(/#\w+/g, '')
-          .replace(/\|.*$/,'')
-          .replace(/@\w+/g,'')
-          .trim()
-          .slice(0, 100);
+          .replace(/#\w+/g, '').replace(/\|.*$/, '').replace(/@\w+/g, '')
+          .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
-        const searches = [
-          // Busca pelo título limpo
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=8&order=viewCount&key=${process.env.YOUTUBE_API_KEY}`).then(r=>r.json()).catch(()=>({items:[]})),
-          // Busca só o Short original
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&videoDuration=short&maxResults=5&order=date&key=${process.env.YOUTUBE_API_KEY_2||process.env.YOUTUBE_API_KEY}`).then(r=>r.json()).catch(()=>({items:[]})),
-        ];
+        const tiktokQuery = cleanTitle.slice(0, 50) + ' tiktok';
+        const YT1 = process.env.YOUTUBE_API_KEY;
+        const YT2 = process.env.YOUTUBE_API_KEY_2 || YT1;
+        const YT3 = process.env.YOUTUBE_API_KEY_3 || YT1;
 
-        const [byViews, byDate] = await Promise.all(searches);
-        const allItems = [...(byViews.items||[]), ...(byDate.items||[])];
+        // 3 buscas paralelas: views (original tem mais), data (original veio antes), tiktok (origem mais comum)
+        const [byViews, byDate, byTiktok] = await Promise.all([
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=8&order=viewCount&videoDuration=short&key=${YT1}`).then(r=>r.json()).catch(()=>({items:[]})),
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=6&order=date&videoDuration=short&key=${YT2}`).then(r=>r.json()).catch(()=>({items:[]})),
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(tiktokQuery)}&maxResults=5&order=viewCount&videoDuration=short&key=${YT3}`).then(r=>r.json()).catch(()=>({items:[]})),
+        ]);
+
         const seen = new Set();
-        const unique = allItems.filter(i => {
+        const unique = [...(byViews.items||[]),...(byDate.items||[]),...(byTiktok.items||[])].filter(i => {
           const id = i.id?.videoId;
-          if (!id || seen.has(id) || id === ytVideoId) return false;
+          if (!id||seen.has(id)||id===ytVideoId) return false;
           seen.add(id); return true;
         });
 
         if (unique.length > 0) {
-          const ids = unique.map(i => i.id.videoId).join(',');
-          const sr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${ids}&key=${process.env.YOUTUBE_API_KEY}`);
-          const sd = await sr.json();
+          const ids = unique.map(i=>i.id.videoId).join(',');
+          const sd = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${ids}&key=${YT1}`).then(r=>r.json()).catch(()=>({items:[]}));
 
-          searchResults = (sd.items || []).map(v => {
-            const stats = v.statistics || {};
-            const snip = v.snippet || {};
-            const dur = v.contentDetails?.duration || '';
-            const dm = dur.match(/PT(?:([0-9]+)M)?(?:([0-9]+)S)?/);
-            const secs = (parseInt(dm?.[1]||0)*60)+parseInt(dm?.[2]||0);
-            const views = parseInt(stats.viewCount||0);
+          const STOP = new Set(['the','and','for','that','this','with','from','have','mais','para','que','uma','nao','com','por','sao','dos','das']);
+          const inputWords = new Set(videoMeta.title.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)));
 
-            // Calcula similaridade por título (Jaccard simplificado)
-            const titleWords = new Set(videoMeta.title.toLowerCase().split(/\s+/).filter(w=>w.length>3));
-            const resultWords = new Set(snip.title?.toLowerCase().split(/\s+/).filter(w=>w.length>3)||[]);
-            const intersection = [...titleWords].filter(w=>resultWords.has(w)).length;
-            const union = new Set([...titleWords, ...resultWords]).size;
-            const titleSim = union > 0 ? intersection / union : 0;
+          searchResults = (sd.items||[]).map(v => {
+            const stats=v.statistics||{}, snip=v.snippet||{};
+            const dur=v.contentDetails?.duration||'';
+            const dm=dur.match(/PT(?:([0-9]+)M)?(?:([0-9]+)S)?/);
+            const secs=(parseInt(dm?.[1]||0)*60)+parseInt(dm?.[2]||0);
+            const views=parseInt(stats.viewCount||0);
+            const rTitle=snip.title||'';
 
-            // Bônus de similaridade por duração similar
-            const durSim = videoMeta.duration > 0 && secs > 0
-              ? Math.max(0, 1 - Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs))
-              : 0.5;
+            const isColorCaption = hasColorCaption(rTitle);
+            const isRepost = hasRepostSignal(rTitle);
 
-            const similarity = Math.round((titleSim * 0.6 + durSim * 0.4) * 100);
+            const rWords = new Set(rTitle.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)));
+            const inter=[...inputWords].filter(w=>rWords.has(w)).length;
+            const union=new Set([...inputWords,...rWords]).size;
+            const titleSim=union>0?inter/union:0;
 
-            return {
-              id: v.id,
-              url: `https://www.youtube.com/shorts/${v.id}`,
-              youtubeUrl: `https://www.youtube.com/watch?v=${v.id}`,
-              title: snip.title || '',
-              channel: snip.channelTitle || '',
-              thumbnail: snip.thumbnails?.high?.url || snip.thumbnails?.medium?.url || '',
-              views, viewsFormatted: fmtViews(views),
-              duration: secs,
-              publishedAt: snip.publishedAt,
-              platform: 'youtube',
-              similarity,
-              isLikelyOriginal: views > (videoMeta.views || 0) && new Date(snip.publishedAt) < new Date(videoMeta.publishedAt || Date.now())
-            };
-          }).sort((a,b) => {
-            // Prioriza: mais views + mais antigo + maior similaridade
-            const aScore = (a.isLikelyOriginal ? 40 : 0) + a.similarity * 0.4 + Math.min(40, Math.log10(a.views+1)*10);
-            const bScore = (b.isLikelyOriginal ? 40 : 0) + b.similarity * 0.4 + Math.min(40, Math.log10(b.views+1)*10);
-            return bScore - aScore;
+            // Duração similar = forte sinal do mesmo vídeo (peso 45%)
+            const durSim=videoMeta.duration>0&&secs>0?Math.max(0,1-Math.abs(videoMeta.duration-secs)/Math.max(videoMeta.duration,secs,1)):0.3;
+            const viewBonus=views>1000000?0.3:views>100000?0.15:0;
+
+            let similarity=Math.round((titleSim*0.35+durSim*0.45+viewBonus*0.2)*100);
+            if(isColorCaption) similarity=0;
+            else if(isRepost) similarity=Math.max(0,similarity-20);
+            similarity=Math.max(0,Math.min(100,similarity));
+
+            const publishedBefore=videoMeta.publishedAt?new Date(snip.publishedAt)<new Date(videoMeta.publishedAt):false;
+            const isLikelyOriginal=!isColorCaption&&!isRepost&&(publishedBefore||views>(videoMeta.views||0)*0.5);
+
+            return {id:v.id,url:`https://www.youtube.com/shorts/${v.id}`,title:rTitle,
+              channel:snip.channelTitle||'',thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
+              views,viewsFormatted:fmtViews(views),duration:secs,publishedAt:snip.publishedAt,
+              platform:'youtube',similarity,isLikelyOriginal,isColorCaption,isRepost};
+          })
+          .filter(v=>!v.isColorCaption) // exclui legendas coloridas = garantidamente reposts
+          .sort((a,b)=>{
+            const pb=(v)=>v.publishedAt&&videoMeta.publishedAt?(new Date(v.publishedAt)<new Date(videoMeta.publishedAt)?30:0):0;
+            const sc=(v)=>(v.isLikelyOriginal?35:0)+pb(v)+v.similarity*0.35+Math.min(30,Math.log10(v.views+1)*8);
+            return sc(b)-sc(a);
           });
         }
+        if(inputHasRepost) console.log('BlueLens: video analisado tem legenda colorida (repost)');
       }
-
       // 5. IA analisa padrões e emite veredicto
       let aiAnalysis = { verdict: 'unknown', confidence: 0, reasoning: '', patterns: [] };
       const GEMINI_KEYS = [
@@ -1950,19 +1955,23 @@ VÍDEO ANALISADO:
 - Título: "${videoMeta.title}"
 - Canal: "${videoMeta.channel}"
 - Duração: ${videoMeta.duration}s
-- Views: ${videoMeta.views?.toLocaleString() || 'desconhecido'}
+- Views: ${(videoMeta.views||0).toLocaleString()}
 - Publicado: ${videoMeta.publishedAt || 'desconhecido'}
 - Plataforma: ${platform}
+- Sinais de repost no título: ${inputHasRepost ? 'SIM (legenda colorida ou compilation detectada)' : 'não detectado'}
+
+REGRA CRÍTICA: Se o título do vídeo analisado contém emojis de cor de legenda (🟥🟧🟨🟩🟦🟪) ou palavras como "compilation", é DEFINITIVAMENTE um repost editado. Emita veredicto "edited_repost" com alta confiança.
 
 ${topResult ? `RESULTADO MAIS PROVÁVEL DE ORIGEM:
 - Título: "${topResult.title}"
 - Canal: "${topResult.channel}"
-- Views: ${topResult.views?.toLocaleString()}
+- Views: ${(topResult.views||0).toLocaleString()}
 - Publicado: ${topResult.publishedAt}
-- Similaridade calculada: ${topResult.similarity}%
-- Publicado ANTES do analisado: ${topResult.isLikelyOriginal}` : 'Nenhum resultado de busca encontrado.'}
+- Duração: ${topResult.duration}s (vídeo analisado: ${videoMeta.duration}s)
+- Publicado ANTES do analisado: ${topResult.isLikelyOriginal}
+- Similaridade calculada: ${topResult.similarity}%` : 'Nenhum resultado encontrado — original pode ser do TikTok/Instagram.'}
 
-TOTAL DE RESULTADOS ENCONTRADOS: ${searchResults.length}
+TOTAL DE CANDIDATOS ENCONTRADOS NO YOUTUBE: ${searchResults.length}
 
 Analise e responda APENAS em JSON válido sem markdown:
 {
