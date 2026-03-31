@@ -612,45 +612,88 @@ function focusVoicePanel() {
 
 // ── PREVIEW DA VOZ (via backend proxy — sem CORS) ────────────────────────────
 let currentPreview = null;
+// Cache de previews para não buscar de novo quando o usuário clica uma segunda vez
+const previewCache = {};
+
 async function previewVoice(id, event) {
   event?.stopPropagation();
 
-  // Reseta todos os botões
+  const ICON_PLAY = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
+  const ICON_STOP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+
+  // Se já está tocando esta voz — para
+  if (currentPreview && currentPreview._voiceId === id) {
+    currentPreview.pause();
+    currentPreview = null;
+    const btn = document.querySelector(`[data-preview="${id}"]`);
+    if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
+    return;
+  }
+
+  // Para qualquer preview anterior
+  if (currentPreview) { currentPreview.pause(); currentPreview = null; }
   document.querySelectorAll('.btn-preview').forEach(b => {
-    b.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+    b.innerHTML = `${ICON_PLAY} Ouvir`;
     b.disabled = false;
   });
-
-  if (currentPreview) { currentPreview.pause(); currentPreview = null; }
 
   const btn = document.querySelector(`[data-preview="${id}"]`);
   if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
 
   try {
-    const r = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
-    const data = await r.json();
-    if (!r.ok || !data.audio) throw new Error(data.error || 'Prévia indisponível');
+    let audioUrl = previewCache[id];
 
-    const bin = atob(data.audio);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    const blob = new Blob([arr], { type: 'audio/mpeg' });
-    const url = URL.createObjectURL(blob);
+    if (!audioUrl) {
+      const r = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Prévia indisponível');
 
-    const audio = new Audio(url);
+      if (data.previewUrl) {
+        // CDN pública da ElevenLabs — browser toca direto, sem base64
+        audioUrl = data.previewUrl;
+      } else if (data.audio) {
+        // Fallback base64 (vozes sem preview_url)
+        const bin = atob(data.audio);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'audio/mpeg' });
+        audioUrl = URL.createObjectURL(blob);
+      } else {
+        throw new Error(data.error || 'Prévia indisponível');
+      }
+
+      previewCache[id] = audioUrl; // salva cache pra próxima vez
+    }
+
+    const audio = new Audio(audioUrl);
+    audio._voiceId = id;
     currentPreview = audio;
-    if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Parar`;
-    btn && (btn.disabled = false);
 
-    audio.play();
+    if (btn) { btn.innerHTML = `${ICON_STOP} Parar`; btn.disabled = false; }
+
+    audio.play().catch(err => {
+      // autoplay bloqueado em alguns browsers — tenta com interação do usuário
+      console.warn('Autoplay blocked:', err.message);
+      if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
+      showToast('Clique em "Ouvir" novamente para reproduzir.');
+    });
+
     audio.onended = () => {
-      if (btn) btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`;
+      if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
       currentPreview = null;
-      URL.revokeObjectURL(url);
     };
+
+    audio.onerror = () => {
+      if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
+      delete previewCache[id]; // limpa cache se o URL falhou
+      currentPreview = null;
+      showToast('Prévia indisponível para esta voz.');
+    };
+
   } catch(e) {
-    if (btn) { btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Ouvir`; btn.disabled = false; }
-    showToast('Prévia indisponível para esta voz.');
+    console.error('Preview error:', e.message);
+    if (btn) { btn.innerHTML = `${ICON_PLAY} Ouvir`; btn.disabled = false; }
+    showToast('Prévia indisponível. Tente novamente.');
   }
 }
 
