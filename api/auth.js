@@ -975,8 +975,6 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
   // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
     const XI_KEY = process.env.ELEVENLABS_API_KEY;
