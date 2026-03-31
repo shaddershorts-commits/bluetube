@@ -1862,7 +1862,11 @@ Responda APENAS em JSON válido sem markdown:
       // 4. Busca YouTube por título similar (find origin)
       // Detectores de repost — declarados globalmente para uso no prompt da IA
       const hasColorCaption = (t) => /\u{1F7E5}|\u{1F7E7}|\u{1F7E8}|\u{1F7E9}|\u{1F7E6}|\u{1F7EA}|\u{1F7EB}/u.test(t);
-      const hasRepostSignal = (t) => hasColorCaption(t) || /compilation|compilacao|parte \d|part \d/i.test(t);
+      // Palavras que aparecem em títulos de repost/compilação editada
+      const EDITED_KEYWORDS = /compilation|compilacao|parte \d|part \d|\bcreds?\b|credit|credito|via @|found on|repost|re-?post|\bpov\b.*@|duet|collab|fy[pb]|for you/i;
+      // Padrões de canal aggregador (muitos @ no título, ou menciona canal original)
+      const AGGREGATOR_PATTERN = /@\w{3,}.*@\w{3,}|\(via @|\| @|crédito|créditos/i;
+      const hasRepostSignal = (t) => hasColorCaption(t) || EDITED_KEYWORDS.test(t) || AGGREGATOR_PATTERN.test(t);
       const inputHasRepost = videoMeta.title ? hasRepostSignal(videoMeta.title) : false;
 
       let searchResults = [];
@@ -1874,20 +1878,39 @@ Responda APENAS em JSON válido sem markdown:
           .replace(/#\w+/g, '').replace(/\|.*$/, '').replace(/@\w+/g, '')
           .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
-        const tiktokQuery = cleanTitle.slice(0, 50) + ' tiktok';
+        // Queries especializadas para encontrar o original
+        const tiktokQuery = cleanTitle.slice(0, 50) + ' tiktok';     // TikTok é origem mais comum
+        const ytShortsQuery = cleanTitle.slice(0, 50) + ' shorts';   // busca Shorts específico
+        const originalQuery = cleanTitle.slice(0, 50) + ' original'; // busca versão original
+
         const YT1 = process.env.YOUTUBE_API_KEY;
         const YT2 = process.env.YOUTUBE_API_KEY_2 || YT1;
         const YT3 = process.env.YOUTUBE_API_KEY_3 || YT1;
+        const YT4 = process.env.YOUTUBE_API_KEY_4 || YT1;
+        const YT5 = process.env.YOUTUBE_API_KEY_5 || YT1;
 
-        // 3 buscas paralelas: views (original tem mais), data (original veio antes), tiktok (origem mais comum)
-        const [byViews, byDate, byTiktok] = await Promise.all([
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=8&order=viewCount&videoDuration=short&key=${YT1}`).then(r=>r.json()).catch(()=>({items:[]})),
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=6&order=date&videoDuration=short&key=${YT2}`).then(r=>r.json()).catch(()=>({items:[]})),
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(tiktokQuery)}&maxResults=5&order=viewCount&videoDuration=short&key=${YT3}`).then(r=>r.json()).catch(()=>({items:[]})),
+        // 5 buscas paralelas com queries diferentes para maximizar cobertura
+        const [byViews, byDate, byTiktok, byOriginal, byDescription] = await Promise.all([
+          // Por views — encontra versões populares
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=10&order=viewCount&videoDuration=short&key=${YT1}`).then(r=>r.json()).catch(()=>({items:[]})),
+          // Mais antigos — original veio primeiro
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=8&order=date&videoDuration=short&key=${YT2}`).then(r=>r.json()).catch(()=>({items:[]})),
+          // TikTok reposts no YouTube — origem mais comum de conteúdo viral
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(tiktokQuery)}&maxResults=8&order=viewCount&videoDuration=short&key=${YT3}`).then(r=>r.json()).catch(()=>({items:[]})),
+          // Busca "original" explícita
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(originalQuery)}&maxResults=6&order=viewCount&videoDuration=short&key=${YT4}`).then(r=>r.json()).catch(()=>({items:[]})),
+          // Sem filtro de duração — original pode ser vídeo longo cortado para Short
+          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=6&order=date&key=${YT5}`).then(r=>r.json()).catch(()=>({items:[]})),
         ]);
 
         const seen = new Set();
-        const unique = [...(byViews.items||[]),...(byDate.items||[]),...(byTiktok.items||[])].filter(i => {
+        const unique = [
+          ...(byViews.items||[]),
+          ...(byDate.items||[]),
+          ...(byTiktok.items||[]),
+          ...(byOriginal.items||[]),
+          ...(byDescription.items||[])
+        ].filter(i => {
           const id = i.id?.videoId;
           if (!id||seen.has(id)||id===ytVideoId) return false;
           seen.add(id); return true;
@@ -1938,7 +1961,7 @@ Responda APENAS em JSON válido sem markdown:
               platform:'youtube', similarity, isLikelyOriginal, isColorCaption, isRepost,
               publishedBefore};
           })
-          .filter(v => !v.isColorCaption) // exclui legendas coloridas = repost garantido
+          .filter(v => !v.isColorCaption && !v.isRepost) // exclui repost garantidos
           .sort((a,b) => {
             // Prioridade: publicado antes + sem repost + duração similar + data antiga absoluta
             const pb = (v) => v.publishedBefore ? 50 : 0;
@@ -1954,7 +1977,49 @@ Responda APENAS em JSON válido sem markdown:
         }
         if(inputHasRepost) console.log('BlueLens: video analisado tem legenda colorida (repost)');
       }
-      // 5. IA analisa padrões e emite veredicto
+      // 5. Análise visual do thumbnail para detectar setas, círculos e legendas coloridas
+      let thumbnailFlags = [];
+      if (videoMeta.thumbnail) {
+        try {
+          const GEMINI_VISION_KEY = process.env.GEMINI_KEY_1;
+          if (GEMINI_VISION_KEY) {
+            // Faz fetch do thumbnail e converte para base64
+            const thumbRes = await fetch(videoMeta.thumbnail);
+            if (thumbRes.ok) {
+              const thumbBuf = await thumbRes.arrayBuffer();
+              const thumbB64 = Buffer.from(thumbBuf).toString('base64');
+              const visionPrompt = 'Analise esta thumbnail de vídeo. Responda APENAS com JSON: {"hasColoredCaption":bool,"hasRedArrows":bool,"hasRedCircles":bool,"hasZoomEffect":bool,"hasWatermark":bool,"isLikelyEdited":bool,"reason":"1 frase"}. hasColoredCaption=true se tiver legenda com cor de fundo viva (amarelo/verde/vermelho/azul). hasRedArrows=true se tiver setas vermelhas ou de destaque. hasRedCircles=true se tiver círculos ou marcações de destaque.';
+              const visionRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_VISION_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [
+                    { inline_data: { mime_type: 'image/jpeg', data: thumbB64 } },
+                    { text: visionPrompt }
+                  ]}],
+                  generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
+                })
+              });
+              const vd = await visionRes.json();
+              let vtext = vd.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('').trim()||'';
+              vtext = vtext.split('```json').join('').split('```').join('').trim();
+              const vs = vtext.indexOf('{'); const ve = vtext.lastIndexOf('}');
+              if (vs>=0 && ve>=0) {
+                const vdata = JSON.parse(vtext.slice(vs,ve+1));
+                if (vdata.hasColoredCaption) thumbnailFlags.push('legenda colorida detectada na thumbnail');
+                if (vdata.hasRedArrows) thumbnailFlags.push('setas de destaque na thumbnail');
+                if (vdata.hasRedCircles) thumbnailFlags.push('círculos/marcações de destaque na thumbnail');
+                if (vdata.hasZoomEffect) thumbnailFlags.push('efeito de zoom na thumbnail');
+                if (vdata.hasWatermark) thumbnailFlags.push('marca dagua detectada');
+                if (vdata.isLikelyEdited) thumbnailFlags.push('thumbnail parece editada: ' + (vdata.reason||''));
+                console.log('BlueLens thumbnail analysis:', vdata);
+              }
+            }
+          }
+        } catch(e) { console.log('Thumbnail vision error:', e.message); }
+      }
+
+      // 6. IA analisa padrões e emite veredicto
       let aiAnalysis = { verdict: 'unknown', confidence: 0, reasoning: '', patterns: [] };
       const GEMINI_KEYS = [
         process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3
@@ -1972,6 +2037,7 @@ VÍDEO ANALISADO:
 - Publicado: ${videoMeta.publishedAt || 'desconhecido'}
 - Plataforma: ${platform}
 - Sinais de repost no título: ${inputHasRepost ? 'SIM (legenda colorida ou compilation detectada)' : 'não detectado'}
+- Sinais visuais na thumbnail: ${thumbnailFlags.length > 0 ? thumbnailFlags.join(', ') : 'nenhum detectado'}
 
 REGRAS CRÍTICAS:
 1. Legenda colorida (emojis 🟥🟧🟨🟩🟦🟪) no título = DEFINITIVAMENTE repost editado. Veredicto: "edited_repost".
@@ -2066,7 +2132,8 @@ Analise e responda APENAS em JSON válido sem markdown:
         analysisId,
         platform,
         videoMeta,
-        results: searchResults.slice(0, 8),
+        results: searchResults.slice(0, 6),
+        thumbnailFlags,
         aiAnalysis,
         internalMatch: internalMatches[0] || null,
         totalFound: searchResults.length
