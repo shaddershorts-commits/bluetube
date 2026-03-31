@@ -617,7 +617,7 @@ function updateFavCount() {
 }
 
 function selectVoice(id) {
-  selectedVoice = VOICES.find(v => v.id === id);
+  selectedVoice = getAllVoices().find(v => v.id === id);
   if (!selectedVoice) return;
   // Update selected strip
   document.getElementById('selFlag').textContent = selectedVoice.flag;
