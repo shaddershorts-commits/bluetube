@@ -432,7 +432,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </button>
     </div>
     <!-- Mobile: menu suspenso de ferramentas Master -->
-    <div style="position:relative">
+    <div style="position:relative" id="mobileToolsWrapper">
       <button class="mobile-tools-btn" id="mobileToolsBtn" onclick="toggleMobileTools(event)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Ferramentas
@@ -1741,12 +1741,15 @@ function setLoggedIn(email, plan){
     commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
   }
 
-  // Rebuild right side of nav keeping tool buttons
+  // Rebuild right side of nav keeping tool buttons (desktop + mobile wrapper)
   const toolsGroup = document.getElementById('navToolsGroup');
+  const mobileWrapper = document.getElementById('mobileToolsWrapper');
   const toolsHTML = toolsGroup ? toolsGroup.outerHTML : '';
+  const mobileToolsHTML = mobileWrapper ? mobileWrapper.outerHTML : '';
 
   navRight.innerHTML = `
     ${toolsHTML}
+    ${mobileToolsHTML}
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
