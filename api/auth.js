@@ -563,24 +563,27 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && req.body?.action === 'title-suggest') {
     const { transcript, originalTitle = '', lang = 'pt' } = req.body;
     if (!transcript) return res.status(400).json({ error: 'transcript obrigatório' });
+
     const GEMINI_KEYS = [
       process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
       process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5,
     ].filter(Boolean);
     const OPENAI_KEY = process.env.OPENAI_API_KEY;
-    const prompt = `Você é especialista em títulos virais para YouTube Shorts.
 
-Transcrição: "${transcript.slice(0, 500)}"
-Título original: "${originalTitle}"
-Idioma: ${lang}
+    const prompt = 'Você é especialista em títulos virais para YouTube Shorts.\n\n'
+      + 'Transcrição: "' + transcript.slice(0, 500) + '"\n'
+      + 'Título original: "' + originalTitle + '"\n'
+      + 'Idioma: ' + lang + '\n\n'
+      + 'Crie 2 títulos. Um por linha, sem número, sem explicação:\n'
+      + 'Linha 1: tom casual e próximo do público (máx 60 chars)\n'
+      + 'Linha 2: hook forte e apelativo (máx 60 chars)';
 
-Crie 2 títulos. Um por linha, sem número, sem explicação:
-Linha 1: tom casual e próximo do público (máx 60 chars)
-Linha 2: hook forte e apelativo (máx 60 chars)`;
     let casual = '', apelativo = '';
+
     for (const key of GEMINI_KEYS) {
       try {
-        const r = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${key}\`, {
+        const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key;
+        const r = await fetch(geminiUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
@@ -593,11 +596,12 @@ Linha 2: hook forte e apelativo (máx 60 chars)`;
         }
       } catch(e) { continue; }
     }
+
     if (!casual && OPENAI_KEY) {
       try {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${OPENAI_KEY}\` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_KEY },
           body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 100,
             messages: [{ role: 'user', content: prompt }] })
         });
@@ -609,6 +613,7 @@ Linha 2: hook forte e apelativo (máx 60 chars)`;
         }
       } catch(e) {}
     }
+
     return res.status(200).json({ casual, apelativo });
   }
 
