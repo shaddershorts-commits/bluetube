@@ -1010,119 +1010,52 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET) ──────────────────────────────────────────────────
-  // Gera sample curto via TTS. Suporta provider=minimax|elevenlabs.
+  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const { voiceId, provider: previewProvider = 'elevenlabs' } = req.query;
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+    const { voiceId } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
-    const SAMPLE = 'Olá! Esta é a minha voz.';
-
     try {
-      // ── MiniMax ────────────────────────────────────────────────────────────
-      if (previewProvider === 'minimax') {
-        const MM_KEY   = process.env.MINIMAX_API_KEY;
-        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
-        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
-
-        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'speech-02-hd', text: SAMPLE,
-            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
-            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
-          })
-        });
-        const mmData = await mmRes.json();
-        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio) {
-          console.error('MiniMax preview error:', mmData.base_resp?.status_msg, voiceId);
-          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
-        }
-        const base64 = Buffer.from(mmData.data.audio, 'hex').toString('base64');
-        return res.status(200).json({ audio: base64, format: 'mp3' });
-      }
-
-      // ── ElevenLabs (default) ───────────────────────────────────────────────
-      const XI_KEY = process.env.ELEVENLABS_API_KEY;
-      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-
-      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-        body: JSON.stringify({
-          text: SAMPLE,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-        })
+      // Busca metadados da voz incluindo preview_url
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
+        headers: { 'xi-api-key': XI_KEY }
       });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
+      const data = await r.json();
+      const previewUrl = data.preview_url;
+      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
 
-      if (!ttsRes.ok) {
-        const err = await ttsRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
-        console.error('Voice preview error:', ttsRes.status, voiceId, detail);
-        const isNotFound = ttsRes.status === 404 || ttsRes.status === 422
-          || detail.toLowerCase().includes('not found') || detail.toLowerCase().includes('invalid');
-        return res.status(502).json({
-          error: isNotFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
-          notInAccount: isNotFound
-        });
-      }
+      // Faz proxy do áudio para evitar CORS
+      const audioRes = await fetch(previewUrl);
+      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
 
-      const audioBuffer = await ttsRes.arrayBuffer();
+      const audioBuffer = await audioRes.arrayBuffer();
       const base64 = Buffer.from(audioBuffer).toString('base64');
-      return res.status(200).json({ audio: base64, format: 'mp3' });
+      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
     } catch(e) {
       console.error('Preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
 
-  // ── TEXT TO SPEECH ───────────────────────────────────────────────────────────
-  // provider: 'elevenlabs' (default) | 'minimax'
+  // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
   if (req.body?.action === 'tts') {
-    const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75, provider = 'elevenlabs' } = req.body;
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado. Adicione ELEVENLABS_API_KEY no Vercel.' });
+
+    const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
+    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
 
     try {
-      // ── MINIMAX ──────────────────────────────────────────────────────────────
-      if (provider === 'minimax') {
-        const MM_KEY   = process.env.MINIMAX_API_KEY;
-        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
-        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não configurada no servidor.' });
-
-        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'speech-02-hd',
-            text,
-            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
-            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
-          })
-        });
-
-        const mmData = await mmRes.json();
-        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio) {
-          console.error('MiniMax TTS error:', mmData.base_resp?.status_msg, voiceId);
-          return res.status(400).json({ error: 'Falha ao gerar narração. Tente novamente.' });
-        }
-
-        // MiniMax retorna áudio em hex — converte para base64
-        const audioBuffer = Buffer.from(mmData.data.audio, 'hex');
-        const base64 = audioBuffer.toString('base64');
-        return res.status(200).json({ audio: base64, format: 'mp3' });
-      }
-
-      // ── ELEVENLABS (default) ──────────────────────────────────────────────────
-      const XI_KEY = process.env.ELEVENLABS_API_KEY;
-      if (!XI_KEY) return res.status(500).json({ error: 'Voz não configurada no servidor.' });
-
+      // eleven_v3 usa endpoint diferente (turbo/v3 preview)
       const isV3 = model === 'eleven_v3';
       const modelId = isV3 ? 'eleven_v3' : (model || 'eleven_multilingual_v2');
+      const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
-      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const ttsRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
         body: JSON.stringify({
@@ -1133,7 +1066,9 @@ Responda APENAS em JSON válido sem markdown:
 
       if (!ttsRes.ok) {
         const err = await ttsRes.json().catch(()=>({}));
-        console.error('TTS error:', err.detail?.message || err.detail || ttsRes.status);
+        const errMsg = err.detail?.message || err.detail?.status || err.detail || 'Serviço de voz indisponível';
+        // Nunca expõe nome do provedor ao usuário
+        console.error('TTS error:', errMsg);
         return res.status(400).json({ error: 'Falha ao gerar narração. Verifique o texto e tente novamente.' });
       }
 
@@ -1282,7 +1217,10 @@ Responda APENAS em JSON válido sem markdown:
 
       return res.status(200).json({
         user: data.user,
-        session: { access_token: data.access_token }
+        session: {
+          access_token: data.access_token,
+          refresh_token: data.refresh_token  // necessário para renovar sessão sem novo login
+        }
       });
     }
 
@@ -1373,6 +1311,24 @@ Responda APENAS em JSON válido sem markdown:
       const url = `${authBase}/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
       return res.status(200).json({ url });
     }
+
+    // ── REFRESH SESSION ────────────────────────────────────────────────────────────
+    if (action === 'refresh_session') {
+      const { refresh_token } = req.body;
+      if (!refresh_token) return res.status(400).json({ error: 'refresh_token obrigatório' });
+      const rr = await fetch(`${authBase}/token?grant_type=refresh_token`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ refresh_token })
+      });
+      const rData = await rr.json();
+      if (!rr.ok) return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
+      return res.status(200).json({
+        access_token: rData.access_token,
+        refresh_token: rData.refresh_token,
+        user: rData.user
+      });
+    }
+
 
     // ── VERIFY TOKEN ──────────────────────────────────────────────────────────
     if (action === 'verify' && token) {
