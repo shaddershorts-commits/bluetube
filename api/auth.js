@@ -1791,7 +1791,9 @@ Responda APENAS em JSON válido sem markdown:
 
   // GET ?action=bluelens-analyze&url=...&token=...
   if (req.method === 'GET' && req.query?.action === 'bluelens-analyze') {
-    const { url: videoUrl, token: userToken } = req.query;
+    const { url: videoUrl, token: userToken, offset = '0', exclude = '[]' } = req.query;
+    let excludeIds = [];
+    try { excludeIds = JSON.parse(decodeURIComponent(exclude)); } catch(e) {}
     if (!videoUrl) return res.status(400).json({ error: 'URL obrigatória' });
 
     // Valida token
@@ -1861,12 +1863,16 @@ Responda APENAS em JSON válido sem markdown:
 
       // 4. Busca YouTube por título similar (find origin)
       // Detectores de repost — declarados globalmente para uso no prompt da IA
+      // Padrões visuais de criador dark (legenda colorida no título = emoji quadrado colorido)
       const hasColorCaption = (t) => /\u{1F7E5}|\u{1F7E7}|\u{1F7E8}|\u{1F7E9}|\u{1F7E6}|\u{1F7EA}|\u{1F7EB}/u.test(t);
-      // Palavras que aparecem em títulos de repost/compilação editada
-      const EDITED_KEYWORDS = /compilation|compilacao|parte \d|part \d|\bcreds?\b|credit|credito|via @|found on|repost|re-?post|\bpov\b.*@|duet|collab|fy[pb]|for you/i;
-      // Padrões de canal aggregador (muitos @ no título, ou menciona canal original)
-      const AGGREGATOR_PATTERN = /@\w{3,}.*@\w{3,}|\(via @|\| @|crédito|créditos/i;
-      const hasRepostSignal = (t) => hasColorCaption(t) || EDITED_KEYWORDS.test(t) || AGGREGATOR_PATTERN.test(t);
+      // Padrões típicos de criador dark: narração + legenda + música + seta/círculo
+      // Identificamos pelo título: múltiplos @, créditos, compilações, repost explícito
+      const DARK_CREATOR_KEYWORDS = /compilation|compilacao|parte \d|part \d|\bcreds?\b|credit|credito|via @|found on|repost|re-?post|duet|collab|for you|\bfy[pb]\b/i;
+      const AGGREGATOR_PATTERN = /@\w{3,}.*@\w{3,}|\(via @|\| @|cr[eé]ditos?/i;
+      // INCLUI como válido: canais dark sem sinal óbvio (a maioria não coloca crédito)
+      const hasRepostSignal = (t) => hasColorCaption(t) || DARK_CREATOR_KEYWORDS.test(t) || AGGREGATOR_PATTERN.test(t);
+      // Sinal mais fraco — só penaliza, não exclui
+      const hasSoftRepostSignal = (t) => /@\w+/.test(t) && t.split('@').length > 2;
       const inputHasRepost = videoMeta.title ? hasRepostSignal(videoMeta.title) : false;
 
       let searchResults = [];
@@ -1903,6 +1909,7 @@ Responda APENAS em JSON válido sem markdown:
           fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(cleanTitle)}&maxResults=6&order=date&key=${YT5}`).then(r=>r.json()).catch(()=>({items:[]})),
         ]);
 
+        const excludeSet = new Set(excludeIds);
         const seen = new Set();
         const unique = [
           ...(byViews.items||[]),
@@ -1912,7 +1919,7 @@ Responda APENAS em JSON válido sem markdown:
           ...(byDescription.items||[])
         ].filter(i => {
           const id = i.id?.videoId;
-          if (!id||seen.has(id)||id===ytVideoId) return false;
+          if (!id || seen.has(id) || id === ytVideoId || excludeSet.has(id)) return false;
           seen.add(id); return true;
         });
 
@@ -1956,7 +1963,8 @@ Responda APENAS em JSON válido sem markdown:
             const durVeryClose = videoMeta.duration > 0 && secs > 0
               ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs) < 0.15
               : false;
-            const isLikelyOriginal = !isColorCaption && !isRepost && publishedBefore && durVeryClose;
+            // "Publicado primeiro" — indica quem postou antes, não necessariamente o criador do conteúdo
+            const isLikelyOriginal = !isColorCaption && publishedBefore && durVeryClose;
 
             return {id:v.id, url:`https://www.youtube.com/shorts/${v.id}`, title:rTitle,
               channel:snip.channelTitle||'', thumbnail:snip.thumbnails?.high?.url||snip.thumbnails?.medium?.url||'',
@@ -2030,7 +2038,7 @@ Responda APENAS em JSON válido sem markdown:
 
       if (GEMINI_KEYS.length && videoMeta.title) {
         const topResult = searchResults[0];
-        const prompt = `Você é um especialista em análise de vídeos virais e detecção de conteúdo reutilizado.
+        const prompt = `Você é um especialista em canais dark do YouTube — canais que pegam conteúdo viral (geralmente do TikTok) e repostam com edição: legenda colorida centralizada, seta vermelha ou círculo de destaque, narração por IA, música de fundo. Seu objetivo é analisar se o vídeo é um repost dark e quantos concorrentes já publicaram o mesmo conteúdo.
 
 VÍDEO ANALISADO:
 - Título: "${videoMeta.title}"
