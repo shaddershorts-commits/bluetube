@@ -1736,7 +1736,12 @@ function restoreLastRoteiro(){
   const badge=document.createElement('div');
   badge.id='lastRoteiroBadge';
   badge.style.cssText='text-align:center;padding:8px 16px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(251,191,36,.8);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px';
-  badge.innerHTML='⏱ Último roteiro restaurado &nbsp;<button onclick="this.closest('[id]').remove()" style="background:none;border:none;color:rgba(251,191,36,.6);cursor:pointer;font-size:13px">✕</button>';
+  badge.innerHTML = '⏱ Último roteiro restaurado';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'background:none;border:none;color:rgba(251,191,36,.6);cursor:pointer;font-size:13px;margin-left:8px';
+  closeBtn.onclick = function(){ document.getElementById('lastRoteiroBadge').remove(); };
+  badge.appendChild(closeBtn);
   const panel=document.getElementById('panel-v1');
   if(panel) panel.insertBefore(badge,panel.firstChild);
 }
@@ -2288,7 +2293,16 @@ function joinCommunity(){
         // Mostra badge de sessão restaurada
         const badge=document.createElement('div');
         badge.style.cssText='text-align:center;padding:6px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(0,170,255,.6);margin-bottom:8px';
-        badge.innerHTML='⏱ Roteiros da sessão anterior restaurados &nbsp;<button onclick="this.parentElement.remove();['V1','V2'].forEach(v=>{document.getElementById('card'+v).style.display='none'});document.getElementById('resultsArea').classList.remove('on')" style="background:none;border:none;color:rgba(0,170,255,.4);cursor:pointer;font-size:10px">✕ Limpar</button>';
+        badge.textContent = '⏱ Roteiros da sessão anterior restaurados';
+        const closeOld = document.createElement('button');
+        closeOld.textContent = '✕ Limpar';
+        closeOld.style.cssText = 'background:none;border:none;color:rgba(0,170,255,.4);cursor:pointer;font-size:10px;margin-left:8px';
+        closeOld.onclick = function(){
+          this.parentElement.remove();
+          ['V1','V2'].forEach(v=>{document.getElementById('card'+v).style.display='none'});
+          document.getElementById('resultsArea').classList.remove('on');
+        };
+        badge.appendChild(closeOld);
         resultsArea.insertBefore(badge, resultsArea.firstChild);
         if(typeof updateBlueVoiceButtons==='function') updateBlueVoiceButtons();
       }
