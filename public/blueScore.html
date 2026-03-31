@@ -569,6 +569,16 @@ async function fetchRecentVideos(channelId) {
   const r = await fetch(`/api/auth?action=bluescore-videos&channelId=${encodeURIComponent(channelId)}`);
   const d = await safeJson(r);
   if (!r.ok) throw new Error(d.error || 'Erro ao buscar vídeos do canal.');
+
+  // Se a API retornou vazio mas o canal existe, tenta uma segunda vez sem cache
+  if ((!d.videos || d.videos.length === 0) && !d.noVideosFound) {
+    console.log('BlueScore: videos empty, retrying without cache...');
+    await new Promise(r => setTimeout(r, 1200));
+    const r2 = await fetch(`/api/auth?action=bluescore-videos&channelId=${encodeURIComponent(channelId)}&nocache=1`);
+    const d2 = await safeJson(r2);
+    if (r2.ok && d2.videos?.length > 0) return d2.videos;
+  }
+
   return d.videos || [];
 }
 
