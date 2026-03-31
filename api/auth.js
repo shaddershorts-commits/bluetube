@@ -813,6 +813,9 @@ Responda APENAS em JSON válido sem markdown:
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
             if (age < cacheTTL) {
               console.log('viral-shorts CACHE HIT:', cacheKey, 'age:', Math.round(age/60000)+'min');
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+              res.setHeader('Pragma', 'no-cache');
+              res.setHeader('Expires', '0');
               return res.status(200).json({ ...rows[0].data, fromCache: true, cacheAge: Math.round(age/60000) });
             }
           }
