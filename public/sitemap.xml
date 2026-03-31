@@ -1,56 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
-  <!-- Página principal — maior prioridade -->
   <url>
     <loc>https://bluetubeviral.com/</loc>
     <lastmod>2025-03-31</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
-  </url>
-
-  <!-- Afiliados — pública, boa para SEO -->
-  <url>
-    <loc>https://bluetubeviral.com/afiliado.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- Ferramentas -->
-  <url>
-    <loc>https://bluetubeviral.com/virais.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-
-  <url>
-    <loc>https://bluetubeviral.com/blueScore.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-
-  <url>
-    <loc>https://bluetubeviral.com/blueVoice.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-
-  <url>
-    <loc>https://bluetubeviral.com/baixaBlue.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-
-  <url>
-    <loc>https://bluetubeviral.com/blueLens.html</loc>
-    <lastmod>2025-03-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.5</priority>
   </url>
 
 </urlset>
