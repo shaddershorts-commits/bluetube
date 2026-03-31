@@ -296,6 +296,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <div class="section" id="affiliatesSection">
       <div class="section-header">
         <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— aprovar e gerenciar afiliados</span></div>
+        <div id="pendingAffBadge" style="display:none;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow)">⏳ <span id="pendingAffCount">0</span> aguardando aprovação</div>
       </div>
       <div class="table-wrap" id="affiliatesTable"><div class="loading-txt">Carregando…</div></div>
     </div>
@@ -574,6 +575,13 @@ async function loadData(){
         }
         const statusColor = { active:'var(--green)', pending:'var(--yellow)', suspended:'var(--red)' };
         const statusLabel = { active:'✅ Ativo', pending:'⏳ Aguardando', suspended:'🚫 Suspenso' };
+        // Atualiza badge de pendentes
+        const pendingCount = affiliates.filter(a => a.status === 'pending').length;
+        const badge = document.getElementById('pendingAffBadge');
+        if(badge){ badge.style.display = pendingCount > 0 ? 'block' : 'none'; }
+        const badgeCount = document.getElementById('pendingAffCount');
+        if(badgeCount) badgeCount.textContent = pendingCount;
+
         const lc = { gold:'var(--yellow)', silver:'#c0c0c0', bronze:'#cd7f32' };
         const rows = affiliates.map(a => {
           const paying = (a.total_full||0)+(a.total_master||0);
