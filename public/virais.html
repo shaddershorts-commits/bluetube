@@ -318,16 +318,26 @@ async function fetchVirals() {
       return;
     }
 
-    lastResults = data.videos || [];
-    if (!lastResults.length) {
-      showError('Nenhum vídeo encontrado para este filtro. Tente outro período ou região.');
+    const newVideos = data.videos || [];
+    if (!newVideos.length) {
+      // Se tem cache local, mostra ele em vez de erro
+      if (lastResults.length) {
+        renderVideos(lastResults);
+      } else {
+        showError('Nenhum vídeo encontrado para este filtro. Tente outro período ou região.');
+      }
       return;
     }
+    lastResults = newVideos;
     renderVideos(lastResults);
 
   } catch(e) {
     console.error('fetchVirals error:', e);
-    showError('Erro inesperado: ' + e.message);
+    if (lastResults.length) {
+      renderVideos(lastResults); // mostra cache local
+    } else {
+      showError('Erro ao buscar vídeos. Tente novamente.');
+    }
   } finally {
     btn.disabled = false;
     icon.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
