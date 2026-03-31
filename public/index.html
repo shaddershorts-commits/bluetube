@@ -752,6 +752,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV1">Criando seu próximo roteiro viral…</div>
       </div>
+      <!-- Título Casual gerado pela IA -->
+      <div id="titleCasualBox" style="display:none;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.18);border-radius:12px;padding:12px 16px;margin-bottom:10px">
+        <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);opacity:.7;margin-bottom:6px;letter-spacing:.08em">💬 TÍTULO CASUAL</div>
+        <div id="titleCasualText" style="font-size:14px;font-weight:600;color:var(--text)"></div>
+        <button onclick="copyTitleEl('titleCasualText',this)" style="margin-top:8px;background:none;border:1px solid rgba(0,170,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:var(--neon);cursor:pointer">📋 Copiar título</button>
+      </div>
+
       <div class="script-card" id="cardV1" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -761,6 +768,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+          <div style="position:relative;display:inline-block">
+            <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')"
+              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s">
+              🎙️ Narrar no BlueVoice
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="tab-panel" id="panel-v2">
@@ -768,6 +783,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV2">Criando seu próximo roteiro viral…</div>
       </div>
+      <!-- Título Apelativo gerado pela IA -->
+      <div id="titleApelatBox" style="display:none;background:rgba(255,80,50,.06);border:1px solid rgba(255,80,50,.2);border-radius:12px;padding:12px 16px;margin-bottom:10px">
+        <div style="font-family:var(--font-mono,monospace);font-size:10px;color:#ff7a5a;opacity:.8;margin-bottom:6px;letter-spacing:.08em">🔥 TÍTULO APELATIVO</div>
+        <div id="titleApelatText" style="font-size:14px;font-weight:600;color:var(--text)"></div>
+        <button onclick="copyTitleEl('titleApelatText',this)" style="margin-top:8px;background:none;border:1px solid rgba(255,80,50,.25);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:#ff7a5a;cursor:pointer">📋 Copiar título</button>
+      </div>
+
       <div class="script-card" id="cardV2" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -777,6 +799,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+          <div style="position:relative;display:inline-block">
+            <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')"
+              style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s">
+              🎙️ Narrar no BlueVoice
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1500,12 +1530,7 @@ async function checkAndIncrementLimit(){
   try{
     const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment'})});
     const d=await r.json();
-    dailyUsed=d.used||0; dailyLimit=d.limit||2;
-    // Nunca sobrescreve o plano com valor pior — check-limit usa IP, não token
-    // Se retornar um plano melhor (ex: identificou assinante pelo IP), aceita
-    if(d.plan && d.plan !== 'free') userPlan = d.plan;
-    // Garante que localStorage também está atualizado
-    if(d.plan && d.plan !== 'free') localStorage.setItem('bt_plan', d.plan);
+    dailyUsed=d.used||0;dailyLimit=d.limit||2;userPlan=d.plan||'free';
     if(!d.allowed){
       if(userPlan==='full'){
         openUpgradeModal('limit_full');
@@ -1639,6 +1664,7 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('script'+versionId).textContent=clean;
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('card'+versionId).style.display='block';
+    updateBlueVoiceButtons();
     // Show BluBlu after V2 (second script)
     if(versionId==='V2') setTimeout(showBlublu, 4000);
   }catch(err){
@@ -1648,12 +1674,59 @@ async function generateScript(versionId,lang,attempt=1){
   }
 }
 function generateAllScripts(lang){
+  // Hide title boxes on new generation
+  ['titleCasualBox','titleApelatBox'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
   ['V1','V2'].forEach(v=>{
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
+  // Generate titles after a short delay (waits for transcript to be available)
+  setTimeout(()=>generateTitles(lang),1500);
+}
+
+// ── TITLE GENERATION ─────────────────────────────────────────────────────────
+async function generateTitles(lang){
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'title-suggest',transcript,lang,
+        originalTitle: document.getElementById('transcriptOut')?.innerText?.slice(0,80)||''})});
+    const d=await r.json();
+    if(d.casual){
+      const box=document.getElementById('titleCasualBox');
+      document.getElementById('titleCasualText').textContent=d.casual;
+      if(box) box.style.display='block';
+    }
+    if(d.apelativo){
+      const box=document.getElementById('titleApelatBox');
+      document.getElementById('titleApelatText').textContent=d.apelativo;
+      if(box) box.style.display='block';
+    }
+  }catch(e){ console.log('title-suggest error:',e.message); }
+}
+
+// ── SEND TO BLUEVOICE ─────────────────────────────────────────────────────────
+function sendToBlueVoice(scriptId){
+  const isMaster = userPlan === 'master' || localStorage.getItem('bt_plan') === 'master';
+  if(!isMaster){
+    openUpgradeModal('master_tool');
+    return;
+  }
+  const text = document.getElementById(scriptId)?.textContent?.trim();
+  if(!text) return;
+  // Salva no localStorage para o BlueVoice ler ao carregar
+  localStorage.setItem('bv_prefill_text', text);
+  window.location.href = '/blueVoice.html';
+}
+
+function copyTitleEl(id, btn){
+  const text = document.getElementById(id)?.textContent || '';
+  navigator.clipboard.writeText(text).catch(()=>{});
+  const orig=btn.textContent; btn.textContent='✓ Copiado!';
+  setTimeout(()=>btn.textContent=orig,2000);
 }
 
 // ── COPY & DOWNLOAD ────────────────────────────────────────────────────────
@@ -1686,9 +1759,7 @@ async function checkSession(){
       // Fetch real plan from Supabase
       const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
       const planData=await planRes.json();
-      // Só atualiza se veio um plano válido — nunca sobrescreve com 'free' em erro
-      if(planData.plan){ userPlan=planData.plan; localStorage.setItem('bt_plan',userPlan); }
-      else { userPlan=localStorage.getItem('bt_plan')||'free'; }
+      userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
@@ -1710,6 +1781,33 @@ async function checkSession(){
       localStorage.removeItem('bt_plan');
     }
   }catch{}
+}
+
+function updateBlueVoiceButtons(){
+  const isMaster = userPlan === 'master' || localStorage.getItem('bt_plan') === 'master';
+  ['bvBtn1','bvBtn2'].forEach(id=>{
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    if(isMaster){
+      btn.style.filter = '';
+      btn.style.opacity = '1';
+      btn.title = 'Narrar este roteiro no BlueVoice';
+      // Remove lock icon if present
+      if(btn.querySelector('.bv-lock')) btn.querySelector('.bv-lock').remove();
+    } else {
+      btn.style.filter = 'blur(1.5px)';
+      btn.style.opacity = '0.6';
+      btn.title = 'Exclusivo Master — clique para fazer upgrade';
+      if(!btn.querySelector('.bv-lock')){
+        const lock = document.createElement('span');
+        lock.className='bv-lock';
+        lock.style.cssText='position:absolute;top:-6px;right:-6px;background:#fbbf24;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px';
+        lock.textContent='🔒';
+        btn.parentElement.style.position='relative';
+        btn.parentElement.appendChild(lock);
+      }
+    }
+  });
 }
 
 function setLoggedIn(email, plan){
@@ -2278,13 +2376,10 @@ document.addEventListener('click', e => {
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
-  // Verifica em memória E localStorage — evita falso bloqueio se userPlan foi corrompido
-  const effectivePlan = (userPlan === 'master' || localStorage.getItem('bt_plan') === 'master') ? 'master' : userPlan;
-  if(effectivePlan !== 'master'){
+  if(userPlan !== 'master'){
     openUpgradeModal('master_tool');
     return;
   }
-  userPlan = 'master'; // sincroniza memória se estava dessincronizado
   if(tool === 'download'){ window.location.href = '/baixaBlue.html'; return; }
   if(tool === 'viral'){ window.location.href = '/virais.html'; return; }
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
