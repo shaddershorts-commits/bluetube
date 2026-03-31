@@ -1085,13 +1085,18 @@ Responda APENAS em JSON válido sem markdown:
         const err = await ttsRes.json().catch(() => ({}));
         const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
         console.error('voice-preview TTS error:', ttsRes.status, voiceId, detail);
-        const notFound = ttsRes.status === 404 || ttsRes.status === 422
+        const isPlanRestriction = ttsRes.status === 402
+          || detail.toLowerCase().includes('upgrade')
+          || detail.toLowerCase().includes('free users cannot');
+        const notFound = !isPlanRestriction && (ttsRes.status === 404 || ttsRes.status === 422
           || detail.toLowerCase().includes('not found')
-          || detail.toLowerCase().includes('invalid');
-        return res.status(502).json({
-          error: notFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
-          notInAccount: notFound
-        });
+          || detail.toLowerCase().includes('invalid'));
+        const errorMsg = isPlanRestriction
+          ? 'Voz de biblioteca — requer upgrade da conta de voz.'
+          : notFound
+            ? 'Esta voz não está disponível.'
+            : 'Prévia indisponível.';
+        return res.status(502).json({ error: errorMsg, notInAccount: notFound, planRestriction: isPlanRestriction });
       }
 
       const buf = await ttsRes.arrayBuffer();
@@ -1111,7 +1116,7 @@ Responda APENAS em JSON válido sem markdown:
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
+    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
 
     try {
       // eleven_v3 usa endpoint diferente (turbo/v3 preview)
