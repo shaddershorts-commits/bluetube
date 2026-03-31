@@ -1034,32 +1034,72 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
+  // ── VOICE PREVIEW (GET) ──────────────────────────────────────────────────
+  // Gera sample curto via TTS — funciona para qualquer voiceId válido,
+  // incluindo vozes de links compartilhados. Não usa /v1/voices/{id}
+  // pois esse endpoint só retorna vozes da conta e quebra IDs externos.
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-    const { voiceId } = req.query;
+    const { voiceId, provider = 'elevenlabs' } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
 
+    const SAMPLE = 'Olá! Esta é a minha voz.';
+
     try {
-      // Busca metadados da voz incluindo preview_url
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-        headers: { 'xi-api-key': XI_KEY }
+      // ── MiniMax ────────────────────────────────────────────────────────────
+      if (provider === 'minimax') {
+        const MM_KEY   = process.env.MINIMAX_API_KEY;
+        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
+        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
+        const mmRes = await fetch(`https://api.minimax.chat/v1/t2a_v2?GroupId=${MM_GROUP}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${MM_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'speech-02-hd', text: SAMPLE,
+            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
+            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
+          })
+        });
+        const mmData = await mmRes.json();
+        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio)
+          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
+        return res.status(200).json({
+          audio: Buffer.from(mmData.data.audio, 'hex').toString('base64'), format: 'mp3'
+        });
+      }
+
+      // ── ElevenLabs (default) ───────────────────────────────────────────────
+      const XI_KEY = process.env.ELEVENLABS_API_KEY;
+      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+
+      const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({
+          text: SAMPLE,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+        })
       });
-      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
-      const data = await r.json();
-      const previewUrl = data.preview_url;
-      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
 
-      // Faz proxy do áudio para evitar CORS
-      const audioRes = await fetch(previewUrl);
-      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
+      if (!ttsRes.ok) {
+        const err = await ttsRes.json().catch(() => ({}));
+        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
+        console.error('voice-preview TTS error:', ttsRes.status, voiceId, detail);
+        const notFound = ttsRes.status === 404 || ttsRes.status === 422
+          || detail.toLowerCase().includes('not found')
+          || detail.toLowerCase().includes('invalid');
+        return res.status(502).json({
+          error: notFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
+          notInAccount: notFound
+        });
+      }
 
-      const audioBuffer = await audioRes.arrayBuffer();
-      const base64 = Buffer.from(audioBuffer).toString('base64');
-      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
+      const buf = await ttsRes.arrayBuffer();
+      return res.status(200).json({
+        audio: Buffer.from(buf).toString('base64'), format: 'mp3'
+      });
     } catch(e) {
-      console.error('Preview error:', e.message);
+      console.error('voice-preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
