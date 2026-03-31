@@ -290,6 +290,7 @@ async function fetchVirals() {
   const q = document.getElementById('searchInput').value.trim();
 
   // Show skeletons
+  _saveViraisState();
   showSkeletons();
 
   try {
@@ -482,6 +483,32 @@ window.addEventListener('load', () => {
     if (input) { input.value = prefill; localStorage.removeItem('bt_prefill_url'); input.focus(); }
   }
 });
+
+// ── PERSISTÊNCIA (24h) ──────────────────────────────────────────────────────
+const _TTL=24*60*60*1000;
+function _save(k,v){try{localStorage.setItem(k,JSON.stringify({v,ts:Date.now()}))}catch(e){}}
+function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=JSON.parse(r);if(Date.now()-o.ts>_TTL){localStorage.removeItem(k);return null;}return o.v;}catch(e){return null;}}
+
+// Restaura filtros
+(function(){
+  const s=_load('bt_virais');
+  if(!s) return;
+  if(s.region){const e=document.getElementById('regionSelect');if(e)e.value=s.region;}
+  if(s.category){const e=document.getElementById('categorySelect');if(e)e.value=s.category;}
+  if(s.q){const e=document.getElementById('searchInput');if(e)e.value=s.q;}
+  if(s.period&&typeof currentPeriod!=='undefined'){
+    currentPeriod=s.period;
+    document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset&&b.dataset.period===s.period));
+  }
+})();
+function _saveViraisState(){
+  _save('bt_virais',{
+    region:document.getElementById('regionSelect')?.value||'BR',
+    period:typeof currentPeriod!=='undefined'?currentPeriod:'7d',
+    category:document.getElementById('categorySelect')?.value||'',
+    q:document.getElementById('searchInput')?.value||''
+  });
+}
 </script>
 </body>
 </html>
