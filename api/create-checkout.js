@@ -1,6 +1,4 @@
 // api/create-checkout.js
-// Creates a Stripe checkout session — supports monthly and annual billing.
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -10,85 +8,66 @@ export default async function handler(req, res) {
 
   const { plan, billing, token } = req.body;
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-  const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
+  const SITE_URL      = process.env.SITE_URL || 'https://bluetubeviral.com';
+  const SUPABASE_URL  = process.env.SUPABASE_URL;
+  const ANON_KEY      = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
 
   if (!STRIPE_SECRET) return res.status(500).json({ error: 'Stripe não configurado' });
 
-  // Get user email from token to pre-fill Stripe checkout
+  // Price IDs em BRL criados no Stripe
+  const PRICE_IDS = {
+    full:   { monthly: 'price_1THCi8Le4wOQftBwte1IEHgQ' }, // R$59,90/mês
+    master: { monthly: 'price_1THCieLe4wOQftBwobBK9qUU' }, // R$179,90/mês
+  };
+
+  const isAnnual = billing === 'annual';
+  const billingType = isAnnual ? 'annual' : 'monthly';
+  const priceId = PRICE_IDS[plan]?.[billingType] || PRICE_IDS[plan]?.monthly;
+  if (!priceId) return res.status(400).json({ error: 'Plano inválido' });
+
+  // Busca email do usuário para pré-preencher o checkout
   let customerEmail = null;
   if (token && SUPABASE_URL) {
     try {
-      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
         headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
       });
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        customerEmail = userData.email || null;
-      }
-    } catch (e) { /* continue without email */ }
+      if (r.ok) customerEmail = (await r.json()).email || null;
+    } catch(e) {}
   }
 
-  if (!STRIPE_SECRET) return res.status(500).json({ error: 'Stripe não configurado' });
-
-  const isAnnual = billing === 'annual';
-
-  const PLANS = {
-    full: {
-      name: 'BlueTube Full',
-      description: '9 roteiros/dia · Todos os idiomas · Comunidade exclusiva',
-      monthly: 999,   // $9.99
-      annual: 8999,   // $89.99/year = $7.49/month
-    },
-    master: {
-      name: 'BlueTube Master',
-      description: 'Roteiros ilimitados · Chat IA · Voz realista · Download HD',
-      monthly: 2999,  // $29.99
-      annual: 23988,  // $239.88/year = $19.99/month
-    }
-  };
-
-  const selectedPlan = PLANS[plan];
-  if (!selectedPlan) return res.status(400).json({ error: 'Plano inválido' });
-
-  const amount = isAnnual ? selectedPlan.annual : selectedPlan.monthly;
-  const interval = isAnnual ? 'year' : 'month';
-  const planLabel = isAnnual ? `${selectedPlan.name} — Anual` : selectedPlan.name;
-
   try {
+    const params = new URLSearchParams({
+      'mode': 'subscription',
+      'payment_method_types[]': 'card',
+      'line_items[0][price]': priceId,
+      'line_items[0][quantity]': '1',
+      'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
+      'cancel_url':  `${SITE_URL}?payment=cancelled`,
+      'allow_promotion_codes': 'true',
+      'metadata[plan]': plan,
+      'metadata[billing]': billingType,
+    });
+
+    if (customerEmail) params.set('customer_email', customerEmail);
+
     const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${STRIPE_SECRET}`,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: new URLSearchParams({
-        'mode': 'subscription',
-        'payment_method_types[]': 'card',
-        'line_items[0][price_data][currency]': 'usd',
-        'line_items[0][price_data][product_data][name]': planLabel,
-        'line_items[0][price_data][product_data][description]': selectedPlan.description,
-        'line_items[0][price_data][recurring][interval]': interval,
-        'line_items[0][price_data][unit_amount]': amount,
-        'line_items[0][quantity]': '1',
-        'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
-        'cancel_url': `${SITE_URL}?payment=cancelled`,
-        'allow_promotion_codes': 'true',
-        'metadata[plan]': plan,
-        'metadata[billing]': billing || 'monthly',
-        ...(customerEmail ? { 'customer_email': customerEmail } : {})
-      })
+      body: params
     });
 
     const session = await r.json();
     if (!r.ok) {
-      console.error('Stripe error:', JSON.stringify(session.error));
+      console.error('Stripe error:', session.error);
       return res.status(400).json({ error: session.error?.message || 'Erro no Stripe' });
     }
 
     return res.status(200).json({ url: session.url });
-  } catch (err) {
+  } catch(err) {
     console.error('Checkout error:', err);
     return res.status(500).json({ error: 'Falha ao criar sessão de pagamento' });
   }
