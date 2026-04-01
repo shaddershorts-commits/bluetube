@@ -1677,6 +1677,8 @@ function reset(){
 
 // ── MAIN FLOW ──────────────────────────────────────────────────────────────
 async function startTranscription(e){
+  // Se estiver em modo zero, redireciona para o fluxo correto
+  if(_genMode === 'zero'){ startFromZero(e); return; }
   const btn=document.getElementById('btnGo');
   const rip=document.createElement('span');rip.className='ripple';
   const r=btn.getBoundingClientRect();
@@ -1861,7 +1863,8 @@ function generateAllScripts(lang){
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
-  if(_genMode==='zero'){ generateFromZero(lang); return; }
+  // Modo zero nunca deve chegar aqui — mas por segurança
+  if(_genMode==='zero'){ return; }
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
   setTimeout(()=>{ if(typeof generateTitles==='function')generateTitles(lang); },1500);
@@ -2712,7 +2715,7 @@ async function sendBluBluFeedback(){
   },4000);
 }
 
-document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')startTranscription(e);});
+document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')handleMainBtn(e);});
 document.getElementById('urlInput').addEventListener('input', function(){
   _save('bt_url', this.value);
 });
