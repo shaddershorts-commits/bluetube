@@ -92,13 +92,22 @@ export default async function handler(req, res) {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // safeJson: always returns an array, never throws
-    const safeJson = async (resPromise) => {
+    const safeJson = async (resPromise, fallback) => {
       try {
         const res = await resPromise;
-        if (!res || !res.ok) return [];
+        if (!res || !res.ok) {
+          if (res) {
+            const errText = await res.text().catch(() => '');
+            console.error('safeJson error', res.status, errText.slice(0, 200));
+          }
+          return fallback !== undefined ? fallback : [];
+        }
         const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch(e) { return []; }
+        return Array.isArray(data) ? data : (data && typeof data === 'object' ? data : (fallback !== undefined ? fallback : []));
+      } catch(e) {
+        console.error('safeJson exception:', e.message);
+        return fallback !== undefined ? fallback : [];
+      }
     };
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -166,15 +175,12 @@ export default async function handler(req, res) {
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
       latest_cancellation: (() => {
         try {
-          // Cancelados = plano free + tem stripe_customer_id (já foram pagantes)
-          // E updated_at é pelo menos 1 hora depois de created_at (mudança real de plano)
           return subscribers
             .filter(s => {
               if (s.plan !== 'free') return false;
-              if (!s.stripe_customer_id) return false; // nunca foi pagante
+              if (!s.stripe_customer_id) return false;
               if (!s.updated_at || !s.created_at) return false;
-              const updDiff = new Date(s.updated_at) - new Date(s.created_at);
-              return updDiff > 60 * 60 * 1000; // updated mais de 1h depois de criado
+              return (new Date(s.updated_at) - new Date(s.created_at)) > 60 * 60 * 1000;
             })
             .sort((a,b) => new Date(b.updated_at||0) - new Date(a.updated_at||0))[0] || null;
         } catch(e) { return null; }
@@ -192,7 +198,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json(stats);
   } catch (err) {
-    console.error('Admin error:', err);
+    console.error('Admin error:', err.message, err.stack?.slice(0,300));
     return res.status(500).json({ error: 'Failed to fetch admin data: ' + err.message });
   }
 }
