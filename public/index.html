@@ -1875,8 +1875,8 @@ async function generateFromZero(lang){
   if(lbl2) lbl2.textContent='✨ Criando versão apelativa do zero…';
   try{
     const token = localStorage.getItem('bt_token');
-    const r = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'generate-from-zero',videoUrl,lang,token})});
+    const r = await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({videoUrl,lang,token})});
     const d = await r.json();
     if(!r.ok||((!d.casual)&&(!d.apelativo))) throw new Error(d.error||'Falha ao gerar roteiro do zero.');
     if(d.casual){
