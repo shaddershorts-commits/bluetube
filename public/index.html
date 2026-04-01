@@ -5,23 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
 <title>BlueTube — Transcritor de YouTube Shorts</title>
 <meta name="description" content="Cole qualquer link de YouTube Shorts e receba transcrição + 2 roteiros virais prontos para narrar."/>
-<!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '1664311805021782');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=1664311805021782&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -600,13 +583,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price" id="modalFullPrice">R$59,90<span>/mês</span></div>
+        <div class="plan-price" id="modalFullPrice">R$27,00<span>/mês</span></div>
         <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
       </div>
       <div class="plan-card master-highlight" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price" id="modalMasterPrice">R$179,90<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice">R$97,00<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br><span style="color:var(--gold);font-size:10px">★ BlueScore</span> · <span style="color:#a78bfa;font-size:10px">🔍 BlueLens</span></div>
       </div>
     </div>
@@ -631,12 +614,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="modal-plans" style="margin-bottom:20px">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">R$59,90<span>/mês</span></div>
+        <div class="plan-price">R$27,00<span>/mês</span></div>
         <div class="plan-features">✓ Todos os idiomas<br>✓ 9 roteiros/dia<br>✓ Comunidade</div>
       </div>
       <div class="plan-card" onclick="selectPlan('master')">
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">R$179,90<span>/mês</span></div>
+        <div class="plan-price">R$97,00<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ Voz IA · Download HD<br>✓ Virais · BlueScore ★</div>
       </div>
     </div>
@@ -947,7 +930,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="plan-tag">Mais popular</div>
         <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
         <div id="fullPriceDisplay">
-          <div class="plan-amount">R$59<span>,90/mês</span></div>
+          <div class="plan-amount">R$27<span>,00/mês</span></div>
           <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
@@ -966,7 +949,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div class="plan-box" id="planBoxMaster">
         <div class="plan-name" style="color:#fbbf24">👑 Master</div>
         <div id="masterPriceDisplay">
-          <div class="plan-amount">R$179<span>,90/mês</span></div>
+          <div class="plan-amount">R$97<span>,00/mês</span></div>
           <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
@@ -1000,7 +983,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <!-- Price increase notice -->
     <div class="price-increase-notice">
       <span class="blink-dot"></span>
-      A partir do mês que vem o valor aumentará R$30 no Full e R$60 no Master. Assine agora!
+      A partir do mês que vem o valor aumentará R$10 no Full e R$30 no Master. Assine agora!
     </div>
   </div>
 </section>
@@ -1148,9 +1131,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div id="cancelStep2" style="display:none;text-align:center">
       <div style="font-size:48px;margin-bottom:16px">🤖</div>
       <div style="font-size:16px;font-weight:700;margin-bottom:8px">Espera! Temos uma oferta especial</div>
-      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Como você é um cliente especial, queremos oferecer <strong style="color:var(--neon)">R$20 de desconto</strong> na sua próxima mensalidade.</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Como você é um cliente especial, queremos oferecer <strong style="color:var(--neon)">R$10 de desconto</strong> na sua próxima mensalidade.</div>
       <div style="background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:12px;padding:18px;margin-bottom:20px">
-        <div style="font-size:28px;font-weight:800;color:var(--neon)" id="discountPrice">R$39,90</div>
+        <div style="font-size:28px;font-weight:800;color:var(--neon)" id="discountPrice">R$17,00</div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">no próximo mês · depois volta ao normal</div>
       </div>
       <div style="display:flex;gap:10px">
@@ -1240,11 +1223,11 @@ function setModalBilling(annual){
   const fullEl=document.getElementById('modalFullPrice');
   const masterEl=document.getElementById('modalMasterPrice');
   if(fullEl)fullEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$44,90</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$538,80 cobrado anualmente</span>'
-    :'R$59,90<span>/mês</span>';
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$20,25</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$243,00 cobrado anualmente</span>'
+    :'R$27,00<span>/mês</span>';
   if(masterEl)masterEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$134,90</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$1.618,80 cobrado anualmente</span>'
-    :'R$179,90<span>/mês</span>';
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$72,75</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$873,00 cobrado anualmente</span>'
+    :'R$97,00<span>/mês</span>';
 }
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
 
@@ -1367,7 +1350,7 @@ function openUpgradeModal(reason){
       <div class="plan-card master-highlight" style="grid-column:1/-1;max-width:320px;margin:0 auto" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
         <div class="plan-badge gold" style="margin-top:8px">Master</div>
-        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">R$179,90<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">R$97,00<span>/mês</span></div>
         <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid rgba(251,191,36,.4);border-radius:10px;background:rgba(251,191,36,.08)"><span style="color:var(--gold);font-weight:800;font-size:12px">★ BlueScore</span><span style="color:rgba(251,191,36,.8);font-size:11px;font-family:var(--font-mono)">Revelamos a confiança do YouTube no seu canal</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span><span style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;border:1px solid rgba(167,139,250,.35);border-radius:10px;background:rgba(167,139,250,.06)"><span style="color:#a78bfa;font-weight:800;font-size:12px">🔍 BlueLens</span><span style="color:rgba(167,139,250,.8);font-size:11px;font-family:var(--font-mono)">Detecta quem já publicou o mesmo conteúdo</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span></div>
       </div>`;
     document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
@@ -1396,24 +1379,24 @@ function toggleBilling(annual){
   if(annual){
     document.getElementById('fullPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$44<span style="color:#fbbf24">,90/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$59,90</div>
+        <div class="plan-amount" style="color:#fbbf24">R$20<span style="color:#fbbf24">,25/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$27,00</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$538,80 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">R$243,00 cobrado anualmente</div>`;
     document.getElementById('masterPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$134<span style="color:#fbbf24">,90/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$179,90</div>
+        <div class="plan-amount" style="color:#fbbf24">R$72<span style="color:#fbbf24">,75/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$97,00</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$1.618,80 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">R$873,00 cobrado anualmente</div>`;
     document.getElementById('planBoxFull').classList.add('annual');
     document.getElementById('planBoxMaster').classList.add('annual');
   }else{
     document.getElementById('fullPriceDisplay').innerHTML=`
-      <div class="plan-amount">R$59<span>,90/mês</span></div>
+      <div class="plan-amount">R$27<span>,00/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     document.getElementById('masterPriceDisplay').innerHTML=`
-      <div class="plan-amount">R$179<span>,90/mês</span></div>
+      <div class="plan-amount">R$97<span>,00/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     document.getElementById('planBoxFull').classList.remove('annual');
     document.getElementById('planBoxMaster').classList.remove('annual');
@@ -1447,16 +1430,6 @@ async function handleUpgradeClick(plan){
 
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
-  // Meta Pixel — InitiateCheckout: usuário indo para o Stripe
-  if(typeof fbq !== 'undefined'){
-    const values = {full: 59.90, master: 179.90};
-    fbq('track', 'InitiateCheckout', {
-      value: values[plan] || 0,
-      currency: 'BRL',
-      content_name: plan,
-      content_category: billing
-    });
-  }
   try{
     const r=await fetch('/api/create-checkout',{
       method:'POST',
@@ -1567,8 +1540,6 @@ async function handleEmailSignup(){
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     }
     setAuthMsg('Conta criada com sucesso! 🎉','ok');
-    // Meta Pixel — Lead: cadastro por email
-    if(typeof fbq !== 'undefined') fbq('track', 'Lead', {content_name: 'signup_email'});
     setTimeout(async()=>{
       closeAuthModal();
       await checkSession();
@@ -1930,20 +1901,6 @@ async function checkSession(){
       const planData=await planRes.json();
       userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
-      // Meta Pixel — Purchase: detecta upgrade free → pago
-      const prevPlan = localStorage.getItem('bt_last_known_plan') || 'free';
-      if((userPlan==='full'||userPlan==='master') && prevPlan==='free' && !localStorage.getItem('bt_purchase_tracked')){
-        const purchaseValues = {full: 59.90, master: 179.90};
-        if(typeof fbq !== 'undefined'){
-          fbq('track', 'Purchase', {
-            value: purchaseValues[userPlan] || 0,
-            currency: 'BRL',
-            content_name: userPlan
-          });
-        }
-        localStorage.setItem('bt_purchase_tracked', '1');
-      }
-      localStorage.setItem('bt_last_known_plan', userPlan);
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
@@ -2090,11 +2047,6 @@ async function handleOAuthCallback(){
 
       // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
       localStorage.setItem('bt_token', accessToken);
-      // Meta Pixel — Lead: cadastro/login via Google
-      if(typeof fbq !== 'undefined' && !localStorage.getItem('bt_oauth_tracked')){
-        fbq('track', 'Lead', {content_name: 'signup_google'});
-        localStorage.setItem('bt_oauth_tracked', '1');
-      }
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
@@ -2483,7 +2435,7 @@ function confirmCancelStep2(){
   fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:reason.value==='other'?other:'Cancelamento: '+reason.value,type:'cancel'})
   }).catch(()=>{});
-  const discountPrice=userPlan==='master'?'R$159,90':'R$39,90';
+  const discountPrice=userPlan==='master'?'R$67,00':'R$17,00';
   document.getElementById('discountPrice').textContent=discountPrice;
   document.getElementById('cancelStep1').style.display='none';
   document.getElementById('cancelStep2').style.display='block';
