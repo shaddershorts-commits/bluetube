@@ -91,8 +91,28 @@ export default async function handler(req, res) {
         }
       }
     }
-  } catch(e) {}
+  } catch(e) { console.log('transcript fetch error:', e.message); }
 
+  // Fallback transcript: tenta Supadata se disponivel
+  if (!transcriptText && process.env.SUPADATA_API_KEY) {
+    try {
+      const sRes = await fetch(
+        'https://api.supadata.ai/v1/transcript?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + videoId),
+        { headers: { 'x-api-key': process.env.SUPADATA_API_KEY } }
+      );
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        if (sData.content) {
+          const text = Array.isArray(sData.content)
+            ? sData.content.map(s => s.text || '').join(' ').slice(0, 800)
+            : String(sData.content).slice(0, 800);
+          if (text.trim().length > 20) transcriptText = text.trim();
+        }
+      }
+    } catch(e) { console.log('supadata fallback error:', e.message); }
+  }
+
+  let fallbackContext = '';
   // ── 2. Analisa frames do video com Gemini Vision (imagens = barato) ─────────
   // YouTube expoe 4 frames do video via thumbnails numeradas (0=thumb, 1/2/3=frames)
   let visualDescription = '';
@@ -158,9 +178,33 @@ export default async function handler(req, res) {
     } catch(e) { console.log('Frame analysis error:', e.message); }
   }
 
-  // Se nao conseguiu nada, falha com mensagem clara
+  // Log para debug
+  console.log('generate-from-zero:', videoId, 'transcript:', transcriptText.length, 'chars', 'visual:', visualDescription.length, 'chars');
+
+  // Se nao conseguiu nada, tenta usar YouTube API como ultimo recurso de contexto
+  let fallbackContext = '';
   if (!transcriptText && !visualDescription) {
-    return res.status(503).json({ error: 'Nao foi possivel analisar o conteudo do video. Verifique se o link e publico.' });
+    const YT_KEYS = [
+      process.env.YOUTUBE_API_KEY_1, process.env.YOUTUBE_API_KEY_2,
+      process.env.YOUTUBE_API_KEY_3,
+    ].filter(Boolean);
+    for (let i = 0; i < YT_KEYS.length; i++) {
+      try {
+        const ytRes = await fetch(
+          'https://www.googleapis.com/youtube/v3/videos?part=snippet&id=' + videoId + '&key=' + YT_KEYS[i]
+        );
+        if (!ytRes.ok) continue;
+        const ytData = await ytRes.json();
+        const item = ytData.items && ytData.items[0];
+        if (!item) continue;
+        // Usa apenas descricao (nao titulo) como contexto minimo
+        const desc = (item.snippet.description || '').slice(0, 400).trim();
+        if (desc && desc.length > 20) { fallbackContext = desc; break; }
+      } catch(e) { continue; }
+    }
+    if (!fallbackContext) {
+      return res.status(503).json({ error: 'Nao foi possivel analisar o conteudo do video. Verifique se o link e publico.' });
+    }
   }
 
   // ── 3. Memoria viva ───────────────────────────────────────────────────────
@@ -192,6 +236,10 @@ export default async function handler(req, res) {
     contextLines.push('');
     contextLines.push('O QUE E DITO NO VIDEO (audio/legenda):');
     contextLines.push(transcriptText);
+  }
+  if (fallbackContext) {
+    contextLines.push('CONTEXTO DISPONIVEL DO VIDEO:');
+    contextLines.push(fallbackContext);
   }
   const videoContext = contextLines.join('\n');
 
