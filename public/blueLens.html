@@ -402,16 +402,27 @@ function renderResults(data) {
   }
 
   // Resultados
-  if (results.length > 0) {
-    document.getElementById('resultsCard').style.display = 'block';
-    document.getElementById('resultsCount').textContent = results.length + ' encontrado' + (results.length>1?'s':'');
+  // Filtra resultados com similaridade baixa demais (< 30%) — evita vídeos sem relação
+  const relevantResults = results.filter(r => (r.similarity || 0) >= 30);
 
-    // Registra IDs vistos e renderiza usando buildResultItem
-  results.forEach(r => seenVideoIds.add(r.id));
-  document.getElementById('resultsList').innerHTML = results.map((r,i) => buildResultItem(r,i)).join('');
+  if (relevantResults.length > 0) {
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsCount').textContent = relevantResults.length + ' encontrado' + (relevantResults.length>1?'s':'');
+    relevantResults.forEach(r => seenVideoIds.add(r.id));
+    document.getElementById('resultsList').innerHTML = relevantResults.map((r,i) => buildResultItem(r,i)).join('');
   } else {
     document.getElementById('resultsCard').style.display = 'block';
-    document.getElementById('resultsList').innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">Nenhuma correspondência encontrada. O vídeo pode ser inédito ou a origem é de outra plataforma.</div>';
+    document.getElementById('resultsList').innerHTML = `
+      <div style="text-align:center;padding:28px 16px">
+        <div style="font-size:36px;margin-bottom:12px">🟢</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);margin-bottom:8px">
+          Não encontrei nenhum repost relevante desse vídeo!
+        </div>
+        <div style="font-size:13px;font-family:var(--mono);color:var(--text-dim);line-height:1.6;max-width:340px;margin:0 auto">
+          Tá liberado pra você fazer. 🚀<br>
+          Nenhum concorrente com conteúdo similar foi encontrado no YouTube.
+        </div>
+      </div>`;
   }
 
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -431,7 +442,7 @@ async function refineSearch() {
     if (!r.ok) throw new Error(data.error||'Erro na busca');
 
     // Filtra resultados já mostrados
-    const newResults = (data.results||[]).filter(r => !seenVideoIds.has(r.id));
+    const newResults = (data.results||[]).filter(r => !seenVideoIds.has(r.id) && (r.similarity||0) >= 30);
 
     if (newResults.length === 0) {
       showToast('Nenhum resultado novo encontrado. Tente outro link.');
