@@ -559,48 +559,6 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
-  // ── TITLE SUGGEST ─────────────────────────────────────────────────────────
-  if (req.method === 'POST' && req.body?.action === 'title-suggest') {
-    const { transcript, lang = 'pt' } = req.body;
-    if (!transcript) return res.status(400).json({ casual: '', apelativo: '' });
-    const GEMINI_KEYS = [
-      process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2,
-      process.env.GEMINI_KEY_3, process.env.GEMINI_KEY_4,
-    ].filter(Boolean);
-    const prompt = 'Crie 2 titulos virais para YouTube Shorts baseado nesta transcricao: "' + transcript.slice(0,500) + '". Idioma: ' + lang + '. Responda APENAS com 2 linhas: linha 1 = titulo casual (max 60 chars), linha 2 = titulo apelativo (max 60 chars). Sem numeracao, sem explicacao.';
-    let casual = '', apelativo = '';
-    for (const key of GEMINI_KEYS) {
-      try {
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key;
-        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
-        const d = await r.json();
-        const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text) {
-          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
-          break;
-        }
-      } catch(e) { continue; }
-    }
-    if (!casual && process.env.OPENAI_API_KEY) {
-      try {
-        const r = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY },
-          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 80, messages: [{ role: 'user', content: prompt }] })
-        });
-        const d = await r.json();
-        const text = d.choices?.[0]?.message?.content?.trim();
-        if (text) {
-          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-          casual = lines[0] || ''; apelativo = lines[1] || lines[0] || '';
-        }
-      } catch(e) {}
-    }
-    return res.status(200).json({ casual, apelativo });
-  }
-
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
@@ -1052,56 +1010,32 @@ Responda APENAS em JSON válido sem markdown:
     }
   }
 
-  // ── VOICE PREVIEW (GET) ─────────────────────────────────────────────────
-  // Usa TTS direto com frase curta — funciona para qualquer voiceId válido,
-  // incluindo vozes de links compartilhados e biblioteca paga.
+  // ── VOICE PREVIEW (GET, sample sem custo) ────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'voice-preview') {
-    const { voiceId, provider = 'elevenlabs' } = req.query;
+    const XI_KEY = process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
+    const { voiceId } = req.query;
     if (!voiceId) return res.status(400).json({ error: 'voiceId obrigatório' });
-    const SAMPLE = 'Olá! Esta é a minha voz.';
+
     try {
-      if (provider === 'minimax') {
-        const MM_KEY = process.env.MINIMAX_API_KEY;
-        const MM_GROUP = process.env.MINIMAX_GROUP_ID;
-        if (!MM_KEY || !MM_GROUP) return res.status(500).json({ error: 'Voz não disponível.' });
-        const mmRes = await fetch('https://api.minimax.chat/v1/t2a_v2?GroupId=' + MM_GROUP, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + MM_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'speech-02-hd', text: SAMPLE,
-            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
-            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' } })
-        });
-        const mmData = await mmRes.json();
-        if (mmData.base_resp?.status_code !== 0 || !mmData.data?.audio)
-          return res.status(502).json({ error: 'Prévia indisponível para esta voz.' });
-        return res.status(200).json({
-          audio: Buffer.from(mmData.data.audio, 'hex').toString('base64'), format: 'mp3'
-        });
-      }
-      // ElevenLabs — gera TTS direto sem buscar metadados
-      const XI_KEY = process.env.ELEVENLABS_API_KEY;
-      if (!XI_KEY) return res.status(500).json({ error: 'Voz não disponível.' });
-      const ttsRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
-        method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-        body: JSON.stringify({ text: SAMPLE, model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+      // Busca metadados da voz incluindo preview_url
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
+        headers: { 'xi-api-key': XI_KEY }
       });
-      if (!ttsRes.ok) {
-        const err = await ttsRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
-        const isPlan = ttsRes.status === 402 || detail.toLowerCase().includes('upgrade') || detail.toLowerCase().includes('free users');
-        const notFound = !isPlan && (ttsRes.status === 404 || ttsRes.status === 422);
-        console.error('voice-preview error:', ttsRes.status, voiceId, detail);
-        return res.status(502).json({
-          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta de voz.' : notFound ? 'Esta voz não está disponível.' : 'Prévia indisponível.',
-          notInAccount: notFound, planRestriction: isPlan
-        });
-      }
-      const buf = await ttsRes.arrayBuffer();
-      return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3' });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
+      const data = await r.json();
+      const previewUrl = data.preview_url;
+      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
+
+      // Faz proxy do áudio para evitar CORS
+      const audioRes = await fetch(previewUrl);
+      if (!audioRes.ok) return res.status(502).json({ error: 'Prévia indisponível' });
+
+      const audioBuffer = await audioRes.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString('base64');
+      return res.status(200).json({ audio: base64, format: 'mp3', name: data.name });
     } catch(e) {
-      console.error('voice-preview error:', e.message);
+      console.error('Preview error:', e.message);
       return res.status(500).json({ error: 'Prévia indisponível' });
     }
   }
@@ -1113,7 +1047,7 @@ Responda APENAS em JSON válido sem markdown:
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });
-    if (text.length > 5000) return res.status(400).json({ error: 'Texto excede 5000 caracteres' });
+    if (text.length > 3000) return res.status(400).json({ error: 'Texto excede 3000 caracteres' });
 
     try {
       // eleven_v3 usa endpoint diferente (turbo/v3 preview)
@@ -1229,21 +1163,12 @@ Responda APENAS em JSON válido sem markdown:
         }
       }
 
-      // Confirmação desativada — faz login automático após cadastro
+      // If email confirmation is enabled in Supabase, session will be null
       if (!data.session) {
-        // Tenta fazer signin imediato para obter a sessão
-        try {
-          const signinR = await fetch(authBase + '/token?grant_type=password', {
-            method: 'POST', headers,
-            body: JSON.stringify({ email, password })
-          });
-          const signinD = await signinR.json();
-          if (signinD.access_token) {
-            return res.status(200).json({ user: data.user, session: signinD });
-          }
-        } catch(e) {}
-        // Se falhar, retorna sem sessão mas sem pedir confirmação
-        return res.status(200).json({ user: data.user, session: null, autoLoginFailed: true });
+        return res.status(200).json({
+          needsConfirmation: true,
+          message: 'Conta criada! Verifique seu email e clique no link de confirmação.'
+        });
       }
       return res.status(200).json({ user: data.user, session: data.session });
     }
@@ -1954,13 +1879,20 @@ Responda APENAS em JSON válido sem markdown:
       if (videoMeta.title && process.env.YOUTUBE_API_KEY) {
 
 
-        // Limpa título para busca
+        // Limpa título para busca — remove hashtags, @mentions, emojis e pipe
         const cleanTitle = videoMeta.title
           .replace(/#\w+/g, '').replace(/\|.*$/, '').replace(/@\w+/g, '')
           .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
+        // Extrai palavras-chave mais relevantes (descarta stopwords e palavras curtas)
+        const STOP_WORDS = new Set(['the','de','da','do','que','em','um','uma','para','com','por','não','se','na','no','as','os','mas','isso','esse','essa','este','esta','como','foi','são','tem','ser','mais','pelo','pela','numa','num','sua','seu']);
+        const keyWords = cleanTitle.toLowerCase().split(/\s+/)
+          .filter(w => w.length > 3 && !STOP_WORDS.has(w))
+          .slice(0, 5); // máximo 5 palavras-chave
+        const keywordQuery = keyWords.join(' ');
+
         // Queries especializadas para encontrar o original
-        const tiktokQuery = cleanTitle.slice(0, 50) + ' tiktok';     // TikTok é origem mais comum
+        const tiktokQuery = (keywordQuery || cleanTitle.slice(0, 50)) + ' tiktok';     // TikTok é origem mais comum
         const ytShortsQuery = cleanTitle.slice(0, 50) + ' shorts';   // busca Shorts específico
         const originalQuery = cleanTitle.slice(0, 50) + ' original'; // busca versão original
 
@@ -2022,7 +1954,7 @@ Responda APENAS em JSON válido sem markdown:
             const durDiff = videoMeta.duration > 0 && secs > 0
               ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs)
               : 1;
-            const durTooFar = durDiff > 0.40; // mais de 40% diferente = provavelmente outro vídeo
+            const durTooFar = durDiff > 0.25; // mais de 25% diferente = provavelmente outro vídeo
 
             // ── SIMILARIDADE ────────────────────────────────────────────────
             const rWords = new Set(rTitle.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)));
@@ -2033,8 +1965,8 @@ Responda APENAS em JSON válido sem markdown:
             // Duração — filtro mais estrito: ±20% = similar, ±40% = possível, >40% = descarte
             const durSim = 1 - durDiff;
 
-            // Score combinado — duração tem peso 60% (mais confiável que título traduzido)
-            let similarity = Math.round((titleSim * 0.40 + durSim * 0.60) * 100);
+            // Score combinado — título 55% + duração 45%
+            let similarity = Math.round((titleSim * 0.55 + durSim * 0.45) * 100);
             if (isColorCaption) similarity = 0;
             similarity = Math.max(0, Math.min(100, similarity));
 
@@ -2049,7 +1981,7 @@ Responda APENAS em JSON válido sem markdown:
               platform:'youtube', similarity, isLikelyOriginal, isColorCaption, isRepost,
               publishedBefore, durDiff, durTooFar: durDiff > 0.40};
           })
-          .filter(v => !v.isColorCaption && !v.durTooFar) // descarta legenda colorida E duração muito diferente
+          .filter(v => !v.isColorCaption && !v.durTooFar && v.similarity >= 30) // mínimo 30% de similaridade
           .sort((a,b) => {
             // Prioridade: publicado antes + sem repost + duração similar + data antiga absoluta
             const pb = (v) => v.publishedBefore ? 50 : 0;
