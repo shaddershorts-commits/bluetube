@@ -128,12 +128,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div onclick="selectEditPlan('full')" id="editOptFull" style="border:2px solid rgba(0,170,255,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">⚡</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--neon)">Full</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$59,90</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$27,00</div>
       </div>
       <div onclick="selectEditPlan('master')" id="editOptMaster" style="border:2px solid rgba(251,191,36,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">👑</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:#fbbf24">Master</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$179,90</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$97,00</div>
       </div>
     </div>
     <button onclick="saveEditPlan()" style="width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px">Salvar alteração →</button>
@@ -193,12 +193,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Full (R$59,90 × assinantes)</div>
+        <div class="revenue-label">Full (R$27,00 × assinantes)</div>
         <div class="revenue-value" style="color:var(--neon);font-size:22px" id="revFull">R$0,00</div>
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Master (R$179,90 × assinantes)</div>
+        <div class="revenue-label">Master (R$97,00 × assinantes)</div>
         <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">R$0,00</div>
       </div>
     </div>
@@ -240,12 +240,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-sub">R$0/mês</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Full R$59,90</div>
+        <div class="stat-label">Plano Full R$27,00</div>
         <div class="stat-value blue" id="statFull">—</div>
         <div class="stat-sub" id="statFullRev">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Master R$179,90</div>
+        <div class="stat-label">Plano Master R$97,00</div>
         <div class="stat-value yellow" id="statMaster">—</div>
         <div class="stat-sub" id="statMasterRev">—</div>
       </div>
@@ -274,8 +274,8 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="plan-tool">
         <input class="plan-input" id="planEmail" type="email" placeholder="email@exemplo.com"/>
         <select class="plan-select" id="planType">
-          <option value="full">⚡ Full — R$59,90/mês</option>
-          <option value="master">👑 Master — R$179,90/mês</option>
+          <option value="full">⚡ Full — R$27,00/mês</option>
+          <option value="master">👑 Master — R$97,00/mês</option>
           <option value="free">↓ Rebaixar para Free</option>
         </select>
         <button class="plan-btn" onclick="setPlan()">Liberar acesso →</button>
@@ -358,7 +358,7 @@ function renderMonthlyChart(subscribers){
     const label=`${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
     if(!months[key])months[key]={label,count:0,mrr:0};
     months[key].count++;
-    months[key].mrr+=s.plan==='master'?179.90:59.90;
+    months[key].mrr+=s.plan==='master'?97.00:27.00;
   });
 
   const sorted=Object.keys(months).sort();
@@ -405,7 +405,7 @@ function renderMonthlyChart(subscribers){
 function showNewSubscriberPopup(subscriber){
   const planIcon=subscriber.plan==='master'?'👑':'⚡';
   const planColor=subscriber.plan==='master'?'#fbbf24':'#00aaff';
-  const planPrice=subscriber.plan==='master'?'R$179,90':'R$59,90';
+  const planPrice=subscriber.plan==='master'?'R$97,00':'R$27,00';
 
   // Create popup
   const popup=document.createElement('div');
