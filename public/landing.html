@@ -254,7 +254,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
     </div>
     <span class="logo-text">Blue<span>Tube</span></span>
   </a>
-  <a href="https://bluetubeviral.com" class="nav-cta">Começar Grátis →</a>
+  <a href="https://bluetubeviral.com/?signup=1" class="nav-cta">Começar Grátis →</a>
 </nav>
 
 <!-- HERO -->
@@ -269,6 +269,16 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
     com <span class="neon">milhões de views</span><br>
     começa <span class="gold">aqui.</span>
   </h1>
+
+  <!-- Demo video -->
+  <div class="reveal" style="width:100%;max-width:760px;margin-bottom:40px;border-radius:20px;overflow:hidden;border:1px solid rgba(0,170,255,.2);box-shadow:0 24px 80px rgba(0,50,120,.5)">
+    <div style="position:relative;padding-bottom:56.25%;height:0">
+      <iframe src="https://www.youtube.com/embed/Ol7Q0ql2OIg?autoplay=0&rel=0&modestbranding=1&color=white"
+        style="position:absolute;top:0;left:0;width:100%;height:100%;border:none"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen title="BlueTube Demo"></iframe>
+    </div>
+  </div>
 
   <p class="hero-sub">
     Cole qualquer link de YouTube Shorts. Em 30 segundos você recebe a transcrição completa + 2 roteiros virais prontos pra narrar — casual e apelativo. De graça. Agora.
@@ -552,12 +562,11 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
         <ul class="plan-features">
           <li class="check">2 roteiros por dia</li>
           <li class="check">Português · Inglês · Espanhol</li>
-          <li class="check">Transcrição completa</li>
-          <li class="lock">BlueVoice (narração IA)</li>
-          <li class="lock">Buscador de Virais</li>
-          <li class="lock">BlueLens · BlueScore</li>
+          <li class="check">Transcrição completa com timestamps</li>
+          <li class="check">Download .TXT e .SRT</li>
+          <li class="check">Sem cartão de crédito</li>
         </ul>
-        <a href="https://bluetubeviral.com" class="btn-plan secondary">Começar grátis →</a>
+        <a href="https://bluetubeviral.com/?signup=1" class="btn-plan secondary">Começar grátis →</a>
       </div>
 
       <!-- Full -->
@@ -573,7 +582,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <li class="check">Comunidade exclusiva</li>
           <li class="lock">BlueVoice · Virais · BlueLens</li>
         </ul>
-        <a href="https://bluetubeviral.com" class="btn-plan primary">Assinar Full →</a>
+        <a href="https://bluetubeviral.com/?plan=full" class="btn-plan primary">Assinar Full →</a>
       </div>
 
       <!-- Master -->
@@ -591,14 +600,19 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <li class="check">⬇️ BaixaBlue — download HD</li>
           <li class="check">Suporte prioritário</li>
         </ul>
-        <a href="https://bluetubeviral.com" class="btn-plan gold">Assinar Master 👑</a>
+        <a href="https://bluetubeviral.com/?plan=master" class="btn-plan gold">Assinar Master 👑</a>
       </div>
 
     </div>
 
-    <!-- Urgency -->
-    <div class="reveal" style="margin-top:32px;font-family:var(--mono);font-size:12px;color:var(--dim)">
-      ⚡ Acesso imediato após pagamento · Cancele quando quiser · Sem taxa de cancelamento
+    <!-- Urgency timer -->
+    <div class="reveal" style="margin-top:32px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:14px;padding:16px 24px;display:inline-block">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--gold);margin-bottom:6px;letter-spacing:.08em">⚡ OFERTA POR TEMPO LIMITADO</div>
+      <div style="font-size:22px;font-weight:800;color:var(--gold);letter-spacing:-1px" id="urgTimer">23:47:12</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px">A partir do mês que vem o valor sobe R$30 no Full e R$60 no Master</div>
+    </div>
+    <div class="reveal" style="margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--dim)">
+      ✓ Acesso imediato após pagamento &nbsp;·&nbsp; ✓ Cancele quando quiser &nbsp;·&nbsp; ✓ Sem taxa
     </div>
   </div>
 </section>
@@ -661,7 +675,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       Cada dia sem o BlueTube é um dia que outro criador está usando o conteúdo que poderia ser seu.<br>
       Comece agora — são 30 segundos para o seu primeiro roteiro viral.
     </p>
-    <a href="https://bluetubeviral.com" class="btn-primary" style="display:inline-flex;font-size:16px;padding:18px 44px">
+    <a href="https://bluetubeviral.com/?signup=1" class="btn-primary" style="display:inline-flex;font-size:16px;padding:18px 44px">
       ⚡ Gerar meu primeiro roteiro grátis
     </a>
     <div class="cta-note">✓ Sem cartão de crédito &nbsp;·&nbsp; ✓ Acesso imediato &nbsp;·&nbsp; ✓ 2 roteiros grátis hoje</div>
@@ -685,14 +699,20 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
 </footer>
 
 <script>
-// Live count
-let liveBase = 2400 + Math.floor(Math.random() * 800);
+// Live count — persisted in session so refreshing shows same number
+const _lsKey = 'bt_live_seed';
+let liveBase = parseInt(sessionStorage.getItem(_lsKey) || '0');
+if (!liveBase || liveBase < 2200) {
+  liveBase = 2400 + Math.floor(Math.random() * 600);
+  sessionStorage.setItem(_lsKey, liveBase);
+}
 document.getElementById('liveCount').textContent = liveBase.toLocaleString('pt-BR');
 setInterval(() => {
   liveBase += Math.floor(Math.random() * 3) - 1;
-  liveBase = Math.max(2200, Math.min(3200, liveBase));
+  liveBase = Math.max(2200, Math.min(3100, liveBase));
+  sessionStorage.setItem(_lsKey, liveBase);
   document.getElementById('liveCount').textContent = liveBase.toLocaleString('pt-BR');
-}, 3000);
+}, 4000);
 
 // FOMO counter
 let fomoBase = 800 + Math.floor(Math.random() * 100);
@@ -712,6 +732,27 @@ const observer = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.1 });
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Urgency countdown — resets every 24h per session
+(function(){
+  const key = 'bt_timer_end';
+  let end = parseInt(sessionStorage.getItem(key) || '0');
+  if (!end || end < Date.now()) {
+    // Random between 18h and 23h55m from now
+    end = Date.now() + (18 + Math.random() * 6) * 3600 * 1000;
+    sessionStorage.setItem(key, end);
+  }
+  function tick() {
+    const diff = Math.max(0, end - Date.now());
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    const el = document.getElementById('urgTimer');
+    if (el) el.textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
 
 // FAQ
 function toggleFaq(el) {
