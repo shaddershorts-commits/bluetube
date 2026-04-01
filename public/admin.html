@@ -443,7 +443,7 @@ let refreshInterval=null;
 let nextRefreshSecs=30;
 let allSubscribers=[];
 
-function fmt(n){return'R$'+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmt(n){return'R$ '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 
 function doLogin(){
   const key=document.getElementById('adminKey').value.trim();
@@ -708,7 +708,6 @@ async function loadData(){
 
     // Start auto-refresh
     if(!refreshInterval) startAutoRefresh();
-    startRealtimeWatch();
 
   }catch(err){
     console.error('Admin loadData error:', err);
@@ -835,6 +834,44 @@ function exportCSV(){
   });
   a.click();URL.revokeObjectURL(a.href);
 }
+
+// ── REALTIME: novos cadastros + cancelamentos ────────────────────────────────
+let _lastTotal=0, _lastCancelEmail=null, _rtInt=null;
+function startRealtimeWatch(){
+  if(_rtInt) clearInterval(_rtInt);
+  _rtInt = setInterval(async()=>{
+    try{
+      const r = await fetch('/api/admin?action=stats', { headers:{'Authorization':'Bearer '+adminSecret} });
+      if(!r.ok) return;
+      const d = await r.json();
+      // Novo cadastro
+      const newTotal = d.subscribers?.total || 0;
+      if(_lastTotal > 0 && newTotal > _lastTotal){
+        const diff = newTotal - _lastTotal;
+        showAdminToast('🎉 +'+diff+' novo'+(diff>1?'s':'')+' cadastro'+(diff>1?'s':'')+'!',
+          d.latest_signup?.email||'', '#4ecca3', 'rgba(78,204,163,.5)');
+        loadData();
+      }
+      _lastTotal = newTotal;
+      // Cancelamento
+      const cancel = d.latest_cancellation;
+      if(cancel?.email && cancel.email !== _lastCancelEmail){
+        const when = cancel.updated_at ? new Date(cancel.updated_at).toLocaleTimeString('pt-BR') : '';
+        showAdminToast('❌ Cancelamento', cancel.email+(when?' às '+when:''), '#ff7a5a', 'rgba(255,122,90,.5)');
+        _lastCancelEmail = cancel.email;
+        loadData();
+      }
+    }catch(e){}
+  }, 8000);
+}
+function showAdminToast(title, sub, color, border){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;top:20px;right:20px;z-index:9999;background:rgba(10,22,40,.98);border:1px solid '+border+';border-radius:14px;padding:14px 20px;font-family:var(--mono);font-size:12px;color:'+color+';box-shadow:0 0 30px rgba(0,0,0,.4);max-width:300px';
+  el.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:3px">'+title+'</div>'+(sub?'<div style="opacity:.7;font-size:11px">'+sub+'</div>':'');
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),6000);
+}
+
 </script>
 </body>
 </html>
