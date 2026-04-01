@@ -1,6 +1,6 @@
 // api/generate-from-zero.js
-// Analisa qualquer Short com Gemini Vision e gera roteiro narrativo original
-// Disponível para planos Full e Master
+// Analisa qualquer Short com Gemini Video API e gera roteiro narrativo original
+// Disponivel para planos Full e Master
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const AK = process.env.SUPABASE_ANON_KEY || SK;
 
-  // Verifica plano (Full ou Master)
+  // Verifica plano
   let userPlan = 'free';
   if (token && SU && AK) {
     try {
@@ -40,9 +40,7 @@ export default async function handler(req, res) {
           }
         }
       }
-    } catch(e) {
-      console.log('plan check error:', e.message);
-    }
+    } catch(e) { console.log('plan check error:', e.message); }
   }
 
   if (userPlan === 'free') {
@@ -58,7 +56,9 @@ export default async function handler(req, res) {
 
   if (GK.length === 0) return res.status(500).json({ error: 'API nao configurada.' });
 
-  // Busca memoria viva — top roteiros copiados como referencia de tom
+  const safeLang = lang || 'Portugues (Brasil)';
+
+  // Busca memoria viva
   let livingMemory = '';
   if (SU && SK) {
     try {
@@ -69,81 +69,113 @@ export default async function handler(req, res) {
       if (mR.ok) {
         const rows = await mR.json();
         if (rows && rows.length > 0) {
-          livingMemory = 'REFERENCIA DE TOM (nao copie, use para calibrar estilo e ritmo):\n' +
-            rows.map(function(r, i) {
-              return 'Ex' + (i+1) + ': "' + (r.transcript || '').slice(0, 200) + '"';
-            }).join('\n');
+          livingMemory = rows.map(function(r, i) {
+            return 'Referencia ' + (i+1) + ': "' + (r.transcript || '').slice(0, 180) + '"';
+          }).join('\n');
         }
       }
     } catch(e) {}
   }
 
-  const safeLang = lang || 'Portugues (Brasil)';
-
-  // Etapa 1: Gemini analisa o video
-  const descParts = [
-    'Analise este video do YouTube: ' + videoUrl,
-    'Descreva em ' + safeLang + ':',
-    '1. O que acontece visualmente (cena a cena)',
-    '2. Tema central e mensagem',
-    '3. Tom emocional (engracado, inspirador, chocante, educativo)',
-    '4. Publico-alvo',
-    '5. Gancho visual mais forte',
-    'Seja especifico e detalhado.'
-  ];
-  const descPrompt = descParts.join('\n');
+  // ── ETAPA 1: Gemini analisa o video usando fileData (API correta para video) ──
+  const descPromptText = 'Analise este Short do YouTube e descreva em ' + safeLang + ':\n' +
+    '1. O que acontece visualmente (cena a cena)\n' +
+    '2. Tema central e mensagem principal\n' +
+    '3. Tom emocional (engracado, inspirador, chocante, educativo)\n' +
+    '4. Publico-alvo provavel\n' +
+    '5. O gancho visual mais forte\n\n' +
+    'Seja especifico, detalhado e use o idioma ' + safeLang + '.';
 
   let videoDesc = '';
+
   for (let i = 0; i < GK.length; i++) {
     try {
+      // Formato correto: fileData com YouTube URL para Gemini processar o video
+      const body = {
+        contents: [{
+          parts: [
+            {
+              fileData: {
+                mimeType: 'video/mp4',
+                fileUri: videoUrl
+              }
+            },
+            {
+              text: descPromptText
+            }
+          ]
+        }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+      };
+
       const r = await fetch(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GK[i],
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: descPrompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
-          })
-        }
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       );
       const d = await r.json();
-      if (d.error && d.error.code === 429) continue;
+
+      if (d.error) {
+        console.log('Gemini desc error key', i, ':', d.error.code, d.error.message);
+        if (d.error.code === 429) continue;
+        // Se fileData nao funcionar, tenta com texto simples
+        if (d.error.code === 400 || d.error.code === 500) {
+          const r2 = await fetch(
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GK[i],
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: 'Sobre o video ' + videoUrl + ': ' + descPromptText }] }],
+                generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+              })
+            }
+          );
+          const d2 = await r2.json();
+          if (!d2.error) {
+            const t2 = d2.candidates && d2.candidates[0] && d2.candidates[0].content &&
+              d2.candidates[0].content.parts && d2.candidates[0].content.parts[0] &&
+              d2.candidates[0].content.parts[0].text;
+            if (t2 && t2.trim().length > 50) { videoDesc = t2.trim(); break; }
+          }
+        }
+        continue;
+      }
+
       const text = d.candidates && d.candidates[0] && d.candidates[0].content &&
         d.candidates[0].content.parts && d.candidates[0].content.parts[0] &&
         d.candidates[0].content.parts[0].text;
-      if (text && text.trim().length > 50) {
-        videoDesc = text.trim();
-        break;
-      }
-    } catch(e) { continue; }
+      if (text && text.trim().length > 50) { videoDesc = text.trim(); break; }
+    } catch(e) { console.log('Gemini desc exception:', e.message); continue; }
   }
 
   if (!videoDesc) {
-    return res.status(503).json({ error: 'Nao foi possivel analisar o video. Tente novamente.' });
+    return res.status(503).json({ error: 'Nao foi possivel analisar o video. Verifique se o link e publico e tente novamente.' });
   }
 
-  // Etapa 2: Gera roteiros originais com base na analise
-  const genParts = [
+  // ── ETAPA 2: Gera roteiros originais ──────────────────────────────────────
+  const genPromptLines = [
     'Voce e um especialista em roteiros virais para YouTube Shorts.',
     '',
     'ANALISE DO VIDEO:',
     videoDesc,
     '',
-    livingMemory ? livingMemory + '\n' : '',
-    'IDIOMA: ' + safeLang,
-    '',
-    'REGRAS:',
-    '- Crie roteiros ORIGINAIS baseados no tema do video',
-    '- NAO copie ou adapte o video original',
-    '- Maximo 75 palavras cada',
-    '- Linguagem nativa de redes sociais',
-    '- Texto corrido, sem emojis, sem titulos, sem marcadores',
-    '',
-    'Responda APENAS em JSON valido sem markdown:',
-    '{"casual":"roteiro casual aqui","apelativo":"roteiro apelativo aqui","titleCasual":"titulo casual","titleApelativo":"titulo apelativo"}'
   ];
-  const genPrompt = genParts.join('\n');
+  if (livingMemory) {
+    genPromptLines.push('CALIBRACAO DE TOM (nao copie, use como referencia de ritmo e estilo):');
+    genPromptLines.push(livingMemory);
+    genPromptLines.push('');
+  }
+  genPromptLines.push('IDIOMA: ' + safeLang);
+  genPromptLines.push('');
+  genPromptLines.push('Crie 2 roteiros ORIGINAIS baseados no tema/contexto do video — NAO copie o original.');
+  genPromptLines.push('- Maximo 75 palavras cada');
+  genPromptLines.push('- Linguagem nativa, tom de Short viral');
+  genPromptLines.push('- Texto corrido, sem emojis, sem marcadores');
+  genPromptLines.push('');
+  genPromptLines.push('Responda APENAS em JSON valido sem markdown:');
+  genPromptLines.push('{"casual":"roteiro casual aqui","apelativo":"roteiro apelativo aqui","titleCasual":"titulo casual","titleApelativo":"titulo apelativo"}');
+
+  const genPrompt = genPromptLines.join('\n');
 
   let result = null;
   for (let i = 0; i < GK.length; i++) {
@@ -170,17 +202,12 @@ export default async function handler(req, res) {
       const ei = text.lastIndexOf('}');
       if (si >= 0 && ei >= 0) {
         const parsed = JSON.parse(text.slice(si, ei + 1));
-        if (parsed.casual && parsed.apelativo) {
-          result = parsed;
-          break;
-        }
+        if (parsed.casual && parsed.apelativo) { result = parsed; break; }
       }
     } catch(e) { continue; }
   }
 
-  if (!result) {
-    return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente novamente.' });
-  }
+  if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente novamente.' });
 
   return res.status(200).json({
     casual: result.casual || '',
