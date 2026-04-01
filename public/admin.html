@@ -123,7 +123,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div onclick="selectEditPlan('free')" id="editOptFree" style="border:2px solid rgba(150,190,230,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">🆓</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600">Free</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$0</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$0</div>
       </div>
       <div onclick="selectEditPlan('full')" id="editOptFull" style="border:2px solid rgba(0,170,255,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">⚡</div>
@@ -708,6 +708,7 @@ async function loadData(){
 
     // Start auto-refresh
     if(!refreshInterval) startAutoRefresh();
+    startRealtimeWatch();
 
   }catch(err){
     console.error('Admin loadData error:', err);
@@ -720,29 +721,6 @@ async function loadData(){
       document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave e tente novamente.';
     }
   }
-}
-
-
-let _lastTotal=0,_rtInt=null;
-function startRealtimeWatch(){
-  if(_rtInt)clearInterval(_rtInt);
-  _rtInt=setInterval(async()=>{
-    try{
-      const r=await fetch('/api/admin?action=stats',{headers:{'Authorization':'Bearer '+adminSecret}});
-      if(!r.ok)return;
-      const d=await r.json();
-      const t=d.subscribers?.total||0;
-      if(_lastTotal>0&&t>_lastTotal){
-        const diff=t-_lastTotal;
-        const el=document.createElement('div');
-        el.style.cssText='position:fixed;top:20px;right:20px;z-index:9999;background:rgba(10,22,40,.98);border:1px solid rgba(78,204,163,.5);border-radius:14px;padding:14px 20px;font-family:var(--mono);font-size:12px;color:#4ecca3;box-shadow:0 0 30px rgba(78,204,163,.2);animation:slideIn .3s ease;max-width:280px';
-        el.innerHTML='<div style="font-size:14px;font-weight:700;margin-bottom:4px">🎉 +'+diff+' novo'+(diff>1?'s':'')+' cadastro'+(diff>1?'s':'')+'!</div>'+(d.latest_signup?'<div style="opacity:.7;font-size:11px">'+(d.latest_signup.email||d.latest_subscriber?.email||'')+'</div>':'');
-        document.body.appendChild(el);setTimeout(()=>el.remove(),5000);
-        loadData();
-      }
-      _lastTotal=t;
-    }catch(e){}
-  },8000);
 }
 
 function startAutoRefresh(){
