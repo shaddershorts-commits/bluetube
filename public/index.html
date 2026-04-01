@@ -770,13 +770,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </button>
       <div style="position:relative;flex:1;display:flex">
         <button class="mode-btn" id="btnModeZero" onclick="setMode('zero')" style="width:100%">
-          ✨ Gerar do zero
+          ✨ Roteirizar vídeo
           <span class="mode-badge">FULL+</span>
         </button>
       </div>
     </div>
     <div id="modeZeroBanner" style="display:none;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-family:var(--font-mono);font-size:11px;color:#fbbf24;line-height:1.6">
-      ✨ <strong>IA assiste o vídeo</strong> e cria um roteiro narrativo original — sem copiar, com tom viral calibrado pelos melhores roteiros da plataforma.
+      ✨ <strong>Roteirizar vídeo:</strong> a IA assiste o vídeo e cria um roteiro narrativo original — sem copiar o original, calibrado pelo tom dos melhores roteiros da plataforma.
     </div>
     <div class="input-row">
       <input id="urlInput" type="text" class="url-input"
@@ -802,7 +802,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <option value="Thai" class="locked-option master-only">🔒 ภาษาไทย — Master</option>
         <option value="Tagalog" class="locked-option master-only">🔒 Tagalog — Master</option>
       </select>
-      <button class="btn-go" id="btnGo" onclick="startTranscription(event)">
+      <button class="btn-go" id="btnGo" onclick="handleMainBtn(event)">
         Transcrever + Roteiro ↗
       </button>
     </div>
@@ -825,7 +825,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <!-- Results -->
   <div class="results-area" id="resultsArea">
     <div class="tab-nav">
-      <button class="tab-btn active" onclick="switchTab('transcript')">📝 Transcrição</button>
+      <button class="tab-btn active" id="tabTranscript" onclick="switchTab('transcript')">📝 Transcrição</button>
       <button class="tab-btn" onclick="switchTab('v1')">💬 Casual</button>
       <button class="tab-btn" onclick="switchTab('v2')">🔥 Apelativo</button>
     </div>
@@ -1645,7 +1645,8 @@ async function checkAndIncrementLimit(){
 function setLoading(on){
   document.getElementById('loadingBlock').classList.toggle('on',on);
   document.getElementById('btnGo').disabled=on;
-  document.getElementById('btnGo').textContent=on?'Processando…':'Transcrever + Roteiro ↗';
+  if(on){ document.getElementById('btnGo').textContent='Processando…'; }
+  else { document.getElementById('btnGo').textContent = _genMode==='zero' ? '✨ Roteirizar vídeo' : 'Transcrever + Roteiro ↗'; }
   if(!on)document.getElementById('progressFill').style.width='0';
 }
 function setError(msg){
@@ -1777,19 +1778,81 @@ let _genMode = 'adapt';
 
 function setMode(mode){
   const isPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
-  if(mode==='zero' && !isPaid){ openUpgradeModal('master_tool'); return; }
+  if(mode==='zero' && !isPaid){ openUpgradeModal('limit_full'); return; }
   _genMode = mode;
   const bA=document.getElementById('btnModeAdapt'), bZ=document.getElementById('btnModeZero');
   const banner=document.getElementById('modeZeroBanner'), card=document.querySelector('.main-card');
+  const btnGo=document.getElementById('btnGo');
+  const tabT=document.getElementById('tabTranscript');
   if(mode==='zero'){
     bA.className='mode-btn'; bZ.className='mode-btn active-zero';
     if(banner) banner.style.display='block';
     if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
+    if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='✨ Roteirizar vídeo'; }
+    if(tabT) tabT.style.display='none'; // Sem transcrição no modo zero
+    // Muda placeholder do input
+    const inp=document.getElementById('urlInput');
+    if(inp) inp.placeholder='Cole qualquer Short — com ou sem narração';
   } else {
     bA.className='mode-btn active-adapt'; bZ.className='mode-btn';
     if(banner) banner.style.display='none';
     if(card){ card.style.borderColor=''; card.style.boxShadow=''; }
+    if(btnGo){ btnGo.style.background=''; btnGo.style.boxShadow=''; btnGo.textContent='Transcrever + Roteiro ↗'; }
+    if(tabT) tabT.style.display=''; // Mostra transcrição no modo adapt
+    const inp=document.getElementById('urlInput');
+    if(inp) inp.placeholder='https://www.youtube.com/shorts/...';
+    // Volta para aba casual se estava em transcript
+    switchTab('v1');
   }
+}
+
+// Roteador principal do botão
+function handleMainBtn(e){
+  if(_genMode==='zero'){ startFromZero(e); }
+  else { startTranscription(e); }
+}
+
+// ── INICIAR GERAR DO ZERO (fluxo independente) ────────────────────────────
+async function startFromZero(e){
+  const btn=document.getElementById('btnGo');
+  const rip=document.createElement('span');rip.className='ripple';
+  const r=btn.getBoundingClientRect();
+  rip.style.left=(e.clientX-r.left)+'px';rip.style.top=(e.clientY-r.top)+'px';
+  btn.appendChild(rip);setTimeout(()=>rip.remove(),700);
+
+  const raw=document.getElementById('urlInput').value.trim();
+  if(!raw){setError('Cole um link de YouTube Shorts antes de continuar.');return;}
+  const videoId=extractId(raw);
+  if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
+  currentVideoId=videoId;
+
+  // Checa limite (Full = 9/dia, Master = ilimitado)
+  const _planNow=userPlan||localStorage.getItem('bt_plan')||'free';
+  if(_planNow!=='master'){
+    const limR=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'increment',token:localStorage.getItem('bt_token')})});
+    const limD=await limR.json();
+    if(!limD.allowed){openUpgradeModal('limit_full');return;}
+  }
+
+  setError('');
+
+  // Reset apenas os cards de roteiro (sem mexer na transcrição)
+  ['titleCasualBox','titleApelatBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  ['V1','V2'].forEach(v=>{
+    document.getElementById('loading'+v).classList.add('on');
+    document.getElementById('card'+v).style.display='none';
+  });
+
+  document.getElementById('resultsArea').classList.add('on');
+  setLoading(true);
+
+  // Vai direto para a aba casual (sem transcrição)
+  switchTab('v1');
+  setTimeout(()=>document.getElementById('resultsArea').scrollIntoView({behavior:'smooth',block:'nearest'}),100);
+
+  await generateFromZero(document.getElementById('langSelect').value);
+  setLoading(false);
 }
 
 function generateAllScripts(lang){
@@ -1834,6 +1897,8 @@ async function generateFromZero(lang){
       document.getElementById('titleApelatText').textContent=d.titleApelativo;
       document.getElementById('titleApelatBox').style.display='block';
     }
+    // Atualiza botões BlueVoice com base no plano
+    if(typeof updateBlueVoiceButtons==='function') updateBlueVoiceButtons();
     if(typeof _saveRoteiroState==='function')_saveRoteiroState();
     if(typeof updateBlueVoiceButtons==='function')updateBlueVoiceButtons();
     setTimeout(showBlublu,4000);
