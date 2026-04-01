@@ -617,6 +617,171 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── GERAR DO ZERO — Gemini assiste o vídeo + memória viva ──────────────────
+  if (req.method === 'POST' && req.body?.action === 'generate-from-zero') {
+    const { videoUrl, lang = 'pt', token } = req.body;
+    if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });
+
+    // Verifica se usuário é Full ou Master
+    const SUPA_URL2 = process.env.SUPABASE_URL;
+    const SUPA_KEY2 = process.env.SUPABASE_SERVICE_KEY;
+    const ANON_KEY2 = process.env.SUPABASE_ANON_KEY || SUPA_KEY2;
+    let userPlanGFZ = 'free';
+    if (token && SUPA_URL2) {
+      try {
+        const uRes = await fetch(SUPA_URL2 + '/auth/v1/user', {
+          headers: { apikey: ANON_KEY2, Authorization: 'Bearer ' + token }
+        });
+        if (uRes.ok) {
+          const uData = await uRes.json();
+          const email = uData.email;
+          if (email) {
+            const sRes = await fetch(SUPA_URL2 + '/rest/v1/subscribers?email=eq.' + encodeURIComponent(email) + '&select=plan,plan_expires_at,is_manual', {
+              headers: { apikey: SUPA_KEY2, Authorization: 'Bearer ' + SUPA_KEY2 }
+            });
+            if (sRes.ok) {
+              const subs = await sRes.json();
+              const sub = subs?.[0];
+              if (sub && (sub.plan === 'full' || sub.plan === 'master')) {
+                const expired = sub.plan_expires_at && new Date(sub.plan_expires_at) < new Date() && !sub.is_manual;
+                if (!expired) userPlanGFZ = sub.plan;
+              }
+            }
+          }
+        }
+      } catch(e) {}
+    }
+    if (userPlanGFZ === 'free') return res.status(403).json({ error: 'Recurso exclusivo para planos Full e Master.' });
+
+    const GEMINI_KEYS = [
+      process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
+      process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5, process.env.GEMINI_KEY_6,
+      process.env.GEMINI_KEY_7, process.env.GEMINI_KEY_8, process.env.GEMINI_KEY_9,
+      process.env.GEMINI_KEY_10,
+    ].filter(Boolean);
+
+    // Busca memória viva — roteiros mais copiados como referência de tom
+    let livingMemory = '';
+    if (SUPA_URL2 && SUPA_KEY2) {
+      try {
+        const memR = await fetch(SUPA_URL2 + '/rest/v1/viral_shorts?order=copy_count.desc&limit=5&select=transcript,copy_count&copy_count=gte.2', {
+          headers: { apikey: SUPA_KEY2, Authorization: 'Bearer ' + SUPA_KEY2 }
+        });
+        if (memR.ok) {
+          const rows = await memR.json();
+          if (rows?.length > 0) {
+            livingMemory = 'REFERÊNCIA DE TOM (roteiros reais que viralizaram na plataforma — use como calibração de estilo, NÃO copie):
+' +
+              rows.map((r, i) => 'Exemplo ' + (i+1) + ': "' + (r.transcript||'').slice(0,200) + '"').join('
+
+');
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Prompt para Gemini analisar o vídeo e criar roteiro original
+    const LANG_NATIVE = {
+      'Português (Brasil)': 'Português Brasileiro natural, gírias leves, linguagem de redes sociais.',
+      'English': 'Natural American English, casual contractions, social media language.',
+      'Español': 'Español natural de redes sociales, expresiones idiomáticas reales.',
+    };
+    const nativeLang = LANG_NATIVE[lang] || LANG_NATIVE['Português (Brasil)'];
+
+    const describePrompt = 'Analise este vídeo do YouTube: ' + videoUrl + '
+
+Descreva detalhadamente:
+1. O que acontece visualmente (cena a cena)
+2. O tema central e mensagem principal
+3. O tom emocional (engraçado, inspirador, chocante, educativo, etc.)
+4. O público-alvo
+5. O gancho visual mais forte
+
+Responda em ' + lang + '. Seja específico e detalhado.';
+
+    let videoDescription = '';
+    for (const key of GEMINI_KEYS) {
+      try {
+        const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: describePrompt }] }],
+            generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+          })
+        });
+        const gData = await gRes.json();
+        if (gData.error?.code === 429) continue;
+        const text = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text && text.length > 50) { videoDescription = text; break; }
+      } catch(e) { continue; }
+    }
+
+    if (!videoDescription) return res.status(503).json({ error: 'Não foi possível analisar o vídeo. Tente novamente.' });
+
+    // Gera os 2 roteiros originais com base na análise
+    const genPrompt = 'Você é um especialista em roteiros virais para YouTube Shorts.
+
+' +
+      'ANÁLISE DO VÍDEO:
+' + videoDescription + '
+
+' +
+      (livingMemory ? livingMemory + '
+
+' : '') +
+      'IDIOMA: ' + lang + ' — ' + nativeLang + '
+
+' +
+      'REGRAS CRÍTICAS:
+' +
+      '- Crie roteiros ORIGINAIS baseados no tema/contexto do vídeo — NÃO copie ou adapte o vídeo original
+' +
+      '- Máximo 75 palavras cada
+' +
+      '- Linguagem 100% nativa, sem soar traduzido
+' +
+      '- Texto corrido, sem emojis, sem títulos, sem marcadores
+
+' +
+      'Responda APENAS em JSON válido (sem markdown):
+' +
+      '{"casual":"roteiro leve e conversacional aqui","apelativo":"roteiro com hook forte e urgência aqui","titleCasual":"título casual 60 chars","titleApelativo":"título apelativo 60 chars"}';
+
+    let result = null;
+    for (const key of GEMINI_KEYS) {
+      try {
+        const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: genPrompt }] }],
+            generationConfig: { temperature: 0.85, maxOutputTokens: 600 }
+          })
+        });
+        const gData = await gRes.json();
+        if (gData.error?.code === 429) continue;
+        let text = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        text = text.replace(/```json/g,'').replace(/```/g,'').trim();
+        const si = text.indexOf('{'), ei = text.lastIndexOf('}');
+        if (si >= 0 && ei >= 0) {
+          result = JSON.parse(text.slice(si, ei+1));
+          if (result.casual && result.apelativo) break;
+        }
+      } catch(e) { continue; }
+    }
+
+    if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente novamente.' });
+
+    return res.status(200).json({
+      casual: result.casual || '',
+      apelativo: result.apelativo || '',
+      titleCasual: result.titleCasual || '',
+      titleApelativo: result.titleApelativo || '',
+      videoDescription
+    });
+  }
+
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
