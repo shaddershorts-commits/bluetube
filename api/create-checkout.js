@@ -21,14 +21,14 @@ export default async function handler(req, res) {
     full: {
       name: 'BlueTube Full',
       description: '9 roteiros/dia · Todos os idiomas · Comunidade exclusiva',
-      monthly: 5990,   // R$59,90
-      annual:  53900,  // R$539,00/ano (~R$44,90/mês)
+      monthly: 2700,   // R$27,00
+      annual:  24300,  // R$539,00/ano (~R$20,25/mês)
     },
     master: {
       name: 'BlueTube Master',
       description: 'Roteiros ilimitados · Voz IA · Download HD · Buscador viral',
-      monthly: 17990,  // R$179,90
-      annual:  161900, // R$1.619,00/ano (~R$134,90/mês)
+      monthly: 9700,  // R$97,00
+      annual:  87300, // R$1.619,00/ano (~R$72,75/mês)
     }
   };
 
