@@ -88,11 +88,10 @@ export default async function handler(req, res) {
     const tracks = JSON.parse(match[1]);
     if (!tracks || tracks.length === 0) throw new Error('Empty caption tracks');
 
-    // Prioriza: pt-BR → pt → en → qualquer
-    const preferred = tracks.find(t => t.languageCode === 'pt-BR')
-      || tracks.find(t => t.languageCode === 'pt')
-      || tracks.find(t => t.languageCode === 'en')
-      || tracks[0];
+    // Pega a legenda do idioma original do vídeo
+    // Prioriza: legenda manual (sem 'asr') → automática → qualquer
+    const manual = tracks.filter(t => t.kind !== 'asr');
+    const preferred = manual[0] || tracks[0];
 
     if (!preferred?.baseUrl) throw new Error('No caption URL');
 
