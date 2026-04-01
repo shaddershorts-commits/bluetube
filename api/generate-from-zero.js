@@ -165,7 +165,7 @@ export default async function handler(req, res) {
 
   const safeLang = lang || 'Portugues (Brasil)';
 
-  // ── 5. Gemini gera roteiros originais ────────────────────────────────────
+  // ── 5. Gera roteiros originais (OpenAI primary, Gemini fallback) ──────────
   const promptLines = [
     'Voce e um especialista em roteiros virais para YouTube Shorts.',
     '',
@@ -194,8 +194,39 @@ export default async function handler(req, res) {
 
   const prompt = promptLines.join('\n');
 
+  const OPENAI_KEY = process.env.OPENAI_API_KEY;
   let result = null;
-  for (let i = 0; i < shuffled.length; i++) {
+
+  // Tenta OpenAI primeiro (mais estavel e com saldo)
+  if (OPENAI_KEY && !result) {
+    try {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 400,
+          temperature: 0.85,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const d = await r.json();
+      if (r.ok && d.choices && d.choices[0]) {
+        let text = d.choices[0].message.content.trim();
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const si = text.indexOf('{'), ei = text.lastIndexOf('}');
+        if (si >= 0 && ei >= 0) {
+          const parsed = JSON.parse(text.slice(si, ei + 1));
+          if (parsed.casual && parsed.apelativo) result = parsed;
+        }
+      } else {
+        console.log('OpenAI error:', d.error && d.error.message);
+      }
+    } catch(e) { console.log('OpenAI exception:', e.message); }
+  }
+
+  // Fallback: Gemini com rotacao de chaves
+  for (let i = 0; i < shuffled.length && !result; i++) {
     try {
       const r = await fetch(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + shuffled[i],
