@@ -559,6 +559,64 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
+  // ── COMMUNITY VOICES — lista vozes da comunidade ─────────────────────────
+  if (req.method === 'GET' && req.query?.action === 'community-voices') {
+    const SUPA_URL = process.env.SUPABASE_URL;
+    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+    if (!SUPA_URL || !SUPA_KEY) return res.status(200).json({ voices: [] });
+    try {
+      const r = await fetch(
+        SUPA_URL + '/rest/v1/community_voices?select=voice_id,name,provider,uses_count&order=uses_count.desc&limit=50',
+        { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } }
+      );
+      if (!r.ok) return res.status(200).json({ voices: [] });
+      const rows = await r.json();
+      return res.status(200).json({ voices: Array.isArray(rows) ? rows : [] });
+    } catch(e) {
+      return res.status(200).json({ voices: [] });
+    }
+  }
+
+  // ── COMMUNITY VOICE ADD ────────────────────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'community-voice-add') {
+    const { voiceId, name, provider = 'elevenlabs', userEmail = '' } = req.body;
+    if (!voiceId || !name) return res.status(400).json({ error: 'voiceId e name obrigatórios' });
+    const SUPA_URL = process.env.SUPABASE_URL;
+    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+    const XI_KEY   = process.env.ELEVENLABS_API_KEY;
+    if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ error: 'Servidor não configurado.' });
+    // Testa se a voz funciona
+    if (provider === 'elevenlabs' && XI_KEY) {
+      const testRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
+        method: 'POST',
+        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+        body: JSON.stringify({ text: 'Teste.', model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+      });
+      if (!testRes.ok) {
+        const err = await testRes.json().catch(() => ({}));
+        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
+        const isPlan = testRes.status === 402 || detail.toLowerCase().includes('upgrade');
+        return res.status(400).json({
+          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta.' : 'Esta voz não está disponível.',
+          planRestriction: isPlan
+        });
+      }
+    }
+    try {
+      const supaH = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+      await fetch(SUPA_URL + '/rest/v1/community_voices', {
+        method: 'POST',
+        headers: { ...supaH, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ voice_id: voiceId, name, provider,
+          added_by: userEmail || 'anon', uses_count: 1, created_at: new Date().toISOString() })
+      });
+      return res.status(200).json({ ok: true, shared: true });
+    } catch(e) {
+      return res.status(500).json({ error: 'Erro ao salvar voz.' });
+    }
+  }
+
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
     const { channelData, videos, scoreData } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
@@ -1325,7 +1383,7 @@ Responda APENAS em JSON válido sem markdown:
   // ══════════════════════════════════════════════════════════════════════════
   // Usa as vars globais SUPA_URL, SUPA_KEY, ANON_KEY, supaH declaradas no topo
   const COMMISSION_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
-  const PLAN_AMOUNTS = { full: 9.99, master: 29.99 };
+  const PLAN_AMOUNTS = { full: 27.00, master: 97.00 };
   const getAffLevel = (p) => p >= 1000 ? 'gold' : p >= 380 ? 'silver' : 'bronze';
   const genRefCode = (email) => {
     const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,8);
@@ -1879,20 +1937,13 @@ Responda APENAS em JSON válido sem markdown:
       if (videoMeta.title && process.env.YOUTUBE_API_KEY) {
 
 
-        // Limpa título para busca — remove hashtags, @mentions, emojis e pipe
+        // Limpa título para busca
         const cleanTitle = videoMeta.title
           .replace(/#\w+/g, '').replace(/\|.*$/, '').replace(/@\w+/g, '')
           .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
-        // Extrai palavras-chave mais relevantes (descarta stopwords e palavras curtas)
-        const STOP_WORDS = new Set(['the','de','da','do','que','em','um','uma','para','com','por','não','se','na','no','as','os','mas','isso','esse','essa','este','esta','como','foi','são','tem','ser','mais','pelo','pela','numa','num','sua','seu']);
-        const keyWords = cleanTitle.toLowerCase().split(/\s+/)
-          .filter(w => w.length > 3 && !STOP_WORDS.has(w))
-          .slice(0, 5); // máximo 5 palavras-chave
-        const keywordQuery = keyWords.join(' ');
-
         // Queries especializadas para encontrar o original
-        const tiktokQuery = (keywordQuery || cleanTitle.slice(0, 50)) + ' tiktok';     // TikTok é origem mais comum
+        const tiktokQuery = cleanTitle.slice(0, 50) + ' tiktok';     // TikTok é origem mais comum
         const ytShortsQuery = cleanTitle.slice(0, 50) + ' shorts';   // busca Shorts específico
         const originalQuery = cleanTitle.slice(0, 50) + ' original'; // busca versão original
 
@@ -1954,7 +2005,7 @@ Responda APENAS em JSON válido sem markdown:
             const durDiff = videoMeta.duration > 0 && secs > 0
               ? Math.abs(videoMeta.duration - secs) / Math.max(videoMeta.duration, secs)
               : 1;
-            const durTooFar = durDiff > 0.25; // mais de 25% diferente = provavelmente outro vídeo
+            const durTooFar = durDiff > 0.40; // mais de 40% diferente = provavelmente outro vídeo
 
             // ── SIMILARIDADE ────────────────────────────────────────────────
             const rWords = new Set(rTitle.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)));
@@ -1965,8 +2016,8 @@ Responda APENAS em JSON válido sem markdown:
             // Duração — filtro mais estrito: ±20% = similar, ±40% = possível, >40% = descarte
             const durSim = 1 - durDiff;
 
-            // Score combinado — título 55% + duração 45%
-            let similarity = Math.round((titleSim * 0.55 + durSim * 0.45) * 100);
+            // Score combinado — duração tem peso 60% (mais confiável que título traduzido)
+            let similarity = Math.round((titleSim * 0.40 + durSim * 0.60) * 100);
             if (isColorCaption) similarity = 0;
             similarity = Math.max(0, Math.min(100, similarity));
 
@@ -1981,7 +2032,7 @@ Responda APENAS em JSON válido sem markdown:
               platform:'youtube', similarity, isLikelyOriginal, isColorCaption, isRepost,
               publishedBefore, durDiff, durTooFar: durDiff > 0.40};
           })
-          .filter(v => !v.isColorCaption && !v.durTooFar && v.similarity >= 30) // mínimo 30% de similaridade
+          .filter(v => !v.isColorCaption && !v.durTooFar) // descarta legenda colorida E duração muito diferente
           .sort((a,b) => {
             // Prioridade: publicado antes + sem repost + duração similar + data antiga absoluta
             const pb = (v) => v.publishedBefore ? 50 : 0;
