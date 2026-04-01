@@ -1080,9 +1080,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div id="cancelStep2" style="display:none;text-align:center">
       <div style="font-size:48px;margin-bottom:16px">🤖</div>
       <div style="font-size:16px;font-weight:700;margin-bottom:8px">Espera! Temos uma oferta especial</div>
-      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Como você é um cliente especial, queremos oferecer <strong style="color:var(--neon)">$3 de desconto</strong> na sua próxima mensalidade.</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Como você é um cliente especial, queremos oferecer <strong style="color:var(--neon)">R$20 de desconto</strong> na sua próxima mensalidade.</div>
       <div style="background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:12px;padding:18px;margin-bottom:20px">
-        <div style="font-size:28px;font-weight:800;color:var(--neon)" id="discountPrice">$6,99</div>
+        <div style="font-size:28px;font-weight:800;color:var(--neon)" id="discountPrice">R$39,90</div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">no próximo mês · depois volta ao normal</div>
       </div>
       <div style="display:flex;gap:10px">
@@ -1172,10 +1172,10 @@ function setModalBilling(annual){
   const fullEl=document.getElementById('modalFullPrice');
   const masterEl=document.getElementById('modalMasterPrice');
   if(fullEl)fullEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$7,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$89,99 cobrado anualmente</span>'
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$44,90</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$538,80 cobrado anualmente</span>'
     :'R$59,90<span>/mês</span>';
   if(masterEl)masterEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$19,99</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$239,88 cobrado anualmente</span>'
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$134,90</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$1.618,80 cobrado anualmente</span>'
     :'R$179,90<span>/mês</span>';
 }
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
@@ -1328,16 +1328,16 @@ function toggleBilling(annual){
   if(annual){
     document.getElementById('fullPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">$7<span style="color:#fbbf24">,49/mês</span></div>
+        <div class="plan-amount" style="color:#fbbf24">R$44<span style="color:#fbbf24">,90/mês</span></div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$59,90</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">$89,99 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">R$538,80 cobrado anualmente</div>`;
     document.getElementById('masterPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">$19<span style="color:#fbbf24">,99/mês</span></div>
+        <div class="plan-amount" style="color:#fbbf24">R$134<span style="color:#fbbf24">,90/mês</span></div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$179,90</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">$239,88 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">R$1.618,80 cobrado anualmente</div>`;
     document.getElementById('planBoxFull').classList.add('annual');
     document.getElementById('planBoxMaster').classList.add('annual');
   }else{
@@ -2377,7 +2377,7 @@ function confirmCancelStep2(){
   fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:reason.value==='other'?other:'Cancelamento: '+reason.value,type:'cancel'})
   }).catch(()=>{});
-  const discountPrice=userPlan==='master'?'$26,99':'$6,99';
+  const discountPrice=userPlan==='master'?'R$159,90':'R$39,90';
   document.getElementById('discountPrice').textContent=discountPrice;
   document.getElementById('cancelStep1').style.display='none';
   document.getElementById('cancelStep2').style.display='block';
