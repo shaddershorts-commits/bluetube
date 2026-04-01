@@ -164,9 +164,13 @@ export default async function handler(req, res) {
         weekly: weeklyVisits,
       },
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
-      latest_cancellation: subscribers
-        .filter(s => s.plan === 'free' && s.updated_at)
-        .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at))[0] || null,
+      latest_cancellation: (() => {
+        try {
+          return subscribers
+            .filter(s => s.plan === 'free' && s.updated_at && s.updated_at !== s.created_at)
+            .sort((a,b) => new Date(b.updated_at||0) - new Date(a.updated_at||0))[0] || null;
+        } catch(e) { return null; }
+      })(),
       latest_signup: recentSubs[0] || null, // último cadastro (qualquer plano)
       recent_signups: recentSubs, // últimos 10 cadastros
       bluescore: {
