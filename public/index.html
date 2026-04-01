@@ -5,23 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>BlueTube — Transcritor de YouTube Shorts</title>
 <meta name="description" content="Cole qualquer link de YouTube Shorts e receba transcrição + 2 roteiros virais prontos para narrar."/>
-<!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '1664311805021782');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=1664311805021782&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -1396,16 +1379,6 @@ async function handleUpgradeClick(plan){
 
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
-  // Meta Pixel — InitiateCheckout: usuário clicou em assinar
-  if(typeof fbq !== 'undefined'){
-    const values = {full: 59.90, master: 179.90};
-    fbq('track', 'InitiateCheckout', {
-      value: values[plan] || 0,
-      currency: 'BRL',
-      content_name: plan,
-      content_category: billing
-    });
-  }
   try{
     const r=await fetch('/api/create-checkout',{
       method:'POST',
@@ -1516,8 +1489,6 @@ async function handleEmailSignup(){
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     }
     setAuthMsg('Conta criada com sucesso! 🎉','ok');
-    // Meta Pixel — Lead: novo cadastro por email
-    if(typeof fbq !== 'undefined') fbq('track', 'Lead', {content_name: 'signup_email'});
     setTimeout(async()=>{
       closeAuthModal();
       await checkSession();
@@ -1571,13 +1542,20 @@ function signalCopy(videoId){
 // ── IP LIMIT ───────────────────────────────────────────────────────────────
 async function checkAndIncrementLimit(){
   try{
-    const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment'})});
+    // Master = ilimitado — bypass TOTAL antes de qualquer requisição
+    const _localPlan = userPlan || localStorage.getItem('bt_plan') || 'free';
+    if(_localPlan === 'master') return true;
+
+    const token=localStorage.getItem('bt_token');
+    const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment',token})});
     const d=await r.json();
     dailyUsed=d.used||0;dailyLimit=d.limit||2;
     const _rp=d.plan||'free',_cp=userPlan||localStorage.getItem('bt_plan')||'free';
     if({free:0,full:1,master:2}[_rp]>({free:0,full:1,master:2}[_cp]||0)){userPlan=_rp;localStorage.setItem('bt_plan',_rp);}
     const _eff=userPlan||localStorage.getItem('bt_plan')||'free';
-    if(!d.allowed&&_eff!=='master'){
+    // Double-check: se plano efetivo for master, nunca bloqueia
+    if(_eff==='master') return true;
+    if(!d.allowed){
       if(_eff==='full'){openUpgradeModal('limit_full');}
       else{openUpgradeModal('limit_free');}
       return false;
@@ -1872,20 +1850,6 @@ async function checkSession(){
       const planData=await planRes.json();
       userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
-      // Meta Pixel — Purchase: detecta upgrade de free para pago
-      const prevPlan = localStorage.getItem('bt_last_known_plan') || 'free';
-      if((userPlan === 'full' || userPlan === 'master') && prevPlan === 'free' && !localStorage.getItem('bt_purchase_tracked')){
-        const purchaseValues = {full: 59.90, master: 179.90};
-        if(typeof fbq !== 'undefined'){
-          fbq('track', 'Purchase', {
-            value: purchaseValues[userPlan] || 0,
-            currency: 'BRL',
-            content_name: userPlan
-          });
-        }
-        localStorage.setItem('bt_purchase_tracked', '1');
-      }
-      localStorage.setItem('bt_last_known_plan', userPlan);
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
@@ -2032,11 +1996,6 @@ async function handleOAuthCallback(){
 
       // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
       localStorage.setItem('bt_token', accessToken);
-      // Meta Pixel — Lead: primeiro acesso via OAuth (Google/social)
-      if(typeof fbq !== 'undefined' && !localStorage.getItem('bt_oauth_tracked')){
-        fbq('track', 'Lead', {content_name: 'signup_google'});
-        localStorage.setItem('bt_oauth_tracked', '1');
-      }
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
