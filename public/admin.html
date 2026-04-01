@@ -123,17 +123,17 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div onclick="selectEditPlan('free')" id="editOptFree" style="border:2px solid rgba(150,190,230,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">🆓</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600">Free</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$0</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$0</div>
       </div>
       <div onclick="selectEditPlan('full')" id="editOptFull" style="border:2px solid rgba(0,170,255,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">⚡</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--neon)">Full</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$9,99</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$59,90</div>
       </div>
       <div onclick="selectEditPlan('master')" id="editOptMaster" style="border:2px solid rgba(251,191,36,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">👑</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:#fbbf24">Master</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">$29,99</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$179,90</div>
       </div>
     </div>
     <button onclick="saveEditPlan()" style="width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px">Salvar alteração →</button>
@@ -177,29 +177,29 @@ tr:hover td{background:rgba(0,170,255,0.02)}
   <div class="content">
     <div class="page-header">
       <div class="page-title">Dashboard</div>
-      <div class="page-sub">Atualiza automaticamente a cada 30 segundos · <span id="nextRefresh">—</span></div>
+      <div class="page-sub">Atualiza automaticamente a cada 15 segundos · <span id="nextRefresh">—</span></div>
     </div>
 
     <!-- REVENUE -->
     <div class="revenue-bar">
       <div class="revenue-item">
         <div class="revenue-label">MRR — Receita mensal</div>
-        <div class="revenue-value mrr" id="revMRR">$0,00</div>
+        <div class="revenue-value mrr" id="revMRR">R$0,00</div>
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
         <div class="revenue-label">ARR — Receita anual projetada</div>
-        <div class="revenue-value arr" id="revARR">$0,00</div>
+        <div class="revenue-value arr" id="revARR">R$0,00</div>
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Full ($9,99 × assinantes)</div>
-        <div class="revenue-value" style="color:var(--neon);font-size:22px" id="revFull">$0,00</div>
+        <div class="revenue-label">Full (R$59,90 × assinantes)</div>
+        <div class="revenue-value" style="color:var(--neon);font-size:22px" id="revFull">R$0,00</div>
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Master ($29,99 × assinantes)</div>
-        <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">$0,00</div>
+        <div class="revenue-label">Master (R$179,90 × assinantes)</div>
+        <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">R$0,00</div>
       </div>
     </div>
 
@@ -237,15 +237,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="stat-card">
         <div class="stat-label">Plano Grátis</div>
         <div class="stat-value" id="statFree">—</div>
-        <div class="stat-sub">$0/mês</div>
+        <div class="stat-sub">R$0/mês</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Full $9,99</div>
+        <div class="stat-label">Plano Full R$59,90</div>
         <div class="stat-value blue" id="statFull">—</div>
         <div class="stat-sub" id="statFullRev">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Master $29,99</div>
+        <div class="stat-label">Plano Master R$179,90</div>
         <div class="stat-value yellow" id="statMaster">—</div>
         <div class="stat-sub" id="statMasterRev">—</div>
       </div>
@@ -274,8 +274,8 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="plan-tool">
         <input class="plan-input" id="planEmail" type="email" placeholder="email@exemplo.com"/>
         <select class="plan-select" id="planType">
-          <option value="full">⚡ Full — $9,99/mês</option>
-          <option value="master">👑 Master — $29,99/mês</option>
+          <option value="full">⚡ Full — R$59,90/mês</option>
+          <option value="master">👑 Master — R$179,90/mês</option>
           <option value="free">↓ Rebaixar para Free</option>
         </select>
         <button class="plan-btn" onclick="setPlan()">Liberar acesso →</button>
@@ -443,7 +443,7 @@ let refreshInterval=null;
 let nextRefreshSecs=30;
 let allSubscribers=[];
 
-function fmt(n){return'R$'+Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')}
+function fmt(n){return'R$'+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 
 function doLogin(){
   const key=document.getElementById('adminKey').value.trim();
@@ -708,8 +708,6 @@ async function loadData(){
 
     // Start auto-refresh
     if(!refreshInterval) startAutoRefresh();
-    // Realtime: detecta novos cadastros via polling rápido
-    startRealtimeWatch();
 
   }catch(err){
     console.error('Admin loadData error:', err);
@@ -722,6 +720,29 @@ async function loadData(){
       document.getElementById('loginErr').textContent='Erro ao conectar. Verifique a chave e tente novamente.';
     }
   }
+}
+
+
+let _lastTotal=0,_rtInt=null;
+function startRealtimeWatch(){
+  if(_rtInt)clearInterval(_rtInt);
+  _rtInt=setInterval(async()=>{
+    try{
+      const r=await fetch('/api/admin?action=stats',{headers:{'Authorization':'Bearer '+adminSecret}});
+      if(!r.ok)return;
+      const d=await r.json();
+      const t=d.subscribers?.total||0;
+      if(_lastTotal>0&&t>_lastTotal){
+        const diff=t-_lastTotal;
+        const el=document.createElement('div');
+        el.style.cssText='position:fixed;top:20px;right:20px;z-index:9999;background:rgba(10,22,40,.98);border:1px solid rgba(78,204,163,.5);border-radius:14px;padding:14px 20px;font-family:var(--mono);font-size:12px;color:#4ecca3;box-shadow:0 0 30px rgba(78,204,163,.2);animation:slideIn .3s ease;max-width:280px';
+        el.innerHTML='<div style="font-size:14px;font-weight:700;margin-bottom:4px">🎉 +'+diff+' novo'+(diff>1?'s':'')+' cadastro'+(diff>1?'s':'')+'!</div>'+(d.latest_signup?'<div style="opacity:.7;font-size:11px">'+(d.latest_signup.email||d.latest_subscriber?.email||'')+'</div>':'');
+        document.body.appendChild(el);setTimeout(()=>el.remove(),5000);
+        loadData();
+      }
+      _lastTotal=t;
+    }catch(e){}
+  },8000);
 }
 
 function startAutoRefresh(){
@@ -836,39 +857,6 @@ function exportCSV(){
   });
   a.click();URL.revokeObjectURL(a.href);
 }
-
-// ── REALTIME: monitora novos cadastros ───────────────────────────────────────
-let _lastTotal = 0;
-let _realtimeInterval = null;
-function startRealtimeWatch(){
-  if(_realtimeInterval) clearInterval(_realtimeInterval);
-  _realtimeInterval = setInterval(async ()=>{
-    try{
-      const r = await fetch('/api/admin?action=stats',{
-        headers:{'Authorization':'Bearer '+adminSecret}
-      });
-      if(!r.ok) return;
-      const d = await r.json();
-      const newTotal = d.subscribers?.total || 0;
-      if(_lastTotal > 0 && newTotal > _lastTotal){
-        const diff = newTotal - _lastTotal;
-        showNewSignupAlert(diff, d.latest_signup || d.latest_subscriber);
-        loadData(); // refresh completo
-      }
-      _lastTotal = newTotal;
-    }catch(e){}
-  }, 8000); // verifica a cada 8 segundos
-}
-
-function showNewSignupAlert(count, latest){
-  const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;background:rgba(10,22,40,.98);border:1px solid rgba(78,204,163,.5);border-radius:14px;padding:14px 20px;font-family:var(--mono);font-size:12px;color:#4ecca3;box-shadow:0 0 30px rgba(78,204,163,.2);animation:slideIn .3s ease;max-width:280px';
-  el.innerHTML = '<div style="font-size:14px;font-weight:700;margin-bottom:4px">🎉 +'+ count +' novo'+(count>1?'s':'')+' cadastro'+(count>1?'s':'')+'!</div>'
-    + (latest ? '<div style="opacity:.7;font-size:11px">'+(latest.email||'')+'</div>' : '');
-  document.body.appendChild(el);
-  setTimeout(()=>el.remove(), 5000);
-}
-
 </script>
 </body>
 </html>
