@@ -56,7 +56,12 @@ export default async function handler(req, res) {
         (o1===45&&[33,56].includes(o2)) ||                // Linode
         (o1===173&&o2===230) || (o1===172&&o2===104) ||   // Linode
         (o1===169&&o2===197) ||                            // Datacenter
-        (o1===34&&o2===86) || (o1===35&&o2===186);        // GCP bots
+        (o1===34&&o2===86) || (o1===35&&o2===186) ||     // GCP bots
+        (o1===24&&o2===144) ||                              // DigitalOcean
+        (o1===134&&o2===199) ||                             // DigitalOcean
+        (o1===184&&o2===169) ||                             // AWS us-west
+        (o1===204&&o2===236) ||                             // AWS us-west
+        (o1===54&&o2===176);                                // AWS us-west
       if (isBot) return res.status(200).json({ ok: false, reason: 'bot' });
 
       const now = new Date().toISOString();
