@@ -167,11 +167,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <span id="onlineCount">—</span> online agora
         <span style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;flex-shrink:0"></span>
       </div>
-      <div class="refresh-indicator" style="gap:12px">
-        <span class="pulse"></span>
-        <span id="lastUpdate">Carregando…</span>
-        <button onclick="loadData()" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.25);border-radius:6px;padding:3px 10px;font-family:var(--mono);font-size:10px;color:var(--neon);cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(0,170,255,.2)'" onmouseout="this.style.background='rgba(0,170,255,.1)'">↻ Atualizar agora</button>
-      </div>
+      <div class="refresh-indicator"><span class="pulse"></span><span id="lastUpdate">Carregando…</span></div>
       <button class="action-btn" onclick="loadData()">↻ Atualizar</button>
       <button class="action-btn" onclick="exportCSV()">↓ Exportar CSV</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
@@ -181,7 +177,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
   <div class="content">
     <div class="page-header">
       <div class="page-title">Dashboard</div>
-      <div class="page-sub">Atualiza automaticamente a cada 15 segundos · <span id="nextRefresh">—</span></div>
+      <div class="page-sub">Atualiza automaticamente a cada 30 segundos · <span id="nextRefresh">—</span></div>
     </div>
 
     <!-- REVENUE -->
@@ -362,7 +358,7 @@ function renderMonthlyChart(subscribers){
     const label=`${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
     if(!months[key])months[key]={label,count:0,mrr:0};
     months[key].count++;
-    months[key].mrr+=s.plan==='master'?29.99:9.99;
+    months[key].mrr+=s.plan==='master'?179.90:59.90;
   });
 
   const sorted=Object.keys(months).sort();
@@ -409,7 +405,7 @@ function renderMonthlyChart(subscribers){
 function showNewSubscriberPopup(subscriber){
   const planIcon=subscriber.plan==='master'?'👑':'⚡';
   const planColor=subscriber.plan==='master'?'#fbbf24':'#00aaff';
-  const planPrice=subscriber.plan==='master'?'$29,99':'$9,99';
+  const planPrice=subscriber.plan==='master'?'R$179,90':'R$59,90';
 
   // Create popup
   const popup=document.createElement('div');
@@ -444,10 +440,10 @@ function showNewSubscriberPopup(subscriber){
   setTimeout(()=>popup.remove(),8000);
 }
 let refreshInterval=null;
-let nextRefreshSecs=15;
+let nextRefreshSecs=30;
 let allSubscribers=[];
 
-function fmt(n){return'$'+Number(n).toFixed(2).replace('.',',')}
+function fmt(n){return'R$'+Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')}
 
 function doLogin(){
   const key=document.getElementById('adminKey').value.trim();
@@ -547,26 +543,27 @@ async function loadData(){
     }
     if(latest) lastKnownSubscriberId = latest.email;
 
-    // 📊 BlueScore — sempre renderiza
-    const bsEl = document.getElementById('bluescoreStats');
-    if(bsEl){
-      const bsTotal = d.bluescore?.total_analyses||0;
-      const bsList  = d.bluescore?.recent||[];
-      bsEl.style.display = 'block';
-      bsEl.innerHTML = `
-        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
-          <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES (20 mais recentes)</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${bsTotal}</div></div>
-          <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">SCORE MÉDIO</div><div style="font-size:22px;font-weight:800;color:var(--yellow)">${d.bluescore?.avg_score||0}/100</div></div>
-        </div>
-        ${bsList.length ? `<table><thead><tr><th>Canal</th><th>Score</th><th>Classificação</th><th>Views Médias</th><th>Quando</th></tr></thead>
-        <tbody>${bsList.map(a=>`<tr>
-          <td style="color:var(--text)">${a.channel_name||'—'}</td>
-          <td><span style="font-weight:800;color:${a.score>=70?'var(--green)':a.score>=50?'var(--yellow)':'var(--red)'}">${a.score||0}</span></td>
-          <td style="color:var(--dim);font-size:11px">${a.classification||'—'}</td>
-          <td style="color:var(--dim)">${a.avg_views?Number(a.avg_views).toLocaleString('pt-BR'):'—'}</td>
-          <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
-        </tr>`).join('')}</tbody></table>`
-        : '<div class="empty-state">Nenhuma análise de canal registrada ainda.</div>'}`;
+    // 📊 BlueScore stats
+    if(d.bluescore?.total_analyses > 0){
+      const bsEl = document.getElementById('bluescoreStats');
+      if(bsEl){
+        bsEl.innerHTML = `
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">ANÁLISES (30 dias)</div><div style="font-size:22px;font-weight:800;color:var(--neon)">${d.bluescore.total_analyses}</div></div>
+            <div><div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px">SCORE MÉDIO</div><div style="font-size:22px;font-weight:800;color:var(--yellow)">${d.bluescore.avg_score}/100</div></div>
+          </div>
+          <table><thead><tr><th>Canal</th><th>Score</th><th>Classificação</th><th>Views Médias</th><th>Quando</th></tr></thead>
+          <tbody>${(d.bluescore.recent||[]).map(a=>`
+            <tr>
+              <td style="color:var(--text)">${a.channel_name||'—'}</td>
+              <td><span style="font-weight:800;color:${a.score>=70?'var(--green)':a.score>=50?'var(--yellow)':'var(--red)'}">${a.score||0}</span></td>
+              <td style="color:var(--dim);font-size:11px">${a.classification||'—'}</td>
+              <td style="color:var(--dim)">${a.avg_views?Number(a.avg_views).toLocaleString('pt-BR'):'—'}</td>
+              <td style="color:var(--dim);font-size:11px">${a.analyzed_at?new Date(a.analyzed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+            </tr>`).join('')}
+          </tbody></table>`;
+        bsEl.style.display = 'block';
+      }
     }
 
     // 🤝 Afiliados
@@ -711,6 +708,8 @@ async function loadData(){
 
     // Start auto-refresh
     if(!refreshInterval) startAutoRefresh();
+    // Realtime: detecta novos cadastros via polling rápido
+    startRealtimeWatch();
 
   }catch(err){
     console.error('Admin loadData error:', err);
@@ -837,6 +836,39 @@ function exportCSV(){
   });
   a.click();URL.revokeObjectURL(a.href);
 }
+
+// ── REALTIME: monitora novos cadastros ───────────────────────────────────────
+let _lastTotal = 0;
+let _realtimeInterval = null;
+function startRealtimeWatch(){
+  if(_realtimeInterval) clearInterval(_realtimeInterval);
+  _realtimeInterval = setInterval(async ()=>{
+    try{
+      const r = await fetch('/api/admin?action=stats',{
+        headers:{'Authorization':'Bearer '+adminSecret}
+      });
+      if(!r.ok) return;
+      const d = await r.json();
+      const newTotal = d.subscribers?.total || 0;
+      if(_lastTotal > 0 && newTotal > _lastTotal){
+        const diff = newTotal - _lastTotal;
+        showNewSignupAlert(diff, d.latest_signup || d.latest_subscriber);
+        loadData(); // refresh completo
+      }
+      _lastTotal = newTotal;
+    }catch(e){}
+  }, 8000); // verifica a cada 8 segundos
+}
+
+function showNewSignupAlert(count, latest){
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;background:rgba(10,22,40,.98);border:1px solid rgba(78,204,163,.5);border-radius:14px;padding:14px 20px;font-family:var(--mono);font-size:12px;color:#4ecca3;box-shadow:0 0 30px rgba(78,204,163,.2);animation:slideIn .3s ease;max-width:280px';
+  el.innerHTML = '<div style="font-size:14px;font-weight:700;margin-bottom:4px">🎉 +'+ count +' novo'+(count>1?'s':'')+' cadastro'+(count>1?'s':'')+'!</div>'
+    + (latest ? '<div style="opacity:.7;font-size:11px">'+(latest.email||'')+'</div>' : '');
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 5000);
+}
+
 </script>
 </body>
 </html>
