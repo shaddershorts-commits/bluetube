@@ -92,22 +92,13 @@ export default async function handler(req, res) {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // safeJson: always returns an array, never throws
-    const safeJson = async (resPromise, fallback) => {
+    const safeJson = async (resPromise) => {
       try {
         const res = await resPromise;
-        if (!res || !res.ok) {
-          if (res) {
-            const errText = await res.text().catch(() => '');
-            console.error('safeJson error', res.status, errText.slice(0, 200));
-          }
-          return fallback !== undefined ? fallback : [];
-        }
+        if (!res || !res.ok) return [];
         const data = await res.json();
-        return Array.isArray(data) ? data : (data && typeof data === 'object' ? data : (fallback !== undefined ? fallback : []));
-      } catch(e) {
-        console.error('safeJson exception:', e.message);
-        return fallback !== undefined ? fallback : [];
-      }
+        return Array.isArray(data) ? data : [];
+      } catch(e) { return []; }
     };
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,10 +146,10 @@ export default async function handler(req, res) {
         list: subscribers
       },
       revenue: {
-        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 59.90) +
-                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 179.90),
-        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 59.90,
-        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 179.90
+        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 27.00) +
+                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 97.00),
+        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 27.00,
+        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99
       },
       today: {
         active_ips: todayUsage.length,
@@ -175,15 +166,10 @@ export default async function handler(req, res) {
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
       latest_cancellation: (() => {
         try {
-          return subscribers
-            .filter(s => {
-              if (s.plan !== 'free') return false;
-              if (!s.stripe_customer_id) return false;
-              if (!s.updated_at || !s.created_at) return false;
-              return (new Date(s.updated_at) - new Date(s.created_at)) > 60 * 60 * 1000;
-            })
-            .sort((a,b) => new Date(b.updated_at||0) - new Date(a.updated_at||0))[0] || null;
-        } catch(e) { return null; }
+          return subscribers.filter(s => s.plan==='free' && s.stripe_customer_id && s.updated_at && s.created_at
+            && (new Date(s.updated_at)-new Date(s.created_at)) > 3600000)
+            .sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0]||null;
+        } catch(e){return null;}
       })(),
       latest_signup: recentSubs[0] || null, // último cadastro (qualquer plano)
       recent_signups: recentSubs, // últimos 10 cadastros
@@ -198,7 +184,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json(stats);
   } catch (err) {
-    console.error('Admin error:', err.message, err.stack?.slice(0,300));
+    console.error('Admin error:', err);
     return res.status(500).json({ error: 'Failed to fetch admin data: ' + err.message });
   }
 }
