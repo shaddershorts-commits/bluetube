@@ -146,10 +146,10 @@ export default async function handler(req, res) {
         list: subscribers
       },
       revenue: {
-        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99) +
-                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99),
-        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 9.99,
-        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99
+        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 59.90) +
+                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 179.90),
+        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 59.90,
+        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 179.90
       },
       today: {
         active_ips: todayUsage.length,
@@ -164,6 +164,9 @@ export default async function handler(req, res) {
         weekly: weeklyVisits,
       },
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
+      latest_cancellation: subscribers
+        .filter(s => s.plan === 'free' && s.updated_at)
+        .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at))[0] || null,
       latest_signup: recentSubs[0] || null, // último cadastro (qualquer plano)
       recent_signups: recentSubs, // últimos 10 cadastros
       bluescore: {
