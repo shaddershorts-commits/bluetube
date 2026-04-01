@@ -2,9 +2,26 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
 <title>BlueTube — Transcritor de YouTube Shorts</title>
 <meta name="description" content="Cole qualquer link de YouTube Shorts e receba transcrição + 2 roteiros virais prontos para narrar."/>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1664311805021782');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1664311805021782&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -278,7 +295,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   .fomo-popup{max-width:260px;padding:10px 12px}
 }
 .nav-tools-group{display:flex;gap:4px}
-.nav-tool-btn{font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:7px;padding:6px 10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.nav-tool-btn{font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:7px;padding:6px 8px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;position:relative;white-space:nowrap;min-width:32px}
+.nav-tool-tip{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(2,8,23,.97);border:1px solid rgba(0,170,255,.25);border-radius:8px;padding:5px 10px;font-family:var(--font-mono);font-size:11px;color:var(--text);white-space:nowrap;pointer-events:none;z-index:500}
+.nav-tool-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:rgba(0,170,255,.25)}
+.nav-tool-btn:hover .nav-tool-tip{display:block}
 .nav-tool-btn:hover{background:rgba(0,170,255,0.12);border-color:rgba(0,170,255,0.35);transform:translateY(-1px)}
 .nav-user-btn{display:flex;align-items:center;gap:7px;background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.15);border-radius:8px;padding:5px 12px 5px 6px;cursor:pointer;transition:all .2s}
 .nav-user-btn:hover{border-color:rgba(0,170,255,0.35);background:rgba(0,170,255,0.1)}
@@ -337,6 +357,31 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   .nav-tools-group{display:none}
   .nav-user-email{display:none}
   .mobile-tools-btn{display:flex}
+  .nav-community-label{display:none}
+  .nav-login-btn{font-size:11px;padding:6px 10px}
+  .nav-upgrade-btn{font-size:11px;padding:6px 10px}
+}
+@media(max-width:480px){
+  nav{padding:10px 12px}
+  .logo-tagline{display:none}
+  .mobile-tools-btn{padding:5px 8px;font-size:10px}
+  .hero-title{font-size:clamp(30px,10vw,50px)!important}
+}
+@media(max-width:480px){
+  /* Nav compacto — só logo + ícones essenciais */
+  nav{padding:10px 14px}
+  .nav-login-btn span,.nav-upgrade-btn span{display:none} /* esconde texto, mantém ícone */
+  .logo-sub{display:none}
+  .hero-title{font-size:clamp(30px,10vw,48px)!important;letter-spacing:-1px}
+  .hero{padding:70px 14px 40px}
+  .main-card{padding:16px 12px;border-radius:14px}
+  .input-row,.options-row{flex-direction:column;gap:8px}
+  .btn-go{width:100%;padding:13px}
+  .url-input{font-size:13px}
+  /* Peças de xadrez — remove do mobile */
+  .chess-piece-1{display:none!important}
+  .chess-piece-2{display:none!important}
+  .chess-piece-3{display:none!important}
 }
 @media(max-width:480px){
   .hero-title{font-size:clamp(32px,10vw,52px)!important}
@@ -458,30 +503,29 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="nav-tools-group" id="navToolsGroup">
       <button class="nav-tool-btn locked-tool" onclick="openMasterTool('download')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Baixar <span style="font-size:9px">🔒</span>
+        <span class="nav-tool-tip">⬇️ BaixaBlue</span>
       </button>
       <button class="nav-tool-btn locked-tool" onclick="openMasterTool('viral')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        Virais <span style="font-size:9px">🔒</span>
+        <span class="nav-tool-tip">🔥 Virais</span>
       </button>
       <button class="nav-tool-btn locked-tool" onclick="openMasterTool('voice')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        Voz IA <span style="font-size:9px">🔒</span>
+        <span class="nav-tool-tip">🎙️ BlueVoice</span>
       </button>
       <button class="nav-tool-btn locked-tool" onclick="openMasterTool('bluescore')" style="background:linear-gradient(135deg,rgba(0,80,255,.15),rgba(0,170,255,.08));border-color:rgba(0,170,255,.3)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        BlueScore <span style="font-size:9px">🔒</span>
+        <span class="nav-tool-tip">📊 BlueScore</span>
       </button>
       <button class="nav-tool-btn locked-tool" onclick="openMasterTool('bluelens')" style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(0,170,255,.06));border-color:rgba(167,139,250,.3)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        BlueLens <span style="font-size:9px">🔒</span>
+        <span class="nav-tool-tip">🔍 BlueLens</span>
       </button>
     </div>
     <!-- Mobile: menu suspenso de ferramentas Master -->
     <div style="position:relative">
       <button class="mobile-tools-btn" id="mobileToolsBtn" onclick="toggleMobileTools(event)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Ferramentas
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" id="mobileChevron"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="mobile-tools-dropdown" id="mobileToolsDropdown">
@@ -521,7 +565,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 
     <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Comunidade
+      <span class="nav-community-label">Comunidade</span>
       <span id="communityLock" style="font-size:10px">🔒</span>
     </button>
     <button class="nav-login-btn" onclick="openAuthModal()">Entrar</button>
@@ -1403,6 +1447,16 @@ async function handleUpgradeClick(plan){
 
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
+  // Meta Pixel — InitiateCheckout: usuário indo para o Stripe
+  if(typeof fbq !== 'undefined'){
+    const values = {full: 59.90, master: 179.90};
+    fbq('track', 'InitiateCheckout', {
+      value: values[plan] || 0,
+      currency: 'BRL',
+      content_name: plan,
+      content_category: billing
+    });
+  }
   try{
     const r=await fetch('/api/create-checkout',{
       method:'POST',
@@ -1513,6 +1567,8 @@ async function handleEmailSignup(){
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     }
     setAuthMsg('Conta criada com sucesso! 🎉','ok');
+    // Meta Pixel — Lead: cadastro por email
+    if(typeof fbq !== 'undefined') fbq('track', 'Lead', {content_name: 'signup_email'});
     setTimeout(async()=>{
       closeAuthModal();
       await checkSession();
@@ -1874,6 +1930,20 @@ async function checkSession(){
       const planData=await planRes.json();
       userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
+      // Meta Pixel — Purchase: detecta upgrade free → pago
+      const prevPlan = localStorage.getItem('bt_last_known_plan') || 'free';
+      if((userPlan==='full'||userPlan==='master') && prevPlan==='free' && !localStorage.getItem('bt_purchase_tracked')){
+        const purchaseValues = {full: 59.90, master: 179.90};
+        if(typeof fbq !== 'undefined'){
+          fbq('track', 'Purchase', {
+            value: purchaseValues[userPlan] || 0,
+            currency: 'BRL',
+            content_name: userPlan
+          });
+        }
+        localStorage.setItem('bt_purchase_tracked', '1');
+      }
+      localStorage.setItem('bt_last_known_plan', userPlan);
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
@@ -2020,6 +2090,11 @@ async function handleOAuthCallback(){
 
       // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
       localStorage.setItem('bt_token', accessToken);
+      // Meta Pixel — Lead: cadastro/login via Google
+      if(typeof fbq !== 'undefined' && !localStorage.getItem('bt_oauth_tracked')){
+        fbq('track', 'Lead', {content_name: 'signup_google'});
+        localStorage.setItem('bt_oauth_tracked', '1');
+      }
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
