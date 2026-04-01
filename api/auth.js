@@ -1229,12 +1229,21 @@ Responda APENAS em JSON válido sem markdown:
         }
       }
 
-      // If email confirmation is enabled in Supabase, session will be null
+      // Confirmação desativada — faz login automático após cadastro
       if (!data.session) {
-        return res.status(200).json({
-          needsConfirmation: true,
-          message: 'Conta criada! Verifique seu email e clique no link de confirmação.'
-        });
+        // Tenta fazer signin imediato para obter a sessão
+        try {
+          const signinR = await fetch(authBase + '/token?grant_type=password', {
+            method: 'POST', headers,
+            body: JSON.stringify({ email, password })
+          });
+          const signinD = await signinR.json();
+          if (signinD.access_token) {
+            return res.status(200).json({ user: data.user, session: signinD });
+          }
+        } catch(e) {}
+        // Se falhar, retorna sem sessão mas sem pedir confirmação
+        return res.status(200).json({ user: data.user, session: null, autoLoginFailed: true });
       }
       return res.status(200).json({ user: data.user, session: data.session });
     }
