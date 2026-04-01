@@ -1437,29 +1437,21 @@ async function handleEmailSignup(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:(()=>{const c=document.cookie.split(';').find(x=>x.trim().startsWith('bt_ref='));return c?c.split('=')[1].trim():null;})()} )});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
-    if(d.needsConfirmation){
-      // Save pending plan to localStorage so it survives email confirmation redirect
-      if(pendingUpgradePlan){
-        localStorage.setItem('bt_pending_plan', pendingUpgradePlan);
-        localStorage.setItem('bt_pending_billing', pendingUpgradeBilling||'monthly');
-      }
-      showOTPForm(email);
-      setAuthMsg(pendingUpgradePlan
-        ? '✓ Confirme seu email e voltaremos ao pagamento automaticamente!'
-        : 'Código enviado! Verifique seu email.','ok');
-    }else{
-      if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
-      setAuthMsg('Conta criada com sucesso! 🎉','ok');
-      setTimeout(async()=>{
-        closeAuthModal();
-        await checkSession();
-        if(pendingUpgradePlan){
-          const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
-          pendingUpgradePlan=null; pendingUpgradeBilling=null;
-          setTimeout(()=>goToCheckout(plan,billing),800);
-        }
-      },1000);
+    // Confirmação desativada — login direto após cadastro
+    if(d.session?.access_token){
+      localStorage.setItem('bt_token', d.session.access_token);
+      if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     }
+    setAuthMsg('Conta criada com sucesso! 🎉','ok');
+    setTimeout(async()=>{
+      closeAuthModal();
+      await checkSession();
+      if(pendingUpgradePlan){
+        const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
+        pendingUpgradePlan=null; pendingUpgradeBilling=null;
+        setTimeout(()=>goToCheckout(plan,billing),800);
+      }
+    },1000);
   }catch(e){setAuthMsg(e.message,'');}
 }
 async function handleOTPVerify(){
