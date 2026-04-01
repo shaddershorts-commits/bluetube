@@ -12,6 +12,24 @@
 <meta property="og:url" content="https://bluetubeviral.com"/>
 <link rel="canonical" href="https://bluetubeviral.com"/>
 
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1664311805021782');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1664311805021782&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+
 <!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -241,6 +259,46 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
   footer{flex-direction:column;text-align:center}
   .plans-grid{grid-template-columns:1fr}
 }
+
+/* ── SIGNUP MODAL ────────────────────────────────────────────────────────── */
+.bt-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(2,8,23,.92);
+  backdrop-filter:blur(16px);align-items:center;justify-content:center;padding:20px}
+.bt-overlay.on{display:flex;animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.bt-modal{width:100%;max-width:440px;background:rgba(10,22,40,.98);border:1px solid rgba(0,170,255,.25);
+  border-radius:24px;padding:36px 32px;position:relative;overflow:hidden}
+.bt-modal::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;
+  background:linear-gradient(90deg,transparent,#00aaff,transparent)}
+.bt-modal-close{position:absolute;top:16px;right:16px;background:none;border:none;
+  color:rgba(150,190,230,.4);font-size:20px;cursor:pointer;line-height:1;transition:color .2s}
+.bt-modal-close:hover{color:var(--text)}
+.bt-modal-logo{display:flex;align-items:center;gap:8px;margin-bottom:24px}
+.bt-modal-title{font-size:22px;font-weight:800;margin-bottom:6px;letter-spacing:-.5px}
+.bt-modal-sub{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:24px;line-height:1.6}
+.bt-plan-badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;
+  padding:3px 12px;border-radius:100px;margin-bottom:20px;letter-spacing:.06em}
+.bt-plan-badge.free{background:rgba(0,170,255,.12);color:#00aaff;border:1px solid rgba(0,170,255,.2)}
+.bt-plan-badge.full{background:rgba(0,170,255,.12);color:#00aaff;border:1px solid rgba(0,170,255,.2)}
+.bt-plan-badge.master{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25)}
+.bt-field{width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);
+  border-radius:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--text);
+  outline:none;transition:border-color .2s;margin-bottom:12px;box-sizing:border-box}
+.bt-field:focus{border-color:rgba(0,170,255,.5)}
+.bt-field::placeholder{color:rgba(150,190,230,.35)}
+.bt-btn-submit{width:100%;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;
+  border-radius:12px;padding:14px;font-family:var(--display);font-size:14px;font-weight:700;
+  color:#fff;cursor:pointer;transition:all .2s;box-shadow:0 0 24px rgba(0,170,255,.3);margin-top:4px}
+.bt-btn-submit:hover{transform:translateY(-1px);box-shadow:0 0 36px rgba(0,170,255,.5)}
+.bt-btn-submit.gold{background:linear-gradient(135deg,#92400e,#fbbf24);color:#020817;box-shadow:0 0 24px rgba(251,191,36,.3)}
+.bt-btn-submit:disabled{opacity:.6;cursor:wait;transform:none}
+.bt-msg{font-family:var(--mono);font-size:12px;text-align:center;margin-top:10px;min-height:18px}
+.bt-msg.ok{color:#4ecca3}
+.bt-msg.err{color:#ff7a5a}
+.bt-divider{display:flex;align-items:center;gap:10px;margin:16px 0;font-family:var(--mono);font-size:11px;color:rgba(150,190,230,.3)}
+.bt-divider::before,.bt-divider::after{content:'';flex:1;height:1px;background:rgba(0,170,255,.08)}
+.bt-login-link{text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:14px}
+.bt-login-link a{color:#00aaff;text-decoration:none}
+.bt-login-link a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -254,7 +312,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
     </div>
     <span class="logo-text">Blue<span>Tube</span></span>
   </a>
-  <a href="https://bluetubeviral.com/?signup=1" class="nav-cta">Começar Grátis →</a>
+  <a href="#" onclick="openSignupModal('free');return false;" class="nav-cta">Começar Grátis →</a>
 </nav>
 
 <!-- HERO -->
@@ -566,7 +624,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <li class="check">Download .TXT e .SRT</li>
           <li class="check">Sem cartão de crédito</li>
         </ul>
-        <a href="https://bluetubeviral.com/?signup=1" class="btn-plan secondary">Começar grátis →</a>
+        <a href="#" onclick="openSignupModal('free');return false;" class="btn-plan secondary">Começar grátis →</a>
       </div>
 
       <!-- Full -->
@@ -582,7 +640,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <li class="check">Comunidade exclusiva</li>
           <li class="lock">BlueVoice · Virais · BlueLens</li>
         </ul>
-        <a href="https://bluetubeviral.com/?plan=full" class="btn-plan primary">Assinar Full →</a>
+        <a href="#" onclick="openSignupModal('full');return false;" class="btn-plan primary">Assinar Full →</a>
       </div>
 
       <!-- Master -->
@@ -600,7 +658,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <li class="check">⬇️ BaixaBlue — download HD</li>
           <li class="check">Suporte prioritário</li>
         </ul>
-        <a href="https://bluetubeviral.com/?plan=master" class="btn-plan gold">Assinar Master 👑</a>
+        <a href="#" onclick="openSignupModal('master');return false;" class="btn-plan gold">Assinar Master 👑</a>
       </div>
 
     </div>
@@ -675,7 +733,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       Cada dia sem o BlueTube é um dia que outro criador está usando o conteúdo que poderia ser seu.<br>
       Comece agora — são 30 segundos para o seu primeiro roteiro viral.
     </p>
-    <a href="https://bluetubeviral.com/?signup=1" class="btn-primary" style="display:inline-flex;font-size:16px;padding:18px 44px">
+    <a href="#" onclick="openSignupModal('free');return false;" class="btn-primary" style="display:inline-flex;font-size:16px;padding:18px 44px">
       ⚡ Gerar meu primeiro roteiro grátis
     </a>
     <div class="cta-note">✓ Sem cartão de crédito &nbsp;·&nbsp; ✓ Acesso imediato &nbsp;·&nbsp; ✓ 2 roteiros grátis hoje</div>
@@ -694,11 +752,11 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
   <div class="foot-links">
     <a href="https://bluetubeviral.com">Entrar</a>
     <a href="https://bluetubeviral.com#planos">Planos</a>
-    <a href="mailto:contato@bluetubeviral.com">Contato</a>
+    <a href="/cdn-cgi/l/email-protection#43202c2d3722372c03212f362637362126352a31222f6d202c2e">Contato</a>
   </div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // Live count — persisted in session so refreshing shows same number
 const _lsKey = 'bt_live_seed';
 let liveBase = parseInt(sessionStorage.getItem(_lsKey) || '0');
@@ -754,11 +812,196 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
   setInterval(tick, 1000);
 })();
 
-// FAQ
-function toggleFaq(el) {
-  const item = el.parentElement;
-  item.classList.toggle('open');
+// ── SIGNUP MODAL ─────────────────────────────────────────────────────────────
+const SITE = 'https://bluetubeviral.com';
+const API  = SITE + '/api/auth';
+let _pendingPlan = 'free';
+
+const PLAN_LABELS = {
+  free:   { badge: 'PLANO GRÁTIS',   badgeClass: 'free',   title: 'Crie sua conta grátis',      sub: 'Acesso imediato. Sem cartão de crédito.' },
+  full:   { badge: '⚡ PLANO FULL — R$59,90/mês', badgeClass: 'full', title: 'Quase lá! Crie sua conta', sub: 'Após o cadastro, você será direcionado para o pagamento.' },
+  master: { badge: '👑 PLANO MASTER — R$179,90/mês', badgeClass: 'master', title: 'Quase lá! Crie sua conta', sub: 'Após o cadastro, você será direcionado para o pagamento.' },
+};
+
+function openSignupModal(plan) {
+  _pendingPlan = plan || 'free';
+  const info = PLAN_LABELS[_pendingPlan] || PLAN_LABELS.free;
+  const badge = document.getElementById('btPlanBadge');
+  badge.textContent = info.badge;
+  badge.className = 'bt-plan-badge ' + info.badgeClass;
+  document.getElementById('btModalTitle').textContent = info.title;
+  document.getElementById('btModalSub').textContent = info.sub;
+  // Style submit button gold for master
+  const btn = document.getElementById('btSignupBtn');
+  btn.className = 'bt-btn-submit' + (_pendingPlan === 'master' ? ' gold' : '');
+  showSignupForm();
+  document.getElementById('btOverlay').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  // Meta Pixel
+  if(typeof fbq !== 'undefined') {
+    if(plan === 'free') fbq('track', 'Lead', {content_name: 'cta_signup_landing'});
+    else fbq('track', 'InitiateCheckout', {value: plan==='master'?179.90:59.90, currency:'BRL', content_name: plan});
+  }
+  setTimeout(() => document.getElementById('btEmail').focus(), 200);
 }
+
+function closeSignupModal() {
+  document.getElementById('btOverlay').classList.remove('on');
+  document.body.style.overflow = '';
+}
+
+function showSignupForm() {
+  document.getElementById('btSignupForm').style.display = 'block';
+  document.getElementById('btLoginForm').style.display = 'none';
+  document.getElementById('btMsg').textContent = '';
+}
+function showLoginForm() {
+  document.getElementById('btSignupForm').style.display = 'none';
+  document.getElementById('btLoginForm').style.display = 'block';
+  document.getElementById('btLoginMsg').textContent = '';
+}
+
+async function handleSignup() {
+  const email    = document.getElementById('btEmail').value.trim();
+  const password = document.getElementById('btPassword').value;
+  const confirm  = document.getElementById('btConfirm').value;
+  const msg      = document.getElementById('btMsg');
+  const btn      = document.getElementById('btSignupBtn');
+
+  if (!email || !password) { msg.className='bt-msg err'; msg.textContent='Preencha email e senha.'; return; }
+  if (password.length < 6) { msg.className='bt-msg err'; msg.textContent='Senha mínima de 6 caracteres.'; return; }
+  if (password !== confirm) { msg.className='bt-msg err'; msg.textContent='As senhas não coincidem.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Criando conta…';
+  msg.className = 'bt-msg ok'; msg.textContent = 'Aguarde…';
+
+  try {
+    const r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'signup', email, password }) });
+    const d = await r.json();
+
+    if (!r.ok) {
+      msg.className = 'bt-msg err';
+      msg.textContent = d.error || 'Erro ao criar conta.';
+      btn.disabled = false; btn.textContent = 'Criar conta e continuar →';
+      return;
+    }
+
+    // Salva token se vier
+    if (d.session?.access_token) {
+      localStorage.setItem('bt_token', d.session.access_token);
+      if (d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+    }
+
+    msg.className = 'bt-msg ok'; msg.textContent = '✓ Conta criada! Redirecionando…';
+    if(typeof fbq !== 'undefined') fbq('track', 'CompleteRegistration', {content_name: _pendingPlan});
+
+    setTimeout(() => redirectAfterAuth(), 1000);
+  } catch(e) {
+    msg.className = 'bt-msg err'; msg.textContent = 'Erro de conexão. Tente novamente.';
+    btn.disabled = false; btn.textContent = 'Criar conta e continuar →';
+  }
+}
+
+async function handleLogin() {
+  const email    = document.getElementById('btLoginEmail').value.trim();
+  const password = document.getElementById('btLoginPassword').value;
+  const msg      = document.getElementById('btLoginMsg');
+  const btn      = document.getElementById('btLoginBtn');
+
+  if (!email || !password) { msg.className='bt-msg err'; msg.textContent='Preencha email e senha.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  msg.className = 'bt-msg ok'; msg.textContent = 'Aguarde…';
+
+  try {
+    const r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'signin', email, password }) });
+    const d = await r.json();
+
+    if (!r.ok) {
+      msg.className = 'bt-msg err'; msg.textContent = d.error || 'Email ou senha incorretos.';
+      btn.disabled = false; btn.textContent = 'Entrar e continuar →';
+      return;
+    }
+
+    if (d.session?.access_token) {
+      localStorage.setItem('bt_token', d.session.access_token);
+      if (d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+    }
+
+    msg.className = 'bt-msg ok'; msg.textContent = '✓ Login feito! Redirecionando…';
+    setTimeout(() => redirectAfterAuth(), 800);
+  } catch(e) {
+    msg.className = 'bt-msg err'; msg.textContent = 'Erro de conexão. Tente novamente.';
+    btn.disabled = false; btn.textContent = 'Entrar e continuar →';
+  }
+}
+
+function redirectAfterAuth() {
+  if (_pendingPlan === 'free') {
+    // Plano grátis → vai direto para o site
+    window.location.href = SITE;
+  } else {
+    // Plano pago → dispara checkout e redireciona
+    const token = localStorage.getItem('bt_token');
+    fetch(SITE + '/api/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: _pendingPlan, billing: 'monthly', token })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.url) window.location.href = d.url;
+      else window.location.href = SITE; // fallback
+    })
+    .catch(() => window.location.href = SITE);
+  }
+}
+
+// ESC fecha modal
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSignupModal(); });
 </script>
+
+<!-- ── SIGNUP / LOGIN MODAL ─────────────────────────────────────────────── -->
+<div class="bt-overlay" id="btOverlay" onclick="if(event.target===this)closeSignupModal()">
+  <div class="bt-modal">
+    <button class="bt-modal-close" onclick="closeSignupModal()">✕</button>
+
+    <div class="bt-modal-logo">
+      <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a6bff,#00aaff);
+        display:flex;align-items:center;justify-content:center">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M9 8l11 4-11 4V8z"/></svg>
+      </div>
+      <span style="font-size:15px;font-weight:800">Blue<span style="color:#00aaff">Tube</span></span>
+    </div>
+
+    <div id="btPlanBadge" class="bt-plan-badge free">PLANO GRÁTIS</div>
+    <div class="bt-modal-title" id="btModalTitle">Crie sua conta grátis</div>
+    <div class="bt-modal-sub" id="btModalSub">Acesso imediato. Sem cartão de crédito.</div>
+
+    <!-- Signup form -->
+    <div id="btSignupForm">
+      <input class="bt-field" id="btEmail" type="email" placeholder="seu@email.com" autocomplete="email"/>
+      <input class="bt-field" id="btPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)"/>
+      <input class="bt-field" id="btConfirm" type="password" placeholder="Confirmar senha"/>
+      <button class="bt-btn-submit" id="btSignupBtn" onclick="handleSignup()">Criar conta e continuar →</button>
+      <div class="bt-msg" id="btMsg"></div>
+      <div class="bt-divider">ou</div>
+      <div class="bt-login-link">Já tem conta? <a href="#" onclick="showLoginForm();return false">Fazer login</a></div>
+    </div>
+
+    <!-- Login form (hidden) -->
+    <div id="btLoginForm" style="display:none">
+      <input class="bt-field" id="btLoginEmail" type="email" placeholder="seu@email.com" autocomplete="email"/>
+      <input class="bt-field" id="btLoginPassword" type="password" placeholder="Senha"/>
+      <button class="bt-btn-submit" id="btLoginBtn" onclick="handleLogin()">Entrar e continuar →</button>
+      <div class="bt-msg" id="btLoginMsg"></div>
+      <div class="bt-divider">ou</div>
+      <div class="bt-login-link">Não tem conta? <a href="#" onclick="showSignupForm();return false">Criar grátis</a></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
