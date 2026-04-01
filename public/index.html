@@ -510,13 +510,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price" id="modalFullPrice">$9,99<span>/mês</span></div>
+        <div class="plan-price" id="modalFullPrice">R$59,90<span>/mês</span></div>
         <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
       </div>
       <div class="plan-card master-highlight" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price" id="modalMasterPrice">$29,99<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice">R$179,90<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br><span style="color:var(--gold);font-size:10px">★ BlueScore</span> · <span style="color:#a78bfa;font-size:10px">🔍 BlueLens</span></div>
       </div>
     </div>
@@ -541,12 +541,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="modal-plans" style="margin-bottom:20px">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">$9,99<span>/mês</span></div>
+        <div class="plan-price">R$59,90<span>/mês</span></div>
         <div class="plan-features">✓ Todos os idiomas<br>✓ 9 roteiros/dia<br>✓ Comunidade</div>
       </div>
       <div class="plan-card" onclick="selectPlan('master')">
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">$29,99<span>/mês</span></div>
+        <div class="plan-price">R$179,90<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ Voz IA · Download HD<br>✓ Virais · BlueScore ★</div>
       </div>
     </div>
@@ -833,7 +833,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <div class="plan-tag">Mais popular</div>
         <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
         <div id="fullPriceDisplay">
-          <div class="plan-amount">$9<span>,99/mês</span></div>
+          <div class="plan-amount">R$59<span>,90/mês</span></div>
           <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
@@ -852,7 +852,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div class="plan-box" id="planBoxMaster">
         <div class="plan-name" style="color:#fbbf24">👑 Master</div>
         <div id="masterPriceDisplay">
-          <div class="plan-amount">$29<span>,99/mês</span></div>
+          <div class="plan-amount">R$179<span>,90/mês</span></div>
           <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
@@ -886,7 +886,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <!-- Price increase notice -->
     <div class="price-increase-notice">
       <span class="blink-dot"></span>
-      A partir do mês que vem o valor aumentará $10 no Full e $20 no Master. Assine agora!
+      A partir do mês que vem o valor aumentará R$30 no Full e R$60 no Master. Assine agora!
     </div>
   </div>
 </section>
@@ -1127,10 +1127,10 @@ function setModalBilling(annual){
   const masterEl=document.getElementById('modalMasterPrice');
   if(fullEl)fullEl.innerHTML=annual
     ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$7,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$89,99 cobrado anualmente</span>'
-    :'$9,99<span>/mês</span>';
+    :'R$59,90<span>/mês</span>';
   if(masterEl)masterEl.innerHTML=annual
     ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">$19,99</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">$239,88 cobrado anualmente</span>'
-    :'$29,99<span>/mês</span>';
+    :'R$179,90<span>/mês</span>';
 }
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
 
@@ -1253,7 +1253,7 @@ function openUpgradeModal(reason){
       <div class="plan-card master-highlight" style="grid-column:1/-1;max-width:320px;margin:0 auto" onclick="selectPlan('master')">
         <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
         <div class="plan-badge gold" style="margin-top:8px">Master</div>
-        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">$29,99<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">R$179,90<span>/mês</span></div>
         <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid rgba(251,191,36,.4);border-radius:10px;background:rgba(251,191,36,.08)"><span style="color:var(--gold);font-weight:800;font-size:12px">★ BlueScore</span><span style="color:rgba(251,191,36,.8);font-size:11px;font-family:var(--font-mono)">Revelamos a confiança do YouTube no seu canal</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span><span style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;border:1px solid rgba(167,139,250,.35);border-radius:10px;background:rgba(167,139,250,.06)"><span style="color:#a78bfa;font-weight:800;font-size:12px">🔍 BlueLens</span><span style="color:rgba(167,139,250,.8);font-size:11px;font-family:var(--font-mono)">Detecta quem já publicou o mesmo conteúdo</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span></div>
       </div>`;
     document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
@@ -1283,23 +1283,23 @@ function toggleBilling(annual){
     document.getElementById('fullPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
         <div class="plan-amount" style="color:#fbbf24">$7<span style="color:#fbbf24">,49/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">$9,99</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$59,90</div>
       </div>
       <div class="plan-period" style="color:#fbbf24">$89,99 cobrado anualmente</div>`;
     document.getElementById('masterPriceDisplay').innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
         <div class="plan-amount" style="color:#fbbf24">$19<span style="color:#fbbf24">,99/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">$29,99</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$179,90</div>
       </div>
       <div class="plan-period" style="color:#fbbf24">$239,88 cobrado anualmente</div>`;
     document.getElementById('planBoxFull').classList.add('annual');
     document.getElementById('planBoxMaster').classList.add('annual');
   }else{
     document.getElementById('fullPriceDisplay').innerHTML=`
-      <div class="plan-amount">$9<span>,99/mês</span></div>
+      <div class="plan-amount">R$59<span>,90/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     document.getElementById('masterPriceDisplay').innerHTML=`
-      <div class="plan-amount">$29<span>,99/mês</span></div>
+      <div class="plan-amount">R$179<span>,90/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     document.getElementById('planBoxFull').classList.remove('annual');
     document.getElementById('planBoxMaster').classList.remove('annual');
