@@ -559,209 +559,171 @@ export default async function handler(req, res) {
   }
 
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
-  // ── COMMUNITY VOICES — lista vozes da comunidade ─────────────────────────
+  // ── COMMUNITY VOICES ──────────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'community-voices') {
-    const SUPA_URL = process.env.SUPABASE_URL;
-    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-    if (!SUPA_URL || !SUPA_KEY) return res.status(200).json({ voices: [] });
+    const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+    if (!SU || !SK) return res.status(200).json({ voices: [] });
     try {
-      const r = await fetch(
-        SUPA_URL + '/rest/v1/community_voices?select=voice_id,name,provider,uses_count&order=uses_count.desc&limit=50',
-        { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } }
-      );
-      if (!r.ok) return res.status(200).json({ voices: [] });
-      const rows = await r.json();
+      const r = await fetch(SU + '/rest/v1/community_voices?select=voice_id,name,provider,uses_count&order=uses_count.desc&limit=50',
+        { headers: { apikey: SK, Authorization: 'Bearer ' + SK } });
+      const rows = r.ok ? await r.json() : [];
       return res.status(200).json({ voices: Array.isArray(rows) ? rows : [] });
-    } catch(e) {
-      return res.status(200).json({ voices: [] });
-    }
+    } catch(e) { return res.status(200).json({ voices: [] }); }
   }
 
   // ── COMMUNITY VOICE ADD ────────────────────────────────────────────────────
   if (req.method === 'POST' && req.body?.action === 'community-voice-add') {
     const { voiceId, name, provider = 'elevenlabs', userEmail = '' } = req.body;
-    if (!voiceId || !name) return res.status(400).json({ error: 'voiceId e name obrigatórios' });
-    const SUPA_URL = process.env.SUPABASE_URL;
-    const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-    const XI_KEY   = process.env.ELEVENLABS_API_KEY;
-    if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ error: 'Servidor não configurado.' });
-    // Testa se a voz funciona
-    if (provider === 'elevenlabs' && XI_KEY) {
-      const testRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
-        method: 'POST',
-        headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-        body: JSON.stringify({ text: 'Teste.', model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+    if (!voiceId || !name) return res.status(400).json({ error: 'voiceId e name obrigatorios' });
+    const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+    const XI = process.env.ELEVENLABS_API_KEY;
+    if (!SU || !SK) return res.status(500).json({ error: 'Servidor nao configurado.' });
+    if (provider === 'elevenlabs' && XI) {
+      const t = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
+        method: 'POST', headers: { 'xi-api-key': XI, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+        body: JSON.stringify({ text: 'Teste.', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
       });
-      if (!testRes.ok) {
-        const err = await testRes.json().catch(() => ({}));
-        const detail = typeof err?.detail === 'string' ? err.detail : (err?.detail?.message || '');
-        const isPlan = testRes.status === 402 || detail.toLowerCase().includes('upgrade');
-        return res.status(400).json({
-          error: isPlan ? 'Voz de biblioteca — requer upgrade da conta.' : 'Esta voz não está disponível.',
-          planRestriction: isPlan
-        });
-      }
+      if (!t.ok) return res.status(400).json({ error: 'Voz nao disponivel.' });
     }
     try {
-      const supaH = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
-      await fetch(SUPA_URL + '/rest/v1/community_voices', {
-        method: 'POST',
-        headers: { ...supaH, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ voice_id: voiceId, name, provider,
-          added_by: userEmail || 'anon', uses_count: 1, created_at: new Date().toISOString() })
+      const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+      await fetch(SU + '/rest/v1/community_voices', {
+        method: 'POST', headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ voice_id: voiceId, name, provider, added_by: userEmail || 'anon', uses_count: 1, created_at: new Date().toISOString() })
       });
       return res.status(200).json({ ok: true, shared: true });
-    } catch(e) {
-      return res.status(500).json({ error: 'Erro ao salvar voz.' });
-    }
+    } catch(e) { return res.status(500).json({ error: 'Erro ao salvar voz.' }); }
   }
 
-  // ── GERAR DO ZERO — Gemini assiste o vídeo + memória viva ──────────────────
-  if (req.method === 'POST' && req.body?.action === 'generate-from-zero') {
-    const { videoUrl, lang = 'pt', token } = req.body;
-    if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });
-
-    // Verifica se usuário é Full ou Master
-    const SUPA_URL2 = process.env.SUPABASE_URL;
-    const SUPA_KEY2 = process.env.SUPABASE_SERVICE_KEY;
-    const ANON_KEY2 = process.env.SUPABASE_ANON_KEY || SUPA_KEY2;
-    let userPlanGFZ = 'free';
-    if (token && SUPA_URL2) {
+  // ── TITLE SUGGEST ──────────────────────────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'title-suggest') {
+    const { transcript, originalTitle = '', lang = 'pt' } = req.body;
+    if (!transcript) return res.status(400).json({ error: 'transcript obrigatorio' });
+    const GK = [process.env.GEMINI_KEY_1,process.env.GEMINI_KEY_2,process.env.GEMINI_KEY_3,process.env.GEMINI_KEY_4,process.env.GEMINI_KEY_5].filter(Boolean);
+    const OK = process.env.OPENAI_API_KEY;
+    const prompt = 'Crie 2 titulos para este Short. Transcricao: "' + transcript.slice(0,500) + '". Idioma: ' + lang + '. Linha 1: casual. Linha 2: apelativo. Apenas os 2 titulos, um por linha.';
+    let casual = '', apelativo = '';
+    for (const key of GK) {
       try {
-        const uRes = await fetch(SUPA_URL2 + '/auth/v1/user', {
-          headers: { apikey: ANON_KEY2, Authorization: 'Bearer ' + token }
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
-        if (uRes.ok) {
-          const uData = await uRes.json();
-          const email = uData.email;
-          if (email) {
-            const sRes = await fetch(SUPA_URL2 + '/rest/v1/subscribers?email=eq.' + encodeURIComponent(email) + '&select=plan,plan_expires_at,is_manual', {
-              headers: { apikey: SUPA_KEY2, Authorization: 'Bearer ' + SUPA_KEY2 }
-            });
-            if (sRes.ok) {
-              const subs = await sRes.json();
+        const d = await r.json();
+        const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) { const lines = text.split('\n').map(l => l.trim()).filter(Boolean); casual = lines[0]||''; apelativo = lines[1]||lines[0]||''; break; }
+      } catch(e) { continue; }
+    }
+    if (!casual && OK) {
+      try {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OK },
+          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 100, messages: [{ role: 'user', content: prompt }] })
+        });
+        const d = await r.json();
+        const text = d.choices?.[0]?.message?.content?.trim();
+        if (text) { const lines = text.split('\n').map(l => l.trim()).filter(Boolean); casual = lines[0]||''; apelativo = lines[1]||lines[0]||''; }
+      } catch(e) {}
+    }
+    return res.status(200).json({ casual, apelativo });
+  }
+
+  // ── GENERATE FROM ZERO — Gemini assiste o video + memoria viva ────────────
+  if (req.method === 'POST' && req.body?.action === 'generate-from-zero') {
+    const { videoUrl, lang = 'Portugues (Brasil)', token } = req.body;
+    if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatorio' });
+
+    const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+    const AK = process.env.SUPABASE_ANON_KEY || SK;
+
+    // Verifica plano (Full ou Master)
+    let userPlan = 'free';
+    if (token && SU) {
+      try {
+        const uR = await fetch(SU + '/auth/v1/user', { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+        if (uR.ok) {
+          const uD = await uR.json();
+          if (uD.email) {
+            const sR = await fetch(SU + '/rest/v1/subscribers?email=eq.' + encodeURIComponent(uD.email) + '&select=plan,plan_expires_at,is_manual',
+              { headers: { apikey: SK, Authorization: 'Bearer ' + SK } });
+            if (sR.ok) {
+              const subs = await sR.json();
               const sub = subs?.[0];
               if (sub && (sub.plan === 'full' || sub.plan === 'master')) {
                 const expired = sub.plan_expires_at && new Date(sub.plan_expires_at) < new Date() && !sub.is_manual;
-                if (!expired) userPlanGFZ = sub.plan;
+                if (!expired) userPlan = sub.plan;
               }
             }
           }
         }
       } catch(e) {}
     }
-    if (userPlanGFZ === 'free') return res.status(403).json({ error: 'Recurso exclusivo para planos Full e Master.' });
+    if (userPlan === 'free') return res.status(403).json({ error: 'Recurso exclusivo para planos Full e Master.' });
 
-    const GEMINI_KEYS = [
+    const GK = [
       process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
       process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5, process.env.GEMINI_KEY_6,
       process.env.GEMINI_KEY_7, process.env.GEMINI_KEY_8, process.env.GEMINI_KEY_9,
       process.env.GEMINI_KEY_10,
     ].filter(Boolean);
 
-    // Busca memória viva — roteiros mais copiados como referência de tom
+    // Memoria viva — top roteiros copiados como referencia de tom
     let livingMemory = '';
-    if (SUPA_URL2 && SUPA_KEY2) {
+    if (SU && SK) {
       try {
-        const memR = await fetch(SUPA_URL2 + '/rest/v1/viral_shorts?order=copy_count.desc&limit=5&select=transcript,copy_count&copy_count=gte.2', {
-          headers: { apikey: SUPA_KEY2, Authorization: 'Bearer ' + SUPA_KEY2 }
-        });
-        if (memR.ok) {
-          const rows = await memR.json();
+        const mR = await fetch(SU + '/rest/v1/viral_shorts?order=copy_count.desc&limit=5&select=transcript,copy_count&copy_count=gte.2',
+          { headers: { apikey: SK, Authorization: 'Bearer ' + SK } });
+        if (mR.ok) {
+          const rows = await mR.json();
           if (rows?.length > 0) {
-            livingMemory = 'REFERÊNCIA DE TOM (roteiros reais que viralizaram na plataforma — use como calibração de estilo, NÃO copie):
-' +
-              rows.map((r, i) => 'Exemplo ' + (i+1) + ': "' + (r.transcript||'').slice(0,200) + '"').join('
-
-');
+            livingMemory = 'REFERENCIA DE TOM (nao copie, use para calibrar estilo):\n' +
+              rows.map((r, i) => 'Ex' + (i+1) + ': "' + (r.transcript||'').slice(0,200) + '"').join('\n');
           }
         }
       } catch(e) {}
     }
 
-    // Prompt para Gemini analisar o vídeo e criar roteiro original
-    const LANG_NATIVE = {
-      'Português (Brasil)': 'Português Brasileiro natural, gírias leves, linguagem de redes sociais.',
-      'English': 'Natural American English, casual contractions, social media language.',
-      'Español': 'Español natural de redes sociales, expresiones idiomáticas reales.',
-    };
-    const nativeLang = LANG_NATIVE[lang] || LANG_NATIVE['Português (Brasil)'];
+    // Etapa 1: Gemini assiste o video
+    const descPrompt = 'Analise este video do YouTube: ' + videoUrl +
+      '\n\nDescreva em ' + lang + ':\n1. O que acontece visualmente (cena a cena)\n2. Tema central e mensagem\n3. Tom emocional (engraçado, inspirador, chocante, educativo)\n4. Publico-alvo\n5. Gancho visual mais forte\n\nSeja especifico e detalhado.';
 
-    const describePrompt = 'Analise este vídeo do YouTube: ' + videoUrl + '
-
-Descreva detalhadamente:
-1. O que acontece visualmente (cena a cena)
-2. O tema central e mensagem principal
-3. O tom emocional (engraçado, inspirador, chocante, educativo, etc.)
-4. O público-alvo
-5. O gancho visual mais forte
-
-Responda em ' + lang + '. Seja específico e detalhado.';
-
-    let videoDescription = '';
-    for (const key of GEMINI_KEYS) {
+    let videoDesc = '';
+    for (const key of GK) {
       try {
-        const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: describePrompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
-          })
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: descPrompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 800 } })
         });
-        const gData = await gRes.json();
-        if (gData.error?.code === 429) continue;
-        const text = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text && text.length > 50) { videoDescription = text; break; }
+        const d = await r.json();
+        if (d.error?.code === 429) continue;
+        const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text && text.length > 50) { videoDesc = text; break; }
       } catch(e) { continue; }
     }
 
-    if (!videoDescription) return res.status(503).json({ error: 'Não foi possível analisar o vídeo. Tente novamente.' });
+    if (!videoDesc) return res.status(503).json({ error: 'Nao foi possivel analisar o video. Tente novamente.' });
 
-    // Gera os 2 roteiros originais com base na análise
-    const genPrompt = 'Você é um especialista em roteiros virais para YouTube Shorts.
-
-' +
-      'ANÁLISE DO VÍDEO:
-' + videoDescription + '
-
-' +
-      (livingMemory ? livingMemory + '
-
-' : '') +
-      'IDIOMA: ' + lang + ' — ' + nativeLang + '
-
-' +
-      'REGRAS CRÍTICAS:
-' +
-      '- Crie roteiros ORIGINAIS baseados no tema/contexto do vídeo — NÃO copie ou adapte o vídeo original
-' +
-      '- Máximo 75 palavras cada
-' +
-      '- Linguagem 100% nativa, sem soar traduzido
-' +
-      '- Texto corrido, sem emojis, sem títulos, sem marcadores
-
-' +
-      'Responda APENAS em JSON válido (sem markdown):
-' +
-      '{"casual":"roteiro leve e conversacional aqui","apelativo":"roteiro com hook forte e urgência aqui","titleCasual":"título casual 60 chars","titleApelativo":"título apelativo 60 chars"}';
+    // Etapa 2: Gera roteiros originais
+    const genPrompt = 'Voce e um especialista em roteiros virais para YouTube Shorts.\n\n' +
+      'ANALISE DO VIDEO:\n' + videoDesc + '\n\n' +
+      (livingMemory ? livingMemory + '\n\n' : '') +
+      'IDIOMA: ' + lang + '\n\n' +
+      'REGRAS:\n- Roteiros ORIGINAIS baseados no tema do video — NAO copie o original\n' +
+      '- Maximo 75 palavras cada\n- Linguagem nativa de redes sociais\n' +
+      '- Texto corrido, sem emojis, sem titulos\n\n' +
+      'Responda APENAS em JSON valido sem markdown:\n' +
+      '{"casual":"roteiro leve aqui","apelativo":"roteiro com hook forte aqui","titleCasual":"titulo casual 60 chars","titleApelativo":"titulo apelativo 60 chars"}';
 
     let result = null;
-    for (const key of GEMINI_KEYS) {
+    for (const key of GK) {
       try {
-        const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: genPrompt }] }],
-            generationConfig: { temperature: 0.85, maxOutputTokens: 600 }
-          })
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: genPrompt }] }], generationConfig: { temperature: 0.85, maxOutputTokens: 600 } })
         });
-        const gData = await gRes.json();
-        if (gData.error?.code === 429) continue;
-        let text = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        const d = await r.json();
+        if (d.error?.code === 429) continue;
+        let text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
         text = text.replace(/```json/g,'').replace(/```/g,'').trim();
         const si = text.indexOf('{'), ei = text.lastIndexOf('}');
         if (si >= 0 && ei >= 0) {
@@ -772,14 +734,7 @@ Responda em ' + lang + '. Seja específico e detalhado.';
     }
 
     if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente novamente.' });
-
-    return res.status(200).json({
-      casual: result.casual || '',
-      apelativo: result.apelativo || '',
-      titleCasual: result.titleCasual || '',
-      titleApelativo: result.titleApelativo || '',
-      videoDescription
-    });
+    return res.status(200).json({ casual: result.casual||'', apelativo: result.apelativo||'', titleCasual: result.titleCasual||'', titleApelativo: result.titleApelativo||'' });
   }
 
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
