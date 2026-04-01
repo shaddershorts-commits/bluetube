@@ -196,30 +196,89 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── CANCELAMENTO → Downgrade para free ───────────────────────────────────
+    // ── CANCELAMENTO ─────────────────────────────────────────────────────────
+    // customer.subscription.deleted = período atual expirou E cancelamento efetivado
+    // Usa current_period_end para manter acesso até o final do período pago
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object;
       const customerId = sub.customer;
 
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
-        method: 'PATCH',
-        headers: supaHeaders,
-        body: JSON.stringify({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
-      });
+      // current_period_end = timestamp Unix de quando o período pago termina
+      // Se já passou → rebaixa agora. Se ainda não passou → agenda expiração
+      const periodEnd = sub.current_period_end
+        ? new Date(sub.current_period_end * 1000)
+        : new Date();
+      const now = new Date();
+      const expiresAt = periodEnd > now ? periodEnd : now;
 
-      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email`, { headers: supaHeaders });
+      // Mantém o plano atual mas define expiração = fim do período pago
+      // get-plan.js já respeita plan_expires_at para decidir se é premium
+      const subRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`,
+        { headers: supaHeaders }
+      );
       const subs = await subRes.json();
       const cancelledEmail = subs?.[0]?.email;
-      console.log(`⬇️ Subscription cancelled: ${cancelledEmail || customerId}`);
+      const currentPlan = subs?.[0]?.plan || 'free';
 
-      // Cancela comissões do afiliado
-      if (cancelledEmail) {
+      // Se o período ainda não acabou, mantém o plano com data de expiração
+      // Se já acabou, rebaixa para free imediatamente
+      const stillActive = periodEnd > now;
+      await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+        method: 'PATCH',
+        headers: supaHeaders,
+        body: JSON.stringify({
+          plan: stillActive ? currentPlan : 'free',
+          plan_expires_at: stillActive ? expiresAt.toISOString() : null,
+          updated_at: now.toISOString()
+        })
+      });
+
+      console.log(`⬇️ Subscription cancelled: ${cancelledEmail || customerId} | Active until: ${expiresAt.toISOString()} | Still active: ${stillActive}`);
+
+      // Cancela comissões do afiliado (apenas quando rebaixar de verdade)
+      if (cancelledEmail && !stillActive) {
         const SITE_URL_C = process.env.SITE_URL || 'https://bluetubeviral.com';
         fetch(`${SITE_URL_C}/api/auth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'cancel', email: cancelledEmail })
         }).catch(() => {});
+      }
+    }
+
+    // ── ASSINATURA AGENDADA PARA CANCELAR (usuario pediu cancelamento mas período ativo) ──
+    // customer.subscription.updated com cancel_at_period_end = true
+    // Aproveitamos para registrar a data de expiração já no momento do pedido
+    if (event.type === 'customer.subscription.updated') {
+      const sub = event.data.object;
+      if (sub.cancel_at_period_end === true) {
+        const customerId = sub.customer;
+        const periodEnd = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000)
+          : null;
+
+        if (periodEnd) {
+          const subRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`,
+            { headers: supaHeaders }
+          );
+          const subs = await subRes.json();
+          const email = subs?.[0]?.email;
+          const currentPlan = subs?.[0]?.plan;
+
+          if (email && currentPlan && currentPlan !== 'free') {
+            await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+              method: 'PATCH',
+              headers: supaHeaders,
+              body: JSON.stringify({
+                plan_expires_at: periodEnd.toISOString(),
+                updated_at: new Date().toISOString()
+              })
+            });
+            console.log(`📅 Cancel scheduled: ${email} — expires ${periodEnd.toISOString()}`);
+          }
+        }
       }
     }
 
