@@ -457,6 +457,16 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   .features,.faq-section{padding:50px 16px}
   .plans-section{padding:60px 16px}
 }
+
+/* ── GERAR DO ZERO TOGGLE ─────────────────────────────────────────────────── */
+.mode-toggle{display:flex;align-items:center;gap:0;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:4px;margin-bottom:14px;width:100%}
+.mode-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:9px;border:none;font-family:var(--font-mono);font-size:12px;font-weight:600;cursor:pointer;transition:all .25s;background:none;color:var(--text-secondary)}
+.mode-btn.active-adapt{background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.25)}
+.mode-btn.active-zero{background:linear-gradient(135deg,rgba(251,191,36,.18),rgba(255,140,0,.12));color:#fbbf24;border:1px solid rgba(251,191,36,.35);box-shadow:0 0 16px rgba(251,191,36,.12)}
+.mode-btn .mode-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;letter-spacing:.06em}
+.mode-btn.active-zero .mode-badge{background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.mode-btn.active-adapt .mode-badge{background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2)}
+.mode-lock-overlay{position:absolute;inset:0;border-radius:9px;backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(2,8,23,.3)}
 </style>
 </head>
 <body>
@@ -752,6 +762,22 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <p class="hero-sub">Cole qualquer link de YouTube Shorts, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
 
   <div class="main-card">
+    <!-- Modo de geração -->
+    <div class="mode-toggle" id="modeToggle">
+      <button class="mode-btn active-adapt" id="btnModeAdapt" onclick="setMode('adapt')">
+        📝 Adaptar roteiro
+        <span class="mode-badge">GRÁTIS</span>
+      </button>
+      <div style="position:relative;flex:1;display:flex">
+        <button class="mode-btn" id="btnModeZero" onclick="setMode('zero')" style="width:100%">
+          ✨ Gerar do zero
+          <span class="mode-badge">FULL+</span>
+        </button>
+      </div>
+    </div>
+    <div id="modeZeroBanner" style="display:none;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-family:var(--font-mono);font-size:11px;color:#fbbf24;line-height:1.6">
+      ✨ <strong>IA assiste o vídeo</strong> e cria um roteiro narrativo original — sem copiar, com tom viral calibrado pelos melhores roteiros da plataforma.
+    </div>
     <div class="input-row">
       <input id="urlInput" type="text" class="url-input"
         placeholder="https://www.youtube.com/shorts/..."
@@ -1746,15 +1772,78 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('card'+versionId).style.display='block';
   }
 }
+// ── MODO DE GERAÇÃO ──────────────────────────────────────────────────────────
+let _genMode = 'adapt';
+
+function setMode(mode){
+  const isPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
+  if(mode==='zero' && !isPaid){ openUpgradeModal('master_tool'); return; }
+  _genMode = mode;
+  const bA=document.getElementById('btnModeAdapt'), bZ=document.getElementById('btnModeZero');
+  const banner=document.getElementById('modeZeroBanner'), card=document.querySelector('.main-card');
+  if(mode==='zero'){
+    bA.className='mode-btn'; bZ.className='mode-btn active-zero';
+    if(banner) banner.style.display='block';
+    if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
+  } else {
+    bA.className='mode-btn active-adapt'; bZ.className='mode-btn';
+    if(banner) banner.style.display='none';
+    if(card){ card.style.borderColor=''; card.style.boxShadow=''; }
+  }
+}
+
 function generateAllScripts(lang){
   ['titleCasualBox','titleApelatBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   ['V1','V2'].forEach(v=>{
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
+  if(_genMode==='zero'){ generateFromZero(lang); return; }
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
   setTimeout(()=>{ if(typeof generateTitles==='function')generateTitles(lang); },1500);
+}
+
+// ── GERAR DO ZERO ─────────────────────────────────────────────────────────────
+async function generateFromZero(lang){
+  const videoUrl = 'https://www.youtube.com/shorts/' + currentVideoId;
+  const lbl1=document.getElementById('labelV1'), lbl2=document.getElementById('labelV2');
+  if(lbl1) lbl1.textContent='✨ IA assistindo o vídeo e criando roteiro original…';
+  if(lbl2) lbl2.textContent='✨ Criando versão apelativa do zero…';
+  try{
+    const token = localStorage.getItem('bt_token');
+    const r = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'generate-from-zero',videoUrl,lang,token})});
+    const d = await r.json();
+    if(!r.ok||((!d.casual)&&(!d.apelativo))) throw new Error(d.error||'Falha ao gerar roteiro do zero.');
+    if(d.casual){
+      document.getElementById('scriptV1').textContent=(d.casual||'').replace(/[\r\n]+/g,' ').trim();
+      document.getElementById('loadingV1').classList.remove('on');
+      document.getElementById('cardV1').style.display='block';
+    }
+    if(d.apelativo){
+      document.getElementById('scriptV2').textContent=(d.apelativo||'').replace(/[\r\n]+/g,' ').trim();
+      document.getElementById('loadingV2').classList.remove('on');
+      document.getElementById('cardV2').style.display='block';
+    }
+    if(d.titleCasual&&document.getElementById('titleCasualText')){
+      document.getElementById('titleCasualText').textContent=d.titleCasual;
+      document.getElementById('titleCasualBox').style.display='block';
+    }
+    if(d.titleApelativo&&document.getElementById('titleApelatText')){
+      document.getElementById('titleApelatText').textContent=d.titleApelativo;
+      document.getElementById('titleApelatBox').style.display='block';
+    }
+    if(typeof _saveRoteiroState==='function')_saveRoteiroState();
+    if(typeof updateBlueVoiceButtons==='function')updateBlueVoiceButtons();
+    setTimeout(showBlublu,4000);
+  }catch(err){
+    ['V1','V2'].forEach(v=>{
+      document.getElementById('loading'+v).classList.remove('on');
+      document.getElementById('script'+v).textContent='⚠ '+(err.message||'Falha. Tente novamente.');
+      document.getElementById('card'+v).style.display='block';
+    });
+  }
 }
 
 
