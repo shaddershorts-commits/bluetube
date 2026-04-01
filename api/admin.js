@@ -166,8 +166,16 @@ export default async function handler(req, res) {
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
       latest_cancellation: (() => {
         try {
+          // Cancelados = plano free + tem stripe_customer_id (já foram pagantes)
+          // E updated_at é pelo menos 1 hora depois de created_at (mudança real de plano)
           return subscribers
-            .filter(s => s.plan === 'free' && s.updated_at && s.updated_at !== s.created_at)
+            .filter(s => {
+              if (s.plan !== 'free') return false;
+              if (!s.stripe_customer_id) return false; // nunca foi pagante
+              if (!s.updated_at || !s.created_at) return false;
+              const updDiff = new Date(s.updated_at) - new Date(s.created_at);
+              return updDiff > 60 * 60 * 1000; // updated mais de 1h depois de criado
+            })
             .sort((a,b) => new Date(b.updated_at||0) - new Date(a.updated_at||0))[0] || null;
         } catch(e) { return null; }
       })(),
