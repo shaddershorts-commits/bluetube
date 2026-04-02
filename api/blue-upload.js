@@ -1,5 +1,4 @@
-// api/blue-upload.js — Gera signed URL para upload direto ao Supabase Storage
-// Vídeo NUNCA passa pelo Vercel (evita 413)
+// api/blue-upload.js — Apenas metadata + retorna info para upload direto
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -13,7 +12,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const { token, title, description, duration, width, height,
-            file_name, content_type, thumbnail_data } = req.body || {};
+            file_name, content_type, thumbnail_data, video_uploaded } = req.body || {};
     if (!token) return res.status(401).json({ error: 'Login necessário' });
 
     const uR = await fetch(`${SU}/auth/v1/user`, {
@@ -28,7 +27,7 @@ module.exports = async function handler(req, res) {
     const storagePath = `${userId}/${videoId}/${safe}`;
     const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-    // Upload thumbnail
+    // Se veio thumbnail, faz upload via service key (pequeno, cabe no Vercel)
     let thumbnailUrl = null;
     if (thumbnail_data) {
       try {
@@ -40,49 +39,50 @@ module.exports = async function handler(req, res) {
           body: buf
         });
         if (tR.ok) thumbnailUrl = `${SU}/storage/v1/object/public/blue-videos/${thumbPath}`;
-      } catch(e) {}
-    }
-
-    // Gera signed URL para upload direto (cliente faz PUT nessa URL)
-    const signR = await fetch(`${SU}/storage/v1/object/sign/upload/blue-videos/${storagePath}`, {
-      method: 'POST',
-      headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-
-    let uploadUrl = null;
-    if (signR.ok) {
-      const sd = await signR.json();
-      uploadUrl = `${SU}/storage/v1${sd.signedURL}`;
-    } else {
-      // Fallback: retorna URL pública e deixa cliente fazer upload via anon key
-      const err = await signR.text();
-      console.log('sign URL failed:', signR.status, err.slice(0,100));
+        else console.log('thumb upload failed:', await tR.text());
+      } catch(e) { console.log('thumb error:', e.message); }
     }
 
     const videoUrl = `${SU}/storage/v1/object/public/blue-videos/${storagePath}`;
 
-    // Salva metadata
+    // Suporte a override de ID (passo 3 do upload em 3 etapas)
+    const { _override_id, _override_url, _override_thumb } = req.body || {};
+    const finalVideoId = _override_id || videoId;
+    const finalVideoUrl = _override_url || `${SU}/storage/v1/object/public/blue-videos/${storagePath}`;
+    const finalThumbUrl = _override_thumb || thumbnailUrl;
+
+    if (!video_uploaded) {
+      return res.status(200).json({
+        ok: true,
+        video_id: videoId,
+        storage_path: storagePath,
+        video_url: videoUrl,
+        thumbnail_url: thumbnailUrl,
+        supabase_url: SU,
+        anon_key: AK,
+        // Para o cliente fazer: PUT {supabase_url}/storage/v1/object/blue-videos/{storage_path}
+        // Headers: apikey: {anon_key}, Authorization: Bearer {user_token}, Content-Type: {mime}
+        user_token: token  // cliente usa para autenticar o upload direto
+      });
+    }
+
+    // video_uploaded = true: salva no banco
     const vR = await fetch(`${SU}/rest/v1/blue_videos`, {
       method: 'POST',
       headers: { ...h, Prefer: 'return=representation' },
       body: JSON.stringify({
-        id: videoId, user_id: userId, title: title || '', description: description || '',
-        video_url: videoUrl, thumbnail_url: thumbnailUrl,
-        duration: duration || 0, width: width || 1080, height: height || 1920,
+        id: finalVideoId, user_id: userId, title: title || '',
+        description: description || '', video_url: finalVideoUrl,
+        thumbnail_url: finalThumbUrl, duration: duration || 0,
+        width: width || 1080, height: height || 1920,
         score: 50, status: 'active', test_phase: true
       })
     });
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
+    if (!vR.ok) { console.log('DB insert error:', JSON.stringify(vData)); }
 
-    return res.status(200).json({
-      ok: true, video,
-      upload_url: uploadUrl,
-      storage_path: storagePath,
-      storage_url: SU + '/storage/v1/object/blue-videos/' + storagePath,
-      apikey: AK // anon key — safe to expose (only accesses public bucket)
-    });
+    return res.status(200).json({ ok: true, video });
   } catch(err) {
     console.error('blue-upload:', err.message);
     return res.status(500).json({ error: err.message });
