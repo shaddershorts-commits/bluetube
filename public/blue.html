@@ -9,8 +9,13 @@
 html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overflow:hidden;color:#fff}
 
 /* FEED */
-#feed{position:fixed;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+#feed{position:fixed;top:0;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;
+  overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth;
+  background:#000}
 #feed::-webkit-scrollbar{display:none}
+/* Fundo escuro nas laterais no desktop */
+body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
 .slide{position:relative;width:100%;height:100vh;scroll-snap-align:start;scroll-snap-stop:always;background:#000}
 .slide video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -31,7 +36,7 @@ html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overf
 .prog-fill{height:100%;background:#3b82f6;width:0}
 
 /* TOP BAR */
-.topbar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent);pointer-events:none}
+.topbar{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:412px;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent);pointer-events:none}
 .logo{font-size:22px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;pointer-events:all;text-decoration:none}
 .topbtns{display:flex;gap:8px;pointer-events:all}
 .tbtn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer;backdrop-filter:blur(8px)}
@@ -70,6 +75,7 @@ html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overf
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);background:#222;border-radius:8px;padding:9px 18px;font-size:13px;opacity:0;transition:all .25s;z-index:999;white-space:nowrap}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -87,8 +93,9 @@ html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overf
 <div class="empty" id="empty">
   <div style="font-size:48px">📹</div>
   <div style="font-size:20px;font-weight:700">Nenhum vídeo ainda</div>
-  <div style="font-size:13px;color:#aaa">Seja o primeiro a publicar!</div>
+  <div style="font-size:13px;color:#aaa;margin-bottom:4px">Seja o primeiro criador do Blue!</div>
   <button class="tbtn" onclick="openUpload()" style="pointer-events:all;margin-top:8px">+ Publicar vídeo</button>
+  <div id="dbgMsg" style="margin-top:20px;font-size:11px;color:#444;font-family:monospace;max-width:300px;word-break:break-all"></div>
 </div>
 
 <!-- UPLOAD -->
@@ -175,17 +182,34 @@ let obs=null;
 
 // LOAD FEED
 async function loadFeed(){
+  const feed = document.getElementById('feed');
+  feed.innerHTML='<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#666">Carregando…</div></div>';
   try{
     const r = await fetch('/api/blue-feed?limit=20&session='+SID);
+    if(!r.ok){ const t=await r.text(); showErr('API retornou '+r.status+': '+t.slice(0,80)); return; }
     const d = await r.json();
     videos = (d.videos||[]).filter(v=>v&&v.video_url);
-  }catch(e){ videos=[]; }
-  const feed = document.getElementById('feed');
+    console.log('Feed loaded:', videos.length, 'videos');
+  }catch(e){ showErr('Erro de rede: '+e.message); return; }
+  
   feed.innerHTML='';
-  if(videos.length===0){ document.getElementById('empty').classList.add('on'); return; }
+  if(videos.length===0){
+    document.getElementById('empty').classList.add('on');
+    return;
+  }
   document.getElementById('empty').classList.remove('on');
   videos.forEach((v,i)=>feed.appendChild(makeSlide(v,i)));
   setupObs();
+}
+
+function showDbg(msg){ const el=document.getElementById('dbgMsg'); if(el)el.textContent=msg; }
+
+function showErr(msg){
+  document.getElementById('feed').innerHTML=\`<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;text-align:center">
+    <div style="font-size:36px">⚠️</div>
+    <div style="font-size:14px;color:#f87171">\${msg}</div>
+    <button onclick="loadFeed()" style="background:#3b82f6;border:none;border-radius:8px;padding:10px 20px;color:#fff;font-size:13px;cursor:pointer;margin-top:8px">Tentar novamente</button>
+  </div>\`;
 }
 
 function makeSlide(v,i){
