@@ -9,6 +9,9 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Garante que qualquer erro retorna JSON valido
+  try {
+
   const { videoUrl, lang, token } = req.body;
   if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatorio' });
 
@@ -341,4 +344,9 @@ export default async function handler(req, res) {
     titleCasual: result.titleCasual || '',
     titleApelativo: result.titleApelativo || ''
   });
+
+  } catch(globalErr) {
+    console.error('generate-from-zero fatal:', globalErr.message, globalErr.stack && globalErr.stack.slice(0,300));
+    return res.status(500).json({ error: 'Erro interno. Tente novamente.' });
+  }
 }
