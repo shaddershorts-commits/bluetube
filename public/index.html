@@ -1208,25 +1208,23 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </footer>
 
 <script>
-// ── CAPTURA TOKEN DO COOKIE (landing www → site principal) ───────────────
-// Cookie com domain=.bluetubeviral.com funciona nos dois dominios
+// ── CAPTURA TOKEN DO HASH (landing → site, funciona cross-subdomain) ─────
 (function(){
   try {
-    function getCookie(name) {
-      const v = document.cookie.match('(^|;)\s*' + name + '\s*=\s*([^;]+)');
-      return v ? decodeURIComponent(v.pop()) : null;
+    const hash = window.location.hash;
+    if (hash && hash.includes('bt=')) {
+      const params = new URLSearchParams(hash.slice(1)); // remove o #
+      const t = params.get('bt');
+      const rf = params.get('br');
+      if (t && t.length > 10) {
+        localStorage.setItem('bt_token', decodeURIComponent(t));
+        if (rf) localStorage.setItem('bt_refresh_token', decodeURIComponent(rf));
+        // Limpa o hash da URL sem recarregar
+        window.history.replaceState({}, document.title, window.location.pathname);
+        console.log('Token capturado do hash');
+      }
     }
-    const t = getCookie('bt_token');
-    const rf = getCookie('bt_refresh');
-    if (t && t.length > 10) {
-      localStorage.setItem('bt_token', t);
-      if (rf) localStorage.setItem('bt_refresh_token', rf);
-      // Apaga cookies apos capturar
-      document.cookie = 'bt_token=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      document.cookie = 'bt_refresh=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      console.log('Token capturado do cookie e salvo no localStorage');
-    }
-  } catch(e) { console.log('Cookie capture error:', e.message); }
+  } catch(e) {}
 })();
 // ── STATE ──────────────────────────────────────────────────────────────────
 let transcript='', segments=[], currentVideoId='';
@@ -2072,16 +2070,18 @@ function downloadSrt(){
 
 // ── SESSION CHECK ──────────────────────────────────────────────────────────
 async function checkSession(){
-  // Re-verifica cookie de sessao (caso capture ainda nao rodou)
+  // Re-verifica hash (caso capture ainda nao rodou)
   try {
-    function _gc(n){const v=document.cookie.match('(^|;)\s*'+n+'\s*=\s*([^;]+)');return v?decodeURIComponent(v.pop()):null;}
-    const _ct = _gc('bt_token');
-    if (_ct && _ct.length > 10 && !localStorage.getItem('bt_token')) {
-      localStorage.setItem('bt_token', _ct);
-      const _cr = _gc('bt_refresh');
-      if (_cr) localStorage.setItem('bt_refresh_token', _cr);
-      document.cookie = 'bt_token=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      document.cookie = 'bt_refresh=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    const _h = window.location.hash;
+    if (_h && _h.includes('bt=')) {
+      const _p = new URLSearchParams(_h.slice(1));
+      const _t = _p.get('bt');
+      if (_t && _t.length > 10) {
+        localStorage.setItem('bt_token', decodeURIComponent(_t));
+        const _r = _p.get('br');
+        if (_r) localStorage.setItem('bt_refresh_token', decodeURIComponent(_r));
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
   } catch(e) {}
   const token=localStorage.getItem('bt_token');
