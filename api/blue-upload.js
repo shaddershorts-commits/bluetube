@@ -1,20 +1,18 @@
-// api/blue-upload.js — Upload de vídeo (metadata + signed URL do Supabase Storage)
-// POST { token, title, description, duration, width, height, file_name, content_type, thumbnail_data }
+// api/blue-upload.js — Upload via multipart direto para Supabase Storage
+const { Readable } = require('stream');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Title, X-Description, X-Duration, X-Width, X-Height, X-Filename, X-Thumbnail');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).end();
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const AK = process.env.SUPABASE_ANON_KEY || SK;
-  if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
 
   try {
-    const { token, title, description, duration, width, height, file_name, content_type, thumbnail_data, video_url } = req.body || {};
+    const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Login necessário' });
 
     // Verifica usuário
@@ -24,15 +22,26 @@ module.exports = async function handler(req, res) {
     const userId = uData.id;
 
     const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
-    const videoId = crypto.randomUUID ? crypto.randomUUID() : require('crypto').randomUUID();
-    const safeName = file_name ? file_name.replace(/[^a-zA-Z0-9._-]/g, '_') : `video_${Date.now()}.mp4`;
-    const storagePath = `${userId}/${videoId}/${safeName}`;
+    const crypto = require('crypto');
+    const videoId = crypto.randomUUID();
 
-    // Upload thumbnail se veio em base64
+    const title = req.headers['x-title'] || '';
+    const description = req.headers['x-description'] || '';
+    const duration = parseFloat(req.headers['x-duration'] || '0');
+    const width = parseInt(req.headers['x-width'] || '1080');
+    const height = parseInt(req.headers['x-height'] || '1920');
+    const filename = req.headers['x-filename'] || `video_${Date.now()}.mp4`;
+    const thumbnailB64 = req.headers['x-thumbnail'] || '';
+    const contentType = req.headers['content-type'] || 'video/mp4';
+
+    const safeFile = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `${userId}/${videoId}/${safeFile}`;
+
+    // Upload thumbnail
     let thumbnailUrl = null;
-    if (thumbnail_data) {
+    if (thumbnailB64) {
       const thumbPath = `${userId}/${videoId}/thumb.jpg`;
-      const thumbBuf = Buffer.from(thumbnail_data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+      const thumbBuf = Buffer.from(thumbnailB64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       const thumbR = await fetch(`${SU}/storage/v1/object/blue-videos/${thumbPath}`, {
         method: 'POST',
         headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
@@ -41,38 +50,38 @@ module.exports = async function handler(req, res) {
       if (thumbR.ok) thumbnailUrl = `${SU}/storage/v1/object/public/blue-videos/${thumbPath}`;
     }
 
-    // Salva metadata
-    const finalVideoUrl = video_url || `${SU}/storage/v1/object/public/blue-videos/${storagePath}`;
+    // Coleta body (o vídeo em si)
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const videoBuffer = Buffer.concat(chunks);
+
+    // Upload vídeo para Supabase Storage
+    const upR = await fetch(`${SU}/storage/v1/object/blue-videos/${storagePath}`, {
+      method: 'POST',
+      headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': contentType, 'x-upsert': 'true' },
+      body: videoBuffer
+    });
+
+    if (!upR.ok) {
+      const err = await upR.text();
+      console.error('Storage upload error:', upR.status, err);
+      return res.status(500).json({ error: 'Falha no upload: ' + upR.status });
+    }
+
+    const videoUrl = `${SU}/storage/v1/object/public/blue-videos/${storagePath}`;
+
+    // Salva metadata no banco
     const vidR = await fetch(`${SU}/rest/v1/blue_videos`, {
       method: 'POST',
       headers: { ...h, Prefer: 'return=representation' },
-      body: JSON.stringify({ id: videoId, user_id: userId, title: title || '', description: description || '', video_url: finalVideoUrl, thumbnail_url: thumbnailUrl, duration: duration || 0, width: width || 1080, height: height || 1920, score: 50, status: 'active', test_phase: true })
+      body: JSON.stringify({ id: videoId, user_id: userId, title, description, video_url: videoUrl, thumbnail_url: thumbnailUrl, duration, width, height, score: 50, status: 'active', test_phase: true })
     });
-
     const vidData = await vidR.json();
-    const vid = Array.isArray(vidData) ? vidData[0] : vidData;
+    const video = Array.isArray(vidData) ? vidData[0] : vidData;
 
-    // Atualiza contagem de vídeos do perfil
-    fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}`, {
-      method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
-      body: JSON.stringify({ videos_count: 1, updated_at: new Date().toISOString() })
-    }).catch(() => {});
-
-    // Gera signed URL para upload direto do cliente
-    const signedR = await fetch(`${SU}/storage/v1/object/sign/blue-videos/${storagePath}`, {
-      method: 'POST',
-      headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn: 3600 })
-    });
-    let uploadUrl = null;
-    if (signedR.ok) {
-      const sd = await signedR.json();
-      uploadUrl = `${SU}/storage/v1${sd.signedURL}`;
-    }
-
-    return res.status(200).json({ video: vid, upload_url: uploadUrl, storage_path: storagePath });
+    return res.status(200).json({ ok: true, video });
   } catch(err) {
-    console.error('blue-upload error:', err.message);
+    console.error('blue-upload fatal:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };
