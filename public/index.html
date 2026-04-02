@@ -192,7 +192,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .plan-list li{font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);padding:6px 0;border-bottom:1px solid rgba(0,170,255,0.05);display:flex;align-items:center;gap:8px}
 .plan-list li::before{content:'✓';color:var(--neon);font-weight:700;font-size:11px}
 .plan-list li.locked{color:var(--text-dim)}
-.plan-list li.locked::before{content:'🔒';font-size:10px}
+.plan-list li.locked::before{content:'';font-size:10px}
 .plan-btn{width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:all .22s;box-shadow:0 0 20px rgba(0,170,255,0.2)}
 .plan-btn:hover{transform:translateY(-1px);box-shadow:0 0 30px rgba(0,170,255,0.4)}
 .plan-btn.free-btn{background:transparent;border:1px solid rgba(0,170,255,0.25);color:var(--text-secondary)}
@@ -559,10 +559,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <span class="nav-community-label">Comunidade</span>
-      <span id="communityLock" style="font-size:10px">🔒</span>
+      <span id="communityLock" style="font-size:10px"></span>
     </button>
     <button class="nav-login-btn" onclick="openAuthModal()">Entrar</button>
-    <button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>
+    
   </div>
 </nav>
 
@@ -618,7 +618,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 <div class="lang-lock-overlay" id="langLockModal">
   <div class="modal-box">
     <button class="modal-close" onclick="closeLangLockModal()">✕</button>
-    <div style="font-size:40px;margin-bottom:16px">🔒</div>
+    <div style="font-size:40px;margin-bottom:16px"></div>
     <div class="modal-title">Idioma <span>exclusivo</span></div>
     <div class="modal-sub">Este idioma está disponível apenas no plano Full ou Master.<br>Faça upgrade e crie roteiros virais em qualquer idioma do mundo.</div>
     <div class="modal-plans" style="margin-bottom:20px">
@@ -762,45 +762,25 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <p class="hero-sub">Cole qualquer link de YouTube Shorts, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
 
   <div class="main-card">
-    <!-- Modo de geração -->
-    <div class="mode-toggle" id="modeToggle">
-      <button class="mode-btn active-adapt" id="btnModeAdapt" onclick="setMode('adapt')">
-        📝 Adaptar roteiro
-        <span class="mode-badge">GRÁTIS</span>
-      </button>
-      <div style="position:relative;flex:1;display:flex">
-        <button class="mode-btn" id="btnModeZero" style="width:100%;opacity:.5;cursor:not-allowed" disabled title="Em breve">
-          ✨ Roteirizar vídeo
-          <span class="mode-badge" style="background:rgba(150,150,150,.15);color:rgba(200,200,200,.5);border-color:rgba(150,150,150,.2)">EM BREVE</span>
-        </button>
-      </div>
-    </div>
-    <div id="modeZeroBanner" style="display:none;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-family:var(--font-mono);font-size:11px;color:#fbbf24;line-height:1.6">
-      ✨ <strong>Roteirizar vídeo:</strong> a IA assiste o vídeo e cria um roteiro narrativo original — sem copiar o original, calibrado pelo tom dos melhores roteiros da plataforma.
-    </div>
-    <div class="input-row">
-      <input id="urlInput" type="text" class="url-input"
-        placeholder="https://www.youtube.com/shorts/..."
-        autocomplete="off" spellcheck="false"/>
-    </div>
+    
     <div class="options-row">
       <select id="langSelect" class="lang-select" onchange="handleLangChange(this)">
         <option value="Português (Brasil)">🇧🇷 Português (Brasil)</option>
         <option value="English">🇺🇸 English</option>
-        <option value="Español" class="locked-option">🔒 Español — Full</option>
-        <option value="Français" class="locked-option">🔒 Français — Full</option>
-        <option value="Deutsch" class="locked-option">🔒 Deutsch — Full</option>
-        <option value="Italiano" class="locked-option">🔒 Italiano — Full</option>
-        <option value="日本語" class="locked-option">🔒 日本語 — Full</option>
-        <option value="中文" class="locked-option">🔒 中文 — Full</option>
-        <option value="العربية" class="locked-option">🔒 العربية — Full</option>
-        <option value="Türkçe" class="locked-option master-only">🔒 Türkçe — Master</option>
-        <option value="हिन्दी" class="locked-option master-only">🔒 हिन्दी — Master</option>
-        <option value="한국어" class="locked-option master-only">🔒 한국어 — Master</option>
-        <option value="Русский" class="locked-option master-only">🔒 Русский — Master</option>
-        <option value="Bahasa Indonesia" class="locked-option master-only">🔒 Bahasa Indonesia — Master</option>
-        <option value="Thai" class="locked-option master-only">🔒 ภาษาไทย — Master</option>
-        <option value="Tagalog" class="locked-option master-only">🔒 Tagalog — Master</option>
+        <option value="Español">Español</option>
+        <option value="Français">Français</option>
+        <option value="Deutsch">Deutsch</option>
+        <option value="Italiano">Italiano</option>
+        <option value="日本語">日本語</option>
+        <option value="中文">中文</option>
+        <option value="العربية">العربية</option>
+        <option value="Türkçe">Türkçe</option>
+        <option value="हिन्दी">हिन्दी</option>
+        <option value="한국어">한국어</option>
+        <option value="Русский">Русский</option>
+        <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+        <option value="Thai">ภาษาไทย</option>
+        <option value="Tagalog">Tagalog</option>
       </select>
       <button class="btn-go" id="btnGo" onclick="handleMainBtn(event)">
         Transcrever + Roteiro ↗
@@ -934,85 +914,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </section>
 
 <!-- ── PLANS ──────────────────────────────────────────────────────────────── -->
-<section class="plans-section" id="plans">
-  <div class="plans-inner">
-    <div class="sec-eye">Planos</div>
-    <h2 class="sec-title">Escolha seu plano.</h2>
-
-    <!-- Annual/Monthly Toggle -->
-    <div class="billing-toggle">
-      <span class="billing-label active" id="labelMonthly">Mensal</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="annualToggle" onchange="toggleBilling(this.checked)"/>
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="billing-label" id="labelAnnual">Anual</span>
-      <span class="annual-badge">Economize 25%</span>
-    </div>
-
-    <div class="plans-grid" style="grid-template-columns:repeat(2,1fr);max-width:700px;margin:40px auto 0">
-      <!-- Full -->
-      <div class="plan-box popular" id="planBoxFull">
-        <div class="plan-tag">Mais popular</div>
-        <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
-        <div id="fullPriceDisplay">
-          <div class="plan-amount">R$27<span>,00/mês</span></div>
-          <div class="plan-period">cobrado mensalmente</div>
-        </div>
-        <ul class="plan-list">
-          <li>9 roteiros por dia</li>
-          <li>Todos os 9 idiomas</li>
-          <li>Transcrição completa</li>
-          <li>Download .TXT e .SRT</li>
-          <li>Comunidade exclusiva</li>
-          <li>IA que aprende com você</li>
-          <li class="locked">Roteiros ilimitados</li>
-        </ul>
-        <button class="plan-btn" onclick="handleUpgradeClick('full')">Assinar Full →</button>
-      </div>
-
-      <!-- Master -->
-      <div class="plan-box" id="planBoxMaster">
-        <div class="plan-name" style="color:#fbbf24">👑 Master</div>
-        <div id="masterPriceDisplay">
-          <div class="plan-amount">R$97<span>,00/mês</span></div>
-          <div class="plan-period">cobrado mensalmente</div>
-        </div>
-        <ul class="plan-list">
-          <li>Roteiros ilimitados</li>
-          <li>Todos os idiomas</li>
-          <li>Chat IA personalizado</li>
-          <li>IA de voz hiper realista</li>
-          <li>Download de vídeo HD</li>
-          <li>Buscador de vídeo viral</li>
-          <li>Comunidade exclusiva</li>
-          <li>Suporte prioritário</li>
-        </ul>
-        <a href="#" onclick="openMasterTool('bluelens');return false" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:9px 12px;border:1px solid rgba(167,139,250,.35);border-radius:11px;background:rgba(167,139,250,.06);text-decoration:none;transition:all .2s" onmouseover="this.style.background='rgba(167,139,250,.12)'" onmouseout="this.style.background='rgba(167,139,250,.06)'">
-          <span style="font-size:15px">🔍</span>
-          <div style="flex:1;min-width:0">
-            <div style="color:#a78bfa;font-weight:800;font-size:13px">BlueLens <span style="font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700;vertical-align:middle">NOVO</span></div>
-            <div style="color:rgba(167,139,250,.65);font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Detecta cópias do seu conteúdo no YouTube</div>
-          </div>
-        </a>
-        <a href="#" onclick="openMasterTool('bluescore');return false" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px 12px;border:1px solid rgba(251,191,36,.45);border-radius:11px;background:rgba(251,191,36,.07);text-decoration:none;transition:all .2s;cursor:pointer" onmouseover="this.style.background='rgba(251,191,36,.14)';this.style.borderColor='rgba(251,191,36,.7)'" onmouseout="this.style.background='rgba(251,191,36,.07)';this.style.borderColor='rgba(251,191,36,.45)'">
-          <span style="font-size:16px">★</span>
-          <div style="flex:1">
-            <div style="color:#fbbf24;font-weight:800;font-size:13px;letter-spacing:-.2px">BlueScore</div>
-            <div style="color:rgba(251,191,36,.65);font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:1px">Revelamos a confiança do YouTube no seu canal</div>
-          </div>
-          <span style="font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:3px 8px;border-radius:100px;font-weight:700;white-space:nowrap;flex-shrink:0">NOVO</span>
-        </a>
-        <button class="plan-btn" style="background:linear-gradient(135deg,#92400e,#fbbf24);box-shadow:0 0 20px rgba(251,191,36,0.2)" onclick="handleUpgradeClick('master')">Assinar Master →</button>
-      </div>
-    </div>
-    <!-- Price increase notice -->
-    <div class="price-increase-notice">
-      <span class="blink-dot"></span>
-      A partir do mês que vem o valor aumentará R$10 no Full e R$30 no Master. Assine agora!
-    </div>
-  </div>
-</section>
+<section class="plans-section" 
 
 <!-- ── FAQ ─────────────────────────────────────────────────────────────────── -->
 <section class="faq-section">
@@ -1248,7 +1150,7 @@ function openCommunity(){
     window.open(COMMUNITY_URL,'_blank');
   }else{
     // Show upgrade modal with community message
-    openUpgradeModal('community');
+    openAuthModal();
   }
 }
 function updateCommunityBtn(){
@@ -1326,13 +1228,13 @@ function updateLangOptions(){
     const isMasterLang=MASTER_LANGS.includes(opt.value);
     if(isFullLang){
       if(isFull){
-        opt.text=opt.text.replace(/🔒\s*/,'').replace(/\s*—\s*Full/,'');
+        opt.text=opt.text.replace(/\s*/,'').replace(/\s*—\s*Full/,'');
         opt.disabled=false;
       }
     }
     if(isMasterLang){
       if(isMaster){
-        opt.text=opt.text.replace(/🔒\s*/,'').replace(/\s*—\s*Master/,'');
+        opt.text=opt.text.replace(/\s*/,'').replace(/\s*—\s*Master/,'');
         opt.disabled=false;
       }
     }
@@ -1361,51 +1263,10 @@ function closeLangLockModal(){document.getElementById('langLockModal').classList
 // ── UPGRADE MODAL ──────────────────────────────────────────────────────────
 let selectedUpgradePlan='full';
 function openUpgradeModal(reason){
-  startCountdown();
-  startLiveCount();
-  // Reset annual toggle
-  setModalBilling(false);
-
-  if(reason==='community'){
-    document.getElementById('upgradeModalTitle').innerHTML='Comunidade<br><span>exclusiva.</span>';
-    document.getElementById('upgradeModalSub').innerHTML='A comunidade BlueTube é exclusiva para assinantes.<br>Entre, conecte-se e cresça junto com outros criadores virais.';
-    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
-    document.getElementById('upgradeModalCta').textContent='Quero entrar na comunidade →';
-  } else if(reason==='master_tool'){
-    document.getElementById('upgradeModalTitle').innerHTML='Ferramenta<br><span>exclusiva Master.</span>';
-    document.getElementById('upgradeModalSub').innerHTML='Esta ferramenta é exclusiva do plano 👑 Master.<br>Assine agora e tenha acesso a todas as ferramentas avançadas.';
-    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
-    document.getElementById('upgradeModalCta').textContent='👑 Assinar Master →';
-  } else if(reason==='limit_free'){
-    document.getElementById('upgradeModalTitle').innerHTML='Você vai ficar<br><span>para trás?</span>';
-    document.getElementById('upgradeModalSub').innerHTML=`Você usou seus <strong>${dailyLimit} roteiros gratuitos</strong> de hoje.<br>Enquanto você espera, seus concorrentes já estão postando.`;
-    document.getElementById('timerLabel').textContent='Seu limite reseta em';
-    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
-  } else if(reason==='limit_free_no_account'){
-    document.getElementById('upgradeModalTitle').innerHTML='Crie sua conta e<br><span>continue criando!</span>';
-    document.getElementById('upgradeModalSub').innerHTML=`Você gerou ${dailyLimit} roteiros hoje.<br>Crie uma conta grátis e ganhe +1 roteiro bônus agora.`;
-    document.getElementById('timerLabel').textContent='Seu limite reseta em';
-    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
-  } else if(reason==='limit_full'){
-    document.getElementById('upgradeModalTitle').innerHTML='Limite do Full<br><span>atingido hoje.</span>';
-    document.getElementById('upgradeModalSub').innerHTML=`Você é <strong>⚡ Full</strong> e usou seus <strong>9 roteiros</strong> de hoje.<br>Quer roteiros <strong>ilimitados</strong> sem esperar? Vá para o Master.`;
-    document.getElementById('timerLabel').textContent='Limite reseta em';
-    document.getElementById('upgradeModalPlans').innerHTML=`
-      <div class="plan-card master-highlight" style="grid-column:1/-1;max-width:320px;margin:0 auto" onclick="selectPlan('master')">
-        <div class="master-unlimited-badge">👑 ROTEIROS ILIMITADOS</div>
-        <div class="plan-badge gold" style="margin-top:8px">Master</div>
-        <div class="plan-price" id="modalMasterPrice" style="font-size:28px">R$97,00<span>/mês</span></div>
-        <div class="plan-features">✓ Sem limite de roteiros<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br>✓ Suporte prioritário<br><span style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid rgba(251,191,36,.4);border-radius:10px;background:rgba(251,191,36,.08)"><span style="color:var(--gold);font-weight:800;font-size:12px">★ BlueScore</span><span style="color:rgba(251,191,36,.8);font-size:11px;font-family:var(--font-mono)">Revelamos a confiança do YouTube no seu canal</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span><span style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;border:1px solid rgba(167,139,250,.35);border-radius:10px;background:rgba(167,139,250,.06)"><span style="color:#a78bfa;font-weight:800;font-size:12px">🔍 BlueLens</span><span style="color:rgba(167,139,250,.8);font-size:11px;font-family:var(--font-mono)">Detecta quem já publicou o mesmo conteúdo</span><span style="margin-left:auto;font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;white-space:nowrap">NOVO</span></span></div>
-      </div>`;
-    document.getElementById('upgradeModalCta').textContent='👑 Ir para o Master →';
-  } else {
-    document.getElementById('upgradeModalTitle').innerHTML='Potencialize seus<br><span>Shorts agora.</span>';
-    document.getElementById('upgradeModalSub').innerHTML='Escolha o plano ideal e comece a criar roteiros virais sem limites.';
-    document.getElementById('timerLabel').textContent='Oferta por tempo limitado';
-    document.getElementById('upgradeModalCta').textContent='Quero acesso agora →';
-  }
-
-  document.getElementById('upgradeModal').classList.add('on');
+  // Estrategia gratuita — so pede conta, nao plano pago
+  const token = localStorage.getItem('bt_token');
+  if(!token){ openAuthModal(); }
+  // Se ja tem conta, nao bloqueia
 }
 function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('on');}
 function selectPlan(plan){
@@ -1637,26 +1498,13 @@ function signalCopy(videoId){
 // ── IP LIMIT ───────────────────────────────────────────────────────────────
 async function checkAndIncrementLimit(){
   try{
-    // Master = ilimitado — bypass TOTAL antes de qualquer requisição
-    const _localPlan = userPlan || localStorage.getItem('bt_plan') || 'free';
-    if(_localPlan === 'master') return true;
-
-    const token=localStorage.getItem('bt_token');
-    const r=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment',token})});
-    const d=await r.json();
-    dailyUsed=d.used||0;dailyLimit=d.limit||2;
-    const _rp=d.plan||'free',_cp=userPlan||localStorage.getItem('bt_plan')||'free';
-    if({free:0,full:1,master:2}[_rp]>({free:0,full:1,master:2}[_cp]||0)){userPlan=_rp;localStorage.setItem('bt_plan',_rp);}
-    const _eff=userPlan||localStorage.getItem('bt_plan')||'free';
-    // Double-check: se plano efetivo for master, nunca bloqueia
-    if(_eff==='master') return true;
-    if(!d.allowed){
-      if(_eff==='full'){openUpgradeModal('limit_full');}
-      else{openUpgradeModal('limit_free');}
-      return false;
-    }
+    const token = localStorage.getItem('bt_token');
+    if(!token){ openAuthModal(); return false; }
+    const r = await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment',token})});
+    const d = await r.json();
+    if(!d.allowed){ openAuthModal(); return false; }
     return true;
-  }catch{return true;}
+  }catch(e){ return true; } // fail open
 }
 
 // ── UI HELPERS ─────────────────────────────────────────────────────────────
@@ -1750,8 +1598,8 @@ async function startTranscription(e){
       setLoading(false);showResults();switchTab('transcript');
       generateAllScripts(lang);
       saveToLearningLoop(videoId,transcript,lang);
-      // Show account creation popup for free users without account
-      if(userPlan==='free' && !localStorage.getItem('bt_token') && !localStorage.getItem('bt_shown_signup_popup')){
+      // Pede conta se nao tem
+      if(!localStorage.getItem('bt_token') && !localStorage.getItem('bt_shown_signup_popup')){
         localStorage.setItem('bt_shown_signup_popup','1');
         setTimeout(()=>showFreeUserPopup(), 3000);
       }
@@ -2019,7 +1867,7 @@ async function generateTitles(lang){
 // ── NARRAR NO BLUEVOICE ───────────────────────────────────────────────────────
 function sendToBlueVoice(scriptId){
   const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
-  if(!isMaster){openUpgradeModal('master_tool');return;}
+  if(!isMaster){openAuthModal();return;}
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
@@ -2034,13 +1882,10 @@ function copyTitleEl(id,btn){
   const orig=btn.textContent;btn.textContent='✓ Copiado!';setTimeout(()=>btn.textContent=orig,2000);
 }
 function updateBlueVoiceButtons(){
-  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
-  ['1','2'].forEach(n=>{
-    const btn=document.getElementById('bvBtn'+n),wrap=document.getElementById('bvWrap'+n);
-    if(!btn||!wrap) return;
-    if(isMaster){btn.style.filter='';btn.style.opacity='1';btn.style.cursor='pointer';const l=wrap.querySelector('.bv-lock');if(l)l.remove();}
-    else{btn.style.filter='blur(1.5px)';btn.style.opacity='0.55';btn.style.cursor='default';
-      if(!wrap.querySelector('.bv-lock')){const l=document.createElement('span');l.className='bv-lock';l.style.cssText='position:absolute;top:-7px;right:-7px;background:#fbbf24;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;pointer-events:none';l.textContent='🔒';wrap.appendChild(l);}}
+  // Todos os usuarios tem acesso ao BlueVoice (limite de 30/mes no proprio BlueVoice)
+  ['bvBtn1','bvBtn2'].forEach(id=>{
+    const btn=document.getElementById(id);
+    if(btn){ btn.style.opacity='1'; btn.style.filter=''; btn.disabled=false; }
   });
 }
 
@@ -2159,13 +2004,13 @@ function setLoggedIn(email, plan){
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
-      ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
+      ${!isPaid ? '<span style="font-size:10px"></span>' : ''}
     </button>
     <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">
       <div class="nav-avatar">${planIcon || email[0].toUpperCase()}</div>
       <span class="nav-user-email">${email.split('@')[0]}</span>
     </button>
-    ${showUpgrade ? `<button class="nav-upgrade-btn" onclick="openUpgradeModal()">⚡ Upgrade</button>` : ''}
+    ${showUpgrade ? `` : ''}
   `;
 
   // Re-unlock tools if master (after innerHTML reset)
@@ -2360,7 +2205,7 @@ function applyTranslations(){
   const commBtn = document.getElementById('communityBtn');
   if(commBtn && s.nav_community){
     const lockSpan = commBtn.querySelector('span');
-    commBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${s.nav_community}<span id="communityLock" style="font-size:10px">🔒</span>`;
+    commBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${s.nav_community}<span id="communityLock" style="font-size:10px"></span>`;
   }
 
   // ── MAIN BUTTON ───────────────────────────────────────────────────────────
@@ -2681,7 +2526,7 @@ document.addEventListener('click', e => {
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function openMasterTool(tool){
   const _ep=userPlan==='master'||localStorage.getItem('bt_plan')==='master'?'master':userPlan;
-  if(_ep!=='master'){openUpgradeModal('master_tool');return;}
+  if(_ep!=='master'){openAuthModal();return;}
   if(userPlan!=='master')userPlan='master';
   const _toolMap={download:'baixa',viral:'virais',voice:'voice',bluescore:'score',bluelens:'score'};
   try{
