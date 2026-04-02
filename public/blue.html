@@ -119,6 +119,120 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .cp-send:disabled{background:#333;cursor:not-allowed}
 .comments-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:299}
 .comments-backdrop.on{display:block}
+
+/* ── PROFILE PAGE ─────────────────────────────────────────────────── */
+.profile-page{position:fixed;inset:0;background:#000;z-index:250;
+  transform:translateX(100%);transition:transform .32s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;-webkit-overflow-scrolling:touch}
+.profile-page::-webkit-scrollbar{display:none}
+.profile-page.open{transform:translateX(0)}
+
+.prof-topbar{display:flex;align-items:center;padding:52px 16px 16px;gap:12px}
+.prof-back{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0}
+.prof-back:hover{background:rgba(255,255,255,.1)}
+.prof-topbar-name{font-size:17px;font-weight:700;flex:1}
+.prof-topbar-edit{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+  border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;color:#fff;
+  cursor:pointer;border-style:solid}
+
+.prof-header{padding:0 24px 24px;text-align:center}
+.prof-av-wrap{position:relative;display:inline-block;margin-bottom:14px}
+.prof-avatar{width:86px;height:86px;border-radius:50%;object-fit:cover;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:32px;font-weight:700;border:3px solid #222}
+.prof-av-cam{position:absolute;bottom:2px;right:2px;width:26px;height:26px;
+  background:#3b82f6;border-radius:50%;border:2px solid #000;
+  display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer}
+.prof-name{font-size:20px;font-weight:800;margin-bottom:3px}
+.prof-username{font-family:-apple-system,monospace;font-size:13px;color:#888;margin-bottom:10px}
+.prof-bio{font-size:14px;color:#ccc;line-height:1.5;max-width:300px;margin:0 auto 16px}
+.prof-stats{display:flex;justify-content:center;gap:32px;margin-bottom:20px}
+.ps{text-align:center}
+.ps-n{font-size:20px;font-weight:800}
+.ps-l{font-size:12px;color:#888;margin-top:1px}
+
+.prof-tabs{display:flex;border-bottom:1px solid #222;margin-bottom:2px}
+.prof-tab{flex:1;padding:12px;border:none;background:none;color:#888;
+  font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .2s}
+.prof-tab.active{color:#fff;border-bottom-color:#3b82f6}
+
+.prof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#111}
+.pg-card{position:relative;aspect-ratio:9/16;background:#1a1a1a;overflow:hidden;cursor:pointer}
+.pg-thumb{width:100%;height:100%;object-fit:cover}
+.pg-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;background:#1a1a1a}
+.pg-views{position:absolute;bottom:4px;left:6px;font-size:11px;font-weight:700;
+  color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.pg-dots{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);border:none;
+  border-radius:50%;width:28px;height:28px;color:#fff;font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1}
+
+/* DOTS MENU */
+.dots-menu{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
+  width:100%;max-width:412px;background:#1a1a1a;border-radius:16px 16px 0 0;
+  z-index:400;transition:transform .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+.dots-menu.open{transform:translateX(-50%) translateY(0)}
+.dm-item{display:flex;align-items:center;gap:14px;padding:16px 24px;
+  cursor:pointer;font-size:15px;border:none;background:none;color:#fff;
+  width:100%;text-align:left;transition:background .15s}
+.dm-item:hover{background:rgba(255,255,255,.06)}
+.dm-item.danger{color:#f87171}
+.dm-divider{height:1px;background:#2a2a2a;margin:4px 0}
+.dm-icon{font-size:20px;width:24px;text-align:center}
+
+/* EDIT PROFILE MODAL */
+.edit-modal{position:fixed;inset:0;z-index:350;display:none;
+  align-items:flex-end;justify-content:center}
+.edit-modal.on{display:flex}
+.edit-modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.7)}
+.edit-box{position:relative;width:100%;max-width:412px;background:#1a1a1a;
+  border-radius:20px 20px 0 0;padding:24px 20px 40px;z-index:1;
+  max-height:90vh;overflow-y:auto}
+.edit-box::-webkit-scrollbar{display:none}
+.edit-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.edit-title{font-size:17px;font-weight:700}
+.edit-save{background:#3b82f6;border:none;border-radius:20px;padding:8px 20px;
+  font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:background .2s}
+.edit-save:hover{background:#2563eb}
+.edit-save:disabled{background:#333;cursor:not-allowed}
+
+.edit-av-wrap{display:flex;justify-content:center;margin-bottom:24px}
+.edit-av{width:80px;height:80px;border-radius:50%;object-fit:cover;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:30px;
+  font-weight:700;position:relative;overflow:hidden;border:3px solid #333}
+.edit-av-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;font-size:22px;
+  opacity:0;transition:opacity .2s}
+.edit-av:hover .edit-av-overlay{opacity:1}
+.edit-av-input{display:none}
+
+.edit-field-wrap{margin-bottom:16px}
+.edit-label{font-size:12px;color:#888;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;margin-bottom:6px}
+.edit-field{width:100%;background:#111;border:1px solid #333;border-radius:12px;
+  padding:12px 14px;font-size:15px;color:#fff;outline:none;
+  font-family:-apple-system,sans-serif;transition:border-color .2s;resize:none}
+.edit-field:focus{border-color:#3b82f6}
+.edit-field::placeholder{color:#444}
+.edit-char{text-align:right;font-size:11px;color:#555;margin-top:4px}
+
+/* EDIT VIDEO MODAL */
+.edit-video-modal{position:fixed;inset:0;z-index:360;display:none;
+  align-items:center;justify-content:center;padding:24px}
+.edit-video-modal.on{display:flex}
+.evm-bg{position:absolute;inset:0;background:rgba(0,0,0,.8)}
+.evm-box{position:relative;width:100%;max-width:380px;background:#1a1a1a;
+  border-radius:20px;padding:24px;z-index:1}
+.evm-title{font-size:17px;font-weight:700;margin-bottom:20px}
+.evm-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+.evm-cancel{background:none;border:1px solid #333;border-radius:12px;padding:10px 20px;
+  font-size:14px;color:#aaa;cursor:pointer}
+.evm-save{background:#3b82f6;border:none;border-radius:12px;padding:10px 20px;
+  font-size:14px;font-weight:700;color:#fff;cursor:pointer}
 </style>
 </head>
 <body>
@@ -183,6 +297,94 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
 <div class="toast" id="toast"></div>
 
+<!-- PROFILE PAGE -->
+<div class="profile-page" id="profilePage">
+  <div class="prof-topbar">
+    <button class="prof-back" onclick="closeProfile()">←</button>
+    <div class="prof-topbar-name" id="ptName">Perfil</div>
+    <button class="prof-topbar-edit" onclick="openEditProfile()" id="ptEditBtn" style="display:none">Editar</button>
+  </div>
+  <div class="prof-header">
+    <div class="prof-av-wrap">
+      <div class="prof-avatar" id="profAvatar">?</div>
+      <div class="prof-av-cam" onclick="openEditProfile()" id="profAvCam" style="display:none">📷</div>
+    </div>
+    <div class="prof-name" id="profName">—</div>
+    <div class="prof-username" id="profUsername">@—</div>
+    <div class="prof-bio" id="profBio" style="display:none"></div>
+    <div class="prof-stats">
+      <div class="ps"><div class="ps-n" id="profVids">0</div><div class="ps-l">Vídeos</div></div>
+      <div class="ps"><div class="ps-n" id="profLikes">0</div><div class="ps-l">Curtidas</div></div>
+    </div>
+  </div>
+  <div class="prof-tabs">
+    <button class="prof-tab active" onclick="switchProfTab('videos',this)">🎬 Vídeos</button>
+  </div>
+  <div class="prof-grid" id="profGrid"></div>
+</div>
+
+<!-- DOTS MENU -->
+<div class="comments-backdrop" id="dotsBackdrop" onclick="closeDotsMenu()" style="display:none;z-index:399"></div>
+<div class="dots-menu" id="dotsMenu">
+  <button class="dm-item" onclick="doEditVideo()"><span class="dm-icon">✏️</span>Editar vídeo</button>
+  <div class="dm-divider"></div>
+  <button class="dm-item danger" onclick="doDeleteVideo()"><span class="dm-icon">🗑️</span>Excluir vídeo</button>
+  <div class="dm-divider"></div>
+  <button class="dm-item" onclick="closeDotsMenu()"><span class="dm-icon">✕</span>Cancelar</button>
+</div>
+
+<!-- EDIT PROFILE MODAL -->
+<div class="edit-modal" id="editModal">
+  <div class="edit-modal-bg" onclick="closeEditProfile()"></div>
+  <div class="edit-box">
+    <div class="edit-header">
+      <div class="edit-title">Editar perfil</div>
+      <button class="edit-save" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
+    </div>
+    <div class="edit-av-wrap">
+      <label>
+        <div class="edit-av" id="editAvatar">?
+          <div class="edit-av-overlay">📷</div>
+        </div>
+        <input type="file" class="edit-av-input" id="editAvInput" accept="image/*" onchange="pickAvatar(this.files[0])"/>
+      </label>
+    </div>
+    <div class="edit-field-wrap">
+      <div class="edit-label">Nome</div>
+      <input class="edit-field" id="editName" type="text" maxlength="50" placeholder="Seu nome"/>
+    </div>
+    <div class="edit-field-wrap">
+      <div class="edit-label">Username</div>
+      <input class="edit-field" id="editUsername" type="text" maxlength="30" placeholder="@seuusername"/>
+    </div>
+    <div class="edit-field-wrap">
+      <div class="edit-label">Bio</div>
+      <textarea class="edit-field" id="editBio" rows="3" maxlength="150" placeholder="Fale sobre você…" oninput="document.getElementById('editBioChar').textContent=this.value.length+'/150'"></textarea>
+      <div class="edit-char" id="editBioChar">0/150</div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT VIDEO MODAL -->
+<div class="edit-video-modal" id="editVideoModal">
+  <div class="evm-bg" onclick="closeEditVideoModal()"></div>
+  <div class="evm-box">
+    <div class="evm-title">Editar vídeo</div>
+    <div class="edit-field-wrap">
+      <div class="edit-label">Título</div>
+      <input class="edit-field" id="evmTitle" type="text" maxlength="100" placeholder="Título do vídeo"/>
+    </div>
+    <div class="edit-field-wrap">
+      <div class="edit-label">Descrição</div>
+      <textarea class="edit-field" id="evmDesc" rows="3" maxlength="500" placeholder="Descrição…"></textarea>
+    </div>
+    <div class="evm-footer">
+      <button class="evm-cancel" onclick="closeEditVideoModal()">Cancelar</button>
+      <button class="evm-save" onclick="saveVideoEdit()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="comments-backdrop" id="commentsBackdrop" onclick="closeComments()"></div>
 <div class="comments-panel" id="commentsPanel">
   <div class="cp-header">
@@ -242,6 +444,222 @@ let selFile=null, thumbB64=null, vDur=0, vW=1080, vH=1920;
 let obs=null;
 
 // LOAD FEED
+// ── PROFILE STATE ────────────────────────────────────────────────────────────
+let myProfile = null;
+let _dotsVideoId = null, _dotsVideoData = null;
+let _editAvatarB64 = null;
+
+// ── PROFILE OPEN/CLOSE ───────────────────────────────────────────────────────
+async function openProfile() {
+  document.getElementById('profilePage').classList.add('open');
+  if (!TOKEN) {
+    // Não logado — mostra tela de login
+    document.getElementById('profName').textContent = 'Visitante';
+    document.getElementById('profUsername').textContent = 'Entre para ver seu perfil';
+    document.getElementById('profGrid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#555;font-size:13px"><a href="/" style="color:#3b82f6">Fazer login →</a></div>';
+    return;
+  }
+  await loadMyProfile();
+}
+
+function closeProfile() {
+  document.getElementById('profilePage').classList.remove('open');
+}
+
+async function loadMyProfile() {
+  try {
+    const r = await fetch('/api/blue-profile?token='+encodeURIComponent(TOKEN));
+    if (!r.ok) return;
+    const d = await r.json();
+    myProfile = d.profile;
+    renderProfileHeader(myProfile, true);
+    loadMyVideos();
+  } catch(e) {}
+}
+
+function renderProfileHeader(p, isOwn) {
+  if (!p) return;
+  // Avatar
+  const avEl = document.getElementById('profAvatar');
+  if (p.avatar_url) {
+    avEl.innerHTML = '<img src="'+p.avatar_url+'" style="width:86px;height:86px;border-radius:50%;object-fit:cover" onerror="this.parentElement.textContent=''+( p.display_name||'?').charAt(0).toUpperCase()+''"/>';
+  } else {
+    avEl.textContent = (p.display_name||p.username||'?').charAt(0).toUpperCase();
+  }
+  document.getElementById('profName').textContent = p.display_name || p.username || '—';
+  document.getElementById('profUsername').textContent = '@'+(p.username||'usuario');
+  document.getElementById('ptName').textContent = p.username || 'Perfil';
+  if (p.bio) {
+    const bioEl = document.getElementById('profBio');
+    bioEl.textContent = p.bio; bioEl.style.display = 'block';
+  }
+  if (isOwn) {
+    document.getElementById('ptEditBtn').style.display = 'block';
+    document.getElementById('profAvCam').style.display = 'flex';
+  }
+}
+
+async function loadMyVideos() {
+  const grid = document.getElementById('profGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center"><div style="width:28px;height:28px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div></div>';
+  try {
+    const r = await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(TOKEN));
+    const d = await r.json();
+    const vids = d.videos || [];
+    document.getElementById('profVids').textContent = vids.length;
+    if (vids.length === 0) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:48px 20px;text-align:center;color:#555;font-size:13px">Nenhum vídeo ainda.<br><button onclick="openUpload();closeProfile()" style="margin-top:12px;background:#3b82f6;border:none;border-radius:8px;padding:9px 18px;color:#fff;font-size:13px;cursor:pointer">+ Postar vídeo</button></div>';
+      return;
+    }
+    grid.innerHTML = vids.map(v => {
+      const thumbHtml = v.thumbnail_url
+        ? '<img class="pg-thumb" src="'+v.thumbnail_url+'" loading="lazy" onerror="this.style.display='none'"/>'
+        : '<div class="pg-thumb-placeholder">🎬</div>';
+      return '<div class="pg-card" onclick="openVideoFromProfile(''+v.id+'')">' +
+        thumbHtml +
+        '<div class="pg-views">👁 '+fmt(v.views||0)+'</div>' +
+        '<button class="pg-dots" onclick="event.stopPropagation();openDotsMenu(''+v.id+'','+JSON.stringify(JSON.stringify({title:v.title||'',description:v.description||''}))+')" >⋯</button>' +
+      '</div>';
+    }).join('');
+  } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#f87171;font-size:13px">Erro ao carregar</div>'; }
+}
+
+function openVideoFromProfile(id) {
+  const v = videos.find(x=>x.id===id) || {id, video_url:'', title:'', creator:{}};
+  closeProfile();
+  setTimeout(()=>{
+    const slide = document.getElementById('s-'+id);
+    if (slide) { slide.scrollIntoView({behavior:'smooth'}); }
+  }, 350);
+}
+
+function switchProfTab(tab, btn) {
+  document.querySelectorAll('.prof-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ── DOTS MENU ──────────────────────────────────────────────────────────────
+function openDotsMenu(videoId, dataStr) {
+  _dotsVideoId = videoId;
+  try { _dotsVideoData = JSON.parse(dataStr); } catch(e) { _dotsVideoData = {}; }
+  document.getElementById('dotsMenu').classList.add('open');
+  document.getElementById('dotsBackdrop').style.display = 'block';
+}
+function closeDotsMenu() {
+  document.getElementById('dotsMenu').classList.remove('open');
+  document.getElementById('dotsBackdrop').style.display = 'none';
+}
+function doEditVideo() {
+  closeDotsMenu();
+  if (!_dotsVideoId || !_dotsVideoData) return;
+  document.getElementById('evmTitle').value = _dotsVideoData.title || '';
+  document.getElementById('evmDesc').value = _dotsVideoData.description || '';
+  document.getElementById('editVideoModal').classList.add('on');
+}
+function closeEditVideoModal() { document.getElementById('editVideoModal').classList.remove('on'); }
+async function saveVideoEdit() {
+  if (!_dotsVideoId) return;
+  const title = document.getElementById('evmTitle').value.trim();
+  const description = document.getElementById('evmDesc').value.trim();
+  const btn = document.querySelector('#editVideoModal .evm-save');
+  btn.textContent = 'Salvando…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/blue-profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'edit-video',token:TOKEN,video_id:_dotsVideoId,title,description})
+    });
+    if (r.ok) { closeEditVideoModal(); toast('✅ Vídeo atualizado'); loadMyVideos(); }
+    else { const d=await r.json(); toast('Erro: '+d.error); }
+  } catch(e) { toast('Erro: '+e.message); }
+  btn.textContent = 'Salvar'; btn.disabled = false;
+}
+async function doDeleteVideo() {
+  if (!_dotsVideoId) return;
+  closeDotsMenu();
+  if (!confirm('Excluir este vídeo? Esta ação não pode ser desfeita.')) return;
+  try {
+    const r = await fetch('/api/blue-profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'delete-video',token:TOKEN,video_id:_dotsVideoId})
+    });
+    if (r.ok) { toast('🗑️ Vídeo excluído'); loadMyVideos(); videos=videos.filter(v=>v.id!==_dotsVideoId); renderFeed(); }
+    else { const d=await r.json(); toast('Erro: '+d.error); }
+  } catch(e) { toast('Erro: '+e.message); }
+}
+
+// ── EDIT PROFILE ──────────────────────────────────────────────────────────────
+function openEditProfile() {
+  if (!myProfile) return;
+  document.getElementById('editName').value = myProfile.display_name || '';
+  document.getElementById('editUsername').value = myProfile.username || '';
+  document.getElementById('editBio').value = myProfile.bio || '';
+  document.getElementById('editBioChar').textContent = (myProfile.bio||'').length+'/150';
+  // Avatar preview
+  const editAv = document.getElementById('editAvatar');
+  if (myProfile.avatar_url) {
+    editAv.innerHTML = '<img src="'+myProfile.avatar_url+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover"/><div class="edit-av-overlay">📷</div>';
+  } else {
+    editAv.innerHTML = (myProfile.display_name||'?').charAt(0).toUpperCase()+'<div class="edit-av-overlay">📷</div>';
+  }
+  _editAvatarB64 = null;
+  document.getElementById('editModal').classList.add('on');
+}
+
+function closeEditProfile() { document.getElementById('editModal').classList.remove('on'); }
+
+function pickAvatar(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _editAvatarB64 = e.target.result;
+    document.getElementById('editAvatar').innerHTML =
+      '<img src="'+_editAvatarB64+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover"/><div class="edit-av-overlay">📷</div>';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveProfile() {
+  const btn = document.getElementById('editSaveBtn');
+  btn.textContent = 'Salvando…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/blue-profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action:'update', token:TOKEN,
+        display_name: document.getElementById('editName').value.trim(),
+        username: document.getElementById('editUsername').value.trim(),
+        bio: document.getElementById('editBio').value.trim(),
+        avatar_data: _editAvatarB64
+      })
+    });
+    if (r.ok) {
+      closeEditProfile();
+      toast('✅ Perfil atualizado!');
+      await loadMyProfile();
+      // Atualiza avatar no header
+      if (myProfile?.avatar_url) {
+        document.getElementById('hdAvatar').innerHTML = '<img src="'+myProfile.avatar_url+'?t='+Date.now()+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover"/>';
+      } else if (myProfile?.display_name) {
+        document.getElementById('hdAvatar').textContent = myProfile.display_name.charAt(0).toUpperCase();
+      }
+    } else {
+      const d = await r.json();
+      toast('Erro: '+(d.error||'falha ao salvar'));
+    }
+  } catch(e) { toast('Erro: '+e.message); }
+  btn.textContent = 'Salvar'; btn.disabled = false;
+}
+
+// ── LOAD FEED (with renderFeed helper) ───────────────────────────────────────
+function renderFeed() {
+  const feed = document.getElementById('feed');
+  feed.innerHTML = '';
+  if (videos.length === 0) { document.getElementById('empty').classList.add('on'); return; }
+  document.getElementById('empty').classList.remove('on');
+  videos.forEach((v,i) => { const s = makeSlide(v,i); if(s) feed.appendChild(s); });
+  setupObs();
+}
+
 async function loadFeed(){
   const feed = document.getElementById('feed');
   feed.innerHTML='<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#666">Carregando…</div></div>';
