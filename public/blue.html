@@ -386,13 +386,13 @@ async function publish(){
       xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%'; };
       xhr.onload=()=>{ console.log('Upload:',xhr.status,xhr.responseText.slice(0,80)); xhr.status<300?res():rej(new Error('Upload HTTP '+xhr.status+': '+xhr.responseText.slice(0,80))); };
       xhr.onerror=()=>rej(new Error('Falha de rede'));
-      xhr.open('POST',upUrl);
+      xhr.open('PUT',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
       xhr.setRequestHeader('Authorization','Bearer '+validToken);
-      // Normaliza content-type para evitar rejeição
       const ct = selFile.type || 'video/mp4';
       xhr.setRequestHeader('Content-Type', ct);
       xhr.setRequestHeader('x-upsert','true');
+      xhr.setRequestHeader('cache-control','3600');
       xhr.send(selFile);
     });
 
