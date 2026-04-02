@@ -973,20 +973,13 @@ async function handleLogin() {
 
 function redirectAfterAuth() {
   const token = localStorage.getItem('bt_token');
-  const refresh = localStorage.getItem('bt_refresh_token');
-  console.log('redirectAfterAuth — token:', token ? token.slice(0,20)+'...' : 'NULL');
+  const refresh = localStorage.getItem('bt_refresh_token') || '';
 
-  // Cookie com dominio compartilhado — funciona em www e non-www
-  if (token) {
-    const exp = new Date(Date.now() + 5 * 60 * 1000).toUTCString(); // 5 min
-    document.cookie = 'bt_token=' + encodeURIComponent(token) + '; domain=.bluetubeviral.com; path=/; expires=' + exp + '; SameSite=Lax';
-    if (refresh) {
-      document.cookie = 'bt_refresh=' + encodeURIComponent(refresh) + '; domain=.bluetubeviral.com; path=/; expires=' + exp + '; SameSite=Lax';
-    }
-  }
+  // Hash fragment — nao e enviado ao servidor, funciona cross-subdomain
+  const hash = token ? '#bt=' + encodeURIComponent(token) + (refresh ? '&br=' + encodeURIComponent(refresh) : '') : '';
 
   if (_pendingPlan === 'free') {
-    window.location.href = SITE;
+    window.location.href = SITE + '/' + hash;
   } else {
     fetch('/api/create-checkout', {
       method: 'POST',
@@ -996,9 +989,9 @@ function redirectAfterAuth() {
     .then(r => r.json())
     .then(d => {
       if (d.url) window.location.href = d.url;
-      else window.location.href = SITE;
+      else window.location.href = SITE + '/' + hash;
     })
-    .catch(() => window.location.href = SITE);
+    .catch(() => window.location.href = SITE + '/' + hash);
   }
 }
 
