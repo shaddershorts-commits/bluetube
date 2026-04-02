@@ -235,7 +235,8 @@ function makeSlide(v,i){
   el.className='slide'; el.id='s-'+v.id; el.dataset.id=v.id; el.dataset.i=i;
   el.innerHTML=`
     <video src="${v.video_url}" preload="${i<2?'auto':'none'}" loop playsinline muted
-      poster="${v.thumbnail_url||''}" ontimeupdate="tick(this,'${v.id}')"></video>
+      poster="${v.thumbnail_url||''}" ontimeupdate="tick(this,'${v.id}')"
+      onerror="this.closest('.slide').style.display='none'"></video>
     <div class="grad"></div>
     <div class="info">
       <div class="info-user">@${c.username||'blue'}</div>
@@ -323,9 +324,11 @@ function dropFile(e){ e.preventDefault();e.currentTarget.classList.remove('ov');
 function pickFile(file){
   if(!file)return;
   // Avisa se muito grande mas deixa tentar (o Supabase decide)
-  if(file.size > 500*1024*1024) {
-    toast('⚠️ Arquivo grande ('+Math.round(file.size/1024/1024)+'MB) — pode demorar');
+  const mb = Math.round(file.size/1024/1024);
+  if(file.size > 2000*1024*1024) {
+    toast('❌ Arquivo maior que 2GB — não suportado'); return;
   }
+  if(mb > 200) toast('⚠️ Arquivo grande ('+mb+'MB) — pode demorar');
   selFile=file;
   const url=URL.createObjectURL(file);
   const tv=document.createElement('video'); tv.src=url; tv.muted=true;
@@ -334,7 +337,9 @@ function pickFile(file){
     const c=document.createElement('canvas');
     c.width=Math.min(tv.videoWidth,480); c.height=Math.round(c.width*(tv.videoHeight/tv.videoWidth));
     c.getContext('2d').drawImage(tv,0,0,c.width,c.height);
-    thumbB64=c.toDataURL('image/jpeg',.75);
+    // Comprime thumbnail agressivamente (max 200KB para não estourar Vercel)
+    let q=0.6; thumbB64=c.toDataURL('image/jpeg',q);
+    while(thumbB64.length>200000&&q>0.1){q-=0.1;thumbB64=c.toDataURL('image/jpeg',q);}
     document.getElementById('pthumb').innerHTML=`<img src="${thumbB64}" style="width:72px;height:72px;object-fit:cover;border-radius:10px"/>`;
   };
   document.getElementById('dico').textContent='✅';
@@ -381,10 +386,20 @@ async function publish(){
 
     // Passo 2: upload direto para Supabase Storage (bypassa Vercel - sem limite)
     const upUrl=d1.supabase_url+'/storage/v1/object/blue-videos/'+d1.storage_path;
+    const fileMB=Math.round(selFile.size/1024/1024);
+    msg.textContent='Enviando vídeo ('+fileMB+'MB)…';
     await new Promise((res,rej)=>{
       const xhr=new XMLHttpRequest();
       xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%'; };
-      xhr.onload=()=>{ console.log('Upload:',xhr.status,xhr.responseText.slice(0,80)); xhr.status<300?res():rej(new Error('Upload HTTP '+xhr.status+': '+xhr.responseText.slice(0,80))); };
+      xhr.onload=()=>{
+        console.log('Upload:',xhr.status,xhr.responseText.slice(0,200));
+        if(xhr.status<300){res();}
+        else if(xhr.status===400&&xhr.responseText.includes('413')){
+          rej(new Error('Arquivo grande demais — vá em Supabase Dashboard → Project Settings → Storage → aumente o File Size Limit para 5000MB'));
+        }else{
+          rej(new Error('Upload HTTP '+xhr.status+': '+xhr.responseText.slice(0,100)));
+        }
+      };
       xhr.onerror=()=>rej(new Error('Falha de rede'));
       xhr.open('PUT',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
