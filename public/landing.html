@@ -975,12 +975,18 @@ function redirectAfterAuth() {
   const token = localStorage.getItem('bt_token');
   const refresh = localStorage.getItem('bt_refresh_token');
   console.log('redirectAfterAuth — token:', token ? token.slice(0,20)+'...' : 'NULL');
-  const params = new URLSearchParams();
-  if (token) params.set('bt_token', token);
-  if (refresh) params.set('bt_refresh', refresh);
+
+  // Cookie com dominio compartilhado — funciona em www e non-www
+  if (token) {
+    const exp = new Date(Date.now() + 5 * 60 * 1000).toUTCString(); // 5 min
+    document.cookie = 'bt_token=' + encodeURIComponent(token) + '; domain=.bluetubeviral.com; path=/; expires=' + exp + '; SameSite=Lax';
+    if (refresh) {
+      document.cookie = 'bt_refresh=' + encodeURIComponent(refresh) + '; domain=.bluetubeviral.com; path=/; expires=' + exp + '; SameSite=Lax';
+    }
+  }
 
   if (_pendingPlan === 'free') {
-    window.location.href = SITE + '/?' + params.toString();
+    window.location.href = SITE;
   } else {
     fetch('/api/create-checkout', {
       method: 'POST',
@@ -990,9 +996,9 @@ function redirectAfterAuth() {
     .then(r => r.json())
     .then(d => {
       if (d.url) window.location.href = d.url;
-      else window.location.href = SITE + '/?' + params.toString();
+      else window.location.href = SITE;
     })
-    .catch(() => window.location.href = SITE + '/?' + params.toString());
+    .catch(() => window.location.href = SITE);
   }
 }
 
