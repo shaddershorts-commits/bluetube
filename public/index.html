@@ -2721,6 +2721,24 @@ async function sendBluBluFeedback(){
 }
 
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')handleMainBtn(e);});
+
+// Captura token passado via URL (vindo da landing page www → site principal)
+(function(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('bt_token');
+    const r = params.get('bt_refresh');
+    if (t) {
+      localStorage.setItem('bt_token', t);
+      if (r) localStorage.setItem('bt_refresh_token', r);
+      // Remove da URL sem recarregar a página
+      const clean = window.location.pathname;
+      window.history.replaceState({}, '', clean);
+      // Força verificação de sessão
+      if (typeof checkSession === 'function') checkSession();
+    }
+  } catch(e) {}
+})();
 document.getElementById('urlInput').addEventListener('input', function(){
   _save('bt_url', this.value);
 });
