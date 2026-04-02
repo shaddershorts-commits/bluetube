@@ -133,7 +133,41 @@ html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overf
 <div class="toast" id="toast"></div>
 
 <script>
-const TOKEN = localStorage.getItem('bt_token');
+let TOKEN = localStorage.getItem('bt_token');
+
+async function getValidToken() {
+  // Tenta refresh se tiver refresh token
+  const refresh = localStorage.getItem('bt_refresh_token');
+  if (!TOKEN && !refresh) return null;
+  if (TOKEN) {
+    // Testa se o token ainda é válido
+    try {
+      const r = await fetch('/api/blue-profile?token=' + encodeURIComponent(TOKEN));
+      if (r.ok) return TOKEN;
+    } catch(e) {}
+  }
+  // Token inválido — tenta renovar
+  if (refresh) {
+    try {
+      const r = await fetch('/api/auth', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refresh', refresh_token: refresh })
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const newToken = d.session?.access_token || d.access_token;
+        const newRefresh = d.session?.refresh_token || d.refresh_token;
+        if (newToken) {
+          TOKEN = newToken;
+          localStorage.setItem('bt_token', newToken);
+          if (newRefresh) localStorage.setItem('bt_refresh_token', newRefresh);
+          return TOKEN;
+        }
+      }
+    } catch(e) {}
+  }
+  return null;
+}
 const SID = localStorage.getItem('bl_s') || (()=>{const s='s'+Date.now().toString(36);localStorage.setItem('bl_s',s);return s;})();
 let videos=[], liked=new Set(JSON.parse(localStorage.getItem('bl_liked')||'[]')), saved=new Set(JSON.parse(localStorage.getItem('bl_saved')||'[]'));
 let selFile=null, thumbB64=null, vDur=0, vW=1080, vH=1920;
@@ -144,7 +178,7 @@ async function loadFeed(){
   try{
     const r = await fetch('/api/blue-feed?limit=20&session='+SID);
     const d = await r.json();
-    videos = d.videos||[];
+    videos = (d.videos||[]).filter(v=>v&&v.video_url);
   }catch(e){ videos=[]; }
   const feed = document.getElementById('feed');
   feed.innerHTML='';
@@ -155,6 +189,7 @@ async function loadFeed(){
 }
 
 function makeSlide(v,i){
+  if(!v||!v.video_url){return document.createElement('div');} // skip invalid
   const c=v.creator||{};
   const lk=liked.has(v.id);
   const sv=saved.has(v.id);
@@ -198,7 +233,12 @@ function setupObs(){
       if(e.isIntersecting && e.intersectionRatio>.6){
         document.querySelectorAll('#feed video').forEach(v=>{ if(v!==vid){v.pause();v.currentTime=0;} });
         vid.preload='auto'; vid.muted=false;
-        vid.play().catch(()=>{vid.muted=true;vid.play();});
+        vid.play().catch(err=>{
+          if(err.name==='NotSupportedError'||err.name==='NotAllowedError'){
+            vid.muted=true;
+            vid.play().catch(()=>{});
+          }
+        });
         // Preload next
         const ni=parseInt(sl.dataset.i)+1;
         if(videos[ni]){ const ns=document.getElementById('s-'+videos[ni].id); if(ns){const nv=ns.querySelector('video');if(nv)nv.preload='auto';} }
@@ -264,20 +304,32 @@ function pickFile(file){
 }
 
 async function publish(){
-  if(!selFile||!TOKEN)return;
+  if(!selFile)return;
   const title=document.getElementById('ftitle').value.trim();
   if(!title){toast('Adicione um título');return;}
   const desc=document.getElementById('fdesc').value.trim();
   const btn=document.getElementById('mpub'), msg=document.getElementById('mmsg');
   const prog=document.getElementById('mprog'), fill=document.getElementById('mfill');
-  btn.disabled=true; btn.textContent='Publicando…';
-  prog.style.display='block'; fill.style.width='5%';
-  msg.className='mmsg ok'; msg.textContent='Preparando…';
+  btn.disabled=true; btn.textContent='Verificando…';
+  prog.style.display='block'; fill.style.width='3%';
+  msg.className='mmsg ok'; msg.textContent='Verificando sessão…';
+
+  // Garante token válido antes de tentar upload
+  const validToken = await getValidToken();
+  if (!validToken) {
+    closeUpload();
+    msg.textContent='';prog.style.display='none';btn.disabled=false;btn.textContent='Publicar →';
+    toast('Sessão expirada — faça login novamente');
+    setTimeout(()=>window.location.href='/?signin=1', 1500);
+    return;
+  }
+
+  btn.textContent='Publicando…'; fill.style.width='5%'; msg.textContent='Preparando…';
 
   try{
     // Passo 1: cria registro e obtém destino de upload
     const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:TOKEN,title,description:desc,duration:vDur,width:vW,height:vH,
+      body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
         file_name:selFile.name,content_type:selFile.type,thumbnail_data:thumbB64,video_uploaded:false})});
     const d1=await r1.json();
     if(!r1.ok)throw new Error(d1.error||'Erro ao preparar');
@@ -293,7 +345,7 @@ async function publish(){
       xhr.onerror=()=>rej(new Error('Falha de rede'));
       xhr.open('POST',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
-      xhr.setRequestHeader('Authorization','Bearer '+d1.user_token);
+      xhr.setRequestHeader('Authorization','Bearer '+validToken);
       xhr.setRequestHeader('Content-Type',selFile.type);
       xhr.setRequestHeader('x-upsert','true');
       xhr.send(selFile);
@@ -303,7 +355,7 @@ async function publish(){
 
     // Passo 3: salva no banco
     const r3=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:TOKEN,title,description:desc,duration:vDur,width:vW,height:vH,
+      body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
         file_name:selFile.name,video_uploaded:true,
         _override_id:d1.video_id,_override_url:d1.video_url,_override_thumb:d1.thumbnail_url})});
     const d3=await r3.json();
