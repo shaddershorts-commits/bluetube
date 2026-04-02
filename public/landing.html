@@ -458,7 +458,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card reveal">
         <div class="tool-icon blue">📝</div>
         <div class="tool-name">Gerador de Roteiros</div>
-        <span class="tool-badge badge-free">GRÁTIS PARA COMEÇAR</span>
+        
         <p class="tool-desc">
           Cola o link de qualquer Short e recebe em 30 segundos a transcrição completa + 2 versões de roteiro: um casual (leve, natural) e um apelativo (hook forte, gera clique). A IA adapta o conteúdo para o seu idioma com linguagem 100% nativa.
         </p>
@@ -475,7 +475,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card gold-card reveal">
         <div class="tool-icon gold">🎙️</div>
         <div class="tool-name">BlueVoice</div>
-        <span class="tool-badge badge-master">👑 EXCLUSIVO MASTER</span>
+        
         <p class="tool-desc">
           Transforme qualquer roteiro em narração hiper-realista com voz de IA. Escolha entre dezenas de vozes em português, inglês e espanhol — ou adicione sua própria voz do ElevenLabs. Gera 2 versões por narração + 1 regeneração grátis.
         </p>
@@ -492,7 +492,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card reveal">
         <div class="tool-icon blue">🔥</div>
         <div class="tool-name">Buscador de Virais</div>
-        <span class="tool-badge badge-master">👑 EXCLUSIVO MASTER</span>
+        
         <p class="tool-desc">
           Descubra os Shorts mais virais do YouTube em tempo real — filtrados por país, período e nicho. Veja o que está bombando nas últimas 24h, 7 dias ou 30 dias e use como inspiração antes dos seus concorrentes.
         </p>
@@ -508,7 +508,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card reveal">
         <div class="tool-icon blue">🔍</div>
         <div class="tool-name">BlueLens</div>
-        <span class="tool-badge badge-master">👑 EXCLUSIVO MASTER</span>
+        
         <p class="tool-desc">
           Antes de postar, descubra se o vídeo que você quer adaptar já foi repostado por concorrentes. A IA analisa título, duração e thumbnail para identificar a origem e mostrar quantos já publicaram o mesmo conteúdo.
         </p>
@@ -524,7 +524,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card reveal">
         <div class="tool-icon blue">📊</div>
         <div class="tool-name">BlueScore</div>
-        <span class="tool-badge badge-master">👑 EXCLUSIVO MASTER</span>
+        
         <p class="tool-desc">
           Diagnóstico completo do seu canal com nota de 0 a 100. A IA analisa seus últimos vídeos, taxa de engajamento, consistência de views e tendência de crescimento — e entrega um plano de ação personalizado.
         </p>
@@ -540,7 +540,7 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
       <div class="tool-card reveal">
         <div class="tool-icon blue">⬇️</div>
         <div class="tool-name">BaixaBlue</div>
-        <span class="tool-badge badge-master">👑 EXCLUSIVO MASTER</span>
+        
         <p class="tool-desc">
           Baixe qualquer Short, Reel ou TikTok em HD sem marca d'água — diretamente no navegador, sem instalar nada. Suporta YouTube, Instagram, TikTok e Twitter/X.
         </p>
@@ -611,13 +611,13 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
           <div class="testi-avatar">A</div>
           <div>
             <div class="testi-name">Ana Paula R.</div>
-            <div class="testi-handle">@anapaulamkt · Master</div>
+            <div class="testi-handle">@anapaulamkt · BlueTube</div>
           </div>
         </div>
       </div>
       <div class="testi-card reveal">
         <div class="testi-stars">★★★★★</div>
-        <p class="testi-text">"O BlueVoice é surreal. Gero narrações que parecem 100% humanas. Meus seguidores nem sabem que é IA. Pago R$179 por mês e retorno 10x disso só com patrocínios."</p>
+        <p class="testi-text">"O BlueVoice é surreal. Gero narrações que parecem 100% humanas. Meus seguidores nem sabem que é IA. Uso gratuitamente e retorno muito mais com os conteúdos que crio."</p>
         <div class="testi-author">
           <div class="testi-avatar">R</div>
           <div>
@@ -786,7 +786,7 @@ function openSignupModal(plan) {
   const info = PLAN_LABELS[_pendingPlan] || PLAN_LABELS.free;
   const badge = document.getElementById('btPlanBadge');
   badge.textContent = info.badge;
-  badge.className = 'bt-plan-badge ' + info.badgeClass;
+  badge.className = 'bt-plan-badge free';
   document.getElementById('btModalTitle').textContent = info.title;
   document.getElementById('btModalSub').textContent = info.sub;
   // Style submit button gold for master
@@ -940,7 +940,7 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSign
       <span style="font-size:15px;font-weight:800">Blue<span style="color:#00aaff">Tube</span></span>
     </div>
 
-    <div id="btPlanBadge" class="bt-plan-badge free">PLANO GRÁTIS</div>
+    <div id="btPlanBadge" class="bt-plan-badge free">🎉 100% GRATUITO</div>
     <div class="bt-modal-title" id="btModalTitle">Crie sua conta grátis</div>
     <div class="bt-modal-sub" id="btModalSub">Acesso imediato. Sem cartão de crédito.</div>
 
