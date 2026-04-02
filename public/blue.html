@@ -205,11 +205,12 @@ async function loadFeed(){
 function showDbg(msg){ const el=document.getElementById('dbgMsg'); if(el)el.textContent=msg; }
 
 function showErr(msg){
-  document.getElementById('feed').innerHTML=\`<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;text-align:center">
-    <div style="font-size:36px">⚠️</div>
-    <div style="font-size:14px;color:#f87171">\${msg}</div>
-    <button onclick="loadFeed()" style="background:#3b82f6;border:none;border-radius:8px;padding:10px 20px;color:#fff;font-size:13px;cursor:pointer;margin-top:8px">Tentar novamente</button>
-  </div>\`;
+  document.getElementById('feed').innerHTML =
+    '<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;text-align:center">' +
+    '<div style="font-size:36px">⚠️</div>' +
+    '<div style="font-size:14px;color:#f87171">' + msg + '</div>' +
+    '<button onclick="loadFeed()" style="background:#3b82f6;border:none;border-radius:8px;padding:10px 20px;color:#fff;font-size:13px;cursor:pointer;margin-top:8px">Tentar novamente</button>' +
+    '</div>';
 }
 
 function makeSlide(v,i){
