@@ -76,6 +76,49 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);background:#222;border-radius:8px;padding:9px 18px;font-size:13px;opacity:0;transition:all .25s;z-index:999;white-space:nowrap}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* MUTE INDICATOR */
+.mute-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:rgba(0,0,0,.6);border-radius:50%;width:56px;height:56px;
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  pointer-events:none;opacity:0;transition:opacity .3s;z-index:5}
+.mute-hint.show{opacity:1}
+
+/* VIEWS */
+.slide-views{position:absolute;top:14px;left:14px;z-index:10;
+  background:rgba(0,0,0,.5);border-radius:100px;padding:4px 10px;
+  font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px}
+
+/* COMMENTS PANEL */
+.comments-panel{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
+  width:100%;max-width:412px;height:70vh;background:#111;border-radius:20px 20px 0 0;
+  z-index:300;transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+.comments-panel.open{transform:translateX(-50%) translateY(0)}
+.cp-header{padding:16px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
+.cp-title{font-size:15px;font-weight:700}
+.cp-close{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer;line-height:1}
+.cp-list{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:14px}
+.cp-list::-webkit-scrollbar{display:none}
+.cp-item{display:flex;gap:10px}
+.cp-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.cp-body{}
+.cp-user{font-size:12px;font-weight:700;margin-bottom:2px}
+.cp-text{font-size:14px;line-height:1.45;color:#e0e0e0}
+.cp-time{font-size:11px;color:#555;margin-top:3px}
+.cp-empty{text-align:center;padding:40px 20px;color:#555;font-size:13px}
+.cp-input-row{padding:12px 16px;border-top:1px solid #222;display:flex;gap:8px;align-items:flex-end}
+.cp-input{flex:1;background:#222;border:1px solid #333;border-radius:20px;padding:10px 14px;
+  font-size:14px;color:#fff;outline:none;resize:none;max-height:80px;
+  font-family:-apple-system,sans-serif;line-height:1.4}
+.cp-input::placeholder{color:#555}
+.cp-send{background:#3b82f6;border:none;border-radius:50%;width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+  font-size:16px;transition:background .2s}
+.cp-send:hover{background:#2563eb}
+.cp-send:disabled{background:#333;cursor:not-allowed}
+.comments-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:299}
+.comments-backdrop.on{display:block}
 </style>
 </head>
 <body>
@@ -139,6 +182,23 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="comments-backdrop" id="commentsBackdrop" onclick="closeComments()"></div>
+<div class="comments-panel" id="commentsPanel">
+  <div class="cp-header">
+    <div class="cp-title">Comentários <span id="cpCount" style="color:#555;font-weight:400"></span></div>
+    <button class="cp-close" onclick="closeComments()">✕</button>
+  </div>
+  <div class="cp-list" id="cpList">
+    <div class="cp-empty">Carregando…</div>
+  </div>
+  <div class="cp-input-row">
+    <textarea class="cp-input" id="cpInput" placeholder="Adicione um comentário…" rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment();}"
+      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+    <button class="cp-send" id="cpSend" onclick="sendComment()">↑</button>
+  </div>
+</div>
 
 <script>
 let TOKEN = localStorage.getItem('bt_token');
@@ -238,6 +298,8 @@ function makeSlide(v,i){
       poster="${v.thumbnail_url||''}" ontimeupdate="tick(this,'${v.id}')"
       onerror="this.closest('.slide').style.display='none'"></video>
     <div class="grad"></div>
+    <div class="mute-hint" id="mh-${v.id}">🔇</div>
+    <div class="slide-views">👁 <span id="vc-${v.id}">${fmt(v.views||0)}</span></div>
     <div class="info">
       <div class="info-user">@${c.username||'blue'}</div>
       ${v.title?`<div class="info-title">${v.title}</div>`:''}
@@ -252,14 +314,19 @@ function makeSlide(v,i){
         <div class="act-ico" id="si-${v.id}">${sv?'🔖':'💾'}</div>
         <div class="act-lbl">Salvar</div>
       </button>
+      <button class="act" onclick="openComments('${v.id}',${v.comments||0})">
+        <div class="act-ico">💬</div>
+        <div class="act-lbl" id="cc-${v.id}">${fmt(v.comments||0)}</div>
+      </button>
       <button class="act" onclick="doShare('${v.video_url||''}','${(v.title||'').replace(/'/g,'')}')">
         <div class="act-ico">↗️</div>
         <div class="act-lbl">Comp.</div>
       </button>
     </div>
     <div class="prog"><div class="prog-fill" id="pf-${v.id}"></div></div>`;
-  // Tap para pausar/retomar
-  el.querySelector('video').addEventListener('click', e=>{ const v=e.target; v.paused?v.play():v.pause(); });
+  // Tap no vídeo — toggle mute (primeiro toque ativa som, depois pausa/retoma)
+  const vidEl = el.querySelector('video');
+  vidEl.addEventListener('click', ()=> toggleSound(vidEl, v.id));
   return el;
 }
 
@@ -271,13 +338,14 @@ function setupObs(){
       if(!vid) return;
       if(e.isIntersecting && e.intersectionRatio>.6){
         document.querySelectorAll('#feed video').forEach(v=>{ if(v!==vid){v.pause();v.currentTime=0;} });
-        vid.preload='auto'; vid.muted=false;
-        vid.play().catch(err=>{
-          if(err.name==='NotSupportedError'||err.name==='NotAllowedError'){
-            vid.muted=true;
-            vid.play().catch(()=>{});
-          }
-        });
+        vid.preload='auto';
+        // iOS: sempre começa muted, desmuta após interação do usuário
+        if(!_userInteracted) { vid.muted=true; showMuteHint(sl.dataset.id); }
+        else { vid.muted=false; }
+        vid.play().catch(()=>{ vid.muted=true; vid.play().catch(()=>{}); });
+        // Incrementa view counter localmente
+        const vcEl=document.getElementById('vc-'+sl.dataset.id);
+        if(vcEl) vcEl.textContent=fmt((parseInt(vcEl.textContent.replace(/[^0-9]/g,''))||0)+1);
         // Preload next
         const ni=parseInt(sl.dataset.i)+1;
         if(videos[ni]){ const ns=document.getElementById('s-'+videos[ni].id); if(ns){const nv=ns.querySelector('video');if(nv)nv.preload='auto';} }
@@ -310,6 +378,99 @@ async function doShare(url,title){
   if(navigator.share){try{await navigator.share({title,url});}catch(e){}}
   else{await navigator.clipboard.writeText(url).catch(()=>{});toast('🔗 Copiado!');}
 }
+let _userInteracted = false;
+let _currentCommentsVideo = null;
+
+function toggleSound(vid, id) {
+  _userInteracted = true;
+  vid.muted = !vid.muted;
+  if (vid.paused) { vid.play().catch(()=>{}); }
+  showMuteHint(id, !vid.muted);
+}
+
+function showMuteHint(id, unmuted) {
+  const el = document.getElementById('mh-'+id);
+  if (!el) return;
+  el.textContent = unmuted === false ? '🔇' : (unmuted ? '🔊' : '🔇');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 800);
+}
+
+// Comments
+function openComments(videoId, count) {
+  _currentCommentsVideo = videoId;
+  document.getElementById('commentsPanel').classList.add('open');
+  document.getElementById('commentsBackdrop').classList.add('on');
+  document.getElementById('cpCount').textContent = count > 0 ? '('+fmt(count)+')' : '';
+  loadComments(videoId);
+  setTimeout(()=>document.getElementById('cpInput').focus(), 400);
+}
+
+function closeComments() {
+  document.getElementById('commentsPanel').classList.remove('open');
+  document.getElementById('commentsBackdrop').classList.remove('on');
+}
+
+async function loadComments(videoId) {
+  const list = document.getElementById('cpList');
+  list.innerHTML = '<div class="cp-empty">Carregando…</div>';
+  try {
+    const r = await fetch('/api/blue-comment?video_id='+videoId+'&limit=50');
+    const d = await r.json();
+    const comments = d.comments || [];
+    if (comments.length === 0) {
+      list.innerHTML = '<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>';
+      return;
+    }
+    list.innerHTML = comments.map(c => {
+      const u = c.creator || {};
+      const init = (u.display_name||u.username||'?').charAt(0).toUpperCase();
+      const ago = timeAgo(c.created_at);
+      return '<div class="cp-item">' +
+        '<div class="cp-av">'+init+'</div>' +
+        '<div class="cp-body">' +
+          '<div class="cp-user">@'+(u.username||'usuário')+'</div>' +
+          '<div class="cp-text">'+escHtml(c.text)+'</div>' +
+          '<div class="cp-time">'+ago+'</div>' +
+        '</div></div>';
+    }).join('');
+  } catch(e) { list.innerHTML = '<div class="cp-empty">Erro ao carregar.</div>'; }
+}
+
+async function sendComment() {
+  const input = document.getElementById('cpInput');
+  const text = input.value.trim();
+  if (!text || !_currentCommentsVideo) return;
+  if (!TOKEN) { toast('Entre para comentar'); closeComments(); return; }
+  const btn = document.getElementById('cpSend');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/blue-comment', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, video_id: _currentCommentsVideo, text })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error||'Erro');
+    input.value = ''; input.style.height = 'auto';
+    // Adiciona comentário no topo da lista
+    const list = document.getElementById('cpList');
+    const empty = list.querySelector('.cp-empty');
+    if (empty) empty.remove();
+    const div = document.createElement('div');
+    div.className = 'cp-item';
+    div.innerHTML = '<div class="cp-av">V</div><div class="cp-body"><div class="cp-user">@você</div><div class="cp-text">'+escHtml(text)+'</div><div class="cp-time">agora</div></div>';
+    list.insertBefore(div, list.firstChild);
+    // Atualiza contador
+    const cc = document.getElementById('cc-'+_currentCommentsVideo);
+    if (cc) cc.textContent = fmt((parseInt(cc.textContent.replace(/[^0-9]/g,''))||0)+1);
+    const cpCount = document.getElementById('cpCount');
+    if (cpCount) cpCount.textContent = '('+((parseInt(cpCount.textContent.replace(/[^0-9]/g,''))||0)+1)+')';
+  } catch(e) { toast('Erro: '+e.message); }
+  btn.disabled = false;
+}
+
+function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 function ping(type,id){ fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{}); }
 
 // UPLOAD
