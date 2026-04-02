@@ -736,49 +736,61 @@ async function doUpload() {
   msg.className = 'up-msg ok'; msg.textContent = 'Fazendo upload…';
 
   try {
-    // Passo 1: registra metadata e obtém signed URL (payload pequeno, sem vídeo)
-    msg.textContent = 'Preparando upload…'; fill.style.width = '10%';
-    const initR = await fetch('/api/blue-upload', {
+    // Passo 1: obtém info de storage da API (payload pequeno — thumbnail + metadata)
+    msg.textContent = 'Preparando…'; fill.style.width = '5%';
+    const step1R = await fetch('/api/blue-upload', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: TOKEN, title, description: desc, duration: vidDur, width: vidW, height: vidH, file_name: selFile.name, content_type: selFile.type, thumbnail_data: thumbDataURL })
+      body: JSON.stringify({
+        token: TOKEN, title, description: desc,
+        duration: vidDur, width: vidW, height: vidH,
+        file_name: selFile.name, content_type: selFile.type,
+        thumbnail_data: thumbDataURL, video_uploaded: false
+      })
     });
-    const initD = await initR.json();
-    if (!initR.ok) throw new Error(initD.error || 'Erro ao preparar upload');
+    const step1 = await step1R.json();
+    if (!step1R.ok) throw new Error(step1.error || 'Erro ao preparar');
 
-    fill.style.width = '20%';
-    msg.textContent = 'Fazendo upload do vídeo…';
+    fill.style.width = '15%'; msg.textContent = 'Enviando vídeo direto para armazenamento…';
 
-    // Passo 2: upload direto para Supabase Storage (bypassa Vercel — sem limite)
-    if (initD.upload_url) {
-      await new Promise((res, rej) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width=(20+e.loaded/e.total*75)+'%'; };
-        xhr.onload = () => xhr.status < 300 ? res() : rej(new Error('Upload falhou: HTTP '+xhr.status));
-        xhr.onerror = () => rej(new Error('Erro de rede durante upload'));
-        xhr.open('PUT', initD.upload_url);
-        xhr.setRequestHeader('Content-Type', selFile.type);
-        xhr.send(selFile);
-      });
-    } else if (initD.storage_url && initD.apikey) {
-      // Fallback: upload via REST da Supabase com anon key
-      await new Promise((res, rej) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width=(20+e.loaded/e.total*75)+'%'; };
-        xhr.onload = () => xhr.status < 300 ? res() : rej(new Error('Upload falhou: HTTP '+xhr.status));
-        xhr.onerror = () => rej(new Error('Erro de rede'));
-        xhr.open('POST', initD.storage_url);
-        xhr.setRequestHeader('apikey', initD.apikey);
-        xhr.setRequestHeader('Authorization', 'Bearer '+initD.apikey);
-        xhr.setRequestHeader('Content-Type', selFile.type);
-        xhr.setRequestHeader('x-upsert', 'true');
-        xhr.send(selFile);
-      });
-    }
+    // Passo 2: upload direto para Supabase Storage com token do usuário (bypassa Vercel)
+    const uploadPath = `${step1.supabase_url}/storage/v1/object/blue-videos/${step1.storage_path}`;
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width=(15+e.loaded/e.total*78)+'%'; };
+      xhr.onload = () => {
+        if (xhr.status < 300) resolve();
+        else reject(new Error('Upload falhou: HTTP ' + xhr.status + ' — ' + xhr.responseText.slice(0,120)));
+      };
+      xhr.onerror = () => reject(new Error('Erro de conexão'));
+      xhr.open('POST', uploadPath);
+      xhr.setRequestHeader('apikey', step1.anon_key);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + step1.user_token);
+      xhr.setRequestHeader('Content-Type', selFile.type);
+      xhr.setRequestHeader('x-upsert', 'true');
+      xhr.send(selFile);
+    });
+
+    fill.style.width = '95%'; msg.textContent = 'Salvando…';
+
+    // Passo 3: notifica API para salvar no banco
+    const step3R = await fetch('/api/blue-upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: TOKEN, title, description: desc,
+        duration: vidDur, width: vidW, height: vidH,
+        file_name: selFile.name, content_type: selFile.type,
+        thumbnail_data: null, video_uploaded: true,
+        // Re-usa o mesmo videoId
+        _override_id: step1.video_id, _override_url: step1.video_url, _override_thumb: step1.thumbnail_url
+      })
+    });
+    const step3 = await step3R.json();
 
     fill.style.width = '100%';
-    msg.textContent = '✅ Publicado com sucesso!'; btn.textContent = '✅ Concluído';
+    msg.textContent = '✅ Publicado!'; btn.textContent = '✅ Concluído';
     showToast('🎬 Vídeo no ar!');
-    if (initD.video) { initD.video.creator = {}; allVideos.unshift(initD.video); renderGrid('all'); }
+    const vid = step3.video || { id: step1.video_id, video_url: step1.video_url, thumbnail_url: step1.thumbnail_url, title, description: desc, views: 0, likes: 0, saves: 0 };
+    vid.creator = {}; allVideos.unshift(vid); renderGrid('all');
     setTimeout(() => {
       closeUpload(); prog.style.display='none'; fill.style.width='0%'; msg.textContent='';
       btn.textContent='Publicar'; btn.disabled=true; selFile=null; thumbDataURL=null;
