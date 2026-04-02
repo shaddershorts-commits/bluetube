@@ -94,6 +94,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <div style="font-size:48px">📹</div>
   <div style="font-size:20px;font-weight:700">Nenhum vídeo ainda</div>
   <div style="font-size:13px;color:#aaa;margin-bottom:4px">Seja o primeiro criador do Blue!</div>
+  <button onclick="runDiag()" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#555;font-size:11px;cursor:pointer;margin-top:8px">🔍 Verificar sistema</button>
   <button class="tbtn" onclick="openUpload()" style="pointer-events:all;margin-top:8px">+ Publicar vídeo</button>
   <div id="dbgMsg" style="margin-top:20px;font-size:11px;color:#444;font-family:monospace;max-width:300px;word-break:break-all"></div>
 </div>
@@ -200,6 +201,18 @@ async function loadFeed(){
   document.getElementById('empty').classList.remove('on');
   videos.forEach((v,i)=>feed.appendChild(makeSlide(v,i)));
   setupObs();
+}
+
+async function runDiag(){
+  const el=document.getElementById('dbgMsg');
+  if(el){el.style.color='#666';el.textContent='Verificando...';}
+  try{
+    const r=await fetch('/api/blue-debug');
+    const d=await r.json();
+    const msg=JSON.stringify(d,null,2);
+    if(el){el.style.color='#888';el.textContent=msg;}
+    console.log('Blue diag:',d);
+  }catch(e){if(el)el.textContent='Erro: '+e.message;}
 }
 
 function showDbg(msg){ const el=document.getElementById('dbgMsg'); if(el)el.textContent=msg; }
@@ -352,21 +365,22 @@ async function publish(){
   btn.textContent='Publicando…'; fill.style.width='5%'; msg.textContent='Preparando…';
 
   try{
-    // Passo 1: cria registro e obtém destino de upload
+    // Passo 1: API salva metadados e retorna destino de upload
+    msg.textContent='Salvando…'; fill.style.width='10%';
     const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
-        file_name:selFile.name,content_type:selFile.type,thumbnail_data:thumbB64,video_uploaded:false})});
+        file_name:selFile.name,content_type:selFile.type,thumbnail_data:thumbB64})});
     const d1=await r1.json();
-    if(!r1.ok)throw new Error(d1.error||'Erro ao preparar');
+    if(!r1.ok)throw new Error(d1.error||'Erro: '+r1.status);
 
     fill.style.width='15%'; msg.textContent='Enviando vídeo…';
 
-    // Passo 2: upload direto para Supabase (sem passar pelo Vercel)
-    const upUrl=`${d1.supabase_url}/storage/v1/object/blue-videos/${d1.storage_path}`;
+    // Passo 2: upload direto para Supabase Storage (bypassa Vercel - sem limite)
+    const upUrl=d1.supabase_url+'/storage/v1/object/blue-videos/'+d1.storage_path;
     await new Promise((res,rej)=>{
       const xhr=new XMLHttpRequest();
-      xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*78)+'%'; };
-      xhr.onload=()=>xhr.status<300?res():rej(new Error('HTTP '+xhr.status+': '+xhr.responseText.slice(0,100)));
+      xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%'; };
+      xhr.onload=()=>{ console.log('Upload:',xhr.status,xhr.responseText.slice(0,80)); xhr.status<300?res():rej(new Error('Upload HTTP '+xhr.status+': '+xhr.responseText.slice(0,80))); };
       xhr.onerror=()=>rej(new Error('Falha de rede'));
       xhr.open('POST',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
@@ -376,38 +390,10 @@ async function publish(){
       xhr.send(selFile);
     });
 
-    fill.style.width='95%'; msg.textContent='Salvando…';
-
-    // Passo 3: salva no banco
-    const r3=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
-        file_name:selFile.name,video_uploaded:true,
-        _override_id:d1.video_id,_override_url:d1.video_url,_override_thumb:d1.thumbnail_url})});
-    const d3=await r3.json();
-    if(!r3.ok)throw new Error(d3.error||'Erro ao salvar');
-
     fill.style.width='100%'; msg.textContent='✅ Publicado!'; btn.textContent='✅ Pronto!';
     toast('🎬 Vídeo publicado!');
-
-    // Adiciona ao feed
-    const newVid=d3.video||{id:d1.video_id,video_url:d1.video_url,thumbnail_url:d1.thumbnail_url,title,description:desc,views:0,likes:0,saves:0,creator:{}};
-    videos.unshift(newVid);
-    const feed=document.getElementById('feed');
-    feed.insertBefore(makeSlide(newVid,0),feed.firstChild);
-    videos.forEach((v,i)=>{const s=document.getElementById('s-'+v.id);if(s)s.dataset.i=i;});
-    setupObs();
-    document.getElementById('empty').classList.remove('on');
-
-    setTimeout(()=>{
-      closeUpload();
-      prog.style.display='none';fill.style.width='0%';msg.textContent='';
-      btn.textContent='Publicar →';btn.disabled=true;
-      selFile=null;thumbB64=null;
-      document.getElementById('dico').textContent='🎬';document.getElementById('dlbl').textContent='Toque para selecionar o vídeo';
-      document.getElementById('prevrow').style.display='none';document.getElementById('pthumb').innerHTML='🎬';
-      document.getElementById('ftitle').value='';document.getElementById('fdesc').value='';
-    },2000);
-
+    const newVid=d1.video||{id:'',video_url:'',thumbnail_url:'',title,description:desc,views:0,likes:0,saves:0};
+    newVid.creator={}; videos.unshift(newVid);
   }catch(err){
     msg.className='mmsg err';msg.textContent=err.message;
     btn.disabled=false;btn.textContent='Tentar novamente';
