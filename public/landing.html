@@ -912,15 +912,21 @@ async function handleSignup() {
     }
 
     // Salva token se vier
-    if (d.session?.access_token) {
-      localStorage.setItem('bt_token', d.session.access_token);
-      if (d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+    // Captura token de qualquer formato de resposta possível
+    const _tok = d.session?.access_token || d.access_token || d.token || null;
+    const _ref = d.session?.refresh_token || d.refresh_token || null;
+    if (_tok) {
+      localStorage.setItem('bt_token', _tok);
+      if (_ref) localStorage.setItem('bt_refresh_token', _ref);
+      console.log('Token salvo no signup:', _tok.slice(0,20) + '...');
+    } else {
+      console.log('Signup response sem token:', JSON.stringify(d).slice(0,200));
     }
 
     msg.className = 'bt-msg ok'; msg.textContent = '✓ Conta criada! Redirecionando…';
     if(typeof fbq !== 'undefined') fbq('track', 'CompleteRegistration', {content_name: _pendingPlan});
 
-    setTimeout(() => redirectAfterAuth(), 1000);
+    setTimeout(() => redirectAfterAuth(), 1200);
   } catch(e) {
     msg.className = 'bt-msg err'; msg.textContent = 'Erro de conexão. Tente novamente.';
     btn.disabled = false; btn.textContent = 'Criar conta e continuar →';
@@ -949,9 +955,12 @@ async function handleLogin() {
       return;
     }
 
-    if (d.session?.access_token) {
-      localStorage.setItem('bt_token', d.session.access_token);
-      if (d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+    const _tok2 = d.session?.access_token || d.access_token || d.token || null;
+    const _ref2 = d.session?.refresh_token || d.refresh_token || null;
+    if (_tok2) {
+      localStorage.setItem('bt_token', _tok2);
+      if (_ref2) localStorage.setItem('bt_refresh_token', _ref2);
+      console.log('Token salvo no login:', _tok2.slice(0,20) + '...');
     }
 
     msg.className = 'bt-msg ok'; msg.textContent = '✓ Login feito! Redirecionando…';
@@ -965,7 +974,7 @@ async function handleLogin() {
 function redirectAfterAuth() {
   const token = localStorage.getItem('bt_token');
   const refresh = localStorage.getItem('bt_refresh_token');
-  // Monta parametros para transferir sessao entre www e non-www
+  console.log('redirectAfterAuth — token:', token ? token.slice(0,20)+'...' : 'NULL');
   const params = new URLSearchParams();
   if (token) params.set('bt_token', token);
   if (refresh) params.set('bt_refresh', refresh);
