@@ -1208,21 +1208,25 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </footer>
 
 <script>
-// ── CAPTURA TOKEN DA URL (landing → site, www → non-www) ─────────────────
-// DEVE rodar antes de qualquer coisa, inclusive checkSession
+// ── CAPTURA TOKEN DO COOKIE (landing www → site principal) ───────────────
+// Cookie com domain=.bluetubeviral.com funciona nos dois dominios
 (function(){
   try {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get('bt_token');
-    const rf = params.get('bt_refresh');
+    function getCookie(name) {
+      const v = document.cookie.match('(^|;)\s*' + name + '\s*=\s*([^;]+)');
+      return v ? decodeURIComponent(v.pop()) : null;
+    }
+    const t = getCookie('bt_token');
+    const rf = getCookie('bt_refresh');
     if (t && t.length > 10) {
       localStorage.setItem('bt_token', t);
       if (rf) localStorage.setItem('bt_refresh_token', rf);
-      // Limpa URL imediatamente
-      window.history.replaceState({}, document.title, window.location.pathname);
-      console.log('Token capturado da URL e salvo no localStorage');
+      // Apaga cookies apos capturar
+      document.cookie = 'bt_token=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'bt_refresh=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      console.log('Token capturado do cookie e salvo no localStorage');
     }
-  } catch(e) { console.log('Token capture error:', e.message); }
+  } catch(e) { console.log('Cookie capture error:', e.message); }
 })();
 // ── STATE ──────────────────────────────────────────────────────────────────
 let transcript='', segments=[], currentVideoId='';
@@ -2068,15 +2072,16 @@ function downloadSrt(){
 
 // ── SESSION CHECK ──────────────────────────────────────────────────────────
 async function checkSession(){
-  // Re-verifica se tem token na URL (caso capture ainda não rodou)
+  // Re-verifica cookie de sessao (caso capture ainda nao rodou)
   try {
-    const _p = new URLSearchParams(window.location.search);
-    const _t = _p.get('bt_token');
-    if (_t && _t.length > 10) {
-      localStorage.setItem('bt_token', _t);
-      const _r = _p.get('bt_refresh');
-      if (_r) localStorage.setItem('bt_refresh_token', _r);
-      window.history.replaceState({}, document.title, window.location.pathname);
+    function _gc(n){const v=document.cookie.match('(^|;)\s*'+n+'\s*=\s*([^;]+)');return v?decodeURIComponent(v.pop()):null;}
+    const _ct = _gc('bt_token');
+    if (_ct && _ct.length > 10 && !localStorage.getItem('bt_token')) {
+      localStorage.setItem('bt_token', _ct);
+      const _cr = _gc('bt_refresh');
+      if (_cr) localStorage.setItem('bt_refresh_token', _cr);
+      document.cookie = 'bt_token=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'bt_refresh=; domain=.bluetubeviral.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
   } catch(e) {}
   const token=localStorage.getItem('bt_token');
