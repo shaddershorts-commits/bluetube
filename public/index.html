@@ -1208,6 +1208,22 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </footer>
 
 <script>
+// ── CAPTURA TOKEN DA URL (landing → site, www → non-www) ─────────────────
+// DEVE rodar antes de qualquer coisa, inclusive checkSession
+(function(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('bt_token');
+    const rf = params.get('bt_refresh');
+    if (t && t.length > 10) {
+      localStorage.setItem('bt_token', t);
+      if (rf) localStorage.setItem('bt_refresh_token', rf);
+      // Limpa URL imediatamente
+      window.history.replaceState({}, document.title, window.location.pathname);
+      console.log('Token capturado da URL e salvo no localStorage');
+    }
+  } catch(e) { console.log('Token capture error:', e.message); }
+})();
 // ── STATE ──────────────────────────────────────────────────────────────────
 let transcript='', segments=[], currentVideoId='';
 
@@ -2052,6 +2068,17 @@ function downloadSrt(){
 
 // ── SESSION CHECK ──────────────────────────────────────────────────────────
 async function checkSession(){
+  // Re-verifica se tem token na URL (caso capture ainda não rodou)
+  try {
+    const _p = new URLSearchParams(window.location.search);
+    const _t = _p.get('bt_token');
+    if (_t && _t.length > 10) {
+      localStorage.setItem('bt_token', _t);
+      const _r = _p.get('bt_refresh');
+      if (_r) localStorage.setItem('bt_refresh_token', _r);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  } catch(e) {}
   const token=localStorage.getItem('bt_token');
   if(!token)return;
   try{
@@ -2722,23 +2749,7 @@ async function sendBluBluFeedback(){
 
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')handleMainBtn(e);});
 
-// Captura token passado via URL (vindo da landing page www → site principal)
-(function(){
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get('bt_token');
-    const r = params.get('bt_refresh');
-    if (t) {
-      localStorage.setItem('bt_token', t);
-      if (r) localStorage.setItem('bt_refresh_token', r);
-      // Remove da URL sem recarregar a página
-      const clean = window.location.pathname;
-      window.history.replaceState({}, '', clean);
-      // Força verificação de sessão
-      if (typeof checkSession === 'function') checkSession();
-    }
-  } catch(e) {}
-})();
+
 document.getElementById('urlInput').addEventListener('input', function(){
   _save('bt_url', this.value);
 });
