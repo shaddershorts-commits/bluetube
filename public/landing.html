@@ -317,6 +317,12 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
 .bt-login-link{text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:14px}
 .bt-login-link a{color:#00aaff;text-decoration:none}
 .bt-login-link a:hover{text-decoration:underline}
+.bt-pwd-wrap{position:relative;margin-bottom:12px}
+.bt-pwd-wrap .bt-field{margin-bottom:0;width:100%}
+.bt-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:rgba(150,190,230,.4);
+  font-size:16px;line-height:1;transition:color .2s;padding:0}
+.bt-eye:hover{color:var(--neon)}
 </style>
 </head>
 <body>
@@ -832,7 +838,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
 // ── SIGNUP MODAL ─────────────────────────────────────────────────────────────
 const SITE = 'https://bluetubeviral.com';
-const API  = SITE + '/api/auth';
+const API  = '/api/auth';  // Relativo evita CORS redirect www vs non-www
 let _pendingPlan = 'free';
 
 const PLAN_LABELS = {
@@ -963,7 +969,7 @@ function redirectAfterAuth() {
   } else {
     // Plano pago → dispara checkout e redireciona
     const token = localStorage.getItem('bt_token');
-    fetch(SITE + '/api/create-checkout', {
+    fetch('/api/create-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan: _pendingPlan, billing: 'monthly', token })
@@ -975,6 +981,15 @@ function redirectAfterAuth() {
     })
     .catch(() => window.location.href = SITE);
   }
+}
+
+// Olhinho da senha
+function togglePwd(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const show = el.type === 'password';
+  el.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
 }
 
 // ESC fecha modal
@@ -1001,8 +1016,14 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSign
     <!-- Signup form -->
     <div id="btSignupForm">
       <input class="bt-field" id="btEmail" type="email" placeholder="seu@email.com" autocomplete="email"/>
-      <input class="bt-field" id="btPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)"/>
-      <input class="bt-field" id="btConfirm" type="password" placeholder="Confirmar senha"/>
+      <div class="bt-pwd-wrap">
+        <input class="bt-field" id="btPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)" style="padding-right:40px"/>
+        <button class="bt-eye" type="button" onclick="togglePwd('btPassword',this)" tabindex="-1">👁</button>
+      </div>
+      <div class="bt-pwd-wrap">
+        <input class="bt-field" id="btConfirm" type="password" placeholder="Confirmar senha" style="padding-right:40px"/>
+        <button class="bt-eye" type="button" onclick="togglePwd('btConfirm',this)" tabindex="-1">👁</button>
+      </div>
       <button class="bt-btn-submit" id="btSignupBtn" onclick="handleSignup()">Criar conta e continuar →</button>
       <div class="bt-msg" id="btMsg"></div>
       <div class="bt-divider">ou</div>
@@ -1012,7 +1033,10 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSign
     <!-- Login form (hidden) -->
     <div id="btLoginForm" style="display:none">
       <input class="bt-field" id="btLoginEmail" type="email" placeholder="seu@email.com" autocomplete="email"/>
-      <input class="bt-field" id="btLoginPassword" type="password" placeholder="Senha"/>
+      <div class="bt-pwd-wrap">
+        <input class="bt-field" id="btLoginPassword" type="password" placeholder="Senha" style="padding-right:40px"/>
+        <button class="bt-eye" type="button" onclick="togglePwd('btLoginPassword',this)" tabindex="-1">👁</button>
+      </div>
       <button class="bt-btn-submit" id="btLoginBtn" onclick="handleLogin()">Entrar e continuar →</button>
       <div class="bt-msg" id="btLoginMsg"></div>
       <div class="bt-divider">ou</div>
