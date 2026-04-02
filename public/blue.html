@@ -142,48 +142,66 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .profile-page::-webkit-scrollbar{display:none}
 .profile-page.open{transform:translateX(0)}
 
-.prof-topbar{display:flex;align-items:center;padding:52px 16px 16px;gap:12px}
-.prof-back{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;
-  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;
-  justify-content:center;flex-shrink:0}
-.prof-back:hover{background:rgba(255,255,255,.1)}
-.prof-topbar-name{font-size:17px;font-weight:700;flex:1}
-.prof-topbar-edit{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
-  border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;color:#fff;
-  cursor:pointer;border-style:solid}
+/* topbar */
+.prof-topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;
+  padding:env(safe-area-inset-top,44px) 12px 12px;gap:8px;
+  background:rgba(0,0,0,.85);backdrop-filter:blur(12px)}
+.prof-back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.prof-back:active{background:rgba(255,255,255,.1)}
+.prof-topbar-name{font-size:16px;font-weight:700;flex:1;letter-spacing:-.3px}
+.prof-topbar-edit{background:transparent;border:1px solid rgba(255,255,255,.3);
+  border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600;color:#fff;cursor:pointer}
 
-.prof-header{padding:0 24px 24px;text-align:center}
-.prof-av-wrap{position:relative;display:inline-block;margin-bottom:14px}
-.prof-avatar{width:86px;height:86px;border-radius:50%;object-fit:cover;
+/* header */
+.prof-header{padding:20px 20px 0;display:flex;align-items:flex-start;gap:16px}
+.prof-av-wrap{flex-shrink:0;position:relative}
+.prof-avatar{width:90px;height:90px;border-radius:50%;
   background:linear-gradient(135deg,#3b82f6,#8b5cf6);
   display:flex;align-items:center;justify-content:center;
-  font-size:32px;font-weight:700;border:3px solid #222}
-.prof-av-cam{position:absolute;bottom:2px;right:2px;width:26px;height:26px;
+  font-size:34px;font-weight:800;overflow:hidden;border:2px solid rgba(255,255,255,.12)}
+.prof-avatar img{width:100%;height:100%;object-fit:cover}
+.prof-av-cam{position:absolute;bottom:0;right:0;width:24px;height:24px;
   background:#3b82f6;border-radius:50%;border:2px solid #000;
-  display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer}
-.prof-name{font-size:20px;font-weight:800;margin-bottom:3px}
-.prof-username{font-family:-apple-system,monospace;font-size:13px;color:#888;margin-bottom:10px}
-.prof-bio{font-size:14px;color:#ccc;line-height:1.5;max-width:300px;margin:0 auto 16px}
-.prof-stats{display:flex;justify-content:center;gap:32px;margin-bottom:20px}
-.ps{text-align:center}
-.ps-n{font-size:20px;font-weight:800}
-.ps-l{font-size:12px;color:#888;margin-top:1px}
+  display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer}
 
-.prof-tabs{display:flex;border-bottom:1px solid #222;margin-bottom:2px}
-.prof-tab{flex:1;padding:12px;border:none;background:none;color:#888;
+.prof-info{flex:1;min-width:0;padding-top:4px}
+.prof-name{font-size:18px;font-weight:800;letter-spacing:-.4px;margin-bottom:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prof-username{font-size:13px;color:#888;margin-bottom:10px}
+
+.prof-stats{display:flex;gap:20px;margin-bottom:14px}
+.ps{text-align:center;min-width:48px}
+.ps-n{font-size:17px;font-weight:800;display:block}
+.ps-l{font-size:11px;color:#888;display:block}
+
+.prof-bio-full{padding:12px 20px 0;font-size:14px;color:#ccc;line-height:1.55}
+.prof-edit-btn{display:block;margin:16px 20px 0;padding:10px;border:1px solid #333;
+  border-radius:10px;font-size:14px;font-weight:600;color:#fff;background:none;
+  cursor:pointer;width:calc(100% - 40px);text-align:center;transition:background .2s}
+.prof-edit-btn:active{background:rgba(255,255,255,.08)}
+
+/* tabs */
+.prof-tabs{display:flex;margin-top:16px;border-bottom:1px solid #1a1a1a}
+.prof-tab{flex:1;padding:11px 0;border:none;background:none;color:#555;
   font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;
-  transition:all .2s}
+  display:flex;align-items:center;justify-content:center;gap:5px;transition:all .2s}
 .prof-tab.active{color:#fff;border-bottom-color:#3b82f6}
 
-.prof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#111}
-.pg-card{position:relative;aspect-ratio:9/16;background:#1a1a1a;overflow:hidden;cursor:pointer}
-.pg-thumb{width:100%;height:100%;object-fit:cover}
-.pg-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;background:#1a1a1a}
-.pg-views{position:absolute;bottom:4px;left:6px;font-size:11px;font-weight:700;
-  color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
-.pg-dots{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);border:none;
-  border-radius:50%;width:28px;height:28px;color:#fff;font-size:16px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;line-height:1}
+/* grid */
+.prof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#0a0a0a;min-height:200px}
+.pg-card{position:relative;aspect-ratio:9/16;background:#111;overflow:hidden;cursor:pointer}
+.pg-card:active{opacity:.8}
+.pg-thumb-img{width:100%;height:100%;object-fit:cover;display:block}
+.pg-thumb-ph{width:100%;height:100%;display:flex;align-items:center;
+  justify-content:center;font-size:24px;background:#111;color:#333}
+.pg-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.5) 0%,transparent 50%)}
+.pg-views{position:absolute;bottom:5px;left:6px;font-size:10px;font-weight:700;
+  color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);display:flex;align-items:center;gap:3px}
+.pg-dots{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(4px);border:none;border-radius:50%;width:26px;height:26px;
+  color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pg-empty{grid-column:1/-1;padding:60px 20px;text-align:center;color:#444;font-size:13px;line-height:1.8}
 
 /* DOTS MENU */
 .dots-menu{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
@@ -319,23 +337,30 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
     <div class="prof-topbar-name" id="ptName">Perfil</div>
     <button class="prof-topbar-edit" onclick="openEditProfile()" id="ptEditBtn" style="display:none">Editar</button>
   </div>
+
   <div class="prof-header">
     <div class="prof-av-wrap">
       <div class="prof-avatar" id="profAvatar">?</div>
       <div class="prof-av-cam" onclick="openEditProfile()" id="profAvCam" style="display:none">📷</div>
     </div>
-    <div class="prof-name" id="profName">—</div>
-    <div class="prof-username" id="profUsername">@—</div>
-    <div class="prof-bio" id="profBio" style="display:none"></div>
-    <div class="prof-stats">
-      <div class="ps"><div class="ps-n" id="profVids">0</div><div class="ps-l">Vídeos</div></div>
-      <div class="ps"><div class="ps-n" id="profLikes">0</div><div class="ps-l">Curtidas</div></div>
+    <div class="prof-info">
+      <div class="prof-name" id="profName">—</div>
+      <div class="prof-username" id="profUsername">@—</div>
+      <div class="prof-stats">
+        <div class="ps"><span class="ps-n" id="profVids">0</span><span class="ps-l">Vídeos</span></div>
+        <div class="ps"><span class="ps-n" id="profViews">0</span><span class="ps-l">Views</span></div>
+        <div class="ps"><span class="ps-n" id="profLikes">0</span><span class="ps-l">Curtidas</span></div>
+      </div>
     </div>
   </div>
+  <div class="prof-bio-full" id="profBioFull" style="display:none"></div>
+  <button class="prof-edit-btn" id="profEditFullBtn" style="display:none" onclick="openEditProfile()">Editar perfil</button>
   <div class="prof-tabs">
-    <button class="prof-tab active" onclick="switchProfTab('videos',this)">🎬 Vídeos</button>
+    <button class="prof-tab active" id="ptabVids">🎬 Vídeos</button>
   </div>
-  <div class="prof-grid" id="profGrid"></div>
+  <div class="prof-grid" id="profGrid">
+    <div class="pg-empty">Carregando…</div>
+  </div>
 </div>
 
 <!-- DOTS MENU -->
@@ -493,7 +518,6 @@ async function openCreatorProfile(userId) {
     document.getElementById('ptName').textContent = creator.username || 'Perfil';
     // Show their public videos
     const theirVids = videos.filter(v => v.user_id === userId);
-    document.getElementById('profVids').textContent = theirVids.length;
     renderCreatorGrid(theirVids, false);
   } catch(e) {}
 }
@@ -502,34 +526,58 @@ function renderCreatorGrid(vids, isOwn) {
   const grid = document.getElementById('profGrid');
   grid.innerHTML = '';
   if (vids.length === 0) {
-    grid.innerHTML = '<div style="grid-column:1/-1;padding:48px;text-align:center;color:#555;font-size:13px">Sem vídeos ainda</div>';
+    grid.innerHTML = '<div class="pg-empty">'+(isOwn?'Você ainda não postou nada.<br><br><button onclick="openUpload();closeProfile()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">+ Postar primeiro vídeo</button>':'Sem vídeos ainda.')+'</div>';
     return;
   }
+  // Update stats
+  const totalViews = vids.reduce((a,v)=>a+(v.views||0),0);
+  const totalLikes = vids.reduce((a,v)=>a+(v.likes||0),0);
+  document.getElementById('profVids').textContent = vids.length;
+  document.getElementById('profViews').textContent = fmt(totalViews);
+  document.getElementById('profLikes').textContent = fmt(totalLikes);
+
   vids.forEach(v => {
     const card = document.createElement('div');
     card.className = 'pg-card';
-    card.onclick = () => { closeProfile(); setTimeout(()=>{ const s=document.getElementById('s-'+v.id); if(s)s.scrollIntoView({behavior:'smooth'}); },350); };
+    card.onclick = () => {
+      closeProfile();
+      // Try to find in feed, or open separately
+      setTimeout(()=>{
+        const s = document.getElementById('s-'+v.id);
+        if (s) { s.scrollIntoView({behavior:'smooth'}); }
+        else {
+          // Not in feed — open inline player
+          openSingleVideo(v);
+        }
+      }, 350);
+    };
+    // Thumbnail
     if (v.thumbnail_url) {
-      const img = document.createElement('img');
-      img.className = 'pg-thumb'; img.loading = 'lazy'; img.src = v.thumbnail_url;
-      img.onerror = () => { img.style.display='none'; };
+      const img = new Image();
+      img.className = 'pg-thumb-img'; img.loading = 'lazy';
+      img.onerror = () => { img.style.display='none'; const ph=document.createElement('div'); ph.className='pg-thumb-ph'; ph.textContent='🎬'; card.insertBefore(ph,card.firstChild); };
+      img.src = v.thumbnail_url;
       card.appendChild(img);
     } else {
-      const ph = document.createElement('div');
-      ph.className = 'pg-thumb-placeholder'; ph.textContent = '🎬';
-      card.appendChild(ph);
+      const ph = document.createElement('div'); ph.className='pg-thumb-ph'; ph.textContent='🎬'; card.appendChild(ph);
     }
+    const ov = document.createElement('div'); ov.className='pg-overlay'; card.appendChild(ov);
     const views = document.createElement('div');
-    views.className = 'pg-views'; views.textContent = '👁 '+fmt(v.views||0);
-    card.appendChild(views);
+    views.className='pg-views'; views.innerHTML='▶ '+fmt(v.views||0); card.appendChild(views);
     if (isOwn) {
       const dots = document.createElement('button');
-      dots.className = 'pg-dots'; dots.textContent = '⋯';
-      dots.onclick = (e) => { e.stopPropagation(); openDotsMenu(v.id, {title:v.title||'',description:v.description||''}); };
+      dots.className='pg-dots'; dots.textContent='⋯';
+      dots.onclick = e => { e.stopPropagation(); openDotsMenu(v.id,{title:v.title||'',description:v.description||''}); };
       card.appendChild(dots);
     }
     grid.appendChild(card);
   });
+}
+
+function openSingleVideo(v) {
+  // Add to feed temporarily and scroll
+  if (!videos.find(x=>x.id===v.id)) { videos.unshift(v); renderFeed(); }
+  setTimeout(()=>{ const s=document.getElementById('s-'+v.id); if(s) s.scrollIntoView({behavior:'smooth'}); }, 200);
 }
 
 async function openProfile() {
@@ -593,16 +641,13 @@ function renderProfileHeader(p, isOwn) {
 
 async function loadMyVideos() {
   const grid = document.getElementById('profGrid');
-  grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center"><div style="width:28px;height:28px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div></div>';
+  grid.innerHTML = '<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Carregando vídeos…</div>';
   try {
     const r = await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(TOKEN));
+    if (!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     const vids = d.videos || [];
-    document.getElementById('profVids').textContent = vids.length;
-    if (vids.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:48px 20px;text-align:center;color:#555;font-size:13px">Nenhum vídeo ainda.<br><button onclick="openUpload();closeProfile()" style="margin-top:12px;background:#3b82f6;border:none;border-radius:8px;padding:9px 18px;color:#fff;font-size:13px;cursor:pointer">+ Postar vídeo</button></div>';
-      return;
-    }
+    console.log('My videos:', vids.length, vids.map(v=>({id:v.id,thumb:v.thumbnail_url?.slice(0,40),url:v.video_url?.slice(0,40)})));
     renderCreatorGrid(vids, true);
   } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#f87171;font-size:13px">Erro ao carregar</div>'; }
 }
