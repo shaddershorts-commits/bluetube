@@ -769,9 +769,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <span class="mode-badge">GRÁTIS</span>
       </button>
       <div style="position:relative;flex:1;display:flex">
-        <button class="mode-btn" id="btnModeZero" onclick="setMode('zero')" style="width:100%">
+        <button class="mode-btn" id="btnModeZero" style="width:100%;opacity:.5;cursor:not-allowed" disabled title="Em breve">
           ✨ Roteirizar vídeo
-          <span class="mode-badge">FULL+</span>
+          <span class="mode-badge" style="background:rgba(150,150,150,.15);color:rgba(200,200,200,.5);border-color:rgba(150,150,150,.2)">EM BREVE</span>
         </button>
       </div>
     </div>
@@ -1664,7 +1664,7 @@ function setLoading(on){
   document.getElementById('loadingBlock').classList.toggle('on',on);
   document.getElementById('btnGo').disabled=on;
   if(on){ document.getElementById('btnGo').textContent='Processando…'; }
-  else { document.getElementById('btnGo').textContent = _genMode==='zero' ? '✨ Roteirizar vídeo' : 'Transcrever + Roteiro ↗'; }
+  else { document.getElementById('btnGo').textContent = 'Transcrever + Roteiro ↗'; }
   if(!on)document.getElementById('progressFill').style.width='0';
 }
 function setError(msg){
@@ -1695,8 +1695,6 @@ function reset(){
 
 // ── MAIN FLOW ──────────────────────────────────────────────────────────────
 async function startTranscription(e){
-  // Se estiver em modo zero, redireciona para o fluxo correto
-  if(_genMode === 'zero'){ startFromZero(e); return; }
   const btn=document.getElementById('btnGo');
   const rip=document.createElement('span');rip.className='ripple';
   const r=btn.getBoundingClientRect();
@@ -1750,7 +1748,7 @@ async function startTranscription(e){
 
     setTimeout(()=>{
       setLoading(false);showResults();switchTab('transcript');
-      if(_genMode !== 'zero') generateAllScripts(lang);
+      generateAllScripts(lang);
       saveToLearningLoop(videoId,transcript,lang);
       // Show account creation popup for free users without account
       if(userPlan==='free' && !localStorage.getItem('bt_token') && !localStorage.getItem('bt_shown_signup_popup')){
@@ -1809,7 +1807,7 @@ function setMode(mode){
     if(banner) banner.style.display='block';
     if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
     if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='✨ Roteirizar vídeo'; }
-    if(tabT) tabT.style.display='none'; // Sem transcrição no modo zero
+    // Tab sempre visivel
     // Muda placeholder do input
     const inp=document.getElementById('urlInput');
     if(inp) inp.placeholder='Cole qualquer Short — com ou sem narração';
@@ -1828,8 +1826,7 @@ function setMode(mode){
 
 // Roteador principal do botão
 function handleMainBtn(e){
-  if(_genMode==='zero'){ startFromZero(e); }
-  else { startTranscription(e); }
+  startTranscription(e);
 }
 
 // ── INICIAR GERAR DO ZERO (fluxo independente) ────────────────────────────
@@ -1881,8 +1878,6 @@ function generateAllScripts(lang){
     document.getElementById('loading'+v).classList.add('on');
     document.getElementById('card'+v).style.display='none';
   });
-  // Modo zero nunca deve chegar aqui — mas por segurança
-  if(_genMode==='zero'){ return; }
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
   setTimeout(()=>{ if(typeof generateTitles==='function')generateTitles(lang); },1500);
