@@ -322,6 +322,10 @@ function dropFile(e){ e.preventDefault();e.currentTarget.classList.remove('ov');
 
 function pickFile(file){
   if(!file)return;
+  // Avisa se muito grande mas deixa tentar (o Supabase decide)
+  if(file.size > 500*1024*1024) {
+    toast('⚠️ Arquivo grande ('+Math.round(file.size/1024/1024)+'MB) — pode demorar');
+  }
   selFile=file;
   const url=URL.createObjectURL(file);
   const tv=document.createElement('video'); tv.src=url; tv.muted=true;
@@ -369,7 +373,7 @@ async function publish(){
     msg.textContent='Salvando…'; fill.style.width='10%';
     const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
-        file_name:selFile.name,content_type:selFile.type,thumbnail_data:thumbB64})});
+        file_name:selFile.name,thumbnail_data:thumbB64})});
     const d1=await r1.json();
     if(!r1.ok)throw new Error(d1.error||'Erro: '+r1.status);
 
@@ -385,7 +389,9 @@ async function publish(){
       xhr.open('POST',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
       xhr.setRequestHeader('Authorization','Bearer '+validToken);
-      xhr.setRequestHeader('Content-Type',selFile.type);
+      // Normaliza content-type para evitar rejeição
+      const ct = selFile.type || 'video/mp4';
+      xhr.setRequestHeader('Content-Type', ct);
       xhr.setRequestHeader('x-upsert','true');
       xhr.send(selFile);
     });
