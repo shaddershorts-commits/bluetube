@@ -482,7 +482,17 @@ function renderProfileHeader(p, isOwn) {
   // Avatar
   const avEl = document.getElementById('profAvatar');
   if (p.avatar_url) {
-    avEl.innerHTML = '<img src="'+p.avatar_url+'" style="width:86px;height:86px;border-radius:50%;object-fit:cover" onerror="this.parentElement.textContent=''+( p.display_name||'?').charAt(0).toUpperCase()+''"/>';
+    const avInit = (p.display_name||p.username||'?').charAt(0).toUpperCase();
+    if (p.avatar_url) {
+      const img = document.createElement('img');
+      img.src = p.avatar_url;
+      img.style.cssText = 'width:86px;height:86px;border-radius:50%;object-fit:cover';
+      img.onerror = function(){ avEl.textContent = avInit; };
+      avEl.innerHTML = '';
+      avEl.appendChild(img);
+    } else {
+      avEl.textContent = avInit;
+    }
   } else {
     avEl.textContent = (p.display_name||p.username||'?').charAt(0).toUpperCase();
   }
@@ -511,16 +521,30 @@ async function loadMyVideos() {
       grid.innerHTML = '<div style="grid-column:1/-1;padding:48px 20px;text-align:center;color:#555;font-size:13px">Nenhum vídeo ainda.<br><button onclick="openUpload();closeProfile()" style="margin-top:12px;background:#3b82f6;border:none;border-radius:8px;padding:9px 18px;color:#fff;font-size:13px;cursor:pointer">+ Postar vídeo</button></div>';
       return;
     }
-    grid.innerHTML = vids.map(v => {
-      const thumbHtml = v.thumbnail_url
-        ? '<img class="pg-thumb" src="'+v.thumbnail_url+'" loading="lazy" onerror="this.style.display='none'"/>'
-        : '<div class="pg-thumb-placeholder">🎬</div>';
-      return '<div class="pg-card" onclick="openVideoFromProfile(''+v.id+'')">' +
-        thumbHtml +
-        '<div class="pg-views">👁 '+fmt(v.views||0)+'</div>' +
-        '<button class="pg-dots" onclick="event.stopPropagation();openDotsMenu(''+v.id+'','+JSON.stringify(JSON.stringify({title:v.title||'',description:v.description||''}))+')" >⋯</button>' +
-      '</div>';
-    }).join('');
+    grid.innerHTML = '';
+    vids.forEach(v => {
+      const card = document.createElement('div');
+      card.className = 'pg-card';
+      card.onclick = () => openVideoFromProfile(v.id);
+      if (v.thumbnail_url) {
+        const img = document.createElement('img');
+        img.className = 'pg-thumb'; img.loading = 'lazy'; img.src = v.thumbnail_url;
+        img.onerror = () => { img.style.display='none'; const ph=document.createElement('div'); ph.className='pg-thumb-placeholder'; ph.textContent='🎬'; card.insertBefore(ph,card.firstChild); };
+        card.appendChild(img);
+      } else {
+        const ph = document.createElement('div');
+        ph.className = 'pg-thumb-placeholder'; ph.textContent = '🎬';
+        card.appendChild(ph);
+      }
+      const views = document.createElement('div');
+      views.className = 'pg-views'; views.textContent = '👁 '+fmt(v.views||0);
+      card.appendChild(views);
+      const dots = document.createElement('button');
+      dots.className = 'pg-dots'; dots.textContent = '⋯';
+      dots.onclick = (e) => { e.stopPropagation(); openDotsMenu(v.id, {title:v.title||'',description:v.description||''}); };
+      card.appendChild(dots);
+      grid.appendChild(card);
+    });
   } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#f87171;font-size:13px">Erro ao carregar</div>'; }
 }
 
@@ -539,9 +563,9 @@ function switchProfTab(tab, btn) {
 }
 
 // ── DOTS MENU ──────────────────────────────────────────────────────────────
-function openDotsMenu(videoId, dataStr) {
+function openDotsMenu(videoId, data) {
   _dotsVideoId = videoId;
-  try { _dotsVideoData = JSON.parse(dataStr); } catch(e) { _dotsVideoData = {}; }
+  _dotsVideoData = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch(e){ return {}; } })() : (data||{});
   document.getElementById('dotsMenu').classList.add('open');
   document.getElementById('dotsBackdrop').style.display = 'block';
 }
@@ -612,8 +636,12 @@ function pickAvatar(file) {
   const reader = new FileReader();
   reader.onload = e => {
     _editAvatarB64 = e.target.result;
-    document.getElementById('editAvatar').innerHTML =
-      '<img src="'+_editAvatarB64+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover"/><div class="edit-av-overlay">📷</div>';
+    const ea = document.getElementById('editAvatar');
+    ea.innerHTML = '<div class="edit-av-overlay">📷</div>';
+    const pimg = document.createElement('img');
+    pimg.src = _editAvatarB64;
+    pimg.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover';
+    ea.insertBefore(pimg, ea.firstChild);
   };
   reader.readAsDataURL(file);
 }
