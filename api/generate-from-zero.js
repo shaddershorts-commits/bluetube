@@ -157,15 +157,18 @@ module.exports = async function handler(req, res) {
       } catch(e) {}
     }
 
-    // ── 5. Monta contexto — prioriza o que realmente acontece no video ────────
+    // ── 5. Monta contexto — prioriza visual e audio, titulo como ultimo recurso ─
     const contextParts = [];
     if (visualDescription) contextParts.push('ANALISE VISUAL DO VIDEO:\n' + visualDescription);
     if (transcriptText) contextParts.push('AUDIO/LEGENDA DO VIDEO:\n' + transcriptText);
-    // Titulo e descricao apenas como contexto de apoio, nao como base criativa
-    if (!transcriptText && !visualDescription && ytDesc) contextParts.push('CONTEXTO DISPONIVEL:\n' + ytDesc);
-    else if (ytTitle && (transcriptText || visualDescription)) contextParts.push('CONTEXTO ADICIONAL — Canal: ' + ytChannel);
+    // Se nao tem visual nem audio, usa titulo+descricao como contexto minimo
+    if (!transcriptText && !visualDescription) {
+      const fallback = [ytTitle, ytDesc].filter(Boolean).join(' | ');
+      if (fallback.trim().length > 3) contextParts.push('CONTEXTO DO VIDEO (inferir tema e criar roteiro original):\n' + fallback);
+    }
+    if (ytChannel) contextParts.push('Canal: ' + ytChannel);
 
-    console.log('generate-from-zero:', videoId, '| transcript:', transcriptText.length, '| visual:', visualDescription.length, '| ytTitle:', ytTitle.length);
+    console.log('generate-from-zero:', videoId, '| transcript:', transcriptText.length, '| visual:', visualDescription.length, '| ytTitle:', ytTitle.length, '| ctx:', contextParts.length);
 
     if (contextParts.length === 0) {
       return res.status(503).json({ error: 'Nao foi possivel obter informacoes do video. Verifique se o link e publico.' });
