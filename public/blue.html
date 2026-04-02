@@ -254,8 +254,8 @@ html,body{height:100%;background:var(--yt-bg);color:var(--yt-text);font-family:v
 <!-- HEADER -->
 <header class="hd">
   <a class="hd-logo" href="/blue.html">
-    <div class="hd-logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
-    <span class="hd-logo-text">Blue<span>tube</span></span>
+    <div class="hd-logo-mark" style="background:#3b82f6"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
+    <span class="hd-logo-text" style="background:linear-gradient(135deg,#3b82f6,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Blue</span>
   </a>
   <div class="hd-search">
     <input type="text" placeholder="Pesquisar" id="searchInput" onkeydown="if(event.key==='Enter')doSearch()"/>
@@ -276,7 +276,7 @@ html,body{height:100%;background:var(--yt-bg);color:var(--yt-text);font-family:v
     <span class="sb-icon">🏠</span>Início
   </a>
   <a class="sb-item" id="sbShorts" href="#" onclick="showPage('shorts');return false">
-    <span class="sb-icon">▶</span>BlueS (Shorts)
+    <span class="sb-icon">▶</span>BlueS
   </a>
   <div class="sb-divider"></div>
   <div class="sb-section">Você</div>
@@ -736,42 +736,55 @@ async function doUpload() {
   msg.className = 'up-msg ok'; msg.textContent = 'Fazendo upload…';
 
   try {
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width = (5+e.loaded/e.total*90)+'%'; };
-      xhr.onload = async () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const d = JSON.parse(xhr.responseText);
-            if (!d.ok) { reject(new Error(d.error||'Erro no servidor')); return; }
-            fill.style.width = '100%';
-            msg.textContent = '✅ Publicado com sucesso!';
-            btn.textContent = '✅ Concluído';
-            showToast('🎬 Vídeo publicado!');
-            // Adiciona ao feed local
-            if (d.video) {
-              d.video.creator = {};
-              allVideos.unshift(d.video);
-              renderGrid('all');
-            }
-            setTimeout(() => { closeUpload(); prog.style.display='none'; fill.style.width='0%'; msg.textContent=''; btn.textContent='Publicar'; btn.disabled=true; selFile=null; thumbDataURL=null; document.getElementById('upTitle').value=''; document.getElementById('upDesc').value=''; document.getElementById('upPreviewRow').style.display='none'; document.getElementById('upThumbEl').innerHTML='🎬'; }, 1500);
-            resolve();
-          } catch(e) { reject(new Error('Resposta inválida')); }
-        } else { reject(new Error('HTTP '+xhr.status+': '+xhr.responseText.slice(0,100))); }
-      };
-      xhr.onerror = () => reject(new Error('Erro de rede'));
-      xhr.open('POST', '/api/blue-upload');
-      xhr.setRequestHeader('Authorization', 'Bearer '+TOKEN);
-      xhr.setRequestHeader('X-Title', encodeURIComponent(title));
-      xhr.setRequestHeader('X-Description', encodeURIComponent(desc));
-      xhr.setRequestHeader('X-Duration', String(vidDur));
-      xhr.setRequestHeader('X-Width', String(vidW));
-      xhr.setRequestHeader('X-Height', String(vidH));
-      xhr.setRequestHeader('X-Filename', encodeURIComponent(selFile.name));
-      if (thumbDataURL) xhr.setRequestHeader('X-Thumbnail', thumbDataURL);
-      xhr.setRequestHeader('Content-Type', selFile.type);
-      xhr.send(selFile);
+    // Passo 1: registra metadata e obtém signed URL (payload pequeno, sem vídeo)
+    msg.textContent = 'Preparando upload…'; fill.style.width = '10%';
+    const initR = await fetch('/api/blue-upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, title, description: desc, duration: vidDur, width: vidW, height: vidH, file_name: selFile.name, content_type: selFile.type, thumbnail_data: thumbDataURL })
     });
+    const initD = await initR.json();
+    if (!initR.ok) throw new Error(initD.error || 'Erro ao preparar upload');
+
+    fill.style.width = '20%';
+    msg.textContent = 'Fazendo upload do vídeo…';
+
+    // Passo 2: upload direto para Supabase Storage (bypassa Vercel — sem limite)
+    if (initD.upload_url) {
+      await new Promise((res, rej) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width=(20+e.loaded/e.total*75)+'%'; };
+        xhr.onload = () => xhr.status < 300 ? res() : rej(new Error('Upload falhou: HTTP '+xhr.status));
+        xhr.onerror = () => rej(new Error('Erro de rede durante upload'));
+        xhr.open('PUT', initD.upload_url);
+        xhr.setRequestHeader('Content-Type', selFile.type);
+        xhr.send(selFile);
+      });
+    } else if (initD.storage_url && initD.apikey) {
+      // Fallback: upload via REST da Supabase com anon key
+      await new Promise((res, rej) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => { if(e.lengthComputable) fill.style.width=(20+e.loaded/e.total*75)+'%'; };
+        xhr.onload = () => xhr.status < 300 ? res() : rej(new Error('Upload falhou: HTTP '+xhr.status));
+        xhr.onerror = () => rej(new Error('Erro de rede'));
+        xhr.open('POST', initD.storage_url);
+        xhr.setRequestHeader('apikey', initD.apikey);
+        xhr.setRequestHeader('Authorization', 'Bearer '+initD.apikey);
+        xhr.setRequestHeader('Content-Type', selFile.type);
+        xhr.setRequestHeader('x-upsert', 'true');
+        xhr.send(selFile);
+      });
+    }
+
+    fill.style.width = '100%';
+    msg.textContent = '✅ Publicado com sucesso!'; btn.textContent = '✅ Concluído';
+    showToast('🎬 Vídeo no ar!');
+    if (initD.video) { initD.video.creator = {}; allVideos.unshift(initD.video); renderGrid('all'); }
+    setTimeout(() => {
+      closeUpload(); prog.style.display='none'; fill.style.width='0%'; msg.textContent='';
+      btn.textContent='Publicar'; btn.disabled=true; selFile=null; thumbDataURL=null;
+      document.getElementById('upTitle').value=''; document.getElementById('upDesc').value='';
+      document.getElementById('upPreviewRow').style.display='none'; document.getElementById('upThumbEl').innerHTML='🎬';
+    }, 1800);
   } catch(err) {
     msg.className='up-msg err'; msg.textContent=err.message;
     btn.disabled=false; btn.textContent='Tentar novamente';
