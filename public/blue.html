@@ -77,6 +77,21 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* SIDEBAR AVATAR */
+.act-avatar{width:44px;height:44px;border-radius:50%;border:2px solid #fff;
+  cursor:pointer;overflow:hidden;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;
+  flex-shrink:0;transition:transform .15s}
+.act-avatar:active{transform:scale(.9)}
+.act-avatar img{width:100%;height:100%;object-fit:cover}
+.act-avatar-plus{width:18px;height:18px;background:#3b82f6;border-radius:50%;
+  border:2px solid #000;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;margin-top:-6px;z-index:1;cursor:pointer}
+
+/* CLICKABLE @ */
+.at-link{color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
+.at-link:hover{text-decoration:underline}
+
 /* MUTE INDICATOR */
 .mute-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   background:rgba(0,0,0,.6);border-radius:50%;width:56px;height:56px;
@@ -450,6 +465,73 @@ let _dotsVideoId = null, _dotsVideoData = null;
 let _editAvatarB64 = null;
 
 // ── PROFILE OPEN/CLOSE ───────────────────────────────────────────────────────
+async function openCreatorProfile(userId) {
+  if (!userId) return;
+  // If own profile
+  if (myProfile && myProfile.user_id === userId) { openProfile(); return; }
+  // Fetch profile by user_id
+  document.getElementById('profilePage').classList.add('open');
+  document.getElementById('ptEditBtn').style.display = 'none';
+  document.getElementById('profAvCam').style.display = 'none';
+  document.getElementById('profGrid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center"><div style="width:28px;height:28px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div></div>';
+  try {
+    // Get profile via videos (we have user_id from the video)
+    const vid = videos.find(v => v.user_id === userId);
+    const creator = vid?.creator || {};
+    // Show what we have immediately
+    const avEl = document.getElementById('profAvatar');
+    const init = (creator.display_name||creator.username||'?').charAt(0).toUpperCase();
+    if (creator.avatar_url) {
+      const img = document.createElement('img');
+      img.src = creator.avatar_url;
+      img.style.cssText = 'width:86px;height:86px;border-radius:50%;object-fit:cover';
+      img.onerror = () => avEl.textContent = init;
+      avEl.innerHTML = ''; avEl.appendChild(img);
+    } else { avEl.textContent = init; }
+    document.getElementById('profName').textContent = creator.display_name || creator.username || '—';
+    document.getElementById('profUsername').textContent = '@'+(creator.username||'usuario');
+    document.getElementById('ptName').textContent = creator.username || 'Perfil';
+    // Show their public videos
+    const theirVids = videos.filter(v => v.user_id === userId);
+    document.getElementById('profVids').textContent = theirVids.length;
+    renderCreatorGrid(theirVids, false);
+  } catch(e) {}
+}
+
+function renderCreatorGrid(vids, isOwn) {
+  const grid = document.getElementById('profGrid');
+  grid.innerHTML = '';
+  if (vids.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:48px;text-align:center;color:#555;font-size:13px">Sem vídeos ainda</div>';
+    return;
+  }
+  vids.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'pg-card';
+    card.onclick = () => { closeProfile(); setTimeout(()=>{ const s=document.getElementById('s-'+v.id); if(s)s.scrollIntoView({behavior:'smooth'}); },350); };
+    if (v.thumbnail_url) {
+      const img = document.createElement('img');
+      img.className = 'pg-thumb'; img.loading = 'lazy'; img.src = v.thumbnail_url;
+      img.onerror = () => { img.style.display='none'; };
+      card.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'pg-thumb-placeholder'; ph.textContent = '🎬';
+      card.appendChild(ph);
+    }
+    const views = document.createElement('div');
+    views.className = 'pg-views'; views.textContent = '👁 '+fmt(v.views||0);
+    card.appendChild(views);
+    if (isOwn) {
+      const dots = document.createElement('button');
+      dots.className = 'pg-dots'; dots.textContent = '⋯';
+      dots.onclick = (e) => { e.stopPropagation(); openDotsMenu(v.id, {title:v.title||'',description:v.description||''}); };
+      card.appendChild(dots);
+    }
+    grid.appendChild(card);
+  });
+}
+
 async function openProfile() {
   document.getElementById('profilePage').classList.add('open');
   if (!TOKEN) {
@@ -521,30 +603,7 @@ async function loadMyVideos() {
       grid.innerHTML = '<div style="grid-column:1/-1;padding:48px 20px;text-align:center;color:#555;font-size:13px">Nenhum vídeo ainda.<br><button onclick="openUpload();closeProfile()" style="margin-top:12px;background:#3b82f6;border:none;border-radius:8px;padding:9px 18px;color:#fff;font-size:13px;cursor:pointer">+ Postar vídeo</button></div>';
       return;
     }
-    grid.innerHTML = '';
-    vids.forEach(v => {
-      const card = document.createElement('div');
-      card.className = 'pg-card';
-      card.onclick = () => openVideoFromProfile(v.id);
-      if (v.thumbnail_url) {
-        const img = document.createElement('img');
-        img.className = 'pg-thumb'; img.loading = 'lazy'; img.src = v.thumbnail_url;
-        img.onerror = () => { img.style.display='none'; const ph=document.createElement('div'); ph.className='pg-thumb-placeholder'; ph.textContent='🎬'; card.insertBefore(ph,card.firstChild); };
-        card.appendChild(img);
-      } else {
-        const ph = document.createElement('div');
-        ph.className = 'pg-thumb-placeholder'; ph.textContent = '🎬';
-        card.appendChild(ph);
-      }
-      const views = document.createElement('div');
-      views.className = 'pg-views'; views.textContent = '👁 '+fmt(v.views||0);
-      card.appendChild(views);
-      const dots = document.createElement('button');
-      dots.className = 'pg-dots'; dots.textContent = '⋯';
-      dots.onclick = (e) => { e.stopPropagation(); openDotsMenu(v.id, {title:v.title||'',description:v.description||''}); };
-      card.appendChild(dots);
-      grid.appendChild(card);
-    });
+    renderCreatorGrid(vids, true);
   } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#f87171;font-size:13px">Erro ao carregar</div>'; }
 }
 
@@ -747,11 +806,15 @@ function makeSlide(v,i){
     <div class="mute-hint" id="mh-${v.id}">🔇</div>
     <div class="slide-views">👁 <span id="vc-${v.id}">${fmt(v.views||0)}</span></div>
     <div class="info">
-      <div class="info-user">@${c.username||'blue'}</div>
+      <div class="info-user"><span class="at-link" onclick="openCreatorProfile('${v.user_id}')">@${c.username||'blue'}</span></div>
       ${v.title?`<div class="info-title">${v.title}</div>`:''}
       ${v.description?`<div class="info-desc">${v.description}</div>`:''}
     </div>
     <div class="actions">
+      <div id="sav-${v.id}" onclick="openCreatorProfile('${v.user_id}')" style="display:flex;flex-direction:column;align-items:center;gap:0;cursor:pointer;margin-bottom:4px">
+        <div class="act-avatar" id="cav-${v.id}">👤</div>
+        <div class="act-avatar-plus">+</div>
+      </div>
       <button class="act" onclick="doLike('${v.id}')">
         <div class="act-ico ${lk?'red':''}" id="li-${v.id}">${lk?'❤️':'🤍'}</div>
         <div class="act-lbl" id="lc-${v.id}">${fmt(v.likes||0)}</div>
@@ -773,6 +836,22 @@ function makeSlide(v,i){
   // Tap no vídeo — toggle mute (primeiro toque ativa som, depois pausa/retoma)
   const vidEl = el.querySelector('video');
   vidEl.addEventListener('click', ()=> toggleSound(vidEl, v.id));
+  // Fill creator avatar
+  const cavEl = el.querySelector('#cav-'+v.id);
+  if (cavEl && c.avatar_url) {
+    const img = document.createElement('img');
+    img.src = c.avatar_url;
+    img.onerror = () => { cavEl.textContent = (c.display_name||c.username||'?').charAt(0).toUpperCase(); };
+    cavEl.innerHTML = ''; cavEl.appendChild(img);
+  } else if (cavEl) {
+    cavEl.textContent = (c.display_name||c.username||'?').charAt(0).toUpperCase();
+  }
+  // If own video, show own avatar
+  if (myProfile && v.user_id && myProfile.user_id === v.user_id && cavEl && myProfile.avatar_url) {
+    const img = document.createElement('img');
+    img.src = myProfile.avatar_url;
+    cavEl.innerHTML = ''; cavEl.appendChild(img);
+  }
   return el;
 }
 
@@ -875,7 +954,7 @@ async function loadComments(videoId) {
       return '<div class="cp-item">' +
         '<div class="cp-av">'+init+'</div>' +
         '<div class="cp-body">' +
-          '<div class="cp-user">@'+(u.username||'usuário')+'</div>' +
+          '<div class="cp-user"><span class="at-link" onclick="openCommentProfile(\''+c.user_id+'\')" >@'+(u.username||'usuário')+'</span></div>' +
           '<div class="cp-text">'+escHtml(c.text)+'</div>' +
           '<div class="cp-time">'+ago+'</div>' +
         '</div></div>';
@@ -913,6 +992,12 @@ async function sendComment() {
     if (cpCount) cpCount.textContent = '('+((parseInt(cpCount.textContent.replace(/[^0-9]/g,''))||0)+1)+')';
   } catch(e) { toast('Erro: '+e.message); }
   btn.disabled = false;
+}
+
+function openCommentProfile(userId) {
+  if (!userId) return;
+  closeComments();
+  setTimeout(() => openCreatorProfile(userId), 300);
 }
 
 function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
