@@ -2,7 +2,7 @@
 // Analisa frames do video (Gemini Vision) + transcricao se disponivel
 // NAO usa titulo nem descricao como base criativa
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -115,7 +115,6 @@ export default async function handler(req, res) {
     } catch(e) { console.log('supadata fallback error:', e.message); }
   }
 
-  let fallbackContext = '';
   // ── 2. Analisa frames do video com Gemini Vision (imagens = barato) ─────────
   // YouTube expoe 4 frames do video via thumbnails numeradas (0=thumb, 1/2/3=frames)
   let visualDescription = '';
