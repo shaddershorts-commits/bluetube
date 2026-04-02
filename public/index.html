@@ -1732,7 +1732,7 @@ async function startTranscription(e){
 
     setTimeout(()=>{
       setLoading(false);showResults();switchTab('transcript');
-      generateAllScripts(lang);
+      if(_genMode !== 'zero') generateAllScripts(lang);
       saveToLearningLoop(videoId,transcript,lang);
       // Show account creation popup for free users without account
       if(userPlan==='free' && !localStorage.getItem('bt_token') && !localStorage.getItem('bt_shown_signup_popup')){
@@ -1880,7 +1880,12 @@ async function generateFromZero(lang){
     const token = localStorage.getItem('bt_token');
     const r = await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({videoUrl,lang,token})});
-    const d = await r.json();
+    const rawText = await r.text();
+    let d;
+    try { d = JSON.parse(rawText); } catch(parseErr) {
+      console.error('generate-from-zero non-JSON:', rawText.slice(0,200));
+      throw new Error('Erro interno no servidor. Tente novamente.');
+    }
     if(!r.ok||((!d.casual)&&(!d.apelativo))) throw new Error(d.error||'Falha ao gerar roteiro do zero.');
     if(d.casual){
       document.getElementById('scriptV1').textContent=(d.casual||'').replace(/[\r\n]+/g,' ').trim();
