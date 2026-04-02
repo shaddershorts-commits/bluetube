@@ -762,7 +762,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <p class="hero-sub">Cole qualquer link de YouTube Shorts, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
 
   <div class="main-card">
-    
+    <!-- Modo de geração -->
+    <div style="display:flex;gap:0;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:4px;margin-bottom:14px">
+      <button style="flex:1;padding:10px 16px;border-radius:9px;border:1px solid rgba(0,170,255,.25);background:rgba(0,170,255,.15);font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--neon);cursor:default">
+        📝 Adaptar roteiro <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2);margin-left:4px">GRÁTIS</span>
+      </button>
+      <button title="Em breve" style="flex:1;padding:10px 16px;border-radius:9px;border:none;background:none;font-family:var(--font-mono);font-size:12px;font-weight:600;color:rgba(251,191,36,.45);cursor:not-allowed;opacity:.6">
+        ✨ Roteirizar vídeo <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;background:rgba(251,191,36,.08);color:rgba(251,191,36,.5);border:1px solid rgba(251,191,36,.15);margin-left:4px">EM BREVE</span>
+      </button>
+    </div>
     <div class="options-row">
       <select id="langSelect" class="lang-select" onchange="handleLangChange(this)">
         <option value="Português (Brasil)">🇧🇷 Português (Brasil)</option>
@@ -908,7 +916,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </div>
       <div class="feat-card"><div class="feat-icon">🔥</div><div class="feat-title">Shorts virais em tempo real</div><div class="feat-desc">Monitore os vídeos explodindo agora por país e nicho. Surfe o hype antes que todo mundo descubra.</div></div>
       <div class="feat-card"><div class="feat-icon">⬇️</div><div class="feat-title">Download HD sem marca d'água</div><div class="feat-desc">Baixe qualquer vídeo do TikTok, Instagram e YouTube em alta qualidade para reutilizar legalmente.</div></div>
-      <div class="feat-card" style="border-color:rgba(0,170,255,.25);background:rgba(0,170,255,.04)"><div class="feat-icon">⚡</div><div class="feat-title">Assine agora — preço sobe em breve</div><div class="feat-desc">O plano Master está no preço de lançamento. Cada semana sem assinar é uma semana de vantagem que seu concorrente pode ter.</div></div>
+      <div class="feat-card" style="border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.04)"><div class="feat-icon">✨</div><div class="feat-title" style="color:#fbbf24">Roteirizar vídeo — Em breve</div><div class="feat-desc">Cole qualquer Short — sem narração, sem áudio. A IA assiste o vídeo, entende o que acontece visualmente e cria um roteiro viral do zero. Para criadores que queram criar conteúdo original.</div></div>
     </div>
   </div>
 </section>
@@ -923,38 +931,36 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <h2 class="sec-title" style="text-align:left;margin-bottom:36px">Perguntas frequentes.</h2>
     <div id="faqList">
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">O que é a BlueTube? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">A BlueTube nasceu de uma crença simples: todo criador merece as mesmas ferramentas que os grandes canais usam. Somos uma plataforma de inteligência artificial criada para transformar qualquer vídeo do YouTube Shorts em roteiros virais prontos para narrar — em segundos, em qualquer idioma do mundo.<br><br>Nossa missão vai além da tecnologia. Acreditamos que o conteúdo certo, na hora certa, pode mudar a trajetória de um criador. Já entregamos resultados reais para mais de <strong>129 canais do YouTube</strong> — do criador iniciante ao produtor profissional. Cada roteiro gerado é um passo a mais em direção a resultados reais: mais views, mais seguidores, mais impacto. A BlueTube é seu parceiro estratégico no jogo do conteúdo.</div>
-      </div>
-        <div class="faq-a">Cole o link de qualquer YouTube Shorts, escolha o idioma e clique em Transcrever. Nossa IA analisa o áudio, gera a transcrição completa e cria dois roteiros virais adaptados ao estilo do vídeo — um casual e um apelativo. Tudo em menos de 30 segundos.</div>
+        <div class="faq-q">O que é o BlueTube? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">O BlueTube é uma plataforma de IA para criadores de Shorts. Cole o link de qualquer vídeo, receba transcrição + 2 roteiros virais em segundos — em qualquer idioma. Tudo gratuito, sem cartão de crédito.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Preciso criar uma conta para usar? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Não! Você pode usar o BlueTube sem cadastro, com até 2 roteiros gratuitos por dia. Criar uma conta gratuita garante +1 roteiro bônus e salva seu histórico. Para roteiros ilimitados e mais idiomas, escolha um plano pago.</div>
+        <div class="faq-q">Como funciona? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Cole o link de qualquer YouTube Shorts, escolha o idioma e clique em Transcrever. Nossa IA analisa o áudio, gera a transcrição completa e cria dois roteiros virais — um casual e um apelativo. Tudo em menos de 30 segundos.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Preciso criar uma conta? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Sim, mas é grátis e leva menos de 1 minuto. Com a conta você tem acesso a todas as ferramentas sem limite — roteiros, BlueVoice, Buscador de Virais, BlueLens e BlueScore. Só é necessário fazer login.</div>
+      </div>
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-q">Tem limite de uso? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Roteiros e transcrições são ilimitados para quem tem conta. O único limite é o BlueVoice: 30 narrações por mês — mais que suficiente para um criador ativo. Todo o resto é à vontade.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">Quais idiomas estão disponíveis? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">No plano gratuito: Português (Brasil) e Inglês. No plano Full: +7 idiomas incluindo Español, Français, Deutsch, Italiano, 日本語, 中文 e العربية. No plano Master: todos os anteriores +7 novos como Türkçe, हिन्दी, 한국어, Русский, Bahasa Indonesia, ภาษาไทย e Tagalog.</div>
+        <div class="faq-a">Português, Inglês, Espanhol, Francês, Alemão, Italiano, Japonês, Chinês, Árabe, Turco, Hindi, Coreano, Russo, Bahasa Indonesia, Tailandês e Tagalog. Você pode transcrever um vídeo em japonês e receber o roteiro em português.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Os roteiros são únicos ou copiados do vídeo original? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Os roteiros são 100% originais, gerados por nossa IA a partir da transcrição. Nunca são uma cópia do vídeo original — são uma reescrita viral adaptada para máximo engajamento. Você pode usar sem medo de problemas de direitos autorais.</div>
+        <div class="faq-q">Os roteiros são cópia do vídeo original? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Não. São roteiros 100% originais gerados pela IA a partir da transcrição. Nunca é uma cópia — é uma reescrita viral adaptada para máximo engajamento. Sem risco de direitos autorais.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Posso cancelar minha assinatura a qualquer momento? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Sim, sem burocracia. Você pode cancelar a qualquer momento pelo seu perfil no site. Após o cancelamento, você mantém o acesso premium até o final do período já pago e depois retorna ao plano gratuito automaticamente.</div>
+        <div class="faq-q">O que é a Comunidade BlueTube? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">Um grupo no WhatsApp gratuito para todos os criadores cadastrados. Você encontra dicas de nicho, estratégias virais, suporte entre criadores e atualizações antecipadas das novas ferramentas. Aberto a qualquer usuário do BlueTube.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">O que é a Comunidade exclusiva? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Um grupo no WhatsApp exclusivo para assinantes Full e Master com criadores que acumulam milhões de views por mês. Você vai encontrar dicas de nicho, estratégias virais, suporte entre criadores e atualizações antecipadas das novas ferramentas do BlueTube.</div>
-      </div>
-      <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Meu conteúdo é armazenado no BlueTube? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">As transcrições dos vídeos mais processados são salvas anonimamente para melhorar nossa IA ao longo do tempo. Nenhum dado pessoal seu é vinculado ao conteúdo processado. Você pode usar o BlueTube com total privacidade.</div>
-      </div>
-      <div class="faq-item" onclick="toggleFaq(this)">
-        <div class="faq-q">Qual a diferença entre Full e Master? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">O Full oferece 9 roteiros por dia, todos os idiomas principais e acesso à comunidade. O Master é ilimitado — sem teto de roteiros por dia, +7 idiomas exclusivos, chat IA personalizado, voz hiper-realista, download de vídeos HD e buscador de vídeos virais em alta.</div>
+        <div class="faq-q">Meus dados ficam salvos? <span class="faq-chevron">▼</span></div>
+        <div class="faq-a">As transcrições são salvas anonimamente para melhorar a IA ao longo do tempo. Nenhum dado pessoal é vinculado ao conteúdo. Você pode usar com total privacidade.</div>
       </div>
     </div>
   </div>
@@ -968,7 +974,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <div style="font-size:36px">🤝</div>
       <div>
         <div style="font-size:18px;font-weight:800;letter-spacing:-.5px">Comunidade BlueTube</div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--neon)">Exclusivo para assinantes</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--neon)">Grátis para todos os criadores</div>
       </div>
     </div>
     <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:22px">
@@ -1086,7 +1092,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px" id="toolModalTitle">Em desenvolvimento</div>
     <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px" id="toolModalDesc">Esta ferramenta está sendo desenvolvida e chegará em breve para assinantes Master.</div>
     <div style="background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(251,191,36,0.05));border:1px solid rgba(251,191,36,0.2);border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="font-family:var(--font-mono);font-size:11px;color:#fbbf24">👑 Exclusivo Master · Em breve</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:#fbbf24">✨ Roteirizar vídeo — chegando em breve</div>
     </div>
     <button onclick="closeToolModal()" style="width:100%;background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer">Entendido</button>
   </div>
@@ -1145,18 +1151,16 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 // ── COMMUNITY ──────────────────────────────────────────────────────────────
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
 function openCommunity(){
-  const isPaid=userPlan==='full'||userPlan==='master';
-  if(isPaid){
+  const token = localStorage.getItem('bt_token');
+  if(token){
     window.open(COMMUNITY_URL,'_blank');
-  }else{
-    // Show upgrade modal with community message
+  } else {
     openAuthModal();
   }
 }
 function updateCommunityBtn(){
-  const isPaid=userPlan==='full'||userPlan==='master';
   const lock=document.getElementById('communityLock');
-  if(lock)lock.style.display=isPaid?'none':'inline';
+  if(lock)lock.style.display='none'; // Todos tem acesso
 }
 
 // ── MODAL BILLING TOGGLE ───────────────────────────────────────────────────
@@ -1602,6 +1606,15 @@ async function startTranscription(e){
       if(!localStorage.getItem('bt_token') && !localStorage.getItem('bt_shown_signup_popup')){
         localStorage.setItem('bt_shown_signup_popup','1');
         setTimeout(()=>showFreeUserPopup(), 3000);
+      }
+      // No 3o short: convida para a comunidade
+      const _sc = parseInt(localStorage.getItem('bt_shorts_done')||'0') + 1;
+      localStorage.setItem('bt_shorts_done', _sc);
+      if(_sc === 3 && !localStorage.getItem('bt_community_shown')){
+        localStorage.setItem('bt_community_shown','1');
+        setTimeout(()=>{
+          document.getElementById('communityModal').classList.add('on');
+        }, 2500);
       }
     },400);
 
