@@ -31,8 +31,8 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
 body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
 /* ── SLIDE ───────────────────────────────────────────────────────────────── */
-.slide{position:relative;width:100%;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#111}
-.slide video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.slide{position:relative;width:100%;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+.slide video{display:block}
 .grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 45%,rgba(0,0,0,.15) 100%);pointer-events:none}
 .mute-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   background:rgba(0,0,0,.6);border-radius:50%;width:60px;height:60px;
@@ -245,12 +245,21 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 #pfFeed::-webkit-scrollbar{display:none}
 
 /* ── CHAT SYSTEM ─────────────────────────────────────────────────────────── */
-/* Inbox panel */
-.inbox{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
-  width:100%;max-width:412px;height:78vh;background:#0d0d0d;
-  border-radius:20px 20px 0 0;z-index:300;
-  transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
-.inbox.open{transform:translateX(-50%) translateY(0)}
+/* Inbox — bottom sheet mobile, right popup desktop */
+.inbox{position:fixed;z-index:300;background:#0d0d0d;
+  display:flex;flex-direction:column;transition:all .32s cubic-bezier(.4,0,.2,1)}
+/* Mobile: bottom sheet */
+@media(max-width:600px){
+  .inbox{bottom:0;left:0;right:0;height:78vh;border-radius:20px 20px 0 0;transform:translateY(100%)}
+  .inbox.open{transform:translateY(0)}
+}
+/* Desktop: right-side popup */
+@media(min-width:601px){
+  .inbox{bottom:70px;right:24px;width:340px;height:500px;border-radius:16px;
+    box-shadow:0 8px 40px rgba(0,0,0,.6);border:1px solid #2a2a2a;
+    transform:scale(.92) translateY(20px);opacity:0;pointer-events:none}
+  .inbox.open{transform:scale(1) translateY(0);opacity:1;pointer-events:all}
+}
 .inbox-hd{padding:16px 16px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1a1a1a}
 .inbox-ttl{font-size:16px;font-weight:700}
 .inbox-x{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer;line-height:1}
@@ -285,10 +294,26 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .inbox-empty{text-align:center;padding:48px 20px;color:#444;font-size:13px;line-height:1.8}
 
 /* Chat window */
-.chat-win{position:fixed;inset:0;left:50%;transform:translateX(-50%) translateX(100%);
-  width:100%;max-width:412px;background:#0d0d0d;z-index:310;
-  transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
-.chat-win.open{transform:translateX(-50%) translateX(0)}
+.chat-win{position:fixed;z-index:310;background:#0d0d0d;display:flex;flex-direction:column;transition:all .3s cubic-bezier(.4,0,.2,1)}
+/* Mobile: fullscreen slide */
+@media(max-width:519px){
+  .chat-win{inset:0;transform:translateX(100%)}
+  .chat-win.open{transform:translateX(0)}
+  .inbox{inset:auto;bottom:0;left:0;right:0;border-radius:20px 20px 0 0}
+}
+/* Desktop: popup bottom-right */
+@media(min-width:520px){
+  .chat-win{bottom:80px;right:24px;top:auto;left:auto;width:360px;height:520px;border-radius:16px;
+    box-shadow:0 8px 40px rgba(0,0,0,.7);transform:translateY(16px) scale(.96);opacity:0;pointer-events:none}
+  .chat-win.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all}
+  .inbox{bottom:80px;right:24px;top:auto;left:auto;width:340px;height:460px;border-radius:16px;
+    box-shadow:0 8px 40px rgba(0,0,0,.7);transform:translateY(16px) scale(.96);opacity:0;pointer-events:none}
+  .inbox.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all}
+  #inboxBtn{position:fixed!important;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%!important;
+    background:#3b82f6!important;font-size:22px;box-shadow:0 4px 20px rgba(59,130,246,.5);
+    display:flex!important;align-items:center;justify-content:center;padding:0!important}
+}
+
 .chat-hd{display:flex;align-items:center;gap:12px;
   padding:max(44px,env(safe-area-inset-top)) 14px 12px;
   background:#0d0d0d;border-bottom:1px solid #1a1a1a;flex-shrink:0}
@@ -357,7 +382,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openUpload()">+ Postar</button>
-    <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">💬<span id="inboxDot" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;background:#f87171;border-radius:50%;border:2px solid #000"></span></button>
+    <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">💬<span id="inboxDot" style="display:none;position:absolute;top:0px;right:0px;width:8px;height:8px;background:#f87171;border-radius:50%"></span></button>
     <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
     <a class="tbtn" href="/">BlueTube</a>
   </div>
@@ -522,7 +547,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 </div>
 
 <!-- CHAT INBOX -->
-<div class="back-drop" id="inboxBack" onclick="closeInbox()" style="z-index:299"></div>
+<div class="back-drop" id="inboxBack" onclick="closeInbox()" style="z-index:299;display:none"></div>
 <div class="inbox" id="inbox">
   <div class="inbox-hd">
     <div class="inbox-ttl">💬 Mensagens</div>
@@ -638,8 +663,11 @@ function mkSlide(v,i){
 
   const el=document.createElement('div');
   el.className='slide'; el.id='s-'+v.id; el.dataset.id=v.id; el.dataset.i=i;
+  // Determine if video is portrait (should cover) or landscape (contain)
+  const isPortrait = !v.width || !v.height || v.height >= v.width;
+  const vidStyle = isPortrait ? 'object-fit:cover' : 'object-fit:contain;background:#000';
   el.innerHTML=
-    '<video src="'+v.video_url+'" preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
+    '<video src="'+v.video_url+'" preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
     '<div class="grad"></div>'+
     '<div class="mute-hint" id="mh-'+v.id+'">🔇</div>'+
     '<div class="slide-views">▶ <span id="vc-'+v.id+'">'+fmt(v.views||0)+'</span></div>'+
@@ -820,10 +848,8 @@ async function openCreatorProfile(userId){
   if(!userId)return;
   if(myProfile&&myProfile.user_id===userId){openProfile();return;}
   document.getElementById('profPage').classList.add('open');
-  document.getElementById('pNavEdit').style.display='none';
-  document.getElementById('profAvCam').style.display='none';
-  document.getElementById('profEditBtn').style.display='none';
-  // Show message button for other users
+  const safeHide = id => { const el=document.getElementById(id); if(el) el.style.display='none'; };
+  safeHide('pNavEdit'); safeHide('profAvCam'); safeHide('profEditBtn');
   const msgBtn = document.getElementById('profMsgBtn');
   if (msgBtn) msgBtn.style.display = TOKEN ? 'block' : 'none';
   _chatTargetUser = userId;
@@ -849,27 +875,32 @@ async function loadMyProfile(){
 
 function setProfileHeader(p,isOwn){
   if(!p)return;
-  const av=document.getElementById('profAv');
+  const $ = id => document.getElementById(id);
+  const set = (id,val) => { const el=$(id); if(el) el.textContent=val; };
+  const show = (id,v) => { const el=$(id); if(el) el.style.display=v; };
+
+  const av=$('profAv');
   const init=(p.display_name||p.username||'?').charAt(0).toUpperCase();
-  av.textContent=init;
-  // Remove cam button from inner text
-  const cam=document.getElementById('profAvCam');
-  if(cam){av.textContent=init;av.appendChild(cam);}
-  if(p.avatar_url){
-    const img=new Image();img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';
-    img.src=p.avatar_url;img.onload=()=>{av.insertBefore(img,cam||null);};
+  if(av){
+    av.textContent=init;
+    const cam=$('profAvCam');
+    if(cam) av.appendChild(cam);
+    if(p.avatar_url){
+      const img=new Image();
+      img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';
+      img.src=p.avatar_url;
+      img.onload=()=>{ if(av.contains(img)) return; av.insertBefore(img,av.firstChild); };
+    }
+    if(cam) cam.style.display=isOwn?'flex':'none';
   }
-  document.getElementById('profName').textContent=p.display_name||p.username||'—';
-  document.getElementById('profUname').textContent='@'+(p.username||'usuario');
-  document.getElementById('pNavName').textContent=p.username||'Perfil';
-  const bioEl=document.getElementById('profBio');
-  if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';}
-  document.getElementById('pNavEdit').style.display=isOwn?'block':'none';
-  document.getElementById('profEditBtn').style.display=isOwn?'block':'none';
-  if(cam)cam.style.display=isOwn?'flex':'none';
-  // Message button: show for others only
-  const msgBtn2=document.getElementById('profMsgBtn');
-  if(msgBtn2) msgBtn2.style.display=(!isOwn&&TOKEN)?'block':'none';
+  set('profName',p.display_name||p.username||'—');
+  set('profUname','@'+(p.username||'usuario'));
+  set('pNavName',p.username||'Perfil');
+  const bioEl=$('profBio');
+  if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
+  show('pNavEdit',isOwn?'block':'none');
+  show('profEditBtn',isOwn?'block':'none');
+  show('profMsgBtn',(!isOwn&&!!TOKEN)?'block':'none');
   if(isOwn) _chatTargetUser=null;
 }
 
@@ -899,7 +930,9 @@ function openProfileFeed(vids, startId, username) {
   pfVids.forEach((v, i) => {
     const s = mkSlide(v, i);
     if (s) {
-      s.id = 'pf-' + v.id; // Different ID to avoid conflicts
+      // Rename all IDs to avoid conflict with main feed
+      s.id = 'pf-' + v.id;
+      s.querySelectorAll('[id]').forEach(el => { el.id = 'pf-' + el.id; });
       feed.appendChild(s);
     }
   });
@@ -947,14 +980,18 @@ const EMOJIS = ['😀','😂','🥰','😍','🤔','😎','🥺','😭','🔥','
 
 function openInbox() {
   if (!TOKEN) { toast('Entre para acessar mensagens'); return; }
-  document.getElementById('inbox').classList.add('open');
-  document.getElementById('inboxBack').classList.add('on');
+  const inbox = document.getElementById('inbox');
+  const isOpen = inbox.classList.contains('open');
+  if (isOpen) { closeInbox(); return; } // Toggle
+  inbox.classList.add('open');
+  if (window.innerWidth <= 600) document.getElementById('inboxBack').classList.add('on');
   updateStatusBtns(_myStatus);
   loadConversations();
 }
 function closeInbox() {
   document.getElementById('inbox').classList.remove('open');
   document.getElementById('inboxBack').classList.remove('on');
+  document.getElementById('chatWin').classList.remove('open');
 }
 
 async function loadConversations() {
@@ -1129,25 +1166,31 @@ function startStatusHeartbeat() {
 // Extrai frame do vídeo para usar como thumbnail no grid
 function extractVideoFrame(videoUrl, card, placeholder){
   if(!videoUrl)return;
+  // Use a small muted video as the thumbnail itself (most reliable)
   const vid=document.createElement('video');
-  vid.src=videoUrl; vid.muted=true; vid.preload='metadata';
-  vid.style.display='none';
-  vid.onloadedmetadata=()=>{ vid.currentTime=Math.min(1, vid.duration*0.1); };
-  vid.onseeked=()=>{
-    try{
-      const c2=document.createElement('canvas');
-      c2.width=Math.min(vid.videoWidth,360);
-      c2.height=Math.round(c2.width*(vid.videoHeight/vid.videoWidth));
-      c2.getContext('2d').drawImage(vid,0,0,c2.width,c2.height);
-      const img=document.createElement('img');
-      img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
-      img.src=c2.toDataURL('image/jpeg',0.7);
-      card.insertBefore(img,placeholder);
-    }catch(e){}
-    vid.remove();
+  vid.src=videoUrl; vid.muted=true; vid.preload='metadata'; vid.playsInline=true;
+  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+  vid.onloadedmetadata=()=>{
+    // Show first frame by seeking
+    vid.currentTime=0.1;
+    placeholder.style.display='none';
   };
-  vid.onerror=()=>vid.remove();
-  document.body.appendChild(vid);
+  vid.onseeked=()=>{
+    // Now try to snapshot to canvas for real img
+    try{
+      const cv=document.createElement('canvas');
+      cv.width=Math.min(vid.videoWidth||360,360);
+      cv.height=Math.round(cv.width*((vid.videoHeight||640)/Math.max(vid.videoWidth||360,1)));
+      const ctx=cv.getContext('2d'); ctx.drawImage(vid,0,0,cv.width,cv.height);
+      const snap=cv.toDataURL('image/jpeg',0.65);
+      if(snap && snap.length>1000){
+        const img=new Image(); img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+        img.src=snap; img.onload=()=>{ card.insertBefore(img,placeholder); vid.remove(); };
+      } else { card.insertBefore(vid, placeholder); }
+    }catch(e){ card.insertBefore(vid,placeholder); }
+  };
+  vid.onerror=()=>{ placeholder.style.display=''; vid.remove(); };
+  card.insertBefore(vid,placeholder);
 }
 
 let _lastRenderedVids = [];
@@ -1400,6 +1443,16 @@ document.addEventListener('keydown',e=>{
 loadFeed();
 initAuth();
 startStatusHeartbeat();
+// Close inbox/chat when clicking outside on desktop
+document.addEventListener('click', e => {
+  if(window.innerWidth < 520) return;
+  const inbox = document.getElementById('inbox');
+  const chatWin = document.getElementById('chatWin');
+  const inboxBtn = document.getElementById('inboxBtn');
+  if(inbox.classList.contains('open') && !inbox.contains(e.target) && !chatWin.contains(e.target) && e.target !== inboxBtn && !inboxBtn.contains(e.target)){
+    closeInbox();
+  }
+});
 </script>
 </body>
 </html>
