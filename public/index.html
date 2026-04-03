@@ -2022,12 +2022,16 @@ function setLoggedIn(email, plan){
     commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
   }
 
-  // Rebuild right side of nav keeping tool buttons
+  // Rebuild right side of nav keeping tool buttons (desktop + mobile)
   const toolsGroup = document.getElementById('navToolsGroup');
+  const mobileBtn = document.getElementById('mobileToolsBtn');
+  const mobileWrap = mobileBtn ? mobileBtn.closest('div') : null;
   const toolsHTML = toolsGroup ? toolsGroup.outerHTML : '';
+  const mobileHTML = mobileWrap ? mobileWrap.outerHTML : '';
 
   navRight.innerHTML = `
     ${toolsHTML}
+    ${mobileHTML}
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
