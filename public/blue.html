@@ -297,12 +297,18 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
       <button class="mx" onclick="closeUpload()">✕</button>
     </div>
 
-    <div id="authWall" style="display:none;text-align:center;padding:20px 0">
-      <div style="font-size:36px;margin-bottom:12px">🔒</div>
-      <div style="font-size:16px;font-weight:700;margin-bottom:6px">Entre para publicar</div>
-      <div style="font-size:13px;color:#aaa;margin-bottom:18px">Use a mesma conta do BlueTube</div>
-      <a href="/?signup=1" style="display:block;background:#3b82f6;border-radius:12px;padding:12px;font-weight:700;color:#fff;text-decoration:none;margin-bottom:8px">Criar conta grátis →</a>
-      <a href="/" style="display:block;background:rgba(255,255,255,.08);border-radius:12px;padding:12px;font-weight:700;color:#fff;text-decoration:none">Já tenho conta — Entrar</a>
+    <div id="authWall" style="display:none;padding:0 4px">
+      <div style="font-size:32px;text-align:center;margin-bottom:10px">🎬</div>
+      <div style="font-size:16px;font-weight:700;text-align:center;margin-bottom:4px">Entre para publicar</div>
+      <div style="font-size:12px;color:#aaa;text-align:center;margin-bottom:18px">Use a mesma conta do BlueTube</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button id="awTabLogin" onclick="awTab('login')" style="flex:1;padding:9px;border-radius:10px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Entrar</button>
+        <button id="awTabSignup" onclick="awTab('signup')" style="flex:1;padding:9px;border-radius:10px;border:none;background:rgba(255,255,255,.05);color:#aaa;font-size:13px;font-weight:600;cursor:pointer">Criar conta</button>
+      </div>
+      <input id="awEmail" type="email" placeholder="Email" style="width:100%;background:rgba(255,255,255,.07);border:1px solid #333;border-radius:10px;padding:12px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;font-family:inherit"/>
+      <input id="awPass" type="password" placeholder="Senha (mín. 6 caracteres)" style="width:100%;background:rgba(255,255,255,.07);border:1px solid #333;border-radius:10px;padding:12px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:14px;font-family:inherit"/>
+      <button onclick="doInlineAuth()" style="width:100%;background:#3b82f6;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;color:#fff;cursor:pointer" id="awBtn">Entrar →</button>
+      <div id="awMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;color:#f87171"></div>
     </div>
 
     <div id="upForm">
@@ -443,6 +449,22 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 </div>
 
 <script>
+// Captura token do hash da URL (redirect do BlueTube)
+(function(){
+  try {
+    const hash = window.location.hash;
+    if (hash && hash.includes('bt=')) {
+      const p = new URLSearchParams(hash.slice(1));
+      const t = p.get('bt'), r = p.get('br');
+      if (t && t.length > 10) {
+        localStorage.setItem('bt_token', t);
+        if (r) localStorage.setItem('bt_refresh_token', r);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  } catch(e) {}
+})();
+
 let TOKEN = localStorage.getItem('bt_token');
 
 async function getValidToken() {
@@ -581,6 +603,7 @@ function openSingleVideo(v) {
 }
 
 async function openProfile() {
+  TOKEN = localStorage.getItem('bt_token'); // sempre relê
   document.getElementById('profilePage').classList.add('open');
   if (!TOKEN) {
     // Não logado — mostra tela de login
