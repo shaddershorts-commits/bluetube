@@ -483,53 +483,38 @@ let showOnlyFavs = false;
 // ── CARREGA VOZES CUSTOMIZADAS (localStorage + Supabase) ──────────────────────
 async function loadCustomVoices() {
   const token = localStorage.getItem('bt_token');
-  if (!token) { renderVoices(); return; }
 
+  // 1. Carrega localStorage primeiro (imediato)
   try {
-    // Carrega do Supabase (persistente entre dispositivos)
+    const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
+    stored.forEach(v => {
+      const vid = v.id || v.voice_id;
+      if (vid && !VOICES.find(x => x.id === vid)) {
+        VOICES.push({ id: vid, name: v.name||'Voz personalizada', lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
+      }
+    });
+  } catch(e) {}
+
+  renderVoices(); // Renderiza com o que tem
+
+  if (!token) return;
+
+  // 2. Busca do Supabase
+  try {
     const r = await fetch('/api/blue-voices?token=' + encodeURIComponent(token));
-    if (r.ok) {
-      const d = await r.json();
-      const voices = d.voices || [];
-      voices.forEach(v => {
-        if (!VOICES.find(x => x.id === v.voice_id)) {
-          VOICES.push({
-            id: v.voice_id,
-            name: v.name || 'Voz personalizada',
-            lang: 'pt', flag: '⭐',
-            gender: 'Personalizado', age: '', style: 'Personalizado',
-            desc: 'Minha voz do ElevenLabs', custom: true
-          });
-        }
-      });
-    }
-  } catch(e) {
-    // Fallback: localStorage
-    try {
-      const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
-      stored.forEach(v => { if (!VOICES.find(x => x.id === v.id)) VOICES.push({ ...v, custom: true }); });
-    } catch(e2) {}
-  }
-  renderVoices();
+    if (!r.ok) { console.warn('blue-voices:', r.status); return; }
+    const d = await r.json();
+    let added = 0;
+    (d.voices || []).forEach(v => {
+      const vid = v.voice_id || v.id;
+      if (vid && !VOICES.find(x => x.id === vid)) {
+        VOICES.push({ id: vid, name: v.name||'Voz personalizada', lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
+        added++;
+      }
+    });
+    if (added > 0) { console.log('Supabase: +'+added+' vozes'); renderVoices(); }
+  } catch(e) { console.warn('loadCustomVoices:', e.message); }
 }
-
-// ── ADD CUSTOM VOICE ──────────────────────────────────────────────────────────
-function showAddVoicePanel() {
-  const existing = document.getElementById('addVoicePanel');
-  if (existing) { existing.remove(); return; }
-  const panel = document.createElement('div');
-  panel.id = 'addVoicePanel';
-  panel.style.cssText = 'background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:16px;margin-top:12px';
-  panel.innerHTML = `
-    <div style="font-family:var(--mono);font-size:11px;color:var(--neon);margin-bottom:10px">ADICIONAR VOZ DO ELEVENLABS</div>
-    <input id="customVoiceId" placeholder="Voice ID do ElevenLabs" style="width:100%;background:rgba(2,8,23,.8);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px;box-sizing:border-box"/>
-    <input id="customVoiceName" placeholder="Nome da voz (ex: Minha Voz)" style="width:100%;background:rgba(2,8,23,.8);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px;box-sizing:border-box"/>
-    <button onclick="addCustomVoice()" style="background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:8px;padding:9px 18px;font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;cursor:pointer;width:100%">Adicionar voz →</button>
-    <div id="addVoiceMsg" style="font-family:var(--mono);font-size:11px;margin-top:8px;text-align:center"></div>
-  `;
-  document.getElementById('voicePanel').prepend(panel);
-}
-
 async function addCustomVoice() {
   const voiceId = document.getElementById('customVoiceId')?.value?.trim();
   const name = document.getElementById('customVoiceName')?.value?.trim() || 'Voz personalizada';
@@ -553,11 +538,20 @@ async function addCustomVoice() {
     // Adiciona na lista local também
     if (!VOICES.find(v => v.id === voiceId)) {
       const finalName = d.real_name || name;
-      VOICES.push({ id: voiceId, name: finalName, lang: 'pt', flag: '⭐', gender: 'Personalizado', age: '', style: 'Personalizado', desc: 'Minha voz do ElevenLabs', custom: true });
+      VOICES.push({ id: voiceId, name: finalName, lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
     }
-    if(msg) { msg.style.color='var(--green)'; msg.textContent = '✓ Voz salva com sucesso!'; }
+    // Salva no localStorage também para garantir persistência
+    try {
+      const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
+      const finalName = d.real_name || name;
+      if (!stored.find(v => v.id === voiceId || v.voice_id === voiceId)) {
+        stored.push({ id: voiceId, voice_id: voiceId, name: finalName });
+        localStorage.setItem('bt_custom_voices', JSON.stringify(stored));
+      }
+    } catch(e) {}
+    if(msg) { msg.style.color='var(--green)'; msg.textContent = '✓ Voz adicionada!'; }
     renderVoices();
-    setTimeout(() => { document.getElementById('addVoicePanel')?.remove(); }, 1500);
+    setTimeout(() => { document.getElementById('addVoicePanel')?.remove(); }, 1200);
   } catch(e) {
     if(msg) { msg.style.color='#ff7a5a'; msg.textContent = 'Erro de conexão.'; }
   }
@@ -618,7 +612,13 @@ function renderVoices() {
     return;
   }
 
-  list.innerHTML = filtered.map(v => `
+  // Group: show custom voices at top with a separator
+  const customVoices = filtered.filter(v => v.custom);
+  const standardVoices = filtered.filter(v => !v.custom);
+  const ordered = [...customVoices, ...standardVoices];
+
+  list.innerHTML = (customVoices.length > 0 ? '<div style="font-family:var(--mono);font-size:10px;color:rgba(0,170,255,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">⭐ Minhas Vozes</div>' : '') +
+  ordered.map(v => `
     <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}" onclick="selectVoice('${v.id}')">
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
         ${favorites.has(v.id) ? '★' : '☆'}
