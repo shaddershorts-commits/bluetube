@@ -482,42 +482,33 @@ let showOnlyFavs = false;
 
 // ── CARREGA VOZES CUSTOMIZADAS (localStorage + Supabase) ──────────────────────
 async function loadCustomVoices() {
-  // 1. localStorage — vozes salvas localmente
-  try {
-    const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
-    stored.forEach(v => {
-      if (!VOICES.find(x => x.id === v.id)) {
-        VOICES.push({ ...v, custom: true });
-      }
-    });
-  } catch(e) {}
-
-  // 2. Supabase — vozes da comunidade
   const token = localStorage.getItem('bt_token');
-  if (token) {
+  if (!token) { renderVoices(); return; }
+
+  try {
+    // Carrega do Supabase (persistente entre dispositivos)
+    const r = await fetch('/api/blue-voices?token=' + encodeURIComponent(token));
+    if (r.ok) {
+      const d = await r.json();
+      const voices = d.voices || [];
+      voices.forEach(v => {
+        if (!VOICES.find(x => x.id === v.voice_id)) {
+          VOICES.push({
+            id: v.voice_id,
+            name: v.name || 'Voz personalizada',
+            lang: 'pt', flag: '⭐',
+            gender: 'Personalizado', age: '', style: 'Personalizado',
+            desc: 'Minha voz do ElevenLabs', custom: true
+          });
+        }
+      });
+    }
+  } catch(e) {
+    // Fallback: localStorage
     try {
-      const r = await fetch('/api/auth?action=community-voices&token=' + encodeURIComponent(token));
-      if (r.ok) {
-        const d = await r.json();
-        const voices = d.voices || [];
-        voices.forEach(v => {
-          if (!VOICES.find(x => x.id === v.voice_id)) {
-            VOICES.push({
-              id: v.voice_id,
-              name: v.name || 'Voz personalizada',
-              lang: v.lang || 'pt',
-              flag: '⭐',
-              gender: 'Personalizado',
-              age: '',
-              style: 'Personalizado',
-              desc: 'Voz adicionada da biblioteca ElevenLabs',
-              custom: true
-            });
-          }
-        });
-        if (voices.length > 0) renderVoices();
-      }
-    } catch(e) {}
+      const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
+      stored.forEach(v => { if (!VOICES.find(x => x.id === v.id)) VOICES.push({ ...v, custom: true }); });
+    } catch(e2) {}
   }
   renderVoices();
 }
@@ -544,34 +535,31 @@ async function addCustomVoice() {
   const name = document.getElementById('customVoiceName')?.value?.trim() || 'Voz personalizada';
   const msg = document.getElementById('addVoiceMsg');
   if (!voiceId) { if(msg) msg.textContent = 'Cole o Voice ID do ElevenLabs'; return; }
-  if(msg) { msg.style.color='var(--neon)'; msg.textContent = 'Testando voz…'; }
+  if(msg) { msg.style.color='var(--neon)'; msg.textContent = 'Salvando voz…'; }
 
-  // Testa se a voz funciona
   const token = localStorage.getItem('bt_token');
+  if (!token) { if(msg){ msg.style.color='#ff7a5a'; msg.textContent = 'Faça login para salvar vozes.'; } return; }
+
   try {
-    const r = await fetch('/api/auth', {
+    const r = await fetch('/api/blue-voices', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'community-voice-add', voiceId, name, provider: 'elevenlabs', userEmail: '', token })
+      body: JSON.stringify({ token, voice_id: voiceId, name })
     });
     const d = await r.json();
     if (!r.ok) {
-      if(msg) { msg.style.color='#ff7a5a'; msg.textContent = d.error || 'Voz não encontrada.'; }
+      if(msg) { msg.style.color='#ff7a5a'; msg.textContent = d.error || 'Erro ao salvar.'; }
       return;
     }
-    // Salva no localStorage também
-    const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
-    if (!stored.find(v => v.id === voiceId)) {
-      stored.push({ id: voiceId, name, lang: 'pt', flag: '⭐', gender: 'Personalizado', age: '', style: 'Personalizado', desc: 'Voz da biblioteca ElevenLabs', custom: true });
-      localStorage.setItem('bt_custom_voices', JSON.stringify(stored));
-    }
+    // Adiciona na lista local também
     if (!VOICES.find(v => v.id === voiceId)) {
-      VOICES.push({ id: voiceId, name, lang: 'pt', flag: '⭐', gender: 'Personalizado', age: '', style: 'Personalizado', desc: 'Voz da biblioteca ElevenLabs', custom: true });
+      const finalName = d.real_name || name;
+      VOICES.push({ id: voiceId, name: finalName, lang: 'pt', flag: '⭐', gender: 'Personalizado', age: '', style: 'Personalizado', desc: 'Minha voz do ElevenLabs', custom: true });
     }
-    if(msg) { msg.style.color='var(--green)'; msg.textContent = '✓ Voz adicionada com sucesso!'; }
+    if(msg) { msg.style.color='var(--green)'; msg.textContent = '✓ Voz salva com sucesso!'; }
     renderVoices();
     setTimeout(() => { document.getElementById('addVoicePanel')?.remove(); }, 1500);
   } catch(e) {
-    if(msg) { msg.style.color='#ff7a5a'; msg.textContent = 'Erro de conexão. Tente novamente.'; }
+    if(msg) { msg.style.color='#ff7a5a'; msg.textContent = 'Erro de conexão.'; }
   }
 }
 
