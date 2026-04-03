@@ -2,272 +2,233 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <title>Blue</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#000;font-family:-apple-system,sans-serif;overflow:hidden;color:#fff}
-
-/* FEED */
-#feed{position:fixed;top:0;bottom:0;left:50%;transform:translateX(-50%);
-  width:100%;max-width:412px;
-  overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth;
-  background:#000}
-#feed::-webkit-scrollbar{display:none}
-/* Fundo escuro nas laterais no desktop */
-body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
-
-.slide{position:relative;width:100%;height:100vh;scroll-snap-align:start;scroll-snap-stop:always;background:#000}
-.slide video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-
-/* OVERLAY */
-.grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,transparent 40%,rgba(0,0,0,.2) 100%);pointer-events:none}
-.info{position:absolute;left:12px;right:80px;bottom:20px}
-.info-user{font-size:15px;font-weight:700;margin-bottom:4px}
-.info-title{font-size:14px;opacity:.85;margin-bottom:4px}
-.info-desc{font-size:13px;opacity:.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.actions{position:absolute;right:12px;bottom:20px;display:flex;flex-direction:column;gap:16px;align-items:center}
-.act{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;border:none;background:none;color:#fff}
-.act-ico{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .15s}
-.act-ico:active{transform:scale(.85)}
-.act-ico.red{background:rgba(239,68,68,.3)}
-.act-lbl{font-size:10px;font-weight:600}
-.prog{position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(255,255,255,.2)}
-.prog-fill{height:100%;background:#3b82f6;width:0}
-
-/* TOP BAR */
-.topbar{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:412px;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent);pointer-events:none}
-.logo{font-size:22px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;pointer-events:all;text-decoration:none}
-.topbtns{display:flex;gap:8px;pointer-events:all}
-.tbtn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer;backdrop-filter:blur(8px)}
-
-/* UPLOAD MODAL */
-.modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);align-items:flex-end;justify-content:center}
-.modal.on{display:flex}
-.modal-box{width:100%;max-width:500px;background:#181818;border-radius:20px 20px 0 0;padding:24px 20px 36px;max-height:90vh;overflow-y:auto}
-.mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.mt{font-size:18px;font-weight:700}
-.mx{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer}
-.drop{border:2px dashed rgba(255,255,255,.2);border-radius:14px;padding:36px 20px;text-align:center;cursor:pointer;transition:all .2s}
-.drop:hover,.drop.ov{border-color:#3b82f6;background:rgba(59,130,246,.08)}
-.drop input{display:none}
-.drop-icon{font-size:36px;margin-bottom:10px}
-.drop-lbl{font-size:15px;font-weight:600;margin-bottom:4px}
-.drop-sub{font-size:12px;color:#aaa}
-.prev-row{display:none;gap:12px;align-items:center;margin:14px 0;padding:12px;background:rgba(255,255,255,.05);border-radius:12px}
-.prev-thumb{width:72px;height:72px;border-radius:10px;object-fit:cover;flex-shrink:0;background:#333;display:flex;align-items:center;justify-content:center;font-size:24px}
-.prev-info{font-size:12px;color:#aaa;line-height:1.7}
-.mfield{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:11px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;font-family:inherit;resize:none}
-.mfield:focus{border-color:#3b82f6}
-.mfield::placeholder{color:#555}
-.mprog{width:100%;height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin:10px 0;display:none;overflow:hidden}
-.mprog-fill{height:100%;background:#3b82f6;width:0;transition:width .3s}
-.mmsg{font-size:12px;text-align:center;margin-bottom:8px;min-height:16px;color:#aaa}
-.mmsg.ok{color:#4ade80}.mmsg.err{color:#f87171}
-.mpub{width:100%;background:#3b82f6;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s}
-.mpub:hover:not(:disabled){background:#2563eb}
-.mpub:disabled{opacity:.4;cursor:not-allowed}
-
-/* EMPTY */
-.empty{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:32px;display:none}
-.empty.on{display:flex}
-
-/* TOAST */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);background:#222;border-radius:8px;padding:9px 18px;font-size:13px;opacity:0;transition:all .25s;z-index:999;white-space:nowrap}
-.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helvetica Neue',sans-serif;overflow:hidden}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* SIDEBAR AVATAR */
-.act-avatar{width:44px;height:44px;border-radius:50%;border:2px solid #fff;
-  cursor:pointer;overflow:hidden;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
-  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;
-  flex-shrink:0;transition:transform .15s}
-.act-avatar:active{transform:scale(.9)}
-.act-avatar img{width:100%;height:100%;object-fit:cover}
-.act-avatar-plus{width:18px;height:18px;background:#3b82f6;border-radius:50%;
-  border:2px solid #000;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;margin-top:-6px;z-index:1;cursor:pointer}
+/* ── TOP BAR ─────────────────────────────────────────────────────────────── */
+.topbar{position:fixed;top:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:max(14px,env(safe-area-inset-top)) 16px 12px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.7),transparent);
+  pointer-events:none}
+.logo{font-size:22px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;pointer-events:all;text-decoration:none}
+.topbtns{display:flex;gap:8px;pointer-events:all}
+.tbtn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);
+  border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer}
 
-/* CLICKABLE @ */
-.at-link{color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
-.at-link:hover{text-decoration:underline}
+/* ── FEED ────────────────────────────────────────────────────────────────── */
+#feed{position:fixed;inset:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;
+  overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:none;
+  -webkit-overflow-scrolling:touch}
+#feed::-webkit-scrollbar{display:none}
+body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
-/* MUTE INDICATOR */
+/* ── SLIDE ───────────────────────────────────────────────────────────────── */
+.slide{position:relative;width:100%;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#111}
+.slide video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 45%,rgba(0,0,0,.15) 100%);pointer-events:none}
 .mute-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:rgba(0,0,0,.6);border-radius:50%;width:56px;height:56px;
-  display:flex;align-items:center;justify-content:center;font-size:26px;
+  background:rgba(0,0,0,.6);border-radius:50%;width:60px;height:60px;
+  display:flex;align-items:center;justify-content:center;font-size:28px;
   pointer-events:none;opacity:0;transition:opacity .3s;z-index:5}
 .mute-hint.show{opacity:1}
-
-/* VIEWS */
-.slide-views{position:absolute;top:14px;left:14px;z-index:10;
-  background:rgba(0,0,0,.5);border-radius:100px;padding:4px 10px;
+.slide-views{position:absolute;top:56px;left:14px;z-index:10;
+  background:rgba(0,0,0,.45);border-radius:20px;padding:4px 10px;
   font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px}
 
-/* COMMENTS PANEL */
-.comments-panel{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
-  width:100%;max-width:412px;height:70vh;background:#111;border-radius:20px 20px 0 0;
-  z-index:300;transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
-.comments-panel.open{transform:translateX(-50%) translateY(0)}
-.cp-header{padding:16px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
-.cp-title{font-size:15px;font-weight:700}
-.cp-close{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer;line-height:1}
+/* ── SIDE ACTIONS ────────────────────────────────────────────────────────── */
+.side{position:absolute;right:12px;bottom:90px;z-index:10;
+  display:flex;flex-direction:column;align-items:center;gap:20px}
+.act{display:flex;flex-direction:column;align-items:center;gap:5px;
+  cursor:pointer;border:none;background:none;color:#fff;padding:0}
+.act-av{width:46px;height:46px;border-radius:50%;border:2px solid #fff;overflow:hidden;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;cursor:pointer}
+.act-av img{width:100%;height:100%;object-fit:cover}
+.act-plus{width:18px;height:18px;background:#3b82f6;border-radius:50%;border:2px solid #000;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:-6px}
+.act-ico{width:46px;height:46px;border-radius:50%;
+  background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .15s}
+.act-ico:active{transform:scale(.88)}
+.act-ico.red{background:rgba(239,68,68,.35)}
+.act-lbl{font-size:11px;font-weight:600}
+
+/* ── INFO ────────────────────────────────────────────────────────────────── */
+.info{position:absolute;left:0;right:72px;bottom:0;z-index:10;
+  padding:16px 14px max(20px,env(safe-area-inset-bottom))}
+.info-user{font-size:14px;font-weight:700;margin-bottom:5px;cursor:pointer;display:inline-block}
+.info-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.info-desc{font-size:13px;color:rgba(255,255,255,.75);line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.prog-bar{position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(255,255,255,.15);z-index:11}
+.prog-fill{height:100%;background:#3b82f6;width:0;transition:width .2s linear}
+
+/* ── EMPTY / ERROR ───────────────────────────────────────────────────────── */
+.empty{position:fixed;inset:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;text-align:center;padding:32px;z-index:50}
+.empty.on{display:flex}
+
+/* ── COMMENTS ────────────────────────────────────────────────────────────── */
+.cpanel{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
+  width:100%;max-width:412px;height:72vh;background:#111;border-radius:20px 20px 0 0;
+  z-index:300;transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+.cpanel.open{transform:translateX(-50%) translateY(0)}
+.cp-hd{padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e1e1e}
+.cp-ttl{font-size:15px;font-weight:700}
+.cp-x{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer}
 .cp-list{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:14px}
 .cp-list::-webkit-scrollbar{display:none}
 .cp-item{display:flex;gap:10px}
 .cp-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
-  flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
-.cp-body{}
-.cp-user{font-size:12px;font-weight:700;margin-bottom:2px}
-.cp-text{font-size:14px;line-height:1.45;color:#e0e0e0}
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:pointer}
+.cp-body{flex:1}
+.cp-user{font-size:12px;font-weight:700;margin-bottom:2px;cursor:pointer;color:#fff}
+.cp-txt{font-size:14px;line-height:1.45;color:#e0e0e0}
 .cp-time{font-size:11px;color:#555;margin-top:3px}
-.cp-empty{text-align:center;padding:40px 20px;color:#555;font-size:13px}
-.cp-input-row{padding:12px 16px;border-top:1px solid #222;display:flex;gap:8px;align-items:flex-end}
-.cp-input{flex:1;background:#222;border:1px solid #333;border-radius:20px;padding:10px 14px;
-  font-size:14px;color:#fff;outline:none;resize:none;max-height:80px;
-  font-family:-apple-system,sans-serif;line-height:1.4}
-.cp-input::placeholder{color:#555}
-.cp-send{background:#3b82f6;border:none;border-radius:50%;width:38px;height:38px;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
-  font-size:16px;transition:background .2s}
-.cp-send:hover{background:#2563eb}
+.cp-empty{text-align:center;padding:40px 20px;color:#555;font-size:13px;line-height:1.8}
+.cp-inp-row{padding:10px 14px;border-top:1px solid #1e1e1e;display:flex;gap:8px;align-items:flex-end}
+.cp-inp{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:20px;
+  padding:9px 14px;font-size:14px;color:#fff;outline:none;resize:none;max-height:80px;
+  font-family:inherit;line-height:1.4}
+.cp-inp::placeholder{color:#555}
+.cp-send{background:#3b82f6;border:none;border-radius:50%;width:36px;height:36px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:16px}
 .cp-send:disabled{background:#333;cursor:not-allowed}
-.comments-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:299}
-.comments-backdrop.on{display:block}
+.back-drop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:299}
+.back-drop.on{display:block}
 
-/* ── PROFILE PAGE ─────────────────────────────────────────────────── */
-.profile-page{position:fixed;inset:0;background:#000;z-index:250;
-  transform:translateX(100%);transition:transform .32s cubic-bezier(.4,0,.2,1);
-  overflow-y:auto;-webkit-overflow-scrolling:touch}
-.profile-page::-webkit-scrollbar{display:none}
-.profile-page.open{transform:translateX(0)}
-.profile-page *{-webkit-tap-highlight-color:transparent}
-.prof-grid,.cp-list{scroll-behavior:smooth}
-
-/* topbar */
-.prof-topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;
-  padding:env(safe-area-inset-top,44px) 12px 12px;gap:8px;
-  background:rgba(0,0,0,.85);backdrop-filter:blur(12px)}
-.prof-back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;
+/* ── PROFILE PAGE ────────────────────────────────────────────────────────── */
+.prof-page{position:fixed;inset:0;background:#000;z-index:250;
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);overflow-y:auto}
+.prof-page::-webkit-scrollbar{display:none}
+.prof-page.open{transform:translateX(0)}
+.prof-nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;
+  padding:max(44px,env(safe-area-inset-top)) 12px 12px;
+  background:rgba(0,0,0,.85);backdrop-filter:blur(12px);gap:8px}
+.prof-back{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;
   width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.prof-back:active{background:rgba(255,255,255,.1)}
-.prof-topbar-name{font-size:16px;font-weight:700;flex:1;letter-spacing:-.3px}
-.prof-topbar-edit{background:transparent;border:1px solid rgba(255,255,255,.3);
-  border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600;color:#fff;cursor:pointer}
-
-/* header */
-.prof-header{padding:20px 20px 0;display:flex;align-items:flex-start;gap:16px}
-.prof-av-wrap{flex-shrink:0;position:relative}
-.prof-avatar{width:90px;height:90px;border-radius:50%;
-  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
-  display:flex;align-items:center;justify-content:center;
-  font-size:34px;font-weight:800;overflow:hidden;border:2px solid rgba(255,255,255,.12)}
-.prof-avatar img{width:100%;height:100%;object-fit:cover}
-.prof-av-cam{position:absolute;bottom:0;right:0;width:24px;height:24px;
-  background:#3b82f6;border-radius:50%;border:2px solid #000;
-  display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer}
-
-.prof-info{flex:1;min-width:0;padding-top:4px}
-.prof-name{font-size:18px;font-weight:800;letter-spacing:-.4px;margin-bottom:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.prof-username{font-size:13px;color:#888;margin-bottom:10px}
-
-.prof-stats{display:flex;gap:20px;margin-bottom:14px}
-.ps{text-align:center;min-width:48px}
-.ps-n{font-size:17px;font-weight:800;display:block}
-.ps-l{font-size:11px;color:#888;display:block}
-
-.prof-bio-full{padding:12px 20px 0;font-size:14px;color:#ccc;line-height:1.55}
-.prof-edit-btn{display:block;margin:16px 20px 0;padding:10px;border:1px solid #333;
+.prof-nav-name{font-size:16px;font-weight:700;flex:1}
+.prof-nav-edit{border:1px solid rgba(255,255,255,.3);background:none;border-radius:8px;
+  padding:7px 16px;font-size:13px;font-weight:600;color:#fff;cursor:pointer}
+.prof-hd{padding:20px 20px 0;display:flex;gap:16px;align-items:flex-start}
+.prof-av{width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,255,255,.12);
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);overflow:hidden;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;position:relative}
+.prof-av img{width:100%;height:100%;object-fit:cover}
+.prof-av-cam{position:absolute;bottom:0;right:0;width:24px;height:24px;background:#3b82f6;
+  border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer}
+.prof-meta{flex:1;padding-top:4px}
+.prof-name{font-size:18px;font-weight:800;letter-spacing:-.4px;margin-bottom:2px}
+.prof-uname{font-size:13px;color:#888;margin-bottom:10px}
+.prof-stats{display:flex;gap:20px}
+.pstat{text-align:center}
+.pstat-n{font-size:17px;font-weight:800;display:block}
+.pstat-l{font-size:11px;color:#888;display:block}
+.prof-bio{padding:12px 20px 0;font-size:14px;color:#ccc;line-height:1.55}
+.prof-edit-btn{display:block;margin:16px 20px 0;padding:10px;border:1px solid #2a2a2a;
   border-radius:10px;font-size:14px;font-weight:600;color:#fff;background:none;
-  cursor:pointer;width:calc(100% - 40px);text-align:center;transition:background .2s}
-.prof-edit-btn:active{background:rgba(255,255,255,.08)}
-
-/* tabs */
+  cursor:pointer;width:calc(100% - 40px);text-align:center}
 .prof-tabs{display:flex;margin-top:16px;border-bottom:1px solid #1a1a1a}
-.prof-tab{flex:1;padding:11px 0;border:none;background:none;color:#555;
-  font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;
-  display:flex;align-items:center;justify-content:center;gap:5px;transition:all .2s}
-.prof-tab.active{color:#fff;border-bottom-color:#3b82f6}
-
-/* grid */
+.prof-tab{flex:1;padding:11px;border:none;background:none;color:#555;font-size:13px;font-weight:600;
+  cursor:pointer;border-bottom:2px solid transparent}
+.prof-tab.on{color:#fff;border-bottom-color:#3b82f6}
 .prof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#0a0a0a;min-height:200px}
-.pg-card{position:relative;aspect-ratio:9/16;background:#111;overflow:hidden;cursor:pointer}
-.pg-card:active{opacity:.8}
-.pg-thumb-img{width:100%;height:100%;object-fit:cover;display:block}
-.pg-thumb-ph{width:100%;height:100%;display:flex;align-items:center;
-  justify-content:center;font-size:24px;background:#111;color:#333}
-.pg-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.5) 0%,transparent 50%)}
-.pg-views{position:absolute;bottom:5px;left:6px;font-size:10px;font-weight:700;
-  color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);display:flex;align-items:center;gap:3px}
-.pg-dots{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);
-  backdrop-filter:blur(4px);border:none;border-radius:50%;width:26px;height:26px;
-  color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pg{position:relative;aspect-ratio:9/16;background:#111;overflow:hidden;cursor:pointer}
+.pg img{width:100%;height:100%;object-fit:cover;display:block}
+.pg-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;color:#333}
+.pg-ov{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.5),transparent 50%)}
+.pg-v{position:absolute;bottom:5px;left:6px;font-size:10px;font-weight:700;color:#fff}
+.pg-dots{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;
+  border-radius:50%;width:26px;height:26px;color:#fff;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
 .pg-empty{grid-column:1/-1;padding:60px 20px;text-align:center;color:#444;font-size:13px;line-height:1.8}
 
-/* DOTS MENU */
+/* ── DOTS MENU ───────────────────────────────────────────────────────────── */
 .dots-menu{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
-  width:100%;max-width:412px;background:#1a1a1a;border-radius:16px 16px 0 0;
-  z-index:400;transition:transform .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+  width:100%;max-width:412px;background:#1a1a1a;border-radius:16px 16px 0 0;z-index:400;
+  transition:transform .25s ease;padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .dots-menu.open{transform:translateX(-50%) translateY(0)}
-.dm-item{display:flex;align-items:center;gap:14px;padding:16px 24px;
-  cursor:pointer;font-size:15px;border:none;background:none;color:#fff;
-  width:100%;text-align:left;transition:background .15s}
-.dm-item:hover{background:rgba(255,255,255,.06)}
-.dm-item.danger{color:#f87171}
-.dm-divider{height:1px;background:#2a2a2a;margin:4px 0}
-.dm-icon{font-size:20px;width:24px;text-align:center}
+.dm-item{display:flex;align-items:center;gap:14px;padding:16px 24px;cursor:pointer;
+  background:none;border:none;color:#fff;width:100%;text-align:left;font-size:15px;font-family:inherit}
+.dm-item:hover{background:rgba(255,255,255,.05)}
+.dm-item.red{color:#f87171}
+.dm-sep{height:1px;background:#2a2a2a;margin:4px 0}
 
-/* EDIT PROFILE MODAL */
-.edit-modal{position:fixed;inset:0;z-index:350;display:none;
-  align-items:flex-end;justify-content:center}
-.edit-modal.on{display:flex}
-.edit-modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.7)}
-.edit-box{position:relative;width:100%;max-width:412px;background:#1a1a1a;
-  border-radius:20px 20px 0 0;padding:24px 20px 40px;z-index:1;
-  max-height:90vh;overflow-y:auto}
+/* ── EDIT MODALS ─────────────────────────────────────────────────────────── */
+.overlay{display:none;position:fixed;inset:0;z-index:350;background:rgba(0,0,0,.7);align-items:flex-end;justify-content:center}
+.overlay.on{display:flex}
+.edit-box{width:100%;max-width:412px;background:#1a1a1a;border-radius:20px 20px 0 0;
+  padding:24px 20px max(36px,env(safe-area-inset-bottom));max-height:90vh;overflow-y:auto;position:relative}
 .edit-box::-webkit-scrollbar{display:none}
-.edit-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
-.edit-title{font-size:17px;font-weight:700}
-.edit-save{background:#3b82f6;border:none;border-radius:20px;padding:8px 20px;
-  font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:background .2s}
-.edit-save:hover{background:#2563eb}
+.edit-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.edit-ttl{font-size:17px;font-weight:700}
+.edit-save{background:#3b82f6;border:none;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:700;color:#fff;cursor:pointer}
 .edit-save:disabled{background:#333;cursor:not-allowed}
+.edit-av-wrap{display:flex;justify-content:center;margin-bottom:20px}
+.edit-av{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;
+  cursor:pointer;position:relative;overflow:hidden;border:2px solid #333}
+.edit-av img{width:100%;height:100%;object-fit:cover}
+.edit-av-ov{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:20px;opacity:0;transition:opacity .2s}
+.edit-av:hover .edit-av-ov{opacity:1}
+.lbl{font-size:11px;color:#888;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.field{width:100%;background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:12px 14px;
+  font-size:15px;color:#fff;outline:none;font-family:inherit;resize:none;transition:border-color .2s;margin-bottom:14px}
+.field:focus{border-color:#3b82f6}
+.field::placeholder{color:#444}
+.char-ct{text-align:right;font-size:11px;color:#555;margin-top:-10px;margin-bottom:12px}
 
-.edit-av-wrap{display:flex;justify-content:center;margin-bottom:24px}
-.edit-av{width:80px;height:80px;border-radius:50%;object-fit:cover;
-  background:linear-gradient(135deg,#3b82f6,#8b5cf6);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-size:30px;
-  font-weight:700;position:relative;overflow:hidden;border:3px solid #333}
-.edit-av-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);
-  display:flex;align-items:center;justify-content:center;font-size:22px;
-  opacity:0;transition:opacity .2s}
-.edit-av:hover .edit-av-overlay{opacity:1}
-.edit-av-input{display:none}
+/* ── UPLOAD MODAL ────────────────────────────────────────────────────────── */
+.up-ov{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);backdrop-filter:blur(10px);align-items:flex-end;justify-content:center}
+.up-ov.on{display:flex}
+.up-box{width:100%;max-width:412px;background:#181818;border-radius:20px 20px 0 0;
+  padding:24px 20px max(36px,env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto}
+.up-box::-webkit-scrollbar{display:none}
+.up-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.up-ttl{font-size:18px;font-weight:700}
+.up-x{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer}
+.drop{border:2px dashed rgba(255,255,255,.15);border-radius:14px;padding:36px 20px;
+  text-align:center;cursor:pointer;transition:all .2s}
+.drop:hover,.drop.ov{border-color:#3b82f6;background:rgba(59,130,246,.07)}
+.drop input{display:none}
+.drop-icon{font-size:36px;margin-bottom:10px}
+.drop-lbl{font-size:15px;font-weight:600;margin-bottom:4px}
+.drop-sub{font-size:12px;color:#aaa}
+.prev-row{display:none;gap:12px;align-items:center;margin:14px 0;padding:12px;background:rgba(255,255,255,.04);border-radius:10px}
+.up-prog{width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin:10px 0;display:none;overflow:hidden}
+.up-prog-fill{height:100%;background:#3b82f6;width:0;transition:width .3s}
+.up-msg{font-size:12px;text-align:center;margin-bottom:8px;min-height:16px;color:#aaa}
+.up-msg.ok{color:#4ade80}.up-msg.err{color:#f87171}
+.up-pub{width:100%;background:#3b82f6;border:none;border-radius:12px;padding:14px;
+  font-size:15px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s}
+.up-pub:hover:not(:disabled){background:#2563eb}
+.up-pub:disabled{opacity:.4;cursor:not-allowed}
+.auth-wall{padding:4px 0;text-align:center}
+.aw-tabs{display:flex;gap:8px;margin-bottom:14px}
+.aw-tab{flex:1;padding:9px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.aw-tab.on{background:rgba(255,255,255,.15);color:#fff}
+.aw-tab.off{background:rgba(255,255,255,.05);color:#aaa}
+.aw-f{width:100%;background:rgba(255,255,255,.07);border:1px solid #2a2a2a;border-radius:10px;
+  padding:12px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;font-family:inherit}
+.aw-btn{width:100%;background:#3b82f6;border:none;border-radius:12px;padding:13px;
+  font-size:14px;font-weight:700;color:#fff;cursor:pointer;font-family:inherit}
+.aw-msg{font-size:12px;text-align:center;margin-top:8px;min-height:16px;color:#f87171}
 
-.edit-field-wrap{margin-bottom:16px}
-.edit-label{font-size:12px;color:#888;font-weight:600;letter-spacing:.04em;
-  text-transform:uppercase;margin-bottom:6px}
-.edit-field{width:100%;background:#111;border:1px solid #333;border-radius:12px;
-  padding:12px 14px;font-size:15px;color:#fff;outline:none;
-  font-family:-apple-system,sans-serif;transition:border-color .2s;resize:none}
-.edit-field:focus{border-color:#3b82f6}
-.edit-field::placeholder{color:#444}
-.edit-char{text-align:right;font-size:11px;color:#555;margin-top:4px}
-
-/* EDIT VIDEO MODAL */
-.edit-video-modal{position:fixed;inset:0;z-index:360;display:none;
-  align-items:center;justify-content:center;padding:24px}
-.edit-video-modal.on{display:flex}
-.evm-bg{position:absolute;inset:0;background:rgba(0,0,0,.8)}
-.evm-box{position:relative;width:100%;max-width:380px;background:#1a1a1a;
-  border-radius:20px;padding:24px;z-index:1}
-.evm-title{font-size:17px;font-weight:700;margin-bottom:20px}
-.evm-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
-.evm-cancel{background:none;border:1px solid #333;border-radius:12px;padding:10px 20px;
-  font-size:14px;color:#aaa;cursor:pointer}
-.evm-save{background:#3b82f6;border:none;border-radius:12px;padding:10px 20px;
-  font-size:14px;font-weight:700;color:#fff;cursor:pointer}
+/* ── TOAST ───────────────────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:#222;border-radius:8px;padding:9px 18px;font-size:13px;
+  opacity:0;transition:all .25s;z-index:999;white-space:nowrap;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
@@ -276,6 +237,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openUpload()">+ Postar</button>
+    <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
     <a class="tbtn" href="/">BlueTube</a>
   </div>
 </div>
@@ -284,575 +246,697 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
 <div class="empty" id="empty">
   <div style="font-size:48px">📹</div>
-  <div style="font-size:20px;font-weight:700">Nenhum vídeo ainda</div>
-  <div style="font-size:13px;color:#aaa;margin-bottom:4px">Seja o primeiro criador do Blue!</div>
-  <button onclick="runDiag()" style="background:none;border:1px solid #333;border-radius:8px;padding:6px 14px;color:#555;font-size:11px;cursor:pointer;margin-top:8px">🔍 Verificar sistema</button>
-  <button class="tbtn" onclick="openUpload()" style="pointer-events:all;margin-top:8px">+ Publicar vídeo</button>
-  <div id="dbgMsg" style="margin-top:20px;font-size:11px;color:#444;font-family:monospace;max-width:300px;word-break:break-all"></div>
+  <div style="font-size:18px;font-weight:700">Nenhum vídeo ainda</div>
+  <div style="font-size:13px;color:#aaa">Seja o primeiro criador!</div>
+  <button class="tbtn" onclick="openUpload()" style="pointer-events:all;margin-top:8px;padding:10px 20px">+ Postar vídeo</button>
+  <div id="dbg" style="margin-top:16px;font-size:11px;color:#333;font-family:monospace;max-width:300px;word-break:break-all"></div>
 </div>
 
-<!-- UPLOAD -->
-<div class="modal" id="modal" onclick="if(event.target===this)closeUpload()">
-  <div class="modal-box">
-    <div class="mh">
-      <div class="mt">📹 Publicar vídeo</div>
-      <button class="mx" onclick="closeUpload()">✕</button>
-    </div>
-
-    <div id="authWall" style="display:none;padding:0 4px">
-      <div style="font-size:32px;text-align:center;margin-bottom:10px">🎬</div>
-      <div style="font-size:16px;font-weight:700;text-align:center;margin-bottom:4px">Entre para publicar</div>
-      <div style="font-size:12px;color:#aaa;text-align:center;margin-bottom:18px">Use a mesma conta do BlueTube</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button id="awTabLogin" onclick="awTab('login')" style="flex:1;padding:9px;border-radius:10px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Entrar</button>
-        <button id="awTabSignup" onclick="awTab('signup')" style="flex:1;padding:9px;border-radius:10px;border:none;background:rgba(255,255,255,.05);color:#aaa;font-size:13px;font-weight:600;cursor:pointer">Criar conta</button>
-      </div>
-      <input id="awEmail" type="email" placeholder="Email" style="width:100%;background:rgba(255,255,255,.07);border:1px solid #333;border-radius:10px;padding:12px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;font-family:inherit"/>
-      <input id="awPass" type="password" placeholder="Senha (mín. 6 caracteres)" style="width:100%;background:rgba(255,255,255,.07);border:1px solid #333;border-radius:10px;padding:12px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:14px;font-family:inherit"/>
-      <button onclick="doInlineAuth()" style="width:100%;background:#3b82f6;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;color:#fff;cursor:pointer" id="awBtn">Entrar →</button>
-      <div id="awMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;color:#f87171"></div>
-    </div>
-
-    <div id="upForm">
-      <div class="drop" id="drop" onclick="document.getElementById('fin').click()"
-           ondragover="event.preventDefault();this.classList.add('ov')"
-           ondragleave="this.classList.remove('ov')"
-           ondrop="dropFile(event)">
-        <input type="file" id="fin" accept="video/*" onchange="pickFile(this.files[0])"/>
-        <div class="drop-icon" id="dico">🎬</div>
-        <div class="drop-lbl" id="dlbl">Toque para selecionar o vídeo</div>
-        <div class="drop-sub">MP4, MOV, WebM · qualquer tamanho</div>
-      </div>
-      <div class="prev-row" id="prevrow">
-        <div class="prev-thumb" id="pthumb">🎬</div>
-        <div class="prev-info" id="pinfo"></div>
-      </div>
-      <input class="mfield" id="ftitle" type="text" placeholder="Título (obrigatório)" maxlength="80"/>
-      <textarea class="mfield" id="fdesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
-      <div class="mprog" id="mprog"><div class="mprog-fill" id="mfill"></div></div>
-      <div class="mmsg" id="mmsg"></div>
-      <button class="mpub" id="mpub" disabled onclick="publish()">Selecione um vídeo</button>
-    </div>
+<!-- COMMENTS -->
+<div class="back-drop" id="cpBack" onclick="closeComments()"></div>
+<div class="cpanel" id="cpanel">
+  <div class="cp-hd">
+    <div class="cp-ttl">Comentários <span id="cpCnt" style="color:#555;font-weight:400"></span></div>
+    <button class="cp-x" onclick="closeComments()">✕</button>
   </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<!-- PROFILE PAGE -->
-<div class="profile-page" id="profilePage">
-  <div class="prof-topbar">
-    <button class="prof-back" onclick="closeProfile()">←</button>
-    <div class="prof-topbar-name" id="ptName">Perfil</div>
-    <button class="prof-topbar-edit" onclick="openEditProfile()" id="ptEditBtn" style="display:none">Editar</button>
-  </div>
-
-  <div class="prof-header">
-    <div class="prof-av-wrap">
-      <div class="prof-avatar" id="profAvatar">?</div>
-      <div class="prof-av-cam" onclick="openEditProfile()" id="profAvCam" style="display:none">📷</div>
-    </div>
-    <div class="prof-info">
-      <div class="prof-name" id="profName">—</div>
-      <div class="prof-username" id="profUsername">@—</div>
-      <div class="prof-stats">
-        <div class="ps"><span class="ps-n" id="profVids">0</span><span class="ps-l">Vídeos</span></div>
-        <div class="ps"><span class="ps-n" id="profViews">0</span><span class="ps-l">Views</span></div>
-        <div class="ps"><span class="ps-n" id="profLikes">0</span><span class="ps-l">Curtidas</span></div>
-      </div>
-    </div>
-  </div>
-  <div class="prof-bio-full" id="profBioFull" style="display:none"></div>
-  <button class="prof-edit-btn" id="profEditFullBtn" style="display:none" onclick="openEditProfile()">Editar perfil</button>
-  <div class="prof-tabs">
-    <button class="prof-tab active" id="ptabVids">🎬 Vídeos</button>
-  </div>
-  <div class="prof-grid" id="profGrid">
-    <div class="pg-empty">Carregando…</div>
-  </div>
-</div>
-
-<!-- DOTS MENU -->
-<div class="comments-backdrop" id="dotsBackdrop" onclick="closeDotsMenu()" style="display:none;z-index:399"></div>
-<div class="dots-menu" id="dotsMenu">
-  <button class="dm-item" onclick="doEditVideo()"><span class="dm-icon">✏️</span>Editar vídeo</button>
-  <div class="dm-divider"></div>
-  <button class="dm-item danger" onclick="doDeleteVideo()"><span class="dm-icon">🗑️</span>Excluir vídeo</button>
-  <div class="dm-divider"></div>
-  <button class="dm-item" onclick="closeDotsMenu()"><span class="dm-icon">✕</span>Cancelar</button>
-</div>
-
-<!-- EDIT PROFILE MODAL -->
-<div class="edit-modal" id="editModal">
-  <div class="edit-modal-bg" onclick="closeEditProfile()"></div>
-  <div class="edit-box">
-    <div class="edit-header">
-      <div class="edit-title">Editar perfil</div>
-      <button class="edit-save" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
-    </div>
-    <div class="edit-av-wrap">
-      <label>
-        <div class="edit-av" id="editAvatar">?
-          <div class="edit-av-overlay">📷</div>
-        </div>
-        <input type="file" class="edit-av-input" id="editAvInput" accept="image/*" onchange="pickAvatar(this.files[0])"/>
-      </label>
-    </div>
-    <div class="edit-field-wrap">
-      <div class="edit-label">Nome</div>
-      <input class="edit-field" id="editName" type="text" maxlength="50" placeholder="Seu nome"/>
-    </div>
-    <div class="edit-field-wrap">
-      <div class="edit-label">Username</div>
-      <input class="edit-field" id="editUsername" type="text" maxlength="30" placeholder="@seuusername"/>
-    </div>
-    <div class="edit-field-wrap">
-      <div class="edit-label">Bio</div>
-      <textarea class="edit-field" id="editBio" rows="3" maxlength="150" placeholder="Fale sobre você…" oninput="document.getElementById('editBioChar').textContent=this.value.length+'/150'"></textarea>
-      <div class="edit-char" id="editBioChar">0/150</div>
-    </div>
-  </div>
-</div>
-
-<!-- EDIT VIDEO MODAL -->
-<div class="edit-video-modal" id="editVideoModal">
-  <div class="evm-bg" onclick="closeEditVideoModal()"></div>
-  <div class="evm-box">
-    <div class="evm-title">Editar vídeo</div>
-    <div class="edit-field-wrap">
-      <div class="edit-label">Título</div>
-      <input class="edit-field" id="evmTitle" type="text" maxlength="100" placeholder="Título do vídeo"/>
-    </div>
-    <div class="edit-field-wrap">
-      <div class="edit-label">Descrição</div>
-      <textarea class="edit-field" id="evmDesc" rows="3" maxlength="500" placeholder="Descrição…"></textarea>
-    </div>
-    <div class="evm-footer">
-      <button class="evm-cancel" onclick="closeEditVideoModal()">Cancelar</button>
-      <button class="evm-save" onclick="saveVideoEdit()">Salvar</button>
-    </div>
-  </div>
-</div>
-
-<div class="comments-backdrop" id="commentsBackdrop" onclick="closeComments()"></div>
-<div class="comments-panel" id="commentsPanel">
-  <div class="cp-header">
-    <div class="cp-title">Comentários <span id="cpCount" style="color:#555;font-weight:400"></span></div>
-    <button class="cp-close" onclick="closeComments()">✕</button>
-  </div>
-  <div class="cp-list" id="cpList">
-    <div class="cp-empty">Carregando…</div>
-  </div>
-  <div class="cp-input-row">
-    <textarea class="cp-input" id="cpInput" placeholder="Adicione um comentário…" rows="1"
+  <div class="cp-list" id="cpList"><div class="cp-empty">Carregando…</div></div>
+  <div class="cp-inp-row">
+    <textarea class="cp-inp" id="cpInp" placeholder="Comentar…" rows="1"
       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment();}"
       oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
     <button class="cp-send" id="cpSend" onclick="sendComment()">↑</button>
   </div>
 </div>
 
+<!-- PROFILE PAGE -->
+<div class="prof-page" id="profPage">
+  <div class="prof-nav">
+    <button class="prof-back" onclick="closeProfile()">←</button>
+    <div class="prof-nav-name" id="pNavName">Perfil</div>
+    <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()">Editar</button>
+  </div>
+  <div class="prof-hd">
+    <div class="prof-av" id="profAv">?
+      <div class="prof-av-cam" id="profAvCam" style="display:none" onclick="openEditProfile()">📷</div>
+    </div>
+    <div class="prof-meta">
+      <div class="prof-name" id="profName">—</div>
+      <div class="prof-uname" id="profUname">@—</div>
+      <div class="prof-stats">
+        <div class="pstat"><span class="pstat-n" id="pVids">0</span><span class="pstat-l">Vídeos</span></div>
+        <div class="pstat"><span class="pstat-n" id="pViews">0</span><span class="pstat-l">Views</span></div>
+        <div class="pstat"><span class="pstat-n" id="pLikes">0</span><span class="pstat-l">Curtidas</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="prof-bio" id="profBio" style="display:none"></div>
+  <button class="prof-edit-btn" id="profEditBtn" style="display:none" onclick="openEditProfile()">Editar perfil</button>
+  <div class="prof-tabs">
+    <button class="prof-tab on">🎬 Vídeos</button>
+  </div>
+  <div class="prof-grid" id="profGrid"><div class="pg-empty">Carregando…</div></div>
+</div>
+
+<!-- DOTS MENU -->
+<div class="back-drop" id="dotsBack" onclick="closeDotsMenu()" style="z-index:399"></div>
+<div class="dots-menu" id="dotsMenu">
+  <button class="dm-item" onclick="startEditVideo()">✏️ &nbsp;Editar vídeo</button>
+  <div class="dm-sep"></div>
+  <button class="dm-item red" onclick="startDeleteVideo()">🗑️ &nbsp;Excluir vídeo</button>
+  <div class="dm-sep"></div>
+  <button class="dm-item" onclick="closeDotsMenu()">✕ &nbsp;Cancelar</button>
+</div>
+
+<!-- EDIT PROFILE MODAL -->
+<div class="overlay" id="editProfileOv">
+  <div class="edit-box" onclick="event.stopPropagation()">
+    <div class="edit-hd">
+      <div class="edit-ttl">Editar perfil</div>
+      <button class="edit-save" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
+    </div>
+    <div class="edit-av-wrap">
+      <label style="cursor:pointer">
+        <div class="edit-av" id="editAv">?<div class="edit-av-ov">📷</div></div>
+        <input type="file" accept="image/*" style="display:none" onchange="pickAvatar(this.files[0])"/>
+      </label>
+    </div>
+    <div class="lbl">Nome</div><input class="field" id="eName" type="text" maxlength="50" placeholder="Seu nome"/>
+    <div class="lbl">Username</div><input class="field" id="eUser" type="text" maxlength="30" placeholder="@username"/>
+    <div class="lbl">Bio</div>
+    <textarea class="field" id="eBio" rows="3" maxlength="150" placeholder="Fale sobre você…"
+      oninput="document.getElementById('eBioChar').textContent=this.value.length+'/150'"></textarea>
+    <div class="char-ct" id="eBioChar">0/150</div>
+  </div>
+</div>
+
+<!-- EDIT VIDEO MODAL -->
+<div class="overlay" id="editVideoOv">
+  <div class="edit-box" onclick="event.stopPropagation()">
+    <div class="edit-hd">
+      <div class="edit-ttl">Editar vídeo</div>
+      <button class="edit-save" onclick="saveVideoEdit()">Salvar</button>
+    </div>
+    <div class="lbl">Título</div><input class="field" id="evTitle" type="text" maxlength="100"/>
+    <div class="lbl">Descrição</div><textarea class="field" id="evDesc" rows="3" maxlength="500"></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="document.getElementById('editVideoOv').classList.remove('on')" style="background:none;border:1px solid #333;border-radius:10px;padding:10px 20px;color:#aaa;cursor:pointer">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD MODAL -->
+<div class="up-ov" id="upOv" onclick="if(event.target===this)closeUpload()">
+  <div class="up-box">
+    <div class="up-hd"><div class="up-ttl">📹 Publicar vídeo</div><button class="up-x" onclick="closeUpload()">✕</button></div>
+
+    <!-- Auth wall -->
+    <div id="authWall" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:32px;margin-bottom:8px">🎬</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">Entre para publicar</div>
+        <div style="font-size:12px;color:#aaa">Use a mesma conta do BlueTube</div>
+      </div>
+      <div class="aw-tabs">
+        <button class="aw-tab on" id="awT1" onclick="awTab('signin')">Entrar</button>
+        <button class="aw-tab off" id="awT2" onclick="awTab('signup')">Criar conta</button>
+      </div>
+      <input class="aw-f" id="awEmail" type="email" placeholder="Email"/>
+      <input class="aw-f" id="awPass" type="password" placeholder="Senha"/>
+      <button class="aw-btn" id="awBtn" onclick="doAuth()">Entrar →</button>
+      <div class="aw-msg" id="awMsg"></div>
+    </div>
+
+    <!-- Upload form -->
+    <div id="upForm">
+      <div class="drop" id="upDrop" onclick="document.getElementById('upFile').click()"
+        ondragover="event.preventDefault();this.classList.add('ov')"
+        ondragleave="this.classList.remove('ov')"
+        ondrop="onDrop(event)">
+        <input type="file" id="upFile" accept="video/*" onchange="pickFile(this.files[0])"/>
+        <div class="drop-icon" id="dropIcon">🎬</div>
+        <div class="drop-lbl" id="dropLbl">Toque para selecionar</div>
+        <div class="drop-sub">MP4, MOV, WebM</div>
+      </div>
+      <div class="prev-row" id="prevRow">
+        <div id="prevThumb" style="width:64px;height:64px;border-radius:8px;background:#222;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden">🎬</div>
+        <div id="prevInfo" style="font-size:12px;color:#aaa;line-height:1.7"></div>
+      </div>
+      <input class="field" id="upTitle" type="text" placeholder="Título (obrigatório)" maxlength="100" style="margin-top:12px"/>
+      <textarea class="field" id="upDesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
+      <div class="up-prog" id="upProg"><div class="up-prog-fill" id="upFill"></div></div>
+      <div class="up-msg" id="upMsg"></div>
+      <button class="up-pub" id="upBtn" disabled onclick="doUpload()">Selecione um vídeo</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-// Captura token do hash da URL (redirect do BlueTube)
-(function(){
-  try {
-    const hash = window.location.hash;
-    if (hash && hash.includes('bt=')) {
-      const p = new URLSearchParams(hash.slice(1));
-      const t = p.get('bt'), r = p.get('br');
-      if (t && t.length > 10) {
-        localStorage.setItem('bt_token', t);
-        if (r) localStorage.setItem('bt_refresh_token', r);
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    }
-  } catch(e) {}
-})();
-
+// ── STATE ─────────────────────────────────────────────────────────────────────
 let TOKEN = localStorage.getItem('bt_token');
-
-async function getValidToken() {
-  // Tenta refresh se tiver refresh token
-  const refresh = localStorage.getItem('bt_refresh_token');
-  if (!TOKEN && !refresh) return null;
-  if (TOKEN) {
-    // Testa se o token ainda é válido
-    try {
-      const r = await fetch('/api/blue-profile?token=' + encodeURIComponent(TOKEN));
-      if (r.ok) return TOKEN;
-    } catch(e) {}
-  }
-  // Token inválido — tenta renovar
-  if (refresh) {
-    try {
-      const r = await fetch('/api/auth', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'refresh', refresh_token: refresh })
-      });
-      if (r.ok) {
-        const d = await r.json();
-        const newToken = d.session?.access_token || d.access_token;
-        const newRefresh = d.session?.refresh_token || d.refresh_token;
-        if (newToken) {
-          TOKEN = newToken;
-          localStorage.setItem('bt_token', newToken);
-          if (newRefresh) localStorage.setItem('bt_refresh_token', newRefresh);
-          return TOKEN;
-        }
-      }
-    } catch(e) {}
-  }
-  return null;
-}
 const SID = localStorage.getItem('bl_s') || (()=>{const s='s'+Date.now().toString(36);localStorage.setItem('bl_s',s);return s;})();
 let videos=[], liked=new Set(JSON.parse(localStorage.getItem('bl_liked')||'[]')), saved=new Set(JSON.parse(localStorage.getItem('bl_saved')||'[]'));
-let selFile=null, thumbB64=null, vDur=0, vW=1080, vH=1920;
+let myProfile=null, _curVideo=null, _dotsVid=null;
+let selFile=null,thumbB64=null,vDur=0,vW=1080,vH=1920;
+let _awMode='signin', _editAvB64=null;
 let obs=null;
 
-// LOAD FEED
-// ── PROFILE STATE ────────────────────────────────────────────────────────────
-let myProfile = null;
-let _dotsVideoId = null, _dotsVideoData = null;
-let _editAvatarB64 = null;
+// ── HASH CAPTURE ──────────────────────────────────────────────────────────────
+(function(){
+  try{
+    const h=window.location.hash;
+    if(h&&h.includes('bt=')){
+      const p=new URLSearchParams(h.slice(1));
+      const t=p.get('bt'),r=p.get('br');
+      if(t&&t.length>10){localStorage.setItem('bt_token',t);TOKEN=t;if(r)localStorage.setItem('bt_refresh_token',r);window.history.replaceState({},document.title,window.location.pathname);}
+    }
+  }catch(e){}
+})();
 
-// ── PROFILE OPEN/CLOSE ───────────────────────────────────────────────────────
-async function openCreatorProfile(userId) {
-  if (!userId) return;
-  // If own profile
-  if (myProfile && myProfile.user_id === userId) { openProfile(); return; }
-  // Fetch profile by user_id
-  document.getElementById('profilePage').classList.add('open');
-  document.getElementById('ptEditBtn').style.display = 'none';
-  document.getElementById('profAvCam').style.display = 'none';
-  document.getElementById('profGrid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center"><div style="width:28px;height:28px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div></div>';
-  try {
-    // Get profile via videos (we have user_id from the video)
-    const vid = videos.find(v => v.user_id === userId);
-    const creator = vid?.creator || {};
-    // Show what we have immediately
-    const avEl = document.getElementById('profAvatar');
-    const init = (creator.display_name||creator.username||'?').charAt(0).toUpperCase();
-    if (creator.avatar_url) {
-      const img = document.createElement('img');
-      img.src = creator.avatar_url;
-      img.style.cssText = 'width:86px;height:86px;border-radius:50%;object-fit:cover';
-      img.onerror = () => avEl.textContent = init;
-      avEl.innerHTML = ''; avEl.appendChild(img);
-    } else { avEl.textContent = init; }
-    document.getElementById('profName').textContent = creator.display_name || creator.username || '—';
-    document.getElementById('profUsername').textContent = '@'+(creator.username||'usuario');
-    document.getElementById('ptName').textContent = creator.username || 'Perfil';
-    // Show their public videos
-    const theirVids = videos.filter(v => v.user_id === userId);
-    renderCreatorGrid(theirVids, false);
-  } catch(e) {}
+// ── UTILITIES ─────────────────────────────────────────────────────────────────
+function fmt(n){n=parseInt(n)||0;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n);}
+function ago(t){if(!t)return'';const d=(Date.now()-new Date(t))/1000;if(d<60)return'agora';if(d<3600)return Math.floor(d/60)+'min';if(d<86400)return Math.floor(d/3600)+'h';return Math.floor(d/86400)+'d';}
+function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+let _tt; function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2600);}
+function ping(type,id){fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{});}
+
+async function getValidToken(){
+  TOKEN=localStorage.getItem('bt_token');
+  if(!TOKEN)return null;
+  try{
+    const r=await fetch('/api/blue-profile?token='+encodeURIComponent(TOKEN));
+    if(r.ok)return TOKEN;
+    const rf=localStorage.getItem('bt_refresh_token');
+    if(!rf)return null;
+    const r2=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'refresh',refresh_token:rf})});
+    if(!r2.ok)return null;
+    const d=await r2.json();
+    const t=d.session?.access_token||d.access_token;
+    if(t){localStorage.setItem('bt_token',t);TOKEN=t;if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);return t;}
+  }catch(e){}
+  return null;
 }
 
-function renderCreatorGrid(vids, isOwn) {
-  const grid = document.getElementById('profGrid');
-  grid.innerHTML = '';
-  if (vids.length === 0) {
-    grid.innerHTML = '<div class="pg-empty">'+(isOwn?'Você ainda não postou nada.<br><br><button onclick="openUpload();closeProfile()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">+ Postar primeiro vídeo</button>':'Sem vídeos ainda.')+'</div>';
+// ── FEED ──────────────────────────────────────────────────────────────────────
+async function loadFeed(){
+  const feed=document.getElementById('feed');
+  feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#555">Carregando…</div></div>';
+  try{
+    const r=await fetch('/api/blue-feed?limit=20&session='+SID);
+    if(!r.ok)throw new Error('API '+r.status);
+    const d=await r.json();
+    videos=(d.videos||[]).filter(v=>v&&v.video_url);
+    console.log('Feed:',videos.length,'vídeos');
+  }catch(e){
+    document.getElementById('dbg').textContent='Erro: '+e.message;
+    document.getElementById('empty').classList.add('on');
+    feed.innerHTML='';
     return;
   }
-  // Update stats
-  const totalViews = vids.reduce((a,v)=>a+(v.views||0),0);
-  const totalLikes = vids.reduce((a,v)=>a+(v.likes||0),0);
-  document.getElementById('profVids').textContent = vids.length;
-  document.getElementById('profViews').textContent = fmt(totalViews);
-  document.getElementById('profLikes').textContent = fmt(totalLikes);
+  feed.innerHTML='';
+  if(!videos.length){document.getElementById('empty').classList.add('on');return;}
+  document.getElementById('empty').classList.remove('on');
+  videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
+  setupObs();
+}
 
-  vids.forEach(v => {
-    const card = document.createElement('div');
-    card.className = 'pg-card';
-    card.onclick = () => {
-      closeProfile();
-      // Try to find in feed, or open separately
-      setTimeout(()=>{
-        const s = document.getElementById('s-'+v.id);
-        if (s) { s.scrollIntoView({behavior:'smooth'}); }
-        else {
-          // Not in feed — open inline player
-          openSingleVideo(v);
-        }
-      }, 350);
-    };
-    // Thumbnail
-    if (v.thumbnail_url) {
-      const img = new Image();
-      img.className = 'pg-thumb-img'; img.loading = 'lazy';
-      img.onerror = () => { img.style.display='none'; const ph=document.createElement('div'); ph.className='pg-thumb-ph'; ph.textContent='🎬'; card.insertBefore(ph,card.firstChild); };
-      img.src = v.thumbnail_url;
-      card.appendChild(img);
-    } else {
-      const ph = document.createElement('div'); ph.className='pg-thumb-ph'; ph.textContent='🎬'; card.appendChild(ph);
-    }
-    const ov = document.createElement('div'); ov.className='pg-overlay'; card.appendChild(ov);
-    const views = document.createElement('div');
-    views.className='pg-views'; views.innerHTML='▶ '+fmt(v.views||0); card.appendChild(views);
-    if (isOwn) {
-      const dots = document.createElement('button');
-      dots.className='pg-dots'; dots.textContent='⋯';
-      dots.onclick = e => { e.stopPropagation(); openDotsMenu(v.id,{title:v.title||'',description:v.description||''}); };
-      card.appendChild(dots);
-    }
+function mkSlide(v,i){
+  if(!v||!v.video_url)return null;
+  const c=v.creator||{};
+  const lk=liked.has(v.id);
+  const sv=saved.has(v.id);
+  const init=(c.display_name||c.username||'?').charAt(0).toUpperCase();
+
+  const el=document.createElement('div');
+  el.className='slide'; el.id='s-'+v.id; el.dataset.id=v.id; el.dataset.i=i;
+  el.innerHTML=
+    '<video src="'+v.video_url+'" preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
+    '<div class="grad"></div>'+
+    '<div class="mute-hint" id="mh-'+v.id+'">🔇</div>'+
+    '<div class="slide-views">▶ <span id="vc-'+v.id+'">'+fmt(v.views||0)+'</span></div>'+
+    '<div class="side">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:0;cursor:pointer" onclick="openCreatorProfile(\''+v.user_id+'\')">'+
+        '<div class="act-av" id="cav-'+v.id+'">'+init+'</div>'+
+        '<div class="act-plus">+</div>'+
+      '</div>'+
+      '<button class="act" onclick="doLike(\''+v.id+'\')"><div class="act-ico '+(lk?'red':'')+'" id="li-'+v.id+'">'+(lk?'❤️':'🤍')+'</div><div class="act-lbl" id="lc-'+v.id+'">'+fmt(v.likes||0)+'</div></button>'+
+      '<button class="act" onclick="doSave(\''+v.id+'\')"><div class="act-ico" id="si-'+v.id+'">'+(sv?'🔖':'💾')+'</div><div class="act-lbl">Salvar</div></button>'+
+      '<button class="act" onclick="openComments(\''+v.id+'\','+(v.comments||0)+')"><div class="act-ico">💬</div><div class="act-lbl" id="cc-'+v.id+'">'+fmt(v.comments||0)+'</div></button>'+
+      '<button class="act" onclick="doShare(\''+v.video_url.replace(/'/g,'')+'\',\''+esc(v.title||'').replace(/'/g,'')+'\')"><div class="act-ico">↗️</div><div class="act-lbl">Comp.</div></button>'+
+    '</div>'+
+    '<div class="info">'+
+      '<div class="info-user" onclick="openCreatorProfile(\''+v.user_id+'\')">@'+(c.username||'blue')+'</div>'+
+      (v.title?'<div class="info-title">'+esc(v.title)+'</div>':'')+
+      (v.description?'<div class="info-desc">'+esc(v.description)+'</div>':'')+
+    '</div>'+
+    '<div class="prog-bar"><div class="prog-fill" id="pf-'+v.id+'"></div></div>';
+
+  // Load creator avatar
+  if(c.avatar_url){const img=new Image();img.style.cssText='width:100%;height:100%;object-fit:cover';img.src=c.avatar_url;img.onload=()=>{const av=document.getElementById('cav-'+v.id);if(av){av.textContent='';av.appendChild(img);}};} 
+
+  // Tap to toggle sound
+  el.querySelector('video').addEventListener('click',()=>toggleSound(el.querySelector('video'),v.id));
+  return el;
+}
+
+function vidErr(vid){
+  vid.style.display='none';
+  const sl=vid.closest('.slide');
+  if(!sl)return;
+  const ph=document.createElement('div');
+  ph.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#333;gap:8px;background:#111';
+  ph.innerHTML='<div style="font-size:40px">🎬</div><div style="font-size:13px">Vídeo indisponível</div>';
+  sl.insertBefore(ph,sl.firstChild);
+}
+
+let _interacted=false;
+function toggleSound(vid,id){
+  _interacted=true;
+  vid.muted=!vid.muted;
+  if(vid.paused)vid.play().catch(()=>{});
+  const hint=document.getElementById('mh-'+id);
+  if(hint){hint.textContent=vid.muted?'🔇':'🔊';hint.classList.add('show');setTimeout(()=>hint.classList.remove('show'),800);}
+}
+
+function onTU(vid,id){
+  if(!vid.duration)return;
+  const el=document.getElementById('pf-'+id);
+  if(el)el.style.width=(vid.currentTime/vid.duration*100)+'%';
+}
+
+function setupObs(){
+  if(obs)obs.disconnect();
+  obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      const sl=e.target,vid=sl.querySelector('video');
+      if(!vid||!vid.src)return;
+      if(e.isIntersecting&&e.intersectionRatio>.6){
+        document.querySelectorAll('#feed video').forEach(v=>{if(v!==vid){v.pause();v.currentTime=0;}});
+        vid.preload='auto';
+        vid.muted=!_interacted;
+        vid.play().catch(()=>{vid.muted=true;vid.play().catch(()=>{});});
+        const el=document.getElementById('vc-'+sl.dataset.id);
+        if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
+        ping('view',sl.dataset.id);
+        // preload next
+        const ni=parseInt(sl.dataset.i)+1;
+        if(videos[ni]){const ns=document.getElementById('s-'+videos[ni].id);if(ns){const nv=ns.querySelector('video');if(nv)nv.preload='auto';}}
+      } else {
+        if(!vid.paused)vid.pause();
+      }
+    });
+  },{threshold:.6});
+  document.querySelectorAll('.slide').forEach(s=>obs.observe(s));
+}
+
+// ── INTERACTIONS ──────────────────────────────────────────────────────────────
+function doLike(id){
+  const ic=document.getElementById('li-'+id),lc=document.getElementById('lc-'+id);
+  if(!ic)return;
+  if(liked.has(id)){liked.delete(id);ic.textContent='🤍';ic.classList.remove('red');lc.textContent=fmt(Math.max(0,(parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)-1));ping('unlike',id);}
+  else{liked.add(id);ic.textContent='❤️';ic.classList.add('red');lc.textContent=fmt((parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)+1);ping('like',id);toast('❤️');}
+  localStorage.setItem('bl_liked',JSON.stringify([...liked]));
+}
+function doSave(id){
+  const ic=document.getElementById('si-'+id);if(!ic)return;
+  if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast('Removido');}
+  else{saved.add(id);ic.textContent='🔖';ping('save',id);toast('💾 Salvo!');}
+  localStorage.setItem('bl_saved',JSON.stringify([...saved]));
+}
+async function doShare(url,title){
+  if(navigator.share){try{await navigator.share({title,url});}catch(e){}}
+  else{await navigator.clipboard.writeText(url).catch(()=>{});toast('🔗 Copiado!');}
+}
+
+// ── COMMENTS ──────────────────────────────────────────────────────────────────
+let _curCmtVid=null;
+function openComments(id,cnt){
+  _curCmtVid=id;
+  document.getElementById('cpanel').classList.add('open');
+  document.getElementById('cpBack').classList.add('on');
+  document.getElementById('cpCnt').textContent=cnt>0?'('+fmt(cnt)+')':'';
+  loadComments(id);
+  setTimeout(()=>document.getElementById('cpInp').focus(),350);
+}
+function closeComments(){document.getElementById('cpanel').classList.remove('open');document.getElementById('cpBack').classList.remove('on');}
+
+async function loadComments(id){
+  const list=document.getElementById('cpList');
+  list.innerHTML='<div class="cp-empty"><div style="width:20px;height:20px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Carregando…</div>';
+  try{
+    const r=await fetch('/api/blue-comment?video_id='+id+'&limit=50');
+    if(!r.ok){list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro '+r.status+'<br><small>Tabela blue_comments criada?</small></div>';return;}
+    const d=await r.json();
+    const cms=d.comments||[];
+    if(!cms.length){list.innerHTML='<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>';return;}
+    list.innerHTML='';
+    cms.forEach(cm=>{
+      const u=cm.creator||{};
+      const init=(u.display_name||u.username||'?').charAt(0).toUpperCase();
+      const div=document.createElement('div');div.className='cp-item';
+      const av=document.createElement('div');av.className='cp-av';av.textContent=init;av.onclick=()=>{closeComments();setTimeout(()=>openCreatorProfile(cm.user_id),300);};
+      const body=document.createElement('div');body.className='cp-body';
+      const usr=document.createElement('div');usr.className='cp-user';usr.textContent='@'+(u.username||'usuário');usr.onclick=()=>{closeComments();setTimeout(()=>openCreatorProfile(cm.user_id),300);};
+      const txt=document.createElement('div');txt.className='cp-txt';txt.textContent=cm.text;
+      const tim=document.createElement('div');tim.className='cp-time';tim.textContent=ago(cm.created_at);
+      body.appendChild(usr);body.appendChild(txt);body.appendChild(tim);
+      div.appendChild(av);div.appendChild(body);list.appendChild(div);
+    });
+  }catch(e){list.innerHTML='<div class="cp-empty" style="color:#f87171">'+esc(e.message)+'</div>';}
+}
+
+async function sendComment(){
+  const inp=document.getElementById('cpInp');
+  const text=inp.value.trim();
+  if(!text||!_curCmtVid)return;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para comentar');return;}
+  const btn=document.getElementById('cpSend');btn.disabled=true;
+  try{
+    const r=await fetch('/api/blue-comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk,video_id:_curCmtVid,text})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Erro');
+    inp.value='';inp.style.height='auto';
+    const list=document.getElementById('cpList');
+    const ep=list.querySelector('.cp-empty');if(ep)ep.remove();
+    const div=document.createElement('div');div.className='cp-item';
+    const av=document.createElement('div');av.className='cp-av';av.textContent=(myProfile?.display_name||'V').charAt(0).toUpperCase();
+    const body=document.createElement('div');body.className='cp-body';
+    const usr=document.createElement('div');usr.className='cp-user';usr.textContent='@'+(myProfile?.username||'você');
+    const txt=document.createElement('div');txt.className='cp-txt';txt.textContent=text;
+    const tim=document.createElement('div');tim.className='cp-time';tim.textContent='agora';
+    body.appendChild(usr);body.appendChild(txt);body.appendChild(tim);
+    div.appendChild(av);div.appendChild(body);list.insertBefore(div,list.firstChild);
+    const cc=document.getElementById('cc-'+_curCmtVid);if(cc)cc.textContent=fmt((parseInt(cc.textContent.replace(/[^0-9]/g,''))||0)+1);
+    const cnt=document.getElementById('cpCnt');if(cnt)cnt.textContent='('+(parseInt((cnt.textContent.match(/\d+/)||['0'])[0])+1)+')';
+  }catch(e){toast('Erro: '+e.message);}
+  btn.disabled=false;
+}
+
+// ── PROFILE ───────────────────────────────────────────────────────────────────
+function openProfile(){
+  TOKEN=localStorage.getItem('bt_token');
+  document.getElementById('profPage').classList.add('open');
+  if(!TOKEN){
+    document.getElementById('profName').textContent='Visitante';
+    document.getElementById('profUname').textContent='Entre para ver seu perfil';
+    document.getElementById('profGrid').innerHTML='<div class="pg-empty"><a href="/" style="color:#3b82f6">Fazer login →</a></div>';
+    return;
+  }
+  loadMyProfile();
+}
+function closeProfile(){document.getElementById('profPage').classList.remove('open');}
+
+async function openCreatorProfile(userId){
+  if(!userId)return;
+  if(myProfile&&myProfile.user_id===userId){openProfile();return;}
+  document.getElementById('profPage').classList.add('open');
+  document.getElementById('pNavEdit').style.display='none';
+  document.getElementById('profAvCam').style.display='none';
+  document.getElementById('profEditBtn').style.display='none';
+  const v=videos.find(x=>x.user_id===userId);
+  const cr=v?.creator||{};
+  setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url},false);
+  const theirVids=videos.filter(x=>x.user_id===userId);
+  renderGrid(theirVids,false);
+}
+
+async function loadMyProfile(){
+  try{
+    const tk=localStorage.getItem('bt_token');
+    if(!tk)return;
+    const r=await fetch('/api/blue-profile?token='+encodeURIComponent(tk));
+    if(!r.ok)return;
+    const d=await r.json();
+    myProfile=d.profile;
+    setProfileHeader(myProfile,true);
+    loadMyVideos();
+  }catch(e){console.error('loadMyProfile:',e);}
+}
+
+function setProfileHeader(p,isOwn){
+  if(!p)return;
+  const av=document.getElementById('profAv');
+  const init=(p.display_name||p.username||'?').charAt(0).toUpperCase();
+  av.textContent=init;
+  // Remove cam button from inner text
+  const cam=document.getElementById('profAvCam');
+  if(cam){av.textContent=init;av.appendChild(cam);}
+  if(p.avatar_url){
+    const img=new Image();img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';
+    img.src=p.avatar_url;img.onload=()=>{av.insertBefore(img,cam||null);};
+  }
+  document.getElementById('profName').textContent=p.display_name||p.username||'—';
+  document.getElementById('profUname').textContent='@'+(p.username||'usuario');
+  document.getElementById('pNavName').textContent=p.username||'Perfil';
+  const bioEl=document.getElementById('profBio');
+  if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';}
+  document.getElementById('pNavEdit').style.display=isOwn?'block':'none';
+  document.getElementById('profEditBtn').style.display=isOwn?'block':'none';
+  if(cam)cam.style.display=isOwn?'flex':'none';
+}
+
+async function loadMyVideos(){
+  const grid=document.getElementById('profGrid');
+  grid.innerHTML='<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div></div>';
+  try{
+    const tk=localStorage.getItem('bt_token');
+    if(!tk)return;
+    const r=await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(tk));
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    renderGrid(d.videos||[],true);
+  }catch(e){grid.innerHTML='<div class="pg-empty" style="color:#f87171">Erro: '+esc(e.message)+'</div>';}
+}
+
+function renderGrid(vids,isOwn){
+  const grid=document.getElementById('profGrid');
+  grid.innerHTML='';
+  const totalViews=vids.reduce((a,v)=>a+(v.views||0),0);
+  const totalLikes=vids.reduce((a,v)=>a+(v.likes||0),0);
+  document.getElementById('pVids').textContent=vids.length;
+  document.getElementById('pViews').textContent=fmt(totalViews);
+  document.getElementById('pLikes').textContent=fmt(totalLikes);
+  if(!vids.length){
+    grid.innerHTML='<div class="pg-empty">'+(isOwn?'Nenhum vídeo ainda.<br><br><button onclick="openUpload();closeProfile()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">+ Postar primeiro vídeo</button>':'Sem vídeos ainda.')+'</div>';
+    return;
+  }
+  vids.forEach(v=>{
+    const card=document.createElement('div');card.className='pg';
+    card.onclick=()=>{closeProfile();setTimeout(()=>{const s=document.getElementById('s-'+v.id);if(s)s.scrollIntoView({behavior:'smooth'});else{if(!videos.find(x=>x.id===v.id)){videos.unshift(v);renderFeed();}setTimeout(()=>{const s2=document.getElementById('s-'+v.id);if(s2)s2.scrollIntoView({behavior:'smooth'});},200);}},300);};
+    if(v.thumbnail_url){const img=new Image();img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';img.src=v.thumbnail_url;img.onerror=()=>{const ph=document.createElement('div');ph.className='pg-ph';ph.textContent='🎬';card.prepend(ph);};card.appendChild(img);}
+    else{const ph=document.createElement('div');ph.className='pg-ph';ph.textContent='🎬';card.appendChild(ph);}
+    const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
+    const vw=document.createElement('div');vw.className='pg-v';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
+    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
     grid.appendChild(card);
   });
 }
 
-function openSingleVideo(v) {
-  // Add to feed temporarily and scroll
-  if (!videos.find(x=>x.id===v.id)) { videos.unshift(v); renderFeed(); }
-  setTimeout(()=>{ const s=document.getElementById('s-'+v.id); if(s) s.scrollIntoView({behavior:'smooth'}); }, 200);
+// ── DOTS MENU ─────────────────────────────────────────────────────────────────
+function openDotsMenu(id,title,desc){
+  _dotsVid={id,title,desc};
+  document.getElementById('dotsMenu').classList.add('open');
+  document.getElementById('dotsBack').classList.add('on');
+}
+function closeDotsMenu(){document.getElementById('dotsMenu').classList.remove('open');document.getElementById('dotsBack').classList.remove('on');}
+function startEditVideo(){
+  closeDotsMenu();
+  if(!_dotsVid)return;
+  document.getElementById('evTitle').value=_dotsVid.title;
+  document.getElementById('evDesc').value=_dotsVid.desc;
+  document.getElementById('editVideoOv').classList.add('on');
+}
+function startDeleteVideo(){
+  closeDotsMenu();
+  if(!_dotsVid||!confirm('Excluir este vídeo?'))return;
+  const tk=localStorage.getItem('bt_token');
+  fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete-video',token:tk,video_id:_dotsVid.id})})
+    .then(r=>r.ok?toast('🗑️ Excluído'):(toast('Erro ao excluir')))
+    .then(()=>{videos=videos.filter(v=>v.id!==_dotsVid.id);renderFeed();loadMyVideos();})
+    .catch(()=>toast('Erro'));
+}
+async function saveVideoEdit(){
+  if(!_dotsVid)return;
+  const tk=localStorage.getItem('bt_token');
+  const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-video',token:tk,video_id:_dotsVid.id,title:document.getElementById('evTitle').value,description:document.getElementById('evDesc').value})});
+  if(r.ok){toast('✅ Atualizado');document.getElementById('editVideoOv').classList.remove('on');loadMyVideos();}
+  else toast('Erro ao salvar');
 }
 
-async function openProfile() {
-  TOKEN = localStorage.getItem('bt_token'); // sempre relê
-  document.getElementById('profilePage').classList.add('open');
-  if (!TOKEN) {
-    // Não logado — mostra tela de login
-    document.getElementById('profName').textContent = 'Visitante';
-    document.getElementById('profUsername').textContent = 'Entre para ver seu perfil';
-    document.getElementById('profGrid').innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:#555;font-size:13px"><a href="/" style="color:#3b82f6">Fazer login →</a></div>';
-    return;
-  }
-  await loadMyProfile();
+// ── EDIT PROFILE ──────────────────────────────────────────────────────────────
+function openEditProfile(){
+  if(!myProfile)return;
+  document.getElementById('eName').value=myProfile.display_name||'';
+  document.getElementById('eUser').value=myProfile.username||'';
+  document.getElementById('eBio').value=myProfile.bio||'';
+  document.getElementById('eBioChar').textContent=(myProfile.bio||'').length+'/150';
+  _editAvB64=null;
+  const eav=document.getElementById('editAv');
+  eav.textContent=(myProfile.display_name||'?').charAt(0).toUpperCase();
+  eav.insertAdjacentHTML('beforeend','<div class="edit-av-ov">📷</div>');
+  if(myProfile.avatar_url){const img=new Image();img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';img.src=myProfile.avatar_url;img.onload=()=>{eav.insertBefore(img,eav.querySelector('.edit-av-ov'));};} 
+  document.getElementById('editProfileOv').classList.add('on');
+}
+function pickAvatar(file){
+  if(!file)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    _editAvB64=e.target.result;
+    const eav=document.getElementById('editAv');
+    eav.innerHTML='<div class="edit-av-ov">📷</div>';
+    const img=document.createElement('img');img.src=_editAvB64;img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';
+    eav.insertBefore(img,eav.firstChild);
+  };
+  rd.readAsDataURL(file);
+}
+async function saveProfile(){
+  const btn=document.getElementById('editSaveBtn');btn.disabled=true;btn.textContent='Salvando…';
+  try{
+    const tk=localStorage.getItem('bt_token');
+    const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',token:tk,display_name:document.getElementById('eName').value.trim(),username:document.getElementById('eUser').value.trim(),bio:document.getElementById('eBio').value.trim(),avatar_data:_editAvB64})});
+    if(r.ok){toast('✅ Perfil atualizado');document.getElementById('editProfileOv').classList.remove('on');loadMyProfile();updateHdAvatar();}
+    else{const d=await r.json();toast('Erro: '+(d.error||'falha'));}
+  }catch(e){toast('Erro: '+e.message);}
+  btn.disabled=false;btn.textContent='Salvar';
+}
+function updateHdAvatar(){
+  if(!myProfile)return;
+  const av=document.getElementById('hdAv');
+  if(myProfile.avatar_url){const img=new Image();img.style.cssText='width:32px;height:32px;border-radius:50%;object-fit:cover';img.src=myProfile.avatar_url+'?t='+Date.now();img.onload=()=>{av.innerHTML='';av.appendChild(img);};} 
+  else{av.textContent=(myProfile.display_name||myProfile.username||'B').charAt(0).toUpperCase();}
 }
 
-function closeProfile() {
-  document.getElementById('profilePage').classList.remove('open');
+// ── UPLOAD / AUTH ─────────────────────────────────────────────────────────────
+function openUpload(){
+  TOKEN=localStorage.getItem('bt_token');
+  document.getElementById('upOv').classList.add('on');
+  document.getElementById('authWall').style.display=TOKEN?'none':'block';
+  document.getElementById('upForm').style.display=TOKEN?'block':'none';
+}
+function closeUpload(){document.getElementById('upOv').classList.remove('on');}
+function onDrop(e){e.preventDefault();e.currentTarget.classList.remove('ov');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))pickFile(f);}
+function awTab(mode){
+  _awMode=mode;
+  document.getElementById('awT1').className='aw-tab '+(mode==='signin'?'on':'off');
+  document.getElementById('awT2').className='aw-tab '+(mode==='signup'?'on':'off');
+  document.getElementById('awBtn').textContent=mode==='signin'?'Entrar →':'Criar conta →';
+  document.getElementById('awMsg').textContent='';
+}
+async function doAuth(){
+  const email=document.getElementById('awEmail').value.trim();
+  const pass=document.getElementById('awPass').value;
+  const msg=document.getElementById('awMsg');
+  const btn=document.getElementById('awBtn');
+  if(!email||!pass){msg.textContent='Preencha email e senha';return;}
+  btn.textContent='Aguarde…';btn.disabled=true;msg.textContent='';
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:_awMode,email,password:pass})});
+    const d=await r.json();
+    if(!r.ok){msg.textContent=d.error||'Erro';btn.disabled=false;btn.textContent=_awMode==='signin'?'Entrar →':'Criar conta →';return;}
+    const t=d.session?.access_token||d.access_token;
+    if(!t){msg.textContent='Verifique seu email';btn.disabled=false;btn.textContent='Entrar →';return;}
+    localStorage.setItem('bt_token',t);TOKEN=t;
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+    msg.style.color='#4ade80';msg.textContent='✅ Bem-vindo!';
+    setTimeout(()=>{closeUpload();openUpload();loadFeed();initAuth();},800);
+  }catch(e){msg.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
 }
 
-async function loadMyProfile() {
-  try {
-    const r = await fetch('/api/blue-profile?token='+encodeURIComponent(TOKEN));
-    if (!r.ok) return;
-    const d = await r.json();
-    myProfile = d.profile;
-    renderProfileHeader(myProfile, true);
-    loadMyVideos();
-  } catch(e) {}
-}
-
-function renderProfileHeader(p, isOwn) {
-  if (!p) return;
-  const avEl = document.getElementById('profAvatar');
-  const init = (p.display_name||p.username||'?').charAt(0).toUpperCase();
-  avEl.innerHTML = ''; avEl.textContent = init;
-  if (p.avatar_url) {
-    const img = new Image();
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
-    img.onerror = () => { avEl.textContent = init; };
-    img.onload  = () => { avEl.innerHTML=''; avEl.appendChild(img); };
-    img.src = p.avatar_url;
-  }
-  document.getElementById('profName').textContent     = p.display_name || p.username || '—';
-  document.getElementById('profUsername').textContent = '@'+(p.username||'usuario');
-  document.getElementById('ptName').textContent       = p.username || 'Perfil';
-  const bioEl = document.getElementById('profBioFull');
-  if (bioEl) { if (p.bio) { bioEl.textContent=p.bio; bioEl.style.display='block'; } else { bioEl.style.display='none'; } }
-  const editBtn = document.getElementById('ptEditBtn');
-  const editFullBtn = document.getElementById('profEditFullBtn');
-  const camBtn = document.getElementById('profAvCam');
-  if (editBtn) editBtn.style.display = isOwn ? 'block' : 'none';
-  if (editFullBtn) editFullBtn.style.display = isOwn ? 'block' : 'none';
-  if (camBtn) camBtn.style.display = isOwn ? 'flex' : 'none';
-}
-
-
-async function loadMyVideos() {
-  const grid = document.getElementById('profGrid');
-  grid.innerHTML = '<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div>Carregando…</div>';
-  try {
-    const freshToken = localStorage.getItem('bt_token');
-    if (!freshToken) { grid.innerHTML = '<div class="pg-empty">Entre para ver seus vídeos</div>'; return; }
-    const r = await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(freshToken));
-    if (!r.ok) { grid.innerHTML = '<div class="pg-empty" style="color:#f87171">Erro '+r.status+'</div>'; return; }
-    const d = await r.json();
-    renderCreatorGrid(d.videos||[], true);
-  } catch(e) { document.getElementById('profGrid').innerHTML='<div class="pg-empty" style="color:#f87171">Erro: '+e.message+'</div>'; }
-}async function loadComments(videoId) {
-  const list = document.getElementById('cpList');
-  list.innerHTML = '<div class="cp-empty"><div style="width:20px;height:20px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Carregando…</div>';
-  try {
-    const r = await fetch('/api/blue-comment?video_id='+videoId+'&limit=50');
-    if (!r.ok) { list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro '+r.status+'. A tabela blue_comments foi criada no Supabase?</div>'; return; }
-    const d = await r.json();
-    const comments = d.comments || [];
-    if (comments.length === 0) { list.innerHTML='<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>'; return; }
-    list.innerHTML = '';
-    comments.forEach(cm => {
-      const u  = cm.creator || {};
-      const init = (u.display_name||u.username||'?').charAt(0).toUpperCase();
-      const div = document.createElement('div');
-      div.className = 'cp-item';
-      const av  = document.createElement('div'); av.className='cp-av'; av.textContent=init; av.onclick=()=>openCommentProfile(cm.user_id); div.appendChild(av);
-      const body= document.createElement('div'); body.className='cp-body';
-      const usr = document.createElement('div'); usr.className='cp-user';
-      const aln = document.createElement('span'); aln.className='at-link'; aln.textContent='@'+(u.username||'usuário'); aln.onclick=()=>openCommentProfile(cm.user_id); usr.appendChild(aln); body.appendChild(usr);
-      const txt = document.createElement('div'); txt.className='cp-text'; txt.textContent=cm.text; body.appendChild(txt);
-      const tim = document.createElement('div'); tim.className='cp-time'; tim.textContent=timeAgo(cm.created_at); body.appendChild(tim);
-      div.appendChild(body); list.appendChild(div);
-    });
-  } catch(e) { list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro: '+e.message+'</div>'; }
-
-
-
-async function sendComment() {
-  const input = document.getElementById('cpInput');
-  const text = input.value.trim();
-  if (!text || !_currentCommentsVideo) return;
-  const freshToken = localStorage.getItem('bt_token');
-  if (!freshToken) { toast('Entre para comentar'); closeComments(); return; }
-  const btn = document.getElementById('cpSend');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/blue-comment', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: freshToken, video_id: _currentCommentsVideo, text })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error||'Erro');
-    input.value = ''; input.style.height = 'auto';
-    const list = document.getElementById('cpList');
-    const empty = list.querySelector('.cp-empty');
-    if (empty) empty.remove();
-    const div = document.createElement('div'); div.className='cp-item';
-    const av=document.createElement('div'); av.className='cp-av'; av.textContent='V'; div.appendChild(av);
-    const body=document.createElement('div'); body.className='cp-body';
-    const usr=document.createElement('div'); usr.className='cp-user'; usr.innerHTML='<span class="at-link">@você</span>'; body.appendChild(usr);
-    const txt=document.createElement('div'); txt.className='cp-text'; txt.textContent=text; body.appendChild(txt);
-    const tim=document.createElement('div'); tim.className='cp-time'; tim.textContent='agora'; body.appendChild(tim);
-    div.appendChild(body); list.insertBefore(div,list.firstChild);
-    const cc=document.getElementById('cc-'+_currentCommentsVideo);
-    if(cc)cc.textContent=fmt((parseInt(cc.textContent.replace(/[^0-9]/g,''))||0)+1);
-  } catch(e) { toast('Erro: '+e.message); }
-  btn.disabled = false;
-}
-
-function openCommentProfile(userId) {
-  if (!userId) return;
-  closeComments();
-  setTimeout(() => openCreatorProfile(userId), 300);
-}
-
-function escHtml(t) { return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function timeAgo(t){
-  if(!t)return'';
-  const d=(Date.now()-new Date(t))/1000;
-  if(d<60)return'agora';
-  if(d<3600)return Math.floor(d/60)+'min';
-  if(d<86400)return Math.floor(d/3600)+'h';
-  return Math.floor(d/86400)+'d';
-}
-
-function ping(type,id){
-  fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{});
-}
-
-// ── UPLOAD ────────────────────────────────────────────────────────────────────
-function openUpload() {
-  TOKEN = localStorage.getItem('bt_token');
-  document.getElementById('upOverlay').classList.add('on');
-  const loggedIn = !!TOKEN;
-  document.getElementById('authWall').style.display = loggedIn ? 'none' : 'block';
-  document.getElementById('upForm').style.display = loggedIn ? 'block' : 'none';
-}
-function closeUpload() { document.getElementById('upOverlay').classList.remove('on'); }
-function dropFile(e) { e.preventDefault(); e.currentTarget.classList.remove('ov'); const f=e.dataTransfer.files[0]; if(f&&f.type.startsWith('video/'))pickFile(f); }
-
-function pickFile(file) {
+function pickFile(file){
   if(!file)return;
   const mb=Math.round(file.size/1024/1024);
-  if(file.size>2000*1024*1024){toast('Arquivo maior que 2GB'); return;}
-  if(mb>200)toast('Arquivo grande ('+mb+'MB)');
+  if(mb>2000){toast('Arquivo muito grande');return;}
   selFile=file;
   const url=URL.createObjectURL(file);
-  const tv=document.createElement('video'); tv.src=url; tv.muted=true;
-  tv.onloadedmetadata=()=>{ vDur=tv.duration;vW=tv.videoWidth;vH=tv.videoHeight; tv.currentTime=.5; };
+  const tv=document.createElement('video');tv.src=url;tv.muted=true;
+  tv.onloadedmetadata=()=>{vDur=tv.duration;vW=tv.videoWidth;vH=tv.videoHeight;tv.currentTime=.5;};
   tv.onseeked=()=>{
-    const cv=document.createElement('canvas');
-    cv.width=Math.min(tv.videoWidth,480); cv.height=Math.round(cv.width*(tv.videoHeight/tv.videoWidth));
+    const cv=document.createElement('canvas');cv.width=Math.min(tv.videoWidth,480);cv.height=Math.round(cv.width*(tv.videoHeight/tv.videoWidth));
     cv.getContext('2d').drawImage(tv,0,0,cv.width,cv.height);
-    let q=0.7; thumbB64=cv.toDataURL('image/jpeg',q);
-    while(thumbB64.length>200000&&q>0.1){q-=0.15;thumbB64=cv.toDataURL('image/jpeg',q);}
-    document.getElementById('pthumb').innerHTML='<img src="'+thumbB64+'" style="width:72px;height:72px;object-fit:cover;border-radius:10px"/>';
+    let q=.7;thumbB64=cv.toDataURL('image/jpeg',q);
+    while(thumbB64.length>200000&&q>.1){q-=.15;thumbB64=cv.toDataURL('image/jpeg',q);}
+    const pt=document.getElementById('prevThumb');
+    const img=document.createElement('img');img.src=thumbB64;img.style.cssText='width:64px;height:64px;object-fit:cover';pt.innerHTML='';pt.appendChild(img);
   };
-  document.getElementById('dico').textContent='✅';
-  document.getElementById('dlbl').textContent=file.name.slice(0,40);
-  document.getElementById('pinfo').innerHTML='<b>'+file.name.slice(0,30)+'</b><br>'+(file.size/1024/1024).toFixed(1)+'MB';
-  document.getElementById('prevrow').style.display='flex';
-  const btn=document.getElementById('mpub'); btn.disabled=false; btn.textContent='Publicar →';
-  if(!document.getElementById('ftitle').value)document.getElementById('ftitle').value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
+  document.getElementById('dropIcon').textContent='✅';
+  document.getElementById('dropLbl').textContent=file.name.slice(0,36);
+  document.getElementById('prevInfo').innerHTML=file.name.slice(0,28)+'<br>'+mb+'MB · '+Math.round(vDur||0)+'s';
+  document.getElementById('prevRow').style.display='flex';
+  const btn=document.getElementById('upBtn');btn.disabled=false;btn.textContent='Publicar →';
+  if(!document.getElementById('upTitle').value)document.getElementById('upTitle').value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
 }
 
-async function publish() {
+async function doUpload(){
   if(!selFile)return;
-  const title=document.getElementById('ftitle').value.trim();
+  const title=document.getElementById('upTitle').value.trim();
   if(!title){toast('Adicione um título');return;}
-  const desc=document.getElementById('fdesc').value.trim();
-  const btn=document.getElementById('mpub'),msg=document.getElementById('mmsg');
-  const prog=document.getElementById('mprog'),fill=document.getElementById('mfill');
-  btn.disabled=true; btn.textContent='Verificando…';
-  prog.style.display='block'; fill.style.width='3%';
-  msg.className='mmsg ok'; msg.textContent='Verificando sessão…';
-
-  const validToken = await getValidToken();
-  if(!validToken){ closeUpload(); msg.textContent=''; prog.style.display='none'; btn.disabled=false; btn.textContent='Publicar →'; toast('Sessão expirada — faça login'); setTimeout(()=>openUpload(),500); return; }
-
-  btn.textContent='Publicando…'; fill.style.width='10%'; msg.textContent='Preparando…';
-  try {
-    const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,file_name:selFile.name,thumbnail_data:thumbB64})});
+  const desc=document.getElementById('upDesc').value.trim();
+  const btn=document.getElementById('upBtn'),msg=document.getElementById('upMsg');
+  const prog=document.getElementById('upProg'),fill=document.getElementById('upFill');
+  btn.disabled=true;btn.textContent='Verificando…';
+  msg.className='up-msg ok';msg.textContent='';prog.style.display='block';fill.style.width='3%';
+  const vt=await getValidToken();
+  if(!vt){closeUpload();toast('Sessão expirada');setTimeout(openUpload,500);return;}
+  btn.textContent='Publicando…';fill.style.width='10%';msg.textContent='Preparando…';
+  try{
+    const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:vt,title,description:desc,duration:vDur,width:vW,height:vH,file_name:selFile.name,thumbnail_data:thumbB64})});
     const d1=await r1.json();
-    if(!r1.ok)throw new Error(d1.error||'Erro: '+r1.status);
-    fill.style.width='15%'; msg.textContent='Enviando vídeo ('+(selFile.size/1024/1024).toFixed(0)+'MB)…';
+    if(!r1.ok)throw new Error(d1.error||'Erro '+r1.status);
+    fill.style.width='15%';msg.textContent='Enviando vídeo ('+(selFile.size/1024/1024).toFixed(0)+'MB)…';
     const upUrl=d1.supabase_url+'/storage/v1/object/blue-videos/'+d1.storage_path;
     await new Promise((res,rej)=>{
       const xhr=new XMLHttpRequest();
-      xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%'; };
-      xhr.onload=()=>{ if(xhr.status<300)res(); else rej(new Error('HTTP '+xhr.status+': '+xhr.responseText.slice(0,100))); };
+      xhr.upload.onprogress=e=>{if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%';};
+      xhr.onload=()=>xhr.status<300?res():rej(new Error('HTTP '+xhr.status+': '+xhr.responseText.slice(0,80)));
       xhr.onerror=()=>rej(new Error('Falha de rede'));
       xhr.open('POST',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
-      xhr.setRequestHeader('Authorization','Bearer '+validToken);
+      xhr.setRequestHeader('Authorization','Bearer '+vt);
       xhr.setRequestHeader('Content-Type',selFile.type||'video/mp4');
       xhr.setRequestHeader('x-upsert','true');
       xhr.send(selFile);
     });
-    fill.style.width='100%'; msg.textContent='✅ Publicado!'; btn.textContent='✅ Pronto!';
-    toast('🎬 Vídeo publicado!');
-    if(d1.video){ d1.video.creator=myProfile||{}; videos.unshift(d1.video); renderFeed(); }
-    setTimeout(()=>{ closeUpload(); prog.style.display='none'; fill.style.width='0%'; msg.textContent=''; btn.textContent='Publicar →'; btn.disabled=true; selFile=null; thumbB64=null; document.getElementById('dico').textContent='🎬'; document.getElementById('dlbl').textContent='Toque para selecionar o vídeo'; document.getElementById('prevrow').style.display='none'; document.getElementById('pthumb').innerHTML='🎬'; document.getElementById('ftitle').value=''; document.getElementById('fdesc').value=''; },1800);
-  } catch(err){
-    msg.className='mmsg err'; msg.textContent=err.message;
-    btn.disabled=false; btn.textContent='Tentar novamente';
-    fill.style.width='0%'; prog.style.display='none';
-  }
+    fill.style.width='100%';msg.textContent='✅ Publicado!';btn.textContent='✅ Pronto!';toast('🎬 Publicado!');
+    if(d1.video){d1.video.creator=myProfile||{};videos.unshift(d1.video);renderFeed();}
+    setTimeout(()=>{closeUpload();prog.style.display='none';fill.style.width='0%';msg.textContent='';btn.textContent='Publicar →';btn.disabled=true;selFile=null;thumbB64=null;document.getElementById('dropIcon').textContent='🎬';document.getElementById('dropLbl').textContent='Toque para selecionar';document.getElementById('prevRow').style.display='none';document.getElementById('prevThumb').innerHTML='🎬';document.getElementById('upTitle').value='';document.getElementById('upDesc').value='';},1800);
+  }catch(err){msg.className='up-msg err';msg.textContent=err.message;btn.disabled=false;btn.textContent='Tentar novamente';fill.style.width='0%';prog.style.display='none';}
 }
 
-function fmt(n){n=parseInt(n)||0;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n);}
-let _tt; function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2500);}
-document.addEventListener('keydown',e=>{const f=document.getElementById('feed');if(!f)return;if(e.key==='ArrowDown')f.scrollBy({top:window.innerHeight,behavior:'smooth'});if(e.key==='ArrowUp')f.scrollBy({top:-window.innerHeight,behavior:'smooth'});});
+function renderFeed(){
+  const feed=document.getElementById('feed');feed.innerHTML='';
+  if(!videos.length){document.getElementById('empty').classList.add('on');return;}
+  document.getElementById('empty').classList.remove('on');
+  videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
+  setupObs();
+}
 
-loadFeed();
-TOKEN = localStorage.getItem('bt_token');
-if(TOKEN){
+// ── INIT AUTH ─────────────────────────────────────────────────────────────────
+function initAuth(){
+  TOKEN=localStorage.getItem('bt_token');
+  if(!TOKEN)return;
   fetch('/api/blue-profile?token='+encodeURIComponent(TOKEN))
-    .then(r=>r.ok?r.json():null).then(d=>{
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{
       if(d?.profile){
         myProfile=d.profile;
-        const av=document.getElementById('hdAvatar');
-        if(d.profile.avatar_url){
-          const hdImg=new Image(); hdImg.style.cssText='width:32px;height:32px;border-radius:50%;object-fit:cover';
-          hdImg.src=d.profile.avatar_url;
-          hdImg.onerror=()=>{av.textContent=(d.profile.display_name||'B').charAt(0).toUpperCase();};
-          av.innerHTML=''; av.appendChild(hdImg);
-        } else { av.textContent=(d.profile.display_name||d.profile.username||'B').charAt(0).toUpperCase(); }
+        updateHdAvatar();
       }
     }).catch(()=>{});
 }
-}
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;
+  const f=document.getElementById('feed');
+  if(e.key==='ArrowDown'||e.key==='j')f.scrollBy({top:window.innerHeight,behavior:'smooth'});
+  if(e.key==='ArrowUp'||e.key==='k')f.scrollBy({top:-window.innerHeight,behavior:'smooth'});
+  if(e.key==='Escape'){closeComments();closeUpload();closeDotsMenu();document.getElementById('editProfileOv').classList.remove('on');document.getElementById('editVideoOv').classList.remove('on');}
+});
+
+loadFeed();
+initAuth();
 </script>
 </body>
 </html>
