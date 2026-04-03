@@ -141,6 +141,8 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   overflow-y:auto;-webkit-overflow-scrolling:touch}
 .profile-page::-webkit-scrollbar{display:none}
 .profile-page.open{transform:translateX(0)}
+.profile-page *{-webkit-tap-highlight-color:transparent}
+.prof-grid,.cp-list{scroll-behavior:smooth}
 
 /* topbar */
 .prof-topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;
@@ -632,561 +634,64 @@ async function loadMyProfile() {
 
 function renderProfileHeader(p, isOwn) {
   if (!p) return;
-  // Avatar
   const avEl = document.getElementById('profAvatar');
+  const init = (p.display_name||p.username||'?').charAt(0).toUpperCase();
+  avEl.innerHTML = ''; avEl.textContent = init;
   if (p.avatar_url) {
-    const avInit = (p.display_name||p.username||'?').charAt(0).toUpperCase();
-    if (p.avatar_url) {
-      const img = document.createElement('img');
-      img.src = p.avatar_url;
-      img.style.cssText = 'width:86px;height:86px;border-radius:50%;object-fit:cover';
-      img.onerror = function(){ avEl.textContent = avInit; };
-      avEl.innerHTML = '';
-      avEl.appendChild(img);
-    } else {
-      avEl.textContent = avInit;
-    }
-  } else {
-    avEl.textContent = (p.display_name||p.username||'?').charAt(0).toUpperCase();
+    const img = new Image();
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+    img.onerror = () => { avEl.textContent = init; };
+    img.onload  = () => { avEl.innerHTML=''; avEl.appendChild(img); };
+    img.src = p.avatar_url;
   }
-  document.getElementById('profName').textContent = p.display_name || p.username || '—';
+  document.getElementById('profName').textContent     = p.display_name || p.username || '—';
   document.getElementById('profUsername').textContent = '@'+(p.username||'usuario');
-  document.getElementById('ptName').textContent = p.username || 'Perfil';
-  if (p.bio) {
-    const bioEl = document.getElementById('profBio');
-    bioEl.textContent = p.bio; bioEl.style.display = 'block';
-  }
-  if (isOwn) {
-    document.getElementById('ptEditBtn').style.display = 'block';
-    document.getElementById('profAvCam').style.display = 'flex';
-  }
+  document.getElementById('ptName').textContent       = p.username || 'Perfil';
+  const bioEl = document.getElementById('profBioFull');
+  if (bioEl) { if (p.bio) { bioEl.textContent=p.bio; bioEl.style.display='block'; } else { bioEl.style.display='none'; } }
+  const editBtn = document.getElementById('ptEditBtn');
+  const editFullBtn = document.getElementById('profEditFullBtn');
+  const camBtn = document.getElementById('profAvCam');
+  if (editBtn) editBtn.style.display = isOwn ? 'block' : 'none';
+  if (editFullBtn) editFullBtn.style.display = isOwn ? 'block' : 'none';
+  if (camBtn) camBtn.style.display = isOwn ? 'flex' : 'none';
 }
+
 
 async function loadMyVideos() {
   const grid = document.getElementById('profGrid');
-  grid.innerHTML = '<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Carregando vídeos…</div>';
+  grid.innerHTML = '<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div>Carregando…</div>';
   try {
-    const r = await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(TOKEN));
-    if (!r.ok) throw new Error('HTTP '+r.status);
+    const freshToken = localStorage.getItem('bt_token');
+    if (!freshToken) { grid.innerHTML = '<div class="pg-empty">Entre para ver seus vídeos</div>'; return; }
+    const r = await fetch('/api/blue-profile?action=my-videos&token='+encodeURIComponent(freshToken));
+    if (!r.ok) { grid.innerHTML = '<div class="pg-empty" style="color:#f87171">Erro '+r.status+'</div>'; return; }
     const d = await r.json();
-    const vids = d.videos || [];
-    console.log('My videos:', vids.length, vids.map(v=>({id:v.id,thumb:v.thumbnail_url?.slice(0,40),url:v.video_url?.slice(0,40)})));
-    renderCreatorGrid(vids, true);
-  } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#f87171;font-size:13px">Erro ao carregar</div>'; }
-}
-
-function openVideoFromProfile(id) {
-  const v = videos.find(x=>x.id===id) || {id, video_url:'', title:'', creator:{}};
-  closeProfile();
-  setTimeout(()=>{
-    const slide = document.getElementById('s-'+id);
-    if (slide) { slide.scrollIntoView({behavior:'smooth'}); }
-  }, 350);
-}
-
-function switchProfTab(tab, btn) {
-  document.querySelectorAll('.prof-tab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-}
-
-// ── DOTS MENU ──────────────────────────────────────────────────────────────
-function openDotsMenu(videoId, data) {
-  _dotsVideoId = videoId;
-  _dotsVideoData = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch(e){ return {}; } })() : (data||{});
-  document.getElementById('dotsMenu').classList.add('open');
-  document.getElementById('dotsBackdrop').style.display = 'block';
-}
-function closeDotsMenu() {
-  document.getElementById('dotsMenu').classList.remove('open');
-  document.getElementById('dotsBackdrop').style.display = 'none';
-}
-function doEditVideo() {
-  closeDotsMenu();
-  if (!_dotsVideoId || !_dotsVideoData) return;
-  document.getElementById('evmTitle').value = _dotsVideoData.title || '';
-  document.getElementById('evmDesc').value = _dotsVideoData.description || '';
-  document.getElementById('editVideoModal').classList.add('on');
-}
-function closeEditVideoModal() { document.getElementById('editVideoModal').classList.remove('on'); }
-async function saveVideoEdit() {
-  if (!_dotsVideoId) return;
-  const title = document.getElementById('evmTitle').value.trim();
-  const description = document.getElementById('evmDesc').value.trim();
-  const btn = document.querySelector('#editVideoModal .evm-save');
-  btn.textContent = 'Salvando…'; btn.disabled = true;
-  try {
-    const r = await fetch('/api/blue-profile', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'edit-video',token:TOKEN,video_id:_dotsVideoId,title,description})
-    });
-    if (r.ok) { closeEditVideoModal(); toast('✅ Vídeo atualizado'); loadMyVideos(); }
-    else { const d=await r.json(); toast('Erro: '+d.error); }
-  } catch(e) { toast('Erro: '+e.message); }
-  btn.textContent = 'Salvar'; btn.disabled = false;
-}
-async function doDeleteVideo() {
-  if (!_dotsVideoId) return;
-  closeDotsMenu();
-  if (!confirm('Excluir este vídeo? Esta ação não pode ser desfeita.')) return;
-  try {
-    const r = await fetch('/api/blue-profile', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'delete-video',token:TOKEN,video_id:_dotsVideoId})
-    });
-    if (r.ok) { toast('🗑️ Vídeo excluído'); loadMyVideos(); videos=videos.filter(v=>v.id!==_dotsVideoId); renderFeed(); }
-    else { const d=await r.json(); toast('Erro: '+d.error); }
-  } catch(e) { toast('Erro: '+e.message); }
-}
-
-// ── EDIT PROFILE ──────────────────────────────────────────────────────────────
-function openEditProfile() {
-  if (!myProfile) return;
-  document.getElementById('editName').value = myProfile.display_name || '';
-  document.getElementById('editUsername').value = myProfile.username || '';
-  document.getElementById('editBio').value = myProfile.bio || '';
-  document.getElementById('editBioChar').textContent = (myProfile.bio||'').length+'/150';
-  // Avatar preview
-  const editAv = document.getElementById('editAvatar');
-  if (myProfile.avatar_url) {
-    editAv.innerHTML = '<img src="'+myProfile.avatar_url+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover"/><div class="edit-av-overlay">📷</div>';
-  } else {
-    editAv.innerHTML = (myProfile.display_name||'?').charAt(0).toUpperCase()+'<div class="edit-av-overlay">📷</div>';
-  }
-  _editAvatarB64 = null;
-  document.getElementById('editModal').classList.add('on');
-}
-
-function closeEditProfile() { document.getElementById('editModal').classList.remove('on'); }
-
-function pickAvatar(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    _editAvatarB64 = e.target.result;
-    const ea = document.getElementById('editAvatar');
-    ea.innerHTML = '<div class="edit-av-overlay">📷</div>';
-    const pimg = document.createElement('img');
-    pimg.src = _editAvatarB64;
-    pimg.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover';
-    ea.insertBefore(pimg, ea.firstChild);
-  };
-  reader.readAsDataURL(file);
-}
-
-async function saveProfile() {
-  const btn = document.getElementById('editSaveBtn');
-  btn.textContent = 'Salvando…'; btn.disabled = true;
-  try {
-    const r = await fetch('/api/blue-profile', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        action:'update', token:TOKEN,
-        display_name: document.getElementById('editName').value.trim(),
-        username: document.getElementById('editUsername').value.trim(),
-        bio: document.getElementById('editBio').value.trim(),
-        avatar_data: _editAvatarB64
-      })
-    });
-    if (r.ok) {
-      closeEditProfile();
-      toast('✅ Perfil atualizado!');
-      await loadMyProfile();
-      // Atualiza avatar no header
-      if (myProfile?.avatar_url) {
-        document.getElementById('hdAvatar').innerHTML = '<img src="'+myProfile.avatar_url+'?t='+Date.now()+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover"/>';
-      } else if (myProfile?.display_name) {
-        document.getElementById('hdAvatar').textContent = myProfile.display_name.charAt(0).toUpperCase();
-      }
-    } else {
-      const d = await r.json();
-      toast('Erro: '+(d.error||'falha ao salvar'));
-    }
-  } catch(e) { toast('Erro: '+e.message); }
-  btn.textContent = 'Salvar'; btn.disabled = false;
-}
-
-// ── LOAD FEED (with renderFeed helper) ───────────────────────────────────────
-function renderFeed() {
-  const feed = document.getElementById('feed');
-  feed.innerHTML = '';
-  if (videos.length === 0) { document.getElementById('empty').classList.add('on'); return; }
-  document.getElementById('empty').classList.remove('on');
-  videos.forEach((v,i) => { const s = makeSlide(v,i); if(s) feed.appendChild(s); });
-  setupObs();
-}
-
-async function loadFeed(){
-  const feed = document.getElementById('feed');
-  feed.innerHTML='<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#666">Carregando…</div></div>';
-  try{
-    const r = await fetch('/api/blue-feed?limit=20&session='+SID);
-    if(!r.ok){ const t=await r.text(); showErr('API retornou '+r.status+': '+t.slice(0,80)); return; }
-    const d = await r.json();
-    videos = (d.videos||[]).filter(v=>v&&v.video_url);
-    console.log('Feed loaded:', videos.length, 'videos');
-  }catch(e){ showErr('Erro de rede: '+e.message); return; }
-  
-  feed.innerHTML='';
-  if(videos.length===0){
-    document.getElementById('empty').classList.add('on');
-    return;
-  }
-  document.getElementById('empty').classList.remove('on');
-  videos.forEach((v,i)=>feed.appendChild(makeSlide(v,i)));
-  setupObs();
-}
-
-async function runDiag(){
-  const el=document.getElementById('dbgMsg');
-  if(el){el.style.color='#666';el.textContent='Verificando...';}
-  try{
-    const r=await fetch('/api/blue-debug');
-    const d=await r.json();
-    const msg=JSON.stringify(d,null,2);
-    if(el){el.style.color='#888';el.textContent=msg;}
-    console.log('Blue diag:',d);
-  }catch(e){if(el)el.textContent='Erro: '+e.message;}
-}
-
-function showDbg(msg){ const el=document.getElementById('dbgMsg'); if(el)el.textContent=msg; }
-
-function showErr(msg){
-  document.getElementById('feed').innerHTML =
-    '<div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;text-align:center">' +
-    '<div style="font-size:36px">⚠️</div>' +
-    '<div style="font-size:14px;color:#f87171">' + msg + '</div>' +
-    '<button onclick="loadFeed()" style="background:#3b82f6;border:none;border-radius:8px;padding:10px 20px;color:#fff;font-size:13px;cursor:pointer;margin-top:8px">Tentar novamente</button>' +
-    '</div>';
-}
-
-function makeSlide(v,i){
-  if(!v||!v.video_url){return document.createElement('div');} // skip invalid
-  const c=v.creator||{};
-  const lk=liked.has(v.id);
-  const sv=saved.has(v.id);
-  const el=document.createElement('div');
-  el.className='slide'; el.id='s-'+v.id; el.dataset.id=v.id; el.dataset.i=i;
-  el.innerHTML=`
-    <video src="${v.video_url}" preload="${i<2?'auto':'none'}" loop playsinline muted
-      poster="${v.thumbnail_url||''}" ontimeupdate="tick(this,'${v.id}')"
-      onerror="this.closest('.slide').style.display='none'"></video>
-    <div class="grad"></div>
-    <div class="mute-hint" id="mh-${v.id}">🔇</div>
-    <div class="slide-views">👁 <span id="vc-${v.id}">${fmt(v.views||0)}</span></div>
-    <div class="info">
-      <div class="info-user"><span class="at-link" onclick="openCreatorProfile('${v.user_id}')">@${c.username||'blue'}</span></div>
-      ${v.title?`<div class="info-title">${v.title}</div>`:''}
-      ${v.description?`<div class="info-desc">${v.description}</div>`:''}
-    </div>
-    <div class="actions">
-      <div id="sav-${v.id}" onclick="openCreatorProfile('${v.user_id}')" style="display:flex;flex-direction:column;align-items:center;gap:0;cursor:pointer;margin-bottom:4px">
-        <div class="act-avatar" id="cav-${v.id}">👤</div>
-        <div class="act-avatar-plus">+</div>
-      </div>
-      <button class="act" onclick="doLike('${v.id}')">
-        <div class="act-ico ${lk?'red':''}" id="li-${v.id}">${lk?'❤️':'🤍'}</div>
-        <div class="act-lbl" id="lc-${v.id}">${fmt(v.likes||0)}</div>
-      </button>
-      <button class="act" onclick="doSave('${v.id}')">
-        <div class="act-ico" id="si-${v.id}">${sv?'🔖':'💾'}</div>
-        <div class="act-lbl">Salvar</div>
-      </button>
-      <button class="act" onclick="openComments('${v.id}',${v.comments||0})">
-        <div class="act-ico">💬</div>
-        <div class="act-lbl" id="cc-${v.id}">${fmt(v.comments||0)}</div>
-      </button>
-      <button class="act" onclick="doShare('${v.video_url||''}','${(v.title||'').replace(/'/g,'')}')">
-        <div class="act-ico">↗️</div>
-        <div class="act-lbl">Comp.</div>
-      </button>
-    </div>
-    <div class="prog"><div class="prog-fill" id="pf-${v.id}"></div></div>`;
-  // Tap no vídeo — toggle mute (primeiro toque ativa som, depois pausa/retoma)
-  const vidEl = el.querySelector('video');
-  vidEl.addEventListener('click', ()=> toggleSound(vidEl, v.id));
-  // Fill creator avatar
-  const cavEl = el.querySelector('#cav-'+v.id);
-  if (cavEl && c.avatar_url) {
-    const img = document.createElement('img');
-    img.src = c.avatar_url;
-    img.onerror = () => { cavEl.textContent = (c.display_name||c.username||'?').charAt(0).toUpperCase(); };
-    cavEl.innerHTML = ''; cavEl.appendChild(img);
-  } else if (cavEl) {
-    cavEl.textContent = (c.display_name||c.username||'?').charAt(0).toUpperCase();
-  }
-  // If own video, show own avatar
-  if (myProfile && v.user_id && myProfile.user_id === v.user_id && cavEl && myProfile.avatar_url) {
-    const img = document.createElement('img');
-    img.src = myProfile.avatar_url;
-    cavEl.innerHTML = ''; cavEl.appendChild(img);
-  }
-  return el;
-}
-
-function setupObs(){
-  if(obs) obs.disconnect();
-  obs=new IntersectionObserver(entries=>{
-    entries.forEach(e=>{
-      const sl=e.target, vid=sl.querySelector('video');
-      if(!vid) return;
-      if(e.isIntersecting && e.intersectionRatio>.6){
-        document.querySelectorAll('#feed video').forEach(v=>{ if(v!==vid){v.pause();v.currentTime=0;} });
-        vid.preload='auto';
-        // iOS: sempre começa muted, desmuta após interação do usuário
-        if(!_userInteracted) { vid.muted=true; showMuteHint(sl.dataset.id); }
-        else { vid.muted=false; }
-        vid.play().catch(()=>{ vid.muted=true; vid.play().catch(()=>{}); });
-        // Incrementa view counter localmente
-        const vcEl=document.getElementById('vc-'+sl.dataset.id);
-        if(vcEl) vcEl.textContent=fmt((parseInt(vcEl.textContent.replace(/[^0-9]/g,''))||0)+1);
-        // Preload next
-        const ni=parseInt(sl.dataset.i)+1;
-        if(videos[ni]){ const ns=document.getElementById('s-'+videos[ni].id); if(ns){const nv=ns.querySelector('video');if(nv)nv.preload='auto';} }
-        ping('view',sl.dataset.id);
-      } else { if(!vid.paused) vid.pause(); }
-    });
-  },{threshold:.6});
-  document.querySelectorAll('.slide').forEach(s=>obs.observe(s));
-}
-
-function tick(vid,id){
-  if(!vid.duration)return;
-  const el=document.getElementById('pf-'+id);
-  if(el) el.style.width=(vid.currentTime/vid.duration*100)+'%';
-}
-
-function doLike(id){
-  const ico=document.getElementById('li-'+id), ct=document.getElementById('lc-'+id);
-  if(liked.has(id)){liked.delete(id);ico.textContent='🤍';ico.classList.remove('red');ct.textContent=fmt(Math.max(0,parseInt(ct.textContent)||0)-1);ping('unlike',id);}
-  else{liked.add(id);ico.textContent='❤️';ico.classList.add('red');ct.textContent=fmt((parseInt(ct.textContent)||0)+1);ping('like',id);toast('❤️ Curtido!');}
-  localStorage.setItem('bl_liked',JSON.stringify([...liked]));
-}
-function doSave(id){
-  const ico=document.getElementById('si-'+id);
-  if(saved.has(id)){saved.delete(id);ico.textContent='💾';ping('unsave',id);toast('Removido');}
-  else{saved.add(id);ico.textContent='🔖';ping('save',id);toast('💾 Salvo!');}
-  localStorage.setItem('bl_saved',JSON.stringify([...saved]));
-}
-async function doShare(url,title){
-  if(navigator.share){try{await navigator.share({title,url});}catch(e){}}
-  else{await navigator.clipboard.writeText(url).catch(()=>{});toast('🔗 Copiado!');}
-}
-let _userInteracted = false;
-let _currentCommentsVideo = null;
-
-function toggleSound(vid, id) {
-  _userInteracted = true;
-  vid.muted = !vid.muted;
-  if (vid.paused) { vid.play().catch(()=>{}); }
-  showMuteHint(id, !vid.muted);
-}
-
-function showMuteHint(id, unmuted) {
-  const el = document.getElementById('mh-'+id);
-  if (!el) return;
-  el.textContent = unmuted === false ? '🔇' : (unmuted ? '🔊' : '🔇');
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 800);
-}
-
-// Comments
-function openComments(videoId, count) {
-  _currentCommentsVideo = videoId;
-  document.getElementById('commentsPanel').classList.add('open');
-  document.getElementById('commentsBackdrop').classList.add('on');
-  document.getElementById('cpCount').textContent = count > 0 ? '('+fmt(count)+')' : '';
-  loadComments(videoId);
-  setTimeout(()=>document.getElementById('cpInput').focus(), 400);
-}
-
-function closeComments() {
-  document.getElementById('commentsPanel').classList.remove('open');
-  document.getElementById('commentsBackdrop').classList.remove('on');
-}
-
-async function loadComments(videoId) {
+    renderCreatorGrid(d.videos||[], true);
+  } catch(e) { document.getElementById('profGrid').innerHTML='<div class="pg-empty" style="color:#f87171">Erro: '+e.message+'</div>'; }
+}async function loadComments(videoId) {
   const list = document.getElementById('cpList');
-  list.innerHTML = '<div class="cp-empty">Carregando…</div>';
+  list.innerHTML = '<div class="cp-empty"><div style="width:20px;height:20px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Carregando…</div>';
   try {
     const r = await fetch('/api/blue-comment?video_id='+videoId+'&limit=50');
+    if (!r.ok) { list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro '+r.status+'. A tabela blue_comments foi criada no Supabase?</div>'; return; }
     const d = await r.json();
     const comments = d.comments || [];
-    if (comments.length === 0) {
-      list.innerHTML = '<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>';
-      return;
-    }
-    list.innerHTML = comments.map(c => {
-      const u = c.creator || {};
+    if (comments.length === 0) { list.innerHTML='<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>'; return; }
+    list.innerHTML = '';
+    comments.forEach(cm => {
+      const u  = cm.creator || {};
       const init = (u.display_name||u.username||'?').charAt(0).toUpperCase();
-      const ago = timeAgo(c.created_at);
-      return '<div class="cp-item">' +
-        '<div class="cp-av">'+init+'</div>' +
-        '<div class="cp-body">' +
-          '<div class="cp-user"><span class="at-link" onclick="openCommentProfile(\''+c.user_id+'\')" >@'+(u.username||'usuário')+'</span></div>' +
-          '<div class="cp-text">'+escHtml(c.text)+'</div>' +
-          '<div class="cp-time">'+ago+'</div>' +
-        '</div></div>';
-    }).join('');
-  } catch(e) { list.innerHTML = '<div class="cp-empty">Erro ao carregar.</div>'; }
-}
-
-async function sendComment() {
-  const input = document.getElementById('cpInput');
-  const text = input.value.trim();
-  if (!text || !_currentCommentsVideo) return;
-  if (!TOKEN) { toast('Entre para comentar'); closeComments(); return; }
-  const btn = document.getElementById('cpSend');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/blue-comment', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: TOKEN, video_id: _currentCommentsVideo, text })
+      const div = document.createElement('div');
+      div.className = 'cp-item';
+      const av  = document.createElement('div'); av.className='cp-av'; av.textContent=init; av.onclick=()=>openCommentProfile(cm.user_id); div.appendChild(av);
+      const body= document.createElement('div'); body.className='cp-body';
+      const usr = document.createElement('div'); usr.className='cp-user';
+      const aln = document.createElement('span'); aln.className='at-link'; aln.textContent='@'+(u.username||'usuário'); aln.onclick=()=>openCommentProfile(cm.user_id); usr.appendChild(aln); body.appendChild(usr);
+      const txt = document.createElement('div'); txt.className='cp-text'; txt.textContent=cm.text; body.appendChild(txt);
+      const tim = document.createElement('div'); tim.className='cp-time'; tim.textContent=timeAgo(cm.created_at); body.appendChild(tim);
+      div.appendChild(body); list.appendChild(div);
     });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error||'Erro');
-    input.value = ''; input.style.height = 'auto';
-    // Adiciona comentário no topo da lista
-    const list = document.getElementById('cpList');
-    const empty = list.querySelector('.cp-empty');
-    if (empty) empty.remove();
-    const div = document.createElement('div');
-    div.className = 'cp-item';
-    div.innerHTML = '<div class="cp-av">V</div><div class="cp-body"><div class="cp-user">@você</div><div class="cp-text">'+escHtml(text)+'</div><div class="cp-time">agora</div></div>';
-    list.insertBefore(div, list.firstChild);
-    // Atualiza contador
-    const cc = document.getElementById('cc-'+_currentCommentsVideo);
-    if (cc) cc.textContent = fmt((parseInt(cc.textContent.replace(/[^0-9]/g,''))||0)+1);
-    const cpCount = document.getElementById('cpCount');
-    if (cpCount) cpCount.textContent = '('+((parseInt(cpCount.textContent.replace(/[^0-9]/g,''))||0)+1)+')';
-  } catch(e) { toast('Erro: '+e.message); }
-  btn.disabled = false;
-}
+  } catch(e) { list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro: '+e.message+'</div>'; }
 
-function openCommentProfile(userId) {
-  if (!userId) return;
-  closeComments();
-  setTimeout(() => openCreatorProfile(userId), 300);
-}
 
-function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function ping(type,id){ fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{}); }
-
-// UPLOAD
-function openUpload(){
-  document.getElementById('modal').classList.add('on');
-  document.getElementById('authWall').style.display = TOKEN?'none':'block';
-  document.getElementById('upForm').style.display = TOKEN?'block':'none';
-}
-function closeUpload(){ document.getElementById('modal').classList.remove('on'); }
-function dropFile(e){ e.preventDefault();e.currentTarget.classList.remove('ov');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))pickFile(f); }
-
-function pickFile(file){
-  if(!file)return;
-  // Avisa se muito grande mas deixa tentar (o Supabase decide)
-  const mb = Math.round(file.size/1024/1024);
-  if(file.size > 2000*1024*1024) {
-    toast('❌ Arquivo maior que 2GB — não suportado'); return;
-  }
-  if(mb > 200) toast('⚠️ Arquivo grande ('+mb+'MB) — pode demorar');
-  selFile=file;
-  const url=URL.createObjectURL(file);
-  const tv=document.createElement('video'); tv.src=url; tv.muted=true;
-  tv.onloadedmetadata=()=>{ vDur=tv.duration;vW=tv.videoWidth;vH=tv.videoHeight; tv.currentTime=.5; };
-  tv.onseeked=()=>{
-    const c=document.createElement('canvas');
-    c.width=Math.min(tv.videoWidth,480); c.height=Math.round(c.width*(tv.videoHeight/tv.videoWidth));
-    c.getContext('2d').drawImage(tv,0,0,c.width,c.height);
-    // Comprime thumbnail agressivamente (max 200KB para não estourar Vercel)
-    let q=0.6; thumbB64=c.toDataURL('image/jpeg',q);
-    while(thumbB64.length>200000&&q>0.1){q-=0.1;thumbB64=c.toDataURL('image/jpeg',q);}
-    document.getElementById('pthumb').innerHTML=`<img src="${thumbB64}" style="width:72px;height:72px;object-fit:cover;border-radius:10px"/>`;
-  };
-  document.getElementById('dico').textContent='✅';
-  document.getElementById('dlbl').textContent=file.name.slice(0,40);
-  document.getElementById('pinfo').innerHTML=`<b>${file.name.slice(0,30)}</b><br>${(file.size/1024/1024).toFixed(1)}MB`;
-  document.getElementById('prevrow').style.display='flex';
-  const btn=document.getElementById('mpub'); btn.disabled=false; btn.textContent='Publicar →';
-  if(!document.getElementById('ftitle').value) document.getElementById('ftitle').value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
-}
-
-async function publish(){
-  if(!selFile)return;
-  const title=document.getElementById('ftitle').value.trim();
-  if(!title){toast('Adicione um título');return;}
-  const desc=document.getElementById('fdesc').value.trim();
-  const btn=document.getElementById('mpub'), msg=document.getElementById('mmsg');
-  const prog=document.getElementById('mprog'), fill=document.getElementById('mfill');
-  btn.disabled=true; btn.textContent='Verificando…';
-  prog.style.display='block'; fill.style.width='3%';
-  msg.className='mmsg ok'; msg.textContent='Verificando sessão…';
-
-  // Garante token válido antes de tentar upload
-  const validToken = await getValidToken();
-  if (!validToken) {
-    closeUpload();
-    msg.textContent='';prog.style.display='none';btn.disabled=false;btn.textContent='Publicar →';
-    toast('Sessão expirada — faça login novamente');
-    setTimeout(()=>window.location.href='/?signin=1', 1500);
-    return;
-  }
-
-  btn.textContent='Publicando…'; fill.style.width='5%'; msg.textContent='Preparando…';
-
-  try{
-    // Passo 1: API salva metadados e retorna destino de upload
-    msg.textContent='Salvando…'; fill.style.width='10%';
-    const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:validToken,title,description:desc,duration:vDur,width:vW,height:vH,
-        file_name:selFile.name,thumbnail_data:thumbB64})});
-    const d1=await r1.json();
-    if(!r1.ok)throw new Error(d1.error||'Erro: '+r1.status);
-
-    fill.style.width='15%'; msg.textContent='Enviando vídeo…';
-
-    // Passo 2: upload direto para Supabase Storage (bypassa Vercel - sem limite)
-    const upUrl=d1.supabase_url+'/storage/v1/object/blue-videos/'+d1.storage_path;
-    const fileMB=Math.round(selFile.size/1024/1024);
-    msg.textContent='Enviando vídeo ('+fileMB+'MB)…';
-    await new Promise((res,rej)=>{
-      const xhr=new XMLHttpRequest();
-      xhr.upload.onprogress=e=>{ if(e.lengthComputable)fill.style.width=(15+e.loaded/e.total*80)+'%'; };
-      xhr.onload=()=>{
-        console.log('Upload:',xhr.status,xhr.responseText.slice(0,200));
-        if(xhr.status<300){res();}
-        else if(xhr.status===400&&xhr.responseText.includes('413')){
-          rej(new Error('Arquivo grande demais — vá em Supabase Dashboard → Project Settings → Storage → aumente o File Size Limit para 5000MB'));
-        }else{
-          rej(new Error('Upload HTTP '+xhr.status+': '+xhr.responseText.slice(0,100)));
-        }
-      };
-      xhr.onerror=()=>rej(new Error('Falha de rede'));
-      xhr.open('PUT',upUrl);
-      xhr.setRequestHeader('apikey',d1.anon_key);
-      xhr.setRequestHeader('Authorization','Bearer '+validToken);
-      const ct = selFile.type || 'video/mp4';
-      xhr.setRequestHeader('Content-Type', ct);
-      xhr.setRequestHeader('x-upsert','true');
-      xhr.setRequestHeader('cache-control','3600');
-      xhr.send(selFile);
-    });
-
-    fill.style.width='100%'; msg.textContent='✅ Publicado!'; btn.textContent='✅ Pronto!';
-    toast('🎬 Vídeo publicado!');
-    const newVid=d1.video||{id:'',video_url:'',thumbnail_url:'',title,description:desc,views:0,likes:0,saves:0};
-    newVid.creator={}; videos.unshift(newVid);
-  }catch(err){
-    msg.className='mmsg err';msg.textContent=err.message;
-    btn.disabled=false;btn.textContent='Tentar novamente';
-    fill.style.width='0%';prog.style.display='none';
-  }
-}
-
-function fmt(n){n=parseInt(n)||0;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n);}
-let _tt;function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2500);}
-document.addEventListener('keydown',e=>{const f=document.getElementById('feed');if(e.key==='ArrowDown')f.scrollBy({top:window.innerHeight,behavior:'smooth'});if(e.key==='ArrowUp')f.scrollBy({top:-window.innerHeight,behavior:'smooth'});});
-
-loadFeed();
-</script>
-</body>
-</html>
