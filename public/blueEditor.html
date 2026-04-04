@@ -251,6 +251,18 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
         autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')startEditor()"/>
       <button class="btn-go" id="btnStart" onclick="startEditor()">Analisar ↗</button>
     </div>
+    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.07);padding-top:14px">
+      <div class="input-label" style="margin-bottom:8px">— ou envie o arquivo de vídeo diretamente —</div>
+      <div id="vidUploadZone" onclick="document.getElementById('vidFileInput').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--blue)'"
+        ondragleave="this.style.borderColor=''"
+        ondrop="event.preventDefault();this.style.borderColor='';handleVidFile(event.dataTransfer.files[0])"
+        style="border:2px dashed rgba(255,255,255,.12);border-radius:12px;padding:18px;text-align:center;cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:12px;color:var(--dim)">
+        <div style="font-size:24px;margin-bottom:4px" id="vidUploadIcon">🎬</div>
+        <div id="vidUploadLabel">Arraste o MP4 aqui ou clique para selecionar</div>
+        <input type="file" id="vidFileInput" accept="video/*" style="display:none" onchange="handleVidFile(this.files[0])"/>
+      </div>
+    </div>
     <div id="inputMsg" style="font-family:var(--mono);font-size:11px;color:#f87171;margin-top:8px;min-height:16px"></div>
   </div>
 
@@ -483,6 +495,7 @@ function generateMusicWav(style, duration=30) {
 let currentStep = 0;
 let videoId = null;
 let roteiros = null;
+let _uploadedVideoBuffer = null; // quando usuário faz upload direto
 let selectedRoteiro = null; // {type, text, title}
 let selectedVoice = null;   // {id, name}
 let wmMode = 'none';        // 'none' | 'text' | 'image'
@@ -525,7 +538,7 @@ function renderMusic() {
         <div class="music-name">${t.name}</div>
         <div class="music-genre">${t.genre}</div>
       </div>
-      ${t.url ? `<button class="btn-play-sm" onclick="event.stopPropagation();playMusicPreview('${t.id}')">▶</button>` : ''}
+      ${t.id !== 'none' ? `<button class="btn-play-sm" id="pp-${t.id}" onclick="event.stopPropagation();playMusicPreview('${t.id}')">▶</button>` : ''}
     </div>`).join('');
 }
 
@@ -543,6 +556,22 @@ function updateProgress(step) {
 }
 
 // ── START ─────────────────────────────────────────────────────────────────────
+function handleVidFile(file) {
+  if (!file || !file.type.startsWith('video/')) { toast('Selecione um arquivo de vídeo'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _uploadedVideoBuffer = e.target.result;
+    document.getElementById('vidUploadIcon').textContent = '✅';
+    document.getElementById('vidUploadLabel').textContent = file.name.slice(0,40) + ' (' + (file.size/1024/1024).toFixed(1) + 'MB)';
+    // Se já tem link, ignora. Se não tem, indica que vai usar o arquivo
+    if (!document.getElementById('urlInput').value.trim()) {
+      document.getElementById('inputMsg').style.color = 'var(--green)';
+      document.getElementById('inputMsg').textContent = '✅ Vídeo carregado. Agora cole o link do Short original para gerar o roteiro.';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 async function startEditor() {
   const url = document.getElementById('urlInput').value.trim();
   const msg = document.getElementById('inputMsg');
@@ -606,19 +635,45 @@ function selectVoice(id) {
   document.getElementById('btn2').disabled = false;
 }
 
+// Preview URLs hardcoded para as vozes padrão ElevenLabs (estáveis)
+const VOICE_PREVIEW_URLS = {
+  'onwK4e9ZLuTAKqWW03F9': 'https://storage.googleapis.com/eleven-labs-audio-samples/daniel.mp3',
+  'IKne3meq5aSn9XLyUdCD': 'https://storage.googleapis.com/eleven-labs-audio-samples/carlos.mp3',
+  'N2lVS1w4EtoT3dr4eOWO': 'https://storage.googleapis.com/eleven-labs-audio-samples/alex.mp3',
+  'Xb7hH8MSUJpSbSDYk0k2': 'https://storage.googleapis.com/eleven-labs-audio-samples/alice.mp3',
+  'XB0fDUnXU5powFXDhCwa': 'https://storage.googleapis.com/eleven-labs-audio-samples/charlotte.mp3',
+  'pNInz6obpgDQGcFmaJgB': 'https://storage.googleapis.com/eleven-labs-audio-samples/adam.mp3',
+  'EXAVITQu4vr4xnSDxMaL': 'https://storage.googleapis.com/eleven-labs-audio-samples/sarah.mp3',
+};
+
 async function previewVoice(id) {
+  const btn = event?.currentTarget || event?.target;
+  const orig = btn?.textContent || '▶ Ouvir';
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+  const done = () => { if(btn){btn.textContent=orig;btn.disabled=false;} };
+
+  // Tenta via API backend primeiro
   try {
-    const btn = event?.target;
-    if (btn) { const orig = btn.textContent; btn.textContent = '⏳'; btn.disabled = true;
-      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 4000); }
     const r = await fetch('/api/blue-editor', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'voice-preview', token: TOKEN, voiceId: id })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'voice-preview', token:TOKEN, voiceId:id})
     });
-    const d = await r.json();
-    if (!r.ok) { toast('Preview indisponível: ' + (d.error||r.status)); return; }
-    if (d.url) { const a = new Audio(d.url); a.play().catch(() => toast('Erro ao tocar preview')); }
-  } catch(e) { toast('Erro: ' + e.message); }
+    if (r.ok) {
+      const d = await r.json();
+      if (d.url) { const a=new Audio(d.url); a.play().then(done).catch(done); a.onended=done; return; }
+    }
+  } catch(e) {}
+
+  // Fallback: URL pré-definida
+  const fallbackUrl = VOICE_PREVIEW_URLS[id];
+  if (fallbackUrl) {
+    const a = new Audio(fallbackUrl);
+    a.play().then(done).catch(() => { toast('Preview indisponível — vá ao BlueVoice para ouvir'); done(); });
+    a.onended = done;
+    return;
+  }
+  toast('Preview: configure a API do BlueEditor no Vercel');
+  done();
 }
 
 // ── WATERMARK ─────────────────────────────────────────────────────────────────
@@ -663,15 +718,20 @@ function selectMusic(id) {
 let _previewCtx = null;
 function playMusicPreview(id) {
   if (_musicAudio) { _musicAudio.pause(); _musicAudio = null; }
-  if (_previewCtx) { _previewCtx.close(); _previewCtx = null; }
   if (id === 'none') return;
+  const btn = document.getElementById('pp-'+id);
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
   generateMusicWav(id, 8).then(wavData => {
-    const blob = new Blob([wavData], { type:'audio/wav' });
-    _musicAudio = new Audio(URL.createObjectURL(blob));
+    const blob = new Blob([wavData], {type:'audio/wav'});
+    const url = URL.createObjectURL(blob);
+    _musicAudio = new Audio(url);
     _musicAudio.volume = 0.5;
-    _musicAudio.play().catch(e => toast('Erro ao tocar: ' + e.message));
-    setTimeout(() => { if(_musicAudio){_musicAudio.pause();_musicAudio=null;} }, 8000);
-  }).catch(e => toast('Erro ao gerar preview: ' + e.message));
+    _musicAudio.onended = () => { if(btn){btn.textContent='▶';btn.disabled=false;} };
+    _musicAudio.play()
+      .then(() => { if(btn){btn.textContent='⏹';btn.disabled=false;} })
+      .catch(e => { toast('Clique primeiro em qualquer lugar da página, depois no preview'); if(btn){btn.textContent='▶';btn.disabled=false;} });
+    setTimeout(() => { if(_musicAudio){_musicAudio.pause();_musicAudio=null;} if(btn){btn.textContent='▶';btn.disabled=false;} }, 10000);
+  }).catch(e => { toast('Erro: '+e.message); if(btn){btn.textContent='▶';btn.disabled=false;} });
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
@@ -722,22 +782,29 @@ async function runEditor() {
     generatedAudioB64 = ttsD.audio_b64;
     setStep('✅ Narração gerada!', 20);
 
-    // ── 2. Baixar vídeo original (via proxy para evitar CORS) ───────────────
-    setStep('⬇️ Obtendo link do Short original…', 22);
-    const dlRes = await fetch('/api/blue-editor', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-video-url', token: TOKEN, videoId })
-    });
-    const dlData = await dlRes.json();
-    if (!dlRes.ok) throw new Error(dlData.error || 'Não foi possível baixar o vídeo. O Short precisa ser público.');
-    const videoDownloadUrl = dlData.url;
-    setStep('⬇️ Baixando vídeo…', 28);
-
-    // Busca o arquivo de vídeo
-    const vidFetch = await fetch(videoDownloadUrl);
-    if (!vidFetch.ok) throw new Error('Falha ao baixar o vídeo (HTTP ' + vidFetch.status + ')');
-    const vidArrayBuffer = await vidFetch.arrayBuffer();
-    setStep('✅ Vídeo baixado!', 40);
+    // ── 2. Obter vídeo (upload direto ou download) ───────────────────────────
+    let vidArrayBuffer = null;
+    if (_uploadedVideoBuffer) {
+      setStep('📁 Usando vídeo enviado…', 35);
+      vidArrayBuffer = _uploadedVideoBuffer;
+      setStep('✅ Vídeo pronto!', 40);
+    } else {
+      setStep('⬇️ Obtendo link do Short…', 22);
+      const dlRes = await fetch('/api/blue-editor', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'get-video-url', token:TOKEN, videoId})
+      });
+      const dlData = await dlRes.json();
+      if (!dlRes.ok) throw new Error(
+        (dlData.error||'Não foi possível baixar o vídeo.') +
+        '\n\n💡 Dica: baixe o Short pelo BaixaBlue, envie o arquivo acima e tente novamente.'
+      );
+      setStep('⬇️ Baixando vídeo…', 28);
+      const vidFetch = await fetch(dlData.url);
+      if (!vidFetch.ok) throw new Error('Falha ao baixar (HTTP '+vidFetch.status+'). Tente enviar o arquivo direto.');
+      vidArrayBuffer = await vidFetch.arrayBuffer();
+      setStep('✅ Vídeo baixado!', 40);
+    }
 
     // ── 3. Detectar duração do vídeo ─────────────────────────────────────────
     try {
