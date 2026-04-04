@@ -494,19 +494,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <div class="nav-right" id="navRight">
     <!-- Master tools — visible to all, locked for non-master -->
     <div class="nav-tools-group" id="navToolsGroup">
-      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('download')">
+      <button class="nav-tool-btn" onclick="openMasterTool('download')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="nav-tool-tip">⬇️ BaixaBlue</span>
       </button>
-      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('viral')">
+      <button class="nav-tool-btn" onclick="openMasterTool('viral')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         <span class="nav-tool-tip">🔥 Virais</span>
       </button>
-      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('voice')">
+      <button class="nav-tool-btn" onclick="openMasterTool('voice')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         <span class="nav-tool-tip">🎙️ BlueVoice</span>
       </button>
-      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('bluescore')" style="background:linear-gradient(135deg,rgba(0,80,255,.15),rgba(0,170,255,.08));border-color:rgba(0,170,255,.3)">
+      <button class="nav-tool-btn" onclick="openMasterTool('bluescore')" style="background:linear-gradient(135deg,rgba(0,80,255,.15),rgba(0,170,255,.08));border-color:rgba(0,170,255,.3)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span class="nav-tool-tip">📊 BlueScore</span>
       </button>
@@ -514,7 +514,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         <span class="nav-tool-tip">✨ BlueEditor</span>
       </button>
-      <button class="nav-tool-btn locked-tool" onclick="openMasterTool('bluelens')" style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(0,170,255,.06));border-color:rgba(167,139,250,.3)">
+      <button class="nav-tool-btn" onclick="openMasterTool('bluelens')" style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(0,170,255,.06));border-color:rgba(167,139,250,.3)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <span class="nav-tool-tip">🔍 BlueLens</span>
       </button>
@@ -827,9 +827,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <div style="width:100%;max-width:720px;margin-top:14px;text-align:center;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <div style="text-align:center">
       <div style="font-family:var(--font-mono);font-size:10px;color:rgba(251,191,36,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">acesse nossa</div>
-      <a href="/blue.html" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1));border:1px solid rgba(251,191,36,.35);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s" onmouseover="this.style.background='linear-gradient(135deg,rgba(251,191,36,.22),rgba(255,140,0,.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1))'">
+      <button onclick="window.location.assign('/blue.html')" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1));border:1px solid rgba(251,191,36,.35);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;cursor:pointer;transition:all .25s" onmouseover="this.style.background='linear-gradient(135deg,rgba(251,191,36,.22),rgba(255,140,0,.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1))'">
         <span style="font-size:18px">🎬</span>Plataforma de vídeos
-      </a>
+      </button>
     </div>
     <div style="text-align:center">
       <div style="font-family:var(--font-mono);font-size:10px;color:rgba(251,191,36,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">✨ novo</div>
@@ -1908,8 +1908,8 @@ async function generateTitles(lang){
 
 // ── NARRAR NO BLUEVOICE ───────────────────────────────────────────────────────
 function sendToBlueVoice(scriptId){
-  const isMaster=userPlan==='master'||localStorage.getItem('bt_plan')==='master';
-  if(!isMaster){openAuthModal();return;}
+  const token=localStorage.getItem('bt_token');
+  if(!token){openAuthModal();return;}
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
@@ -2570,10 +2570,12 @@ document.addEventListener('click', e => {
 });
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
+function goToBlue(){ window.location.assign('/blue.html'); }
+function goToBlueEditor(){ window.location.assign('/blueEditor.html'); }
 function openMasterTool(tool){
-  const _ep=userPlan==='master'||localStorage.getItem('bt_plan')==='master'?'master':userPlan;
-  if(_ep!=='master'){openAuthModal();return;}
-  if(userPlan!=='master')userPlan='master';
+  // Tudo grátis — acesso direto sem checar plano
+  const token = localStorage.getItem('bt_token');
+  if(!token){ openAuthModal(); return; }
   const _toolMap={download:'baixa',viral:'virais',voice:'voice',bluescore:'score',bluelens:'score'};
   try{
     if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:_toolMap[tool]||tool},'*'); return; }
