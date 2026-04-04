@@ -1361,33 +1361,35 @@ function renderGrid(vids,isOwn){
   vids.forEach(v=>{
     const card=document.createElement('div');card.className='pg';
     card.onclick=()=>{
-      // Open profile feed overlay with all videos from this profile
       const profileVids = isOwn ? _lastRenderedVids : videos.filter(x=>x.user_id===v.user_id);
       const toShow = profileVids.length > 0 ? profileVids : [v];
       const uname = (v.creator?.username) || (isOwn ? myProfile?.username : '') || 'usuário';
       openProfileFeed(toShow, v.id, uname);
     };
 
-    // Placeholder com gradiente colorido — nunca fica preto
-    const ph=document.createElement('div');ph.className='pg-ph';
-    ph.textContent='▶';
-    ph.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgba(255,255,255,.35)';
-    card.style.background=videoPlaceholderGradient(v.id||v.video_url||'');
-    card.appendChild(ph);
-
+    // Thumb via background-image (mais confiável que <img> absoluto)
+    const grad = videoPlaceholderGradient(v.id||v.video_url||'');
     if(v.thumbnail_url){
-      const img=new Image();
-      img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
-      img.onload=()=>{ card.insertBefore(img,ph); ph.style.display='none'; };
-      img.onerror=()=>{ if(v.video_url) extractVideoFrame(v.video_url, card, ph); };
-      img.src=v.thumbnail_url;
-    } else if(v.video_url){
-      extractVideoFrame(v.video_url, card, ph);
+      card.style.cssText = `background:${grad};background-size:cover`;
+      const img = document.createElement('img');
+      img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1';
+      img.loading='lazy';
+      img.src = v.thumbnail_url;
+      img.onerror = ()=>{ img.remove(); };
+      card.appendChild(img);
+    } else {
+      card.style.background = grad;
     }
 
-    const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
-    const vw=document.createElement('div');vw.className='pg-v';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
-    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
+    // Play icon overlay
+    const ph=document.createElement('div');
+    ph.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;color:rgba(255,255,255,.25);z-index:2;pointer-events:none';
+    ph.textContent='▶';
+    card.appendChild(ph);
+
+    const ov=document.createElement('div');ov.className='pg-ov';ov.style.zIndex='2';card.appendChild(ov);
+    const vw=document.createElement('div');vw.className='pg-v';vw.style.zIndex='3';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
+    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.style.zIndex='3';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
     grid.appendChild(card);
   });
 }
