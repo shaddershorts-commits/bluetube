@@ -839,22 +839,22 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
-    // Queries focadas em SHORTS NARRADOS de curiosidades por país
+    // Queries amplas para pegar shorts VIRAIS + queries de curiosidades narradas
     const REGION_CONFIG = {
-      ALL: { lang: null, queries: ['curiosidades narradas shorts viral', 'narrated facts shorts trending', 'curiosidades incríveis shorts'] },
-      BR:  { lang:'pt', queries: ['curiosidades narradas shorts viral', 'shorts narrado curiosidades brasil', 'voce sabia shorts viral', 'fatos incriveis narrados shorts'] },
-      US:  { lang:'en', queries: ['narrated facts shorts viral', 'did you know shorts trending', 'amazing facts narrated shorts', 'story time shorts viral'] },
-      GB:  { lang:'en', queries: ['narrated facts shorts uk viral', 'did you know shorts trending uk', 'amazing facts shorts uk'] },
-      IN:  { lang:'hi', queries: ['facts shorts viral hindi narrated', 'kya aap jante hain shorts', 'rochak tathya shorts viral'] },
-      MX:  { lang:'es', queries: ['curiosidades narradas shorts viral mexico', 'sabias que shorts mexico viral', 'datos curiosos shorts narrados'] },
-      JP:  { lang:'ja', queries: ['雑学 ナレーション ショート バズ', '知らなかった事実 ショート', '豆知識 ショート 人気'] },
-      KR:  { lang:'ko', queries: ['상식 나레이션 쇼츠 인기', '몰랐던 사실 쇼츠 바이럴'] },
-      DE:  { lang:'de', queries: ['wusstest du shorts viral deutsch', 'fakten shorts deutsch narration', 'erstaunliche fakten shorts'] },
-      FR:  { lang:'fr', queries: ['le saviez vous shorts viral france', 'faits incroyables shorts narres', 'curiosites shorts france'] },
-      ES:  { lang:'es', queries: ['curiosidades narradas shorts viral espana', 'sabias que shorts espana', 'datos curiosos shorts narrados'] },
-      AR:  { lang:'es', queries: ['curiosidades narradas shorts viral argentina', 'sabias que shorts argentina'] },
-      CO:  { lang:'es', queries: ['curiosidades narradas shorts viral colombia', 'sabias que shorts colombia'] },
-      TR:  { lang:'tr', queries: ['ilginc bilgiler shorts viral turkce', 'biliyor muydunuz shorts turkiye'] },
+      ALL: { lang: null, queries: ['shorts viral', 'most viewed shorts this week', 'viral shorts trending'] },
+      BR:  { lang:'pt', queries: ['shorts viral brasil', 'voce sabia shorts', 'curiosidades shorts viral', 'shorts mais vistos brasil'] },
+      US:  { lang:'en', queries: ['viral shorts', 'most viewed shorts', 'did you know shorts viral', 'facts shorts trending'] },
+      GB:  { lang:'en', queries: ['viral shorts uk', 'most viewed shorts uk', 'did you know shorts'] },
+      IN:  { lang:'hi', queries: ['shorts viral india', 'most viewed shorts india', 'facts shorts hindi'] },
+      MX:  { lang:'es', queries: ['shorts viral mexico', 'shorts mas vistos mexico', 'curiosidades shorts mexico'] },
+      JP:  { lang:'ja', queries: ['ショート 急上昇', 'ショート 人気 日本', '雑学 ショート'] },
+      KR:  { lang:'ko', queries: ['쇼츠 인기', '쇼츠 바이럴 한국', '상식 쇼츠'] },
+      DE:  { lang:'de', queries: ['shorts viral deutsch', 'meistgesehene shorts', 'fakten shorts deutsch'] },
+      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts les plus vus', 'le saviez vous shorts'] },
+      ES:  { lang:'es', queries: ['shorts viral espana', 'shorts mas vistos espana', 'curiosidades shorts'] },
+      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts mas vistos argentina'] },
+      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts mas vistos colombia'] },
+      TR:  { lang:'tr', queries: ['shorts viral turkiye', 'en cok izlenen shorts', 'ilginc bilgiler shorts'] },
     };
 
     const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
@@ -947,7 +947,7 @@ Responda APENAS em JSON válido sem markdown:
         .sort((a,b) => b.views - a.views)
         .slice(0, 50); // max 50 — todos são top
 
-      // Fallback 1: sem filtro de data mas mantém views mínimas
+      // Fallback: sem filtro de data mas SEMPRE mantém views mínimas
       if (videos.length === 0 && allVideos.length > 0) {
         videos = allVideos
           .filter(v => v.views >= MIN_VIEWS)
@@ -956,11 +956,7 @@ Responda APENAS em JSON válido sem markdown:
         console.log('viral-shorts: fallback sem data, total:', videos.length);
       }
 
-      // Fallback 2: sem filtro nenhum (quota esgotada ou região com poucos virais)
-      if (videos.length === 0 && allVideos.length > 0) {
-        videos = allVideos.sort((a,b) => b.views - a.views).slice(0, 30);
-        console.log('viral-shorts: fallback sem filtro, top:', videos.length);
-      }
+      // NUNCA mostra vídeos abaixo do mínimo de views
 
       const dateFilterFailed = false;
 
