@@ -172,5 +172,66 @@ Responda APENAS em JSON válido:
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
+
+  // ── ACTION: voice-preview ────────────────────────────────────────────────
+  if (action === 'voice-preview') {
+    const EL = process.env.ELEVENLABS_API_KEY;
+    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    const vid = req.body?.voiceId || req.query?.voiceId;
+    if (!vid) return res.status(400).json({ error: 'voiceId obrigatório' });
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${vid}`, {
+        headers: { 'xi-api-key': EL }
+      });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada no ElevenLabs' });
+      const d = await r.json();
+      if (!d.preview_url) return res.status(404).json({ error: 'Preview não disponível para esta voz' });
+      return res.status(200).json({ url: d.preview_url, name: d.name });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── ACTION: get-video-url (proxy cobalt para evitar CORS) ────────────────
+  if (action === 'get-video-url') {
+    const vid = req.body?.videoId;
+    if (!vid) return res.status(400).json({ error: 'videoId obrigatório' });
+    try {
+      const r = await fetch('https://api.cobalt.tools/api/json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/shorts/${vid}`,
+          vCodec: 'h264', vQuality: '720',
+          filenamePattern: 'basic', disableMetadata: true
+        })
+      });
+      const d = await r.json();
+      if (!r.ok || d.status === 'error') {
+        return res.status(503).json({ error: d.text || 'Falha ao obter link do vídeo. Verifique se o Short é público.' });
+      }
+      const videoUrl = d.url || d.picker?.[0]?.url;
+      if (!videoUrl) return res.status(503).json({ error: 'URL de download não encontrada' });
+      return res.status(200).json({ url: videoUrl });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── ACTION: get-music (proxy música para evitar CORS) ─────────────────────
+  if (action === 'get-music') {
+    const { musicId } = req.body || {};
+    const MUSIC_URLS = {
+      lofi:      'https://cdn.pixabay.com/audio/2023/06/19/audio_f5f9b7b0e3.mp3',
+      epic:      'https://cdn.pixabay.com/audio/2023/04/18/audio_71ef0ddf98.mp3',
+      corporate: 'https://cdn.pixabay.com/audio/2022/12/23/audio_e9b0d2c02e.mp3',
+      upbeat:    'https://cdn.pixabay.com/audio/2023/07/26/audio_dfe6e47b77.mp3',
+    };
+    if (!musicId || !MUSIC_URLS[musicId]) return res.status(400).json({ error: 'musicId inválido' });
+    try {
+      const r = await fetch(MUSIC_URLS[musicId]);
+      if (!r.ok) return res.status(503).json({ error: 'Música indisponível' });
+      const buf = await r.arrayBuffer();
+      const b64 = Buffer.from(buf).toString('base64');
+      return res.status(200).json({ audio_b64: b64 });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
   return res.status(400).json({ error: 'Ação inválida' });
 };
