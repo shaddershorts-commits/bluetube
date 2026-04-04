@@ -839,29 +839,27 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
-    // Queries amplas para pegar shorts VIRAIS + queries de curiosidades narradas
+    // Queries genéricas de TRENDING para pegar os shorts mais virais de cada país
     const REGION_CONFIG = {
-      ALL: { lang: null, queries: ['shorts viral', 'most viewed shorts this week', 'viral shorts trending'] },
-      BR:  { lang:'pt', queries: ['shorts viral brasil', 'voce sabia shorts', 'curiosidades shorts viral', 'shorts mais vistos brasil'] },
-      US:  { lang:'en', queries: ['viral shorts', 'most viewed shorts', 'did you know shorts viral', 'facts shorts trending'] },
-      GB:  { lang:'en', queries: ['viral shorts uk', 'most viewed shorts uk', 'did you know shorts'] },
-      IN:  { lang:'hi', queries: ['shorts viral india', 'most viewed shorts india', 'facts shorts hindi'] },
-      MX:  { lang:'es', queries: ['shorts viral mexico', 'shorts mas vistos mexico', 'curiosidades shorts mexico'] },
-      JP:  { lang:'ja', queries: ['ショート 急上昇', 'ショート 人気 日本', '雑学 ショート'] },
-      KR:  { lang:'ko', queries: ['쇼츠 인기', '쇼츠 바이럴 한국', '상식 쇼츠'] },
-      DE:  { lang:'de', queries: ['shorts viral deutsch', 'meistgesehene shorts', 'fakten shorts deutsch'] },
-      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts les plus vus', 'le saviez vous shorts'] },
-      ES:  { lang:'es', queries: ['shorts viral espana', 'shorts mas vistos espana', 'curiosidades shorts'] },
-      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts mas vistos argentina'] },
-      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts mas vistos colombia'] },
-      TR:  { lang:'tr', queries: ['shorts viral turkiye', 'en cok izlenen shorts', 'ilginc bilgiler shorts'] },
+      ALL: { lang: null, queries: ['shorts', 'viral shorts', 'trending shorts'] },
+      BR:  { lang:'pt', queries: ['shorts', 'shorts viral', 'shorts trending brasil'] },
+      US:  { lang:'en', queries: ['shorts', 'viral shorts', 'trending shorts'] },
+      GB:  { lang:'en', queries: ['shorts', 'viral shorts uk', 'trending shorts'] },
+      IN:  { lang:'hi', queries: ['shorts', 'viral shorts india', 'trending shorts'] },
+      MX:  { lang:'es', queries: ['shorts', 'shorts viral mexico', 'trending shorts'] },
+      JP:  { lang:'ja', queries: ['ショート', 'ショート 人気', 'ショート 急上昇'] },
+      KR:  { lang:'ko', queries: ['쇼츠', '쇼츠 인기', '인기급상승 쇼츠'] },
+      DE:  { lang:'de', queries: ['shorts', 'shorts viral', 'trending shorts deutsch'] },
+      FR:  { lang:'fr', queries: ['shorts', 'shorts viral', 'shorts tendance france'] },
+      ES:  { lang:'es', queries: ['shorts', 'shorts viral', 'shorts tendencia espana'] },
+      AR:  { lang:'es', queries: ['shorts', 'shorts viral argentina'] },
+      CO:  { lang:'es', queries: ['shorts', 'shorts viral colombia'] },
+      TR:  { lang:'tr', queries: ['shorts', 'shorts viral turkiye'] },
     };
 
     const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
     const { lang, queries: regionQueries } = cfg;
-    const searchQueries = q
-      ? [`${q} narrado shorts`, `${q} curiosidades shorts`, `${q} shorts`]
-      : regionQueries;
+    const searchQueries = regionQueries;
 
     const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
 
