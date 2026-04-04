@@ -827,14 +827,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <div style="width:100%;max-width:720px;margin-top:14px;text-align:center;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <div style="text-align:center">
       <div style="font-family:var(--font-mono);font-size:10px;color:rgba(251,191,36,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">acesse nossa</div>
-      <!-- BLUE-PLATFORM-BTN-v2 -->
-      <button id="bluePlatformBtn" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1));border:1px solid rgba(251,191,36,.35);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;cursor:pointer;transition:all .25s" onmouseover="this.style.background='linear-gradient(135deg,rgba(251,191,36,.22),rgba(255,140,0,.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1))'">
+      <a href="/blue.html" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.1));border:1px solid rgba(251,191,36,.35);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s">
         <span style="font-size:18px">🎬</span>Plataforma de vídeos
-      </button>
+      </a>
     </div>
     <div style="text-align:center">
       <div style="font-family:var(--font-mono);font-size:10px;color:rgba(251,191,36,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">✨ novo</div>
-      <a href="/blueEditor.html" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(255,140,0,.12));border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s;box-shadow:0 0 20px rgba(251,191,36,.15)" onmouseover="this.style.boxShadow='0 0 32px rgba(251,191,36,.35)'" onmouseout="this.style.boxShadow='0 0 20px rgba(251,191,36,.15)'">
+      <a href="/blueEditor.html" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(255,140,0,.12));border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s">
         <span style="font-size:18px">✨</span>BlueEditor
       </a>
     </div>
@@ -2815,16 +2814,6 @@ window.sendBluBluFeedback = async function(){
   setBluBluExpression('thumbsup');
 };
 </script>
-<script>
-// Wire platform button (cache-bust fix v3)
-(function wirePlatBtn(){
-  var b = document.getElementById('bluePlatformBtn');
-  if (b) {
-    b.onclick = function(e){ e.stopPropagation(); e.preventDefault(); window.location.href = '/blue.html'; };
-  } else {
-    setTimeout(wirePlatBtn, 200);
-  }
-})();
-</script>
+
 </body>
 </html>
