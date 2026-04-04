@@ -155,7 +155,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     <div class="page-title-group">
       <div class="page-eyebrow"><span class="live-dot"></span>Atualizado em tempo real · Exclusivo Master</div>
       <h1 class="page-title">Shorts <span class="accent">virais</span><br>em alta agora.</h1>
-      <div class="page-sub">Os Shorts com mais views do YouTube — filtre por período e nicho</div>
+      <div class="page-sub">Shorts narrados de curiosidades com milhões de views — filtre por período e país</div>
     </div>
 
     <!-- FILTERS -->
@@ -186,23 +186,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="TR">🇹🇷 Turquia</option>
         <option value="KR">🇰🇷 Coreia</option>
       </select>
-
-      <!-- Category -->
-      <select class="filter-select" id="categorySelect" onchange="fetchVirals()">
-        <option value="">Todas categorias</option>
-        <option value="10">🎵 Música</option>
-        <option value="17">⚽ Esportes</option>
-        <option value="20">🎮 Games</option>
-        <option value="22">📱 Pessoas e Blogs</option>
-        <option value="23">😂 Comédia</option>
-        <option value="24">🎬 Entretenimento</option>
-        <option value="26">Como fazer e estilo</option>
-        <option value="28">🔬 Ciência e Tech</option>
-        <option value="1">🎞️ Filmes e Animação</option>
-      </select>
-
-      <!-- Search -->
-      <input class="search-input" id="searchInput" type="text" placeholder="Buscar nicho…" onkeydown="if(event.key==='Enter')fetchVirals()"/>
 
       <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
         <span id="fetchBtnIcon">
@@ -286,8 +269,8 @@ async function fetchVirals() {
   icon.innerHTML = '<span class="spinner"></span>';
 
   const region = document.getElementById('regionSelect').value;
-  const category = document.getElementById('categorySelect').value;
-  const q = document.getElementById('searchInput').value.trim();
+  const category = '';
+  const q = '';
 
   // Show skeletons
   _saveViraisState();
@@ -494,8 +477,6 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
   const s=_load('bt_virais');
   if(!s) return;
   if(s.region){const e=document.getElementById('regionSelect');if(e)e.value=s.region;}
-  if(s.category){const e=document.getElementById('categorySelect');if(e)e.value=s.category;}
-  if(s.q){const e=document.getElementById('searchInput');if(e)e.value=s.q;}
   if(s.period&&typeof currentPeriod!=='undefined'){
     currentPeriod=s.period;
     document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset&&b.dataset.period===s.period));
@@ -504,9 +485,7 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
 function _saveViraisState(){
   _save('bt_virais',{
     region:document.getElementById('regionSelect')?.value||'BR',
-    period:typeof currentPeriod!=='undefined'?currentPeriod:'7d',
-    category:document.getElementById('categorySelect')?.value||'',
-    q:document.getElementById('searchInput')?.value||''
+    period:typeof currentPeriod!=='undefined'?currentPeriod:'7d'
   });
 }
 

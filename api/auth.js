@@ -816,7 +816,7 @@ Responda APENAS em JSON válido sem markdown:
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
             if (age < cacheTTL) {
               // Aplica filtro de views mínimas no cache também
-              const minV = period === '24h' ? 1000000 : period === '7d' ? 5000000 : 10000000;
+              const minV = period === '24h' ? 1000000 : period === '7d' ? 8000000 : 14000000;
               const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
               // Se cache ficou vazio após filtro, ignora e rebusca
               if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
@@ -839,27 +839,28 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
+    // Queries focadas em SHORTS NARRADOS de curiosidades por país
     const REGION_CONFIG = {
-      ALL: { lang: null, queries: ['viral shorts trending', 'shorts viral global', 'shorts blowing up'] },
-      BR:  { lang:'pt', queries: ['shorts viral brasil', 'shorts viralizando', 'curta viral brasil'] },
-      US:  { lang:'en', queries: ['viral shorts usa', 'shorts blowing up', 'trending shorts america'] },
-      GB:  { lang:'en', queries: ['viral shorts uk', 'trending shorts britain', 'shorts going viral uk'] },
-      IN:  { lang:'hi', queries: ['shorts viral india', 'viral shorts hindi', 'trending shorts india'] },
-      MX:  { lang:'es', queries: ['shorts viral mexico', 'cortos virales mexico', 'shorts tendencia mexico'] },
-      JP:  { lang:'ja', queries: ['ショート 急上昇 日本', 'ショート バズ 日本', 'ショート動画 人気'] },
-      KR:  { lang:'ko', queries: ['쇼츠 인기 한국', '한국 쇼츠 바이럴', '인기급상승 쇼츠'] },
-      DE:  { lang:'de', queries: ['shorts viral deutschland', 'virale shorts deutsch', 'trending shorts deutsch'] },
-      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts qui buzze france', 'tendance shorts france'] },
-      ES:  { lang:'es', queries: ['shorts viral espana', 'shorts virales espana', 'tendencia shorts espana'] },
-      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts virales argentina'] },
-      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts virales colombia'] },
-      TR:  { lang:'tr', queries: ['shorts viral turkiye', 'trend shorts turkce', 'viral shorts turkiye'] },
+      ALL: { lang: null, queries: ['curiosidades narradas shorts viral', 'narrated facts shorts trending', 'curiosidades incríveis shorts'] },
+      BR:  { lang:'pt', queries: ['curiosidades narradas shorts viral', 'shorts narrado curiosidades brasil', 'voce sabia shorts viral', 'fatos incriveis narrados shorts'] },
+      US:  { lang:'en', queries: ['narrated facts shorts viral', 'did you know shorts trending', 'amazing facts narrated shorts', 'story time shorts viral'] },
+      GB:  { lang:'en', queries: ['narrated facts shorts uk viral', 'did you know shorts trending uk', 'amazing facts shorts uk'] },
+      IN:  { lang:'hi', queries: ['facts shorts viral hindi narrated', 'kya aap jante hain shorts', 'rochak tathya shorts viral'] },
+      MX:  { lang:'es', queries: ['curiosidades narradas shorts viral mexico', 'sabias que shorts mexico viral', 'datos curiosos shorts narrados'] },
+      JP:  { lang:'ja', queries: ['雑学 ナレーション ショート バズ', '知らなかった事実 ショート', '豆知識 ショート 人気'] },
+      KR:  { lang:'ko', queries: ['상식 나레이션 쇼츠 인기', '몰랐던 사실 쇼츠 바이럴'] },
+      DE:  { lang:'de', queries: ['wusstest du shorts viral deutsch', 'fakten shorts deutsch narration', 'erstaunliche fakten shorts'] },
+      FR:  { lang:'fr', queries: ['le saviez vous shorts viral france', 'faits incroyables shorts narres', 'curiosites shorts france'] },
+      ES:  { lang:'es', queries: ['curiosidades narradas shorts viral espana', 'sabias que shorts espana', 'datos curiosos shorts narrados'] },
+      AR:  { lang:'es', queries: ['curiosidades narradas shorts viral argentina', 'sabias que shorts argentina'] },
+      CO:  { lang:'es', queries: ['curiosidades narradas shorts viral colombia', 'sabias que shorts colombia'] },
+      TR:  { lang:'tr', queries: ['ilginc bilgiler shorts viral turkce', 'biliyor muydunuz shorts turkiye'] },
     };
 
     const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
     const { lang, queries: regionQueries } = cfg;
     const searchQueries = q
-      ? [`${q} shorts`, `${q} viral`, q]
+      ? [`${q} narrado shorts`, `${q} curiosidades shorts`, `${q} shorts`]
       : regionQueries;
 
     const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
@@ -932,10 +933,10 @@ Responda APENAS em JSON válido sem markdown:
         };
       }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
 
-      // Views mínimas por período — só mostra o que está realmente viral
-      const MIN_VIEWS = period === '24h' ? 1000000
-                      : period === '7d'  ? 5000000
-                      : 10000000; // 30d
+      // Views mínimas por período — apenas shorts realmente virais
+      const MIN_VIEWS = period === '24h' ? 1000000   // 1M+ em 24h
+                      : period === '7d'  ? 8000000   // 8M+ em 7 dias
+                      : 14000000; // 14M+ em 30 dias
       console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
 
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
