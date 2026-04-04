@@ -369,11 +369,18 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   display:flex;align-items:center;justify-content:center;font-size:16px}
 .chat-send:disabled{background:#333;cursor:not-allowed}
 
-/* Chat button on profile */
-.prof-msg-btn{display:block;margin:10px 20px 0;padding:10px;
-  border:none;border-radius:10px;font-size:14px;font-weight:600;
-  background:#3b82f6;color:#fff;cursor:pointer;
-  width:calc(100% - 40px);text-align:center}
+/* Botões de ação do perfil (seguir + chat) */
+.prof-follow-btn{flex:1;padding:10px;border:1px solid #3b82f6;border-radius:10px;
+  font-size:14px;font-weight:600;color:#3b82f6;background:none;cursor:pointer;text-align:center;transition:all .2s}
+.prof-follow-btn.following{background:#3b82f6;color:#fff}
+.prof-msg-btn{width:46px;height:46px;border:1px solid rgba(255,255,255,.2);border-radius:10px;
+  font-size:18px;background:rgba(255,255,255,.07);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:0}
+/* Badge de notificação */
+.inbox-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;
+  background:#f87171;border-radius:9px;font-size:10px;font-weight:700;
+  display:none;align-items:center;justify-content:center;padding:0 4px;color:#fff;
+  border:2px solid #000;pointer-events:none}
 </style>
 </head>
 <body>
@@ -382,7 +389,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openUpload()">+ Postar</button>
-    <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">💬<span id="inboxDot" style="display:none;position:absolute;top:0px;right:0px;width:8px;height:8px;background:#f87171;border-radius:50%"></span></button>
+    <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
     <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
     <a class="tbtn" href="/">BlueTube</a>
   </div>
@@ -419,7 +426,6 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <div class="prof-nav">
     <button class="prof-back" onclick="closeProfile()">←</button>
     <div class="prof-nav-name" id="pNavName">Perfil</div>
-    <button class="prof-nav-edit" id="pNavChat" style="display:none" onclick="openChatWithUser()">💬 Chat</button>
     <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()">Editar</button>
   </div>
   <div class="prof-hd">
@@ -431,15 +437,17 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
       <div class="prof-uname" id="profUname">@—</div>
       <div class="prof-stats">
         <div class="pstat"><span class="pstat-n" id="pVids">0</span><span class="pstat-l">Vídeos</span></div>
+        <div class="pstat"><span class="pstat-n" id="pFollowers">0</span><span class="pstat-l">Seguidores</span></div>
         <div class="pstat"><span class="pstat-n" id="pViews">0</span><span class="pstat-l">Views</span></div>
         <div class="pstat"><span class="pstat-n" id="pLikes">0</span><span class="pstat-l">Curtidas</span></div>
       </div>
     </div>
   </div>
   <div class="prof-bio" id="profBio" style="display:none"></div>
-  <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0">
-    <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;width:100%" onclick="openEditProfile()">Editar perfil</button>
-    <button class="prof-msg-btn" id="profMsgBtn" style="display:none;margin:0;width:100%" onclick="openChatWithUser()">💬 Chat</button>
+  <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0;align-items:center">
+    <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;flex:1" onclick="openEditProfile()">Editar perfil</button>
+    <button class="prof-follow-btn" id="profFollowBtn" style="display:none" onclick="toggleFollow()">+ Seguir</button>
+    <button class="prof-msg-btn" id="profMsgBtn" style="display:none" onclick="openChatWithUser()">💬</button>
   </div>
   <div class="prof-tabs">
     <button class="prof-tab on">🎬 Vídeos</button>
@@ -648,7 +656,15 @@ async function loadFeed(){
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
-    console.log('Feed:',videos.length,'vídeos');
+    // Prioriza vídeos de quem o usuário segue
+    if(_followingIds.length>0){
+      videos.sort((a,b)=>{
+        const af=_followingIds.includes(a.user_id)?1:0;
+        const bf=_followingIds.includes(b.user_id)?1:0;
+        return bf-af;
+      });
+    }
+    console.log('Feed:',videos.length,'vídeos, seguindo:',_followingIds.length);
   }catch(e){
     document.getElementById('dbg').textContent='Erro: '+e.message;
     document.getElementById('empty').classList.add('on');
@@ -859,10 +875,11 @@ async function openCreatorProfile(userId){
   const page=document.getElementById('profPage');
   page.classList.add('open');
 
-  // Esconde botões do próprio perfil, mostra chat button sempre
+  // Esconde botões do próprio perfil, mostra Seguir + Chat
   ['pNavEdit','profAvCam','profEditBtn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
-  const navChat=document.getElementById('pNavChat'); if(navChat) navChat.style.display='block';
-  const msgBtn=document.getElementById('profMsgBtn'); if(msgBtn) msgBtn.style.display='block';
+  const msgBtn=document.getElementById('profMsgBtn'); if(msgBtn) msgBtn.style.display='flex';
+  const followBtn=document.getElementById('profFollowBtn'); if(followBtn){followBtn.style.display='block';followBtn.textContent='+ Seguir';followBtn.classList.remove('following');}
+  document.getElementById('pFollowers').textContent='—';
 
   document.getElementById('profGrid').innerHTML='<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div></div>';
 
@@ -871,11 +888,13 @@ async function openCreatorProfile(userId){
   const cr=feedVid?.creator||{};
   setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url,user_id:userId},false);
 
-  // Busca perfil completo via API em paralelo
+  // Busca perfil completo, contagem de seguidores e status de follow em paralelo
   fetch('/api/blue-profile?user_id='+encodeURIComponent(userId))
     .then(r=>r.ok?r.json():null)
     .then(d=>{ if(d?.profile) setProfileHeader({...d.profile},false); })
     .catch(()=>{});
+  loadFollowerCount(userId);
+  checkFollowStatus(userId);
 
   const theirVids=videos.filter(x=>x.user_id===userId);
   renderGrid(theirVids,false);
@@ -919,11 +938,11 @@ function setProfileHeader(p,isOwn){
   set('pNavName',p.username||'Perfil');
   const bioEl=$('profBio');
   if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
-  show('pNavEdit',isOwn?'block':'none');
-  show('pNavChat',isOwn?'none':'block');
-  show('profEditBtn',isOwn?'block':'none');
-  show('profMsgBtn',isOwn?'none':'block');
-  if(isOwn) _chatTargetUser=null;
+  show('pNavEdit', isOwn ? 'block' : 'none');
+  show('profEditBtn', isOwn ? 'block' : 'none');
+  show('profFollowBtn', isOwn ? 'none' : 'block');
+  show('profMsgBtn', isOwn ? 'none' : 'flex');
+  if(isOwn){ _chatTargetUser=null; document.getElementById('pFollowers').textContent='0'; }
 }
 
 async function loadMyVideos(){
@@ -1169,15 +1188,105 @@ async function openChatWithUser() {
   } catch(e) { toast('Erro: '+e.message); }
 }
 
+// ── FOLLOW SYSTEM ────────────────────────────────────────────────────────────
+let _isFollowing = false;
+let _followingIds = [];
+let _prevUnreadCount = -1;
+
+async function loadFollowingList(){
+  const tk=localStorage.getItem('bt_token'); if(!tk)return;
+  try{
+    const r=await fetch('/api/blue-follow?action=following&token='+encodeURIComponent(tk));
+    if(r.ok){ const d=await r.json(); _followingIds=d.following||[]; }
+  }catch(e){}
+}
+
+async function loadFollowerCount(userId){
+  try{
+    const r=await fetch('/api/blue-follow?action=count&user_id='+encodeURIComponent(userId));
+    if(r.ok){ const d=await r.json(); const el=document.getElementById('pFollowers'); if(el) el.textContent=fmt(d.count||0); }
+  }catch(e){}
+}
+
+async function checkFollowStatus(userId){
+  const tk=localStorage.getItem('bt_token');
+  const btn=document.getElementById('profFollowBtn');
+  if(!tk||!btn){ _isFollowing=false; return; }
+  try{
+    const r=await fetch('/api/blue-follow?action=is-following&user_id='+encodeURIComponent(userId)+'&token='+encodeURIComponent(tk));
+    if(r.ok){ const d=await r.json(); _isFollowing=d.following; updateFollowBtn(); }
+  }catch(e){ _isFollowing=false; updateFollowBtn(); }
+}
+
+function updateFollowBtn(){
+  const btn=document.getElementById('profFollowBtn'); if(!btn)return;
+  if(_isFollowing){ btn.textContent='✓ Seguindo'; btn.classList.add('following'); }
+  else{ btn.textContent='+ Seguir'; btn.classList.remove('following'); }
+}
+
+async function toggleFollow(){
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){ toast('Entre para seguir'); return; }
+  if(!_chatTargetUser)return;
+  const btn=document.getElementById('profFollowBtn'); if(btn) btn.disabled=true;
+  try{
+    const r=await fetch('/api/blue-follow',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:_isFollowing?'unfollow':'follow',token:tk,target_id:_chatTargetUser})});
+    const d=await r.json();
+    if(r.ok){
+      _isFollowing=d.following;
+      updateFollowBtn();
+      const el=document.getElementById('pFollowers');
+      if(el){ const n=parseInt(el.textContent.replace(/[^0-9]/g,''))||0; el.textContent=fmt(_isFollowing?n+1:Math.max(0,n-1)); }
+      if(_isFollowing&&!_followingIds.includes(_chatTargetUser)) _followingIds.push(_chatTargetUser);
+      else _followingIds=_followingIds.filter(id=>id!==_chatTargetUser);
+      toast(_isFollowing?'✓ Seguindo!':'Deixou de seguir');
+    }
+  }catch(e){ toast('Erro: '+e.message); }
+  if(btn) btn.disabled=false;
+}
+
+// ── NOTIFICAÇÕES DE MENSAGEM ──────────────────────────────────────────────────
+async function pollUnreadCount(){
+  const tk=localStorage.getItem('bt_token'); if(!tk)return;
+  try{
+    const r=await fetch('/api/blue-chat?action=unread-count&token='+encodeURIComponent(tk));
+    if(!r.ok)return;
+    const d=await r.json();
+    const count=d.count||0;
+    const badge=document.getElementById('inboxBadge');
+    if(badge){
+      if(count>0){ badge.textContent=count>99?'99+':count; badge.style.display='flex'; }
+      else{ badge.style.display='none'; }
+    }
+    // Notificação push se nova mensagem chegou com app em background
+    if(_prevUnreadCount>=0 && count>_prevUnreadCount && document.hidden){
+      if('Notification' in window && Notification.permission==='granted'){
+        new Notification('💬 BlueTube',{body:'Você tem '+count+' mensagem(ns) não lida(s)',icon:'/blublu-happy.png'});
+      }
+    }
+    _prevUnreadCount=count;
+  }catch(e){}
+}
+
+function requestNotificationPermission(){
+  if('Notification' in window && Notification.permission==='default'){
+    Notification.requestPermission().catch(()=>{});
+  }
+}
+
 // ── STATUS HEARTBEAT ──────────────────────────────────────────────────────────
 function startStatusHeartbeat() {
   if (!TOKEN) return;
-  setMyStatus(_myStatus); // Set initial status
+  setMyStatus(_myStatus);
+  pollUnreadCount();
+  requestNotificationPermission();
   setInterval(() => {
     const tk = localStorage.getItem('bt_token');
     if (!tk) return;
     fetch('/api/blue-chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'status', token:tk, status:_myStatus }) }).catch(()=>{});
-  }, 30000); // Every 30s
+    pollUnreadCount();
+  }, 30000);
   // Set offline on page unload
   window.addEventListener('beforeunload', () => {
     const tk = localStorage.getItem('bt_token');
@@ -1189,6 +1298,7 @@ function startStatusHeartbeat() {
 function extractVideoFrame(videoUrl, card, placeholder){
   if(!videoUrl)return;
   const vid=document.createElement('video');
+  vid.crossOrigin='anonymous'; // habilita canvas para Supabase Storage (CORS)
   vid.src=videoUrl; vid.muted=true; vid.preload='metadata'; vid.playsInline=true;
   vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;opacity:0;pointer-events:none';
 
@@ -1475,6 +1585,17 @@ document.addEventListener('keydown',e=>{
 
 loadFeed();
 initAuth();
+loadFollowingList().then(()=>{
+  // Após carregar lista de seguidos, re-ordena feed sem refetch
+  if(_followingIds.length>0 && videos.length>0){
+    videos.sort((a,b)=>{
+      const af=_followingIds.includes(a.user_id)?1:0;
+      const bf=_followingIds.includes(b.user_id)?1:0;
+      return bf-af;
+    });
+    renderFeed();
+  }
+});
 startStatusHeartbeat();
 // Close inbox/chat when clicking outside on desktop
 document.addEventListener('click', e => {

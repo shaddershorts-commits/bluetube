@@ -24,6 +24,18 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário' });
 
+  // ── GET unread count (para badge de notificação) ──────────────────────────
+  if (req.method === 'GET' && action === 'unread-count') {
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/blue_messages?receiver_id=eq.${userId}&read=eq.false&select=id`,
+        { headers: { ...h, Prefer: 'count=exact', Range: '0-0' } }
+      );
+      const count = parseInt(r.headers?.get?.('Content-Range')?.split('/')[1] || '0') || 0;
+      return res.status(200).json({ count });
+    } catch(e) { return res.status(200).json({ count: 0 }); }
+  }
+
   // ── GET conversations list ────────────────────────────────────────────────
   if (req.method === 'GET' && action === 'conversations') {
     try {
