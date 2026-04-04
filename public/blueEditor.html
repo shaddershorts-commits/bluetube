@@ -424,12 +424,13 @@ const VOICES = [
 
 // ── MUSIC TRACKS (royalty-free, hospedadas no Supabase Storage ou CDN público) ─
 // Substitua os URLs por tracks do seu Supabase Storage após upload
+// URLs de preview (Pixabay, royalty-free, CORS permitido)
 const MUSIC_TRACKS = [
-  { id:'none',      name:'Sem música',    genre:'Silêncio',   icon:'🔇', url:null },
-  { id:'lofi',      name:'Lo-fi Chill',   genre:'Ambiente',   icon:'🎵', url:'https://www.bensound.com/bensound-music/bensound-ukulele.mp3' },
-  { id:'epic',      name:'Epic Build',    genre:'Dramático',  icon:'⚡', url:'https://www.bensound.com/bensound-music/bensound-epic.mp3' },
-  { id:'corporate', name:'Corporativo',   genre:'Motivacional',icon:'💼', url:'https://www.bensound.com/bensound-music/bensound-corporate.mp3' },
-  { id:'upbeat',    name:'Upbeat',        genre:'Animado',    icon:'🎸', url:'https://www.bensound.com/bensound-music/bensound-sunny.mp3' },
+  { id:'none',      name:'Sem música',    genre:'Silêncio',    icon:'🔇', url:null },
+  { id:'lofi',      name:'Lo-fi Chill',   genre:'Ambiente',    icon:'🎵', url:'https://cdn.pixabay.com/audio/2023/06/19/audio_f5f9b7b0e3.mp3' },
+  { id:'epic',      name:'Epic Build',    genre:'Dramático',   icon:'⚡', url:'https://cdn.pixabay.com/audio/2023/04/18/audio_71ef0ddf98.mp3' },
+  { id:'corporate', name:'Corporativo',   genre:'Motivacional',icon:'💼', url:'https://cdn.pixabay.com/audio/2022/12/23/audio_e9b0d2c02e.mp3' },
+  { id:'upbeat',    name:'Upbeat',        genre:'Animado',     icon:'🎸', url:'https://cdn.pixabay.com/audio/2023/07/26/audio_dfe6e47b77.mp3' },
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -561,9 +562,17 @@ function selectVoice(id) {
 
 async function previewVoice(id) {
   try {
-    const r = await fetch('/api/auth?action=voice-preview&voiceId=' + id);
-    if (r.ok) { const d = await r.json(); if(d.url){ const a=new Audio(d.url); a.play(); } }
-  } catch(e) {}
+    const btn = event?.target;
+    if (btn) { const orig = btn.textContent; btn.textContent = '⏳'; btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 4000); }
+    const r = await fetch('/api/blue-editor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'voice-preview', token: TOKEN, voiceId: id })
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Preview indisponível: ' + (d.error||r.status)); return; }
+    if (d.url) { const a = new Audio(d.url); a.play().catch(() => toast('Erro ao tocar preview')); }
+  } catch(e) { toast('Erro: ' + e.message); }
 }
 
 // ── WATERMARK ─────────────────────────────────────────────────────────────────
@@ -609,9 +618,27 @@ function playMusicPreview(id) {
   if (_musicAudio) { _musicAudio.pause(); _musicAudio = null; }
   const track = MUSIC_TRACKS.find(t => t.id === id);
   if (!track?.url) return;
-  _musicAudio = new Audio(track.url);
+  _musicAudio = new Audio();
+  _musicAudio.crossOrigin = 'anonymous';
   _musicAudio.volume = 0.4;
-  _musicAudio.play().catch(() => toast('Erro ao tocar preview'));
+  _musicAudio.src = track.url;
+  _musicAudio.play().catch(e => {
+    // Fallback: fetch via proxy
+    toast('Carregando preview…');
+    fetch('/api/blue-editor', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'get-music', token:TOKEN, musicId:id }) })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.audio_b64) { toast('Preview indisponível'); return; }
+        const bin = atob(d.audio_b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i=0; i<bin.length; i++) arr[i]=bin.charCodeAt(i);
+        const blob = new Blob([arr], { type:'audio/mpeg' });
+        _musicAudio = new Audio(URL.createObjectURL(blob));
+        _musicAudio.volume = 0.4;
+        _musicAudio.play().catch(() => toast('Erro ao tocar preview'));
+      }).catch(() => toast('Erro ao carregar preview'));
+  });
   setTimeout(() => { if(_musicAudio){_musicAudio.pause();_musicAudio=null;} }, 8000);
 }
 
@@ -663,24 +690,20 @@ async function runEditor() {
     generatedAudioB64 = ttsD.audio_b64;
     setStep('✅ Narração gerada!', 20);
 
-    // ── 2. Baixar vídeo original ──────────────────────────────────────────────
-    setStep('⬇️ Baixando o Short original…', 22);
-    const vidUrl = `https://www.youtube.com/shorts/${videoId}`;
-    // Usamos cobalt.tools como proxy público para download
-    const dlRes = await fetch('https://api.cobalt.tools/api/json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ url: vidUrl, vCodec: 'h264', vQuality: '720', filenamePattern: 'basic', disableMetadata: true })
+    // ── 2. Baixar vídeo original (via proxy para evitar CORS) ───────────────
+    setStep('⬇️ Obtendo link do Short original…', 22);
+    const dlRes = await fetch('/api/blue-editor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-video-url', token: TOKEN, videoId })
     });
     const dlData = await dlRes.json();
-    if (!dlRes.ok || dlData.status === 'error') throw new Error('Não foi possível baixar o vídeo. Verifique se o Short é público.');
-
-    const videoDownloadUrl = dlData.url || dlData.picker?.[0]?.url;
-    if (!videoDownloadUrl) throw new Error('URL de download não encontrada');
+    if (!dlRes.ok) throw new Error(dlData.error || 'Não foi possível baixar o vídeo. O Short precisa ser público.');
+    const videoDownloadUrl = dlData.url;
+    setStep('⬇️ Baixando vídeo…', 28);
 
     // Busca o arquivo de vídeo
     const vidFetch = await fetch(videoDownloadUrl);
-    if (!vidFetch.ok) throw new Error('Falha ao baixar o vídeo');
+    if (!vidFetch.ok) throw new Error('Falha ao baixar o vídeo (HTTP ' + vidFetch.status + ')');
     const vidArrayBuffer = await vidFetch.arrayBuffer();
     setStep('✅ Vídeo baixado!', 40);
 
@@ -734,18 +757,40 @@ async function processVideo(vidBuffer, audioB64) {
   const audioBin = Uint8Array.from(atob(audioB64), c => c.charCodeAt(0));
   await ff.writeFile('narration.mp3', audioBin);
 
-  // Música de fundo (se selecionada)
+  // Música de fundo (se selecionada) — via proxy para evitar CORS
   let hasMusic = false;
-  const musicTrack = MUSIC_TRACKS.find(t => t.id === selectedMusic);
-  if (musicTrack?.url && selectedMusic !== 'none') {
+  if (selectedMusic !== 'none') {
     try {
-      const mRes = await fetch(musicTrack.url);
-      if (mRes.ok) {
-        const mBuf = await mRes.arrayBuffer();
-        await ff.writeFile('music.mp3', new Uint8Array(mBuf));
+      // Tenta direto primeiro
+      const musicTrack = MUSIC_TRACKS.find(t => t.id === selectedMusic);
+      let musicBuf = null;
+      if (musicTrack?.url) {
+        try {
+          const mRes = await fetch(musicTrack.url, { mode: 'cors' });
+          if (mRes.ok) musicBuf = await mRes.arrayBuffer();
+        } catch(e) {}
+      }
+      // Fallback: proxy backend
+      if (!musicBuf) {
+        const mR = await fetch('/api/blue-editor', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get-music', token: TOKEN, musicId: selectedMusic })
+        });
+        if (mR.ok) {
+          const mD = await mR.json();
+          if (mD.audio_b64) {
+            const bin = atob(mD.audio_b64);
+            musicBuf = new ArrayBuffer(bin.length);
+            const view = new Uint8Array(musicBuf);
+            for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+          }
+        }
+      }
+      if (musicBuf) {
+        await ff.writeFile('music.mp3', new Uint8Array(musicBuf));
         hasMusic = true;
       }
-    } catch(e) { console.warn('Music fetch failed:', e.message); }
+    } catch(e) { console.warn('Music load failed:', e.message); }
   }
 
   // Marca d'água
