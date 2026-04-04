@@ -821,6 +821,13 @@ function showEditaBtn() {
 }
 
 // ── MAIN EDITOR (FFmpeg WASM) ─────────────────────────────────────────────────
+function setStep(txt, pct) {
+  const el = document.getElementById('procStep');
+  const bar = document.getElementById('procBar');
+  if (el) el.textContent = txt;
+  if (bar) bar.style.width = pct + '%';
+}
+
 async function runEditor() {
   if (!selectedRoteiro || !selectedVoice) { toast('Selecione roteiro e voz antes!'); return; }
 
@@ -828,10 +835,7 @@ async function runEditor() {
   document.getElementById('processingCard').classList.add('visible');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  const setStep = (txt, pct) => {
-    document.getElementById('procStep').textContent = txt;
-    document.getElementById('procBar').style.width = pct + '%';
-  };
+  // setStep is global, defined below
 
   try {
     // ── 1. Gerar TTS ─────────────────────────────────────────────────────────
