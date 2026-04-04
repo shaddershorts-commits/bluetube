@@ -419,6 +419,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <div class="prof-nav">
     <button class="prof-back" onclick="closeProfile()">←</button>
     <div class="prof-nav-name" id="pNavName">Perfil</div>
+    <button class="prof-nav-edit" id="pNavChat" style="display:none" onclick="openChatWithUser()">💬 Chat</button>
     <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()">Editar</button>
   </div>
   <div class="prof-hd">
@@ -852,6 +853,8 @@ async function openCreatorProfile(userId){
   safeHide('pNavEdit'); safeHide('profAvCam'); safeHide('profEditBtn');
   const msgBtn = document.getElementById('profMsgBtn');
   if (msgBtn) msgBtn.style.display = TOKEN ? 'block' : 'none';
+  const navChatBtn = document.getElementById('pNavChat');
+  if (navChatBtn) navChatBtn.style.display = TOKEN ? 'block' : 'none';
   _chatTargetUser = userId;
   const v=videos.find(x=>x.user_id===userId);
   const cr=v?.creator||{};
@@ -899,6 +902,7 @@ function setProfileHeader(p,isOwn){
   const bioEl=$('profBio');
   if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
   show('pNavEdit',isOwn?'block':'none');
+  show('pNavChat',(!isOwn&&!!TOKEN)?'block':'none');
   show('profEditBtn',isOwn?'block':'none');
   show('profMsgBtn',(!isOwn&&!!TOKEN)?'block':'none');
   if(isOwn) _chatTargetUser=null;
@@ -1166,17 +1170,14 @@ function startStatusHeartbeat() {
 // Extrai frame do vídeo para usar como thumbnail no grid
 function extractVideoFrame(videoUrl, card, placeholder){
   if(!videoUrl)return;
-  // Use a small muted video as the thumbnail itself (most reliable)
   const vid=document.createElement('video');
   vid.src=videoUrl; vid.muted=true; vid.preload='metadata'; vid.playsInline=true;
-  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+  // Começa invisível — só exibe quando tiver o frame pronto
+  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;opacity:0';
   vid.onloadedmetadata=()=>{
-    // Show first frame by seeking
     vid.currentTime=0.1;
-    placeholder.style.display='none';
   };
   vid.onseeked=()=>{
-    // Now try to snapshot to canvas for real img
     try{
       const cv=document.createElement('canvas');
       cv.width=Math.min(vid.videoWidth||360,360);
@@ -1185,9 +1186,16 @@ function extractVideoFrame(videoUrl, card, placeholder){
       const snap=cv.toDataURL('image/jpeg',0.65);
       if(snap && snap.length>1000){
         const img=new Image(); img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
-        img.src=snap; img.onload=()=>{ card.insertBefore(img,placeholder); vid.remove(); };
-      } else { card.insertBefore(vid, placeholder); }
-    }catch(e){ card.insertBefore(vid,placeholder); }
+        img.src=snap; img.onload=()=>{ card.insertBefore(img,placeholder); placeholder.style.display='none'; vid.remove(); };
+      } else {
+        // Sem canvas (CORS) — exibe o vídeo diretamente com o frame seekado
+        vid.style.opacity='1';
+        placeholder.style.display='none';
+      }
+    }catch(e){
+      vid.style.opacity='1';
+      placeholder.style.display='none';
+    }
   };
   vid.onerror=()=>{ placeholder.style.display=''; vid.remove(); };
   card.insertBefore(vid,placeholder);
