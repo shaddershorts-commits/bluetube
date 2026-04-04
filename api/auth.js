@@ -948,8 +948,8 @@ Responda APENAS em JSON válido sem markdown:
 
       // Scripts bloqueados por região (bloqueia apenas escritas claramente incompatíveis)
       const BLOCKED_SCRIPTS = {
-        BR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        US: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        BR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa','es','en','de','fr','tr'],
+        US: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa','es','pt','de','fr','tr'],
         GB: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
         MX: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
         ES: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
