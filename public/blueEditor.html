@@ -254,13 +254,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:16px 40px;display:fl
       <input type="file" id="vidFileInput" accept="video/*" style="display:none" onchange="handleVidFile(this.files[0])"/>
     </div>
 
-    <div style="margin-top:20px">
+    <div style="margin-top:20px;position:relative">
       <div class="step-label">② Link do Short</div>
-      <div class="input-row">
+      <div class="input-row" style="filter:blur(4px);pointer-events:none;user-select:none">
         <input class="url-input" id="urlInput" type="text"
           placeholder="https://www.youtube.com/shorts/..."
-          autocomplete="off" onkeydown="if(event.key==='Enter')startEditor()"/>
-        <button class="btn-primary" id="btnStart" onclick="startEditor()">Gerar ↗</button>
+          autocomplete="off" tabindex="-1"/>
+        <button class="btn-primary" id="btnStart" tabindex="-1">Gerar ↗</button>
+      </div>
+      <!-- Em breve overlay -->
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:10px;z-index:2">
+        <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--neon);background:rgba(2,8,23,.85);border:1px solid rgba(0,170,255,.3);border-radius:20px;padding:6px 18px;backdrop-filter:blur(4px)">⚡ Em breve</span>
       </div>
     </div>
 
