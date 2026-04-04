@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>BlueEditor — 1 Short em 1 Clique</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233b82f6'/><text y='24' x='4' font-size='22'>✨</text></svg>"/>
 
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -359,6 +360,18 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
           <img id="wmImgEl" src="" style="max-height:60px;border-radius:8px;border:1px solid var(--border)"/>
         </div>
       </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07)">
+        <div class="lbl" style="margin-bottom:8px">Posição das legendas originais (para cobrir)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="wm-tab" id="sb-bottom" onclick="setSubPos('bottom',this)" style="flex:initial;padding:8px 14px">Base (padrão)</button>
+          <button class="wm-tab" id="sb-center" onclick="setSubPos('center',this)" style="flex:initial;padding:8px 14px">Centro</button>
+          <button class="wm-tab" id="sb-top" onclick="setSubPos('top',this)" style="flex:initial;padding:8px 14px">Topo</button>
+          <button class="wm-tab" id="sb-none" onclick="setSubPos('none',this)" style="flex:initial;padding:8px 14px">Sem legendas</button>
+        </div>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--dim)">
+          Nossas legendas sincronizadas serão adicionadas automaticamente ✨
+        </div>
+      </div>
       <div class="step-nav">
         <button class="btn-back-step" onclick="goStep(2)">← Voltar</button>
         <button class="btn-next" onclick="goStep(4)">Próximo →</button>
@@ -523,10 +536,11 @@ let roteiros = null;
 let _uploadedVideoBuffer = null; // quando usuário faz upload direto
 let selectedRoteiro = null; // {type, text, title}
 let selectedVoice = null;   // {id, name}
-let wmMode = 'none';        // 'none' | 'text' | 'image'
+let wmMode = 'none';
 let wmText = '';
-let wmImageData = null;     // base64
+let wmImageData = null;
 let selectedMusic = 'none';
+let subtitlePos = 'bottom'; // 'bottom' | 'center' | 'top' | 'none'
 let generatedAudioB64 = null;
 let ffmpegLoaded = false;
 let _ffmpeg = null;
@@ -718,6 +732,14 @@ async function previewVoice(id) {
 }
 
 // ── WATERMARK ─────────────────────────────────────────────────────────────────
+function setSubPos(pos, btn) {
+  subtitlePos = pos;
+  document.querySelectorAll('[id^="sb-"]').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+// Init default
+setTimeout(() => { const el=document.getElementById('sb-bottom'); if(el)el.classList.add('on'); }, 100);
+
 function wmTab(mode, btn) {
   wmMode = mode;
   document.querySelectorAll('.wm-tab').forEach(b => b.classList.remove('on'));
@@ -891,6 +913,7 @@ async function processVideo(vidBuffer, audioB64) {
       const vidUrl = URL.createObjectURL(vidBlob);
       const vid = document.createElement("video");
       vid.src = vidUrl; vid.muted = true; vid.playsInline = true;
+      vid.loop = true; // Loop para sincronizar com narração
       await new Promise(res => { vid.onloadedmetadata = res; vid.load(); setTimeout(res, 5000); });
       const vW = vid.videoWidth || 720, vH = vid.videoHeight || 1280;
 
@@ -898,19 +921,21 @@ async function processVideo(vidBuffer, audioB64) {
       canvas.width = vW; canvas.height = vH;
       const ctx = canvas.getContext("2d");
 
+      // ── AudioContext: narração + música ──
       const actx = new AudioContext();
       const narBin = Uint8Array.from(atob(audioB64), ch => ch.charCodeAt(0));
       const narBuf = await actx.decodeAudioData(narBin.buffer);
+      const narDuration = narBuf.duration; // duração real da narração
       const dest = actx.createMediaStreamDestination();
       const narSrc = actx.createBufferSource();
-      narSrc.buffer = narBuf; narSrc.connect(dest); narSrc.start(0);
+      narSrc.buffer = narBuf; narSrc.connect(dest);
 
       if (selectedMusic !== "none") {
         try {
-          const wavData = await generateMusicWav(selectedMusic, Math.ceil(vid.duration || 60) + 5);
+          const wavData = await generateMusicWav(selectedMusic, narDuration + 3);
           const musBuf = await actx.decodeAudioData(wavData.buffer);
           const musSrc = actx.createBufferSource();
-          const gain = actx.createGain(); gain.gain.value = 0.12;
+          const gain = actx.createGain(); gain.gain.value = 0.10;
           musSrc.buffer = musBuf; musSrc.connect(gain); gain.connect(dest); musSrc.start(0);
         } catch(e) {}
       }
@@ -921,7 +946,7 @@ async function processVideo(vidBuffer, audioB64) {
         ...canvas.captureStream(30).getVideoTracks(),
         ...dest.stream.getAudioTracks()
       ]);
-      const recorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond:3000000});
+      const recorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond:3500000});
       const chunks = [];
       recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
       recorder.onstop = () => {
@@ -930,37 +955,100 @@ async function processVideo(vidBuffer, audioB64) {
       };
 
       let stopped = false;
-      const stopAll = () => { if(stopped)return; stopped=true; if(recorder.state!=="inactive")recorder.stop(); };
+      const stopAll = () => {
+        if(stopped)return; stopped=true;
+        vid.pause();
+        if(recorder.state!=="inactive") recorder.stop();
+      };
+
+      // ── Legendas sincronizadas ──
+      const words = (selectedRoteiro?.text || "").trim().split(/\s+/).filter(Boolean);
+      const secPerWord = narDuration / Math.max(words.length, 1);
+      let startTime = null;
+
+      // ── Função de máscara de legenda (cobre a região do vídeo original) ──
+      function drawSubtitleMask() {
+        if (subtitlePos === "none") return;
+        const zoneH = vH * 0.22;
+        let zoneY = subtitlePos === "top" ? 0 : subtitlePos === "center" ? (vH-zoneH)/2 : vH - zoneH;
+        // Blur a zona para apagar a legenda original
+        ctx.save();
+        ctx.filter = "blur(14px)";
+        ctx.drawImage(vid, 0, zoneY, vW, zoneH, 0, zoneY, vW, zoneH);
+        ctx.filter = "none";
+        // Gradiente escuro para melhorar legibilidade das nossas legendas
+        const grd = ctx.createLinearGradient(0, zoneY, 0, zoneY + zoneH);
+        grd.addColorStop(0, "rgba(0,0,0,0)");
+        grd.addColorStop(0.4, "rgba(0,0,0,0.55)");
+        grd.addColorStop(1, "rgba(0,0,0,0.75)");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, zoneY, vW, zoneH);
+        ctx.restore();
+      }
+
+      // ── Nossas legendas sincronizadas ──
+      function drawSyncedCaptions(elapsed) {
+        if (!words.length || subtitlePos === "none") return;
+        const wordIdx = Math.min(Math.floor(elapsed / secPerWord), words.length - 1);
+        // Mostra 3 palavras por vez
+        const chunk = words.slice(Math.max(0,wordIdx-1), wordIdx+2).join(" ");
+        if (!chunk) return;
+        const zoneH = vH * 0.22;
+        let textY = subtitlePos === "top" ? zoneH * 0.65 : subtitlePos === "center" ? vH/2 + 10 : vH - zoneH*0.35;
+        ctx.save();
+        const fontSize = Math.max(24, Math.min(38, vW / 16));
+        ctx.font = "bold " + fontSize + "px Arial,sans-serif";
+        ctx.textAlign = "center";
+        ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 8;
+        ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.lineWidth = 4;
+        ctx.strokeText(chunk, vW/2, textY);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(chunk, vW/2, textY);
+        ctx.restore();
+      }
 
       const drawFrame = () => {
-        if(stopped)return;
+        if (stopped) return;
+        const now = performance.now();
+        if (!startTime) startTime = now;
+        const elapsed = (now - startTime) / 1000;
+
+        // Frame do vídeo
         ctx.drawImage(vid, 0, 0, vW, vH);
-        ctx.filter = "blur(12px)";
-        ctx.drawImage(vid, 0, 0, vW, vH*0.10, 0, 0, vW, vH*0.10);
-        ctx.drawImage(vid, 0, vH*0.80, vW, vH*0.20, 0, vH*0.80, vW, vH*0.20);
-        ctx.filter = "none";
+
+        // Cobre legenda original + adiciona nossas
+        drawSubtitleMask();
+        drawSyncedCaptions(elapsed);
+
+        // Marca d'água do usuário
         if (wmMode === "text" && wmText) {
           ctx.save();
-          ctx.font = "bold 28px Arial,sans-serif";
-          ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 6;
+          ctx.font = "bold 26px Arial,sans-serif";
+          ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 5;
           ctx.fillStyle = "rgba(255,255,255,.9)";
           const tw = ctx.measureText(wmText).width;
-          ctx.fillText(wmText, vW - tw - 18, vH - 36);
+          ctx.fillText(wmText, vW - tw - 16, subtitlePos==="bottom" ? vH*0.77 : vH - 32);
           ctx.restore();
         }
         if (wmMode === "image" && _wmImageEl) {
-          const maxW = 120, ratio = _wmImageEl.naturalHeight / _wmImageEl.naturalWidth;
-          ctx.drawImage(_wmImageEl, vW - maxW - 16, vH - maxW*ratio - 16, maxW, maxW*ratio);
+          const maxW = 110, ratio = _wmImageEl.naturalHeight / _wmImageEl.naturalWidth;
+          ctx.drawImage(_wmImageEl, vW - maxW - 14, subtitlePos==="bottom" ? vH*0.56 : vH - maxW*ratio - 14, maxW, maxW*ratio);
         }
-        if (!vid.ended) requestAnimationFrame(drawFrame);
+
+        if (elapsed < narDuration) requestAnimationFrame(drawFrame);
         else stopAll();
       };
 
       recorder.start(200);
-      vid.play().then(() => requestAnimationFrame(drawFrame));
-      vid.onended = stopAll;
-      vid.onerror = () => reject(new Error("Erro ao reproduzir o video"));
-      setTimeout(stopAll, ((vid.duration || 60) + 10) * 1000);
+      narSrc.start(0);
+      vid.play().then(() => {
+        startTime = null;
+        requestAnimationFrame(drawFrame);
+      });
+      vid.onerror = () => reject(new Error("Erro ao reproduzir o vídeo"));
+      // Garante parada exata na duração da narração
+      setTimeout(stopAll, (narDuration + 0.5) * 1000);
+
     } catch(e) { reject(e); }
   });
 }
