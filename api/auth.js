@@ -781,14 +781,16 @@ Responda APENAS em JSON válido sem markdown:
     if (/[\u0C80-\u0CFF]/.test(title)) return 'kn'; // Kannada
     if (/[\u0B80-\u0BFF]/.test(title)) return 'ta'; // Tamil
     if (/[\u0A00-\u0A7F]/.test(title)) return 'pa'; // Punjabi
-    // Palavras-chave por idioma latino
+    // Palavras exclusivas de cada idioma (evita falsos positivos com palavras globais como "shorts", "viral")
     const lower = title.toLowerCase();
-    if (/\b(você|voce|não|nao|muito|isso|aqui|como|esse|essa|porque|pra|vídeo|video|brasil|incrível|incrivel)\b/.test(lower)) return 'pt';
-    if (/\b(esto|esta|porque|muy|como|pero|mejor|más|todos|aquí|también|puede)\b/.test(lower)) return 'es';
-    if (/\b(the|this|that|with|from|what|when|how|about|just|like|your|will|been|have|than)\b/.test(lower)) return 'en';
+    if (/\b(você|voce|não|nao|muito|isso|esse|essa|pra|vídeo|brasil|incrível|incrivel|então|entao|ninguém|ninguem|também|tambem|porquê)\b/.test(lower)) return 'pt';
+    if (/\b(esto|porque|muy|pero|mejor|más|todos|aquí|también|puede|cuando|tiene|desde|entre|hasta|después|siempre)\b/.test(lower)) return 'es';
     if (/\b(und|das|ist|ein|für|mit|auf|dem|den|die|der|nicht|auch|sich)\b/.test(lower)) return 'de';
-    if (/\b(les|des|une|est|pas|pour|que|dans|avec|sur|mais|son|ses|cette)\b/.test(lower)) return 'fr';
-    if (/\b(bir|bu|ve|ile|için|olan|var|çok|daha|ama)\b/.test(lower)) return 'tr';
+    if (/\b(les|des|une|est|pas|pour|dans|avec|sur|ses|cette|nous|vous|sont|leur)\b/.test(lower)) return 'fr';
+    if (/\b(bir|bu|ile|için|olan|çok|daha|ama|değil|kadar|sonra|olarak)\b/.test(lower)) return 'tr';
+    // Inglês: só detecta se tiver 3+ palavras exclusivas (evita falso positivo com títulos internacionais)
+    const enWords = lower.match(/\b(the|this|that|with|from|what|when|about|just|your|will|been|have|than|nobody|could|would|should|because|every|never|always)\b/g);
+    if (enWords && enWords.length >= 3) return 'en';
     return '';
   }
 
@@ -968,8 +970,13 @@ Responda APENAS em JSON válido sem markdown:
         };
       }).filter(v => {
         if (v.duration > 65 && v.duration !== 0) return false; // Não é Short
-        // Filtro de idioma: se o país tem idiomas aceitos, filtra
-        if (allowedLangs && v._lang && !allowedLangs.includes(v._lang)) return false;
+        // Filtro de idioma: bloqueia apenas vídeos CLARAMENTE de outro idioma
+        // Se não tem idioma detectado, deixa passar (benefício da dúvida)
+        if (allowedLangs && v._lang) {
+          // Bloqueia scripts incompatíveis (hindi em BR, árabe em US, etc.)
+          const blocked = !allowedLangs.includes(v._lang);
+          if (blocked) return false;
+        }
         return true;
       });
 
