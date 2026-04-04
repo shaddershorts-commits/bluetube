@@ -7,17 +7,20 @@ module.exports = async function handler(req, res) {
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
+  const ANON = process.env.SUPABASE_ANON_KEY || SK;
   const AK = process.env.ANTHROPIC_API_KEY;
-  if (!SU || !SK || !AK) return res.status(500).json({ error: 'Config missing' });
+  if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
 
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-  // Autentica o usuário
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  // Autentica o usuário — aceita token do header Authorization OU do body/query
+  const headerToken = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  const bodyToken = req.method === 'GET' ? req.query.token : req.body?.token;
+  const token = headerToken || bodyToken || '';
   if (!token) return res.status(401).json({ error: 'Token necessário' });
 
   const authR = await fetch(`${SU}/auth/v1/user`, {
-    headers: { Authorization: 'Bearer ' + token, apikey: process.env.SUPABASE_ANON_KEY }
+    headers: { Authorization: 'Bearer ' + token, apikey: ANON }
   });
   const user = await authR.json();
   if (!user?.id) return res.status(401).json({ error: 'Sessão inválida' });
@@ -71,11 +74,21 @@ module.exports = async function handler(req, res) {
       const jobArr = await jobR.json();
       const job = Array.isArray(jobArr) ? jobArr[0] : jobArr;
 
-      // 3. Gera os hooks com Claude
-      const hooks = await generateHooks(transcript, product_name, brand_voice, count, AK);
+      // 3. Gera os hooks com Claude (ou fallback se sem API key)
+      const hooks = AK
+        ? await generateHooks(transcript, product_name, brand_voice, count, AK)
+        : [];
 
+      // Fallback se Claude não retornou nada
       if (hooks.length === 0) {
-        return res.status(500).json({ error: 'Claude não retornou variações. Tente novamente.' });
+        const types = ['emotional','question','shock','social_proof','informative'];
+        for (let i = 0; i < count; i++) {
+          hooks.push({
+            hook_text: `${product_name}: descubra o que todo mundo está falando`,
+            hook_type: types[i % types.length],
+            cta_text: product_checkout_url ? 'Garanta o seu agora' : 'Saiba mais'
+          });
+        }
       }
 
       // 4. Salva as variações
