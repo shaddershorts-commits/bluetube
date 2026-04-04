@@ -12,27 +12,59 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-  // GET ?action=library — retorna vozes do ElevenLabs com preview_url (sem auth)
+  // GET ?action=library — retorna vozes da Shared Library do ElevenLabs
   if (req.method === 'GET' && req.query.action === 'library') {
     if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
     try {
-      const r = await fetch('https://api.elevenlabs.io/v1/voices?show_legacy=false', {
-        headers: { 'xi-api-key': EL, 'Accept': 'application/json' }
-      });
-      if (!r.ok) {
-        const errText = await r.text().catch(() => '');
-        console.error('ElevenLabs voices error:', r.status, errText.slice(0, 200));
-        return res.status(502).json({ error: 'ElevenLabs ' + r.status, detail: errText.slice(0, 100) });
+      // Usa shared-voices (biblioteca pública, sem restrição de permissions)
+      const langs = ['pt', 'en', 'es', 'fr', 'de', 'it'];
+      const allVoices = [];
+
+      for (const lang of langs) {
+        try {
+          const r = await fetch(`https://api.elevenlabs.io/v1/shared-voices?page_size=10&language=${lang}&sort=trending`, {
+            headers: { 'xi-api-key': EL }
+          });
+          if (!r.ok) continue;
+          const data = await r.json();
+          (data.voices || []).forEach(v => {
+            if (v.preview_url && !allVoices.find(x => x.id === v.voice_id)) {
+              allVoices.push({
+                id: v.voice_id,
+                name: v.name,
+                preview_url: v.preview_url,
+                labels: {
+                  language: lang,
+                  gender: v.gender || '',
+                  age: v.age || '',
+                  use_case: v.use_case || v.category || '',
+                  description: v.description || ''
+                },
+                category: v.category || ''
+              });
+            }
+          });
+        } catch(e) { continue; }
       }
-      const data = await r.json();
-      const voices = (data.voices || []).filter(v => v.preview_url).map(v => ({
-        id: v.voice_id,
-        name: v.name,
-        preview_url: v.preview_url,
-        labels: v.labels || {},
-        category: v.category || ''
-      }));
-      return res.status(200).json({ voices });
+
+      if (allVoices.length > 0) {
+        return res.status(200).json({ voices: allVoices });
+      }
+
+      // Fallback: tenta endpoint clássico /v1/voices
+      const r2 = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': EL }
+      });
+      if (r2.ok) {
+        const data2 = await r2.json();
+        const voices2 = (data2.voices || []).filter(v => v.preview_url).map(v => ({
+          id: v.voice_id, name: v.name, preview_url: v.preview_url,
+          labels: v.labels || {}, category: v.category || ''
+        }));
+        if (voices2.length > 0) return res.status(200).json({ voices: voices2 });
+      }
+
+      return res.status(200).json({ voices: [] });
     } catch(e) {
       console.error('blue-voices library error:', e.message);
       return res.status(500).json({ error: e.message });
