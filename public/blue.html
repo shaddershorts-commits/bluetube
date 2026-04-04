@@ -437,8 +437,10 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
     </div>
   </div>
   <div class="prof-bio" id="profBio" style="display:none"></div>
-  <button class="prof-edit-btn" id="profEditBtn" style="display:none" onclick="openEditProfile()">Editar perfil</button>
-  <button class="prof-msg-btn" id="profMsgBtn" style="display:none" onclick="openChatWithUser()">💬 Enviar mensagem</button>
+  <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0">
+    <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;width:100%" onclick="openEditProfile()">Editar perfil</button>
+    <button class="prof-msg-btn" id="profMsgBtn" style="display:none;margin:0;width:100%" onclick="openChatWithUser()">💬 Chat</button>
+  </div>
   <div class="prof-tabs">
     <button class="prof-tab on">🎬 Vídeos</button>
   </div>
@@ -848,17 +850,21 @@ function closeProfile(){document.getElementById('profPage').classList.remove('op
 async function openCreatorProfile(userId){
   if(!userId)return;
   if(myProfile&&myProfile.user_id===userId){openProfile();return;}
-  document.getElementById('profPage').classList.add('open');
-  const safeHide = id => { const el=document.getElementById(id); if(el) el.style.display='none'; };
-  safeHide('pNavEdit'); safeHide('profAvCam'); safeHide('profEditBtn');
-  const msgBtn = document.getElementById('profMsgBtn');
-  if (msgBtn) msgBtn.style.display = TOKEN ? 'block' : 'none';
-  const navChatBtn = document.getElementById('pNavChat');
-  if (navChatBtn) navChatBtn.style.display = TOKEN ? 'block' : 'none';
   _chatTargetUser = userId;
-  const v=videos.find(x=>x.user_id===userId);
-  const cr=v?.creator||{};
-  setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url},false);
+  document.getElementById('profPage').classList.add('open');
+  document.getElementById('profGrid').innerHTML='<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div></div>';
+
+  // Usa dados do feed como base imediata (sem esperar API)
+  const feedVid=videos.find(x=>x.user_id===userId);
+  const cr=feedVid?.creator||{};
+  setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url,user_id:userId},false);
+
+  // Busca perfil completo via API em paralelo
+  fetch('/api/blue-profile?user_id='+encodeURIComponent(userId))
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{ if(d?.profile) setProfileHeader({...d.profile},false); })
+    .catch(()=>{});
+
   const theirVids=videos.filter(x=>x.user_id===userId);
   renderGrid(theirVids,false);
 }

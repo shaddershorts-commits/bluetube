@@ -23,15 +23,22 @@ module.exports = async function handler(req, res) {
     userId = ud.id; userEmail = ud.email;
   }
 
-  // GET profile — by token or by username
+  // GET profile — by token, username, or public user_id
   if (req.method === 'GET' && (!action || action === 'profile')) {
     const username = req.query.username;
+    const queryUserId = req.query.user_id;
     try {
       let profile;
       if (username) {
         const r = await fetch(`${SU}/rest/v1/blue_profiles?username=eq.${encodeURIComponent(username)}&select=*`, { headers: h });
         const d = r.ok ? await r.json() : [];
         profile = d[0];
+      } else if (queryUserId) {
+        // Busca pública por user_id (sem auth necessária)
+        const r = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${encodeURIComponent(queryUserId)}&select=*`, { headers: h });
+        const d = r.ok ? await r.json() : [];
+        profile = d[0];
+        return res.status(200).json({ profile: profile || null });
       } else if (userId) {
         const r = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=*`, { headers: h });
         const d = r.ok ? await r.json() : [];
