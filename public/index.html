@@ -660,17 +660,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 
     <!-- LOGIN FORM -->
     <div id="authLoginForm">
+      <form onsubmit="handleEmailLogin();return false;" autocomplete="on">
       <div style="position:relative;margin-bottom:10px">
-        <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%"/>
+        <input class="auth-input" id="loginEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%" autocomplete="email" name="email"/>
       </div>
       <div style="position:relative;margin-bottom:6px">
-        <input class="auth-input" id="loginPassword" type="password" placeholder="Senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
-        <button onclick="togglePwd('loginPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+        <input class="auth-input" id="loginPassword" type="password" placeholder="Senha" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="current-password" name="password"/>
+        <button type="button" onclick="togglePwd('loginPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
       <div style="text-align:right;margin-bottom:10px">
-        <button onclick="showForgotPassword()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Esqueci minha senha</button>
+        <button type="button" onclick="showForgotPassword()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Esqueci minha senha</button>
       </div>
-      <button class="auth-submit" onclick="handleEmailLogin()">Entrar →</button>
+      <button type="submit" class="auth-submit">Entrar →</button>
+      </form>
     </div>
 
     <!-- FORGOT PASSWORD FORM -->
@@ -688,18 +690,20 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 
     <!-- SIGNUP FORM -->
     <div id="authSignupForm" style="display:none">
+      <form onsubmit="handleEmailSignup();return false;" autocomplete="on">
       <div style="position:relative;margin-bottom:10px">
-        <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%"/>
+        <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com" style="margin-bottom:0;width:100%" autocomplete="email" name="email"/>
       </div>
       <div style="position:relative;margin-bottom:10px">
-        <input class="auth-input" id="signupPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px"/>
-        <button onclick="togglePwd('signupPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+        <input class="auth-input" id="signupPassword" type="password" placeholder="Criar senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="new-password" name="password"/>
+        <button type="button" onclick="togglePwd('signupPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
       <div style="position:relative;margin-bottom:10px">
-        <input class="auth-input" id="signupConfirm" type="password" placeholder="Confirmar senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
-        <button onclick="togglePwd('signupConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
+        <input class="auth-input" id="signupConfirm" type="password" placeholder="Confirmar senha" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="new-password" name="confirm"/>
+        <button type="button" onclick="togglePwd('signupConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
-      <button class="auth-submit" onclick="handleEmailSignup()">Criar conta →</button>
+      <button type="submit" class="auth-submit">Criar conta →</button>
+      </form>
     </div>
 
     <!-- EMAIL CONFIRMATION SCREEN (shown after signup) -->
@@ -736,11 +740,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div style="font-size:16px;font-weight:700;margin-bottom:6px">Criar nova senha</div>
     <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);margin-bottom:20px">Digite e confirme sua nova senha abaixo.</div>
     <div style="position:relative;margin-bottom:10px">
-      <input class="auth-input" id="newPassword" type="password" placeholder="Nova senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px"/>
+      <input class="auth-input" id="newPassword" type="password" placeholder="Nova senha (mín. 6 caracteres)" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="new-password" name="new_password"/>
       <button onclick="togglePwd('newPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
     </div>
     <div style="position:relative;margin-bottom:10px">
-      <input class="auth-input" id="newPasswordConfirm" type="password" placeholder="Confirmar nova senha" style="margin-bottom:0;width:100%;padding-right:44px"/>
+      <input class="auth-input" id="newPasswordConfirm" type="password" placeholder="Confirmar nova senha" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="new-password" name="confirm_password"/>
       <button onclick="togglePwd('newPasswordConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
     </div>
     <button class="auth-submit" onclick="handleResetPassword()">Salvar nova senha →</button>

@@ -510,9 +510,14 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
         <button class="aw-tab on" id="awT1" onclick="awTab('signin')">Entrar</button>
         <button class="aw-tab off" id="awT2" onclick="awTab('signup')">Criar conta</button>
       </div>
-      <input class="aw-f" id="awEmail" type="email" placeholder="Email"/>
-      <input class="aw-f" id="awPass" type="password" placeholder="Senha"/>
-      <button class="aw-btn" id="awBtn" onclick="doAuth()">Entrar →</button>
+      <form onsubmit="doAuth();return false;" autocomplete="on">
+      <input class="aw-f" id="awEmail" type="email" placeholder="Email" autocomplete="email" name="email"/>
+      <div style="position:relative;margin-bottom:0">
+        <input class="aw-f" id="awPass" type="password" placeholder="Senha" autocomplete="current-password" name="password" style="padding-right:44px;margin-bottom:0"/>
+        <button type="button" id="awEye" onclick="(function(){var i=document.getElementById('awPass');i.type=i.type==='password'?'text':'password';document.getElementById('awEye').textContent=i.type==='password'?'👁':'🙈';})()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1">👁</button>
+      </div>
+      <button type="submit" class="aw-btn" id="awBtn" style="margin-top:10px">Entrar →</button>
+      </form>
       <div class="aw-msg" id="awMsg"></div>
     </div>
 
