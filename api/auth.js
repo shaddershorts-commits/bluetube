@@ -891,33 +891,35 @@ Responda APENAS em JSON válido sem markdown:
     const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
 
     // Tenta busca com uma chave, se der 403/quota error tenta a próxima
-    const makeSearch = async (searchQ) => {
+    const makeSearch = async (searchQ, order = 'viewCount') => {
       for (let ki = 0; ki < YT_KEYS.length; ki++) {
         const key = YT_KEYS[(keyIndex + ki) % YT_KEYS.length];
         const params = new URLSearchParams({
           part: 'snippet', type: 'video', videoDuration: 'short',
-          order: 'viewCount', maxResults: '50',
+          order, maxResults: '50',
           key, q: searchQ, publishedAfter,
           ...(lang ? { relevanceLanguage: lang } : {}),
           ...(region !== 'ALL' ? { regionCode: region } : {}),
-          ...(category ? { videoCategoryId: category } : {}),
         });
         const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
         const d = await r.json();
         if (d.error?.code === 403 || d.error?.message?.includes('quota')) {
           console.log('Quota esgotada na chave', ki, '- tentando próxima...');
-          continue; // tenta próxima chave
+          continue;
         }
-        console.log('YT search:', searchQ.slice(0,25), '| key:', ki, '| items:', d.items?.length || 0, '| err:', d.error?.message || 'ok');
+        console.log('YT search:', searchQ.slice(0,25), '| order:', order, '| key:', ki, '| items:', d.items?.length || 0);
         if (!r.ok) return [];
         return d.items || [];
       }
-      console.log('Todas as chaves com quota esgotada!');
       return [];
     };
 
     try {
-      const allSearches = await Promise.all(searchQueries.map(sq => makeSearch(sq)));
+      // Busca com viewCount E relevance para maximizar cobertura
+      const allSearches = await Promise.all([
+        ...searchQueries.map(sq => makeSearch(sq, 'viewCount')),
+        ...searchQueries.slice(0, 2).map(sq => makeSearch(sq, 'relevance'))
+      ]);
 
       const seen = new Set();
       const allItems = allSearches.flat().filter(i => {
