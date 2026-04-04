@@ -423,6 +423,24 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 const TOKEN = localStorage.getItem('bt_token');
 const API = '';
 
+// ── VOICES DATA ───────────────────────────────────────────────────────────────
+// Carrega vozes customizadas do Supabase ao iniciar
+async function loadEditorVoices() {
+  if (!TOKEN) return;
+  try {
+    const r = await fetch('/api/blue-voices?token=' + encodeURIComponent(TOKEN));
+    if (!r.ok) return;
+    const d = await r.json();
+    (d.voices||[]).forEach(v => {
+      const vid = v.voice_id || v.id;
+      if (vid && !VOICES.find(x => x.id === vid)) {
+        VOICES.unshift({ id: vid, name: v.name||'Minha voz', flag:'⭐', lang:'PT', desc:'Voz do ElevenLabs', custom:true });
+      }
+    });
+    renderVoices(); // Re-renderiza com as vozes customizadas
+  } catch(e) {}
+}
+
 // ── VOICES DATA (subset do BlueVoice) ────────────────────────────────────────
 const VOICES = [
   { id:'onwK4e9ZLuTAKqWW03F9', name:'Daniel',   flag:'🇧🇷', lang:'PT', desc:'Profissional, autoridade' },
@@ -522,7 +540,7 @@ function renderVoices() {
   const grid = document.getElementById('voiceGrid');
   grid.innerHTML = VOICES.map(v => `
     <div class="voice-card" id="vc-${v.id}" onclick="selectVoice('${v.id}')">
-      <div class="vc-flag">${v.flag}</div>
+      <div class="vc-flag">${v.flag}${v.custom?'<span style="font-size:9px;background:rgba(251,191,36,.2);color:#fbbf24;border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle">MINHA</span>':''}</div>
       <div class="vc-name">${v.name}</div>
       <div class="vc-desc">${v.lang} · ${v.desc}</div>
       <button class="btn-preview-sm" onclick="event.stopPropagation();previewVoice('${v.id}')">▶ Ouvir</button>
@@ -544,6 +562,7 @@ function renderMusic() {
 
 renderVoices();
 renderMusic();
+if(TOKEN) loadEditorVoices();
 
 // ── PROGRESS ──────────────────────────────────────────────────────────────────
 function updateProgress(step) {
@@ -635,24 +654,13 @@ function selectVoice(id) {
   document.getElementById('btn2').disabled = false;
 }
 
-// Preview URLs hardcoded para as vozes padrão ElevenLabs (estáveis)
-const VOICE_PREVIEW_URLS = {
-  'onwK4e9ZLuTAKqWW03F9': 'https://storage.googleapis.com/eleven-labs-audio-samples/daniel.mp3',
-  'IKne3meq5aSn9XLyUdCD': 'https://storage.googleapis.com/eleven-labs-audio-samples/carlos.mp3',
-  'N2lVS1w4EtoT3dr4eOWO': 'https://storage.googleapis.com/eleven-labs-audio-samples/alex.mp3',
-  'Xb7hH8MSUJpSbSDYk0k2': 'https://storage.googleapis.com/eleven-labs-audio-samples/alice.mp3',
-  'XB0fDUnXU5powFXDhCwa': 'https://storage.googleapis.com/eleven-labs-audio-samples/charlotte.mp3',
-  'pNInz6obpgDQGcFmaJgB': 'https://storage.googleapis.com/eleven-labs-audio-samples/adam.mp3',
-  'EXAVITQu4vr4xnSDxMaL': 'https://storage.googleapis.com/eleven-labs-audio-samples/sarah.mp3',
-};
-
 async function previewVoice(id) {
   const btn = event?.currentTarget || event?.target;
   const orig = btn?.textContent || '▶ Ouvir';
   if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
   const done = () => { if(btn){btn.textContent=orig;btn.disabled=false;} };
 
-  // Tenta via API backend primeiro
+  // 1. Tenta via API backend
   try {
     const r = await fetch('/api/blue-editor', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -660,19 +668,28 @@ async function previewVoice(id) {
     });
     if (r.ok) {
       const d = await r.json();
-      if (d.url) { const a=new Audio(d.url); a.play().then(done).catch(done); a.onended=done; return; }
+      if (d.url) {
+        const a = new Audio(d.url); a.onended = done;
+        a.play().then(()=>{}).catch(done);
+        return;
+      }
     }
   } catch(e) {}
 
-  // Fallback: URL pré-definida
-  const fallbackUrl = VOICE_PREVIEW_URLS[id];
-  if (fallbackUrl) {
-    const a = new Audio(fallbackUrl);
-    a.play().then(done).catch(() => { toast('Preview indisponível — vá ao BlueVoice para ouvir'); done(); });
-    a.onended = done;
+  // 2. Fallback: Web Speech API (voz do browser, não ElevenLabs)
+  if ('speechSynthesis' in window) {
+    const v = VOICES.find(x => x.id === id);
+    const utter = new SpeechSynthesisUtterance('Olá! Esta é uma prévia. A narração real usa a voz ' + (v?.name||'escolhida') + ' do ElevenLabs.');
+    utter.lang = (v?.lang==='EN') ? 'en-US' : 'pt-BR';
+    utter.rate = 0.95;
+    utter.onend = done;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+    toast('Preview via síntese local (voz ElevenLabs real na edição)');
     return;
   }
-  toast('Preview: configure a API do BlueEditor no Vercel');
+
+  toast('Preview indisponível — vá ao BlueVoice para ouvir');
   done();
 }
 
@@ -844,37 +861,41 @@ async function runEditor() {
   }
 }
 
-// ── LOAD FFMPEG ───────────────────────────────────────────────────────────────
+// ── LOAD FFMPEG v0.11.6 (blob worker, sem cross-origin restriction) ───────────
 async function loadFFmpeg() {
-  const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js');
-  const { fetchFile } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
-  _ffmpeg = new FFmpeg();
-  _ffmpeg.on('log', ({ message }) => console.log('[FFmpeg]', message));
-  await _ffmpeg.load({
-    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js',
-    wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm',
+  // Carrega o script via tag dinâmica se não estiver carregado
+  if (!window.FFmpeg) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const { createFFmpeg } = window.FFmpeg;
+  _ffmpeg = createFFmpeg({
+    corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+    log: false,
   });
-  window._ffetchFile = fetchFile;
+  await _ffmpeg.load();
 }
 
-// ── PROCESS VIDEO ─────────────────────────────────────────────────────────────
+// ── PROCESS VIDEO (FFmpeg v0.11.6 API) ────────────────────────────────────────
 async function processVideo(vidBuffer, audioB64) {
   const ff = _ffmpeg;
-  const fetchFile = window._ffetchFile;
 
-  // Escreve o vídeo no sistema de arquivos virtual do FFmpeg
-  await ff.writeFile('input.mp4', new Uint8Array(vidBuffer));
+  // FS API v0.11: ff.FS('writeFile', name, data)
+  ff.FS('writeFile', 'input.mp4', new Uint8Array(vidBuffer));
 
-  // Converte áudio base64 para arquivo
   const audioBin = Uint8Array.from(atob(audioB64), c => c.charCodeAt(0));
-  await ff.writeFile('narration.mp3', audioBin);
+  ff.FS('writeFile', 'narration.mp3', audioBin);
 
   // Música de fundo via Web Audio API (sem CORS, sem deps externas)
   let hasMusic = false;
   if (selectedMusic !== 'none') {
     try {
       const wavData = await generateMusicWav(selectedMusic, Math.min(Math.ceil(vDur||30)+5, 60));
-      await ff.writeFile('music.wav', wavData);
+      ff.FS('writeFile', 'music.wav', wavData);
       hasMusic = true;
     } catch(e) { console.warn('Music generation failed:', e.message); }
   }
@@ -886,7 +907,7 @@ async function processVideo(vidBuffer, audioB64) {
     wmFilter = `,drawtext=text='${safe}':fontcolor=white:fontsize=28:borderw=2:bordercolor=black:x=w-tw-20:y=h-th-20`;
   } else if (wmMode === 'image' && wmImageData) {
     const imgBin = Uint8Array.from(atob(wmImageData.split(',')[1]), c => c.charCodeAt(0));
-    await ff.writeFile('watermark.png', imgBin);
+    ff.FS('writeFile', 'watermark.png', imgBin);
   }
 
   // ── FFmpeg command ──────────────────────────────────────────────────────────
@@ -927,9 +948,11 @@ async function processVideo(vidBuffer, audioB64) {
     inputs.push('-i','watermark.png');
   }
 
-  await ff.exec(args);
+  await ff.run(...args);
 
-  const outputData = await ff.readFile('output.mp4');
+  const outputData = ff.FS('readFile', 'output.mp4');
+  // Cleanup
+  try { ['input.mp4','narration.mp3','music.wav','watermark.png','output.mp4'].forEach(f => { try{ff.FS('unlink',f);}catch(e){} }); } catch(e) {}
   return new Blob([outputData.buffer], { type: 'video/mp4' });
 }
 
