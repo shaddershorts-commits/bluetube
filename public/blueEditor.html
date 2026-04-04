@@ -4,6 +4,28 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>BlueEditor — 1 Short em 1 Clique</title>
+<script>
+// Ativa Cross-Origin Isolation via Service Worker (necessário para FFmpeg WASM)
+(function(){
+  if (window.crossOriginIsolated) return; // já isolado, ok
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Worker não suportado — FFmpeg WASM pode falhar');
+    return;
+  }
+  navigator.serviceWorker.register('/coi-serviceworker.js').then(reg => {
+    // Se o SW foi recém instalado, recarrega para ativar
+    if (!reg.active) {
+      reg.addEventListener('updatefound', () => {
+        reg.installing?.addEventListener('statechange', e => {
+          if (e.target.state === 'activated') window.location.reload();
+        });
+      });
+    } else if (!window.crossOriginIsolated) {
+      window.location.reload();
+    }
+  }).catch(e => console.warn('SW não registrado:', e.message));
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -868,14 +890,21 @@ async function runEditor() {
   }
 }
 
-// ── LOAD FFMPEG v0.11.6 (blob worker, sem cross-origin restriction) ───────────
+// ── LOAD FFMPEG v0.11.6 ───────────────────────────────────────────────────────
 async function loadFFmpeg() {
-  // Carrega o script via tag dinâmica se não estiver carregado
+  // Verifica isolamento (necessário para SharedArrayBuffer / FFmpeg WASM)
+  if (!window.crossOriginIsolated) {
+    throw new Error(
+      'A página não está isolada (Cross-Origin Isolation necessário para FFmpeg WASM). ' +
+      'Aguarde 2 segundos e tente novamente — o Service Worker está sendo ativado.'
+    );
+  }
   if (!window.FFmpeg) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
       s.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
-      s.onload = res; s.onerror = rej;
+      s.onload = res;
+      s.onerror = () => rej(new Error('Falha ao carregar FFmpeg do CDN. Verifique sua conexão.'));
       document.head.appendChild(s);
     });
   }
