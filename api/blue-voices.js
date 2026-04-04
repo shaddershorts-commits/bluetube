@@ -12,6 +12,26 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
+  // GET ?action=library — retorna vozes do ElevenLabs com preview_url (sem auth)
+  if (req.method === 'GET' && req.query.action === 'library') {
+    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': EL }
+      });
+      if (!r.ok) return res.status(502).json({ error: 'Falha ao buscar vozes' });
+      const data = await r.json();
+      const voices = (data.voices || []).map(v => ({
+        id: v.voice_id,
+        name: v.name,
+        preview_url: v.preview_url || null,
+        labels: v.labels || {},
+        category: v.category || ''
+      }));
+      return res.status(200).json({ voices });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
   if (!token) return res.status(401).json({ error: 'Login necessário' });
 

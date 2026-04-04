@@ -1895,8 +1895,8 @@ function _restoreState(){
 // ── GERAR TÍTULOS ─────────────────────────────────────────────────────────────
 async function generateTitles(lang){
   try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'title-suggest',transcript,lang,originalTitle:''})});
+    const r=await fetch('/api/title-suggest',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({transcript,lang,originalTitle:''})});
     if(!r.ok) return;
     const d=await r.json();
     if(d.casual && document.getElementById('titleCasualText')){
