@@ -866,22 +866,22 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
-    // Queries genéricas de TRENDING para pegar os shorts mais virais de cada país
+    // Queries NO IDIOMA do país para forçar resultados no idioma certo
     const REGION_CONFIG = {
-      ALL: { lang: null, queries: ['shorts', 'viral shorts', 'trending shorts'] },
-      BR:  { lang:'pt', queries: ['shorts', 'shorts viral', 'shorts trending brasil'] },
-      US:  { lang:'en', queries: ['shorts', 'viral shorts', 'trending shorts'] },
-      GB:  { lang:'en', queries: ['shorts', 'viral shorts uk', 'trending shorts'] },
-      IN:  { lang:'hi', queries: ['shorts', 'viral shorts india', 'trending shorts'] },
-      MX:  { lang:'es', queries: ['shorts', 'shorts viral mexico', 'trending shorts'] },
-      JP:  { lang:'ja', queries: ['ショート', 'ショート 人気', 'ショート 急上昇'] },
-      KR:  { lang:'ko', queries: ['쇼츠', '쇼츠 인기', '인기급상승 쇼츠'] },
-      DE:  { lang:'de', queries: ['shorts', 'shorts viral', 'trending shorts deutsch'] },
-      FR:  { lang:'fr', queries: ['shorts', 'shorts viral', 'shorts tendance france'] },
-      ES:  { lang:'es', queries: ['shorts', 'shorts viral', 'shorts tendencia espana'] },
-      AR:  { lang:'es', queries: ['shorts', 'shorts viral argentina'] },
-      CO:  { lang:'es', queries: ['shorts', 'shorts viral colombia'] },
-      TR:  { lang:'tr', queries: ['shorts', 'shorts viral turkiye'] },
+      ALL: { lang: null, queries: ['shorts viral', 'trending shorts', 'most viewed shorts'] },
+      BR:  { lang:'pt', queries: ['shorts viralizou', 'shorts mais visto', 'voce sabia shorts', 'curiosidades shorts'] },
+      US:  { lang:'en', queries: ['viral shorts trending', 'most viewed shorts today', 'shorts blowing up'] },
+      GB:  { lang:'en', queries: ['viral shorts uk trending', 'most viewed shorts uk'] },
+      IN:  { lang:'hi', queries: ['shorts viral india', 'trending shorts hindi', 'shorts viral today india'] },
+      MX:  { lang:'es', queries: ['shorts viral mexico', 'shorts más visto mexico', 'curiosidades shorts mexico'] },
+      JP:  { lang:'ja', queries: ['ショート 急上昇', 'ショート バズった', 'ショート 人気'] },
+      KR:  { lang:'ko', queries: ['쇼츠 인기급상승', '쇼츠 바이럴', '쇼츠 화제'] },
+      DE:  { lang:'de', queries: ['shorts viral deutsch', 'shorts trending deutschland'] },
+      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts tendance france'] },
+      ES:  { lang:'es', queries: ['shorts viral españa', 'shorts más visto españa'] },
+      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts más visto argentina'] },
+      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts más visto colombia'] },
+      TR:  { lang:'tr', queries: ['shorts viral türkiye', 'en çok izlenen shorts'] },
     };
 
     const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
@@ -943,13 +943,24 @@ Responda APENAS em JSON válido sem markdown:
         })
       );
 
-      // Mapa de idiomas aceitos por país
-      const LANG_FILTER = {
-        BR: ['pt'], US: ['en'], GB: ['en'], IN: ['hi','en'], MX: ['es'],
-        JP: ['ja'], KR: ['ko'], DE: ['de'], FR: ['fr'], ES: ['es'],
-        AR: ['es'], CO: ['es'], TR: ['tr'], ALL: null
+      // Scripts bloqueados por região (bloqueia apenas escritas claramente incompatíveis)
+      const BLOCKED_SCRIPTS = {
+        BR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        US: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        GB: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        MX: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        ES: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        AR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        CO: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        DE: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        FR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        TR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
+        IN: ['ja','ko'],
+        JP: ['hi','ko','ar'],
+        KR: ['hi','ja','ar'],
+        ALL: []
       };
-      const allowedLangs = LANG_FILTER[region] || null;
+      const blockedLangs = BLOCKED_SCRIPTS[region] || [];
 
       const allVideos = statsResults.flat().map(v => {
         const stats = v.statistics || {}, snippet = v.snippet || {};
@@ -970,13 +981,8 @@ Responda APENAS em JSON válido sem markdown:
         };
       }).filter(v => {
         if (v.duration > 65 && v.duration !== 0) return false; // Não é Short
-        // Filtro de idioma: bloqueia apenas vídeos CLARAMENTE de outro idioma
-        // Se não tem idioma detectado, deixa passar (benefício da dúvida)
-        if (allowedLangs && v._lang) {
-          // Bloqueia scripts incompatíveis (hindi em BR, árabe em US, etc.)
-          const blocked = !allowedLangs.includes(v._lang);
-          if (blocked) return false;
-        }
+        // Bloqueia apenas scripts claramente incompatíveis (hindi em BR, árabe em US, etc.)
+        if (v._lang && blockedLangs.includes(v._lang)) return false;
         return true;
       });
 
