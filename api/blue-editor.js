@@ -120,7 +120,24 @@ module.exports = async function handler(req, res) {
         if (fmt?.url) return res.status(200).json({ url: fmt.url, quality: fmt.qualityLabel || fmt.quality });
       } catch(e) {}
     }
-    return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. Tente outro Short público.' });
+    // Fallback: Invidious (instâncias públicas open-source)
+    const INVIDIOUS = [
+      'https://invidious.privacyredirect.com',
+      'https://inv.tux.pizza',
+      'https://invidious.nerdvpn.de',
+      'https://yt.dragonpub.com',
+    ];
+    for (const inst of INVIDIOUS) {
+      try {
+        const r = await fetch(`${inst}/api/v1/videos/${vid3}?fields=formatStreams,adaptiveFormats`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!r.ok) continue;
+        const d = await r.json();
+        const fmts = [...(d.formatStreams||[]), ...(d.adaptiveFormats||[])];
+        const mp4 = fmts.find(f => (f.container||f.type||'').includes('mp4') && f.url);
+        if (mp4?.url) return res.status(200).json({ url: mp4.url, quality: mp4.qualityLabel||'?' });
+      } catch(e) {}
+    }
+    return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. \n💡 Baixe pelo BaixaBlue e envie o arquivo diretamente.' });
   }
 
   return res.status(400).json({ error: 'Ação inválida' });
