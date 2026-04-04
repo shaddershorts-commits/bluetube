@@ -844,7 +844,7 @@ Responda APENAS em JSON válido sem markdown:
             if (age < cacheTTL) {
               // Aplica filtro de views mínimas no cache também
               const _bigM = ['US','IN','ALL'].includes(region);
-              const minV = period === '24h' ? (_bigM ? 1000000 : 500000) : period === '7d' ? (_bigM ? 8000000 : 2000000) : (_bigM ? 14000000 : 5000000);
+              const minV = period === '24h' ? (_bigM ? 1000000 : 100000) : period === '7d' ? (_bigM ? 8000000 : 1000000) : (_bigM ? 14000000 : 3000000);
               const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
               // Se cache ficou vazio após filtro, ignora e rebusca
               if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
@@ -992,9 +992,9 @@ Responda APENAS em JSON válido sem markdown:
       // Views mínimas por período — ajustadas por tamanho do mercado
       const bigMarkets = ['US','IN','ALL'];
       const isBig = bigMarkets.includes(region);
-      const MIN_VIEWS = period === '24h' ? (isBig ? 1000000 : 500000)
-                      : period === '7d'  ? (isBig ? 8000000 : 2000000)
-                      : (isBig ? 14000000 : 5000000);
+      const MIN_VIEWS = period === '24h' ? (isBig ? 1000000 : 100000)
+                      : period === '7d'  ? (isBig ? 8000000 : 1000000)
+                      : (isBig ? 14000000 : 3000000);
       console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
 
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
