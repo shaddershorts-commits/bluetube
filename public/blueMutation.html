@@ -166,6 +166,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .auth-icon{font-size:48px;margin-bottom:16px}
 .auth-title{font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px}
 .auth-sub{font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);margin-bottom:24px;line-height:1.7}
+
+/* ── RENDER STATUS ──────────────────────────────────────────────────────── */
+.render-status{margin-top:14px;padding:12px;border-radius:10px;font-family:var(--font-mono);font-size:11px}
+.render-status.rendering{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--gold)}
+.render-status.done{background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.2);color:var(--green)}
+.render-status.failed{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:var(--red)}
+.render-video{margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid rgba(0,170,255,.12)}
+.render-video video{width:100%;max-height:360px;display:block;background:#000}
+.btn-download{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.25);border-radius:8px;padding:8px 16px;font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--green);cursor:pointer;text-decoration:none;transition:all .2s}
+.btn-download:hover{background:rgba(0,230,118,.2);border-color:var(--green)}
 </style>
 </head>
 <body>
@@ -271,6 +281,29 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
       </div>
       <div class="variations-grid" id="variationsGrid"></div>
     </div>
+
+    <!-- VIDEO RENDER SECTION -->
+    <div class="glass-card" id="renderSection" style="padding:24px 28px;display:none">
+      <div class="step-label">Passo 02</div>
+      <div class="step-title">Gerar Vídeos com Legendas</div>
+      <div class="step-sub">Cole a URL do vídeo base e gere versões com hook + CTA sobrepostos via Shotstack.</div>
+
+      <label class="field-label">URL do Vídeo Base</label>
+      <input class="url-input" id="baseVideoUrl" type="url" placeholder="https://...supabase.co/.../video.mp4" style="margin-bottom:16px"/>
+
+      <button class="btn-primary" id="renderBtn" onclick="startRender()" style="background:linear-gradient(135deg,#92400e,var(--gold));box-shadow:0 0 24px rgba(251,191,36,.3)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5,3 19,12 5,21"/></svg>
+        Gerar Vídeos
+      </button>
+
+      <div class="loading-state" id="renderLoading">
+        <div class="spinner"></div>
+        <div class="loading-txt">Enviando para renderização…</div>
+        <div class="loading-sub" id="renderStatus">Preparando variações</div>
+      </div>
+
+      <div class="error-box" id="renderErr"></div>
+    </div>
   </div>
 
   <!-- HISTORY CARD -->
@@ -285,6 +318,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 <script>
 const TOKEN = localStorage.getItem('bt_token');
 let currentJobId = null;
+let _pollTimer = null;
 
 // ── AUTH CHECK ────────────────────────────────────────────────────────────
 (function(){
@@ -378,10 +412,26 @@ function renderVariations(variations, costUsd) {
     informative: 'Informativo'
   };
 
+  let hasRenders = false;
   variations.forEach((v, i) => {
     const card = document.createElement('div');
     card.className = 'var-card' + (v.is_winner ? ' winner' : '');
     card.id = 'var-' + (v.id || i);
+
+    let renderHtml = '';
+    if (v.render_status === 'done' && v.video_url) {
+      hasRenders = true;
+      renderHtml = `
+        <div class="render-status done">✓ Vídeo pronto</div>
+        <div class="render-video"><video src="${escHtml(v.video_url)}" controls preload="metadata" playsinline></video></div>
+        <a class="btn-download" href="${escHtml(v.video_url)}" download="variation-${v.variation_index||i+1}.mp4" target="_blank">⬇ Baixar vídeo</a>`;
+    } else if (v.render_status === 'rendering') {
+      hasRenders = true;
+      renderHtml = `<div class="render-status rendering">⏳ Renderizando... aguarde</div>`;
+    } else if (v.render_status === 'failed') {
+      renderHtml = `<div class="render-status failed">✗ Falha na renderização</div>`;
+    }
+
     card.innerHTML = `
       <div class="var-top">
         <span class="var-num">#${v.variation_index || (i+1)}</span>
@@ -400,12 +450,18 @@ function renderVariations(variations, costUsd) {
           ${v.is_winner ? '🏆 Vencedor!' : '⭐ Marcar como Vencedor'}
         </button>
         <button class="btn-copy" onclick="copyHook('${escAttr(v.hook_text||'')}',this)">Copiar hook</button>
-      </div>`;
+      </div>
+      ${renderHtml}`;
     grid.appendChild(card);
   });
 
   document.getElementById('resultsSection').classList.add('on');
+  document.getElementById('renderSection').style.display = 'block';
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Start polling if any variations are rendering
+  if (variations.some(v => v.render_status === 'rendering')) startPolling();
+  else stopPolling();
 }
 
 // ── MARK WINNER ───────────────────────────────────────────────────────────
@@ -514,6 +570,67 @@ async function loadHistory() {
   } catch(e) {
     list.innerHTML = '<div class="no-history">Erro ao carregar histórico.</div>';
   }
+}
+
+// ── START RENDER ──────────────────────────────────────────────────────────
+async function startRender() {
+  const baseUrl = document.getElementById('baseVideoUrl').value.trim();
+  if (!baseUrl) return showRenderErr('Cole a URL do vídeo base.');
+  if (!currentJobId) return showRenderErr('Gere variações primeiro.');
+
+  const btn = document.getElementById('renderBtn');
+  const loading = document.getElementById('renderLoading');
+  btn.disabled = true; btn.style.display = 'none';
+  loading.classList.add('on');
+  document.getElementById('renderErr').classList.remove('on');
+
+  try {
+    const r = await fetch('/api/blue-render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'render_variations', token: TOKEN, job_id: currentJobId, base_video_url: baseUrl })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) throw new Error(data.error || 'Erro ao iniciar renderização');
+
+    document.getElementById('renderStatus').textContent = data.message;
+    startPolling();
+
+    // Refresh variations to show rendering status
+    setTimeout(() => refreshVariations(), 2000);
+  } catch(e) {
+    showRenderErr(e.message);
+  } finally {
+    btn.disabled = false; btn.style.display = 'flex';
+    loading.classList.remove('on');
+  }
+}
+
+function showRenderErr(msg) {
+  const el = document.getElementById('renderErr');
+  el.textContent = msg; el.classList.add('on');
+  setTimeout(() => el.classList.remove('on'), 6000);
+}
+
+// ── POLLING ──────────────────────────────────────────────────────────────
+function startPolling() {
+  stopPolling();
+  _pollTimer = setInterval(refreshVariations, 15000);
+}
+
+function stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+async function refreshVariations() {
+  if (!currentJobId) return;
+  try {
+    const r = await fetch(`/api/blue-mutation?job_id=${currentJobId}&token=${encodeURIComponent(TOKEN)}`);
+    const data = await r.json();
+    if (data.variations?.length) {
+      renderVariations(data.variations, 0);
+    }
+  } catch(e) { /* silent */ }
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────
