@@ -943,7 +943,7 @@ function setProfileHeader(p,isOwn){
   show('profEditBtn', isOwn ? 'block' : 'none');
   show('profFollowBtn', isOwn ? 'none' : 'block');
   show('profMsgBtn', isOwn ? 'none' : 'flex');
-  if(isOwn){ _chatTargetUser=null; document.getElementById('pFollowers').textContent='0'; }
+  if(isOwn){ _chatTargetUser=null; if(p.user_id) loadFollowerCount(p.user_id); }
 }
 
 async function loadMyVideos(){
@@ -1367,29 +1367,20 @@ function renderGrid(vids,isOwn){
       openProfileFeed(toShow, v.id, uname);
     };
 
-    // Thumb via background-image (mais confiável que <img> absoluto)
+    // Thumbnail via background-image CSS — mais confiável que <img> tag
     const grad = videoPlaceholderGradient(v.id||v.video_url||'');
     if(v.thumbnail_url){
-      card.style.cssText = `background:${grad};background-size:cover`;
-      const img = document.createElement('img');
-      img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1';
-      img.loading='lazy';
-      img.src = v.thumbnail_url;
-      img.onerror = ()=>{ img.remove(); };
-      card.appendChild(img);
+      card.style.backgroundImage = `url(${v.thumbnail_url})`;
+      card.style.backgroundSize = 'cover';
+      card.style.backgroundPosition = 'center';
+      card.style.backgroundColor = '#111';
     } else {
       card.style.background = grad;
     }
 
-    // Play icon overlay
-    const ph=document.createElement('div');
-    ph.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;color:rgba(255,255,255,.25);z-index:2;pointer-events:none';
-    ph.textContent='▶';
-    card.appendChild(ph);
-
-    const ov=document.createElement('div');ov.className='pg-ov';ov.style.zIndex='2';card.appendChild(ov);
-    const vw=document.createElement('div');vw.className='pg-v';vw.style.zIndex='3';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
-    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.style.zIndex='3';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
+    const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
+    const vw=document.createElement('div');vw.className='pg-v';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
+    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
     grid.appendChild(card);
   });
 }
