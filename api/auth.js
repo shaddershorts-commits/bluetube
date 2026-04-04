@@ -767,6 +767,31 @@ Responda APENAS em JSON válido sem markdown:
     return res.status(200).json({ insights: [], riskFlags: [], recommendations: [], summary: 'Análise indisponível no momento.', ytpCompliance: { score: 0, status: 'atenção', notes: '' } });
   }
 
+  // Detecta idioma provável pelo título (fallback quando YouTube não retorna metadados)
+  function detectLangFromTitle(title) {
+    if (!title) return '';
+    // Caracteres exclusivos de scripts específicos
+    if (/[\u0900-\u097F]/.test(title)) return 'hi'; // Devanagari (Hindi)
+    if (/[\u0600-\u06FF]/.test(title)) return 'ar'; // Árabe
+    if (/[\u3040-\u309F\u30A0-\u30FF]/.test(title)) return 'ja'; // Japonês
+    if (/[\uAC00-\uD7AF]/.test(title)) return 'ko'; // Coreano
+    if (/[\u4E00-\u9FFF]/.test(title)) return 'zh'; // Chinês
+    if (/[\u0E00-\u0E7F]/.test(title)) return 'th'; // Tailandês
+    if (/[\u0980-\u09FF]/.test(title)) return 'bn'; // Bengali
+    if (/[\u0C80-\u0CFF]/.test(title)) return 'kn'; // Kannada
+    if (/[\u0B80-\u0BFF]/.test(title)) return 'ta'; // Tamil
+    if (/[\u0A00-\u0A7F]/.test(title)) return 'pa'; // Punjabi
+    // Palavras-chave por idioma latino
+    const lower = title.toLowerCase();
+    if (/\b(você|voce|não|nao|muito|isso|aqui|como|esse|essa|porque|pra|vídeo|video|brasil|incrível|incrivel)\b/.test(lower)) return 'pt';
+    if (/\b(esto|esta|porque|muy|como|pero|mejor|más|todos|aquí|también|puede)\b/.test(lower)) return 'es';
+    if (/\b(the|this|that|with|from|what|when|how|about|just|like|your|will|been|have|than)\b/.test(lower)) return 'en';
+    if (/\b(und|das|ist|ein|für|mit|auf|dem|den|die|der|nicht|auch|sich)\b/.test(lower)) return 'de';
+    if (/\b(les|des|une|est|pas|pour|que|dans|avec|sur|mais|son|ses|cette)\b/.test(lower)) return 'fr';
+    if (/\b(bir|bu|ve|ile|için|olan|var|çok|daha|ama)\b/.test(lower)) return 'tr';
+    return '';
+  }
+
   if (req.method === 'GET' && req.query?.action === 'viral-shorts') {
     // Rotação de 3 chaves para triplicar a cota diária (30.000 unidades/dia)
     const YT_KEYS = [
@@ -916,20 +941,37 @@ Responda APENAS em JSON válido sem markdown:
         })
       );
 
+      // Mapa de idiomas aceitos por país
+      const LANG_FILTER = {
+        BR: ['pt'], US: ['en'], GB: ['en'], IN: ['hi','en'], MX: ['es'],
+        JP: ['ja'], KR: ['ko'], DE: ['de'], FR: ['fr'], ES: ['es'],
+        AR: ['es'], CO: ['es'], TR: ['tr'], ALL: null
+      };
+      const allowedLangs = LANG_FILTER[region] || null;
+
       const allVideos = statsResults.flat().map(v => {
         const stats = v.statistics || {}, snippet = v.snippet || {};
         const dur = v.contentDetails?.duration || '';
         const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
         const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
         const views = parseInt(stats.viewCount||0);
+        const audioLang = (snippet.defaultAudioLanguage || '').slice(0,2).toLowerCase();
+        const textLang = (snippet.defaultLanguage || '').slice(0,2).toLowerCase();
+        const titleLang = detectLangFromTitle(snippet.title || '');
         return {
           id: v.id, title: snippet.title, channel: snippet.channelTitle,
           thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
           views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
           publishedAt: snippet.publishedAt, duration: secs,
-          url: `https://www.youtube.com/shorts/${v.id}`
+          url: `https://www.youtube.com/shorts/${v.id}`,
+          _lang: audioLang || textLang || titleLang || ''
         };
-      }).filter(v => v.duration <= 65 || v.duration === 0); // 65s de margem para Shorts
+      }).filter(v => {
+        if (v.duration > 65 && v.duration !== 0) return false; // Não é Short
+        // Filtro de idioma: se o país tem idiomas aceitos, filtra
+        if (allowedLangs && v._lang && !allowedLangs.includes(v._lang)) return false;
+        return true;
+      });
 
       // Views mínimas por período — apenas shorts realmente virais
       const MIN_VIEWS = period === '24h' ? 1000000   // 1M+ em 24h
