@@ -4,28 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>BlueEditor — 1 Short em 1 Clique</title>
-<script>
-// Ativa Cross-Origin Isolation via Service Worker (necessário para FFmpeg WASM)
-(function(){
-  if (window.crossOriginIsolated) return; // já isolado, ok
-  if (!('serviceWorker' in navigator)) {
-    console.warn('Service Worker não suportado — FFmpeg WASM pode falhar');
-    return;
-  }
-  navigator.serviceWorker.register('/coi-serviceworker.js').then(reg => {
-    // Se o SW foi recém instalado, recarrega para ativar
-    if (!reg.active) {
-      reg.addEventListener('updatefound', () => {
-        reg.installing?.addEventListener('statechange', e => {
-          if (e.target.state === 'activated') window.location.reload();
-        });
-      });
-    } else if (!window.crossOriginIsolated) {
-      window.location.reload();
-    }
-  }).catch(e => console.warn('SW não registrado:', e.message));
-})();
-</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -835,13 +814,23 @@ async function runEditor() {
   try {
     // ── 1. Gerar TTS ─────────────────────────────────────────────────────────
     setStep('🎙️ Gerando narração com IA…', 5);
-    const ttsR = await fetch('/api/blue-editor', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'tts', token: TOKEN, roteiro: selectedRoteiro.text, voiceId: selectedVoice.id })
-    });
-    const ttsD = await ttsR.json();
-    if (!ttsR.ok) throw new Error(ttsD.error || 'Falha no TTS');
-    generatedAudioB64 = ttsD.audio_b64;
+    // Tenta /api/blue-editor primeiro, fallback para /api/auth
+    let ttsD = null;
+    const ttsBody = JSON.stringify({ action:'tts', token:TOKEN, roteiro:selectedRoteiro.text, voiceId:selectedVoice.id });
+    const ttsHeaders = { 'Content-Type':'application/json' };
+
+    let ttsR = await fetch('/api/blue-editor', { method:'POST', headers:ttsHeaders, body:ttsBody });
+    if (!ttsR.ok) {
+      // Fallback: tenta /api/auth com action=tts
+      ttsR = await fetch('/api/auth', {
+        method:'POST', headers:ttsHeaders,
+        body: JSON.stringify({ action:'tts', token:TOKEN, text:selectedRoteiro.text, voiceId:selectedVoice.id, voice_id:selectedVoice.id })
+      });
+    }
+    ttsD = await ttsR.json();
+    if (!ttsR.ok) throw new Error(ttsD.error || 'Falha no TTS. Configure ELEVENLABS_API_KEY no Vercel.');
+    generatedAudioB64 = ttsD.audio_b64 || ttsD.audioB64 || ttsD.audio;
+    if (!generatedAudioB64) throw new Error('Áudio não gerado. Verifique ELEVENLABS_API_KEY.');
     setStep('✅ Narração gerada!', 20);
 
     // ── 2. Verificar vídeo ───────────────────────────────────────────────────
@@ -892,13 +881,6 @@ async function runEditor() {
 
 // ── LOAD FFMPEG v0.11.6 ───────────────────────────────────────────────────────
 async function loadFFmpeg() {
-  // Verifica isolamento (necessário para SharedArrayBuffer / FFmpeg WASM)
-  if (!window.crossOriginIsolated) {
-    throw new Error(
-      'A página não está isolada (Cross-Origin Isolation necessário para FFmpeg WASM). ' +
-      'Aguarde 2 segundos e tente novamente — o Service Worker está sendo ativado.'
-    );
-  }
   if (!window.FFmpeg) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
