@@ -16,20 +16,27 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET' && req.query.action === 'library') {
     if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
     try {
-      const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-        headers: { 'xi-api-key': EL }
+      const r = await fetch('https://api.elevenlabs.io/v1/voices?show_legacy=false', {
+        headers: { 'xi-api-key': EL, 'Accept': 'application/json' }
       });
-      if (!r.ok) return res.status(502).json({ error: 'Falha ao buscar vozes' });
+      if (!r.ok) {
+        const errText = await r.text().catch(() => '');
+        console.error('ElevenLabs voices error:', r.status, errText.slice(0, 200));
+        return res.status(502).json({ error: 'ElevenLabs ' + r.status, detail: errText.slice(0, 100) });
+      }
       const data = await r.json();
-      const voices = (data.voices || []).map(v => ({
+      const voices = (data.voices || []).filter(v => v.preview_url).map(v => ({
         id: v.voice_id,
         name: v.name,
-        preview_url: v.preview_url || null,
+        preview_url: v.preview_url,
         labels: v.labels || {},
         category: v.category || ''
       }));
       return res.status(200).json({ voices });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+    } catch(e) {
+      console.error('blue-voices library error:', e.message);
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
