@@ -776,11 +776,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <div class="main-card">
     <!-- Modo de geração -->
     <div style="display:flex;gap:0;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:4px;margin-bottom:14px">
-      <button style="flex:1;padding:10px 16px;border-radius:9px;border:1px solid rgba(0,170,255,.25);background:rgba(0,170,255,.15);font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--neon);cursor:default">
-        📝 Adaptar roteiro <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2);margin-left:4px">GRÁTIS</span>
+      <button id="btnModeAdapt" class="mode-btn active-adapt" onclick="setMode('adapt')">
+        📝 Adaptar roteiro <span class="mode-badge">GRÁTIS</span>
       </button>
-      <button title="Em breve" style="flex:1;padding:10px 16px;border-radius:9px;border:none;background:none;font-family:var(--font-mono);font-size:12px;font-weight:600;color:rgba(251,191,36,.45);cursor:not-allowed;opacity:.6">
-        ✨ Roteirizar vídeo <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;background:rgba(251,191,36,.08);color:rgba(251,191,36,.5);border:1px solid rgba(251,191,36,.15);margin-left:4px">EM BREVE</span>
+      <button id="btnModeZero" class="mode-btn" onclick="setMode('zero')">
+        ✨ Roteirizar vídeo <span class="mode-badge">FULL+</span>
       </button>
     </div>
     <div class="input-row">
@@ -1720,7 +1720,8 @@ function setMode(mode){
 
 // Roteador principal do botão
 function handleMainBtn(e){
-  startTranscription(e);
+  if(_genMode==='zero') startFromZero(e);
+  else startTranscription(e);
 }
 
 // ── INICIAR GERAR DO ZERO (fluxo independente) ────────────────────────────

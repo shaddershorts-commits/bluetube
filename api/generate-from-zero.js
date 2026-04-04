@@ -186,25 +186,53 @@ module.exports = async function handler(req, res) {
       } catch(e) {}
     }
 
-    // ── 7. Prompt viral ───────────────────────────────────────────────────────
+    // ── 7. Prompt viral (Narrador Viral Anti-Propaganda) ──────────────────────
     const prompt = [
-      'FORMULA VIRAL: Ganco forte + Curiosidade crescente + Corte maximo + Payoff no menor tempo possivel',
+      '=== NARRADOR VIRAL ANTI-PROPAGANDA — ROTEIRISTA DE ALTO DESEMPENHO ===',
       '',
-      '== NARRADOR VIRAL ANTI-PROPAGANDA ==',
-      'Crie roteiros que PRENDAM nos primeiros 2 segundos. NAO descreva friamente. Crie SENSACAO.',
+      'Sua missão: transformar o conteúdo abaixo em roteiros que fazem alguém NÃO pular o vídeo.',
+      'Você NÃO descreve. Você cria SENSAÇÃO.',
       '',
-      'CONTEXTO DO VIDEO (baseie-se APENAS nisso):',
+      'FÓRMULA: Gancho forte + Curiosidade crescente + Corte máximo de palavras + Payoff satisfatório no menor tempo possível',
+      '',
+      'ESTRUTURA OBRIGATÓRIA (nos dois roteiros):',
+      '1. GANCHO (0–3s): Intriga imediata SEM contexto completo. Cria pergunta na mente.',
+      '   Exemplos de abertura: "Ninguém entendeu isso no começo…" / "Ele achou que era simples, mas…" / "O que aconteceu depois ninguém esperava…"',
+      '2. PROGRESSÃO (3–15s): Evolução com mini dúvidas. Use: "Só que…" / "Mas aí…" / "Foi aí que…"',
+      '3. PAYOFF (final): Entrega resultado, surpreende ou satisfaz. Termina com ponto final.',
+      '',
+      'REGRAS DE OURO:',
+      '- Frases CURTAS. Ritmo rápido.',
+      '- Corte AGRESSIVO — remova tudo que não prende',
+      '- Linguagem nativa de redes sociais em ' + safeLang,
+      '- Máximo 75 palavras por roteiro',
+      '- Nada de linguagem formal ou técnica',
+      '',
+      'PROIBIDO:',
+      '- Soar como propaganda ou narração fria',
+      '- Descrever friamente o que acontece',
+      '- "porque", "para isso", "com o objetivo de"',
+      '- Explicar a intenção do personagem',
+      '- Markdown, emojis, títulos internos',
+      '',
+      'DIFERENÇA ENTRE OS DOIS ESTILOS:',
+      'casual = leve, conversacional, gancho curioso e suave, como conversa entre amigos',
+      'apelativo = gancho CHOCANTE que para o scroll em 2s, afirmações ousadas, tensão máxima, urgência',
+      '',
+      'TESTE DE QUALIDADE (aplique antes de responder):',
+      '1. Prende nos primeiros 2 segundos? Se não, refaça o gancho.',
+      '2. Tem curiosidade contínua? Se não, adicione "Só que…" ou "Mas aí…"',
+      '3. Alguma frase dá para cortar? Corte.',
+      '4. Parece propaganda? Refaça.',
+      '',
+      'CONTEXTO DO VÍDEO (crie APENAS com base nisto):',
       contextParts.join('\n\n'),
       '',
-      livingMemory ? 'CALIBRACAO DE TOM (NAO copie):\n' + livingMemory + '\n' : '',
-      'IDIOMA: ' + safeLang + ' — linguagem nativa de redes sociais.',
+      livingMemory ? 'CALIBRAÇÃO DE TOM (NÃO copie — supere):\n' + livingMemory + '\n' : '',
+      'IDIOMA: ' + safeLang + ' — linguagem completamente nativa.',
       '',
-      'ESTRUTURA: 1.GANCO (intriga imediata, sem contexto completo) 2.PROGRESSAO ("So que…"/"Mas ai…") 3.PAYOFF (surpreende ou satisfaz)',
-      'PROIBIDO: soar como propaganda, descrever friamente, mais de 75 palavras.',
-      'casual = leve, conversacional | apelativo = hook chocante, tensao maxima',
-      '',
-      'Responda APENAS em JSON valido:',
-      '{"casual":"roteiro casual","apelativo":"roteiro apelativo","titleCasual":"titulo casual","titleApelativo":"titulo apelativo"}'
+      'Responda SOMENTE com JSON válido, sem markdown, sem explicação:',
+      '{"casual":"roteiro casual aqui","apelativo":"roteiro apelativo aqui","titleCasual":"título curto casual","titleApelativo":"título curto apelativo"}'
     ].join('\n');
 
     // ── 8. Gera com OpenAI (primary) + Gemini (fallback) ─────────────────────
@@ -214,28 +242,35 @@ module.exports = async function handler(req, res) {
       try {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
-          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 400, temperature: 0.85, messages: [{ role: 'user', content: prompt }] })
+          body: JSON.stringify({
+            model: 'gpt-4o-mini', max_tokens: 600, temperature: 0.88,
+            messages: [
+              { role: 'system', content: 'Você é um roteirista viral de alto desempenho. Responda SOMENTE com JSON válido, sem markdown.' },
+              { role: 'user', content: prompt }
+            ]
+          })
         });
         const d = await r.json();
         if (r.ok && d.choices && d.choices[0]) {
-          let text = d.choices[0].message.content.trim().replace(/```json/g, '').replace(/```/g, '').trim();
+          let text = d.choices[0].message.content.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const si = text.indexOf('{'), ei = text.lastIndexOf('}');
           if (si >= 0 && ei >= 0) { const p = JSON.parse(text.slice(si, ei+1)); if (p.casual && p.apelativo) result = p; }
         }
-      } catch(e) {}
+      } catch(e) { console.error('OpenAI error:', e.message); }
     }
 
     for (let i = 0; i < GK.length && !result; i++) {
       try {
-        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GK[i], {
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GK[i], {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.85, maxOutputTokens: 500 } })
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.88, maxOutputTokens: 700, topP: 0.95 } })
         });
         const d = await r.json();
-        if (d.error && d.error.code === 429) continue;
-        let text = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0] && d.candidates[0].content.parts[0].text;
+        if (d.error && (d.error.code === 429 || d.error.code === 503)) continue;
+        if (!r.ok) continue;
+        let text = d.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
         if (!text) continue;
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const si = text.indexOf('{'), ei = text.lastIndexOf('}');
         if (si >= 0 && ei >= 0) { const p = JSON.parse(text.slice(si, ei+1)); if (p.casual && p.apelativo) result = p; }
       } catch(e) { continue; }
