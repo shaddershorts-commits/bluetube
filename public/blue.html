@@ -1333,7 +1333,7 @@ function extractVideoFrame(videoUrl, card, placeholder){
     vid.style.opacity='1'; placeholder.style.display='none';
   }
 
-  vid.onloadedmetadata=()=>{ vid.currentTime=vid.duration>0?Math.min(1,vid.duration*0.2):1; };
+  vid.onloadedmetadata=()=>{ vid.currentTime=Math.max(2,vid.duration*0.25); };
   vid.onseeked=snapFrame;
   vid.onerror=()=>{
     // Vídeo inacessível — mantém gradiente + ícone play visível
@@ -1367,15 +1367,34 @@ function renderGrid(vids,isOwn){
       openProfileFeed(toShow, v.id, uname);
     };
 
-    // Thumbnail via background-image CSS — mais confiável que <img> tag
-    const grad = videoPlaceholderGradient(v.id||v.video_url||'');
-    if(v.thumbnail_url){
-      card.style.backgroundImage = `url(${v.thumbnail_url})`;
-      card.style.backgroundSize = 'cover';
-      card.style.backgroundPosition = 'center';
-      card.style.backgroundColor = '#111';
-    } else {
-      card.style.background = grad;
+    // Gradiente colorido como fundo imediato
+    card.style.background = videoPlaceholderGradient(v.id||v.video_url||'');
+
+    // Gera thumb a partir do vídeo real (as thumb.jpg salvas estão pretas)
+    if(v.video_url){
+      const vid=document.createElement('video');
+      vid.muted=true; vid.playsInline=true; vid.preload='metadata';
+      vid.src=v.video_url;
+      vid.onloadedmetadata=()=>{
+        // Seek para 2s ou 25% do vídeo — evita frames pretos de intro
+        vid.currentTime = Math.max(2, vid.duration * 0.25);
+      };
+      vid.onseeked=()=>{
+        try{
+          const cv=document.createElement('canvas');
+          cv.width=Math.min(vid.videoWidth||360,360);
+          cv.height=Math.round(cv.width*((vid.videoHeight||640)/Math.max(vid.videoWidth||360,1)));
+          cv.getContext('2d').drawImage(vid,0,0,cv.width,cv.height);
+          const snap=cv.toDataURL('image/jpeg',0.75);
+          if(snap && snap.length > 5000){
+            card.style.backgroundImage = `url(${snap})`;
+            card.style.backgroundSize = 'cover';
+            card.style.backgroundPosition = 'center';
+          }
+        }catch(e){}
+        vid.remove();
+      };
+      vid.onerror=()=>vid.remove();
     }
 
     const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
@@ -1502,7 +1521,7 @@ function pickFile(file){
   selFile=file;
   const url=URL.createObjectURL(file);
   const tv=document.createElement('video');tv.src=url;tv.muted=true;
-  tv.onloadedmetadata=()=>{vDur=tv.duration;vW=tv.videoWidth;vH=tv.videoHeight;tv.currentTime=.5;};
+  tv.onloadedmetadata=()=>{vDur=tv.duration;vW=tv.videoWidth;vH=tv.videoHeight;tv.currentTime=Math.max(2,tv.duration*0.25);};
   tv.onseeked=()=>{
     const cv=document.createElement('canvas');cv.width=Math.min(tv.videoWidth,480);cv.height=Math.round(cv.width*(tv.videoHeight/tv.videoWidth));
     cv.getContext('2d').drawImage(tv,0,0,cv.width,cv.height);
