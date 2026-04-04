@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
 
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
   const SHOTSTACK_URL = 'https://api.shotstack.io/edit/stage';
-  const CALLBACK_URL = (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'https://bluetubeviral.com') + '/api/blue-render-webhook';
+  const CALLBACK_URL = (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'https://www.bluetubeviral.com') + '/api/blue-render-webhook';
 
   // Auth
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
@@ -42,7 +42,6 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
   const action = req.body?.action;
 
   // ── POST: render_variations ──────────────────────────────────────────────
@@ -78,19 +77,64 @@ module.exports = async function handler(req, res) {
 
     let submitted = 0;
     const errors = [];
+    const renderIds = [];
 
     for (const v of toRender) {
+      const idx = v.variation_index || 1;
       const color = styleColors[v.caption_style] || '#FFFFFF';
-      const textShadow = v.caption_style === 'outline'
-        ? '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 8px rgba(0,0,0,0.9)'
-        : '2px 2px 4px rgba(0,0,0,0.8)';
+      const hookText = v.hook_text || 'Hook';
+      const ctaText = v.cta_text || 'CTA';
 
-      const hookHtml = `<p style="font-family:Arial,sans-serif;font-weight:bold;font-size:48px;color:${color};text-align:center;text-shadow:${textShadow};padding:0 20px;margin:0;line-height:1.2">${escHtml(v.hook_text || '')}</p>`;
-      const ctaHtml = `<p style="font-family:Arial,sans-serif;font-weight:bold;font-size:40px;color:${color};text-align:center;text-shadow:${textShadow};padding:0 20px;margin:0;line-height:1.2">${escHtml(v.cta_text || '')}</p>`;
+      // Vary position/size per variation for visual differentiation
+      let hookPosition = 'bottom';
+      let hookOffsetY = 0.15;
+      let hookSize = 'medium';
+      let ctaPosition = 'bottom';
+      let ctaOffsetY = 0.08;
+      let hookBackground = 'transparent';
 
+      if (idx === 1) { hookPosition = 'bottom'; hookOffsetY = 0.15; hookSize = 'medium'; }
+      else if (idx === 2) { hookPosition = 'top'; hookOffsetY = -0.15; hookSize = 'medium'; ctaPosition = 'top'; ctaOffsetY = -0.1; }
+      else if (idx === 3) { hookPosition = 'bottom'; hookOffsetY = 0.12; hookSize = 'medium'; hookBackground = '#000000B3'; }
+      else if (idx === 4) { hookPosition = 'center'; hookOffsetY = 0; hookSize = 'medium'; ctaPosition = 'bottom'; ctaOffsetY = 0.08; }
+      else { hookPosition = 'bottom'; hookOffsetY = 0.15; hookSize = 'large'; }
+
+      // Build Shotstack timeline using native "title" asset type
       const timeline = {
         timeline: {
           tracks: [
+            {
+              clips: [
+                {
+                  asset: {
+                    type: 'title',
+                    text: hookText,
+                    style: 'minimal',
+                    color: color,
+                    size: hookSize,
+                    background: hookBackground
+                  },
+                  start: 0,
+                  length: 3,
+                  position: hookPosition,
+                  offset: { y: hookOffsetY }
+                },
+                {
+                  asset: {
+                    type: 'title',
+                    text: ctaText,
+                    style: 'minimal',
+                    color: color,
+                    size: 'small',
+                    background: 'transparent'
+                  },
+                  start: 27,
+                  length: 3,
+                  position: ctaPosition,
+                  offset: { y: ctaOffsetY }
+                }
+              ]
+            },
             {
               clips: [
                 {
@@ -99,34 +143,18 @@ module.exports = async function handler(req, res) {
                   length: 30
                 }
               ]
-            },
-            {
-              clips: [
-                {
-                  asset: { type: 'html', html: hookHtml, width: 1080, height: 300 },
-                  start: 0,
-                  length: 3,
-                  position: 'bottom',
-                  offset: { y: 0.15 }
-                },
-                {
-                  asset: { type: 'html', html: ctaHtml, width: 1080, height: 200 },
-                  start: 27,
-                  length: 3,
-                  position: 'bottom',
-                  offset: { y: 0.1 }
-                }
-              ]
             }
           ]
         },
         output: {
           format: 'mp4',
           resolution: 'sd',
-          aspectRatio: '9:16'
+          size: { width: 480, height: 854 }
         },
         callback: CALLBACK_URL
       };
+
+      console.log(`[blue-render] var#${idx} hook="${hookText.slice(0,40)}" color=${color} pos=${hookPosition}`);
 
       try {
         const rR = await fetch(`${SHOTSTACK_URL}/render`, {
@@ -136,30 +164,33 @@ module.exports = async function handler(req, res) {
         });
         const rD = await rR.json();
 
-        if (rR.ok && rD.response?.id) {
-          // Save render_id to variation
+        const renderId = rD.response?.id;
+        console.log(`[blue-render] var#${idx} → render_id=${renderId || 'FAILED'} status=${rR.status}`);
+
+        if (rR.ok && renderId) {
           await fetch(`${SU}/rest/v1/blue_variations?id=eq.${v.id}`, {
             method: 'PATCH',
             headers: { ...h, Prefer: 'return=minimal' },
-            body: JSON.stringify({
-              shotstack_render_id: rD.response.id,
-              render_status: 'rendering'
-            })
+            body: JSON.stringify({ shotstack_render_id: renderId, render_status: 'rendering' })
           });
+          renderIds.push({ variation_index: idx, render_id: renderId, hook: hookText.slice(0, 50) });
           submitted++;
         } else {
-          console.error('Shotstack render error:', JSON.stringify(rD).slice(0, 300));
-          errors.push({ variation_id: v.id, error: rD.message || rD.error || 'Render failed' });
+          const errMsg = rD.message || rD.error || JSON.stringify(rD).slice(0, 200);
+          console.error(`[blue-render] var#${idx} FAILED:`, errMsg);
+          errors.push({ variation_index: idx, error: errMsg });
         }
       } catch(e) {
-        console.error('Shotstack fetch error:', e.message);
-        errors.push({ variation_id: v.id, error: e.message });
+        console.error(`[blue-render] var#${idx} EXCEPTION:`, e.message);
+        errors.push({ variation_index: idx, error: e.message });
       }
     }
 
     return res.status(200).json({
       success: submitted > 0,
       renders_submitted: submitted,
+      render_ids: renderIds,
+      callback_url: CALLBACK_URL,
       message: `${submitted} vídeo${submitted !== 1 ? 's' : ''} em renderização`,
       errors: errors.length > 0 ? errors : undefined
     });
@@ -167,7 +198,3 @@ module.exports = async function handler(req, res) {
 
   return res.status(400).json({ error: 'Ação inválida' });
 };
-
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
