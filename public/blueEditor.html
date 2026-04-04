@@ -907,25 +907,33 @@ async function loadFFmpeg() { return true; } // sem FFmpeg WASM
 
 async function processVideo(vidBuffer, audioB64) {
   if (wmMode === "image" && wmImageData) await preloadWmImage(wmImageData);
+
   return new Promise(async (resolve, reject) => {
     try {
+      // ── Setup vídeo ────────────────────────────────────────────────────────
       const vidBlob = new Blob([vidBuffer], {type:"video/mp4"});
       const vidUrl = URL.createObjectURL(vidBlob);
       const vid = document.createElement("video");
-      vid.src = vidUrl; vid.muted = true; vid.playsInline = true;
-      vid.loop = true; // Loop para sincronizar com narração
-      await new Promise(res => { vid.onloadedmetadata = res; vid.load(); setTimeout(res, 5000); });
-      const vW = vid.videoWidth || 720, vH = vid.videoHeight || 1280;
+      vid.src = vidUrl; vid.muted = true; vid.playsInline = true; vid.loop = true;
+      await new Promise(res => { vid.onloadedmetadata = res; vid.load(); setTimeout(res,5000); });
+      const vW = vid.videoWidth||720, vH = vid.videoHeight||1280;
+      const vidDur = vid.duration || 30;
 
-      const canvas = document.createElement("canvas");
-      canvas.width = vW; canvas.height = vH;
-      const ctx = canvas.getContext("2d");
+      // ── FASE 1: Temporal inpainting — reconstrói fundo sem legenda ─────────
+      setStep("🔍 Analisando legenda original (temporal inpainting)…", 44);
+      const bgCanvas = await buildCleanBackground(vid, vW, vH, subtitlePos);
+      setStep("✅ Fundo limpo obtido!", 52);
 
-      // ── AudioContext: narração + música ──
+      // ── FASE 2: Remover silêncio do TTS ───────────────────────────────────
+      setStep("✂️ Removendo silêncio da narração…", 54);
       const actx = new AudioContext();
       const narBin = Uint8Array.from(atob(audioB64), ch => ch.charCodeAt(0));
-      const narBuf = await actx.decodeAudioData(narBin.buffer);
-      const narDuration = narBuf.duration; // duração real da narração
+      const rawNarBuf = await actx.decodeAudioData(narBin.buffer);
+      const narBuf = removeSilence(rawNarBuf); // narração dinâmica
+      const narDuration = narBuf.duration;
+      setStep("✅ Narração processada! (" + narDuration.toFixed(1) + "s)", 57);
+
+      // ── Setup áudio: narração + música ─────────────────────────────────────
       const dest = actx.createMediaStreamDestination();
       const narSrc = actx.createBufferSource();
       narSrc.buffer = narBuf; narSrc.connect(dest);
@@ -940,13 +948,18 @@ async function processVideo(vidBuffer, audioB64) {
         } catch(e) {}
       }
 
+      // ── Canvas + Recorder ──────────────────────────────────────────────────
+      const canvas = document.createElement("canvas");
+      canvas.width = vW; canvas.height = vH;
+      const ctx = canvas.getContext("2d");
+
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus" : "video/webm";
       const stream = new MediaStream([
         ...canvas.captureStream(30).getVideoTracks(),
         ...dest.stream.getAudioTracks()
       ]);
-      const recorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond:3500000});
+      const recorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond:4000000});
       const chunks = [];
       recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
       recorder.onstop = () => {
@@ -954,105 +967,201 @@ async function processVideo(vidBuffer, audioB64) {
         URL.revokeObjectURL(vidUrl); actx.close(); resolve(blob);
       };
 
-      let stopped = false;
+      let stopped = false, startTime = null;
       const stopAll = () => {
-        if(stopped)return; stopped=true;
-        vid.pause();
+        if(stopped)return; stopped=true; vid.pause();
         if(recorder.state!=="inactive") recorder.stop();
       };
 
-      // ── Legendas sincronizadas ──
-      const words = (selectedRoteiro?.text || "").trim().split(/\s+/).filter(Boolean);
-      const secPerWord = narDuration / Math.max(words.length, 1);
-      let startTime = null;
+      // Palavras para karaoke (do roteiro escolhido)
+      const words = (selectedRoteiro?.text||"").trim().split(/\s+/).filter(w=>w.length>0);
+      const wordDur = narDuration / Math.max(words.length, 1);
 
-      // ── Função de máscara de legenda (cobre a região do vídeo original) ──
-      function drawSubtitleMask() {
-        if (subtitlePos === "none") return;
-        const zoneH = vH * 0.22;
-        let zoneY = subtitlePos === "top" ? 0 : subtitlePos === "center" ? (vH-zoneH)/2 : vH - zoneH;
-        // Blur a zona para apagar a legenda original
-        ctx.save();
-        ctx.filter = "blur(14px)";
-        ctx.drawImage(vid, 0, zoneY, vW, zoneH, 0, zoneY, vW, zoneH);
-        ctx.filter = "none";
-        // Gradiente escuro para melhorar legibilidade das nossas legendas
-        const grd = ctx.createLinearGradient(0, zoneY, 0, zoneY + zoneH);
-        grd.addColorStop(0, "rgba(0,0,0,0)");
-        grd.addColorStop(0.4, "rgba(0,0,0,0.55)");
-        grd.addColorStop(1, "rgba(0,0,0,0.75)");
-        ctx.fillStyle = grd;
-        ctx.fillRect(0, zoneY, vW, zoneH);
-        ctx.restore();
-      }
-
-      // ── Nossas legendas sincronizadas ──
-      function drawSyncedCaptions(elapsed) {
-        if (!words.length || subtitlePos === "none") return;
-        const wordIdx = Math.min(Math.floor(elapsed / secPerWord), words.length - 1);
-        // Mostra 3 palavras por vez
-        const chunk = words.slice(Math.max(0,wordIdx-1), wordIdx+2).join(" ");
-        if (!chunk) return;
-        const zoneH = vH * 0.22;
-        let textY = subtitlePos === "top" ? zoneH * 0.65 : subtitlePos === "center" ? vH/2 + 10 : vH - zoneH*0.35;
-        ctx.save();
-        const fontSize = Math.max(24, Math.min(38, vW / 16));
-        ctx.font = "bold " + fontSize + "px Arial,sans-serif";
-        ctx.textAlign = "center";
-        ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 8;
-        ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.lineWidth = 4;
-        ctx.strokeText(chunk, vW/2, textY);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(chunk, vW/2, textY);
-        ctx.restore();
-      }
-
+      // ── drawFrame: pipeline inteligente ───────────────────────────────────
       const drawFrame = () => {
         if (stopped) return;
         const now = performance.now();
         if (!startTime) startTime = now;
         const elapsed = (now - startTime) / 1000;
+        const progress = Math.min(elapsed / narDuration, 1);
 
-        // Frame do vídeo
-        ctx.drawImage(vid, 0, 0, vW, vH);
+        // Ken Burns: zoom sutil que aumenta e depois diminui
+        const zoom = 1 + Math.sin(progress * Math.PI) * 0.04;
+        const ox = (vW * (zoom - 1)) / 2;
+        const oy = (vH * (zoom - 1)) / 2;
+        ctx.drawImage(vid, -ox, -oy, vW * zoom, vH * zoom);
 
-        // Cobre legenda original + adiciona nossas
-        drawSubtitleMask();
-        drawSyncedCaptions(elapsed);
+        // ── Temporal inpainting: cobre legenda com fundo limpo ──────────────
+        if (subtitlePos !== "none" && bgCanvas) {
+          const zoneH = vH * 0.24;
+          const zoneY = subtitlePos === "top" ? 0
+            : subtitlePos === "center" ? (vH - zoneH) / 2
+            : vH - zoneH;
+          // Aplica fundo limpo (reconstruído via mediana de frames)
+          ctx.drawImage(bgCanvas, 0, zoneY, vW, zoneH, 0, zoneY, vW, zoneH);
+          // Gradiente para integrar naturalmente
+          const grd = ctx.createLinearGradient(0, zoneY, 0, zoneY + zoneH);
+          grd.addColorStop(0, "rgba(0,0,0,0)");
+          grd.addColorStop(0.3, "rgba(0,0,0,0.2)");
+          grd.addColorStop(1, "rgba(0,0,0,0.5)");
+          ctx.fillStyle = grd;
+          ctx.fillRect(0, zoneY, vW, zoneH);
+        }
 
-        // Marca d'água do usuário
+        // ── Legenda karaoke palavra por palavra ─────────────────────────────
+        if (words.length > 0 && subtitlePos !== "none") {
+          const currentWordIdx = Math.min(Math.floor(elapsed / wordDur), words.length - 1);
+          const zoneH = vH * 0.24;
+          const centerY = subtitlePos === "top" ? zoneH * 0.6
+            : subtitlePos === "center" ? vH / 2 + 10
+            : vH - zoneH * 0.35;
+
+          const fontSize = Math.max(26, Math.min(40, vW / 14));
+          ctx.save();
+          ctx.textAlign = "center";
+          ctx.font = "bold " + fontSize + "px 'Arial Black',Arial,sans-serif";
+
+          // Fundo da legenda (pastilha arredondada)
+          const COLORS = ["#FFD700","#FF6B6B","#4ECDC4","#45B7D1","#96E6A1","#FFEAA7","#DDA0DD","#98FB98"];
+          const currentColor = COLORS[currentWordIdx % COLORS.length];
+
+          // Mostra palavra atual com destaque + próxima em branco
+          [-1, 0, 1].forEach(offset => {
+            const idx = currentWordIdx + offset;
+            if (idx < 0 || idx >= words.length) return;
+            const word = words[idx];
+            const isCurrentWord = offset === 0;
+
+            const wordFontSize = isCurrentWord ? fontSize + 5 : fontSize - 4;
+            ctx.font = "bold " + wordFontSize + "px 'Arial Black',Arial,sans-serif";
+
+            const tm = ctx.measureText(word);
+            const wx = vW/2 + offset * (vW * 0.3);
+            const wy = centerY + (isCurrentWord ? 0 : fontSize * 0.15);
+
+            if (isCurrentWord) {
+              // Fundo colorido na palavra atual
+              const pad = 10;
+              ctx.fillStyle = currentColor;
+              const rr = wordFontSize * 0.4;
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(wx - tm.width/2 - pad, wy - wordFontSize - 2, tm.width + pad*2, wordFontSize + 12, rr);
+              else ctx.rect(wx - tm.width/2 - pad, wy - wordFontSize - 2, tm.width + pad*2, wordFontSize + 12);
+              ctx.fill();
+              ctx.shadowColor = "rgba(0,0,0,.7)"; ctx.shadowBlur = 8;
+              ctx.fillStyle = "#000";
+              ctx.fillText(word, wx, wy);
+            } else {
+              // Palavras vizinhas em branco com sombra
+              ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 6;
+              ctx.strokeStyle = "rgba(0,0,0,.9)"; ctx.lineWidth = 3;
+              ctx.strokeText(word, wx, wy);
+              ctx.fillStyle = offset > 0 ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.85)";
+              ctx.fillText(word, wx, wy);
+            }
+          });
+          ctx.restore();
+        }
+
+        // ── Marca d'água ────────────────────────────────────────────────────
         if (wmMode === "text" && wmText) {
           ctx.save();
           ctx.font = "bold 26px Arial,sans-serif";
           ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 5;
           ctx.fillStyle = "rgba(255,255,255,.9)";
           const tw = ctx.measureText(wmText).width;
-          ctx.fillText(wmText, vW - tw - 16, subtitlePos==="bottom" ? vH*0.77 : vH - 32);
+          const mY = subtitlePos === "bottom" ? vH * 0.74 : vH - 30;
+          ctx.fillText(wmText, vW - tw - 16, mY);
           ctx.restore();
         }
         if (wmMode === "image" && _wmImageEl) {
-          const maxW = 110, ratio = _wmImageEl.naturalHeight / _wmImageEl.naturalWidth;
-          ctx.drawImage(_wmImageEl, vW - maxW - 14, subtitlePos==="bottom" ? vH*0.56 : vH - maxW*ratio - 14, maxW, maxW*ratio);
+          const maxW = 100, ratio = _wmImageEl.naturalHeight / _wmImageEl.naturalWidth;
+          const mY = subtitlePos === "bottom" ? vH * 0.54 : vH - maxW*ratio - 14;
+          ctx.drawImage(_wmImageEl, vW - maxW - 14, mY, maxW, maxW * ratio);
         }
 
         if (elapsed < narDuration) requestAnimationFrame(drawFrame);
         else stopAll();
       };
 
+      setStep("🎬 Gravando Short final…", 60);
       recorder.start(200);
       narSrc.start(0);
-      vid.play().then(() => {
-        startTime = null;
-        requestAnimationFrame(drawFrame);
-      });
-      vid.onerror = () => reject(new Error("Erro ao reproduzir o vídeo"));
-      // Garante parada exata na duração da narração
-      setTimeout(stopAll, (narDuration + 0.5) * 1000);
+      vid.play().then(() => { startTime = null; requestAnimationFrame(drawFrame); });
+      vid.onerror = () => reject(new Error("Erro ao reproduzir o vídeo."));
+      setTimeout(stopAll, (narDuration + 1.5) * 1000);
 
     } catch(e) { reject(e); }
   });
 }
 
+// ── Temporal Inpainting: amostra frames → calcula mediana → fundo limpo ──────
+async function buildCleanBackground(vid, vW, vH, subPos) {
+  if (subPos === "none") return null;
+  const zoneH = Math.round(vH * 0.24);
+  const zoneY = subPos === "top" ? 0 : subPos === "center" ? Math.round((vH - zoneH)/2) : vH - zoneH;
+  const N = 8; // número de amostras
+  const dur = vid.duration || 30;
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = vW; sampleCanvas.height = zoneH;
+  const sCtx = sampleCanvas.getContext("2d");
+  const samples = [];
+
+  for (let i = 0; i < N; i++) {
+    const t = ((i + 0.5) / N) * dur * 0.9;
+    vid.currentTime = t;
+    await new Promise(res => { vid.onseeked = res; setTimeout(res, 800); });
+    sCtx.drawImage(vid, 0, zoneY, vW, zoneH, 0, 0, vW, zoneH);
+    samples.push(sCtx.getImageData(0, 0, vW, zoneH).data.slice());
+  }
+
+  // Mediana pixel a pixel (elimina texto que aparece em alguns frames)
+  const result = new Uint8ClampedArray(vW * zoneH * 4);
+  const midIdx = Math.floor(N / 2);
+  for (let p = 0; p < result.length; p++) {
+    const vals = samples.map(s => s[p]).sort((a,b) => a-b);
+    result[p] = vals[midIdx];
+  }
+
+  const bgCanvas = document.createElement("canvas");
+  bgCanvas.width = vW; bgCanvas.height = zoneH;
+  bgCanvas.getContext("2d").putImageData(new ImageData(result, vW, zoneH), 0, 0);
+  return bgCanvas;
+}
+
+// ── Silence Removal: remove pausas longas do TTS → voz dinâmica ──────────────
+function removeSilence(buf, threshold = 0.012, minSilMs = 90) {
+  const sr = buf.sampleRate, data = buf.getChannelData(0);
+  const minSil = Math.round(sr * minSilMs / 1000);
+  const keepMs = Math.round(sr * 0.05); // mantém 50ms de silêncio
+  const segs = []; let speechStart = 0, silStart = -1;
+
+  for (let i = 0; i < data.length; i++) {
+    const loud = Math.abs(data[i]) >= threshold;
+    if (!loud) { if (silStart < 0) silStart = i; }
+    else {
+      if (silStart >= 0) {
+        if (i - silStart > minSil) {
+          segs.push({s: speechStart, e: silStart + keepMs}); speechStart = i;
+        }
+        silStart = -1;
+      }
+    }
+  }
+  segs.push({s: speechStart, e: data.length});
+
+  const totalLen = segs.reduce((a, seg) => a + (seg.e - seg.s), 0);
+  const newBuf = new AudioContext().createBuffer(buf.numberOfChannels, totalLen, sr);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const src = buf.getChannelData(ch), dst = newBuf.getChannelData(ch);
+    let pos = 0;
+    for (const seg of segs) {
+      const len = Math.min(seg.e - seg.s, src.length - seg.s);
+      if (len > 0) { dst.set(src.subarray(seg.s, seg.s + len), pos); pos += len; }
+    }
+  }
+  return newBuf;
+}
 
 // ── SHOW RESULT ───────────────────────────────────────────────────────────────
 function showResult(blob) {
