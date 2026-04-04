@@ -851,10 +851,17 @@ async function openCreatorProfile(userId){
   if(!userId)return;
   if(myProfile&&myProfile.user_id===userId){openProfile();return;}
   _chatTargetUser = userId;
-  document.getElementById('profPage').classList.add('open');
+  const page=document.getElementById('profPage');
+  page.classList.add('open');
+
+  // Esconde botões do próprio perfil, mostra chat button sempre
+  ['pNavEdit','profAvCam','profEditBtn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  const navChat=document.getElementById('pNavChat'); if(navChat) navChat.style.display='block';
+  const msgBtn=document.getElementById('profMsgBtn'); if(msgBtn) msgBtn.style.display='block';
+
   document.getElementById('profGrid').innerHTML='<div class="pg-empty"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div></div>';
 
-  // Usa dados do feed como base imediata (sem esperar API)
+  // Usa dados do feed como base imediata
   const feedVid=videos.find(x=>x.user_id===userId);
   const cr=feedVid?.creator||{};
   setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url,user_id:userId},false);
@@ -908,9 +915,9 @@ function setProfileHeader(p,isOwn){
   const bioEl=$('profBio');
   if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
   show('pNavEdit',isOwn?'block':'none');
-  show('pNavChat',(!isOwn&&!!TOKEN)?'block':'none');
+  show('pNavChat',isOwn?'none':'block');
   show('profEditBtn',isOwn?'block':'none');
-  show('profMsgBtn',(!isOwn&&!!TOKEN)?'block':'none');
+  show('profMsgBtn',isOwn?'none':'block');
   if(isOwn) _chatTargetUser=null;
 }
 
@@ -1177,34 +1184,37 @@ function startStatusHeartbeat() {
 function extractVideoFrame(videoUrl, card, placeholder){
   if(!videoUrl)return;
   const vid=document.createElement('video');
-  vid.src=videoUrl; vid.muted=true; vid.preload='metadata'; vid.playsInline=true;
-  // Começa invisível — só exibe quando tiver o frame pronto
-  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;opacity:0';
-  vid.onloadedmetadata=()=>{
-    vid.currentTime=0.1;
-  };
-  vid.onseeked=()=>{
+  vid.src=videoUrl; vid.muted=true; vid.preload='auto'; vid.playsInline=true;
+  // Invisível até ter pixel decodificado
+  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;opacity:0;pointer-events:none';
+  let done=false;
+  function showFrame(){
+    if(done)return; done=true;
     try{
       const cv=document.createElement('canvas');
       cv.width=Math.min(vid.videoWidth||360,360);
       cv.height=Math.round(cv.width*((vid.videoHeight||640)/Math.max(vid.videoWidth||360,1)));
-      const ctx=cv.getContext('2d'); ctx.drawImage(vid,0,0,cv.width,cv.height);
-      const snap=cv.toDataURL('image/jpeg',0.65);
-      if(snap && snap.length>1000){
-        const img=new Image(); img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
-        img.src=snap; img.onload=()=>{ card.insertBefore(img,placeholder); placeholder.style.display='none'; vid.remove(); };
-      } else {
-        // Sem canvas (CORS) — exibe o vídeo diretamente com o frame seekado
-        vid.style.opacity='1';
-        placeholder.style.display='none';
+      cv.getContext('2d').drawImage(vid,0,0,cv.width,cv.height);
+      const snap=cv.toDataURL('image/jpeg',0.7);
+      if(snap&&snap.length>2000){
+        const img=new Image();
+        img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+        img.src=snap;
+        img.onload=()=>{ card.insertBefore(img,placeholder); placeholder.style.display='none'; vid.remove(); };
+        return;
       }
-    }catch(e){
-      vid.style.opacity='1';
-      placeholder.style.display='none';
-    }
-  };
-  vid.onerror=()=>{ placeholder.style.display=''; vid.remove(); };
+    }catch(e){}
+    // canvas falhou (CORS) — mostra o vídeo mesmo
+    vid.style.opacity='1'; placeholder.style.display='none';
+  }
+  // onloadeddata garante que o primeiro frame está decodificado
+  vid.onloadeddata=()=>{ vid.pause(); showFrame(); };
+  // fallback: onseeked caso onloadeddata não dispare a tempo
+  vid.onloadedmetadata=()=>{ vid.currentTime=1; };
+  vid.onseeked=()=>{ if(!done) showFrame(); };
+  vid.onerror=()=>{ vid.remove(); };
   card.insertBefore(vid,placeholder);
+  vid.load();
 }
 
 let _lastRenderedVids = [];
