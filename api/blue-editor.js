@@ -1,4 +1,4 @@
-// api/blue-editor.js — BlueEditor: transcrição + roteiro + TTS para o wizard
+// api/blue-editor.js
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -6,231 +6,121 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const SU = process.env.SUPABASE_URL;
-  const SK = process.env.SUPABASE_SERVICE_KEY;
-  const AK = process.env.SUPABASE_ANON_KEY || SK;
-  const OPENAI = process.env.OPENAI_API_KEY;
+  const SU   = process.env.SUPABASE_URL;
+  const SK   = process.env.SUPABASE_SERVICE_KEY;
+  const AK   = process.env.SUPABASE_ANON_KEY || SK;
+  const OPENAI  = process.env.OPENAI_API_KEY;
+  const ELABS   = process.env.ELEVENLABS_API_KEY;
   const SUPADATA = process.env.SUPADATA_API_KEY;
-  const GK = [
-    process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
-    process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5
-  ].filter(Boolean).sort(() => Math.random() - 0.5);
-  const YTK = [process.env.YOUTUBE_API_KEY_1, process.env.YOUTUBE_API_KEY_2].filter(Boolean);
+  const YTK  = [process.env.YOUTUBE_API_KEY_1, process.env.YOUTUBE_API_KEY_2].filter(Boolean);
+  const GK   = [1,2,3,4,5].map(i => process.env['GEMINI_KEY_'+i]).filter(Boolean).sort(() => Math.random()-.5);
 
-  const { action, token, videoUrl, lang, voiceId, roteiro } = req.body || {};
+  const { action, token, videoUrl, videoId, voiceId, roteiro, lang, musicId } = req.body || {};
 
-  // Validate token
+  // ── Validate token ──────────────────────────────────────────────────────────
   let userId = null;
   if (token) {
     try {
-      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
-      if (uR.ok) userId = (await uR.json()).id;
+      const r = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (r.ok) userId = (await r.json()).id;
     } catch(e) {}
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário' });
 
-  // ── ACTION: generate (transcrição + 2 roteiros) ───────────────────────────
+  // ── generate: transcript + 2 roteiros ──────────────────────────────────────
   if (action === 'generate') {
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });
     const match = videoUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
-    if (!match) return res.status(400).json({ error: 'Link inválido' });
-    const videoId = match[1];
+    if (!match) return res.status(400).json({ error: 'Link inválido. Use: youtube.com/shorts/...' });
+    const vid = match[1];
     const safeLang = lang || 'Português (Brasil)';
+    let transcript = '', ytTitle = '', ytDesc = '';
 
-    // 1. Transcrição via Supadata
-    let transcript = '';
+    // Transcrição via Supadata
     if (SUPADATA) {
       try {
-        const r = await fetch('https://api.supadata.ai/v1/transcript?url=https://www.youtube.com/watch?v=' + videoId, {
-          headers: { 'x-api-key': SUPADATA }
-        });
-        if (r.ok) {
-          const d = await r.json();
-          const raw = Array.isArray(d.content) ? d.content.map(s => s.text || '').join(' ') : String(d.content || '');
-          transcript = raw.trim().slice(0, 1000);
-        }
+        const r = await fetch('https://api.supadata.ai/v1/transcript?url=https://www.youtube.com/watch?v=' + vid, { headers: { 'x-api-key': SUPADATA } });
+        if (r.ok) { const d = await r.json(); transcript = (Array.isArray(d.content) ? d.content.map(s=>s.text||'').join(' ') : String(d.content||'')).trim().slice(0,1000); }
       } catch(e) {}
     }
-
-    // 2. YouTube timedtext fallback
+    // Fallback timedtext
     if (!transcript) {
       try {
-        const pageR = await fetch('https://www.youtube.com/watch?v=' + videoId, {
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        if (pageR.ok) {
-          const html = await pageR.text();
-          const cm = html.match(/"captionTracks":\s*(\[.*?\])/);
-          if (cm) {
-            const track = JSON.parse(cm[1])[0];
-            if (track?.baseUrl) {
-              const cr = await fetch(track.baseUrl + '&fmt=json3');
-              if (cr.ok) {
-                const cd = await cr.json();
-                transcript = (cd.events || []).filter(e => e.segs).map(e => e.segs.map(s => s.utf8 || '').join('')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
-              }
-            }
-          }
-        }
+        const h = await fetch('https://www.youtube.com/watch?v='+vid, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (h.ok) { const html = await h.text(); const cm = html.match(/"captionTracks":\s*(\[.*?\])/); if (cm) { const t = JSON.parse(cm[1])[0]; if (t?.baseUrl) { const cr = await fetch(t.baseUrl+'&fmt=json3'); if (cr.ok) { const cd = await cr.json(); transcript = (cd.events||[]).filter(e=>e.segs).map(e=>e.segs.map(s=>s.utf8||'').join('')).join(' ').replace(/\s+/g,' ').trim().slice(0,1000); } } } }
       } catch(e) {}
     }
-
-    // 3. YouTube metadata
-    let ytTitle = '', ytDesc = '';
-    for (const key of YTK) {
-      try {
-        const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${key}`);
-        if (r.ok) { const d = await r.json(); ytTitle = d.items?.[0]?.snippet?.title || ''; ytDesc = (d.items?.[0]?.snippet?.description || '').slice(0, 200); break; }
-      } catch(e) {}
+    // YouTube metadata
+    for (const k of YTK) {
+      try { const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vid}&key=${k}`); if (r.ok) { const d = await r.json(); ytTitle = d.items?.[0]?.snippet?.title||''; ytDesc = (d.items?.[0]?.snippet?.description||'').slice(0,200); break; } } catch(e) {}
     }
+    if (!transcript && !ytTitle) return res.status(503).json({ error: 'Não consegui obter o conteúdo. O Short é público?' });
 
-    if (!transcript && !ytTitle) return res.status(503).json({ error: 'Não foi possível obter o conteúdo do vídeo. Tente um Short público.' });
-
-    const context = [transcript && `CONTEÚDO DO VÍDEO:\n${transcript}`, ytTitle && `TÍTULO: ${ytTitle}`, ytDesc && `DESCRIÇÃO: ${ytDesc}`].filter(Boolean).join('\n\n');
-
-    // 4. Gera 2 roteiros
-    const prompt = `Você é um especialista em roteiros virais para YouTube Shorts.
-Baseado neste conteúdo:
-${context}
-
-Crie 2 roteiros em ${safeLang} para um novo Short baseado nesse conteúdo:
-1. CASUAL: linguagem natural, conversacional, como um amigo contando
-2. APELATIVO: gancho forte, drama, máximo engajamento
-
-Regras: máximo 60 palavras cada, NÃO copie o texto original, crie algo novo e viral.
-
-Responda APENAS em JSON válido:
-{"casual":"roteiro casual aqui","apelativo":"roteiro apelativo aqui","title_casual":"título casual","title_apelativo":"título apelativo"}`;
+    const ctx = [transcript&&`CONTEÚDO:\n${transcript}`, ytTitle&&`TÍTULO: ${ytTitle}`, ytDesc&&`DESCRIÇÃO: ${ytDesc}`].filter(Boolean).join('\n\n');
+    const prompt = `Especialista em virais para YouTube Shorts. Baseado neste conteúdo:\n${ctx}\n\nCrie 2 roteiros em ${safeLang}, máx 60 palavras cada, NÃO copie o original:\n1. CASUAL: conversacional, como um amigo\n2. APELATIVO: gancho forte, drama, engajamento\n\nResponda APENAS JSON:\n{"casual":"...","apelativo":"...","title_casual":"...","title_apelativo":"..."}`;
 
     let roteiros = null;
-    if (OPENAI) {
-      try {
-        const r = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI },
-          body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 500, temperature: 0.85, messages: [{ role: 'user', content: prompt }] })
-        });
-        const d = await r.json();
-        if (r.ok && d.choices?.[0]) {
-          const text = d.choices[0].message.content.replace(/```json|```/g, '').trim();
-          const si = text.indexOf('{'), ei = text.lastIndexOf('}');
-          if (si >= 0 && ei >= 0) roteiros = JSON.parse(text.slice(si, ei + 1));
-        }
-      } catch(e) {}
-    }
-
-    for (let i = 0; i < GK.length && !roteiros; i++) {
-      try {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GK[i]}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.85, maxOutputTokens: 500 } })
-        });
-        const d = await r.json();
-        if (d.error?.code === 429) continue;
-        const text = d.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) { const si = text.indexOf('{'), ei = text.lastIndexOf('}'); if (si >= 0) roteiros = JSON.parse(text.slice(si, ei + 1)); }
-      } catch(e) {}
-    }
-
+    if (OPENAI) { try { const r = await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+OPENAI}, body:JSON.stringify({model:'gpt-4o-mini',max_tokens:500,temperature:0.85,messages:[{role:'user',content:prompt}]}) }); const d = await r.json(); if (r.ok) { const t = d.choices?.[0]?.message?.content?.replace(/```json|```/g,'').trim(); const si=t?.indexOf('{'); if (si>=0) roteiros=JSON.parse(t.slice(si,t.lastIndexOf('}')+1)); } } catch(e) {} }
+    for (let i=0; i<GK.length && !roteiros; i++) { try { const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GK[i]}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.85,maxOutputTokens:500}}) }); const d = await r.json(); if (d.error?.code===429) continue; const t = d.candidates?.[0]?.content?.parts?.[0]?.text; if (t) { const si=t.indexOf('{'); if(si>=0) roteiros=JSON.parse(t.slice(si,t.lastIndexOf('}')+1)); } } catch(e) {} }
     if (!roteiros) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente novamente.' });
-    return res.status(200).json({ roteiros, videoId, transcript: transcript.slice(0, 100) });
+    return res.status(200).json({ roteiros, videoId: vid });
   }
 
-  // ── ACTION: tts (gera áudio do roteiro escolhido) ─────────────────────────
+  // ── tts: gera áudio narração ────────────────────────────────────────────────
   if (action === 'tts') {
-    if (!roteiro || !voiceId) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
-    const EL = process.env.ELEVENLABS_API_KEY;
-    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    if (!roteiro||!voiceId) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
+    if (!ELABS) return res.status(500).json({ error: 'ElevenLabs não configurado' });
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: { 'xi-api-key': EL, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-        body: JSON.stringify({ text: roteiro, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.45, similarity_boost: 0.78 } })
-      });
-      if (!r.ok) { const err = await r.text(); return res.status(r.status).json({ error: 'ElevenLabs: ' + err.slice(0, 100) }); }
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, { method:'POST', headers:{'xi-api-key':ELABS,'Content-Type':'application/json',Accept:'audio/mpeg'}, body:JSON.stringify({text:roteiro,model_id:'eleven_multilingual_v2',voice_settings:{stability:0.45,similarity_boost:0.78}}) });
+      if (!r.ok) { const e=await r.text(); return res.status(r.status).json({ error:'ElevenLabs: '+e.slice(0,100) }); }
       const buf = await r.arrayBuffer();
-      const b64 = Buffer.from(buf).toString('base64');
-
-      // Conta narração
-      try {
-        const now = new Date();
-        const month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-        const narKey = `bv_narr_${userId}_${month}`;
-        const cR = await fetch(`${SU}/rest/v1/bv_narration_counts?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: { apikey: SK, Authorization: 'Bearer ' + SK } });
-        if (cR.ok) {
-          const cd = await cR.json();
-          const cnt = cd[0]?.count || 0;
-          if (cnt >= 30) return res.status(429).json({ error: 'Limite de 30 narrações/mês atingido' });
-          if (cnt === 0) {
-            await fetch(`${SU}/rest/v1/bv_narration_counts`, { method: 'POST', headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: userId, month, count: 1 }) });
-          } else {
-            await fetch(`${SU}/rest/v1/bv_narration_counts?user_id=eq.${userId}&month=eq.${month}`, { method: 'PATCH', headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ count: cnt + 1 }) });
-          }
-        }
-      } catch(e) {}
-
-      return res.status(200).json({ audio_b64: b64, content_type: 'audio/mpeg' });
+      return res.status(200).json({ audio_b64: Buffer.from(buf).toString('base64') });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-
-  // ── ACTION: voice-preview ────────────────────────────────────────────────
+  // ── voice-preview: URL de preview de voz ElevenLabs ────────────────────────
   if (action === 'voice-preview') {
-    const EL = process.env.ELEVENLABS_API_KEY;
-    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
-    const vid = req.body?.voiceId || req.query?.voiceId;
-    if (!vid) return res.status(400).json({ error: 'voiceId obrigatório' });
+    if (!ELABS) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    const vid2 = voiceId || req.body?.voiceId;
+    if (!vid2) return res.status(400).json({ error: 'voiceId obrigatório' });
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${vid}`, {
-        headers: { 'xi-api-key': EL }
-      });
-      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada no ElevenLabs' });
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${vid2}`, { headers: { 'xi-api-key': ELABS } });
+      if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
       const d = await r.json();
-      if (!d.preview_url) return res.status(404).json({ error: 'Preview não disponível para esta voz' });
+      if (!d.preview_url) return res.status(404).json({ error: 'Preview não disponível' });
       return res.status(200).json({ url: d.preview_url, name: d.name });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ── ACTION: get-video-url (proxy cobalt para evitar CORS) ────────────────
+  // ── get-video-url: obtém URL direta do Short via YouTube Innertube ──────────
   if (action === 'get-video-url') {
-    const vid = req.body?.videoId;
-    if (!vid) return res.status(400).json({ error: 'videoId obrigatório' });
-    try {
-      const r = await fetch('https://api.cobalt.tools/api/json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          url: `https://www.youtube.com/shorts/${vid}`,
-          vCodec: 'h264', vQuality: '720',
-          filenamePattern: 'basic', disableMetadata: true
-        })
-      });
-      const d = await r.json();
-      if (!r.ok || d.status === 'error') {
-        return res.status(503).json({ error: d.text || 'Falha ao obter link do vídeo. Verifique se o Short é público.' });
-      }
-      const videoUrl = d.url || d.picker?.[0]?.url;
-      if (!videoUrl) return res.status(503).json({ error: 'URL de download não encontrada' });
-      return res.status(200).json({ url: videoUrl });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
-  }
+    const vid3 = videoId || req.body?.videoId;
+    if (!vid3) return res.status(400).json({ error: 'videoId obrigatório' });
 
-  // ── ACTION: get-music (proxy música para evitar CORS) ─────────────────────
-  if (action === 'get-music') {
-    const { musicId } = req.body || {};
-    const MUSIC_URLS = {
-      lofi:      'https://cdn.pixabay.com/audio/2023/06/19/audio_f5f9b7b0e3.mp3',
-      epic:      'https://cdn.pixabay.com/audio/2023/04/18/audio_71ef0ddf98.mp3',
-      corporate: 'https://cdn.pixabay.com/audio/2022/12/23/audio_e9b0d2c02e.mp3',
-      upbeat:    'https://cdn.pixabay.com/audio/2023/07/26/audio_dfe6e47b77.mp3',
-    };
-    if (!musicId || !MUSIC_URLS[musicId]) return res.status(400).json({ error: 'musicId inválido' });
-    try {
-      const r = await fetch(MUSIC_URLS[musicId]);
-      if (!r.ok) return res.status(503).json({ error: 'Música indisponível' });
-      const buf = await r.arrayBuffer();
-      const b64 = Buffer.from(buf).toString('base64');
-      return res.status(200).json({ audio_b64: b64 });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+    // Tenta múltiplos clientes do YouTube Innertube
+    const CLIENTS = [
+      { clientName:'ANDROID', clientVersion:'18.11.34', androidSdkVersion:30, userAgent:'com.google.android.youtube/18.11.34 (Linux; U; Android 11) gzip' },
+      { clientName:'TV_EMBEDDED', clientVersion:'2.0', userAgent:'Mozilla/5.0 (SMART-TV; Linux) AppleWebKit/538.1' },
+      { clientName:'WEB', clientVersion:'2.20231121.08.00', userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    ];
+
+    for (const client of CLIENTS) {
+      try {
+        const r = await fetch('https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': client.userAgent, 'X-YouTube-Client-Name': client.clientName, 'X-YouTube-Client-Version': client.clientVersion },
+          body: JSON.stringify({ videoId: vid3, context: { client: { clientName: client.clientName, clientVersion: client.clientVersion, androidSdkVersion: client.androidSdkVersion } } })
+        });
+        if (!r.ok) continue;
+        const d = await r.json();
+        const allFormats = [...(d.streamingData?.formats||[]), ...(d.streamingData?.adaptiveFormats||[])];
+        // Prefere mp4 com vídeo
+        const fmt = allFormats.find(f => f.mimeType?.includes('video/mp4') && f.url && !f.mimeType.includes('audio-only'))
+                 || allFormats.find(f => f.mimeType?.includes('video/mp4') && f.url);
+        if (fmt?.url) return res.status(200).json({ url: fmt.url, quality: fmt.qualityLabel || fmt.quality });
+      } catch(e) {}
+    }
+    return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. Tente outro Short público.' });
   }
 
   return res.status(400).json({ error: 'Ação inválida' });
