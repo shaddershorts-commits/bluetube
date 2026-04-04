@@ -240,30 +240,36 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
   <div class="hero">
     <div class="hero-badge">🎬 1 Short · 1 Clique · Pronto para postar</div>
     <h1 class="hero-title">Cole o link.<br><span>Receba o Short pronto.</span></h1>
-    <p class="hero-sub">A IA remove a voz, legenda e marca d'água do original.<br>Você escolhe o roteiro, a voz e os toques finais.</p>
+    <p class="hero-sub">Envie o vídeo do Short → cole o link → escolha roteiro, voz e toques.<br>A IA remove voz, legenda e marca d'água. Entrega o Short pronto.</p>
   </div>
 
-  <!-- URL INPUT -->
+  <!-- INPUT CARD -->
   <div class="input-card" id="inputCard">
-    <div class="input-label">Link do YouTube Short para remodelar</div>
+
+    <!-- PASSO A: Upload do vídeo (principal) -->
+    <div class="input-label">① Envie o vídeo do Short <span style="color:rgba(240,240,255,.35);font-weight:400">(baixe pelo BaixaBlue primeiro)</span></div>
+    <div id="vidUploadZone" onclick="document.getElementById('vidFileInput').click()"
+      ondragover="event.preventDefault();this.style.borderColor='var(--blue)';this.style.background='rgba(59,130,246,.07)'"
+      ondragleave="this.style.borderColor='rgba(255,255,255,.12)';this.style.background=''"
+      ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,.12)';this.style.background='';handleVidFile(event.dataTransfer.files[0])"
+      style="border:2px dashed rgba(255,255,255,.12);border-radius:14px;padding:24px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:10px">
+      <div style="font-size:32px;margin-bottom:6px" id="vidUploadIcon">📁</div>
+      <div id="vidUploadLabel" style="font-size:14px;font-weight:600;margin-bottom:4px">Arraste o MP4 aqui ou clique</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim)">
+        Não tem o arquivo? <a href="/baixaBlue.html" target="_blank" style="color:var(--blue2)">Baixe pelo BaixaBlue →</a>
+      </div>
+      <input type="file" id="vidFileInput" accept="video/*,video/mp4,video/quicktime,video/webm" style="display:none" onchange="handleVidFile(this.files[0])"/>
+    </div>
+
+    <!-- PASSO B: Link para gerar roteiro -->
+    <div class="input-label" style="margin-top:16px">② Cole o link do Short original <span style="color:rgba(240,240,255,.35);font-weight:400">(para gerar o roteiro)</span></div>
     <div class="url-row">
       <input class="url-input" id="urlInput" type="text" placeholder="https://www.youtube.com/shorts/..."
         autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')startEditor()"/>
-      <button class="btn-go" id="btnStart" onclick="startEditor()">Analisar ↗</button>
+      <button class="btn-go" id="btnStart" onclick="startEditor()">Gerar ↗</button>
     </div>
-    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.07);padding-top:14px">
-      <div class="input-label" style="margin-bottom:8px">— ou envie o arquivo de vídeo diretamente —</div>
-      <div id="vidUploadZone" onclick="document.getElementById('vidFileInput').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--blue)'"
-        ondragleave="this.style.borderColor=''"
-        ondrop="event.preventDefault();this.style.borderColor='';handleVidFile(event.dataTransfer.files[0])"
-        style="border:2px dashed rgba(255,255,255,.12);border-radius:12px;padding:18px;text-align:center;cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:12px;color:var(--dim)">
-        <div style="font-size:24px;margin-bottom:4px" id="vidUploadIcon">🎬</div>
-        <div id="vidUploadLabel">Arraste o MP4 aqui ou clique para selecionar</div>
-        <input type="file" id="vidFileInput" accept="video/*" style="display:none" onchange="handleVidFile(this.files[0])"/>
-      </div>
-    </div>
-    <div id="inputMsg" style="font-family:var(--mono);font-size:11px;color:#f87171;margin-top:8px;min-height:16px"></div>
+
+    <div id="inputMsg" style="font-family:var(--mono);font-size:11px;margin-top:8px;min-height:16px;color:#f87171"></div>
   </div>
 
   <!-- PROGRESS -->
@@ -576,25 +582,42 @@ function updateProgress(step) {
 
 // ── START ─────────────────────────────────────────────────────────────────────
 function handleVidFile(file) {
-  if (!file || !file.type.startsWith('video/')) { toast('Selecione um arquivo de vídeo'); return; }
+  if (!file) return;
+  const validTypes = ['video/mp4','video/quicktime','video/webm','video/x-matroska','video/avi'];
+  if (!file.type.startsWith('video/') && !validTypes.includes(file.type)) {
+    toast('Selecione um arquivo de vídeo (MP4, MOV, WebM)'); return;
+  }
+  const zone = document.getElementById('vidUploadZone');
+  const icon = document.getElementById('vidUploadIcon');
+  const lbl  = document.getElementById('vidUploadLabel');
+  icon.textContent = '⏳'; lbl.textContent = 'Carregando…';
   const reader = new FileReader();
   reader.onload = e => {
     _uploadedVideoBuffer = e.target.result;
-    document.getElementById('vidUploadIcon').textContent = '✅';
-    document.getElementById('vidUploadLabel').textContent = file.name.slice(0,40) + ' (' + (file.size/1024/1024).toFixed(1) + 'MB)';
-    // Se já tem link, ignora. Se não tem, indica que vai usar o arquivo
-    if (!document.getElementById('urlInput').value.trim()) {
-      document.getElementById('inputMsg').style.color = 'var(--green)';
-      document.getElementById('inputMsg').textContent = '✅ Vídeo carregado. Agora cole o link do Short original para gerar o roteiro.';
-    }
+    icon.textContent = '✅';
+    lbl.innerHTML = '<strong>' + file.name.slice(0,36) + '</strong><br>' +
+      '<span style="font-size:11px;color:var(--dim)">' + (file.size/1024/1024).toFixed(1) + 'MB</span>';
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'rgba(74,222,128,.05)';
+    const msg = document.getElementById('inputMsg');
+    msg.style.color = 'var(--green)';
+    msg.textContent = '✅ Vídeo pronto! Agora cole o link do Short e clique em Gerar →';
   };
+  reader.onerror = () => { icon.textContent='❌'; lbl.textContent='Erro ao ler arquivo. Tente novamente.'; };
   reader.readAsArrayBuffer(file);
 }
 
 async function startEditor() {
   const url = document.getElementById('urlInput').value.trim();
   const msg = document.getElementById('inputMsg');
-  if (!url) { msg.textContent = 'Cole um link de YouTube Shorts'; return; }
+  msg.style.color = '#f87171';
+  if (!_uploadedVideoBuffer) {
+    msg.textContent = '⬆️ Primeiro envie o arquivo de vídeo (passo ①)';
+    document.getElementById('vidUploadZone').style.borderColor = '#f87171';
+    setTimeout(() => { document.getElementById('vidUploadZone').style.borderColor = 'rgba(255,255,255,.12)'; }, 2000);
+    return;
+  }
+  if (!url) { msg.textContent = 'Cole o link do Short original para gerar o roteiro (passo ②)'; return; }
   const match = url.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
   if (!match) { msg.textContent = 'Link inválido. Use: youtube.com/shorts/...'; return; }
   msg.textContent = '';
@@ -799,29 +822,13 @@ async function runEditor() {
     generatedAudioB64 = ttsD.audio_b64;
     setStep('✅ Narração gerada!', 20);
 
-    // ── 2. Obter vídeo (upload direto ou download) ───────────────────────────
-    let vidArrayBuffer = null;
-    if (_uploadedVideoBuffer) {
-      setStep('📁 Usando vídeo enviado…', 35);
-      vidArrayBuffer = _uploadedVideoBuffer;
-      setStep('✅ Vídeo pronto!', 40);
-    } else {
-      setStep('⬇️ Obtendo link do Short…', 22);
-      const dlRes = await fetch('/api/blue-editor', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'get-video-url', token:TOKEN, videoId})
-      });
-      const dlData = await dlRes.json();
-      if (!dlRes.ok) throw new Error(
-        (dlData.error||'Não foi possível baixar o vídeo.') +
-        '\n\n💡 Dica: baixe o Short pelo BaixaBlue, envie o arquivo acima e tente novamente.'
-      );
-      setStep('⬇️ Baixando vídeo…', 28);
-      const vidFetch = await fetch(dlData.url);
-      if (!vidFetch.ok) throw new Error('Falha ao baixar (HTTP '+vidFetch.status+'). Tente enviar o arquivo direto.');
-      vidArrayBuffer = await vidFetch.arrayBuffer();
-      setStep('✅ Vídeo baixado!', 40);
+    // ── 2. Verificar vídeo ───────────────────────────────────────────────────
+    if (!_uploadedVideoBuffer) {
+      throw new Error('Nenhum vídeo encontrado. Envie o arquivo de vídeo no passo ①.');
     }
+    setStep('📁 Preparando vídeo…', 35);
+    const vidArrayBuffer = _uploadedVideoBuffer;
+    setStep('✅ Vídeo pronto!', 40);
 
     // ── 3. Detectar duração do vídeo ─────────────────────────────────────────
     try {
