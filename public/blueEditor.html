@@ -424,14 +424,60 @@ const VOICES = [
 
 // ── MUSIC TRACKS (royalty-free, hospedadas no Supabase Storage ou CDN público) ─
 // Substitua os URLs por tracks do seu Supabase Storage após upload
-// URLs de preview (Pixabay, royalty-free, CORS permitido)
 const MUSIC_TRACKS = [
-  { id:'none',      name:'Sem música',    genre:'Silêncio',    icon:'🔇', url:null },
-  { id:'lofi',      name:'Lo-fi Chill',   genre:'Ambiente',    icon:'🎵', url:'https://cdn.pixabay.com/audio/2023/06/19/audio_f5f9b7b0e3.mp3' },
-  { id:'epic',      name:'Epic Build',    genre:'Dramático',   icon:'⚡', url:'https://cdn.pixabay.com/audio/2023/04/18/audio_71ef0ddf98.mp3' },
-  { id:'corporate', name:'Corporativo',   genre:'Motivacional',icon:'💼', url:'https://cdn.pixabay.com/audio/2022/12/23/audio_e9b0d2c02e.mp3' },
-  { id:'upbeat',    name:'Upbeat',        genre:'Animado',     icon:'🎸', url:'https://cdn.pixabay.com/audio/2023/07/26/audio_dfe6e47b77.mp3' },
+  { id:'none',      name:'Sem música',    genre:'Silêncio',    icon:'🔇' },
+  { id:'lofi',      name:'Lo-fi Chill',   genre:'Ambiente',    icon:'🎵' },
+  { id:'epic',      name:'Epic Build',    genre:'Dramático',   icon:'⚡' },
+  { id:'corporate', name:'Corporativo',   genre:'Motivacional',icon:'💼' },
+  { id:'upbeat',    name:'Upbeat',        genre:'Animado',     icon:'🎸' },
 ];
+
+// Gera música ambiente via Web Audio API (sem dependência externa)
+function generateMusicWav(style, duration=30) {
+  const sr = 44100, ch = 1, len = sr * duration;
+  const ctx = new OfflineAudioContext(ch, len, sr);
+  const freqs = { lofi:[220,277,330,415], epic:[220,293,370,440], corporate:[262,330,392,523], upbeat:[330,415,494,587] };
+  const notes = freqs[style] || freqs.lofi;
+  const bpm = style==='upbeat'?120:style==='lofi'?70:style==='epic'?80:90;
+  const beatLen = sr*60/bpm;
+
+  for (let i=0; i<len; i+=beatLen) {
+    const freq = notes[Math.floor(i/beatLen) % notes.length];
+    const osc = ctx.createOscillator();
+    osc.type = style==='epic' ? 'sawtooth' : style==='upbeat' ? 'square' : 'sine';
+    osc.frequency.value = freq;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, i/sr);
+    gain.gain.linearRampToValueAtTime(0.08, (i+sr*0.05)/sr);
+    gain.gain.linearRampToValueAtTime(0.06, (i+beatLen*0.4)/sr);
+    gain.gain.linearRampToValueAtTime(0, (i+beatLen*0.9)/sr);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(i/sr); osc.stop((i+beatLen*0.9)/sr);
+  }
+
+  return ctx.startRendering().then(buf => {
+    const data = buf.getChannelData(0);
+    // Encode to WAV
+    const byteLen = data.length * 2;
+    const wav = new ArrayBuffer(44 + byteLen);
+    const view = new DataView(wav);
+    const w = (o,v) => view.setUint32(o,v,true);
+    const ws = (o,v) => view.setUint16(o,v,true);
+    view.setUint8(0,0x52); view.setUint8(1,0x49); view.setUint8(2,0x46); view.setUint8(3,0x46);
+    w(4, 36 + byteLen);
+    view.setUint8(8,0x57); view.setUint8(9,0x41); view.setUint8(10,0x56); view.setUint8(11,0x45);
+    view.setUint8(12,0x66); view.setUint8(13,0x6d); view.setUint8(14,0x74); view.setUint8(15,0x20);
+    w(16,16); ws(20,1); ws(22,1); w(24,sr); w(28,sr*2); ws(32,2); ws(34,16);
+    view.setUint8(36,0x64); view.setUint8(37,0x61); view.setUint8(38,0x74); view.setUint8(39,0x61);
+    w(40, byteLen);
+    let off = 44;
+    for (let i=0; i<data.length; i++) {
+      const s = Math.max(-1, Math.min(1, data[i]));
+      view.setInt16(off, s < 0 ? s*0x8000 : s*0x7FFF, true); off += 2;
+    }
+    return new Uint8Array(wav);
+  });
+}
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let currentStep = 0;
@@ -614,32 +660,18 @@ function selectMusic(id) {
   if (_musicAudio) { _musicAudio.pause(); _musicAudio = null; }
 }
 
+let _previewCtx = null;
 function playMusicPreview(id) {
   if (_musicAudio) { _musicAudio.pause(); _musicAudio = null; }
-  const track = MUSIC_TRACKS.find(t => t.id === id);
-  if (!track?.url) return;
-  _musicAudio = new Audio();
-  _musicAudio.crossOrigin = 'anonymous';
-  _musicAudio.volume = 0.4;
-  _musicAudio.src = track.url;
-  _musicAudio.play().catch(e => {
-    // Fallback: fetch via proxy
-    toast('Carregando preview…');
-    fetch('/api/blue-editor', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'get-music', token:TOKEN, musicId:id }) })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d?.audio_b64) { toast('Preview indisponível'); return; }
-        const bin = atob(d.audio_b64);
-        const arr = new Uint8Array(bin.length);
-        for (let i=0; i<bin.length; i++) arr[i]=bin.charCodeAt(i);
-        const blob = new Blob([arr], { type:'audio/mpeg' });
-        _musicAudio = new Audio(URL.createObjectURL(blob));
-        _musicAudio.volume = 0.4;
-        _musicAudio.play().catch(() => toast('Erro ao tocar preview'));
-      }).catch(() => toast('Erro ao carregar preview'));
-  });
-  setTimeout(() => { if(_musicAudio){_musicAudio.pause();_musicAudio=null;} }, 8000);
+  if (_previewCtx) { _previewCtx.close(); _previewCtx = null; }
+  if (id === 'none') return;
+  generateMusicWav(id, 8).then(wavData => {
+    const blob = new Blob([wavData], { type:'audio/wav' });
+    _musicAudio = new Audio(URL.createObjectURL(blob));
+    _musicAudio.volume = 0.5;
+    _musicAudio.play().catch(e => toast('Erro ao tocar: ' + e.message));
+    setTimeout(() => { if(_musicAudio){_musicAudio.pause();_musicAudio=null;} }, 8000);
+  }).catch(e => toast('Erro ao gerar preview: ' + e.message));
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
@@ -707,7 +739,20 @@ async function runEditor() {
     const vidArrayBuffer = await vidFetch.arrayBuffer();
     setStep('✅ Vídeo baixado!', 40);
 
-    // ── 3. Carregar FFmpeg WASM ───────────────────────────────────────────────
+    // ── 3. Detectar duração do vídeo ─────────────────────────────────────────
+    try {
+      const tmpBlob = new Blob([vidArrayBuffer], {type:'video/mp4'});
+      const tmpUrl = URL.createObjectURL(tmpBlob);
+      await new Promise(res2 => {
+        const v2 = document.createElement('video');
+        v2.src = tmpUrl; v2.preload = 'metadata';
+        v2.onloadedmetadata = () => { vDur = v2.duration; URL.revokeObjectURL(tmpUrl); res2(); };
+        v2.onerror = () => { URL.revokeObjectURL(tmpUrl); res2(); };
+        setTimeout(res2, 3000);
+      });
+    } catch(e) {}
+
+    // ── 4. Carregar FFmpeg WASM ───────────────────────────────────────────────
     setStep('🔧 Carregando editor de vídeo…', 42);
     if (!ffmpegLoaded) {
       await loadFFmpeg();
@@ -715,7 +760,7 @@ async function runEditor() {
     }
     setStep('✅ Editor carregado!', 55);
 
-    // ── 4. Processar com FFmpeg ───────────────────────────────────────────────
+    // ── 5. Processar com FFmpeg ───────────────────────────────────────────────
     setStep('🎬 Processando vídeo (removendo áudio, legendas e marca d\'água)…', 57);
     const outputBlob = await processVideo(vidArrayBuffer, generatedAudioB64);
     setStep('✅ Processamento concluído!', 95);
@@ -757,40 +802,14 @@ async function processVideo(vidBuffer, audioB64) {
   const audioBin = Uint8Array.from(atob(audioB64), c => c.charCodeAt(0));
   await ff.writeFile('narration.mp3', audioBin);
 
-  // Música de fundo (se selecionada) — via proxy para evitar CORS
+  // Música de fundo via Web Audio API (sem CORS, sem deps externas)
   let hasMusic = false;
   if (selectedMusic !== 'none') {
     try {
-      // Tenta direto primeiro
-      const musicTrack = MUSIC_TRACKS.find(t => t.id === selectedMusic);
-      let musicBuf = null;
-      if (musicTrack?.url) {
-        try {
-          const mRes = await fetch(musicTrack.url, { mode: 'cors' });
-          if (mRes.ok) musicBuf = await mRes.arrayBuffer();
-        } catch(e) {}
-      }
-      // Fallback: proxy backend
-      if (!musicBuf) {
-        const mR = await fetch('/api/blue-editor', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get-music', token: TOKEN, musicId: selectedMusic })
-        });
-        if (mR.ok) {
-          const mD = await mR.json();
-          if (mD.audio_b64) {
-            const bin = atob(mD.audio_b64);
-            musicBuf = new ArrayBuffer(bin.length);
-            const view = new Uint8Array(musicBuf);
-            for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
-          }
-        }
-      }
-      if (musicBuf) {
-        await ff.writeFile('music.mp3', new Uint8Array(musicBuf));
-        hasMusic = true;
-      }
-    } catch(e) { console.warn('Music load failed:', e.message); }
+      const wavData = await generateMusicWav(selectedMusic, Math.min(Math.ceil(vDur||30)+5, 60));
+      await ff.writeFile('music.wav', wavData);
+      hasMusic = true;
+    } catch(e) { console.warn('Music generation failed:', e.message); }
   }
 
   // Marca d'água
@@ -814,7 +833,7 @@ async function processVideo(vidBuffer, audioB64) {
   let audioFilter, inputs;
   if (hasMusic) {
     // Mixar narração + música em volume baixo
-    inputs = ['-i','input.mp4','-i','narration.mp3','-i','music.mp3'];
+    inputs = ['-i','input.mp4','-i','narration.mp3','-i','music.wav'];
     audioFilter = '[2:a]volume=0.12[music];[1:a][music]amix=inputs=2:duration=shortest[aout]';
   } else {
     inputs = ['-i','input.mp4','-i','narration.mp3'];
