@@ -1370,31 +1370,19 @@ function renderGrid(vids,isOwn){
     // Gradiente colorido como fundo imediato
     card.style.background = videoPlaceholderGradient(v.id||v.video_url||'');
 
-    // Gera thumb a partir do vídeo real (as thumb.jpg salvas estão pretas)
+    // Mostra o <video> pausado no frame como thumbnail (canvas falha por CORS)
     if(v.video_url){
       const vid=document.createElement('video');
       vid.muted=true; vid.playsInline=true; vid.preload='metadata';
+      vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
       vid.src=v.video_url;
       vid.onloadedmetadata=()=>{
-        // Seek para 2s ou 25% do vídeo — evita frames pretos de intro
         vid.currentTime = Math.max(2, vid.duration * 0.25);
       };
-      vid.onseeked=()=>{
-        try{
-          const cv=document.createElement('canvas');
-          cv.width=Math.min(vid.videoWidth||360,360);
-          cv.height=Math.round(cv.width*((vid.videoHeight||640)/Math.max(vid.videoWidth||360,1)));
-          cv.getContext('2d').drawImage(vid,0,0,cv.width,cv.height);
-          const snap=cv.toDataURL('image/jpeg',0.75);
-          if(snap && snap.length > 5000){
-            card.style.backgroundImage = `url(${snap})`;
-            card.style.backgroundSize = 'cover';
-            card.style.backgroundPosition = 'center';
-          }
-        }catch(e){}
-        vid.remove();
-      };
+      vid.onseeked=()=>{ vid.style.opacity='1'; };
       vid.onerror=()=>vid.remove();
+      vid.style.opacity='0';
+      card.appendChild(vid);
     }
 
     const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
