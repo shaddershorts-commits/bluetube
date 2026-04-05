@@ -326,12 +326,89 @@ module.exports = async function handler(req, res) {
 
     if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente em alguns instantes.' });
 
+    let finalCasual = result.casual || '';
+    let finalApelativo = result.apelativo || '';
+    let finalTitleCasual = result.titleCasual || result.title_casual || '';
+    let finalTitleApelativo = result.titleApelativo || result.title_apelativo || '';
+
+    // Se idioma diferente de PT-BR, adaptar culturalmente
+    const isPtBr = safeLang === 'Portugues (Brasil)' || safeLang === 'Português (Brasil)';
+    if (!isPtBr && safeLang && (finalCasual || finalApelativo)) {
+      console.log('generate-from-zero: adaptando para', safeLang);
+      const adaptPrompt = `Você é um ADAPTADOR CULTURAL ELITE nativo de ${safeLang}.
+Adapte estes roteiros para ${safeLang} como se fossem escritos originalmente por um criador nativo.
+
+REGRAS:
+- NUNCA traduza literalmente
+- Adapte moedas para a moeda local de ${safeLang}
+- Adapte referências culturais, expressões idiomáticas, nomes e contextos
+- Mantenha a estrutura dos 3 atos: gancho → progressão → desfecho
+- Mantenha o ritmo, energia e tom (casual=leve / apelativo=urgente)
+- O resultado deve soar 100% nativo de ${safeLang}
+
+ROTEIRO CASUAL:
+"${finalCasual}"
+
+ROTEIRO APELATIVO:
+"${finalApelativo}"
+
+TÍTULO CASUAL: "${finalTitleCasual}"
+TÍTULO APELATIVO: "${finalTitleApelativo}"
+
+Responda SOMENTE com JSON válido, sem markdown:
+{"casual":"roteiro casual adaptado","apelativo":"roteiro apelativo adaptado","titleCasual":"título adaptado","titleApelativo":"título adaptado"}`;
+
+      // Try OpenAI first, then Gemini
+      let adapted = null;
+      if (OPENAI_KEY) {
+        try {
+          const ar = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
+            body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 600, temperature: 0.8,
+              messages: [{ role: 'system', content: 'Adapte roteiros para ' + safeLang + '. Responda SOMENTE JSON.' }, { role: 'user', content: adaptPrompt }]
+            })
+          });
+          const ad = await ar.json();
+          if (ar.ok && ad.choices?.[0]?.message?.content) {
+            let txt = ad.choices[0].message.content.trim().replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+            const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
+            if (si >= 0 && ei >= 0) { const p = JSON.parse(txt.slice(si, ei+1)); if (p.casual) adapted = p; }
+          }
+        } catch(e) { console.error('adapt openai:', e.message); }
+      }
+      if (!adapted) {
+        for (const key of GK) {
+          try {
+            const ar = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + key, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: adaptPrompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 700 } })
+            });
+            const ad = await ar.json();
+            if (ad.error?.code === 429) continue;
+            let txt = ad.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
+            if (!txt) continue;
+            txt = txt.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+            const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
+            if (si >= 0 && ei >= 0) { const p = JSON.parse(txt.slice(si, ei+1)); if (p.casual) { adapted = p; break; } }
+          } catch(e) { continue; }
+        }
+      }
+      if (adapted) {
+        finalCasual = adapted.casual || finalCasual;
+        finalApelativo = adapted.apelativo || finalApelativo;
+        finalTitleCasual = adapted.titleCasual || adapted.title_casual || finalTitleCasual;
+        finalTitleApelativo = adapted.titleApelativo || adapted.title_apelativo || finalTitleApelativo;
+        console.log('generate-from-zero: adaptação concluída para', safeLang);
+      }
+    }
+
     return res.status(200).json({
-      casual: result.casual || '',
-      apelativo: result.apelativo || '',
-      titleCasual: result.titleCasual || result.title_casual || '',
-      titleApelativo: result.titleApelativo || result.title_apelativo || '',
-      narrative_arc: result.narrative_arc || ('gancho → virada → desfecho [' + (nicheLabel || 'Geral') + ']')
+      casual: finalCasual,
+      apelativo: finalApelativo,
+      titleCasual: finalTitleCasual,
+      titleApelativo: finalTitleApelativo,
+      narrative_arc: result.narrative_arc || ('gancho → virada → desfecho [' + (nicheLabel || 'Geral') + ']'),
+      lang: safeLang
     });
 
   } catch(err) {

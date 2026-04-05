@@ -853,12 +853,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <div id="zeroFlowSection" style="display:none;margin-top:24px">
     <!-- Progress dots -->
     <div id="zeroProgress" style="display:flex;justify-content:center;gap:8px;margin-bottom:20px">
-      <div class="zdot active" id="zd1"></div><div class="zdot" id="zd2"></div><div class="zdot" id="zd3"></div>
+      <div class="zdot active" id="zd1"></div><div class="zdot" id="zd2"></div><div class="zdot" id="zd3"></div><div class="zdot" id="zd4"></div>
     </div>
 
     <!-- Step 1: Summary -->
     <div id="zeroStep1" class="zero-step">
-      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 1 de 3</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 1 de 4</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:6px">Resuma o que acontece no vídeo</div>
       <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Descreva em poucas palavras a ação principal do vídeo.</div>
       <textarea id="zeroSummary" rows="3" placeholder="Ex: Um cara tentando equilibrar 100 copos d'água..." style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:14px;font-family:var(--font-mono,monospace);font-size:13px;color:#e8f4ff;outline:none;resize:none;line-height:1.5" oninput="document.getElementById('zeroNext1').disabled=!this.value.trim()"></textarea>
@@ -867,7 +867,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 
     <!-- Step 2: Sentiments -->
     <div id="zeroStep2" class="zero-step" style="display:none">
-      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 2 de 3</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 2 de 4</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:6px">Que sentimento você quer passar?</div>
       <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Selecione um ou mais.</div>
       <div id="zeroSentiments" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -876,10 +876,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 
     <!-- Step 3: Niche -->
     <div id="zeroStep3" class="zero-step" style="display:none">
-      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 3 de 3</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 3 de 4</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:6px">Qual o nicho do seu canal?</div>
       <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Selecione o que mais se encaixa.</div>
       <div id="zeroNiches" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <button onclick="zeroGoStep(4)" style="margin-top:18px;width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Próximo →</button>
+    </div>
+
+    <!-- Step 4: Language -->
+    <div id="zeroStep4" class="zero-step" style="display:none">
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 4 de 4</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Em qual idioma você quer o roteiro?</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">O roteiro será adaptado culturalmente para o idioma escolhido.</div>
+      <div id="zeroLangs" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       <button id="zeroGenerateBtn" onclick="zeroGenerate()" style="margin-top:18px;width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Gerar Roteiro ✨</button>
     </div>
 
@@ -1827,6 +1836,24 @@ function handleMainBtn(e){
 let _zeroVideoId = '';
 let _zeroSentiments = [];
 let _zeroNiche = '';
+let _zeroLang = 'Português (Brasil)';
+
+const ZERO_LANGS = [
+  { id:'Português (Brasil)', flag:'🇧🇷', label:'Português (Brasil)' },
+  { id:'English', flag:'🇺🇸', label:'English' },
+  { id:'Español', flag:'🇪🇸', label:'Español' },
+  { id:'Français', flag:'🇫🇷', label:'Français' },
+  { id:'Deutsch', flag:'🇩🇪', label:'Deutsch' },
+  { id:'Italiano', flag:'🇮🇹', label:'Italiano' },
+  { id:'日本語', flag:'🇯🇵', label:'日本語' },
+  { id:'中文', flag:'🇨🇳', label:'中文' },
+  { id:'العربية', flag:'🇸🇦', label:'العربية' },
+  { id:'Türkçe', flag:'🇹🇷', label:'Türkçe' },
+  { id:'हिन्दी', flag:'🇮🇳', label:'हिन्दी' },
+  { id:'한국어', flag:'🇰🇷', label:'한국어' },
+  { id:'Русский', flag:'🇷🇺', label:'Русский' },
+  { id:'Bahasa Indonesia', flag:'🇮🇩', label:'Bahasa Indonesia' },
+];
 
 const SENTIMENTS = [
   { id:'surpresa', emoji:'😲', label:'Surpresa' },
@@ -1847,13 +1874,21 @@ const NICHES = [
   { id:'outro', emoji:'📦', label:'Outro' },
 ];
 
-// Init sentiment/niche pills
+// Init sentiment/niche/language pills
 (function(){
   const sc=document.getElementById('zeroSentiments');
   const nc=document.getElementById('zeroNiches');
+  const lc=document.getElementById('zeroLangs');
   if(sc) sc.innerHTML=SENTIMENTS.map(s=>`<button class="zpill" data-id="${s.id}" onclick="zeroToggleSentiment(this,'${s.id}')">${s.emoji} ${s.label}</button>`).join('');
   if(nc) nc.innerHTML=NICHES.map(n=>`<button class="zpill" data-id="${n.id}" onclick="zeroSelectNiche(this,'${n.id}')">${n.emoji} ${n.label}</button>`).join('');
+  if(lc) lc.innerHTML=ZERO_LANGS.map(l=>`<button class="zpill${l.id==='Português (Brasil)'?' on':''}" data-id="${l.id}" onclick="zeroSelectLang(this,'${l.id}')">${l.flag} ${l.label}</button>`).join('');
 })();
+
+function zeroSelectLang(btn, id){
+  document.querySelectorAll('#zeroLangs .zpill').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  _zeroLang=id;
+}
 
 function zeroToggleSentiment(btn, id){
   btn.classList.toggle('on');
@@ -1868,14 +1903,13 @@ function zeroSelectNiche(btn, id){
 }
 
 function zeroGoStep(step){
-  ['zeroStep1','zeroStep2','zeroStep3','zeroLoading','zeroResult'].forEach(id=>{
+  ['zeroStep1','zeroStep2','zeroStep3','zeroStep4','zeroLoading','zeroResult'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
   document.getElementById('zeroStep'+step).style.display='block';
-  ['zd1','zd2','zd3'].forEach((id,i)=>{
+  ['zd1','zd2','zd3','zd4'].forEach((id,i)=>{
     document.getElementById(id).className='zdot'+(i<step?' active':'');
   });
-  // Save state
   if(step===2) localStorage.setItem('bt_state_zero_summary', document.getElementById('zeroSummary').value);
 }
 
@@ -1892,17 +1926,19 @@ async function startFromZero(e){
   _zeroVideoId=videoId;
   _zeroSentiments=[];
   _zeroNiche='';
+  _zeroLang='Português (Brasil)';
   localStorage.setItem('bt_state_zero_url', raw);
 
   // Show flow, start at step 1
   const section=document.getElementById('zeroFlowSection');
   section.style.display='block';
-  ['zeroStep1','zeroStep2','zeroStep3','zeroLoading','zeroResult'].forEach(id=>{
+  ['zeroStep1','zeroStep2','zeroStep3','zeroStep4','zeroLoading','zeroResult'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
   document.getElementById('zeroStep1').style.display='block';
-  ['zd1','zd2','zd3'].forEach((id,i)=>document.getElementById(id).className='zdot'+(i===0?' active':''));
+  ['zd1','zd2','zd3','zd4'].forEach((id,i)=>document.getElementById(id).className='zdot'+(i===0?' active':''));
   document.querySelectorAll('#zeroSentiments .zpill, #zeroNiches .zpill').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('#zeroLangs .zpill').forEach(b=>{b.classList.remove('on');if(b.dataset.id==='Português (Brasil)')b.classList.add('on');});
   document.getElementById('zeroSummary').value='';
   document.getElementById('zeroNext1').disabled=true;
   section.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -1912,19 +1948,24 @@ async function zeroGenerate(){
   const summary=document.getElementById('zeroSummary')?.value?.trim()||'';
   const sentimentLabels=_zeroSentiments.map(id=>SENTIMENTS.find(s=>s.id===id)?.label).filter(Boolean);
   const nicheLabel=NICHES.find(n=>n.id===_zeroNiche)?.label||'Geral';
+  const chosenLang = _zeroLang || 'Português (Brasil)';
 
   // Save state
   localStorage.setItem('bt_state_zero_sentiments', JSON.stringify(sentimentLabels));
   localStorage.setItem('bt_state_zero_niche', nicheLabel);
+  localStorage.setItem('bt_state_zero_lang', chosenLang);
 
   // Show loading
-  ['zeroStep1','zeroStep2','zeroStep3','zeroResult'].forEach(id=>{
+  ['zeroStep1','zeroStep2','zeroStep3','zeroStep4','zeroResult'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
   document.getElementById('zeroLoading').style.display='block';
-  ['zd1','zd2','zd3'].forEach(id=>document.getElementById(id).className='zdot active');
+  ['zd1','zd2','zd3','zd4'].forEach(id=>document.getElementById(id).className='zdot active');
 
-  const msgs=['Analisando frames do vídeo...','Processando suas respostas...','Criando roteiro viral...','Quase pronto...'];
+  const needsAdapt = chosenLang !== 'Português (Brasil)';
+  const msgs = needsAdapt
+    ? ['Analisando frames do vídeo...','Criando roteiro viral...','Adaptando para '+chosenLang+'...','Quase pronto...']
+    : ['Analisando frames do vídeo...','Processando suas respostas...','Criando roteiro viral...','Quase pronto...'];
   let mi=0;
   const msgTimer=setInterval(()=>{
     mi++;
@@ -1932,7 +1973,7 @@ async function zeroGenerate(){
   },4000);
 
   try{
-    const lang=document.getElementById('langSelect')?.value||'Português (Brasil)';
+    const lang = chosenLang;
     const token=localStorage.getItem('bt_token');
     const r=await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -1977,7 +2018,7 @@ async function zeroGenerate(){
 }
 
 function zeroReset(){
-  ['bt_state_zero_casual','bt_state_zero_apelativo','bt_state_zero_summary','bt_state_zero_sentiments','bt_state_zero_niche','bt_state_zero_arc'].forEach(k=>localStorage.removeItem(k));
+  ['bt_state_zero_casual','bt_state_zero_apelativo','bt_state_zero_summary','bt_state_zero_sentiments','bt_state_zero_niche','bt_state_zero_arc','bt_state_zero_lang'].forEach(k=>localStorage.removeItem(k));
   document.getElementById('zeroFlowSection').style.display='none';
 }
 
