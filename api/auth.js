@@ -867,26 +867,18 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
-    // Queries NO IDIOMA do país para forçar resultados no idioma certo
+    // Queries por país — apenas BR, US, ES, JP, DE, FR
     const REGION_CONFIG = {
-      ALL: { lang: null, queries: ['shorts viral', 'trending shorts', 'most viewed shorts'] },
-      BR:  { lang:'pt', queries: ['shorts viralizou', 'shorts mais visto', 'voce sabia shorts', 'curiosidades shorts'] },
-      US:  { lang:'en', queries: ['viral shorts trending', 'most viewed shorts today', 'shorts blowing up'] },
-      GB:  { lang:'en', queries: ['viral shorts uk trending', 'most viewed shorts uk'] },
-      IN:  { lang:'hi', queries: ['shorts viral india', 'trending shorts hindi', 'shorts viral today india'] },
-      MX:  { lang:'es', queries: ['shorts viral mexico', 'shorts más visto mexico', 'curiosidades shorts mexico'] },
-      JP:  { lang:'ja', queries: ['ショート 急上昇', 'ショート バズった', 'ショート 人気'] },
-      KR:  { lang:'ko', queries: ['쇼츠 인기급상승', '쇼츠 바이럴', '쇼츠 화제'] },
-      DE:  { lang:'de', queries: ['shorts viral deutsch', 'shorts trending deutschland'] },
-      FR:  { lang:'fr', queries: ['shorts viral france', 'shorts tendance france'] },
-      ES:  { lang:'es', queries: ['shorts viral españa', 'shorts más visto españa'] },
-      AR:  { lang:'es', queries: ['shorts viral argentina', 'shorts más visto argentina'] },
-      CO:  { lang:'es', queries: ['shorts viral colombia', 'shorts más visto colombia'] },
-      TR:  { lang:'tr', queries: ['shorts viral türkiye', 'en çok izlenen shorts'] },
+      BR:  { lang:'pt', rc:'BR', queries: ['shorts viralizou', 'shorts mais visto', 'voce sabia shorts', 'curiosidades shorts', 'shorts viral brasil', 'fatos incriveis shorts', 'shorts narrado viral'] },
+      US:  { lang:'en', rc:'US', queries: ['viral shorts trending', 'most viewed shorts today', 'did you know shorts', 'facts shorts viral'] },
+      ES:  { lang:'es', rc:'ES', queries: ['shorts viral españa', 'curiosidades shorts español', 'shorts más visto español', 'sabías que shorts'] },
+      JP:  { lang:'ja', rc:'JP', queries: ['ショート 急上昇', 'ショート バズった', '雑学 ショート 人気', '豆知識 ショート'] },
+      DE:  { lang:'de', rc:'DE', queries: ['shorts viral deutsch', 'wusstest du shorts', 'fakten shorts deutsch', 'shorts trending deutschland'] },
+      FR:  { lang:'fr', rc:'FR', queries: ['shorts viral france', 'le saviez vous shorts', 'shorts tendance france', 'faits incroyables shorts'] },
     };
 
-    const cfg = REGION_CONFIG[region] || REGION_CONFIG['ALL'];
-    const { lang, queries: regionQueries } = cfg;
+    const cfg = REGION_CONFIG[region] || REGION_CONFIG['BR'];
+    const { lang, queries: regionQueries, rc } = cfg;
     const searchQueries = regionQueries;
 
     const fmtViews = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n.toString();
@@ -900,7 +892,7 @@ Responda APENAS em JSON válido sem markdown:
           order, maxResults: '50',
           key, q: searchQ, publishedAfter,
           ...(lang ? { relevanceLanguage: lang } : {}),
-          ...(region !== 'ALL' ? { regionCode: region } : {}),
+          ...(rc ? { regionCode: rc } : {}),
         });
         const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
         const d = await r.json();
@@ -946,24 +938,11 @@ Responda APENAS em JSON válido sem markdown:
         })
       );
 
-      // Scripts bloqueados por região (bloqueia apenas escritas claramente incompatíveis)
-      const BLOCKED_SCRIPTS = {
-        BR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa','es','en','de','fr','tr'],
-        US: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa','es','pt','de','fr','tr'],
-        GB: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        MX: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        ES: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        AR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        CO: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        DE: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        FR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        TR: ['hi','ar','ja','ko','zh','th','bn','kn','ta','pa'],
-        IN: ['ja','ko'],
-        JP: ['hi','ko','ar'],
-        KR: ['hi','ja','ar'],
-        ALL: []
-      };
-      const blockedLangs = BLOCKED_SCRIPTS[region] || [];
+      // Cada país aceita APENAS seu idioma — bloqueia todo o resto
+      const _allLangs = ['pt','en','es','ja','de','fr','hi','ar','ko','zh','th','bn','kn','ta','pa','tr','id','ru'];
+      const ALLOWED_LANG = { BR: ['pt'], US: ['en'], ES: ['es'], JP: ['ja'], DE: ['de'], FR: ['fr'] };
+      const allowed = ALLOWED_LANG[region] || ['pt'];
+      const blockedLangs = _allLangs.filter(l => !allowed.includes(l));
 
       const allVideos = statsResults.flat().map(v => {
         const stats = v.statistics || {}, snippet = v.snippet || {};
