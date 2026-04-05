@@ -99,38 +99,32 @@ module.exports = async function handler(req, res) {
     const { voice_id, name } = req.body || {};
     if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
 
-    // Valida se a voz existe no ElevenLabs tentando buscar preview
+    const finalName = name || 'Voz personalizada';
+
+    // Tenta buscar nome real do ElevenLabs (mas não bloqueia se falhar)
+    let realName = '';
     if (EL) {
       try {
         const check = await fetch(`https://api.elevenlabs.io/v1/voices/${voice_id}`, {
           headers: { 'xi-api-key': EL }
         });
-        if (!check.ok) return res.status(404).json({ error: 'Voz não encontrada no ElevenLabs. Verifique o Voice ID.' });
-        const vd = await check.json();
-        // Use the real name from ElevenLabs if not provided
-        const finalName = name || vd.name || 'Voz personalizada';
-
-        // Salva no banco (upsert)
-        const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
-          method: 'POST',
-          headers: { ...h, Prefer: 'resolution=merge-duplicates,return=representation' },
-          body: JSON.stringify({ user_id: userId, voice_id, name: finalName })
-        });
-        const saved = await r.json();
-        return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved, real_name: vd.name });
-      } catch(e) { return res.status(500).json({ error: e.message }); }
-    } else {
-      // Sem chave ElevenLabs, salva direto sem validar
-      try {
-        const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
-          method: 'POST',
-          headers: { ...h, Prefer: 'resolution=merge-duplicates,return=representation' },
-          body: JSON.stringify({ user_id: userId, voice_id, name: name || 'Voz personalizada' })
-        });
-        const saved = await r.json();
-        return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved });
-      } catch(e) { return res.status(500).json({ error: e.message }); }
+        if (check.ok) {
+          const vd = await check.json();
+          realName = vd.name || '';
+        }
+      } catch(e) { /* não bloqueia — salva mesmo sem validar */ }
     }
+
+    // Salva no banco (upsert) — sempre salva, mesmo que ElevenLabs não responda
+    try {
+      const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
+        method: 'POST',
+        headers: { ...h, Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify({ user_id: userId, voice_id, name: realName || finalName })
+      });
+      const saved = await r.json();
+      return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved, real_name: realName || finalName });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
   // DELETE — remove voz
