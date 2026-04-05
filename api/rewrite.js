@@ -43,107 +43,109 @@ ${rows.map((row, i) =>
     } catch (e) { /* non-blocking */ }
   }
 
-  // ── NATIVE LANGUAGE RULE ───────────────────────────────────────────────────
-  const LANG_NATIVE = {
-    'Português (Brasil)': 'Português Brasileiro natural e cotidiano. Use expressões brasileiras reais, gírias leves e anglicismos comuns. Nunca soe como tradução.',
-    'English': 'Natural American English. Use real slang (no cap, lowkey, vibe), casual contractions and social media language. Never sound translated or robotic.',
-    'Español': 'Español natural y cotidiano de redes sociales. Usa expresiones idiomáticas reales y anglicismos comunes. Nunca suenes traducido.',
-    'Français': 'Français naturel et quotidien des réseaux sociaux. Utilise de vraies expressions idiomatiques. Ne sonne jamais traduit.',
-    'Deutsch': 'Natürliches, alltägliches Deutsch der sozialen Medien. Verwende echte Redewendungen und Anglizismen. Klinge niemals übersetzt.',
-    'Italiano': 'Italiano naturale e quotidiano dei social media. Usa vere espressioni idiomatiche. Non sembrare mai tradotto.',
-    '日本語': '自然な日常的な日本語。本物の慣用表現とSNS言語を使用。絶対に翻訳のように聞こえてはならない。',
-    '中文': '自然的日常中文社交媒体语言。使用真实成语和常见外来词。绝对不要听起来像翻译。',
-    'العربية': 'العربية الطبيعية اليومية لوسائل التواصل الاجتماعي. استخدم التعابير الحقيقية. لا تبدو مترجماً أبداً.'
+  // ── ADAPTAÇÃO CULTURAL COMPLETA POR IDIOMA ──────────────────────────────────
+  const CULTURAL_PROFILE = {
+    'Português (Brasil)': {
+      rule: 'Português Brasileiro natural e cotidiano. Use expressões brasileiras reais, gírias leves e anglicismos comuns. Nunca soe como tradução.',
+      currency: 'Reais (R$)',
+      adapt: 'Converta moedas estrangeiras para Reais. Use referências brasileiras: futebol brasileiro, BBB, celebridades BR. Troque milhas por km. Substitua expressões idiomáticas estrangeiras por equivalentes brasileiros naturais (ex: "hit the nail" → "acertou na mosca"). Adapte comidas, feriados e costumes para o contexto brasileiro.'
+    },
+    'English': {
+      rule: 'Natural American English. Use real slang (no cap, lowkey, vibe), casual contractions and social media language. Never sound translated or robotic.',
+      currency: 'Dollars ($)',
+      adapt: 'Convert foreign currencies to USD. Use American cultural references: NFL, NBA, Hollywood, American celebrities. Keep miles. Replace foreign idioms with American equivalents (ex: "acertar na mosca" → "hit the nail on the head"). Adapt foods, holidays and customs to American context.'
+    },
+    'Español': {
+      rule: 'Español natural y cotidiano de redes sociales. Usa expresiones idiomáticas reales y anglicismos comunes. Nunca suenes traducido.',
+      currency: 'Use "dinero" genéricamente o adapta por contexto (pesos, euros, dólares)',
+      adapt: 'Convierte monedas extranjeras a términos que un hispanohablante entienda. Usa referencias culturales latinas/hispanas. Reemplaza expresiones idiomáticas extranjeras por equivalentes en español (ex: "acertar na mosca" → "dar en el clavo"). Adapta comidas, costumbres y referencias culturales al mundo hispano.'
+    },
+    'Français': {
+      rule: 'Français naturel et quotidien des réseaux sociaux. Utilise de vraies expressions idiomatiques. Ne sonne jamais traduit.',
+      currency: 'Euros (€)',
+      adapt: 'Convertis les devises étrangères en euros. Utilise des références culturelles françaises. Remplace les expressions idiomatiques étrangères par des équivalents français naturels. Adapte la nourriture, les fêtes et les coutumes au contexte français.'
+    },
+    'Deutsch': {
+      rule: 'Natürliches, alltägliches Deutsch der sozialen Medien. Verwende echte Redewendungen und Anglizismen. Klinge niemals übersetzt.',
+      currency: 'Euro (€)',
+      adapt: 'Wandle Fremdwährungen in Euro um. Verwende deutsche Kulturverweise. Ersetze fremdsprachige Redewendungen durch natürliche deutsche Entsprechungen. Passe Essen, Feiertage und Bräuche an den deutschen Kontext an.'
+    },
+    'Italiano': {
+      rule: 'Italiano naturale e quotidiano dei social media. Usa vere espressioni idiomatiche. Non sembrare mai tradotto.',
+      currency: 'Euro (€)',
+      adapt: 'Converti le valute straniere in euro. Usa riferimenti culturali italiani. Sostituisci le espressioni idiomatiche straniere con equivalenti italiani naturali. Adatta cibo, festività e usanze al contesto italiano.'
+    },
+    '日本語': {
+      rule: '自然な日常的な日本語。本物の慣用表現とSNS言語を使用。絶対に翻訳のように聞こえてはならない。',
+      currency: '円 (¥)',
+      adapt: '外国通貨を円に変換。日本の文化的参照を使用。外国の慣用句を自然な日本語の同等物に置き換え。食べ物、祝日、習慣を日本の文脈に適応させる。'
+    },
+    '中文': {
+      rule: '自然的日常中文社交媒体语言。使用真实成语和常见外来词。绝对不要听起来像翻译。',
+      currency: '人民币 (¥)',
+      adapt: '将外币转换为人民币。使用中国文化参考。将外国习语替换为自然的中文等价物。将食物、节日和习俗适配到中国语境。'
+    },
+    'العربية': {
+      rule: 'العربية الطبيعية اليومية لوسائل التواصل الاجتماعي. استخدم التعابير الحقيقية. لا تبدو مترجماً أبداً.',
+      currency: 'استخدم العملة المحلية المناسبة',
+      adapt: 'حوّل العملات الأجنبية إلى ما يفهمه الجمهور العربي. استخدم مراجع ثقافية عربية. استبدل التعابير الأجنبية بمكافئات عربية طبيعية. كيّف الطعام والأعياد والعادات للسياق العربي.'
+    }
   };
 
-  const nativeRule = LANG_NATIVE[lang] || LANG_NATIVE['English'];
+  const profile = CULTURAL_PROFILE[lang] || CULTURAL_PROFILE['English'];
+  const nativeRule = profile.rule;
+  const culturalAdaptation = `
+ADAPTAÇÃO CULTURAL OBRIGATÓRIA:
+- Moeda padrão: ${profile.currency}
+- ${profile.adapt}
+- NUNCA deixe moedas estrangeiras (Rúpias, Rupees, etc.) — converta para ${profile.currency}
+- NUNCA deixe referências culturais incompatíveis — substitua por equivalentes locais
+- Expressões idiomáticas: NUNCA traduza literalmente — use o equivalente nativo
+- O resultado deve parecer escrito ORIGINALMENTE por um criador nativo de ${lang}`;
 
   // ── ANGLE ──────────────────────────────────────────────────────────────────
   const ANGLE = version === 'V2'
     ? 'ESTILO APELATIVO/URGENTE: gancho chocante que para o scroll em 2 segundos, tensão crescente, call-to-action poderoso no final. Afirmações ousadas, números impactantes, perguntas que incomodam.'
     : 'ESTILO CASUAL/CONVERSACIONAL: gancho curioso e suave, desenvolvimento como conversa entre amigos, fechamento com convite genuíno. Tom leve, próximo, sem pressão.';
 
-  // ── SUPER PROMPT (literal do usuário) + LIVING MEMORY ─────────────────────
-  const systemPrompt = `Você é um especialista em tradução e adaptação de roteiros virais (Shorts, Reels, TikTok) com foco em:
-- Retenção máxima
-- Tempo igual ou menor que o original
-- Linguagem completamente nativa
-- Performance crescente a cada execução
+  // ── SUPER PROMPT — ADAPTADOR CULTURAL ELITE + ROTEIRISTA VIRAL ─────────────
+  const systemPrompt = `Você é um ADAPTADOR CULTURAL ELITE e roteirista viral profissional. Sua missão não é traduzir — é RECRIAR o roteiro como se tivesse sido escrito originalmente por um criador de conteúdo nativo de ${lang}.
 
 🎯 OBJETIVO
 Transformar qualquer texto em um roteiro:
-- Mais curto
-- Mais rápido
-- Mais envolvente
-- Pronto para narração
+- Mais curto, mais rápido, mais envolvente
+- Pronto para narração em voz alta
 - Máximo 75 palavras
+- Culturalmente adaptado para ${lang}
 
 ⚙️ REGRAS CRÍTICAS
-1. Tempo é prioridade absoluta
-   - Sempre reduzir palavras
-   - Nunca ultrapassar o tempo original
-   - Máximo absoluto: 75 palavras
+1. Tempo é prioridade absoluta — máximo 75 palavras
+2. Corte agressivo — remova redundância, explicação óbvia, palavras fracas
+3. Adaptação nativa — ${nativeRule}
+4. Ritmo de retenção — frases curtas, sem travas, leitura fluida
+5. Estrutura: Gancho (2s) → Desenvolvimento rápido → Clímax/Fechamento forte
 
-2. Corte agressivo
-   - Remova tudo que não impacta:
-     - redundância
-     - explicação óbvia
-     - palavras fracas
+${culturalAdaptation}
 
-3. Adaptação nativa
-   - ${nativeRule}
-   - Nunca traduza literalmente
-
-4. Ritmo de retenção
-   - Frases curtas
-   - Sem travas
-   - Leitura fluida
-
-5. Estrutura obrigatória
-   - Gancho (2 segundos) → Desenvolvimento rápido → Clímax/Fechamento forte
-
-🧠 SISTEMA DE AUTO-OTIMIZAÇÃO
-A cada novo roteiro gerado, analise internamente:
-- Onde o texto pode ficar mais curto sem perder impacto
-- Onde pode ganhar mais força emocional
-- Onde pode aumentar a retenção
-
-Aprenda padrões:
-- Identifique palavras que podem ser sempre removidas
-- Identifique estruturas mais rápidas e naturais
-- Evolua continuamente: o próximo roteiro deve ser mais direto, mais fluido e mais eficiente
-
-📈 REGRAS DE EVOLUÇÃO
-- Evite repetir estruturas fracas
-- Substitua frases longas por versões mais curtas automaticamente
-- Priorize sempre: menos palavras + mais impacto
+🧠 TESTE DE QUALIDADE antes de responder:
+1. Um nativo de ${lang} perceberia que é tradução? Se sim, refaça.
+2. Existe moeda, medida ou referência cultural estrangeira? Converta.
+3. Alguma expressão idiomática foi traduzida literalmente? Use o equivalente nativo.
+4. Funciona lido em voz alta? Ajuste o ritmo se necessário.
+5. Parece escrito originalmente em ${lang}? Se não, refaça.
 
 🚫 PROIBIDO
-- Aumentar o texto
-- Enrolar
-- Explicar demais
-- Repetir padrões ineficientes
-- Traduzir literalmente
-- Ultrapassar 75 palavras
+- Tradução literal
+- Manter moedas/medidas/referências estrangeiras
+- Aumentar o texto ou ultrapassar 75 palavras
+- Soar como tradução automática
+- Emojis, títulos ou explicações
 
 ✅ FORMATO DE SAÍDA
-- Texto único em parágrafo corrido
-- Sem emojis
-- Sem títulos ou explicações
-- Termine sempre com ponto final
+- Texto único em parágrafo corrido, sem emojis, sem títulos
+- Termine com ponto final
 - Máximo 75 palavras
-
-📏 REGRA FINAL
-Cada resposta deve ser:
-- Mais curta que qualquer versão anterior
-- Mais rápida de ler
-- Mais natural
-- Mais forte em retenção
-
-🔁 INSTRUÇÃO FINAL
-Você está em constante evolução.
-Cada roteiro gerado deve ser melhor que o anterior, mesmo sem feedback explícito.
-${livingMemory ? `\nUse os exemplos da memória viva abaixo como referência do padrão atual — e supere-os.\n${livingMemory}` : ''}
+${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
 IDIOMA DE SAÍDA: ${lang}
 ${ANGLE}`;
 
