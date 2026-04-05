@@ -886,7 +886,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
-        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
+          <button onclick="openAdjustChat('V1')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
           <div style="position:relative;display:inline-block" id="bvWrap1">
             <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">
               🎙️ Narrar no BlueVoice
@@ -914,7 +915,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
-        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:flex-end">
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
+          <button onclick="openAdjustChat('V2')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
           <div style="position:relative;display:inline-block" id="bvWrap2">
             <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">
               🎙️ Narrar no BlueVoice
@@ -925,6 +927,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     </div>
   </div>
 </section>
+
+<!-- ── ADJUST CHAT PANEL ──────────────────────────────────────────────────── -->
+<div id="adjustBackdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:899" onclick="closeAdjustChat()"></div>
+<div id="adjustPanel" style="display:none;position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:900;background:rgba(2,8,23,0.97);border:1px solid rgba(0,170,255,.2);border-bottom:none;border-radius:20px 20px 0 0;backdrop-filter:blur(20px);box-shadow:0 -8px 40px rgba(0,50,160,.3);display:flex;flex-direction:column;max-height:60vh">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid rgba(0,170,255,.08)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">✏️</span>
+      <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:#e8f4ff">Pedir ajuste</span>
+      <span id="adjustTarget" style="font-family:'DM Mono',monospace;font-size:10px;color:rgba(0,170,255,.6);background:rgba(0,170,255,.08);padding:2px 8px;border-radius:4px">Casual</span>
+    </div>
+    <button onclick="closeAdjustChat()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px 8px">✕</button>
+  </div>
+  <div id="adjustMessages" style="flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:10px;min-height:80px;max-height:300px"></div>
+  <div style="padding:12px 16px;border-top:1px solid rgba(0,170,255,.08);display:flex;gap:8px;align-items:flex-end">
+    <textarea id="adjustInput" rows="1" placeholder="Ex: deixa mais curto, adiciona mais tensão..." style="flex:1;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:10px 14px;font-family:'DM Mono',monospace;font-size:13px;color:#e8f4ff;outline:none;resize:none;max-height:80px;line-height:1.4" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdjust()}"></textarea>
+    <button id="adjustSendBtn" onclick="sendAdjust()" style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s">↑</button>
+  </div>
+</div>
 
 <!-- ── FEATURES ───────────────────────────────────────────────────────────── -->
 <section class="features" style="position:relative">
@@ -1912,6 +1932,102 @@ async function generateTitles(lang){
 }
 
 // ── NARRAR NO BLUEVOICE ───────────────────────────────────────────────────────
+// ── ADJUST CHAT ──────────────────────────────────────────────────────────────
+let _adjustVersion = 'V1'; // V1=casual, V2=apelativo
+let _adjustHistory = [];
+
+function openAdjustChat(version) {
+  _adjustVersion = version;
+  const label = version === 'V1' ? 'Casual' : 'Apelativo';
+  document.getElementById('adjustTarget').textContent = label;
+  document.getElementById('adjustBackdrop').style.display = 'block';
+  const panel = document.getElementById('adjustPanel');
+  panel.style.display = 'flex';
+  // Load history
+  _adjustHistory = JSON.parse(localStorage.getItem('bt_adjust_' + version) || '[]').slice(-5);
+  renderAdjustMessages();
+  setTimeout(() => document.getElementById('adjustInput').focus(), 100);
+}
+
+function closeAdjustChat() {
+  document.getElementById('adjustBackdrop').style.display = 'none';
+  document.getElementById('adjustPanel').style.display = 'none';
+}
+
+function renderAdjustMessages() {
+  const box = document.getElementById('adjustMessages');
+  if (!_adjustHistory.length) {
+    box.innerHTML = '<div style="text-align:center;padding:16px;font-family:\'DM Mono\',monospace;font-size:11px;color:rgba(150,190,230,.35)">Digite o que quer mudar no roteiro.</div>';
+    return;
+  }
+  box.innerHTML = _adjustHistory.map(m => {
+    if (m.role === 'user') {
+      return `<div style="align-self:flex-end;max-width:80%;background:rgba(0,100,255,.2);border:1px solid rgba(0,170,255,.3);border-radius:14px 14px 4px 14px;padding:8px 14px;font-family:'DM Mono',monospace;font-size:12px;color:#e8f4ff">${escHtml(m.text)}</div>`;
+    }
+    return `<div style="align-self:flex-start;max-width:85%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px 14px 14px 4px;padding:8px 14px;font-family:'DM Mono',monospace;font-size:12px;color:rgba(200,225,255,.7)">${escHtml(m.text)}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendAdjust() {
+  const input = document.getElementById('adjustInput');
+  const instruction = input.value.trim();
+  if (!instruction) return;
+
+  const scriptEl = document.getElementById('script' + _adjustVersion);
+  const currentScript = scriptEl?.textContent?.trim();
+  if (!currentScript) return;
+
+  // Add user message
+  _adjustHistory.push({ role: 'user', text: instruction });
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Show loading
+  _adjustHistory.push({ role: 'ai', text: '✏️ Regenerando roteiro...' });
+  renderAdjustMessages();
+  const btn = document.getElementById('adjustSendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></div>';
+
+  try {
+    const lang = document.getElementById('langSelect')?.value || 'Português (Brasil)';
+    const version = _adjustVersion === 'V1' ? 'V1' : 'V2';
+    const r = await fetch('/api/rewrite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: currentScript, lang, version, adjust: instruction })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.text) throw new Error(data.error || 'Falha ao ajustar');
+
+    // Update script on page
+    const cleaned = data.text.replace(/[\r\n]+/g, ' ').trim();
+    scriptEl.textContent = cleaned;
+
+    // Update chat
+    _adjustHistory.pop(); // remove loading
+    _adjustHistory.push({ role: 'ai', text: '✅ Roteiro atualizado!' });
+
+    // Save state
+    localStorage.setItem('bt_adjust_' + _adjustVersion, JSON.stringify(_adjustHistory.slice(-5)));
+    if (typeof _saveRoteiroState === 'function') _saveRoteiroState();
+
+    renderAdjustMessages();
+
+    // Auto-close after 1.5s
+    setTimeout(closeAdjustChat, 1500);
+
+  } catch(e) {
+    _adjustHistory.pop();
+    _adjustHistory.push({ role: 'ai', text: '⚠ ' + (e.message || 'Erro. Tente novamente.') });
+    renderAdjustMessages();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '↑';
+  }
+}
+
 function sendToBlueVoice(scriptId){
   const token=localStorage.getItem('bt_token');
   if(!token){openAuthModal();return;}

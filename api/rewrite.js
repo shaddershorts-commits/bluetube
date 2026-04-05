@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { transcript, lang, version } = req.body;
+  const { transcript, lang, version, adjust } = req.body;
   if (!transcript || !lang) return res.status(400).json({ error: 'Missing fields' });
 
   // ── SUPABASE: LIVING MEMORY — real viral examples from real users ──────────
@@ -149,7 +149,14 @@ ${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
 IDIOMA DE SAÍDA: ${lang}
 ${ANGLE}`;
 
-  const userPrompt = `TRANSCRIÇÃO ORIGINAL:
+  const userPrompt = adjust
+    ? `ROTEIRO ATUAL:
+"${transcript.slice(0, 3000)}"
+
+AJUSTE PEDIDO PELO USUÁRIO: "${adjust.slice(0, 500)}"
+
+Aplique o ajuste mantendo: gancho forte, curiosidade crescente, corte máximo, payoff. Retorne APENAS o roteiro ajustado, sem explicações.`
+    : `TRANSCRIÇÃO ORIGINAL:
 "${transcript.slice(0, 3000)}"
 
 Escreva o roteiro agora. Apenas o texto final, nada mais.`;
