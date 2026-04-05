@@ -412,10 +412,11 @@ async function startDownload(){
   startProgress();
 
   try{
-    // Route Reddit/Facebook to dedicated endpoint, rest to auth
+    // Route Reddit/Facebook/Twitter to dedicated endpoint, YouTube/TikTok/Instagram to auth
     const isReddit = url.includes('reddit.com') || url.includes('redd.it');
     const isFacebook = url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com');
-    const endpoint = (isReddit || isFacebook)
+    const isTwitter = url.includes('twitter.com') || url.includes('x.com');
+    const endpoint = (isReddit || isFacebook || isTwitter)
       ? `/api/baixa-social?url=${encodeURIComponent(url)}`
       : `/api/auth?action=download&url=${encodeURIComponent(url)}`;
 
