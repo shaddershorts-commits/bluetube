@@ -843,8 +843,7 @@ Responda APENAS em JSON válido sem markdown:
             const age = Date.now() - new Date(rows[0].cached_at).getTime();
             if (age < cacheTTL) {
               // Aplica filtro de views mínimas no cache também
-              const _bigM = ['US','IN','ALL'].includes(region);
-              const minV = period === '24h' ? (_bigM ? 1000000 : 100000) : period === '7d' ? (_bigM ? 8000000 : 1000000) : (_bigM ? 14000000 : 3000000);
+              const minV = period === '24h' ? 100000 : period === '7d' ? 1000000 : 3000000;
               const cachedVideos = (rows[0].data?.videos || []).filter(v => v.views >= minV);
               // Se cache ficou vazio após filtro, ignora e rebusca
               if (cachedVideos.length === 0 && rows[0].data?.videos?.length > 0) {
@@ -963,7 +962,7 @@ Responda APENAS em JSON válido sem markdown:
       );
 
       // Cada país aceita APENAS seu idioma — bloqueia todo o resto
-      const _allLangs = ['pt','en','es','ja','de','fr','hi','ar','ko','zh','th','bn','kn','ta','pa','tr','id','ru'];
+      const _allLangs = ['pt','en','es','ja','de','fr','hi','ar','ko','zh','th','bn','kn','ta','pa','tr','id','ru','te','mr','gu','ml','si','ne','ur'];
       const ALLOWED_LANG = { BR: ['pt'], US: ['en'], ES: ['es'], JP: ['ja'], DE: ['de'], FR: ['fr'] };
       const allowed = ALLOWED_LANG[region] || ['pt'];
       const blockedLangs = _allLangs.filter(l => !allowed.includes(l));
@@ -1004,12 +1003,10 @@ Responda APENAS em JSON válido sem markdown:
         return true;
       });
 
-      // Views mínimas por período — ajustadas por tamanho do mercado
-      const bigMarkets = ['US','IN','ALL'];
-      const isBig = bigMarkets.includes(region);
-      const MIN_VIEWS = period === '24h' ? (isBig ? 1000000 : 100000)
-                      : period === '7d'  ? (isBig ? 8000000 : 1000000)
-                      : (isBig ? 14000000 : 3000000);
+      // Views mínimas por período — mesmo threshold para todos
+      const MIN_VIEWS = period === '24h' ? 100000
+                      : period === '7d'  ? 1000000
+                      : 3000000;
       console.log('viral-shorts MIN_VIEWS:', MIN_VIEWS, '| total antes filtro:', allVideos.length, '| max views:', Math.max(...allVideos.map(v=>v.views), 0));
 
       // Filtro de data suave — remove apenas vídeos com mais de 3x o período
