@@ -21,35 +21,49 @@ module.exports = async function handler(req, res) {
     if (isReddit) {
       // Clean URL and build JSON endpoint
       let cleanUrl = url.replace(/\?.*$/, '').replace(/\/$/, '');
-      // Handle redd.it short links
       if (url.includes('redd.it') && !url.includes('reddit.com')) {
         try {
-          const redir = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot)' } });
+          const redir = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
           cleanUrl = redir.url.replace(/\?.*$/, '').replace(/\/$/, '');
         } catch(e) {}
       }
       const jsonUrl = cleanUrl + '.json';
-      console.log('[baixa-social] Reddit JSON URL:', jsonUrl);
 
-      const r = await fetch(jsonUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-        redirect: 'follow'
-      });
+      // Try multiple approaches — Reddit blocks many server IPs
+      let data = null;
+      const agents = [
+        'web:bluetube:v1.0 (by /u/bluetube)',
+        'Mozilla/5.0 (compatible; Googlebot/2.1)',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      ];
 
-      console.log('[baixa-social] Reddit response:', r.status, r.statusText);
-      if (!r.ok) {
-        // Try old.reddit.com as fallback
-        const oldUrl = jsonUrl.replace('www.reddit.com', 'old.reddit.com');
-        const r2 = await fetch(oldUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          redirect: 'follow'
-        });
-        if (!r2.ok) {
-          return res.status(400).json({ error: 'Não foi possível acessar este post do Reddit. Verifique se o link é público e tente novamente.' });
+      for (const ua of agents) {
+        try {
+          const r = await fetch(jsonUrl, { headers: { 'User-Agent': ua }, redirect: 'follow' });
+          if (r.ok) { data = await r.json(); break; }
+        } catch(e) { continue; }
+      }
+
+      // RapidAPI fallback for Reddit
+      if (!data) {
+        const rapidKey = process.env.RAPIDAPI_KEY;
+        if (rapidKey) {
+          try {
+            const rr = await fetch('https://reddit-scraper2.p.rapidapi.com/post_media_content?url=' + encodeURIComponent(url), {
+              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'reddit-scraper2.p.rapidapi.com' }
+            });
+            if (rr.ok) {
+              const rd = await rr.json();
+              if (rd.video_url || rd.url) {
+                return res.status(200).json({ url: rd.video_url || rd.url, title: rd.title || 'Reddit Video', platform: 'reddit' });
+              }
+            }
+          } catch(e) { console.error('Reddit RapidAPI:', e.message); }
         }
-        var data = await r2.json();
-      } else {
-        var data = await r.json();
+      }
+
+      if (!data) {
+        return res.status(400).json({ error: 'Reddit bloqueou o acesso. Tente copiar o link do vídeo diretamente pelo app do Reddit.' });
       }
 
       const post = Array.isArray(data) ? data[0]?.data?.children?.[0]?.data : data?.data?.children?.[0]?.data;
