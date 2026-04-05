@@ -867,14 +867,38 @@ Responda APENAS em JSON válido sem markdown:
       } catch(e) { /* cache miss, continua */ }
     }
 
-    // Queries por país — apenas BR, US, ES, JP, DE, FR
+    // Queries massivas no idioma nativo — muitas queries = mais cobertura
     const REGION_CONFIG = {
-      BR:  { lang:'pt', rc:'BR', queries: ['shorts viralizou', 'shorts mais visto', 'voce sabia shorts', 'curiosidades shorts', 'shorts viral brasil', 'fatos incriveis shorts', 'shorts narrado viral'] },
-      US:  { lang:'en', rc:'US', queries: ['viral shorts trending', 'most viewed shorts today', 'did you know shorts', 'facts shorts viral'] },
-      ES:  { lang:'es', rc:'ES', queries: ['shorts viral españa', 'curiosidades shorts español', 'shorts más visto español', 'sabías que shorts'] },
-      JP:  { lang:'ja', rc:'JP', queries: ['ショート 急上昇', 'ショート バズった', '雑学 ショート 人気', '豆知識 ショート'] },
-      DE:  { lang:'de', rc:'DE', queries: ['shorts viral deutsch', 'wusstest du shorts', 'fakten shorts deutsch', 'shorts trending deutschland'] },
-      FR:  { lang:'fr', rc:'FR', queries: ['shorts viral france', 'le saviez vous shorts', 'shorts tendance france', 'faits incroyables shorts'] },
+      BR:  { lang:'pt', rc:'BR', queries: [
+        'shorts viralizou', 'shorts mais visto brasil', 'voce sabia shorts', 'curiosidades shorts',
+        'shorts viral brasil', 'fatos incriveis shorts', 'shorts narrado', 'inacreditavel shorts',
+        'shorts impressionante', 'ninguem esperava shorts', 'shorts chocante brasil'
+      ]},
+      US:  { lang:'en', rc:'US', queries: [
+        'did you know shorts', 'facts shorts viral', 'amazing facts shorts', 'mind blowing shorts',
+        'narrated shorts viral', 'story time shorts', 'unbelievable shorts', 'you wont believe shorts',
+        'shorts facts english', 'crazy facts shorts', 'shocking shorts viral'
+      ]},
+      ES:  { lang:'es', rc:'ES', queries: [
+        'curiosidades shorts español', 'sabías que shorts', 'datos curiosos shorts', 'shorts viral español',
+        'increíble shorts', 'shorts impactante', 'no vas a creer shorts', 'shorts narrado español',
+        'shorts más visto español', 'hechos increíbles shorts'
+      ]},
+      JP:  { lang:'ja', rc:'JP', queries: [
+        'ショート 急上昇', 'ショート バズった', '雑学 ショート', '豆知識 ショート',
+        'ショート 衝撃', '知らなかった ショート', 'ショート 面白い事実', 'ショート ナレーション',
+        '驚き ショート', 'ショート 人気'
+      ]},
+      DE:  { lang:'de', rc:'DE', queries: [
+        'wusstest du shorts', 'fakten shorts deutsch', 'unglaublich shorts', 'shorts viral deutsch',
+        'erstaunliche fakten shorts', 'shorts trending deutsch', 'krass shorts', 'shorts wissen deutsch',
+        'schockierend shorts', 'shorts deutsch beliebt'
+      ]},
+      FR:  { lang:'fr', rc:'FR', queries: [
+        'le saviez vous shorts', 'faits incroyables shorts', 'shorts viral france', 'incroyable shorts',
+        'shorts tendance france', 'shorts français populaire', 'choquant shorts', 'shorts narré français',
+        'curiosités shorts français', 'shorts impressionnant'
+      ]},
     };
 
     const cfg = REGION_CONFIG[region] || REGION_CONFIG['BR'];
@@ -908,10 +932,10 @@ Responda APENAS em JSON válido sem markdown:
     };
 
     try {
-      // Busca com viewCount E relevance para maximizar cobertura
+      // Busca com viewCount E relevance em TODAS as queries para máxima cobertura
       const allSearches = await Promise.all([
         ...searchQueries.map(sq => makeSearch(sq, 'viewCount')),
-        ...searchQueries.slice(0, 2).map(sq => makeSearch(sq, 'relevance'))
+        ...searchQueries.map(sq => makeSearch(sq, 'relevance'))
       ]);
 
       const seen = new Set();
@@ -950,21 +974,33 @@ Responda APENAS em JSON válido sem markdown:
         const m = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
         const secs = (parseInt(m?.[1]||0)*60)+parseInt(m?.[2]||0);
         const views = parseInt(stats.viewCount||0);
-        const audioLang = (snippet.defaultAudioLanguage || '').slice(0,2).toLowerCase();
-        const textLang = (snippet.defaultLanguage || '').slice(0,2).toLowerCase();
+        const rawAudio = (snippet.defaultAudioLanguage || '').slice(0,2).toLowerCase();
+        const rawText = (snippet.defaultLanguage || '').slice(0,2).toLowerCase();
+        // 'un' = undefined no YouTube, ignorar
+        const audioLang = (rawAudio && rawAudio !== 'un') ? rawAudio : '';
+        const textLang = (rawText && rawText !== 'un') ? rawText : '';
         const titleLang = detectLangFromTitle(snippet.title || '');
+        const detectedLang = audioLang || textLang || titleLang || '';
         return {
           id: v.id, title: snippet.title, channel: snippet.channelTitle,
           thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url,
           views, viewsFormatted: fmtViews(views), likes: parseInt(stats.likeCount||0),
           publishedAt: snippet.publishedAt, duration: secs,
           url: `https://www.youtube.com/shorts/${v.id}`,
-          _lang: audioLang || textLang || titleLang || ''
+          _lang: detectedLang
         };
       }).filter(v => {
-        if (v.duration > 65 && v.duration !== 0) return false; // Não é Short
-        // Bloqueia apenas scripts claramente incompatíveis (hindi em BR, árabe em US, etc.)
+        if (v.duration > 65 && v.duration !== 0) return false;
+        // Se detectou idioma, bloqueia se não é do país
         if (v._lang && blockedLangs.includes(v._lang)) return false;
+        // Se NÃO detectou idioma, usa o título para verificar se tem script incompatível
+        if (!v._lang) {
+          const t = v.title || '';
+          // Bloqueia se tem caracteres de scripts não-latinos (para países latinos)
+          if (allowed.every(a => ['pt','en','es','de','fr'].includes(a))) {
+            if (/[\u0900-\u097F\u0600-\u06FF\u0E00-\u0E7F\u0980-\u09FF\u0C80-\u0CFF\u0B80-\u0BFF\u0A00-\u0A7F]/.test(t)) return false;
+          }
+        }
         return true;
       });
 
