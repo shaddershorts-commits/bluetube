@@ -693,6 +693,8 @@ function selectVoice(id) {
   document.getElementById('selName').textContent = selectedVoice.name;
   document.getElementById('selTags').textContent = `${selectedVoice.lang.toUpperCase()} · ${selectedVoice.gender} · ${selectedVoice.age} · ${selectedVoice.style}`;
   document.getElementById('selWave').style.opacity = '1';
+  // Persist selection
+  try { localStorage.setItem('bt_state_voice_selected', id); } catch(e) {}
   // Re-render list
   renderVoices();
   checkReady();
@@ -1103,6 +1105,12 @@ loadCustomVoices();
 updateFavCount();
 checkReady();
 
+// Restore selected voice
+try {
+  const savedVoiceId = localStorage.getItem('bt_state_voice_selected');
+  if (savedVoiceId) setTimeout(() => selectVoice(savedVoiceId), 300);
+} catch(e) {}
+
 // Pre-fill if coming from main page
 const prefill = localStorage.getItem('bt_prefill_script');
 if (prefill) {
@@ -1111,5 +1119,6 @@ if (prefill) {
   document.getElementById('scriptText').dispatchEvent(new Event('input'));
 }
 </script>
+<script src="/toolbar.js"></script>
 </body>
 </html>
