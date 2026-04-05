@@ -90,14 +90,18 @@
   };
 
   // Auto-save any input/textarea/select on change
-  function autoBindSave(selector, stateKey) {
+  function autoBindSave(selector, stateKey, skipIfPrefill) {
     const el = document.querySelector(selector);
     if (!el) return;
-    // Restore
-    const saved = window._btLoad(stateKey);
-    if (saved !== null && saved !== undefined) {
-      el.value = saved;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+    // Skip restore if a prefill exists (e.g. coming from another page)
+    if (skipIfPrefill && localStorage.getItem(skipIfPrefill)) {
+      // Don't restore cache — let the prefill take priority
+    } else {
+      const saved = window._btLoad(stateKey);
+      if (saved !== null && saved !== undefined) {
+        el.value = saved;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
     // Save on input/change
     const evt = el.tagName === 'SELECT' ? 'change' : 'input';
@@ -114,7 +118,7 @@
 
     // blueVoice.html
     if (activeTool === 'voice') {
-      autoBindSave('#scriptText', 'voice_text');
+      autoBindSave('#scriptText', 'voice_text', 'bt_prefill_script');
     }
 
     // blueScore.html

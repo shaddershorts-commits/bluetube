@@ -2244,6 +2244,8 @@ function sendToBlueVoice(scriptId){
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
+  // Limpa cache antigo do BlueVoice para o novo texto ter prioridade
+  localStorage.removeItem('bt_state_voice_text');
   // Se estiver no shell (iframe), troca de aba; senão navega
   try{
     if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:'voice'},'*'); }
