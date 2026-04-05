@@ -423,6 +423,14 @@ async function startDownload(){
     const r = await fetch(endpoint);
     const data = await r.json();
 
+    // Handle external downloader redirect
+    if (data.useExternal && data.externalDownloader) {
+      finishProgress(true);
+      const source = detectSource(url);
+      showExternalResult(data.externalDownloader, source, data.message || 'Baixar via serviço externo');
+      return;
+    }
+
     finishProgress(r.ok && data.url);
 
     if(!r.ok || !data.url){
@@ -441,6 +449,27 @@ async function startDownload(){
     btn.disabled = false;
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Baixar`;
   }
+}
+
+function showExternalResult(externalUrl, source, message) {
+  const card = document.getElementById('resultCard');
+  document.getElementById('resultTitle').textContent = source.name + ' — Download externo';
+  document.getElementById('resultSource').textContent = message;
+  const thumbEl = document.getElementById('resultThumb');
+  if (thumbEl.tagName === 'IMG') thumbEl.outerHTML = `<div id="resultThumb" style="width:100%;aspect-ratio:16/9;background:rgba(0,170,255,.06);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px">${source.emoji}</div>`;
+  else thumbEl.textContent = source.emoji;
+  const qualityEl = document.getElementById('resultQuality');
+  qualityEl.innerHTML = `A extração direta não está disponível para ${source.name}. Use o serviço externo abaixo:`;
+  const dlBtn = document.getElementById('downloadLink');
+  dlBtn.href = externalUrl;
+  dlBtn.target = '_blank';
+  dlBtn.removeAttribute('download');
+  dlBtn.textContent = `🌐 Baixar via ${source.name}`;
+  dlBtn.onclick = null;
+  const tip = document.getElementById('downloadTip');
+  if (tip) tip.style.display = 'none';
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function showResult(downloadUrl, source, originalUrl, title, thumbnail){

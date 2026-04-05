@@ -1,5 +1,5 @@
 // api/baixa-social.js — Download de vídeos do Reddit, Twitter/X e Facebook
-// Usa APIs públicas gratuitas sem chave
+// Usa APIs públicas gratuitas + fallback para serviços externos
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,44 +10,91 @@ module.exports = async function handler(req, res) {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'URL obrigatória' });
 
+  const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
   try {
+    // ── TWITTER/X ─────────────────────────────────────────────────────────────
+    if (url.includes('twitter.com') || url.includes('x.com')) {
+      const tweetMatch = url.match(/status\/(\d+)/);
+      if (!tweetMatch) return res.status(400).json({ error: 'Link inválido. Use: x.com/user/status/ID' });
+      const tweetId = tweetMatch[1];
+
+      // Get guest token
+      let guestToken = '';
+      try {
+        const gt = await fetch('https://api.twitter.com/1.1/guest/activate.json', {
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + BEARER }
+        });
+        const gtd = await gt.json();
+        guestToken = gtd.guest_token || '';
+      } catch(e) {}
+
+      // Try v1.1 API with guest token
+      if (guestToken) {
+        try {
+          const r = await fetch(`https://api.twitter.com/1.1/statuses/show/${tweetId}.json?tweet_mode=extended&include_entities=true`, {
+            headers: { 'Authorization': 'Bearer ' + BEARER, 'x-guest-token': guestToken, 'User-Agent': UA }
+          });
+          if (r.ok) {
+            const d = await r.json();
+            const media = d.extended_entities?.media || d.entities?.media || [];
+            const vid = media.find(m => m.type === 'video' || m.type === 'animated_gif');
+            if (vid?.video_info?.variants) {
+              const mp4s = vid.video_info.variants.filter(v => v.content_type === 'video/mp4');
+              mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+              if (mp4s.length > 0) {
+                return res.status(200).json({
+                  url: mp4s[0].url,
+                  title: (d.full_text || d.text || 'Twitter/X Video').slice(0, 100),
+                  thumbnail: vid.media_url_https || null,
+                  platform: 'twitter'
+                });
+              }
+            }
+          }
+        } catch(e) {}
+      }
+
+      // Fallback: return external service link
+      return res.status(200).json({
+        url: null,
+        externalDownloader: `https://ssstwitter.com/id?id=${tweetId}`,
+        title: 'Twitter/X Video',
+        platform: 'twitter',
+        useExternal: true,
+        message: 'Clique para baixar via serviço externo'
+      });
+    }
+
     // ── REDDIT ────────────────────────────────────────────────────────────────
     if (url.includes('reddit.com') || url.includes('redd.it')) {
-      // Clean URL
       let cleanUrl = url.replace(/\?.*$/, '').replace(/\/$/, '');
+
+      // Follow redd.it redirects
       if (url.includes('redd.it') && !url.includes('reddit.com')) {
         try { const rd = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } }); cleanUrl = rd.url.replace(/\?.*$/, '').replace(/\/$/, ''); } catch(e) {}
       }
 
-      // Try .json API directly
-      const jsonUrl = cleanUrl + '.json';
+      // Try .json API
       let post = null;
       try {
-        const r = await fetch(jsonUrl, { headers: { 'User-Agent': 'web:bluetube:v1 (by /u/bluetube)' }, redirect: 'follow' });
+        const r = await fetch(cleanUrl + '.json', { headers: { 'User-Agent': 'web:bluetube:v1.0 (by /u/bluetube)' }, redirect: 'follow' });
         if (r.ok) {
           const data = await r.json();
           post = Array.isArray(data) ? data[0]?.data?.children?.[0]?.data : data?.data?.children?.[0]?.data;
         }
       } catch(e) {}
 
-      // Fallback: try scraping the page for the video URL
+      // Try HTML scraping fallback
       if (!post) {
         try {
           const r = await fetch(cleanUrl, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, redirect: 'follow' });
           if (r.ok) {
             const html = await r.text();
-            // Look for v.redd.it URLs in the page
-            const vrm = html.match(/https:\/\/v\.redd\.it\/[a-z0-9]+\/DASH_[0-9]+\.mp4/gi);
-            const fallbackUrl = html.match(/https:\/\/v\.redd\.it\/[a-z0-9]+\/HLSPlaylist\.m3u8/i);
-            const packshot = html.match(/"fallback_url"\s*:\s*"([^"]+)"/);
-
-            if (vrm && vrm.length > 0) {
-              return res.status(200).json({ url: vrm[0], title: 'Reddit Video', platform: 'reddit' });
-            }
-            if (packshot) {
-              return res.status(200).json({ url: packshot[1].replace(/\\u0026/g, '&'), title: 'Reddit Video', platform: 'reddit' });
+            const fallback = html.match(/"fallback_url"\s*:\s*"([^"]+)"/);
+            if (fallback) {
+              return res.status(200).json({ url: fallback[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&'), title: 'Reddit Video', platform: 'reddit' });
             }
           }
         } catch(e) {}
@@ -55,7 +102,7 @@ module.exports = async function handler(req, res) {
 
       if (post) {
         const title = post.title || 'Reddit Video';
-        const thumbnail = post.thumbnail && post.thumbnail.startsWith('http') ? post.thumbnail : null;
+        const thumbnail = post.thumbnail?.startsWith('http') ? post.thumbnail : null;
 
         if (post.is_video && post.media?.reddit_video?.fallback_url) {
           return res.status(200).json({ url: post.media.reddit_video.fallback_url.replace(/\?.*$/, ''), title, thumbnail, platform: 'reddit' });
@@ -69,140 +116,59 @@ module.exports = async function handler(req, res) {
         if (post.url_overridden_by_dest) {
           return res.status(200).json({ url: post.url_overridden_by_dest, title, thumbnail, platform: 'reddit' });
         }
-        return res.status(400).json({ error: 'Este post do Reddit não contém um vídeo hospedado.' });
       }
 
-      return res.status(400).json({ error: 'Não foi possível acessar o Reddit. O servidor pode estar bloqueado. Tente novamente mais tarde.' });
-    }
-
-    // ── TWITTER/X ─────────────────────────────────────────────────────────────
-    if (url.includes('twitter.com') || url.includes('x.com')) {
-      // Extract tweet ID
-      const tweetMatch = url.match(/status\/(\d+)/);
-      if (!tweetMatch) return res.status(400).json({ error: 'Link inválido. Use o formato: x.com/user/status/ID' });
-      const tweetId = tweetMatch[1];
-
-      // Strategy 1: Twitter syndication API (public embed)
-      let videoUrl = null;
-      let title = '';
-      let thumbnail = null;
-      try {
-        const r = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&lang=en&token=0`, {
-          headers: { 'User-Agent': UA }
-        });
-        if (r.ok) {
-          const data = await r.json();
-          title = data.text || '';
-          // Find video in media
-          const videos = data.mediaDetails?.filter(m => m.type === 'video') || [];
-          if (videos.length > 0) {
-            const variants = videos[0].video_info?.variants?.filter(v => v.content_type === 'video/mp4') || [];
-            // Pick highest quality
-            variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-            if (variants.length > 0) videoUrl = variants[0].url;
-            thumbnail = videos[0].media_url_https || null;
-          }
-          // Check for GIF
-          const gifs = data.mediaDetails?.filter(m => m.type === 'animated_gif') || [];
-          if (!videoUrl && gifs.length > 0) {
-            const gv = gifs[0].video_info?.variants?.find(v => v.content_type === 'video/mp4');
-            if (gv) videoUrl = gv.url;
-            thumbnail = gifs[0].media_url_https || null;
-          }
-        }
-      } catch(e) { console.error('Twitter syndication:', e.message); }
-
-      // Strategy 2: RapidAPI fallback
-      if (!videoUrl) {
-        const rapidKey = process.env.RAPIDAPI_KEY;
-        if (rapidKey) {
-          try {
-            const r = await fetch(`https://twitter-video-downloader10.p.rapidapi.com/?url=${encodeURIComponent(url)}`, {
-              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'twitter-video-downloader10.p.rapidapi.com' }
-            });
-            if (r.ok) {
-              const d = await r.json();
-              const variants = d.media_url_https || d.variants || [];
-              videoUrl = Array.isArray(variants) ? variants.find(v => v.content_type === 'video/mp4')?.url : variants;
-              title = title || d.text || 'Twitter/X';
-            }
-          } catch(e) {}
-        }
-      }
-
-      if (videoUrl) {
-        return res.status(200).json({ url: videoUrl, title: title || 'Twitter/X Video', thumbnail, platform: 'twitter' });
-      }
-      return res.status(400).json({ error: 'Não foi possível extrair o vídeo. O tweet pode não ter vídeo ou ser privado.' });
+      // Fallback: external service
+      return res.status(200).json({
+        url: null,
+        externalDownloader: `https://rapidsave.com/info?url=${encodeURIComponent(url)}`,
+        title: 'Reddit Video',
+        platform: 'reddit',
+        useExternal: true,
+        message: 'Clique para baixar via serviço externo'
+      });
     }
 
     // ── FACEBOOK ──────────────────────────────────────────────────────────────
     if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com')) {
-      let videoUrl = null;
-      let title = 'Facebook Video';
-      let thumbnail = null;
-
-      // Follow redirects for fb.watch
       let finalUrl = url;
       if (url.includes('fb.watch')) {
         try { const rd = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } }); finalUrl = rd.url; } catch(e) {}
       }
 
-      // Scrape the public page
+      // Scrape page
       try {
-        const r = await fetch(finalUrl, {
-          headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
-          redirect: 'follow'
-        });
+        const r = await fetch(finalUrl, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, redirect: 'follow' });
         if (r.ok) {
           const html = await r.text();
-          // Try multiple patterns
           const patterns = [
-            /"hd_src":"([^"]+)"/,
-            /"sd_src":"([^"]+)"/,
-            /"playable_url_quality_hd":"([^"]+)"/,
-            /"playable_url":"([^"]+)"/,
-            /content="(https:\/\/[^"]*\.mp4[^"]*)"/,
+            /"hd_src":"([^"]+)"/, /"sd_src":"([^"]+)"/,
+            /"playable_url_quality_hd":"([^"]+)"/, /"playable_url":"([^"]+)"/,
             /<meta\s+property="og:video(?::url)?"\s+content="([^"]+)"/i,
           ];
           for (const p of patterns) {
             const m = html.match(p);
-            if (m) { videoUrl = m[1].replace(/\\\//g, '/').replace(/&amp;/g, '&'); break; }
+            if (m) {
+              const videoUrl = m[1].replace(/\\\//g, '/').replace(/&amp;/g, '&');
+              const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+              return res.status(200).json({ url: videoUrl, title: ogTitle?.[1] || 'Facebook Video', platform: 'facebook' });
+            }
           }
-          const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-          if (ogTitle) title = ogTitle[1].replace(/&amp;/g, '&');
-          const ogImage = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-          if (ogImage) thumbnail = ogImage[1].replace(/&amp;/g, '&');
         }
       } catch(e) {}
 
-      // RapidAPI fallback
-      if (!videoUrl) {
-        const rapidKey = process.env.RAPIDAPI_KEY;
-        if (rapidKey) {
-          try {
-            const r = await fetch('https://facebook-reel-and-video-downloader.p.rapidapi.com/app/main.php?url=' + encodeURIComponent(url), {
-              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'facebook-reel-and-video-downloader.p.rapidapi.com' }
-            });
-            if (r.ok) {
-              const d = await r.json();
-              if (d.success && d.media) {
-                videoUrl = d.media.find(m => m.quality === 'hd')?.url || d.media[0]?.url;
-                title = d.title || title;
-              }
-            }
-          } catch(e) {}
-        }
-      }
-
-      if (videoUrl) {
-        return res.status(200).json({ url: videoUrl, title, thumbnail, platform: 'facebook' });
-      }
-      return res.status(400).json({ error: 'Não foi possível extrair o vídeo do Facebook. O vídeo pode ser privado.' });
+      // Fallback: external service
+      return res.status(200).json({
+        url: null,
+        externalDownloader: `https://fdown.net/download.php?URLz=${encodeURIComponent(url)}`,
+        title: 'Facebook Video',
+        platform: 'facebook',
+        useExternal: true,
+        message: 'Clique para baixar via serviço externo'
+      });
     }
 
-    return res.status(400).json({ error: 'Plataforma não suportada. Use YouTube, Twitter/X, Reddit ou Facebook.' });
-
+    return res.status(400).json({ error: 'Plataforma não suportada.' });
   } catch(e) {
     console.error('baixa-social error:', e.message);
     return res.status(500).json({ error: 'Erro interno: ' + e.message });
