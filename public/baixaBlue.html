@@ -210,7 +210,7 @@ footer a{color:var(--neon);text-decoration:none}
         id="videoUrl"
         type="url"
         class="url-input"
-        placeholder="Cole o link do vídeo aqui… youtube.com/shorts, tiktok.com, instagram.com/reels…"
+        placeholder="Cole o link do YouTube, X/Twitter, Reddit ou Facebook…"
         autocomplete="off"
         spellcheck="false"
       />
@@ -219,7 +219,8 @@ footer a{color:var(--neon);text-decoration:none}
         Baixar
       </button>
     </div>
-    <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Facebook · Kwai</span> e mais de 1000 sites</div>
+    <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook</span></div>
+    <div id="platformBadge" style="display:none;margin-top:10px;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(0,170,255,.2);background:rgba(0,170,255,.06);color:var(--neon)"></div>
 
     <!-- Progress -->
     <div class="progress-wrap" id="progressWrap">
@@ -344,11 +345,24 @@ function detectSource(url){
   if(url.includes('tiktok.com')) return {name:'TikTok',emoji:'🎵'};
   if(url.includes('instagram.com')) return {name:'Instagram',emoji:'📸'};
   if(url.includes('twitter.com')||url.includes('x.com')) return {name:'Twitter/X',emoji:'𝕏'};
-  if(url.includes('facebook.com')||url.includes('fb.watch')) return {name:'Facebook',emoji:'👍'};
+  if(url.includes('reddit.com')||url.includes('redd.it')) return {name:'Reddit',emoji:'👽'};
+  if(url.includes('facebook.com')||url.includes('fb.watch')||url.includes('fb.com')) return {name:'Facebook',emoji:'📘'};
   if(url.includes('kwai.com')) return {name:'Kwai',emoji:'🎬'};
-  if(url.includes('pinterest.com')) return {name:'Pinterest',emoji:'📌'};
   return {name:'Vídeo',emoji:'🎬'};
 }
+
+// Show platform badge when URL is pasted
+document.getElementById('videoUrl').addEventListener('input', function(){
+  const badge = document.getElementById('platformBadge');
+  const url = this.value.trim();
+  if(url.length > 10){
+    const src = detectSource(url);
+    badge.textContent = src.emoji + ' ' + src.name + ' detectado';
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+});
 
 // ── PROGRESS ANIMATION ───────────────────────────────────────────────────────
 let progressTimer = null;
@@ -398,8 +412,14 @@ async function startDownload(){
   startProgress();
 
   try{
-    // Call our backend proxy
-    const r = await fetch(`/api/auth?action=download&url=${encodeURIComponent(url)}`);
+    // Route Reddit/Facebook to dedicated endpoint, rest to auth
+    const isReddit = url.includes('reddit.com') || url.includes('redd.it');
+    const isFacebook = url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com');
+    const endpoint = (isReddit || isFacebook)
+      ? `/api/baixa-social?url=${encodeURIComponent(url)}`
+      : `/api/auth?action=download&url=${encodeURIComponent(url)}`;
+
+    const r = await fetch(endpoint);
     const data = await r.json();
 
     finishProgress(r.ok && data.url);
