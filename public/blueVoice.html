@@ -697,6 +697,33 @@ function focusVoicePanel() {
   document.getElementById('voiceSearch').focus();
 }
 
+// ── PAINEL DE ADICIONAR VOZ ─────────────────────────────────────────────────
+function showAddVoicePanel() {
+  // Remove painel anterior se existir
+  document.getElementById('addVoicePanel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'addVoicePanel';
+  panel.style.cssText = 'padding:16px 20px;border-top:1px solid rgba(0,170,255,.1);background:rgba(0,170,255,.03)';
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--neon);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">Importar voz do ElevenLabs</div>
+    <input id="customVoiceId" type="text" placeholder="Cole o Voice ID do ElevenLabs" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
+    <input id="customVoiceName" type="text" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px"/>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="addCustomVoice()" style="background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:8px;padding:9px 18px;font-family:var(--font);font-size:12px;font-weight:700;color:#fff;cursor:pointer">Importar</button>
+      <button onclick="document.getElementById('addVoicePanel')?.remove()" style="background:none;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec);cursor:pointer">Cancelar</button>
+      <span id="addVoiceMsg" style="font-family:var(--mono);font-size:11px;margin-left:4px"></span>
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:10px;line-height:1.6">
+      Encontre o Voice ID em elevenlabs.io → Voices → clique na voz → Voice ID
+    </div>
+  `;
+
+  const vpHeader = document.querySelector('.vp-header');
+  vpHeader.parentNode.insertBefore(panel, vpHeader.nextSibling);
+  document.getElementById('customVoiceId').focus();
+}
+
 // ── PREVIEW DA VOZ (via TTS curto — ElevenLabs API) ─────────────────────────
 let currentPreview = null;
 const _previewCache = {}; // sessionStorage-like cache {voiceId: blobUrl}
