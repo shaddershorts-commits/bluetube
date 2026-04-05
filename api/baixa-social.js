@@ -19,19 +19,39 @@ module.exports = async function handler(req, res) {
   try {
     // ── REDDIT ──────────────────────────────────────────────────────────────
     if (isReddit) {
-      let jsonUrl = url.replace(/\?.*$/, '');
-      if (!jsonUrl.endsWith('/')) jsonUrl += '/';
-      jsonUrl += '.json';
+      // Clean URL and build JSON endpoint
+      let cleanUrl = url.replace(/\?.*$/, '').replace(/\/$/, '');
+      // Handle redd.it short links
+      if (url.includes('redd.it') && !url.includes('reddit.com')) {
+        try {
+          const redir = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot)' } });
+          cleanUrl = redir.url.replace(/\?.*$/, '').replace(/\/$/, '');
+        } catch(e) {}
+      }
+      const jsonUrl = cleanUrl + '.json';
+      console.log('[baixa-social] Reddit JSON URL:', jsonUrl);
 
       const r = await fetch(jsonUrl, {
-        headers: { 'User-Agent': 'BlueTube/1.0 (video downloader)' }
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+        redirect: 'follow'
       });
 
+      console.log('[baixa-social] Reddit response:', r.status, r.statusText);
       if (!r.ok) {
-        return res.status(400).json({ error: 'Não foi possível acessar este post do Reddit. Verifique se é público.' });
+        // Try old.reddit.com as fallback
+        const oldUrl = jsonUrl.replace('www.reddit.com', 'old.reddit.com');
+        const r2 = await fetch(oldUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          redirect: 'follow'
+        });
+        if (!r2.ok) {
+          return res.status(400).json({ error: 'Não foi possível acessar este post do Reddit. Verifique se o link é público e tente novamente.' });
+        }
+        var data = await r2.json();
+      } else {
+        var data = await r.json();
       }
 
-      const data = await r.json();
       const post = Array.isArray(data) ? data[0]?.data?.children?.[0]?.data : data?.data?.children?.[0]?.data;
 
       if (!post) {
