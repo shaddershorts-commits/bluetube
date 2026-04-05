@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { videoUrl, lang, token } = req.body || {};
+    const { videoUrl, lang, token, userSummary, sentiments, niche } = req.body || {};
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatorio' });
 
     let videoId = '';
@@ -167,6 +167,10 @@ module.exports = async function handler(req, res) {
       if (fallback.trim().length > 3) contextParts.push('CONTEXTO DO VIDEO (inferir tema e criar roteiro original):\n' + fallback);
     }
     if (ytChannel) contextParts.push('Canal: ' + ytChannel);
+    // Context from user's guided flow
+    if (userSummary) contextParts.push('RESUMO DO CRIADOR (prioridade máxima):\n' + userSummary);
+    if (sentiments && sentiments.length) contextParts.push('SENTIMENTO DESEJADO: ' + sentiments.join(', '));
+    if (niche) contextParts.push('NICHO DO CANAL: ' + niche);
 
     console.log('generate-from-zero:', videoId, '| transcript:', transcriptText.length, '| visual:', visualDescription.length, '| ytTitle:', ytTitle.length, '| ctx:', contextParts.length);
 
@@ -204,8 +208,8 @@ module.exports = async function handler(req, res) {
     const prompt = [
       '=== ADAPTADOR CULTURAL ELITE + NARRADOR VIRAL ANTI-PROPAGANDA ===',
       '',
-      'Você é um roteirista nativo de ' + safeLang + '. Sua missão: RECRIAR o conteúdo como se fosse escrito originalmente por um criador profissional nativo.',
-      'Você NÃO traduz. Você NÃO descreve. Você cria SENSAÇÃO no idioma nativo.',
+      'Você é um roteirista viral expert e nativo de ' + safeLang + '. Crie roteiros do ZERO baseado no vídeo analisado + contexto do criador.',
+      'Você NÃO descreve. Você cria SENSAÇÃO. O criador te deu direções específicas — USE-AS.',
       '',
       'ADAPTAÇÃO CULTURAL OBRIGATÓRIA:',
       '- Moeda: converta TUDO para ' + cult.cur + ' (NUNCA deixe Rúpias, Rupees, etc.)',

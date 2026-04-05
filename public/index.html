@@ -465,6 +465,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .mode-btn.active-zero{background:linear-gradient(135deg,rgba(251,191,36,.18),rgba(255,140,0,.12));color:#fbbf24;border:1px solid rgba(251,191,36,.35);box-shadow:0 0 16px rgba(251,191,36,.12)}
 .mode-btn .mode-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;letter-spacing:.06em}
 .mode-btn.active-zero .mode-badge{background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.zero-step{animation:fadeUp .35s ease both}
+.zdot{width:10px;height:10px;border-radius:50%;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.25);transition:all .3s}
+.zdot.active{background:#fbbf24;border-color:#fbbf24;box-shadow:0 0 8px rgba(251,191,36,.4)}
+.zpill{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:100px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);color:rgba(251,191,36,.6);font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .2s;user-select:none}
+.zpill:hover{border-color:rgba(251,191,36,.4);color:#fbbf24}
+.zpill.on{background:rgba(251,191,36,.18);border-color:#fbbf24;color:#fbbf24;font-weight:700}
 .mode-btn.active-adapt .mode-badge{background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2)}
 .mode-lock-overlay{position:absolute;inset:0;border-radius:9px;backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(2,8,23,.3)}
 </style>
@@ -843,7 +849,75 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     </div>
   </div>
 
-  <!-- Results -->
+  <!-- ── ZERO FLOW — Roteirizar do Zero (fluxo guiado) ──────────────────── -->
+  <div id="zeroFlowSection" style="display:none;margin-top:24px">
+    <!-- Progress dots -->
+    <div id="zeroProgress" style="display:flex;justify-content:center;gap:8px;margin-bottom:20px">
+      <div class="zdot active" id="zd1"></div><div class="zdot" id="zd2"></div><div class="zdot" id="zd3"></div>
+    </div>
+
+    <!-- Step 1: Summary -->
+    <div id="zeroStep1" class="zero-step">
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 1 de 3</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Resuma o que acontece no vídeo</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Descreva em poucas palavras a ação principal do vídeo.</div>
+      <textarea id="zeroSummary" rows="3" placeholder="Ex: Um cara tentando equilibrar 100 copos d'água..." style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:14px;font-family:var(--font-mono,monospace);font-size:13px;color:#e8f4ff;outline:none;resize:none;line-height:1.5" oninput="document.getElementById('zeroNext1').disabled=!this.value.trim()"></textarea>
+      <button id="zeroNext1" onclick="zeroGoStep(2)" disabled style="margin-top:14px;width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Próximo →</button>
+    </div>
+
+    <!-- Step 2: Sentiments -->
+    <div id="zeroStep2" class="zero-step" style="display:none">
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 2 de 3</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Que sentimento você quer passar?</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Selecione um ou mais.</div>
+      <div id="zeroSentiments" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <button onclick="zeroGoStep(3)" style="margin-top:18px;width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Próximo →</button>
+    </div>
+
+    <!-- Step 3: Niche -->
+    <div id="zeroStep3" class="zero-step" style="display:none">
+      <div style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Passo 3 de 3</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Qual o nicho do seu canal?</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:12px;color:rgba(200,225,255,.5);margin-bottom:16px">Selecione o que mais se encaixa.</div>
+      <div id="zeroNiches" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <button id="zeroGenerateBtn" onclick="zeroGenerate()" style="margin-top:18px;width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Gerar Roteiro ✨</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="zeroLoading" class="zero-step" style="display:none;text-align:center;padding:40px 20px">
+      <div style="width:40px;height:40px;border:3px solid rgba(251,191,36,.15);border-top-color:#fbbf24;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px"></div>
+      <div id="zeroLoadingMsg" style="font-family:var(--font-mono,monospace);font-size:13px;color:#fbbf24">Analisando frames do vídeo...</div>
+      <div style="font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.35);margin-top:8px">Isso leva de 10 a 30 segundos</div>
+    </div>
+
+    <!-- Result -->
+    <div id="zeroResult" class="zero-step" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="font-size:16px;font-weight:800">Roteiros gerados ✨</div>
+        <button onclick="zeroReset()" style="background:none;border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:6px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:#fbbf24;cursor:pointer">Recomeçar</button>
+      </div>
+      <!-- Casual -->
+      <div class="script-card" id="zCardV1" style="margin-bottom:14px">
+        <div class="script-card-top"><div style="display:flex;align-items:center;gap:10px"><span class="version-badge v-casual">💬 Casual</span></div><button class="act-btn" onclick="copyEl('zScriptV1')">📋 Copiar</button></div>
+        <div class="script-body"><div class="script-text" id="zScriptV1"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
+          <button onclick="openAdjustChat('ZV1')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer">✏️ Pedir ajuste</button>
+          <button onclick="sendToBlueVoice('zScriptV1')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon);cursor:pointer">🎙️ Narrar</button>
+        </div>
+      </div>
+      <!-- Apelativo -->
+      <div class="script-card" id="zCardV2">
+        <div class="script-card-top"><div style="display:flex;align-items:center;gap:10px"><span class="version-badge v-apelativo">🔥 Apelativo</span></div><button class="act-btn" onclick="copyEl('zScriptV2')">📋 Copiar</button></div>
+        <div class="script-body"><div class="script-text" id="zScriptV2"></div></div>
+        <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
+          <button onclick="openAdjustChat('ZV2')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer">✏️ Pedir ajuste</button>
+          <button onclick="sendToBlueVoice('zScriptV2')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon);cursor:pointer">🎙️ Narrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results (Adaptar) -->
   <div class="results-area" id="resultsArea">
     <div class="tab-nav">
       <button class="tab-btn active" id="tabTranscript" onclick="switchTab('transcript')">📝 Transcrição</button>
@@ -1713,27 +1787,30 @@ function setMode(mode){
   if(mode==='zero' && !isPaid){ openUpgradeModal('limit_full'); return; }
   _genMode = mode;
   const bA=document.getElementById('btnModeAdapt'), bZ=document.getElementById('btnModeZero');
-  const banner=document.getElementById('modeZeroBanner'), card=document.querySelector('.main-card');
+  const card=document.querySelector('.main-card');
   const btnGo=document.getElementById('btnGo');
-  const tabT=document.getElementById('tabTranscript');
+  const zeroSection=document.getElementById('zeroFlowSection');
+  const resultsArea=document.getElementById('resultsArea');
   if(mode==='zero'){
     bA.className='mode-btn'; bZ.className='mode-btn active-zero';
-    if(banner) banner.style.display='block';
     if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
-    if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='✨ Roteirizar vídeo'; }
-    // Tab sempre visivel
-    // Muda placeholder do input
+    if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='Iniciar ↗'; }
     const inp=document.getElementById('urlInput');
     if(inp) inp.placeholder='Cole qualquer Short — com ou sem narração';
+    // Hide adapt results, show zero flow if has saved results
+    if(resultsArea) resultsArea.classList.remove('on');
+    const savedZero = localStorage.getItem('bt_state_zero_casual');
+    if(savedZero && zeroSection){
+      zeroSection.style.display='block';
+      zeroRestoreResults();
+    }
   } else {
     bA.className='mode-btn active-adapt'; bZ.className='mode-btn';
-    if(banner) banner.style.display='none';
     if(card){ card.style.borderColor=''; card.style.boxShadow=''; }
     if(btnGo){ btnGo.style.background=''; btnGo.style.boxShadow=''; btnGo.textContent='Transcrever + Roteiro ↗'; }
-    if(tabT) tabT.style.display=''; // Mostra transcrição no modo adapt
     const inp=document.getElementById('urlInput');
     if(inp) inp.placeholder='https://www.youtube.com/shorts/...';
-    // Volta para aba casual se estava em transcript
+    if(zeroSection) zeroSection.style.display='none';
     switchTab('v1');
   }
 }
@@ -1744,47 +1821,168 @@ function handleMainBtn(e){
   else startTranscription(e);
 }
 
-// ── INICIAR GERAR DO ZERO (fluxo independente) ────────────────────────────
-async function startFromZero(e){
-  const btn=document.getElementById('btnGo');
-  const rip=document.createElement('span');rip.className='ripple';
-  const r=btn.getBoundingClientRect();
-  rip.style.left=(e.clientX-r.left)+'px';rip.style.top=(e.clientY-r.top)+'px';
-  btn.appendChild(rip);setTimeout(()=>rip.remove(),700);
+// ── ROTEIRIZAR DO ZERO — Fluxo guiado de 3 perguntas ─────────────────────
+let _zeroVideoId = '';
+let _zeroSentiments = [];
+let _zeroNiche = '';
 
+const SENTIMENTS = [
+  { id:'surpresa', emoji:'😲', label:'Surpresa' },
+  { id:'humor', emoji:'😂', label:'Humor' },
+  { id:'choque', emoji:'🤯', label:'Choque' },
+  { id:'admiracao', emoji:'😮', label:'Admiração' },
+  { id:'tensao', emoji:'😨', label:'Tensão' },
+  { id:'motivacao', emoji:'🔥', label:'Motivação' },
+];
+const NICHES = [
+  { id:'curiosidades', emoji:'🧠', label:'Curiosidades' },
+  { id:'ciencia', emoji:'🔬', label:'Ciência' },
+  { id:'entretenimento', emoji:'🎭', label:'Entretenimento' },
+  { id:'financas', emoji:'💰', label:'Finanças' },
+  { id:'saude', emoji:'🏋️', label:'Saúde/Fitness' },
+  { id:'games', emoji:'🎮', label:'Games' },
+  { id:'tech', emoji:'📱', label:'Tecnologia' },
+  { id:'outro', emoji:'📦', label:'Outro' },
+];
+
+// Init sentiment/niche pills
+(function(){
+  const sc=document.getElementById('zeroSentiments');
+  const nc=document.getElementById('zeroNiches');
+  if(sc) sc.innerHTML=SENTIMENTS.map(s=>`<button class="zpill" data-id="${s.id}" onclick="zeroToggleSentiment(this,'${s.id}')">${s.emoji} ${s.label}</button>`).join('');
+  if(nc) nc.innerHTML=NICHES.map(n=>`<button class="zpill" data-id="${n.id}" onclick="zeroSelectNiche(this,'${n.id}')">${n.emoji} ${n.label}</button>`).join('');
+})();
+
+function zeroToggleSentiment(btn, id){
+  btn.classList.toggle('on');
+  if(_zeroSentiments.includes(id)) _zeroSentiments=_zeroSentiments.filter(s=>s!==id);
+  else _zeroSentiments.push(id);
+}
+
+function zeroSelectNiche(btn, id){
+  document.querySelectorAll('#zeroNiches .zpill').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  _zeroNiche=id;
+}
+
+function zeroGoStep(step){
+  ['zeroStep1','zeroStep2','zeroStep3','zeroLoading','zeroResult'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  document.getElementById('zeroStep'+step).style.display='block';
+  ['zd1','zd2','zd3'].forEach((id,i)=>{
+    document.getElementById(id).className='zdot'+(i<step?' active':'');
+  });
+  // Save state
+  if(step===2) localStorage.setItem('bt_state_zero_summary', document.getElementById('zeroSummary').value);
+}
+
+async function startFromZero(e){
   const raw=document.getElementById('urlInput').value.trim();
   if(!raw){setError('Cole um link de YouTube Shorts antes de continuar.');return;}
   const videoId=extractId(raw);
   if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
-  currentVideoId=videoId;
 
-  // Checa limite (Full = 9/dia, Master = ilimitado)
-  const _planNow=userPlan||localStorage.getItem('bt_plan')||'free';
-  if(_planNow!=='master'){
-    const limR=await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'increment',token:localStorage.getItem('bt_token')})});
-    const limD=await limR.json();
-    if(!limD.allowed){openUpgradeModal('limit_full');return;}
-  }
+  const isPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
+  if(!isPaid){ openUpgradeModal('limit_full'); return; }
 
   setError('');
+  _zeroVideoId=videoId;
+  _zeroSentiments=[];
+  _zeroNiche='';
+  localStorage.setItem('bt_state_zero_url', raw);
 
-  // Reset apenas os cards de roteiro (sem mexer na transcrição)
-  ['titleCasualBox','titleApelatBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
-  ['V1','V2'].forEach(v=>{
-    document.getElementById('loading'+v).classList.add('on');
-    document.getElementById('card'+v).style.display='none';
+  // Show flow, start at step 1
+  const section=document.getElementById('zeroFlowSection');
+  section.style.display='block';
+  ['zeroStep1','zeroStep2','zeroStep3','zeroLoading','zeroResult'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
   });
+  document.getElementById('zeroStep1').style.display='block';
+  ['zd1','zd2','zd3'].forEach((id,i)=>document.getElementById(id).className='zdot'+(i===0?' active':''));
+  document.querySelectorAll('#zeroSentiments .zpill, #zeroNiches .zpill').forEach(b=>b.classList.remove('on'));
+  document.getElementById('zeroSummary').value='';
+  document.getElementById('zeroNext1').disabled=true;
+  section.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 
-  document.getElementById('resultsArea').classList.add('on');
-  setLoading(true);
+async function zeroGenerate(){
+  const summary=document.getElementById('zeroSummary')?.value?.trim()||'';
+  const sentimentLabels=_zeroSentiments.map(id=>SENTIMENTS.find(s=>s.id===id)?.label).filter(Boolean);
+  const nicheLabel=NICHES.find(n=>n.id===_zeroNiche)?.label||'Geral';
 
-  // Vai direto para a aba casual (sem transcrição)
-  switchTab('v1');
-  setTimeout(()=>document.getElementById('resultsArea').scrollIntoView({behavior:'smooth',block:'nearest'}),100);
+  // Save state
+  localStorage.setItem('bt_state_zero_sentiments', JSON.stringify(sentimentLabels));
+  localStorage.setItem('bt_state_zero_niche', nicheLabel);
 
-  await generateFromZero(document.getElementById('langSelect').value);
-  setLoading(false);
+  // Show loading
+  ['zeroStep1','zeroStep2','zeroStep3','zeroResult'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  document.getElementById('zeroLoading').style.display='block';
+  ['zd1','zd2','zd3'].forEach(id=>document.getElementById(id).className='zdot active');
+
+  const msgs=['Analisando frames do vídeo...','Processando suas respostas...','Criando roteiro viral...','Quase pronto...'];
+  let mi=0;
+  const msgTimer=setInterval(()=>{
+    mi++;
+    if(mi<msgs.length) document.getElementById('zeroLoadingMsg').textContent=msgs[mi];
+  },4000);
+
+  try{
+    const lang=document.getElementById('langSelect')?.value||'Português (Brasil)';
+    const token=localStorage.getItem('bt_token');
+    const r=await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        videoUrl:'https://www.youtube.com/shorts/'+_zeroVideoId,
+        lang, token,
+        userSummary: summary,
+        sentiments: sentimentLabels,
+        niche: nicheLabel
+      })});
+    const rawText=await r.text();
+    let d;
+    try{d=JSON.parse(rawText);}catch(pe){throw new Error('Erro interno. Tente novamente.');}
+    if(!r.ok||(!d.casual&&!d.apelativo)) throw new Error(d.error||'Falha ao gerar roteiro.');
+
+    // Show results
+    if(d.casual){
+      document.getElementById('zScriptV1').textContent=(d.casual||'').replace(/[\r\n]+/g,' ').trim();
+      localStorage.setItem('bt_state_zero_casual', d.casual);
+    }
+    if(d.apelativo){
+      document.getElementById('zScriptV2').textContent=(d.apelativo||'').replace(/[\r\n]+/g,' ').trim();
+      localStorage.setItem('bt_state_zero_apelativo', d.apelativo);
+    }
+
+    document.getElementById('zeroLoading').style.display='none';
+    document.getElementById('zeroResult').style.display='block';
+
+  }catch(err){
+    document.getElementById('zeroLoading').style.display='none';
+    document.getElementById('zeroStep3').style.display='block';
+    setError(err.message||'Erro ao gerar. Tente novamente.');
+  }finally{
+    clearInterval(msgTimer);
+  }
+}
+
+function zeroReset(){
+  ['bt_state_zero_casual','bt_state_zero_apelativo','bt_state_zero_summary','bt_state_zero_sentiments','bt_state_zero_niche'].forEach(k=>localStorage.removeItem(k));
+  document.getElementById('zeroFlowSection').style.display='none';
+}
+
+function zeroRestoreResults(){
+  const casual=localStorage.getItem('bt_state_zero_casual');
+  const apelativo=localStorage.getItem('bt_state_zero_apelativo');
+  if(!casual&&!apelativo) return;
+  ['zeroStep1','zeroStep2','zeroStep3','zeroLoading'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  if(casual) document.getElementById('zScriptV1').textContent=casual.replace(/[\r\n]+/g,' ').trim();
+  if(apelativo) document.getElementById('zScriptV2').textContent=apelativo.replace(/[\r\n]+/g,' ').trim();
+  document.getElementById('zeroResult').style.display='block';
+  ['zd1','zd2','zd3'].forEach(id=>document.getElementById(id).className='zdot active');
 }
 
 function generateAllScripts(lang){
