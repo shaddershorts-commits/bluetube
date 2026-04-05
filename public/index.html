@@ -914,6 +914,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button onclick="sendToBlueVoice('zScriptV2')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon);cursor:pointer">🎙️ Narrar</button>
         </div>
       </div>
+      <!-- Narrative arc tag -->
+      <div id="zNarrativeArc" style="display:none;margin-top:14px;text-align:center;padding:8px 16px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.12);border-radius:8px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(251,191,36,.6)"></div>
     </div>
   </div>
 
@@ -1954,6 +1956,13 @@ async function zeroGenerate(){
       document.getElementById('zScriptV2').textContent=(d.apelativo||'').replace(/[\r\n]+/g,' ').trim();
       localStorage.setItem('bt_state_zero_apelativo', d.apelativo);
     }
+    // Show narrative arc
+    const arcEl=document.getElementById('zNarrativeArc');
+    if(arcEl && d.narrative_arc){
+      arcEl.textContent='🎬 ' + d.narrative_arc;
+      arcEl.style.display='block';
+      localStorage.setItem('bt_state_zero_arc', d.narrative_arc);
+    }
 
     document.getElementById('zeroLoading').style.display='none';
     document.getElementById('zeroResult').style.display='block';
@@ -1968,7 +1977,7 @@ async function zeroGenerate(){
 }
 
 function zeroReset(){
-  ['bt_state_zero_casual','bt_state_zero_apelativo','bt_state_zero_summary','bt_state_zero_sentiments','bt_state_zero_niche'].forEach(k=>localStorage.removeItem(k));
+  ['bt_state_zero_casual','bt_state_zero_apelativo','bt_state_zero_summary','bt_state_zero_sentiments','bt_state_zero_niche','bt_state_zero_arc'].forEach(k=>localStorage.removeItem(k));
   document.getElementById('zeroFlowSection').style.display='none';
 }
 
@@ -1981,6 +1990,9 @@ function zeroRestoreResults(){
   });
   if(casual) document.getElementById('zScriptV1').textContent=casual.replace(/[\r\n]+/g,' ').trim();
   if(apelativo) document.getElementById('zScriptV2').textContent=apelativo.replace(/[\r\n]+/g,' ').trim();
+  const savedArc=localStorage.getItem('bt_state_zero_arc');
+  const arcEl=document.getElementById('zNarrativeArc');
+  if(arcEl && savedArc){ arcEl.textContent='🎬 '+savedArc; arcEl.style.display='block'; }
   document.getElementById('zeroResult').style.display='block';
   ['zd1','zd2','zd3'].forEach(id=>document.getElementById(id).className='zdot active');
 }

@@ -205,42 +205,82 @@ module.exports = async function handler(req, res) {
     };
     const cult = CULTURAL[safeLang] || { cur:'local currency', ref:'local' };
 
+    // Desfecho por nicho
+    const nicheLabel = (niche || 'Geral').trim();
+    const NICHE_ENDINGS = {
+      'Curiosidades': 'Revele o fato surpreendente. Tom: "E a explicação disso vai te surpreender..." Termine com dado ou revelação inesperada.',
+      'Ciência': 'Conecte o visual ao fenômeno científico. Tom: revelatório e fascinante. Termine explicando O PORQUÊ de forma simples e impactante.',
+      'Entretenimento': 'Desfecho emocional ou cômico. Tom: satisfatório ou hilário. Termine com a reação ou consequência final.',
+      'Finanças': 'Conecte ao aprendizado ou erro financeiro. Tom: revelador e prático. Termine com a lição de valor real.',
+      'Saúde/Fitness': 'Conecte ao benefício ou consequência física. Tom: motivacional ou surpreendente. Termine com resultado concreto.',
+      'Games': 'Desfecho épico ou engraçado. Tom: emocionante ou absurdo. Termine com a jogada ou momento decisivo.',
+      'Tecnologia': 'Revele a implicação ou capacidade surpreendente. Tom: impressionante e acessível. Termine com o impacto prático.',
+      'Outro': 'Desfecho surpreendente e satisfatório. Termine com uma revelação ou consequência inesperada.',
+    };
+    const nicheEnding = NICHE_ENDINGS[nicheLabel] || NICHE_ENDINGS['Outro'];
+
+    // Sentimentos para tom
+    const sentimentList = Array.isArray(sentiments) && sentiments.length > 0 ? sentiments.join(', ') : 'Surpresa';
+
     const prompt = [
-      '=== ADAPTADOR CULTURAL ELITE + NARRADOR VIRAL ANTI-PROPAGANDA ===',
+      'Você é um roteirista de YouTube Shorts com 10 anos de experiência criando vídeos virais em ' + safeLang + '.',
+      'Você não descreve vídeos — você cria experiências narrativas que prendem do primeiro ao último segundo.',
+      'Cada roteiro tem começo, meio e fim com propósito. NUNCA soe como narração de documentário.',
       '',
-      'Você é um roteirista viral expert e nativo de ' + safeLang + '. Crie roteiros do ZERO baseado no vídeo analisado + contexto do criador.',
-      'Você NÃO descreve. Você cria SENSAÇÃO. O criador te deu direções específicas — USE-AS.',
-      '',
-      'ADAPTAÇÃO CULTURAL OBRIGATÓRIA:',
-      '- Moeda: converta TUDO para ' + cult.cur + ' (NUNCA deixe Rúpias, Rupees, etc.)',
-      '- Referências culturais: use referências ' + cult.ref,
-      '- Expressões idiomáticas: NUNCA traduza literalmente — use equivalentes nativos',
-      '- Medidas: adapte para o sistema local',
-      '- O resultado DEVE parecer escrito originalmente em ' + safeLang,
-      '',
-      'FÓRMULA: Gancho forte + Curiosidade crescente + Corte máximo + Payoff satisfatório',
-      '',
-      'ESTRUTURA (nos dois roteiros):',
-      '1. GANCHO (0–3s): Intriga imediata SEM contexto.',
-      '2. PROGRESSÃO (3–15s): Evolução com mini dúvidas.',
-      '3. PAYOFF (final): Surpreende ou satisfaz.',
-      '',
-      'REGRAS: Frases CURTAS. Corte AGRESSIVO. Máx 75 palavras. Linguagem nativa de redes sociais.',
-      '',
-      'PROIBIDO: propaganda, narração fria, tradução literal, moedas estrangeiras, referências culturais incompatíveis, markdown, emojis.',
-      '',
-      'casual = leve, conversacional | apelativo = hook CHOCANTE, tensão máxima, urgência',
-      '',
-      'TESTE: 1) Nativo perceberia tradução? 2) Moeda/referência estrangeira restou? 3) Funciona em voz alta?',
-      '',
-      'CONTEXTO DO VÍDEO:',
+      '=== CONTEXTO DO VÍDEO ===',
       contextParts.join('\n\n'),
       '',
-      livingMemory ? 'CALIBRAÇÃO:\n' + livingMemory + '\n' : '',
-      'IDIOMA DE SAÍDA: ' + safeLang,
+      '=== DIREÇÕES DO CRIADOR ===',
+      'Sentimento desejado: ' + sentimentList,
+      'Nicho do canal: ' + nicheLabel,
       '',
-      'Responda SOMENTE com JSON válido, sem markdown:',
-      '{"casual":"roteiro casual","apelativo":"roteiro apelativo","titleCasual":"título casual","titleApelativo":"título apelativo"}'
+      '=== ESTRUTURA NARRATIVA OBRIGATÓRIA (3 ATOS) ===',
+      '',
+      'ATO 1 — GANCHO NARRATIVO (primeiros 3 segundos):',
+      '- Jogue o espectador no MEIO da história, sem contexto',
+      '- Primeira frase = afirmação que gera dúvida ou pergunta implícita',
+      '- Tom: urgente, intrigante, sem explicação',
+      '',
+      'ATO 2 — PROGRESSÃO COM VIRADAS (meio):',
+      '- Cada frase avança a história — zero frases decorativas',
+      '- Use OBRIGATORIAMENTE: "Só que..." / "Mas aí..." / "Foi aí que..." / "Ninguém esperava..."',
+      '- PELO MENOS UMA virada inesperada',
+      '- Tensão crescente: cada frase mais intensa que a anterior',
+      '- Máximo 3 frases neste ato',
+      '',
+      'ATO 3 — DESFECHO ESPECÍFICO PARA [' + nicheLabel.toUpperCase() + ']:',
+      nicheEnding,
+      '',
+      '=== RITMO E ENERGIA ===',
+      '- Frases curtas: máximo 10 palavras por frase',
+      '- Não repetir início de frase ("Ele... Ele..." proibido)',
+      '- Alternar afirmativas com frases de impacto',
+      '- Reticências para suspense, ponto final para impacto',
+      '- Lido em voz alta: entre 20 e 35 segundos',
+      '- Se pode cortar uma palavra, corte',
+      '',
+      '=== CASUAL vs APELATIVO ===',
+      'casual = amigo contando uma história, coloquial, humor leve. Ex: "Cara, você não vai acreditar..."',
+      'apelativo = urgência MÁXIMA, zero espaço para respirar, frases ainda mais curtas. Ex: "Isso não deveria ser possível. Mas aconteceu."',
+      '',
+      '=== PROIBIÇÕES ABSOLUTAS ===',
+      '"Este vídeo mostra...", "Neste vídeo vemos...", "O objetivo é...", "Para isso ele..."',
+      'Qualquer narração de documentário. Qualquer explicação de intenção.',
+      'Começar com "Aqui" ou "Neste". Terminar com "curta e compartilhe".',
+      'Markdown, emojis, títulos.',
+      '',
+      '=== ADAPTAÇÃO CULTURAL ===',
+      'Moeda: ' + cult.cur + '. Referências: ' + cult.ref + '. NUNCA soe como tradução.',
+      'Idioma: ' + safeLang + ' nativo de redes sociais.',
+      '',
+      '=== TESTE (aplique antes de responder) ===',
+      '1. Primeira frase prende em 2s? 2. Tem virada no meio? 3. Desfecho é do nicho ' + nicheLabel + '?',
+      '4. Alguma frase cortável? Corte. 5. Parece propaganda? Refaça. 6. Natural em voz alta?',
+      '7. Narrativa tem começo-meio-fim claros? Se QUALQUER item falhar, refaça.',
+      '',
+      livingMemory ? 'CALIBRAÇÃO DE TOM:\n' + livingMemory + '\n' : '',
+      'Responda SOMENTE com JSON válido, sem markdown, sem explicação:',
+      '{"casual":"roteiro casual completo 3 atos","apelativo":"roteiro apelativo completo 3 atos","titleCasual":"título viral","titleApelativo":"título viral","narrative_arc":"gancho → virada → desfecho [' + nicheLabel + ']"}'
     ].join('\n');
 
     // ── 8. Gera com OpenAI (primary) + Gemini (fallback) ─────────────────────
@@ -286,7 +326,13 @@ module.exports = async function handler(req, res) {
 
     if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente em alguns instantes.' });
 
-    return res.status(200).json({ casual: result.casual || '', apelativo: result.apelativo || '', titleCasual: result.titleCasual || '', titleApelativo: result.titleApelativo || '' });
+    return res.status(200).json({
+      casual: result.casual || '',
+      apelativo: result.apelativo || '',
+      titleCasual: result.titleCasual || result.title_casual || '',
+      titleApelativo: result.titleApelativo || result.title_apelativo || '',
+      narrative_arc: result.narrative_arc || ('gancho → virada → desfecho [' + (nicheLabel || 'Geral') + ']')
+    });
 
   } catch(err) {
     console.error('generate-from-zero fatal:', err.message);
