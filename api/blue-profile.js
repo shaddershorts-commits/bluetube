@@ -49,6 +49,27 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ ok: false }); }
   }
 
+  // GET analytics
+  if (req.method === 'GET' && action === 'analytics') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      const vr = await fetch(
+        `${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=eq.active&select=id,title,thumbnail_url,views,likes,saves,comments,completion_rate,skip_rate,created_at&order=views.desc`,
+        { headers: h }
+      );
+      const vids = vr.ok ? await vr.json() : [];
+      const stats = {
+        total_views: vids.reduce((s, v) => s + (v.views || 0), 0),
+        total_likes: vids.reduce((s, v) => s + (v.likes || 0), 0),
+        total_saves: vids.reduce((s, v) => s + (v.saves || 0), 0),
+        total_comments: vids.reduce((s, v) => s + (v.comments || 0), 0),
+        avg_completion: vids.length > 0 ? vids.reduce((s, v) => s + (v.completion_rate || 0), 0) / vids.length : 0,
+        video_count: vids.length,
+      };
+      return res.status(200).json({ stats, videos: vids });
+    } catch(e) { return res.status(200).json({ stats: {}, videos: [], error: e.message }); }
+  }
+
   // GET profile — by token, username, or public user_id
   if (req.method === 'GET' && (!action || action === 'profile')) {
     const username = req.query.username;
