@@ -109,12 +109,23 @@ ${affectedPath ? `ARQUIVO AFETADO: ${affectedPath}\n\nCONTEÚDO ATUAL:\n\`\`\`\n
 ARQUIVOS DO REPOSITÓRIO:
 ${repoFiles}
 
-CONTEXTO: Stack Vercel static (public/) + Serverless (api/) + Supabase + OpenAI/Gemini. APIs usam CommonJS (module.exports), EXCETO auth.js que é ESM.
+CONTEXTO TÉCNICO:
+- Stack: Vercel static (public/) + Serverless (api/) + Supabase + OpenAI/Gemini
+- APIs usam ESM (export default), EXCETO que algumas usam CommonJS
+- NUNCA mude o tipo de export (ESM↔CommonJS) de um arquivo
+- NUNCA mude o método HTTP (POST↔GET) que um endpoint aceita
+- NUNCA adicione dependências externas (npm packages) que não existam no projeto
+- NUNCA reescreva a lógica inteira — faça APENAS a correção mínima necessária
 
-Analise o erro, identifique a causa raiz e gere o arquivo corrigido COMPLETO.
+REGRAS IMPORTANTES:
+1. Se o erro parece ser de dados/input do usuário (não do código), responda "no_fix_needed"
+2. Se o erro é em uma feature complexa e você não tem certeza, responda "needs_human"
+3. O fixed_content deve ser o arquivo ORIGINAL com APENAS a linha/trecho do bug corrigido
+4. Mantenha 100% da estrutura, imports, exports e lógica existente
+5. Só corrija o que causou o erro específico — NADA MAIS
 
 Responda APENAS com JSON:
-{"action":"fix"|"no_fix_needed"|"needs_human","file_path":"caminho/arquivo.js","reason":"causa do bug","fix_description":"o que foi corrigido","fixed_content":"conteúdo completo corrigido"}`;
+{"action":"fix"|"no_fix_needed"|"needs_human","file_path":"caminho/arquivo.js","reason":"causa do bug","fix_description":"o que foi corrigido","fixed_content":"conteúdo completo do arquivo com a correção mínima"}`;
 
   let aiResponse = null;
   let aiRawText = '';
@@ -143,6 +154,26 @@ Responda APENAS com JSON:
 
   const { file_path, fix_description, fixed_content } = aiResponse;
   if (!file_path || !fixed_content) return res.status(200).json({ ok: false, error: 'Incomplete fix' });
+
+  // Safety: reject fixes that change too much (>40% of lines different)
+  if (currentContent && fixed_content) {
+    const origLines = currentContent.split('\n').length;
+    const fixedLines = fixed_content.split('\n').length;
+    const lineDiff = Math.abs(origLines - fixedLines);
+    if (lineDiff > origLines * 0.4) {
+      console.warn('[monitor] Fix rejected: too many changes', { origLines, fixedLines, lineDiff });
+      return res.status(200).json({ ok: false, action: 'fix_rejected', reason: 'Fix changes too many lines (' + lineDiff + '/' + origLines + '). Needs human review.', file: file_path, description: fix_description });
+    }
+    // Reject if export type changed
+    const origHasESM = /export\s+default/.test(currentContent);
+    const fixHasESM = /export\s+default/.test(fixed_content);
+    const origHasCJS = /module\.exports/.test(currentContent);
+    const fixHasCJS = /module\.exports/.test(fixed_content);
+    if ((origHasESM && !fixHasESM) || (origHasCJS && !fixHasCJS)) {
+      console.warn('[monitor] Fix rejected: export type changed');
+      return res.status(200).json({ ok: false, action: 'fix_rejected', reason: 'Fix changed module export type. Needs human review.', file: file_path });
+    }
+  }
 
   try {
     let sha = fileSha;
