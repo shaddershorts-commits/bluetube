@@ -41,7 +41,10 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const enriched = videos.map(v => ({
+    // Double-check: filter out anything without valid video_url or non-active status
+    const safe = videos.filter(v => v.video_url && v.status === 'active');
+
+    const enriched = safe.map(v => ({
       ...v,
       creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' }
     }));

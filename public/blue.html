@@ -724,10 +724,22 @@ function vidErr(vid){
   vid.style.display='none';
   const sl=vid.closest('.slide');
   if(!sl)return;
+  // Show placeholder
   const ph=document.createElement('div');
-  ph.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#333;gap:8px;background:#111';
-  ph.innerHTML='<div style="font-size:40px">🎬</div><div style="font-size:13px">Vídeo indisponível</div>';
+  ph.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(150,190,230,.4);gap:10px;background:rgba(2,8,23,.95)';
+  ph.innerHTML='<div style="font-size:40px;opacity:.5">🎬</div><div style="font-family:monospace;font-size:12px">Vídeo indisponível</div>';
   sl.insertBefore(ph,sl.firstChild);
+  // Report broken video to backend
+  const videoId = sl.dataset?.id || vid.dataset?.id;
+  if(videoId){
+    fetch('/api/blue-maintenance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'report-broken',video_id:videoId})}).catch(()=>{});
+  }
+  // Fade out and remove after 2s
+  setTimeout(()=>{
+    sl.style.transition='opacity .5s';
+    sl.style.opacity='0';
+    setTimeout(()=>sl.remove(),600);
+  },2000);
 }
 
 let _interacted=false;

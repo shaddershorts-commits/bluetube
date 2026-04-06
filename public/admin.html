@@ -351,6 +351,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     </div>
 
     <!-- LEARNING / FEW-SHOT -->
+    <!-- BLUE HEALTH -->
+    <div class="section" id="blueHealthSection">
+      <div class="section-header">
+        <div class="section-title">🎬 Saúde da Blue <span class="section-subtitle">— manutenção automática a cada 6h</span></div>
+        <button class="action-btn" onclick="runBlueMaintenance()">▶ Executar agora</button>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Última execução</div><div class="stat-value blue" style="font-size:14px" id="bmLastRun">—</div></div>
+        <div class="stat-card"><div class="stat-label">Vídeos verificados</div><div class="stat-value blue" id="bmChecked">—</div></div>
+        <div class="stat-card"><div class="stat-label">Removidos</div><div class="stat-value" style="color:var(--red)" id="bmRemoved">—</div></div>
+        <div class="stat-card"><div class="stat-label">Órfãos limpos</div><div class="stat-value green" id="bmOrphans">—</div></div>
+      </div>
+      <div id="bmLog" style="font-family:var(--mono);font-size:11px;color:var(--dim)"></div>
+    </div>
+
     <div class="section" id="learningSection">
       <div class="section-header">
         <div class="section-title">🧠 Aprendizado da IA <span class="section-subtitle">— few-shot dinâmico por feedback dos usuários</span></div>
@@ -934,6 +949,42 @@ async function setPlan(){
   }catch(e){
     msg.className='plan-msg err';msg.textContent='Erro: '+e.message;
   }
+}
+
+async function runBlueMaintenance(){
+  const btn=document.querySelector('#blueHealthSection .action-btn');
+  if(btn){btn.textContent='⏳ Executando…';btn.disabled=true;}
+  try{
+    const r=await fetch('/api/blue-maintenance',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('bmLastRun').textContent=new Date(d.timestamp).toLocaleString('pt-BR');
+      document.getElementById('bmChecked').textContent=d.checked_videos||0;
+      document.getElementById('bmRemoved').textContent=d.marked_unavailable||0;
+      document.getElementById('bmOrphans').textContent=(d.orphan_comments||0)+(d.orphan_interactions||0);
+      document.getElementById('bmLog').innerHTML=`✅ Concluído: ${d.checked_videos} verificados, ${d.marked_unavailable} removidos, ${d.duplicates||0} duplicados, ${d.score_fixes||0} scores corrigidos, ${d.comment_fixes||0} comentários limpos`;
+      toast('✅ Manutenção executada');
+    }
+  }catch(e){toast('Erro: '+e.message);}
+  if(btn){btn.textContent='▶ Executar agora';btn.disabled=false;}
+}
+
+// Load last maintenance result from cache
+async function loadBlueHealth(){
+  try{
+    const SU=window._supaUrl||'';if(!SU)return;
+    // Use admin API to get cached result
+    const r=await fetch('/api/blue-maintenance');
+    if(r.ok){
+      const d=await r.json();
+      if(d.timestamp){
+        document.getElementById('bmLastRun').textContent=new Date(d.timestamp).toLocaleString('pt-BR');
+        document.getElementById('bmChecked').textContent=d.checked_videos||0;
+        document.getElementById('bmRemoved').textContent=d.marked_unavailable||0;
+        document.getElementById('bmOrphans').textContent=(d.orphan_comments||0)+(d.orphan_interactions||0);
+      }
+    }
+  }catch(e){}
 }
 
 async function deleteLrnExample(id){
