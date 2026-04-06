@@ -41,23 +41,39 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // Parse Vercel log drain (NDJSON)
-  let body = '';
-  try { body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}); } 
-  catch(e) { return res.status(200).json({ ok: true, message: 'Empty body' }); }
-
-  const lines = body.split('\n').filter(Boolean);
+  // Parse Vercel log drain — handles NDJSON, JSON array, or single object
   const errorLogs = [];
-  for (const line of lines) {
-    try {
-      const log = JSON.parse(line);
-      if (log.level === 'error' || (log.message && /error|exception|TypeError|ReferenceError|SyntaxError/i.test(log.message))) {
+  try {
+    let entries = [];
+    if (Array.isArray(req.body)) {
+      // Vercel Log Drain sends JSON array
+      entries = req.body;
+    } else if (typeof req.body === 'object' && req.body !== null) {
+      // Single log object
+      entries = [req.body];
+    } else if (typeof req.body === 'string') {
+      // NDJSON (newline-delimited JSON)
+      const lines = req.body.split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          if (Array.isArray(parsed)) entries.push(...parsed);
+          else entries.push(parsed);
+        } catch(e) {}
+      }
+    }
+
+    for (const log of entries) {
+      if (!log || typeof log !== 'object') continue;
+      if (log.level === 'error' || (log.message && /error|exception|TypeError|ReferenceError|SyntaxError|Cannot read prop/i.test(log.message))) {
         errorLogs.push(log);
       }
-    } catch(e) {}
+    }
+  } catch(e) {
+    return res.status(200).json({ ok: true, message: 'Parse error: ' + e.message });
   }
 
-  if (!errorLogs.length) return res.status(200).json({ ok: true, message: 'No errors to fix' });
+  if (!errorLogs.length) return res.status(200).json({ ok: true, message: 'No errors to fix', received: Array.isArray(req.body) ? req.body.length : 1 });
 
   const errorMsg = errorLogs.map(l => l.message || '').join('\n').slice(0, 3000);
   const affectedPath = detectAffectedFile(errorMsg);
