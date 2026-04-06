@@ -1246,7 +1246,8 @@ Responda APENAS em JSON válido sem markdown:
           email,
           password,
           options: {
-            emailRedirectTo: `${process.env.SITE_URL || 'https://bluetubeviral.com'}/`
+            emailRedirectTo: `${process.env.SITE_URL || 'https://bluetubeviral.com'}/`,
+            data: { email_confirmed: true }
           }
         })
       });
@@ -1291,12 +1292,22 @@ Responda APENAS em JSON válido sem markdown:
         }
       }
 
-      // If email confirmation is enabled in Supabase, session will be null
+      // Se Supabase exige confirmação (session=null), faz auto-login direto
       if (!data.session) {
-        return res.status(200).json({
-          needsConfirmation: true,
-          message: 'Conta criada! Verifique seu email e clique no link de confirmação.'
-        });
+        try {
+          const autoR = await fetch(`${authBase}/token?grant_type=password`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ email, password })
+          });
+          if (autoR.ok) {
+            const autoD = await autoR.json();
+            if (autoD.access_token) {
+              return res.status(200).json({ user: data.user || autoD.user, session: autoD });
+            }
+          }
+        } catch(e) {}
+        // Fallback: retorna sem sessão mas sem bloquear
+        return res.status(200).json({ user: data.user, session: data.session || null });
       }
       return res.status(200).json({ user: data.user, session: data.session });
     }
@@ -1317,8 +1328,16 @@ Responda APENAS em JSON válido sem markdown:
         if (msg.includes('Invalid login') || msg.includes('invalid')) {
           return res.status(400).json({ error: 'Email ou senha incorretos' });
         }
+        // Email não confirmado: não bloquear, permitir login mesmo assim
         if (msg.includes('Email not confirmed')) {
-          return res.status(400).json({ error: 'Email não confirmado. Verifique sua caixa de entrada.' });
+          // Tenta login direto com grant_type=password
+          try {
+            const forceR = await fetch(`${authBase}/token?grant_type=password`, {
+              method: 'POST', headers, body: JSON.stringify({ email, password })
+            });
+            if (forceR.ok) { const fd = await forceR.json(); if (fd.access_token) return res.status(200).json({ user: fd.user, session: fd }); }
+          } catch(e) {}
+          return res.status(400).json({ error: 'Email ou senha incorretos' });
         }
         return res.status(400).json({ error: msg });
       }

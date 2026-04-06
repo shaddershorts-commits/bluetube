@@ -386,7 +386,7 @@ async function doSignup(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password:pwd,ref_code:ref})});
     const d=await r.json();
     if(!r.ok){err.textContent=d.error||'Erro ao criar conta';btn.disabled=false;btn.textContent='Criar conta →';return;}
-    if(d.needsConfirmation){err.style.color='var(--green)';err.textContent='✅ Verifique seu email!';btn.disabled=false;btn.textContent='Criar conta →';return;}
+    // needsConfirmation removido — login direto sem verificação de email
     token=d.session?.access_token;
     if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Criar conta →';return;}
     localStorage.setItem('bt_token',token);
