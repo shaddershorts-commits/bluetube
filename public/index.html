@@ -516,7 +516,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span class="nav-tool-tip">📊 BlueScore</span>
       </button>
-      <button class="nav-tool-btn" onclick="window.location.href='/blueEditor.html'" style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.08));border-color:rgba(251,191,36,.35);color:#fbbf24" title="BlueEditor">
+      <button class="nav-tool-btn" onclick="if(userPlan==='master'){window.location.href='/blueEditor.html'}else{openUpgradeModal('tool_blocked','master')}" style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.08));border-color:rgba(251,191,36,.35);color:#fbbf24" title="BlueEditor">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         <span class="nav-tool-tip">✨ BlueEditor</span>
       </button>
@@ -554,7 +554,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
             <span class="mobile-tool-item-sub">Análise algorítmica do canal</span>
           </div>
         </button>
-        <button class="mobile-tool-item" onclick="window.location.href='/blueEditor.html';closeMobileTools()">
+        <button class="mobile-tool-item" onclick="if(userPlan==='master'){window.location.href='/blueEditor.html'}else{openUpgradeModal('tool_blocked','master')};closeMobileTools()">
           <div class="tool-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
           <div><span style="color:#fbbf24">BlueEditor</span><span class="mobile-tool-item-sub">1 Short pronto em 1 clique</span></div>
         </button>
@@ -581,7 +581,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </nav>
 
 <!-- ── UPGRADE MODAL ─────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="upgradeModal">
+<div class="modal-overlay" id="upgradeModal" onclick="if(event.target===this)closeUpgradeModal()">
   <div class="modal-box">
     <button class="modal-close" onclick="closeUpgradeModal()">✕</button>
     <div class="modal-live-count">
@@ -604,22 +604,22 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <span class="billing-label-modal" id="modalLabelAnnual" onclick="setModalBilling(true)">Anual</span>
       <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
     </div>
-    <div class="modal-plans" id="upgradeModalPlans">
-      <div class="plan-card featured" onclick="selectPlan('full')">
+    <div class="modal-plans" id="upgradeModalPlans" style="grid-template-columns:1fr 1fr">
+      <div class="plan-card featured" onclick="selectPlan('full')" id="modalCardFull">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price" id="modalFullPrice">R$27,00<span>/mês</span></div>
-        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Comunidade exclusiva</div>
+        <div class="plan-price" id="modalFullPrice">R$29,99<span>/mês</span></div>
+        <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Download .TXT e .SRT<br>✓ Comunidade exclusiva<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais</div>
       </div>
-      <div class="plan-card master-highlight" onclick="selectPlan('master')">
+      <div class="plan-card master-highlight" onclick="selectPlan('master')" id="modalCardMaster">
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price" id="modalMasterPrice">R$97,00<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ IA de voz hiper-realista<br>✓ Download HD sem marca d'água<br>✓ Buscador de Shorts virais<br>✓ Todos os idiomas<br><span style="color:var(--gold);font-size:10px">★ BlueScore</span> · <span style="color:#a78bfa;font-size:10px">🔍 BlueLens</span></div>
+        <div class="plan-price" id="modalMasterPrice">R$89,99<span>/mês</span></div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice (narração IA)<br>✓ BaixaBlue (download HD)<br>✓ BlueEditor (1 clique)<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais<br>✓ Suporte prioritário</div>
       </div>
     </div>
     <button class="modal-cta" id="upgradeModalCta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
-    <div class="modal-or">ou crie sua conta gratuita</div>
-    <div class="modal-auth-btns">
+    <div class="modal-or" id="modalOrText">ou crie sua conta gratuita</div>
+    <div class="modal-auth-btns" id="modalAuthBtns">
       <button class="auth-btn" style="width:100%;justify-content:center" onclick="closeUpgradeModal();openAuthModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
         Criar conta por E-mail
@@ -638,12 +638,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div class="modal-plans" style="margin-bottom:20px">
       <div class="plan-card featured" onclick="selectPlan('full')">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price">R$27,00<span>/mês</span></div>
+        <div class="plan-price">R$29,99<span>/mês</span></div>
         <div class="plan-features">✓ Todos os idiomas<br>✓ 9 roteiros/dia<br>✓ Comunidade</div>
       </div>
       <div class="plan-card" onclick="selectPlan('master')">
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price">R$97,00<span>/mês</span></div>
+        <div class="plan-price">R$89,99<span>/mês</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ Voz IA · Download HD<br>✓ Virais · BlueScore ★</div>
       </div>
     </div>
@@ -843,7 +843,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     </div>
     <div style="text-align:center">
       <div style="font-family:var(--font-mono);font-size:10px;color:rgba(251,191,36,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">✨ novo</div>
-      <a href="/blueEditor.html" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(255,140,0,.12));border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s">
+      <a href="javascript:void(0)" onclick="goToBlueEditor()" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(255,140,0,.12));border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:13px 24px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fbbf24;text-decoration:none;transition:all .25s">
         <span style="font-size:18px">✨</span>BlueEditor
       </a>
     </div>
@@ -1060,7 +1060,84 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 </section>
 
 <!-- ── PLANS ──────────────────────────────────────────────────────────────── -->
-<section class="plans-section" 
+<section class="plans-section" id="plansSection">
+  <div class="plans-inner">
+    <div class="sec-eye">Planos</div>
+    <h2 class="sec-title" style="text-align:center;margin-bottom:12px">Escolha seu plano.</h2>
+    <p style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);text-align:center;margin-bottom:28px">Comece grátis. Faça upgrade quando quiser.</p>
+
+    <div class="billing-toggle" style="margin-bottom:28px">
+      <span class="billing-label active" id="labelMonthly" onclick="toggleBilling(false)">Mensal</span>
+      <label class="toggle-switch-sm">
+        <input type="checkbox" onchange="toggleBilling(this.checked)"/>
+        <span class="toggle-slider-sm"></span>
+      </label>
+      <span class="billing-label" id="labelAnnual" onclick="toggleBilling(true)">Anual</span>
+      <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
+    </div>
+
+    <div class="plans-grid">
+      <!-- FREE -->
+      <div class="plan-box">
+        <div class="plan-name">Free</div>
+        <div class="plan-amount">R$0<span>/mês</span></div>
+        <div class="plan-period">para sempre</div>
+        <ul class="plan-list">
+          <li>2 roteiros por dia</li>
+          <li>Apenas Português</li>
+          <li class="locked">✗ Sem BlueVoice</li>
+          <li class="locked">✗ Sem BlueScore</li>
+          <li class="locked">✗ Sem BlueLens</li>
+          <li class="locked">✗ Sem download</li>
+          <li class="locked">✗ Sem comunidade</li>
+        </ul>
+        <button class="plan-btn" onclick="openAuthModal()" style="width:100%;background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.2);border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:600;color:var(--neon);cursor:pointer">Criar conta grátis</button>
+      </div>
+
+      <!-- FULL -->
+      <div class="plan-box popular" id="planBoxFull">
+        <div class="plan-tag">Mais popular</div>
+        <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
+        <div id="fullPriceDisplay">
+          <div class="plan-amount">R$29<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
+        </div>
+        <ul class="plan-list">
+          <li>9 roteiros por dia</li>
+          <li>Todos os idiomas</li>
+          <li>Transcrição completa</li>
+          <li>Download .TXT e .SRT</li>
+          <li>Comunidade exclusiva</li>
+          <li>BlueScore</li>
+          <li>BlueLens</li>
+          <li>Buscador de Virais</li>
+        </ul>
+        <button class="plan-btn" onclick="selectPlan('full')" style="width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(0,170,255,0.3)">Assinar Full →</button>
+      </div>
+
+      <!-- MASTER -->
+      <div class="plan-box" id="planBoxMaster">
+        <div class="plan-name" style="color:#fbbf24">👑 Master</div>
+        <div id="masterPriceDisplay">
+          <div class="plan-amount">R$89<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
+        </div>
+        <ul class="plan-list">
+          <li>Roteiros ilimitados</li>
+          <li>Todos os idiomas</li>
+          <li>BlueVoice (narração IA) — 30/mês</li>
+          <li>BaixaBlue (download HD)</li>
+          <li>BlueEditor (1 Short em 1 clique)</li>
+          <li>BlueScore · BlueLens</li>
+          <li>Buscador de Virais</li>
+          <li>Comunidade exclusiva</li>
+          <li>Suporte prioritário</li>
+        </ul>
+        <button class="plan-btn" onclick="selectPlan('master')" style="width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(251,191,36,0.3)">Assinar Master →</button>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ── FAQ ─────────────────────────────────────────────────────────────────── -->
 <section class="faq-section">
@@ -1070,7 +1147,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
     <div id="faqList">
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">O que é o BlueTube? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">O BlueTube é uma plataforma de IA para criadores de Shorts. Cole o link de qualquer vídeo, receba transcrição + 2 roteiros virais em segundos — em qualquer idioma. Tudo gratuito, sem cartão de crédito.</div>
+        <div class="faq-a">O BlueTube é uma plataforma de IA para criadores de Shorts. Cole o link de qualquer vídeo, receba transcrição + 2 roteiros virais em segundos. Comece grátis com 2 roteiros por dia — faça upgrade para desbloquear mais.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">Como funciona? <span class="faq-chevron">▼</span></div>
@@ -1078,11 +1155,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">Preciso criar uma conta? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Sim, mas é grátis e leva menos de 1 minuto. Com a conta você tem acesso a todas as ferramentas sem limite — roteiros, BlueVoice, Buscador de Virais, BlueLens e BlueScore. Só é necessário fazer login.</div>
+        <div class="faq-a">Sim, e é grátis! Com a conta gratuita você recebe 2 roteiros por dia em Português. Para mais roteiros, todos os idiomas e ferramentas avançadas, conheça nossos planos Full (R$29,99/mês) e Master (R$89,99/mês).</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">Tem limite de uso? <span class="faq-chevron">▼</span></div>
-        <div class="faq-a">Roteiros e transcrições são ilimitados para quem tem conta. O único limite é o BlueVoice: 30 narrações por mês — mais que suficiente para um criador ativo. Todo o resto é à vontade.</div>
+        <div class="faq-a">Sim! No plano gratuito você tem 2 roteiros por dia. No Full são 9 por dia, e no Master é ilimitado. O BlueVoice (narração IA) tem limite de 30 narrações por mês no plano Master.</div>
       </div>
       <div class="faq-item" onclick="toggleFaq(this)">
         <div class="faq-q">Quais idiomas estão disponíveis? <span class="faq-chevron">▼</span></div>
@@ -1290,15 +1367,17 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
 function openCommunity(){
   const token = localStorage.getItem('bt_token');
-  if(token){
+  if(!token){ openUpgradeModal('tool_blocked','full'); return; }
+  if(userPlan === 'full' || userPlan === 'master'){
     window.open(COMMUNITY_URL,'_blank');
   } else {
-    openAuthModal();
+    openUpgradeModal('tool_blocked','full');
   }
 }
 function updateCommunityBtn(){
   const lock=document.getElementById('communityLock');
-  if(lock)lock.style.display='none'; // Todos tem acesso
+  const isPaidUser = userPlan === 'full' || userPlan === 'master';
+  if(lock) lock.style.display = isPaidUser ? 'none' : 'inline';
 }
 
 // ── MODAL BILLING TOGGLE ───────────────────────────────────────────────────
@@ -1311,11 +1390,11 @@ function setModalBilling(annual){
   const fullEl=document.getElementById('modalFullPrice');
   const masterEl=document.getElementById('modalMasterPrice');
   if(fullEl)fullEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$20,25</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$243,00 cobrado anualmente</span>'
-    :'R$27,00<span>/mês</span>';
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$22,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$269,88 cobrado anualmente</span>'
+    :'R$29,99<span>/mês</span>';
   if(masterEl)masterEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$72,75</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$873,00 cobrado anualmente</span>'
-    :'R$97,00<span>/mês</span>';
+    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$67,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$809,88 cobrado anualmente</span>'
+    :'R$89,99<span>/mês</span>';
 }
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
 
@@ -1404,13 +1483,71 @@ function closeLangLockModal(){document.getElementById('langLockModal').classList
 
 // ── UPGRADE MODAL ──────────────────────────────────────────────────────────
 let selectedUpgradePlan='full';
-function openUpgradeModal(reason){
-  // Estrategia gratuita — so pede conta, nao plano pago
+function openUpgradeModal(reason, requiredPlan){
+  const modal = document.getElementById('upgradeModal');
+  const titleEl = document.getElementById('upgradeModalTitle');
+  const subEl = document.getElementById('upgradeModalSub');
+  const orEl = document.getElementById('modalOrText');
+  const authBtns = document.getElementById('modalAuthBtns');
   const token = localStorage.getItem('bt_token');
-  if(!token){ openAuthModal(); }
-  // Se ja tem conta, nao bloqueia
+
+  // Customiza mensagens por razão
+  if(reason === 'limit_free'){
+    titleEl.innerHTML='Você usou seus <span>2 roteiros</span> de hoje';
+    subEl.innerHTML='Faça upgrade para continuar criando!<br>Enquanto você espera, seus concorrentes já estão postando.';
+    selectedUpgradePlan='full';
+  } else if(reason === 'limit_full'){
+    titleEl.innerHTML='Você usou seus <span>9 roteiros</span> de hoje';
+    subEl.innerHTML='Faça upgrade para Master e crie sem limites!';
+    selectedUpgradePlan='master';
+    // Destaca o card Master
+    const mCard = document.getElementById('modalCardMaster');
+    const fCard = document.getElementById('modalCardFull');
+    if(mCard) mCard.classList.add('featured');
+    if(fCard) fCard.classList.remove('featured');
+  } else if(reason === 'tool_blocked'){
+    const planName = requiredPlan === 'master' ? 'Master' : 'Full';
+    titleEl.innerHTML='Ferramenta <span>exclusiva</span>';
+    subEl.innerHTML=`Esta ferramenta está disponível no plano <strong>${planName}</strong>.<br>Faça upgrade para desbloquear!`;
+    selectedUpgradePlan = requiredPlan || 'master';
+    if(requiredPlan === 'master'){
+      const mCard = document.getElementById('modalCardMaster');
+      const fCard = document.getElementById('modalCardFull');
+      if(mCard) mCard.classList.add('featured');
+      if(fCard) fCard.classList.remove('featured');
+    }
+  } else {
+    titleEl.innerHTML='Você vai ficar<br><span>para trás?</span>';
+    subEl.innerHTML='Desbloqueie todas as ferramentas e crie sem limites.';
+    selectedUpgradePlan='full';
+    // Reset featured
+    const mCard = document.getElementById('modalCardMaster');
+    const fCard = document.getElementById('modalCardFull');
+    if(mCard) mCard.classList.remove('featured');
+    if(fCard) fCard.classList.add('featured');
+  }
+
+  // Se não está logado, mostra botão de criar conta
+  if(!token){
+    if(orEl) orEl.style.display='block';
+    if(authBtns) authBtns.style.display='flex';
+  } else {
+    if(orEl) orEl.style.display='none';
+    if(authBtns) authBtns.style.display='none';
+  }
+
+  startLiveCount();
+  startCountdown();
+  modal.classList.add('on');
 }
-function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('on');}
+function closeUpgradeModal(){
+  document.getElementById('upgradeModal').classList.remove('on');
+  // Reset featured states
+  const mCard = document.getElementById('modalCardMaster');
+  const fCard = document.getElementById('modalCardFull');
+  if(mCard) mCard.classList.remove('featured');
+  if(fCard) fCard.classList.add('featured');
+}
 function selectPlan(plan){
   selectedUpgradePlan=plan;
   handleUpgradeClick(plan);
@@ -1420,33 +1557,40 @@ let isAnnual = false;
 
 function toggleBilling(annual){
   isAnnual = annual;
-  document.getElementById('labelMonthly').classList.toggle('active', !annual);
-  document.getElementById('labelAnnual').classList.toggle('active', annual);
+  const lm = document.getElementById('labelMonthly');
+  const la = document.getElementById('labelAnnual');
+  if(lm) lm.classList.toggle('active', !annual);
+  if(la) la.classList.toggle('active', annual);
+
+  const fpd = document.getElementById('fullPriceDisplay');
+  const mpd = document.getElementById('masterPriceDisplay');
+  const pbf = document.getElementById('planBoxFull');
+  const pbm = document.getElementById('planBoxMaster');
 
   if(annual){
-    document.getElementById('fullPriceDisplay').innerHTML=`
+    if(fpd) fpd.innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$20<span style="color:#fbbf24">,25/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$27,00</div>
+        <div class="plan-amount" style="color:#fbbf24">R$22<span style="color:#fbbf24">,49/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$29,99</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$243,00 cobrado anualmente</div>`;
-    document.getElementById('masterPriceDisplay').innerHTML=`
+      <div class="plan-period" style="color:#fbbf24">R$269,88 cobrado anualmente</div>`;
+    if(mpd) mpd.innerHTML=`
       <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$72<span style="color:#fbbf24">,75/mês</span></div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$97,00</div>
+        <div class="plan-amount" style="color:#fbbf24">R$67<span style="color:#fbbf24">,49/mês</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$89,99</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$873,00 cobrado anualmente</div>`;
-    document.getElementById('planBoxFull').classList.add('annual');
-    document.getElementById('planBoxMaster').classList.add('annual');
+      <div class="plan-period" style="color:#fbbf24">R$809,88 cobrado anualmente</div>`;
+    if(pbf) pbf.classList.add('annual');
+    if(pbm) pbm.classList.add('annual');
   }else{
-    document.getElementById('fullPriceDisplay').innerHTML=`
-      <div class="plan-amount">R$27<span>,00/mês</span></div>
+    if(fpd) fpd.innerHTML=`
+      <div class="plan-amount">R$29<span>,99/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
-    document.getElementById('masterPriceDisplay').innerHTML=`
-      <div class="plan-amount">R$97<span>,00/mês</span></div>
+    if(mpd) mpd.innerHTML=`
+      <div class="plan-amount">R$89<span>,99/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
-    document.getElementById('planBoxFull').classList.remove('annual');
-    document.getElementById('planBoxMaster').classList.remove('annual');
+    if(pbf) pbf.classList.remove('annual');
+    if(pbm) pbm.classList.remove('annual');
   }
 }
 
@@ -1641,10 +1785,28 @@ function signalCopy(videoId){
 async function checkAndIncrementLimit(){
   try{
     const token = localStorage.getItem('bt_token');
-    if(!token){ openAuthModal(); return false; }
+    if(!token){
+      // Não logado — checa limite por IP
+      const r = await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment'})});
+      const d = await r.json();
+      if(!d.allowed){
+        openUpgradeModal('limit_free');
+        return false;
+      }
+      dailyUsed = d.used || 0;
+      return true;
+    }
     const r = await fetch('/api/check-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'increment',token})});
     const d = await r.json();
-    if(!d.allowed){ openAuthModal(); return false; }
+    if(!d.allowed){
+      if(d.reason === 'login_required'){ openAuthModal(); return false; }
+      if(d.reason === 'limit_free'){ openUpgradeModal('limit_free'); return false; }
+      if(d.reason === 'limit_full'){ openUpgradeModal('limit_full'); return false; }
+      openUpgradeModal('limit_free');
+      return false;
+    }
+    dailyUsed = d.used || 0;
+    dailyLimit = d.dailyLimit || 2;
     return true;
   }catch(e){ return true; } // fail open
 }
@@ -2281,13 +2443,12 @@ async function sendAdjust() {
 
 function sendToBlueVoice(scriptId){
   const token=localStorage.getItem('bt_token');
-  if(!token){openAuthModal();return;}
+  if(!token){openUpgradeModal('tool_blocked','master');return;}
+  if(userPlan !== 'master'){openUpgradeModal('tool_blocked','master');return;}
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
-  // Limpa cache antigo do BlueVoice para o novo texto ter prioridade
   localStorage.removeItem('bt_state_voice_text');
-  // Se estiver no shell (iframe), troca de aba; senão navega
   try{
     if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:'voice'},'*'); }
     else { window.location.href='/blueVoice.html'; }
@@ -2298,10 +2459,18 @@ function copyTitleEl(id,btn){
   const orig=btn.textContent;btn.textContent='✓ Copiado!';setTimeout(()=>btn.textContent=orig,2000);
 }
 function updateBlueVoiceButtons(){
-  // Todos os usuarios tem acesso ao BlueVoice (limite de 30/mes no proprio BlueVoice)
+  // BlueVoice requer plano Master
+  const allowed = userPlan === 'master';
   ['bvBtn1','bvBtn2'].forEach(id=>{
     const btn=document.getElementById(id);
-    if(btn){ btn.style.opacity='1'; btn.style.filter=''; btn.disabled=false; }
+    if(btn){
+      btn.style.opacity = allowed ? '1' : '0.55';
+      btn.disabled = !allowed;
+      if(!allowed){
+        btn.title = 'Disponível no plano Master';
+        btn.onclick = function(e){ e.preventDefault(); e.stopPropagation(); openUpgradeModal('tool_blocked','master'); };
+      }
+    }
   });
 }
 
@@ -2385,18 +2554,31 @@ function setLoggedIn(email, plan){
   const navRight = document.querySelector('.nav-right');
   const communityJoined = localStorage.getItem('bt_community_joined');
 
-  // Update tool buttons — unlock for master
+  // Update tool buttons — lock/unlock based on plan
   const toolBtns = document.querySelectorAll('.nav-tool-btn');
   toolBtns.forEach(btn => {
-    const lockSpan = btn.querySelector('span');
-    if(isMaster){
+    const onclick = btn.getAttribute('onclick') || '';
+    let toolKey = null;
+    if(onclick.includes("'download'")) toolKey = 'download';
+    else if(onclick.includes("'viral'")) toolKey = 'viral';
+    else if(onclick.includes("'voice'")) toolKey = 'voice';
+    else if(onclick.includes("'bluescore'")) toolKey = 'bluescore';
+    else if(onclick.includes("'bluelens'")) toolKey = 'bluelens';
+    else if(onclick.includes("blueEditor")) toolKey = 'editor';
+
+    const req = toolKey === 'editor' ? 'master' : (TOOL_PLAN_REQ[toolKey] || null);
+    let allowed = true;
+    if(req === 'full') allowed = isPaid;
+    else if(req === 'master') allowed = isMaster;
+
+    if(allowed){
       btn.classList.remove('locked-tool');
-      btn.style.color = 'var(--neon)';
-      btn.style.borderColor = 'rgba(0,170,255,0.3)';
-      if(lockSpan) lockSpan.style.display = 'none';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
     } else {
       btn.classList.add('locked-tool');
-      if(lockSpan) lockSpan.style.display = 'inline';
+      btn.style.opacity = '0.55';
+      btn.style.cursor = 'not-allowed';
     }
   });
 
@@ -2418,29 +2600,55 @@ function setLoggedIn(email, plan){
   const toolsHTML = toolsGroup ? toolsGroup.outerHTML : '';
   const mobileHTML = mobileWrap ? mobileWrap.outerHTML : '';
 
+  // Plan badge HTML
+  const planBadgeHTML = p === 'master'
+    ? '<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">👑 Master</span>'
+    : p === 'full'
+    ? '<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;background:linear-gradient(135deg,var(--blue-500),var(--neon));color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">⚡ Full</span>'
+    : '';
+
   navRight.innerHTML = `
     ${toolsHTML}
     ${mobileHTML}
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
-      ${!isPaid ? '<span style="font-size:10px"></span>' : ''}
+      ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
     </button>
     <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">
       <div class="nav-avatar">${planIcon || email[0].toUpperCase()}</div>
       <span class="nav-user-email">${email.split('@')[0]}</span>
+      ${planBadgeHTML}
     </button>
-    ${showUpgrade ? `` : ''}
+    ${showUpgrade ? '<button class="nav-upgrade-btn" onclick="openUpgradeModalGeneric()">⚡ Upgrade</button>' : ''}
   `;
 
-  // Re-unlock tools if master (after innerHTML reset)
-  if(isMaster){
-    document.querySelectorAll('.nav-tool-btn').forEach(btn => {
+  // Re-apply tool locking after innerHTML reset
+  document.querySelectorAll('.nav-tool-btn').forEach(btn => {
+    const onclick = btn.getAttribute('onclick') || '';
+    let toolKey = null;
+    if(onclick.includes("'download'")) toolKey = 'download';
+    else if(onclick.includes("'viral'")) toolKey = 'viral';
+    else if(onclick.includes("'voice'")) toolKey = 'voice';
+    else if(onclick.includes("'bluescore'")) toolKey = 'bluescore';
+    else if(onclick.includes("'bluelens'")) toolKey = 'bluelens';
+    else if(onclick.includes("blueEditor")) toolKey = 'editor';
+
+    const req = toolKey === 'editor' ? 'master' : (TOOL_PLAN_REQ[toolKey] || null);
+    let allowed = true;
+    if(req === 'full') allowed = isPaid;
+    else if(req === 'master') allowed = isMaster;
+
+    if(allowed){
       btn.classList.remove('locked-tool');
-      const lockSpan = btn.querySelector('span');
-      if(lockSpan) lockSpan.style.display = 'none';
-    });
-  }
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.classList.add('locked-tool');
+      btn.style.opacity = '0.55';
+      btn.style.cursor = 'not-allowed';
+    }
+  });
 }
 
 function showFreeUserPopup(){
@@ -2889,7 +3097,7 @@ function confirmCancelStep2(){
   fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:reason.value==='other'?other:'Cancelamento: '+reason.value,type:'cancel'})
   }).catch(()=>{});
-  const discountPrice=userPlan==='master'?'R$67,00':'R$17,00';
+  const discountPrice=userPlan==='master'?'R$67,49':'R$22,49';
   document.getElementById('discountPrice').textContent=discountPrice;
   document.getElementById('cancelStep1').style.display='none';
   document.getElementById('cancelStep2').style.display='block';
@@ -2945,11 +3153,38 @@ document.addEventListener('click', e => {
 
 // ── MASTER TOOLS ───────────────────────────────────────────────────────────
 function goToBlue(){ window.location.assign('/blue.html'); }
-function goToBlueEditor(){ window.location.assign('/blueEditor.html'); }
+function goToBlueEditor(){
+  if(userPlan !== 'master'){ openUpgradeModal('tool_blocked','master'); return; }
+  window.location.assign('/blueEditor.html');
+}
+// Mapa de requisitos de plano por ferramenta
+const TOOL_PLAN_REQ = {
+  download: 'master',   // BaixaBlue
+  voice: 'master',      // BlueVoice
+  viral: 'full',        // Virais
+  bluescore: 'full',    // BlueScore
+  bluelens: 'full',     // BlueLens
+};
+// BlueEditor requer master (tratado separadamente no onclick)
+
+function toolAccessAllowed(tool){
+  const req = TOOL_PLAN_REQ[tool];
+  if(!req) return true;
+  if(req === 'full') return userPlan === 'full' || userPlan === 'master';
+  if(req === 'master') return userPlan === 'master';
+  return true;
+}
+
 function openMasterTool(tool){
-  // Tudo grátis — acesso direto sem checar plano
   const token = localStorage.getItem('bt_token');
-  if(!token){ openAuthModal(); return; }
+  if(!token){ openUpgradeModal('tool_blocked', TOOL_PLAN_REQ[tool] || 'full'); return; }
+
+  // Verifica se o plano permite
+  if(!toolAccessAllowed(tool)){
+    openUpgradeModal('tool_blocked', TOOL_PLAN_REQ[tool] || 'master');
+    return;
+  }
+
   const _toolMap={download:'baixa',viral:'virais',voice:'voice',bluescore:'score',bluelens:'score'};
   try{
     if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:_toolMap[tool]||tool},'*'); return; }
@@ -2959,11 +3194,8 @@ function openMasterTool(tool){
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
   if(tool === 'bluescore'){ window.location.href = '/blueScore.html'; return; }
   if(tool === 'bluelens'){ window.location.href = '/blueLens.html'; return; }
-  // Fallback modal for future tools
-  document.getElementById('toolModalIcon').textContent = '🔧';
-  document.getElementById('toolModalTitle').textContent = 'Em breve';
-  document.getElementById('toolModalDesc').textContent = 'Esta ferramenta está sendo desenvolvida. Disponível em breve para assinantes Master.';
-  document.getElementById('toolModal').classList.add('on');
+  // Fallback
+  openUpgradeModal('tool_blocked', 'master');
 }
 function closeToolModal(){document.getElementById('toolModal').classList.remove('on');}
 

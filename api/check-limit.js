@@ -1,6 +1,5 @@
 // api/check-limit.js
-// Plataforma gratuita — só verifica se o usuário tem conta (token válido)
-// Sem limites de uso por plano. BlueVoice tem seu próprio limite de 30/mês em auth.js
+// Controla limites de uso por plano: Free=2/dia, Full=9/dia, Master=ilimitado
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -34,7 +33,6 @@ export default async function handler(req, res) {
         ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('::ffff:');
       if (isPrivate) return res.status(200).json({ ok: false });
 
-      // Bot detection
       const p = ip.split('.').map(Number);
       const [o1, o2] = p;
       const isBot =
@@ -72,36 +70,133 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(200).json({ ok: false }); }
   }
 
-  // ── CHECK / INCREMENT — só verifica se tem conta ───────────────────────────
-  // Plataforma é gratuita. Só precisa estar logado.
+  // ── CHECK / INCREMENT — controle de limites por plano ─────────────────────
   if (action === 'check' || action === 'increment') {
-    if (!token) {
-      return res.status(200).json({ allowed: false, reason: 'login_required', remaining: 0 });
+
+    let plan = 'free';
+    let userEmail = null;
+    let dailyLimit = 2;
+
+    if (token) {
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
+        });
+        if (uRes.ok) {
+          const user = await uRes.json();
+          userEmail = user.email;
+
+          if (userEmail) {
+            const subRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(userEmail)}&select=plan,plan_expires_at,is_manual`,
+              { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+            );
+            if (subRes.ok) {
+              const subs = await subRes.json();
+              const sub = Array.isArray(subs) ? subs[0] : null;
+              if (sub?.plan && sub.plan !== 'free') {
+                const isManual = sub.is_manual === true;
+                const notExpired = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
+                if (isManual || notExpired) {
+                  plan = sub.plan;
+                }
+              }
+            }
+          }
+        } else {
+          return res.status(200).json({ allowed: false, reason: 'login_required', remaining: 0, plan: 'free' });
+        }
+      } catch(e) {
+        return res.status(200).json({ allowed: true, remaining: 999, plan: 'free' });
+      }
     }
 
-    // Verifica se o token é válido
+    // Define limite
+    if (plan === 'master') dailyLimit = 999999;
+    else if (plan === 'full') dailyLimit = 9;
+    else dailyLimit = 2;
+
+    // Master = ilimitado
+    if (plan === 'master') {
+      if (action === 'increment') {
+        fetch(`${SUPABASE_URL}/rest/v1/ip_usage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ ip_address: ip, usage_date: today, script_count: 1, plan })
+        }).catch(() => {});
+      }
+      return res.status(200).json({ allowed: true, remaining: 999, plan, dailyLimit });
+    }
+
+    // Free e Full: consultar uso do dia via ip_usage
+    let usedToday = 0;
     try {
-      const uRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
+      const usageRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/ip_usage?ip_address=eq.${encodeURIComponent(ip)}&usage_date=eq.${today}&select=script_count`,
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+      );
+      if (usageRes.ok) {
+        const usageData = await usageRes.json();
+        usedToday = usageData?.[0]?.script_count || 0;
+      }
+    } catch(e) {}
+
+    const remaining = Math.max(0, dailyLimit - usedToday);
+
+    if (action === 'check') {
+      return res.status(200).json({
+        allowed: remaining > 0,
+        remaining,
+        used: usedToday,
+        plan,
+        dailyLimit,
+        reason: remaining <= 0 ? (plan === 'free' ? 'limit_free' : 'limit_full') : null
       });
-      if (!uRes.ok) {
-        return res.status(200).json({ allowed: false, reason: 'login_required', remaining: 0 });
+    }
+
+    // action === 'increment'
+    if (remaining <= 0) {
+      return res.status(200).json({
+        allowed: false,
+        remaining: 0,
+        used: usedToday,
+        plan,
+        dailyLimit,
+        reason: plan === 'free' ? 'limit_free' : 'limit_full'
+      });
+    }
+
+    // Incrementa uso na tabela ip_usage
+    try {
+      if (usedToday > 0) {
+        // Atualiza script_count
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/ip_usage?ip_address=eq.${encodeURIComponent(ip)}&usage_date=eq.${today}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+            body: JSON.stringify({ script_count: usedToday + 1, plan })
+          }
+        );
+      } else {
+        // Cria registro
+        await fetch(`${SUPABASE_URL}/rest/v1/ip_usage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ ip_address: ip, usage_date: today, script_count: 1, plan })
+        });
       }
     } catch(e) {
-      // Se não conseguir verificar, permite passar (fail open)
-      return res.status(200).json({ allowed: true, remaining: 999, plan: 'free' });
+      console.error('check-limit increment error:', e);
     }
 
-    // Registra uso para analytics (não bloqueia)
-    if (action === 'increment' && SUPABASE_URL && SUPABASE_KEY) {
-      fetch(`${SUPABASE_URL}/rest/v1/ip_usage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ ip_address: ip, usage_date: today, script_count: 1, plan: 'free' })
-      }).catch(() => {});
-    }
-
-    return res.status(200).json({ allowed: true, remaining: 999, plan: 'free' });
+    return res.status(200).json({
+      allowed: true,
+      remaining: remaining - 1,
+      used: usedToday + 1,
+      plan,
+      dailyLimit
+    });
   }
 
   return res.status(400).json({ error: 'Invalid action' });
