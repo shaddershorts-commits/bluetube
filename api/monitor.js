@@ -226,8 +226,15 @@ function detectAffectedFile(errorMsg) {
     const m = errorMsg.match(p);
     if (m) {
       let path = m[1];
-      if (path.includes('/api/')) path = 'api/' + path.split('/api/')[1].split('/')[0] + '.js';
-      if (!path.includes('/')) path = 'api/' + path;
+      // Extract relative path from absolute Vercel paths
+      if (path.includes('/api/')) {
+        const afterApi = path.split('/api/')[1].split('/')[0].split(':')[0];
+        path = 'api/' + afterApi;
+        if (!path.endsWith('.js') && !path.endsWith('.html')) path += '.js';
+      } else if (!path.includes('/')) {
+        path = 'api/' + path;
+        if (!path.endsWith('.js') && !path.endsWith('.html')) path += '.js';
+      }
       if (!path.endsWith('.js') && !path.endsWith('.html')) return null;
       return path;
     }
