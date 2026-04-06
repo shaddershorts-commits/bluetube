@@ -1,5 +1,6 @@
 // api/generate-from-zero.js — CommonJS
 const { applyRateLimit } = require('./helpers/rate-limit.js');
+const { detectInjection, sanitizeInput } = require('./helpers/sanitize.js');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,6 +15,9 @@ module.exports = async function handler(req, res) {
     const { videoUrl, lang, token, userSummary, sentiments, niche } = req.body || {};
     if (!videoUrl) return res.status(400).json({ error: 'Link do vídeo é obrigatório.' });
     if (userSummary && userSummary.length > 5000) return res.status(400).json({ error: 'Descrição excede o limite.' });
+    // Prompt injection check
+    const combined = sanitizeInput([userSummary, niche, videoUrl].filter(Boolean).join(' '));
+    if (detectInjection(combined)) return res.status(400).json({ error: 'Conteúdo não permitido detectado.' });
 
     let videoId = '';
     const match = videoUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);

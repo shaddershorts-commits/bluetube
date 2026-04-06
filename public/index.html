@@ -970,6 +970,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
             <span class="version-title">Leve, natural e próximo do público</span>
           </div>
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
+          <button class="act-btn" onclick="exportScriptAsImage('scriptV1')" style="font-size:11px">📸 Imagem</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
         <div id="feedbackV1" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
@@ -1004,6 +1005,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
             <span class="version-title">Hook poderoso, máximo impacto</span>
           </div>
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
+          <button class="act-btn" onclick="exportScriptAsImage('scriptV2')" style="font-size:11px">📸 Imagem</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
         <div id="feedbackV2" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
@@ -1247,6 +1249,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <button onclick="closeProfileModal();doLogout()" style="font-family:var(--font-mono);font-size:12px;color:var(--red,#ff7a5a);background:none;border:none;cursor:pointer">↪ Sair</button>
       <button id="cancelSubBtn" onclick="openCancelModal()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline;display:none">Cancelar assinatura</button>
     </div>
+    <div style="margin-top:12px;text-align:center">
+      <button onclick="deleteMyAccount()" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline;opacity:.5">Deletar minha conta</button>
+    </div>
     <div class="profile-support-chat" id="profileSupportChat" style="display:none;margin-top:16px;border-top:1px solid rgba(0,170,255,0.07);padding-top:16px">
       <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px">Mensagem para o suporte:</div>
       <textarea id="supportMsg" rows="3" style="width:100%;background:rgba(2,8,23,0.8);border:1px solid rgba(0,170,255,0.15);border-radius:8px;padding:10px;font-family:var(--font-mono);font-size:12px;color:var(--text-primary);outline:none;resize:none" placeholder="Descreva sua dúvida ou problema…"></textarea>
@@ -1339,7 +1344,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 <footer>
   <div class="foot-logo">Blue<span style="color:var(--neon)">Tube</span></div>
   <div class="foot-copy">© 2025 BlueTube · Criador Viral</div>
+  <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:8px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+    <a href="/privacidade.html" style="color:var(--text-dim);text-decoration:none">Privacidade</a>
+    <a href="/termos.html" style="color:var(--text-dim);text-decoration:none">Termos</a>
+    <a href="/status.html" style="color:var(--text-dim);text-decoration:none">Status</a>
+  </div>
 </footer>
+
+<!-- Cookie Banner -->
+<div id="cookieBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:999;background:rgba(10,22,40,.97);border-top:1px solid rgba(0,170,255,.15);padding:14px 24px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">
+  <span>Usamos cookies para melhorar sua experiência. Ao continuar, você aceita nossa <a href="/privacidade.html" style="color:var(--neon)">Política de Privacidade</a>.</span>
+  <button onclick="acceptCookies()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:8px;padding:8px 20px;color:#fff;font-family:var(--font-display);font-size:12px;font-weight:700;cursor:pointer">Aceitar</button>
+</div>
 
 <script>
 // ── CAPTURA TOKEN DO HASH (landing → site, funciona cross-subdomain) ─────
@@ -1744,6 +1760,9 @@ async function handleEmailSignup(){
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     }
     setAuthMsg('Conta criada com sucesso! 🎉','ok');
+    // Send welcome email + show onboarding
+    sendWelcomeEmail(email);
+    setTimeout(()=>showOnboarding(),2500);
     setTimeout(async()=>{
       closeAuthModal();
       await checkSession();
@@ -3530,6 +3549,139 @@ window.sendBluBluFeedback = async function(){
   await _origSendBluBlu();
   setBluBluExpression('thumbsup');
 };
+
+// ── DELETE ACCOUNT (LGPD) ─────────────────────────────────────────────────────
+async function deleteMyAccount(){
+  if(!confirm('⚠️ ATENÇÃO: Isso vai deletar TODOS os seus dados permanentemente. Tem certeza?'))return;
+  if(!confirm('Última chance: essa ação é irreversível. Continuar?'))return;
+  const token=localStorage.getItem('bt_token');
+  if(!token){toast('Faça login primeiro');return;}
+  try{
+    const r=await fetch('/api/delete-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+    const d=await r.json();
+    if(d.ok){
+      localStorage.clear();
+      toast('✅ Conta deletada. Redirecionando...');
+      setTimeout(()=>window.location.href='/',2000);
+    }else{toast('Erro: '+(d.error||'Falha'));}
+  }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── COOKIE BANNER ─────────────────────────────────────────────────────────────
+function acceptCookies(){
+  localStorage.setItem('bt_cookies_accepted','1');
+  document.getElementById('cookieBanner').style.display='none';
+}
+if(!localStorage.getItem('bt_cookies_accepted')){
+  document.getElementById('cookieBanner').style.display='flex';
+}
+
+// ── ONBOARDING TOUR ──────────────────────────────────────────────────────────
+function showOnboarding(){
+  if(localStorage.getItem('bt_onboarding_done'))return;
+  const steps=[
+    {icon:'🎬',title:'Cole o link de qualquer Short',desc:'Funciona com qualquer YouTube Shorts público. Cole o link no campo principal.'},
+    {icon:'✨',title:'Receba 2 roteiros virais',desc:'Nossa IA gera versão casual e apelativa em segundos. Escolha a que preferir.'},
+    {icon:'🎙️',title:'Narre com voz IA',desc:'Use o BlueVoice para narrar seu roteiro com voz ultra-realista.'},
+  ];
+  let step=0;
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(2,8,23,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px';
+  function render(){
+    const s=steps[step];
+    const dots=steps.map((_,i)=>`<span style="width:8px;height:8px;border-radius:50%;background:${i===step?'var(--neon)':'rgba(150,190,230,.2)'};display:inline-block"></span>`).join(' ');
+    ov.innerHTML=`<div style="background:rgba(10,22,40,.98);border:1px solid rgba(0,170,255,.2);border-radius:24px;padding:40px;max-width:400px;text-align:center">
+      <div style="font-size:56px;margin-bottom:16px">${s.icon}</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:8px">${s.title}</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:24px">${s.desc}</div>
+      <div style="margin-bottom:20px;display:flex;gap:6px;justify-content:center">${dots}</div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button onclick="this.closest('div[style]').parentElement.remove();localStorage.setItem('bt_onboarding_done','1')" style="background:none;border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:10px 20px;color:var(--text-dim);font-size:13px;cursor:pointer">Pular</button>
+        <button id="obNext" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:10px 24px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">${step<steps.length-1?'Próximo →':'Vamos começar! →'}</button>
+      </div>
+    </div>`;
+    document.getElementById('obNext').onclick=()=>{
+      if(step<steps.length-1){step++;render();}
+      else{ov.remove();localStorage.setItem('bt_onboarding_done','1');}
+    };
+  }
+  render();
+  document.body.appendChild(ov);
+}
+
+// ── WELCOME EMAIL TRIGGER ────────────────────────────────────────────────────
+function sendWelcomeEmail(email){
+  fetch('/api/welcome-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}).catch(()=>{});
+}
+
+// ── KEYBOARD SHORTCUTS (P9) ──────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+  if(e.key==='Escape'){
+    document.querySelectorAll('.modal-overlay.on,.auth-modal-overlay.on,.lang-lock-overlay.on').forEach(m=>m.classList.remove('on'));
+  }
+  if(e.key==='?'&&!e.ctrlKey&&!e.metaKey){
+    e.preventDefault();
+    const m=document.createElement('div');
+    m.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(2,8,23,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px';
+    m.onclick=()=>m.remove();
+    m.innerHTML=`<div style="background:rgba(10,22,40,.98);border:1px solid rgba(0,170,255,.2);border-radius:20px;padding:32px;max-width:360px;width:100%" onclick="event.stopPropagation()">
+      <div style="font-size:18px;font-weight:800;margin-bottom:16px">⌨️ Atalhos</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);line-height:2.2">
+        <div><kbd style="background:rgba(0,170,255,.1);padding:2px 8px;border-radius:4px;color:var(--neon)">Enter</kbd> Gerar roteiro</div>
+        <div><kbd style="background:rgba(0,170,255,.1);padding:2px 8px;border-radius:4px;color:var(--neon)">Esc</kbd> Fechar modal</div>
+        <div><kbd style="background:rgba(0,170,255,.1);padding:2px 8px;border-radius:4px;color:var(--neon)">?</kbd> Ver atalhos</div>
+      </div>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="margin-top:16px;width:100%;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:10px;color:var(--neon);font-size:13px;cursor:pointer">Fechar</button>
+    </div>`;
+    document.body.appendChild(m);
+  }
+});
+
+// ── EXPORT SCRIPT AS IMAGE (P10) ─────────────────────────────────────────────
+function exportScriptAsImage(scriptId){
+  const text=document.getElementById(scriptId)?.textContent?.trim();
+  if(!text){toast('Nenhum roteiro para exportar');return;}
+  const isApelativo=scriptId.includes('V2');
+  const canvas=document.createElement('canvas');
+  canvas.width=1080;canvas.height=1920;
+  const ctx=canvas.getContext('2d');
+  // Background gradient
+  const bg=ctx.createLinearGradient(0,0,0,1920);
+  bg.addColorStop(0,'#020817');bg.addColorStop(1,'#0a1628');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,1080,1920);
+  // Top neon line
+  const nl=ctx.createLinearGradient(0,0,1080,0);
+  nl.addColorStop(0,'transparent');nl.addColorStop(0.5,'#00aaff');nl.addColorStop(1,'transparent');
+  ctx.fillStyle=nl;ctx.fillRect(0,0,1080,4);
+  // Logo
+  ctx.fillStyle='#ffffff';ctx.font='bold 48px sans-serif';ctx.textAlign='center';
+  ctx.fillText('BlueTube',540,120);
+  // Badge
+  ctx.font='bold 28px sans-serif';
+  ctx.fillStyle=isApelativo?'#ff7a5a':'#00aaff';
+  ctx.fillText(isApelativo?'🔥 Apelativo':'💬 Casual',540,200);
+  // Script text with word wrap
+  ctx.fillStyle='#e8f4ff';ctx.font='36px sans-serif';ctx.textAlign='center';
+  const words=text.split(' ');let lines=[];let line='';
+  for(const w of words){
+    const test=line+w+' ';
+    if(ctx.measureText(test).width>900){lines.push(line.trim());line=w+' ';}
+    else line=test;
+  }
+  if(line.trim())lines.push(line.trim());
+  const startY=Math.max(400,960-lines.length*24);
+  lines.forEach((l,i)=>ctx.fillText(l,540,startY+i*52));
+  // Watermark
+  ctx.fillStyle='rgba(0,170,255,0.2)';ctx.font='24px sans-serif';
+  ctx.fillText('bluetubeviral.com',540,1860);
+  // Download
+  const a=document.createElement('a');
+  a.download='roteiro-bluetube.png';
+  a.href=canvas.toDataURL('image/png');
+  a.click();
+  toast('📸 Imagem exportada!');
+}
 </script>
 
 <script src="/toolbar.js"></script>

@@ -373,9 +373,20 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
     } catch (e) { continue; }
   }
 
+  // ── FALLBACK: return example script when all AI providers fail ──────────
+  const _fb = {
+    'Português (Brasil)': ['Você não vai acreditar no que aconteceu. Uma história que parece ficção mas é real. Tudo começou quando alguém decidiu fazer diferente. O resultado? Algo que ninguém esperava.','Para de scrollar. Isso aqui é sério. O que eu vou te contar agora pode mudar completamente a forma como você pensa. Presta atenção porque depois que souber, não tem volta.'],
+    'English': ["You won't believe what just happened. A story that sounds like fiction but is 100% real. It started when someone decided to do things differently. The result? Nobody expected it.","Stop scrolling. This is serious. What I'm about to tell you could completely change how you think. Pay attention. Once you know this, there's no going back."],
+    'Español': ['No vas a creer lo que acaba de pasar. Una historia que parece ficción pero es real. Todo empezó cuando alguien decidió hacer las cosas diferente. El resultado? Nadie lo esperaba.','Deja de hacer scroll. Esto va en serio. Lo que te voy a contar puede cambiar tu forma de pensar. Presta atención porque después no hay vuelta atrás.'],
+  };
+  const fbScripts = _fb[lang] || _fb['Português (Brasil)'];
+  const fbText = version === 'V2' ? (fbScripts[1] || fbScripts[0]) : fbScripts[0];
   res.setHeader('Retry-After', '60');
-  return res.status(429).json({
-    error: 'Nossos servidores estão sobrecarregados. Tente novamente em 1 minuto.',
+  return res.status(200).json({
+    text: fbText,
+    engine: 'fallback',
+    fallback: true,
+    message: '⚡ Roteiro de exemplo — nossos servidores estão sobrecarregados. Tente novamente em 1 minuto.',
     retry_after: 60
   });
 }

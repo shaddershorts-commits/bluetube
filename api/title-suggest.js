@@ -1,5 +1,6 @@
 // api/title-suggest.js — Sugere títulos virais para shorts
 const { applyRateLimit } = require('./helpers/rate-limit.js');
+const { detectInjection, sanitizeInput } = require('./helpers/sanitize.js');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,6 +14,7 @@ module.exports = async function handler(req, res) {
   const { transcript, lang, originalTitle } = req.body || {};
   if (!transcript || typeof transcript !== 'string' || transcript.trim().length < 10) return res.status(400).json({ error: 'Transcrição muito curta.' });
   if (transcript.length > 5000) return res.status(400).json({ error: 'Transcrição excede o limite.' });
+  if (detectInjection(sanitizeInput(transcript))) return res.status(400).json({ error: 'Conteúdo não permitido detectado.' });
 
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
   const GK = [
