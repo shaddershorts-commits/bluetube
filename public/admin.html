@@ -350,6 +350,20 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- LEARNING / FEW-SHOT -->
+    <div class="section" id="learningSection">
+      <div class="section-header">
+        <div class="section-title">🧠 Aprendizado da IA <span class="section-subtitle">— few-shot dinâmico por feedback dos usuários</span></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+        <div class="stat-card"><div class="stat-label">Total exemplos</div><div class="stat-value blue" id="lrnTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Aprovações</div><div class="stat-value green" id="lrnAprov">—</div></div>
+        <div class="stat-card"><div class="stat-label">Reprovações</div><div class="stat-value" style="color:var(--red)" id="lrnReprov">—</div></div>
+        <div class="stat-card"><div class="stat-label">Score médio</div><div class="stat-value yellow" id="lrnScore">—</div></div>
+      </div>
+      <div class="table-wrap" id="lrnTable"><div class="loading-txt">Carregando exemplos…</div></div>
+    </div>
+
     <!-- TOP VIRALS -->
     <div class="section">
       <div class="section-header">
@@ -661,6 +675,35 @@ async function loadData(){
       }
     }
 
+    // 🧠 Learning / Few-shot stats
+    fetch(`/api/admin?action=learning_stats`, { headers: { 'Authorization': `Bearer ${adminKey}` } })
+      .then(r => r.json()).then(lrn => {
+        if (!lrn || lrn.error) return;
+        document.getElementById('lrnTotal').textContent = lrn.total || 0;
+        document.getElementById('lrnAprov').textContent = lrn.total_aprovacoes || 0;
+        document.getElementById('lrnReprov').textContent = lrn.total_reprovacoes || 0;
+        document.getElementById('lrnScore').textContent = (lrn.avg_score || 0).toFixed(0) + '%';
+        if (lrn.top?.length) {
+          document.getElementById('lrnTable').innerHTML = `<table>
+            <thead><tr><th>Idioma</th><th>Nicho</th><th>Prévia</th><th>👍</th><th>👎</th><th>Score</th><th>Ação</th></tr></thead>
+            <tbody>${lrn.top.map(r => {
+              const sc = r.aprovacoes + r.reprovacoes > 0 ? Math.round(r.aprovacoes / (r.aprovacoes + r.reprovacoes) * 100) : 0;
+              const preview = (r.roteiro_casual || r.roteiro_apelativo || '').slice(0, 80) + '…';
+              return `<tr>
+                <td>${r.idioma || '—'}</td>
+                <td style="color:var(--dim)">${r.nicho || '—'}</td>
+                <td style="color:var(--text-sec);font-size:11px;max-width:200px;word-break:break-word">${preview}</td>
+                <td style="color:var(--green)">${r.aprovacoes || 0}</td>
+                <td style="color:var(--red)">${r.reprovacoes || 0}</td>
+                <td style="font-weight:700;color:${sc >= 70 ? 'var(--green)' : sc >= 40 ? 'var(--yellow)' : 'var(--red)'}">${sc}%</td>
+                <td><button onclick="deleteLrnExample('${r.id}')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🗑 Remover</button></td>
+              </tr>`;
+            }).join('')}</tbody></table>`;
+        } else {
+          document.getElementById('lrnTable').innerHTML = '<div class="empty-state">Nenhum exemplo ainda. Os usuários precisam gerar roteiros e dar feedback 👍/👎.</div>';
+        }
+      }).catch(() => {});
+
     // 🤝 Afiliados
     fetch(`/api/admin?action=list_affiliates`, { headers: { 'Authorization': `Bearer ${adminKey}` } })
       .then(r => r.json()).then(affiliates => {
@@ -891,6 +934,15 @@ async function setPlan(){
   }catch(e){
     msg.className='plan-msg err';msg.textContent='Erro: '+e.message;
   }
+}
+
+async function deleteLrnExample(id){
+  if(!confirm('Remover este exemplo do banco de aprendizado?')) return;
+  try{
+    await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'delete_learning_example',id})});
+    toast('Exemplo removido');loadData();
+  }catch(e){toast('Erro: '+e.message);}
 }
 
 function exportCSV(){

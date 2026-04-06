@@ -29,16 +29,63 @@ export default async function handler(req, res) {
     }
   }
 
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+  const _supaH = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+
+  // ── FEEDBACK ACTION ─────────────────────────────────────────────────────────
+  if (req.body?.action === 'feedback') {
+    const { roteiro_id, tipo } = req.body;
+    if (!roteiro_id || !tipo) return res.status(400).json({ error: 'Missing fields' });
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      try {
+        // Get current counts
+        const gr = await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?id=eq.${roteiro_id}&select=aprovacoes,reprovacoes`, { headers: _supaH });
+        if (gr.ok) {
+          const gd = await gr.json();
+          if (gd?.[0]) {
+            const field = tipo === 'aprovado' ? 'aprovacoes' : 'reprovacoes';
+            const newVal = (gd[0][field] || 0) + 1;
+            await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?id=eq.${roteiro_id}`, {
+              method: 'PATCH', headers: { ..._supaH, 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ [field]: newVal, updated_at: new Date().toISOString() })
+            });
+          }
+        }
+      } catch(e) { console.error('[feedback]', e.message); }
+    }
+    return res.status(200).json({ ok: true });
+  }
+
   const { transcript, lang, version, adjust } = req.body;
   if (!transcript || !lang) return res.status(400).json({ error: 'Transcrição e idioma são obrigatórios.' });
 
-  // Validate input length
   const cleanTranscript = (typeof transcript === 'string' ? transcript : '').replace(/<[^>]*>/g, '').trim();
   if (cleanTranscript.length > 5000) return res.status(400).json({ error: 'Transcrição excede o limite de 5000 caracteres.' });
 
+  // Helper: save roteiro and return with ID
+  async function saveAndReturn(result) {
+    if (!adjust && SUPABASE_URL && SUPABASE_KEY && result.text) {
+      try {
+        const isCasual = version !== 'V2';
+        const payload = {
+          roteiro_casual: isCasual ? result.text : '',
+          roteiro_apelativo: !isCasual ? result.text : '',
+          idioma: lang,
+          aprovacoes: 0, reprovacoes: 0,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+        };
+        const sr = await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos`, {
+          method: 'POST', headers: { ..._supaH, 'Prefer': 'return=representation' },
+          body: JSON.stringify(payload)
+        });
+        if (sr.ok) { const sd = await sr.json(); if (sd?.[0]?.id) result.roteiro_id = sd[0].id; }
+      } catch(e) {}
+    }
+    return res.status(200).json(result);
+  }
+
   // ── SUPABASE: LIVING MEMORY — real viral examples from real users ──────────
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
   let livingMemory = '';
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
@@ -65,6 +112,33 @@ ${rows.map((row, i) =>
         }
       }
     } catch (e) { /* non-blocking */ }
+  }
+
+  // ── FEW-SHOT DINÂMICO — exemplos aprovados pelos usuários ──────────────────
+  let fewShotExamples = '';
+  if (SUPABASE_URL && SUPABASE_KEY && !adjust) {
+    try {
+      const fsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/roteiro_exemplos?idioma=eq.${encodeURIComponent(lang)}&aprovacoes=gte.3&select=roteiro_casual,roteiro_apelativo,nicho&order=aprovacoes.desc&limit=3`,
+        { headers: _supaH }
+      );
+      if (fsRes.ok) {
+        const fsRows = await fsRes.json();
+        if (fsRows?.length > 0) {
+          fewShotExamples = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 EXEMPLOS APROVADOS (roteiros que usuários reais aprovaram — use como referência):
+${fsRows.map((r, i) => `
+Exemplo ${i+1}${r.nicho ? ` (${r.nicho})` : ''}:
+Casual: "${r.roteiro_casual?.slice(0, 300)}"
+Apelativo: "${r.roteiro_apelativo?.slice(0, 300)}"`).join('\n')}
+
+Gere roteiros com qualidade igual ou superior aos exemplos acima.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+        }
+      }
+    } catch(e) {}
   }
 
   // ── ADAPTAÇÃO CULTURAL COMPLETA POR IDIOMA ──────────────────────────────────
@@ -170,6 +244,7 @@ ${culturalAdaptation}
 - Termine com ponto final
 - Máximo 75 palavras
 ${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
+${fewShotExamples}
 IDIOMA DE SAÍDA: ${lang}
 ${ANGLE}`;
 
@@ -239,7 +314,7 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
             body:JSON.stringify({cache_key:_ckRewrite,value:result,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600*1000).toISOString()})
           }).catch(()=>{});
         }
-        return res.status(200).json(result);
+        return saveAndReturn(result);
       }
       console.log('OpenAI failed:', data.error?.message);
     } catch (err) {
@@ -294,7 +369,7 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
           body:JSON.stringify({cache_key:_ckRewrite,value:result,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600*1000).toISOString()})
         }).catch(()=>{});
       }
-      return res.status(200).json(result);
+      return saveAndReturn(result);
     } catch (e) { continue; }
   }
 

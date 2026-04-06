@@ -85,6 +85,36 @@ export default async function handler(req, res) {
     return res.status(200).json(Array.isArray(data) ? data : []);
   }
 
+  // ── LEARNING STATS ────────────────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'learning_stats') {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?select=id,idioma,nicho,roteiro_casual,roteiro_apelativo,aprovacoes,reprovacoes,created_at&order=aprovacoes.desc&limit=50`, { headers });
+      const data = await r.json();
+      const arr = Array.isArray(data) ? data : [];
+      const totalAprov = arr.reduce((s, r) => s + (r.aprovacoes || 0), 0);
+      const totalReprov = arr.reduce((s, r) => s + (r.reprovacoes || 0), 0);
+      const avgScore = arr.length > 0 && (totalAprov + totalReprov) > 0
+        ? (totalAprov / (totalAprov + totalReprov)) * 100 : 0;
+      return res.status(200).json({
+        total: arr.length,
+        total_aprovacoes: totalAprov,
+        total_reprovacoes: totalReprov,
+        avg_score: avgScore,
+        top: arr.slice(0, 20)
+      });
+    } catch(e) {
+      return res.status(200).json({ total: 0, top: [], error: e.message });
+    }
+  }
+
+  // ── DELETE LEARNING EXAMPLE ──────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'delete_learning_example') {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?id=eq.${id}`, { method: 'DELETE', headers });
+    return res.status(200).json({ success: true });
+  }
+
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];

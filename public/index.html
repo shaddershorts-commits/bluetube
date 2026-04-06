@@ -972,6 +972,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
+        <div id="feedbackV1" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
+          <span>Este roteiro foi útil?</span>
+          <button onclick="sendFeedback('V1','aprovado',this)" style="background:none;border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(34,197,94,.7);cursor:pointer;transition:all .2s">👍 Bom</button>
+          <button onclick="sendFeedback('V1','reprovado',this)" style="background:none;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(239,68,68,.6);cursor:pointer;transition:all .2s">👎 Não</button>
+        </div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
           <button onclick="openAdjustChat('V1')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
           <div style="position:relative;display:inline-block" id="bvWrap1">
@@ -1001,6 +1006,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
         </div>
         <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
+        <div id="feedbackV2" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
+          <span>Este roteiro foi útil?</span>
+          <button onclick="sendFeedback('V2','aprovado',this)" style="background:none;border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(34,197,94,.7);cursor:pointer;transition:all .2s">👍 Bom</button>
+          <button onclick="sendFeedback('V2','reprovado',this)" style="background:none;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(239,68,68,.6);cursor:pointer;transition:all .2s">👎 Não</button>
+        </div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
           <button onclick="openAdjustChat('V2')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
           <div style="position:relative;display:inline-block" id="bvWrap2">
@@ -1980,7 +1990,11 @@ async function generateScript(versionId,lang,attempt=1){
     document.getElementById('script'+versionId).textContent=clean;
     document.getElementById('loading'+versionId).classList.remove('on');
     document.getElementById('card'+versionId).style.display='block';
-    // Salva estado após gerar roteiro
+    // Capture roteiro_id for feedback
+    if(data.roteiro_id) lastRoteiroId = data.roteiro_id;
+    // Reset feedback UI
+    const fbEl = document.getElementById('feedback'+versionId);
+    if(fbEl){ fbEl.innerHTML = '<span>Este roteiro foi útil?</span> <button onclick="sendFeedback(\''+versionId+'\',\'aprovado\',this)" style="background:none;border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(34,197,94,.7);cursor:pointer">👍 Bom</button> <button onclick="sendFeedback(\''+versionId+'\',\'reprovado\',this)" style="background:none;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(239,68,68,.6);cursor:pointer">👎 Não</button>'; }
     _saveRoteiroState();
     // Show BluBlu after V2 (second script)
     if(versionId==='V2') setTimeout(showBlublu, 4000);
@@ -2513,6 +2527,29 @@ function updateBlueVoiceButtons(){
 }
 
 // ── COPY & DOWNLOAD ────────────────────────────────────────────────────────
+// ── ROTEIRO FEEDBACK ──────────────────────────────────────────────────────
+let lastRoteiroId = null;
+function sendFeedback(version, tipo, btnEl){
+  const key = 'bt_fb_' + (lastRoteiroId || 'none') + '_' + version;
+  if(localStorage.getItem(key)) return; // already voted
+  localStorage.setItem(key, tipo);
+  const container = document.getElementById('feedback' + version);
+  if(!container) return;
+  if(tipo === 'aprovado'){
+    container.innerHTML = '<span style="color:rgba(34,197,94,.8)">✓ Obrigado! Isso nos ajuda a melhorar</span>';
+  } else {
+    container.innerHTML = '<span style="color:rgba(239,68,68,.6)">Entendido! Vamos melhorar</span>';
+  }
+  // Send to API
+  if(lastRoteiroId){
+    fetch('/api/rewrite', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'feedback', roteiro_id: lastRoteiroId, tipo })
+    }).catch(()=>{});
+  }
+}
+
 function copyEl(id){
   navigator.clipboard.writeText(document.getElementById(id).textContent).catch(()=>{});
   if(id.startsWith('script'))signalCopy(currentVideoId);
