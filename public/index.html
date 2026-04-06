@@ -1390,12 +1390,13 @@ function setModalBilling(annual){
   document.getElementById('modalAnnualToggle').checked=annual;
   const fullEl=document.getElementById('modalFullPrice');
   const masterEl=document.getElementById('modalMasterPrice');
+  const _lp = typeof localPrice==='function' ? localPrice : (v)=>`R$${v.toFixed(2).replace('.',',')}`;
   if(fullEl)fullEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$22,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$269,88 cobrado anualmente</span>'
-    :'R$29,99<span>/mês</span>';
+    ?`<span style="color:#fbbf24;font-size:22px;font-weight:800">${_lp(22.49)}</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">${_lp(269.88)} cobrado anualmente</span>`
+    :`${_lp(29.99)}<span>/mês</span>`;
   if(masterEl)masterEl.innerHTML=annual
-    ?'<span style="color:#fbbf24;font-size:22px;font-weight:800">R$67,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$809,88 cobrado anualmente</span>'
-    :'R$89,99<span>/mês</span>';
+    ?`<span style="color:#fbbf24;font-size:22px;font-weight:800">${_lp(67.49)}</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">${_lp(809.88)} cobrado anualmente</span>`
+    :`${_lp(89.99)}<span>/mês</span>`;
 }
 const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Gerando transcrição…','Quase pronto…'];
 
@@ -1568,27 +1569,28 @@ function toggleBilling(annual){
   const pbf = document.getElementById('planBoxFull');
   const pbm = document.getElementById('planBoxMaster');
 
+  const _lp2 = typeof localPrice==='function' ? localPrice : (v)=>`R$${v.toFixed(2).replace('.',',')}`;
   if(annual){
     if(fpd) fpd.innerHTML=`
-      <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$22<span style="color:#fbbf24">,49/mês</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <div class="plan-amount" style="color:#fbbf24">${_lp2(22.49)}<span style="color:#fbbf24">/mês</span></div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$29,99</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$269,88 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">${_lp2(269.88)} cobrado anualmente</div>`;
     if(mpd) mpd.innerHTML=`
-      <div style="display:flex;align-items:baseline;gap:8px">
-        <div class="plan-amount" style="color:#fbbf24">R$67<span style="color:#fbbf24">,49/mês</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <div class="plan-amount" style="color:#fbbf24">${_lp2(67.49)}<span style="color:#fbbf24">/mês</span></div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$89,99</div>
       </div>
-      <div class="plan-period" style="color:#fbbf24">R$809,88 cobrado anualmente</div>`;
+      <div class="plan-period" style="color:#fbbf24">${_lp2(809.88)} cobrado anualmente</div>`;
     if(pbf) pbf.classList.add('annual');
     if(pbm) pbm.classList.add('annual');
   }else{
     if(fpd) fpd.innerHTML=`
-      <div class="plan-amount">R$29<span>,99/mês</span></div>
+      <div class="plan-amount">${_lp2(29.99)}<span>/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     if(mpd) mpd.innerHTML=`
-      <div class="plan-amount">R$89<span>,99/mês</span></div>
+      <div class="plan-amount">${_lp2(89.99)}<span>/mês</span></div>
       <div class="plan-period">cobrado mensalmente</div>`;
     if(pbf) pbf.classList.remove('annual');
     if(pbm) pbm.classList.remove('annual');
@@ -2812,15 +2814,27 @@ async function handleResetPassword(){
 let siteTranslations = {};
 let siteLang = 'pt';
 
+let siteCurrency = { code:'BRL', symbol:'R$', rate:null, isBRL:true };
+
+// Convert BRL price to local currency string: "R$ 29,99 (~$6 USD)"
+function localPrice(brlValue){
+  const brl = `R$${brlValue.toFixed(2).replace('.',',')}`;
+  if(siteCurrency.isBRL || !siteCurrency.rate) return brl;
+  const converted = (brlValue * siteCurrency.rate);
+  const fmt = converted < 10 ? converted.toFixed(2) : Math.round(converted);
+  return `${brl} <span style="color:var(--text-dim);font-size:0.85em">(~${siteCurrency.symbol}${fmt} ${siteCurrency.code})</span>`;
+}
+
 async function detectAndTranslate(){
-  // Check cache first (1 hour)
   const cached = localStorage.getItem('bt_lang_cache');
   const cacheTime = localStorage.getItem('bt_lang_cache_time');
   if(cached && cacheTime && Date.now() - parseInt(cacheTime) < 3600000){
     const data = JSON.parse(cached);
     siteLang = data.lang;
     siteTranslations = data.translations;
+    if(data.currency) siteCurrency = data.currency;
     if(siteLang !== 'pt') applyTranslations();
+    applyLocalPrices();
     return;
   }
 
@@ -2829,15 +2843,39 @@ async function detectAndTranslate(){
     const data = await r.json();
     siteLang = data.lang || 'pt';
     siteTranslations = data.translations || {};
+    if(data.currency) siteCurrency = data.currency;
 
-    // Cache result
     localStorage.setItem('bt_lang_cache', JSON.stringify(data));
     localStorage.setItem('bt_lang_cache_time', Date.now().toString());
 
     if(siteLang !== 'pt') applyTranslations();
+    applyLocalPrices();
   }catch(e){
     console.log('Translation detection failed, keeping Portuguese');
   }
+}
+
+function applyLocalPrices(){
+  if(siteCurrency.isBRL || !siteCurrency.rate) return;
+  // Plans section prices
+  document.querySelectorAll('.plan-amount').forEach(el=>{
+    const m = el.textContent.match(/R\$\s*([\d,.]+)/);
+    if(m){
+      const val = parseFloat(m[1].replace('.','').replace(',','.'));
+      if(val > 0) el.innerHTML = localPrice(val);
+    }
+  });
+  // Modal plan prices
+  ['modalFullPrice','modalMasterPrice'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){
+      const m = el.textContent.match(/R\$\s*([\d,.]+)/);
+      if(m){
+        const val = parseFloat(m[1].replace('.','').replace(',','.'));
+        if(val > 0) el.innerHTML = localPrice(val) + '<span>/mês</span>';
+      }
+    }
+  });
 }
 
 function t(key){

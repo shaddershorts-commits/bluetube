@@ -23,6 +23,26 @@ const COUNTRY_LANG = {
   PH:'tl',
 };
 
+// ── CURRENCY BY COUNTRY ───────────────────────────────────────────────────
+const COUNTRY_CURRENCY = {
+  US:'USD',GB:'GBP',AU:'AUD',CA:'CAD',NZ:'NZD',
+  BR:'BRL',PT:'EUR',
+  ES:'EUR',MX:'MXN',AR:'ARS',CO:'COP',CL:'CLP',PE:'PEN',
+  FR:'EUR',BE:'EUR',DE:'EUR',AT:'EUR',IT:'EUR',
+  JP:'JPY',CN:'CNY',TW:'TWD',HK:'HKD',SG:'SGD',
+  SA:'SAR',AE:'AED',EG:'EGP',
+  TR:'TRY',IN:'INR',KR:'KRW',RU:'RUB',
+  ID:'IDR',TH:'THB',PH:'PHP',
+  IE:'EUR',ZA:'ZAR',NG:'NGN',
+};
+const CURRENCY_SYMBOLS = {
+  USD:'$',EUR:'€',GBP:'£',JPY:'¥',CNY:'¥',KRW:'₩',INR:'₹',
+  TRY:'₺',RUB:'₽',BRL:'R$',MXN:'MX$',ARS:'ARS$',COP:'COP$',
+  CLP:'CLP$',PEN:'S/',AUD:'A$',CAD:'C$',NZD:'NZ$',
+  SAR:'﷼',AED:'د.إ',EGP:'E£',TWD:'NT$',HKD:'HK$',SGD:'S$',
+  IDR:'Rp',THB:'฿',PHP:'₱',ZAR:'R',NGN:'₦',
+};
+
 const TRANSLATIONS = {
   pt:{hero_1:'Seu novo vídeo com',hero_2:'milhões de views',hero_3:'começa agora.',hero_badge:'Grátis · 2 roteiros/dia · Sem cadastro',hero_sub:'Cole qualquer link de YouTube Shorts, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.',btn_go:'Transcrever + Roteiro ↗',tab_transcript:'📝 Transcrição',tab_casual:'💬 Casual',tab_appeal:'🔥 Apelativo',copy:'📋 Copiar',copied:'✓ Copiado!',new_short:'Novo Short',l1:'Buscando Short…',l2:'Analisando áudio…',l3:'Processando fala…',l4:'Gerando transcrição…',l5:'Quase pronto…',generating:'Criando seu próximo roteiro viral…',err_empty:'Cole um link de YouTube Shorts antes de continuar.',err_invalid:'Link inválido. Use: youtube.com/shorts/...',placeholder:'https://www.youtube.com/shorts/...',nav_enter:'Entrar',nav_upgrade:'⚡ Upgrade',nav_community:'Comunidade',nav_logout:'Sair',auth_title:'Crie sua conta ou entre',tab_login:'Entrar',tab_signup:'Criar conta',email_ph:'seu@email.com',pwd_ph:'Senha',pwd_min:'Criar senha (mín. 6 caracteres)',confirm_ph:'Confirmar senha',btn_login:'Entrar →',btn_signup:'Criar conta →',forgot:'Esqueci minha senha',forgot_btn:'Enviar link de redefinição →',back_login:'← Voltar ao login',sending:'Enviando link…',link_sent:'✓ Link enviado! Verifique seu email.',signing_in:'Entrando…',welcome:'Bem-vindo! 🎉',creating:'Criando conta…',up_live:'pessoas gerando roteiros agora',up_timer:'Seu limite reseta em',up_cta:'Quero acesso agora →',up_or:'ou crie sua conta gratuita',up_email_btn:'Criar conta por E-mail',plan_monthly:'Mensal',plan_annual:'Anual',plan_save:'Economize 25%',plan_popular:'Mais popular',plan_monthly_label:'cobrado mensalmente',plan_annual_label:'cobrado anualmente',plan_full_btn:'Assinar Full →',plan_master_btn:'Assinar Master →',price_increase:'A partir do mês que vem o valor aumentará $10 no Full e $20 no Master. Assine agora!',f1:'9 roteiros por dia',f2:'Todos os 9 idiomas',f3:'Transcrição completa',f4:'Download .TXT e .SRT',f5:'Comunidade exclusiva',f6:'IA que aprende com você',f7:'Roteiros ilimitados',m1:'Roteiros ilimitados',m2:'Todos os idiomas',m3:'Chat IA personalizado',m4:'IA de voz hiper realista',m5:'Download de vídeo HD',m6:'Buscador de vídeo viral',m7:'Comunidade exclusiva',m8:'Suporte prioritário',comm_title:'Comunidade BlueTube',comm_sub:'Exclusivo para assinantes',comm_btn:'Entrar na Comunidade WhatsApp',comm_joined:'✓ Comunidade',profile_since:'Membro desde',profile_plan:'Plano atual',profile_days:'Dias como premium',profile_until:'Acesso premium até',profile_pwd:'🔑 Alterar senha — link enviado por email',profile_support:'💬 Falar com suporte',profile_upgrade:'⚡ Fazer upgrade',profile_master:'👑 Ir para o Master →',profile_logout:'↪ Sair',profile_cancel:'Cancelar assinatura',profile_info:'Informações da conta',support_ph:'Descreva sua dúvida ou problema…',support_btn:'Enviar mensagem →',cancel_blublu:'Não pode ser! Me fala que você clicou por engano? Não me abandone! 😢',cancel_why:'Por que você quer cancelar?',cancel_r1:'Estou tendo dificuldade em usar o BlueTube',cancel_r2:'Muito caro para mim agora',cancel_r3:'Não preciso mais do serviço',cancel_r4:'Outro motivo',cancel_give_chance:'Dar mais uma chance! 💙',cancel_confirm:'Confirmar cancelamento',cancel_offer_title:'Espera! Temos uma oferta especial',cancel_offer_sub:'Como você é um cliente especial, queremos oferecer $3 de desconto na sua próxima mensalidade.',cancel_accept:'Aceitar oferta 💙',cancel_proceed:'Cancelar assinatura',cancel_bye:'Vou ter saudades do que a gente viveu!',cancel_bye_sub:'Sua assinatura foi cancelada. Você continua com acesso premium até o final do período pago.',cancel_close:'Fechar',blublu_hello:'Olá! Eu sou o <strong>BluBlu</strong> 🤖<br>Como está sendo sua experiência?<br>Está gostando do BlueTube?',blublu_ph:'Deixe seu feedback…',blublu_send:'Enviar feedback →',blublu_thanks:'Estou levando sua mensagem para meu dono, obrigado pelo seu feedback! 🚀',faq_title:'Perguntas frequentes.',faq_eye:'Dúvidas frequentes',fomo_censored:'Nome censurado a pedido do criador',fomo_protected:'Identidade preservada',fomo_anon:'Criador prefere anonimato',plans_eye:'Planos',plans_title:'Escolha seu plano.',footer_copy:'© 2025 BlueTube · Criador Viral',new_pwd:'Criar nova senha',new_pwd_sub:'Digite e confirme sua nova senha abaixo.',pwd_new_ph:'Nova senha (mín. 6 caracteres)',pwd_confirm_new:'Confirmar nova senha',save_pwd:'Salvar nova senha →'},
   en:{hero_1:'Your next video with',hero_2:'millions of views',hero_3:'starts now.',hero_badge:'Free · 2 scripts/day · No signup',hero_sub:'Paste any YouTube Shorts link, choose the language and get a transcript + 2 viral scripts ready to record.',btn_go:'Transcribe + Script ↗',tab_transcript:'📝 Transcript',tab_casual:'💬 Casual',tab_appeal:'🔥 Engaging',copy:'📋 Copy',copied:'✓ Copied!',new_short:'New Short',l1:'Fetching Short…',l2:'Analyzing audio…',l3:'Processing speech…',l4:'Generating transcript…',l5:'Almost done…',generating:'Creating your next viral script…',err_empty:'Paste a YouTube Shorts link to continue.',err_invalid:'Invalid link. Use: youtube.com/shorts/...',placeholder:'https://www.youtube.com/shorts/...',nav_enter:'Sign In',nav_upgrade:'⚡ Upgrade',nav_community:'Community',nav_logout:'Sign Out',auth_title:'Create your account or sign in',tab_login:'Sign In',tab_signup:'Create account',email_ph:'your@email.com',pwd_ph:'Password',pwd_min:'Create password (min. 6 chars)',confirm_ph:'Confirm password',btn_login:'Sign In →',btn_signup:'Create account →',forgot:'Forgot my password',forgot_btn:'Send reset link →',back_login:'← Back to login',sending:'Sending link…',link_sent:'✓ Link sent! Check your email.',signing_in:'Signing in…',welcome:'Welcome! 🎉',creating:'Creating account…',up_live:'people generating scripts right now',up_timer:'Your limit resets in',up_cta:'Get access now →',up_or:'or create your free account',up_email_btn:'Create account by Email',plan_monthly:'Monthly',plan_annual:'Annual',plan_save:'Save 25%',plan_popular:'Most popular',plan_monthly_label:'billed monthly',plan_annual_label:'billed annually',plan_full_btn:'Subscribe Full →',plan_master_btn:'Subscribe Master →',price_increase:'Starting next month price increases $10 on Full and $20 on Master. Subscribe now!',f1:'9 scripts per day',f2:'All 9 languages',f3:'Full transcript',f4:'Download .TXT and .SRT',f5:'Exclusive community',f6:'AI that learns with you',f7:'Unlimited scripts',m1:'Unlimited scripts',m2:'All languages',m3:'Custom AI chat',m4:'Hyper-realistic AI voice',m5:'HD video download',m6:'Viral video finder',m7:'Exclusive community',m8:'Priority support',comm_title:'BlueTube Community',comm_sub:'Exclusive for subscribers',comm_btn:'Join WhatsApp Community',comm_joined:'✓ Community',profile_since:'Member since',profile_plan:'Current plan',profile_days:'Days as premium',profile_until:'Premium access until',profile_pwd:'🔑 Change password — link sent by email',profile_support:'💬 Talk to support',profile_upgrade:'⚡ Upgrade plan',profile_master:'👑 Go to Master →',profile_logout:'↪ Sign out',profile_cancel:'Cancel subscription',profile_info:'Account information',support_ph:'Describe your question or issue…',support_btn:'Send message →',cancel_blublu:"No way! Tell me you clicked by mistake? Don't leave me! 😢",cancel_why:'Why do you want to cancel?',cancel_r1:"I'm having trouble using BlueTube",cancel_r2:'Too expensive for me right now',cancel_r3:"I don't need the service anymore",cancel_r4:'Other reason',cancel_give_chance:'Give it another chance! 💙',cancel_confirm:'Confirm cancellation',cancel_offer_title:'Wait! We have a special offer',cancel_offer_sub:"As a special customer, we'd like to offer you $3 off your next monthly bill.",cancel_accept:'Accept offer 💙',cancel_proceed:'Cancel subscription',cancel_bye:"I'll miss what we had!",cancel_bye_sub:'Your subscription has been cancelled. You keep premium access until the end of the paid period.',cancel_close:'Close',blublu_hello:"Hi! I'm <strong>BluBlu</strong> 🤖<br>How's your experience?<br>Are you enjoying BlueTube?",blublu_ph:'Leave your feedback…',blublu_send:'Send feedback →',blublu_thanks:"I'm passing your message to my owner, thanks for your feedback! 🚀",faq_title:'Frequently asked questions.',faq_eye:'FAQ',fomo_censored:"Name censored at creator's request",fomo_protected:'Identity preserved',fomo_anon:'Creator prefers anonymity',plans_eye:'Plans',plans_title:'Choose your plan.',footer_copy:'© 2025 BlueTube · Viral Creator',new_pwd:'Create new password',new_pwd_sub:'Enter and confirm your new password below.',pwd_new_ph:'New password (min. 6 chars)',pwd_confirm_new:'Confirm new password',save_pwd:'Save new password →'},
@@ -1071,9 +1091,50 @@ Responda APENAS em JSON válido sem markdown:
         } catch (e) { /* default pt */ }
       }
       const translations = TRANSLATIONS[langCode] || TRANSLATIONS['pt'];
-      return res.status(200).json({ country, lang: langCode, translations });
+      const currency = COUNTRY_CURRENCY[country] || 'USD';
+      const symbol = CURRENCY_SYMBOLS[currency] || currency;
+
+      // Fetch exchange rate BRL → user currency (cached in Supabase for 24h)
+      let rate = null;
+      if (currency !== 'BRL') {
+        const SU = SUPA_URL, SK = SUPA_KEY;
+        const cacheKey = `fx_brl_${currency}`;
+        // Check Supabase cache first
+        if (SU && SK) {
+          try {
+            const cr = await fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${cacheKey}&expires_at=gt.${new Date().toISOString()}&select=value&limit=1`, {
+              headers: { 'apikey': SK, 'Authorization': `Bearer ${SK}` }
+            });
+            if (cr.ok) { const cd = await cr.json(); if (cd?.[0]?.value?.rate) rate = cd[0].value.rate; }
+          } catch(e) {}
+        }
+        // If no cache, fetch fresh rate
+        if (!rate) {
+          try {
+            const fxRes = await fetch(`https://open.er-api.com/v6/latest/BRL`);
+            if (fxRes.ok) {
+              const fxData = await fxRes.json();
+              if (fxData.rates?.[currency]) {
+                rate = fxData.rates[currency];
+                // Cache for 24h in Supabase
+                if (SU && SK) {
+                  fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${cacheKey}`, { method:'DELETE', headers:{'apikey':SK,'Authorization':`Bearer ${SK}`} }).catch(()=>{});
+                  fetch(`${SU}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':SK,'Authorization':`Bearer ${SK}`,'Prefer':'return=minimal'},
+                    body:JSON.stringify({cache_key:cacheKey,value:{rate,currency,fetched:new Date().toISOString()},created_at:new Date().toISOString(),expires_at:new Date(Date.now()+24*3600*1000).toISOString()})
+                  }).catch(()=>{});
+                }
+              }
+            }
+          } catch(e) {}
+        }
+      }
+
+      return res.status(200).json({
+        country, lang: langCode, translations,
+        currency: { code: currency, symbol, rate, isBRL: currency === 'BRL' }
+      });
     } catch (e) {
-      return res.status(200).json({ country: 'BR', lang: 'pt', translations: TRANSLATIONS['pt'] });
+      return res.status(200).json({ country: 'BR', lang: 'pt', translations: TRANSLATIONS['pt'], currency: { code: 'BRL', symbol: 'R$', rate: null, isBRL: true } });
     }
   }
 

@@ -313,7 +313,29 @@ document.addEventListener('mousemove',e=>{const g=document.getElementById('glow'
 // Tracking ref
 (function(){const ref=new URLSearchParams(window.location.search).get('ref');if(!ref)return;document.cookie=`bt_ref=${ref};expires=${new Date(Date.now()+60*24*60*60*1000).toUTCString()};path=/;SameSite=Lax`;let cid=localStorage.getItem('bt_cookie_id');if(!cid){cid='ck_'+Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem('bt_cookie_id',cid);}fetch(`/api/auth?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}`).catch(()=>{});})();
 
-const fm=n=>'$'+parseFloat(n||0).toFixed(2).replace('.',',');
+let _affCurrency={code:'BRL',symbol:'R$',rate:null,isBRL:true};
+const fm=n=>{
+  const brl='R$'+parseFloat(n||0).toFixed(2).replace('.',',');
+  if(_affCurrency.isBRL||!_affCurrency.rate) return brl;
+  const c=(parseFloat(n||0)*_affCurrency.rate);
+  const f=c<10?c.toFixed(2):Math.round(c);
+  return `${brl} <span style="color:var(--text-dim);font-size:0.85em">(~${_affCurrency.symbol}${f})</span>`;
+};
+// Load currency on init
+(async()=>{
+  try{
+    const cached=localStorage.getItem('bt_lang_cache');
+    const ct=localStorage.getItem('bt_lang_cache_time');
+    if(cached&&ct&&Date.now()-parseInt(ct)<3600000){
+      const d=JSON.parse(cached);if(d.currency)_affCurrency=d.currency;return;
+    }
+    const r=await fetch('/api/auth?action=lang');
+    const d=await r.json();
+    if(d.currency)_affCurrency=d.currency;
+    localStorage.setItem('bt_lang_cache',JSON.stringify(d));
+    localStorage.setItem('bt_lang_cache_time',Date.now().toString());
+  }catch(e){}
+})();
 const fn=n=>{if(!n)return'0';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return''+n;};
 const me=e=>{if(!e)return'—';const[u,d]=e.split('@');return u.slice(0,2)+'***@'+d;};
 const fd=dt=>dt?new Date(dt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
