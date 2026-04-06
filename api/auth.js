@@ -1392,7 +1392,7 @@ Responda APENAS em JSON válido sem markdown:
   // ══════════════════════════════════════════════════════════════════════════
   // Usa as vars globais SUPA_URL, SUPA_KEY, ANON_KEY, supaH declaradas no topo
   const COMMISSION_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
-  const PLAN_AMOUNTS = { full: 9.99, master: 29.99 };
+  const PLAN_AMOUNTS = { full: 29.99, master: 89.99 };
   const getAffLevel = (p) => p >= 1000 ? 'gold' : p >= 380 ? 'silver' : 'bronze';
   const genRefCode = (email) => {
     const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,8);

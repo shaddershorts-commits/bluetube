@@ -4,7 +4,7 @@
 import crypto from 'crypto';
 
 const COMMISSION_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
-const PLAN_AMOUNTS = { full: 9.99, master: 29.99 };
+const PLAN_AMOUNTS = { full: 29.99, master: 89.99 };
 
 function getLevel(totalPaying) {
   if (totalPaying >= 1000) return 'gold';

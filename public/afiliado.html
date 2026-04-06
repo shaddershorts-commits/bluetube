@@ -524,7 +524,7 @@ function startPoll(){
         const nw=d.conversions[0];
         const pl=nw.plan==='master'?'👑 Master':nw.plan==='full'?'⚡ Full':'🆓 Free';
         if(nw.plan==='master'||nw.plan==='full'){
-          notif(`Novo assinante ${pl} via seu link!<br><span style="color:var(--green);font-size:11px">+${fm((d.stats?.commissionRate||0.35)*(nw.plan==='master'?97.00:27.00))} de comissão</span>`,'upgrade');
+          notif(`Novo assinante ${pl} via seu link!<br><span style="color:var(--green);font-size:11px">+${fm((d.stats?.commissionRate||0.35)*(nw.plan==='master'?89.99:29.99))} de comissão</span>`,'upgrade');
         }else{notif(`Novo cadastro via seu link!`,'success');}
         lastCC=nc;
       }
