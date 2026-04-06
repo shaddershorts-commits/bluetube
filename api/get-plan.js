@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
     let plan = 'free';
 
-    if (sub && sub.plan && sub.plan !== 'free') {
+    if (sub?.plan && sub.plan !== 'free') {
       const isManual  = sub.is_manual === true;
       const notExpired = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
 
