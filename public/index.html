@@ -1812,6 +1812,41 @@ async function checkAndIncrementLimit(){
   }catch(e){ return true; } // fail open
 }
 
+// ── RETRY-AWARE FETCH ─────────────────────────────────────────────────────
+async function fetchRetry(url, opts={}, maxRetries=3){
+  for(let attempt=0; attempt<maxRetries; attempt++){
+    try{
+      const r = await fetch(url, opts);
+      if(r.status===429 || r.status===503){
+        const retryAfter = parseInt(r.headers.get('Retry-After')||'0') || 30;
+        const d = await r.json().catch(()=>({}));
+        if(attempt < maxRetries-1){
+          setError(`Aguardando... tentando novamente em ${retryAfter}s`);
+          await new Promise(res=>{
+            let sec=retryAfter;
+            const iv=setInterval(()=>{
+              sec--;
+              if(sec<=0){clearInterval(iv);res();}
+              else setError(`Aguardando... tentando novamente em ${sec}s`);
+            },1000);
+          });
+          continue;
+        }
+        return {ok:false,status:r.status,data:d,retriesExhausted:true};
+      }
+      if(r.status===500){
+        const d = await r.json().catch(()=>({error:'Algo deu errado. Já fomos notificados.'}));
+        return {ok:false,status:500,data:d};
+      }
+      const d = await r.json();
+      return {ok:r.ok,status:r.status,data:d};
+    }catch(e){
+      if(attempt < maxRetries-1) continue;
+      return {ok:false,status:0,data:{error:'Falha na conexão. Verifique sua internet.'}};
+    }
+  }
+}
+
 // ── UI HELPERS ─────────────────────────────────────────────────────────────
 function setLoading(on){
   document.getElementById('loadingBlock').classList.toggle('on',on);
