@@ -6,6 +6,18 @@
     },
     "api/auth.js": {
       "maxDuration": 60
+    },
+    "api/payment-monitor.js": {
+      "maxDuration": 60
+    },
+    "api/monitor.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/payment-monitor",
+      "schedule": "*/10 * * * *"
+    }
+  ]
 }
