@@ -2,6 +2,11 @@
 // Super Prompt literal + Supabase real viral examples as living memory
 // Primary: OpenAI GPT-4o mini | Fallback: Gemini rotation
 
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { applyRateLimit } = require('./helpers/rate-limit.js');
+const { cacheKey, getCache, setCache } = require('./helpers/cache.js');
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -9,8 +14,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Rate limit
+  if (await applyRateLimit(req, res)) return;
+
   const { transcript, lang, version, adjust } = req.body;
-  if (!transcript || !lang) return res.status(400).json({ error: 'Missing fields' });
+  if (!transcript || !lang) return res.status(400).json({ error: 'Transcrição e idioma são obrigatórios.' });
+
+  // Validate input length
+  const cleanTranscript = (typeof transcript === 'string' ? transcript : '').replace(/<[^>]*>/g, '').trim();
+  if (cleanTranscript.length > 5000) return res.status(400).json({ error: 'Transcrição excede o limite de 5000 caracteres.' });
 
   // ── SUPABASE: LIVING MEMORY — real viral examples from real users ──────────
   const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -161,10 +173,19 @@ Aplique o ajuste mantendo: gancho forte, curiosidade crescente, corte máximo, p
 
 Escreva o roteiro agora. Apenas o texto final, nada mais.`;
 
+  // ── CACHE — skip AI calls if same request was recently generated ──────────
+  if (!adjust) {
+    const ck = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
+    const cached = await getCache(ck, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    if (cached) return res.status(200).json(cached);
+  }
+
   // ── PRIMARY: OPENAI GPT-4o mini ───────────────────────────────────────────
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
   if (OPENAI_KEY) {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
       const r = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -179,8 +200,10 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
           ],
           max_tokens: 250,
           temperature: 0.85
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timer);
 
       const data = await r.json();
       if (r.ok && data.choices?.[0]?.message?.content) {
@@ -192,11 +215,16 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
           .replace(/^\s*[-•]\s/gm, '')
           .replace(/\n{2,}/g, ' ')
           .trim();
-        return res.status(200).json({ text, engine: 'openai' });
+        const result = { text, engine: 'openai' };
+        if (!adjust) {
+          const ck = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
+          setCache(ck, result, 1, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).catch(() => {});
+        }
+        return res.status(200).json(result);
       }
       console.log('OpenAI failed:', data.error?.message);
     } catch (err) {
-      console.log('OpenAI error:', err.message);
+      console.log('OpenAI error:', err.name === 'AbortError' ? 'timeout' : err.message);
     }
   }
 
@@ -213,6 +241,8 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
 
   for (const key of shuffledKeys) {
     try {
+      const gc = new AbortController();
+      const gt = setTimeout(() => gc.abort(), 30000);
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
         {
@@ -221,9 +251,11 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: fullPrompt }] }],
             generationConfig: { temperature: 0.85, maxOutputTokens: 600, topP: 0.95 }
-          })
+          }),
+          signal: gc.signal
         }
       );
+      clearTimeout(gt);
       const data = await r.json();
       if (r.status === 429 || data.error?.code === 429) continue;
       if (!r.ok) continue;
@@ -236,11 +268,18 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
         .replace(/^\s*[-•]\s/gm, '')
         .replace(/\n{2,}/g, ' ')
         .trim();
-      return res.status(200).json({ text, engine: 'gemini' });
+      const result = { text, engine: 'gemini' };
+      if (!adjust) {
+        const ck2 = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
+        setCache(ck2, result, 1, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).catch(() => {});
+      }
+      return res.status(200).json(result);
     } catch (e) { continue; }
   }
 
+  res.setHeader('Retry-After', '60');
   return res.status(429).json({
-    error: 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.'
+    error: 'Nossos servidores estão sobrecarregados. Tente novamente em 1 minuto.',
+    retry_after: 60
   });
 }

@@ -1,4 +1,6 @@
 // api/generate-from-zero.js — CommonJS
+const { applyRateLimit } = require('./helpers/rate-limit.js');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -6,14 +8,17 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  if (await applyRateLimit(req, res)) return;
+
   try {
     const { videoUrl, lang, token, userSummary, sentiments, niche } = req.body || {};
-    if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatorio' });
+    if (!videoUrl) return res.status(400).json({ error: 'Link do vídeo é obrigatório.' });
+    if (userSummary && userSummary.length > 5000) return res.status(400).json({ error: 'Descrição excede o limite.' });
 
     let videoId = '';
     const match = videoUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
     if (match) videoId = match[1];
-    if (!videoId) return res.status(400).json({ error: 'Link invalido' });
+    if (!videoId) return res.status(400).json({ error: 'Link inválido. Use um link de YouTube Shorts.' });
 
     const SU = process.env.SUPABASE_URL;
     const SK = process.env.SUPABASE_SERVICE_KEY;
