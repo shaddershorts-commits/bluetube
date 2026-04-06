@@ -110,7 +110,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .modal-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
 .modal-overlay.on{display:flex;animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.modal-box{width:100%;max-width:520px;background:rgba(10,22,40,0.95);border:1px solid rgba(0,170,255,0.2);border-radius:24px;padding:36px;position:relative;text-align:center;box-shadow:0 0 80px rgba(0,100,255,0.2);max-height:90vh;overflow-y:auto}
+.modal-box{width:100%;max-width:520px;background:rgba(10,22,40,0.95);border:1px solid rgba(0,170,255,0.2);border-radius:24px;padding:36px;position:relative;text-align:center;box-shadow:0 0 80px rgba(0,100,255,0.2);max-height:90vh;overflow-y:auto;margin:0 12px}
+@media(max-width:640px){.modal-box{padding:24px 16px;border-radius:18px;max-height:85vh}}
 .modal-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent);border-radius:24px 24px 0 0}
 .modal-close{position:sticky;float:right;top:0;right:0;margin-top:-8px;margin-right:-8px;background:rgba(10,22,40,.95);border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:6px;line-height:1;border-radius:50%;z-index:10}
 .modal-close:hover{color:var(--text-primary)}
@@ -123,7 +124,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .timer-label{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
 .timer-display{font-family:var(--font-mono);font-size:32px;font-weight:700;color:var(--neon);letter-spacing:.05em;text-shadow:0 0 20px rgba(0,170,255,0.5)}
 .modal-plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
-.plan-card{background:rgba(2,8,23,0.6);border:1px solid rgba(0,170,255,0.15);border-radius:14px;padding:18px;cursor:pointer;transition:all .22s;text-align:left}
+.plan-card{background:rgba(2,8,23,0.6);border:1px solid rgba(0,170,255,0.15);border-radius:14px;padding:18px;cursor:pointer;transition:all .22s;text-align:left;overflow:hidden;word-break:break-word}
 .plan-card:hover,.plan-card.featured{border-color:rgba(0,170,255,0.45);background:rgba(0,170,255,0.06);transform:translateY(-2px)}
 .plan-card.featured{border-color:var(--neon);box-shadow:0 0 20px rgba(0,170,255,0.15)}
 .plan-badge{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--neon);margin-bottom:8px;display:flex;align-items:center;gap:5px}
@@ -604,7 +605,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <span class="billing-label-modal" id="modalLabelAnnual" onclick="setModalBilling(true)">Anual</span>
       <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
     </div>
-    <div class="modal-plans" id="upgradeModalPlans" style="grid-template-columns:1fr 1fr">
+    <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')" id="modalCardFull">
         <div class="plan-badge">⚡ Full</div>
         <div class="plan-price" id="modalFullPrice">R$29,99<span>/mês</span></div>
