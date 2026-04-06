@@ -117,23 +117,29 @@ Responda APENAS com JSON:
 {"action":"fix"|"no_fix_needed"|"needs_human","file_path":"caminho/arquivo.js","reason":"causa do bug","fix_description":"o que foi corrigido","fixed_content":"conteúdo completo corrigido"}`;
 
   let aiResponse = null;
+  let aiRawText = '';
   try {
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-sonnet-4-5-20241022', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] })
     });
+    if (!aiRes.ok) {
+      const errBody = await aiRes.text();
+      console.error('[monitor] Claude API HTTP error:', aiRes.status, errBody.slice(0, 300));
+      return res.status(200).json({ ok: false, error: 'Claude API HTTP ' + aiRes.status, detail: errBody.slice(0, 200) });
+    }
     const aiData = await aiRes.json();
-    const rawText = aiData.content?.[0]?.text || '';
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    aiRawText = aiData.content?.[0]?.text || '';
+    const jsonMatch = aiRawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) aiResponse = JSON.parse(jsonMatch[0]);
-  } catch(e) { 
+  } catch(e) {
     console.error('[monitor] Claude API error:', e.message);
-    return res.status(200).json({ ok: false, error: 'Claude API failed: ' + e.message }); 
+    return res.status(200).json({ ok: false, error: 'Claude API failed: ' + e.message, raw: aiRawText.slice(0, 200) });
   }
 
   if (!aiResponse || aiResponse.action !== 'fix')
-    return res.status(200).json({ ok: true, action: aiResponse?.action, reason: aiResponse?.reason });
+    return res.status(200).json({ ok: true, action: aiResponse?.action || 'no_response', reason: aiResponse?.reason || 'AI did not suggest a fix', errors_found: errorLogs.length, file_detected: affectedPath });
 
   const { file_path, fix_description, fixed_content } = aiResponse;
   if (!file_path || !fixed_content) return res.status(200).json({ ok: false, error: 'Incomplete fix' });
