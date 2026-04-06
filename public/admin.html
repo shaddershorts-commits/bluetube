@@ -128,12 +128,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div onclick="selectEditPlan('full')" id="editOptFull" style="border:2px solid rgba(0,170,255,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">⚡</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--neon)">Full</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$27,00</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$29,99</div>
       </div>
       <div onclick="selectEditPlan('master')" id="editOptMaster" style="border:2px solid rgba(251,191,36,0.15);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s">
         <div style="font-size:18px;margin-bottom:4px">👑</div>
         <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:#fbbf24">Master</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$97,00</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">R$89,99</div>
       </div>
     </div>
     <button onclick="saveEditPlan()" style="width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px">Salvar alteração →</button>
@@ -193,12 +193,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Full (R$27,00 × assinantes)</div>
+        <div class="revenue-label">Full (R$29,99 × assinantes)</div>
         <div class="revenue-value" style="color:var(--neon);font-size:22px" id="revFull">R$0,00</div>
       </div>
       <div class="revenue-divider"></div>
       <div class="revenue-item">
-        <div class="revenue-label">Master (R$97,00 × assinantes)</div>
+        <div class="revenue-label">Master (R$89,99 × assinantes)</div>
         <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">R$0,00</div>
       </div>
     </div>
@@ -237,17 +237,41 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="stat-card">
         <div class="stat-label">Plano Grátis</div>
         <div class="stat-value" id="statFree">—</div>
-        <div class="stat-sub">R$0/mês</div>
+        <div class="stat-sub">R$0/mês · 2 roteiros/dia</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Full R$27,00</div>
+        <div class="stat-label">⚡ Plano Full — R$29,99</div>
         <div class="stat-value blue" id="statFull">—</div>
         <div class="stat-sub" id="statFullRev">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Plano Master R$97,00</div>
+        <div class="stat-label">👑 Plano Master — R$89,99</div>
         <div class="stat-value yellow" id="statMaster">—</div>
         <div class="stat-sub" id="statMasterRev">—</div>
+      </div>
+    </div>
+
+    <!-- CONVERSION & CHURN -->
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
+      <div class="stat-card">
+        <div class="stat-label">Taxa de conversão</div>
+        <div class="stat-value green" id="statConvRate">—</div>
+        <div class="stat-sub">Free → pagante</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pagantes ativos</div>
+        <div class="stat-value blue" id="statPayingActive">—</div>
+        <div class="stat-sub">Full + Master (via Stripe)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Churn (cancelados)</div>
+        <div class="stat-value" style="color:var(--red)" id="statChurned">—</div>
+        <div class="stat-sub">tinham plano, agora free</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Expirados</div>
+        <div class="stat-value" style="color:var(--red)" id="statExpired">—</div>
+        <div class="stat-sub">plano pago mas expirou</div>
       </div>
     </div>
 
@@ -274,8 +298,8 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="plan-tool">
         <input class="plan-input" id="planEmail" type="email" placeholder="email@exemplo.com"/>
         <select class="plan-select" id="planType">
-          <option value="full">⚡ Full — R$27,00/mês</option>
-          <option value="master">👑 Master — R$97,00/mês</option>
+          <option value="full">⚡ Full — R$29,99/mês</option>
+          <option value="master">👑 Master — R$89,99/mês</option>
           <option value="free">↓ Rebaixar para Free</option>
         </select>
         <button class="plan-btn" onclick="setPlan()">Liberar acesso →</button>
@@ -287,7 +311,17 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <div class="section">
       <div class="section-header">
         <div class="section-title">👥 Contas cadastradas <span class="section-subtitle">— dados para email marketing</span></div>
-        <a class="export-btn" onclick="exportCSV()" href="#">↓ Exportar CSV</a>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:4px" id="planFilters">
+            <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="filterSubs('all')" data-filter="all">Todos</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="filterSubs('free')" data-filter="free">Free</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--neon)" onclick="filterSubs('full')" data-filter="full">⚡ Full</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--yellow)" onclick="filterSubs('master')" data-filter="master">👑 Master</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--red)" onclick="filterSubs('churned')" data-filter="churned">Cancelados</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--red)" onclick="filterSubs('expired')" data-filter="expired">Expirados</button>
+          </div>
+          <a class="export-btn" onclick="exportCSV()" href="#">↓ Exportar CSV</a>
+        </div>
       </div>
       <div class="table-wrap" id="subsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
@@ -346,6 +380,59 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 <script>
 let adminKey='';
 let lastKnownSubscriberId=null;
+let currentFilter='all';
+
+function filterSubs(filter){
+  currentFilter=filter;
+  // Update active button style
+  document.querySelectorAll('#planFilters button').forEach(btn=>{
+    const f=btn.getAttribute('data-filter');
+    btn.style.background=f===filter?'rgba(0,170,255,0.15)':'';
+    btn.style.borderColor=f===filter?'rgba(0,170,255,0.4)':'';
+  });
+  renderSubsTable();
+}
+
+function renderSubsTable(){
+  const now=new Date();
+  let filtered=allSubscribers;
+  if(currentFilter==='free') filtered=allSubscribers.filter(s=>s.plan==='free');
+  else if(currentFilter==='full') filtered=allSubscribers.filter(s=>s.plan==='full');
+  else if(currentFilter==='master') filtered=allSubscribers.filter(s=>s.plan==='master');
+  else if(currentFilter==='churned') filtered=allSubscribers.filter(s=>s.plan==='free'&&s.stripe_customer_id);
+  else if(currentFilter==='expired') filtered=allSubscribers.filter(s=>s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now);
+
+  if(!filtered.length){
+    document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhuma conta encontrada com este filtro.</div>';
+    return;
+  }
+
+  const planValue={full:'R$29,99',master:'R$89,99',free:'—'};
+  document.getElementById('subsTable').innerHTML=`
+    <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:10px">${filtered.length} resultado${filtered.length!==1?'s':''}</div>
+    <table>
+      <thead><tr><th>Email</th><th>Plano</th><th>Valor</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
+      <tbody>${filtered.map(s=>{
+        const isExpired=s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now;
+        const expireStyle=isExpired?'color:var(--red);font-weight:600':'color:var(--dim)';
+        return`<tr>
+          <td style="color:var(--text)">${s.email}</td>
+          <td><span class="badge badge-${s.plan}">${s.plan==='master'?'👑 ':''}${s.plan==='full'?'⚡ ':''}${s.plan.toUpperCase()}</span></td>
+          <td style="color:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};font-weight:600">${planValue[s.plan]||'—'}</td>
+          <td><span style="font-family:var(--mono);font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</span></td>
+          <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
+          <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+          <td style="${expireStyle}">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR')+(isExpired?' ⚠':''):'—'}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button onclick="quickEditPlan('${s.email}','${s.plan}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+}
 
 function renderMonthlyChart(subscribers){
   // Group paying subscribers by month of creation
@@ -358,7 +445,7 @@ function renderMonthlyChart(subscribers){
     const label=`${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
     if(!months[key])months[key]={label,count:0,mrr:0};
     months[key].count++;
-    months[key].mrr+=s.plan==='master'?97.00:27.00;
+    months[key].mrr+=s.plan==='master'?89.99:29.99;
   });
 
   const sorted=Object.keys(months).sort();
@@ -405,7 +492,7 @@ function renderMonthlyChart(subscribers){
 function showNewSubscriberPopup(subscriber){
   const planIcon=subscriber.plan==='master'?'👑':'⚡';
   const planColor=subscriber.plan==='master'?'#fbbf24':'#00aaff';
-  const planPrice=subscriber.plan==='master'?'R$97,00':'R$27,00';
+  const planPrice=subscriber.plan==='master'?'R$89,99':'R$29,99';
 
   // Create popup
   const popup=document.createElement('div');
@@ -527,6 +614,14 @@ async function loadData(){
     document.getElementById('statFullRev').textContent=fmt(d.revenue?.full_revenue||0)+'/mês (pagos)';
     document.getElementById('statMasterRev').textContent=fmt(d.revenue?.master_revenue||0)+'/mês (pagos)';
 
+    // Conversion & Churn
+    if(d.conversion){
+      document.getElementById('statConvRate').textContent=d.conversion.rate+'%';
+      document.getElementById('statPayingActive').textContent=d.conversion.total_paying||0;
+      document.getElementById('statChurned').textContent=d.conversion.churned||0;
+      document.getElementById('statExpired').textContent=d.conversion.expired||0;
+    }
+
     // Last update
     document.getElementById('lastUpdate').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
 
@@ -620,30 +715,8 @@ async function loadData(){
       }
     }
 
-    // Subscribers table — show manual badge + edit button
-    if(allSubscribers.length){
-      document.getElementById('subsTable').innerHTML=`
-        <table>
-          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
-          <tbody>${allSubscribers.map(s=>`
-            <tr>
-              <td style="color:var(--text)">${s.email}</td>
-              <td><span class="badge badge-${s.plan}">${s.plan.toUpperCase()}</span></td>
-              <td><span style="font-family:var(--mono);font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</span></td>
-              <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
-              <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-              <td style="color:var(--dim)">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):'—'}</td>
-              <td>
-                <div style="display:flex;gap:6px">
-                  <button onclick="quickEditPlan('${s.email}','${s.plan}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`;
-    }else{
-      document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhuma conta cadastrada ainda.<br>Quando usuários criarem contas, aparecerão aqui.</div>';
-    }
+    // Subscribers table — rendered via renderSubsTable() with filter support
+    renderSubsTable();
 
     // Top virals
     if(d.top_virals?.length){
@@ -822,8 +895,10 @@ async function setPlan(){
 
 function exportCSV(){
   if(!allSubscribers.length){alert('Nenhuma conta para exportar ainda.');return;}
-  const rows=[['Email','Plano','Stripe Customer ID','Cadastro','Expira'],...allSubscribers.map(s=>[
-    s.email,s.plan,s.stripe_customer_id||'',
+  const planValue={full:'29.99',master:'89.99',free:'0'};
+  const rows=[['Email','Plano','Valor Mensal','Tipo','Stripe Customer ID','Cadastro','Expira'],...allSubscribers.map(s=>[
+    s.email,s.plan,planValue[s.plan]||'0',s.is_manual?'Manual':'Stripe',
+    s.stripe_customer_id||'',
     new Date(s.created_at).toLocaleDateString('pt-BR'),
     s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR'):''
   ])];

@@ -146,10 +146,21 @@ export default async function handler(req, res) {
         list: subscribers
       },
       revenue: {
-        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 27.00) +
-                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 97.00),
-        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 27.00,
-        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 29.99
+        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 29.99) +
+                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 89.99),
+        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 29.99,
+        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 89.99
+      },
+      conversion: {
+        total_free: subscribers.filter(s => s.plan === 'free').length,
+        total_paying: subscribers.filter(s => s.plan !== 'free' && !s.is_manual).length,
+        rate: subscribers.length > 0
+          ? ((subscribers.filter(s => s.plan !== 'free' && !s.is_manual).length / subscribers.length) * 100).toFixed(1)
+          : '0.0',
+        // Churn: users who had a paid plan but are now free (have stripe_customer_id but plan=free)
+        churned: subscribers.filter(s => s.plan === 'free' && s.stripe_customer_id).length,
+        // Expired: paid plan but expired
+        expired: subscribers.filter(s => s.plan !== 'free' && s.plan_expires_at && new Date(s.plan_expires_at) < new Date()).length,
       },
       today: {
         active_ips: todayUsage.length,
