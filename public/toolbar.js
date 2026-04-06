@@ -145,4 +145,24 @@
   window._btLoadResults = function(tool) {
     return window._btLoad(tool + '_results');
   };
+
+  // ── AUTO-REFRESH JWT TOKEN (every 45 min) ──────────────────────────────────
+  setInterval(async () => {
+    const refresh = localStorage.getItem('bt_refresh_token');
+    if (!refresh) return;
+    try {
+      const r = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refresh', refresh_token: refresh })
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const t = d.session?.access_token || d.access_token;
+        const rf = d.session?.refresh_token;
+        if (t) { localStorage.setItem('bt_token', t); if (typeof TOKEN !== 'undefined') TOKEN = t; }
+        if (rf) localStorage.setItem('bt_refresh_token', rf);
+      }
+    } catch (e) {}
+  }, 45 * 60 * 1000);
 })();
