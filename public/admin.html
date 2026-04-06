@@ -352,6 +352,19 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 
     <!-- LEARNING / FEW-SHOT -->
     <!-- BLUE HEALTH -->
+    <!-- MODERATION -->
+    <div class="section" id="moderationSection">
+      <div class="section-header">
+        <div class="section-title">🛡️ Moderação <span class="section-subtitle">— denúncias e vídeos pendentes</span></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Denúncias pendentes</div><div class="stat-value" style="color:var(--red)" id="modPending">—</div></div>
+        <div class="stat-card"><div class="stat-label">Vídeos under review</div><div class="stat-value yellow" id="modReview">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total de denúncias</div><div class="stat-value blue" id="modTotal">—</div></div>
+      </div>
+      <div class="table-wrap" id="modTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <div class="section" id="blueHealthSection">
       <div class="section-header">
         <div class="section-title">🎬 Saúde da Blue <span class="section-subtitle">— manutenção automática a cada 6h</span></div>
@@ -719,6 +732,10 @@ async function loadData(){
         }
       }).catch(() => {});
 
+    // 🛡️ Moderação + 🎬 Blue Health
+    loadModeration();
+    loadBlueHealth();
+
     // 🤝 Afiliados
     fetch(`/api/admin?action=list_affiliates`, { headers: { 'Authorization': `Bearer ${adminKey}` } })
       .then(r => r.json()).then(affiliates => {
@@ -949,6 +966,36 @@ async function setPlan(){
   }catch(e){
     msg.className='plan-msg err';msg.textContent='Erro: '+e.message;
   }
+}
+
+// Moderation
+async function loadModeration(){
+  try{
+    const r=await fetch('/api/admin?action=moderation',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    document.getElementById('modPending').textContent=d.pending_count||0;
+    document.getElementById('modReview').textContent=d.review_count||0;
+    document.getElementById('modTotal').textContent=d.total_count||0;
+    if(d.reports?.length){
+      const reasons={inappropriate:'🔞 Inapropriado',spam:'📢 Spam',violence:'⚠️ Violência',nudity:'🚫 Nudez',other:'📝 Outro'};
+      document.getElementById('modTable').innerHTML=`<table><thead><tr><th>Vídeo</th><th>Razão</th><th>Status</th><th>Data</th><th>Ação</th></tr></thead><tbody>
+        ${d.reports.slice(0,20).map(r=>`<tr>
+          <td style="font-size:10px;color:var(--dim)">${(r.video_id||'').slice(0,8)}…</td>
+          <td>${reasons[r.reason]||r.reason}</td>
+          <td><span class="badge ${r.status==='pending'?'badge-master':'badge-free'}">${r.status}</span></td>
+          <td style="font-size:11px;color:var(--dim)">${new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+          <td>${r.status==='pending'?`<button onclick="moderateVideo('${r.video_id}','approve')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:3px 8px;cursor:pointer;margin-right:4px">✅</button><button onclick="moderateVideo('${r.video_id}','remove')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:3px 8px;cursor:pointer">🗑</button>`:''}</td>
+        </tr>`).join('')}</tbody></table>`;
+    }else{
+      document.getElementById('modTable').innerHTML='<div class="empty-state">Nenhuma denúncia registrada.</div>';
+    }
+  }catch(e){}
+}
+async function moderateVideo(id,decision){
+  if(!confirm(decision==='approve'?'Aprovar este vídeo?':'Remover este vídeo?'))return;
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+    body:JSON.stringify({action:'moderate',video_id:id,decision})});
+  toast(decision==='approve'?'✅ Aprovado':'🗑 Removido');loadModeration();loadData();
 }
 
 async function runBlueMaintenance(){

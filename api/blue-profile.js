@@ -23,6 +23,32 @@ module.exports = async function handler(req, res) {
     userId = ud.id; userEmail = ud.email;
   }
 
+  // GET notifications
+  if (req.method === 'GET' && action === 'notifications') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      const nr = await fetch(
+        `${SU}/rest/v1/blue_notifications?user_id=eq.${userId}&order=created_at.desc&limit=20&select=*`,
+        { headers: h }
+      );
+      const notifs = nr.ok ? await nr.json() : [];
+      const unread = notifs.filter(n => !n.read).length;
+      return res.status(200).json({ notifications: notifs, unread });
+    } catch(e) { return res.status(200).json({ notifications: [], unread: 0 }); }
+  }
+
+  // POST mark notifications as read
+  if (req.method === 'POST' && action === 'mark-notifications-read') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      await fetch(
+        `${SU}/rest/v1/blue_notifications?user_id=eq.${userId}&read=eq.false`,
+        { method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' }, body: JSON.stringify({ read: true }) }
+      );
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(200).json({ ok: false }); }
+  }
+
   // GET profile — by token, username, or public user_id
   if (req.method === 'GET' && (!action || action === 'profile')) {
     const username = req.query.username;

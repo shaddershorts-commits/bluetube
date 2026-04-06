@@ -85,6 +85,42 @@ export default async function handler(req, res) {
     return res.status(200).json(Array.isArray(data) ? data : []);
   }
 
+  // ── MODERATION ──────────────────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'moderation') {
+    try {
+      const [reportsRes, reviewRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/blue_reports?order=created_at.desc&limit=50&select=*`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/blue_videos?status=eq.under_review&select=id,title,user_id,video_url,created_at`, { headers }),
+      ]);
+      const reports = reportsRes.ok ? await reportsRes.json() : [];
+      const underReview = reviewRes.ok ? await reviewRes.json() : [];
+      return res.status(200).json({
+        reports,
+        under_review: underReview,
+        pending_count: reports.filter(r => r.status === 'pending').length,
+        total_count: reports.length,
+        review_count: underReview.length
+      });
+    } catch(e) { return res.status(200).json({ reports: [], under_review: [], error: e.message }); }
+  }
+
+  // ── MODERATE VIDEO ─────────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'moderate') {
+    const { video_id, decision } = req.body; // decision: 'approve' | 'remove'
+    if (!video_id || !decision) return res.status(400).json({ error: 'Missing fields' });
+    const newStatus = decision === 'approve' ? 'active' : 'removed';
+    await fetch(`${SUPABASE_URL}/rest/v1/blue_videos?id=eq.${video_id}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
+    });
+    // Mark related reports as resolved
+    await fetch(`${SUPABASE_URL}/rest/v1/blue_reports?video_id=eq.${video_id}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: decision === 'approve' ? 'dismissed' : 'actioned' })
+    });
+    return res.status(200).json({ success: true, video_id, status: newStatus });
+  }
+
   // ── LEARNING STATS ────────────────────────────────────────────────────────
   if (req.method === 'GET' && action === 'learning_stats') {
     try {

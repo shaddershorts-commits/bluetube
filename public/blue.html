@@ -458,11 +458,25 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 <!-- DOTS MENU -->
 <div class="back-drop" id="dotsBack" onclick="closeDotsMenu()" style="z-index:399"></div>
 <div class="dots-menu" id="dotsMenu">
-  <button class="dm-item" onclick="startEditVideo()">✏️ &nbsp;Editar vídeo</button>
+  <button class="dm-item" id="dmEdit" onclick="startEditVideo()">✏️ &nbsp;Editar vídeo</button>
+  <div class="dm-sep" id="dmEditSep"></div>
+  <button class="dm-item red" id="dmDelete" onclick="startDeleteVideo()">🗑️ &nbsp;Excluir vídeo</button>
   <div class="dm-sep"></div>
-  <button class="dm-item red" onclick="startDeleteVideo()">🗑️ &nbsp;Excluir vídeo</button>
+  <button class="dm-item" onclick="openReportMenu()">⚑ &nbsp;Denunciar</button>
   <div class="dm-sep"></div>
   <button class="dm-item" onclick="closeDotsMenu()">✕ &nbsp;Cancelar</button>
+</div>
+<!-- REPORT MENU -->
+<div class="back-drop" id="reportBack" onclick="closeReportMenu()" style="z-index:499;display:none"></div>
+<div class="dots-menu" id="reportMenu" style="display:none;z-index:500">
+  <div style="padding:10px 16px;font-size:12px;font-weight:700;color:#fff;opacity:.6">Por que denunciar?</div>
+  <button class="dm-item" onclick="submitReport('inappropriate')">🔞 Conteúdo inapropriado</button>
+  <button class="dm-item" onclick="submitReport('spam')">📢 Spam</button>
+  <button class="dm-item" onclick="submitReport('violence')">⚠️ Violência</button>
+  <button class="dm-item" onclick="submitReport('nudity')">🚫 Nudez</button>
+  <button class="dm-item" onclick="submitReport('other')">📝 Outro motivo</button>
+  <div class="dm-sep"></div>
+  <button class="dm-item" onclick="closeReportMenu()">✕ &nbsp;Cancelar</button>
 </div>
 
 <!-- EDIT PROFILE MODAL -->
@@ -648,15 +662,19 @@ async function getValidToken(){
 }
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
+let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
+
 async function loadFeed(){
   const feed=document.getElementById('feed');
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#555">Carregando…</div></div>';
+  _feedCursor=null; _feedHasMore=true; videos=[];
   try{
-    const r=await fetch('/api/blue-feed?limit=20&session='+SID);
+    const r=await fetch('/api/blue-feed?limit=10&session='+SID);
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
-    // Prioriza vídeos de quem o usuário segue
+    _feedHasMore=d.has_more||false;
+    _feedCursor=d.next_cursor||null;
     if(_followingIds.length>0){
       videos.sort((a,b)=>{
         const af=_followingIds.includes(a.user_id)?1:0;
@@ -664,7 +682,7 @@ async function loadFeed(){
         return bf-af;
       });
     }
-    console.log('Feed:',videos.length,'vídeos, seguindo:',_followingIds.length);
+    console.log('Feed:',videos.length,'vídeos, seguindo:',_followingIds.length,'hasMore:',_feedHasMore);
   }catch(e){
     document.getElementById('dbg').textContent='Erro: '+e.message;
     document.getElementById('empty').classList.add('on');
@@ -704,6 +722,7 @@ function mkSlide(v,i){
       '<button class="act" onclick="doSave(\''+v.id+'\')"><div class="act-ico" id="si-'+v.id+'">'+(sv?'🔖':'💾')+'</div><div class="act-lbl">Salvar</div></button>'+
       '<button class="act" onclick="openComments(\''+v.id+'\','+(v.comments||0)+')"><div class="act-ico">💬</div><div class="act-lbl" id="cc-'+v.id+'">'+fmt(v.comments||0)+'</div></button>'+
       '<button class="act" onclick="doShare(\''+v.video_url.replace(/'/g,'')+'\',\''+esc(v.title||'').replace(/'/g,'')+'\')"><div class="act-ico">↗️</div><div class="act-lbl">Comp.</div></button>'+
+      '<button class="act" onclick="event.stopPropagation();openDotsMenu(\''+v.id+'\',\''+esc(v.title||'').replace(/'/g,'')+'\',\'\','+(v.user_id===myProfile?.user_id)+')"><div class="act-ico" style="font-size:16px">⋯</div></button>'+
     '</div>'+
     '<div class="info">'+
       '<div class="info-user" onclick="openCreatorProfile(\''+v.user_id+'\')">@'+(c.username||'blue')+'</div>'+
@@ -1287,6 +1306,26 @@ function requestNotificationPermission(){
   }
 }
 
+// ── ACTIVITY NOTIFICATIONS (likes, comments) ─────────────────────────────────
+let _notifUnread=0;
+async function pollActivityNotifs(){
+  const tk=localStorage.getItem('bt_token');
+  if(!tk)return;
+  try{
+    const r=await fetch('/api/blue-profile?action=notifications&token='+encodeURIComponent(tk));
+    if(!r.ok)return;
+    const d=await r.json();
+    _notifUnread=d.unread||0;
+    // Update badge: combine chat unread + activity unread
+    const badge=document.getElementById('inboxBadge');
+    const total=(_prevUnreadCount||0)+_notifUnread;
+    if(badge){
+      if(total>0){badge.textContent=total>99?'99+':total;badge.style.display='flex';}
+      else{badge.style.display='none';}
+    }
+  }catch(e){}
+}
+
 // ── STATUS HEARTBEAT ──────────────────────────────────────────────────────────
 function startStatusHeartbeat() {
   if (!TOKEN) return;
@@ -1298,6 +1337,7 @@ function startStatusHeartbeat() {
     if (!tk) return;
     fetch('/api/blue-chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'status', token:tk, status:_myStatus }) }).catch(()=>{});
     pollUnreadCount();
+    pollActivityNotifs();
   }, 30000);
   // Set offline on page unload
   window.addEventListener('beforeunload', () => {
@@ -1398,18 +1438,45 @@ function renderGrid(vids,isOwn){
 
     const ov=document.createElement('div');ov.className='pg-ov';card.appendChild(ov);
     const vw=document.createElement('div');vw.className='pg-v';vw.textContent='▶ '+fmt(v.views||0);card.appendChild(vw);
-    if(isOwn){const dots=document.createElement('button');dots.className='pg-dots';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'');};card.appendChild(dots);}
+    {const dots=document.createElement('button');dots.className='pg-dots';dots.textContent='⋯';dots.onclick=e=>{e.stopPropagation();openDotsMenu(v.id,v.title||'',v.description||'',isOwn);};card.appendChild(dots);}
     grid.appendChild(card);
   });
 }
 
 // ── DOTS MENU ─────────────────────────────────────────────────────────────────
-function openDotsMenu(id,title,desc){
+function openDotsMenu(id,title,desc,isOwn){
   _dotsVid={id,title,desc};
   document.getElementById('dotsMenu').classList.add('open');
   document.getElementById('dotsBack').classList.add('on');
+  // Show/hide owner-only options
+  const showOwn = isOwn ? '' : 'none';
+  document.getElementById('dmEdit').style.display = showOwn;
+  document.getElementById('dmEditSep').style.display = showOwn;
+  document.getElementById('dmDelete').style.display = showOwn;
 }
 function closeDotsMenu(){document.getElementById('dotsMenu').classList.remove('open');document.getElementById('dotsBack').classList.remove('on');}
+function openReportMenu(){
+  closeDotsMenu();
+  document.getElementById('reportMenu').style.display='block';
+  document.getElementById('reportMenu').classList.add('open');
+  document.getElementById('reportBack').style.display='block';
+  document.getElementById('reportBack').classList.add('on');
+}
+function closeReportMenu(){
+  document.getElementById('reportMenu').classList.remove('open');
+  document.getElementById('reportBack').classList.remove('on');
+  setTimeout(()=>{document.getElementById('reportMenu').style.display='none';document.getElementById('reportBack').style.display='none';},300);
+}
+async function submitReport(reason){
+  closeReportMenu();
+  if(!_dotsVid?.id)return;
+  const tk=localStorage.getItem('bt_token');
+  try{
+    await fetch('/api/blue-maintenance',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'report-video',video_id:_dotsVid.id,reason,token:tk})});
+    toast('⚑ Denúncia enviada. Obrigado!');
+  }catch(e){toast('Erro ao denunciar');}
+}
 function startEditVideo(){
   closeDotsMenu();
   if(!_dotsVid)return;
@@ -1579,6 +1646,43 @@ function renderFeed(){
   document.getElementById('empty').classList.remove('on');
   videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
   setupObs();
+  setupInfiniteScroll();
+}
+
+async function loadMoreFeed(){
+  if(_feedLoading || !_feedHasMore || !_feedCursor) return;
+  _feedLoading=true;
+  try{
+    const r=await fetch(`/api/blue-feed?limit=10&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}`);
+    if(!r.ok) return;
+    const d=await r.json();
+    const newVids=(d.videos||[]).filter(v=>v&&v.video_url);
+    if(!newVids.length){_feedHasMore=false;return;}
+    _feedHasMore=d.has_more||false;
+    _feedCursor=d.next_cursor||null;
+    const feed=document.getElementById('feed');
+    const startIdx=videos.length;
+    newVids.forEach((v,i)=>{
+      videos.push(v);
+      const s=mkSlide(v,startIdx+i);
+      if(s) feed.appendChild(s);
+    });
+    setupObs();
+    console.log('Loaded more:',newVids.length,'total:',videos.length,'hasMore:',_feedHasMore);
+  }catch(e){console.error('loadMore error:',e);}
+  finally{_feedLoading=false;}
+}
+
+let _scrollObs=null;
+function setupInfiniteScroll(){
+  if(_scrollObs) _scrollObs.disconnect();
+  _scrollObs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{if(e.isIntersecting) loadMoreFeed();});
+  },{threshold:0.1});
+  // Observe the last 2 slides
+  const slides=document.querySelectorAll('#feed .slide');
+  if(slides.length>=2) _scrollObs.observe(slides[slides.length-2]);
+  if(slides.length>=1) _scrollObs.observe(slides[slides.length-1]);
 }
 
 // ── INIT AUTH ─────────────────────────────────────────────────────────────────

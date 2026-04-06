@@ -58,7 +58,22 @@ module.exports = async function handler(req, res) {
       patch.skip_rate = totalViews > 0
         ? ((v.skip_rate || 0) * (totalViews - 1) + (skipped ? 100 : 0)) / totalViews
         : 0;
-    } else if (type === 'like')   { patch.likes = Math.max(0, (v.likes || 0) + 1); }
+    } else if (type === 'like') {
+      patch.likes = Math.max(0, (v.likes || 0) + 1);
+      // Notify video owner
+      if (user_id && v.user_id && v.user_id !== user_id) {
+        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
+          .then(r => r.ok ? r.json() : []).then(p => {
+            const uname = p?.[0]?.username || 'alguém';
+            fetch(`${SU}/rest/v1/blue_notifications`, {
+              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+              body: JSON.stringify({
+                user_id: v.user_id, type: 'like', from_user_id: user_id, video_id,
+                message: `@${uname} curtiu seu vídeo`, read: false
+              })
+            }).catch(() => {});
+          }).catch(() => {});
+      }
     else if (type === 'unlike')   { patch.likes = Math.max(0, (v.likes || 0) - 1); }
     else if (type === 'save')     { patch.saves = Math.max(0, (v.saves || 0) + 1); }
     else if (type === 'unsave')   { patch.saves = Math.max(0, (v.saves || 0) - 1); }

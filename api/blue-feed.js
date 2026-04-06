@@ -1,4 +1,4 @@
-// api/blue-feed.js — Feed de vídeos simples e confiável
+// api/blue-feed.js — Feed de vídeos com paginação por cursor
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,24 +10,36 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
 
   const h = { apikey: SK, Authorization: 'Bearer ' + SK };
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  const cursor = req.query.cursor; // ISO timestamp of last seen video's created_at
 
   try {
-    // Busca todos os vídeos ativos ordenados por score e data
-    const r = await fetch(
-      `${SU}/rest/v1/blue_videos?status=eq.active&order=score.desc,created_at.desc&limit=${limit}&select=*`,
-      { headers: h }
-    );
+    // Build query with cursor-based pagination
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc&limit=${limit + 1}&select=*`;
+    if (cursor) {
+      url += `&created_at=lt.${cursor}`;
+    }
 
+    const r = await fetch(url, { headers: h });
     if (!r.ok) {
       const err = await r.text();
       console.error('blue-feed error:', r.status, err);
-      return res.status(200).json({ videos: [], error: r.status + ': ' + err.slice(0,100) });
+      return res.status(200).json({ videos: [], has_more: false });
     }
 
-    const videos = await r.json();
+    const raw = await r.json();
 
-    // Busca perfis dos criadores
+    // Filter safety: double-check status and video_url
+    const safe = raw.filter(v => v.video_url && v.status === 'active');
+
+    // Determine has_more: if we got limit+1 results, there are more
+    const has_more = safe.length > limit;
+    const videos = has_more ? safe.slice(0, limit) : safe;
+
+    // Next cursor = created_at of last video returned
+    const next_cursor = videos.length > 0 ? videos[videos.length - 1].created_at : null;
+
+    // Enrich with creator profiles
     const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
     let profiles = {};
     if (userIds.length > 0) {
@@ -41,17 +53,14 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Double-check: filter out anything without valid video_url or non-active status
-    const safe = videos.filter(v => v.video_url && v.status === 'active');
-
-    const enriched = safe.map(v => ({
+    const enriched = videos.map(v => ({
       ...v,
       creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' }
     }));
 
-    return res.status(200).json({ videos: enriched });
+    return res.status(200).json({ videos: enriched, has_more, next_cursor });
   } catch(err) {
     console.error('blue-feed fatal:', err.message);
-    return res.status(500).json({ error: err.message, videos: [] });
+    return res.status(500).json({ error: err.message, videos: [], has_more: false });
   }
 };

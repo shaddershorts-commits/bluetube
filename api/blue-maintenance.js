@@ -17,6 +17,52 @@ module.exports = async function handler(req, res) {
   const H = { 'apikey': SK, 'Authorization': `Bearer ${SK}`, 'Content-Type': 'application/json' };
   const now = new Date().toISOString();
 
+  // ── REPORT VIDEO (user report: inappropriate, spam, etc) ────────────────────
+  if (req.method === 'POST' && req.body?.action === 'report-video') {
+    const { video_id, reason, token } = req.body;
+    if (!video_id || !reason) return res.status(400).json({ error: 'Missing fields' });
+    let reporterId = null;
+    if (token) {
+      try {
+        const AK = process.env.SUPABASE_ANON_KEY || SK;
+        const ur = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+        if (ur.ok) reporterId = (await ur.json()).id;
+      } catch(e) {}
+    }
+    try {
+      await fetch(`${SU}/rest/v1/blue_reports`, {
+        method: 'POST', headers: { ...H, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ video_id, reporter_id: reporterId, reason, status: 'pending', created_at: now })
+      });
+      // Check total reports for this video → auto under_review at 5
+      const cr = await fetch(`${SU}/rest/v1/blue_reports?video_id=eq.${video_id}&select=id`, { headers: H });
+      if (cr.ok) {
+        const reports = await cr.json();
+        if (reports.length >= 5) {
+          await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&status=eq.active`, {
+            method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ status: 'under_review' })
+          });
+          // Notify admin
+          if (RESEND_KEY && ADMIN_EMAIL) {
+            fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
+              body: JSON.stringify({
+                from: 'BlueTube <onboarding@resend.dev>', to: [ADMIN_EMAIL],
+                subject: `⚑ Vídeo com 5+ denúncias — ${video_id}`,
+                html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><h3 style="color:#ff7a5a">⚑ Vídeo denunciado 5+ vezes</h3><p>ID: ${video_id}</p><p>Última razão: ${reason}</p><p>Total: ${reports.length} denúncias</p><p>Status: under_review (removido do feed automaticamente)</p><a href="https://bluetubeviral.com/admin.html" style="color:#00aaff">Abrir painel admin →</a></div>`
+              })
+            }).catch(() => {});
+          }
+        }
+      }
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(200).json({ ok: false, error: e.message });
+    }
+  }
+
   // ── REPORT BROKEN (from frontend) ──────────────────────────────────────────
   if (req.method === 'POST' && req.body?.action === 'report-broken') {
     const { video_id } = req.body;
