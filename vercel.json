@@ -1,23 +1,38 @@
 {
   "version": 2,
   "functions": {
-    "api/transcript.js": {
-      "maxDuration": 60
-    },
-    "api/auth.js": {
-      "maxDuration": 60
-    },
-    "api/payment-monitor.js": {
-      "maxDuration": 60
-    },
-    "api/monitor.js": {
-      "maxDuration": 60
-    }
+    "api/transcript.js": { "maxDuration": 60 },
+    "api/auth.js": { "maxDuration": 60 },
+    "api/payment-monitor.js": { "maxDuration": 60 },
+    "api/monitor.js": { "maxDuration": 60 },
+    "api/blue-editor.js": { "maxDuration": 60 },
+    "api/generate-from-zero.js": { "maxDuration": 60 },
+    "api/rewrite.js": { "maxDuration": 60 }
   },
   "crons": [
     {
       "path": "/api/payment-monitor",
       "schedule": "*/10 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" }
+      ]
+    },
+    {
+      "source": "/blueEditor.html",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" }
+      ]
     }
   ]
 }
