@@ -58,6 +58,37 @@ export default async function handler(req, res) {
     'Authorization': `Bearer ${SUPABASE_KEY}`
   };
 
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+  const _now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const _prices = { full: 'R$29,99', master: 'R$89,99' };
+
+  async function notifyStripe(subject, rows) {
+    if (!RESEND_KEY || !ADMIN_EMAIL) return;
+    const body = rows.map(([k, v]) => `<tr><td style="padding:8px 12px;color:rgba(150,190,230,.5);font-size:12px;white-space:nowrap">${k}</td><td style="padding:8px 12px;font-size:13px;font-weight:600">${v}</td></tr>`).join('');
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
+        body: JSON.stringify({
+          from: 'BlueTube <onboarding@resend.dev>',
+          to: [ADMIN_EMAIL],
+          subject,
+          html: `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;background:#0a1628;color:#e8f4ff;border-radius:16px;overflow:hidden;border:1px solid rgba(0,170,255,.2)">
+            <div style="background:linear-gradient(135deg,#1a6bff,#00aaff);padding:18px 24px">
+              <div style="font-size:16px;font-weight:800;color:#fff">${subject}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:4px">${_now}</div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;padding:8px">${body}</table>
+            <div style="padding:16px 24px;border-top:1px solid rgba(0,170,255,.08)">
+              <a href="https://dashboard.stripe.com" style="color:#00aaff;font-size:12px;text-decoration:none">Abrir Stripe Dashboard →</a>
+            </div>
+          </div>`
+        })
+      });
+    } catch (e) { console.error('Resend error:', e.message); }
+  }
+
   try {
 
     // ── CHECKOUT CONCLUÍDO → Ativa plano ─────────────────────────────────────
@@ -124,6 +155,15 @@ export default async function handler(req, res) {
 
       console.log(`✅ Plan activated: ${email} → ${plan} (${billing})`);
 
+      // Email para admin
+      notifyStripe(`💰 Nova assinatura — ${plan.toUpperCase()} — ${email}`, [
+        ['Cliente', email],
+        ['Plano', `${plan === 'master' ? '👑' : '⚡'} ${plan.toUpperCase()}`],
+        ['Valor', _prices[plan] || 'N/A'],
+        ['Billing', billing === 'annual' ? 'Anual' : 'Mensal'],
+        ['Stripe ID', customerId || '—'],
+      ]).catch(() => {});
+
       // Notifica sistema de afiliados — conversão paga
       const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
       fetch(`${SITE_URL}/api/auth`, {
@@ -185,6 +225,14 @@ export default async function handler(req, res) {
       // Loga para visibilidade no admin
       console.log(`⚠️ Payment failed: ${email} — tentativa ${attemptCount}/3`);
 
+      notifyStripe(`⚠️ Pagamento falhou — ${email}`, [
+        ['Cliente', email],
+        ['Plano', subs?.[0]?.plan?.toUpperCase() || '—'],
+        ['Tentativa', `${attemptCount}/3`],
+        ['Status', attemptCount >= 3 ? '🔴 Downgrade automático' : '🟡 Aguardando retry'],
+        ['Stripe ID', customerId || '—'],
+      ]).catch(() => {});
+
       // Na 3ª falha, faz downgrade preventivo
       if (attemptCount >= 3) {
         await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
@@ -236,6 +284,13 @@ export default async function handler(req, res) {
 
       console.log(`⬇️ Subscription cancelled: ${cancelledEmail || customerId} | Active until: ${expiresAt.toISOString()} | Still active: ${stillActive}`);
 
+      notifyStripe(`😢 Cancelamento — ${currentPlan.toUpperCase()} — ${cancelledEmail || customerId}`, [
+        ['Cliente', cancelledEmail || customerId],
+        ['Plano cancelado', `${currentPlan === 'master' ? '👑' : '⚡'} ${currentPlan.toUpperCase()}`],
+        ['Acesso até', stillActive ? expiresAt.toLocaleDateString('pt-BR') : 'Imediato'],
+        ['Status', stillActive ? '🟡 Ativo até fim do período' : '🔴 Rebaixado para Free'],
+      ]).catch(() => {});
+
       // Cancela comissões do afiliado (apenas quando rebaixar de verdade)
       if (cancelledEmail && !stillActive) {
         const SITE_URL_C = process.env.SITE_URL || 'https://bluetubeviral.com';
@@ -277,6 +332,13 @@ export default async function handler(req, res) {
               })
             });
             console.log(`📅 Cancel scheduled: ${email} — expires ${periodEnd.toISOString()}`);
+
+            notifyStripe(`🔄 Cancelamento agendado — ${currentPlan.toUpperCase()} — ${email}`, [
+              ['Cliente', email],
+              ['Plano', `${currentPlan === 'master' ? '👑' : '⚡'} ${currentPlan.toUpperCase()}`],
+              ['Acesso até', periodEnd.toLocaleDateString('pt-BR')],
+              ['Status', '📅 Cancelamento agendado — acesso mantido até fim do período'],
+            ]).catch(() => {});
           }
         }
       }
