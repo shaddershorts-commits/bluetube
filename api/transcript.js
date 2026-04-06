@@ -1,11 +1,6 @@
 // api/transcript.js — Vercel Serverless Function
 // Hides the Supadata API key on the server side.
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { applyRateLimit } = require('./helpers/rate-limit.js');
-const { cacheKey, getCache, setCache } = require('./helpers/cache.js');
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -14,8 +9,21 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Rate limit
-  if (await applyRateLimit(req, res)) return;
+  // Rate limit (inline for ESM compatibility)
+  {
+    const rlIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+    const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+    if (SU && SK && rlIp) {
+      try {
+        const windowStart = new Date(Date.now() - 60000).toISOString();
+        const cr = await fetch(`${SU}/rest/v1/rate_limits?ip=eq.${encodeURIComponent(rlIp)}&endpoint=eq.${encodeURIComponent('/api/transcript')}&window_start=gte.${windowStart}&select=count`, {
+          headers: { 'apikey': SK, 'Authorization': `Bearer ${SK}` }, signal: AbortSignal.timeout(3000)
+        });
+        if (cr.ok) { const cd = await cr.json(); if ((cd?.length || 0) >= 10) { res.setHeader('Retry-After','60'); return res.status(429).json({ error:'Muitas requisições. Aguarde 1 minuto.', retry_after:60 }); } }
+        fetch(`${SU}/rest/v1/rate_limits`, { method:'POST', headers:{'Content-Type':'application/json','apikey':SK,'Authorization':`Bearer ${SK}`,'Prefer':'return=minimal'}, body:JSON.stringify({ip:rlIp,endpoint:'/api/transcript',count:1,window_start:new Date().toISOString()}) }).catch(()=>{});
+      } catch(e){}
+    }
+  }
 
   const { videoId } = req.query;
 
@@ -28,9 +36,17 @@ export default async function handler(req, res) {
   }
 
   // Check cache
-  const ck = cacheKey(['transcript', videoId]);
-  const cached = await getCache(ck, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-  if (cached) return res.status(200).json(cached);
+  const crypto = await import('crypto');
+  const ck = crypto.createHash('md5').update('transcript|'+videoId).digest('hex');
+  const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+  if (SU && SK) {
+    try {
+      const cr = await fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${ck}&expires_at=gt.${new Date().toISOString()}&select=value&limit=1`, {
+        headers: { 'apikey': SK, 'Authorization': `Bearer ${SK}` }, signal: AbortSignal.timeout(3000)
+      });
+      if (cr.ok) { const cd = await cr.json(); if (cd?.[0]?.value) return res.status(200).json(cd[0].value); }
+    } catch(e){}
+  }
 
   const SUPADATA_KEY = process.env.SUPADATA_API_KEY;
   if (!SUPADATA_KEY) {
@@ -85,7 +101,12 @@ export default async function handler(req, res) {
     }
 
     // Cache successful response for 24h
-    setCache(ck, data, 24, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).catch(() => {});
+    if (SU && SK) {
+      fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${ck}`, { method:'DELETE', headers:{'apikey':SK,'Authorization':`Bearer ${SK}`} }).catch(()=>{});
+      fetch(`${SU}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':SK,'Authorization':`Bearer ${SK}`,'Prefer':'return=minimal'},
+        body:JSON.stringify({cache_key:ck,value:data,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+24*3600*1000).toISOString()})
+      }).catch(()=>{});
+    }
 
     return res.status(200).json(data);
 

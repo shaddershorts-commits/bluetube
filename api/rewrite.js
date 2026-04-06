@@ -2,10 +2,9 @@
 // Super Prompt literal + Supabase real viral examples as living memory
 // Primary: OpenAI GPT-4o mini | Fallback: Gemini rotation
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { applyRateLimit } = require('./helpers/rate-limit.js');
-const { cacheKey, getCache, setCache } = require('./helpers/cache.js');
+// Helpers inlined for ESM compatibility on Vercel
+import crypto from 'crypto';
+function _ck(parts){ return crypto.createHash('md5').update(parts.join('|')).digest('hex'); }
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,7 +14,20 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Rate limit
-  if (await applyRateLimit(req, res)) return;
+  {
+    const rlIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+    const _SU = process.env.SUPABASE_URL, _SK = process.env.SUPABASE_SERVICE_KEY;
+    if (_SU && _SK && rlIp) {
+      try {
+        const ws = new Date(Date.now() - 60000).toISOString();
+        const cr = await fetch(`${_SU}/rest/v1/rate_limits?ip=eq.${encodeURIComponent(rlIp)}&endpoint=eq.${encodeURIComponent('/api/rewrite')}&window_start=gte.${ws}&select=count`, {
+          headers: { 'apikey': _SK, 'Authorization': `Bearer ${_SK}` }, signal: AbortSignal.timeout(3000)
+        });
+        if (cr.ok) { const cd = await cr.json(); if ((cd?.length || 0) >= 10) { res.setHeader('Retry-After','60'); return res.status(429).json({ error:'Muitas requisições. Aguarde 1 minuto.', retry_after:60 }); } }
+        fetch(`${_SU}/rest/v1/rate_limits`, { method:'POST', headers:{'Content-Type':'application/json','apikey':_SK,'Authorization':`Bearer ${_SK}`,'Prefer':'return=minimal'}, body:JSON.stringify({ip:rlIp,endpoint:'/api/rewrite',count:1,window_start:new Date().toISOString()}) }).catch(()=>{});
+      } catch(e){}
+    }
+  }
 
   const { transcript, lang, version, adjust } = req.body;
   if (!transcript || !lang) return res.status(400).json({ error: 'Transcrição e idioma são obrigatórios.' });
@@ -174,10 +186,15 @@ Aplique o ajuste mantendo: gancho forte, curiosidade crescente, corte máximo, p
 Escreva o roteiro agora. Apenas o texto final, nada mais.`;
 
   // ── CACHE — skip AI calls if same request was recently generated ──────────
-  if (!adjust) {
-    const ck = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
-    const cached = await getCache(ck, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    if (cached) return res.status(200).json(cached);
+  const _SU2 = process.env.SUPABASE_URL, _SK2 = process.env.SUPABASE_SERVICE_KEY;
+  const _ckRewrite = !adjust ? _ck(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']) : null;
+  if (_ckRewrite && _SU2 && _SK2) {
+    try {
+      const cr = await fetch(`${_SU2}/rest/v1/api_cache?cache_key=eq.${_ckRewrite}&expires_at=gt.${new Date().toISOString()}&select=value&limit=1`, {
+        headers: { 'apikey': _SK2, 'Authorization': `Bearer ${_SK2}` }, signal: AbortSignal.timeout(3000)
+      });
+      if (cr.ok) { const cd = await cr.json(); if (cd?.[0]?.value) return res.status(200).json(cd[0].value); }
+    } catch(e){}
   }
 
   // ── PRIMARY: OPENAI GPT-4o mini ───────────────────────────────────────────
@@ -216,9 +233,11 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
           .replace(/\n{2,}/g, ' ')
           .trim();
         const result = { text, engine: 'openai' };
-        if (!adjust) {
-          const ck = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
-          setCache(ck, result, 1, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).catch(() => {});
+        if (_ckRewrite && _SU2 && _SK2) {
+          fetch(`${_SU2}/rest/v1/api_cache?cache_key=eq.${_ckRewrite}`, { method:'DELETE', headers:{'apikey':_SK2,'Authorization':`Bearer ${_SK2}`} }).catch(()=>{});
+          fetch(`${_SU2}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':_SK2,'Authorization':`Bearer ${_SK2}`,'Prefer':'return=minimal'},
+            body:JSON.stringify({cache_key:_ckRewrite,value:result,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600*1000).toISOString()})
+          }).catch(()=>{});
         }
         return res.status(200).json(result);
       }
@@ -269,9 +288,11 @@ Escreva o roteiro agora. Apenas o texto final, nada mais.`;
         .replace(/\n{2,}/g, ' ')
         .trim();
       const result = { text, engine: 'gemini' };
-      if (!adjust) {
-        const ck2 = cacheKey(['rewrite', cleanTranscript.slice(0, 200), lang, version || 'V1']);
-        setCache(ck2, result, 1, process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).catch(() => {});
+      if (_ckRewrite && _SU2 && _SK2) {
+        fetch(`${_SU2}/rest/v1/api_cache?cache_key=eq.${_ckRewrite}`, { method:'DELETE', headers:{'apikey':_SK2,'Authorization':`Bearer ${_SK2}`} }).catch(()=>{});
+        fetch(`${_SU2}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':_SK2,'Authorization':`Bearer ${_SK2}`,'Prefer':'return=minimal'},
+          body:JSON.stringify({cache_key:_ckRewrite,value:result,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600*1000).toISOString()})
+        }).catch(()=>{});
       }
       return res.status(200).json(result);
     } catch (e) { continue; }
