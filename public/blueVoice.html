@@ -509,12 +509,13 @@ async function loadCustomVoices() {
 
   if (!token) return;
 
-  // 2. Busca do Supabase
+  // 2. Busca do Supabase (próprias + comunidade)
   try {
     const r = await fetch('/api/blue-voices?token=' + encodeURIComponent(token));
     if (!r.ok) { console.warn('blue-voices:', r.status); return; }
     const d = await r.json();
     let added = 0;
+    // Minhas vozes
     (d.voices || []).forEach(v => {
       const vid = v.voice_id || v.id;
       if (vid && !VOICES.find(x => x.id === vid)) {
@@ -522,7 +523,15 @@ async function loadCustomVoices() {
         added++;
       }
     });
-    if (added > 0) { console.log('Supabase: +'+added+' vozes'); renderVoices(); }
+    // Vozes da comunidade Master
+    (d.community || []).forEach(v => {
+      const vid = v.voice_id || v.id;
+      if (vid && !VOICES.find(x => x.id === vid)) {
+        VOICES.push({ id: vid, name: v.name||'Voz da comunidade', lang: 'pt', flag: '🌐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Voz importada pela comunidade', custom: true, community: true });
+        added++;
+      }
+    });
+    if (added > 0) { console.log('Supabase: +'+added+' vozes (próprias + comunidade)'); renderVoices(); }
   } catch(e) { console.warn('loadCustomVoices:', e.message); }
 }
 async function addCustomVoice() {
@@ -619,13 +628,13 @@ function renderVoices() {
     return;
   }
 
-  // Group: show custom voices at top with a separator
-  const customVoices = filtered.filter(v => v.custom);
+  // Group: my voices → community voices → standard voices
+  const myVoices = filtered.filter(v => v.custom && !v.community);
+  const communityVoices = filtered.filter(v => v.custom && v.community);
   const standardVoices = filtered.filter(v => !v.custom);
-  const ordered = [...customVoices, ...standardVoices];
+  const ordered = [...myVoices, ...communityVoices, ...standardVoices];
 
-  list.innerHTML = (customVoices.length > 0 ? '<div style="font-family:var(--mono);font-size:10px;color:rgba(0,170,255,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">⭐ Minhas Vozes</div>' : '') +
-  ordered.map(v => `
+  function voiceCard(v){ return `
     <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}" onclick="selectVoice('${v.id}')">
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
         ${favorites.has(v.id) ? '★' : '☆'}
@@ -645,8 +654,13 @@ function renderVoices() {
           Ouvir
         </button>
       </div>
-    </div>
-  `).join('');
+    </div>`;}
+
+  let html = '';
+  if (myVoices.length > 0) html += '<div style="font-family:var(--mono);font-size:10px;color:rgba(0,170,255,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">⭐ Minhas Vozes</div>' + myVoices.map(voiceCard).join('');
+  if (communityVoices.length > 0) html += '<div style="font-family:var(--mono);font-size:10px;color:rgba(167,139,250,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">🌐 Vozes da Comunidade</div>' + communityVoices.map(voiceCard).join('');
+  if (standardVoices.length > 0) html += (myVoices.length || communityVoices.length ? '<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">🎙️ Vozes Padrão</div>' : '') + standardVoices.map(voiceCard).join('');
+  list.innerHTML = html;
 }
 
 function setFilter(type, val, btn) {

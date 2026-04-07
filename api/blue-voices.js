@@ -82,15 +82,38 @@ module.exports = async function handler(req, res) {
     userId = (await uR.json()).id;
   } catch(e) { return res.status(401).json({ error: 'Token inválido' }); }
 
-  // GET — lista vozes do usuário
+  // GET — lista vozes do usuário + vozes compartilhadas da comunidade Master
   if (req.method === 'GET') {
     try {
+      // 1. Vozes próprias do usuário
       const r = await fetch(
         `${SU}/rest/v1/blue_custom_voices?user_id=eq.${userId}&order=created_at.asc&select=*`,
         { headers: h }
       );
-      const voices = r.ok ? await r.json() : [];
-      return res.status(200).json({ voices });
+      const myVoices = r.ok ? await r.json() : [];
+      const myIds = new Set(myVoices.map(v => v.voice_id));
+
+      // 2. Vozes da comunidade (todos os outros usuários Master)
+      let communityVoices = [];
+      try {
+        // Busca todas as vozes customizadas de todos os usuários
+        const cr = await fetch(
+          `${SU}/rest/v1/blue_custom_voices?user_id=neq.${userId}&order=created_at.desc&limit=50&select=voice_id,name,user_id,created_at`,
+          { headers: h }
+        );
+        if (cr.ok) {
+          const all = await cr.json();
+          // Remove duplicatas (mesmo voice_id)
+          const seen = new Set();
+          communityVoices = all.filter(v => {
+            if (myIds.has(v.voice_id) || seen.has(v.voice_id)) return false;
+            seen.add(v.voice_id);
+            return true;
+          }).map(v => ({ ...v, community: true }));
+        }
+      } catch(e) {}
+
+      return res.status(200).json({ voices: myVoices, community: communityVoices });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
