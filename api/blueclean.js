@@ -122,10 +122,11 @@ module.exports = async function handler(req, res) {
       if (vr.ok) { const vd = await vr.json(); ver = vd.results?.[0]?.id; }
       if (!ver) return res.status(500).json({ error: 'Modelo indisponível.' });
 
-      // Auto mode: standard detection. Manual mode: more aggressive params
+      // Standard: hybrid (context-aware TELEA) — best quality for complex backgrounds
+      // Aggressive: hybrid + lower thresholds + larger margin + every frame detection
       const input = mode === 'mask'
-        ? { video: video_url, method: 'hybrid', conf_threshold: 0.10, iou_threshold: 0.2, margin: 20, resolution: 'original', detection_interval: 1 }
-        : { video: video_url, method: 'inpaint', conf_threshold: 0.15, iou_threshold: 0.3, margin: 15, resolution: 'original', detection_interval: 1 };
+        ? { video: video_url, method: 'hybrid', conf_threshold: 0.08, iou_threshold: 0.15, margin: 20, resolution: 'original', detection_interval: 1 }
+        : { video: video_url, method: 'hybrid', conf_threshold: 0.20, iou_threshold: 0.35, margin: 10, resolution: 'original', detection_interval: 3 };
 
       console.log('[blueclean] Input:', JSON.stringify(input).slice(0, 200));
 
