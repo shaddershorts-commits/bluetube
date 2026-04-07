@@ -31,7 +31,8 @@ module.exports = async function handler(req, res) {
     if (testEmail) {
       users = [{ email: testEmail }];
     } else {
-      const ur = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.false&select=email&limit=500`, { headers: H });
+      // Buscar direto de subscribers (mais confiável que email_marketing)
+      const ur = await fetch(`${SU}/rest/v1/subscribers?select=email&limit=500`, { headers: H });
       users = ur.ok ? await ur.json() : [];
     }
 
