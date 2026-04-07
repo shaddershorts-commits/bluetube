@@ -1184,7 +1184,10 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
   if (req.body?.action === 'tts') {
-    const XI_KEY = req.body.user_xi_key || process.env.ELEVENLABS_API_KEY;
+    const userKey = req.body.user_xi_key;
+    const sysKey = process.env.ELEVENLABS_API_KEY;
+    // Try user key first (for cloned voices), then system key
+    const XI_KEY = (userKey && userKey.length > 10) ? userKey : sysKey;
     if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado.' });
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
@@ -1207,11 +1210,23 @@ Responda APENAS em JSON válido sem markdown:
       });
 
       if (!ttsRes.ok) {
+        // Retry with the other key if available
+        const fallbackKey = XI_KEY === userKey ? sysKey : (userKey && userKey.length > 10 ? userKey : null);
+        if (fallbackKey && fallbackKey !== XI_KEY) {
+          console.log('[tts] Retrying with fallback key');
+          const retryRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'xi-api-key': fallbackKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+            body: JSON.stringify({ text, model_id: modelId, voice_settings: { stability, similarity_boost: similarity, style: 0.4, use_speaker_boost: true } })
+          });
+          if (retryRes.ok) {
+            const buf = await retryRes.arrayBuffer();
+            return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3' });
+          }
+        }
         const err = await ttsRes.json().catch(()=>({}));
-        const errMsg = err.detail?.message || err.detail?.status || err.detail || 'Serviço de voz indisponível';
-        // Nunca expõe nome do provedor ao usuário
-        console.error('TTS error:', errMsg);
-        return res.status(400).json({ error: 'Falha ao gerar narração. Verifique o texto e tente novamente.' });
+        console.error('TTS error:', err.detail?.message || err.detail || 'unknown');
+        return res.status(400).json({ error: 'Falha ao gerar narração. Esta voz pode não estar acessível.' });
       }
 
       const audioBuffer = await ttsRes.arrayBuffer();

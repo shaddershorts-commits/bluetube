@@ -841,12 +841,12 @@ async function previewVoice(id, event) {
     audio.onended = () => { if (btn) btn.innerHTML = playIcon; currentPreview = null; };
   } catch(e) {
     if (btn) { btn.innerHTML = playIcon; btn.disabled = false; }
+    const hasUserKey = !!localStorage.getItem('bt_xi_key');
     const isCustom = voice?.custom || voice?.community;
-    if (btn) { btn.innerHTML = playIcon; btn.disabled = false; }
-    if (isCustom) {
-      showToast('⚠ Esta voz clonada não está acessível pela conta do BlueTube. Para usar vozes clonadas, a voz precisa estar na conta ElevenLabs vinculada ao BlueTube.');
+    if (isCustom && !hasUserKey) {
+      showToast('⚠ Prévia indisponível. Insira sua API Key do ElevenLabs ao importar a voz para habilitar a prévia e narração.');
     } else {
-      showToast('Prévia indisponível: ' + (e.message || 'tente novamente'));
+      showToast('⚠ Prévia indisponível. A voz pode funcionar na narração — teste gerando um áudio.');
     }
   }
 }
