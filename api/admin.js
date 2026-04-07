@@ -276,6 +276,29 @@ export default async function handler(req, res) {
     return res.status(200).json({ data, total, page, pages: Math.ceil(total / limit), has_more: offset + limit < total });
   }
 
+  // ── EMAIL MARKETING STATS ────────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'email_marketing_stats') {
+    try {
+      const [allRes, unsubRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/email_marketing?select=email,total_sent,last_sent_at,unsubscribed,sequence_position&order=last_sent_at.desc.nullslast&limit=200`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/email_marketing?unsubscribed=eq.true&select=email`, { headers }),
+      ]);
+      const all = allRes.ok ? await allRes.json() : [];
+      const unsubs = unsubRes.ok ? await unsubRes.json() : [];
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+      const sentThisWeek = all.filter(e => e.last_sent_at && e.last_sent_at > weekAgo).length;
+      const totalSent = all.reduce((s, e) => s + (e.total_sent || 0), 0);
+      return res.status(200).json({
+        total_list: all.length,
+        total_unsubscribed: unsubs.length,
+        unsub_rate: all.length > 0 ? ((unsubs.length / all.length) * 100).toFixed(1) : '0',
+        sent_this_week: sentThisWeek,
+        total_sent: totalSent,
+        recent: all.filter(e => e.last_sent_at).slice(0, 10)
+      });
+    } catch (e) { return res.status(200).json({ error: e.message }); }
+  }
+
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];

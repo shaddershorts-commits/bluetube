@@ -381,6 +381,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div id="bmLog" style="font-family:var(--mono);font-size:11px;color:var(--dim)"></div>
     </div>
 
+    <!-- EMAIL MARKETING -->
+    <div class="section" id="emailMarketingSection">
+      <div class="section-header">
+        <div class="section-title">📧 Email Marketing <span class="section-subtitle">— campanhas automáticas · terças e sextas</span></div>
+        <button class="action-btn" onclick="triggerEmailMarketing()">▶ Disparar agora</button>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Na lista</div><div class="stat-value blue" id="emTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Descadastros</div><div class="stat-value" style="color:var(--red)" id="emUnsub">—</div><div class="stat-sub" id="emUnsubRate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Enviados esta semana</div><div class="stat-value green" id="emWeek">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total enviados</div><div class="stat-value yellow" id="emSent">—</div></div>
+      </div>
+      <div class="table-wrap" id="emTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <div class="section" id="learningSection">
       <div class="section-header">
         <div class="section-title">🧠 Aprendizado da IA <span class="section-subtitle">— few-shot dinâmico por feedback dos usuários</span></div>
@@ -806,6 +821,7 @@ async function loadData(){
 
     // 🛡️ Moderação + 🎬 Blue Health
     loadModeration();
+    loadEmailMarketing();
     loadBlueHealth();
 
     // 🤝 Afiliados
@@ -1021,6 +1037,38 @@ async function setPlan(){
 }
 
 // Moderation
+// Email Marketing
+async function loadEmailMarketing(){
+  try{
+    const r=await fetch('/api/admin?action=email_marketing_stats',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    document.getElementById('emTotal').textContent=d.total_list||0;
+    document.getElementById('emUnsub').textContent=d.total_unsubscribed||0;
+    document.getElementById('emUnsubRate').textContent=(d.unsub_rate||0)+'% taxa';
+    document.getElementById('emWeek').textContent=d.sent_this_week||0;
+    document.getElementById('emSent').textContent=d.total_sent||0;
+    if(d.recent?.length){
+      document.getElementById('emTable').innerHTML=`<table><thead><tr><th>Email</th><th>Posição</th><th>Enviados</th><th>Último envio</th></tr></thead><tbody>${d.recent.map(e=>`<tr>
+        <td style="color:var(--text)">${e.email}</td>
+        <td style="color:var(--neon)">${e.sequence_position||0}/7</td>
+        <td>${e.total_sent||0}</td>
+        <td style="color:var(--dim);font-size:11px">${e.last_sent_at?new Date(e.last_sent_at).toLocaleDateString('pt-BR'):'—'}</td>
+      </tr>`).join('')}</tbody></table>`;
+    }else{document.getElementById('emTable').innerHTML='<div class="empty-state">Nenhum envio registrado ainda.</div>';}
+  }catch(e){}
+}
+async function triggerEmailMarketing(){
+  const btn=document.querySelector('#emailMarketingSection .action-btn');
+  if(btn){btn.textContent='⏳ Enviando…';btn.disabled=true;}
+  try{
+    const r=await fetch('/api/email-marketing',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    toast(`📧 ${d.sent||0} emails enviados, ${d.synced||0} sincronizados`);
+    loadEmailMarketing();
+  }catch(e){toast('Erro: '+e.message);}
+  if(btn){btn.textContent='▶ Disparar agora';btn.disabled=false;}
+}
+
 async function loadModeration(){
   try{
     const r=await fetch('/api/admin?action=moderation',{headers:{'Authorization':`Bearer ${adminKey}`}});
