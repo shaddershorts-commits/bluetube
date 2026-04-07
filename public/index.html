@@ -1837,7 +1837,9 @@ async function handleEmailLogin(){
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     // Email not confirmed → show OTP
     if(d.needsOTP){setAuthMsg('','');showOTPForm(email);return;}
-    if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
+    if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
+    // Save credentials for auto re-login when token expires
+    if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,password);
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
       closeAuthModal();
@@ -2873,7 +2875,9 @@ function showFreeUserPopup(){
 
 function doLogout(){
   localStorage.removeItem('bt_token');
+  localStorage.removeItem('bt_refresh_token');
   localStorage.removeItem('bt_plan');
+  localStorage.removeItem('bt_saved_cred');
   location.reload();
 }
 

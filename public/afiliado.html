@@ -368,6 +368,8 @@ async function doLogin(){
     token=d.session?.access_token;
     if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Entrar →';return;}
     localStorage.setItem('bt_token',token);
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+    if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,pwd);
     hideAuth();
     // Verifica se já é afiliado ou precisa se cadastrar
     init();

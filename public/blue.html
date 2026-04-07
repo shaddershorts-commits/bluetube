@@ -1670,6 +1670,7 @@ async function doAuth(){
     if(!t){msg.textContent='Verifique seu email';btn.disabled=false;btn.textContent='Entrar →';return;}
     localStorage.setItem('bt_token',t);TOKEN=t;
     if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+    if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,pass);
     msg.style.color='#4ade80';msg.textContent='✅ Bem-vindo!';
     setTimeout(()=>{closeUpload();openUpload();loadFeed();initAuth();},800);
   }catch(e){msg.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}

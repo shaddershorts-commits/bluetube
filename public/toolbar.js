@@ -161,10 +161,10 @@ if ('serviceWorker' in navigator) {
     return window._btLoad(tool + '_results');
   };
 
-  // ── AUTO-REFRESH JWT TOKEN (every 45 min) ──────────────────────────────────
-  setInterval(async () => {
+  // ── PERSISTENT SESSION — refresh on load + every 15min + auto re-login ────
+  async function _btRefreshToken() {
     const refresh = localStorage.getItem('bt_refresh_token');
-    if (!refresh) return;
+    if (!refresh) return false;
     try {
       const r = await fetch('/api/auth', {
         method: 'POST',
@@ -175,9 +175,45 @@ if ('serviceWorker' in navigator) {
         const d = await r.json();
         const t = d.session?.access_token || d.access_token;
         const rf = d.session?.refresh_token;
-        if (t) { localStorage.setItem('bt_token', t); if (typeof TOKEN !== 'undefined') TOKEN = t; }
+        if (t) { localStorage.setItem('bt_token', t); if (typeof TOKEN !== 'undefined') TOKEN = t; return true; }
         if (rf) localStorage.setItem('bt_refresh_token', rf);
       }
     } catch (e) {}
-  }, 45 * 60 * 1000);
+    // Refresh failed — try saved credentials
+    return _btAutoRelogin();
+  }
+
+  async function _btAutoRelogin() {
+    try {
+      const saved = localStorage.getItem('bt_saved_cred');
+      if (!saved) return false;
+      const { e, p } = JSON.parse(atob(saved));
+      if (!e || !p) return false;
+      const r = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'signin', email: e, password: p })
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.session?.access_token) {
+          localStorage.setItem('bt_token', d.session.access_token);
+          if (d.session?.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+          if (typeof TOKEN !== 'undefined') TOKEN = d.session.access_token;
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // Save credentials for auto re-login (called from login handlers)
+  window._btSaveCredentials = function(email, password) {
+    try { localStorage.setItem('bt_saved_cred', btoa(JSON.stringify({ e: email, p: password }))); } catch(e) {}
+  };
+
+  // Refresh immediately on page load
+  _btRefreshToken();
+  // Refresh every 15 minutes
+  setInterval(_btRefreshToken, 15 * 60 * 1000);
 })();
