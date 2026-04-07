@@ -1830,6 +1830,8 @@ async function handleEmailLogin(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email,password})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
+    // Email not confirmed → show OTP
+    if(d.needsOTP){setAuthMsg('','');showOTPForm(email);return;}
     if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
