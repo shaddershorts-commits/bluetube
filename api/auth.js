@@ -1288,12 +1288,17 @@ Responda APENAS em JSON válido sem markdown:
             </div>`
           })
         });
-        console.log('[auth] Resend OTP email:', emailR.status);
+        const emailBody = await emailR.json().catch(() => ({}));
+        console.log('[auth] Resend OTP email:', emailR.status, JSON.stringify(emailBody).slice(0, 200));
+        if (!emailR.ok) {
+          return res.status(200).json({ session: null, needsOTP: true, emailError: emailBody.message || 'Falha ao enviar email' });
+        }
       } else {
         console.error('[auth] RESEND_API_KEY not set!');
+        return res.status(500).json({ error: 'Sistema de email não configurado.' });
       }
 
-      return res.status(200).json({ session: null, needsOTP: true });
+      return res.status(200).json({ session: null, needsOTP: true, emailSent: true });
     }
 
     // ── SIGN IN ───────────────────────────────────────────────────────────────

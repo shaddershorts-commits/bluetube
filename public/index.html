@@ -749,9 +749,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         </div>
         <div id="otpStatus" style="font-family:var(--font-mono);font-size:12px;min-height:18px;margin-bottom:12px"></div>
         <button class="auth-submit" onclick="submitOTPCode()" id="otpSubmitBtn" style="margin-bottom:10px">Verificar código →</button>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:8px">
           <span id="otpResendTimer"></span>
-          <button onclick="resendOTPCode()" id="otpResendBtn" style="display:none;font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline">Reenviar código</button>
+          <button onclick="resendOTPCode()" id="otpResendBtn" style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline">Reenviar código</button>
+          <div style="margin-top:8px;font-size:10px;color:var(--text-dim)">Verifique também a caixa de spam</div>
         </div>
       </div>
     </div>
