@@ -1313,8 +1313,8 @@ Responda APENAS em JSON válido sem markdown:
       }
 
       // Sem sessão = confirmação por email ativa → tenta auto-login, senão mostra OTP
+      // Se Supabase não retornou sessão, tenta auto-login
       if (!data.session) {
-        // Tenta login direto (funciona se Supabase auto-confirmou)
         try {
           const autoR = await fetch(`${authBase}/token?grant_type=password`, {
             method: 'POST', headers,
@@ -1323,12 +1323,45 @@ Responda APENAS em JSON válido sem markdown:
           if (autoR.ok) {
             const autoD = await autoR.json();
             if (autoD.access_token) {
-              return res.status(200).json({ user: data.user || autoD.user, session: autoD });
+              // Gera OTP customizado e envia via Resend
+              const otp = String(Math.floor(100000 + Math.random() * 900000));
+              // Salva OTP no Supabase (cache 10min)
+              if (SUPA_URL && SUPA_KEY) {
+                await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
+                  method: 'POST',
+                  headers: { ...supaH, 'Prefer': 'return=minimal' },
+                  body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
+                }).catch(() => {});
+                // Deleta cache antigo
+                await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=lt.${new Date().toISOString()}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+              }
+              // Envia OTP via Resend
+              const RESEND = process.env.RESEND_API_KEY;
+              if (RESEND) {
+                fetch('https://api.resend.com/emails', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
+                  body: JSON.stringify({
+                    from: 'BlueTube <onboarding@resend.dev>', to: [email],
+                    subject: otp + ' — Seu código de verificação BlueTube',
+                    html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px">
+                      <h1 style="color:#00aaff;margin-bottom:8px">BlueTube</h1>
+                      <p style="font-size:16px">Seu código de verificação:</p>
+                      <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0">
+                        <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span>
+                      </div>
+                      <p style="color:rgba(200,225,255,0.55);font-size:13px">Este código expira em 10 minutos.</p>
+                      <p style="color:rgba(200,225,255,0.55);font-size:13px">Se não foi você, ignore este email.</p>
+                    </div>`
+                  })
+                }).catch(e => console.error('[auth] OTP email error:', e.message));
+              }
+              return res.status(200).json({ user: data.user || autoD.user, session: null, needsOTP: true });
             }
           }
         } catch(e) {}
-        // Auto-login falhou → precisa confirmar email via OTP
-        return res.status(200).json({ user: data.user, session: null, needsOTP: true });
+        // Fallback: retorna sessão mesmo sem confirmação
+        return res.status(200).json({ user: data.user, session: data.session || null });
       }
       return res.status(200).json({ user: data.user, session: data.session });
     }
@@ -1349,19 +1382,26 @@ Responda APENAS em JSON válido sem markdown:
         if (msg.includes('Invalid login') || msg.includes('invalid')) {
           return res.status(400).json({ error: 'Email ou senha incorretos' });
         }
-        // Email não confirmado → tentar forçar login, senão pedir OTP
+        // Email não confirmado → gerar OTP customizado via Resend
         if (msg.includes('Email not confirmed')) {
-          // Tenta login direto (algumas configs do Supabase permitem)
-          try {
-            const forceR = await fetch(`${authBase}/token?grant_type=password`, {
-              method: 'POST', headers, body: JSON.stringify({ email, password })
-            });
-            if (forceR.ok) { const fd = await forceR.json(); if (fd.access_token) return res.status(200).json({ user: fd.user, session: fd }); }
-          } catch(e) {}
-          // Forçar falhou → reenviar OTP e mostrar form
-          try {
-            await fetch(`${authBase}/resend`, { method: 'POST', headers, body: JSON.stringify({ type: 'signup', email }) });
-          } catch(e) {}
+          const otp = String(Math.floor(100000 + Math.random() * 900000));
+          if (SUPA_URL && SUPA_KEY) {
+            await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+            await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
+              method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
+            }).catch(() => {});
+          }
+          const RESEND = process.env.RESEND_API_KEY;
+          if (RESEND) {
+            fetch('https://api.resend.com/emails', { method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
+              body: JSON.stringify({ from: 'BlueTube <onboarding@resend.dev>', to: [email],
+                subject: otp + ' — Seu código de verificação BlueTube',
+                html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
+              })
+            }).catch(() => {});
+          }
           return res.status(200).json({ session: null, needsOTP: true, error: null });
         }
         return res.status(400).json({ error: msg });
@@ -1397,46 +1437,77 @@ Responda APENAS em JSON válido sem markdown:
     if (action === 'send_otp') {
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
 
-      // Resend confirmation email (not magic link)
-      const r = await fetch(`${authBase}/resend`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          type: 'signup',
-          email,
-          options: {
-            emailRedirectTo: `${process.env.SITE_URL || 'https://bluetubeviral.com'}/`
-          }
-        })
-      });
-
-      if (!r.ok) {
-        const data = await r.json();
-        return res.status(400).json({ error: data.msg || 'Erro ao reenviar email' });
+      // Generate and send custom OTP via Resend
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // Save to cache
+      if (SUPA_URL && SUPA_KEY) {
+        // Get stored password from existing OTP cache (if resending)
+        let storedPwd = '';
+        try {
+          const old = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&select=value`, { headers: supaH });
+          if (old.ok) { const od = await old.json(); storedPwd = od?.[0]?.value?.password || ''; }
+        } catch(e) {}
+        await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+        await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password: storedPwd }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
+        }).catch(() => {});
+      }
+      const RESEND = process.env.RESEND_API_KEY;
+      if (RESEND) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
+          body: JSON.stringify({
+            from: 'BlueTube <onboarding@resend.dev>', to: [email],
+            subject: otp + ' — Seu código de verificação BlueTube',
+            html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código de verificação:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
+          })
+        });
       }
 
-      return res.status(200).json({ sent: true, message: 'Email de confirmação reenviado!' });
+      return res.status(200).json({ sent: true, message: 'Código enviado!' });
     }
 
     // ── VERIFY OTP ────────────────────────────────────────────────────────────
     if (action === 'verify_otp') {
       if (!email || !otp) return res.status(400).json({ error: 'Email e código são obrigatórios' });
 
-      const r = await fetch(`${authBase}/verify`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ email, token: otp, type: 'email' })
-      });
-      const data = await r.json();
+      // Check custom OTP from cache
+      try {
+        const cr = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: supaH });
+        if (cr.ok) {
+          const cd = await cr.json();
+          const stored = cd?.[0]?.value;
+          if (stored?.code === otp) {
+            // OTP correct → login with stored password
+            const loginR = await fetch(`${authBase}/token?grant_type=password`, {
+              method: 'POST', headers,
+              body: JSON.stringify({ email, password: stored.password })
+            });
+            if (loginR.ok) {
+              const loginD = await loginR.json();
+              // Delete used OTP
+              fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+              return res.status(200).json({ user: loginD.user, session: loginD });
+            }
+          }
+        }
+      } catch(e) { console.error('[auth] OTP verify error:', e.message); }
 
-      if (!r.ok) {
-        return res.status(400).json({ error: 'Código inválido ou expirado. Tente novamente.' });
-      }
+      // Fallback: try Supabase native verify
+      try {
+        const r = await fetch(`${authBase}/verify`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ email, token: otp, type: 'email' })
+        });
+        const data = await r.json();
+        if (r.ok && data.access_token) {
+          return res.status(200).json({ user: data.user, session: { access_token: data.access_token } });
+        }
+      } catch(e) {}
 
-      return res.status(200).json({
-        user: data.user,
-        session: { access_token: data.access_token }
-      });
+      return res.status(400).json({ error: 'Código inválido ou expirado. Tente novamente.' });
     }
 
     // ── UPDATE PASSWORD (using recovery token) ────────────────────────────────
