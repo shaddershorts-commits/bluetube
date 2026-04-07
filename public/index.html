@@ -1997,7 +1997,7 @@ async function generateScript(versionId,lang,attempt=1){
   try{
     const label=document.getElementById('label'+versionId);
     if(label)label.textContent='Criando seu próximo roteiro viral…';
-    const res=await fetch('/api/rewrite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcript,lang,version:versionId})});
+    const res=await fetch('/api/rewrite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcript,lang,version:versionId,token:localStorage.getItem('bt_token')})});
     const data=await res.json();
     if(!res.ok||!data.text){
       if((res.status===429||(data.error&&data.error.includes('quota')))&&attempt<3){

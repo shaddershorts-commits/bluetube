@@ -29,6 +29,14 @@
     {
       "path": "/api/email-marketing",
       "schedule": "0 10 * * 2,5"
+    },
+    {
+      "path": "/api/milestone-emails",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/weekly-trends-email",
+      "schedule": "0 8 * * 1"
     }
   ],
   "headers": [

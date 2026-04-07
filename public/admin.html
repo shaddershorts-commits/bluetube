@@ -385,7 +385,11 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <div class="section" id="emailMarketingSection">
       <div class="section-header">
         <div class="section-title">📧 Email Marketing <span class="section-subtitle">— campanhas automáticas · terças e sextas</span></div>
-        <button class="action-btn" onclick="triggerEmailMarketing()">▶ Disparar agora</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="action-btn" onclick="triggerEmailMarketing()">▶ Marketing</button>
+          <button class="action-btn" onclick="triggerMilestones()">🎯 Milestones</button>
+          <button class="action-btn" onclick="triggerTrends()">📈 Tendências</button>
+        </div>
       </div>
       <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
         <div class="stat-card"><div class="stat-label">Na lista</div><div class="stat-value blue" id="emTotal">—</div></div>
@@ -1056,6 +1060,14 @@ async function loadEmailMarketing(){
       </tr>`).join('')}</tbody></table>`;
     }else{document.getElementById('emTable').innerHTML='<div class="empty-state">Nenhum envio registrado ainda.</div>';}
   }catch(e){}
+}
+async function triggerMilestones(){
+  toast('🎯 Verificando milestones…');
+  try{const r=await fetch('/api/milestone-emails');const d=await r.json();toast(`🎯 ${d.sent_10||0}×10 · ${d.sent_50||0}×50 · ${d.sent_100||0}×100 milestones`);}catch(e){toast('Erro');}
+}
+async function triggerTrends(){
+  toast('📈 Gerando tendências…');
+  try{const r=await fetch('/api/weekly-trends-email');const d=await r.json();toast(`📈 Tendências: ${d.sent||0} emails enviados`);}catch(e){toast('Erro');}
 }
 async function triggerEmailMarketing(){
   const btn=document.querySelector('#emailMarketingSection .action-btn');
