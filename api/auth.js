@@ -1250,23 +1250,7 @@ Responda APENAS em JSON válido sem markdown:
       if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter mínimo 6 caracteres' });
 
-      // Verifica se email já está cadastrado no Supabase Auth
-      try {
-        const checkR = await fetch(`${authBase}/token?grant_type=password`, {
-          method: 'POST', headers, body: JSON.stringify({ email, password: 'check_existence_only_' + Date.now() })
-        });
-        if (checkR.status !== 400) {
-          // Se não retornou 400, algo inesperado — prosseguir
-        } else {
-          const checkD = await checkR.json();
-          const checkMsg = checkD.error_description || checkD.msg || '';
-          // Se o erro é "Invalid login credentials" o email existe
-          if (checkMsg.includes('Invalid login') && !checkMsg.includes('not confirmed')) {
-            return res.status(400).json({ error: 'Este email já está cadastrado. Faça login.' });
-          }
-        }
-      } catch(e) {}
-
+      // Verificação de duplicata acontece no verify_otp quando tentar criar a conta
       const refCode = req.body?.ref_code || null;
       const otp = String(Math.floor(100000 + Math.random() * 900000));
       console.log('[auth] Signup OTP for:', email, 'code:', otp);
