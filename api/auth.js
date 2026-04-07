@@ -1284,7 +1284,7 @@ Responda APENAS em JSON válido sem markdown:
 
         // Registra conversão de afiliado (signup free)
         if (refCode) {
-          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/affiliate`, {
+          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'conversion', email: newEmail, plan: 'free', conversion_type: 'signup' })
