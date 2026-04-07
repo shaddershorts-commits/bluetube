@@ -20,9 +20,15 @@ module.exports = async function handler(req, res) {
   let sent = 0, errors = 0;
 
   try {
-    // Get all non-unsubscribed users
-    const ur = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.false&select=email&limit=500`, { headers: H });
-    const users = ur.ok ? await ur.json() : [];
+    // Test mode: send only to one email
+    const testEmail = req.body?.test_email;
+    let users;
+    if (testEmail) {
+      users = [{ email: testEmail }];
+    } else {
+      const ur = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.false&select=email&limit=500`, { headers: H });
+      users = ur.ok ? await ur.json() : [];
+    }
 
     for (const u of users) {
       if (!u.email) continue;
