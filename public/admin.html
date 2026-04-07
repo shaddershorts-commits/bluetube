@@ -320,9 +320,10 @@ tr:hover td{background:rgba(0,170,255,0.02)}
             <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--red)" onclick="filterSubs('churned')" data-filter="churned">Cancelados</button>
             <button class="action-btn" style="font-size:10px;padding:5px 10px;color:var(--red)" onclick="filterSubs('expired')" data-filter="expired">Expirados</button>
           </div>
-          <a class="export-btn" onclick="exportCSV()" href="#">↓ Exportar CSV</a>
+          <a class="export-btn" onclick="exportCSV()" href="#">↓ CSV</a>
         </div>
       </div>
+      <input id="subsSearchInp" oninput="onSubsSearch()" class="plan-input" style="margin-bottom:10px;font-size:11px;padding:9px 12px" placeholder="🔍 Buscar por email..."/>
       <div class="table-wrap" id="subsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
@@ -382,6 +383,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <div class="section" id="learningSection">
       <div class="section-header">
         <div class="section-title">🧠 Aprendizado da IA <span class="section-subtitle">— few-shot dinâmico por feedback dos usuários</span></div>
+        <div style="display:flex;gap:6px"><button class="action-btn" style="font-size:10px;color:var(--red)" onclick="deleteLowScoreExamples()">🗑 Score baixo</button></div>
       </div>
       <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
         <div class="stat-card"><div class="stat-label">Total exemplos</div><div class="stat-value blue" id="lrnTotal">—</div></div>
@@ -423,57 +425,126 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 let adminKey='';
 let lastKnownSubscriberId=null;
 let currentFilter='all';
+let _subsPage=1, _subsSearch='', _fbPage=1;
 
+// ── PAGINATION HELPER ─────────────────────────────────────────────────────
+function renderPagination(total, page, pages, onChange, prefix){
+  if(pages<=1)return'';
+  let html='<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;flex-wrap:wrap">';
+  html+=`<span style="font-family:var(--mono);font-size:10px;color:var(--dim)">Exibindo ${(page-1)*10+1}-${Math.min(page*10,total)} de ${total}</span>`;
+  if(page>1)html+=`<button onclick="${prefix}Page(${page-1})" class="action-btn" style="font-size:10px;padding:4px 10px">← Anterior</button>`;
+  for(let i=1;i<=Math.min(pages,7);i++){
+    const active=i===page?'background:rgba(0,170,255,.2);border-color:var(--neon);color:var(--neon)':'';
+    html+=`<button onclick="${prefix}Page(${i})" class="action-btn" style="font-size:10px;padding:4px 8px;min-width:28px;${active}">${i}</button>`;
+  }
+  if(pages>7)html+=`<span style="color:var(--dim)">…${pages}</span>`;
+  if(page<pages)html+=`<button onclick="${prefix}Page(${page+1})" class="action-btn" style="font-size:10px;padding:4px 10px">Próximo →</button>`;
+  html+='</div>';
+  return html;
+}
+
+// ── SUBSCRIBERS TABLE (PAGINATED) ─────────────────────────────────────────
 function filterSubs(filter){
-  currentFilter=filter;
-  // Update active button style
+  currentFilter=filter;_subsPage=1;
   document.querySelectorAll('#planFilters button').forEach(btn=>{
     const f=btn.getAttribute('data-filter');
     btn.style.background=f===filter?'rgba(0,170,255,0.15)':'';
     btn.style.borderColor=f===filter?'rgba(0,170,255,0.4)':'';
   });
-  renderSubsTable();
+  loadSubsPage(_subsPage);
 }
-
-function renderSubsTable(){
-  const now=new Date();
-  let filtered=allSubscribers;
-  if(currentFilter==='free') filtered=allSubscribers.filter(s=>s.plan==='free');
-  else if(currentFilter==='full') filtered=allSubscribers.filter(s=>s.plan==='full');
-  else if(currentFilter==='master') filtered=allSubscribers.filter(s=>s.plan==='master');
-  else if(currentFilter==='churned') filtered=allSubscribers.filter(s=>s.plan==='free'&&s.stripe_customer_id);
-  else if(currentFilter==='expired') filtered=allSubscribers.filter(s=>s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now);
-
-  if(!filtered.length){
-    document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhuma conta encontrada com este filtro.</div>';
-    return;
-  }
-
-  const planValue={full:'R$29,99',master:'R$89,99',free:'—'};
-  document.getElementById('subsTable').innerHTML=`
-    <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:10px">${filtered.length} resultado${filtered.length!==1?'s':''}</div>
-    <table>
-      <thead><tr><th>Email</th><th>Plano</th><th>Valor</th><th>Tipo</th><th>Stripe ID</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
-      <tbody>${filtered.map(s=>{
-        const isExpired=s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now;
-        const expireStyle=isExpired?'color:var(--red);font-weight:600':'color:var(--dim)';
+function subsPage(p){_subsPage=p;loadSubsPage(p);document.getElementById('subsTable').scrollIntoView({behavior:'smooth'});}
+function onSubsSearch(){
+  clearTimeout(window._subsSearchTimer);
+  window._subsSearchTimer=setTimeout(()=>{_subsSearch=document.getElementById('subsSearchInp')?.value||'';_subsPage=1;loadSubsPage(1);},300);
+}
+async function loadSubsPage(page){
+  const planMap={all:'',free:'free',full:'full',master:'master'};
+  const planParam=planMap[currentFilter]||'';
+  const url=`/api/admin?action=list_subscribers&page=${page}&limit=10${_subsSearch?'&search='+encodeURIComponent(_subsSearch):''}${planParam?'&plan='+planParam:''}`;
+  try{
+    const r=await fetch(url,{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    const subs=d.data||[];
+    const now=new Date();
+    const planValue={full:'R$29,99',master:'R$89,99',free:'—'};
+    if(!subs.length){document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhum resultado.</div>';return;}
+    document.getElementById('subsTable').innerHTML=`
+      <table><thead><tr><th>Email</th><th>Plano</th><th>Valor</th><th>Tipo</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
+      <tbody>${subs.map(s=>{
+        const isExp=s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now;
         return`<tr>
           <td style="color:var(--text)">${s.email}</td>
           <td><span class="badge badge-${s.plan}">${s.plan==='master'?'👑 ':''}${s.plan==='full'?'⚡ ':''}${s.plan.toUpperCase()}</span></td>
           <td style="color:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};font-weight:600">${planValue[s.plan]||'—'}</td>
-          <td><span style="font-family:var(--mono);font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</span></td>
-          <td style="color:var(--dim);font-size:10px">${s.stripe_customer_id||'—'}</td>
-          <td style="color:var(--dim)">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-          <td style="${expireStyle}">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR')+(isExpired?' ⚠':''):'—'}</td>
-          <td>
-            <div style="display:flex;gap:6px">
-              <button onclick="quickEditPlan('${s.email}','${s.plan}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,0.06);border:1px solid rgba(0,170,255,0.2);border-radius:5px;padding:4px 8px;cursor:pointer">✏️ Editar</button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('')}
-      </tbody>
-    </table>`;
+          <td style="font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</td>
+          <td style="color:var(--dim);font-size:11px">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+          <td style="${isExp?'color:var(--red)':'color:var(--dim)'};font-size:11px">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR')+(isExp?' ⚠':''):'—'}</td>
+          <td><div style="display:flex;gap:4px">
+            <button onclick="quickEditPlan('${s.email}','${s.plan}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--neon)">✏️</button>
+            <button onclick="deleteUser('${s.email}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--red)">🗑️</button>
+          </div></td>
+        </tr>`;}).join('')}</tbody></table>
+      ${renderPagination(d.total,d.page,d.pages,'subs','subs')}`;
+  }catch(e){document.getElementById('subsTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
+}
+async function deleteUser(email){
+  if(!confirm('⚠️ Excluir conta de '+email+'? Todos os dados serão removidos permanentemente.'))return;
+  if(!confirm('ÚLTIMA CHANCE: Isso é irreversível. Continuar?'))return;
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'delete_user',email})});
+    const d=await r.json();
+    if(d.success){toast('✅ Conta de '+email+' removida');loadSubsPage(_subsPage);loadData();}
+    else toast('Erro: '+(d.error||'falha'));
+  }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── FEEDBACK (PAGINATED) ──────────────────────────────────────────────────
+function fbPage(p){_fbPage=p;loadFeedbackPage(p);document.getElementById('feedbackTable').scrollIntoView({behavior:'smooth'});}
+async function loadFeedbackPage(page){
+  try{
+    const r=await fetch(`/api/admin?action=list_feedback&page=${page}&limit=10`,{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    const fb=d.data||[];
+    if(!fb.length){document.getElementById('feedbackTable').innerHTML='<div class="empty-state">Nenhum feedback.</div>';return;}
+    document.getElementById('feedbackTable').innerHTML=`
+      <table><thead><tr><th><input type="checkbox" onchange="toggleAllFb(this)"/></th><th>Email</th><th>Plano</th><th>Tipo</th><th>Mensagem</th><th>Data</th><th>Ações</th></tr></thead>
+      <tbody>${fb.map(f=>{
+        const tl=f.type==='support'?'🆘 Suporte':f.type==='cancel'?'❌ Cancel':'💬 Feedback';
+        const isRead=f.is_read;
+        const opacity=isRead?'opacity:.5':'';
+        return`<tr style="${opacity}${!isRead?';border-left:3px solid var(--neon)':''}">
+          <td><input type="checkbox" class="fb-chk" data-id="${f.id}"/></td>
+          <td style="color:var(--text)">${f.email||'—'}</td>
+          <td><span class="badge badge-${f.plan||'free'}">${(f.plan||'free').toUpperCase()}</span></td>
+          <td style="font-size:11px">${tl}</td>
+          <td style="max-width:250px;word-break:break-word;font-size:11px;color:var(--text-sec,#aaa)">${f.message||''}</td>
+          <td style="font-size:10px;color:var(--dim)">${new Date(f.created_at).toLocaleDateString('pt-BR')}</td>
+          <td><div style="display:flex;gap:4px">
+            ${!isRead?`<button onclick="markFbRead('${f.id}')" class="action-btn" style="font-size:9px;padding:3px 6px;color:var(--green)">✓</button>`:''}
+            <button onclick="deleteFb('${f.id}')" class="action-btn" style="font-size:9px;padding:3px 6px;color:var(--red)">🗑</button>
+          </div></td>
+        </tr>`;}).join('')}</tbody></table>
+      <div style="display:flex;gap:8px;margin-top:8px"><button onclick="deleteFbSelected()" class="action-btn" style="font-size:10px;color:var(--red)">🗑 Excluir selecionados</button></div>
+      ${renderPagination(d.total,d.page,d.pages,'fb','fb')}`;
+  }catch(e){}
+}
+async function deleteFb(id){
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'delete_feedback',id})});
+  toast('🗑 Removido');loadFeedbackPage(_fbPage);
+}
+async function markFbRead(id){
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'mark_feedback_read',id})});
+  loadFeedbackPage(_fbPage);
+}
+function toggleAllFb(el){document.querySelectorAll('.fb-chk').forEach(c=>c.checked=el.checked);}
+async function deleteFbSelected(){
+  const ids=[...document.querySelectorAll('.fb-chk:checked')].map(c=>c.dataset.id);
+  if(!ids.length){toast('Selecione itens primeiro');return;}
+  if(!confirm(`Excluir ${ids.length} feedback(s)?`))return;
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'delete_feedbacks_bulk',ids})});
+  toast(`🗑 ${ids.length} removidos`);loadFeedbackPage(_fbPage);
 }
 
 function renderMonthlyChart(subscribers){
@@ -790,8 +861,8 @@ async function loadData(){
       }
     }
 
-    // Subscribers table — rendered via renderSubsTable() with filter support
-    renderSubsTable();
+    // Subscribers table — paginated
+    loadSubsPage(_subsPage);
 
     // Top virals
     if(d.top_virals?.length){
@@ -828,28 +899,8 @@ async function loadData(){
       document.getElementById('usageTable').innerHTML='<div class="empty-state">Nenhuma atividade registrada hoje.</div>';
     }
 
-    // Feedback table
-    if(d.feedback?.length){
-      document.getElementById('feedbackTable').innerHTML=`
-        <table>
-          <thead><tr><th>Email</th><th>Plano</th><th>Tipo</th><th>Mensagem</th><th>Data/Hora</th></tr></thead>
-          <tbody>${d.feedback.map(f=>{
-            const typeLabel=f.type==='support'?'🆘 Suporte':f.type==='cancel'?'❌ Cancelamento':'💬 Feedback';
-            const planBadge=f.plan==='master'?'badge-master':f.plan==='full'?'badge-full':'badge-free';
-            const dt=new Date(f.created_at);
-            return`<tr>
-              <td style="color:var(--text)">${f.email||'—'}</td>
-              <td><span class="badge ${planBadge}">${(f.plan||'free').toUpperCase()}</span></td>
-              <td style="font-family:var(--mono);font-size:11px">${typeLabel}</td>
-              <td style="color:var(--text-secondary);max-width:300px;word-break:break-word">${f.message}</td>
-              <td style="color:var(--dim);font-size:11px;white-space:nowrap">${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
-            </tr>`;
-          }).join('')}
-          </tbody>
-        </table>`;
-    }else{
-      document.getElementById('feedbackTable').innerHTML='<div class="empty-state">Nenhuma mensagem ainda. Quando usuários interagirem com o BluBlu ou o suporte, as mensagens aparecerão aqui.</div>';
-    }
+    // Feedback table — paginated
+    loadFeedbackPage(_fbPage);
 
     showProgress(100);
     setTimeout(()=>showProgress(0),500);
@@ -1034,6 +1085,14 @@ async function loadBlueHealth(){
   }catch(e){}
 }
 
+async function deleteLowScoreExamples(){
+  if(!confirm('Excluir todos os exemplos com score < 30% e 3+ votos?'))return;
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'delete_low_score_examples'})});
+    const d=await r.json();
+    toast(`🗑 ${d.deleted||0} exemplos removidos`);loadData();
+  }catch(e){toast('Erro');}
+}
 async function deleteLrnExample(id){
   if(!confirm('Remover este exemplo do banco de aprendizado?')) return;
   try{

@@ -151,6 +151,131 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true });
   }
 
+  // ── DELETE LOW-SCORE LEARNING EXAMPLES ──────────────────────────────────
+  if (req.method === 'POST' && action === 'delete_low_score_examples') {
+    const all = await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?select=id,aprovacoes,reprovacoes`, { headers });
+    let deleted = 0;
+    if (all.ok) {
+      for (const r of await all.json()) {
+        const t = (r.aprovacoes||0) + (r.reprovacoes||0);
+        const sc = t > 0 ? r.aprovacoes / t : 0;
+        if (sc < 0.3 && t >= 3) {
+          await fetch(`${SUPABASE_URL}/rest/v1/roteiro_exemplos?id=eq.${r.id}`, { method:'DELETE', headers });
+          deleted++;
+        }
+      }
+    }
+    return res.status(200).json({ success: true, deleted });
+  }
+
+  // ── DELETE USER (LGPD) ─────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'delete_user') {
+    const { email: targetEmail } = req.body;
+    if (!targetEmail) return res.status(400).json({ error: 'Missing email' });
+    const h2 = { ...headers, 'Content-Type': 'application/json' };
+
+    // Cancel Stripe if exists
+    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(targetEmail)}&select=stripe_customer_id,user_id`, { headers });
+    const sub = subRes.ok ? (await subRes.json())[0] : null;
+    const uid = sub?.user_id;
+    const stripeId = sub?.stripe_customer_id;
+    if (stripeId && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const sr = await fetch(`https://api.stripe.com/v1/customers/${stripeId}/subscriptions?status=active`, {
+          headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }
+        });
+        if (sr.ok) { for (const s of (await sr.json()).data||[]) { await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, { method:'DELETE', headers:{ Authorization:`Bearer ${process.env.STRIPE_SECRET_KEY}` }}); } }
+      } catch(e) {}
+    }
+
+    // Delete from all tables
+    const tables = ['subscribers','user_feedback','roteiro_exemplos','reactivation_emails'];
+    for (const t of tables) { await fetch(`${SUPABASE_URL}/rest/v1/${t}?email=eq.${encodeURIComponent(targetEmail)}`, { method:'DELETE', headers }).catch(()=>{}); }
+    if (uid) {
+      const uidTables = ['blue_profiles','blue_videos','blue_comments','blue_interactions','blue_notifications','blue_reports'];
+      for (const t of uidTables) { await fetch(`${SUPABASE_URL}/rest/v1/${t}?user_id=eq.${uid}`, { method:'DELETE', headers }).catch(()=>{}); }
+    }
+
+    // Log action
+    await fetch(`${SUPABASE_URL}/rest/v1/admin_actions`, {
+      method:'POST', headers:h2,
+      body: JSON.stringify({ admin_email:'admin', action:'delete_user', target_email:targetEmail, details:{ stripe_cancelled:!!stripeId } })
+    }).catch(()=>{});
+
+    // Email notification
+    const RESEND = process.env.RESEND_API_KEY;
+    if (RESEND) {
+      fetch('https://api.resend.com/emails', { method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${RESEND}`},
+        body:JSON.stringify({ from:'BlueTube <onboarding@resend.dev>', to:[targetEmail], subject:'Sua conta BlueTube foi removida',
+          html:`<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><p>Sua conta foi removida do BlueTube por um administrador.</p><p>Todos os seus dados foram excluídos.</p></div>`})
+      }).catch(()=>{});
+    }
+
+    return res.status(200).json({ success: true, email: targetEmail });
+  }
+
+  // ── FEEDBACK ACTIONS ────────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'delete_feedback') {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    await fetch(`${SUPABASE_URL}/rest/v1/user_feedback?id=eq.${id}`, { method:'DELETE', headers });
+    return res.status(200).json({ success: true });
+  }
+  if (req.method === 'POST' && action === 'delete_feedbacks_bulk') {
+    const { ids } = req.body;
+    if (!ids?.length) return res.status(400).json({ error: 'Missing ids' });
+    for (const id of ids) { await fetch(`${SUPABASE_URL}/rest/v1/user_feedback?id=eq.${id}`, { method:'DELETE', headers }); }
+    return res.status(200).json({ success: true, deleted: ids.length });
+  }
+  if (req.method === 'POST' && action === 'mark_feedback_read') {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    await fetch(`${SUPABASE_URL}/rest/v1/user_feedback?id=eq.${id}`, {
+      method:'PATCH', headers:{ ...headers,'Content-Type':'application/json','Prefer':'return=minimal' },
+      body: JSON.stringify({ is_read: true })
+    });
+    return res.status(200).json({ success: true });
+  }
+
+  // ── PAGINATED LIST SUBSCRIBERS ──────────────────────────────────────────
+  if (req.method === 'GET' && action === 'list_subscribers') {
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const search = req.query.search || '';
+    const planFilter = req.query.plan || '';
+    const offset = (page - 1) * limit;
+
+    let url = `${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc&limit=${limit}&offset=${offset}`;
+    if (search) url += `&email=ilike.*${encodeURIComponent(search)}*`;
+    if (planFilter) url += `&plan=eq.${planFilter}`;
+
+    const [dataRes, countRes] = await Promise.all([
+      fetch(url, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=id${search ? `&email=ilike.*${encodeURIComponent(search)}*` : ''}${planFilter ? `&plan=eq.${planFilter}` : ''}`, { headers: { ...headers, 'Prefer': 'count=exact' } })
+    ]);
+
+    const data = dataRes.ok ? await dataRes.json() : [];
+    const totalHeader = countRes.headers?.get('content-range');
+    const total = totalHeader ? parseInt(totalHeader.split('/')[1]) || data.length : data.length;
+
+    return res.status(200).json({ data, total, page, pages: Math.ceil(total / limit), has_more: offset + limit < total });
+  }
+
+  // ── PAGINATED FEEDBACK ──────────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'list_feedback') {
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const offset = (page - 1) * limit;
+    const url = `${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=${limit}&offset=${offset}`;
+    const r = await fetch(url, { headers });
+    const data = r.ok ? await r.json() : [];
+    // Get total
+    const cr = await fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=id`, { headers: { ...headers, 'Prefer': 'count=exact' } });
+    const th = cr.headers?.get('content-range');
+    const total = th ? parseInt(th.split('/')[1]) || 0 : data.length;
+    return res.status(200).json({ data, total, page, pages: Math.ceil(total / limit), has_more: offset + limit < total });
+  }
+
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];
