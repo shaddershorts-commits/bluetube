@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
     if (job.status === 'processing' && job.replicate_id && REPLICATE) {
       try {
         const rr = await fetch(`https://api.replicate.com/v1/predictions/${job.replicate_id}`, {
-          headers: { Authorization: 'Bearer ' + REPLICATE }
+          headers: { Authorization: 'Token ' + REPLICATE }
         });
         if (rr.ok) {
           const pred = await rr.json();
@@ -127,9 +127,29 @@ module.exports = async function handler(req, res) {
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
 
-    // Call Replicate using model identifier (auto-resolves latest version)
+    // Call Replicate — get latest version first, then create prediction
     try {
+      // Fetch latest version hash
+      let versionHash = null;
+      try {
+        const vr = await fetch('https://api.replicate.com/v1/models/jd7h/propainter/versions', {
+          headers: { Authorization: 'Token ' + REPLICATE }
+        });
+        if (vr.ok) {
+          const vd = await vr.json();
+          versionHash = vd.results?.[0]?.id;
+          console.log('[blueclean] Got version:', versionHash);
+        } else {
+          console.error('[blueclean] Version fetch failed:', vr.status, await vr.text().catch(() => ''));
+        }
+      } catch(e) { console.error('[blueclean] Version error:', e.message); }
+
+      if (!versionHash) {
+        return res.status(500).json({ error: 'Não foi possível obter a versão do modelo. Verifique REPLICATE_API_TOKEN.' });
+      }
+
       const replicateBody = {
+        version: versionHash,
         input: {
           video: video_url,
           fp16: true,
@@ -138,11 +158,11 @@ module.exports = async function handler(req, res) {
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
         webhook_events_filter: ['completed']
       };
-      console.log('[blueclean] Calling Replicate jd7h/propainter:', JSON.stringify(replicateBody).slice(0, 300));
+      console.log('[blueclean] Calling Replicate:', JSON.stringify(replicateBody).slice(0, 300));
 
-      const rr = await fetch('https://api.replicate.com/v1/models/jd7h/propainter/predictions', {
+      const rr = await fetch('https://api.replicate.com/v1/predictions', {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + REPLICATE, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Token ' + REPLICATE, 'Content-Type': 'application/json' },
         body: JSON.stringify(replicateBody)
       });
 
