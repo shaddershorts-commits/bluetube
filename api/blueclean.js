@@ -159,7 +159,7 @@ module.exports = async function handler(req, res) {
       if (mode === 'mask' && mask_url) {
         input = { video: video_url, mask: mask_url, fp16: true, subvideo_length: 80 };
       } else {
-        input = { video: video_url, method: 'telea', conf_threshold: 0.25, resolution: 'original' };
+        input = { video: video_url, method: 'inpaint', conf_threshold: 0.25, resolution: 'original' };
       }
 
       const replicateBody = {
