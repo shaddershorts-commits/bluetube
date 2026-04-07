@@ -1245,125 +1245,71 @@ Responda APENAS em JSON válido sem markdown:
 
   try {
 
-    // ── SIGN UP (email + password, sends confirmation email) ─────────────────
+    // ── SIGN UP — NÃO cria conta. Salva dados + envia OTP. Conta criada só após verificação.
     if (action === 'signup') {
       if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter mínimo 6 caracteres' });
 
-      const signupUrl = `${authBase}/signup`;
-      console.log('Signing up:', email, 'URL:', signupUrl);
-
-      const r = await fetch(signupUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${process.env.SITE_URL || 'https://bluetubeviral.com'}/`
+      // Verifica se email já está cadastrado no Supabase Auth
+      try {
+        const checkR = await fetch(`${authBase}/token?grant_type=password`, {
+          method: 'POST', headers, body: JSON.stringify({ email, password: 'check_existence_only_' + Date.now() })
+        });
+        if (checkR.status !== 400) {
+          // Se não retornou 400, algo inesperado — prosseguir
+        } else {
+          const checkD = await checkR.json();
+          const checkMsg = checkD.error_description || checkD.msg || '';
+          // Se o erro é "Invalid login credentials" o email existe
+          if (checkMsg.includes('Invalid login') && !checkMsg.includes('not confirmed')) {
+            return res.status(400).json({ error: 'Este email já está cadastrado. Faça login.' });
           }
+        }
+      } catch(e) {}
+
+      const refCode = req.body?.ref_code || null;
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      console.log('[auth] Signup OTP for:', email, 'code:', otp);
+
+      // Salva dados pendentes no cache (NÃO cria conta ainda)
+      await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+      const saveR = await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
+        method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          cache_key: 'otp_' + email,
+          value: { code: otp, password, ref_code: refCode },
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 600000).toISOString()
         })
       });
-      const data = await r.json();
-      console.log('Signup response status:', r.status, 'data:', JSON.stringify(data).slice(0, 200));
+      console.log('[auth] OTP cache save:', saveR.status);
 
-      if (!r.ok) {
-        const msg = data.msg || data.error_description || data.error || 'Erro ao criar conta';
-        if (msg.includes('already registered')) return res.status(400).json({ error: 'Este email já está cadastrado. Faça login.' });
-        return res.status(400).json({ error: msg });
-      }
-
-      // Insere usuário na tabela subscribers como 'free' (aparece no admin)
-      const newEmail = data.user?.email || email;
-      const refCode = req.body?.ref_code || null; // código de afiliado se veio no signup
-      if (newEmail && SUPABASE_URL && SUPABASE_KEY) {
-        fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+      // Envia OTP via Resend
+      const RESEND = process.env.RESEND_API_KEY;
+      if (RESEND) {
+        const emailR = await fetch('https://api.resend.com/emails', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Prefer': 'resolution=merge-duplicates,return=minimal'
-          },
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
           body: JSON.stringify({
-            email: newEmail,
-            plan: 'free',
-            is_manual: false,
-            affiliate_ref: refCode,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            from: 'BlueTube <onboarding@resend.dev>', to: [email],
+            subject: otp + ' — Seu código de verificação BlueTube',
+            html: `<div style="background:#020817;color:#e8f4ff;font-family:-apple-system,sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px;border:1px solid rgba(0,170,255,.2)">
+              <div style="text-align:center;margin-bottom:20px"><span style="font-size:24px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></span></div>
+              <p style="font-size:16px;text-align:center">Seu código de verificação:</p>
+              <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:28px;text-align:center;margin:20px 0">
+                <span style="font-size:44px;font-weight:800;letter-spacing:14px;color:#00aaff">${otp}</span>
+              </div>
+              <p style="color:rgba(200,225,255,0.5);font-size:13px;text-align:center">Este código expira em 10 minutos.</p>
+              <p style="color:rgba(200,225,255,0.3);font-size:12px;text-align:center;margin-top:16px">Se não foi você, ignore este email.</p>
+            </div>`
           })
-        }).catch(e => console.error('Subscriber insert error:', e.message));
-
-        // Insere na lista de email marketing
-        fetch(`${SUPA_URL}/rest/v1/email_marketing`, {
-          method: 'POST',
-          headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
-          body: JSON.stringify({ email: newEmail, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: new Date().toISOString() })
-        }).catch(() => {});
-
-        // Registra conversão de afiliado (signup free)
-        if (refCode) {
-          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'conversion', email: newEmail, plan: 'free', conversion_type: 'signup' })
-          }).catch(() => {});
-        }
+        });
+        console.log('[auth] Resend OTP email:', emailR.status);
+      } else {
+        console.error('[auth] RESEND_API_KEY not set!');
       }
 
-      // Sem sessão = confirmação por email ativa → tenta auto-login, senão mostra OTP
-      // Se Supabase não retornou sessão, tenta auto-login
-      if (!data.session) {
-        try {
-          const autoR = await fetch(`${authBase}/token?grant_type=password`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ email, password })
-          });
-          if (autoR.ok) {
-            const autoD = await autoR.json();
-            if (autoD.access_token) {
-              // Gera OTP customizado e envia via Resend
-              const otp = String(Math.floor(100000 + Math.random() * 900000));
-              // Salva OTP no Supabase (cache 10min)
-              if (SUPA_URL && SUPA_KEY) {
-                await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
-                  method: 'POST',
-                  headers: { ...supaH, 'Prefer': 'return=minimal' },
-                  body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
-                }).catch(() => {});
-                // Deleta cache antigo
-                await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=lt.${new Date().toISOString()}`, { method: 'DELETE', headers: supaH }).catch(() => {});
-              }
-              // Envia OTP via Resend
-              const RESEND = process.env.RESEND_API_KEY;
-              if (RESEND) {
-                fetch('https://api.resend.com/emails', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
-                  body: JSON.stringify({
-                    from: 'BlueTube <onboarding@resend.dev>', to: [email],
-                    subject: otp + ' — Seu código de verificação BlueTube',
-                    html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px">
-                      <h1 style="color:#00aaff;margin-bottom:8px">BlueTube</h1>
-                      <p style="font-size:16px">Seu código de verificação:</p>
-                      <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0">
-                        <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span>
-                      </div>
-                      <p style="color:rgba(200,225,255,0.55);font-size:13px">Este código expira em 10 minutos.</p>
-                      <p style="color:rgba(200,225,255,0.55);font-size:13px">Se não foi você, ignore este email.</p>
-                    </div>`
-                  })
-                }).catch(e => console.error('[auth] OTP email error:', e.message));
-              }
-              return res.status(200).json({ user: data.user || autoD.user, session: null, needsOTP: true });
-            }
-          }
-        } catch(e) {}
-        // Fallback: retorna sessão mesmo sem confirmação
-        return res.status(200).json({ user: data.user, session: data.session || null });
-      }
-      return res.status(200).json({ user: data.user, session: data.session });
+      return res.status(200).json({ session: null, needsOTP: true });
     }
 
     // ── SIGN IN ───────────────────────────────────────────────────────────────
@@ -1476,38 +1422,59 @@ Responda APENAS em JSON válido sem markdown:
       // Check custom OTP from cache
       try {
         const cr = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: supaH });
-        if (cr.ok) {
-          const cd = await cr.json();
-          const stored = cd?.[0]?.value;
-          if (stored?.code === otp) {
-            // OTP correct → login with stored password
-            const loginR = await fetch(`${authBase}/token?grant_type=password`, {
-              method: 'POST', headers,
-              body: JSON.stringify({ email, password: stored.password })
-            });
-            if (loginR.ok) {
-              const loginD = await loginR.json();
-              // Delete used OTP
-              fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
-              return res.status(200).json({ user: loginD.user, session: loginD });
-            }
-          }
+        if (!cr.ok) return res.status(400).json({ error: 'Código expirado. Clique em reenviar.' });
+        const cd = await cr.json();
+        const stored = cd?.[0]?.value;
+        if (!stored || stored.code !== otp) {
+          return res.status(400).json({ error: 'Código incorreto. Verifique e tente novamente.' });
         }
-      } catch(e) { console.error('[auth] OTP verify error:', e.message); }
 
-      // Fallback: try Supabase native verify
-      try {
-        const r = await fetch(`${authBase}/verify`, {
+        // OTP CORRETO → AGORA criar conta no Supabase Auth
+        console.log('[auth] OTP verified for:', email, '— creating account');
+        const signupR = await fetch(`${authBase}/signup`, {
           method: 'POST', headers,
-          body: JSON.stringify({ email, token: otp, type: 'email' })
+          body: JSON.stringify({ email, password: stored.password })
         });
-        const data = await r.json();
-        if (r.ok && data.access_token) {
-          return res.status(200).json({ user: data.user, session: { access_token: data.access_token } });
-        }
-      } catch(e) {}
+        const signupD = await signupR.json();
 
-      return res.status(400).json({ error: 'Código inválido ou expirado. Tente novamente.' });
+        // Tenta login imediato
+        let session = signupD.session;
+        if (!session) {
+          const loginR = await fetch(`${authBase}/token?grant_type=password`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ email, password: stored.password })
+          });
+          if (loginR.ok) session = await loginR.json();
+        }
+
+        // Registra na tabela subscribers + email_marketing
+        fetch(`${SUPA_URL}/rest/v1/subscribers`, {
+          method: 'POST',
+          headers: { ...supaH, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ email, plan: 'free', is_manual: false, affiliate_ref: stored.ref_code || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        }).catch(() => {});
+        fetch(`${SUPA_URL}/rest/v1/email_marketing`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
+          body: JSON.stringify({ email, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: new Date().toISOString() })
+        }).catch(() => {});
+        // Afiliado
+        if (stored.ref_code) {
+          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'conversion', email, plan: 'free', conversion_type: 'signup' })
+          }).catch(() => {});
+        }
+
+        // Delete used OTP
+        fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+
+        console.log('[auth] Account created + logged in:', email);
+        return res.status(200).json({ user: signupD.user || session?.user, session });
+
+      } catch(e) {
+        console.error('[auth] OTP verify error:', e.message);
+        return res.status(400).json({ error: 'Erro ao verificar código. Tente novamente.' });
+      }
     }
 
     // ── UPDATE PASSWORD (using recovery token) ────────────────────────────────
