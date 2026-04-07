@@ -303,6 +303,8 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
   border-radius:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--text);
   outline:none;transition:border-color .2s;margin-bottom:12px;box-sizing:border-box}
 .bt-field:focus{border-color:rgba(0,170,255,.5)}
+.bt-otp-digit{width:44px;height:52px;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:10px;text-align:center;font-size:22px;font-weight:800;color:var(--neon);outline:none;caret-color:var(--neon)}
+.bt-otp-digit:focus{border-color:var(--neon);box-shadow:0 0 10px rgba(0,170,255,.2)}
 .bt-field::placeholder{color:rgba(150,190,230,.35)}
 .bt-btn-submit{width:100%;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;
   border-radius:12px;padding:14px;font-family:var(--display);font-size:14px;font-weight:700;
@@ -780,8 +782,10 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
 // ── SIGNUP MODAL ─────────────────────────────────────────────────────────────
 const SITE = 'https://bluetubeviral.com';
-const API  = '/api/auth';  // Relativo evita CORS redirect www vs non-www
+const API  = '/api/auth';
 let _pendingPlan = 'free';
+let _pendingOTPEmail = '';
+let _pendingOTPPassword = '';
 
 const PLAN_LABELS = {
   free:   { badge: '🎉 100% GRATUITO', badgeClass: 'free', title: 'Crie sua conta grátis', sub: 'Acesso imediato a todas as ferramentas. Sem cartão de crédito.' },
@@ -853,16 +857,26 @@ async function handleSignup() {
       return;
     }
 
-    // Salva token se vier
-    // Captura token de qualquer formato de resposta possível
+    // Check if OTP verification needed
+    if (d.needsOTP) {
+      _pendingOTPEmail = email;
+      _pendingOTPPassword = password;
+      msg.className = 'bt-msg ok'; msg.textContent = '📧 Código enviado para ' + email;
+      // Show OTP form
+      document.getElementById('btSignupForm').style.display = 'none';
+      document.getElementById('btOTPForm').style.display = 'block';
+      document.getElementById('btOTPEmail').textContent = email;
+      setTimeout(() => document.querySelector('.bt-otp-digit')?.focus(), 200);
+      btn.disabled = false; btn.textContent = 'Criar conta e continuar →';
+      return;
+    }
+
     const _tok = d.session?.access_token || d.access_token || d.token || null;
     const _ref = d.session?.refresh_token || d.refresh_token || null;
     if (_tok) {
       localStorage.setItem('bt_token', _tok);
       if (_ref) localStorage.setItem('bt_refresh_token', _ref);
-      console.log('Token salvo no signup:', _tok.slice(0,20) + '...');
-    } else {
-      console.log('Signup response sem token:', JSON.stringify(d).slice(0,200));
+      if (typeof _btSaveCredentials === 'function') _btSaveCredentials(email, password);
     }
 
     msg.className = 'bt-msg ok'; msg.textContent = '✓ Conta criada! Redirecionando…';
@@ -873,6 +887,64 @@ async function handleSignup() {
     msg.className = 'bt-msg err'; msg.textContent = 'Erro de conexão. Tente novamente.';
     btn.disabled = false; btn.textContent = 'Criar conta e continuar →';
   }
+}
+
+// ── OTP VERIFICATION ─────────────────────────────────────────────────────────
+(function(){
+  document.addEventListener('DOMContentLoaded',()=>{
+    setTimeout(()=>{
+      const inputs=document.querySelectorAll('.bt-otp-digit');
+      inputs.forEach((inp,i)=>{
+        inp.oninput=()=>{
+          inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+          if(inp.value&&i<5)inputs[i+1]?.focus();
+          const code=[...inputs].map(d=>d.value).join('');
+          if(code.length===6)verifyLandingOTP();
+        };
+        inp.onkeydown=e=>{if(e.key==='Backspace'&&!inp.value&&i>0)inputs[i-1]?.focus();};
+        inp.onpaste=e=>{
+          e.preventDefault();
+          const code=(e.clipboardData.getData('text')||'').replace(/\D/g,'').slice(0,6);
+          code.split('').forEach((d,j)=>{if(inputs[j])inputs[j].value=d;});
+          if(code.length===6)setTimeout(verifyLandingOTP,100);
+        };
+      });
+    },500);
+  });
+})();
+
+async function verifyLandingOTP(){
+  const inputs=document.querySelectorAll('.bt-otp-digit');
+  const code=[...inputs].map(d=>d.value).join('');
+  if(code.length!==6)return;
+  const msg=document.getElementById('btOTPMsg');
+  msg.style.color='var(--neon)';msg.textContent='Verificando…';
+  try{
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'verify_otp',email:_pendingOTPEmail,otp:code})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Código inválido');
+    if(d.session?.access_token){
+      localStorage.setItem('bt_token',d.session.access_token);
+      if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+      if(typeof _btSaveCredentials==='function')_btSaveCredentials(_pendingOTPEmail,_pendingOTPPassword);
+    }
+    msg.style.color='#22c55e';msg.textContent='✅ Conta criada!';
+    if(typeof fbq!=='undefined')fbq('track','CompleteRegistration',{content_name:_pendingPlan});
+    setTimeout(()=>redirectAfterAuth(),1000);
+  }catch(e){
+    msg.style.color='#ff7a5a';msg.textContent=e.message;
+    inputs.forEach(d=>{d.value='';});inputs[0]?.focus();
+  }
+}
+
+async function resendLandingOTP(){
+  try{
+    await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'send_otp',email:_pendingOTPEmail})});
+    document.getElementById('btOTPMsg').style.color='var(--neon)';
+    document.getElementById('btOTPMsg').textContent='📧 Novo código enviado!';
+  }catch(e){}
 }
 
 async function handleLogin() {
@@ -893,6 +965,18 @@ async function handleLogin() {
 
     if (!r.ok) {
       msg.className = 'bt-msg err'; msg.textContent = d.error || 'Email ou senha incorretos.';
+      btn.disabled = false; btn.textContent = 'Entrar e continuar →';
+      return;
+    }
+
+    // OTP needed for login too (unconfirmed email)
+    if (d.needsOTP) {
+      _pendingOTPEmail = email; _pendingOTPPassword = password;
+      msg.className = 'bt-msg ok'; msg.textContent = '📧 Código enviado para ' + email;
+      document.getElementById('btLoginForm').style.display = 'none';
+      document.getElementById('btOTPForm').style.display = 'block';
+      document.getElementById('btOTPEmail').textContent = email;
+      setTimeout(() => document.querySelector('.bt-otp-digit')?.focus(), 200);
       btn.disabled = false; btn.textContent = 'Entrar e continuar →';
       return;
     }
@@ -967,6 +1051,28 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSign
       <div class="bt-msg" id="btMsg"></div>
       <div class="bt-divider">ou</div>
       <div class="bt-login-link">Já tem conta? <a href="#" onclick="showLoginForm();return false">Fazer login</a></div>
+    </div>
+
+    <!-- OTP form (hidden) -->
+    <div id="btOTPForm" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:36px;margin-bottom:8px">📧</div>
+        <div style="font-size:16px;font-weight:700">Verifique seu email</div>
+        <div style="font-size:12px;color:var(--dim);margin-top:4px">Código enviado para <span id="btOTPEmail" style="color:var(--neon)"></span></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+        <input class="bt-otp-digit" type="text" inputmode="numeric" maxlength="1"/>
+      </div>
+      <div id="btOTPMsg" style="font-size:12px;text-align:center;min-height:16px;margin-bottom:8px"></div>
+      <button class="bt-btn-submit" onclick="verifyLandingOTP()">Verificar código →</button>
+      <div style="text-align:center;margin-top:10px">
+        <button onclick="resendLandingOTP()" style="background:none;border:none;color:var(--neon);font-size:12px;cursor:pointer;text-decoration:underline">Reenviar código</button>
+      </div>
     </div>
 
     <!-- Login form (hidden) -->
