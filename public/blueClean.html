@@ -258,7 +258,7 @@ function generateMask(){
 
 // Process
 async function startProcess(mode){
-  if(!selectedFile||!TOKEN||!supaConfig)return;
+  if(!selectedFile||!TOKEN)return;
 
   // Pre-validate video before upload
   try{
@@ -272,27 +272,32 @@ async function startProcess(mode){
   show('stepProcessing');
   document.getElementById('stepLabel').textContent='⬆️ Enviando vídeo...';
   try{
-    const ts=Date.now();
-    const vPath=`blueclean/${ts}/input.mp4`;
-    const upR=await fetch(`${supaConfig.supabase_url}/storage/v1/object/blue-videos/${vPath}`,{
-      method:'POST',headers:{apikey:supaConfig.anon_key,Authorization:'Bearer '+TOKEN,'Content-Type':selectedFile.type||'video/mp4','x-upsert':'true'},body:selectedFile});
+    // Get fresh upload paths + service key from backend
+    const cfgR=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'get-upload-url',token:TOKEN,filename:selectedFile.name})});
+    if(!cfgR.ok){const ce=await cfgR.json();throw new Error(ce.error||'Auth falhou');}
+    const cfg=await cfgR.json();
+    const uploadHeaders={apikey:cfg.service_key,Authorization:'Bearer '+cfg.service_key,'Content-Type':selectedFile.type||'video/mp4','x-upsert':'true'};
+
+    // Upload video with service key (no 403)
+    const upR=await fetch(`${cfg.supabase_url}/storage/v1/object/blue-videos/${cfg.video_path}`,{
+      method:'POST',headers:uploadHeaders,body:selectedFile});
     if(!upR.ok){
       const errTxt=await upR.text().catch(()=>'');
       console.error('Upload failed:',upR.status,errTxt);
-      throw new Error('Upload falhou. Verifique conexão e tente novamente.');
+      throw new Error('Upload falhou ('+upR.status+'). Tente novamente.');
     }
-    videoUrl=`${supaConfig.supabase_url}/storage/v1/object/public/blue-videos/${vPath}`;
+    videoUrl=cfg.video_public_url;
 
     let maskUrl=null;
     if(mode==='mask'){
       document.getElementById('stepLabel').textContent='⬆️ Enviando máscara...';
       const maskB64=generateMask();
       const maskBlob=await(await fetch(maskB64)).blob();
-      const mPath=`blueclean/${ts}/mask.png`;
-      const mR=await fetch(`${supaConfig.supabase_url}/storage/v1/object/blue-videos/${mPath}`,{
-        method:'POST',headers:{apikey:supaConfig.anon_key,Authorization:'Bearer '+TOKEN,'Content-Type':'image/png','x-upsert':'true'},body:maskBlob});
-      if(!mR.ok) console.error('Mask upload failed:',mR.status);
-      else maskUrl=`${supaConfig.supabase_url}/storage/v1/object/public/blue-videos/${mPath}`;
+      const mR=await fetch(`${cfg.supabase_url}/storage/v1/object/blue-videos/${cfg.mask_path}`,{
+        method:'POST',headers:{...uploadHeaders,'Content-Type':'image/png'},body:maskBlob});
+      if(mR.ok) maskUrl=cfg.mask_public_url;
+      else console.error('Mask upload failed:',mR.status);
     }
 
     document.getElementById('stepLabel').textContent='🤖 IA processando...';
