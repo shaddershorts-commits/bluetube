@@ -7,9 +7,13 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const auth = req.headers['authorization'];
-  const ADMIN_SECRET = process.env.ADMIN_SECRET;
-  if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
+  // Auth: admin secret OR test_email mode (single email, no auth needed for preview)
+  const testEmail = req.body?.test_email;
+  if (!testEmail) {
+    const auth = req.headers['authorization'];
+    const ADMIN_SECRET = process.env.ADMIN_SECRET;
+    if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
