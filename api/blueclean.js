@@ -127,28 +127,10 @@ module.exports = async function handler(req, res) {
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
 
-    // Get latest ProPainter version
-    let modelVersion = null;
-    try {
-      const vr = await fetch('https://api.replicate.com/v1/models/chenxwh/propainter/versions', {
-        headers: { Authorization: 'Bearer ' + REPLICATE }
-      });
-      if (vr.ok) {
-        const vd = await vr.json();
-        modelVersion = vd.results?.[0]?.id;
-        console.log('[blueclean] ProPainter version:', modelVersion);
-      }
-    } catch(e) { console.error('[blueclean] Version fetch error:', e.message); }
-
-    if (!modelVersion) {
-      modelVersion = 'a23f0db2ab3b0e7b5cdd4c3ad55ce0ecc5a4d97f29150041a10e4e4753cb5097'; // fallback
-      console.log('[blueclean] Using fallback version');
-    }
-
-    // Call Replicate
+    // Call Replicate using model identifier (auto-resolves latest version)
     try {
       const replicateBody = {
-        version: modelVersion,
+        model: 'jd7h/propainter',
         input: {
           video: video_url,
           fp16: true,
