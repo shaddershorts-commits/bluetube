@@ -1184,8 +1184,8 @@ Responda APENAS em JSON válido sem markdown:
 
   // ── TEXT TO SPEECH (ElevenLabs) ────────────────────────────────────────────
   if (req.body?.action === 'tts') {
-    const XI_KEY = process.env.ELEVENLABS_API_KEY;
-    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado. Adicione ELEVENLABS_API_KEY no Vercel.' });
+    const XI_KEY = req.body.user_xi_key || process.env.ELEVENLABS_API_KEY;
+    if (!XI_KEY) return res.status(500).json({ error: 'ElevenLabs não configurado.' });
 
     const { voiceId, text, model = 'eleven_multilingual_v2', stability = 0.5, similarity = 0.75 } = req.body;
     if (!voiceId || !text) return res.status(400).json({ error: 'voiceId e text são obrigatórios' });

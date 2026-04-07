@@ -538,9 +538,13 @@ async function loadCustomVoices() {
 async function addCustomVoice() {
   const voiceId = document.getElementById('customVoiceId')?.value?.trim();
   const name = document.getElementById('customVoiceName')?.value?.trim() || 'Voz personalizada';
+  const userXiKey = document.getElementById('customApiKey')?.value?.trim();
   const msg = document.getElementById('addVoiceMsg');
   if (!voiceId) { if(msg) msg.textContent = 'Cole o Voice ID do ElevenLabs'; return; }
-  if(msg) { msg.style.color='var(--neon)'; msg.textContent = 'Salvando voz…'; }
+  if(msg) { msg.style.color='var(--neon)'; msg.textContent = 'Verificando voz…'; }
+
+  // Salva API key do usuário localmente para futuras chamadas
+  if (userXiKey) localStorage.setItem('bt_xi_key', userXiKey);
 
   const token = localStorage.getItem('bt_token');
   if (!token) { if(msg){ msg.style.color='#ff7a5a'; msg.textContent = 'Faça login para salvar vozes.'; } return; }
@@ -548,7 +552,7 @@ async function addCustomVoice() {
   try {
     const r = await fetch('/api/blue-voices', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, voice_id: voiceId, name })
+      body: JSON.stringify({ token, voice_id: voiceId, name, user_xi_key: userXiKey })
     });
     const d = await r.json();
     if (!r.ok) {
@@ -570,6 +574,12 @@ async function addCustomVoice() {
       }
     } catch(e) {}
     if(msg) { msg.style.color='var(--green)'; msg.textContent = '✓ Voz adicionada!'; }
+    // Cache preview if returned
+    if (d.preview) {
+      const bin = atob(d.preview); const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      _previewCache[voiceId] = URL.createObjectURL(new Blob([arr], { type: 'audio/mpeg' }));
+    }
     renderVoices();
     setTimeout(() => { document.getElementById('addVoicePanel')?.remove(); }, 1200);
   } catch(e) {
@@ -732,14 +742,16 @@ function showAddVoicePanel() {
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:10px;color:var(--neon);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">Importar voz do ElevenLabs</div>
     <input id="customVoiceId" type="text" placeholder="Cole o Voice ID do ElevenLabs" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
-    <input id="customVoiceName" type="text" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px"/>
+    <input id="customVoiceName" type="text" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
+    <input id="customApiKey" type="password" placeholder="Sua API Key do ElevenLabs (obrigatório para vozes clonadas)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px" value="${localStorage.getItem('bt_xi_key')||''}"/>
     <div style="display:flex;gap:8px;align-items:center">
       <button onclick="addCustomVoice()" style="background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:8px;padding:9px 18px;font-family:var(--font);font-size:12px;font-weight:700;color:#fff;cursor:pointer">Importar</button>
       <button onclick="document.getElementById('addVoicePanel')?.remove()" style="background:none;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec);cursor:pointer">Cancelar</button>
       <span id="addVoiceMsg" style="font-family:var(--mono);font-size:11px;margin-left:4px"></span>
     </div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:10px;line-height:1.6">
-      Encontre o Voice ID em elevenlabs.io → Voices → clique na voz → Voice ID
+      Para vozes clonadas, insira sua API Key do ElevenLabs.<br>
+      Encontre em elevenlabs.io → Profile → API Key
     </div>
   `;
 
@@ -793,40 +805,15 @@ async function previewVoice(id, event) {
     return;
   }
 
-  // 3. Tenta buscar preview via servidor (funciona para vozes clonadas na conta do BlueTube)
-  if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
-
-  try {
-    const pvR = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
-    if (pvR.ok) {
-      const pvD = await pvR.json();
-      if (pvD.audio) {
-        const bin = atob(pvD.audio);
-        const arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        const blob = new Blob([arr], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-        _previewCache[id] = url;
-        const audio = new Audio(url);
-        audio._voiceId = id;
-        currentPreview = audio;
-        if (btn) { btn.innerHTML = pauseIcon; btn.disabled = false; }
-        audio.play();
-        audio.onended = () => { if (btn) btn.innerHTML = playIcon; currentPreview = null; };
-        return;
-      }
-    }
-  } catch(e) { /* preview endpoint failed, try TTS */ }
-
-  // 4. Gera prévia via TTS (texto curto — custo mínimo)
-  if (btn) { btn.innerHTML = `<span style="opacity:.6">Gerando…</span>`; }
+  // 3. Gera prévia via TTS (mesmo endpoint usado para narração — funciona com qualquer voz)
+  if (btn) { btn.innerHTML = `<span style="opacity:.6">Gerando prévia…</span>`; btn.disabled = true; }
   const previewTexts = {
-    pt: 'Olá! Essa é uma prévia da minha voz. Vamos criar algo incrível juntos.',
-    en: 'Hey there! This is a quick preview of my voice. Let\'s create something amazing.',
-    es: 'Hola! Esta es una muestra de mi voz. Vamos a crear algo increíble.',
-    fr: 'Salut! Voici un aperçu de ma voix. Créons quelque chose d\'incroyable.',
-    de: 'Hallo! Das ist eine Vorschau meiner Stimme. Lass uns etwas Tolles schaffen.',
-    it: 'Ciao! Questa è un\'anteprima della mia voce. Creiamo qualcosa di incredibile.'
+    pt: 'Olá! Essa é uma prévia da minha voz.',
+    en: 'Hey! This is a quick preview of my voice.',
+    es: 'Hola! Esta es una muestra de mi voz.',
+    fr: 'Salut! Voici un aperçu de ma voix.',
+    de: 'Hallo! Das ist eine Vorschau meiner Stimme.',
+    it: 'Ciao! Questa è un\'anteprima della mia voce.'
   };
   const sampleText = previewTexts[voice?.lang] || previewTexts.pt;
 
@@ -834,10 +821,10 @@ async function previewVoice(id, event) {
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'tts', voiceId: id, text: sampleText, token: localStorage.getItem('bt_token') || '' })
+      body: JSON.stringify({ action: 'tts', voiceId: id, text: sampleText, token: localStorage.getItem('bt_token') || '', user_xi_key: localStorage.getItem('bt_xi_key') || '' })
     });
     const data = await r.json();
-    if (!r.ok || !data.audio) throw new Error(data.error || 'Falha');
+    if (!r.ok || !data.audio) throw new Error(data.error || 'Falha ao gerar prévia');
 
     const bin = atob(data.audio);
     const arr = new Uint8Array(bin.length);
@@ -855,9 +842,12 @@ async function previewVoice(id, event) {
   } catch(e) {
     if (btn) { btn.innerHTML = playIcon; btn.disabled = false; }
     const isCustom = voice?.custom || voice?.community;
-    showToast(isCustom
-      ? '⚠ Prévia não disponível para esta voz clonada. Ela funciona normalmente para gerar narração — experimente!'
-      : 'Prévia indisponível: ' + (e.message || 'tente novamente'));
+    if (btn) { btn.innerHTML = playIcon; btn.disabled = false; }
+    if (isCustom) {
+      showToast('⚠ Esta voz clonada não está acessível pela conta do BlueTube. Para usar vozes clonadas, a voz precisa estar na conta ElevenLabs vinculada ao BlueTube.');
+    } else {
+      showToast('Prévia indisponível: ' + (e.message || 'tente novamente'));
+    }
   }
 }
 

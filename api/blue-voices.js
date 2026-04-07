@@ -119,26 +119,50 @@ module.exports = async function handler(req, res) {
 
   // POST — adiciona voz
   if (req.method === 'POST') {
-    const { voice_id, name } = req.body || {};
+    const { voice_id, name, user_xi_key } = req.body || {};
     if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
 
     const finalName = name || 'Voz personalizada';
+    // Use user's API key for cloned voices, fallback to BlueTube's key
+    const xiKey = user_xi_key || EL;
 
-    // Tenta buscar nome real do ElevenLabs (mas não bloqueia se falhar)
+    // Tenta buscar nome real e gerar preview
     let realName = '';
-    if (EL) {
+    let previewB64 = '';
+    if (xiKey) {
       try {
         const check = await fetch(`https://api.elevenlabs.io/v1/voices/${voice_id}`, {
-          headers: { 'xi-api-key': EL }
+          headers: { 'xi-api-key': xiKey }
         });
         if (check.ok) {
           const vd = await check.json();
           realName = vd.name || '';
+          // Se tem preview_url, baixa e converte
+          if (vd.preview_url) {
+            try {
+              const pr = await fetch(vd.preview_url);
+              if (pr.ok) previewB64 = Buffer.from(await pr.arrayBuffer()).toString('base64');
+            } catch(e) {}
+          }
+          // Se não tem preview_url (clonada), gera via TTS
+          if (!previewB64) {
+            try {
+              const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
+                method: 'POST',
+                headers: { 'xi-api-key': xiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+                body: JSON.stringify({ text: 'Olá! Essa é uma prévia da minha voz.', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+              });
+              if (ttsR.ok) previewB64 = Buffer.from(await ttsR.arrayBuffer()).toString('base64');
+            } catch(e) {}
+          }
+        } else if (!user_xi_key) {
+          // BlueTube key can't access this voice — it's a personal cloned voice
+          return res.status(400).json({ error: 'Voz não encontrada. Para vozes clonadas, insira sua API Key do ElevenLabs.' });
         }
-      } catch(e) { /* não bloqueia — salva mesmo sem validar */ }
+      } catch(e) {}
     }
 
-    // Salva no banco (upsert) — sempre salva, mesmo que ElevenLabs não responda
+    // Salva no banco (upsert)
     try {
       const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
         method: 'POST',
@@ -146,7 +170,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({ user_id: userId, voice_id, name: realName || finalName })
       });
       const saved = await r.json();
-      return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved, real_name: realName || finalName });
+      return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved, real_name: realName || finalName, preview: previewB64 || null });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
