@@ -146,32 +146,39 @@ async function startClean(){
   const btn=document.getElementById('startBtn');
   btn.disabled=true;btn.textContent='Enviando…';
 
-  // Upload to Supabase Storage first
   try{
-    const SU=await getSU();
-    if(!SU){toast('Erro de configuração');btn.disabled=false;btn.textContent='Limpar vídeo →';return;}
-    const ts=Date.now();
-    const path=`blueclean/${ts}/input.mp4`;
+    // 1. Get Supabase config from backend (clean endpoint, no side effects)
+    const cfgR=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'get-upload-url',token:TOKEN})});
+    const cfg=await cfgR.json();
+    if(!cfg.supabase_url){throw new Error(cfg.error||'Erro de configuração');}
+
     document.getElementById('uploadSection').style.display='none';
     document.getElementById('processing').style.display='block';
     document.getElementById('stepLabel').textContent='⬆️ Enviando vídeo...';
 
-    // Upload
-    const upR=await fetch(`${SU.url}/storage/v1/object/blue-videos/${path}`,{
+    // 2. Upload direct to Supabase Storage (bypasses Vercel 4.5MB limit)
+    const ts=Date.now();
+    const path=`blueclean/${ts}/input.mp4`;
+    const upR=await fetch(`${cfg.supabase_url}/storage/v1/object/blue-videos/${path}`,{
       method:'POST',
-      headers:{apikey:SU.key,Authorization:'Bearer '+TOKEN,'Content-Type':selectedFile.type,'x-upsert':'true'},
+      headers:{apikey:cfg.anon_key,Authorization:'Bearer '+TOKEN,'Content-Type':selectedFile.type||'video/mp4','x-upsert':'true'},
       body:selectedFile
     });
-    if(!upR.ok)throw new Error('Upload falhou');
+    if(!upR.ok){
+      const upErr=await upR.text().catch(()=>'');
+      console.error('Upload error:',upR.status,upErr);
+      throw new Error('Upload falhou ('+upR.status+'). Verifique se o vídeo é MP4 e tem menos de 200MB.');
+    }
 
-    const videoUrl=`${SU.url}/storage/v1/object/public/blue-videos/${path}`;
+    const videoUrl=`${cfg.supabase_url}/storage/v1/object/public/blue-videos/${path}`;
     document.getElementById('stepLabel').textContent='🔍 Iniciando processamento com IA...';
 
-    // Start clean
+    // 3. Start processing
     const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Erro');
+    if(!r.ok)throw new Error(d.error||'Erro ao iniciar processamento');
 
     currentJobId=d.job_id;
     document.getElementById('stepLabel').textContent='🤖 IA removendo overlays...';
@@ -248,17 +255,7 @@ async function loadHistory(){
   }catch(e){}
 }
 
-// Get Supabase URL from a lightweight endpoint
-async function getSU(){
-  try{
-    // Use the health endpoint to get Supabase URL indirectly
-    // Actually, we can get it from the upload flow
-    const r=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:TOKEN,title:'_probe',description:'',duration:0,width:0,height:0,file_name:'probe.mp4'})});
-    const d=await r.json();
-    return d.supabase_url?{url:d.supabase_url,key:d.anon_key}:null;
-  }catch(e){return null;}
-}
+// getSU removed — using /api/blueclean?action=get-upload-url instead
 </script>
 <script src="/toolbar.js"></script>
 </body></html>

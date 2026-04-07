@@ -1,4 +1,4 @@
-// api/blueclean.js — BlueClean: remove overlays from videos via Replicate ProPainter
+// api/blueclean.js — BlueClean: remove overlays from videos via Replicate
 // Exclusive to Master plan, 10 videos/month limit
 
 module.exports = async function handler(req, res) {
@@ -17,7 +17,13 @@ module.exports = async function handler(req, res) {
   const action = req.method === 'GET' ? req.query.action : req.body?.action;
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
 
-  // Auth
+  // ── GET-UPLOAD-URL (no auth needed for this, just returns Supabase config) ──
+  if (action === 'get-upload-url') {
+    if (!token) return res.status(401).json({ error: 'Login necessário.' });
+    return res.status(200).json({ supabase_url: SU, anon_key: AK });
+  }
+
+  // ── AUTH ───────────────────────────────────────────────────────────────────
   let userId = null, userEmail = null, userPlan = 'free';
   if (token) {
     try {
@@ -25,7 +31,7 @@ module.exports = async function handler(req, res) {
       if (ur.ok) {
         const u = await ur.json();
         userId = u.id; userEmail = u.email;
-        // Get plan
+        console.log('[blueclean] User:', userEmail, 'ID:', userId);
         const pr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(userEmail)}&select=plan,plan_expires_at,is_manual`, { headers: H });
         if (pr.ok) {
           const sub = (await pr.json())[0];
@@ -34,8 +40,9 @@ module.exports = async function handler(req, res) {
             if (valid) userPlan = sub.plan;
           }
         }
+        console.log('[blueclean] Plan:', userPlan);
       }
-    } catch(e) {}
+    } catch(e) { console.error('[blueclean] Auth error:', e.message); }
   }
 
   if (!userId) return res.status(401).json({ error: 'Login necessário.' });
@@ -54,27 +61,26 @@ module.exports = async function handler(req, res) {
   // ── HISTORY ───────────────────────────────────────────────────────────────
   if (action === 'history') {
     const jr = await fetch(`${SU}/rest/v1/blueclean_jobs?user_id=eq.${userId}&order=created_at.desc&limit=20&select=*`, { headers: H });
-    const jobs = jr.ok ? await jr.json() : [];
-    return res.status(200).json({ jobs });
+    return res.status(200).json({ jobs: jr.ok ? await jr.json() : [] });
   }
 
   // ── STATUS ────────────────────────────────────────────────────────────────
   if (action === 'status') {
-    const jobId = req.query.job_id || req.body?.job_id;
+    const jobId = req.query?.job_id || req.body?.job_id;
     if (!jobId) return res.status(400).json({ error: 'job_id required' });
 
     const jr = await fetch(`${SU}/rest/v1/blueclean_jobs?id=eq.${jobId}&user_id=eq.${userId}&select=*`, { headers: H });
     const job = jr.ok ? (await jr.json())[0] : null;
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
-    // If processing, check Replicate
     if (job.status === 'processing' && job.replicate_id && REPLICATE) {
       try {
         const rr = await fetch(`https://api.replicate.com/v1/predictions/${job.replicate_id}`, {
-          headers: { Authorization: 'Token ' + REPLICATE }
+          headers: { Authorization: 'Bearer ' + REPLICATE }
         });
         if (rr.ok) {
           const pred = await rr.json();
+          console.log('[blueclean] Poll status:', pred.status, 'for job:', jobId);
           if (pred.status === 'succeeded' && pred.output) {
             const outputUrl = Array.isArray(pred.output) ? pred.output[0] : pred.output;
             await fetch(`${SU}/rest/v1/blueclean_jobs?id=eq.${jobId}`, {
@@ -88,24 +94,18 @@ module.exports = async function handler(req, res) {
               method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
               body: JSON.stringify({ status: 'failed', error_message: pred.error || 'Processing failed', updated_at: new Date().toISOString() })
             });
-            // Refund usage
+            // Refund
             const ur2 = await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: H });
             const c = ur2.ok ? ((await ur2.json())[0]?.count || 0) : 0;
-            if (c > 0) {
-              await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}`, {
-                method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
-                body: JSON.stringify({ count: Math.max(0, c - 1) })
-              });
-            }
+            if (c > 0) await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}`, {
+              method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ count: c - 1 })
+            });
             return res.status(200).json({ ...job, status: 'failed', error_message: pred.error });
           }
-          // Still processing
-          const progress = pred.logs ? Math.min(90, pred.logs.split('\n').length * 5) : 30;
-          return res.status(200).json({ ...job, status: 'processing', progress });
+          return res.status(200).json({ ...job, status: 'processing', progress: Math.min(80, (pred.logs || '').split('\n').length * 3) });
         }
-      } catch(e) {}
+      } catch(e) { console.error('[blueclean] Poll error:', e.message); }
     }
-
     return res.status(200).json(job);
   }
 
@@ -116,42 +116,64 @@ module.exports = async function handler(req, res) {
     const { video_url } = req.body;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
 
+    console.log('[blueclean] Starting job for:', userEmail, 'video:', video_url.slice(0, 80));
+
     // Check limit
     const ur = await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: H });
     const used = ur.ok ? ((await ur.json())[0]?.count || 0) : 0;
-    if (used >= LIMIT) return res.status(429).json({ error: `Limite mensal atingido (${LIMIT}/${LIMIT}). Renova no próximo mês.` });
+    console.log('[blueclean] Usage:', used, '/', LIMIT);
+    if (used >= LIMIT) return res.status(429).json({ error: `Limite mensal atingido (${LIMIT}/${LIMIT}).` });
 
-    // Create job
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
 
+    // Get latest ProPainter version
+    let modelVersion = null;
+    try {
+      const vr = await fetch('https://api.replicate.com/v1/models/chenxwh/propainter/versions', {
+        headers: { Authorization: 'Bearer ' + REPLICATE }
+      });
+      if (vr.ok) {
+        const vd = await vr.json();
+        modelVersion = vd.results?.[0]?.id;
+        console.log('[blueclean] ProPainter version:', modelVersion);
+      }
+    } catch(e) { console.error('[blueclean] Version fetch error:', e.message); }
+
+    if (!modelVersion) {
+      modelVersion = 'a23f0db2ab3b0e7b5cdd4c3ad55ce0ecc5a4d97f29150041a10e4e4753cb5097'; // fallback
+      console.log('[blueclean] Using fallback version');
+    }
+
     // Call Replicate
     try {
+      const replicateBody = {
+        version: modelVersion,
+        input: {
+          video: video_url,
+          fp16: true,
+          subvideo_length: 80
+        },
+        webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
+        webhook_events_filter: ['completed', 'failed']
+      };
+      console.log('[blueclean] Calling Replicate:', JSON.stringify(replicateBody).slice(0, 300));
+
       const rr = await fetch('https://api.replicate.com/v1/predictions', {
         method: 'POST',
-        headers: { Authorization: 'Token ' + REPLICATE, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version: 'a23f0db2ab3b0e7b5cdd4c3ad55ce0ecc5a4d97f29150041a10e4e4753cb5097',
-          input: {
-            video: video_url,
-            fp16: true,
-            subvideo_length: 80
-          },
-          webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
-          webhook_events_filter: ['completed', 'failed']
-        })
+        headers: { Authorization: 'Bearer ' + REPLICATE, 'Content-Type': 'application/json' },
+        body: JSON.stringify(replicateBody)
       });
 
+      const pred = await rr.json();
+      console.log('[blueclean] Replicate response:', rr.status, JSON.stringify(pred).slice(0, 300));
+
       if (!rr.ok) {
-        const err = await rr.json().catch(() => ({}));
-        console.error('[blueclean] Replicate error:', err);
-        return res.status(500).json({ error: 'Falha ao iniciar processamento. Tente novamente.' });
+        return res.status(500).json({ error: 'Replicate: ' + (pred.detail || pred.title || 'Erro desconhecido'), replicate_status: rr.status });
       }
 
-      const pred = await rr.json();
-
       // Save job
-      await fetch(`${SU}/rest/v1/blueclean_jobs`, {
+      const jr = await fetch(`${SU}/rest/v1/blueclean_jobs`, {
         method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
         body: JSON.stringify({
           id: jobId, user_id: userId, replicate_id: pred.id,
@@ -159,6 +181,7 @@ module.exports = async function handler(req, res) {
           created_at: new Date().toISOString(), updated_at: new Date().toISOString()
         })
       });
+      console.log('[blueclean] Job saved:', jr.status);
 
       // Increment usage
       const existR = await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: H });
@@ -180,8 +203,8 @@ module.exports = async function handler(req, res) {
         status: 'processing', estimated_time: '2-5 minutos'
       });
     } catch(e) {
-      console.error('[blueclean] Error:', e);
-      return res.status(500).json({ error: 'Erro interno. Tente novamente.' });
+      console.error('[blueclean] Fatal error:', e.message, e.stack);
+      return res.status(500).json({ error: 'Erro: ' + e.message });
     }
   }
 
