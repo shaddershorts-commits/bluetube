@@ -1,4 +1,19 @@
 // toolbar.js — Barra de ferramentas compartilhada + persistência de estado
+
+// Clean up stale Service Workers on non-blue pages
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => {
+      // Only keep blue-sw.js for blue.html; unregister everything else on other pages
+      if (reg.active?.scriptURL && !window.location.pathname.includes('blue.html')) {
+        if (!reg.active.scriptURL.includes('coi-serviceworker')) {
+          reg.unregister();
+        }
+      }
+    });
+  });
+}
+
 (function(){
   // ── TOOLBAR ─────────────────────────────────────────────────────────────────
   const TOOLS = [

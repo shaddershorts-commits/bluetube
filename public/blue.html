@@ -2002,7 +2002,19 @@ function dismissPWA(){
   document.getElementById('pwaBanner').style.display='none';
   localStorage.setItem('bl_pwa_dismissed','1');
 }
-if('serviceWorker' in navigator){navigator.serviceWorker.register('/blue-sw.js').catch(()=>{});}
+// Service Worker with auto-update
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/blue-sw.js').then(reg=>{
+    reg.update();
+    setInterval(()=>reg.update(),60000);
+    reg.addEventListener('updatefound',()=>{
+      const nw=reg.installing;
+      nw.addEventListener('statechange',()=>{
+        if(nw.state==='installed'&&navigator.serviceWorker.controller)window.location.reload();
+      });
+    });
+  }).catch(()=>{});
+}
 
 // ── P12: GESTURES — SWIPE DOWN TO CLOSE + DOUBLE TAP TO LIKE ────────────────
 // Swipe down to close panels

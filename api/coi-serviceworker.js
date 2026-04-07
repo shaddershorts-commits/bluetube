@@ -2,7 +2,12 @@
  * Habilita SharedArrayBuffer (necessário para FFmpeg WASM)
  * Adiciona COOP + COEP headers em todas as respostas */
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    // Clear ALL caches, then claim clients
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => self.clients.claim())
+  );
+});
 
 self.addEventListener('fetch', e => {
   // Ignora requests only-if-cached que não são same-origin

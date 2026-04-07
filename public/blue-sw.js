@@ -1,32 +1,43 @@
-// Blue Service Worker — Cache first for assets, network first for API
-const CACHE_NAME = 'blue-v1';
-const STATIC_ASSETS = ['/blue.html', '/manifest.json'];
+// Blue Service Worker — Network first, cache only as offline fallback
+// NEVER caches HTML or API responses
+
+const CACHE_NAME = 'blue-v2';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS)));
-  self.skipWaiting();
+  self.skipWaiting(); // Activate immediately
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))));
-  self.clients.claim();
+  e.waitUntil(
+    // Delete ALL old caches
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+  );
+  self.clients.claim(); // Take control immediately
 });
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // API calls: network first
-  if (url.pathname.startsWith('/api/')) {
-    e.respondWith(fetch(e.request).catch(() => new Response(JSON.stringify({ error: 'Offline' }), { headers: { 'Content-Type': 'application/json' } })));
+
+  // NEVER intercept API calls
+  if (url.pathname.startsWith('/api/')) return;
+
+  // NEVER cache HTML files — always go to network
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html') || e.request.destination === 'document') {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
-  // Videos: network only (too large to cache)
-  if (url.pathname.includes('storage') || url.pathname.includes('video')) {
-    e.respondWith(fetch(e.request));
-    return;
-  }
-  // Static assets: cache first
-  e.respondWith(caches.match(e.request).then(cached => cached || fetch(e.request).then(r => {
-    if (r.ok) { const clone = r.clone(); caches.open(CACHE_NAME).then(c => c.put(e.request, clone)); }
-    return r;
-  })));
+
+  // Videos/storage: network only (too large)
+  if (url.pathname.includes('storage') || e.request.destination === 'video') return;
+
+  // JS/CSS/images: network first, cache as fallback
+  e.respondWith(
+    fetch(e.request).then(r => {
+      if (r.ok && r.status === 200) {
+        const clone = r.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone)).catch(() => {});
+      }
+      return r;
+    }).catch(() => caches.match(e.request))
+  );
 });
