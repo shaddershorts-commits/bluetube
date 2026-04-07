@@ -1312,8 +1312,22 @@ Responda APENAS em JSON válido sem markdown:
         }
       }
 
-      // Sem sessão = confirmação por email ativa → retorna sem sessão para frontend mostrar OTP
+      // Sem sessão = confirmação por email ativa → tenta auto-login, senão mostra OTP
       if (!data.session) {
+        // Tenta login direto (funciona se Supabase auto-confirmou)
+        try {
+          const autoR = await fetch(`${authBase}/token?grant_type=password`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ email, password })
+          });
+          if (autoR.ok) {
+            const autoD = await autoR.json();
+            if (autoD.access_token) {
+              return res.status(200).json({ user: data.user || autoD.user, session: autoD });
+            }
+          }
+        } catch(e) {}
+        // Auto-login falhou → precisa confirmar email via OTP
         return res.status(200).json({ user: data.user, session: null, needsOTP: true });
       }
       return res.status(200).json({ user: data.user, session: data.session });
@@ -1335,14 +1349,18 @@ Responda APENAS em JSON válido sem markdown:
         if (msg.includes('Invalid login') || msg.includes('invalid')) {
           return res.status(400).json({ error: 'Email ou senha incorretos' });
         }
-        // Email não confirmado → reenviar OTP e pedir verificação
+        // Email não confirmado → tentar forçar login, senão pedir OTP
         if (msg.includes('Email not confirmed')) {
-          // Reenviar email de confirmação
+          // Tenta login direto (algumas configs do Supabase permitem)
           try {
-            await fetch(`${authBase}/resend`, {
-              method: 'POST', headers,
-              body: JSON.stringify({ type: 'signup', email })
+            const forceR = await fetch(`${authBase}/token?grant_type=password`, {
+              method: 'POST', headers, body: JSON.stringify({ email, password })
             });
+            if (forceR.ok) { const fd = await forceR.json(); if (fd.access_token) return res.status(200).json({ user: fd.user, session: fd }); }
+          } catch(e) {}
+          // Forçar falhou → reenviar OTP e mostrar form
+          try {
+            await fetch(`${authBase}/resend`, { method: 'POST', headers, body: JSON.stringify({ type: 'signup', email }) });
           } catch(e) {}
           return res.status(200).json({ session: null, needsOTP: true, error: null });
         }
