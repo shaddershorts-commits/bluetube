@@ -156,6 +156,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .auth-input{width:100%;background:rgba(2,8,23,0.85);border:1px solid rgba(0,170,255,0.14);border-radius:10px;padding:13px 16px;font-family:var(--font-mono);font-size:13px;color:var(--text-primary);outline:none;margin-bottom:10px;transition:all .22s}
 .auth-input:focus{border-color:rgba(0,170,255,0.4);box-shadow:0 0 0 3px rgba(0,170,255,0.07)}
 .auth-input::placeholder{color:var(--text-dim)}
+.otp-digit{width:48px;height:56px;background:rgba(2,8,23,.85);border:1px solid rgba(0,170,255,.15);border-radius:10px;text-align:center;font-family:var(--font-mono);font-size:24px;font-weight:800;color:var(--neon);outline:none;transition:all .2s;caret-color:var(--neon)}
+.otp-digit:focus{border-color:var(--neon);box-shadow:0 0 12px rgba(0,170,255,.2)}
+.otp-digit.filled{background:rgba(0,170,255,.06);border-color:rgba(0,170,255,.3)}
 .auth-submit{width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;margin-top:6px;margin-bottom:16px;transition:all .22s;box-shadow:0 0 20px rgba(0,170,255,0.3)}
 .auth-submit:hover{transform:translateY(-1px)}
 .auth-divider{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:14px}
@@ -727,23 +730,28 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </form>
     </div>
 
-    <!-- EMAIL CONFIRMATION SCREEN (shown after signup) -->
+    <!-- OTP VERIFICATION (6-digit code) -->
     <div id="authOTPForm" style="display:none">
       <div style="text-align:center;padding:10px 0">
-        <div style="font-size:48px;margin-bottom:16px">📧</div>
-        <div style="font-size:16px;font-weight:700;margin-bottom:10px">Verifique seu email</div>
+        <div style="font-size:48px;margin-bottom:12px">📧</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">Verifique seu email</div>
         <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:20px">
-          Enviamos um link de confirmação para<br>
-          <span id="otpEmailDisplay" style="color:var(--neon);font-weight:600"></span><br><br>
-          Clique no link no email para ativar sua conta.<br>
-          Após confirmar, volte aqui e faça login.
+          Enviamos um código de 6 dígitos para<br>
+          <span id="otpEmailDisplay" style="color:var(--neon);font-weight:600"></span>
         </div>
-        <button class="auth-submit" onclick="switchAuthTab('login')" style="margin-bottom:10px">
-          Já confirmei → Fazer login
-        </button>
+        <div id="otpInputs" style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="0"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="1"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="2"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="3"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="4"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-i="5"/>
+        </div>
+        <div id="otpStatus" style="font-family:var(--font-mono);font-size:12px;min-height:18px;margin-bottom:12px"></div>
+        <button class="auth-submit" onclick="submitOTPCode()" id="otpSubmitBtn" style="margin-bottom:10px">Verificar código →</button>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
-          Não recebeu? Verifique a caixa de spam ou
-          <button onclick="resendOTP()" style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline">reenvie o email</button>
+          <span id="otpResendTimer"></span>
+          <button onclick="resendOTPCode()" id="otpResendBtn" style="display:none;font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline">Reenviar código</button>
         </div>
       </div>
     </div>
@@ -1729,7 +1737,89 @@ function showOTPForm(email){
   document.getElementById('authDivider').style.display='none';
   document.getElementById('googleBtn').style.display='none';
   document.getElementById('authMsg').textContent='';
-  setTimeout(()=>document.getElementById('otpCode').focus(),100);
+  document.getElementById('otpStatus').textContent='';
+  // Clear and focus first OTP input
+  document.querySelectorAll('.otp-digit').forEach(d=>{d.value='';d.classList.remove('filled');});
+  setTimeout(()=>document.querySelector('.otp-digit')?.focus(),100);
+  // Start resend timer
+  startOTPResendTimer();
+  // Setup OTP input behavior
+  setupOTPInputs();
+}
+
+let _otpResendTimer=null;
+function startOTPResendTimer(){
+  let sec=60;
+  const timerEl=document.getElementById('otpResendTimer');
+  const btnEl=document.getElementById('otpResendBtn');
+  if(btnEl)btnEl.style.display='none';
+  if(_otpResendTimer)clearInterval(_otpResendTimer);
+  _otpResendTimer=setInterval(()=>{
+    sec--;
+    if(timerEl)timerEl.textContent=`Reenviar em ${sec}s`;
+    if(sec<=0){
+      clearInterval(_otpResendTimer);
+      if(timerEl)timerEl.textContent='';
+      if(btnEl)btnEl.style.display='inline';
+    }
+  },1000);
+}
+
+function setupOTPInputs(){
+  const inputs=document.querySelectorAll('.otp-digit');
+  inputs.forEach((inp,i)=>{
+    inp.oninput=()=>{
+      inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+      inp.classList.toggle('filled',!!inp.value);
+      if(inp.value&&i<5)inputs[i+1]?.focus();
+      // Auto-submit when all 6 filled
+      const code=[...inputs].map(d=>d.value).join('');
+      if(code.length===6)submitOTPCode();
+    };
+    inp.onkeydown=e=>{
+      if(e.key==='Backspace'&&!inp.value&&i>0){inputs[i-1]?.focus();}
+      if(e.key==='ArrowLeft'&&i>0)inputs[i-1]?.focus();
+      if(e.key==='ArrowRight'&&i<5)inputs[i+1]?.focus();
+    };
+    inp.onpaste=e=>{
+      e.preventDefault();
+      const code=(e.clipboardData.getData('text')||'').replace(/\D/g,'').slice(0,6);
+      code.split('').forEach((d,j)=>{if(inputs[j]){inputs[j].value=d;inputs[j].classList.add('filled');}});
+      if(code.length>=5)inputs[Math.min(code.length,5)]?.focus();
+      if(code.length===6)setTimeout(submitOTPCode,100);
+    };
+  });
+}
+
+async function submitOTPCode(){
+  const code=[...document.querySelectorAll('.otp-digit')].map(d=>d.value).join('');
+  if(code.length!==6){document.getElementById('otpStatus').innerHTML='<span style="color:var(--text-dim)">Digite os 6 dígitos</span>';return;}
+  const statusEl=document.getElementById('otpStatus');
+  const btn=document.getElementById('otpSubmitBtn');
+  statusEl.innerHTML='<span style="color:var(--neon)">Verificando…</span>';
+  if(btn)btn.disabled=true;
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_otp',email:pendingOTPEmail,otp:code})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Código inválido');
+    if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
+    statusEl.innerHTML='<span style="color:var(--green)">✅ Verificado!</span>';
+    sendWelcomeEmail(pendingOTPEmail);
+    setTimeout(()=>{closeAuthModal();checkSession();},1200);
+  }catch(e){
+    statusEl.innerHTML='<span style="color:#ff7a5a">'+e.message+'</span>';
+    document.querySelectorAll('.otp-digit').forEach(d=>{d.value='';d.classList.remove('filled');});
+    document.querySelector('.otp-digit')?.focus();
+  }
+  if(btn)btn.disabled=false;
+}
+
+async function resendOTPCode(){
+  try{
+    await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send_otp',email:pendingOTPEmail})});
+    document.getElementById('otpStatus').innerHTML='<span style="color:var(--neon)">📧 Novo código enviado!</span>';
+    startOTPResendTimer();
+  }catch(e){document.getElementById('otpStatus').innerHTML='<span style="color:#ff7a5a">Erro ao reenviar</span>';}
 }
 async function handleEmailLogin(){
   const email=document.getElementById('loginEmail').value.trim();
@@ -1768,46 +1858,34 @@ async function handleEmailSignup(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:(()=>{const c=document.cookie.split(';').find(x=>x.trim().startsWith('bt_ref='));return c?c.split('=')[1].trim():null;})()} )});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
-    // Confirmação desativada — login direto após cadastro
+
+    // If session returned directly (email confirmation disabled in Supabase)
     if(d.session?.access_token){
       localStorage.setItem('bt_token', d.session.access_token);
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+      setAuthMsg('Conta criada com sucesso! 🎉','ok');
+      sendWelcomeEmail(email);
+      setTimeout(()=>showOnboarding(),2500);
+      setTimeout(async()=>{
+        closeAuthModal();
+        await checkSession();
+        if(pendingUpgradePlan){
+          const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
+          pendingUpgradePlan=null; pendingUpgradeBilling=null;
+          setTimeout(()=>goToCheckout(plan,billing),800);
+        }
+      },1000);
+      return;
     }
-    setAuthMsg('Conta criada com sucesso! 🎉','ok');
-    // Send welcome email + show onboarding
-    sendWelcomeEmail(email);
-    setTimeout(()=>showOnboarding(),2500);
-    setTimeout(async()=>{
-      closeAuthModal();
-      await checkSession();
-      if(pendingUpgradePlan){
-        const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
-        pendingUpgradePlan=null; pendingUpgradeBilling=null;
-        setTimeout(()=>goToCheckout(plan,billing),800);
-      }
-    },1000);
+
+    // No session = email confirmation required → show OTP form
+    setAuthMsg('','ok');
+    showOTPForm(email);
   }catch(e){setAuthMsg(e.message,'');}
 }
-async function handleOTPVerify(){
-  const otp=document.getElementById('otpCode').value.trim();
-  if(otp.length!==6){setAuthMsg('Digite os 6 dígitos do código.','');return;}
-  setAuthMsg('Verificando…','ok');
-  try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_otp',email:pendingOTPEmail,otp})});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Código inválido');
-    if(d.session?.access_token)localStorage.setItem('bt_token',d.session.access_token);
-    setAuthMsg('Email verificado! Bem-vindo 🎉','ok');
-    setTimeout(()=>closeAuthModal(),1200);
-  }catch(e){setAuthMsg(e.message,'');}
-}
-async function resendOTP(){
-  if(!pendingOTPEmail)return;
-  setAuthMsg('Reenviando…','ok');
-  try{
-    await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send_otp',email:pendingOTPEmail})});
-    setAuthMsg('Código reenviado! Verifique seu email.','ok');
-  }catch(e){setAuthMsg('Erro ao reenviar.','');}
+// Old OTP handlers replaced by submitOTPCode() and resendOTPCode() above
+async function handleOTPVerify(){ submitOTPCode(); }
+async function resendOTP(){ resendOTPCode(); }
 }
 async function handleGoogleLogin(){
   try{
