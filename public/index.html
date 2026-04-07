@@ -1888,7 +1888,6 @@ async function handleEmailSignup(){
 // Old OTP handlers replaced by submitOTPCode() and resendOTPCode() above
 async function handleOTPVerify(){ submitOTPCode(); }
 async function resendOTP(){ resendOTPCode(); }
-}
 async function handleGoogleLogin(){
   try{
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'google'})});
