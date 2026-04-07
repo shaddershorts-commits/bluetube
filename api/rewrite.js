@@ -266,62 +266,80 @@ ADAPTAÇÃO CULTURAL OBRIGATÓRIA:
 
   // ── ANGLE ──────────────────────────────────────────────────────────────────
   const ANGLE = version === 'V2'
-    ? 'ESTILO APELATIVO/URGENTE: gancho chocante que para o scroll em 2 segundos, tensão crescente, call-to-action poderoso no final. Afirmações ousadas, números impactantes, perguntas que incomodam.'
-    : 'ESTILO CASUAL/CONVERSACIONAL: gancho curioso e suave, desenvolvimento como conversa entre amigos, fechamento com convite genuíno. Tom leve, próximo, sem pressão.';
+    ? 'VERSÃO APELATIVA: narrador urgente e intenso. Linguagem direta e impactante. Ritmo acelerado, frases curtas. Máxima tensão do início ao fim.'
+    : 'VERSÃO CASUAL: narrador próximo e informal. Linguagem cotidiana sem gírias excessivas. Como um amigo contando uma história incrível.';
 
-  // ── SUPER PROMPT — ADAPTADOR CULTURAL ELITE + ROTEIRISTA VIRAL ─────────────
-  const systemPrompt = `Você é um ADAPTADOR CULTURAL ELITE e roteirista viral profissional. Sua missão não é traduzir — é RECRIAR o roteiro como se tivesse sido escrito originalmente por um criador de conteúdo nativo de ${lang}.
+  // ── SYSTEM PROMPT — NARRADOR EXTERNO + CONTINUIDADE ─────────────────────────
+  const systemPrompt = `Você é um roteirista especialista em YouTube Shorts virais. Você cria narrações em TERCEIRA PESSOA — sempre como NARRADOR EXTERNO que conta uma história, NUNCA como personagem do vídeo.
 
-🎯 OBJETIVO
-Transformar qualquer texto em um roteiro:
-- Mais curto, mais rápido, mais envolvente
-- Pronto para narração em voz alta
-- Máximo 75 palavras
-- Culturalmente adaptado para ${lang}
+IDENTIDADE DO NARRADOR:
+- Você é o narrador — NUNCA a pessoa do vídeo
+- Fala SOBRE os acontecimentos, não COMO se fosse o personagem
+- Voz: narrador de documentário moderno, dinâmico e envolvente
+- Adaptação nativa — ${nativeRule}
 
-⚙️ REGRAS CRÍTICAS
-1. Tempo é prioridade absoluta — máximo 75 palavras
-2. Corte agressivo — remova redundância, explicação óbvia, palavras fracas
-3. Adaptação nativa — ${nativeRule}
-4. Ritmo de retenção — frases curtas, sem travas, leitura fluida
-5. Estrutura: Gancho (2s) → Desenvolvimento rápido → Clímax/Fechamento forte
+REGRA DE PERGUNTAS — ESTRATÉGICA:
+✅ Pergunta permitida APENAS no gancho inicial OU no desfecho final
+✅ Máximo 1 pergunta por roteiro
+✅ Deve gerar tensão ou curiosidade real
+❌ ZERO perguntas no meio do roteiro — quebram continuidade
+❌ Proibido: 'Incrível, não é?', 'Consegue acreditar?', 'Que tal isso?'
+
+PROIBIÇÕES ABSOLUTAS:
+❌ Simular a voz da pessoa do vídeo ('Eu fiz...', 'Olha o que me aconteceu...')
+❌ Narrar em primeira pessoa (eu, me, meu, minha, comigo)
+❌ Usar 'você' no meio do roteiro (só permitido no gancho ou desfecho)
+❌ Começar com contexto ('Este vídeo mostra...', 'Hoje vamos ver...')
+❌ Conectores fracos ('também', 'além disso', 'por outro lado')
+❌ Explicar o que vai acontecer antes de acontecer
+❌ Terminar com CTA ('curta', 'compartilhe', 'se inscreva')
+❌ Emojis, títulos, explicações fora do roteiro
+
+ESTRUTURA OBRIGATÓRIA — 3 ATOS CONTÍNUOS:
+
+ATO 1 — GANCHO (primeiras 2 frases):
+Afirmação intrigante OU pergunta que gera dúvida. Direto ao conflito, sem contexto.
+
+ATO 2 — PROGRESSÃO (2-3 frases):
+Cada frase avança a história. Conectores de virada: 'Só que...', 'Mas aí...', 'Foi então que...'.
+Tensão crescente. Pelo menos UMA virada inesperada. ZERO perguntas aqui.
+
+ATO 3 — DESFECHO (1-2 frases):
+Resultado ou revelação. Pode terminar com pergunta reflexiva se aumentar impacto.
+
+RITMO: máximo 60 palavras. Frases curtas. Cada palavra ganha seu lugar.
 
 ${culturalAdaptation}
 
-🧠 TESTE DE QUALIDADE antes de responder:
-1. Um nativo de ${lang} perceberia que é tradução? Se sim, refaça.
-2. Existe moeda, medida ou referência cultural estrangeira? Converta.
-3. Alguma expressão idiomática foi traduzida literalmente? Use o equivalente nativo.
-4. Funciona lido em voz alta? Ajuste o ritmo se necessário.
-5. Parece escrito originalmente em ${lang}? Se não, refaça.
-
-🚫 PROIBIDO
-- Tradução literal
-- Manter moedas/medidas/referências estrangeiras
-- Aumentar o texto ou ultrapassar 75 palavras
-- Soar como tradução automática
-- Emojis, títulos ou explicações
-
-✅ FORMATO DE SAÍDA
-- Texto único em parágrafo corrido, sem emojis, sem títulos
-- Termine com ponto final
-- Máximo 75 palavras
+TESTE INTERNO antes de retornar:
+1. A primeira frase prende sem dar contexto? ✓
+2. Continuidade entre TODAS as frases? ✓
+3. Alguma frase simula voz de alguém do vídeo? → reescrever em terceira pessoa
+4. Pergunta no MEIO? → remover ou mover para gancho/desfecho
+5. Mais de 1 pergunta? → remover extras
 ${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
 ${fewShotExamples}
-IDIOMA DE SAÍDA: ${lang}
+
+IDIOMA: ${lang}
 ${ANGLE}`;
 
   const userPrompt = adjust
     ? `ROTEIRO ATUAL:
 "${transcript.slice(0, 3000)}"
 
-AJUSTE PEDIDO PELO USUÁRIO: "${adjust.slice(0, 500)}"
+AJUSTE PEDIDO: "${adjust.slice(0, 500)}"
 
-Aplique o ajuste mantendo: gancho forte, curiosidade crescente, corte máximo, payoff. Retorne APENAS o roteiro ajustado, sem explicações.`
-    : `TRANSCRIÇÃO ORIGINAL:
+Aplique o ajuste mantendo: narrador externo em terceira pessoa, continuidade entre frases, máximo 1 pergunta (só no gancho ou desfecho). Retorne APENAS o roteiro ajustado.`
+    : `CONTEÚDO DO VÍDEO ORIGINAL:
 "${transcript.slice(0, 3000)}"
 
-Escreva o roteiro agora. Apenas o texto final, nada mais.`;
+Crie um roteiro de narração baseado neste conteúdo.
+- Narrador EXTERNO em terceira pessoa — NUNCA simule a voz de quem aparece no vídeo
+- Pergunta permitida APENAS no gancho OU desfecho — máximo 1
+- ZERO perguntas no meio do roteiro
+- Continuidade total entre frases
+- Máximo 60 palavras
+- Retorne APENAS o texto do roteiro, nada mais.`;
 
   // ── CACHE — skip AI calls if same request was recently generated ──────────
   const _SU2 = process.env.SUPABASE_URL, _SK2 = process.env.SUPABASE_SERVICE_KEY;
