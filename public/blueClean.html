@@ -259,15 +259,28 @@ function generateMask(){
 // Process
 async function startProcess(mode){
   if(!selectedFile||!TOKEN||!supaConfig)return;
+
+  // Pre-validate video before upload
+  try{
+    const testVid=document.createElement('video');
+    testVid.src=URL.createObjectURL(selectedFile);
+    await new Promise((r,j)=>{testVid.onloadedmetadata=r;testVid.onerror=()=>j(new Error('Vídeo inválido'));setTimeout(r,3000);});
+    if(testVid.duration>65){toast('❌ Vídeo muito longo. Máximo 60 segundos.');return;}
+    if(testVid.videoWidth>1920){toast('❌ Resolução muito alta. Máximo 1920px.');return;}
+  }catch(e){if(e.message.includes('inválido')){toast('❌ '+e.message);return;}}
+
   show('stepProcessing');
   document.getElementById('stepLabel').textContent='⬆️ Enviando vídeo...';
   try{
-    // Upload video
     const ts=Date.now();
     const vPath=`blueclean/${ts}/input.mp4`;
     const upR=await fetch(`${supaConfig.supabase_url}/storage/v1/object/blue-videos/${vPath}`,{
       method:'POST',headers:{apikey:supaConfig.anon_key,Authorization:'Bearer '+TOKEN,'Content-Type':selectedFile.type||'video/mp4','x-upsert':'true'},body:selectedFile});
-    if(!upR.ok)throw new Error('Upload falhou ('+upR.status+')');
+    if(!upR.ok){
+      const errTxt=await upR.text().catch(()=>'');
+      console.error('Upload failed:',upR.status,errTxt);
+      throw new Error('Upload falhou. Verifique conexão e tente novamente.');
+    }
     videoUrl=`${supaConfig.supabase_url}/storage/v1/object/public/blue-videos/${vPath}`;
 
     let maskUrl=null;
@@ -278,14 +291,15 @@ async function startProcess(mode){
       const mPath=`blueclean/${ts}/mask.png`;
       const mR=await fetch(`${supaConfig.supabase_url}/storage/v1/object/blue-videos/${mPath}`,{
         method:'POST',headers:{apikey:supaConfig.anon_key,Authorization:'Bearer '+TOKEN,'Content-Type':'image/png','x-upsert':'true'},body:maskBlob});
-      if(mR.ok) maskUrl=`${supaConfig.supabase_url}/storage/v1/object/public/blue-videos/${mPath}`;
+      if(!mR.ok) console.error('Mask upload failed:',mR.status);
+      else maskUrl=`${supaConfig.supabase_url}/storage/v1/object/public/blue-videos/${mPath}`;
     }
 
     document.getElementById('stepLabel').textContent='🤖 IA processando...';
     const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,mode,mask_url:maskUrl})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Erro');
+    if(!r.ok)throw new Error(d.error||'Erro ao iniciar processamento');
     currentJobId=d.job_id;
     startPolling();
   }catch(e){toast('❌ '+e.message);show('stepEditor');}

@@ -113,10 +113,18 @@ module.exports = async function handler(req, res) {
   if (req.method === 'POST' && action === 'start') {
     if (!REPLICATE) return res.status(500).json({ error: 'Replicate não configurado. Adicione REPLICATE_API_TOKEN no Vercel.' });
 
-    const { video_url } = req.body;
+    const { video_url, video_duration, video_width, video_height } = req.body;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
 
-    console.log('[blueclean] Starting job for:', userEmail, 'video:', video_url.slice(0, 80));
+    // Validations BEFORE consuming credit
+    if (video_duration && video_duration > 60) {
+      return res.status(400).json({ error: 'Vídeo muito longo. Máximo 60 segundos.' });
+    }
+    if (video_width && video_width > 1920) {
+      return res.status(400).json({ error: 'Resolução muito alta. Máximo 1920px de largura.' });
+    }
+
+    console.log('[blueclean] Starting job for:', userEmail, 'video:', video_url.slice(0, 80), 'duration:', video_duration || '?', 'mode:', req.body.mode || 'auto');
 
     // Check limit
     const ur = await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: H });
@@ -126,16 +134,13 @@ module.exports = async function handler(req, res) {
 
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
-
-    // Call Replicate — supports two modes:
-    // mode=auto: video-text-remover (auto-detects text)
-    // mode=mask: propainter (user-drawn mask for precise removal)
     const mode = req.body.mode || 'auto';
     const mask_url = req.body.mask_url;
 
     try {
+      // Choose model based on mode
       const modelName = (mode === 'mask' && mask_url) ? 'jd7h/propainter' : 'hjunior29/video-text-remover';
-      console.log('[blueclean] Mode:', mode, 'Model:', modelName);
+      console.log('[blueclean] Mode:', mode, 'Model:', modelName, 'Mask:', mask_url ? 'yes' : 'no');
 
       // Get latest version
       let versionHash = null;
@@ -147,6 +152,8 @@ module.exports = async function handler(req, res) {
           const vd = await vr.json();
           versionHash = vd.results?.[0]?.id;
           console.log('[blueclean] Version:', versionHash);
+        } else {
+          console.error('[blueclean] Version fetch failed:', vr.status);
         }
       } catch(e) { console.error('[blueclean] Version error:', e.message); }
 
@@ -157,9 +164,30 @@ module.exports = async function handler(req, res) {
       // Build input based on mode
       let input;
       if (mode === 'mask' && mask_url) {
-        input = { video: video_url, mask: mask_url, fp16: true, subvideo_length: 80 };
+        // ProPainter with user mask — optimized params
+        input = {
+          video: video_url,
+          mask: mask_url,
+          width: 640,
+          height: 360,
+          neighbor_length: 20,
+          ref_stride: 5,
+          raft_iter: 20,
+          subvideo_length: 60,
+          fp16: false,
+          mask_dilation: 8
+        };
       } else {
-        input = { video: video_url, method: 'inpaint', conf_threshold: 0.25, resolution: 'original' };
+        // Auto mode — video-text-remover with better params
+        input = {
+          video: video_url,
+          method: 'inpaint',
+          conf_threshold: 0.15,     // lower = more aggressive detection
+          iou_threshold: 0.3,
+          margin: 15,               // extra margin around detected text
+          resolution: 'original',
+          detection_interval: 1     // check every frame
+        };
       }
 
       const replicateBody = {
@@ -168,7 +196,7 @@ module.exports = async function handler(req, res) {
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
         webhook_events_filter: ['completed']
       };
-      console.log('[blueclean] Calling Replicate:', JSON.stringify(replicateBody).slice(0, 300));
+      console.log('[blueclean] Replicate payload:', JSON.stringify(replicateBody).slice(0, 400));
 
       const rr = await fetch('https://api.replicate.com/v1/predictions', {
         method: 'POST',
