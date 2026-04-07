@@ -127,36 +127,44 @@ module.exports = async function handler(req, res) {
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
 
-    // Call Replicate — hjunior29/video-text-remover (auto-detects and removes text/watermarks)
+    // Call Replicate — supports two modes:
+    // mode=auto: video-text-remover (auto-detects text)
+    // mode=mask: propainter (user-drawn mask for precise removal)
+    const mode = req.body.mode || 'auto';
+    const mask_url = req.body.mask_url;
+
     try {
+      const modelName = (mode === 'mask' && mask_url) ? 'jd7h/propainter' : 'hjunior29/video-text-remover';
+      console.log('[blueclean] Mode:', mode, 'Model:', modelName);
+
       // Get latest version
       let versionHash = null;
       try {
-        const vr = await fetch('https://api.replicate.com/v1/models/hjunior29/video-text-remover/versions', {
+        const vr = await fetch(`https://api.replicate.com/v1/models/${modelName}/versions`, {
           headers: { Authorization: 'Token ' + REPLICATE }
         });
         if (vr.ok) {
           const vd = await vr.json();
           versionHash = vd.results?.[0]?.id;
-          console.log('[blueclean] video-text-remover version:', versionHash);
-        } else {
-          const errText = await vr.text().catch(() => '');
-          console.error('[blueclean] Version fetch failed:', vr.status, errText);
+          console.log('[blueclean] Version:', versionHash);
         }
       } catch(e) { console.error('[blueclean] Version error:', e.message); }
 
       if (!versionHash) {
-        return res.status(500).json({ error: 'Não foi possível obter a versão do modelo. Verifique REPLICATE_API_TOKEN.' });
+        return res.status(500).json({ error: 'Modelo indisponível. Verifique REPLICATE_API_TOKEN.' });
+      }
+
+      // Build input based on mode
+      let input;
+      if (mode === 'mask' && mask_url) {
+        input = { video: video_url, mask: mask_url, fp16: true, subvideo_length: 80 };
+      } else {
+        input = { video: video_url, method: 'telea', conf_threshold: 0.25, resolution: 'original' };
       }
 
       const replicateBody = {
         version: versionHash,
-        input: {
-          video: video_url,
-          method: 'telea',
-          conf_threshold: 0.25,
-          resolution: 'original'
-        },
+        input,
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
         webhook_events_filter: ['completed']
       };
