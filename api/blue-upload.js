@@ -141,9 +141,7 @@ module.exports = async function handler(req, res) {
         duration: parseFloat(duration)||0,
         width: parseInt(width)||1080,
         height: parseInt(height)||1920,
-        score: 50, status: 'active', test_phase: true,
-        file_size_mb: Math.round(fileSizeMB * 100) / 100,
-        moderation_status: moderationStatus
+        score: 50, status: 'active', test_phase: true
       })
     });
     if (!vR.ok) {
