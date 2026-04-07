@@ -37,6 +37,10 @@
     {
       "path": "/api/weekly-trends-email",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/blueclean-poll",
+      "schedule": "*/2 * * * *"
     }
   ],
   "headers": [

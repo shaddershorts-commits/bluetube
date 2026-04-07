@@ -24,17 +24,17 @@ if ('serviceWorker' in navigator) {
     { id:'virais',   icon:'🔥', label:'Virais',      href:'/virais.html' },
     { id:'baixa',    icon:'⬇️', label:'BaixaBlue',   href:'/baixaBlue.html' },
     { id:'editor',   icon:'✨', label:'BlueEditor',  href:'/blueEditor.html' },
+    { id:'clean',    icon:'🧹', label:'BlueClean',   href:'/blueClean.html' },
     { id:'blue',     icon:'🎬', label:'Blue',        href:'/blue.html' },
   ];
 
-  // Detect current page
   const path = window.location.pathname;
   const PAGE_MAP = {
     '/':'roteiro', '/index.html':'roteiro',
     '/blueVoice.html':'voice', '/blueScore.html':'score',
     '/blueLens.html':'lens', '/virais.html':'virais',
     '/baixaBlue.html':'baixa', '/blueEditor.html':'editor',
-    '/blue.html':'blue',
+    '/blueClean.html':'clean', '/blue.html':'blue',
   };
   const activeTool = PAGE_MAP[path] || '';
 

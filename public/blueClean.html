@@ -1,0 +1,264 @@
+<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BlueClean — Remove overlays com IA</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#020817;--card:rgba(10,22,40,.8);--neon:#00aaff;--gold:#fbbf24;--green:#22c55e;--red:#ef4444;--text:#e8f4ff;--dim:rgba(150,190,230,.4);--mono:'DM Mono',monospace;--font:'Syne',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
+.wrap{max-width:720px;margin:0 auto;padding:80px 20px 60px}
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--dim);text-decoration:none;font-size:13px;margin-bottom:24px}.back:hover{color:var(--neon)}
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--gold);background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);padding:5px 14px;border-radius:100px;margin-bottom:16px}
+h1{font-size:clamp(32px,6vw,48px);font-weight:800;letter-spacing:-2px;margin-bottom:8px}h1 span{color:var(--neon)}
+.sub{font-family:var(--mono);font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:24px}
+.usage-bar{background:var(--card);border:1px solid rgba(0,170,255,.1);border-radius:14px;padding:16px 20px;margin-bottom:28px;display:flex;align-items:center;gap:16px}
+.usage-count{font-size:28px;font-weight:800;color:var(--neon)}.usage-label{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.drop{border:2px dashed rgba(0,170,255,.2);border-radius:20px;padding:48px 24px;text-align:center;cursor:pointer;transition:all .2s;background:rgba(0,170,255,.02)}
+.drop:hover,.drop.over{border-color:var(--neon);background:rgba(0,170,255,.06)}
+.drop-icon{font-size:48px;margin-bottom:12px}.drop-label{font-family:var(--mono);font-size:13px;color:var(--dim)}
+.preview{display:none;margin-top:20px;background:var(--card);border-radius:16px;overflow:hidden;border:1px solid rgba(0,170,255,.1)}
+.preview video{width:100%;max-height:400px;display:block}
+.btn{display:block;width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:14px;padding:16px;font-family:var(--font);font-size:16px;font-weight:800;color:#fff;cursor:pointer;margin-top:16px;box-shadow:0 0 24px rgba(0,170,255,.3);transition:all .2s}
+.btn:hover{transform:translateY(-1px)}.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.processing{display:none;text-align:center;padding:40px 20px}
+.spin{width:48px;height:48px;border:4px solid rgba(0,170,255,.15);border-top-color:var(--neon);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.step{font-family:var(--mono);font-size:13px;color:var(--neon);margin-bottom:8px}.step-sub{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.result{display:none;text-align:center;padding:20px 0}
+.result video{width:100%;border-radius:16px;margin-bottom:16px;max-height:500px}
+.dl-btn{display:inline-flex;align-items:center;gap:8px;background:var(--green);border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:15px;font-weight:700;color:#fff;cursor:pointer;text-decoration:none;margin:8px}
+.history{margin-top:40px}.history h3{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.job{background:var(--card);border:1px solid rgba(0,170,255,.08);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.job-status{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:100px}
+.s-completed{background:rgba(34,197,94,.1);color:var(--green)}.s-processing{background:rgba(0,170,255,.1);color:var(--neon)}.s-failed{background:rgba(239,68,68,.1);color:var(--red)}
+.upgrade{text-align:center;padding:60px 20px}.upgrade h2{font-size:24px;font-weight:800;margin-bottom:12px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:12px 20px;font-size:13px;z-index:999;opacity:0;transition:all .3s}
+.toast.on{opacity:1}
+@media(max-width:640px){.wrap{padding:70px 16px 40px}}
+</style>
+</head><body>
+<div class="wrap">
+  <a href="/" class="back">← BlueTube</a>
+
+  <!-- UPGRADE WALL -->
+  <div id="upgradeWall" style="display:none">
+    <div class="upgrade">
+      <div style="font-size:64px;margin-bottom:16px">🧹</div>
+      <h2>BlueClean é exclusivo do plano Master</h2>
+      <p style="font-family:var(--mono);font-size:13px;color:var(--dim);margin-bottom:24px;line-height:1.6">Remove legendas, setas, marcas d'água e qualquer overlay com IA.<br>Disponível para assinantes Master.</p>
+      <a href="/?upgrade=master" class="btn" style="max-width:320px;margin:0 auto;display:block;text-decoration:none;text-align:center">Assinar Master R$89,99/mês →</a>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="mainContent" style="display:none">
+    <div class="badge">👑 Exclusivo Master</div>
+    <h1>Blue<span>Clean</span></h1>
+    <p class="sub">Remove legendas, setas, marcas d'água e qualquer overlay com IA.<br>10 vídeos por mês · Processamento em 2-5 minutos.</p>
+
+    <div class="usage-bar">
+      <div><div class="usage-count" id="usageCount">—</div><div class="usage-label">usados este mês</div></div>
+      <div style="flex:1;height:6px;background:rgba(0,170,255,.1);border-radius:100px;overflow:hidden"><div id="usageFill" style="height:100%;background:var(--neon);border-radius:100px;width:0%;transition:width .5s"></div></div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--dim)"><span id="usageRemaining">10</span>/10</div>
+    </div>
+
+    <!-- UPLOAD -->
+    <div id="uploadSection">
+      <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');pickCleanFile(event.dataTransfer.files[0])">
+        <div class="drop-icon" id="dropIcon">🧹</div>
+        <div class="drop-label" id="dropLabel">Arraste um vídeo ou clique para selecionar</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">MP4, MOV, WebM · Máx 200MB</div>
+      </div>
+      <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm" style="display:none" onchange="pickCleanFile(this.files[0])"/>
+      <div class="preview" id="preview"><video id="previewVid" controls></video></div>
+      <button class="btn" id="startBtn" disabled onclick="startClean()">Limpar vídeo →</button>
+    </div>
+
+    <!-- PROCESSING -->
+    <div class="processing" id="processing">
+      <div class="spin"></div>
+      <div class="step" id="stepLabel">⬆️ Enviando vídeo...</div>
+      <div class="step-sub">Estimativa: 2-5 minutos</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:20px">Pode fechar esta página. Enviaremos email quando pronto.</div>
+    </div>
+
+    <!-- RESULT -->
+    <div class="result" id="result">
+      <div style="font-size:32px;margin-bottom:8px">✅</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:16px">Vídeo limpo!</div>
+      <video id="resultVid" controls style="width:100%;border-radius:16px;margin-bottom:16px"></video>
+      <a id="downloadBtn" class="dl-btn" download="blueclean-video.mp4">⬇️ Baixar vídeo limpo</a>
+      <button class="btn" onclick="resetClean()" style="margin-top:12px;background:rgba(0,170,255,.1);color:var(--neon);box-shadow:none;border:1px solid rgba(0,170,255,.2)">Limpar outro vídeo →</button>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="history" id="historySection">
+      <h3>📋 Histórico</h3>
+      <div id="historyList"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = localStorage.getItem('bt_token');
+let selectedFile = null, currentJobId = null, pollTimer = null;
+
+function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');setTimeout(()=>e.classList.remove('on'),3000);}
+
+// Init
+(async()=>{
+  if(!TOKEN){document.getElementById('upgradeWall').style.display='block';return;}
+  // Check plan via usage endpoint
+  try{
+    const r=await fetch('/api/blueclean?action=usage&token='+encodeURIComponent(TOKEN));
+    const d=await r.json();
+    if(r.status===403){document.getElementById('upgradeWall').style.display='block';return;}
+    document.getElementById('mainContent').style.display='block';
+    updateUsage(d);
+    loadHistory();
+  }catch(e){document.getElementById('upgradeWall').style.display='block';}
+})();
+
+function updateUsage(d){
+  document.getElementById('usageCount').textContent=d.used||0;
+  document.getElementById('usageRemaining').textContent=d.remaining||0;
+  document.getElementById('usageFill').style.width=((d.used||0)/10*100)+'%';
+  if(d.remaining<=0)document.getElementById('startBtn').disabled=true;
+}
+
+function pickCleanFile(file){
+  if(!file)return;
+  if(file.size>200*1024*1024){toast('❌ Máximo 200MB');return;}
+  if(!file.type.startsWith('video/')){toast('❌ Apenas vídeos');return;}
+  selectedFile=file;
+  const vid=document.getElementById('previewVid');
+  vid.src=URL.createObjectURL(file);
+  document.getElementById('preview').style.display='block';
+  document.getElementById('dropIcon').textContent='✅';
+  document.getElementById('dropLabel').textContent=file.name.slice(0,40)+' ('+Math.round(file.size/1024/1024)+'MB)';
+  document.getElementById('startBtn').disabled=false;
+}
+
+async function startClean(){
+  if(!selectedFile||!TOKEN)return;
+  const btn=document.getElementById('startBtn');
+  btn.disabled=true;btn.textContent='Enviando…';
+
+  // Upload to Supabase Storage first
+  try{
+    const SU=await getSU();
+    if(!SU){toast('Erro de configuração');btn.disabled=false;btn.textContent='Limpar vídeo →';return;}
+    const ts=Date.now();
+    const path=`blueclean/${ts}/input.mp4`;
+    document.getElementById('uploadSection').style.display='none';
+    document.getElementById('processing').style.display='block';
+    document.getElementById('stepLabel').textContent='⬆️ Enviando vídeo...';
+
+    // Upload
+    const upR=await fetch(`${SU.url}/storage/v1/object/blue-videos/${path}`,{
+      method:'POST',
+      headers:{apikey:SU.key,Authorization:'Bearer '+TOKEN,'Content-Type':selectedFile.type,'x-upsert':'true'},
+      body:selectedFile
+    });
+    if(!upR.ok)throw new Error('Upload falhou');
+
+    const videoUrl=`${SU.url}/storage/v1/object/public/blue-videos/${path}`;
+    document.getElementById('stepLabel').textContent='🔍 Iniciando processamento com IA...';
+
+    // Start clean
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Erro');
+
+    currentJobId=d.job_id;
+    document.getElementById('stepLabel').textContent='🤖 IA removendo overlays...';
+    startPolling(d.job_id);
+  }catch(e){
+    toast('❌ '+e.message);
+    document.getElementById('processing').style.display='none';
+    document.getElementById('uploadSection').style.display='block';
+    btn.disabled=false;btn.textContent='Limpar vídeo →';
+  }
+}
+
+function startPolling(jobId){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await fetch(`/api/blueclean?action=status&token=${encodeURIComponent(TOKEN)}&job_id=${jobId}`);
+      const d=await r.json();
+      if(d.status==='completed'&&d.output_url){
+        clearInterval(pollTimer);
+        showResult(d.output_url);
+      }else if(d.status==='failed'){
+        clearInterval(pollTimer);
+        toast('❌ Processamento falhou. Crédito estornado.');
+        resetClean();
+      }else{
+        const steps=['🔍 Detectando overlays...','🤖 IA removendo elementos...','✨ Finalizando...'];
+        const idx=Math.min(Math.floor((d.progress||30)/30),2);
+        document.getElementById('stepLabel').textContent=steps[idx];
+      }
+    }catch(e){}
+  },5000);
+}
+
+function showResult(url){
+  document.getElementById('processing').style.display='none';
+  document.getElementById('result').style.display='block';
+  document.getElementById('resultVid').src=url;
+  document.getElementById('downloadBtn').href=url;
+  // Refresh usage
+  fetch('/api/blueclean?action=usage&token='+encodeURIComponent(TOKEN)).then(r=>r.json()).then(updateUsage).catch(()=>{});
+  loadHistory();
+}
+
+function resetClean(){
+  selectedFile=null;currentJobId=null;
+  if(pollTimer)clearInterval(pollTimer);
+  document.getElementById('uploadSection').style.display='block';
+  document.getElementById('processing').style.display='none';
+  document.getElementById('result').style.display='none';
+  document.getElementById('preview').style.display='none';
+  document.getElementById('dropIcon').textContent='🧹';
+  document.getElementById('dropLabel').textContent='Arraste um vídeo ou clique para selecionar';
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('startBtn').textContent='Limpar vídeo →';
+}
+
+async function loadHistory(){
+  try{
+    const r=await fetch('/api/blueclean?action=history&token='+encodeURIComponent(TOKEN));
+    const d=await r.json();
+    const list=document.getElementById('historyList');
+    if(!d.jobs?.length){list.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--dim)">Nenhum processamento ainda.</div>';return;}
+    list.innerHTML=d.jobs.slice(0,5).map(j=>{
+      const sc=j.status==='completed'?'s-completed':j.status==='processing'?'s-processing':'s-failed';
+      const label=j.status==='completed'?'✅ Pronto':j.status==='processing'?'⏳ Processando':'❌ Erro';
+      const dt=new Date(j.created_at).toLocaleDateString('pt-BR');
+      return`<div class="job">
+        <div><div style="font-family:var(--mono);font-size:11px;color:var(--dim)">${dt}</div></div>
+        <span class="job-status ${sc}">${label}</span>
+        ${j.output_url?`<a href="${j.output_url}" download style="color:var(--neon);font-size:12px;text-decoration:none">⬇️ Baixar</a>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){}
+}
+
+// Get Supabase URL from a lightweight endpoint
+async function getSU(){
+  try{
+    // Use the health endpoint to get Supabase URL indirectly
+    // Actually, we can get it from the upload flow
+    const r=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:TOKEN,title:'_probe',description:'',duration:0,width:0,height:0,file_name:'probe.mp4'})});
+    const d=await r.json();
+    return d.supabase_url?{url:d.supabase_url,key:d.anon_key}:null;
+  }catch(e){return null;}
+}
+</script>
+<script src="/toolbar.js"></script>
+</body></html>

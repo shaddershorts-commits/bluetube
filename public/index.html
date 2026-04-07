@@ -526,6 +526,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <span class="nav-tool-tip">🔍 BlueLens</span>
       </button>
+      <button class="nav-tool-btn" onclick="openMasterTool('blueclean')" style="background:linear-gradient(135deg,rgba(34,197,94,.1),rgba(0,170,255,.06));border-color:rgba(34,197,94,.3)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M5 6v14h14V6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        <span class="nav-tool-tip">🧹 BlueClean</span>
+      </button>
     </div>
     <!-- Mobile: menu suspenso de ferramentas Master -->
     <div style="position:relative">
@@ -567,6 +571,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <div>
             <span style="display:flex;align-items:center;gap:6px">BlueLens <span style="font-size:9px;background:linear-gradient(135deg,#4f46e5,#a78bfa);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700">NOVO</span></span>
             <span class="mobile-tool-item-sub">Rastreador de origem do vídeo</span>
+          </div>
+        </button>
+        <button class="mobile-tool-item" onclick="openMasterTool('blueclean');closeMobileTools()">
+          <div class="tool-icon" style="background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.3)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M5 6v14h14V6"/></svg>
+          </div>
+          <div>
+            <span style="display:flex;align-items:center;gap:6px">BlueClean <span style="font-size:9px;background:linear-gradient(135deg,#166534,#22c55e);color:#fff;padding:2px 6px;border-radius:100px;font-weight:700">NOVO</span></span>
+            <span class="mobile-tool-item-sub">Remove overlays com IA</span>
           </div>
         </button>
       </div>
@@ -3292,6 +3305,7 @@ function goToBlueEditor(){
 const TOOL_PLAN_REQ = {
   download: 'master',   // BaixaBlue
   voice: 'master',      // BlueVoice
+  blueclean: 'master',  // BlueClean
   viral: 'full',        // Virais
   bluescore: 'full',    // BlueScore
   bluelens: 'full',     // BlueLens
@@ -3325,6 +3339,7 @@ function openMasterTool(tool){
   if(tool === 'voice'){ window.location.href = '/blueVoice.html'; return; }
   if(tool === 'bluescore'){ window.location.href = '/blueScore.html'; return; }
   if(tool === 'bluelens'){ window.location.href = '/blueLens.html'; return; }
+  if(tool === 'blueclean'){ window.location.href = '/blueClean.html'; return; }
   // Fallback
   openUpgradeModal('tool_blocked', 'master');
 }
