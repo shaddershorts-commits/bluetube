@@ -155,7 +155,7 @@ module.exports = async function handler(req, res) {
           subvideo_length: 80
         },
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
-        webhook_events_filter: ['completed', 'failed']
+        webhook_events_filter: ['completed']
       };
       console.log('[blueclean] Calling Replicate:', JSON.stringify(replicateBody).slice(0, 300));
 
