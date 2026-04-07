@@ -75,7 +75,7 @@ module.exports = async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
         body: JSON.stringify({
-          from: 'BlueTube <onboarding@resend.dev>', to: [email],
+          from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
           subject: '✅ Sua conta BlueTube foi deletada',
           html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0a1628;color:#e8f4ff;border-radius:16px;padding:28px;border:1px solid rgba(0,170,255,.2)">
             <h2 style="color:#00aaff;margin:0 0 16px">Conta deletada</h2>

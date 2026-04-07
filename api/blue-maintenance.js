@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
               body: JSON.stringify({
-                from: 'BlueTube <onboarding@resend.dev>', to: [ADMIN_EMAIL],
+                from: 'BlueTube <noreply@bluetubeviral.com>', to: [ADMIN_EMAIL],
                 subject: `⚑ Vídeo com 5+ denúncias — ${video_id}`,
                 html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><h3 style="color:#ff7a5a">⚑ Vídeo denunciado 5+ vezes</h3><p>ID: ${video_id}</p><p>Última razão: ${reason}</p><p>Total: ${reports.length} denúncias</p><p>Status: under_review (removido do feed automaticamente)</p><a href="https://bluetubeviral.com/admin.html" style="color:#00aaff">Abrir painel admin →</a></div>`
               })
@@ -282,7 +282,7 @@ module.exports = async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
           body: JSON.stringify({
-            from: 'BlueTube Monitor <onboarding@resend.dev>',
+            from: 'BlueTube Monitor <noreply@bluetubeviral.com>',
             to: [ADMIN_EMAIL],
             subject: `🎬 Blue Maintenance — ${results.marked_unavailable} vídeo(s) removido(s)`,
             html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a1628;color:#e8f4ff;border-radius:16px;padding:28px;border:1px solid rgba(0,170,255,0.2)">

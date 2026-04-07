@@ -71,7 +71,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
         body: JSON.stringify({
-          from: 'BlueTube <onboarding@resend.dev>',
+          from: 'BlueTube <noreply@bluetubeviral.com>',
           to: [ADMIN_EMAIL],
           subject,
           html: `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;background:#0a1628;color:#e8f4ff;border-radius:16px;overflow:hidden;border:1px solid rgba(0,170,255,.2)">

@@ -298,7 +298,7 @@ module.exports = async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RESEND_KEY}` },
         body: JSON.stringify({
-          from: 'BlueTube Monitor <onboarding@resend.dev>',
+          from: 'BlueTube Monitor <noreply@bluetubeviral.com>',
           to: [ADMIN_EMAIL],
           subject: tmpl.subject,
           html

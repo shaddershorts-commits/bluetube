@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
           body: JSON.stringify({
-            from: 'BlueTube <onboarding@resend.dev>',
+            from: 'BlueTube <noreply@bluetubeviral.com>',
             to: [user.email],
             subject: template.subject,
             html

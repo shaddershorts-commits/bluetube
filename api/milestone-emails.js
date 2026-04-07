@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
             body: JSON.stringify({
-              from: 'BlueTube <onboarding@resend.dev>', to: [u.email],
+              from: 'BlueTube <noreply@bluetubeviral.com>', to: [u.email],
               subject: m.subject,
               html: emailWrap(m.body(u.total_roteiros, daysSince, perWeek), unsubToken)
             })

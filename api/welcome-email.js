@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
-        from: 'BlueTube <onboarding@resend.dev>',
+        from: 'BlueTube <noreply@bluetubeviral.com>',
         to: [email],
         subject: 'Bem-vindo ao BlueTube! Aqui está como começar 🚀',
         html: `<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;background:#020817;color:#e8f4ff;border-radius:20px;overflow:hidden;border:1px solid rgba(0,170,255,.2)">

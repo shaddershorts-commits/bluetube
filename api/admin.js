@@ -206,7 +206,7 @@ export default async function handler(req, res) {
     const RESEND = process.env.RESEND_API_KEY;
     if (RESEND) {
       fetch('https://api.resend.com/emails', { method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${RESEND}`},
-        body:JSON.stringify({ from:'BlueTube <onboarding@resend.dev>', to:[targetEmail], subject:'Sua conta BlueTube foi removida',
+        body:JSON.stringify({ from:'BlueTube <noreply@bluetubeviral.com>', to:[targetEmail], subject:'Sua conta BlueTube foi removida',
           html:`<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><p>Sua conta foi removida do BlueTube por um administrador.</p><p>Todos os seus dados foram excluídos.</p></div>`})
       }).catch(()=>{});
     }

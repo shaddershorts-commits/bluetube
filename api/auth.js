@@ -1275,7 +1275,7 @@ Responda APENAS em JSON válido sem markdown:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
           body: JSON.stringify({
-            from: 'BlueTube <onboarding@resend.dev>', to: [email],
+            from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
             subject: otp + ' — Seu código de verificação BlueTube',
             html: `<div style="background:#020817;color:#e8f4ff;font-family:-apple-system,sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px;border:1px solid rgba(0,170,255,.2)">
               <div style="text-align:center;margin-bottom:20px"><span style="font-size:24px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></span></div>
@@ -1331,7 +1331,7 @@ Responda APENAS em JSON válido sem markdown:
           if (RESEND) {
             fetch('https://api.resend.com/emails', { method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
-              body: JSON.stringify({ from: 'BlueTube <onboarding@resend.dev>', to: [email],
+              body: JSON.stringify({ from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
                 subject: otp + ' — Seu código de verificação BlueTube',
                 html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
               })
@@ -1394,7 +1394,7 @@ Responda APENAS em JSON válido sem markdown:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
           body: JSON.stringify({
-            from: 'BlueTube <onboarding@resend.dev>', to: [email],
+            from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
             subject: otp + ' — Seu código de verificação BlueTube',
             html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código de verificação:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
           })

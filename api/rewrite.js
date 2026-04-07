@@ -120,7 +120,7 @@ export default async function handler(req, res) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
               body: JSON.stringify({
-                from: 'BlueTube <onboarding@resend.dev>', to: [email],
+                from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
                 subject: '✅ Seu roteiro viral está pronto!',
                 html: `<div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto;background:#020817;color:#e8f4ff;border-radius:20px;overflow:hidden;border:1px solid rgba(0,170,255,.15)">
                   <div style="text-align:center;padding:28px 24px 16px"><a href="https://bluetubeviral.com" style="text-decoration:none;font-size:22px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></a><div style="height:2px;background:linear-gradient(90deg,transparent,#00aaff,transparent);margin-top:16px"></div></div>
