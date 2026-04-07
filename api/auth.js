@@ -1282,6 +1282,13 @@ Responda APENAS em JSON válido sem markdown:
           })
         }).catch(e => console.error('Subscriber insert error:', e.message));
 
+        // Insere na lista de email marketing
+        fetch(`${SUPA_URL}/rest/v1/email_marketing`, {
+          method: 'POST',
+          headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
+          body: JSON.stringify({ email: newEmail, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: new Date().toISOString() })
+        }).catch(() => {});
+
         // Registra conversão de afiliado (signup free)
         if (refCode) {
           fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
