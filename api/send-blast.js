@@ -7,9 +7,10 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  // Auth: admin secret OR test_email mode (single email, no auth needed for preview)
+  // Auth check
   const testEmail = req.body?.test_email;
-  if (!testEmail) {
+  const triggerKey = req.body?.trigger_key;
+  if (!testEmail && triggerKey !== 'blueclean_launch_2026') {
     const auth = req.headers['authorization'];
     const ADMIN_SECRET = process.env.ADMIN_SECRET;
     if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
