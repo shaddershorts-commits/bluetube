@@ -793,8 +793,33 @@ async function previewVoice(id, event) {
     return;
   }
 
-  // 3. Gera prévia via TTS (texto curto — custo mínimo)
-  if (btn) { btn.innerHTML = `<span style="opacity:.6">Gerando…</span>`; btn.disabled = true; }
+  // 3. Tenta buscar preview via servidor (funciona para vozes clonadas na conta do BlueTube)
+  if (btn) { btn.innerHTML = `<span style="opacity:.6">Carregando…</span>`; btn.disabled = true; }
+
+  try {
+    const pvR = await fetch(`/api/auth?action=voice-preview&voiceId=${id}`);
+    if (pvR.ok) {
+      const pvD = await pvR.json();
+      if (pvD.audio) {
+        const bin = atob(pvD.audio);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        _previewCache[id] = url;
+        const audio = new Audio(url);
+        audio._voiceId = id;
+        currentPreview = audio;
+        if (btn) { btn.innerHTML = pauseIcon; btn.disabled = false; }
+        audio.play();
+        audio.onended = () => { if (btn) btn.innerHTML = playIcon; currentPreview = null; };
+        return;
+      }
+    }
+  } catch(e) { /* preview endpoint failed, try TTS */ }
+
+  // 4. Gera prévia via TTS (texto curto — custo mínimo)
+  if (btn) { btn.innerHTML = `<span style="opacity:.6">Gerando…</span>`; }
   const previewTexts = {
     pt: 'Olá! Essa é uma prévia da minha voz. Vamos criar algo incrível juntos.',
     en: 'Hey there! This is a quick preview of my voice. Let\'s create something amazing.',
@@ -829,7 +854,10 @@ async function previewVoice(id, event) {
     audio.onended = () => { if (btn) btn.innerHTML = playIcon; currentPreview = null; };
   } catch(e) {
     if (btn) { btn.innerHTML = playIcon; btn.disabled = false; }
-    showToast('Prévia indisponível: ' + (e.message || 'tente novamente'));
+    const isCustom = voice?.custom || voice?.community;
+    showToast(isCustom
+      ? '⚠ Prévia não disponível para esta voz clonada. Ela funciona normalmente para gerar narração — experimente!'
+      : 'Prévia indisponível: ' + (e.message || 'tente novamente'));
   }
 }
 

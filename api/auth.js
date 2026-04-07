@@ -1153,7 +1153,21 @@ Responda APENAS em JSON válido sem markdown:
       if (!r.ok) return res.status(404).json({ error: 'Voz não encontrada' });
       const data = await r.json();
       const previewUrl = data.preview_url;
-      if (!previewUrl) return res.status(404).json({ error: 'Prévia não disponível' });
+      if (!previewUrl) {
+        // Voz clonada sem preview — gera TTS curto como fallback
+        try {
+          const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: { 'xi-api-key': XI_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+            body: JSON.stringify({ text: 'Olá! Essa é uma prévia da minha voz.', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+          });
+          if (ttsR.ok) {
+            const buf = await ttsR.arrayBuffer();
+            return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3', name: data.name });
+          }
+        } catch(e) {}
+        return res.status(404).json({ error: 'Prévia não disponível' });
+      }
 
       // Faz proxy do áudio para evitar CORS
       const audioRes = await fetch(previewUrl);
