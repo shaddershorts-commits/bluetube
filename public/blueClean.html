@@ -73,13 +73,17 @@ h1{font-size:clamp(28px,5vw,42px);font-weight:800;letter-spacing:-2px;margin-bot
 <!-- STEP 2: Editor -->
 <div class="editor" id="stepEditor">
   <div class="mode-tabs">
-    <div class="mode-tab on" onclick="setMode('auto')">🤖 Automático</div>
-    <div class="mode-tab" onclick="setMode('mask')">✏️ Máscara manual</div>
+    <div class="mode-tab on" onclick="setMode('auto')">🤖 Padrão</div>
+    <div class="mode-tab" onclick="setMode('mask')">💪 Agressivo</div>
   </div>
 
-  <div id="autoMode"><div class="hint">🤖 A IA vai detectar e remover textos e overlays automaticamente.</div><button class="btn" onclick="startProcess('auto')">✨ Processar automaticamente →</button></div>
+  <div id="autoMode"><div class="hint">🤖 Detecta e remove textos e overlays automaticamente. Ideal para a maioria dos vídeos.</div><button class="btn" onclick="startProcess('auto')">✨ Processar →</button></div>
 
   <div id="maskMode" style="display:none">
+    <div class="hint">💪 Modo agressivo: detecção mais sensível, margem extra, método híbrido. Ideal para legendas persistentes ou textos pequenos que o modo padrão não pegou.</div>
+    <button class="btn" onclick="startProcess('mask')">🔥 Processar modo agressivo →</button>
+  </div>
+  <div id="maskModeOld" style="display:none">
     <div class="hint">🎯 Marque em vermelho as regiões que quer remover. A IA detectou áreas prováveis.</div>
     <div class="editor-layout">
       <div class="canvas-wrap" id="canvasWrap">

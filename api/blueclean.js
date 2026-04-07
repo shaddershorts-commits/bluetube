@@ -112,24 +112,20 @@ module.exports = async function handler(req, res) {
     const used = ur.ok ? ((await ur.json())[0]?.count || 0) : 0;
     if (used >= LIMIT) return res.status(429).json({ error: `Limite atingido (${LIMIT}/${LIMIT}).` });
 
-    const useManualMask = mode === 'mask' && mask_url;
-    const modelName = useManualMask ? 'jd7h/propainter' : 'hjunior29/video-text-remover';
-    console.log('[blueclean] Start:', modelName, 'user:', userEmail, 'mask:', useManualMask ? 'manual' : 'auto');
+    // Both modes use video-text-remover — manual mode uses 'hybrid' method for stronger removal
+    const modelName = 'hjunior29/video-text-remover';
+    console.log('[blueclean] Start:', mode, 'user:', userEmail);
 
     try {
-      // Get version
       let ver = null;
       const vr = await fetch(`https://api.replicate.com/v1/models/${modelName}/versions`, { headers: { Authorization: 'Token ' + REPLICATE } });
       if (vr.ok) { const vd = await vr.json(); ver = vd.results?.[0]?.id; }
       if (!ver) return res.status(500).json({ error: 'Modelo indisponível.' });
 
-      // Build input
-      let input;
-      if (useManualMask) {
-        input = { video: video_url, mask: mask_url, neighbor_length: 20, ref_stride: 5, raft_iter: 20, subvideo_length: 50, fp16: false, mask_dilation: 8 };
-      } else {
-        input = { video: video_url, method: 'inpaint', conf_threshold: 0.15, iou_threshold: 0.3, margin: 15, resolution: 'original', detection_interval: 1 };
-      }
+      // Auto mode: standard detection. Manual mode: more aggressive params
+      const input = mode === 'mask'
+        ? { video: video_url, method: 'hybrid', conf_threshold: 0.10, iou_threshold: 0.2, margin: 20, resolution: 'original', detection_interval: 1 }
+        : { video: video_url, method: 'inpaint', conf_threshold: 0.15, iou_threshold: 0.3, margin: 15, resolution: 'original', detection_interval: 1 };
 
       console.log('[blueclean] Input:', JSON.stringify(input).slice(0, 200));
 
