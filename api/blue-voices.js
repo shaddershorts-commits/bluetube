@@ -155,11 +155,11 @@ module.exports = async function handler(req, res) {
               if (ttsR.ok) previewB64 = Buffer.from(await ttsR.arrayBuffer()).toString('base64');
             } catch(e) {}
           }
-        } else if (!user_xi_key) {
-          // BlueTube key can't access this voice — it's a personal cloned voice
-          return res.status(400).json({ error: 'Voz não encontrada. Para vozes clonadas, insira sua API Key do ElevenLabs.' });
+        } else {
+          // Voice not accessible via API key — save anyway, may still work for TTS
+          console.log('[blue-voices] Voice not found via API, saving anyway:', voice_id);
         }
-      } catch(e) {}
+      } catch(e) { console.log('[blue-voices] Check error:', e.message); }
     }
 
     // Salva no banco (upsert)
