@@ -127,20 +127,21 @@ module.exports = async function handler(req, res) {
     const crypto = require('crypto');
     const jobId = crypto.randomUUID();
 
-    // Call Replicate — get latest version first, then create prediction
+    // Call Replicate — hjunior29/video-text-remover (auto-detects and removes text/watermarks)
     try {
-      // Fetch latest version hash
+      // Get latest version
       let versionHash = null;
       try {
-        const vr = await fetch('https://api.replicate.com/v1/models/jd7h/propainter/versions', {
+        const vr = await fetch('https://api.replicate.com/v1/models/hjunior29/video-text-remover/versions', {
           headers: { Authorization: 'Token ' + REPLICATE }
         });
         if (vr.ok) {
           const vd = await vr.json();
           versionHash = vd.results?.[0]?.id;
-          console.log('[blueclean] Got version:', versionHash);
+          console.log('[blueclean] video-text-remover version:', versionHash);
         } else {
-          console.error('[blueclean] Version fetch failed:', vr.status, await vr.text().catch(() => ''));
+          const errText = await vr.text().catch(() => '');
+          console.error('[blueclean] Version fetch failed:', vr.status, errText);
         }
       } catch(e) { console.error('[blueclean] Version error:', e.message); }
 
@@ -152,8 +153,9 @@ module.exports = async function handler(req, res) {
         version: versionHash,
         input: {
           video: video_url,
-          fp16: true,
-          subvideo_length: 80
+          method: 'telea',
+          conf_threshold: 0.25,
+          resolution: 'original'
         },
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
         webhook_events_filter: ['completed']
