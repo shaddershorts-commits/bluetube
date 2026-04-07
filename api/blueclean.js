@@ -130,7 +130,6 @@ module.exports = async function handler(req, res) {
     // Call Replicate using model identifier (auto-resolves latest version)
     try {
       const replicateBody = {
-        model: 'jd7h/propainter',
         input: {
           video: video_url,
           fp16: true,
@@ -139,9 +138,9 @@ module.exports = async function handler(req, res) {
         webhook: 'https://bluetubeviral.com/api/blueclean-webhook',
         webhook_events_filter: ['completed']
       };
-      console.log('[blueclean] Calling Replicate:', JSON.stringify(replicateBody).slice(0, 300));
+      console.log('[blueclean] Calling Replicate jd7h/propainter:', JSON.stringify(replicateBody).slice(0, 300));
 
-      const rr = await fetch('https://api.replicate.com/v1/predictions', {
+      const rr = await fetch('https://api.replicate.com/v1/models/jd7h/propainter/predictions', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + REPLICATE, 'Content-Type': 'application/json' },
         body: JSON.stringify(replicateBody)
