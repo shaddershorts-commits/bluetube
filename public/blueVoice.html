@@ -573,13 +573,10 @@ function updateNarrationCounter(increment = false) {
     narrationsUsed++;
     localStorage.setItem('bv_narrations', narrationsUsed.toString());
   }
-  const remaining = Math.max(0, NARRATION_LIMIT - narrationsUsed);
-  document.getElementById('creditCount').textContent = remaining;
+  document.getElementById('creditCount').textContent = 'Ilimitado';
+  document.getElementById('creditCount').style.color = 'var(--gold)';
   document.getElementById('creditUsed').textContent = narrationsUsed + ' usadas este mês';
-  document.getElementById('creditFill').style.width = Math.max(4, (remaining / NARRATION_LIMIT) * 100) + '%';
-  if (remaining === 0) document.getElementById('creditCount').style.color = 'var(--red)';
-  else if (remaining <= 3) document.getElementById('creditCount').style.color = 'var(--gold)';
-  else document.getElementById('creditCount').style.color = 'var(--gold)';
+  document.getElementById('creditFill').style.width = '100%';
 }
 updateNarrationCounter();
 
@@ -826,11 +823,7 @@ async function generateVoice(isFreeRegen = false) {
   const text = document.getElementById('scriptText').value.trim();
   if (!text || !selectedVoice) return;
 
-  // Verificar limite mensal (só para geração nova, não regeneração grátis)
-  if (!isFreeRegen && narrationsUsed >= NARRATION_LIMIT) {
-    showToast('⚠ Limite mensal de narrações atingido. Renova no próximo mês.');
-    return;
-  }
+  // Limite mensal removido — Master tem narrações ilimitadas
 
   lastText = text;
   lastVoiceId = selectedVoice.id;
@@ -918,13 +911,9 @@ function regenerate() {
   const textChanged = currentText !== lastText;
 
   if (textChanged) {
-    // Texto alterado — regenerar desconta narração
-    if (narrationsUsed >= NARRATION_LIMIT) {
-      showToast('⚠ Limite mensal de narrações atingido.');
-      return;
-    }
-    regenCount = 0; // reseta contagem de regens grátis
-    generateVoice(false); // cobra
+    // Texto alterado — regenerar desconta narração (sem limite para Master)
+    regenCount = 0;
+    generateVoice(false);
     return;
   }
 
