@@ -21,10 +21,13 @@ module.exports = async function handler(req, res) {
   // Ping Supabase with a lightweight query
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
       const r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=email&limit=1`, {
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
-        signal: AbortSignal.timeout(5000)
+        signal: controller.signal
       });
+      clearTimeout(timer);
       services.supabase = r.ok;
     } catch (e) {
       services.supabase = false;
