@@ -767,8 +767,11 @@ function mkSlide(v,i){
   // Determine if video is portrait (should cover) or landscape (contain)
   const isPortrait = !v.width || !v.height || v.height >= v.width;
   const vidStyle = isPortrait ? 'object-fit:cover' : 'object-fit:contain;background:#000';
+  // Lazy: only first 2 have src, rest load on demand via observer
+  const vidSrc = i < 3 ? v.video_url : '';
+  const vidDataSrc = i >= 3 ? v.video_url : '';
   el.innerHTML=
-    '<video src="'+v.video_url+'" preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
+    '<video '+(vidSrc?'src="'+vidSrc+'"':'data-src="'+vidDataSrc+'"')+' preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
     '<div class="grad"></div>'+
     '<div class="mute-hint" id="mh-'+v.id+'">🔇</div>'+
     '<div class="slide-views">▶ <span id="vc-'+v.id+'">'+fmt(v.views||0)+'</span></div>'+
@@ -846,20 +849,40 @@ function setupObs(){
   obs=new IntersectionObserver(entries=>{
     entries.forEach(e=>{
       const sl=e.target,vid=sl.querySelector('video');
-      if(!vid||!vid.src)return;
+      if(!vid)return;
+      const idx=parseInt(sl.dataset.i)||0;
+
       if(e.isIntersecting&&e.intersectionRatio>.6){
-        document.querySelectorAll('#feed video').forEach(v=>{if(v!==vid){v.pause();v.currentTime=0;}});
+        // Lazy load: set src from data-src if not loaded yet
+        if(!vid.src&&vid.dataset.src){vid.src=vid.dataset.src;vid.preload='auto';}
+
+        // Pause only nearby videos (not ALL — saves CPU)
+        for(let d=-3;d<=3;d++){
+          if(d===0)continue;
+          const nearby=document.getElementById('s-'+(videos[idx+d]?.id));
+          if(nearby){const nv=nearby.querySelector('video');if(nv&&!nv.paused){nv.pause();}}
+        }
+
         vid.preload='auto';
         vid.muted=!_interacted;
         vid.play().catch(()=>{vid.muted=true;vid.play().catch(()=>{});});
         const el=document.getElementById('vc-'+sl.dataset.id);
         if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
         ping('view',sl.dataset.id);
-        // preload next
-        const ni=parseInt(sl.dataset.i)+1;
-        if(videos[ni]){const ns=document.getElementById('s-'+videos[ni].id);if(ns){const nv=ns.querySelector('video');if(nv)nv.preload='auto';}}
+
+        // Preload next 2 videos
+        for(let n=1;n<=2;n++){
+          const nxt=videos[idx+n];
+          if(nxt){const ns=document.getElementById('s-'+nxt.id);if(ns){const nv=ns.querySelector('video');if(nv){if(!nv.src&&nv.dataset.src)nv.src=nv.dataset.src;nv.preload='auto';}}}
+        }
+
+        // Unload videos far away to free memory (>5 slides away)
+        for(let d of[-6,-7,-8,6,7,8]){
+          const far=videos[idx+d];
+          if(far){const fs=document.getElementById('s-'+far.id);if(fs){const fv=fs.querySelector('video');if(fv&&fv.src){fv.dataset.src=fv.src;fv.removeAttribute('src');fv.load();}}}
+        }
       } else {
-        if(!vid.paused)vid.pause();
+        if(vid&&!vid.paused)vid.pause();
       }
     });
   },{threshold:.6});
