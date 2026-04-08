@@ -33,7 +33,7 @@ module.exports = async function handler(req, res) {
   if (userPlan !== 'master') return res.status(403).json({ error: 'BlueClean é exclusivo do plano Master.', upgrade: true });
 
   const month = new Date().toISOString().slice(0, 7);
-  const LIMIT = 10;
+  const LIMIT = 999999; // Ilimitado para Master
 
   // ── GET-UPLOAD-URL: signed URL for direct upload to Storage ────────────────
   if (action === 'get-upload-url') {

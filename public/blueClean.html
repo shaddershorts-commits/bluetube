@@ -57,8 +57,8 @@ h1{font-size:clamp(28px,5vw,42px);font-weight:800;letter-spacing:-2px;margin-bot
 <div id="main" style="display:none">
 <div class="badge">👑 Exclusivo Master</div>
 <h1>Blue<span>Clean</span></h1>
-<p class="sub">Remove legendas, setas e marcas d'água com IA. 10 vídeos/mês.</p>
-<div class="usage-bar"><div><div class="usage-count" id="usageCount">—</div><div class="usage-label">usados</div></div><div style="flex:1;height:5px;background:rgba(0,170,255,.1);border-radius:100px;overflow:hidden"><div id="usageFill" style="height:100%;background:var(--neon);border-radius:100px;width:0%"></div></div><div style="font-family:var(--mono);font-size:11px;color:var(--dim)"><span id="usageRemaining">10</span>/10</div></div>
+<p class="sub">Remove legendas, setas e marcas d'água com IA. Ilimitado para Master.</p>
+<div class="usage-bar"><div><div class="usage-count" id="usageCount" style="color:var(--gold)">Ilimitado</div><div class="usage-label">Plano Master</div></div><div style="flex:1;height:5px;background:rgba(0,170,255,.1);border-radius:100px;overflow:hidden"><div id="usageFill" style="height:100%;background:linear-gradient(90deg,var(--neon),var(--gold));border-radius:100px;width:100%"></div></div><div style="font-family:var(--mono);font-size:11px;color:var(--dim)"><span id="usageRemaining"></span> <span id="usageUsed"></span> usados</div></div>
 
 <!-- STEP 1: Upload -->
 <div id="stepUpload">
@@ -149,8 +149,9 @@ function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forE
 })();
 
 function updateUsage(d){
-  document.getElementById('usageCount').textContent=d.used||0;
-  document.getElementById('usageRemaining').textContent=d.remaining||0;
+  document.getElementById('usageCount').textContent='Ilimitado';
+  const usedEl=document.getElementById('usageUsed');
+  if(usedEl) usedEl.textContent=d.used||0;
   document.getElementById('usageFill').style.width=((d.used||0)/10*100)+'%';
 }
 
