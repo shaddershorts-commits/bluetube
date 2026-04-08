@@ -285,7 +285,8 @@ TESTE INTERNO antes de retornar:
 ${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
 ${fewShotExamples}
 
-IDIOMA: ${lang}
+IDIOMA DE SAÍDA OBRIGATÓRIO: ${lang}
+⚠️ O roteiro DEVE ser escrito 100% em ${lang}. Se o idioma de saída não for ${lang}, o roteiro está ERRADO — reescreva.
 ${ANGLE}`;
 
   const userPrompt = adjust
@@ -305,17 +306,19 @@ REGRAS PARA O AJUSTE:
 7. NÃO ignore nenhuma parte da instrução
 8. Mantenha narrador em terceira pessoa
 9. Retorne o roteiro COMPLETO ajustado (não apenas a parte modificada)
-10. Retorne APENAS o texto do roteiro, sem explicações`
+10. ESCREVA 100% EM ${lang} — o roteiro deve estar no idioma ${lang}
+11. Retorne APENAS o texto do roteiro, sem explicações`
     : `CONTEÚDO DO VÍDEO ORIGINAL:
 "${transcript.slice(0, 3000)}"
 
 Crie um roteiro de narração baseado neste conteúdo.
-- Narrador EXTERNO em terceira pessoa — NUNCA simule a voz de quem aparece no vídeo
+- ESCREVA 100% EM ${lang} — NÃO escreva em português se o idioma pedido for outro
+- Narrador EXTERNO em terceira pessoa
 - Pergunta permitida APENAS no gancho OU desfecho — máximo 1
 - ZERO perguntas no meio do roteiro
 - Continuidade total entre frases
 - Máximo 60 palavras
-- Retorne APENAS o texto do roteiro, nada mais.`;
+- Retorne APENAS o texto do roteiro em ${lang}, nada mais.`;
 
   // ── CACHE — skip AI calls if same request was recently generated ──────────
   const _SU2 = process.env.SUPABASE_URL, _SK2 = process.env.SUPABASE_SERVICE_KEY;

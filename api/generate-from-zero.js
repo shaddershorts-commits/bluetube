@@ -239,7 +239,7 @@ module.exports = async function handler(req, res) {
       contextParts.join('\n\n'),
       'Sentimento: ' + sentimentList,
       'Nicho: ' + nicheLabel,
-      'Idioma: ' + safeLang,
+      'IDIOMA DE SAÍDA OBRIGATÓRIO: ' + safeLang + ' — escreva 100% neste idioma, NÃO em português se outro idioma for pedido',
       '',
       '=== IDENTIDADE DO NARRADOR ===',
       '- Você é o narrador EXTERNO — NUNCA a pessoa do vídeo',
@@ -286,7 +286,7 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             model: 'gpt-4o-mini', max_tokens: 600, temperature: 0.88,
             messages: [
-              { role: 'system', content: 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). Responda SOMENTE JSON válido.' },
+              { role: 'system', content: 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). ESCREVA NO IDIOMA PEDIDO — se o idioma for English, escreva em inglês, NÃO em português. Responda SOMENTE JSON válido.' },
               { role: 'user', content: prompt }
             ]
           })
