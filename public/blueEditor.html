@@ -6,6 +6,7 @@
 <title>BlueEditor — 1 Short em 1 Clique · BlueTube</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M10 9l13 7-13 7V9z' fill='white'/></svg>"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{
@@ -1137,6 +1138,6 @@ function restart() {
 let _tt; function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),3500);}
 
 </script>
-<script src="/toolbar.js"></script>
+<script src="/toolbar.js" defer></script>
 </body>
 </html>

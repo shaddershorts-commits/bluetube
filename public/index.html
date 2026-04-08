@@ -7,7 +7,9 @@
 <title>BlueTube — Transcritor de YouTube Shorts</title>
 <meta name="description" content="Cole qualquer link de YouTube Shorts e receba transcrição + 2 roteiros virais prontos para narrar."/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="dns-prefetch" href="https://pokpfvjrccviwgguwuck.supabase.co"/>
 <style>
 :root{
   --blue-950:#020817;--blue-500:#1a6bff;--neon:#00aaff;--neon-bright:#33ccff;
@@ -786,13 +788,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 <section class="hero" id="top">
   <!-- Chess pieces decoration -->
   <div class="chess-hero-piece chess-piece-1">
-    <img src="/chess-king-dark.png" alt="" draggable="false"/>
+    <img loading="lazy" src="/chess-king-dark.png" alt="" draggable="false"/>
   </div>
   <div class="chess-hero-piece chess-piece-2">
-    <img src="/chess-queen-gold.png" alt="" draggable="false"/>
+    <img loading="lazy" src="/chess-queen-gold.png" alt="" draggable="false"/>
   </div>
   <div class="chess-hero-piece chess-piece-3">
-    <img src="/chess-king-marble.png" alt="" draggable="false"/>
+    <img loading="lazy" src="/chess-king-marble.png" alt="" draggable="false"/>
   </div>
 
   <div class="hero-badge"><span class="badge-dot"></span>Grátis · 2 roteiros/dia · Sem cadastro</div>
@@ -1071,10 +1073,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 <section class="features" style="position:relative">
   <!-- Chess piece scroll decoration -->
   <div class="chess-scroll-piece" id="chessScroll1" style="width:140px;height:140px;right:3%;top:10%">
-    <img src="/chess-queen-gold.png" alt=""/>
+    <img loading="lazy" src="/chess-queen-gold.png" alt=""/>
   </div>
   <div class="chess-scroll-piece" id="chessScroll2" style="width:100px;height:100px;left:2%;bottom:15%">
-    <img src="/chess-king-marble.png" alt=""/>
+    <img loading="lazy" src="/chess-king-marble.png" alt=""/>
   </div>
   <div class="features-inner">
     <div class="sec-eye">Por que BlueTube</div>
@@ -1368,7 +1370,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       <button class="blublu-send" onclick="sendBluBluFeedback()">Enviar feedback →</button>
     </div>
   </div>
-  <img class="blublu-avatar-img" id="blubluImg" src="/blublu-happy.png" onclick="toggleBlublu()" title="BluBlu — Assistente BlueTube" alt="BluBlu"/>
+  <img loading="lazy" class="blublu-avatar-img" id="blubluImg" src="/blublu-happy.png" onclick="toggleBlublu()" title="BluBlu — Assistente BlueTube" alt="BluBlu"/>
 </div>
 
 <footer>
@@ -3791,6 +3793,6 @@ function exportScriptAsImage(scriptId){
 }
 </script>
 
-<script src="/toolbar.js"></script>
+<script src="/toolbar.js" defer></script>
 </body>
 </html>
