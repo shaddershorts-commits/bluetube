@@ -105,42 +105,7 @@ export default async function handler(req, res) {
               body: JSON.stringify({ total_roteiros: newTotal, last_roteiro_at: new Date().toISOString() })
             }).catch(() => {});
 
-            // Send transactional email (max 1 every 2 hours)
-            const RESEND = process.env.RESEND_API_KEY;
-            if (!RESEND) return;
-            const emR = await fetch(`${SUPABASE_URL}/rest/v1/email_marketing?email=eq.${encodeURIComponent(email)}&select=last_sent_at`, { headers: _supaH });
-            if (emR.ok) {
-              const em = (await emR.json())[0];
-              if (em?.last_sent_at && (Date.now() - new Date(em.last_sent_at)) < 2 * 3600 * 1000) return; // Skip if sent < 2h ago
-            }
-
-            const preview = result.text.split('.').slice(0, 2).join('.') + '.';
-            const unsubToken = Buffer.from(email).toString('base64url');
-            fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
-              body: JSON.stringify({
-                from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
-                subject: '✅ Seu roteiro viral está pronto!',
-                html: `<div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto;background:#020817;color:#e8f4ff;border-radius:20px;overflow:hidden;border:1px solid rgba(0,170,255,.15)">
-                  <div style="text-align:center;padding:28px 24px 16px"><a href="https://bluetubeviral.com" style="text-decoration:none;font-size:22px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></a><div style="height:2px;background:linear-gradient(90deg,transparent,#00aaff,transparent);margin-top:16px"></div></div>
-                  <div style="padding:0 28px 28px">
-                    <div style="font-size:20px;font-weight:800;margin-bottom:16px">Acabou de sair do forno 🔥</div>
-                    <div style="background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:16px;font-size:14px;color:rgba(200,225,255,.8);line-height:1.7;margin-bottom:20px;font-style:italic">"${preview.slice(0, 200)}"</div>
-                    <div style="font-size:14px;font-weight:700;margin-bottom:12px">O que fazer agora:</div>
-                    <div style="font-size:13px;color:rgba(200,225,255,.7);line-height:2">
-                      1. <a href="https://bluetubeviral.com/blueVoice.html" style="color:#00aaff;text-decoration:none">🎙️ Narrar com BlueVoice</a><br>
-                      2. <a href="https://bluetubeviral.com/blueScore.html" style="color:#00aaff;text-decoration:none">📊 Analisar seu canal no BlueScore</a><br>
-                      3. <a href="https://bluetubeviral.com/virais.html" style="color:#00aaff;text-decoration:none">🔥 Buscar vídeos virais</a>
-                    </div>
-                    <a href="https://bluetubeviral.com" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:14px;border-radius:12px;text-align:center;font-size:15px;font-weight:700;margin:24px 0">Ver meu roteiro completo →</a>
-                  </div>
-                  <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center;font-size:11px;color:rgba(150,190,230,.3)">
-                    <a href="https://bluetubeviral.com/api/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
-                  </div>
-                </div>`
-              })
-            }).catch(() => {});
+            // Email transacional de roteiro pronto desativado para economizar envios
           } catch (e) {}
         })();
       }
