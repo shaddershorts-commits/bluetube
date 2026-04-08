@@ -231,8 +231,29 @@ export default async function handler(req, res) {
           }
         }
 
+        // Fallback: Cobalt API (free, no key needed)
         if (!downloadUrl) {
-          return res.status(400).json({ error: 'Não foi possível obter link. Verifique se a API youtube-to-mp4-mp3 está ativada no RapidAPI.' });
+          try {
+            const cobaltR = await fetch('https://api.cobalt.tools', {
+              method: 'POST',
+              headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: url, videoQuality: '720' })
+            });
+            if (cobaltR.ok) {
+              const cobaltD = await cobaltR.json();
+              if (cobaltD.status === 'redirect' && cobaltD.url) {
+                downloadUrl = cobaltD.url;
+              } else if (cobaltD.status === 'tunnel' && cobaltD.url) {
+                downloadUrl = cobaltD.url;
+              } else if (cobaltD.status === 'picker' && cobaltD.picker?.[0]?.url) {
+                downloadUrl = cobaltD.picker[0].url;
+              }
+            }
+          } catch(e) { console.log('[download] Cobalt fallback error:', e.message); }
+        }
+
+        if (!downloadUrl) {
+          return res.status(400).json({ error: 'Não foi possível baixar este vídeo. Tente outro link.' });
         }
       }
 
@@ -283,6 +304,14 @@ export default async function handler(req, res) {
               thumbnail = d.data.cover;
             }
           } catch(e) { console.log('tiktok api2 failed:', e.message); }
+        }
+
+        // Fallback: Cobalt
+        if (!downloadUrl) {
+          try {
+            const cr = await fetch('https://api.cobalt.tools', { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url, videoQuality: '720' }) });
+            if (cr.ok) { const cd = await cr.json(); downloadUrl = cd.url || cd.picker?.[0]?.url; }
+          } catch(e) {}
         }
       }
 
@@ -363,7 +392,13 @@ export default async function handler(req, res) {
           } catch(e) { console.log('instagram api2 failed:', e.message); }
         }
 
-
+        // Fallback: Cobalt
+        if (!downloadUrl) {
+          try {
+            const cr = await fetch('https://api.cobalt.tools', { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url, videoQuality: '720' }) });
+            if (cr.ok) { const cd = await cr.json(); downloadUrl = cd.url || cd.picker?.[0]?.url; }
+          } catch(e) {}
+        }
       }
 
       // ── TWITTER/X ────────────────────────────────────────────────────────
