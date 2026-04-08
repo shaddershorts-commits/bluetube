@@ -231,29 +231,26 @@ export default async function handler(req, res) {
           }
         }
 
-        // Fallback: Cobalt API (free, no key needed)
+        // Fallback: Cobalt API (requires instance with auth disabled)
         if (!downloadUrl) {
-          try {
-            const cobaltR = await fetch('https://api.cobalt.tools', {
-              method: 'POST',
-              headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: url, videoQuality: '720' })
-            });
-            if (cobaltR.ok) {
-              const cobaltD = await cobaltR.json();
-              if (cobaltD.status === 'redirect' && cobaltD.url) {
-                downloadUrl = cobaltD.url;
-              } else if (cobaltD.status === 'tunnel' && cobaltD.url) {
-                downloadUrl = cobaltD.url;
-              } else if (cobaltD.status === 'picker' && cobaltD.picker?.[0]?.url) {
-                downloadUrl = cobaltD.picker[0].url;
+          const cobaltUrl = process.env.COBALT_API_URL; // optional: self-hosted cobalt instance
+          if (cobaltUrl) {
+            try {
+              const cobaltR = await fetch(cobaltUrl, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url, videoQuality: '720' })
+              });
+              if (cobaltR.ok) {
+                const cobaltD = await cobaltR.json();
+                downloadUrl = cobaltD.url || cobaltD.picker?.[0]?.url;
               }
-            }
-          } catch(e) { console.log('[download] Cobalt fallback error:', e.message); }
+            } catch(e) { console.log('[download] Cobalt fallback error:', e.message); }
+          }
         }
 
         if (!downloadUrl) {
-          return res.status(400).json({ error: 'Não foi possível baixar este vídeo. Tente outro link.' });
+          return res.status(400).json({ error: 'Download temporariamente indisponível. A API de download atingiu o limite. Tente novamente mais tarde.' });
         }
       }
 
