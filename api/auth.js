@@ -231,21 +231,29 @@ export default async function handler(req, res) {
           }
         }
 
-        // Fallback: Cobalt API (requires instance with auth disabled)
+        // Fallback: Cobalt API
         if (!downloadUrl) {
-          const cobaltUrl = process.env.COBALT_API_URL; // optional: self-hosted cobalt instance
+          const cobaltUrl = process.env.COBALT_API_URL;
+          const cobaltKey = process.env.COBALT_API_KEY;
           if (cobaltUrl) {
             try {
+              const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+              if (cobaltKey) cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltKey;
+              console.log('[download] Trying Cobalt:', cobaltUrl);
               const cobaltR = await fetch(cobaltUrl, {
                 method: 'POST',
-                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                headers: cobaltHeaders,
                 body: JSON.stringify({ url: url, videoQuality: '720' })
               });
+              const cobaltD = await cobaltR.json();
+              console.log('[download] Cobalt response:', cobaltR.status, JSON.stringify(cobaltD).slice(0, 200));
               if (cobaltR.ok) {
-                const cobaltD = await cobaltR.json();
-                downloadUrl = cobaltD.url || cobaltD.picker?.[0]?.url;
+                if (cobaltD.status === 'redirect') downloadUrl = cobaltD.url;
+                else if (cobaltD.status === 'tunnel') downloadUrl = cobaltD.url;
+                else if (cobaltD.status === 'picker') downloadUrl = cobaltD.picker?.[0]?.url;
+                else downloadUrl = cobaltD.url;
               }
-            } catch(e) { console.log('[download] Cobalt fallback error:', e.message); }
+            } catch(e) { console.log('[download] Cobalt error:', e.message); }
           }
         }
 
@@ -305,10 +313,13 @@ export default async function handler(req, res) {
 
         // Fallback: Cobalt
         if (!downloadUrl) {
-          try {
-            const cr = await fetch('https://api.cobalt.tools', { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url, videoQuality: '720' }) });
+          const _cu = process.env.COBALT_API_URL, _ck = process.env.COBALT_API_KEY;
+          if (_cu) { try {
+            const _ch = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+            if (_ck) _ch['Authorization'] = 'Api-Key ' + _ck;
+            const cr = await fetch(_cu, { method: 'POST', headers: _ch, body: JSON.stringify({ url, videoQuality: '720' }) });
             if (cr.ok) { const cd = await cr.json(); downloadUrl = cd.url || cd.picker?.[0]?.url; }
-          } catch(e) {}
+          } catch(e) {} }
         }
       }
 
@@ -391,10 +402,13 @@ export default async function handler(req, res) {
 
         // Fallback: Cobalt
         if (!downloadUrl) {
-          try {
-            const cr = await fetch('https://api.cobalt.tools', { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url, videoQuality: '720' }) });
+          const _cu2 = process.env.COBALT_API_URL, _ck2 = process.env.COBALT_API_KEY;
+          if (_cu2) { try {
+            const _ch2 = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+            if (_ck2) _ch2['Authorization'] = 'Api-Key ' + _ck2;
+            const cr = await fetch(_cu2, { method: 'POST', headers: _ch2, body: JSON.stringify({ url, videoQuality: '720' }) });
             if (cr.ok) { const cd = await cr.json(); downloadUrl = cd.url || cd.picker?.[0]?.url; }
-          } catch(e) {}
+          } catch(e) {} }
         }
       }
 
