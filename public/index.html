@@ -104,7 +104,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .script-body{padding:22px 20px;overflow-y:auto}
 .script-body::-webkit-scrollbar{width:3px}
 .script-body::-webkit-scrollbar-thumb{background:rgba(0,170,255,0.15);border-radius:2px}
-.script-text{font-family:var(--font-mono);font-size:14px;font-weight:300;line-height:1.95;color:var(--text-primary);white-space:pre-wrap}
+.script-text{font-family:var(--font-mono);font-size:14px;font-weight:300;line-height:1.95;color:var(--text-primary);white-space:pre-wrap;border-radius:8px;padding:2px;transition:box-shadow .2s}
+.script-text:hover{box-shadow:inset 0 0 0 1px rgba(0,170,255,.15)}
+.script-text:focus{box-shadow:inset 0 0 0 1px rgba(0,170,255,.3)}
 .scripts-loading{display:none;flex-direction:column;align-items:center;gap:16px;padding:40px 20px;background:rgba(10,22,40,0.7);border:1px solid rgba(0,170,255,0.12);border-radius:16px}
 .scripts-loading.on{display:flex}
 .scripts-loading-label{font-family:var(--font-mono);font-size:13px;color:var(--neon)}
@@ -997,14 +999,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV1')">📋 Copiar</button>
           <button class="act-btn" onclick="exportScriptAsImage('scriptV1')" style="font-size:11px">📸 Imagem</button>
         </div>
-        <div class="script-body"><div class="script-text" id="scriptV1"></div></div>
+        <div class="script-body"><div class="script-text" id="scriptV1" contenteditable="true" spellcheck="false" style="outline:none;cursor:text;min-height:60px" onfocus="this.parentElement.style.boxShadow='inset 0 0 0 1px rgba(0,170,255,.3)'" onblur="this.parentElement.style.boxShadow='';if(typeof _saveRoteiroState==='function')_saveRoteiroState()"></div></div>
         <div id="feedbackV1" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
           <span>Este roteiro foi útil?</span>
           <button onclick="sendFeedback('V1','aprovado',this)" style="background:none;border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(34,197,94,.7);cursor:pointer;transition:all .2s">👍 Bom</button>
           <button onclick="sendFeedback('V1','reprovado',this)" style="background:none;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(239,68,68,.6);cursor:pointer;transition:all .2s">👎 Não</button>
         </div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
-          <button onclick="openAdjustChat('V1')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
+          <button onclick="openAdjustChat('V1')" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(0,80,255,.2),rgba(0,170,255,.12));border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">✏️ Pedir ajuste com IA</button>
           <div style="position:relative;display:inline-block" id="bvWrap1">
             <button id="bvBtn1" onclick="sendToBlueVoice('scriptV1')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">
               🎙️ Narrar no BlueVoice
@@ -1032,14 +1034,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
           <button class="act-btn" onclick="copyEl('scriptV2')">📋 Copiar</button>
           <button class="act-btn" onclick="exportScriptAsImage('scriptV2')" style="font-size:11px">📸 Imagem</button>
         </div>
-        <div class="script-body"><div class="script-text" id="scriptV2"></div></div>
+        <div class="script-body"><div class="script-text" id="scriptV2" contenteditable="true" spellcheck="false" style="outline:none;cursor:text;min-height:60px" onfocus="this.parentElement.style.boxShadow='inset 0 0 0 1px rgba(0,170,255,.3)'" onblur="this.parentElement.style.boxShadow='';if(typeof _saveRoteiroState==='function')_saveRoteiroState()"></div></div>
         <div id="feedbackV2" style="padding:8px 20px;border-top:1px solid rgba(0,170,255,.04);display:flex;align-items:center;gap:10px;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,rgba(150,190,230,.4))">
           <span>Este roteiro foi útil?</span>
           <button onclick="sendFeedback('V2','aprovado',this)" style="background:none;border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(34,197,94,.7);cursor:pointer;transition:all .2s">👍 Bom</button>
           <button onclick="sendFeedback('V2','reprovado',this)" style="background:none;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:rgba(239,68,68,.6);cursor:pointer;transition:all .2s">👎 Não</button>
         </div>
         <div style="padding:12px 20px;border-top:1px solid rgba(0,170,255,.06);display:flex;justify-content:space-between;align-items:center">
-          <button onclick="openAdjustChat('V2')" style="display:flex;align-items:center;gap:6px;background:none;border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:7px 14px;font-family:var(--font-mono,monospace);font-size:11px;color:rgba(200,225,255,.6);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,170,255,.4)';this.style.color='#00aaff'" onmouseout="this.style.borderColor='rgba(0,170,255,.15)';this.style.color='rgba(200,225,255,.6)'">✏️ Pedir ajuste</button>
+          <button onclick="openAdjustChat('V2')" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(0,80,255,.2),rgba(0,170,255,.12));border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer;transition:all .2s">✏️ Pedir ajuste com IA</button>
           <div style="position:relative;display:inline-block" id="bvWrap2">
             <button id="bvBtn2" onclick="sendToBlueVoice('scriptV2')" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(0,80,255,.35),rgba(0,170,255,.25));border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:9px 18px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;color:var(--neon,#00aaff);cursor:pointer">
               🎙️ Narrar no BlueVoice

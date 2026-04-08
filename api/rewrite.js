@@ -292,9 +292,20 @@ ${ANGLE}`;
     ? `ROTEIRO ATUAL:
 "${transcript.slice(0, 3000)}"
 
-AJUSTE PEDIDO: "${adjust.slice(0, 500)}"
+INSTRUÇÃO DO USUÁRIO (OBEDEÇA 100%):
+"${adjust.slice(0, 500)}"
 
-Aplique o ajuste mantendo: narrador externo em terceira pessoa, continuidade entre frases, máximo 1 pergunta (só no gancho ou desfecho). Retorne APENAS o roteiro ajustado.`
+REGRAS PARA O AJUSTE:
+1. OBEDEÇA A INSTRUÇÃO DO USUÁRIO LITERALMENTE — faça EXATAMENTE o que ele pediu
+2. Se ele pediu trocar uma palavra, troque APENAS aquela palavra
+3. Se ele pediu mudar o tom, mude o tom INTEIRO do roteiro
+4. Se ele pediu encurtar, corte frases sem perder o sentido
+5. Se ele pediu adicionar algo, adicione EXATAMENTE o que pediu
+6. NÃO invente mudanças que não foram pedidas
+7. NÃO ignore nenhuma parte da instrução
+8. Mantenha narrador em terceira pessoa
+9. Retorne o roteiro COMPLETO ajustado (não apenas a parte modificada)
+10. Retorne APENAS o texto do roteiro, sem explicações`
     : `CONTEÚDO DO VÍDEO ORIGINAL:
 "${transcript.slice(0, 3000)}"
 
