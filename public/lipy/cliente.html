@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portal do Cliente — Lipy</title>
+<style>
+  :root{--bg:#0a0a1a;--card:#141432;--border:#232348;--roxo:#7c3aed;--azul:#3b82f6;--texto:#fff;--mudo:#a0a0c0;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444;}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+  body{background:var(--bg);color:var(--texto);display:flex;min-height:100vh;}
+  aside{width:260px;background:#0f0f24;border-right:1px solid var(--border);padding:24px 16px;flex-shrink:0;}
+  .logo{font-size:24px;font-weight:900;background:linear-gradient(135deg,var(--roxo),var(--azul));-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:32px;padding:0 12px;}
+  .menu{list-style:none;}
+  .menu li{padding:12px 16px;border-radius:10px;color:var(--mudo);cursor:pointer;margin-bottom:4px;font-size:14px;display:flex;align-items:center;gap:10px;}
+  .menu li:hover,.menu li.active{background:var(--card);color:var(--texto);}
+  main{flex:1;padding:32px 40px;overflow-y:auto;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;}
+  .topbar h1{font-size:28px;font-weight:800;}
+  .topbar .user{display:flex;align-items:center;gap:12px;color:var(--mudo);}
+  .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--roxo),var(--azul));display:flex;align-items:center;justify-content:center;font-weight:700;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px;}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;}
+  .stat .label{color:var(--mudo);font-size:13px;margin-bottom:8px;}
+  .stat .val{font-size:32px;font-weight:800;}
+  .stat .delta{font-size:13px;color:var(--ok);margin-top:4px;}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:24px;}
+  .panel h2{font-size:18px;font-weight:700;margin-bottom:16px;}
+  .view{display:none;}
+  .view.active{display:block;}
+  .chat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;min-height:500px;display:flex;flex-direction:column;}
+  .chat-log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin-bottom:16px;}
+  .msg{max-width:70%;padding:12px 16px;border-radius:14px;font-size:14px;}
+  .msg.me{align-self:flex-end;background:linear-gradient(135deg,var(--roxo),var(--azul));}
+  .msg.bot{align-self:flex-start;background:#0f0f24;border:1px solid var(--border);}
+  .chat-input{display:flex;gap:8px;}
+  .chat-input input{flex:1;padding:12px 16px;background:#0f0f24;border:1px solid var(--border);border-radius:10px;color:var(--texto);font-size:14px;}
+  .btn{padding:10px 16px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:linear-gradient(135deg,var(--roxo),var(--azul));color:#fff;}
+</style>
+</head>
+<body>
+<aside>
+  <div class="logo">LIPY</div>
+  <ul class="menu">
+    <li class="active" data-view="dashboard">📊 Dashboard</li>
+    <li data-view="conteudos">🎨 Conteúdos</li>
+    <li data-view="planejamento">📅 Planejamento</li>
+    <li data-view="relatorios">📈 Relatórios</li>
+    <li data-view="trafego">🎯 Tráfego</li>
+    <li data-view="chat">💬 Chat com Lipy</li>
+  </ul>
+</aside>
+
+<main>
+  <div class="topbar">
+    <h1 id="view-title">Dashboard</h1>
+    <div class="user"><span id="empresa">Minha Empresa</span><div class="avatar">ME</div></div>
+  </div>
+
+  <div class="view active" id="v-dashboard">
+    <div class="stats">
+      <div class="stat"><div class="label">Seguidores</div><div class="val" id="s1">—</div><div class="delta">+12 esta semana</div></div>
+      <div class="stat"><div class="label">Alcance (7d)</div><div class="val" id="s2">—</div><div class="delta">+23%</div></div>
+      <div class="stat"><div class="label">Engajamento</div><div class="val" id="s3">—</div><div class="delta">+5%</div></div>
+      <div class="stat"><div class="label">Posts publicados</div><div class="val" id="s4">—</div><div class="delta">este mês</div></div>
+    </div>
+    <div class="panel"><h2>Próximas publicações</h2><div id="proximos">Carregando…</div></div>
+    <div class="panel"><h2>Atividade recente dos agentes</h2><div id="atividade">Carregando…</div></div>
+  </div>
+
+  <div class="view" id="v-conteudos"><div class="panel"><h2>Todos os conteúdos</h2><div id="posts">Carregando…</div></div></div>
+  <div class="view" id="v-planejamento"><div class="panel"><h2>Planejamento do mês</h2><div id="plano">Carregando…</div></div></div>
+  <div class="view" id="v-relatorios"><div class="panel"><h2>Relatórios</h2><div id="relatorios-list">Carregando…</div></div></div>
+  <div class="view" id="v-trafego"><div class="panel"><h2>Campanhas ativas</h2><div id="campanhas">Nenhuma campanha ativa no momento.</div></div></div>
+
+  <div class="view" id="v-chat">
+    <div class="chat">
+      <div class="chat-log" id="chat-log">
+        <div class="msg bot">Olá! Eu sou a Lipy 👋 Como posso te ajudar hoje?</div>
+      </div>
+      <div class="chat-input">
+        <input id="chat-in" placeholder="Digite sua mensagem…" onkeydown="if(event.key==='Enter')enviarChat()" />
+        <button class="btn" onclick="enviarChat()">Enviar</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const cliente_id = new URLSearchParams(location.search).get('id') || 'demo';
+
+document.querySelectorAll('.menu li').forEach(li => {
+  li.addEventListener('click', () => {
+    document.querySelectorAll('.menu li').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+    li.classList.add('active');
+    const v = li.dataset.view;
+    document.getElementById('v-' + v).classList.add('active');
+    document.getElementById('view-title').textContent = li.textContent.trim().split(' ').slice(1).join(' ');
+  });
+});
+
+async function carregar() {
+  try {
+    const r = await fetch('/api/lipy-clientes?id=' + cliente_id);
+    const j = await r.json();
+    if (j.cliente?.empresa) {
+      document.getElementById('empresa').textContent = j.cliente.empresa;
+      document.querySelector('.avatar').textContent = j.cliente.empresa.slice(0,2).toUpperCase();
+    }
+  } catch {}
+
+  document.getElementById('s1').textContent = '2.847';
+  document.getElementById('s2').textContent = '12.5k';
+  document.getElementById('s3').textContent = '4.2%';
+  document.getElementById('s4').textContent = '18';
+
+  document.getElementById('proximos').innerHTML = '<p style="color:var(--mudo)">Você não tem publicações agendadas.</p>';
+  document.getElementById('atividade').innerHTML = '<p style="color:var(--mudo)">Agentes ativos: Supervisor, Conteúdo, Postagem.</p>';
+  document.getElementById('posts').innerHTML = '<p style="color:var(--mudo)">Nenhum conteúdo ainda. Aguarde a primeira produção!</p>';
+  document.getElementById('plano').innerHTML = '<p style="color:var(--mudo)">Complete o onboarding para gerar seu planejamento.</p>';
+  document.getElementById('relatorios-list').innerHTML = '<p style="color:var(--mudo)">Seu primeiro relatório chega em 7 dias.</p>';
+}
+
+async function enviarChat() {
+  const inp = document.getElementById('chat-in');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  const log = document.getElementById('chat-log');
+  log.insertAdjacentHTML('beforeend', `<div class="msg me">${txt}</div>`);
+  inp.value = '';
+  try {
+    const r = await fetch('/api/lipy-atendimento', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id, mensagem: txt, group_id: 'portal-' + cliente_id })
+    });
+    const j = await r.json();
+    const resposta = j.decisao?.resposta || 'Recebi sua mensagem!';
+    log.insertAdjacentHTML('beforeend', `<div class="msg bot">${resposta}</div>`);
+    log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    log.insertAdjacentHTML('beforeend', `<div class="msg bot">Erro ao enviar. Tente novamente.</div>`);
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>

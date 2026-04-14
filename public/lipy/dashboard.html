@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard Interno — Lipy</title>
+<style>
+  :root{--bg:#0a0a1a;--card:#141432;--border:#232348;--roxo:#7c3aed;--azul:#3b82f6;--texto:#fff;--mudo:#a0a0c0;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444;}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
+  body{background:var(--bg);color:var(--texto);padding:32px;}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;}
+  .logo{font-size:24px;font-weight:900;background:linear-gradient(135deg,var(--roxo),var(--azul));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .tabs{display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;}
+  .tabs button{background:none;border:none;color:var(--mudo);padding:12px 20px;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid transparent;}
+  .tabs button.active{color:var(--texto);border-bottom-color:var(--roxo);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;}
+  .stat .label{color:var(--mudo);font-size:13px;margin-bottom:8px;}
+  .stat .val{font-size:32px;font-weight:800;}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:16px;}
+  .panel h2{font-size:18px;font-weight:700;margin-bottom:16px;}
+  table{width:100%;border-collapse:collapse;}
+  th,td{padding:12px;text-align:left;border-bottom:1px solid var(--border);font-size:14px;}
+  th{color:var(--mudo);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;}
+  .p-ok{background:rgba(16,185,129,0.15);color:var(--ok);}
+  .p-warn{background:rgba(245,158,11,0.15);color:var(--warn);}
+  .p-err{background:rgba(239,68,68,0.15);color:var(--danger);}
+  .view{display:none;}
+  .view.active{display:block;}
+  .agent-card{background:#0f0f24;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:8px;}
+  button.action{background:linear-gradient(135deg,var(--roxo),var(--azul));color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">LIPY · Dashboard Interno</div>
+  <div style="color:var(--mudo);">Equipe Lipy</div>
+</div>
+
+<div class="tabs">
+  <button class="active" data-v="geral">Visão Geral</button>
+  <button data-v="clientes">Clientes</button>
+  <button data-v="tarefas">Fila de Tarefas</button>
+  <button data-v="agentes">Agentes</button>
+  <button data-v="financeiro">Financeiro</button>
+</div>
+
+<div class="view active" id="v-geral">
+  <div class="stats">
+    <div class="stat"><div class="label">Clientes ativos</div><div class="val" id="k1">—</div></div>
+    <div class="stat"><div class="label">MRR</div><div class="val" id="k2">—</div></div>
+    <div class="stat"><div class="label">Conteúdos hoje</div><div class="val" id="k3">—</div></div>
+    <div class="stat"><div class="label">Alertas</div><div class="val" id="k4">—</div></div>
+  </div>
+  <div class="panel">
+    <h2>Ações rápidas</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="action" onclick="run('lipy-relatorio?action=semanal')">Disparar relatório semanal</button>
+      <button class="action" onclick="run('lipy-postagem?action=verificar-agendados')">Verificar postagens agendadas</button>
+      <button class="action" onclick="run('lipy-trafego?action=otimizar')">Otimizar tráfego</button>
+      <button class="action" onclick="run('lipy-supervisor?action=health-check')">Health check</button>
+    </div>
+  </div>
+  <div class="panel"><h2>Saída</h2><pre id="log" style="font-family:monospace;font-size:12px;color:var(--ok);white-space:pre-wrap;max-height:300px;overflow-y:auto;"></pre></div>
+</div>
+
+<div class="view" id="v-clientes">
+  <div class="panel">
+    <h2>Todos os clientes</h2>
+    <table><thead><tr><th>Empresa</th><th>Plano</th><th>Status</th><th>Criado em</th><th></th></tr></thead><tbody id="tb-clientes"></tbody></table>
+  </div>
+</div>
+
+<div class="view" id="v-tarefas">
+  <div class="panel"><h2>Tarefas pendentes</h2><p style="color:var(--mudo)">Integração: consulta lipy_tarefas_agentes.</p></div>
+</div>
+
+<div class="view" id="v-agentes">
+  <div class="panel"><h2>Status dos agentes</h2><div id="agentes-status"></div></div>
+</div>
+
+<div class="view" id="v-financeiro">
+  <div class="panel"><h2>Financeiro</h2><p style="color:var(--mudo);">Integração Stripe — receita consolidada.</p></div>
+</div>
+
+<script>
+document.querySelectorAll('.tabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('v-' + b.dataset.v).classList.add('active');
+  });
+});
+
+async function carregar() {
+  try {
+    const r = await fetch('/api/lipy-clientes');
+    const j = await r.json();
+    const clientes = j.clientes || [];
+    const ativos = clientes.filter(c => c.status === 'ativo');
+    document.getElementById('k1').textContent = ativos.length;
+    const mrr = ativos.reduce((acc, c) => acc + ({ starter: 497, growth: 997, premium: 1997 }[c.plano] || 0), 0);
+    document.getElementById('k2').textContent = 'R$ ' + mrr.toLocaleString('pt-BR');
+    document.getElementById('k3').textContent = '—';
+    document.getElementById('k4').textContent = '0';
+
+    document.getElementById('tb-clientes').innerHTML = clientes.map(c => `
+      <tr>
+        <td><strong>${c.empresa}</strong><br/><small style="color:var(--mudo)">${c.email || ''}</small></td>
+        <td>${c.plano || '—'}</td>
+        <td><span class="pill p-${c.status === 'ativo' ? 'ok' : 'warn'}">${c.status}</span></td>
+        <td style="color:var(--mudo)">${new Date(c.created_at).toLocaleDateString('pt-BR')}</td>
+        <td><a href="/lipy/cliente.html?id=${c.id}" style="color:var(--roxo);font-size:12px;">Abrir portal →</a></td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="color:var(--mudo);text-align:center;padding:32px;">Nenhum cliente ainda</td></tr>';
+  } catch (e) {
+    console.error(e);
+  }
+
+  const agentes = [
+    { nome: 'Supervisor' }, { nome: 'Atendimento' }, { nome: 'Conteúdo' },
+    { nome: 'Postagem' }, { nome: 'Relatório' }, { nome: 'Tráfego' }
+  ];
+  document.getElementById('agentes-status').innerHTML = agentes.map(a => `
+    <div class="agent-card">
+      <div><span class="dot"></span><strong>Agente ${a.nome}</strong></div>
+      <span class="pill p-ok">online</span>
+    </div>
+  `).join('');
+}
+
+async function run(path) {
+  const log = document.getElementById('log');
+  log.textContent += '→ /api/' + path + '\n';
+  try {
+    const r = await fetch('/api/' + path);
+    const j = await r.json();
+    log.textContent += JSON.stringify(j, null, 2) + '\n\n';
+    log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    log.textContent += 'ERRO: ' + e.message + '\n';
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>

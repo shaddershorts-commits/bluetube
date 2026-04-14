@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding — Lipy</title>
+<style>
+  :root{--bg:#0a0a1a;--card:#141432;--border:#232348;--roxo:#7c3aed;--azul:#3b82f6;--texto:#fff;--mudo:#a0a0c0;}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
+  body{background:var(--bg);color:var(--texto);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .wrap{max-width:640px;width:100%;}
+  .logo{font-size:28px;font-weight:900;background:linear-gradient(135deg,var(--roxo),var(--azul));-webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;margin-bottom:8px;}
+  .sub{text-align:center;color:var(--mudo);margin-bottom:32px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px;}
+  .progress{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:24px;}
+  .bar{height:100%;background:linear-gradient(135deg,var(--roxo),var(--azul));transition:width .3s;}
+  h2{font-size:22px;font-weight:700;margin-bottom:8px;}
+  .hint{color:var(--mudo);font-size:14px;margin-bottom:20px;}
+  input,textarea{width:100%;padding:14px 16px;background:#0f0f24;border:1px solid var(--border);border-radius:10px;color:var(--texto);font-size:15px;margin-bottom:16px;font-family:inherit;}
+  textarea{resize:vertical;min-height:100px;}
+  .btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--roxo),var(--azul));color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;}
+  .nav{display:flex;gap:8px;margin-top:16px;}
+  .btn-back{background:var(--border);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">LIPY</div>
+  <div class="sub">Vamos conhecer sua marca</div>
+  <div class="card">
+    <div class="progress"><div class="bar" id="bar" style="width:10%"></div></div>
+    <h2 id="pergunta">Carregando…</h2>
+    <div class="hint" id="hint">Responda com calma. Sua resposta molda todo o trabalho.</div>
+    <textarea id="resp" placeholder="Sua resposta…"></textarea>
+    <div class="nav">
+      <button class="btn btn-back" onclick="voltar()" id="btn-back" style="display:none;">Voltar</button>
+      <button class="btn" onclick="proximo()" id="btn-next">Próximo →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const perguntas = [
+  'Qual o nome completo da sua empresa?',
+  'Descreva em 2-3 frases o que sua empresa faz.',
+  'Qual seu público-alvo? (idade, gênero, interesses)',
+  'Quais são seus 3 principais concorrentes?',
+  'Qual o tom da sua marca? (formal, descontraído, técnico, jovem)',
+  'Quais cores usa na sua identidade visual?',
+  'Tem logo? Se sim, cole o link aqui.',
+  'Quais redes sociais já tem? (@usuário)',
+  'Qual o principal objetivo com as redes sociais?',
+  'Tem site? Qual o link?'
+];
+const cliente_id = new URLSearchParams(location.search).get('id') || 'demo';
+const respostas = [];
+let i = 0;
+
+function render() {
+  document.getElementById('pergunta').textContent = `${i + 1}/10 — ${perguntas[i]}`;
+  document.getElementById('bar').style.width = `${((i + 1) / perguntas.length) * 100}%`;
+  document.getElementById('resp').value = respostas[i] || '';
+  document.getElementById('btn-back').style.display = i === 0 ? 'none' : 'block';
+  document.getElementById('btn-next').textContent = i === perguntas.length - 1 ? 'Finalizar ✨' : 'Próximo →';
+}
+
+function voltar() { if (i > 0) { i--; render(); } }
+
+async function proximo() {
+  respostas[i] = document.getElementById('resp').value;
+  if (i < perguntas.length - 1) { i++; render(); return; }
+
+  document.getElementById('btn-next').textContent = 'Enviando…';
+  try {
+    await fetch('/api/lipy-onboarding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id, etapa: 'responder', respostas: { index: perguntas.length - 1, valores: respostas } })
+    });
+  } catch {}
+  document.querySelector('.card').innerHTML = '<h2 style="text-align:center;">✨ Tudo pronto!</h2><p style="text-align:center;color:var(--mudo);margin-top:16px;">Seu planejamento está sendo criado pela IA. Você receberá no WhatsApp em instantes.</p>';
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lipy — Sua agência de marketing com IA</title>
+<meta name="description" content="Lipy: agência de marketing digital 100% gerenciada por agentes de IA. Planejamento, criação, postagem, tráfego e relatórios no automático." />
+<style>
+  :root{--bg:#0a0a1a;--bg-2:#0f0f24;--card:#141432;--border:#232348;--roxo:#7c3aed;--azul:#3b82f6;--texto:#fff;--mudo:#a0a0c0;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:var(--bg);color:var(--texto);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+  .container{max-width:1200px;margin:0 auto;padding:0 24px;}
+  header{position:sticky;top:0;z-index:10;backdrop-filter:blur(12px);background:rgba(10,10,26,0.8);border-bottom:1px solid var(--border);}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0;}
+  .logo{font-size:28px;font-weight:900;background:linear-gradient(135deg,var(--roxo),var(--azul));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  nav ul{display:flex;gap:32px;list-style:none;}
+  nav ul a{color:var(--mudo);font-size:15px;transition:color .2s;}
+  nav ul a:hover{color:var(--texto);}
+  .btn{display:inline-block;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;transition:transform .2s,box-shadow .2s;cursor:pointer;border:none;}
+  .btn-primary{background:linear-gradient(135deg,var(--roxo),var(--azul));color:#fff;box-shadow:0 8px 24px rgba(124,58,237,0.35);}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(124,58,237,0.5);}
+  .btn-outline{background:transparent;color:var(--texto);border:1px solid var(--border);}
+  .hero{padding:120px 0 100px;text-align:center;position:relative;overflow:hidden;}
+  .hero::before{content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(124,58,237,0.2),transparent 70%);z-index:0;}
+  .hero > *{position:relative;z-index:1;}
+  .eyebrow{display:inline-block;padding:8px 16px;border-radius:999px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.4);font-size:13px;color:#c9b6ff;margin-bottom:24px;letter-spacing:0.5px;}
+  h1{font-size:clamp(40px,6vw,72px);font-weight:900;line-height:1.1;letter-spacing:-1.5px;margin-bottom:24px;}
+  h1 span{background:linear-gradient(135deg,var(--roxo),var(--azul));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{font-size:20px;color:var(--mudo);max-width:680px;margin:0 auto 40px;}
+  section{padding:100px 0;}
+  .section-title{text-align:center;margin-bottom:64px;}
+  .section-title h2{font-size:clamp(32px,4vw,48px);font-weight:800;margin-bottom:16px;}
+  .section-title p{color:var(--mudo);font-size:18px;}
+  .grid{display:grid;gap:24px;}
+  .grid-5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));}
+  .grid-3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px;transition:transform .2s,border-color .2s;}
+  .card:hover{transform:translateY(-4px);border-color:var(--roxo);}
+  .card .emoji{font-size:40px;margin-bottom:16px;display:block;}
+  .card h3{font-size:20px;font-weight:700;margin-bottom:12px;}
+  .card p{color:var(--mudo);font-size:15px;}
+  .step-num{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--roxo),var(--azul));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;margin-bottom:20px;}
+  .pricing{display:grid;gap:32px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));max-width:1100px;margin:0 auto;}
+  .plan{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:40px 32px;position:relative;}
+  .plan.featured{border:2px solid var(--roxo);transform:scale(1.03);box-shadow:0 20px 60px rgba(124,58,237,0.3);}
+  .plan.featured::before{content:'MAIS POPULAR';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--roxo),var(--azul));padding:6px 16px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:1px;}
+  .plan h3{font-size:24px;font-weight:800;margin-bottom:8px;}
+  .plan .desc{color:var(--mudo);font-size:14px;margin-bottom:24px;}
+  .plan .price{font-size:48px;font-weight:900;margin-bottom:4px;}
+  .plan .price small{font-size:16px;color:var(--mudo);font-weight:500;}
+  .plan ul{list-style:none;margin:32px 0;}
+  .plan ul li{padding:10px 0;color:var(--mudo);font-size:14px;border-bottom:1px solid var(--border);}
+  .plan ul li::before{content:'✓ ';color:var(--roxo);font-weight:700;}
+  .faq-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:12px;cursor:pointer;}
+  .faq-item h4{font-size:17px;font-weight:600;margin-bottom:8px;}
+  .faq-item p{color:var(--mudo);font-size:15px;display:none;}
+  .faq-item.open p{display:block;margin-top:12px;}
+  footer{border-top:1px solid var(--border);padding:48px 0;text-align:center;color:var(--mudo);font-size:14px;}
+  .cta-final{text-align:center;padding:120px 24px;background:radial-gradient(circle at 50% 50%,rgba(124,58,237,0.15),transparent 70%);}
+  .cta-final h2{font-size:clamp(36px,5vw,56px);font-weight:900;margin-bottom:24px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <nav>
+      <div class="logo">LIPY</div>
+      <ul>
+        <li><a href="#como-funciona">Como funciona</a></li>
+        <li><a href="#agentes">Agentes</a></li>
+        <li><a href="#planos">Planos</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+      <a href="/lipy/cliente.html" class="btn btn-outline">Entrar</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container">
+    <div class="eyebrow">✨ Agência de marketing com IA</div>
+    <h1>Sua agência de marketing<br/><span>sem agência tradicional.</span></h1>
+    <p>Agentes de IA cuidam de todo o marketing digital da sua empresa: planejamento, criação, postagem, tráfego e relatórios. 24/7. Sem reuniões longas. Sem enrolação.</p>
+    <a href="#planos" class="btn btn-primary">Começar agora →</a>
+  </div>
+</section>
+
+<section id="como-funciona">
+  <div class="container">
+    <div class="section-title">
+      <h2>Como funciona</h2>
+      <p>5 passos. Nenhuma reunião obrigatória.</p>
+    </div>
+    <div class="grid grid-5">
+      <div class="card"><div class="step-num">1</div><h3>Você assina</h3><p>Escolhe um plano e finaliza em 2 minutos.</p></div>
+      <div class="card"><div class="step-num">2</div><h3>Onboarding</h3><p>Criamos um grupo no WhatsApp e fazemos 10 perguntas.</p></div>
+      <div class="card"><div class="step-num">3</div><h3>Planejamento</h3><p>A IA monta seu calendário editorial do mês.</p></div>
+      <div class="card"><div class="step-num">4</div><h3>Produção</h3><p>Conteúdos criados, aprovados por você, publicados.</p></div>
+      <div class="card"><div class="step-num">5</div><h3>Relatórios</h3><p>Você recebe relatórios semanais no WhatsApp.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="agentes" style="background:var(--bg-2);">
+  <div class="container">
+    <div class="section-title">
+      <h2>O que os agentes fazem</h2>
+      <p>Uma equipe de especialistas de IA trabalhando pela sua marca.</p>
+    </div>
+    <div class="grid grid-3">
+      <div class="card"><span class="emoji">💬</span><h3>Agente Atendimento</h3><p>Conversa com você pelo WhatsApp, tira dúvidas, coleta briefings e aprovações.</p></div>
+      <div class="card"><span class="emoji">🎨</span><h3>Agente de Conteúdo</h3><p>Cria posts, stories, legendas e imagens com IA baseadas na sua marca.</p></div>
+      <div class="card"><span class="emoji">📱</span><h3>Agente de Postagem</h3><p>Publica no Instagram e Facebook na hora certa e responde comentários.</p></div>
+      <div class="card"><span class="emoji">📊</span><h3>Agente de Relatórios</h3><p>Gera relatórios semanais e mensais com insights acionáveis.</p></div>
+      <div class="card"><span class="emoji">🎯</span><h3>Agente de Tráfego</h3><p>Configura e otimiza campanhas de anúncios no Meta Ads.</p></div>
+      <div class="card"><span class="emoji">🧠</span><h3>Agente Supervisor</h3><p>Orquestra todos os outros agentes e garante qualidade.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="planos">
+  <div class="container">
+    <div class="section-title">
+      <h2>Planos e preços</h2>
+      <p>Sem fidelidade. Cancele quando quiser.</p>
+    </div>
+    <div class="pricing">
+      <div class="plan">
+        <h3>Starter</h3><div class="desc">Para quem está começando</div>
+        <div class="price">R$ 497<small>/mês</small></div>
+        <ul><li>12 posts por mês</li><li>Stories ilimitados</li><li>Relatório semanal</li><li>Atendimento WhatsApp</li><li>1 rede social</li></ul>
+        <button class="btn btn-outline" style="width:100%;" onclick="assinar('starter')">Começar</button>
+      </div>
+      <div class="plan featured">
+        <h3>Growth</h3><div class="desc">Para escalar de verdade</div>
+        <div class="price">R$ 997<small>/mês</small></div>
+        <ul><li>20 posts por mês</li><li>Reels incluídos</li><li>Tráfego pago até R$ 500</li><li>Relatório semanal + mensal</li><li>2 redes sociais</li></ul>
+        <button class="btn btn-primary" style="width:100%;" onclick="assinar('growth')">Começar</button>
+      </div>
+      <div class="plan">
+        <h3>Premium</h3><div class="desc">Resultados máximos</div>
+        <div class="price">R$ 1.997<small>/mês</small></div>
+        <ul><li>Posts ilimitados</li><li>Reels + carrosséis</li><li>Tráfego pago até R$ 2.000</li><li>Atendimento VIP</li><li>Todas as redes</li></ul>
+        <button class="btn btn-outline" style="width:100%;" onclick="assinar('premium')">Começar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="background:var(--bg-2);">
+  <div class="container" style="max-width:800px;">
+    <div class="section-title"><h2>Perguntas frequentes</h2></div>
+    <div class="faq-item" onclick="this.classList.toggle('open')"><h4>Posso cancelar quando quiser?</h4><p>Sim. Sem fidelidade, sem multa.</p></div>
+    <div class="faq-item" onclick="this.classList.toggle('open')"><h4>Vocês fazem o conteúdo ou eu preciso fazer?</h4><p>Nós fazemos tudo. Você só aprova os posts no WhatsApp.</p></div>
+    <div class="faq-item" onclick="this.classList.toggle('open')"><h4>Como funciona a aprovação?</h4><p>Você recebe cada post no WhatsApp e responde "Aprovar", "Ajustar" ou "Refazer".</p></div>
+    <div class="faq-item" onclick="this.classList.toggle('open')"><h4>Vocês publicam no meu Instagram?</h4><p>Sim. Você conecta sua conta via Meta Business.</p></div>
+    <div class="faq-item" onclick="this.classList.toggle('open')"><h4>E se eu quiser falar com um humano?</h4><p>Disponível no plano Premium. Nos outros, atendimento via agentes IA 24/7.</p></div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <h2>Pronto para terceirizar<br/>seu marketing para a IA?</h2>
+  <a href="#planos" class="btn btn-primary">Ver planos →</a>
+</section>
+
+<footer>
+  <div class="container">© 2026 Lipy — Todos os direitos reservados.</div>
+</footer>
+
+<script>
+async function assinar(plano) {
+  alert('Checkout Stripe — plano: ' + plano + '\n\n(Configure STRIPE_PRICE_' + plano.toUpperCase() + ' no Vercel para ativar)');
+}
+</script>
+</body>
+</html>
