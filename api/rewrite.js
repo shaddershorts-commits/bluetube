@@ -234,8 +234,30 @@ ADAPTAÇÃO CULTURAL OBRIGATÓRIA:
     ? 'VERSÃO APELATIVA: narrador urgente e intenso. Linguagem direta e impactante. Ritmo acelerado, frases curtas. Máxima tensão do início ao fim.'
     : 'VERSÃO CASUAL: narrador próximo e informal. Linguagem cotidiana sem gírias excessivas. Como um amigo contando uma história incrível.';
 
-  // ── SYSTEM PROMPT — NARRADOR EXTERNO + CONTINUIDADE ─────────────────────────
-  const systemPrompt = `Você é um roteirista especialista em YouTube Shorts virais. Você cria narrações em TERCEIRA PESSOA — sempre como NARRADOR EXTERNO que conta uma história, NUNCA como personagem do vídeo.
+  const isAdjust = !!adjust;
+
+  // ── SYSTEM PROMPT — MODO AJUSTE (editor cirúrgico) ──────────────────────────
+  const systemPromptAdjust = `Você é um editor de roteiros experiente. Sua ÚNICA tarefa é aplicar a instrução do usuário no roteiro existente, com o mínimo de mudanças possível.
+
+REGRAS ABSOLUTAS DO MODO AJUSTE:
+1. NÃO reescreva o roteiro do zero — você NÃO está criando um roteiro novo
+2. Mantenha EXATAMENTE as mesmas palavras, ritmo, frases e estrutura que já existem
+3. Mude APENAS o que o usuário pediu — nada a mais, nada a menos
+4. Se o usuário pediu trocar "X" por "Y", troque APENAS isso e deixe o resto intacto
+5. Se o usuário pediu encurtar, corte as palavras/frases menos essenciais preservando o sentido original
+6. Se o usuário pediu mudar o tom, mude o tom SEM alterar os fatos, nomes, números ou eventos
+7. Se o usuário pediu adicionar algo, adicione EXATAMENTE o que foi pedido no lugar certo
+8. NÃO adicione conteúdo novo que o usuário não pediu
+9. NÃO remova conteúdo que o usuário não pediu remover
+10. NÃO aplique "melhorias estilísticas" que não foram solicitadas
+11. Preserve o narrador em terceira pessoa (se o roteiro já estiver assim)
+12. IDIOMA DE SAÍDA OBRIGATÓRIO: ${lang} — se o roteiro atual está em outro idioma, mantenha o idioma atual mas aplique a instrução
+13. Retorne APENAS o texto final do roteiro — sem comentários, sem prefixos, sem explicações, sem markdown
+
+LEMBRETE: você é um EDITOR, não um roteirista. Pense em "diff mínimo" — a menor mudança possível que satisfaz a instrução.`;
+
+  // ── SYSTEM PROMPT — MODO CRIAÇÃO (narrador externo + fidelidade) ────────────
+  const systemPromptCreate = `Você é um roteirista especialista em YouTube Shorts virais. Você cria narrações em TERCEIRA PESSOA — sempre como NARRADOR EXTERNO que conta uma história, NUNCA como personagem do vídeo.
 
 IDENTIDADE DO NARRADOR:
 - Você é o narrador — NUNCA a pessoa do vídeo
@@ -243,45 +265,54 @@ IDENTIDADE DO NARRADOR:
 - Voz: narrador de documentário moderno, dinâmico e envolvente
 - Adaptação nativa — ${nativeRule}
 
+FIDELIDADE AO CONTEÚDO ORIGINAL (REGRA MAIS IMPORTANTE):
+✅ Preserve os fatos, nomes, números, lugares e eventos reais da transcrição original
+✅ Siga a mesma linha narrativa do vídeo original — mesmo começo, mesmo meio, mesmo desfecho
+✅ NÃO invente informações que não estão no conteúdo original
+✅ NÃO omita momentos-chave do vídeo original
+✅ Você está RE-NARRANDO o vídeo com ritmo viral, NÃO criando uma história nova
+⚠️ Se o roteiro gerado não puder ser reconhecido como "o mesmo vídeo" pela pessoa que viu o original, você falhou.
+
 REGRA DE PERGUNTAS — ESTRATÉGICA:
 ✅ Pergunta permitida APENAS no gancho inicial OU no desfecho final
 ✅ Máximo 1 pergunta por roteiro
 ✅ Deve gerar tensão ou curiosidade real
-❌ ZERO perguntas no meio do roteiro — quebram continuidade
+❌ ZERO perguntas no meio do roteiro
 ❌ Proibido: 'Incrível, não é?', 'Consegue acreditar?', 'Que tal isso?'
 
 PROIBIÇÕES ABSOLUTAS:
 ❌ Simular a voz da pessoa do vídeo ('Eu fiz...', 'Olha o que me aconteceu...')
 ❌ Narrar em primeira pessoa (eu, me, meu, minha, comigo)
-❌ Usar 'você' no meio do roteiro (só permitido no gancho ou desfecho)
-❌ Começar com contexto ('Este vídeo mostra...', 'Hoje vamos ver...')
+❌ Começar com contexto meta ('Este vídeo mostra...', 'Hoje vamos ver...')
 ❌ Conectores fracos ('também', 'além disso', 'por outro lado')
 ❌ Explicar o que vai acontecer antes de acontecer
 ❌ Terminar com CTA ('curta', 'compartilhe', 'se inscreva')
 ❌ Emojis, títulos, explicações fora do roteiro
+❌ Inventar fatos que não estão na transcrição original
 
-ESTRUTURA OBRIGATÓRIA — 3 ATOS CONTÍNUOS:
+ESTRUTURA NARRATIVA — 3 ATOS CONTÍNUOS:
 
-ATO 1 — GANCHO (primeiras 2 frases):
-Afirmação intrigante OU pergunta que gera dúvida. Direto ao conflito, sem contexto.
+ATO 1 — GANCHO (1-2 frases): afirmação intrigante OU pergunta que gera dúvida. Direto ao conflito real do vídeo, sem contexto meta.
 
-ATO 2 — PROGRESSÃO (2-3 frases):
-Cada frase avança a história. Conectores de virada: 'Só que...', 'Mas aí...', 'Foi então que...'.
-Tensão crescente. Pelo menos UMA virada inesperada. ZERO perguntas aqui.
+ATO 2 — PROGRESSÃO (2-4 frases): cada frase avança a história REAL do vídeo. Use conectores de virada ('Só que...', 'Mas aí...', 'Foi então que...') quando fizer sentido narrativo. Preserve a ordem dos acontecimentos originais. ZERO perguntas aqui.
 
-ATO 3 — DESFECHO (1-2 frases):
-Resultado ou revelação. Pode terminar com pergunta reflexiva se aumentar impacto.
+ATO 3 — DESFECHO (1-2 frases): resultado ou revelação REAL do vídeo. Pode terminar com pergunta reflexiva se aumentar impacto.
 
-RITMO: máximo 60 palavras. Frases curtas. Cada palavra ganha seu lugar.
+RITMO E TAMANHO:
+- Entre 50 e 90 palavras — priorize FIDELIDADE AO ORIGINAL sobre o limite de palavras
+- Frases curtas, cada palavra com propósito
+- Continuidade total entre todas as frases — linha narrativa contínua, nunca fragmentos soltos
 
 ${culturalAdaptation}
 
 TESTE INTERNO antes de retornar:
-1. A primeira frase prende sem dar contexto? ✓
-2. Continuidade entre TODAS as frases? ✓
-3. Alguma frase simula voz de alguém do vídeo? → reescrever em terceira pessoa
-4. Pergunta no MEIO? → remover ou mover para gancho/desfecho
-5. Mais de 1 pergunta? → remover extras
+1. Quem viu o vídeo original reconhece que é o mesmo conteúdo? ✓
+2. Nenhum fato foi inventado? ✓
+3. Nenhum momento-chave foi omitido? ✓
+4. A primeira frase prende sem contexto meta? ✓
+5. Há continuidade entre TODAS as frases (nada quebrado)? ✓
+6. Terceira pessoa mantida em todo o roteiro? ✓
+7. Máximo 1 pergunta, apenas no gancho ou desfecho? ✓
 ${livingMemory ? `\nREFERÊNCIA DE QUALIDADE:\n${livingMemory}` : ''}
 ${fewShotExamples}
 
@@ -289,35 +320,36 @@ IDIOMA DE SAÍDA OBRIGATÓRIO: ${lang}
 ⚠️ O roteiro DEVE ser escrito 100% em ${lang}. Se o idioma de saída não for ${lang}, o roteiro está ERRADO — reescreva.
 ${ANGLE}`;
 
-  const userPrompt = adjust
-    ? `ROTEIRO ATUAL:
-"${transcript.slice(0, 3000)}"
+  const systemPrompt = isAdjust ? systemPromptAdjust : systemPromptCreate;
 
-INSTRUÇÃO DO USUÁRIO (OBEDEÇA 100%):
-"${adjust.slice(0, 500)}"
+  const userPrompt = isAdjust
+    ? `ROTEIRO ATUAL (este é o texto que você vai editar):
+"""
+${transcript.slice(0, 3000)}
+"""
 
-REGRAS PARA O AJUSTE:
-1. OBEDEÇA A INSTRUÇÃO DO USUÁRIO LITERALMENTE — faça EXATAMENTE o que ele pediu
-2. Se ele pediu trocar uma palavra, troque APENAS aquela palavra
-3. Se ele pediu mudar o tom, mude o tom INTEIRO do roteiro
-4. Se ele pediu encurtar, corte frases sem perder o sentido
-5. Se ele pediu adicionar algo, adicione EXATAMENTE o que pediu
-6. NÃO invente mudanças que não foram pedidas
-7. NÃO ignore nenhuma parte da instrução
-8. Mantenha narrador em terceira pessoa
-9. Retorne o roteiro COMPLETO ajustado (não apenas a parte modificada)
-10. ESCREVA 100% EM ${lang} — o roteiro deve estar no idioma ${lang}
-11. Retorne APENAS o texto do roteiro, sem explicações`
-    : `CONTEÚDO DO VÍDEO ORIGINAL:
-"${transcript.slice(0, 3000)}"
+INSTRUÇÃO DO USUÁRIO (aplique EXATAMENTE o que está pedindo):
+"""
+${adjust.slice(0, 500)}
+"""
 
-Crie um roteiro de narração baseado neste conteúdo.
-- ESCREVA 100% EM ${lang} — NÃO escreva em português se o idioma pedido for outro
+Aplique a instrução acima no ROTEIRO ATUAL fazendo o MÍNIMO de mudanças possível. Não reescreva partes que o usuário não pediu para mudar. Retorne apenas o roteiro ajustado completo, no idioma ${lang}, sem explicações.`
+    : `TRANSCRIÇÃO REAL DO VÍDEO ORIGINAL (esta é a fonte da verdade — siga de perto):
+"""
+${transcript.slice(0, 3000)}
+"""
+
+Re-narre este vídeo como um Short viral, preservando os fatos, nomes, números e a linha narrativa real acima.
+
+Regras:
+- FIDELIDADE: preserve os fatos, nomes, números e eventos do vídeo original — não invente, não omita
+- Siga a mesma ordem dos acontecimentos do vídeo original
+- ESCREVA 100% EM ${lang}
 - Narrador EXTERNO em terceira pessoa
 - Pergunta permitida APENAS no gancho OU desfecho — máximo 1
 - ZERO perguntas no meio do roteiro
-- Continuidade total entre frases
-- Máximo 60 palavras
+- Continuidade total entre frases (linha narrativa contínua)
+- Entre 50 e 90 palavras — priorize fidelidade ao original sobre o limite
 - Retorne APENAS o texto do roteiro em ${lang}, nada mais.`;
 
   // ── CACHE — skip AI calls if same request was recently generated ──────────
@@ -350,8 +382,8 @@ Crie um roteiro de narração baseado neste conteúdo.
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
-          max_tokens: 250,
-          temperature: 0.85
+          max_tokens: 400,
+          temperature: isAdjust ? 0.55 : 0.85
         }),
         signal: controller.signal
       });
@@ -404,7 +436,7 @@ Crie um roteiro de narração baseado neste conteúdo.
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: fullPrompt }] }],
-            generationConfig: { temperature: 0.85, maxOutputTokens: 600, topP: 0.95 }
+            generationConfig: { temperature: isAdjust ? 0.55 : 0.85, maxOutputTokens: 600, topP: 0.95 }
           }),
           signal: gc.signal
         }
