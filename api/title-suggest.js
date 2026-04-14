@@ -25,24 +25,27 @@ module.exports = async function handler(req, res) {
   ].filter(Boolean).sort(() => Math.random() - 0.5);
 
   const safeLang = lang || 'Português (Brasil)';
-  const prompt = `Baseado nesta transcrição de vídeo curto, gere 2 sugestões de título viral.
+  const prompt = `OUTPUT LANGUAGE: ${safeLang}
+You MUST write both titles in ${safeLang} and ONLY in ${safeLang}. Do NOT use any other language.
 
-TRANSCRIÇÃO:
+Task: generate 2 viral short-video title suggestions based on the transcript below.
+
+TRANSCRIPT:
 "${transcript.trim().slice(0, 600)}"
-${originalTitle ? `\nTÍTULO ORIGINAL: "${originalTitle}"` : ''}
+${originalTitle ? `\nORIGINAL TITLE: "${originalTitle}"` : ''}
 
-REGRAS:
-- Idioma: ${safeLang}
-- Títulos curtos (máx 60 caracteres cada)
-- Linguagem nativa de redes sociais
-- Gere curiosidade e vontade de clicar
-- casual = título leve e natural
-- apelativo = título mais forte e urgente
-- Sem emojis
-- Sem aspas no texto
+Rules:
+- Both titles MUST be written in ${safeLang}
+- Max 60 characters each
+- Native social-media tone for that language
+- Spark curiosity and clicks
+- "casual" = lighter, natural tone
+- "apelativo" = stronger, more urgent tone
+- No emojis
+- No quotes inside the text
 
-Responda SOMENTE com JSON válido, sem markdown:
-{"casual":"título casual aqui","apelativo":"título apelativo aqui"}`;
+Reminder: write the titles in ${safeLang}. Reply with ONLY valid JSON, no markdown:
+{"casual":"<title in ${safeLang}>","apelativo":"<title in ${safeLang}>"}`;
 
   let result = null;
 
@@ -55,7 +58,7 @@ Responda SOMENTE com JSON válido, sem markdown:
         body: JSON.stringify({
           model: 'gpt-4o-mini', max_tokens: 150, temperature: 0.85,
           messages: [
-            { role: 'system', content: 'Você gera títulos virais curtos. Responda apenas JSON.' },
+            { role: 'system', content: `You generate short viral video titles. You MUST write the titles in the exact language specified in the user prompt (${safeLang}), never in any other language. Reply with JSON only.` },
             { role: 'user', content: prompt }
           ]
         })
