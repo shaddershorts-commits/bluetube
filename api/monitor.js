@@ -188,6 +188,20 @@ Responda APENAS com JSON:
   const { file_path, fix_description, fixed_content } = aiResponse;
   if (!file_path || !fixed_content) return res.status(200).json({ ok: false, error: 'Incomplete fix' });
 
+  // Monitor só pode CORRIGIR arquivos existentes — nunca criar arquivos novos.
+  // Se o arquivo alvo não tem conteúdo atual no repositório, rejeita o fix.
+  if (!currentContent || !fileSha) {
+    console.warn('[monitor] Fix rejected: target file does not exist', file_path);
+    await notifyAdmin('fix_rejected', {
+      errorMsg,
+      file: file_path,
+      reason: `Auto-fix rejeitado: o arquivo "${file_path}" não existe no repositório. O monitor só pode editar arquivos existentes, nunca criar novos.`,
+      fixDescription: fix_description,
+      suggestion: 'O stack trace pode estar apontando para um arquivo que foi removido ou nunca existiu. Revise manualmente.'
+    });
+    return res.status(200).json({ ok: false, action: 'fix_rejected', reason: 'File does not exist', notified: true });
+  }
+
   if (currentContent && fixed_content) {
     const origLines = currentContent.split('\n').length;
     const fixedLines = fixed_content.split('\n').length;
