@@ -640,9 +640,32 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── BLUESCORE: FEEDBACK (aprendizado) ────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'bluescore-feedback') {
+    const { analise_id, util } = req.body;
+    if (!analise_id) return res.status(400).json({ error: 'analise_id obrigatório' });
+    const _FK = process.env.SUPABASE_SERVICE_KEY;
+    if (!SUPA_URL || !_FK) return res.status(200).json({ ok: false, reason: 'supabase ausente' });
+    try {
+      const r = await fetch(`${SUPA_URL}/rest/v1/bluescore_analises?id=eq.${encodeURIComponent(analise_id)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': _FK,
+          'Authorization': `Bearer ${_FK}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ feedback_util: !!util })
+      });
+      return res.status(200).json({ ok: r.ok });
+    } catch (e) {
+      return res.status(200).json({ ok: false, error: e.message });
+    }
+  }
+
   // ── BLUESCORE: AI DIAGNOSIS ──────────────────────────────────────────────────
   if (req.method === 'POST' && req.body?.action === 'bluescore-ai') {
-    const { channelData, videos, scoreData } = req.body;
+    const { channelData, videos, scoreData, isShorts: isShortsChannel, faixa } = req.body;
     if (!channelData || !videos || !scoreData) return res.status(400).json({ error: 'Dados obrigatórios' });
 
     const GEMINI_KEYS = [
@@ -685,8 +708,46 @@ export default async function handler(req, res) {
     const lowEngVideos = engRates.filter(e => e < avgEng * 0.3).length;
     const commentRatio = videos.reduce((s,v) => s + v.comments, 0) / (videos.reduce((s,v) => s + v.likes, 0) || 1);
 
-    const systemPrompt = `Você é o BlueScore Engine — um sistema de IA especializado em análise de confiança algorítmica do YouTube, baseado nas diretrizes oficiais do YouTube Partner Program (YPP) e nos padrões de distribuição do algoritmo.
+    // ── Few-shot: análises aprovadas de canais Shorts na mesma faixa ────────
+    let fewShotBlock = '';
+    if (isShortsChannel && faixa && SUPA_URL && SUPA_KEY) {
+      try {
+        const fsRes = await fetch(
+          `${SUPA_URL}/rest/v1/bluescore_analises?eh_shorts=eq.true&faixa=eq.${encodeURIComponent(faixa)}&feedback_util=eq.true&select=nicho,diagnostico,dicas&order=created_at.desc&limit=3`,
+          { headers: supaH }
+        );
+        if (fsRes.ok) {
+          const rows = await fsRes.json();
+          if (rows?.length > 0) {
+            fewShotBlock = `\n\nEXEMPLOS DE ANÁLISES APROVADAS (canais Shorts da mesma faixa "${faixa}" — use como referência de qualidade):\n` +
+              rows.map((r, i) => `${i+1}. ${r.nicho ? '[' + r.nicho + '] ' : ''}${(r.diagnostico || '').slice(0, 220)}\n   Dicas top: ${(r.dicas || []).slice(0, 3).map(d => '• ' + (d || '').slice(0, 120)).join(' ')}`).join('\n\n') +
+              '\n\nGere análise com qualidade igual ou superior aos exemplos acima.\n';
+          }
+        }
+      } catch (e) { /* sem exemplos, segue */ }
+    }
 
+    // ── Bloco Shorts (quando aplicável) ──────────────────────────────────────
+    const shortsBlock = isShortsChannel ? `
+⚠️ IMPORTANTE — Este é um canal de YouTube Shorts. Faixa detectada: ${faixa || 'n/d'}. Use APENAS estes benchmarks:
+
+BENCHMARKS PARA SHORTS (nunca use métricas de vídeos longos):
+- Views por Short: <1K=iniciante (normal, não é ruim), 1K-10K=crescendo, 10K-100K=estabelecido, 100K+=viral
+- Taxa de like: 1%+ = bom, 3%+ = excelente para Shorts
+- Retenção: 60%+ = bom, 80%+ = excelente para Shorts
+- Frequência: 1/dia = ideal, 3-4/semana = bom, menos = problema real
+
+REGRAS ABSOLUTAS PARA CANAIS SHORTS:
+- NUNCA compare views de Shorts com as de vídeos longos
+- NUNCA diga que um canal com <1K views por Short está "mal" só pelo número — pode ser iniciante normal
+- Identifique o NICHO do canal logo nos primeiros 5 segundos da análise, olhando os títulos dos vídeos
+- TODAS as dicas devem ser 100% focadas no nicho identificado do canal
+- Priorize dicas de maior impacto primeiro (alto impacto no topo)
+- No campo "summary", mencione o nicho identificado e a faixa do canal
+${fewShotBlock}` : '';
+
+    const systemPrompt = `Você é o BlueScore Engine — um sistema de IA especializado em análise de confiança algorítmica do YouTube, baseado nas diretrizes oficiais do YouTube Partner Program (YPP) e nos padrões de distribuição do algoritmo.
+${shortsBlock}
 DIRETRIZES YPP QUE VOCÊ CONHECE PROFUNDAMENTE:
 1. CONTEÚDO REUTILIZADO: O YouTube penaliza canais que republicam conteúdo de terceiros sem transformação substancial. Sinais: vídeos com views inconsistentes, padrões de título repetitivos, spikes isolados de views.
 2. ORIGINALIDADE: Canais precisam demonstrar valor criativo único. Edição mínima, narração sintética óbvia e conteúdo compilado sem comentário original reduzem distribuição.
@@ -749,6 +810,7 @@ Responda APENAS em JSON válido sem markdown:
     }
   ],
   "summary": "diagnóstico executivo em 2 frases, honesto, com o principal problema e principal oportunidade do canal",
+  "niche": "nicho identificado do canal em 1-3 palavras (ex: 'Tech reviews', 'Humor diário', 'Receitas fit')",
   "ytpCompliance": {
     "score": 0-100,
     "status": "aprovado|atenção|risco",
@@ -815,34 +877,49 @@ Responda APENAS em JSON válido sem markdown:
     }
 
     if (parsed) {
-        
-        // Salva no Supabase para retroalimentação
-        // SUPA_URL já declarada globalmente
+        // Salva análise com aprendizado na tabela bluescore_analises (PT)
         const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
         if (SUPA_URL && SUPA_KEY) {
-          fetch(`${SUPA_URL}/rest/v1/bluescore_analyses`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': SUPA_KEY,
-              'Authorization': `Bearer ${SUPA_KEY}`,
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify({
-              channel_id: channelData.channelId,
-              channel_name: channelData.title,
-              score: scoreData.score,
-              classification: scoreData.classification,
-              avg_views: Math.round(scoreData.metrics?.avgViews || 0),
-              engagement_rate: scoreData.metrics?.avgEngRate || 0,
-              trend_ratio: scoreData.metrics?.trendRatio || 1,
-              risk_flags: parsed.riskFlags || [],
-              ytp_compliance: parsed.ytpCompliance || {},
-              analyzed_at: new Date().toISOString()
-            })
-          }).catch(()=>{});
+          try {
+            const dicasArr = (parsed.recommendations || [])
+              .map(r => typeof r === 'object' ? (r.action || '') : String(r || ''))
+              .filter(Boolean)
+              .slice(0, 10);
+            const insR = await fetch(`${SUPA_URL}/rest/v1/bluescore_analises`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPA_KEY,
+                'Authorization': `Bearer ${SUPA_KEY}`,
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                canal_id: channelData.channelId,
+                canal_nome: channelData.title,
+                nicho: parsed.niche || null,
+                eh_shorts: !!isShortsChannel,
+                score: scoreData.score,
+                faixa: faixa || null,
+                metricas: {
+                  avg_views: Math.round(scoreData.metrics?.avgViews || 0),
+                  engagement_rate: scoreData.metrics?.avgEngRate || 0,
+                  trend_ratio: scoreData.metrics?.trendRatio || 1,
+                  classification: scoreData.classification,
+                  components: scoreData.components || null,
+                  bonuses: scoreData.bonuses || null
+                },
+                diagnostico: parsed.summary || '',
+                dicas: dicasArr,
+                feedback_util: null
+              })
+            });
+            if (insR.ok) {
+              const rows = await insR.json();
+              if (rows?.[0]?.id) parsed.analise_id = rows[0].id;
+            }
+          } catch (e) { console.log('bluescore_analises insert:', e.message); }
         }
-        
+
         return res.status(200).json(parsed);
     }
 

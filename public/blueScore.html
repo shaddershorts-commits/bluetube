@@ -570,8 +570,169 @@ async function fetchRecentVideos(channelId) {
   return d.videos || [];
 }
 
+// ── SHORTS DETECTION + CALIBRATION ───────────────────────────────────────────
+// Detecta canal de Shorts: se 60%+ dos últimos 20 vídeos têm duração < 65s
+function detectShortsChannel(videos) {
+  if (!videos?.length) return false;
+  const recent = videos.slice(0, Math.min(20, videos.length));
+  const withDuration = recent.filter(v => typeof v.duration === 'number' && v.duration > 0);
+  if (!withDuration.length) return false;
+  const shortsCount = withDuration.filter(v => v.duration < 65).length;
+  return (shortsCount / withDuration.length) >= 0.6;
+}
+
+// Score de views por faixa calibrado para Shorts (não penaliza canal pequeno)
+function shortsViewsScore(avgViews) {
+  if (avgViews < 1000)    return 20;
+  if (avgViews < 5000)    return 40;
+  if (avgViews < 10000)   return 60;
+  if (avgViews < 30000)   return 65;
+  if (avgViews < 70000)   return 75;
+  if (avgViews < 100000)  return 85;
+  if (avgViews < 500000)  return 88;
+  if (avgViews < 1000000) return 93;
+  return 98;
+}
+
+function shortsFaixa(avgViews) {
+  if (avgViews < 10000)   return 'Iniciante';
+  if (avgViews < 100000)  return 'Crescendo';
+  if (avgViews < 1000000) return 'Estabelecido';
+  return 'Viral';
+}
+
+// Engine de score dedicado a canais de Shorts
+function calculateShortsScore(videos, channel) {
+  const v = videos;
+  const N = v.length;
+  if (N === 0) return null;
+
+  // Métricas base
+  const avgViews    = v.reduce((s,x) => s + x.views, 0) / N;
+  const avgLikes    = v.reduce((s,x) => s + x.likes, 0) / N;
+  const avgComments = v.reduce((s,x) => s + x.comments, 0) / N;
+  const avgEngRate  = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
+
+  // Tendência: primeira metade vs segunda metade
+  const half     = Math.floor(N / 2);
+  const recentAvg = v.slice(0, half || 1).reduce((s,x) => s + x.views, 0) / (half || 1);
+  const olderAvg  = v.slice(half).reduce((s,x) => s + x.views, 0) / (N - half || 1);
+  const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
+
+  // Consistência: coeficiente de variação das views
+  const stdDev = Math.sqrt(v.reduce((s,x) => s + Math.pow(x.views - avgViews, 2), 0) / N);
+  const cv     = avgViews > 0 ? stdDev / avgViews : 1;
+
+  // Frequência: dias entre vídeos
+  const sortedDates = v.map(x => new Date(x.publishedAt)).sort((a,b) => b - a);
+  let avgDaysBetween = 7;
+  if (sortedDates.length > 1) {
+    const diffs = [];
+    for (let i = 0; i < sortedDates.length - 1; i++) {
+      diffs.push((sortedDates[i] - sortedDates[i+1]) / (1000*60*60*24));
+    }
+    avgDaysBetween = diffs.reduce((s,x) => s + x, 0) / diffs.length;
+  }
+
+  // Consistência diária: posts nos últimos 7 dias
+  const now = Date.now();
+  const last7d = v.filter(x => (now - new Date(x.publishedAt).getTime()) <= 7*24*60*60*1000).length;
+
+  // ── COMPONENTES (0-100 cada) ──
+  // 1. Views (faixas Shorts)
+  const viewsScore = shortsViewsScore(avgViews);
+
+  // 2. Engajamento (Shorts: 1%+ bom, 3%+ excelente)
+  let engScore;
+  if      (avgEngRate < 0.5) engScore = 25;
+  else if (avgEngRate < 1)   engScore = 50;
+  else if (avgEngRate < 2)   engScore = 70;
+  else if (avgEngRate < 3)   engScore = 85;
+  else if (avgEngRate < 5)   engScore = 95;
+  else                       engScore = 100;
+
+  // 3. Frequência (Shorts: 1/dia ideal)
+  let freqScore;
+  if      (avgDaysBetween <= 1)  freqScore = 100;
+  else if (avgDaysBetween <= 2)  freqScore = 90;
+  else if (avgDaysBetween <= 3)  freqScore = 75;
+  else if (avgDaysBetween <= 7)  freqScore = 60;
+  else if (avgDaysBetween <= 14) freqScore = 40;
+  else                           freqScore = 20;
+
+  // 4. Crescimento (proxy: trendRatio de views — aproximação, sem histórico de inscritos)
+  let growthScore;
+  if      (trendRatio >= 1.5)  growthScore = 100;
+  else if (trendRatio >= 1.2)  growthScore = 85;
+  else if (trendRatio >= 1.05) growthScore = 75;
+  else if (trendRatio >= 0.9)  growthScore = 60;
+  else if (trendRatio >= 0.7)  growthScore = 40;
+  else                         growthScore = 20;
+
+  // 5. Consistência (CV baixo = uniforme)
+  let consistScore;
+  if      (cv < 0.4) consistScore = 100;
+  else if (cv < 0.7) consistScore = 85;
+  else if (cv < 1)   consistScore = 70;
+  else if (cv < 1.5) consistScore = 50;
+  else               consistScore = 30;
+
+  // ── SCORE FINAL PONDERADO ──
+  // Pesos Shorts: views 20%, engajamento 35%, frequência 20%, crescimento 15%, consistência 10%
+  let finalScore =
+    viewsScore   * 0.20 +
+    engScore     * 0.35 +
+    freqScore    * 0.20 +
+    growthScore  * 0.15 +
+    consistScore * 0.10;
+
+  // ── BÔNUS ──
+  // Vídeo viral (>10x a média): +5
+  const maxViews   = Math.max(...v.map(x => x.views));
+  const viralBonus = (avgViews > 0 && maxViews > avgViews * 10) ? 5 : 0;
+  // Consistência diária (5+ posts em 7 dias): +3
+  const dailyBonus = (last7d >= 5) ? 3 : 0;
+  // Crescimento acelerado (>20%): +5 (proxy por tendência de views)
+  const growthBonus = (trendRatio >= 1.2) ? 5 : 0;
+
+  finalScore += viralBonus + dailyBonus + growthBonus;
+
+  // NENHUMA penalização dura por views baixas — Shorts novos são naturalmente pequenos.
+
+  finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
+
+  const faixa = shortsFaixa(avgViews);
+  const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
+  const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' }[classification];
+
+  // Top 3 vídeos por views
+  const topVideos = [...v].sort((a,b) => b.views - a.views).slice(0, 3);
+
+  return {
+    score: finalScore,
+    classification,
+    classLabel,
+    isShorts: true,
+    faixa,
+    bonuses: { viral: viralBonus, daily: dailyBonus, growth: growthBonus, total: viralBonus + dailyBonus + growthBonus },
+    pillars: {
+      performance: { score: Math.round(viewsScore * 0.55 + growthScore * 0.45), desc: `Média ${fmtNum(Math.round(avgViews))} views/Short · Faixa ${faixa}` },
+      risk:        { score: Math.round(engScore * 0.7 + consistScore * 0.3),    desc: `Engajamento ${avgEngRate.toFixed(2)}% · Consistência ${cv < 0.5 ? 'alta ✓' : cv < 1 ? 'média' : 'baixa ⚠'}` },
+      behavior:    { score: Math.round(freqScore),                                desc: `Postagem a cada ~${Math.round(avgDaysBetween)} dias · ${last7d} posts em 7 dias` },
+    },
+    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween, last7d },
+    components: { viewsScore, engScore, freqScore, growthScore, consistScore },
+    trendScore: growthScore, viewsScore, engScore,
+    topVideos,
+  };
+}
+
 // ── SCORE ENGINE ──────────────────────────────────────────────────────────────
 function calculateBlueScore(videos, channel) {
+  // Canal de Shorts? Usa engine calibrada.
+  if (detectShortsChannel(videos)) {
+    return calculateShortsScore(videos, channel);
+  }
   const v = videos;
   const N = v.length;
   if (N === 0) return null;
@@ -660,6 +821,7 @@ function calculateBlueScore(videos, channel) {
     score: finalScore,
     classification,
     classLabel: classLabel[classification],
+    isShorts: false,
     pillars: {
       performance: { score: Math.round(perf), desc: `Views médias ${fmtNum(avgViews)} · Engajamento ${avgEngRate.toFixed(2)}%` },
       risk: { score: Math.round(risk), desc: `Variação de performance ${cv < 0.5 ? 'baixa ✓' : cv < 1 ? 'moderada' : 'alta ⚠'}` },
@@ -667,6 +829,7 @@ function calculateBlueScore(videos, channel) {
     },
     metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween },
     trendScore, viewsScore, engScore,
+    topVideos: [...v].sort((a,b) => b.views - a.views).slice(0, 3),
   };
 }
 
@@ -678,7 +841,9 @@ async function generateAIDiagnosis(scoreData, channelData, videos) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'bluescore-ai',
-        channelData, videos, scoreData
+        channelData, videos, scoreData,
+        isShorts: !!scoreData.isShorts,
+        faixa: scoreData.faixa || null
       })
     });
     if (!r.ok) throw new Error('AI indisponível');
@@ -752,6 +917,27 @@ function renderResults(scoreData, channelData, videos, aiData) {
   const sc = document.getElementById('scoreClass');
   sc.textContent = scoreData.classLabel;
   sc.className = 'score-class ' + scoreData.classification;
+
+  // ── SHORTS BADGE + FAIXA (injetado dinamicamente) ─────────────────────────
+  {
+    const existingBadge = document.getElementById('shortsBadgeRow');
+    if (existingBadge) existingBadge.remove();
+    if (scoreData.isShorts) {
+      const faixaColors = { 'Iniciante':'#fbbf24', 'Crescendo':'#00aaff', 'Estabelecido':'#22c55e', 'Viral':'#7c3aed' };
+      const faixaColor = faixaColors[scoreData.faixa] || '#00aaff';
+      const bonusTotal = scoreData.bonuses?.total || 0;
+      const bonusParts = [];
+      if (scoreData.bonuses?.viral)  bonusParts.push('🔥 Viral +5');
+      if (scoreData.bonuses?.daily)  bonusParts.push('📅 Diário +3');
+      if (scoreData.bonuses?.growth) bonusParts.push('📈 Crescimento +5');
+      const badgeHtml = `<div id="shortsBadgeRow" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px">
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#c9b6ff">🎬 Canal de Shorts detectado</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:${faixaColor}18;border:1px solid ${faixaColor}55;font-family:var(--mono);font-size:11px;font-weight:700;color:${faixaColor}">Faixa: ${scoreData.faixa}</span>
+        ${bonusTotal > 0 ? `<span title="${bonusParts.join(' · ')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#22c55e">⭐ Bônus +${bonusTotal}</span>` : ''}
+      </div>`;
+      sc.insertAdjacentHTML('afterend', badgeHtml);
+    }
+  }
 
   // Metrics
   const m = scoreData.metrics;
@@ -873,8 +1059,72 @@ function renderResults(scoreData, channelData, videos, aiData) {
     }
   }
 
+  // ── TOP 3 VÍDEOS ────────────────────────────────────────────────────────
+  {
+    const existing = document.getElementById('topVideosInjected');
+    if (existing) existing.remove();
+    const top = scoreData.topVideos || [];
+    if (top.length) {
+      const rowsHtml = top.map((v, i) => {
+        const rank = ['🥇','🥈','🥉'][i] || (i+1);
+        const thumb = v.thumbnail || '';
+        return `<div style="display:flex;gap:12px;align-items:center;padding:10px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:12px;margin-bottom:8px">
+          <div style="font-size:20px;width:28px;text-align:center">${rank}</div>
+          ${thumb ? `<img src="${thumb}" style="width:64px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" onerror="this.style.display='none'"/>` : ''}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(v.title||'').replace(/"/g,'&quot;')}">${(v.title||'Sem título').slice(0, 60)}${(v.title||'').length > 60 ? '…' : ''}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">👁 ${fmtNum(v.views)} · ❤ ${fmtNum(v.likes)} · 💬 ${fmtNum(v.comments)}</div>
+          </div>
+        </div>`;
+      }).join('');
+      const block = `<div id="topVideosInjected" style="background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:24px;margin-bottom:20px;backdrop-filter:blur(20px)">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:14px;text-transform:uppercase;letter-spacing:.1em">🏆 Top 3 vídeos do canal</div>
+        ${rowsHtml}
+      </div>`;
+      document.getElementById('resultsSection').insertAdjacentHTML('beforeend', block);
+    }
+  }
+
+  // ── FEEDBACK BUTTONS (aprendizado da IA) ────────────────────────────────
+  {
+    const existing = document.getElementById('feedbackInjected');
+    if (existing) existing.remove();
+    if (aiData?.analise_id) {
+      window._currentAnaliseId = aiData.analise_id;
+      const fb = `<div id="feedbackInjected" style="background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:20px 24px;margin-bottom:20px;backdrop-filter:blur(20px);text-align:center">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:.1em">Essa análise foi útil?</div>
+        <div id="feedbackButtons" style="display:flex;gap:10px;justify-content:center">
+          <button onclick="sendBluescoreFeedback(true)" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);border-radius:12px;padding:10px 20px;font-family:var(--mono);font-size:13px;font-weight:700;color:#22c55e;cursor:pointer;transition:all .2s">👍 Sim, ajudou</button>
+          <button onclick="sendBluescoreFeedback(false)" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;padding:10px 20px;font-family:var(--mono);font-size:13px;font-weight:700;color:#ef4444;cursor:pointer;transition:all .2s">👎 Não ajudou</button>
+        </div>
+      </div>`;
+      document.getElementById('resultsSection').insertAdjacentHTML('beforeend', fb);
+    }
+  }
+
   // Scroll to results
   document.getElementById('resultsSection').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// ── BLUESCORE FEEDBACK ────────────────────────────────────────────────────
+async function sendBluescoreFeedback(util) {
+  const analiseId = window._currentAnaliseId;
+  if (!analiseId) return;
+  const box = document.getElementById('feedbackButtons');
+  if (!box) return;
+  box.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">Enviando…</div>';
+  try {
+    await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bluescore-feedback', analise_id: analiseId, util })
+    });
+    box.innerHTML = util
+      ? '<div style="font-family:var(--mono);font-size:12px;color:#22c55e">✓ Obrigado! A IA vai aprender com seu feedback.</div>'
+      : '<div style="font-family:var(--mono);font-size:12px;color:#fbbf24">Entendido. Vamos melhorar.</div>';
+  } catch (e) {
+    box.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:#ef4444">Erro ao enviar feedback.</div>';
+  }
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
