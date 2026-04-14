@@ -175,90 +175,106 @@ export default async function handler(req, res) {
         title = 'YouTube Short';
 
         const rapidKey = process.env.RAPIDAPI_KEY;
-        if (!rapidKey) return res.status(400).json({ error: 'RAPIDAPI_KEY não configurada no Vercel.' });
+        const failures = [];
 
-        // Use youtube-to-mp4-mp3 API — returns links from their own CDN (no CORS issues)
-        let r = await fetch(`https://youtube-to-mp4-mp3.p.rapidapi.com/v1/videoInfo?videoId=${videoId}`, {
-          headers: {
-            'x-rapidapi-key': rapidKey,
-            'x-rapidapi-host': 'youtube-to-mp4-mp3.p.rapidapi.com'
+        // ── 1º: Cobalt próprio (instância self-hosted) ─────────────────
+        const cobaltUrl = process.env.COBALT_API_URL;
+        const cobaltKey = process.env.COBALT_API_KEY;
+        if (cobaltUrl) {
+          try {
+            const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+            if (cobaltKey) cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltKey;
+            console.log('[BaixaBlue] Tentando Cobalt:', cobaltUrl);
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 30000);
+            const cobaltR = await fetch(cobaltUrl, {
+              method: 'POST',
+              headers: cobaltHeaders,
+              body: JSON.stringify({ url: url }),
+              signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            const cobaltD = await cobaltR.json().catch(() => ({}));
+            console.log('[BaixaBlue] Cobalt response:', cobaltR.status, JSON.stringify(cobaltD).slice(0, 300));
+            if (cobaltR.ok) {
+              if (cobaltD.status === 'redirect' || cobaltD.status === 'tunnel') downloadUrl = cobaltD.url;
+              else if (cobaltD.status === 'picker') downloadUrl = cobaltD.picker?.[0]?.url;
+              else if (cobaltD.url) downloadUrl = cobaltD.url;
+              if (cobaltD.filename) title = cobaltD.filename.replace(/\.[^.]+$/, '') || title;
+            }
+            if (!downloadUrl) failures.push(`Cobalt status ${cobaltR.status}: ${cobaltD.error?.code || cobaltD.status || 'sem url'}`);
+          } catch (e) {
+            const msg = e.name === 'AbortError' ? 'timeout 30s' : e.message;
+            console.error('[BaixaBlue] Cobalt falhou:', msg);
+            failures.push('Cobalt: ' + msg);
           }
-        });
-
-        if (r.ok) {
-          const d = await r.json();
-          title = d.title || title;
-          thumbnail = d.thumbnail || thumbnail;
-          // Get best mp4 format
-          const fmts = d.formats || [];
-          const mp4 = fmts.filter(f => f.ext === 'mp4' || f.format_note?.includes('p'))
-            .sort((a,b) => (parseInt(b.height)||0) - (parseInt(a.height)||0));
-          downloadUrl = mp4[0]?.url || fmts[0]?.url;
+        } else {
+          failures.push('Cobalt: COBALT_API_URL não configurada');
         }
 
-        // Fallback: YTStream
-        if (!downloadUrl) {
-          r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
-            headers: {
-              'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
-            }
-          });
-          if (r.ok) {
-            const d = await r.json();
-            title = d.title || title;
-            const fmts = d.formats || {};
-            for (const q of ['1080','720','480','360']) {
-              if (fmts[q]?.url) { downloadUrl = fmts[q].url; break; }
-            }
-          }
-        }
-
-        // Fallback: youtube-media-downloader
-        if (!downloadUrl) {
-          r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
-            headers: {
-              'x-rapidapi-key': rapidKey,
-              'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
-            }
-          });
-          if (r.ok) {
-            const d = await r.json();
-            title = d.title || title;
-            const videos = d.videos?.items || [];
-            const best = videos.find(f => f.height >= 720) || videos[0];
-            downloadUrl = best?.url;
-          }
-        }
-
-        // Fallback: Cobalt API
-        if (!downloadUrl) {
-          const cobaltUrl = process.env.COBALT_API_URL;
-          const cobaltKey = process.env.COBALT_API_KEY;
-          if (cobaltUrl) {
-            try {
-              const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
-              if (cobaltKey) cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltKey;
-              console.log('[download] Trying Cobalt:', cobaltUrl);
-              const cobaltR = await fetch(cobaltUrl, {
-                method: 'POST',
-                headers: cobaltHeaders,
-                body: JSON.stringify({ url: url, videoQuality: '720' })
-              });
-              const cobaltD = await cobaltR.json();
-              console.log('[download] Cobalt response:', cobaltR.status, JSON.stringify(cobaltD).slice(0, 200));
-              if (cobaltR.ok) {
-                if (cobaltD.status === 'redirect') downloadUrl = cobaltD.url;
-                else if (cobaltD.status === 'tunnel') downloadUrl = cobaltD.url;
-                else if (cobaltD.status === 'picker') downloadUrl = cobaltD.picker?.[0]?.url;
-                else downloadUrl = cobaltD.url;
+        // ── 2º: ytstream (RapidAPI) ────────────────────────────────────
+        if (!downloadUrl && rapidKey) {
+          try {
+            const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
               }
-            } catch(e) { console.log('[download] Cobalt error:', e.message); }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              title = d.title || title;
+              const fmts = d.formats || {};
+              for (const q of ['1080','720','480','360']) {
+                if (fmts[q]?.url) { downloadUrl = fmts[q].url; break; }
+              }
+              if (!downloadUrl) failures.push('ytstream: sem format 1080/720/480/360');
+            } else {
+              const body = await r.text().catch(() => '');
+              console.error('[BaixaBlue] ytstream falhou:', r.status, body.slice(0, 200));
+              failures.push(`ytstream status ${r.status}`);
+            }
+          } catch (e) {
+            console.error('[BaixaBlue] ytstream falhou:', e.message);
+            failures.push('ytstream: ' + e.message);
+          }
+        } else if (!rapidKey) {
+          failures.push('ytstream: RAPIDAPI_KEY ausente');
+        }
+
+        // ── 3º: youtube-media-downloader (RapidAPI) ────────────────────
+        if (!downloadUrl && rapidKey) {
+          try {
+            const r = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+              headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com'
+              }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              title = d.title || title;
+              const videos = d.videos?.items || [];
+              const best = videos.find(f => f.height >= 720) || videos[0];
+              downloadUrl = best?.url;
+              if (!downloadUrl) failures.push('youtube-media-downloader: nenhum vídeo retornado');
+            } else {
+              const body = await r.text().catch(() => '');
+              console.error('[BaixaBlue] youtube-media-downloader falhou:', r.status, body.slice(0, 200));
+              failures.push(`youtube-media-downloader status ${r.status}`);
+            }
+          } catch (e) {
+            console.error('[BaixaBlue] youtube-media-downloader falhou:', e.message);
+            failures.push('youtube-media-downloader: ' + e.message);
           }
         }
 
         if (!downloadUrl) {
-          return res.status(400).json({ error: 'Download temporariamente indisponível. A API de download atingiu o limite. Tente novamente mais tarde.' });
+          console.error('[BaixaBlue] Todas as APIs falharam para', url, '| failures:', failures);
+          return res.status(502).json({
+            error: 'Não foi possível baixar este vídeo. Tente novamente em alguns minutos ou use outro link.',
+            detail: failures.join(' | ')
+          });
         }
       }
 
