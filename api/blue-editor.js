@@ -28,6 +28,68 @@ module.exports = async function handler(req, res) {
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // ── Public read: prepare (Claude Vision em thumbnails públicos) ────────────
+  // Não expõe dados do usuário — só analisa thumbnails públicos do YouTube
+  if (action === 'prepare') {
+    const ANTHROPIC_PUB = process.env.ANTHROPIC_API_KEY;
+    const vidPub = videoId || req.body?.videoId;
+    const urlPub = videoUrl || req.body?.videoUrl;
+    let vidFinalPub = vidPub;
+    if (!vidFinalPub && urlPub) {
+      const m = urlPub.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+      if (m) vidFinalPub = m[1];
+    }
+    if (!vidFinalPub) return res.status(400).json({ error: 'videoId ou videoUrl obrigatório' });
+    if (!ANTHROPIC_PUB) return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade' });
+
+    try {
+      const frameUrlsPub = [
+        'https://img.youtube.com/vi/' + vidFinalPub + '/maxresdefault.jpg',
+        'https://img.youtube.com/vi/' + vidFinalPub + '/1.jpg',
+        'https://img.youtube.com/vi/' + vidFinalPub + '/2.jpg',
+        'https://img.youtube.com/vi/' + vidFinalPub + '/3.jpg',
+      ];
+      const contentPub = frameUrlsPub.map(u => ({ type: 'image', source: { type: 'url', url: u } }));
+      contentPub.push({
+        type: 'text',
+        text: 'Analise estes frames de um YouTube Short. Retorne SOMENTE JSON:\n{\n' +
+          '  "description": "descrição visual em 2-3 frases",\n' +
+          '  "niche": "nicho em 1-2 palavras (Curiosidades, Ciência, Humor, Esporte, Tecnologia, etc)",\n' +
+          '  "impactMoments": ["descrição breve do momento 1 com maior impacto visual", "momento 2", "momento 3"],\n' +
+          '  "mood": "uma das opções: suspense | curiosidade | energetico | misterioso | informativo"\n' +
+          '}'
+      });
+
+      const ctrlPub = new AbortController();
+      const timerPub = setTimeout(() => ctrlPub.abort(), 25000);
+      const rPub = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_PUB, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 700, messages: [{ role: 'user', content: contentPub }] }),
+        signal: ctrlPub.signal
+      });
+      clearTimeout(timerPub);
+      if (!rPub.ok) return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade' });
+      const dPub = await rPub.json();
+      const txtPub = dPub.content?.[0]?.text || '';
+      const siPub = txtPub.indexOf('{'), eiPub = txtPub.lastIndexOf('}');
+      if (siPub < 0) return res.status(200).json({ description: txtPub.slice(0, 500), niche: '', impactMoments: [], mood: 'curiosidade' });
+      try {
+        const parsedPub = JSON.parse(txtPub.slice(siPub, eiPub + 1));
+        return res.status(200).json({
+          description: parsedPub.description || '',
+          niche: parsedPub.niche || '',
+          impactMoments: Array.isArray(parsedPub.impactMoments) ? parsedPub.impactMoments : [],
+          mood: parsedPub.mood || 'curiosidade'
+        });
+      } catch (e) {
+        return res.status(200).json({ description: txtPub.slice(0, 500), niche: '', impactMoments: [], mood: 'curiosidade' });
+      }
+    } catch (e) {
+      return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade', error: e.message });
+    }
+  }
+
   // ── Validate token ──────────────────────────────────────────────────────────
   let userId = null;
   if (token) {
