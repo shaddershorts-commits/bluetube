@@ -210,6 +210,39 @@ module.exports = async function handler(req, res) {
         if (mp4?.url) return res.status(200).json({ url: mp4.url, quality: mp4.qualityLabel||'?' });
       } catch(e) {}
     }
+
+    // Fallback 3: Cobalt self-hosted (mesma instância usada no BaixaBlue)
+    const COBALT_URL = process.env.COBALT_API_URL;
+    const COBALT_KEY = process.env.COBALT_API_KEY;
+    if (COBALT_URL) {
+      try {
+        const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+        if (COBALT_KEY) cobaltHeaders['Authorization'] = 'Api-Key ' + COBALT_KEY;
+        const ytUrl = `https://www.youtube.com/shorts/${vid3}`;
+        console.log('[get-video-url] Trying Cobalt:', COBALT_URL);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 20000);
+        const cR = await fetch(COBALT_URL, {
+          method: 'POST',
+          headers: cobaltHeaders,
+          body: JSON.stringify({ url: ytUrl, videoQuality: '720' }),
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        if (cR.ok) {
+          const cD = await cR.json();
+          console.log('[get-video-url] Cobalt response status:', cD.status);
+          let cobaltMp4 = null;
+          if (cD.status === 'redirect' || cD.status === 'tunnel') cobaltMp4 = cD.url;
+          else if (cD.status === 'picker') cobaltMp4 = cD.picker?.[0]?.url;
+          else if (cD.url) cobaltMp4 = cD.url;
+          if (cobaltMp4) return res.status(200).json({ url: cobaltMp4, quality: '720', provider: 'cobalt' });
+        }
+      } catch (e) {
+        console.log('[get-video-url] Cobalt falhou:', e.name === 'AbortError' ? 'timeout' : e.message);
+      }
+    }
+
     return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. \n💡 Baixe pelo BaixaBlue e envie o arquivo diretamente.' });
   }
 

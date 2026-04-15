@@ -75,9 +75,22 @@ function fmtAssTime(sec) {
   return `${h}:${String(m).padStart(2, '0')}:${String(whole).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
+// Mapeamento: fonte do estilo (nome Windows/Mac clássico) → fonte REAL disponível no container.
+// Alpine tem só Liberation + DejaVu por padrão. Baixamos Bebas Neue, Oswald e Anton no Dockerfile.
+function mapEstiloFont(fonte) {
+  const f = (fonte || '').toLowerCase();
+  if (f.includes('impact'))      return 'Bebas Neue';       // narrow bold caps
+  if (f.includes('arial black')) return 'Anton';             // ultra-bold display
+  if (f.includes('arial bold'))  return 'Oswald';            // condensed bold
+  if (f.includes('oswald'))      return 'Oswald';
+  if (f.includes('bebas'))       return 'Bebas Neue';
+  if (f.includes('anton'))       return 'Anton';
+  return 'Oswald'; // default moderno bold
+}
+
 // Monta o arquivo ASS de legendas estilo karaoke word-by-word
 function buildAssSubtitles(words, estilo) {
-  const fonte = estilo.legenda_fonte || 'Arial Black';
+  const fonte = mapEstiloFont(estilo.legenda_fonte);
   const tamanho = estilo.legenda_tamanho || 72;
   const corAtiva = hexToAssColor(estilo.legenda_cor_ativa || '#FFFF00');
   const corNormal = hexToAssColor(estilo.legenda_cor_normal || '#FFFFFF');
@@ -87,18 +100,20 @@ function buildAssSubtitles(words, estilo) {
   const pos = estilo.legenda_posicao || 'centro';
   const marginV = pos === 'centro-baixo' ? 400 : pos === 'baixo' ? 200 : 960;
 
+  // PlayRes deve combinar com o OUTPUT (720x1280) pra libass não deformar.
+  // BorderStyle=1 (outline+shadow) ao invés de 3 (box) — fica mais clean, estilo dos Shorts virais.
+  // Outline=5 preto grosso + Shadow=3 pra legibilidade em qualquer fundo.
   const header = `[Script Info]
 Title: BlueEditor
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: ${OUT_W}
+PlayResY: ${OUT_H}
 WrapStyle: 2
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Normal,${fonte},${tamanho},${corNormal},${corNormal},${corOutline},${corFundo},1,0,0,0,100,100,0,0,3,4,2,5,60,60,${marginV},1
-Style: Active,${fonte},${tamanho},${corAtiva},${corAtiva},${corOutline},${corFundo},1,0,0,0,100,100,0,0,3,4,2,5,60,60,${marginV},1
+Style: Active,${fonte},${Math.round(tamanho * 0.75)},${corAtiva},${corAtiva},&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,3,5,40,40,${Math.round(marginV * 0.67)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
