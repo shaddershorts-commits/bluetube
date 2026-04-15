@@ -517,67 +517,121 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
     thumbEl.textContent = source.emoji;
   }
 
-  const isYouTube = source.name.toLowerCase().includes('youtube');
-  const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
-  const filename = `BaixaBlue_${source.name}_${safeTitle}.mp4`;
-
   const dlBtn = document.getElementById('downloadLink');
   const qualityEl = document.getElementById('resultQuality');
 
-  if(isYouTube){
-    // YouTube: link direto, usuário clica e salva com botão direito
-    qualityEl.innerHTML = 'HD · Clique → abre o vídeo → botão direito → <strong style="color:var(--neon)">Salvar vídeo como…</strong>';
-    dlBtn.href = downloadUrl;
-    dlBtn.target = '_blank';
-    dlBtn.download = '';
-    dlBtn.onclick = null;
-    // Show tip
-    const tip = document.getElementById('downloadTip');
-    if(tip) tip.style.display = 'flex';
-  } else {
-    // TikTok/Instagram: abre o link direto em nova aba, usuário salva com botão direito
-    qualityEl.innerHTML = 'HD · Clique → abre o vídeo → botão direito → <strong style="color:var(--neon)">Salvar vídeo como…</strong>';
-    dlBtn.href = downloadUrl;
-    dlBtn.target = '_blank';
-    dlBtn.removeAttribute('download');
-    dlBtn.onclick = null;
-    const tip = document.getElementById('downloadTip');
-    if(tip) tip.style.display = 'flex';
-  }
+  // Download direto — fetch-to-blob no triggerDownload, sem abrir nova aba
+  qualityEl.innerHTML = 'HD · <strong style="color:var(--neon)">Clique para baixar direto</strong>';
+  dlBtn.href = downloadUrl;
+  dlBtn.removeAttribute('target');
+  dlBtn.removeAttribute('download');
+  dlBtn.onclick = function(e) {
+    e.preventDefault();
+    triggerDownload(downloadUrl, title, source.name);
+    return false;
+  };
+  // Esconde a tip de "botão direito" que não é mais necessária
+  const tip = document.getElementById('downloadTip');
+  if(tip) tip.style.display = 'none';
 
   document.getElementById('resultCard').style.display = 'block';
 }
 
-function triggerDownload(url, title, platform){
+async function triggerDownload(url, title, platform){
   const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
   const filename = `BaixaBlue_${platform}_${safeTitle}.mp4`;
 
   const btn = document.getElementById('downloadLink');
   const origContent = btn.innerHTML;
   btn.style.pointerEvents = 'none';
-  btn.innerHTML = `<div class="download-btn-left"><div class="download-icon"><span class="spinner"></span></div><div class="download-info"><div class="quality">Preparando download…</div><div class="size">Aguarde um momento</div></div></div>`;
 
-  // Try fetch + blob first (works if server allows CORS)
-  fetch(url, { mode: 'cors' })
-    .then(r => { if(!r.ok) throw new Error('cors'); return r.blob(); })
-    .then(blob => {
+  const setBtnProgress = (pct, loadedMB, totalMB) => {
+    const barHtml = totalMB
+      ? `<div style="width:100%;height:4px;background:rgba(0,170,255,.15);border-radius:2px;margin-top:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#1a6bff,#00aaff);transition:width .15s"></div></div>`
+      : '';
+    const sizeText = totalMB
+      ? `${loadedMB.toFixed(1)} MB / ${totalMB.toFixed(1)} MB · ${pct}%`
+      : `${loadedMB.toFixed(1)} MB baixados…`;
+    btn.innerHTML = `
+      <div class="download-btn-left">
+        <div class="download-icon"><span class="spinner"></span></div>
+        <div class="download-info" style="flex:1;min-width:120px">
+          <div class="quality">Baixando…</div>
+          <div class="size">${sizeText}</div>
+          ${barHtml}
+        </div>
+      </div>`;
+  };
+
+  setBtnProgress(0, 0, 0);
+
+  try {
+    const r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) throw new Error('http ' + r.status);
+
+    const total = parseInt(r.headers.get('content-length') || '0', 10);
+    const totalMB = total / 1024 / 1024;
+
+    // Streaming com progresso real via ReadableStream
+    if (r.body && window.ReadableStream) {
+      const reader = r.body.getReader();
+      const chunks = [];
+      let loaded = 0;
+      let lastTick = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        // Throttle updates da UI pra cada 100ms (não trava rendering)
+        const now = Date.now();
+        if (now - lastTick > 100) {
+          lastTick = now;
+          const pct = total ? Math.round((loaded / total) * 100) : 0;
+          setBtnProgress(pct, loaded / 1024 / 1024, totalMB);
+        }
+      }
+      // Monta blob final
+      const blob = new Blob(chunks, { type: 'video/mp4' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
-      document.body.removeChild(a);
+      setTimeout(() => {
+        URL.revokeObjectURL(a.href);
+        document.body.removeChild(a);
+      }, 100);
+    } else {
+      // Fallback sem streaming (browsers antigos)
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(a.href);
+        document.body.removeChild(a);
+      }, 100);
+    }
+
+    // UI de sucesso
+    btn.innerHTML = `<div class="download-btn-left"><div class="download-icon" style="font-size:16px">✓</div><div class="download-info"><div class="quality" style="color:var(--green)">Download concluído!</div><div class="size">Verifique sua pasta Downloads</div></div></div>`;
+    setTimeout(() => {
       btn.innerHTML = origContent;
       btn.style.pointerEvents = '';
-    })
-    .catch(() => {
-      // Fallback: open in new tab — user saves with right-click
-      window.open(url, '_blank');
-      btn.innerHTML = `<div class="download-btn-left"><div class="download-icon" style="font-size:16px">✓</div><div class="download-info"><div class="quality" style="color:var(--green)">Vídeo aberto em nova aba!</div><div class="size">Clique com botão direito → Salvar vídeo como…</div></div></div>`;
+    }, 4000);
+  } catch (err) {
+    console.error('triggerDownload:', err);
+    // Fallback: abre em nova aba se CORS/stream falhar
+    window.open(url, '_blank');
+    btn.innerHTML = `<div class="download-btn-left"><div class="download-icon" style="font-size:16px">⚠</div><div class="download-info"><div class="quality" style="color:var(--gold,#fbbf24)">Aberto em nova aba</div><div class="size">Botão direito → Salvar vídeo como…</div></div></div>`;
+    setTimeout(() => {
+      btn.innerHTML = origContent;
       btn.style.pointerEvents = '';
-      setTimeout(() => { btn.innerHTML = origContent; }, 6000);
-    });
+    }, 6000);
+  }
 }
 
 function showError(msg){
