@@ -314,9 +314,20 @@ async function processJob(jobId, opts) {
 
 app.get('/health', async (req, res) => {
   try {
-    const { stdout } = await run('ffmpeg', ['-version']);
-    const version = (stdout.match(/ffmpeg version (\S+)/) || [])[1] || 'unknown';
-    res.json({ ok: true, ffmpeg: version, jobs_in_memory: JOBS.size });
+    const { stdout: ffmpegOut } = await run('ffmpeg', ['-version']);
+    const ffmpegVer = (ffmpegOut.match(/ffmpeg version (\S+)/) || [])[1] || 'unknown';
+    let ytdlpVer = 'n/a';
+    try {
+      const { stdout: yOut } = await run('yt-dlp', ['--version']);
+      ytdlpVer = yOut.trim();
+    } catch (e) {}
+    res.json({
+      ok: true,
+      ffmpeg: ffmpegVer,
+      ytdlp: ytdlpVer,
+      build: 'r5-multi-client',
+      jobs_in_memory: JOBS.size
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -374,10 +385,10 @@ app.post('/download-youtube', async (req, res) => {
 
   const outputFile = path.join(dir, 'video.mp4');
 
-  // Estratégia: tenta múltiplos player clients do YouTube em ordem.
-  // Android/TV embedded frequentemente bypass o check de login em IP datacenter.
-  // Web é o default que costuma falhar. Ordem: android → tv_embedded → ios → web.
-  const extractorArgs = 'youtube:player_client=android,tv_embedded,ios,web;player_skip=webpage';
+  // Player clients recomendados por maintainers yt-dlp (2024-2025) pra bypass
+  // de bot detection em IPs datacenter: android_vr (Meta Quest YouTube, menos
+  // restrito), android_creator (pra creators), web_safari, tv_embedded.
+  const extractorArgs = 'youtube:player_client=android_vr,android_creator,web_safari,tv_embedded,ios';
 
   try {
     const ytArgs = [
@@ -388,8 +399,10 @@ app.post('/download-youtube', async (req, res) => {
       '--no-check-certificate',
       '--geo-bypass',
       '--force-ipv4',
+      '--sleep-requests', '1',
+      '--sleep-interval', '2',
+      '--max-sleep-interval', '5',
       '--extractor-args', extractorArgs,
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip',
       '-o', outputFile,
       youtube_url
     ];
