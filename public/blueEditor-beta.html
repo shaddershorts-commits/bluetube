@@ -49,9 +49,30 @@
 
 <div class="card">
   <h2>2 · Roteiro</h2>
+  <div id="roteirosWrap" style="display:none;">
+    <label>Escolha a versão (clique para selecionar)</label>
+    <div class="row" style="margin-bottom:12px;">
+      <div id="roteiroCasualCard" class="roteiro-opt" onclick="pickRoteiro('casual')">
+        <div class="roteiro-tag">💬 Casual</div>
+        <div class="roteiro-text" id="roteiroCasualText"></div>
+      </div>
+      <div id="roteiroApelatCard" class="roteiro-opt selected" onclick="pickRoteiro('apelativo')">
+        <div class="roteiro-tag">🔥 Apelativo</div>
+        <div class="roteiro-text" id="roteiroApelatText"></div>
+      </div>
+    </div>
+  </div>
   <label>Texto da narração (editável)</label>
-  <textarea id="roteiro" placeholder="O roteiro apelativo vai aparecer aqui depois de analisar..."></textarea>
+  <textarea id="roteiro" placeholder="Analise um link primeiro para gerar roteiros automaticamente, ou digite o seu próprio..."></textarea>
 </div>
+
+<style>
+  .roteiro-opt{background:rgba(2,8,23,.5);border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s;}
+  .roteiro-opt:hover{border-color:rgba(0,170,255,.4);}
+  .roteiro-opt.selected{border-color:var(--neon);background:rgba(0,170,255,.08);box-shadow:0 0 0 1px var(--neon);}
+  .roteiro-tag{font-family:monospace;font-size:10px;color:var(--neon);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+  .roteiro-text{font-size:12px;line-height:1.5;color:rgba(200,225,255,.85);max-height:110px;overflow-y:auto;}
+</style>
 
 <div class="card">
   <h2>3 · Upload do vídeo</h2>
@@ -85,7 +106,25 @@
 </div>
 
 <div class="card">
-  <h2>5 · Render</h2>
+  <h2>5 · Música de fundo (opcional)</h2>
+  <label>Arquivo MP3 (fica em loop baixo volume atrás da narração)</label>
+  <input id="musicFile" type="file" accept="audio/mpeg,audio/mp3,.mp3" />
+  <div class="hint">Sem música? Deixa em branco. O estilo escolhido define o volume relativo da música.</div>
+  <button id="btnUploadMusic" class="secondary" onclick="uploadMusic()">Enviar MP3 →</button>
+  <div id="musicOut" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>6 · Opções avançadas</h2>
+  <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:normal;font-size:13px;color:var(--text);margin-bottom:6px;">
+    <input id="chkBlueClean" type="checkbox" style="width:auto;margin:0;" />
+    <span>🧼 Remover marca d'água / textos do vídeo original antes de editar</span>
+  </label>
+  <div class="hint" style="margin-left:26px;">Usa BlueClean (Replicate video-text-remover) como pré-etapa. Adiciona ~1-3 min. Só para canais Master.</div>
+</div>
+
+<div class="card">
+  <h2>7 · Render</h2>
   <button id="btnRender" onclick="runPipeline()">🎬 Gerar vídeo editado</button>
   <div id="renderSteps" style="margin-top:14px;"></div>
   <div id="renderOut" style="margin-top:14px;"></div>
@@ -102,7 +141,25 @@
 
 <script>
 const TOKEN = localStorage.getItem('bt_token');
-let STATE = { videoPublicUrl: null, analyzed: null, narration: null, estilos: [] };
+let STATE = {
+  videoPublicUrl: null,
+  musicPublicUrl: null,
+  analyzed: null,
+  narration: null,
+  estilos: [],
+  selectedRoteiro: 'apelativo'  // default
+};
+
+// Mapeia ritmo técnico do DB → label amigável (sem nome de canal)
+const ESTILO_LABELS = {
+  'frenetico':   '⚡ Frenético — cortes rápidos e zoom alto',
+  'curiosidade': '🔍 Curiosidade — ritmo médio, pausas estratégicas',
+  'agressivo':   '🔥 Agressivo — cortes muito curtos, tensão máxima',
+  'informativo': '📚 Informativo — ritmo calmo, legendas cleans'
+};
+function labelEstilo(e) {
+  return ESTILO_LABELS[e.configuracoes?.ritmo] || `${e.configuracoes?.ritmo || 'padrão'}`;
+}
 
 if (!TOKEN) {
   document.body.insertAdjacentHTML('afterbegin',
@@ -137,19 +194,30 @@ async function analyze() {
     STATE.analyzed = { ...prepD, roteiros: genD.roteiros, videoId };
     out.innerHTML = `<pre class="ok">✓ Nicho: ${prepD.niche || '—'} · Mood: ${prepD.mood || '—'}\n\nDescrição: ${(prepD.description || '').slice(0, 200)}</pre>`;
 
-    document.getElementById('roteiro').value = genD.roteiros?.apelativo || genD.roteiros?.casual || '';
+    // Mostra os 2 roteiros lado a lado
+    const rotCasual = genD.roteiros?.casual || '';
+    const rotApelat = genD.roteiros?.apelativo || '';
+    document.getElementById('roteiroCasualText').textContent = rotCasual || '(não gerado)';
+    document.getElementById('roteiroApelatText').textContent = rotApelat || '(não gerado)';
+    document.getElementById('roteirosWrap').style.display = 'block';
+    // Default: apelativo selecionado
+    STATE.selectedRoteiro = 'apelativo';
+    document.getElementById('roteiro').value = rotApelat || rotCasual || '';
+    updateRoteiroSelection();
 
-    // Auto-seleciona estilo pelo mood
+    // Lista estilos pelo ritmo, sem nome de canal
     const estR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({action:'list-estilos'})});
     const estD = await estR.json();
     STATE.estilos = estD.estilos || [];
     const sel = document.getElementById('estiloId');
     sel.innerHTML = '<option value="">(auto pelo mood)</option>' + STATE.estilos.map(e =>
-      `<option value="${e.id}">${e.nome} · ${e.configuracoes?.ritmo || ''}</option>`
+      `<option value="${e.id}">${labelEstilo(e)}</option>`
     ).join('');
-    const moodMap = {suspense:'Luiz Stubbe',energetico:'Aburamezin',curiosidade:'Abavocadu',misterioso:'Luiz Stubbe',informativo:'TVVNC'};
-    const auto = STATE.estilos.find(e => e.nome === (moodMap[prepD.mood] || 'Aburamezin'));
+    // Auto-seleciona estilo cujo ritmo combina com o mood
+    const moodRitmo = {suspense:'agressivo',energetico:'frenetico',curiosidade:'curiosidade',misterioso:'agressivo',informativo:'informativo'};
+    const alvoRitmo = moodRitmo[prepD.mood] || 'frenetico';
+    const auto = STATE.estilos.find(e => e.configuracoes?.ritmo === alvoRitmo);
     if (auto) sel.value = auto.id;
   } catch (e) {
     out.innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
@@ -195,6 +263,51 @@ async function uploadVideo() {
   }
 }
 
+function pickRoteiro(kind) {
+  STATE.selectedRoteiro = kind;
+  const r = STATE.analyzed?.roteiros || {};
+  document.getElementById('roteiro').value = (kind === 'casual' ? r.casual : r.apelativo) || '';
+  updateRoteiroSelection();
+}
+
+function updateRoteiroSelection() {
+  document.getElementById('roteiroCasualCard')?.classList.toggle('selected', STATE.selectedRoteiro === 'casual');
+  document.getElementById('roteiroApelatCard')?.classList.toggle('selected', STATE.selectedRoteiro === 'apelativo');
+}
+
+async function uploadMusic() {
+  const file = document.getElementById('musicFile').files[0];
+  if (!file) return alert('Selecione um MP3');
+  const btn = document.getElementById('btnUploadMusic');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  const out = document.getElementById('musicOut');
+  out.innerHTML = `<pre>⬆ ${(file.size/1024/1024).toFixed(2)} MB...</pre>`;
+
+  try {
+    const sR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'get-upload-url', ext:'mp3', token: TOKEN})});
+    const sD = await sR.json();
+    if (!sR.ok || !sD.upload_url) throw new Error(sD.error || 'sign falhou');
+
+    const putR = await fetch(sD.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'audio/mpeg', 'x-upsert': 'true' },
+      body: file
+    });
+    if (!putR.ok) {
+      const et = await putR.text();
+      throw new Error('Upload PUT falhou: ' + et.slice(0, 200));
+    }
+
+    STATE.musicPublicUrl = sD.public_url;
+    out.innerHTML = `<pre class="ok">✓ Música carregada\n\n${sD.public_url}</pre>`;
+  } catch (e) {
+    out.innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar MP3 →';
+  }
+}
+
 function logStep(name, state) {
   const el = document.getElementById('renderSteps');
   const existing = el.querySelector(`[data-step="${name}"]`);
@@ -213,6 +326,7 @@ async function runPipeline() {
   let estiloId = document.getElementById('estiloId').value;
   if (!estiloId && STATE.estilos.length) estiloId = STATE.estilos[0].id;
   if (!estiloId) return alert('Selecione um estilo');
+  const useBlueClean = document.getElementById('chkBlueClean').checked;
 
   const btn = document.getElementById('btnRender');
   btn.disabled = true; btn.textContent = 'Renderizando...';
@@ -220,8 +334,33 @@ async function runPipeline() {
   document.getElementById('renderOut').innerHTML = '';
   document.getElementById('resultCard').style.display = 'none';
 
-  logStep('Gerar narração (ElevenLabs + Whisper)', 'active');
   try {
+    let videoToRender = STATE.videoPublicUrl;
+
+    // ETAPA OPCIONAL — BlueClean (remover marca d'água / textos do original)
+    if (useBlueClean) {
+      logStep('Remover marca d\'água (BlueClean / Replicate)', 'active');
+      const bcR = await fetch('/api/blueclean', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'start', token: TOKEN, video_url: STATE.videoPublicUrl, mode: 'auto'})});
+      const bcD = await bcR.json();
+      if (!bcR.ok || !bcD.job_id) throw new Error('BlueClean: ' + (bcD.error || 'não iniciou'));
+      const bcJobId = bcD.job_id;
+      // Polling da BlueClean (pode demorar 1-3 min)
+      let cleaned = null;
+      for (let i = 0; i < 80; i++) {
+        const psR = await fetch(`/api/blueclean?action=status&job_id=${bcJobId}&token=${encodeURIComponent(TOKEN)}`);
+        const psD = await psR.json();
+        logStep(`Remover marca d'água (${psD.status || 'processing'} · ${psD.progress || 0}%)`, 'active');
+        if (psD.status === 'completed' && psD.output_url) { cleaned = psD.output_url; break; }
+        if (psD.status === 'failed') throw new Error('BlueClean falhou: ' + (psD.error_message || 'desconhecido'));
+        await new Promise(r => setTimeout(r, 4000));
+      }
+      if (!cleaned) throw new Error('BlueClean timeout — tente de novo sem essa opção');
+      logStep('Remover marca d\'água (BlueClean / Replicate)', 'done');
+      videoToRender = cleaned;
+    }
+
+    logStep('Gerar narração (ElevenLabs + Whisper)', 'active');
     const narrR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({action:'generate-narration', roteiro, voiceId, token: TOKEN})});
     const narrD = await narrR.json();
@@ -233,11 +372,11 @@ async function runPipeline() {
     const editR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         action:'edit',
-        video_url: STATE.videoPublicUrl,
+        video_url: videoToRender,
         audio_url: narrD.audio_url,
         words: narrD.words,
         estilo_id: estiloId,
-        musica_url: null,
+        musica_url: STATE.musicPublicUrl || null,
         token: TOKEN
       })});
     const editD = await editR.json();

@@ -88,6 +88,26 @@ function mapEstiloFont(fonte) {
   return 'Oswald'; // default moderno bold
 }
 
+// Palavras-gatilho que recebem ênfase visual (tamanho maior + cor forte + setas)
+// Detecção case-insensitive, com/sem acento.
+const TRIGGER_WORDS = [
+  'IMPRESSIONANTE', 'INCRIVEL', 'INCRÍVEL', 'OLHA', 'NUNCA', 'JAMAIS', 'VEJA',
+  'IMPOSSIVEL', 'IMPOSSÍVEL', 'ABSURDO', 'CHOCANTE', 'CHOCADO', 'SEGREDO',
+  'NINGUEM', 'NINGUÉM', 'BOMBA', 'INACREDITAVEL', 'INACREDITÁVEL',
+  'MILAGRE', 'PROIBIDO', 'FATAL', 'VIRAL', 'URGENTE', 'EXPLODIU', 'CHOROU'
+];
+function normalizeWord(w) {
+  return (w || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+}
+const TRIGGER_SET = new Set(TRIGGER_WORDS.map(normalizeWord));
+function isTrigger(word) {
+  return TRIGGER_SET.has(normalizeWord(word));
+}
+
 // Monta o arquivo ASS de legendas estilo karaoke word-by-word
 function buildAssSubtitles(words, estilo) {
   const fonte = mapEstiloFont(estilo.legenda_fonte);
@@ -119,15 +139,24 @@ Style: Active,${fonte},${Math.round(tamanho * 0.75)},${corAtiva},${corAtiva},&H0
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
+  // Fontsize base enfatizada pra palavras-gatilho (+45% e cor vermelha forte)
+  const emphasizedSize = Math.round(tamanho * 0.75 * 1.45);
+  const triggerRed = '&H000000FF'; // vermelho puro em BGR
+
   const events = [];
   for (const w of words || []) {
-    const text = (w.word || '').trim().replace(/[{}\\]/g, '');
-    if (!text) continue;
+    const rawText = (w.word || '').trim().replace(/[{}\\]/g, '');
+    if (!rawText) continue;
     const start = fmtAssTime(w.start);
     const end = fmtAssTime(Math.max(w.end, w.start + 0.1));
-    // Uppercase pro estilo Shorts
-    const display = text.toUpperCase();
-    events.push(`Dialogue: 0,${start},${end},Active,,0,0,0,,${display}`);
+    const display = rawText.toUpperCase();
+
+    // Se é palavra-gatilho: override inline com fontsize maior + cor vermelha + setas
+    // Caso contrário: texto normal no estilo Active
+    const text = isTrigger(rawText)
+      ? `{\\fs${emphasizedSize}\\c${triggerRed}\\bord6}→ ${display} ←{\\r}`
+      : display;
+    events.push(`Dialogue: 0,${start},${end},Active,,0,0,0,,${text}`);
   }
 
   return header + events.join('\n') + '\n';
