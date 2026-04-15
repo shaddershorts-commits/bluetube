@@ -219,7 +219,8 @@ export default async function handler(req, res) {
                   size: hqD.size
                 });
               }
-              hqFailures.push(`railway status ${hqR.status}: ${hqD.error || 'unknown'}`);
+              const hqDetail = [hqD.step && `step=${hqD.step}`, hqD.error, hqD.detail].filter(Boolean).join(' | ') || 'unknown (empty body)';
+              hqFailures.push(`railway status ${hqR.status}: ${hqDetail}`);
             } catch (e) {
               hqFailures.push('railway exception: ' + (e.name === 'AbortError' ? 'timeout 150s' : e.message));
             }

@@ -362,33 +362,55 @@ app.get('/status/:jobId', (req, res) => {
 // ytstream DEVE ser o mesmo que baixa do googlevideo.com, senão 403.
 app.post('/youtube-hq', async (req, res) => {
   const { video_id, rapidapi_key, supabase_url, supabase_key, output_path } = req.body || {};
-  if (!video_id) return res.status(400).json({ error: 'video_id required' });
-  if (!rapidapi_key) return res.status(400).json({ error: 'rapidapi_key required' });
-  if (!supabase_url || !supabase_key) return res.status(400).json({ error: 'supabase creds required' });
+  if (!video_id) return res.status(400).json({ error: 'video_id required', step: 'validate' });
+  if (!rapidapi_key) return res.status(400).json({ error: 'rapidapi_key required', step: 'validate' });
+  if (!supabase_url || !supabase_key) return res.status(400).json({ error: 'supabase creds required', step: 'validate' });
 
   const jobId = uuidv4();
   const dir = path.join('/tmp', jobId);
   fs.mkdirSync(dir, { recursive: true });
+  let step = 'init';
+
+  // Sempre responde antes do processamento pesado travar — faz o cleanup async
+  const fail = (stepName, err) => {
+    const detail = err.response?.status
+      ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 300)}`
+      : (err.message || String(err));
+    console.error('[youtube-hq]', jobId, 'step=' + stepName, 'error:', detail);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'youtube-hq failed at ' + stepName, step: stepName, detail: detail.slice(0, 500) });
+    }
+  };
 
   try {
-    console.log('[youtube-hq]', jobId, 'fetching ytstream for', video_id);
-
-    // 1) Chama ytstream COM O IP DO RAILWAY → signed URLs bind a este IP
-    const ytR = await axios.get(
-      `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${video_id}`,
-      {
-        headers: {
-          'x-rapidapi-key': rapidapi_key,
-          'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
-        },
-        timeout: 30000
+    // 1) ytstream call
+    step = 'ytstream';
+    console.log('[youtube-hq]', jobId, 'step=ytstream', video_id);
+    let ytData;
+    try {
+      const ytR = await axios.get(
+        `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${video_id}`,
+        {
+          headers: {
+            'x-rapidapi-key': rapidapi_key,
+            'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
+          },
+          timeout: 30000,
+          validateStatus: () => true
+        }
+      );
+      if (ytR.status !== 200) {
+        return fail('ytstream', { message: `ytstream status ${ytR.status}`, response: { status: ytR.status, data: ytR.data } });
       }
-    );
-    const ytData = ytR.data;
-    const adaptive = Array.isArray(ytData?.adaptiveFormats) ? ytData.adaptiveFormats : [];
-    if (!adaptive.length) throw new Error('ytstream sem adaptiveFormats');
+      ytData = ytR.data;
+    } catch (e) { return fail('ytstream', e); }
 
-    // 2) Filtra melhor video-only mp4 avc1 + audio-only mp4
+    // 2) parse adaptive formats
+    step = 'parse';
+    const adaptive = Array.isArray(ytData?.adaptiveFormats) ? ytData.adaptiveFormats : [];
+    if (!adaptive.length) return fail('parse', { message: 'ytstream sem adaptiveFormats (count=0, topKeys=' + Object.keys(ytData || {}).slice(0, 8).join(',') + ')' });
+
     const videoOnly = adaptive
       .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
       .sort((a, b) => (b.height || 0) - (a.height || 0));
@@ -398,46 +420,57 @@ app.post('/youtube-hq', async (req, res) => {
 
     const videoFmt = videoOnly[0];
     const audioFmt = audioOnly[0];
-    if (!videoFmt) throw new Error('sem video-only mp4 avc1');
-    if (!audioFmt) throw new Error('sem audio-only mp4');
+    if (!videoFmt) return fail('parse', { message: 'sem video-only mp4 avc1 (videoOnly=' + videoOnly.length + ' adaptiveCount=' + adaptive.length + ')' });
+    if (!audioFmt) return fail('parse', { message: 'sem audio-only mp4 (audioOnly=' + audioOnly.length + ')' });
 
-    console.log('[youtube-hq]', jobId, 'downloading v=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' + a=' + audioFmt.itag);
+    console.log('[youtube-hq]', jobId, 'step=download v=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' a=' + audioFmt.itag);
 
-    // 3) Download PARALELO dos dois streams (IP do Railway → googlevideo match)
+    // 3) download paralelo
+    step = 'download';
     const vFile = path.join(dir, 'video.mp4');
     const aFile = path.join(dir, 'audio.m4a');
-    await Promise.all([
-      downloadFile(videoFmt.url, vFile),
-      downloadFile(audioFmt.url, aFile)
-    ]);
+    try {
+      await Promise.all([
+        downloadFile(videoFmt.url, vFile),
+        downloadFile(audioFmt.url, aFile)
+      ]);
+    } catch (e) { return fail('download', e); }
 
     const vStats = fs.statSync(vFile);
     const aStats = fs.statSync(aFile);
-    console.log('[youtube-hq]', jobId, 'downloaded v=' + vStats.size + ' a=' + aStats.size);
+    console.log('[youtube-hq]', jobId, 'step=mux v=' + vStats.size + ' a=' + aStats.size);
 
-    // 4) Mux com ffmpeg -c copy (zero re-encode, ~1s)
+    // 4) mux com ffmpeg
+    step = 'mux';
     const output = path.join(dir, 'merged.mp4');
-    await run('ffmpeg', [
-      '-y', '-threads', '1',
-      '-i', vFile,
-      '-i', aFile,
-      '-c', 'copy',
-      '-map', '0:v:0',
-      '-map', '1:a:0',
-      '-movflags', '+faststart',
-      output
-    ]);
+    try {
+      await run('ffmpeg', [
+        '-y', '-threads', '1',
+        '-i', vFile,
+        '-i', aFile,
+        '-c', 'copy',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-movflags', '+faststart',
+        output
+      ]);
+    } catch (e) { return fail('mux', e); }
 
     const outStats = fs.statSync(output);
-    console.log('[youtube-hq]', jobId, 'muxed ' + outStats.size);
+    console.log('[youtube-hq]', jobId, 'step=upload ' + outStats.size);
 
-    // 5) Upload pro Supabase
-    const finalPath = output_path || `downloads/youtube/${video_id}_${Date.now()}_hq.mp4`;
-    const publicUrl = await uploadToSupabase(output, finalPath, supabase_url, supabase_key);
+    // 5) upload pro Supabase
+    step = 'upload';
+    let publicUrl;
+    try {
+      const finalPath = output_path || `downloads/youtube/${video_id}_${Date.now()}_hq.mp4`;
+      publicUrl = await uploadToSupabase(output, finalPath, supabase_url, supabase_key);
+    } catch (e) { return fail('upload', e); }
 
-    // 6) Cleanup
+    // 6) cleanup + success
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
 
+    console.log('[youtube-hq]', jobId, 'step=done');
     res.json({
       ok: true,
       url: publicUrl,
@@ -450,12 +483,7 @@ app.post('/youtube-hq', async (req, res) => {
       audio_size: aStats.size
     });
   } catch (err) {
-    console.error('[youtube-hq]', jobId, 'failed:', err.message);
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
-    const detail = err.response?.status
-      ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}`
-      : err.message;
-    res.status(500).json({ error: 'youtube-hq failed: ' + detail.slice(0, 500) });
+    return fail(step, err);
   }
 });
 
