@@ -372,15 +372,22 @@ app.post('/download-youtube', async (req, res) => {
 
   const outputFile = path.join(dir, 'video.mp4');
 
+  // Estratégia: tenta múltiplos player clients do YouTube em ordem.
+  // Android/TV embedded frequentemente bypass o check de login em IP datacenter.
+  // Web é o default que costuma falhar. Ordem: android → tv_embedded → ios → web.
+  const extractorArgs = 'youtube:player_client=android,tv_embedded,ios,web;player_skip=webpage';
+
   try {
-    // Roda yt-dlp. Timeout de 90s pra evitar hangs.
     const ytArgs = [
       '-f', format,
       '--merge-output-format', 'mp4',
       '--no-playlist',
       '--no-warnings',
-      '--quiet',
-      '--progress',
+      '--no-check-certificate',
+      '--geo-bypass',
+      '--force-ipv4',
+      '--extractor-args', extractorArgs,
+      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip',
       '-o', outputFile,
       youtube_url
     ];
