@@ -1,4 +1,102 @@
 // api/blue-voices.js — Vozes customizadas do BlueVoice salvas no Supabase
+// com metadados reais de idioma/sotaque/gênero/estilo do ElevenLabs
+
+// ── HELPERS DE NORMALIZAÇÃO DE METADADOS ELEVENLABS ─────────────────────────
+const LANG_MAP = [
+  // [matcher (lowercase substring ou regex), code, flag, label]
+  [/pt[-_]?br|brazilian|brasil|portuguese \(brazil\)/, 'pt-BR', '🇧🇷', 'Português (Brasil)'],
+  [/pt[-_]?pt|european portuguese|portuguese \(portugal\)/, 'pt-PT', '🇵🇹', 'Português (Portugal)'],
+  [/^portugu|portuguese/, 'pt-BR', '🇧🇷', 'Português (Brasil)'],
+  [/en[-_]?gb|british|england/, 'en-GB', '🇬🇧', 'English (UK)'],
+  [/en[-_]?us|american english|american|en-us/, 'en-US', '🇺🇸', 'English (US)'],
+  [/australian/, 'en-AU', '🇦🇺', 'English (AU)'],
+  [/^english/, 'en-US', '🇺🇸', 'English (US)'],
+  [/es[-_]?mx|mexican|méxico|mexico/, 'es-MX', '🇲🇽', 'Español (México)'],
+  [/es[-_]?es|castilian|spanish \(spain\)/, 'es-ES', '🇪🇸', 'Español (España)'],
+  [/^spanish|español|espanhol/, 'es-ES', '🇪🇸', 'Español'],
+  [/fr[-_]?fr|french|français|france/, 'fr-FR', '🇫🇷', 'Français'],
+  [/de[-_]?de|german|deutsch|germany/, 'de-DE', '🇩🇪', 'Deutsch'],
+  [/it[-_]?it|italian|italiano|italy/, 'it-IT', '🇮🇹', 'Italiano'],
+  [/ja[-_]?jp|japanese|japan|日本/, 'ja-JP', '🇯🇵', '日本語'],
+  [/ko[-_]?kr|korean|korea|한국/, 'ko-KR', '🇰🇷', '한국어'],
+  [/zh[-_]?cn|mandarin|chinese|中文|中国/, 'zh-CN', '🇨🇳', '中文'],
+  [/arabic|العربية/, 'ar', '🇸🇦', 'العربية'],
+  [/hindi|हिन्दी/, 'hi', '🇮🇳', 'हिन्दी'],
+  [/turkish|türkçe/, 'tr', '🇹🇷', 'Türkçe'],
+  [/indonesian|bahasa/, 'id', '🇮🇩', 'Bahasa Indonesia'],
+];
+
+// Normaliza labels + verified_languages + nome em metadados padronizados
+function normalizeVoice(v) {
+  const labels = v.labels || {};
+  const verified = Array.isArray(v.verified_languages) ? v.verified_languages : [];
+  const hay = [
+    labels.accent || '', labels.language || '', labels.description || '',
+    labels.use_case || '', v.name || '', v.category || '',
+    ...verified.map(x => typeof x === 'string' ? x : (x?.language || x?.locale || ''))
+  ].join(' ').toLowerCase();
+
+  let langCode = null, langFlag = null, langLabel = null;
+  for (const [rx, code, flag, label] of LANG_MAP) {
+    if (rx.test(hay)) { langCode = code; langFlag = flag; langLabel = label; break; }
+  }
+
+  // Gênero
+  const g = (labels.gender || '').toLowerCase();
+  const genero = g.includes('female') || g.includes('fem') ? 'Feminino'
+              : g.includes('male') || g.includes('masc') ? 'Masculino'
+              : '';
+
+  // Idade
+  const a = (labels.age || '').toLowerCase();
+  const idade = a.includes('young') ? 'Jovem'
+             : a.includes('middle') ? 'Adulto'
+             : a.includes('old') ? 'Sênior'
+             : '';
+
+  // Estilo (use_case + description)
+  const style = `${labels.use_case || ''} ${labels.description || ''}`.toLowerCase();
+  const estilo = style.includes('narrat') ? 'Narração'
+              : style.includes('conversation') || style.includes('casual') ? 'Conversacional'
+              : style.includes('news') || style.includes('professional') ? 'Profissional'
+              : style.includes('dramatic') || style.includes('intense') ? 'Dramático'
+              : style.includes('young') || style.includes('social') ? 'Jovem'
+              : 'Narração';
+
+  // Multilingual: mais de 1 idioma verificado OU use_case/description contém "multilingual"
+  const multilingual = verified.length > 1
+    || /multiling/.test(style)
+    || /multiling/.test(hay);
+
+  return {
+    idioma_real: langLabel,
+    lang_code: langCode,
+    lang_flag: langFlag,
+    sotaque: labels.accent || '',
+    genero,
+    idade,
+    estilo,
+    descricao: labels.description || '',
+    multilingual,
+    metadata: {
+      raw_labels: labels,
+      verified_languages: verified,
+      category: v.category || '',
+      preview_url: v.preview_url || ''
+    }
+  };
+}
+
+async function fetchElevenMetadata(voiceId, xiKey) {
+  try {
+    const r = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}?with_settings=false`, {
+      headers: { 'xi-api-key': xiKey }
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -12,11 +110,10 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-  // GET ?action=library — retorna vozes da Shared Library do ElevenLabs
+  // ── GET ?action=library — vozes da Shared Library do ElevenLabs ───────────
   if (req.method === 'GET' && req.query.action === 'library') {
     if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
     try {
-      // Usa shared-voices (biblioteca pública, sem restrição de permissions)
       const langs = ['pt', 'en', 'es', 'fr', 'de', 'it'];
       const allVoices = [];
 
@@ -29,29 +126,24 @@ module.exports = async function handler(req, res) {
           const data = await r.json();
           (data.voices || []).forEach(v => {
             if (v.preview_url && !allVoices.find(x => x.id === v.voice_id)) {
+              const norm = normalizeVoice({
+                name: v.name, labels: { accent: v.accent, language: v.language || lang, gender: v.gender, age: v.age, use_case: v.use_case, description: v.description },
+                verified_languages: v.verified_languages, category: v.category
+              });
               allVoices.push({
-                id: v.voice_id,
-                name: v.name,
-                preview_url: v.preview_url,
-                labels: {
-                  language: lang,
-                  gender: v.gender || '',
-                  age: v.age || '',
-                  use_case: v.use_case || v.category || '',
-                  description: v.description || ''
-                },
-                category: v.category || ''
+                id: v.voice_id, name: v.name, preview_url: v.preview_url,
+                labels: { language: lang, gender: v.gender || '', age: v.age || '', use_case: v.use_case || v.category || '', description: v.description || '' },
+                category: v.category || '',
+                ...norm
               });
             }
           });
-        } catch(e) { continue; }
+        } catch (e) { continue; }
       }
 
-      if (allVoices.length > 0) {
-        return res.status(200).json({ voices: allVoices });
-      }
+      if (allVoices.length > 0) return res.status(200).json({ voices: allVoices });
 
-      // Fallback: tenta endpoint clássico /v1/voices
+      // Fallback: endpoint clássico
       const r2 = await fetch('https://api.elevenlabs.io/v1/voices', {
         headers: { 'xi-api-key': EL }
       });
@@ -59,13 +151,14 @@ module.exports = async function handler(req, res) {
         const data2 = await r2.json();
         const voices2 = (data2.voices || []).filter(v => v.preview_url).map(v => ({
           id: v.voice_id, name: v.name, preview_url: v.preview_url,
-          labels: v.labels || {}, category: v.category || ''
+          labels: v.labels || {}, category: v.category || '',
+          ...normalizeVoice(v)
         }));
         if (voices2.length > 0) return res.status(200).json({ voices: voices2 });
       }
 
       return res.status(200).json({ voices: [] });
-    } catch(e) {
+    } catch (e) {
       console.error('blue-voices library error:', e.message);
       return res.status(500).json({ error: e.message });
     }
@@ -80,12 +173,36 @@ module.exports = async function handler(req, res) {
     const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
     if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
     userId = (await uR.json()).id;
-  } catch(e) { return res.status(401).json({ error: 'Token inválido' }); }
+  } catch (e) { return res.status(401).json({ error: 'Token inválido' }); }
 
-  // GET — lista vozes do usuário + vozes compartilhadas da comunidade Master
+  // ── GET ?action=sync-all — re-busca metadados no ElevenLabs e popula DB ───
+  if (req.method === 'GET' && req.query.action === 'sync-all') {
+    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    try {
+      const r = await fetch(`${SU}/rest/v1/blue_custom_voices?user_id=eq.${userId}&select=voice_id,name,lang_code`, { headers: h });
+      const rows = r.ok ? await r.json() : [];
+      const results = [];
+      for (const row of rows) {
+        if (row.lang_code) { results.push({ id: row.voice_id, skipped: true }); continue; }
+        const vd = await fetchElevenMetadata(row.voice_id, EL);
+        if (!vd) { results.push({ id: row.voice_id, ok: false, reason: 'not found' }); continue; }
+        const meta = normalizeVoice(vd);
+        const patch = await fetch(`${SU}/rest/v1/blue_custom_voices?user_id=eq.${userId}&voice_id=eq.${row.voice_id}`, {
+          method: 'PATCH',
+          headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify(meta)
+        });
+        results.push({ id: row.voice_id, ok: patch.ok });
+      }
+      return res.status(200).json({ ok: true, synced: results.length, results });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // GET — lista vozes do usuário + comunidade (com metadados completos)
   if (req.method === 'GET') {
     try {
-      // 1. Vozes próprias do usuário
       const r = await fetch(
         `${SU}/rest/v1/blue_custom_voices?user_id=eq.${userId}&order=created_at.asc&select=*`,
         { headers: h }
@@ -93,17 +210,14 @@ module.exports = async function handler(req, res) {
       const myVoices = r.ok ? await r.json() : [];
       const myIds = new Set(myVoices.map(v => v.voice_id));
 
-      // 2. Vozes da comunidade (todos os outros usuários Master)
       let communityVoices = [];
       try {
-        // Busca todas as vozes customizadas de todos os usuários
         const cr = await fetch(
-          `${SU}/rest/v1/blue_custom_voices?user_id=neq.${userId}&order=created_at.desc&limit=50&select=voice_id,name,user_id,created_at`,
+          `${SU}/rest/v1/blue_custom_voices?user_id=neq.${userId}&order=created_at.desc&limit=50&select=*`,
           { headers: h }
         );
         if (cr.ok) {
           const all = await cr.json();
-          // Remove duplicatas (mesmo voice_id)
           const seen = new Set();
           communityVoices = all.filter(v => {
             if (myIds.has(v.voice_id) || seen.has(v.voice_id)) return false;
@@ -111,40 +225,37 @@ module.exports = async function handler(req, res) {
             return true;
           }).map(v => ({ ...v, community: true }));
         }
-      } catch(e) {}
+      } catch (e) {}
 
       return res.status(200).json({ voices: myVoices, community: communityVoices });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+    } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // POST — adiciona voz
+  // POST — adiciona voz com metadados reais do ElevenLabs
   if (req.method === 'POST') {
     const { voice_id, name, user_xi_key } = req.body || {};
     if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
 
     const finalName = name || 'Voz personalizada';
-    // Use user's API key for cloned voices, fallback to BlueTube's key
     const xiKey = user_xi_key || EL;
 
-    // Tenta buscar nome real e gerar preview
     let realName = '';
     let previewB64 = '';
+    let meta = null;
+
     if (xiKey) {
       try {
-        const check = await fetch(`https://api.elevenlabs.io/v1/voices/${voice_id}`, {
-          headers: { 'xi-api-key': xiKey }
-        });
-        if (check.ok) {
-          const vd = await check.json();
+        const vd = await fetchElevenMetadata(voice_id, xiKey);
+        if (vd) {
           realName = vd.name || '';
-          // Se tem preview_url, baixa e converte
+          meta = normalizeVoice(vd);
+          // Preview
           if (vd.preview_url) {
             try {
               const pr = await fetch(vd.preview_url);
               if (pr.ok) previewB64 = Buffer.from(await pr.arrayBuffer()).toString('base64');
-            } catch(e) {}
+            } catch (e) {}
           }
-          // Se não tem preview_url (clonada), gera via TTS
           if (!previewB64) {
             try {
               const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
@@ -153,28 +264,39 @@ module.exports = async function handler(req, res) {
                 body: JSON.stringify({ text: 'Olá! Essa é uma prévia da minha voz.', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
               });
               if (ttsR.ok) previewB64 = Buffer.from(await ttsR.arrayBuffer()).toString('base64');
-            } catch(e) {}
+            } catch (e) {}
           }
         } else {
-          // Voice not accessible via API key — save anyway, may still work for TTS
-          console.log('[blue-voices] Voice not found via API, saving anyway:', voice_id);
+          console.log('[blue-voices] Voice not accessible via API:', voice_id);
         }
-      } catch(e) { console.log('[blue-voices] Check error:', e.message); }
+      } catch (e) { console.log('[blue-voices] Check error:', e.message); }
     }
 
-    // Salva no banco (upsert)
+    // Salva com metadados reais (upsert)
     try {
+      const payload = {
+        user_id: userId,
+        voice_id,
+        name: realName || finalName,
+        ...(meta || {})
+      };
       const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
         method: 'POST',
         headers: { ...h, Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify({ user_id: userId, voice_id, name: realName || finalName })
+        body: JSON.stringify(payload)
       });
       const saved = await r.json();
-      return res.status(200).json({ ok: true, voice: Array.isArray(saved) ? saved[0] : saved, real_name: realName || finalName, preview: previewB64 || null });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+      return res.status(200).json({
+        ok: true,
+        voice: Array.isArray(saved) ? saved[0] : saved,
+        real_name: realName || finalName,
+        meta: meta || null,
+        preview: previewB64 || null
+      });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // DELETE — remove voz
+  // DELETE
   if (req.method === 'DELETE') {
     const { voice_id } = req.body || {};
     if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
@@ -183,7 +305,7 @@ module.exports = async function handler(req, res) {
         method: 'DELETE', headers: h
       });
       return res.status(200).json({ ok: true });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+    } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
   return res.status(405).end();

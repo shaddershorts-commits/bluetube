@@ -420,17 +420,25 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
           <button class="vf-chip" data-f="style" data-v="Casual" onclick="setFilter('style','Casual',this)">Casual</button>
           <button class="vf-chip" data-f="style" data-v="Profissional" onclick="setFilter('style','Profissional',this)">Profissional</button>
         </div>
-        <!-- Language -->
+        <!-- Language (por idioma nativo real da voz) -->
         <div class="vf-row" id="filterLang">
-          <button class="vf-chip on" data-f="lang" data-v="" onclick="setFilter('lang','',this)">Todos idiomas</button>
-          <button class="vf-chip" data-f="lang" data-v="pt" onclick="setFilter('lang','pt',this)">🇧🇷 PT</button>
-          <button class="vf-chip" data-f="lang" data-v="en" onclick="setFilter('lang','en',this)">🇺🇸 EN</button>
-          <button class="vf-chip" data-f="lang" data-v="es" onclick="setFilter('lang','es',this)">🇪🇸 ES</button>
-          <button class="vf-chip" data-f="lang" data-v="fr" onclick="setFilter('lang','fr',this)">🇫🇷 FR</button>
-          <button class="vf-chip" data-f="lang" data-v="de" onclick="setFilter('lang','de',this)">🇩🇪 DE</button>
-          <button class="vf-chip" data-f="lang" data-v="ja" onclick="setFilter('lang','ja',this)">🇯🇵 JA</button>
+          <button class="vf-chip on" data-f="lang" data-v="" onclick="setFilter('lang','',this)">Todos</button>
+          <button class="vf-chip" data-f="lang" data-v="pt-BR" onclick="setFilter('lang','pt-BR',this)">🇧🇷 PT-BR</button>
+          <button class="vf-chip" data-f="lang" data-v="pt-PT" onclick="setFilter('lang','pt-PT',this)">🇵🇹 PT-PT</button>
+          <button class="vf-chip" data-f="lang" data-v="en-US" onclick="setFilter('lang','en-US',this)">🇺🇸 EN-US</button>
+          <button class="vf-chip" data-f="lang" data-v="en-GB" onclick="setFilter('lang','en-GB',this)">🇬🇧 EN-GB</button>
+          <button class="vf-chip" data-f="lang" data-v="es-ES" onclick="setFilter('lang','es-ES',this)">🇪🇸 ES</button>
+          <button class="vf-chip" data-f="lang" data-v="es-MX" onclick="setFilter('lang','es-MX',this)">🇲🇽 ES-MX</button>
+          <button class="vf-chip" data-f="lang" data-v="fr-FR" onclick="setFilter('lang','fr-FR',this)">🇫🇷 FR</button>
+          <button class="vf-chip" data-f="lang" data-v="de-DE" onclick="setFilter('lang','de-DE',this)">🇩🇪 DE</button>
+          <button class="vf-chip" data-f="lang" data-v="it-IT" onclick="setFilter('lang','it-IT',this)">🇮🇹 IT</button>
+          <button class="vf-chip" data-f="lang" data-v="ja-JP" onclick="setFilter('lang','ja-JP',this)">🇯🇵 JA</button>
+          <button class="vf-chip" data-f="lang" data-v="multilingual" onclick="setFilter('lang','multilingual',this)">🌍 Multilingual</button>
         </div>
       </div>
+
+      <!-- Aviso de compatibilidade de idioma -->
+      <div id="langCompatBanner" style="display:none;margin:0 14px 10px;padding:12px 14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;font-family:var(--mono);font-size:11px;color:#fbbf24;line-height:1.5"></div>
 
       <div class="vp-list" id="voiceList"></div>
     </div>
@@ -457,27 +465,58 @@ if (!token) {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA — IDs verificados ElevenLabs ─────────────────────────────────
-// Preview gerado sob demanda via TTS (API key não tem permissão de listar)
+// ── VOICES DATA — IDs verificados ElevenLabs com metadados reais ────────────
+// langCode define compatibilidade real de sotaque (pt-BR narra PT-BR sem sotaque)
+// multilingual=true para vozes treinadas em múltiplos idiomas (eleven_multilingual_v2)
 const VOICES = [
   // ── PT-BR ──────────────────────────────────────────────────────────────────
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',   lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Profissional, autoridade, narração' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',   lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Voz grave, storytelling, impacto' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',     lang: 'pt', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem',  style: 'Energético',   desc: 'Intenso, animado, Shorts virais' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', desc: 'Clara, confiante, apresentadora' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', lang: 'pt', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem',  style: 'Casual',       desc: 'Natural, jovem, casual' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',   lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: false, desc: 'Profissional, autoridade, narração' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',   lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: false, desc: 'Voz grave, storytelling, impacto' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',     lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem',  style: 'Energético',   multilingual: false, desc: 'Intenso, animado, Shorts virais' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', multilingual: false, desc: 'Clara, confiante, apresentadora' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem',  style: 'Casual',       multilingual: false, desc: 'Natural, jovem, casual' },
   // ── ENGLISH ────────────────────────────────────────────────────────────────
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',     lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     desc: 'Deep, authoritative, documentary' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',    lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   desc: 'Energetic, upbeat, social media' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',     lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       desc: 'Warm, natural, conversational' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',   lang: 'en', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     desc: 'Calm, versatile, professional' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',   lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', desc: 'Crisp, authoritative, impactful' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',   lang: 'en', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Smooth, well-rounded, natural' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: true,  desc: 'Deep, authoritative, documentary' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   multilingual: true,  desc: 'Energetic, upbeat, social media' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       multilingual: true,  desc: 'Warm, natural, conversational' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     multilingual: true,  desc: 'Calm, versatile, professional' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: true,  desc: 'Crisp, authoritative, impactful' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       multilingual: true,  desc: 'Smooth, well-rounded, natural' },
   // ── ESPAÑOL ────────────────────────────────────────────────────────────────
-  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',    lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',       desc: 'Natural, neutro, versátil' },
-  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina', lang:'es', flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem',  style: 'Energético',   desc: 'Energética, jovem, redes sociais' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',      lang: 'es', flag: '🇲🇽', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       desc: 'Jovem, natural, conversacional' },
+  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',     lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',     multilingual: false, desc: 'Natural, neutro, versátil' },
+  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina', lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem',  style: 'Energético', multilingual: false, desc: 'Energética, jovem, redes sociais' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',       lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Masculino', age: 'Jovem',  style: 'Casual',     multilingual: false, desc: 'Jovem, natural, conversacional' },
 ];
+
+// Mapeamento lang do roteiro → langCode da voz compatível
+const SCRIPT_LANG_TO_VOICE = {
+  'Português (Brasil)': 'pt-BR',
+  'Português': 'pt-BR',
+  'English': 'en-US',
+  'Español': 'es-ES',
+  'Français': 'fr-FR',
+  'Deutsch': 'de-DE',
+  'Italiano': 'it-IT',
+  '日本語': 'ja-JP',
+  '中文': 'zh-CN',
+  'العربية': 'ar',
+};
+
+// Bandeira do langCode
+const LANG_FLAGS = {
+  'pt-BR': '🇧🇷', 'pt-PT': '🇵🇹',
+  'en-US': '🇺🇸', 'en-GB': '🇬🇧', 'en-AU': '🇦🇺',
+  'es-ES': '🇪🇸', 'es-MX': '🇲🇽',
+  'fr-FR': '🇫🇷', 'de-DE': '🇩🇪', 'it-IT': '🇮🇹',
+  'ja-JP': '🇯🇵', 'ko-KR': '🇰🇷', 'zh-CN': '🇨🇳',
+  'ar': '🇸🇦', 'hi': '🇮🇳', 'tr': '🇹🇷', 'id': '🇮🇩',
+};
+
+// Idioma do roteiro (lido ao carregar a página; pode ser trocado pelo usuário)
+let currentScriptLang = localStorage.getItem('bt_prefill_script_lang') || 'Português (Brasil)';
+function currentScriptLangCode() {
+  return SCRIPT_LANG_TO_VOICE[currentScriptLang] || 'pt-BR';
+}
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let selectedVoice = null;
@@ -492,48 +531,81 @@ const NARRATION_LIMIT = 30; // 30 narracoes por mes para todos os usuarios
 let favorites = new Set(JSON.parse(localStorage.getItem('bv_favorites') || '[]'));
 let showOnlyFavs = false;
 
+// Converte uma row do Supabase (com metadados reais) em objeto VOICE do frontend
+function rowToVoice(v, isCommunity = false) {
+  const vid = v.voice_id || v.id;
+  // Se o DB já tem metadados reais do ElevenLabs, usa eles; senão usa fallback genérico
+  const langCode  = v.lang_code  || null;
+  const langLabel = v.idioma_real || (langCode ? langCode : 'Idioma não detectado');
+  const flag      = v.lang_flag  || (langCode ? (LANG_FLAGS[langCode] || '🌐') : (isCommunity ? '🌐' : '⭐'));
+  const gender    = v.genero     || 'Masculino';
+  const age       = v.idade      || 'Adulto';
+  const style     = v.estilo     || 'Narração';
+  const desc      = v.descricao  || (isCommunity ? 'Voz importada pela comunidade' : 'Minha voz do ElevenLabs');
+  const multi     = !!v.multilingual;
+  return {
+    id: vid,
+    name: v.name || (isCommunity ? 'Voz da comunidade' : 'Voz personalizada'),
+    lang: (langCode || 'pt-BR').split('-')[0],
+    langCode: langCode || null,        // null = idioma desconhecido (não força pt-BR)
+    langLabel,
+    flag,
+    gender, age, style, multilingual: multi,
+    desc,
+    custom: true, community: isCommunity
+  };
+}
+
 // ── CARREGA VOZES CUSTOMIZADAS (localStorage + Supabase) ──────────────────────
 async function loadCustomVoices() {
   const token = localStorage.getItem('bt_token');
 
-  // 1. Carrega localStorage primeiro (imediato)
+  // 1. Carrega localStorage primeiro (imediato) — sem metadados, idioma=null
   try {
     const stored = JSON.parse(localStorage.getItem('bt_custom_voices') || '[]');
     stored.forEach(v => {
       const vid = v.id || v.voice_id;
       if (vid && !VOICES.find(x => x.id === vid)) {
-        VOICES.push({ id: vid, name: v.name||'Voz personalizada', lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
+        VOICES.push(rowToVoice({ voice_id: vid, name: v.name }));
       }
     });
   } catch(e) {}
 
-  renderVoices(); // Renderiza com o que tem
+  renderVoices();
 
   if (!token) return;
 
-  // 2. Busca do Supabase (próprias + comunidade)
+  // 2. Busca do Supabase com metadados completos
   try {
     const r = await fetch('/api/blue-voices?token=' + encodeURIComponent(token));
     if (!r.ok) { console.warn('blue-voices:', r.status); return; }
     const d = await r.json();
-    let added = 0;
-    // Minhas vozes
+    let added = 0, updated = 0;
     (d.voices || []).forEach(v => {
       const vid = v.voice_id || v.id;
-      if (vid && !VOICES.find(x => x.id === vid)) {
-        VOICES.push({ id: vid, name: v.name||'Voz personalizada', lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
+      if (!vid) return;
+      const existing = VOICES.find(x => x.id === vid);
+      const fresh = rowToVoice(v, false);
+      if (existing) {
+        // Atualiza metadados reais em cima do stub do localStorage
+        Object.assign(existing, fresh);
+        updated++;
+      } else {
+        VOICES.push(fresh);
         added++;
       }
     });
-    // Vozes da comunidade Master
     (d.community || []).forEach(v => {
       const vid = v.voice_id || v.id;
       if (vid && !VOICES.find(x => x.id === vid)) {
-        VOICES.push({ id: vid, name: v.name||'Voz da comunidade', lang: 'pt', flag: '🌐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Voz importada pela comunidade', custom: true, community: true });
+        VOICES.push(rowToVoice(v, true));
         added++;
       }
     });
-    if (added > 0) { console.log('Supabase: +'+added+' vozes (próprias + comunidade)'); renderVoices(); }
+    if (added > 0 || updated > 0) {
+      console.log(`Supabase: +${added} novas, ${updated} atualizadas com metadata real`);
+      renderVoices();
+    }
   } catch(e) { console.warn('loadCustomVoices:', e.message); }
 }
 async function addCustomVoice() {
@@ -560,10 +632,14 @@ async function addCustomVoice() {
       if(msg) { msg.style.color='#ff7a5a'; msg.textContent = d.error || 'Erro ao salvar.'; }
       return;
     }
-    // Adiciona na lista local também
+    // Adiciona na lista local com metadados reais vindos do backend
     if (!VOICES.find(v => v.id === voiceId)) {
       const finalName = d.real_name || name;
-      VOICES.push({ id: voiceId, name: finalName, lang: 'pt', flag: '⭐', gender: 'Masculino', age: 'Adulto', style: 'Narração', desc: 'Minha voz do ElevenLabs', custom: true });
+      VOICES.push(rowToVoice({
+        voice_id: voiceId,
+        name: finalName,
+        ...(d.meta || {})
+      }));
     }
     // Salva no localStorage também para garantir persistência
     try {
@@ -624,14 +700,28 @@ function checkReady() {
 function renderVoices() {
   const search = document.getElementById('voiceSearch').value.toLowerCase();
   const list = document.getElementById('voiceList');
+  const preferredCode = currentScriptLangCode();
 
   const filtered = VOICES.filter(v => {
     if (showOnlyFavs && !favorites.has(v.id)) return false;
     if (filters.gender && v.gender !== filters.gender) return false;
     if (filters.age && v.age !== filters.age) return false;
     if (filters.style && v.style !== filters.style) return false;
-    if (filters.lang && v.lang !== filters.lang) return false;
-    if (search && !v.name.toLowerCase().includes(search) && !v.desc.toLowerCase().includes(search)) return false;
+    // Filtro de idioma: match por langCode OU match "multilingual" OU fallback por lang genérica
+    if (filters.lang) {
+      if (filters.lang === 'multilingual') {
+        if (!v.multilingual) return false;
+      } else if (v.langCode) {
+        if (v.langCode !== filters.lang) return false;
+      } else if (v.lang) {
+        // fallback quando langCode não detectado (voz antiga do localStorage)
+        const short = filters.lang.split('-')[0];
+        if (v.lang !== short) return false;
+      } else {
+        return false; // sem info de idioma e filtro ativo → esconde
+      }
+    }
+    if (search && !v.name.toLowerCase().includes(search) && !(v.desc || '').toLowerCase().includes(search)) return false;
     return true;
   });
 
@@ -640,24 +730,32 @@ function renderVoices() {
     return;
   }
 
-  // Group: my voices → community voices → standard voices
-  const myVoices = filtered.filter(v => v.custom && !v.community);
-  const communityVoices = filtered.filter(v => v.custom && v.community);
-  const standardVoices = filtered.filter(v => !v.custom);
-  const ordered = [...myVoices, ...communityVoices, ...standardVoices];
+  // Separação em seções
+  const myVoices         = filtered.filter(v => v.custom && !v.community);
+  const communityVoices  = filtered.filter(v => v.custom && v.community);
+  const preferred        = filtered.filter(v => !v.custom && v.langCode === preferredCode);
+  const multilingualOnly = filtered.filter(v => !v.custom && v.langCode !== preferredCode && v.multilingual);
+  const others           = filtered.filter(v => !v.custom && v.langCode !== preferredCode && !v.multilingual);
 
-  function voiceCard(v){ return `
-    <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}" onclick="selectVoice('${v.id}')">
+  function voiceCard(v) {
+    const isIncompat = v.langCode && v.langCode !== preferredCode && !v.multilingual;
+    const multiBadge = v.multilingual ? '<div class="vi-badge" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);color:#c9b6ff">🌍 Multilingual</div>' : '';
+    const mineBadge = v.custom && !v.community ? '<div class="vi-badge" style="background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.3);color:#00aaff">⭐ Minha voz</div>' : '';
+    const warnIcon = isIncompat ? `<span title="Essa voz tem sotaque ${v.langLabel || v.langCode}. Pode soar estranha narrando ${currentScriptLang}." style="color:#fbbf24;margin-left:4px">⚠</span>` : '';
+    return `
+    <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}${isIncompat ? ' voice-incompat' : ''}" onclick="selectVoice('${v.id}')">
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
         ${favorites.has(v.id) ? '★' : '☆'}
       </button>
       <div class="vi-flag">${v.flag}</div>
       <div class="vi-info">
-        <div class="vi-name">${v.name}</div>
-        <div class="vi-meta">${v.desc}</div>
+        <div class="vi-name">${v.name}${warnIcon}</div>
+        <div class="vi-meta">${v.langLabel || 'Idioma não detectado'} · ${v.desc || ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
-        <div style="display:flex;gap:4px">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+          ${mineBadge}
+          ${multiBadge}
           <div class="vi-badge age">${v.age}</div>
           <div class="vi-badge style">${v.style}</div>
         </div>
@@ -666,12 +764,21 @@ function renderVoices() {
           Ouvir
         </button>
       </div>
-    </div>`;}
+    </div>`;
+  }
 
+  function section(label, arr, color) {
+    if (!arr.length) return '';
+    return `<div style="font-family:var(--mono);font-size:10px;color:${color};letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">${label}</div>` + arr.map(voiceCard).join('');
+  }
+
+  // Ordem: Minhas > Preferred (idioma do roteiro) > Multilingual > Outros > Comunidade
   let html = '';
-  if (myVoices.length > 0) html += '<div style="font-family:var(--mono);font-size:10px;color:rgba(0,170,255,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">⭐ Minhas Vozes</div>' + myVoices.map(voiceCard).join('');
-  if (communityVoices.length > 0) html += '<div style="font-family:var(--mono);font-size:10px;color:rgba(167,139,250,.6);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">🌐 Vozes da Comunidade</div>' + communityVoices.map(voiceCard).join('');
-  if (standardVoices.length > 0) html += (myVoices.length || communityVoices.length ? '<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;padding:10px 14px 6px">🎙️ Vozes Padrão</div>' : '') + standardVoices.map(voiceCard).join('');
+  html += section('⭐ Minhas vozes', myVoices, 'rgba(0,170,255,.7)');
+  html += section(`${LANG_FLAGS[preferredCode] || ''} Vozes em ${currentScriptLang}`, preferred, 'rgba(34,197,94,.8)');
+  html += section('🌍 Vozes Multilingual', multilingualOnly, 'rgba(167,139,250,.7)');
+  html += section('Outros idiomas', others, 'var(--text-dim)');
+  html += section('🌐 Vozes da comunidade', communityVoices, 'rgba(167,139,250,.6)');
   list.innerHTML = html;
 }
 
@@ -714,10 +821,11 @@ function selectVoice(id) {
   // Update selected strip
   document.getElementById('selFlag').textContent = selectedVoice.flag;
   document.getElementById('selName').textContent = selectedVoice.name;
-  document.getElementById('selTags').textContent = `${selectedVoice.lang.toUpperCase()} · ${selectedVoice.gender} · ${selectedVoice.age} · ${selectedVoice.style}`;
+  document.getElementById('selTags').textContent = `${(selectedVoice.langLabel || selectedVoice.lang || '').toString()} · ${selectedVoice.gender} · ${selectedVoice.age} · ${selectedVoice.style}`;
   document.getElementById('selWave').style.opacity = '1';
   // Persist selection
   try { localStorage.setItem('bt_state_voice_selected', id); } catch(e) {}
+  updateLangCompatBanner();
   // Re-render list
   renderVoices();
   checkReady();
@@ -725,6 +833,57 @@ function selectVoice(id) {
   const strip = document.getElementById('selectedVoiceStrip');
   strip.style.borderColor = 'rgba(0,170,255,.5)';
   setTimeout(() => strip.style.borderColor = '', 600);
+}
+
+// ── AVISO DE COMPATIBILIDADE DE IDIOMA ──────────────────────────────────────
+function updateLangCompatBanner() {
+  const el = document.getElementById('langCompatBanner');
+  if (!el) return;
+  if (!selectedVoice) { el.style.display = 'none'; return; }
+
+  const scriptCode = currentScriptLangCode();
+  const voiceCode  = selectedVoice.langCode;
+
+  // Voz multilingual = sempre compatível
+  if (selectedVoice.multilingual) {
+    el.style.display = 'block';
+    el.style.background = 'rgba(124,58,237,.08)';
+    el.style.borderColor = 'rgba(124,58,237,.3)';
+    el.style.color = '#c9b6ff';
+    el.innerHTML = `🌍 <b>${selectedVoice.name}</b> é uma voz Multilingual — narra bem em qualquer idioma, incluindo ${currentScriptLang}.`;
+    return;
+  }
+
+  // Sem info de idioma = aviso neutro
+  if (!voiceCode) {
+    el.style.display = 'block';
+    el.style.background = 'rgba(150,190,230,.05)';
+    el.style.borderColor = 'rgba(150,190,230,.2)';
+    el.style.color = 'var(--text-dim)';
+    el.innerHTML = `ℹ️ Idioma dessa voz não foi detectado. Use com cautela para narração em ${currentScriptLang}.`;
+    return;
+  }
+
+  // Match de idioma → esconde
+  if (voiceCode === scriptCode) { el.style.display = 'none'; return; }
+
+  // Incompatível → aviso amarelo com CTA
+  el.style.display = 'block';
+  el.style.background = 'rgba(251,191,36,.08)';
+  el.style.borderColor = 'rgba(251,191,36,.3)';
+  el.style.color = '#fbbf24';
+  const targetFilter = scriptCode;
+  el.innerHTML = `⚠️ <b>${selectedVoice.name}</b> é uma voz ${selectedVoice.langLabel || voiceCode}. Pode soar com sotaque ao narrar ${currentScriptLang}. <a href="#" onclick="event.preventDefault();filterByLang('${targetFilter}')" style="color:#fbbf24;text-decoration:underline;font-weight:700">Ver vozes compatíveis →</a>`;
+}
+
+// Aplica o filtro de idioma programaticamente (do banner ou prefill)
+function filterByLang(langCode) {
+  filters.lang = langCode;
+  document.querySelectorAll('[data-f="lang"]').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === langCode);
+  });
+  renderVoices();
+  document.getElementById('voicePanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function focusVoicePanel() {
@@ -1141,6 +1300,25 @@ if (prefill) {
   localStorage.removeItem('bt_prefill_script');
   document.getElementById('scriptText').dispatchEvent(new Event('input'));
 }
+
+// Pre-fill do idioma do roteiro (vem de index.html ao clicar "Narrar")
+const prefillLang = localStorage.getItem('bt_prefill_script_lang');
+if (prefillLang) {
+  currentScriptLang = prefillLang;
+  localStorage.removeItem('bt_prefill_script_lang');
+}
+// Pré-aplica filtro para o idioma do roteiro e atualiza banner
+(function() {
+  const code = currentScriptLangCode();
+  const chip = document.querySelector(`[data-f="lang"][data-v="${code}"]`);
+  if (chip) {
+    filters.lang = code;
+    document.querySelectorAll('[data-f="lang"]').forEach(b => b.classList.remove('on'));
+    chip.classList.add('on');
+  }
+  renderVoices();
+  updateLangCompatBanner();
+})();
 </script>
 <script src="/toolbar.js" defer></script>
 </body>

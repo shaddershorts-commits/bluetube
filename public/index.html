@@ -2626,6 +2626,9 @@ function sendToBlueVoice(scriptId){
   const text=document.getElementById(scriptId)?.textContent?.trim();
   if(!text) return;
   localStorage.setItem('bt_prefill_script',text);
+  // Passa o idioma do roteiro pro BlueVoice pré-filtrar vozes compatíveis
+  const scriptLang = document.getElementById('langSelect')?.value || 'Português (Brasil)';
+  localStorage.setItem('bt_prefill_script_lang', scriptLang);
   localStorage.removeItem('bt_state_voice_text');
   try{
     if(window.parent!==window){ window.parent.postMessage({type:'bt-switch',tool:'voice'},'*'); }
