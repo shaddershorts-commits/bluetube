@@ -300,17 +300,17 @@ module.exports = async function handler(req, res) {
     };
     const cult = CULTURAL[safeLang] || { cur:'local currency', ref:'local' };
 
-    // Desfecho por nicho
+    // Desfecho por nicho — SEMPRE entrega o fato, nunca promete sem entregar
     const nicheLabel = (niche || 'Geral').trim();
     const NICHE_ENDINGS = {
-      'Curiosidades': 'Revele o fato surpreendente. Tom: "E a explicação disso vai te surpreender..." Termine com dado ou revelação inesperada.',
-      'Ciência': 'Conecte o visual ao fenômeno científico. Tom: revelatório e fascinante. Termine explicando O PORQUÊ de forma simples e impactante.',
-      'Entretenimento': 'Desfecho emocional ou cômico. Tom: satisfatório ou hilário. Termine com a reação ou consequência final.',
-      'Finanças': 'Conecte ao aprendizado ou erro financeiro. Tom: revelador e prático. Termine com a lição de valor real.',
-      'Saúde/Fitness': 'Conecte ao benefício ou consequência física. Tom: motivacional ou surpreendente. Termine com resultado concreto.',
-      'Games': 'Desfecho épico ou engraçado. Tom: emocionante ou absurdo. Termine com a jogada ou momento decisivo.',
-      'Tecnologia': 'Revele a implicação ou capacidade surpreendente. Tom: impressionante e acessível. Termine com o impacto prático.',
-      'Outro': 'Desfecho surpreendente e satisfatório. Termine com uma revelação ou consequência inesperada.',
+      'Curiosidades': 'ENTREGUE o fato surpreendente concreto: o número, o nome, o mecanismo, a causa real. Se o vídeo mostrou algo impactante, NOMEIE o que é. O fato É a surpresa — não prometa surpresa, entregue.',
+      'Ciência': 'ENTREGUE a explicação científica do fenômeno em 1-2 frases. Use a palavra-chave técnica real (ex: "tensão superficial", "efeito Mpemba"). Diga O QUÊ é incrível, nunca só "é incrível".',
+      'Entretenimento': 'ENTREGUE a reação, consequência ou punch line concreta. Nomeie a emoção específica ou o resultado visual exato que aparece no vídeo.',
+      'Finanças': 'ENTREGUE o número real, a lição específica ou o erro exato. Se disser "mudou tudo", diga O QUE mudou e de quanto para quanto.',
+      'Saúde/Fitness': 'ENTREGUE o resultado mensurável: tempo, kg, cm, consequência física real. Sem "você vai ver o resultado" — diga qual resultado.',
+      'Games': 'ENTREGUE a jogada, combo, score ou momento decisivo específico. Nomeie o personagem/arma/movimento real do vídeo.',
+      'Tecnologia': 'ENTREGUE a capacidade técnica concreta ou impacto prático real. Números, especificações, comparações. Sem "impressionante" solto.',
+      'Outro': 'ENTREGUE o fato/imagem/consequência específica do vídeo. Proibido prometer sem entregar.',
     };
     const nicheEnding = NICHE_ENDINGS[nicheLabel] || NICHE_ENDINGS['Outro'];
 
@@ -332,34 +332,61 @@ module.exports = async function handler(req, res) {
       '- Fala SOBRE os acontecimentos em terceira pessoa',
       '- PROIBIDO: "Eu fiz...", "Olha o que me aconteceu...", primeira pessoa',
       '',
+      '=== GANCHO (primeira frase) — PADRÕES QUE RETÊM ===',
+      'Escolha UM destes 4 padrões concretos (NUNCA genérico):',
+      '1. DETALHE ESPECÍFICO: "Com 3 reais, ele fez o que engenheiros levaram semanas pra resolver."',
+      '2. EXPECTATIVA QUEBRADA: "Todo mundo achava impossível. Aí ele colou duas garrafas."',
+      '3. NÚMERO/TEMPO CHOCANTE: "Em 0,8 segundos, o piloto decidiu virar tudo."',
+      '4. COMPARAÇÃO IMPOSSÍVEL: "O menor cachorro do mundo é mais leve que uma moeda."',
+      '❌ PROIBIDO como gancho: "Você já se perguntou...", "Hoje vamos ver...", "Olha só isso...", "Incrível...", "Imagina...", "Preparado para..."',
+      'O gancho DEVE conter um detalhe concreto específico do vídeo analisado (nome, número, objeto, ação real).',
+      '',
+      '=== PROIBIÇÕES DE PAYOFF VAZIO (CRÍTICO — MOTIVO DE FALHA MAIS COMUM) ===',
+      '❌ NUNCA termine com promessa em aberto. Lista proibida de finais:',
+      '   "vai te surpreender", "você não vai acreditar", "o resultado é incrível",',
+      '   "impressionante", "chocante", "incrível", "você precisa ver", "assista até o final"',
+      '❌ NUNCA prometa uma revelação sem entregá-la na mesma frase ou na próxima',
+      '✅ O desfecho DEVE entregar o FATO CONCRETO: número exato, nome, mecanismo, consequência visível',
+      '✅ Se o vídeo mostra algo visual impactante, o desfecho DEVE nomear esse algo específico',
+      '',
+      'Exemplo RUIM (payoff vazio): "E o que aconteceu depois disso vai te surpreender."',
+      'Exemplo BOM (payoff concreto): "O bolo cresceu 40% mais que o normal e explodiu o forno em 3 minutos."',
+      '',
       '=== REGRA DE PERGUNTAS ===',
       '✅ Pergunta permitida APENAS no gancho OU no desfecho — máximo 1 por roteiro',
       '❌ ZERO perguntas no MEIO do roteiro',
-      '❌ Proibido: "Incrível, não é?", "Consegue acreditar?"',
+      '❌ Proibido: "Incrível, não é?", "Consegue acreditar?", "Sabe por quê?"',
       '',
-      '=== ESTRUTURA — 3 ATOS CONTÍNUOS ===',
-      'ATO 1 — GANCHO: afirmação intrigante OU pergunta. Direto ao conflito, sem contexto.',
-      'ATO 2 — PROGRESSÃO: cada frase avança. Viradas: "Só que...", "Mas aí...". ZERO perguntas.',
-      'ATO 3 — DESFECHO [' + nicheLabel.toUpperCase() + ']: ' + nicheEnding,
+      '=== ESTRUTURA NARRATIVA — 3 ATOS COM RETENÇÃO ===',
+      'ATO 1 — GANCHO (1-2 frases): use um dos 4 padrões acima. Detalhe específico já na primeira frase.',
+      'ATO 2 — PROGRESSÃO (3-4 frases): cada frase PLANTA uma pergunta que a próxima responde OU cria tensão que a próxima resolve.',
+      '  Use viradas concretas: "Só que...", "Mas aí...", "Foi aí que...", "E quando...". ZERO perguntas aqui.',
+      '  Pelo menos 1 virada inesperada no meio.',
+      'ATO 3 — DESFECHO [' + nicheLabel.toUpperCase() + '] (1-2 frases): ' + nicheEnding,
       '',
       '=== CASUAL vs APELATIVO ===',
       'casual = narrador próximo e informal, ritmo respirado, como amigo contando história',
       'apelativo = narrador urgente, ritmo acelerado, frases curtas, tensão máxima',
+      'AMBAS as versões seguem as regras de gancho e payoff acima — só muda o ritmo.',
       '',
-      '=== REGRAS ===',
-      '- Máximo 60 palavras cada versão',
-      '- Continuidade total — cada frase conecta na próxima',
-      '- Frases curtas, sem conectores fracos',
+      '=== REGRAS DE RITMO ===',
+      '- Entre 80 e 110 palavras cada versão (narrativa precisa de espaço)',
+      '- Continuidade total — cada frase conecta diretamente na próxima',
+      '- Frases curtas, sem conectores fracos ("também", "além disso", "por outro lado")',
       '- Moeda: ' + cult.cur + '. Referências: ' + cult.ref,
       '- Sem emojis, sem CTA, sem markdown',
       '',
-      '=== TESTE ANTES DE RESPONDER ===',
-      '1. Narrador externo? 2. Pergunta só no gancho/desfecho? 3. Continuidade entre frases?',
-      '4. Máximo 1 pergunta? 5. Desfecho do nicho ' + nicheLabel + '?',
+      '=== TESTE INTERNO OBRIGATÓRIO ANTES DE RESPONDER ===',
+      '1. O gancho tem um detalhe específico concreto do vídeo? Se não → refazer',
+      '2. O desfecho ENTREGA um fato concreto (número, nome, imagem) ou só PROMETE? Se só promete → refazer',
+      '3. Existe alguma frase proibida ("vai te surpreender", "você não vai acreditar")? Se sim → refazer',
+      '4. Cada frase do ato 2 planta ou resolve algo da próxima? Se não → refazer',
+      '5. Narrador externo em terceira pessoa mantido? Se não → refazer',
+      '6. Idioma de saída é ' + safeLang + '? Se não → refazer',
       '',
-      livingMemory ? 'REFERÊNCIA:\n' + livingMemory + '\n' : '',
+      livingMemory ? 'REFERÊNCIA DE QUALIDADE:\n' + livingMemory + '\n' : '',
       'Responda SOMENTE JSON válido:',
-      '{"casual":"roteiro","apelativo":"roteiro","titleCasual":"título","titleApelativo":"título","narrative_arc":"gancho → virada → desfecho [' + nicheLabel + ']"}'
+      '{"casual":"roteiro casual (80-110 palavras, payoff concreto)","apelativo":"roteiro apelativo (80-110 palavras, payoff concreto)","titleCasual":"título casual","titleApelativo":"título apelativo","narrative_arc":"gancho → virada → desfecho [' + nicheLabel + ']"}'
     ].join('\n');
 
     // ── 8. Gera com OpenAI (primary) + Gemini (fallback) ─────────────────────
@@ -370,9 +397,9 @@ module.exports = async function handler(req, res) {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
           body: JSON.stringify({
-            model: 'gpt-4o-mini', max_tokens: 600, temperature: 0.88,
+            model: 'gpt-4o-mini', max_tokens: 900, temperature: 0.92,
             messages: [
-              { role: 'system', content: 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). ESCREVA NO IDIOMA PEDIDO — se o idioma for English, escreva em inglês, NÃO em português. Responda SOMENTE JSON válido.' },
+              { role: 'system', content: 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. REGRA MAIS IMPORTANTE: o desfecho SEMPRE entrega um fato concreto (número, nome, imagem específica) — NUNCA use "vai te surpreender", "incrível", "você não vai acreditar" ou qualquer promessa sem entrega. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). ESCREVA NO IDIOMA PEDIDO. Responda SOMENTE JSON válido.' },
               { role: 'user', content: prompt }
             ]
           })
@@ -390,7 +417,7 @@ module.exports = async function handler(req, res) {
       try {
         const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GK[i], {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.88, maxOutputTokens: 700, topP: 0.95 } })
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.92, maxOutputTokens: 1000, topP: 0.95 } })
         });
         const d = await r.json();
         if (d.error && (d.error.code === 429 || d.error.code === 503)) continue;

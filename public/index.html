@@ -2631,9 +2631,21 @@ async function sendAdjust() {
   const instruction = input.value.trim();
   if (!instruction) return;
 
-  const scriptEl = document.getElementById('script' + _adjustVersion);
+  // Resolve ID do elemento: 'V1'/'V2' => scriptV1/scriptV2 (fluxo normal)
+  //                        'ZV1'/'ZV2' => zScriptV1/zScriptV2 (fluxo Gerar do Zero)
+  const isZero = _adjustVersion?.startsWith('Z');
+  const baseVersion = isZero ? _adjustVersion.slice(1) : _adjustVersion; // 'V1' ou 'V2'
+  const domId = isZero ? ('zScript' + baseVersion) : ('script' + baseVersion);
+  const scriptEl = document.getElementById(domId);
   const currentScript = scriptEl?.textContent?.trim();
-  if (!currentScript) return;
+  if (!currentScript) {
+    // Feedback visivel para o usuario em vez de falha silenciosa
+    _adjustHistory.push({ role: 'user', text: instruction });
+    _adjustHistory.push({ role: 'ai', text: '⚠ Roteiro atual não encontrado. Recarregue a página e tente novamente.' });
+    renderAdjustMessages();
+    input.value = '';
+    return;
+  }
 
   // Add user message
   _adjustHistory.push({ role: 'user', text: instruction });
@@ -2649,7 +2661,8 @@ async function sendAdjust() {
 
   try {
     const lang = document.getElementById('langSelect')?.value || 'Português (Brasil)';
-    const version = _adjustVersion === 'V1' ? 'V1' : 'V2';
+    // Mapeia corretamente: ZV1 -> V1, ZV2 -> V2, V1 -> V1, V2 -> V2
+    const version = (baseVersion === 'V1') ? 'V1' : 'V2';
     const r = await fetch('/api/rewrite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
