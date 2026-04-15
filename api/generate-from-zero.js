@@ -128,9 +128,90 @@ module.exports = async function handler(req, res) {
       } catch(e) { continue; }
     }
 
-    // ── 4. Gemini Vision — analisa frames (se tiver quota) ───────────────────
+    // ── 4. Claude Vision (PRIMARY) — analisa frames com URLs diretas ─────────
     let visualDescription = '';
-    if (GK.length > 0) {
+    let detectedNiche = '';
+    let visualHighlight = '';
+    let visionProvider = null;
+    const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+    if (ANTHROPIC_KEY) {
+      try {
+        // 4 frames cobrindo ~25%, 50% (HD), 50%, 75% do vídeo
+        const frameUrls = [
+          'https://img.youtube.com/vi/' + videoId + '/maxresdefault.jpg',
+          'https://img.youtube.com/vi/' + videoId + '/1.jpg',
+          'https://img.youtube.com/vi/' + videoId + '/2.jpg',
+          'https://img.youtube.com/vi/' + videoId + '/3.jpg',
+        ];
+
+        const claudeContent = frameUrls.map(url => ({
+          type: 'image',
+          source: { type: 'url', url }
+        }));
+        claudeContent.push({
+          type: 'text',
+          text: 'Analise estes frames de um YouTube Short e responda em ' + safeLang + '.\n\n' +
+            'Retorne SOMENTE JSON válido sem markdown:\n' +
+            '{\n' +
+            '  "description": "descrição em 2-3 frases do que acontece visualmente: quem aparece, o que faz, ambiente, ação principal, momento mais impactante",\n' +
+            '  "niche": "nicho do vídeo em 1-2 palavras (ex: Culinária, Esporte, Humor, Educação, Curiosidades, Ciência, Finanças, Saúde/Fitness, Games, Tecnologia, Entretenimento)",\n' +
+            '  "highlight": "o momento ou elemento visual mais viral/impactante do vídeo"\n' +
+            '}'
+        });
+
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 25000);
+        const cR = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-5',
+            max_tokens: 600,
+            messages: [{ role: 'user', content: claudeContent }]
+          }),
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+
+        if (cR.ok) {
+          const cD = await cR.json();
+          const txt = cD.content?.[0]?.text || '';
+          if (txt) {
+            try {
+              const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
+              if (si >= 0 && ei >= 0) {
+                const parsed = JSON.parse(txt.slice(si, ei + 1));
+                if (parsed.description && parsed.description.trim().length > 20) {
+                  visualDescription = parsed.description.trim();
+                  detectedNiche = (parsed.niche || '').trim();
+                  visualHighlight = (parsed.highlight || '').trim();
+                  visionProvider = 'claude';
+                  console.log('generate-from-zero: Claude Vision OK, niche=', detectedNiche);
+                }
+              }
+            } catch (parseErr) {
+              // Texto livre — usa como descrição mesmo sem JSON
+              if (txt.trim().length > 30) {
+                visualDescription = txt.trim().slice(0, 1000);
+                visionProvider = 'claude';
+              }
+            }
+          }
+        } else {
+          console.log('generate-from-zero: Claude Vision falhou', cR.status);
+        }
+      } catch (e) {
+        console.log('generate-from-zero: Claude Vision erro', e.name === 'AbortError' ? 'timeout' : e.message);
+      }
+    }
+
+    // ── 4b. Gemini Vision — fallback se Claude falhou ────────────────────────
+    if (!visualDescription && GK.length > 0) {
       try {
         const frameUrls = [
           'https://img.youtube.com/vi/' + videoId + '/1.jpg',
@@ -159,7 +240,7 @@ module.exports = async function handler(req, res) {
               const gd = await gR.json();
               if (gd.error && gd.error.code === 429) continue;
               const t = gd.candidates && gd.candidates[0] && gd.candidates[0].content && gd.candidates[0].content.parts && gd.candidates[0].content.parts[0] && gd.candidates[0].content.parts[0].text;
-              if (t && t.trim().length > 30) { visualDescription = t.trim(); break; }
+              if (t && t.trim().length > 30) { visualDescription = t.trim(); visionProvider = 'gemini'; break; }
             } catch(e) { continue; }
           }
         }
@@ -168,7 +249,12 @@ module.exports = async function handler(req, res) {
 
     // ── 5. Monta contexto — prioriza visual e audio, titulo como ultimo recurso ─
     const contextParts = [];
-    if (visualDescription) contextParts.push('ANALISE VISUAL DO VIDEO:\n' + visualDescription);
+    if (visualDescription) {
+      let visualBlock = 'ANALISE VISUAL DO VIDEO (a IA assistiu os frames reais):\n' + visualDescription;
+      if (visualHighlight) visualBlock += '\nMOMENTO VIRAL DETECTADO: ' + visualHighlight;
+      if (detectedNiche && !niche) visualBlock += '\nNICHO DETECTADO PELA VISION: ' + detectedNiche;
+      contextParts.push(visualBlock);
+    }
     if (transcriptText) contextParts.push('AUDIO/LEGENDA DO VIDEO:\n' + transcriptText);
     // Se nao tem visual nem audio, usa titulo+descricao como contexto minimo
     if (!transcriptText && !visualDescription) {
@@ -401,7 +487,12 @@ Responda SOMENTE com JSON válido, sem markdown:
       titleCasual: finalTitleCasual,
       titleApelativo: finalTitleApelativo,
       narrative_arc: result.narrative_arc || ('gancho → virada → desfecho [' + (nicheLabel || 'Geral') + ']'),
-      lang: safeLang
+      lang: safeLang,
+      // Vision feedback pro frontend — "O que a IA viu"
+      visualDescription: visualDescription || '',
+      visualHighlight: visualHighlight || '',
+      detectedNiche: detectedNiche || '',
+      visionProvider: visionProvider
     });
 
   } catch(err) {

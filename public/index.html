@@ -2393,8 +2393,23 @@ function generateAllScripts(lang){
 async function generateFromZero(lang){
   const videoUrl = 'https://www.youtube.com/shorts/' + currentVideoId;
   const lbl1=document.getElementById('labelV1'), lbl2=document.getElementById('labelV2');
-  if(lbl1) lbl1.textContent='✨ IA assistindo o vídeo e criando roteiro original…';
-  if(lbl2) lbl2.textContent='✨ Criando versão apelativa do zero…';
+  // Loading steps rotativos — simulam o fluxo real (Claude Vision leva ~10-20s)
+  const loadingSteps = [
+    '🎬 Analisando frames do vídeo…',
+    '👁️ IA assistindo o vídeo…',
+    '📝 Lendo áudio e legendas…',
+    '🧠 Criando roteiro baseado no que a IA viu…',
+    '✨ Quase pronto…'
+  ];
+  let stepIdx = 0;
+  const rotateLabels = () => {
+    const msg = loadingSteps[stepIdx % loadingSteps.length];
+    if(lbl1) lbl1.textContent = msg;
+    if(lbl2) lbl2.textContent = loadingSteps[(stepIdx + 2) % loadingSteps.length];
+    stepIdx++;
+  };
+  rotateLabels();
+  const rotateTimer = setInterval(rotateLabels, 3500);
   try{
     const token = localStorage.getItem('bt_token');
     const r = await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -2405,7 +2420,10 @@ async function generateFromZero(lang){
       console.error('generate-from-zero non-JSON:', rawText.slice(0,200));
       throw new Error('Erro interno no servidor. Tente novamente.');
     }
+    clearInterval(rotateTimer);
     if(!r.ok||((!d.casual)&&(!d.apelativo))) throw new Error(d.error||'Falha ao gerar roteiro do zero.');
+    // Renderiza card "O que a IA viu" se a vision retornou descrição
+    if(d.visualDescription){ renderVisionCard(d); }
     if(d.casual){
       document.getElementById('scriptV1').textContent=(d.casual||'').replace(/[\r\n]+/g,' ').trim();
       document.getElementById('loadingV1').classList.remove('on');
@@ -2430,12 +2448,60 @@ async function generateFromZero(lang){
     if(typeof updateBlueVoiceButtons==='function')updateBlueVoiceButtons();
     setTimeout(showBlublu,4000);
   }catch(err){
+    clearInterval(rotateTimer);
     ['V1','V2'].forEach(v=>{
       document.getElementById('loading'+v).classList.remove('on');
       document.getElementById('script'+v).textContent='⚠ '+(err.message||'Falha. Tente novamente.');
       document.getElementById('card'+v).style.display='block';
     });
   }
+}
+
+// ── CARD "O QUE A IA VIU" — renderiza análise visual do Claude Vision ────────
+function renderVisionCard(d) {
+  // Remove card antigo se existir
+  const existing = document.getElementById('visionCard');
+  if (existing) existing.remove();
+
+  const area = document.getElementById('resultsArea');
+  if (!area) return;
+
+  const provider = d.visionProvider === 'claude' ? 'Claude Vision' : d.visionProvider === 'gemini' ? 'Gemini Vision' : 'IA';
+  const highlight = d.visualHighlight ? `<div style="margin-top:10px;padding:10px 12px;background:rgba(124,58,237,.08);border-left:3px solid #7c3aed;border-radius:6px;font-size:12px;color:rgba(200,225,255,.85);font-style:italic">🎯 <strong>Momento viral detectado:</strong> ${escapeHtmlSafe(d.visualHighlight)}</div>` : '';
+  const niche = d.detectedNiche ? `<div style="display:inline-block;margin-top:10px;padding:4px 12px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.35);border-radius:100px;font-family:var(--font-mono,monospace);font-size:11px;color:#00aaff">🎯 Nicho detectado: ${escapeHtmlSafe(d.detectedNiche)}</div>` : '';
+
+  const html = `
+    <div id="visionCard" style="background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.2);border-radius:14px;margin:0 0 16px;overflow:hidden;backdrop-filter:blur(10px)">
+      <button onclick="toggleVisionCard()" style="width:100%;padding:14px 18px;background:none;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:#e8f4ff">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:18px">🎬</div>
+          <div style="text-align:left">
+            <div style="font-family:var(--font-mono,monospace);font-size:10px;color:rgba(150,190,230,.6);letter-spacing:.1em;text-transform:uppercase">Análise visual · ${provider}</div>
+            <div style="font-size:13px;font-weight:600;margin-top:2px">O que a IA viu no seu vídeo</div>
+          </div>
+        </div>
+        <div id="visionCardCaret" style="font-size:12px;color:rgba(150,190,230,.5);transition:transform .2s">▼</div>
+      </button>
+      <div id="visionCardBody" style="padding:0 18px 16px;display:block">
+        <div style="font-size:13px;line-height:1.6;color:rgba(200,225,255,.85)">${escapeHtmlSafe(d.visualDescription)}</div>
+        ${highlight}
+        ${niche}
+      </div>
+    </div>`;
+  area.insertAdjacentHTML('afterbegin', html);
+}
+
+function toggleVisionCard() {
+  const body = document.getElementById('visionCardBody');
+  const caret = document.getElementById('visionCardCaret');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (caret) caret.style.transform = open ? 'rotate(-90deg)' : '';
+}
+
+function escapeHtmlSafe(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 
