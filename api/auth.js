@@ -212,7 +212,7 @@ export default async function handler(req, res) {
           failures.push('Cobalt: COBALT_API_URL não configurada');
         }
 
-        // ── 2º: ytstream (RapidAPI) ────────────────────────────────────
+        // ── 2º: ytstream (RapidAPI) — parser tolerante a schemas variados ───
         if (!downloadUrl && rapidKey) {
           try {
             const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
@@ -224,11 +224,79 @@ export default async function handler(req, res) {
             if (r.ok) {
               const d = await r.json();
               title = d.title || title;
-              const fmts = d.formats || {};
-              for (const q of ['1080','720','480','360']) {
-                if (fmts[q]?.url) { downloadUrl = fmts[q].url; break; }
+              // Tenta múltiplos formatos do schema ytstream:
+              // 1) {formats: {720: {url}, 480: {url}}}                 — schema antigo
+              // 2) {formats: [{quality, url}, ...]}                    — schema novo (array)
+              // 3) {adaptiveFormats: [{qualityLabel, url, mimeType}]}  — schema Innertube-like
+              // 4) {link: "..."}                                       — single direct link
+              // 5) Busca recursiva por qualquer URL de vídeo mp4
+              const fmts = d.formats;
+              const adapt = d.adaptiveFormats;
+
+              // Tentativa 1: dict por qualidade
+              if (fmts && typeof fmts === 'object' && !Array.isArray(fmts)) {
+                for (const q of ['1080','720','480','360','240','1080p','720p','480p','360p']) {
+                  if (fmts[q]?.url) { downloadUrl = fmts[q].url; break; }
+                }
               }
-              if (!downloadUrl) failures.push('ytstream: sem format 1080/720/480/360');
+
+              // Tentativa 2: array de formats
+              if (!downloadUrl && Array.isArray(fmts)) {
+                const mp4Items = fmts.filter(f =>
+                  (f?.mimeType || '').includes('mp4') ||
+                  (f?.container || '').includes('mp4') ||
+                  (f?.ext || '').includes('mp4') ||
+                  typeof f?.url === 'string'
+                );
+                // Ordena por altura/qualidade descendente
+                mp4Items.sort((a, b) => {
+                  const ah = parseInt(a.height || a.quality || '0');
+                  const bh = parseInt(b.height || b.quality || '0');
+                  return bh - ah;
+                });
+                downloadUrl = mp4Items[0]?.url || null;
+              }
+
+              // Tentativa 3: adaptiveFormats (vídeo only, precisa mux com áudio separado — só pega o mp4 combinado)
+              if (!downloadUrl && Array.isArray(adapt)) {
+                const combined = adapt.find(f =>
+                  (f?.mimeType || '').includes('video/mp4') &&
+                  (f?.mimeType || '').includes('avc1') &&
+                  typeof f?.url === 'string'
+                );
+                downloadUrl = combined?.url || null;
+              }
+
+              // Tentativa 4: link direto
+              if (!downloadUrl && typeof d.link === 'string' && d.link.startsWith('http')) {
+                downloadUrl = d.link;
+              }
+
+              // Tentativa 5: busca recursiva por qualquer URL mp4 no objeto
+              if (!downloadUrl) {
+                const stack = [d];
+                while (stack.length && !downloadUrl) {
+                  const cur = stack.pop();
+                  if (!cur) continue;
+                  if (typeof cur === 'string' && cur.startsWith('http') && (cur.includes('.mp4') || cur.includes('videoplayback'))) {
+                    downloadUrl = cur; break;
+                  }
+                  if (Array.isArray(cur)) { stack.push(...cur); continue; }
+                  if (typeof cur === 'object') {
+                    if (typeof cur.url === 'string' && cur.url.startsWith('http')) {
+                      downloadUrl = cur.url; break;
+                    }
+                    stack.push(...Object.values(cur));
+                  }
+                }
+              }
+
+              if (!downloadUrl) {
+                // Log do schema real pra diagnosticar
+                const topKeys = Object.keys(d || {}).slice(0, 10).join(',');
+                console.error('[BaixaBlue] ytstream schema desconhecido. top keys:', topKeys);
+                failures.push(`ytstream: schema desconhecido (keys: ${topKeys})`);
+              }
             } else {
               const body = await r.text().catch(() => '');
               console.error('[BaixaBlue] ytstream falhou:', r.status, body.slice(0, 200));
