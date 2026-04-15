@@ -1,16 +1,29 @@
 // toolbar.js — Barra de ferramentas compartilhada + persistência de estado
 
-// Clean up stale Service Workers on non-blue pages
+// Clean up stale Service Workers on non-blue pages.
+// BUG CORRIGIDO: antes usava .includes('blue.html') que dava TRUE em qualquer
+// página com 'blue.html' no nome (baixaBlue, blueVoice, blueEditor, blueScore),
+// prendendo o SW nessas páginas indefinidamente.
 if ('serviceWorker' in navigator) {
+  const isBluePage = window.location.pathname === '/blue.html' ||
+                     window.location.pathname === '/blue' ||
+                     window.location.pathname.endsWith('/blue.html');
   navigator.serviceWorker.getRegistrations().then(regs => {
+    let unregistered = false;
     regs.forEach(reg => {
-      // Only keep blue-sw.js for blue.html; unregister everything else on other pages
-      if (reg.active?.scriptURL && !window.location.pathname.includes('blue.html')) {
-        if (!reg.active.scriptURL.includes('coi-serviceworker')) {
-          reg.unregister();
-        }
+      const url = reg.active?.scriptURL || '';
+      if (url && !isBluePage && !url.includes('coi-serviceworker')) {
+        reg.unregister();
+        unregistered = true;
       }
     });
+    // Se acabou de desregistrar um SW que estava controlando a página,
+    // força UM reload pra servir HTML fresco da network (não via SW stale).
+    // sessionStorage flag evita loop de reload.
+    if (unregistered && navigator.serviceWorker.controller && !sessionStorage.getItem('_sw_cleared')) {
+      sessionStorage.setItem('_sw_cleared', '1');
+      setTimeout(() => location.reload(), 100);
+    }
   });
 }
 
