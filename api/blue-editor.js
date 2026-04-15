@@ -17,6 +17,17 @@ module.exports = async function handler(req, res) {
 
   const { action, token, videoUrl, videoId, voiceId, roteiro, lang, musicId } = req.body || {};
 
+  // ── Public read: list-estilos (não precisa de auth) ────────────────────────
+  if (action === 'list-estilos') {
+    try {
+      const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+      const r = await fetch(`${SU}/rest/v1/editor_estilos?select=*&order=aprovacoes.desc`, { headers: h });
+      if (!r.ok) return res.status(500).json({ error: 'Falha ao buscar estilos' });
+      const rows = await r.json();
+      return res.status(200).json({ estilos: rows });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
   // ── Validate token ──────────────────────────────────────────────────────────
   let userId = null;
   if (token) {
