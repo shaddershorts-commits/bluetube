@@ -129,6 +129,10 @@ async function prepareInputs(dir, opts) {
   }
 }
 
+// Resolução de saída — 720x1280 em vez de 1080x1920 pra caber na RAM do tier Railway
+const OUT_W = 720;
+const OUT_H = 1280;
+
 // Segmenta vídeo-fonte em pedaços de cortIntervalo seg, looping se necessário
 async function buildSegments(dir, videoDur, audioDur, estilo) {
   const cortIntervalo = Math.max(0.8, Math.min(4.0, parseFloat(estilo.corte_intervalo) || 1.8));
@@ -142,11 +146,13 @@ async function buildSegments(dir, videoDur, audioDur, estilo) {
     const srcStart = (i * cortIntervalo) % Math.max(1, videoDur - cortIntervalo);
     const outFile = path.join(segmentsDir, `s${i}.mp4`);
     await run('ffmpeg', [
-      '-y', '-ss', String(srcStart), '-t', String(cortIntervalo),
+      '-y', '-threads', '1',
+      '-ss', String(srcStart), '-t', String(cortIntervalo),
       '-i', path.join(dir, 'input.mp4'),
-      '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1',
+      '-vf', `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1`,
       '-an',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+      '-pix_fmt', 'yuv420p',
       outFile
     ]);
     concatList.push(`file '${outFile}'`);
@@ -166,35 +172,45 @@ async function concatSegments(dir, listFile) {
   ]);
 }
 
-// Render final: legendas ASS + mux áudio + trim pela duração da narração
-// NOTA: zoompan removido na v1 pra evitar OOM/SIGKILL no Railway tier padrão.
-// Zoom keyframed será adicionado numa v2 via abordagem mais leve.
+// Render final em DOIS PASSES pra caber na RAM do Railway:
+//   Pass 1 — aplica legendas ASS sobre o concat.mp4, gera video-only (sem áudio)
+//   Pass 2 — muxa narração + música por cima, usando -c:v copy (zero re-encode de vídeo)
+// Isso reduz drasticamente a pegada de memória porque cada pass lida com só uma coisa.
+// NOTA: zoompan removido na v1 (era o primeiro suspeito, mas não era o problema principal).
 async function finalRender(dir, estilo, hasMusic, audioDur) {
   // ASS filter precisa do path com colons escapados (ffmpeg filter parser)
   const assPath = path.join(dir, 'subs.ass').replace(/\\/g, '/').replace(/:/g, '\\:');
-  const vf = `ass=${assPath}`;
 
-  const args = [
-    '-y',
-    '-threads', '1', // limita concorrência pra reduzir pressão de memória
+  // ── PASS 1: vídeo + legendas (sem áudio) ─────────────────────────────────
+  const videoOnly = path.join(dir, 'video_only.mp4');
+  await run('ffmpeg', [
+    '-y', '-threads', '1',
     '-i', path.join(dir, 'concat.mp4'),
+    '-vf', `ass=${assPath}`,
+    '-an',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    videoOnly
+  ]);
+
+  // ── PASS 2: muxa áudio por cima do vídeo (copy vídeo, encode só áudio) ───
+  const musicVol = typeof estilo.musica_volume === 'number' ? estilo.musica_volume : 0.18;
+  const args = [
+    '-y', '-threads', '1',
+    '-i', videoOnly,
     '-i', path.join(dir, 'narration.mp3'),
   ];
+  if (hasMusic) args.push('-i', path.join(dir, 'music.mp3'));
 
-  if (hasMusic) {
-    args.push('-i', path.join(dir, 'music.mp3'));
-  }
-
-  // Filter complex: video → ass apenas; audio → mix narration + music (se houver)
-  const musicVol = typeof estilo.musica_volume === 'number' ? estilo.musica_volume : 0.18;
   const filterComplex = hasMusic
-    ? `[0:v]${vf}[v];[1:a]volume=1.0[a1];[2:a]volume=${musicVol}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[a]`
-    : `[0:v]${vf}[v];[1:a]volume=1.0[a]`;
+    ? `[1:a]volume=1.0[a1];[2:a]volume=${musicVol}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[a]`
+    : `[1:a]volume=1.0[a]`;
 
   args.push(
     '-filter_complex', filterComplex,
-    '-map', '[v]', '-map', '[a]',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+    '-map', '0:v', '-map', '[a]',
+    '-c:v', 'copy',
     '-c:a', 'aac', '-b:a', '128k',
     '-t', String(audioDur),
     '-movflags', '+faststart',
