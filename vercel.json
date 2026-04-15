@@ -41,6 +41,10 @@
     {
       "path": "/api/blueclean-poll",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/blue-stories?action=limpar",
+      "schedule": "0 */6 * * *"
     }
   ],
   "headers": [
