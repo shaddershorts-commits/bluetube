@@ -17,6 +17,53 @@ module.exports = async function handler(req, res) {
 
   const { action, token, videoUrl, videoId, voiceId, roteiro, lang, musicId } = req.body || {};
 
+  // ── get-upload-url: gera signed URL do Supabase Storage pra upload direto ──
+  // Fluxo: browser POST aqui → recebe upload_url + public_url → PUT arquivo no
+  // upload_url → usa public_url como video_url no action=edit. Sem body parsing
+  // no Vercel, sem limite de 4.5MB. Browser do user tem IP residencial, extrai
+  // do YouTube localmente (yt-dlp, BaixaBlue, etc) e só envia o arquivo final.
+  if (action === 'upload-url' || action === 'get-upload-url') {
+    if (!token) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const u = await uR.json();
+      const uid = u.id;
+      if (!uid) return res.status(401).json({ error: 'Sem user id' });
+
+      const ext = (req.body?.ext || 'mp4').replace(/[^a-z0-9]/gi, '').slice(0, 5).toLowerCase() || 'mp4';
+      const filePath = `editor/uploads/${uid}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const bucket = 'blue-videos';
+
+      // Supabase: cria signed upload URL (válida por 15 min)
+      const signR = await fetch(`${SU}/storage/v1/object/upload/sign/${bucket}/${filePath}`, {
+        method: 'POST',
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: 900 })
+      });
+      if (!signR.ok) {
+        const et = await signR.text();
+        console.error('[upload-url] sign failed:', signR.status, et.slice(0, 200));
+        return res.status(500).json({ error: 'Falha ao gerar URL de upload: ' + et.slice(0, 150) });
+      }
+      const signD = await signR.json();
+      // signD.url pode vir como path relativo ou absoluto
+      const relUrl = signD.url || '';
+      const uploadUrl = relUrl.startsWith('http') ? relUrl : `${SU}/storage/v1${relUrl.startsWith('/') ? relUrl : '/' + relUrl}`;
+      const publicUrl = `${SU}/storage/v1/object/public/${bucket}/${filePath}`;
+
+      return res.status(200).json({
+        upload_url: uploadUrl,
+        public_url: publicUrl,
+        path: filePath,
+        bucket,
+        expires_in: 900
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── Public read: list-estilos (não precisa de auth) ────────────────────────
   if (action === 'list-estilos') {
     try {

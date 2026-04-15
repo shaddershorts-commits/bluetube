@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BlueEditor Beta — Pipeline Server-Side</title>
+<style>
+  :root{--bg:#020817;--card:#0a1628;--border:rgba(0,170,255,.15);--neon:#00aaff;--text:#e8f4ff;--dim:rgba(150,190,230,.6);--ok:#22c55e;--warn:#fbbf24;--err:#ef4444;}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
+  body{background:var(--bg);color:var(--text);padding:32px 20px;max-width:720px;margin:0 auto;}
+  h1{font-size:24px;font-weight:900;margin-bottom:6px;background:linear-gradient(135deg,#1a6bff,#00aaff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:28px;font-family:monospace;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;}
+  .card h2{font-size:14px;color:var(--neon);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;font-family:monospace;}
+  label{display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:monospace;text-transform:uppercase;letter-spacing:.08em;}
+  input,textarea,select{width:100%;background:rgba(2,8,23,.7);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:monospace;margin-bottom:12px;}
+  textarea{resize:vertical;min-height:80px;}
+  button{background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:monospace;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.secondary{background:rgba(0,170,255,.1);border:1px solid var(--border);color:var(--neon);}
+  .row{display:flex;gap:10px;}
+  .row > *{flex:1;}
+  pre{font-size:11px;line-height:1.5;color:var(--dim);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:rgba(2,8,23,.5);padding:10px;border-radius:6px;}
+  .ok{color:var(--ok);}
+  .err{color:var(--err);}
+  .warn{color:var(--warn);}
+  video{width:100%;max-width:400px;border-radius:12px;display:block;margin:12px auto;}
+  .log-line{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:monospace;font-size:11px;}
+  .hint{font-size:11px;color:var(--dim);margin-top:-6px;margin-bottom:12px;font-family:monospace;line-height:1.5;}
+  .step{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;font-family:monospace;}
+  .step.done{color:var(--ok);}
+  .step.pending{color:var(--dim);}
+  .step.active{color:var(--neon);}
+  .step.err{color:var(--err);}
+</style>
+</head>
+<body>
+<h1>BlueEditor β</h1>
+<div class="sub">Pipeline server-side · upload manual · bypass YouTube block</div>
+
+<div class="card">
+  <h2>1 · Link do YouTube Short</h2>
+  <label>Link (para gerar roteiro, detectar nicho e fazer análise visual)</label>
+  <input id="ytUrl" type="text" placeholder="https://www.youtube.com/shorts/..." />
+  <div class="hint">Use pra puxar transcrição, análise visual (Claude Vision) e gerar 2 roteiros.</div>
+  <button id="btnAnalyze" onclick="analyze()">Analisar vídeo →</button>
+  <div id="analyzeOut" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>2 · Roteiro</h2>
+  <label>Texto da narração (editável)</label>
+  <textarea id="roteiro" placeholder="O roteiro apelativo vai aparecer aqui depois de analisar..."></textarea>
+</div>
+
+<div class="card">
+  <h2>3 · Upload do vídeo</h2>
+  <label>Arquivo MP4 baixado localmente (yt-dlp, BaixaBlue, etc)</label>
+  <input id="videoFile" type="file" accept="video/mp4,.mp4" />
+  <div class="hint">O browser envia direto pro Supabase Storage via signed URL (sem limite de 4.5MB do Vercel).</div>
+  <button id="btnUpload" onclick="uploadVideo()">Enviar arquivo →</button>
+  <div id="uploadOut" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>4 · Voz e estilo</h2>
+  <div class="row">
+    <div>
+      <label>Voz (ElevenLabs PT-BR)</label>
+      <select id="voiceId">
+        <option value="onwK4e9ZLuTAKqWW03F9">Daniel — Profissional</option>
+        <option value="IKne3meq5aSn9XLyUdCD">Carlos — Narração grave</option>
+        <option value="N2lVS1w4EtoT3dr4eOWO">Alex — Jovem energético</option>
+        <option value="Xb7hH8MSUJpSbSDYk0k2">Alice — Apresentadora</option>
+        <option value="XB0fDUnXU5powFXDhCwa">Charlotte — Jovem casual</option>
+      </select>
+    </div>
+    <div>
+      <label>Estilo de edição</label>
+      <select id="estiloId">
+        <option value="">(auto pelo mood)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>5 · Render</h2>
+  <button id="btnRender" onclick="runPipeline()">🎬 Gerar vídeo editado</button>
+  <div id="renderSteps" style="margin-top:14px;"></div>
+  <div id="renderOut" style="margin-top:14px;"></div>
+</div>
+
+<div class="card" id="resultCard" style="display:none;">
+  <h2>6 · Resultado</h2>
+  <video id="resultVideo" controls></video>
+  <div class="row" style="margin-top:10px;">
+    <button onclick="window.open(window._resultUrl, '_blank')">Abrir em nova aba</button>
+    <a id="dlBtn" download="bluetube-edit.mp4" href="#"><button class="secondary">Download</button></a>
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('bt_token');
+let STATE = { videoPublicUrl: null, analyzed: null, narration: null, estilos: [] };
+
+if (!TOKEN) {
+  document.body.insertAdjacentHTML('afterbegin',
+    '<div class="card err" style="border-color:rgba(239,68,68,.4)">⚠ Você precisa estar logado no BlueTube. <a href="/" style="color:var(--neon)">Ir para login →</a></div>'
+  );
+}
+
+async function analyze() {
+  const url = document.getElementById('ytUrl').value.trim();
+  if (!url) return alert('Cole o link do YouTube Short');
+  const m = url.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+  if (!m) return alert('Link inválido');
+  const videoId = m[1];
+
+  const btn = document.getElementById('btnAnalyze');
+  btn.disabled = true; btn.textContent = 'Analisando...';
+  const out = document.getElementById('analyzeOut');
+  out.innerHTML = '<pre>🔍 Claude Vision + transcrição + geração de roteiro...</pre>';
+
+  try {
+    // prepare (Claude Vision nas thumbnails)
+    const prepR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'prepare', videoId})});
+    const prepD = await prepR.json();
+
+    // generate roteiros (precisa token)
+    const genR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'generate', videoUrl: url, lang:'Português (Brasil)', token: TOKEN})});
+    const genD = await genR.json();
+    if (!genR.ok) throw new Error(genD.error || 'generate falhou');
+
+    STATE.analyzed = { ...prepD, roteiros: genD.roteiros, videoId };
+    out.innerHTML = `<pre class="ok">✓ Nicho: ${prepD.niche || '—'} · Mood: ${prepD.mood || '—'}\n\nDescrição: ${(prepD.description || '').slice(0, 200)}</pre>`;
+
+    document.getElementById('roteiro').value = genD.roteiros?.apelativo || genD.roteiros?.casual || '';
+
+    // Auto-seleciona estilo pelo mood
+    const estR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'list-estilos'})});
+    const estD = await estR.json();
+    STATE.estilos = estD.estilos || [];
+    const sel = document.getElementById('estiloId');
+    sel.innerHTML = '<option value="">(auto pelo mood)</option>' + STATE.estilos.map(e =>
+      `<option value="${e.id}">${e.nome} · ${e.configuracoes?.ritmo || ''}</option>`
+    ).join('');
+    const moodMap = {suspense:'Luiz Stubbe',energetico:'Aburamezin',curiosidade:'Abavocadu',misterioso:'Luiz Stubbe',informativo:'TVVNC'};
+    const auto = STATE.estilos.find(e => e.nome === (moodMap[prepD.mood] || 'Aburamezin'));
+    if (auto) sel.value = auto.id;
+  } catch (e) {
+    out.innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analisar vídeo →';
+  }
+}
+
+async function uploadVideo() {
+  const file = document.getElementById('videoFile').files[0];
+  if (!file) return alert('Selecione um MP4');
+  if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) return alert('Arquivo precisa ser MP4');
+
+  const btn = document.getElementById('btnUpload');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  const out = document.getElementById('uploadOut');
+  out.innerHTML = `<pre>⬆ ${(file.size/1024/1024).toFixed(1)} MB...</pre>`;
+
+  try {
+    // 1) pede signed URL ao backend
+    const sR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'get-upload-url', ext:'mp4', token: TOKEN})});
+    const sD = await sR.json();
+    if (!sR.ok || !sD.upload_url) throw new Error(sD.error || 'sign falhou');
+
+    // 2) PUT binário direto no Supabase Storage
+    const putR = await fetch(sD.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'video/mp4', 'x-upsert': 'true' },
+      body: file
+    });
+    if (!putR.ok) {
+      const et = await putR.text();
+      throw new Error('Upload PUT falhou: ' + et.slice(0, 200));
+    }
+
+    STATE.videoPublicUrl = sD.public_url;
+    out.innerHTML = `<pre class="ok">✓ Upload concluído (${(file.size/1024/1024).toFixed(1)} MB)\n\n${sD.public_url}</pre>`;
+  } catch (e) {
+    out.innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar arquivo →';
+  }
+}
+
+function logStep(name, state) {
+  const el = document.getElementById('renderSteps');
+  const existing = el.querySelector(`[data-step="${name}"]`);
+  const cls = state === 'done' ? 'done' : state === 'err' ? 'err' : state === 'active' ? 'active' : 'pending';
+  const icon = state === 'done' ? '✓' : state === 'err' ? '✗' : state === 'active' ? '…' : '·';
+  const html = `<div class="step ${cls}" data-step="${name}">${icon} ${name}</div>`;
+  if (existing) existing.outerHTML = html;
+  else el.insertAdjacentHTML('beforeend', html);
+}
+
+async function runPipeline() {
+  if (!STATE.videoPublicUrl) return alert('Faça o upload do vídeo primeiro (passo 3)');
+  const roteiro = document.getElementById('roteiro').value.trim();
+  if (!roteiro) return alert('Roteiro vazio');
+  const voiceId = document.getElementById('voiceId').value;
+  let estiloId = document.getElementById('estiloId').value;
+  if (!estiloId && STATE.estilos.length) estiloId = STATE.estilos[0].id;
+  if (!estiloId) return alert('Selecione um estilo');
+
+  const btn = document.getElementById('btnRender');
+  btn.disabled = true; btn.textContent = 'Renderizando...';
+  document.getElementById('renderSteps').innerHTML = '';
+  document.getElementById('renderOut').innerHTML = '';
+  document.getElementById('resultCard').style.display = 'none';
+
+  logStep('Gerar narração (ElevenLabs + Whisper)', 'active');
+  try {
+    const narrR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'generate-narration', roteiro, voiceId, token: TOKEN})});
+    const narrD = await narrR.json();
+    if (!narrR.ok || !narrD.audio_url) throw new Error(narrD.error || 'narração falhou');
+    STATE.narration = narrD;
+    logStep('Gerar narração (ElevenLabs + Whisper)', 'done');
+
+    logStep('Enfileirar job no Railway', 'active');
+    const editR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action:'edit',
+        video_url: STATE.videoPublicUrl,
+        audio_url: narrD.audio_url,
+        words: narrD.words,
+        estilo_id: estiloId,
+        musica_url: null,
+        token: TOKEN
+      })});
+    const editD = await editR.json();
+    if (!editR.ok || !editD.job_id) throw new Error(editD.error || 'edit falhou');
+    logStep('Enfileirar job no Railway', 'done');
+
+    logStep('Aguardar render', 'active');
+    let final = null;
+    for (let i = 0; i < 80; i++) {
+      const sR = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'status', job_id: editD.job_id, token: TOKEN})});
+      const sD = await sR.json();
+      logStep(`Aguardar render (${sD.status} · ${sD.progresso}%)`, 'active');
+      if (sD.status === 'done' || sD.status === 'error') { final = sD; break; }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    if (!final || final.status !== 'done') throw new Error(final?.erro || 'Timeout ou erro no render');
+    logStep(`Aguardar render (done · 100%)`, 'done');
+
+    // Exibe resultado
+    window._resultUrl = final.output_url;
+    document.getElementById('resultVideo').src = final.output_url;
+    document.getElementById('dlBtn').href = final.output_url;
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('resultCard').scrollIntoView({behavior:'smooth'});
+    document.getElementById('renderOut').innerHTML = `<pre class="ok">✓ ${final.output_url}</pre>`;
+  } catch (e) {
+    logStep('Erro', 'err');
+    document.getElementById('renderOut').innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🎬 Gerar vídeo editado';
+  }
+}
+</script>
+</body>
+</html>
