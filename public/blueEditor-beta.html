@@ -36,7 +36,7 @@
 </head>
 <body>
 <h1>BlueEditor β</h1>
-<div class="sub">v2026.04.15.r4 · yt-dlp HQ · 1080p render · multi-player bypass</div>
+<div class="sub">v2026.04.15.r5 · upload + 1080p render · 2 roteiros · música · BlueClean opcional</div>
 
 <div class="card">
   <h2>1 · Link do YouTube Short</h2>
@@ -75,34 +75,17 @@
 </style>
 
 <div class="card">
-  <h2>3 · Vídeo base</h2>
-
-  <div style="margin-bottom:16px;padding:14px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.2);border-radius:10px;">
-    <label>🎬 Opção A — Baixar do YouTube (recomendado)</label>
-    <div class="hint">yt-dlp baixa direto da CDN do YouTube e faz mux de vídeo+áudio de alta qualidade. Sem ir pra sites externos.</div>
-    <div class="row" style="gap:8px;align-items:flex-end;">
-      <div style="flex:0 0 auto;">
-        <label>Qualidade</label>
-        <select id="ytQuality" style="width:120px;">
-          <option value="max">Máxima (até 1080p)</option>
-          <option value="720" selected>720p (balanceado)</option>
-          <option value="480">480p (leve)</option>
-        </select>
-      </div>
-      <div style="flex:1;">
-        <button id="btnYtDl" onclick="ytDownload()" style="width:100%;">📥 Baixar do YouTube</button>
-      </div>
-    </div>
-    <div class="hint">Requer o link do YouTube no passo 1 acima.</div>
+  <h2>3 · Upload do vídeo</h2>
+  <label>Arquivo MP4 do Short</label>
+  <div class="hint" style="line-height:1.6;margin-bottom:10px;">
+    Baixe o vídeo localmente com a ferramenta que preferir e envie o arquivo aqui:<br>
+    💡 <a href="/baixaBlue.html" target="_blank" style="color:var(--neon);">BaixaBlue</a> (nosso downloader) ·
+    <code style="font-size:10px;background:rgba(0,170,255,.1);padding:1px 5px;border-radius:3px;">yt-dlp</code> (CLI) ·
+    <a href="https://greenconvert.ai/pt/downloader-4/youtube/video" target="_blank" style="color:var(--neon);">greenconvert.ai</a> · 4K Downloader
   </div>
-
-  <div style="padding:14px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;">
-    <label>📁 Opção B — Upload manual de MP4</label>
-    <div class="hint">Se você já tem o arquivo (baixou localmente por outra ferramenta).</div>
-    <input id="videoFile" type="file" accept="video/mp4,.mp4" />
-    <button id="btnUpload" class="secondary" onclick="uploadVideo()">Enviar arquivo →</button>
-  </div>
-
+  <input id="videoFile" type="file" accept="video/mp4,.mp4" />
+  <div class="hint">O browser envia direto pro Supabase Storage via signed URL (sem limite de tamanho).</div>
+  <button id="btnUpload" onclick="uploadVideo()">Enviar arquivo →</button>
   <div id="uploadOut" style="margin-top:12px;"></div>
 </div>
 
@@ -246,32 +229,6 @@ async function analyze() {
     out.innerHTML = `<pre class="err">✗ ${e.message}</pre>`;
   } finally {
     btn.disabled = false; btn.textContent = 'Analisar vídeo →';
-  }
-}
-
-async function ytDownload() {
-  const ytUrl = document.getElementById('ytUrl').value.trim();
-  if (!ytUrl) return alert('Cole o link do YouTube no passo 1 primeiro');
-  const quality = document.getElementById('ytQuality').value;
-
-  const btn = document.getElementById('btnYtDl');
-  btn.disabled = true; btn.textContent = 'Baixando...';
-  const out = document.getElementById('uploadOut');
-  out.innerHTML = `<pre>📥 yt-dlp rodando no Railway (${quality})...\n   isso pode levar 15-60s dependendo da qualidade</pre>`;
-
-  try {
-    const r = await fetch('/api/blue-editor', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'yt-download', youtube_url: ytUrl, quality, token: TOKEN})});
-    const d = await r.json();
-    if (!r.ok || !d.url) throw new Error(d.error || 'yt-dlp falhou');
-
-    STATE.videoPublicUrl = d.url;
-    const sizeMb = d.size ? (d.size / 1024 / 1024).toFixed(1) : '?';
-    out.innerHTML = `<pre class="ok">✓ Baixado via yt-dlp (${sizeMb} MB, qualidade ${d.quality})\n\n${d.url}</pre>`;
-  } catch (e) {
-    out.innerHTML = `<pre class="err">✗ ${e.message}\n\n💡 Tente a Opção B (upload manual) como fallback</pre>`;
-  } finally {
-    btn.disabled = false; btn.textContent = '📥 Baixar do YouTube';
   }
 }
 
