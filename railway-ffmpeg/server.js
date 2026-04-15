@@ -173,9 +173,11 @@ async function prepareInputs(dir, opts) {
   }
 }
 
-// Resolução de saída — 720x1280 em vez de 1080x1920 pra caber na RAM do tier Railway
-const OUT_W = 720;
-const OUT_H = 1280;
+// Resolução de saída — 1080x1920 (full HD vertical, padrão Shorts).
+// Viável agora porque o pipeline simplificou (zoompan removido, segmentação
+// removida, render em 2 passes com -c:v copy no pass2). Memoria pico <400MB.
+const OUT_W = 1080;
+const OUT_H = 1920;
 
 // Render em 2 passes (mesmo approach, mas SEM segmentação):
 //   Pass 1: source (com -stream_loop se mais curto que narração) + scale+crop + ass → video_only
