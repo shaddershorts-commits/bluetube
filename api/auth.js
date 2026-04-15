@@ -180,32 +180,40 @@ export default async function handler(req, res) {
         // ── HQ MODE: extrai video-only 1080p + audio-only do adaptiveFormats
         // e delega pro Railway /mux-streams. Retorna URL muxada 1080p.
         const wantHQ = req.query?.quality === 'hq' || req.query?.quality === '1080' || req.query?.quality === '1080p';
-        if (wantHQ && rapidKey) {
-          try {
-            const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
-              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com' }
-            });
-            if (r.ok) {
-              const d = await r.json();
-              title = d.title || title;
-              const adaptive = Array.isArray(d.adaptiveFormats) ? d.adaptiveFormats : [];
-              // Video-only mp4 avc1 com maior height (prefere 1080p, fallback 720p, etc)
-              const videoOnly = adaptive
-                .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
-                .sort((a, b) => (b.height || 0) - (a.height || 0));
-              // Audio-only mp4 aac com melhor bitrate
-              const audioOnly = adaptive
-                .filter(f => (f?.mimeType || '').includes('audio/mp4') && f?.url)
-                .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        if (wantHQ) {
+          // HQ mode: SEMPRE retorna algo (sucesso ou erro explícito). Nunca cai no
+          // fallback silencioso pra evitar usuário pensando que HQ funcionou e
+          // receber itag=18 por baixo.
+          const hqFailures = [];
+          if (!rapidKey) hqFailures.push('RAPIDAPI_KEY ausente');
+          const RAILWAY = process.env.RAILWAY_FFMPEG_URL;
+          if (!RAILWAY) hqFailures.push('RAILWAY_FFMPEG_URL ausente');
 
-              const videoFmt = videoOnly[0];
-              const audioFmt = audioOnly[0];
+          if (rapidKey && RAILWAY) {
+            try {
+              const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+                headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com' }
+              });
+              if (!r.ok) {
+                hqFailures.push(`ytstream status ${r.status}`);
+              } else {
+                const d = await r.json();
+                title = d.title || title;
+                const adaptive = Array.isArray(d.adaptiveFormats) ? d.adaptiveFormats : [];
+                const videoOnly = adaptive
+                  .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
+                  .sort((a, b) => (b.height || 0) - (a.height || 0));
+                const audioOnly = adaptive
+                  .filter(f => (f?.mimeType || '').includes('audio/mp4') && f?.url)
+                  .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+                const videoFmt = videoOnly[0];
+                const audioFmt = audioOnly[0];
 
-              if (videoFmt && audioFmt) {
-                console.log('[BaixaBlue HQ] video itag=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' · audio itag=' + audioFmt.itag);
-                // Delega pro Railway muxar
-                const RAILWAY = process.env.RAILWAY_FFMPEG_URL;
-                if (RAILWAY) {
+                if (!videoFmt) hqFailures.push(`sem video-only mp4 avc1 (adaptive count=${adaptive.length})`);
+                if (!audioFmt) hqFailures.push(`sem audio-only mp4 (adaptive count=${adaptive.length})`);
+
+                if (videoFmt && audioFmt) {
+                  console.log('[BaixaBlue HQ] video itag=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' · audio itag=' + audioFmt.itag);
                   try {
                     const ctrl = new AbortController();
                     const timer = setTimeout(() => ctrl.abort(), 120000);
@@ -232,24 +240,30 @@ export default async function handler(req, res) {
                         thumbnail,
                         platform,
                         provider: 'ytstream-adaptive-mux',
+                        video_itag: videoFmt.itag,
+                        audio_itag: audioFmt.itag,
                         size: muxD.size
                       });
                     }
-                    console.error('[BaixaBlue HQ] mux failed:', muxD);
-                    failures.push('mux: ' + (muxD.error || 'unknown'));
+                    hqFailures.push(`mux status ${muxR.status}: ${muxD.error || 'unknown'}`);
                   } catch (e) {
-                    console.error('[BaixaBlue HQ] mux exception:', e.message);
-                    failures.push('mux: ' + e.message);
+                    hqFailures.push('mux exception: ' + (e.name === 'AbortError' ? 'timeout 120s' : e.message));
                   }
-                } else {
-                  failures.push('RAILWAY_FFMPEG_URL ausente (HQ desativado)');
                 }
-              } else {
-                failures.push('ytstream sem adaptive video+audio');
               }
+            } catch (e) {
+              hqFailures.push('ytstream exception: ' + e.message);
             }
-          } catch (e) { failures.push('ytstream HQ: ' + e.message); }
-          // Se HQ falhou, cai pro caminho normal abaixo (não retorna ainda)
+          }
+
+          // Se chegou aqui, HQ falhou. Retorna erro EXPLÍCITO em vez de cair pro fallback.
+          return res.status(502).json({
+            error: 'Falha ao obter HD 1080p. Tente a opção Auto.',
+            hq_failures: hqFailures,
+            provider: 'hq-failed',
+            title,
+            thumbnail
+          });
         }
 
         // ── 1º: Cobalt próprio (instância self-hosted) ─────────────────
