@@ -606,7 +606,22 @@ export default async function handler(req, res) {
         });
       }
 
-      return res.status(200).json({ url: downloadUrl, title, thumbnail, platform });
+      // Wrap URLs sem CORS no Railway /proxy-download pra permitir download
+      // direto no browser (fetch-to-blob). Plataformas afetadas:
+      // - TikTok (tokcdn sem CORS)
+      // - YouTube (googlevideo sem CORS + IP-bound; proxy tenta stream)
+      // Instagram e outros que já têm CORS passam direto.
+      const RAILWAY_FFMPEG = process.env.RAILWAY_FFMPEG_URL;
+      const needsProxy = RAILWAY_FFMPEG && (platform === 'tiktok' || platform === 'youtube') &&
+        !downloadUrl.includes('supabase.co'); // Supabase já tem CORS
+      let finalUrl = downloadUrl;
+      if (needsProxy) {
+        const safeName = (title || platform).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+        const proxyBase = RAILWAY_FFMPEG.replace(/\/$/, '');
+        finalUrl = `${proxyBase}/proxy-download?url=${encodeURIComponent(downloadUrl)}&filename=BaixaBlue_${platform}_${safeName}.mp4`;
+      }
+
+      return res.status(200).json({ url: finalUrl, title, thumbnail, platform, proxied: needsProxy });
 
     } catch(e) {
       console.error('Download error:', e);

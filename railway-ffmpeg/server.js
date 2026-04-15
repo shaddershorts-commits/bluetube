@@ -357,6 +357,99 @@ app.get('/status/:jobId', (req, res) => {
   res.json(job);
 });
 
+// ── PROXY DOWNLOAD: streaming de URL remoto com CORS aberto ────────────────
+// Resolve o problema de CDNs (tokcdn, cdninstagram, etc) que não mandam
+// Access-Control-Allow-Origin, impedindo o browser de fetch + blob download.
+// Railway baixa o arquivo server-side e re-stream pro browser com CORS:* .
+//
+// NÃO funciona pra googlevideo.com que é IP-bound (pra YouTube use /youtube-hq).
+const PROXY_ALLOWED_HOSTS = [
+  'tokcdn.com', 'tiktokcdn.com', 'tiktokv.com',
+  'cdninstagram.com', 'fbcdn.net', 'fbsbx.com',
+  'twimg.com', 'twitter.com', 'x.com',
+  'redditmedia.com', 'redd.it', 'reddit.com',
+  'supabase.co', 'supabase.in',
+  'googlevideo.com', // tentativa; normalmente falha por IP-bind
+  'ytimg.com',
+];
+function isHostAllowed(host) {
+  return PROXY_ALLOWED_HOSTS.some(h => host.endsWith(h) || host.includes(h));
+}
+
+app.get('/proxy-download', async (req, res) => {
+  const target = req.query?.url;
+  const filename = (req.query?.filename || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+  if (!target) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(400).json({ error: 'url query param required' });
+  }
+
+  let parsed;
+  try { parsed = new URL(target); } catch (e) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(400).json({ error: 'invalid url' });
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(400).json({ error: 'only http/https allowed' });
+  }
+  if (!isHostAllowed(parsed.hostname)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(403).json({ error: 'host not allowed: ' + parsed.hostname });
+  }
+
+  console.log('[proxy-download]', parsed.hostname, filename);
+
+  try {
+    const upstream = await axios.get(target, {
+      responseType: 'stream',
+      timeout: 60000,
+      maxRedirects: 5,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.tiktok.com/'
+      },
+      validateStatus: () => true
+    });
+
+    if (upstream.status >= 400) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.status(502).json({ error: `upstream ${upstream.status}`, host: parsed.hostname });
+    }
+
+    // Headers CORS + download
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+    res.setHeader('Content-Type', upstream.headers['content-type'] || 'video/mp4');
+    if (upstream.headers['content-length']) {
+      res.setHeader('Content-Length', upstream.headers['content-length']);
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    upstream.data.pipe(res);
+    upstream.data.on('error', (err) => {
+      console.error('[proxy-download] stream error:', err.message);
+      if (!res.headersSent) res.status(500).end();
+      else res.end();
+    });
+  } catch (err) {
+    console.error('[proxy-download] failed:', err.message);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (!res.headersSent) res.status(500).json({ error: 'proxy failed: ' + err.message.slice(0, 300) });
+  }
+});
+
+// Handle CORS preflight
+app.options('/proxy-download', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
 // ── YOUTUBE HQ: end-to-end ytstream + download + mux + upload no mesmo IP ──
 // Resolve o problema de signed URLs IP-bound do YouTube: o IP que chama
 // ytstream DEVE ser o mesmo que baixa do googlevideo.com, senão 403.
