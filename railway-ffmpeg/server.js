@@ -357,6 +357,108 @@ app.get('/status/:jobId', (req, res) => {
   res.json(job);
 });
 
+// ── YOUTUBE HQ: end-to-end ytstream + download + mux + upload no mesmo IP ──
+// Resolve o problema de signed URLs IP-bound do YouTube: o IP que chama
+// ytstream DEVE ser o mesmo que baixa do googlevideo.com, senão 403.
+app.post('/youtube-hq', async (req, res) => {
+  const { video_id, rapidapi_key, supabase_url, supabase_key, output_path } = req.body || {};
+  if (!video_id) return res.status(400).json({ error: 'video_id required' });
+  if (!rapidapi_key) return res.status(400).json({ error: 'rapidapi_key required' });
+  if (!supabase_url || !supabase_key) return res.status(400).json({ error: 'supabase creds required' });
+
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+
+  try {
+    console.log('[youtube-hq]', jobId, 'fetching ytstream for', video_id);
+
+    // 1) Chama ytstream COM O IP DO RAILWAY → signed URLs bind a este IP
+    const ytR = await axios.get(
+      `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${video_id}`,
+      {
+        headers: {
+          'x-rapidapi-key': rapidapi_key,
+          'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
+        },
+        timeout: 30000
+      }
+    );
+    const ytData = ytR.data;
+    const adaptive = Array.isArray(ytData?.adaptiveFormats) ? ytData.adaptiveFormats : [];
+    if (!adaptive.length) throw new Error('ytstream sem adaptiveFormats');
+
+    // 2) Filtra melhor video-only mp4 avc1 + audio-only mp4
+    const videoOnly = adaptive
+      .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
+      .sort((a, b) => (b.height || 0) - (a.height || 0));
+    const audioOnly = adaptive
+      .filter(f => (f?.mimeType || '').includes('audio/mp4') && f?.url)
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+    const videoFmt = videoOnly[0];
+    const audioFmt = audioOnly[0];
+    if (!videoFmt) throw new Error('sem video-only mp4 avc1');
+    if (!audioFmt) throw new Error('sem audio-only mp4');
+
+    console.log('[youtube-hq]', jobId, 'downloading v=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' + a=' + audioFmt.itag);
+
+    // 3) Download PARALELO dos dois streams (IP do Railway → googlevideo match)
+    const vFile = path.join(dir, 'video.mp4');
+    const aFile = path.join(dir, 'audio.m4a');
+    await Promise.all([
+      downloadFile(videoFmt.url, vFile),
+      downloadFile(audioFmt.url, aFile)
+    ]);
+
+    const vStats = fs.statSync(vFile);
+    const aStats = fs.statSync(aFile);
+    console.log('[youtube-hq]', jobId, 'downloaded v=' + vStats.size + ' a=' + aStats.size);
+
+    // 4) Mux com ffmpeg -c copy (zero re-encode, ~1s)
+    const output = path.join(dir, 'merged.mp4');
+    await run('ffmpeg', [
+      '-y', '-threads', '1',
+      '-i', vFile,
+      '-i', aFile,
+      '-c', 'copy',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-movflags', '+faststart',
+      output
+    ]);
+
+    const outStats = fs.statSync(output);
+    console.log('[youtube-hq]', jobId, 'muxed ' + outStats.size);
+
+    // 5) Upload pro Supabase
+    const finalPath = output_path || `downloads/youtube/${video_id}_${Date.now()}_hq.mp4`;
+    const publicUrl = await uploadToSupabase(output, finalPath, supabase_url, supabase_key);
+
+    // 6) Cleanup
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+
+    res.json({
+      ok: true,
+      url: publicUrl,
+      size: outStats.size,
+      title: ytData.title || null,
+      quality: videoFmt.qualityLabel || '1080p',
+      video_itag: videoFmt.itag,
+      audio_itag: audioFmt.itag,
+      video_size: vStats.size,
+      audio_size: aStats.size
+    });
+  } catch (err) {
+    console.error('[youtube-hq]', jobId, 'failed:', err.message);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    const detail = err.response?.status
+      ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}`
+      : err.message;
+    res.status(500).json({ error: 'youtube-hq failed: ' + detail.slice(0, 500) });
+  }
+});
+
 // ── MUX STREAMS ─────────────────────────────────────────────────────────────
 // Baixa 2 streams separados (video-only + audio-only do YouTube adaptiveFormats),
 // muxa com ffmpeg -c copy (zero re-encode, instantâneo), sobe pro Supabase.

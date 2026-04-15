@@ -177,13 +177,12 @@ export default async function handler(req, res) {
         const rapidKey = process.env.RAPIDAPI_KEY;
         const failures = [];
 
-        // ── HQ MODE: extrai video-only 1080p + audio-only do adaptiveFormats
-        // e delega pro Railway /mux-streams. Retorna URL muxada 1080p.
+        // ── HQ MODE: delega tudo pro Railway /youtube-hq ────────────────────
+        // Railway faz ytstream + download + mux no mesmo IP pra contornar o
+        // IP-bound das signed URLs do YouTube (googlevideo.com retorna 403 se
+        // o IP que baixa != IP que pediu a URL).
         const wantHQ = req.query?.quality === 'hq' || req.query?.quality === '1080' || req.query?.quality === '1080p';
         if (wantHQ) {
-          // HQ mode: SEMPRE retorna algo (sucesso ou erro explícito). Nunca cai no
-          // fallback silencioso pra evitar usuário pensando que HQ funcionou e
-          // receber itag=18 por baixo.
           const hqFailures = [];
           if (!rapidKey) hqFailures.push('RAPIDAPI_KEY ausente');
           const RAILWAY = process.env.RAILWAY_FFMPEG_URL;
@@ -191,72 +190,42 @@ export default async function handler(req, res) {
 
           if (rapidKey && RAILWAY) {
             try {
-              const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
-                headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com' }
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 150000);
+              const hqR = await fetch(`${RAILWAY.replace(/\/$/, '')}/youtube-hq`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  video_id: videoId,
+                  rapidapi_key: rapidKey,
+                  supabase_url: process.env.SUPABASE_URL,
+                  supabase_key: process.env.SUPABASE_SERVICE_KEY,
+                  output_path: `downloads/youtube/${videoId}_${Date.now()}_hq.mp4`
+                }),
+                signal: ctrl.signal
               });
-              if (!r.ok) {
-                hqFailures.push(`ytstream status ${r.status}`);
-              } else {
-                const d = await r.json();
-                title = d.title || title;
-                const adaptive = Array.isArray(d.adaptiveFormats) ? d.adaptiveFormats : [];
-                const videoOnly = adaptive
-                  .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
-                  .sort((a, b) => (b.height || 0) - (a.height || 0));
-                const audioOnly = adaptive
-                  .filter(f => (f?.mimeType || '').includes('audio/mp4') && f?.url)
-                  .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-                const videoFmt = videoOnly[0];
-                const audioFmt = audioOnly[0];
-
-                if (!videoFmt) hqFailures.push(`sem video-only mp4 avc1 (adaptive count=${adaptive.length})`);
-                if (!audioFmt) hqFailures.push(`sem audio-only mp4 (adaptive count=${adaptive.length})`);
-
-                if (videoFmt && audioFmt) {
-                  console.log('[BaixaBlue HQ] video itag=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' · audio itag=' + audioFmt.itag);
-                  try {
-                    const ctrl = new AbortController();
-                    const timer = setTimeout(() => ctrl.abort(), 120000);
-                    const muxR = await fetch(`${RAILWAY.replace(/\/$/, '')}/mux-streams`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        video_url: videoFmt.url,
-                        audio_url: audioFmt.url,
-                        supabase_url: process.env.SUPABASE_URL,
-                        supabase_key: process.env.SUPABASE_SERVICE_KEY,
-                        output_path: `downloads/youtube/${videoId}_${Date.now()}_hq.mp4`,
-                        title
-                      }),
-                      signal: ctrl.signal
-                    });
-                    clearTimeout(timer);
-                    const muxD = await muxR.json();
-                    if (muxR.ok && muxD.url) {
-                      return res.status(200).json({
-                        url: muxD.url,
-                        quality: videoFmt.qualityLabel || '1080p',
-                        title,
-                        thumbnail,
-                        platform,
-                        provider: 'ytstream-adaptive-mux',
-                        video_itag: videoFmt.itag,
-                        audio_itag: audioFmt.itag,
-                        size: muxD.size
-                      });
-                    }
-                    hqFailures.push(`mux status ${muxR.status}: ${muxD.error || 'unknown'}`);
-                  } catch (e) {
-                    hqFailures.push('mux exception: ' + (e.name === 'AbortError' ? 'timeout 120s' : e.message));
-                  }
-                }
+              clearTimeout(timer);
+              const hqD = await hqR.json();
+              if (hqR.ok && hqD.url) {
+                return res.status(200).json({
+                  url: hqD.url,
+                  quality: hqD.quality || '1080p',
+                  title: hqD.title || title,
+                  thumbnail,
+                  platform,
+                  provider: 'youtube-hq',
+                  video_itag: hqD.video_itag,
+                  audio_itag: hqD.audio_itag,
+                  size: hqD.size
+                });
               }
+              hqFailures.push(`railway status ${hqR.status}: ${hqD.error || 'unknown'}`);
             } catch (e) {
-              hqFailures.push('ytstream exception: ' + e.message);
+              hqFailures.push('railway exception: ' + (e.name === 'AbortError' ? 'timeout 150s' : e.message));
             }
           }
 
-          // Se chegou aqui, HQ falhou. Retorna erro EXPLÍCITO em vez de cair pro fallback.
+          // HQ falhou: erro explícito
           return res.status(502).json({
             error: 'Falha ao obter HD 1080p. Tente a opção Auto.',
             hq_failures: hqFailures,
