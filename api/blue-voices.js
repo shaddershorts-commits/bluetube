@@ -110,6 +110,41 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
+  // ── GET ?action=premade-previews — metadata + preview_url dos 20 premade ─
+  // Busca as vozes premade oficiais do ElevenLabs e retorna preview_url + metadata.
+  // Frontend cacheia em localStorage com TTL de 7 dias.
+  if (req.method === 'GET' && req.query.action === 'premade-previews') {
+    if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    try {
+      // /v1/voices retorna todas as vozes da conta (premade + clonadas)
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': EL }
+      });
+      if (!r.ok) {
+        return res.status(r.status).json({ error: 'ElevenLabs API: ' + r.status });
+      }
+      const data = await r.json();
+      // Filtra só premade e só as com preview_url
+      const premade = (data.voices || [])
+        .filter(v => v.category === 'premade' && v.preview_url)
+        .map(v => ({
+          id: v.voice_id,
+          name: v.name,
+          preview_url: v.preview_url,
+          labels: v.labels || {},
+          verified_languages: v.verified_languages || [],
+          high_quality_base_model_ids: v.high_quality_base_model_ids || []
+        }));
+      return res.status(200).json({
+        voices: premade,
+        count: premade.length,
+        ts: Date.now()
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── GET ?action=library — vozes da Shared Library do ElevenLabs ───────────
   if (req.method === 'GET' && req.query.action === 'library') {
     if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });

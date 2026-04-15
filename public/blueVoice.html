@@ -465,27 +465,39 @@ if (!token) {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA — IDs verificados ElevenLabs com metadados reais ────────────
-// langCode define compatibilidade real de sotaque (pt-BR narra PT-BR sem sotaque)
-// multilingual=true para vozes treinadas em múltiplos idiomas (eleven_multilingual_v2)
+// ── VOICES DATA — 20 vozes premade oficiais ElevenLabs ─────────────────────
+// IMPORTANTE: ElevenLabs NÃO tem vozes premade nativas em PT-BR. Todas as 20
+// vozes default são inglesas (americano, britânico, australiano, etc) mas
+// TODAS são multilingual-capable — falam PT-BR, ES, FR, DE, IT, etc via
+// modelo eleven_multilingual_v2 (com o sotaque do idioma nativo da voz).
+// Pra uma voz PT-BR NATIVA sem sotaque, você precisa clonar sua própria
+// voz ou importar uma da community library.
 const VOICES = [
-  // ── PT-BR ──────────────────────────────────────────────────────────────────
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',   lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: false, desc: 'Profissional, autoridade, narração' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Carlos',   lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: false, desc: 'Voz grave, storytelling, impacto' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Alex',     lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Jovem',  style: 'Energético',   multilingual: false, desc: 'Intenso, animado, Shorts virais' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', multilingual: false, desc: 'Clara, confiante, apresentadora' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Feminino',  age: 'Jovem',  style: 'Casual',       multilingual: false, desc: 'Natural, jovem, casual' },
-  // ── ENGLISH ────────────────────────────────────────────────────────────────
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: true,  desc: 'Deep, authoritative, documentary' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Energético',   multilingual: true,  desc: 'Energetic, upbeat, social media' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       multilingual: true,  desc: 'Warm, natural, conversational' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Narração',     multilingual: true,  desc: 'Calm, versatile, professional' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: true,  desc: 'Crisp, authoritative, impactful' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',   lang: 'en', langCode: 'en-US', langLabel: 'English (US)',       flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       multilingual: true,  desc: 'Smooth, well-rounded, natural' },
-  // ── ESPAÑOL ────────────────────────────────────────────────────────────────
-  { id: 'GBv7mTt0atIp3Br8iCZy', name: 'Diego',     lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Masculino', age: 'Adulto', style: 'Casual',     multilingual: false, desc: 'Natural, neutro, versátil' },
-  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Valentina', lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Feminino',  age: 'Jovem',  style: 'Energético', multilingual: false, desc: 'Energética, jovem, redes sociais' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Dan',       lang: 'es', langCode: 'es-MX', langLabel: 'Español (México)',   flag: '🇲🇽', gender: 'Masculino', age: 'Jovem',  style: 'Casual',     multilingual: false, desc: 'Jovem, natural, conversacional' },
+  // ── AMERICAN ENGLISH ─────────────────────────────────────────────────────
+  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Expressiva',   multilingual: true, desc: 'Expressiva, versátil, redes sociais' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: true, desc: 'Confiante, autoridade, apresentação' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Jovem',  style: 'Suave',        multilingual: true, desc: 'Suave, jovem, amigável' },
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Jovem',  style: 'Energético',   multilingual: true, desc: 'Animada, upbeat, Shorts virais' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', multilingual: true, desc: 'Confiante, neutra, versátil' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       multilingual: true, desc: 'Articulado, jovem, natural' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda',  lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Casual',       multilingual: true, desc: 'Amigável, acolhedora, storytelling' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Jovem',  style: 'Casual',       multilingual: true, desc: 'Amigável, jovem, conversacional' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica',  lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Jovem',  style: 'Energético',   multilingual: true, desc: 'Popular, descolada, social media' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       multilingual: true, desc: 'Amigável, acolhedor, conversacional' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Casual',       multilingual: true, desc: 'Casual, próximo, dia a dia' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: true, desc: 'Profunda, documentário, autoridade' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Sênior', style: 'Narração',     multilingual: true, desc: 'Confiável, madura, storytelling' },
+
+  // ── BRITISH ENGLISH ──────────────────────────────────────────────────────
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',   lang: 'en', langCode: 'en-GB', langLabel: 'English (UK)', flag: '🇬🇧', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: true, desc: 'Britânica calorosa, narração clássica' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    lang: 'en', langCode: 'en-GB', langLabel: 'English (UK)', flag: '🇬🇧', gender: 'Feminino',  age: 'Adulto', style: 'Profissional', multilingual: true, desc: 'Britânica confiante, apresentação' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',   lang: 'en', langCode: 'en-GB', langLabel: 'English (UK)', flag: '🇬🇧', gender: 'Masculino', age: 'Adulto', style: 'Narração',     multilingual: true, desc: 'Britânica autoritária, BBC style' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily',     lang: 'en', langCode: 'en-GB', langLabel: 'English (UK)', flag: '🇬🇧', gender: 'Feminino',  age: 'Adulto', style: 'Casual',       multilingual: true, desc: 'Britânica calorosa, amigável' },
+
+  // ── AUSTRALIAN / OUTROS ───────────────────────────────────────────────────
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie',  lang: 'en', langCode: 'en-AU', langLabel: 'English (AU)', flag: '🇦🇺', gender: 'Masculino', age: 'Adulto', style: 'Casual',       multilingual: true, desc: 'Australiano natural, hype conversational' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum',   lang: 'en', langCode: 'en-US', langLabel: 'Transatlântico', flag: '🌍', gender: 'Masculino', age: 'Adulto', style: 'Dramático',    multilingual: true, desc: 'Intenso, dramático, thriller vibes' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte',lang: 'en', langCode: 'en-US', langLabel: 'English (sotaque sueco)', flag: '🇸🇪', gender: 'Feminino', age: 'Jovem', style: 'Sedutora', multilingual: true, desc: 'Sotaque sueco suave, misteriosa' },
 ];
 
 // Mapeamento lang do roteiro → langCode da voz compatível
@@ -554,6 +566,54 @@ function rowToVoice(v, isCommunity = false) {
     desc,
     custom: true, community: isCommunity
   };
+}
+
+// ── CARREGA PREVIEW URLS DOS PREMADE (cache 7 dias em localStorage) ─────────
+// Busca /api/blue-voices?action=premade-previews uma vez a cada 7 dias.
+// Popula VOICES[i].preview_url pra que o botão "Ouvir" toque direto da CDN
+// do ElevenLabs sem gastar TTS por request.
+async function loadPremadePreviews() {
+  const CACHE_KEY = 'bv_premade_previews_v1';
+  const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 dias
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (cached && cached.ts && (Date.now() - cached.ts) < CACHE_TTL && Array.isArray(cached.voices)) {
+      applyPreviews(cached.voices);
+      return;
+    }
+  } catch(e) {}
+
+  try {
+    const r = await fetch('/api/blue-voices?action=premade-previews');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!Array.isArray(d.voices)) return;
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), voices: d.voices }));
+    } catch(e) {}
+    applyPreviews(d.voices);
+  } catch (e) {
+    console.log('loadPremadePreviews:', e.message);
+  }
+}
+
+function applyPreviews(premadeVoices) {
+  const byId = new Map(premadeVoices.map(v => [v.id, v]));
+  let matched = 0;
+  VOICES.forEach(v => {
+    const real = byId.get(v.id);
+    if (real?.preview_url) {
+      v.preview_url = real.preview_url;
+      matched++;
+      // Se labels reais do ElevenLabs tiver info, pode sobrescrever metadata
+      // (preserva nossa categorização caso a API venha sem labels)
+      if (real.labels?.accent && !v._labelLocked) {
+        // Log apenas — não sobrescreve pra manter nossa curadoria
+      }
+    }
+  });
+  console.log(`[preview] ${matched}/${VOICES.length} vozes premade com preview_url`);
+  if (typeof renderVoices === 'function') renderVoices();
 }
 
 // ── CARREGA VOZES CUSTOMIZADAS (localStorage + Supabase) ──────────────────────
@@ -1284,6 +1344,7 @@ function showToast(msg) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 loadCustomVoices();
+loadPremadePreviews();
 updateFavCount();
 checkReady();
 
