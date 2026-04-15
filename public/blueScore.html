@@ -686,25 +686,31 @@ function calculateShortsScore(videos, channel) {
     growthScore  * 0.15 +
     consistScore * 0.10;
 
-  // ── PENALIDADES DE AUTENTICIDADE ──
-  // (A) Conversão subs/views baixa = sinal clássico de canal de recorte/compilação
+  // ── PENALIDADES DE AUTENTICIDADE (só canais pequenos <100K subs) ──
+  // Em canais grandes, "baixa conversão subs/views" e "distribuição bimodal"
+  // são padrões NATURAIS do ecossistema Shorts (algoritmo amplifica virais
+  // pontuais, views crescem mais rápido que subs porque impacta não-inscritos).
+  // Esses sinais só são fraude em canais pequenos tentando inflar números.
   const totalViews = channel?.totalViews || 0;
   const subs       = channel?.subscribers || 0;
   const subRatio   = totalViews > 0 ? (subs / totalViews) * 100 : 1;
+  const isSmallChannel = subs < 100_000;
+
+  // (A) Conversão subs/views baixa (canal de recorte/compilação)
   let conversionPenalty = 0;
   let conversionFlag = null;
-  if (totalViews > 10000) {
+  if (isSmallChannel && totalViews > 10000) {
     if (subRatio < 0.15) { conversionPenalty = 25; conversionFlag = 'conversion_very_low'; }
     else if (subRatio < 0.3) { conversionPenalty = 15; conversionFlag = 'conversion_low'; }
     else if (subRatio < 0.5) { conversionPenalty = 8;  conversionFlag = 'conversion_moderate'; }
   }
 
-  // (B) Distribuição bimodal (poucos spikes virais + muitos flops) = padrão de recorte
+  // (B) Distribuição bimodal (spike + flop = padrão de compilação)
   const sortedViewsDesc = [...v].map(x => x.views).sort((a,b) => b-a);
   const median = sortedViewsDesc[Math.floor(sortedViewsDesc.length / 2)] || 0;
   const bigs   = v.filter(x => median > 0 && x.views > median * 10).length;
   const tinys  = v.filter(x => median > 0 && x.views < median / 10).length;
-  const bimodalPenalty = (bigs >= 2 && tinys >= 2) ? 12 : 0;
+  const bimodalPenalty = (isSmallChannel && bigs >= 2 && tinys >= 2) ? 12 : 0;
   const bimodalFlag = bimodalPenalty > 0 ? 'bimodal_distribution' : null;
 
   finalScore -= (conversionPenalty + bimodalPenalty);
