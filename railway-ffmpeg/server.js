@@ -357,6 +357,71 @@ app.get('/status/:jobId', (req, res) => {
   res.json(job);
 });
 
+// ── MUX STREAMS ─────────────────────────────────────────────────────────────
+// Baixa 2 streams separados (video-only + audio-only do YouTube adaptiveFormats),
+// muxa com ffmpeg -c copy (zero re-encode, instantâneo), sobe pro Supabase.
+// Usado pro BaixaBlue HQ: auth.js extrai itag=137 (video 1080p mp4) + itag=140
+// (audio m4a) de ytstream, delega pra cá, recebe URL final muxada.
+app.post('/mux-streams', async (req, res) => {
+  const { video_url, audio_url, supabase_url, supabase_key, output_path, title } = req.body || {};
+  if (!video_url || !audio_url) return res.status(400).json({ error: 'video_url + audio_url required' });
+  if (!supabase_url || !supabase_key) return res.status(400).json({ error: 'supabase creds required' });
+
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+
+  try {
+    console.log('[mux-streams]', jobId, 'downloading...');
+    // Download paralelo dos 2 streams
+    const vFile = path.join(dir, 'video.mp4');
+    const aFile = path.join(dir, 'audio.m4a');
+    await Promise.all([
+      downloadFile(video_url, vFile),
+      downloadFile(audio_url, aFile)
+    ]);
+
+    const vStats = fs.statSync(vFile);
+    const aStats = fs.statSync(aFile);
+    console.log('[mux-streams]', jobId, 'downloaded', vStats.size, '+', aStats.size);
+
+    // Muxa com -c copy (zero re-encode, ~1-2s)
+    const output = path.join(dir, 'merged.mp4');
+    await run('ffmpeg', [
+      '-y', '-threads', '1',
+      '-i', vFile,
+      '-i', aFile,
+      '-c', 'copy',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-movflags', '+faststart',
+      output
+    ]);
+
+    const outStats = fs.statSync(output);
+    console.log('[mux-streams]', jobId, 'muxed', outStats.size);
+
+    // Upload pro Supabase
+    const finalPath = output_path || `downloads/youtube/${jobId}.mp4`;
+    const publicUrl = await uploadToSupabase(output, finalPath, supabase_url, supabase_key);
+
+    // Cleanup
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+
+    res.json({
+      ok: true,
+      url: publicUrl,
+      size: outStats.size,
+      video_size: vStats.size,
+      audio_size: aStats.size
+    });
+  } catch (err) {
+    console.error('[mux-streams]', jobId, 'failed:', err.message);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    res.status(500).json({ error: 'mux failed: ' + err.message.slice(0, 500) });
+  }
+});
+
 // ── YOUTUBE DOWNLOAD via yt-dlp ────────────────────────────────────────────
 // Baixa direto da CDN do YouTube com escolha de qualidade, muxa vídeo+áudio
 // separados quando necessário (adaptive streams), sobe pro Supabase e retorna URL.

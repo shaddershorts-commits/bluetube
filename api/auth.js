@@ -147,51 +147,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── DEBUG: dump raw ytstream response pra ver schema real ────────────────
-  if (req.method === 'GET' && req.query?.action === 'youtube-probe') {
-    const { videoId } = req.query;
-    if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
-    const rapidKey = process.env.RAPIDAPI_KEY;
-    if (!rapidKey) return res.status(400).json({ error: 'RAPIDAPI_KEY ausente' });
-    try {
-      const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
-        headers: {
-          'x-rapidapi-key': rapidKey,
-          'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
-        }
-      });
-      const data = await r.json();
-      // Sanitiza removendo URLs completas (muito longas) mas mostra o shape
-      const sanitize = (obj, depth = 0) => {
-        if (depth > 4) return '...deep';
-        if (Array.isArray(obj)) return obj.slice(0, 5).map(x => sanitize(x, depth + 1));
-        if (obj && typeof obj === 'object') {
-          const out = {};
-          for (const k of Object.keys(obj).slice(0, 20)) {
-            const v = obj[k];
-            if (k === 'url' && typeof v === 'string') { out[k] = v.slice(0, 80) + '...(' + v.length + ' chars)'; }
-            else out[k] = sanitize(v, depth + 1);
-          }
-          return out;
-        }
-        return obj;
-      };
-      return res.status(200).json({
-        status: r.status,
-        topKeys: Object.keys(data || {}),
-        hasFormats: !!data?.formats,
-        hasAdaptiveFormats: !!data?.adaptiveFormats,
-        formatsCount: Array.isArray(data?.formats) ? data.formats.length : (data?.formats ? Object.keys(data.formats).length : 0),
-        adaptiveCount: Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats.length : 0,
-        sampleFormat: Array.isArray(data?.formats) ? sanitize(data.formats[0]) : sanitize(data?.formats),
-        sampleAdaptive: Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats.slice(0, 3).map(f => sanitize(f)) : null,
-        title: data?.title
-      });
-    } catch (e) {
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
   // ── VIDEO DOWNLOAD PROXY ──────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'download') {
     const { url } = req.query;
@@ -221,6 +176,81 @@ export default async function handler(req, res) {
 
         const rapidKey = process.env.RAPIDAPI_KEY;
         const failures = [];
+
+        // ── HQ MODE: extrai video-only 1080p + audio-only do adaptiveFormats
+        // e delega pro Railway /mux-streams. Retorna URL muxada 1080p.
+        const wantHQ = req.query?.quality === 'hq' || req.query?.quality === '1080' || req.query?.quality === '1080p';
+        if (wantHQ && rapidKey) {
+          try {
+            const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+              headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com' }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              title = d.title || title;
+              const adaptive = Array.isArray(d.adaptiveFormats) ? d.adaptiveFormats : [];
+              // Video-only mp4 avc1 com maior height (prefere 1080p, fallback 720p, etc)
+              const videoOnly = adaptive
+                .filter(f => (f?.mimeType || '').includes('video/mp4') && (f?.mimeType || '').includes('avc1') && f?.url)
+                .sort((a, b) => (b.height || 0) - (a.height || 0));
+              // Audio-only mp4 aac com melhor bitrate
+              const audioOnly = adaptive
+                .filter(f => (f?.mimeType || '').includes('audio/mp4') && f?.url)
+                .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+              const videoFmt = videoOnly[0];
+              const audioFmt = audioOnly[0];
+
+              if (videoFmt && audioFmt) {
+                console.log('[BaixaBlue HQ] video itag=' + videoFmt.itag + ' ' + videoFmt.qualityLabel + ' · audio itag=' + audioFmt.itag);
+                // Delega pro Railway muxar
+                const RAILWAY = process.env.RAILWAY_FFMPEG_URL;
+                if (RAILWAY) {
+                  try {
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 120000);
+                    const muxR = await fetch(`${RAILWAY.replace(/\/$/, '')}/mux-streams`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        video_url: videoFmt.url,
+                        audio_url: audioFmt.url,
+                        supabase_url: process.env.SUPABASE_URL,
+                        supabase_key: process.env.SUPABASE_SERVICE_KEY,
+                        output_path: `downloads/youtube/${videoId}_${Date.now()}_hq.mp4`,
+                        title
+                      }),
+                      signal: ctrl.signal
+                    });
+                    clearTimeout(timer);
+                    const muxD = await muxR.json();
+                    if (muxR.ok && muxD.url) {
+                      return res.status(200).json({
+                        url: muxD.url,
+                        quality: videoFmt.qualityLabel || '1080p',
+                        title,
+                        thumbnail,
+                        platform,
+                        provider: 'ytstream-adaptive-mux',
+                        size: muxD.size
+                      });
+                    }
+                    console.error('[BaixaBlue HQ] mux failed:', muxD);
+                    failures.push('mux: ' + (muxD.error || 'unknown'));
+                  } catch (e) {
+                    console.error('[BaixaBlue HQ] mux exception:', e.message);
+                    failures.push('mux: ' + e.message);
+                  }
+                } else {
+                  failures.push('RAILWAY_FFMPEG_URL ausente (HQ desativado)');
+                }
+              } else {
+                failures.push('ytstream sem adaptive video+audio');
+              }
+            }
+          } catch (e) { failures.push('ytstream HQ: ' + e.message); }
+          // Se HQ falhou, cai pro caminho normal abaixo (não retorna ainda)
+        }
 
         // ── 1º: Cobalt próprio (instância self-hosted) ─────────────────
         const cobaltUrl = process.env.COBALT_API_URL;
