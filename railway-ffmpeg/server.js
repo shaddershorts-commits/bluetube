@@ -148,68 +148,35 @@ async function prepareInputs(dir, opts) {
 const OUT_W = 720;
 const OUT_H = 1280;
 
-// Segmenta vídeo-fonte em pedaços de cortIntervalo seg, looping se necessário
-async function buildSegments(dir, videoDur, audioDur, estilo) {
-  const cortIntervalo = Math.max(0.8, Math.min(4.0, parseFloat(estilo.corte_intervalo) || 1.8));
-  const numSegments = Math.ceil(audioDur / cortIntervalo);
-  const segmentsDir = path.join(dir, 'segments');
-  fs.mkdirSync(segmentsDir, { recursive: true });
-
-  const concatList = [];
-  for (let i = 0; i < numSegments; i++) {
-    // Loop o vídeo-fonte se a narração for mais longa
-    const srcStart = (i * cortIntervalo) % Math.max(1, videoDur - cortIntervalo);
-    const outFile = path.join(segmentsDir, `s${i}.mp4`);
-    await run('ffmpeg', [
-      '-y', '-threads', '1',
-      '-ss', String(srcStart), '-t', String(cortIntervalo),
-      '-i', path.join(dir, 'input.mp4'),
-      '-vf', `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1`,
-      '-an',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
-      '-pix_fmt', 'yuv420p',
-      outFile
-    ]);
-    concatList.push(`file '${outFile}'`);
-  }
-
-  const listFile = path.join(dir, 'concat.txt');
-  fs.writeFileSync(listFile, concatList.join('\n'));
-  return listFile;
-}
-
-// Concatena segmentos num único concat.mp4
-async function concatSegments(dir, listFile) {
-  await run('ffmpeg', [
-    '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
-    '-c', 'copy',
-    path.join(dir, 'concat.mp4')
-  ]);
-}
-
-// Render final em DOIS PASSES pra caber na RAM do Railway:
-//   Pass 1 — aplica legendas ASS sobre o concat.mp4, gera video-only (sem áudio)
-//   Pass 2 — muxa narração + música por cima, usando -c:v copy (zero re-encode de vídeo)
-// Isso reduz drasticamente a pegada de memória porque cada pass lida com só uma coisa.
-// NOTA: zoompan removido na v1 (era o primeiro suspeito, mas não era o problema principal).
-async function finalRender(dir, estilo, hasMusic, audioDur) {
+// Render em 2 passes (mesmo approach, mas SEM segmentação):
+//   Pass 1: source (com -stream_loop se mais curto que narração) + scale+crop + ass → video_only
+//   Pass 2: video_only + narração [+ música] → mux final com -c:v copy
+// A segmentação por estilo (buildSegments) foi removida — era cosmética e estava produzindo
+// bugs (duração incorreta, áudio dropado, -ss fast seek falhando em keyframes esparsos).
+async function finalRender(dir, estilo, hasMusic, audioDur, videoDur) {
   // ASS filter precisa do path com colons escapados (ffmpeg filter parser)
   const assPath = path.join(dir, 'subs.ass').replace(/\\/g, '/').replace(/:/g, '\\:');
-
-  // ── PASS 1: vídeo + legendas (sem áudio) ─────────────────────────────────
   const videoOnly = path.join(dir, 'video_only.mp4');
-  await run('ffmpeg', [
-    '-y', '-threads', '1',
-    '-i', path.join(dir, 'concat.mp4'),
-    '-vf', `ass=${assPath}`,
+
+  // ── PASS 1: source + loop se necessário + scale/crop/ass → video_only (sem áudio) ──
+  const pass1Args = ['-y', '-threads', '1'];
+  if (videoDur > 0 && videoDur < audioDur) {
+    // Source mais curto que narração → loop infinito até cobrir
+    pass1Args.push('-stream_loop', '-1');
+  }
+  pass1Args.push(
+    '-i', path.join(dir, 'input.mp4'),
+    '-t', String(audioDur),
+    '-vf', `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1,ass=${assPath}`,
     '-an',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     videoOnly
-  ]);
+  );
+  await run('ffmpeg', pass1Args);
 
-  // ── PASS 2: muxa áudio por cima do vídeo (copy vídeo, encode só áudio) ───
+  // ── PASS 2: muxa áudio por cima (copy vídeo, encode só áudio) ──
   const musicVol = typeof estilo.musica_volume === 'number' ? estilo.musica_volume : 0.18;
   const args = [
     '-y', '-threads', '1',
@@ -218,16 +185,23 @@ async function finalRender(dir, estilo, hasMusic, audioDur) {
   ];
   if (hasMusic) args.push('-i', path.join(dir, 'music.mp3'));
 
-  const filterComplex = hasMusic
-    ? `[1:a]volume=1.0[a1];[2:a]volume=${musicVol}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[a]`
-    : `[1:a]volume=1.0[a]`;
+  if (hasMusic) {
+    // Mix narração + música via filter_complex
+    args.push(
+      '-filter_complex',
+      `[1:a]volume=1.0[a1];[2:a]volume=${musicVol}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+      '-map', '0:v',
+      '-map', '[a]'
+    );
+  } else {
+    // Caso simples: map direto do áudio do input 1, sem filter_complex
+    args.push('-map', '0:v', '-map', '1:a');
+  }
 
   args.push(
-    '-filter_complex', filterComplex,
-    '-map', '0:v', '-map', '[a]',
     '-c:v', 'copy',
     '-c:a', 'aac', '-b:a', '128k',
-    '-t', String(audioDur),
+    '-shortest',
     '-movflags', '+faststart',
     path.join(dir, 'output.mp4')
   );
@@ -279,15 +253,9 @@ async function processJob(jobId, opts) {
     const assContent = buildAssSubtitles(opts.words, opts.estilo);
     fs.writeFileSync(path.join(dir, 'subs.ass'), assContent);
 
-    update('segmenting', 40);
-    const listFile = await buildSegments(dir, videoDur, audioDur, opts.estilo);
-
-    update('concatenating', 60);
-    await concatSegments(dir, listFile);
-
-    update('rendering', 75);
+    update('rendering', 50);
     const hasMusic = opts.musica_url && fs.existsSync(path.join(dir, 'music.mp3'));
-    await finalRender(dir, opts.estilo, hasMusic, audioDur);
+    await finalRender(dir, opts.estilo, hasMusic, audioDur, videoDur);
 
     update('uploading', 90);
     const outputPath = opts.output_path || `editor/${jobId}/output.mp4`;
