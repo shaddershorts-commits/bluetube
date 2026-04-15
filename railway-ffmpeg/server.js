@@ -400,19 +400,53 @@ app.get('/proxy-download', async (req, res) => {
 
   console.log('[proxy-download]', parsed.hostname, filename);
 
+  // Referer dinâmico por host — CDNs frequentemente validam isso
+  const refererFor = (h) => {
+    if (h.includes('twimg')) return 'https://twitter.com/';
+    if (h.includes('fbcdn') || h.includes('fbsbx')) return 'https://www.facebook.com/';
+    if (h.includes('redd.it') || h.includes('redditmedia')) return 'https://www.reddit.com/';
+    if (h.includes('cdninstagram') || h.includes('ig')) return 'https://www.instagram.com/';
+    if (h.includes('tokcdn') || h.includes('tiktokv') || h.includes('tiktokcdn')) return 'https://www.tiktok.com/';
+    if (h.includes('googlevideo') || h.includes('ytimg')) return 'https://www.youtube.com/';
+    return '';
+  };
+  const refererUrl = refererFor(parsed.hostname);
+
+  const reqHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'identity', // evita gzip pra streaming
+    'Range': 'bytes=0-', // alguns CDNs exigem range header pra servir video
+  };
+  if (refererUrl) {
+    reqHeaders['Referer'] = refererUrl;
+    reqHeaders['Origin'] = refererUrl.replace(/\/$/, '');
+  }
+
   try {
-    const upstream = await axios.get(target, {
+    let upstream = await axios.get(target, {
       responseType: 'stream',
       timeout: 60000,
       maxRedirects: 5,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.tiktok.com/'
-      },
+      headers: reqHeaders,
       validateStatus: () => true
     });
+
+    // Se 403 e o host é twimg/fbcdn, tenta uma segunda vez SEM o Range header
+    // (alguns CDNs do Twitter rejeitam Range inicial)
+    if (upstream.status === 403 && (parsed.hostname.includes('twimg') || parsed.hostname.includes('fbcdn'))) {
+      console.log('[proxy-download] retry sem Range pra', parsed.hostname);
+      const retryHeaders = { ...reqHeaders };
+      delete retryHeaders['Range'];
+      upstream = await axios.get(target, {
+        responseType: 'stream',
+        timeout: 60000,
+        maxRedirects: 5,
+        headers: retryHeaders,
+        validateStatus: () => true
+      });
+    }
 
     if (upstream.status >= 400) {
       res.setHeader('Access-Control-Allow-Origin', '*');
