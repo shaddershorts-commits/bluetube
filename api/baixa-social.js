@@ -24,14 +24,59 @@ module.exports = async function handler(req, res) {
     return `${RAILWAY_FFMPEG.replace(/\/$/, '')}/proxy-download?url=${encodeURIComponent(rawUrl)}&filename=BaixaBlue_${platform}_${safeName}.mp4`;
   }
 
+  // Helper: tenta Cobalt self-hosted como fonte primária. Cobalt suporta
+  // Twitter, Facebook, Reddit, TikTok, etc — geralmente mais confiável que
+  // scraping caseiro. Retorna null se falhar.
+  const COBALT_URL = process.env.COBALT_API_URL;
+  const COBALT_KEY = process.env.COBALT_API_KEY;
+  async function tryCobalt(targetUrl) {
+    if (!COBALT_URL) return null;
+    try {
+      const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+      if (COBALT_KEY) headers['Authorization'] = 'Api-Key ' + COBALT_KEY;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      const cR = await fetch(COBALT_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ url: targetUrl }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!cR.ok) return null;
+      const cD = await cR.json();
+      // Cobalt status: tunnel, redirect, picker, stream
+      let mediaUrl = null;
+      if (cD.status === 'tunnel' || cD.status === 'redirect') mediaUrl = cD.url;
+      else if (cD.status === 'picker') mediaUrl = cD.picker?.[0]?.url;
+      else if (cD.url) mediaUrl = cD.url;
+      if (!mediaUrl) return null;
+      return { url: mediaUrl, filename: cD.filename || null };
+    } catch (e) {
+      console.log('[baixa-social] Cobalt failed:', e.message);
+      return null;
+    }
+  }
+
   try {
     // ── TWITTER/X ─────────────────────────────────────────────────────────────
     if (url.includes('twitter.com') || url.includes('x.com')) {
+      // 1º: Cobalt self-hosted (mais confiável que Twitter API guest token)
+      const cobalt = await tryCobalt(url);
+      if (cobalt?.url) {
+        return res.status(200).json({
+          url: proxyWrap(cobalt.url, 'twitter', cobalt.filename || 'Twitter_X_Video'),
+          title: cobalt.filename?.replace(/\.[^.]+$/, '') || 'Twitter/X Video',
+          thumbnail: null,
+          platform: 'twitter'
+        });
+      }
+
+      // 2º: Fallback — Twitter v1.1 guest token API (pode falhar se Twitter mudar)
       const tweetMatch = url.match(/status\/(\d+)/);
       if (!tweetMatch) return res.status(400).json({ error: 'Link inválido. Use: x.com/user/status/ID' });
       const tweetId = tweetMatch[1];
 
-      // Get guest token
       let guestToken = '';
       try {
         const gt = await fetch('https://api.twitter.com/1.1/guest/activate.json', {
@@ -41,7 +86,6 @@ module.exports = async function handler(req, res) {
         guestToken = gtd.guest_token || '';
       } catch(e) {}
 
-      // Try v1.1 API with guest token
       if (guestToken) {
         try {
           const r = await fetch(`https://api.twitter.com/1.1/statuses/show/${tweetId}.json?tweet_mode=extended&include_entities=true`, {
@@ -68,19 +112,26 @@ module.exports = async function handler(req, res) {
         } catch(e) {}
       }
 
-      // Fallback: return external service link
-      return res.status(200).json({
-        url: null,
-        externalDownloader: `https://ssstwitter.com/id?id=${tweetId}`,
-        title: 'Twitter/X Video',
-        platform: 'twitter',
-        useExternal: true,
-        message: 'Clique para baixar via serviço externo'
+      // Todos falharam: erro explícito, sem fallback externo
+      return res.status(502).json({
+        error: 'Não foi possível extrair este tweet. Verifique se o link é público e tente novamente.',
+        platform: 'twitter'
       });
     }
 
     // ── REDDIT ────────────────────────────────────────────────────────────────
     if (url.includes('reddit.com') || url.includes('redd.it')) {
+      // 1º: Cobalt self-hosted
+      const cobalt = await tryCobalt(url);
+      if (cobalt?.url) {
+        return res.status(200).json({
+          url: proxyWrap(cobalt.url, 'reddit', cobalt.filename || 'Reddit_Video'),
+          title: cobalt.filename?.replace(/\.[^.]+$/, '') || 'Reddit Video',
+          thumbnail: null,
+          platform: 'reddit'
+        });
+      }
+
       let cleanUrl = url.replace(/\?.*$/, '').replace(/\/$/, '');
 
       // Follow redd.it redirects
@@ -134,19 +185,26 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Fallback: external service
-      return res.status(200).json({
-        url: null,
-        externalDownloader: `https://rapidsave.com/info?url=${encodeURIComponent(url)}`,
-        title: 'Reddit Video',
-        platform: 'reddit',
-        useExternal: true,
-        message: 'Clique para baixar via serviço externo'
+      // Todos falharam: erro explícito
+      return res.status(502).json({
+        error: 'Não foi possível extrair este post do Reddit. Verifique se o link é público.',
+        platform: 'reddit'
       });
     }
 
     // ── FACEBOOK ──────────────────────────────────────────────────────────────
     if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com')) {
+      // 1º: Cobalt self-hosted (mais confiável que scraping HTML do Facebook)
+      const cobalt = await tryCobalt(url);
+      if (cobalt?.url) {
+        return res.status(200).json({
+          url: proxyWrap(cobalt.url, 'facebook', cobalt.filename || 'Facebook_Video'),
+          title: cobalt.filename?.replace(/\.[^.]+$/, '') || 'Facebook Video',
+          thumbnail: null,
+          platform: 'facebook'
+        });
+      }
+
       let finalUrl = url;
       if (url.includes('fb.watch')) {
         try { const rd = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } }); finalUrl = rd.url; } catch(e) {}
@@ -174,14 +232,10 @@ module.exports = async function handler(req, res) {
         }
       } catch(e) {}
 
-      // Fallback: external service
-      return res.status(200).json({
-        url: null,
-        externalDownloader: `https://fdown.net/download.php?URLz=${encodeURIComponent(url)}`,
-        title: 'Facebook Video',
-        platform: 'facebook',
-        useExternal: true,
-        message: 'Clique para baixar via serviço externo'
+      // Todos falharam: erro explícito
+      return res.status(502).json({
+        error: 'Não foi possível extrair este vídeo do Facebook. Verifique se o link é público e tente novamente.',
+        platform: 'facebook'
       });
     }
 
