@@ -13,6 +13,17 @@ module.exports = async function handler(req, res) {
   const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
+  // Helper: envolve a URL de CDN no Railway /proxy-download pra permitir
+  // fetch-to-blob cross-origin no browser (CDNs como twimg, fbcdn, redd.it
+  // não mandam Access-Control-Allow-Origin).
+  const RAILWAY_FFMPEG = process.env.RAILWAY_FFMPEG_URL;
+  function proxyWrap(rawUrl, platform, title) {
+    if (!rawUrl || !RAILWAY_FFMPEG) return rawUrl;
+    if (rawUrl.includes('supabase.co')) return rawUrl; // já tem CORS
+    const safeName = (title || platform || 'video').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    return `${RAILWAY_FFMPEG.replace(/\/$/, '')}/proxy-download?url=${encodeURIComponent(rawUrl)}&filename=BaixaBlue_${platform}_${safeName}.mp4`;
+  }
+
   try {
     // ── TWITTER/X ─────────────────────────────────────────────────────────────
     if (url.includes('twitter.com') || url.includes('x.com')) {
@@ -44,9 +55,10 @@ module.exports = async function handler(req, res) {
               const mp4s = vid.video_info.variants.filter(v => v.content_type === 'video/mp4');
               mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
               if (mp4s.length > 0) {
+                const twTitle = (d.full_text || d.text || 'Twitter/X Video').slice(0, 100);
                 return res.status(200).json({
-                  url: mp4s[0].url,
-                  title: (d.full_text || d.text || 'Twitter/X Video').slice(0, 100),
+                  url: proxyWrap(mp4s[0].url, 'twitter', twTitle),
+                  title: twTitle,
                   thumbnail: vid.media_url_https || null,
                   platform: 'twitter'
                 });
@@ -94,7 +106,8 @@ module.exports = async function handler(req, res) {
             const html = await r.text();
             const fallback = html.match(/"fallback_url"\s*:\s*"([^"]+)"/);
             if (fallback) {
-              return res.status(200).json({ url: fallback[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&'), title: 'Reddit Video', platform: 'reddit' });
+              const redUrl = fallback[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
+              return res.status(200).json({ url: proxyWrap(redUrl, 'reddit', 'Reddit_Video'), title: 'Reddit Video', platform: 'reddit' });
             }
           }
         } catch(e) {}
@@ -105,16 +118,19 @@ module.exports = async function handler(req, res) {
         const thumbnail = post.thumbnail?.startsWith('http') ? post.thumbnail : null;
 
         if (post.is_video && post.media?.reddit_video?.fallback_url) {
-          return res.status(200).json({ url: post.media.reddit_video.fallback_url.replace(/\?.*$/, ''), title, thumbnail, platform: 'reddit' });
+          const u = post.media.reddit_video.fallback_url.replace(/\?.*$/, '');
+          return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
         }
         if (post.crosspost_parent_list?.[0]?.media?.reddit_video?.fallback_url) {
-          return res.status(200).json({ url: post.crosspost_parent_list[0].media.reddit_video.fallback_url.replace(/\?.*$/, ''), title, thumbnail, platform: 'reddit' });
+          const u = post.crosspost_parent_list[0].media.reddit_video.fallback_url.replace(/\?.*$/, '');
+          return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
         }
         if (post.url && (post.url.includes('.gif') || post.url.includes('gifv'))) {
-          return res.status(200).json({ url: post.url.replace('.gifv', '.mp4'), title, thumbnail, platform: 'reddit' });
+          const u = post.url.replace('.gifv', '.mp4');
+          return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
         }
         if (post.url_overridden_by_dest) {
-          return res.status(200).json({ url: post.url_overridden_by_dest, title, thumbnail, platform: 'reddit' });
+          return res.status(200).json({ url: proxyWrap(post.url_overridden_by_dest, 'reddit', title), title, thumbnail, platform: 'reddit' });
         }
       }
 
@@ -151,7 +167,8 @@ module.exports = async function handler(req, res) {
             if (m) {
               const videoUrl = m[1].replace(/\\\//g, '/').replace(/&amp;/g, '&');
               const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-              return res.status(200).json({ url: videoUrl, title: ogTitle?.[1] || 'Facebook Video', platform: 'facebook' });
+              const fbTitle = ogTitle?.[1] || 'Facebook Video';
+              return res.status(200).json({ url: proxyWrap(videoUrl, 'facebook', fbTitle), title: fbTitle, platform: 'facebook' });
             }
           }
         }
