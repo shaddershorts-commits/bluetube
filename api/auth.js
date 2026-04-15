@@ -147,6 +147,51 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── DEBUG: dump raw ytstream response pra ver schema real ────────────────
+  if (req.method === 'GET' && req.query?.action === 'youtube-probe') {
+    const { videoId } = req.query;
+    if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
+    const rapidKey = process.env.RAPIDAPI_KEY;
+    if (!rapidKey) return res.status(400).json({ error: 'RAPIDAPI_KEY ausente' });
+    try {
+      const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`, {
+        headers: {
+          'x-rapidapi-key': rapidKey,
+          'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
+        }
+      });
+      const data = await r.json();
+      // Sanitiza removendo URLs completas (muito longas) mas mostra o shape
+      const sanitize = (obj, depth = 0) => {
+        if (depth > 4) return '...deep';
+        if (Array.isArray(obj)) return obj.slice(0, 5).map(x => sanitize(x, depth + 1));
+        if (obj && typeof obj === 'object') {
+          const out = {};
+          for (const k of Object.keys(obj).slice(0, 20)) {
+            const v = obj[k];
+            if (k === 'url' && typeof v === 'string') { out[k] = v.slice(0, 80) + '...(' + v.length + ' chars)'; }
+            else out[k] = sanitize(v, depth + 1);
+          }
+          return out;
+        }
+        return obj;
+      };
+      return res.status(200).json({
+        status: r.status,
+        topKeys: Object.keys(data || {}),
+        hasFormats: !!data?.formats,
+        hasAdaptiveFormats: !!data?.adaptiveFormats,
+        formatsCount: Array.isArray(data?.formats) ? data.formats.length : (data?.formats ? Object.keys(data.formats).length : 0),
+        adaptiveCount: Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats.length : 0,
+        sampleFormat: Array.isArray(data?.formats) ? sanitize(data.formats[0]) : sanitize(data?.formats),
+        sampleAdaptive: Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats.slice(0, 3).map(f => sanitize(f)) : null,
+        title: data?.title
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── VIDEO DOWNLOAD PROXY ──────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?.action === 'download') {
     const { url } = req.query;
