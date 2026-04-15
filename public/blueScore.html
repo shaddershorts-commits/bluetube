@@ -686,6 +686,29 @@ function calculateShortsScore(videos, channel) {
     growthScore  * 0.15 +
     consistScore * 0.10;
 
+  // ── PENALIDADES DE AUTENTICIDADE ──
+  // (A) Conversão subs/views baixa = sinal clássico de canal de recorte/compilação
+  const totalViews = channel?.totalViews || 0;
+  const subs       = channel?.subscribers || 0;
+  const subRatio   = totalViews > 0 ? (subs / totalViews) * 100 : 1;
+  let conversionPenalty = 0;
+  let conversionFlag = null;
+  if (totalViews > 10000) {
+    if (subRatio < 0.15) { conversionPenalty = 25; conversionFlag = 'conversion_very_low'; }
+    else if (subRatio < 0.3) { conversionPenalty = 15; conversionFlag = 'conversion_low'; }
+    else if (subRatio < 0.5) { conversionPenalty = 8;  conversionFlag = 'conversion_moderate'; }
+  }
+
+  // (B) Distribuição bimodal (poucos spikes virais + muitos flops) = padrão de recorte
+  const sortedViewsDesc = [...v].map(x => x.views).sort((a,b) => b-a);
+  const median = sortedViewsDesc[Math.floor(sortedViewsDesc.length / 2)] || 0;
+  const bigs   = v.filter(x => median > 0 && x.views > median * 10).length;
+  const tinys  = v.filter(x => median > 0 && x.views < median / 10).length;
+  const bimodalPenalty = (bigs >= 2 && tinys >= 2) ? 12 : 0;
+  const bimodalFlag = bimodalPenalty > 0 ? 'bimodal_distribution' : null;
+
+  finalScore -= (conversionPenalty + bimodalPenalty);
+
   // ── BÔNUS ──
   // Vídeo viral (>10x a média): +5
   const maxViews   = Math.max(...v.map(x => x.views));
@@ -697,16 +720,42 @@ function calculateShortsScore(videos, channel) {
 
   finalScore += viralBonus + dailyBonus + growthBonus;
 
+  // (C) Floor por tamanho de canal — só se for canal LEGÍTIMO (sem penalidade de conversão)
+  // 12M subs é prova incontestável de qualidade que os outros sinais não capturam
+  let sizeFloor = 0;
+  let sizeFloorApplied = false;
+  if (conversionPenalty === 0) {
+    if      (subs >= 10_000_000) sizeFloor = 90;
+    else if (subs >=  5_000_000) sizeFloor = 85;
+    else if (subs >=  1_000_000) sizeFloor = 78;
+    else if (subs >=    500_000) sizeFloor = 72;
+    else if (subs >=    100_000) sizeFloor = 65;
+    if (sizeFloor > 0 && finalScore < sizeFloor) {
+      finalScore = sizeFloor;
+      sizeFloorApplied = true;
+    }
+  }
+
+  // (D) Bônus extra pra faixa Viral legítima
+  const faixa = shortsFaixa(avgViews);
+  const viralFaixaBonus = (faixa === 'Viral' && conversionPenalty === 0) ? 3 : 0;
+  finalScore += viralFaixaBonus;
+
   // NENHUMA penalização dura por views baixas — Shorts novos são naturalmente pequenos.
 
   finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
 
-  const faixa = shortsFaixa(avgViews);
   const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
   const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' }[classification];
 
   // Top 3 vídeos por views
   const topVideos = [...v].sort((a,b) => b.views - a.views).slice(0, 3);
+
+  // Risk flags enviados para a IA comentar no diagnóstico
+  const scoreRiskFlags = [];
+  if (conversionFlag) scoreRiskFlags.push({ flag: conversionFlag, severity: conversionPenalty >= 20 ? 'high' : 'medium', detail: `Conversão subs/views: ${subRatio.toFixed(3)}% (saudável é 1-5%)` });
+  if (bimodalFlag)    scoreRiskFlags.push({ flag: bimodalFlag, severity: 'high', detail: `${bigs} vídeos com spike viral e ${tinys} vídeos com performance muito baixa — padrão clássico de recorte` });
+  if (sizeFloorApplied) scoreRiskFlags.push({ flag: 'established_channel_floor', severity: 'low', detail: `Canal consolidado com ${fmtNum(subs)} inscritos — floor de qualidade aplicado` });
 
   return {
     score: finalScore,
@@ -714,7 +763,9 @@ function calculateShortsScore(videos, channel) {
     classLabel,
     isShorts: true,
     faixa,
-    bonuses: { viral: viralBonus, daily: dailyBonus, growth: growthBonus, total: viralBonus + dailyBonus + growthBonus },
+    penalties: { conversion: conversionPenalty, bimodal: bimodalPenalty, total: conversionPenalty + bimodalPenalty },
+    bonuses: { viral: viralBonus, daily: dailyBonus, growth: growthBonus, viralFaixa: viralFaixaBonus, sizeFloor: sizeFloorApplied ? sizeFloor : 0, total: viralBonus + dailyBonus + growthBonus + viralFaixaBonus },
+    scoreRiskFlags,
     pillars: {
       performance: { score: Math.round(viewsScore * 0.55 + growthScore * 0.45), desc: `Média ${fmtNum(Math.round(avgViews))} views/Short · Faixa ${faixa}` },
       risk:        { score: Math.round(engScore * 0.7 + consistScore * 0.3),    desc: `Engajamento ${avgEngRate.toFixed(2)}% · Consistência ${cv < 0.5 ? 'alta ✓' : cv < 1 ? 'média' : 'baixa ⚠'}` },
@@ -927,13 +978,21 @@ function renderResults(scoreData, channelData, videos, aiData) {
       const faixaColor = faixaColors[scoreData.faixa] || '#00aaff';
       const bonusTotal = scoreData.bonuses?.total || 0;
       const bonusParts = [];
-      if (scoreData.bonuses?.viral)  bonusParts.push('🔥 Viral +5');
-      if (scoreData.bonuses?.daily)  bonusParts.push('📅 Diário +3');
-      if (scoreData.bonuses?.growth) bonusParts.push('📈 Crescimento +5');
+      if (scoreData.bonuses?.viral)      bonusParts.push('🔥 Viral +5');
+      if (scoreData.bonuses?.daily)      bonusParts.push('📅 Diário +3');
+      if (scoreData.bonuses?.growth)     bonusParts.push('📈 Crescimento +5');
+      if (scoreData.bonuses?.viralFaixa) bonusParts.push('⭐ Faixa Viral +3');
+      if (scoreData.bonuses?.sizeFloor)  bonusParts.push(`🏆 Canal estabelecido (floor ${scoreData.bonuses.sizeFloor})`);
+      const penaltyTotal = scoreData.penalties?.total || 0;
+      const penaltyParts = [];
+      if (scoreData.penalties?.conversion) penaltyParts.push(`⚠️ Baixa conversão -${scoreData.penalties.conversion}`);
+      if (scoreData.penalties?.bimodal)    penaltyParts.push(`📊 Distribuição bimodal -${scoreData.penalties.bimodal}`);
       const badgeHtml = `<div id="shortsBadgeRow" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px">
         <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#c9b6ff">🎬 Canal de Shorts detectado</span>
         <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:${faixaColor}18;border:1px solid ${faixaColor}55;font-family:var(--mono);font-size:11px;font-weight:700;color:${faixaColor}">Faixa: ${scoreData.faixa}</span>
         ${bonusTotal > 0 ? `<span title="${bonusParts.join(' · ')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#22c55e">⭐ Bônus +${bonusTotal}</span>` : ''}
+        ${penaltyTotal > 0 ? `<span title="${penaltyParts.join(' · ')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#ef4444">⚠️ Penalidades -${penaltyTotal}</span>` : ''}
+        ${scoreData.bonuses?.sizeFloor ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#00aaff">🏆 Canal estabelecido</span>` : ''}
       </div>`;
       sc.insertAdjacentHTML('afterend', badgeHtml);
     }

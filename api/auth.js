@@ -761,9 +761,14 @@ DADOS DO CANAL PARA ANÁLISE:
 - Nome: ${channelData.title}
 - Inscritos: ${channelData.subscribers?.toLocaleString()}
 - Total de vídeos: ${channelData.videoCount}
+- Total de views do canal: ${(channelData.totalViews || 0).toLocaleString()}
 - País: ${channelData.country || 'não informado'}
 - BlueScore calculado: ${scoreData.score}/100
 - Classificação: ${scoreData.classLabel}
+${Array.isArray(scoreData.scoreRiskFlags) && scoreData.scoreRiskFlags.length ? `
+SINAIS DETECTADOS PELO ENGINE (comente estes especificamente no diagnóstico):
+${scoreData.scoreRiskFlags.map(f => `- [${f.severity?.toUpperCase() || 'INFO'}] ${f.flag}: ${f.detail}`).join('\n')}
+` : ''}
 
 MÉTRICAS CALCULADAS:
 - Média de views (últimos ${videos.length} vídeos): ${Math.round(scoreData.metrics?.avgViews || 0).toLocaleString()}
