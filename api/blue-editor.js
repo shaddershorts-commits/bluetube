@@ -140,5 +140,389 @@ module.exports = async function handler(req, res) {
     return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. \n💡 Baixe pelo BaixaBlue e envie o arquivo diretamente.' });
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NOVO PIPELINE SERVER-SIDE (Railway FFmpeg)
+  // Actions: list-estilos | prepare | generate-narration | get-music | edit | status | feedback
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+  const ANTHROPIC = process.env.ANTHROPIC_API_KEY;
+  const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+  const MUBERT = process.env.MUBERT_API_KEY;
+
+  // ── list-estilos: retorna estilos disponíveis ordenados por aprovações ────
+  if (action === 'list-estilos') {
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_estilos?select=*&order=aprovacoes.desc`, { headers: supaH });
+      if (!r.ok) return res.status(500).json({ error: 'Falha ao buscar estilos' });
+      const rows = await r.json();
+      return res.status(200).json({ estilos: rows });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── prepare: Claude Vision analisa frames do Short ────────────────────────
+  if (action === 'prepare') {
+    const vid = videoId || req.body?.videoId;
+    const url = videoUrl || req.body?.videoUrl;
+    let vidFinal = vid;
+    if (!vidFinal && url) {
+      const m = url.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+      if (m) vidFinal = m[1];
+    }
+    if (!vidFinal) return res.status(400).json({ error: 'videoId ou videoUrl obrigatório' });
+    if (!ANTHROPIC) return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade' });
+
+    try {
+      const frameUrls = [
+        'https://img.youtube.com/vi/' + vidFinal + '/maxresdefault.jpg',
+        'https://img.youtube.com/vi/' + vidFinal + '/1.jpg',
+        'https://img.youtube.com/vi/' + vidFinal + '/2.jpg',
+        'https://img.youtube.com/vi/' + vidFinal + '/3.jpg',
+      ];
+      const content = frameUrls.map(u => ({ type: 'image', source: { type: 'url', url: u } }));
+      content.push({
+        type: 'text',
+        text: 'Analise estes frames de um YouTube Short. Retorne SOMENTE JSON:\n{\n' +
+          '  "description": "descrição visual em 2-3 frases",\n' +
+          '  "niche": "nicho em 1-2 palavras (Curiosidades, Ciência, Humor, Esporte, Tecnologia, etc)",\n' +
+          '  "impactMoments": ["descrição breve do momento 1 com maior impacto visual", "momento 2", "momento 3"],\n' +
+          '  "mood": "uma das opções: suspense | curiosidade | energetico | misterioso | informativo"\n' +
+          '}'
+      });
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25000);
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 700, messages: [{ role: 'user', content }] }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!r.ok) return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade' });
+      const d = await r.json();
+      const txt = d.content?.[0]?.text || '';
+      const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
+      if (si < 0) return res.status(200).json({ description: txt.slice(0, 500), niche: '', impactMoments: [], mood: 'curiosidade' });
+      try {
+        const parsed = JSON.parse(txt.slice(si, ei + 1));
+        return res.status(200).json({
+          description: parsed.description || '',
+          niche: parsed.niche || '',
+          impactMoments: Array.isArray(parsed.impactMoments) ? parsed.impactMoments : [],
+          mood: parsed.mood || 'curiosidade'
+        });
+      } catch (e) {
+        return res.status(200).json({ description: txt.slice(0, 500), niche: '', impactMoments: [], mood: 'curiosidade' });
+      }
+    } catch (e) {
+      return res.status(200).json({ description: '', niche: '', impactMoments: [], mood: 'curiosidade', error: e.message });
+    }
+  }
+
+  // ── generate-narration: ElevenLabs MP3 → upload → Whisper word timestamps ─
+  if (action === 'generate-narration') {
+    const rot = roteiro || req.body?.roteiro;
+    const vid4 = voiceId || req.body?.voiceId;
+    if (!rot || !vid4) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
+    if (!ELABS) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    if (!OPENAI) return res.status(500).json({ error: 'OPENAI_API_KEY não configurada (precisa para Whisper)' });
+
+    try {
+      // 1) Gera MP3 via ElevenLabs
+      const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid4}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': ELABS, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+        body: JSON.stringify({
+          text: rot,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.45, similarity_boost: 0.78 }
+        })
+      });
+      if (!ttsR.ok) {
+        const et = await ttsR.text();
+        return res.status(ttsR.status).json({ error: 'ElevenLabs: ' + et.slice(0, 150) });
+      }
+      const audioBuf = Buffer.from(await ttsR.arrayBuffer());
+
+      // 2) Upload para Supabase Storage
+      const jobIdShort = Math.random().toString(36).slice(2, 10);
+      const narrPath = `editor/narrations/${userId}/${Date.now()}_${jobIdShort}.mp3`;
+      const upR = await fetch(`${SU}/storage/v1/object/blue-videos/${narrPath}`, {
+        method: 'POST',
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'audio/mpeg', 'x-upsert': 'true' },
+        body: audioBuf
+      });
+      if (!upR.ok) {
+        const et = await upR.text();
+        return res.status(500).json({ error: 'Upload narração falhou: ' + et.slice(0, 150) });
+      }
+      const audioUrl = `${SU}/storage/v1/object/public/blue-videos/${narrPath}`;
+
+      // 3) Whisper com word-level timestamps (multipart form)
+      const boundary = '----bt' + Math.random().toString(36).slice(2);
+      const parts = [];
+      const push = (name, value, filename, contentType) => {
+        let head = `--${boundary}\r\nContent-Disposition: form-data; name="${name}"`;
+        if (filename) head += `; filename="${filename}"`;
+        head += '\r\n';
+        if (contentType) head += `Content-Type: ${contentType}\r\n`;
+        head += '\r\n';
+        parts.push(Buffer.from(head, 'utf8'));
+        parts.push(typeof value === 'string' ? Buffer.from(value, 'utf8') : value);
+        parts.push(Buffer.from('\r\n', 'utf8'));
+      };
+      push('file', audioBuf, 'narration.mp3', 'audio/mpeg');
+      push('model', 'whisper-1');
+      push('response_format', 'verbose_json');
+      push('timestamp_granularities[]', 'word');
+      parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+      const body = Buffer.concat(parts);
+
+      const wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + OPENAI,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': String(body.length)
+        },
+        body
+      });
+      if (!wR.ok) {
+        const et = await wR.text();
+        console.error('[whisper]', et.slice(0, 300));
+        // Fallback: sem palavras (o pipeline ainda pode renderizar sem karaoke)
+        return res.status(200).json({ audio_url: audioUrl, words: [], warning: 'whisper_failed' });
+      }
+      const wd = await wR.json();
+      const words = (wd.words || []).map(w => ({
+        word: w.word || w.text || '',
+        start: typeof w.start === 'number' ? w.start : 0,
+        end: typeof w.end === 'number' ? w.end : 0
+      }));
+
+      return res.status(200).json({ audio_url: audioUrl, words, duration: wd.duration || null });
+    } catch (e) {
+      console.error('[generate-narration]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── get-music: tenta Mubert, senão retorna null pra frontend subir custom ─
+  if (action === 'get-music') {
+    const mood = (req.body?.mood || 'curiosidade').toLowerCase();
+    const durSec = Math.min(180, Math.max(30, parseInt(req.body?.duration || 60, 10)));
+
+    if (MUBERT) {
+      try {
+        // Mubert TTM API — retorna URL de track gerada
+        const tagMap = {
+          suspense: 'suspense,cinematic,dark',
+          curiosidade: 'ambient,curious,discovery',
+          energetico: 'upbeat,energetic,action',
+          misterioso: 'mystery,dark,ambient',
+          informativo: 'corporate,clean,focus'
+        };
+        const tags = tagMap[mood] || 'ambient,background';
+        const r = await fetch('https://api-b2b.mubert.com/v2/TTMRecordTrack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'RecordTrackTTM',
+            params: { pat: MUBERT, duration: durSec, format: 'mp3', bitrate: 128, intensity: 'low', mode: 'track', tags: tags.split(',') }
+          })
+        });
+        if (r.ok) {
+          const d = await r.json();
+          const trackUrl = d?.data?.tasks?.[0]?.download_link || d?.data?.download_link || d?.download_link;
+          if (trackUrl) return res.status(200).json({ musica_url: trackUrl, mood, provider: 'mubert' });
+        }
+      } catch (e) { console.log('[mubert]', e.message); }
+    }
+
+    // Fallback: sem música (frontend pode oferecer upload manual ou seguir sem)
+    return res.status(200).json({ musica_url: null, mood, provider: null, message: 'Música automática indisponível — o vídeo será renderizado sem background.' });
+  }
+
+  // ── edit: envia job pro Railway + persiste em editor_jobs ─────────────────
+  if (action === 'edit') {
+    const {
+      video_url, audio_url, words, estilo_id, musica_url
+    } = req.body || {};
+    if (!video_url || !audio_url || !Array.isArray(words) || !estilo_id) {
+      return res.status(400).json({ error: 'Faltam campos: video_url, audio_url, words[], estilo_id' });
+    }
+    if (!RAILWAY_FFMPEG_URL) {
+      return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL não configurada. Deploy o serviço railway-ffmpeg/ primeiro.' });
+    }
+
+    // Verifica plano Master (BlueEditor é exclusivo Master)
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Sessão inválida' });
+      const u = await uR.json();
+      if (u.email) {
+        const sR = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(u.email)}&select=plan,plan_expires_at,is_manual`, { headers: supaH });
+        if (sR.ok) {
+          const subs = await sR.json();
+          const sub = subs?.[0];
+          const planOk = sub?.plan === 'master' && (!sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date() || sub.is_manual);
+          if (!planOk) return res.status(403).json({ error: 'BlueEditor é exclusivo Master.' });
+        }
+      }
+    } catch (e) {}
+
+    // Limite 10 edições/mês
+    try {
+      const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0, 0, 0, 0);
+      const cR = await fetch(`${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&created_at=gte.${startMonth.toISOString()}&select=id`, { headers: { ...supaH, Prefer: 'count=exact' } });
+      const cd = cR.ok ? await cR.json() : [];
+      if ((cd?.length || 0) >= 10) return res.status(429).json({ error: 'Limite de 10 edições por mês atingido.' });
+    } catch (e) {}
+
+    // Busca configuração do estilo
+    let estiloConfig = null;
+    try {
+      const eR = await fetch(`${SU}/rest/v1/editor_estilos?id=eq.${estilo_id}&select=configuracoes`, { headers: supaH });
+      if (eR.ok) { const rows = await eR.json(); estiloConfig = rows?.[0]?.configuracoes || null; }
+    } catch (e) {}
+    if (!estiloConfig) return res.status(400).json({ error: 'Estilo inválido' });
+
+    // Envia job pro Railway
+    try {
+      const jobR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_url, audio_url, words, musica_url,
+          estilo: estiloConfig,
+          supabase_url: SU,
+          supabase_key: SK
+        })
+      });
+      if (!jobR.ok) {
+        const et = await jobR.text();
+        return res.status(502).json({ error: 'Railway: ' + et.slice(0, 200) });
+      }
+      const jd = await jobR.json();
+      const railwayJobId = jd.job_id;
+
+      // Persiste no editor_jobs
+      const { data: inserted } = await (async () => {
+        const r = await fetch(`${SU}/rest/v1/editor_jobs`, {
+          method: 'POST',
+          headers: { ...supaH, Prefer: 'return=representation' },
+          body: JSON.stringify({
+            user_id: userId,
+            railway_job_id: railwayJobId,
+            status: 'queued',
+            progresso: 0,
+            video_url,
+            audio_url,
+            estilo_id,
+            musica_url
+          })
+        });
+        const rows = r.ok ? await r.json() : [];
+        return { data: rows[0] };
+      })();
+
+      return res.status(200).json({ ok: true, job_id: inserted?.id, railway_job_id: railwayJobId });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── status: consulta Railway + atualiza editor_jobs ───────────────────────
+  if (action === 'status') {
+    const jobId = req.body?.job_id;
+    if (!jobId) return res.status(400).json({ error: 'job_id obrigatório' });
+    if (!RAILWAY_FFMPEG_URL) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL não configurada' });
+
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${jobId}&user_id=eq.${userId}&select=*`, { headers: supaH });
+      const rows = r.ok ? await r.json() : [];
+      const job = rows?.[0];
+      if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+
+      // Se já concluído, devolve direto
+      if (job.status === 'done' && job.output_url) {
+        return res.status(200).json({ status: 'done', progresso: 100, output_url: job.output_url });
+      }
+
+      // Pooling no Railway
+      const sR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/status/${job.railway_job_id}`);
+      if (!sR.ok) {
+        return res.status(200).json({ status: job.status, progresso: job.progresso || 0 });
+      }
+      const sd = await sR.json();
+
+      // Atualiza editor_jobs
+      const patch = {
+        status: sd.status,
+        progresso: sd.progress || 0,
+      };
+      if (sd.status === 'done' && sd.output_url) {
+        patch.output_url = sd.output_url;
+        patch.concluido_em = new Date().toISOString();
+      }
+      if (sd.status === 'error') {
+        patch.erro = sd.error || 'erro desconhecido';
+      }
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${jobId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify(patch)
+      }).catch(() => {});
+
+      return res.status(200).json({
+        status: sd.status,
+        progresso: sd.progress || 0,
+        output_url: sd.output_url || null,
+        erro: sd.error || null
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── feedback: aprovado ou ajuste ──────────────────────────────────────────
+  if (action === 'feedback') {
+    const jobId = req.body?.job_id;
+    const aprovado = !!req.body?.aprovado;
+    const comentario = (req.body?.comentario || '').slice(0, 500);
+    if (!jobId) return res.status(400).json({ error: 'job_id obrigatório' });
+
+    try {
+      // Patch do job
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${jobId}&user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({ aprovado, feedback_comentario: comentario || null })
+      });
+
+      // Se aprovado, incrementa aprovações do estilo
+      if (aprovado) {
+        const jR = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${jobId}&select=estilo_id`, { headers: supaH });
+        const jd = jR.ok ? await jR.json() : [];
+        const estiloId = jd?.[0]?.estilo_id;
+        if (estiloId) {
+          const eR = await fetch(`${SU}/rest/v1/editor_estilos?id=eq.${estiloId}&select=aprovacoes`, { headers: supaH });
+          const ed = eR.ok ? await eR.json() : [];
+          const current = ed?.[0]?.aprovacoes || 0;
+          await fetch(`${SU}/rest/v1/editor_estilos?id=eq.${estiloId}`, {
+            method: 'PATCH',
+            headers: { ...supaH, Prefer: 'return=minimal' },
+            body: JSON.stringify({ aprovacoes: current + 1 })
+          });
+        }
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Ação inválida' });
 };
