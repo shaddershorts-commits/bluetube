@@ -416,37 +416,24 @@ app.get('/proxy-download', async (req, res) => {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': '*/*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'identity', // evita gzip pra streaming
-    'Range': 'bytes=0-', // alguns CDNs exigem range header pra servir video
   };
   if (refererUrl) {
     reqHeaders['Referer'] = refererUrl;
-    reqHeaders['Origin'] = refererUrl.replace(/\/$/, '');
+    // Origin header só pra twimg (Twitter valida estrito).
+    // Outros CDNs (googlevideo, cdninstagram) rejeitam Origin cross-origin.
+    if (parsed.hostname.includes('twimg')) {
+      reqHeaders['Origin'] = refererUrl.replace(/\/$/, '');
+    }
   }
 
   try {
-    let upstream = await axios.get(target, {
+    const upstream = await axios.get(target, {
       responseType: 'stream',
       timeout: 60000,
       maxRedirects: 5,
       headers: reqHeaders,
       validateStatus: () => true
     });
-
-    // Se 403 e o host é twimg/fbcdn, tenta uma segunda vez SEM o Range header
-    // (alguns CDNs do Twitter rejeitam Range inicial)
-    if (upstream.status === 403 && (parsed.hostname.includes('twimg') || parsed.hostname.includes('fbcdn'))) {
-      console.log('[proxy-download] retry sem Range pra', parsed.hostname);
-      const retryHeaders = { ...reqHeaders };
-      delete retryHeaders['Range'];
-      upstream = await axios.get(target, {
-        responseType: 'stream',
-        timeout: 60000,
-        maxRedirects: 5,
-        headers: retryHeaders,
-        validateStatus: () => true
-      });
-    }
 
     if (upstream.status >= 400) {
       res.setHeader('Access-Control-Allow-Origin', '*');

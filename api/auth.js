@@ -606,14 +606,14 @@ export default async function handler(req, res) {
         });
       }
 
-      // Wrap URLs sem CORS no Railway /proxy-download pra permitir download
-      // direto no browser (fetch-to-blob). Plataformas afetadas:
-      // - TikTok (tokcdn sem CORS)
-      // - YouTube (googlevideo sem CORS + IP-bound; proxy tenta stream)
-      // Instagram e outros que já têm CORS passam direto.
+      // Wrap TODAS as URLs não-Supabase no Railway /proxy-download pra
+      // garantir que fetch-to-blob funcione cross-origin no browser.
+      // Plataformas afetadas (todas usam CDNs sem CORS ou com CORS parcial):
+      // - TikTok (tokcdn), YouTube (googlevideo), Instagram (cdninstagram),
+      //   Twitter (twimg), Facebook (fbcdn)
+      // Supabase URLs já têm CORS e passam direto.
       const RAILWAY_FFMPEG = process.env.RAILWAY_FFMPEG_URL;
-      const needsProxy = RAILWAY_FFMPEG && (platform === 'tiktok' || platform === 'youtube') &&
-        !downloadUrl.includes('supabase.co'); // Supabase já tem CORS
+      const needsProxy = RAILWAY_FFMPEG && !downloadUrl.includes('supabase.co');
       let finalUrl = downloadUrl;
       if (needsProxy) {
         const safeName = (title || platform).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
