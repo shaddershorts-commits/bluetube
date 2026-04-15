@@ -528,12 +528,20 @@ module.exports = async function handler(req, res) {
       }
     } catch (e) {}
 
-    // Limite 10 edições/mês
+    // Limite mensal configurável via env var EDITOR_MONTHLY_LIMIT (default 100).
+    // Conta apenas jobs concluídos com sucesso (status=done) — falhas em teste/debug
+    // não penalizam o usuário.
     try {
+      const MONTHLY_LIMIT = parseInt(process.env.EDITOR_MONTHLY_LIMIT || '100', 10);
       const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0, 0, 0, 0);
-      const cR = await fetch(`${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&created_at=gte.${startMonth.toISOString()}&select=id`, { headers: { ...supaH, Prefer: 'count=exact' } });
+      const cR = await fetch(
+        `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.done&created_at=gte.${startMonth.toISOString()}&select=id`,
+        { headers: { ...supaH, Prefer: 'count=exact' } }
+      );
       const cd = cR.ok ? await cR.json() : [];
-      if ((cd?.length || 0) >= 10) return res.status(429).json({ error: 'Limite de 10 edições por mês atingido.' });
+      if ((cd?.length || 0) >= MONTHLY_LIMIT) {
+        return res.status(429).json({ error: `Limite de ${MONTHLY_LIMIT} edições concluídas por mês atingido.` });
+      }
     } catch (e) {}
 
     // Busca configuração do estilo
