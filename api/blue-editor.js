@@ -211,39 +211,42 @@ module.exports = async function handler(req, res) {
       } catch(e) {}
     }
 
-    // Fallback 3: Cobalt self-hosted (mesma instância usada no BaixaBlue)
-    const COBALT_URL = process.env.COBALT_API_URL;
-    const COBALT_KEY = process.env.COBALT_API_KEY;
-    if (COBALT_URL) {
-      try {
-        const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
-        if (COBALT_KEY) cobaltHeaders['Authorization'] = 'Api-Key ' + COBALT_KEY;
-        const ytUrl = `https://www.youtube.com/shorts/${vid3}`;
-        console.log('[get-video-url] Trying Cobalt:', COBALT_URL);
+    // Fallback 3: delega pro /api/auth?action=download que tem a cascata COMPLETA
+    // do YouTube (Cobalt self-hosted + ytstream RapidAPI + youtube-media-downloader
+    // RapidAPI). Qualquer fix futuro no auth.js beneficia o BlueEditor automaticamente.
+    try {
+      const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      if (host) {
+        const shortUrl = `https://www.youtube.com/shorts/${vid3}`;
+        const authUrl = `${proto}://${host}/api/auth?action=download&url=${encodeURIComponent(shortUrl)}`;
+        console.log('[get-video-url] Delegando pro /api/auth?action=download');
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 20000);
-        const cR = await fetch(COBALT_URL, {
-          method: 'POST',
-          headers: cobaltHeaders,
-          body: JSON.stringify({ url: ytUrl, videoQuality: '720' }),
-          signal: ctrl.signal
-        });
+        const timer = setTimeout(() => ctrl.abort(), 25000);
+        const authR = await fetch(authUrl, { signal: ctrl.signal });
         clearTimeout(timer);
-        if (cR.ok) {
-          const cD = await cR.json();
-          console.log('[get-video-url] Cobalt response status:', cD.status);
-          let cobaltMp4 = null;
-          if (cD.status === 'redirect' || cD.status === 'tunnel') cobaltMp4 = cD.url;
-          else if (cD.status === 'picker') cobaltMp4 = cD.picker?.[0]?.url;
-          else if (cD.url) cobaltMp4 = cD.url;
-          if (cobaltMp4) return res.status(200).json({ url: cobaltMp4, quality: '720', provider: 'cobalt' });
+        if (authR.ok) {
+          const authD = await authR.json();
+          if (authD.url) {
+            return res.status(200).json({
+              url: authD.url,
+              quality: authD.quality || '?',
+              provider: 'auth-download-cascade'
+            });
+          }
+          console.log('[get-video-url] auth-download sem url:', JSON.stringify(authD).slice(0, 200));
+        } else {
+          const et = await authR.text().catch(() => '');
+          console.log('[get-video-url] auth-download HTTP', authR.status, et.slice(0, 200));
         }
-      } catch (e) {
-        console.log('[get-video-url] Cobalt falhou:', e.name === 'AbortError' ? 'timeout' : e.message);
       }
+    } catch (e) {
+      console.log('[get-video-url] auth-download falhou:', e.name === 'AbortError' ? 'timeout' : e.message);
     }
 
-    return res.status(503).json({ error: 'Não foi possível obter o link do vídeo. \n💡 Baixe pelo BaixaBlue e envie o arquivo diretamente.' });
+    return res.status(503).json({
+      error: 'Não foi possível obter o link do vídeo. \n💡 Baixe pelo BaixaBlue e envie o arquivo diretamente, ou verifique COBALT_API_URL/RAPIDAPI_KEY no Vercel.'
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
