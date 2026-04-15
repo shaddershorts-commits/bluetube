@@ -24,7 +24,7 @@
     },
     {
       "path": "/api/reactivation-emails",
-      "schedule": "0 10 * * *"
+      "schedule": "0 10 * * 3"
     },
     {
       "path": "/api/email-marketing",
