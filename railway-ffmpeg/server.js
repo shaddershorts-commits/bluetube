@@ -25,9 +25,13 @@ function run(cmd, args, opts = {}) {
     p.stdout.on('data', (d) => { stdout += d.toString(); });
     p.stderr.on('data', (d) => { stderr += d.toString(); });
     p.on('error', reject);
-    p.on('close', (code) => {
+    p.on('close', (code, signal) => {
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-800)}`));
+      else {
+        const sigPart = signal ? ` (signal=${signal})` : '';
+        const exitPart = code !== null ? ` (exit=${code})` : '';
+        reject(new Error(`${cmd} failed${exitPart}${sigPart}: ${stderr.slice(-1000)}`));
+      }
     });
   });
 }
@@ -162,15 +166,17 @@ async function concatSegments(dir, listFile) {
   ]);
 }
 
-// Render final: legendas ASS + zoompan + mux áudio + trim pela duração da narração
+// Render final: legendas ASS + mux áudio + trim pela duração da narração
+// NOTA: zoompan removido na v1 pra evitar OOM/SIGKILL no Railway tier padrão.
+// Zoom keyframed será adicionado numa v2 via abordagem mais leve.
 async function finalRender(dir, estilo, hasMusic, audioDur) {
-  const zoomInt = Math.max(0, Math.min(0.5, parseFloat(estilo.zoom_intensidade) || 0.1));
-  // zoompan aplica efeito contínuo leve (breathing effect) — simula zoom em impacto
-  // zoom: 1.0 + intensidade oscilando ao longo de 4 segundos
-  const vf = `ass=${path.join(dir, 'subs.ass').replace(/\\/g, '/').replace(/:/g, '\\:')},zoompan=z='min(zoom+${(zoomInt / 80).toFixed(5)},${(1 + zoomInt).toFixed(3)})':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30`;
+  // ASS filter precisa do path com colons escapados (ffmpeg filter parser)
+  const assPath = path.join(dir, 'subs.ass').replace(/\\/g, '/').replace(/:/g, '\\:');
+  const vf = `ass=${assPath}`;
 
   const args = [
     '-y',
+    '-threads', '1', // limita concorrência pra reduzir pressão de memória
     '-i', path.join(dir, 'concat.mp4'),
     '-i', path.join(dir, 'narration.mp3'),
   ];
@@ -179,7 +185,7 @@ async function finalRender(dir, estilo, hasMusic, audioDur) {
     args.push('-i', path.join(dir, 'music.mp3'));
   }
 
-  // Filter complex: video → ass+zoom; audio → mix narration + music (se houver)
+  // Filter complex: video → ass apenas; audio → mix narration + music (se houver)
   const musicVol = typeof estilo.musica_volume === 'number' ? estilo.musica_volume : 0.18;
   const filterComplex = hasMusic
     ? `[0:v]${vf}[v];[1:a]volume=1.0[a1];[2:a]volume=${musicVol}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[a]`
@@ -188,8 +194,8 @@ async function finalRender(dir, estilo, hasMusic, audioDur) {
   args.push(
     '-filter_complex', filterComplex,
     '-map', '[v]', '-map', '[a]',
-    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-    '-c:a', 'aac', '-b:a', '192k',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+    '-c:a', 'aac', '-b:a', '128k',
     '-t', String(audioDur),
     '-movflags', '+faststart',
     path.join(dir, 'output.mp4')
