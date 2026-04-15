@@ -111,33 +111,70 @@ module.exports = async function handler(req, res) {
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
   // ── GET ?action=premade-previews — metadata + preview_url dos 20 premade ─
-  // Busca as vozes premade oficiais do ElevenLabs e retorna preview_url + metadata.
+  // + lista curada de community voices (EXTRA_CURATED_VOICE_IDS).
   // Frontend cacheia em localStorage com TTL de 7 dias.
   if (req.method === 'GET' && req.query.action === 'premade-previews') {
     if (!EL) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+
+    // Vozes community/shared curadas manualmente (adicionadas pelo admin).
+    // Cada ID aqui é buscado via /v1/voices/{id} porque NÃO aparece em /v1/voices.
+    const EXTRA_CURATED_VOICE_IDS = [
+      'HOfBIVLhom4mc9WvXfyH', // André Lot — PT-BR masculino narração
+      '0YziWIrqiRTHCxeg1lyc', // Will — PT-BR masculino energético
+    ];
+
     try {
-      // /v1/voices retorna todas as vozes da conta (premade + clonadas)
+      // 1) /v1/voices → premade + quaisquer vozes já na conta
       const r = await fetch('https://api.elevenlabs.io/v1/voices', {
         headers: { 'xi-api-key': EL }
       });
-      if (!r.ok) {
-        return res.status(r.status).json({ error: 'ElevenLabs API: ' + r.status });
+      const allVoices = [];
+      const seen = new Set();
+
+      if (r.ok) {
+        const data = await r.json();
+        (data.voices || [])
+          .filter(v => v.category === 'premade' && v.preview_url)
+          .forEach(v => {
+            if (seen.has(v.voice_id)) return;
+            seen.add(v.voice_id);
+            allVoices.push({
+              id: v.voice_id,
+              name: v.name,
+              preview_url: v.preview_url,
+              labels: v.labels || {},
+              verified_languages: v.verified_languages || [],
+              high_quality_base_model_ids: v.high_quality_base_model_ids || []
+            });
+          });
       }
-      const data = await r.json();
-      // Filtra só premade e só as com preview_url
-      const premade = (data.voices || [])
-        .filter(v => v.category === 'premade' && v.preview_url)
-        .map(v => ({
-          id: v.voice_id,
-          name: v.name,
-          preview_url: v.preview_url,
-          labels: v.labels || {},
-          verified_languages: v.verified_languages || [],
-          high_quality_base_model_ids: v.high_quality_base_model_ids || []
-        }));
+
+      // 2) Para cada voz community curada, chama /v1/voices/{id} individual
+      for (const voiceId of EXTRA_CURATED_VOICE_IDS) {
+        if (seen.has(voiceId)) continue;
+        try {
+          const vr = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
+            headers: { 'xi-api-key': EL }
+          });
+          if (vr.ok) {
+            const vd = await vr.json();
+            allVoices.push({
+              id: vd.voice_id,
+              name: vd.name,
+              preview_url: vd.preview_url || null,
+              labels: vd.labels || {},
+              verified_languages: vd.verified_languages || [],
+              high_quality_base_model_ids: vd.high_quality_base_model_ids || [],
+              curated: true
+            });
+            seen.add(voiceId);
+          }
+        } catch (e) { /* skip */ }
+      }
+
       return res.status(200).json({
-        voices: premade,
-        count: premade.length,
+        voices: allVoices,
+        count: allVoices.length,
         ts: Date.now()
       });
     } catch (e) {

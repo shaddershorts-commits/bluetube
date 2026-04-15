@@ -465,14 +465,14 @@ if (!token) {
 const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
-// ── VOICES DATA — 20 vozes premade oficiais ElevenLabs ─────────────────────
-// IMPORTANTE: ElevenLabs NÃO tem vozes premade nativas em PT-BR. Todas as 20
-// vozes default são inglesas (americano, britânico, australiano, etc) mas
-// TODAS são multilingual-capable — falam PT-BR, ES, FR, DE, IT, etc via
-// modelo eleven_multilingual_v2 (com o sotaque do idioma nativo da voz).
-// Pra uma voz PT-BR NATIVA sem sotaque, você precisa clonar sua própria
-// voz ou importar uma da community library.
+// ── VOICES DATA — catálogo curado de vozes ElevenLabs ─────────────────────
+// Inclui 20 vozes premade oficiais (todas English-native multilingual)
+// + vozes community curadas (geralmente PT-BR nativo sem sotaque).
 const VOICES = [
+  // ── 🇧🇷 PORTUGUÊS NATIVO (community voices) ──────────────────────────────
+  { id: 'HOfBIVLhom4mc9WvXfyH', name: 'André Lot', lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Narração', multilingual: false, desc: 'Profunda e com autoridade, narração' },
+  { id: '0YziWIrqiRTHCxeg1lyc', name: 'Will',      lang: 'pt', langCode: 'pt-BR', langLabel: 'Português (Brasil)', flag: '🇧🇷', gender: 'Masculino', age: 'Adulto', style: 'Energético', multilingual: false, desc: 'Dinâmica e profunda, mídias sociais' },
+
   // ── AMERICAN ENGLISH ─────────────────────────────────────────────────────
   { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria',     lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Feminino',  age: 'Adulto', style: 'Expressiva',   multilingual: true, desc: 'Expressiva, versátil, redes sociais' },
   { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger',    lang: 'en', langCode: 'en-US', langLabel: 'English (US)', flag: '🇺🇸', gender: 'Masculino', age: 'Adulto', style: 'Profissional', multilingual: true, desc: 'Confiante, autoridade, apresentação' },
