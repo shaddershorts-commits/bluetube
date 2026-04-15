@@ -189,40 +189,59 @@ export default async function handler(req, res) {
           if (!RAILWAY) hqFailures.push('RAILWAY_FFMPEG_URL ausente');
 
           if (rapidKey && RAILWAY) {
-            try {
+            // Retry 1x em caso de 502 (cold start Railway) ou 5xx transitório
+            const callRailway = async () => {
               const ctrl = new AbortController();
-              const timer = setTimeout(() => ctrl.abort(), 150000);
-              const hqR = await fetch(`${RAILWAY.replace(/\/$/, '')}/youtube-hq`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  video_id: videoId,
-                  rapidapi_key: rapidKey,
-                  supabase_url: process.env.SUPABASE_URL,
-                  supabase_key: process.env.SUPABASE_SERVICE_KEY,
-                  output_path: `downloads/youtube/${videoId}_${Date.now()}_hq.mp4`
-                }),
-                signal: ctrl.signal
-              });
-              clearTimeout(timer);
-              const hqD = await hqR.json();
-              if (hqR.ok && hqD.url) {
-                return res.status(200).json({
-                  url: hqD.url,
-                  quality: hqD.quality || '1080p',
-                  title: hqD.title || title,
-                  thumbnail,
-                  platform,
-                  provider: 'youtube-hq',
-                  video_itag: hqD.video_itag,
-                  audio_itag: hqD.audio_itag,
-                  size: hqD.size
+              const timer = setTimeout(() => ctrl.abort(), 55000);
+              try {
+                const hqR = await fetch(`${RAILWAY.replace(/\/$/, '')}/youtube-hq`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    video_id: videoId,
+                    rapidapi_key: rapidKey,
+                    supabase_url: process.env.SUPABASE_URL,
+                    supabase_key: process.env.SUPABASE_SERVICE_KEY,
+                    output_path: `downloads/youtube/${videoId}_${Date.now()}_hq.mp4`
+                  }),
+                  signal: ctrl.signal
                 });
+                clearTimeout(timer);
+                const hqD = await hqR.json().catch(() => ({}));
+                return { status: hqR.status, body: hqD, ok: hqR.ok };
+              } catch (e) {
+                clearTimeout(timer);
+                return { status: 0, body: {}, ok: false, exception: e.name === 'AbortError' ? 'timeout 55s' : e.message };
               }
-              const hqDetail = [hqD.step && `step=${hqD.step}`, hqD.error, hqD.detail].filter(Boolean).join(' | ') || 'unknown (empty body)';
-              hqFailures.push(`railway status ${hqR.status}: ${hqDetail}`);
-            } catch (e) {
-              hqFailures.push('railway exception: ' + (e.name === 'AbortError' ? 'timeout 150s' : e.message));
+            };
+
+            let attempt = await callRailway();
+            // Retry em 502/503/504 (cold start/proxy issues) ou exception de rede
+            if (!attempt.ok && (attempt.status === 502 || attempt.status === 503 || attempt.status === 504 || attempt.exception)) {
+              console.log('[BaixaBlue HQ] retry após', attempt.status || attempt.exception);
+              await new Promise(r => setTimeout(r, 500));
+              attempt = await callRailway();
+            }
+
+            if (attempt.ok && attempt.body.url) {
+              return res.status(200).json({
+                url: attempt.body.url,
+                quality: attempt.body.quality || '1080p',
+                title: attempt.body.title || title,
+                thumbnail,
+                platform,
+                provider: 'youtube-hq',
+                video_itag: attempt.body.video_itag,
+                audio_itag: attempt.body.audio_itag,
+                size: attempt.body.size
+              });
+            }
+
+            if (attempt.exception) {
+              hqFailures.push('railway exception: ' + attempt.exception);
+            } else {
+              const hqDetail = [attempt.body.step && `step=${attempt.body.step}`, attempt.body.error, attempt.body.detail].filter(Boolean).join(' | ') || 'unknown (empty body)';
+              hqFailures.push(`railway status ${attempt.status}: ${hqDetail}`);
             }
           }
 
