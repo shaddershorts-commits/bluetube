@@ -413,6 +413,115 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 /* PWA install banner */
 .pwa-banner{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(10,22,40,.95);border:1px solid rgba(59,130,246,.3);border-radius:14px;padding:12px 20px;display:none;align-items:center;gap:10px;font-size:13px;color:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5)}
 .pwa-banner button{background:#3b82f6;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-weight:700;font-size:12px;cursor:pointer}
+
+/* ═══════════════════════════════ STORIES ═══════════════════════════════ */
+
+/* ─── Stories Bar ─── */
+#storiesBar{
+  position:fixed;top:48px;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;z-index:90;
+  background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.75));
+  padding:8px 12px 10px;
+  display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;pointer-events:auto}
+#storiesBar::-webkit-scrollbar{display:none}
+.st-item{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;cursor:pointer;scroll-snap-align:start}
+.st-ring{width:64px;height:64px;border-radius:50%;padding:2.5px;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center}
+.st-ring.seen{background:rgba(255,255,255,.15)}
+.st-ring.mine-empty{background:rgba(255,255,255,.15)}
+.st-av{width:58px;height:58px;border-radius:50%;object-fit:cover;background:#1a1a2e;
+  display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;
+  border:2px solid #000;overflow:hidden}
+.st-av img{width:100%;height:100%;object-fit:cover}
+.st-plus{position:relative}
+.st-plus-badge{position:absolute;bottom:0;right:0;width:20px;height:20px;border-radius:50%;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:2px solid #000;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.st-lbl{font-size:11px;color:#ccc;white-space:nowrap;max-width:64px;overflow:hidden;text-overflow:ellipsis;text-align:center}
+
+/* ─── Stories Viewer Fullscreen ─── */
+#stViewer{display:none;position:fixed;inset:0;z-index:500;background:#000;flex-direction:column}
+#stViewer.on{display:flex}
+.stv-progress{display:flex;gap:3px;padding:env(safe-area-inset-top,8px) 12px 8px;position:absolute;top:0;left:0;right:0;z-index:510;pointer-events:none}
+.stv-seg{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden}
+.stv-seg-fill{height:100%;background:#fff;width:0%;transition:none}
+.stv-seg.done .stv-seg-fill{width:100%}
+.stv-hd{position:absolute;top:0;left:0;right:0;z-index:509;padding:calc(env(safe-area-inset-top,8px) + 24px) 12px 8px;
+  display:flex;align-items:center;gap:10px}
+.stv-av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#1a1a2e;overflow:hidden;flex-shrink:0}
+.stv-av img{width:100%;height:100%;object-fit:cover}
+.stv-user-info{flex:1;min-width:0}
+.stv-uname{font-size:13px;font-weight:700;color:#fff}
+.stv-time{font-size:11px;color:rgba(255,255,255,.6)}
+.stv-close{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px;line-height:1;pointer-events:auto}
+.stv-media{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.stv-media img{width:100%;height:100%;object-fit:contain}
+.stv-media video{width:100%;height:100%;object-fit:contain}
+.stv-text-story{width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+  padding:32px;font-size:clamp(18px,5vw,32px);font-weight:700;text-align:center;line-height:1.4;word-break:break-word}
+.stv-tap-l,.stv-tap-r{position:absolute;top:0;bottom:0;z-index:511;cursor:pointer;background:transparent;border:none}
+.stv-tap-l{left:0;width:35%}
+.stv-tap-r{right:0;width:35%}
+.stv-footer{position:absolute;bottom:0;left:0;right:0;z-index:510;
+  padding:12px 12px max(16px,env(safe-area-inset-bottom));
+  background:linear-gradient(to top,rgba(0,0,0,.8),transparent)}
+.stv-emojis{display:flex;gap:8px;margin-bottom:10px;justify-content:center}
+.stv-emoji-btn{background:rgba(255,255,255,.1);border:none;border-radius:50%;width:40px;height:40px;
+  font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .1s}
+.stv-emoji-btn:active{transform:scale(1.3)}
+.stv-emoji-btn.picked{background:rgba(255,255,255,.3);box-shadow:0 0 0 2px #fff}
+.stv-reply-row{display:flex;gap:8px;align-items:center}
+.stv-reply-inp{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  border-radius:24px;padding:10px 16px;font-size:14px;color:#fff;outline:none;font-family:inherit}
+.stv-reply-inp::placeholder{color:rgba(255,255,255,.4)}
+.stv-reply-btn{background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;border-radius:50%;
+  width:40px;height:40px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.stv-viewers-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.stv-views-count{font-size:13px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:4px}
+.stv-del-btn{background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);border-radius:8px;
+  padding:6px 12px;color:#f87171;font-size:12px;cursor:pointer;font-family:inherit;margin-left:auto}
+
+/* ─── Story Creator Modal ─── */
+#stCreator{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);backdrop-filter:blur(12px);align-items:flex-end;justify-content:center}
+#stCreator.on{display:flex}
+.stc-box{width:100%;max-width:412px;background:#0f0f1a;border-radius:20px 20px 0 0;
+  padding:20px 20px max(32px,env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto}
+.stc-box::-webkit-scrollbar{display:none}
+.stc-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.stc-ttl{font-size:17px;font-weight:700}
+.stc-x{background:none;border:none;color:#aaa;font-size:22px;cursor:pointer}
+.stc-tabs{display:flex;gap:8px;margin-bottom:18px}
+.stc-tab{flex:1;padding:9px;border-radius:10px;border:none;font-size:13px;font-weight:600;
+  cursor:pointer;font-family:inherit;background:rgba(255,255,255,.05);color:#aaa;transition:all .2s}
+.stc-tab.on{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(139,92,246,.3));color:#fff;border:1px solid rgba(99,102,241,.4)}
+.stc-panel{display:none}
+.stc-panel.on{display:block}
+.stc-drop{border:2px dashed rgba(255,255,255,.15);border-radius:14px;padding:28px;text-align:center;
+  cursor:pointer;background:rgba(255,255,255,.02);transition:all .2s}
+.stc-drop:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.05)}
+.stc-drop-ico{font-size:36px;margin-bottom:8px}
+.stc-drop-lbl{font-size:14px;color:#aaa}
+.stc-preview{width:100%;max-height:280px;object-fit:contain;border-radius:12px;margin:12px 0;display:none}
+.stc-preview-video{width:100%;max-height:280px;border-radius:12px;margin:12px 0;display:none}
+.stc-txt-area{width:100%;min-height:120px;background:rgba(255,255,255,.06);border:1px solid #2a2a2e;
+  border-radius:12px;padding:14px;font-size:16px;color:#fff;outline:none;font-family:inherit;resize:none}
+.stc-txt-area::placeholder{color:#666}
+.stc-colors{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.stc-color-btn{width:32px;height:32px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:transform .15s}
+.stc-color-btn.picked{border-color:#fff;transform:scale(1.15)}
+.stc-txt-preview{width:100%;min-height:120px;border-radius:12px;margin:12px 0;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  font-size:20px;font-weight:700;text-align:center;word-break:break-word;line-height:1.4;color:#fff}
+.stc-pub-btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:700;
+  cursor:pointer;font-family:inherit;margin-top:16px;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;transition:opacity .2s}
+.stc-pub-btn:disabled{opacity:.5;cursor:not-allowed}
+.stc-msg{font-size:13px;text-align:center;margin-top:10px;min-height:18px}
+.stc-prog{height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:10px;display:none}
+.stc-prog-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:2px;transition:width .3s}
+
 </style>
 </head>
 <body>
@@ -451,6 +560,93 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 </div>
 <!-- PWA install banner -->
 <div class="pwa-banner" id="pwaBanner">📱 Instale o Blue como app <button onclick="installPWA()">Instalar</button> <span onclick="dismissPWA()" style="cursor:pointer;opacity:.5;font-size:18px;margin-left:4px">✕</span></div>
+
+
+<!-- ═══════════════════════════════ STORIES BAR ═══════════════════════════════ -->
+<div id="storiesBar" style="display:none"></div>
+
+<!-- ═══════════════════════════════ STORY VIEWER ═══════════════════════════════ -->
+<div id="stViewer">
+  <!-- progress segments -->
+  <div class="stv-progress" id="stvProgress"></div>
+  <!-- header -->
+  <div class="stv-hd">
+    <div class="stv-av" id="stvAv"></div>
+    <div class="stv-user-info">
+      <div class="stv-uname" id="stvUname"></div>
+      <div class="stv-time" id="stvTime"></div>
+    </div>
+    <button class="stv-close" onclick="closeStViewer()">&#x2715;</button>
+  </div>
+  <!-- media area -->
+  <div class="stv-media" id="stvMedia"></div>
+  <!-- tap zones -->
+  <button class="stv-tap-l" id="stvTapL"></button>
+  <button class="stv-tap-r" id="stvTapR"></button>
+  <!-- footer -->
+  <div class="stv-footer">
+    <div class="stv-viewers-row" id="stvViewersRow" style="display:none">
+      <span class="stv-views-count" id="stvViewsCount">&#x1F441; 0 visualizacoes</span>
+      <button class="stv-del-btn" onclick="deleteMyStory()">&#x1F5D1; Apagar</button>
+    </div>
+    <div class="stv-emojis" id="stvEmojis">
+      <button class="stv-emoji-btn" data-emoji="&#x2764;&#xFE0F;" onclick="reactStory(this,'&#x2764;&#xFE0F;')">&#x2764;&#xFE0F;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F525;" onclick="reactStory(this,'&#x1F525;')">&#x1F525;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F602;" onclick="reactStory(this,'&#x1F602;')">&#x1F602;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F62E;" onclick="reactStory(this,'&#x1F62E;')">&#x1F62E;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F622;" onclick="reactStory(this,'&#x1F622;')">&#x1F622;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F44F;" onclick="reactStory(this,'&#x1F44F;')">&#x1F44F;</button>
+      <button class="stv-emoji-btn" data-emoji="&#x1F92F;" onclick="reactStory(this,'&#x1F92F;')">&#x1F92F;</button>
+    </div>
+    <div class="stv-reply-row" id="stvReplyRow">
+      <input class="stv-reply-inp" id="stvReplyInp" placeholder="Responder..." maxlength="500"/>
+      <button class="stv-reply-btn" onclick="sendStoryReply()">&#x27A4;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ STORY CREATOR ═══════════════════════════════ -->
+<div id="stCreator">
+  <div class="stc-box">
+    <div class="stc-hd">
+      <span class="stc-ttl">&#x2728; Novo Story</span>
+      <button class="stc-x" onclick="closeStCreator()">&#x2715;</button>
+    </div>
+    <div class="stc-tabs">
+      <button class="stc-tab on" onclick="stcTab('foto')">&#x1F4F7; Foto</button>
+      <button class="stc-tab" onclick="stcTab('video')">&#x1F3AC; Video</button>
+      <button class="stc-tab" onclick="stcTab('texto')">&#x270F;&#xFE0F; Texto</button>
+    </div>
+    <!-- FOTO -->
+    <div class="stc-panel on" id="stcFotoPanel">
+      <div class="stc-drop" id="stcFotoDrop" onclick="document.getElementById('stcFotoFile').click()">
+        <div class="stc-drop-ico">&#x1F4F7;</div>
+        <div class="stc-drop-lbl">Toque para escolher foto</div>
+        <input type="file" id="stcFotoFile" accept="image/*" style="display:none" onchange="stcPickFoto(this)"/>
+      </div>
+      <img class="stc-preview" id="stcFotoPreview"/>
+    </div>
+    <!-- VIDEO -->
+    <div class="stc-panel" id="stcVideoPanel">
+      <div class="stc-drop" id="stcVideoDrop" onclick="document.getElementById('stcVideoFile').click()">
+        <div class="stc-drop-ico">&#x1F3AC;</div>
+        <div class="stc-drop-lbl">Toque para escolher video (max 60s)</div>
+        <input type="file" id="stcVideoFile" accept="video/*" style="display:none" onchange="stcPickVideo(this)"/>
+      </div>
+      <video class="stc-preview-video" id="stcVideoPreview" controls playsinline></video>
+    </div>
+    <!-- TEXTO -->
+    <div class="stc-panel" id="stcTextoPanel">
+      <textarea class="stc-txt-area" id="stcTxtArea" placeholder="Escreva algo..." maxlength="300" oninput="stcTxtUpdate()"></textarea>
+      <div class="stc-colors" id="stcColors"></div>
+      <div class="stc-txt-preview" id="stcTxtPreview">Preview</div>
+    </div>
+    <!-- Progress and Actions -->
+    <div class="stc-prog" id="stcProg"><div class="stc-prog-fill" id="stcProgFill" style="width:0%"></div></div>
+    <div class="stc-msg" id="stcMsg"></div>
+    <button class="stc-pub-btn" id="stcPubBtn" onclick="publishStory()">Publicar Story</button>
+  </div>
+</div>
 
 <div id="feed"></div>
 
@@ -1875,8 +2071,543 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeComments();closeUpload();closeDotsMenu();document.getElementById('editProfileOv').classList.remove('on');document.getElementById('editVideoOv').classList.remove('on');}
 });
 
+
+/* =======================================================================
+   STORIES FEATURE -- Commit 2 (Frontend)
+   ======================================================================= */
+
+/* --- State --- */
+let _stFeed = null;
+let _stViewerUser = null;
+let _stViewerIdx = 0;
+let _stUserList = [];
+let _stUserListIdx = 0;
+let _stAnimFrame = null;
+let _stPaused = false;
+let _stCurrentStoryId = null;
+let _stMyUserId = null;
+let _stSelectedColor = '#020817';
+let _stCurrentTab = 'foto';
+let _stFotoFile = null;
+let _stVideoFile = null;
+let _stVideoDuration = 5;
+let _stRealtimeCh = null;
+
+const STC_COLORS = ['#020817','#0f172a','#1e3a5f','#0d1117','#1a0a2e','#0d260d','#2d0a0a','#1a1a0d'];
+
+async function loadStories(){
+  const tok = getValidToken();
+  if(!tok){ document.getElementById('storiesBar').style.display='none'; return; }
+  try{
+    const r = await fetch('/api/blue-stories?action=feed&token='+encodeURIComponent(tok));
+    if(!r.ok) return;
+    const data = await r.json();
+    _stFeed = data;
+    _stMyUserId = null;
+    if(data.meu && data.meu.user_id) _stMyUserId = data.meu.user_id;
+    renderStoriesBar(data);
+  }catch(e){ console.warn('[stories]',e.message); }
+}
+
+function renderStoriesBar(data){
+  const bar = document.getElementById('storiesBar');
+  if(!bar) return;
+  const meu = data.meu;
+  const users = data.users || [];
+  const hasMyStory = meu && meu.stories_count > 0;
+  const myRingClass = hasMyStory ? 'st-ring' : 'st-ring mine-empty';
+  const myAvHtml = _buildAvHtml(meu&&meu.avatar_url, meu&&meu.username||'Eu', 58);
+  let html = '<div class="st-item st-plus" onclick="'+(hasMyStory?'openStViewerByUser(window._stMyUserId)':'openStCreator()')+'" title="Seu story">'
+    + '<div class="'+myRingClass+'">'
+    + '<div class="st-av">'+myAvHtml+'</div>'
+    + '</div>'
+    + (!hasMyStory ? '<div class="st-plus-badge">+</div>' : '')
+    + '<span class="st-lbl">Voce</span>'
+    + '</div>';
+  for(const u of users){
+    const seen = !u.tem_nao_visto;
+    const ringCls = seen ? 'st-ring seen' : 'st-ring';
+    const avHtml = _buildAvHtml(u.avatar_url, u.username, 58);
+    html += '<div class="st-item" onclick="openStViewerByUser(\'' + u.user_id + '\')" title="'+esc(u.display_name||u.username||'user')+'">'
+      + '<div class="'+ringCls+'">'
+      + '<div class="st-av">'+avHtml+'</div>'
+      + '</div>'
+      + '<span class="st-lbl">'+esc(u.display_name||u.username||'user')+'</span>'
+      + '</div>';
+  }
+  bar.innerHTML = html;
+  bar.style.display = 'flex';
+  _adjustFeedForStories(true);
+}
+
+function _buildAvHtml(url, name, size){
+  if(url) return '<img src="'+esc(url)+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover"/>';
+  const ch = (name||'?').charAt(0).toUpperCase();
+  return '<span style="color:#fff;font-weight:700;font-size:'+Math.round(size*0.36)+'px">'+ch+'</span>';
+}
+
+function _adjustFeedForStories(show){
+  const feed = document.getElementById('feed');
+  if(!feed) return;
+  const ptop = show ? '138px' : '0px';
+  feed.style.paddingTop = ptop;
+  const empty = document.getElementById('empty');
+  if(empty) empty.style.paddingTop = ptop;
+}
+
+function openStViewerByUser(uid){
+  if(!_stFeed) return;
+  const allUsers = [];
+  if(_stFeed.meu && _stFeed.meu.stories_count > 0) allUsers.push(_stFeed.meu);
+  allUsers.push(...(_stFeed.users||[]));
+  const uidx = allUsers.findIndex(u => u.user_id === uid);
+  if(uidx < 0) return;
+  openStViewer(allUsers, uidx);
+}
+
+function openStViewer(userList, startIdx){
+  if(!userList || !userList.length) return;
+  _stUserList = userList;
+  _stUserListIdx = startIdx || 0;
+  _stViewerUser = _stUserList[_stUserListIdx];
+  _stViewerIdx = 0;
+  const viewer = document.getElementById('stViewer');
+  viewer.classList.add('on');
+  document.body.style.overflow = 'hidden';
+  _renderCurrentStory();
+  _setupViewerGestures();
+  _subscribeStoryReactions();
+}
+
+async function _renderCurrentStory(){
+  _clearStTimer();
+  const user = _stViewerUser;
+  const story = user&&user.stories&&user.stories[_stViewerIdx];
+  if(!story){ _stNextUser(); return; }
+  _stCurrentStoryId = story.id;
+  const progEl = document.getElementById('stvProgress');
+  const total = user.stories.length;
+  let segs = '';
+  for(let i=0;i<total;i++){
+    segs += '<div class="stv-seg'+(i<_stViewerIdx?' done':'')+'" id="stvseg'+i+'"><div class="stv-seg-fill" id="stvsegf'+i+'"></div></div>';
+  }
+  progEl.innerHTML = segs;
+  const avEl = document.getElementById('stvAv');
+  avEl.innerHTML = _buildAvHtml(user.avatar_url, user.username, 36);
+  document.getElementById('stvUname').textContent = user.display_name || user.username || 'user';
+  document.getElementById('stvTime').textContent = ago(story.created_at);
+  const mediaEl = document.getElementById('stvMedia');
+  mediaEl.innerHTML = '';
+  if(story.tipo === 'imagem'){
+    const img = document.createElement('img');
+    img.src = story.media_url;
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+    mediaEl.appendChild(img);
+  } else if(story.tipo === 'video'){
+    const vid = document.createElement('video');
+    vid.src = story.media_url;
+    vid.autoplay = true; vid.playsInline = true; vid.loop = false; vid.muted = false;
+    vid.style.cssText = 'width:100%;height:100%;object-fit:contain';
+    vid.onloadedmetadata = function(){ _stVideoDuration = Math.ceil(vid.duration)||15; };
+    mediaEl.appendChild(vid);
+  } else if(story.tipo === 'texto'){
+    const d = document.createElement('div');
+    d.className = 'stv-text-story';
+    d.style.background = story.cor_fundo || '#020817';
+    d.style.color = '#fff';
+    d.textContent = story.texto || '';
+    mediaEl.appendChild(d);
+  }
+  const isOwner = _stMyUserId && (user.user_id === _stMyUserId);
+  const viewersRow = document.getElementById('stvViewersRow');
+  const emojisEl = document.getElementById('stvEmojis');
+  const replyRow = document.getElementById('stvReplyRow');
+  if(isOwner){
+    viewersRow.style.display = 'flex';
+    emojisEl.style.display = 'none';
+    replyRow.style.display = 'none';
+    document.getElementById('stvViewsCount').textContent = '&#x1F441; ...';
+  } else {
+    viewersRow.style.display = 'none';
+    emojisEl.style.display = 'flex';
+    replyRow.style.display = 'flex';
+    document.querySelectorAll('.stv-emoji-btn').forEach(function(b){ b.classList.remove('picked'); });
+    document.getElementById('stvReplyInp').value = '';
+  }
+  document.getElementById('stViewer').style.background = story.tipo === 'texto' ? (story.cor_fundo||'#020817') : '#000';
+  try{
+    const tok = getValidToken();
+    if(tok){
+      const r = await fetch('/api/blue-stories?action=ver&story_id='+story.id+'&token='+encodeURIComponent(tok));
+      if(r.ok){
+        const d = await r.json();
+        if(isOwner){
+          const cnt = d.visualizacoes||0;
+          document.getElementById('stvViewsCount').textContent = '&#x1F441; '+cnt+' visualiza'+(cnt===1?'cao':'coes');
+        } else if(d.minha_reacao){
+          const btn = document.querySelector('.stv-emoji-btn[data-emoji="'+d.minha_reacao+'"]');
+          if(btn) btn.classList.add('picked');
+        }
+      }
+    }
+  }catch(e){}
+  const dur = ((story.tipo === 'video') ? (story.duracao||15) : (story.duracao||5)) * 1000;
+  _stStartTimer(dur);
+}
+
+function _stStartTimer(durationMs){
+  _clearStTimer();
+  _stPaused = false;
+  const segFill = document.getElementById('stvsegf'+_stViewerIdx);
+  if(!segFill) return;
+  const start = performance.now();
+  function tick(now){
+    if(_stPaused){ _stAnimFrame = requestAnimationFrame(tick); return; }
+    const elapsed = now - start;
+    const pct = Math.min(100, (elapsed / durationMs) * 100);
+    segFill.style.width = pct + '%';
+    if(pct >= 100){ _stNext(); return; }
+    _stAnimFrame = requestAnimationFrame(tick);
+  }
+  _stAnimFrame = requestAnimationFrame(tick);
+}
+
+function _clearStTimer(){
+  if(_stAnimFrame){ cancelAnimationFrame(_stAnimFrame); _stAnimFrame=null; }
+  const vid = document.querySelector('#stvMedia video');
+  if(vid) vid.pause();
+}
+
+function _stNext(){
+  _clearStTimer();
+  const user = _stViewerUser;
+  if(!user) return;
+  if(_stViewerIdx < user.stories.length - 1){
+    _stViewerIdx++;
+    _renderCurrentStory();
+  } else {
+    _stNextUser();
+  }
+}
+
+function _stPrev(){
+  _clearStTimer();
+  if(_stViewerIdx > 0){
+    _stViewerIdx--;
+    _renderCurrentStory();
+  } else if(_stUserListIdx > 0){
+    _stUserListIdx--;
+    _stViewerUser = _stUserList[_stUserListIdx];
+    _stViewerIdx = Math.max(0, (_stViewerUser.stories||[]).length - 1);
+    _renderCurrentStory();
+  }
+}
+
+function _stNextUser(){
+  _clearStTimer();
+  if(_stUserListIdx < _stUserList.length - 1){
+    _stUserListIdx++;
+    _stViewerUser = _stUserList[_stUserListIdx];
+    _stViewerIdx = 0;
+    _renderCurrentStory();
+  } else {
+    closeStViewer();
+  }
+}
+
+function closeStViewer(){
+  _clearStTimer();
+  const viewer = document.getElementById('stViewer');
+  viewer.classList.remove('on');
+  document.body.style.overflow = '';
+  const vid = document.querySelector('#stvMedia video');
+  if(vid) vid.pause();
+  document.getElementById('stvMedia').innerHTML = '';
+  _stCurrentStoryId = null;
+  if(_stRealtimeCh){ try{ _stRealtimeCh.unsubscribe(); }catch(e){} _stRealtimeCh=null; }
+}
+
+function _setupViewerGestures(){
+  const viewer = document.getElementById('stViewer');
+  const tapL = document.getElementById('stvTapL');
+  const tapR = document.getElementById('stvTapR');
+  tapL.onclick = function(){ _stPrev(); };
+  tapR.onclick = function(){ _stNext(); };
+  let holdT = null;
+  function startHold(){ holdT = setTimeout(function(){ _stPaused = true; }, 150); }
+  function endHold(){ clearTimeout(holdT); _stPaused = false; }
+  [tapL, tapR].forEach(function(el){
+    el.addEventListener('touchstart', startHold, {passive:true});
+    el.addEventListener('touchend', endHold, {passive:true});
+    el.addEventListener('mousedown', startHold);
+    el.addEventListener('mouseup', endHold);
+  });
+  let touchStartY = 0;
+  viewer.addEventListener('touchstart', function(e){ touchStartY = e.touches[0].clientY; }, {passive:true});
+  viewer.addEventListener('touchend', function(e){
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if(dy > 80) closeStViewer();
+  }, {passive:true});
+}
+
+async function reactStory(btn, emoji){
+  const storyId = _stCurrentStoryId;
+  if(!storyId) return;
+  const tok = getValidToken();
+  if(!tok) return;
+  const allBtns = document.querySelectorAll('.stv-emoji-btn');
+  const alreadyPicked = btn.classList.contains('picked');
+  allBtns.forEach(function(b){ b.classList.remove('picked'); });
+  if(!alreadyPicked) btn.classList.add('picked');
+  try{
+    await fetch('/api/blue-stories?action=reagir', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token:tok, story_id:storyId, emoji:emoji})
+    });
+  }catch(e){}
+}
+
+async function sendStoryReply(){
+  const storyId = _stCurrentStoryId;
+  const inp = document.getElementById('stvReplyInp');
+  const msg = inp.value.trim();
+  if(!storyId || !msg) return;
+  const tok = getValidToken();
+  if(!tok) return;
+  const btn = document.querySelector('.stv-reply-btn');
+  if(btn) btn.disabled = true;
+  try{
+    const r = await fetch('/api/blue-stories?action=reply', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token:tok, story_id:storyId, mensagem:msg})
+    });
+    if(r.ok){ inp.value=''; toast('Resposta enviada'); }
+    else { const d=await r.json(); toast(d.error||'Erro ao enviar'); }
+  }catch(e){ toast('Erro: '+e.message); }
+  if(btn) btn.disabled = false;
+}
+
+async function deleteMyStory(){
+  const storyId = _stCurrentStoryId;
+  if(!storyId) return;
+  const tok = getValidToken();
+  if(!tok) return;
+  if(!confirm('Apagar este story?')) return;
+  try{
+    const r = await fetch('/api/blue-stories?action=deletar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token:tok, story_id:storyId})
+    });
+    if(r.ok){ toast('Story apagado'); _stNext(); loadStories(); }
+    else { const d=await r.json(); toast(d.error||'Erro'); }
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+function openStCreator(){
+  const el = document.getElementById('stCreator');
+  el.classList.add('on');
+  const colorsEl = document.getElementById('stcColors');
+  if(colorsEl && !colorsEl.children.length){
+    colorsEl.innerHTML = STC_COLORS.map(function(c){
+      return '<div class="stc-color-btn'+(c===_stSelectedColor?' picked':'')+'" style="background:'+c+';width:32px;height:32px;border-radius:50%;cursor:pointer" onclick="stcPickColor(\'' + c + '\')"></div>';
+    }).join('');
+  }
+  stcTab('foto');
+}
+
+function closeStCreator(){
+  document.getElementById('stCreator').classList.remove('on');
+  document.getElementById('stcFotoPreview').style.display='none';
+  document.getElementById('stcVideoPreview').style.display='none';
+  document.getElementById('stcMsg').textContent='';
+  document.getElementById('stcProg').style.display='none';
+  document.getElementById('stcProgFill').style.width='0%';
+  _stFotoFile = null; _stVideoFile = null;
+}
+
+function stcTab(tab){
+  _stCurrentTab = tab;
+  document.querySelectorAll('.stc-tab').forEach(function(b){
+    const m = b.getAttribute('onclick')&&b.getAttribute('onclick').match(/stcTab.'(\w+)'./);
+    if(m) b.classList.toggle('on', m[1] === tab);
+  });
+  document.getElementById('stcFotoPanel').classList.toggle('on', tab==='foto');
+  document.getElementById('stcVideoPanel').classList.toggle('on', tab==='video');
+  document.getElementById('stcTextoPanel').classList.toggle('on', tab==='texto');
+  if(tab==='texto') stcTxtUpdate();
+}
+
+function stcPickFoto(input){
+  const f = input.files[0];
+  if(!f) return;
+  if(!f.type.startsWith('image/')){ toast('Escolha uma imagem'); return; }
+  _stFotoFile = f;
+  const prev = document.getElementById('stcFotoPreview');
+  prev.src = URL.createObjectURL(f);
+  prev.style.display = 'block';
+}
+
+function stcPickVideo(input){
+  const f = input.files[0];
+  if(!f) return;
+  if(!f.type.startsWith('video/')){ toast('Escolha um video'); return; }
+  _stVideoFile = f;
+  const prev = document.getElementById('stcVideoPreview');
+  prev.src = URL.createObjectURL(f);
+  prev.style.display = 'block';
+  prev.onloadedmetadata = function(){
+    _stVideoDuration = Math.ceil(prev.duration)||15;
+    if(_stVideoDuration > 60){ toast('Video muito longo (max 60s)'); _stVideoFile=null; prev.style.display='none'; }
+  };
+}
+
+function stcTxtUpdate(){
+  const txt = document.getElementById('stcTxtArea').value;
+  const prev = document.getElementById('stcTxtPreview');
+  if(prev){
+    prev.textContent = txt || 'Preview';
+    prev.style.background = _stSelectedColor;
+  }
+}
+
+function stcPickColor(color){
+  _stSelectedColor = color;
+  document.querySelectorAll('.stc-color-btn').forEach(function(b){
+    const onclick = b.getAttribute('onclick')||'';
+    b.classList.toggle('picked', onclick.indexOf(color) >= 0);
+  });
+  stcTxtUpdate();
+}
+
+async function publishStory(){
+  const tok = getValidToken();
+  if(!tok){ toast('Login necessario'); return; }
+  const btn = document.getElementById('stcPubBtn');
+  const msgEl = document.getElementById('stcMsg');
+  const prog = document.getElementById('stcProg');
+  const fill = document.getElementById('stcProgFill');
+  btn.disabled = true;
+  msgEl.textContent = '';
+  try{
+    if(_stCurrentTab === 'texto'){
+      const texto = document.getElementById('stcTxtArea').value.trim();
+      if(!texto){ toast('Escreva algo'); btn.disabled=false; return; }
+      msgEl.textContent = 'Publicando...';
+      const r = await fetch('/api/blue-stories?action=criar', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({token:tok, tipo:'texto', texto:texto, cor_fundo:_stSelectedColor, duracao:4})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Erro');
+      msgEl.textContent = 'Story publicado!';
+      msgEl.style.color = '#4ade80';
+      setTimeout(function(){ closeStCreator(); loadStories(); }, 1200);
+    } else {
+      const isVideo = _stCurrentTab === 'video';
+      const file = isVideo ? _stVideoFile : _stFotoFile;
+      if(!file){ toast('Escolha um arquivo'); btn.disabled=false; return; }
+      msgEl.textContent = 'Fazendo upload...';
+      prog.style.display = 'block';
+      const ext = (file.name.split('.').pop()||'').toLowerCase() || (isVideo?'mp4':'jpg');
+      const fname = Date.now()+'.'+ext;
+      const upR = await fetch('/api/blue-stories?action=criar', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          token: tok, tipo: isVideo?'video':'imagem',
+          media_url: '__PENDING__',
+          duracao: isVideo ? Math.min(60, _stVideoDuration) : 5,
+          _upload_filename: fname,
+          _upload_content_type: file.type,
+          _upload_file_size: file.size
+        })
+      });
+      const upData = await upR.json();
+      if(upData.upload_url){
+        await new Promise(function(res,rej){
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', upData.upload_url);
+          xhr.setRequestHeader('Content-Type', file.type);
+          xhr.setRequestHeader('x-upsert', 'true');
+          xhr.upload.onprogress = function(e){ if(e.lengthComputable) fill.style.width=Math.round(e.loaded/e.total*80)+'%'; };
+          xhr.onload = function(){ xhr.status<300 ? res() : rej(new Error('Upload '+xhr.status)); };
+          xhr.onerror = function(){ rej(new Error('Erro de rede')); };
+          xhr.send(file);
+        });
+        fill.style.width='90%';
+        const saveR = await fetch('/api/blue-stories?action=criar', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({token:tok, tipo:isVideo?'video':'imagem', media_url:upData.public_url, duracao:isVideo?Math.min(60,_stVideoDuration):5})
+        });
+        const saveD = await saveR.json();
+        if(!saveR.ok) throw new Error(saveD.error||'Erro ao salvar');
+        fill.style.width='100%';
+        msgEl.textContent = 'Story publicado!'; msgEl.style.color='#4ade80';
+        setTimeout(function(){ closeStCreator(); loadStories(); }, 1200);
+      } else if(upData.supabase_url && upData.anon_key){
+        const path = 'stories/'+tok.substring(0,8)+'/'+fname;
+        const storageUrl = upData.supabase_url+'/storage/v1/object/blue-stories/'+path;
+        await new Promise(function(res,rej){
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', storageUrl);
+          xhr.setRequestHeader('Authorization','Bearer '+upData.anon_key);
+          xhr.setRequestHeader('x-upsert','true');
+          const fd = new FormData();
+          fd.append('', file, fname);
+          xhr.upload.onprogress = function(e){ if(e.lengthComputable) fill.style.width=Math.round(e.loaded/e.total*80)+'%'; };
+          xhr.onload = function(){ xhr.status<300 ? res() : rej(new Error('Upload '+xhr.status)); };
+          xhr.onerror = function(){ rej(new Error('Erro de rede')); };
+          xhr.send(fd);
+        });
+        fill.style.width='90%';
+        const publicUrl = upData.supabase_url+'/storage/v1/object/public/blue-stories/'+path;
+        const saveR = await fetch('/api/blue-stories?action=criar', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({token:tok, tipo:isVideo?'video':'imagem', media_url:publicUrl, duracao:isVideo?Math.min(60,_stVideoDuration):5})
+        });
+        const saveD = await saveR.json();
+        if(!saveR.ok) throw new Error(saveD.error||'Erro ao salvar');
+        fill.style.width='100%';
+        msgEl.textContent = 'Story publicado!'; msgEl.style.color='#4ade80';
+        setTimeout(function(){ closeStCreator(); loadStories(); }, 1200);
+      } else {
+        fill.style.width='100%';
+        if(upData.ok){ msgEl.textContent='Story publicado!'; msgEl.style.color='#4ade80'; setTimeout(function(){ closeStCreator(); loadStories(); },1200); }
+        else throw new Error(upData.error || 'Backend nao suporta upload de midia');
+      }
+    }
+  }catch(e){
+    msgEl.textContent = 'Erro: '+e.message; msgEl.style.color='#f87171';
+    btn.disabled = false;
+  }
+}
+
+function _subscribeStoryReactions(){
+  if(typeof window.supabase === 'undefined' || !window.supabase || !window.supabase.channel) return;
+  const storyId = _stCurrentStoryId;
+  if(!storyId) return;
+  try{
+    _stRealtimeCh = window.supabase
+      .channel('st-react-'+storyId)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'blue_story_reacoes',filter:'story_id=eq.'+storyId},
+        function(){
+          const isOwner = _stMyUserId && (_stViewerUser&&_stViewerUser.user_id === _stMyUserId);
+          if(isOwner && document.getElementById('stvViewsCount')){
+            fetch('/api/blue-stories?action=ver&story_id='+storyId+'&token='+encodeURIComponent(getValidToken()||''))
+              .then(function(r){ return r.ok?r.json():null; })
+              .then(function(d){
+                if(!d) return;
+                const cnt = d.visualizacoes||0;
+                document.getElementById('stvViewsCount').textContent='&#x1F441; '+cnt+' visualiza'+(cnt===1?'cao':'coes');
+              }).catch(function(){});
+          }
+        })
+      .subscribe();
+  }catch(e){ console.warn('[stories rt]',e.message); }
+}
+
 loadFeed();
 initAuth();
+loadStories();
 loadFollowingList().then(()=>{
   // Após carregar lista de seguidos, re-ordena feed sem refetch
   if(_followingIds.length>0 && videos.length>0){
