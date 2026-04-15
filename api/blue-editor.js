@@ -17,6 +17,56 @@ module.exports = async function handler(req, res) {
 
   const { action, token, videoUrl, videoId, voiceId, roteiro, lang, musicId } = req.body || {};
 
+  // ── yt-download: baixa YouTube via yt-dlp no Railway com qualidade escolhida ──
+  // Fluxo: browser POST com {youtube_url, quality} → Vercel → Railway /download-youtube
+  // → yt-dlp baixa da CDN direto + muxa → Supabase Storage → public URL de volta
+  // Resolve o problema de qualidade do ytstream (que só entrega itag=18 combinado).
+  if (action === 'yt-download') {
+    if (!token) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+    } catch (e) { return res.status(401).json({ error: e.message }); }
+
+    const RAILWAY_URL = process.env.RAILWAY_FFMPEG_URL;
+    if (!RAILWAY_URL) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL não configurada' });
+
+    const youtubeUrl = req.body?.youtube_url;
+    const quality = req.body?.quality || '720';
+    if (!youtubeUrl) return res.status(400).json({ error: 'youtube_url obrigatório' });
+
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 180000); // 3 min (yt-dlp pode ser lento em vídeos longos)
+      const r = await fetch(`${RAILWAY_URL.replace(/\/$/, '')}/download-youtube`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          youtube_url: youtubeUrl,
+          quality,
+          supabase_url: SU,
+          supabase_key: SK
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      const d = await r.json();
+      if (!r.ok || !d.url) {
+        return res.status(r.status || 502).json({ error: d.error || 'yt-dlp falhou', detail: d });
+      }
+      return res.status(200).json({
+        ok: true,
+        url: d.url,
+        path: d.path,
+        size: d.size,
+        quality: d.quality_requested,
+        provider: 'yt-dlp'
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.name === 'AbortError' ? 'yt-dlp timeout (3min)' : e.message });
+    }
+  }
+
   // ── get-upload-url: gera signed URL do Supabase Storage pra upload direto ──
   // Fluxo: browser POST aqui → recebe upload_url + public_url → PUT arquivo no
   // upload_url → usa public_url como video_url no action=edit. Sem body parsing

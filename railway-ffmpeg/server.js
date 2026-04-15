@@ -344,6 +344,79 @@ app.get('/status/:jobId', (req, res) => {
   res.json(job);
 });
 
+// ── YOUTUBE DOWNLOAD via yt-dlp ────────────────────────────────────────────
+// Baixa direto da CDN do YouTube com escolha de qualidade, muxa vídeo+áudio
+// separados quando necessário (adaptive streams), sobe pro Supabase e retorna URL.
+app.post('/download-youtube', async (req, res) => {
+  const { youtube_url, quality, supabase_url, supabase_key, output_path } = req.body || {};
+  if (!youtube_url) return res.status(400).json({ error: 'youtube_url required' });
+  if (!supabase_url || !supabase_key) return res.status(400).json({ error: 'supabase creds required' });
+
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+
+  // Mapeia quality → format selector yt-dlp
+  // bv = best video, ba = best audio, [filters]
+  const q = String(quality || '720');
+  let format;
+  if (q === 'max' || q === 'best' || q === '1080') {
+    format = 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/bv+ba/b';
+  } else if (q === '720') {
+    format = 'bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv+ba/b';
+  } else if (q === '480') {
+    format = 'bv*[ext=mp4][height<=480]+ba[ext=m4a]/bv*[height<=480]+ba/b[height<=480]/bv+ba/b';
+  } else {
+    format = 'bv*+ba/b';
+  }
+
+  const outputFile = path.join(dir, 'video.mp4');
+
+  try {
+    // Roda yt-dlp. Timeout de 90s pra evitar hangs.
+    const ytArgs = [
+      '-f', format,
+      '--merge-output-format', 'mp4',
+      '--no-playlist',
+      '--no-warnings',
+      '--quiet',
+      '--progress',
+      '-o', outputFile,
+      youtube_url
+    ];
+    console.log('[yt-dlp] start:', q, youtube_url);
+    await run('yt-dlp', ytArgs);
+
+    if (!fs.existsSync(outputFile)) {
+      throw new Error('yt-dlp não gerou output');
+    }
+    const stats = fs.statSync(outputFile);
+    console.log('[yt-dlp] done:', stats.size, 'bytes');
+
+    // Upload pro Supabase Storage
+    const finalPath = output_path || `editor/youtube/${jobId}/video.mp4`;
+    const publicUrl = await uploadToSupabase(outputFile, finalPath, supabase_url, supabase_key);
+
+    // Cleanup
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+
+    res.json({
+      ok: true,
+      url: publicUrl,
+      path: finalPath,
+      size: stats.size,
+      quality_requested: q
+    });
+  } catch (err) {
+    console.error('[yt-dlp] failed:', err.message);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    res.status(500).json({
+      error: 'yt-dlp failed: ' + err.message.slice(0, 500),
+      quality_requested: q
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`[bluetube-ffmpeg] listening on :${PORT}`);
 });

@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-# FFmpeg + fontconfig + fontes do sistema + curl/unzip pra baixar fontes extras
+# FFmpeg + fontconfig + fontes do sistema + curl/unzip + python3 pro yt-dlp
 RUN apk add --no-cache \
   ffmpeg \
   fontconfig \
@@ -8,7 +8,18 @@ RUN apk add --no-cache \
   ttf-liberation \
   curl \
   unzip \
+  python3 \
+  py3-brotli \
+  py3-certifi \
+  py3-requests \
+  py3-websockets \
   && rm -rf /var/cache/apk/*
+
+# yt-dlp binary standalone (Python script auto-contido)
+RUN curl -fsSL -o /usr/local/bin/yt-dlp \
+  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+  && chmod +x /usr/local/bin/yt-dlp \
+  && yt-dlp --version
 
 # Baixa fontes reais que o BlueEditor usa nos estilos (Bebas Neue + Oswald + Anton)
 # Google Fonts serve direto sem auth. Instalamos em /usr/share/fonts/truetype/bt/
