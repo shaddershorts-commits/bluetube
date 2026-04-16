@@ -409,14 +409,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- MODERATION -->
     <div class="section" id="moderationSection">
       <div class="section-header">
-        <div class="section-title">🛡️ Moderação <span class="section-subtitle">— denúncias e vídeos pendentes</span></div>
+        <div class="section-title">🛡️ Moderação <span class="section-subtitle">— denúncias, bloqueios e banimentos</span></div>
+        <button class="action-btn" onclick="loadModeracaoAvancada()">↻ Atualizar</button>
       </div>
-      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
-        <div class="stat-card"><div class="stat-label">Denúncias pendentes</div><div class="stat-value" style="color:var(--red)" id="modPending">—</div></div>
-        <div class="stat-card"><div class="stat-label">Vídeos under review</div><div class="stat-value yellow" id="modReview">—</div></div>
-        <div class="stat-card"><div class="stat-label">Total de denúncias</div><div class="stat-value blue" id="modTotal">—</div></div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Reports pendentes</div><div class="stat-value" style="color:var(--red)" id="modPending">—</div></div>
+        <div class="stat-card"><div class="stat-label">🚨 Urgentes</div><div class="stat-value" style="color:var(--red)" id="modUrgent">—</div></div>
+        <div class="stat-card"><div class="stat-label">Banidos ativos</div><div class="stat-value yellow" id="modBans">—</div></div>
+        <div class="stat-card"><div class="stat-label">Removidos hoje</div><div class="stat-value blue" id="modRemoved">—</div></div>
       </div>
-      <div class="table-wrap" id="modTable"><div class="loading-txt">Carregando…</div></div>
+      <!-- Reports pendentes -->
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Fila de moderação</div>
+      <div class="table-wrap" id="modReportsTable"><div class="loading-txt">Carregando…</div></div>
+      <!-- Banimentos ativos -->
+      <div style="font-size:13px;font-weight:700;margin:16px 0 8px">Banimentos ativos</div>
+      <div class="table-wrap" id="modBansTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
     <!-- POPUPS FOMO -->
@@ -1139,33 +1146,90 @@ async function triggerEmailMarketing(){
   if(btn){btn.textContent='▶ Disparar agora';btn.disabled=false;}
 }
 
-async function loadModeration(){
+async function loadModeration(){loadModeracaoAvancada();}
+
+async function loadModeracaoAvancada(){
   try{
-    const r=await fetch('/api/admin?action=moderation',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    // Load reports from blue-report API
+    const r=await fetch('/api/blue-report?action=fila-moderacao',{headers:{'Authorization':`Bearer ${adminKey}`}});
     const d=await r.json();
-    document.getElementById('modPending').textContent=d.pending_count||0;
-    document.getElementById('modReview').textContent=d.review_count||0;
-    document.getElementById('modTotal').textContent=d.total_count||0;
-    if(d.reports?.length){
-      const reasons={inappropriate:'🔞 Inapropriado',spam:'📢 Spam',violence:'⚠️ Violência',nudity:'🚫 Nudez',other:'📝 Outro'};
-      document.getElementById('modTable').innerHTML=`<table><thead><tr><th>Vídeo</th><th>Razão</th><th>Status</th><th>Data</th><th>Ação</th></tr></thead><tbody>
-        ${d.reports.slice(0,20).map(r=>`<tr>
-          <td style="font-size:10px;color:var(--dim)">${(r.video_id||'').slice(0,8)}…</td>
-          <td>${reasons[r.reason]||r.reason}</td>
-          <td><span class="badge ${r.status==='pending'?'badge-master':'badge-free'}">${r.status}</span></td>
-          <td style="font-size:11px;color:var(--dim)">${new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
-          <td>${r.status==='pending'?`<button onclick="moderateVideo('${r.video_id}','approve')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:3px 8px;cursor:pointer;margin-right:4px">✅</button><button onclick="moderateVideo('${r.video_id}','remove')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:3px 8px;cursor:pointer">🗑</button>`:''}</td>
-        </tr>`).join('')}</tbody></table>`;
-    }else{
-      document.getElementById('modTable').innerHTML='<div class="empty-state">Nenhuma denúncia registrada.</div>';
-    }
-  }catch(e){}
+    const stats=d.stats||{};
+    document.getElementById('modPending').textContent=stats.pendentes||0;
+    document.getElementById('modUrgent').textContent=stats.urgentes||0;
+    document.getElementById('modBans').textContent=stats.bans_ativos||0;
+    document.getElementById('modRemoved').textContent=stats.removidos_hoje||0;
+
+    const reports=d.reports||[];
+    const reasons={spam:'📢 Spam',nudez:'🚫 Nudez',violencia:'⚠️ Violência',assedio:'🔕 Assédio',fake:'❌ Fake',outro:'📝 Outro'};
+    if(reports.length){
+      document.getElementById('modReportsTable').innerHTML=`<table><thead><tr><th>Tipo</th><th>Motivo</th><th>ID</th><th>Reports</th><th>Data</th><th>Ações</th></tr></thead><tbody>
+        ${reports.map(r=>{
+          const btnStyle='font-family:var(--mono);font-size:9px;padding:3px 7px;cursor:pointer;border-radius:4px;border:1px solid';
+          return`<tr>
+            <td style="font-size:11px">${r.tipo_alvo}</td>
+            <td>${reasons[r.motivo]||r.motivo}</td>
+            <td style="font-size:9px;color:var(--dim)">${(r.alvo_id||'').slice(0,8)}</td>
+            <td style="color:${r.historico_reports>=5?'var(--red)':'var(--dim)'};font-weight:${r.historico_reports>=5?'700':'400'}">${r.historico_reports||1}x</td>
+            <td style="font-size:10px;color:var(--dim)">${new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+            <td><div style="display:flex;gap:3px;flex-wrap:wrap">
+              <button onclick="resolveReport('${r.id}','ignorar')" style="${btnStyle} rgba(150,190,230,.2);color:var(--dim);background:none">Ignorar</button>
+              <button onclick="resolveReport('${r.id}','avisar')" style="${btnStyle} rgba(251,191,36,.3);color:var(--yellow);background:rgba(251,191,36,.06)">Avisar</button>
+              <button onclick="resolveReport('${r.id}','remover_conteudo')" style="${btnStyle} rgba(239,68,68,.3);color:var(--red);background:rgba(239,68,68,.06)">Remover</button>
+              <button onclick="resolveReport('${r.id}','banir_temp')" style="${btnStyle} rgba(239,68,68,.4);color:#ff5555;background:rgba(239,68,68,.1)">Ban 7d</button>
+              <button onclick="resolveReport('${r.id}','banir_perm')" style="${btnStyle} rgba(239,68,68,.5);color:#fff;background:rgba(239,68,68,.3)">Ban ∞</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody></table>`;
+    }else{document.getElementById('modReportsTable').innerHTML='<div class="empty-state">Nenhum report pendente.</div>';}
+
+    // Load bans
+    const bR=await fetch('/api/blue-report?action=banimentos',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const bD=await bR.json();
+    const bans=bD.banimentos||[];
+    if(bans.length){
+      document.getElementById('modBansTable').innerHTML=`<table><thead><tr><th>Usuário</th><th>Motivo</th><th>Tipo</th><th>Expira</th><th>Ação</th></tr></thead><tbody>
+        ${bans.map(b=>{
+          const p=b.profile||{};
+          return`<tr>
+            <td style="color:var(--text)">${p.display_name||p.username||(b.user_id||'').slice(0,8)}</td>
+            <td style="font-size:11px;color:var(--dim)">${b.motivo||'—'}</td>
+            <td><span style="font-size:10px;color:${b.tipo==='permanente'?'var(--red)':'var(--yellow)'}">${b.tipo==='permanente'?'🔴 Permanente':'🟡 Temporário'}</span></td>
+            <td style="font-size:10px;color:var(--dim)">${b.expira_em?new Date(b.expira_em).toLocaleDateString('pt-BR'):'Nunca'}</td>
+            <td><button onclick="revogarBan('${b.id}')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:3px 8px;cursor:pointer">Revogar</button></td>
+          </tr>`;
+        }).join('')}</tbody></table>`;
+    }else{document.getElementById('modBansTable').innerHTML='<div class="empty-state">Nenhum banimento ativo.</div>';}
+  }catch(e){console.error('Moderation load error:',e);}
 }
+
+async function resolveReport(reportId,acao){
+  const motivo=acao==='banir_temp'||acao==='banir_perm'?prompt('Motivo do banimento:'):null;
+  if((acao==='banir_temp'||acao==='banir_perm')&&!motivo)return;
+  if(!confirm('Executar ação: '+acao+'?'))return;
+  try{
+    const r=await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'admin-resolver',report_id:reportId,acao,motivo_admin:motivo})});
+    const d=await r.json();
+    toast(d.ok?'✅ Ação executada: '+acao:'Erro');
+    loadModeracaoAvancada();
+  }catch(e){toast('Erro');}
+}
+
+async function revogarBan(banId){
+  if(!confirm('Revogar este banimento?'))return;
+  try{
+    await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'revogar-ban',ban_id:banId})});
+    toast('✅ Banimento revogado');loadModeracaoAvancada();
+  }catch(e){toast('Erro');}
+}
+
+// Legacy compatibility
 async function moderateVideo(id,decision){
-  if(!confirm(decision==='approve'?'Aprovar este vídeo?':'Remover este vídeo?'))return;
+  if(!confirm(decision==='approve'?'Aprovar?':'Remover?'))return;
   await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
     body:JSON.stringify({action:'moderate',video_id:id,decision})});
-  toast(decision==='approve'?'✅ Aprovado':'🗑 Removido');loadModeration();loadData();
+  toast(decision==='approve'?'✅ Aprovado':'🗑 Removido');loadData();
 }
 
 async function runBlueMaintenance(){

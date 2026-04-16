@@ -819,19 +819,21 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <div class="dm-sep" id="dmEditSep"></div>
   <button class="dm-item red" id="dmDelete" onclick="startDeleteVideo()">🗑️ &nbsp;Excluir vídeo</button>
   <div class="dm-sep"></div>
-  <button class="dm-item" onclick="openReportMenu()">⚑ &nbsp;Denunciar</button>
+  <button class="dm-item" onclick="openReportMenu()">🚫 &nbsp;Denunciar</button>
+  <button class="dm-item" id="dmBlock" onclick="doBlockUser()" style="display:none">🔕 &nbsp;Bloquear</button>
   <div class="dm-sep"></div>
   <button class="dm-item" onclick="closeDotsMenu()">✕ &nbsp;Cancelar</button>
 </div>
 <!-- REPORT MENU -->
 <div class="back-drop" id="reportBack" onclick="closeReportMenu()" style="z-index:499;display:none"></div>
 <div class="dots-menu" id="reportMenu" style="display:none;z-index:500">
-  <div style="padding:10px 16px;font-size:12px;font-weight:700;color:#fff;opacity:.6">Por que denunciar?</div>
-  <button class="dm-item" onclick="submitReport('inappropriate')">🔞 Conteúdo inapropriado</button>
-  <button class="dm-item" onclick="submitReport('spam')">📢 Spam</button>
-  <button class="dm-item" onclick="submitReport('violence')">⚠️ Violência</button>
-  <button class="dm-item" onclick="submitReport('nudity')">🚫 Nudez</button>
-  <button class="dm-item" onclick="submitReport('other')">📝 Outro motivo</button>
+  <div style="padding:10px 16px;font-size:12px;font-weight:700;color:#fff;opacity:.6">Por que está denunciando?</div>
+  <button class="dm-item" onclick="submitReport('spam')">📢 Spam ou conteúdo enganoso</button>
+  <button class="dm-item" onclick="submitReport('nudez')">🚫 Nudez ou conteúdo sexual</button>
+  <button class="dm-item" onclick="submitReport('violencia')">⚠️ Violência ou conteúdo chocante</button>
+  <button class="dm-item" onclick="submitReport('assedio')">🔕 Assédio ou bullying</button>
+  <button class="dm-item" onclick="submitReport('fake')">❌ Informação falsa</button>
+  <button class="dm-item" onclick="submitReport('outro')">📝 Outro motivo</button>
   <div class="dm-sep"></div>
   <button class="dm-item" onclick="closeReportMenu()">✕ &nbsp;Cancelar</button>
 </div>
@@ -1932,14 +1934,22 @@ function renderGrid(vids,isOwn){
 
 // ── DOTS MENU ─────────────────────────────────────────────────────────────────
 function openDotsMenu(id,title,desc,isOwn){
-  _dotsVid={id,title,desc};
+  // Find video's user_id
+  const vid = videos.find(v => v.id === id);
+  _dotsVid = { id, title, desc, user_id: vid?.user_id || null };
   document.getElementById('dotsMenu').classList.add('open');
   document.getElementById('dotsBack').classList.add('on');
-  // Show/hide owner-only options
   const showOwn = isOwn ? '' : 'none';
   document.getElementById('dmEdit').style.display = showOwn;
   document.getElementById('dmEditSep').style.display = showOwn;
   document.getElementById('dmDelete').style.display = showOwn;
+  // Show block button only for other users' content
+  const blockBtn = document.getElementById('dmBlock');
+  if (blockBtn) {
+    const uname = vid?.creator?.username || '';
+    blockBtn.style.display = isOwn ? 'none' : '';
+    blockBtn.textContent = '🔕  Bloquear' + (uname ? ' @' + uname : '');
+  }
 }
 function closeDotsMenu(){document.getElementById('dotsMenu').classList.remove('open');document.getElementById('dotsBack').classList.remove('on');}
 function openReportMenu(){
@@ -1954,15 +1964,39 @@ function closeReportMenu(){
   document.getElementById('reportBack').classList.remove('on');
   setTimeout(()=>{document.getElementById('reportMenu').style.display='none';document.getElementById('reportBack').style.display='none';},300);
 }
-async function submitReport(reason){
+async function submitReport(motivo){
   closeReportMenu();
   if(!_dotsVid?.id)return;
   const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para denunciar');return;}
   try{
-    await fetch('/api/blue-maintenance',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'report-video',video_id:_dotsVid.id,reason,token:tk})});
-    toast('⚑ Denúncia enviada. Obrigado!');
+    const r=await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'reportar',token:tk,tipo_alvo:'video',alvo_id:_dotsVid.id,motivo})});
+    const d=await r.json();
+    toast(d.message||'Denúncia registrada ✅');
   }catch(e){toast('Erro ao denunciar');}
+}
+
+async function doBlockUser(){
+  closeDotsMenu();
+  if(!_dotsVid?.user_id)return;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para bloquear');return;}
+  const vid=videos.find(v=>v.id===_dotsVid.id);
+  const uname=vid?.creator?.username||'este usuário';
+  if(!confirm('Bloquear @'+uname+'?\n\nEle não aparecerá mais no seu feed, comentários ou busca.'))return;
+  try{
+    const r=await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'bloquear',token:tk,bloqueado_id:_dotsVid.user_id})});
+    const d=await r.json();
+    if(d.bloqueado){
+      toast('🔕 @'+uname+' bloqueado');
+      videos=videos.filter(v=>v.user_id!==_dotsVid.user_id);
+      document.getElementById('feed').innerHTML='';
+      videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)document.getElementById('feed').appendChild(s);});
+      setupObs();
+    }else{toast('Desbloqueado');}
+  }catch(e){toast('Erro ao bloquear');}
 }
 function startEditVideo(){
   closeDotsMenu();
