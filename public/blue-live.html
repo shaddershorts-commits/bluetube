@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<title>Blue Live</title>
+<style>
+:root{--bg:#020817;--card:rgba(10,22,40,.9);--neon:#3b82f6;--text:#e8f4ff;--dim:rgba(150,190,230,.4);--red:#ef4444;--green:#22c55e;--gold:#fbbf24}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100dvh;overflow:hidden}
+.topbar{position:fixed;top:0;left:0;right:0;z-index:20;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent)}
+.back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px}
+.live-badge{background:var(--red);color:#fff;font-size:10px;font-weight:800;padding:4px 10px;border-radius:6px;animation:livePulse 1.5s infinite}
+@keyframes livePulse{0%,100%{opacity:1}50%{opacity:.6}}
+.viewers{display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.8);background:rgba(0,0,0,.4);padding:5px 10px;border-radius:8px}
+.host-info{position:fixed;top:50px;left:16px;z-index:15;display:flex;align-items:center;gap:8px}
+.host-av{width:36px;height:36px;border-radius:50%;border:2px solid var(--red);overflow:hidden;background:var(--neon);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.host-av img{width:100%;height:100%;object-fit:cover}
+.host-name{font-size:13px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+/* Video area */
+.video-area{position:fixed;inset:0;background:#000}
+.video-area video{width:100%;height:100%;object-fit:cover}
+#localVideo{transform:scaleX(-1)}
+/* Chat */
+.chat-area{position:fixed;bottom:70px;left:0;right:0;max-height:35dvh;overflow-y:auto;padding:0 16px;z-index:10;mask-image:linear-gradient(transparent,#000 30%)}
+.chat-msg{display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;animation:chatIn .3s ease}
+@keyframes chatIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.chat-msg-name{font-size:11px;font-weight:700;color:var(--neon)}
+.chat-msg-text{font-size:12px;color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.5)}
+/* Bottom bar */
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:20;padding:12px 16px;display:flex;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.chat-input{flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:10px 16px;font-size:13px;color:#fff;outline:none;font-family:inherit}
+.chat-input::placeholder{color:rgba(255,255,255,.4)}
+.tip-btn{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#FFA500);border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 15px rgba(255,215,0,.3)}
+.end-btn{background:var(--red);border:none;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:700;color:#fff;cursor:pointer}
+/* Gorjeta animation */
+.gorjeta-float{position:fixed;z-index:30;animation:gorjetaUp 3s ease forwards;pointer-events:none}
+@keyframes gorjetaUp{0%{opacity:1;transform:translateY(0) scale(1)}30%{transform:translateY(-40px) scale(1.3)}100%{opacity:0;transform:translateY(-200px) scale(.8)}}
+.gorjeta-emoji{font-size:48px;text-align:center}
+.gorjeta-from{font-size:11px;color:var(--gold);text-align:center;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+/* Tip picker */
+.tip-picker{position:fixed;bottom:70px;right:16px;z-index:25;background:var(--card);border:1px solid rgba(255,215,0,.2);border-radius:16px;padding:12px;display:none;flex-direction:column;gap:8px;min-width:180px}
+.tip-picker.on{display:flex}
+.tip-option{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;cursor:pointer;transition:all .15s;font-size:13px}
+.tip-option:hover{background:rgba(255,215,0,.1)}
+.tip-coins{font-size:11px;color:var(--gold);font-weight:700}
+.tip-valor{font-size:10px;color:var(--dim)}
+/* Coin balance */
+.coin-bal{font-size:11px;color:var(--gold);background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:4px 10px;display:flex;align-items:center;gap:4px}
+/* Setup screen */
+.setup{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.setup-title{font-size:22px;font-weight:800;margin-bottom:8px}
+.setup-sub{font-size:13px;color:var(--dim);margin-bottom:24px}
+.setup-input{width:100%;max-width:360px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px;font-size:15px;color:var(--text);outline:none;font-family:inherit;text-align:center;margin-bottom:16px}
+.setup-input::placeholder{color:var(--dim)}
+.setup-preview{width:200px;height:356px;border-radius:20px;overflow:hidden;background:#111;margin-bottom:20px;position:relative}
+.setup-preview video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.go-live-btn{width:100%;max-width:360px;background:linear-gradient(135deg,var(--red),#dc2626);border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 0 30px rgba(239,68,68,.3)}
+.go-live-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Summary */
+.summary{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+.summary.on{display:flex}
+.sum-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;max-width:300px;margin:20px 0}
+.sum-card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:16px}
+.sum-label{font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.sum-value{font-size:22px;font-weight:800}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN (host) -->
+<div class="setup" id="setupScreen" style="display:none">
+  <div style="font-size:48px;margin-bottom:12px">🔴</div>
+  <div class="setup-title">Ir ao vivo</div>
+  <div class="setup-sub">Seu público será notificado</div>
+  <div class="setup-preview"><video id="previewVid" autoplay muted playsinline></video></div>
+  <input class="setup-input" id="liveTitle" placeholder="Título da live…" maxlength="100"/>
+  <button class="go-live-btn" id="goLiveBtn" onclick="startLive()">🔴 Ir ao vivo</button>
+  <div style="font-size:12px;color:var(--dim);margin-top:12px" id="setupMsg"></div>
+</div>
+
+<!-- LIVE SCREEN -->
+<div class="video-area" id="videoArea" style="display:none">
+  <video id="localVideo" autoplay muted playsinline style="display:none"></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+</div>
+
+<div class="topbar" id="liveTopbar" style="display:none">
+  <button class="back" onclick="leaveLive()">&larr;</button>
+  <div class="live-badge">LIVE</div>
+  <div class="viewers" id="viewerCount">👁 0</div>
+</div>
+
+<div class="host-info" id="hostInfo" style="display:none">
+  <div class="host-av" id="hostAv">?</div>
+  <div class="host-name" id="hostName">—</div>
+</div>
+
+<div class="chat-area" id="chatArea" style="display:none"></div>
+
+<div class="bottom-bar" id="bottomBar" style="display:none">
+  <input class="chat-input" id="chatInput" placeholder="Diga algo…" onkeydown="if(event.key==='Enter')sendChat()"/>
+  <button class="tip-btn" id="tipBtn" onclick="toggleTipPicker()" style="display:none">🎁</button>
+  <button class="end-btn" id="endBtn" onclick="endLive()" style="display:none">Encerrar</button>
+</div>
+
+<!-- TIP PICKER -->
+<div class="tip-picker" id="tipPicker">
+  <div style="font-size:11px;color:var(--dim);margin-bottom:4px">Enviar gorjeta</div>
+  <div class="tip-option" onclick="sendTip('🌟')"><span style="font-size:20px">🌟</span><div><div class="tip-coins">10 coins</div><div class="tip-valor">R$0,50</div></div></div>
+  <div class="tip-option" onclick="sendTip('💎')"><span style="font-size:20px">💎</span><div><div class="tip-coins">50 coins</div><div class="tip-valor">R$2,50</div></div></div>
+  <div class="tip-option" onclick="sendTip('🚀')"><span style="font-size:20px">🚀</span><div><div class="tip-coins">100 coins</div><div class="tip-valor">R$5,00</div></div></div>
+  <div class="tip-option" onclick="sendTip('👑')"><span style="font-size:20px">👑</span><div><div class="tip-coins">500 coins</div><div class="tip-valor">R$25,00</div></div></div>
+  <div class="tip-option" onclick="sendTip('🔥')"><span style="font-size:20px">🔥</span><div><div class="tip-coins">1.000 coins</div><div class="tip-valor">R$50,00</div></div></div>
+  <div class="coin-bal" id="coinBal">🪙 — coins</div>
+</div>
+
+<!-- SUMMARY -->
+<div class="summary" id="summaryScreen">
+  <div style="font-size:48px;margin-bottom:12px">🎬</div>
+  <div style="font-size:20px;font-weight:800;margin-bottom:4px">Live encerrada</div>
+  <div style="font-size:13px;color:var(--dim);margin-bottom:16px" id="sumTitle">—</div>
+  <div class="sum-cards">
+    <div class="sum-card"><div class="sum-label">Duração</div><div class="sum-value" id="sumDur">—</div></div>
+    <div class="sum-card"><div class="sum-label">Pico viewers</div><div class="sum-value" style="color:var(--neon)" id="sumPeak">—</div></div>
+    <div class="sum-card"><div class="sum-label">Gorjetas</div><div class="sum-value" style="color:var(--gold)" id="sumTips">—</div></div>
+    <div class="sum-card"><div class="sum-label">Total gorjetas</div><div class="sum-value" style="color:var(--green)" id="sumTotal">—</div></div>
+  </div>
+  <a href="/blue.html" style="display:inline-block;background:var(--neon);color:#fff;padding:14px 32px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;margin-top:12px">Voltar ao Blue</a>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('bt_token');
+const params = new URLSearchParams(window.location.search);
+const MODE = params.get('mode'); // 'host' or null (viewer)
+const LIVE_ID = params.get('id');
+let _liveId = LIVE_ID, _roomId = null, _isHost = MODE === 'host';
+let _hmsReady = false, _chatMsgs = [];
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+async function init() {
+  if (_isHost) {
+    document.getElementById('setupScreen').style.display = 'flex';
+    // Start camera preview
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 720, height: 1280 }, audio: true });
+      document.getElementById('previewVid').srcObject = stream;
+    } catch(e) { document.getElementById('setupMsg').textContent = 'Erro ao acessar câmera: ' + e.message; }
+  } else if (LIVE_ID) {
+    joinLive(LIVE_ID);
+  } else {
+    window.location.href = '/blue.html';
+  }
+}
+
+// ── START LIVE (host) ─────────────────────────────────────────────────────
+async function startLive() {
+  const titulo = document.getElementById('liveTitle').value.trim();
+  if (!titulo) { document.getElementById('setupMsg').textContent = 'Digite um título'; return; }
+  const btn = document.getElementById('goLiveBtn');
+  btn.disabled = true; btn.textContent = 'Iniciando…';
+  try {
+    const r = await fetch('/api/blue-lives', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'iniciar', token: TOKEN, titulo }) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { document.getElementById('setupMsg').textContent = d.error || 'Erro'; btn.disabled = false; btn.textContent = '🔴 Ir ao vivo'; return; }
+    _liveId = d.live_id; _roomId = d.room_id;
+    document.getElementById('setupScreen').style.display = 'none';
+    showLiveUI(true, titulo);
+    // Stop preview stream
+    const prev = document.getElementById('previewVid');
+    if (prev.srcObject) prev.srcObject.getTracks().forEach(t => t.stop());
+    // Start streaming via getUserMedia directly
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 720, height: 1280 }, audio: true });
+      const local = document.getElementById('localVideo');
+      local.srcObject = stream; local.style.display = 'block';
+    } catch(e) { console.error('Camera error:', e); }
+  } catch(e) { document.getElementById('setupMsg').textContent = 'Erro: ' + e.message; btn.disabled = false; btn.textContent = '🔴 Ir ao vivo'; }
+}
+
+// ── JOIN LIVE (viewer) ────────────────────────────────────────────────────
+async function joinLive(liveId) {
+  try {
+    const r = await fetch('/api/blue-lives', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'entrar', token: TOKEN, live_id: liveId }) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { alert(d.error || 'Live não disponível'); window.location.href = '/blue.html'; return; }
+    _roomId = d.room_id;
+    const live = d.live || {};
+    const host = live.host || {};
+    showLiveUI(false, live.titulo);
+    // Show host info
+    document.getElementById('hostName').textContent = host.display_name || host.username || 'Host';
+    if (host.avatar_url) document.getElementById('hostAv').innerHTML = '<img src="' + host.avatar_url + '"/>';
+    document.getElementById('viewerCount').textContent = '👁 ' + (live.viewers_count || 1);
+    // Show placeholder message
+    addChat('Sistema', '🔴 Você entrou na live');
+    // Load coin balance
+    loadCoinBalance();
+  } catch(e) { alert('Erro: ' + e.message); window.location.href = '/blue.html'; }
+}
+
+function showLiveUI(isHost, titulo) {
+  document.getElementById('videoArea').style.display = 'block';
+  document.getElementById('liveTopbar').style.display = 'flex';
+  document.getElementById('chatArea').style.display = 'block';
+  document.getElementById('bottomBar').style.display = 'flex';
+  if (isHost) {
+    document.getElementById('endBtn').style.display = 'block';
+    document.getElementById('localVideo').style.display = 'block';
+  } else {
+    document.getElementById('tipBtn').style.display = 'flex';
+    document.getElementById('hostInfo').style.display = 'flex';
+  }
+}
+
+// ── END LIVE ──────────────────────────────────────────────────────────────
+async function endLive() {
+  if (!confirm('Encerrar a live?')) return;
+  try {
+    const r = await fetch('/api/blue-lives', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'encerrar', token: TOKEN, live_id: _liveId }) });
+    const d = await r.json();
+    // Stop camera
+    const local = document.getElementById('localVideo');
+    if (local.srcObject) local.srcObject.getTracks().forEach(t => t.stop());
+    // Show summary
+    if (d.resumo) {
+      document.getElementById('sumDur').textContent = d.resumo.duracao_minutos + 'min';
+      document.getElementById('sumPeak').textContent = d.resumo.peak_viewers;
+      document.getElementById('sumTips').textContent = d.resumo.gorjetas_count;
+      document.getElementById('sumTotal').textContent = 'R$' + d.resumo.total_gorjetas.toFixed(2);
+    }
+    document.getElementById('videoArea').style.display = 'none';
+    document.getElementById('liveTopbar').style.display = 'none';
+    document.getElementById('chatArea').style.display = 'none';
+    document.getElementById('bottomBar').style.display = 'none';
+    document.getElementById('summaryScreen').classList.add('on');
+  } catch(e) { alert('Erro: ' + e.message); }
+}
+
+function leaveLive() {
+  if (_isHost) { endLive(); return; }
+  window.location.href = '/blue.html';
+}
+
+// ── CHAT ──────────────────────────────────────────────────────────────────
+function addChat(name, text) {
+  const area = document.getElementById('chatArea');
+  const msg = document.createElement('div'); msg.className = 'chat-msg';
+  msg.innerHTML = '<div><span class="chat-msg-name">' + name + '</span> <span class="chat-msg-text">' + text + '</span></div>';
+  area.appendChild(msg);
+  area.scrollTop = area.scrollHeight;
+  // Keep max 50 messages
+  while (area.children.length > 50) area.removeChild(area.firstChild);
+}
+
+function sendChat() {
+  const inp = document.getElementById('chatInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  addChat('Você', text);
+  inp.value = '';
+}
+
+// ── GORJETAS ──────────────────────────────────────────────────────────────
+function toggleTipPicker() {
+  document.getElementById('tipPicker').classList.toggle('on');
+}
+
+async function sendTip(emoji) {
+  document.getElementById('tipPicker').classList.remove('on');
+  try {
+    const r = await fetch('/api/blue-lives', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'enviar-gorjeta', token: TOKEN, live_id: _liveId, emoji }) });
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'Erro'); return; }
+    showGorjetaAnimation(emoji, 'Você');
+    addChat('🎁', 'Você enviou ' + emoji);
+    document.getElementById('coinBal').textContent = '🪙 ' + d.novo_saldo + ' coins';
+  } catch(e) { alert('Erro: ' + e.message); }
+}
+
+function showGorjetaAnimation(emoji, from) {
+  const el = document.createElement('div'); el.className = 'gorjeta-float';
+  el.style.left = (20 + Math.random() * 60) + '%'; el.style.bottom = '100px';
+  el.innerHTML = '<div class="gorjeta-emoji">' + emoji + '</div><div class="gorjeta-from">' + from + '</div>';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+async function loadCoinBalance() {
+  try {
+    const r = await fetch('/api/blue-coins?action=saldo&token=' + encodeURIComponent(TOKEN));
+    const d = await r.json();
+    document.getElementById('coinBal').textContent = '🪙 ' + (d.saldo || 0) + ' coins';
+  } catch(e) {}
+}
+
+// Poll viewer count every 10s
+setInterval(async () => {
+  if (!_liveId) return;
+  try {
+    const r = await fetch('/api/blue-lives?action=lives-ativas');
+    const d = await r.json();
+    const live = (d.lives || []).find(l => l.id === _liveId);
+    if (live) document.getElementById('viewerCount').textContent = '👁 ' + (live.viewers_count || 0);
+    else if (!_isHost) { addChat('Sistema', 'Live encerrada'); setTimeout(() => window.location.href = '/blue.html', 2000); }
+  } catch(e) {}
+}, 10000);
+
+init();
+</script>
+</body>
+</html>
