@@ -168,6 +168,13 @@ module.exports = async function handler(req, res) {
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
 
+    // ── LEGENDAS AUTOMÁTICAS (assíncrona) ────────────────────────────────
+    const SITE = process.env.SITE_URL || 'https://bluetubeviral.com';
+    fetch(`${SITE}/api/blue-legendas`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'gerar', video_id: videoId })
+    }).catch(() => {});
+
     // ── EMBEDDING PARA BUSCA SEMÂNTICA (assíncrona) ─────────────────────
     if (process.env.OPENAI_API_KEY && (cleanTitle || cleanDesc)) {
       (async () => {
