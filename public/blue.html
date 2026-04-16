@@ -26,9 +26,10 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
   pointer-events:none}
 .logo{font-size:22px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;pointer-events:all;text-decoration:none}
-.topbtns{display:flex;gap:8px;pointer-events:all}
+.topbtns{display:flex;gap:6px;pointer-events:all;align-items:center}
 .tbtn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);
-  border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer}
+  border-radius:18px;padding:6px 10px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:32px;line-height:1}
 
 /* ── FEED ────────────────────────────────────────────────────────────────── */
 #feed{position:fixed;inset:0;left:50%;transform:translateX(-50%);
@@ -735,13 +736,12 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="topbar">
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
-    <button class="tbtn" onclick="openSearch()">🔍</button>
-    <button class="tbtn" onclick="openUpload()">+ Postar</button>
+    <button class="tbtn" onclick="openSearch()" title="Buscar">🔍</button>
+    <button class="tbtn" onclick="openUpload()" title="Postar" style="font-size:18px">+</button>
     <button class="tbtn" onclick="openTrending()" title="Em alta">🔥</button>
-    <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
-    <button class="tbtn" onclick="openGrupos()" id="gruposBtn" style="position:relative">=e<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
-    <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
-    <a class="tbtn" href="/">BlueTube</a>
+    <button class="tbtn" onclick="openGrupos()" id="gruposBtn" title="Grupos" style="position:relative">👥<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
+    <button class="tbtn" onclick="openInbox()" id="inboxBtn" title="Notificações" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
+    <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden;flex-shrink:0">?</div>
   </div>
 </div>
 

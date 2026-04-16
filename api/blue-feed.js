@@ -438,7 +438,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc,id.desc&limit=${limit * 3}&select=*`;
+    // ORDER matches cursor dimensions so pagination can't skip rows.
+    // Score is applied post-hoc in JS re-rank; keeping score in SQL ORDER would
+    // break the (created_at,id) cursor and silently hide newly-posted videos.
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=created_at.desc,id.desc&limit=${limit * 3}&select=*`;
     const cur = decodeCursor(cursor);
     if (cur) {
       if (cur.id) {
@@ -456,8 +459,12 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ videos: [], has_more: false });
     }
 
-    let raw = (await r.json()).filter(v => v.video_url && v.status === 'active');
+    const rawSql = (await r.json()).filter(v => v.video_url && v.status === 'active');
+    // Cursor advances through SQL ordering (score,created_at,id DESC) — use the LAST
+    // SQL row BEFORE client-side filters/re-rank so pagination never skips rows.
+    const lastSql = rawSql[rawSql.length - 1];
 
+    let raw = rawSql;
     // Filter out blocked users' content
     if (blockedIds.length) raw = raw.filter(v => !blockedIds.includes(v.user_id));
 
@@ -482,9 +489,8 @@ module.exports = async function handler(req, res) {
     }
 
     const videos = raw.slice(0, limit);
-    const has_more = raw.length > limit;
-    const last = videos[videos.length - 1];
-    const next_cursor = last ? encodeCursor(last.created_at, last.id) : null;
+    const has_more = rawSql.length >= limit * 3;
+    const next_cursor = has_more && lastSql ? encodeCursor(lastSql.created_at, lastSql.id) : null;
 
     // Enrich with creator profiles
     const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
