@@ -528,6 +528,46 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .filter-chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(150,190,230,.6);transition:all .2s;white-space:nowrap}
 .filter-chip.active{background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#3b82f6}
 
+/* ── ONBOARDING WIZARD ──────────────────────────────────────────────────── */
+#onboardOv{position:fixed;inset:0;z-index:10000;background:#020817;display:none;flex-direction:column;overflow-y:auto;padding:env(safe-area-inset-top,20px) 20px 40px}
+#onboardOv.on{display:flex}
+.ob-progress{display:flex;gap:4px;padding:20px 0;justify-content:center;align-items:center}
+.ob-prog-bar{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.08);transition:all .3s}
+.ob-prog-bar.active{background:#3b82f6;width:60px}
+.ob-prog-bar.done{background:#3b82f6}
+.ob-prog-label{font-size:11px;color:rgba(150,190,230,.5);margin-left:12px;font-family:var(--mono,monospace)}
+.ob-step{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;text-align:center;max-width:480px;margin:0 auto;width:100%}
+.ob-title{font-size:28px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px;line-height:1.2}
+.ob-sub{font-size:14px;color:rgba(150,190,230,.6);line-height:1.5;margin-bottom:30px}
+.ob-btn{background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:14px;padding:16px 36px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(59,130,246,.3);transition:all .2s}
+.ob-btn:hover{transform:translateY(-1px)}
+.ob-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.ob-btn-ghost{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(150,190,230,.6);padding:12px 24px;border-radius:10px;font-size:13px;cursor:pointer;margin-top:12px}
+.ob-cats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%;margin-bottom:20px}
+.ob-cat{background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 8px;text-align:center;cursor:pointer;transition:all .15s}
+.ob-cat:hover{border-color:rgba(59,130,246,.3)}
+.ob-cat.selected{background:rgba(59,130,246,.12);border-color:#3b82f6}
+.ob-cat-emoji{font-size:26px;margin-bottom:4px}
+.ob-cat-name{font-size:10px;font-weight:600;color:rgba(200,214,229,.9)}
+.ob-counter{font-size:12px;color:rgba(150,190,230,.5);margin-bottom:16px}
+.ob-creators{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;margin-bottom:20px}
+.ob-creator{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:12px;text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.ob-creator.following{background:rgba(59,130,246,.1);border-color:#3b82f6}
+.ob-creator-av{width:54px;height:54px;border-radius:50%;background:rgba(59,130,246,.2);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;overflow:hidden}
+.ob-creator-av img{width:100%;height:100%;object-fit:cover}
+.ob-creator-name{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-creator-stats{font-size:10px;color:rgba(150,190,230,.5);margin-top:2px}
+.ob-creator-btn{font-size:11px;padding:5px 10px;border-radius:8px;border:none;margin-top:6px;cursor:pointer;font-weight:600;background:rgba(59,130,246,.1);color:#3b82f6}
+.ob-creator.following .ob-creator-btn{background:#3b82f6;color:#fff}
+.ob-confetti{position:fixed;width:8px;height:8px;pointer-events:none;animation:confettiFall 3s linear forwards}
+@keyframes confettiFall{0%{opacity:1;transform:translateY(-20px) rotate(0)}100%{opacity:0;transform:translateY(100vh) rotate(720deg)}}
+@media(max-width:500px){.ob-cats{grid-template-columns:repeat(3,1fr)}.ob-creators{grid-template-columns:repeat(2,1fr)}}
+
+/* Legendas */
+video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-family:'Helvetica Neue',sans-serif;font-weight:600;border-radius:4px;padding:2px 8px}
+.cc-toggle{position:absolute;bottom:80px;right:10px;z-index:5;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;color:#fff;cursor:pointer;transition:all .2s}
+.cc-toggle.on{background:#3b82f6;border-color:#3b82f6}
+
 /* ── LIVES BAR ─────────────────────────────────────────────────────────── */
 #livesBar::-webkit-scrollbar{display:none}
 #livesBar{scrollbar-width:none}
@@ -1033,6 +1073,7 @@ async function getValidToken(){
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
+let _ccEnabled = localStorage.getItem('legendas_ativas') !== 'false';
 let _feedOrigem='feed'; // tracks where user came from for analytics
 
 async function loadFeed(){
@@ -1084,7 +1125,8 @@ function mkSlide(v,i){
   const vidSrc = i < 3 ? v.video_url : '';
   const vidDataSrc = i >= 3 ? v.video_url : '';
   el.innerHTML=
-    '<video '+(vidSrc?'src="'+vidSrc+'"':'data-src="'+vidDataSrc+'"')+' preload="'+(i<2?'auto':'none')+'" loop playsinline muted poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)"></video>'+
+    '<video '+(vidSrc?'src="'+vidSrc+'"':'data-src="'+vidDataSrc+'"')+' preload="'+(i<2?'auto':'none')+'" loop playsinline muted crossorigin="anonymous" poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)">'+(v.legendas_url?'<track kind="subtitles" src="'+v.legendas_url+'" srclang="pt" label="Português" default>':'')+'</video>'+
+    (v.legendas_url?'<button class="cc-toggle'+(_ccEnabled?' on':'')+'" onclick="event.stopPropagation();toggleCC(\''+v.id+'\')">CC</button>':'')+
     '<div class="grad"></div>'+
     '<div class="mute-hint" id="mh-'+v.id+'">🔇</div>'+
     '<div class="slide-views">▶ <span id="vc-'+v.id+'">'+fmt(v.views||0)+'</span></div>'+
@@ -3576,5 +3618,224 @@ async function _bpWaitlist(){
 // Gera moedas no popup 3
 (function(){const c=document.getElementById('bp-coins');if(!c)return;const coins=['💰','💵','🪙','💎'];for(let i=0;i<12;i++){const m=document.createElement('div');m.className='bp-coin';m.textContent=coins[i%coins.length];m.style.left=Math.random()*90+'%';m.style.animationDuration=(3+Math.random()*4)+'s';m.style.animationDelay=Math.random()*5+'s';c.appendChild(m);}})();
 </script>
+
+<!-- ═══════════════════════ ONBOARDING WIZARD ═══════════════════════ -->
+<div id="onboardOv">
+  <div class="ob-progress">
+    <div class="ob-prog-bar active" id="obP1"></div>
+    <div class="ob-prog-bar" id="obP2"></div>
+    <div class="ob-prog-bar" id="obP3"></div>
+    <div class="ob-prog-bar" id="obP4"></div>
+    <div class="ob-prog-bar" id="obP5"></div>
+    <span class="ob-prog-label" id="obStepLbl">1/5</span>
+  </div>
+  <div id="obStep"></div>
+</div>
+
+<script>
+// ══════════════════════ ONBOARDING ══════════════════════
+let _obStep = 0;
+let _obInteresses = [];
+let _obFollowing = new Set();
+let _obCategorias = [];
+let _obSugestoes = [];
+
+async function checkOnboarding() {
+  const tk = localStorage.getItem('bt_token');
+  if (!tk) return;
+  try {
+    const r = await fetch('/api/blue-onboarding?action=status&token=' + encodeURIComponent(tk));
+    const d = await r.json();
+    if (d.completo) return;
+    _obCategorias = d.categorias || [];
+    _obInteresses = d.interesses || [];
+    _obStep = d.step || 0;
+    showOnboarding();
+  } catch(e) {}
+}
+
+function showOnboarding() {
+  document.getElementById('onboardOv').classList.add('on');
+  renderOnboardStep(0); // Always start from welcome
+}
+
+function renderOnboardStep(step) {
+  _obStep = step;
+  const bars = ['obP1','obP2','obP3','obP4','obP5'];
+  bars.forEach((id,i)=>{
+    const el = document.getElementById(id);
+    el.classList.toggle('active', i === step);
+    el.classList.toggle('done', i < step);
+  });
+  document.getElementById('obStepLbl').textContent = (step+1) + '/5';
+
+  const el = document.getElementById('obStep');
+  if (step === 0) {
+    el.innerHTML = `
+      <div class="ob-step">
+        <div style="font-size:80px;margin-bottom:20px;animation:bounce 2s infinite">🎬</div>
+        <div class="ob-title">Bem-vindo ao Blue!</div>
+        <div class="ob-sub">A nova rede social de vídeos do Brasil.<br>Vamos personalizar sua experiência em 4 passos rápidos.</div>
+        <button class="ob-btn" onclick="renderOnboardStep(1)">Começar →</button>
+      </div>`;
+  } else if (step === 1) {
+    el.innerHTML = `
+      <div class="ob-step">
+        <div class="ob-title">O que você curte?</div>
+        <div class="ob-sub">Escolha pelo menos 3 categorias para personalizar seu feed</div>
+        <div class="ob-counter" id="obCounter">${_obInteresses.length}/16 selecionados</div>
+        <div class="ob-cats">${_obCategorias.map(c=>`
+          <div class="ob-cat ${_obInteresses.includes(c.id)?'selected':''}" onclick="toggleInteresse('${c.id}')">
+            <div class="ob-cat-emoji">${c.emoji}</div>
+            <div class="ob-cat-name">${c.nome}</div>
+          </div>`).join('')}</div>
+        <button class="ob-btn" id="obNext1" onclick="saveInteresses()" ${_obInteresses.length<3?'disabled':''}>Continuar →</button>
+      </div>`;
+  } else if (step === 2) {
+    el.innerHTML = `
+      <div class="ob-step">
+        <div class="ob-title">Criadores te esperam 🔥</div>
+        <div class="ob-sub">Siga alguns para começar a ver conteúdo incrível</div>
+        <div class="ob-counter" id="obFollowCounter">Seguindo ${_obFollowing.size} criadores</div>
+        <div class="ob-creators" id="obCreatorsList"><div style="grid-column:1/-1;text-align:center;padding:40px;color:rgba(150,190,230,.4)">Carregando…</div></div>
+        <button class="ob-btn" id="obNext2" onclick="confirmFollows()" ${_obFollowing.size<1?'disabled':''}>Continuar →</button>
+      </div>`;
+    loadOnboardCreators();
+  } else if (step === 3) {
+    el.innerHTML = `
+      <div class="ob-step">
+        <div style="font-size:80px;margin-bottom:20px">🔔</div>
+        <div class="ob-title">Não perca nada!</div>
+        <div class="ob-sub">Ative as notificações para saber quando seus criadores favoritos postarem</div>
+        <button class="ob-btn" onclick="askNotifications()">Ativar notificações →</button>
+        <button class="ob-btn-ghost" onclick="renderOnboardStep(4)">Agora não</button>
+      </div>`;
+  } else if (step === 4) {
+    // Confetti
+    for (let i=0; i<50; i++) {
+      const c = document.createElement('div'); c.className='ob-confetti';
+      c.style.left = Math.random()*100+'%';
+      c.style.background = ['#3b82f6','#8b5cf6','#22c55e','#fbbf24','#ef4444'][Math.floor(Math.random()*5)];
+      c.style.animationDelay = Math.random()*.5+'s';
+      c.style.animationDuration = (2+Math.random()*2)+'s';
+      document.body.appendChild(c);
+      setTimeout(()=>c.remove(), 4000);
+    }
+    el.innerHTML = `
+      <div class="ob-step">
+        <div style="font-size:80px;margin-bottom:20px">🚀</div>
+        <div class="ob-title">Tudo certo!</div>
+        <div class="ob-sub">
+          Seguindo <strong style="color:#3b82f6">${_obFollowing.size}</strong> criadores<br>
+          Feed personalizado com <strong style="color:#3b82f6">${_obInteresses.length}</strong> interesses
+        </div>
+        <button class="ob-btn" onclick="finishOnboarding()">Entrar no Blue →</button>
+      </div>`;
+  }
+}
+
+function toggleInteresse(id) {
+  const i = _obInteresses.indexOf(id);
+  if (i >= 0) _obInteresses.splice(i,1);
+  else _obInteresses.push(id);
+  renderOnboardStep(1); // re-render
+}
+
+async function saveInteresses() {
+  if (_obInteresses.length < 3) return;
+  const tk = localStorage.getItem('bt_token');
+  try {
+    await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'interesses',token:tk,interesses:_obInteresses})});
+    renderOnboardStep(2);
+  } catch(e) { toast('Erro'); }
+}
+
+async function loadOnboardCreators() {
+  const tk = localStorage.getItem('bt_token');
+  try {
+    const r = await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'sugestoes-seguir',token:tk})});
+    const d = await r.json();
+    _obSugestoes = d.sugestoes || [];
+    const el = document.getElementById('obCreatorsList');
+    if (!el) return;
+    if (!_obSugestoes.length) {
+      el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:rgba(150,190,230,.5);font-size:12px">Nenhum criador ainda. Você pode pular este passo.</div>';
+      document.getElementById('obNext2').disabled = false;
+      return;
+    }
+    el.innerHTML = _obSugestoes.map(s=>{
+      const init = (s.display_name||s.username||'?').charAt(0).toUpperCase();
+      const avHtml = s.avatar_url ? `<img src="${s.avatar_url}"/>` : init;
+      return `<div class="ob-creator ${_obFollowing.has(s.user_id)?'following':''}" onclick="toggleFollowCreator('${s.user_id}')">
+        <div class="ob-creator-av">${avHtml}</div>
+        <div class="ob-creator-name">${s.display_name||s.username||'—'}</div>
+        <div class="ob-creator-stats">${fmt(s.seguidores||0)} seguidores</div>
+        <button class="ob-creator-btn">${_obFollowing.has(s.user_id)?'✓ Seguindo':'+ Seguir'}</button>
+      </div>`;
+    }).join('');
+  } catch(e) { toast('Erro'); }
+}
+
+function toggleFollowCreator(uid) {
+  if (_obFollowing.has(uid)) _obFollowing.delete(uid);
+  else _obFollowing.add(uid);
+  document.getElementById('obFollowCounter').textContent = 'Seguindo ' + _obFollowing.size + ' criadores';
+  document.getElementById('obNext2').disabled = _obFollowing.size < 1;
+  loadOnboardCreators(); // refresh
+}
+
+async function confirmFollows() {
+  if (_obFollowing.size < 1) return;
+  const tk = localStorage.getItem('bt_token');
+  try {
+    await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'seguir-sugeridos',token:tk,user_ids:[..._obFollowing]})});
+    renderOnboardStep(3);
+  } catch(e) { toast('Erro'); }
+}
+
+async function askNotifications() {
+  if ('Notification' in window) {
+    try { await Notification.requestPermission(); } catch(e) {}
+  }
+  renderOnboardStep(4);
+}
+
+async function finishOnboarding() {
+  const tk = localStorage.getItem('bt_token');
+  try {
+    await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'completar',token:tk})});
+    document.getElementById('onboardOv').classList.remove('on');
+    loadFeed();
+  } catch(e) { toast('Erro'); }
+}
+
+// Check onboarding after login (when TOKEN is available)
+setTimeout(() => { if (TOKEN) checkOnboarding(); }, 2000);
+
+// ══════════════════════ LEGENDAS (CC TOGGLE) ══════════════════════
+function toggleCC(videoId) {
+  _ccEnabled = !_ccEnabled;
+  localStorage.setItem('legendas_ativas', _ccEnabled ? 'true' : 'false');
+  document.querySelectorAll('video track').forEach(t => { t.mode = _ccEnabled ? 'showing' : 'hidden'; });
+  document.querySelectorAll('.cc-toggle').forEach(b => b.classList.toggle('on', _ccEnabled));
+}
+
+// Apply CC to existing videos on load (MutationObserver catches new ones)
+(function(){
+  const mo = new MutationObserver(() => {
+    document.querySelectorAll('video:not([data-cc-init])').forEach(v => {
+      v.setAttribute('data-cc-init', '1');
+      const tracks = v.querySelectorAll('track');
+      tracks.forEach(t => { t.mode = _ccEnabled ? 'showing' : 'hidden'; });
+    });
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+
 </body>
 </html>
