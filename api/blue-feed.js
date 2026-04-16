@@ -1,5 +1,6 @@
 // api/blue-feed.js — Feed de vídeos com paginação por cursor + stats + waitlist
 const { cacheGetOrSet, cacheDel } = require('./_helpers/cache');
+const { checkBan } = require('./_helpers/checkBan');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -397,19 +398,25 @@ module.exports = async function handler(req, res) {
 
   // Load user preferences if logged in
   let userPrefs = null;
+  let blockedIds = [];
   if (feedToken) {
     try {
       const AK = process.env.SUPABASE_ANON_KEY || SK;
       const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + feedToken } });
       if (uR.ok) {
         const uid = (await uR.json()).id;
-        // Get following list + recent seen
-        const [flR, seenR] = await Promise.all([
+        // Check ban
+        const ban = await checkBan(uid, SU, h);
+        if (ban) return res.status(403).json({ error: 'Conta suspensa', motivo: ban.motivo, expira_em: ban.expira_em });
+        // Get following + seen + blocked in parallel
+        const [flR, seenR, blkR] = await Promise.all([
           fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${uid}&select=following_id`, { headers: h }),
           fetch(`${SU}/rest/v1/blue_feed_seen?user_id=eq.${uid}&select=video_id&order=seen_at.desc&limit=100`, { headers: h }),
+          fetch(`${SU}/rest/v1/blue_bloqueios?user_id=eq.${uid}&select=bloqueado_id`, { headers: h }),
         ]);
         const following = flR.ok ? (await flR.json()).map(f => f.following_id) : [];
         const seen = seenR.ok ? (await seenR.json()).map(s => s.video_id) : [];
+        blockedIds = blkR.ok ? (await blkR.json()).map(b => b.bloqueado_id) : [];
         userPrefs = { uid, following, seen };
       }
     } catch(e) {}
@@ -428,9 +435,12 @@ module.exports = async function handler(req, res) {
 
     let raw = (await r.json()).filter(v => v.video_url && v.status === 'active');
 
+    // Filter out blocked users' content
+    if (blockedIds.length) raw = raw.filter(v => !blockedIds.includes(v.user_id));
+
     // Apply intelligent scoring if user is logged in
     if (userPrefs) {
-      raw = raw.filter(v => !userPrefs.seen.includes(v.id)); // remove already seen
+      raw = raw.filter(v => !userPrefs.seen.includes(v.id));
       raw.forEach(v => {
         let s = v.score || 0;
         // Boost followed creators

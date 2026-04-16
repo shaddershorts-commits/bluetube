@@ -1,5 +1,6 @@
 // api/blue-upload.js — Salva metadata + retorna destino de upload
 // Upload limits by plan: Free=5/50MB, Full=20/200MB, Master=100/500MB
+const { checkBan } = require('./_helpers/checkBan');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,6 +24,10 @@ module.exports = async function handler(req, res) {
     const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
     if (!uR.ok) return res.status(401).json({ error: 'Token inválido — faça login novamente.' });
     const { id: userId, email } = await uR.json();
+
+    // Ban check
+    const ban = await checkBan(userId, SU, h);
+    if (ban) return res.status(403).json({ error: 'Conta suspensa. ' + (ban.expira_em ? 'Expira em ' + new Date(ban.expira_em).toLocaleDateString('pt-BR') : 'Permanente.'), motivo: ban.motivo });
 
     // Rate limit: 10 uploads/hora por user
     try {
