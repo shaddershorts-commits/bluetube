@@ -80,9 +80,128 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET' && action === 'list_affiliates') {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*&order=created_at.desc`, { headers });
-    const data = await r.json();
-    return res.status(200).json(Array.isArray(data) ? data : []);
+    try {
+      const [affRes, commRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?select=affiliate_id,commission_amount,status&order=created_at.desc`, { headers }),
+      ]);
+      const affiliates = affRes.ok ? await affRes.json() : [];
+      const commissions = commRes.ok ? await commRes.json() : [];
+      // Agrupa comissões por afiliado
+      const commMap = {};
+      (Array.isArray(commissions) ? commissions : []).forEach(c => {
+        if (!commMap[c.affiliate_id]) commMap[c.affiliate_id] = { pending: 0, paid: 0, total: 0 };
+        const amt = parseFloat(c.commission_amount || 0);
+        commMap[c.affiliate_id].total += amt;
+        if (c.status === 'pending') commMap[c.affiliate_id].pending += amt;
+        if (c.status === 'paid') commMap[c.affiliate_id].paid += amt;
+      });
+      const enriched = (Array.isArray(affiliates) ? affiliates : []).map(a => ({
+        ...a,
+        nivel: a.nivel || 'bronze',
+        comissao_percentual: a.comissao_percentual || 30,
+        commissions_pending: parseFloat((commMap[a.id]?.pending || 0).toFixed(2)),
+        commissions_paid: parseFloat((commMap[a.id]?.paid || 0).toFixed(2)),
+        commissions_total: parseFloat((commMap[a.id]?.total || 0).toFixed(2)),
+      }));
+      return res.status(200).json(enriched);
+    } catch(e) { return res.status(200).json([]); }
+  }
+
+  // ── SET AFFILIATE LEVEL ─────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'set_affiliate_level') {
+    const { affiliate_id, nivel, motivo } = req.body;
+    if (!affiliate_id || !nivel) return res.status(400).json({ error: 'affiliate_id e nivel obrigatórios' });
+    const NIVEL_RATES = { bronze: 30, prata: 45, ouro: 58 };
+    const comissao = NIVEL_RATES[nivel];
+    if (comissao === undefined) return res.status(400).json({ error: 'Nível inválido: bronze, prata ou ouro' });
+
+    try {
+      // Busca afiliado atual
+      const ar = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*`, { headers });
+      const affiliates = ar.ok ? await ar.json() : [];
+      const affiliate = affiliates?.[0];
+      if (!affiliate) return res.status(404).json({ error: 'Afiliado não encontrado' });
+
+      const nivelAnterior = affiliate.nivel || 'bronze';
+      if (nivelAnterior === nivel) return res.status(200).json({ ok: true, message: 'Já está neste nível', affiliate });
+
+      // Atualiza nível
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate_id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          nivel,
+          comissao_percentual: comissao,
+          nivel_atualizado_em: new Date().toISOString(),
+          nivel_atualizado_por: 'admin',
+          updated_at: new Date().toISOString()
+        })
+      });
+
+      // Histórico
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_nivel_historico`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          affiliate_id,
+          nivel_anterior: nivelAnterior,
+          nivel_novo: nivel,
+          motivo: motivo || null,
+          admin_email: 'admin'
+        })
+      });
+
+      // Email de notificação
+      const RESEND = process.env.RESEND_API_KEY;
+      if (RESEND && affiliate.email) {
+        const nivelLabel = { bronze: 'Bronze', prata: 'Prata', ouro: 'Ouro' }[nivel];
+        const nivelEmoji = { bronze: '🥉', prata: '🥈', ouro: '🥇' }[nivel];
+        const nivelColor = { bronze: '#cd7f32', prata: '#c0c0c0', ouro: '#FFD700' }[nivel];
+        const exemplo = nivel === 'ouro' ? '<p style="margin-top:16px;font-size:13px;color:#999">Exemplo: 10 assinantes Full (R$29,99) = <strong style="color:#FFD700">R$' + (10 * 29.99 * comissao / 100).toFixed(2) + '/mês</strong> pra você!</p>' : '';
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
+          body: JSON.stringify({
+            from: 'BlueTube <noreply@bluetubeviral.com>',
+            to: [affiliate.email],
+            subject: `${nivelEmoji} Parabéns! Você é agora um Afiliado ${nivelLabel}!`,
+            html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:32px;border-radius:16px;max-width:500px;margin:0 auto">
+              <div style="text-align:center;margin-bottom:24px">
+                <div style="font-size:48px;margin-bottom:8px">${nivelEmoji}</div>
+                <h1 style="font-size:24px;margin:0;color:${nivelColor}">Afiliado ${nivelLabel}</h1>
+                <p style="color:#999;font-size:14px">Seu nível foi atualizado!</p>
+              </div>
+              <div style="background:rgba(255,255,255,0.05);border:1px solid ${nivelColor}44;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px">
+                <div style="font-size:14px;color:#999;margin-bottom:4px">Sua nova comissão</div>
+                <div style="font-size:48px;font-weight:900;color:${nivelColor}">${comissao}%</div>
+                <div style="font-size:13px;color:#999">de cada assinatura indicada</div>
+              </div>
+              ${exemplo}
+              <div style="text-align:center;margin-top:24px">
+                <a href="https://bluetubeviral.com/afiliado.html" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px">Ver meu painel →</a>
+              </div>
+            </div>`
+          })
+        }).catch(() => {});
+      }
+
+      console.log(`🎖 Affiliate level: ${affiliate.email} ${nivelAnterior} → ${nivel} (${comissao}%)`);
+      return res.status(200).json({ ok: true, affiliate: { ...affiliate, nivel, comissao_percentual: comissao } });
+    } catch(e) {
+      console.error('Set affiliate level error:', e.message);
+      return res.status(500).json({ error: 'Erro ao alterar nível: ' + e.message });
+    }
+  }
+
+  // ── AFFILIATE LEVEL HISTORY ─────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'affiliate_history') {
+    const { affiliate_id } = req.query;
+    if (!affiliate_id) return res.status(400).json({ error: 'affiliate_id obrigatório' });
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_nivel_historico?affiliate_id=eq.${affiliate_id}&select=*&order=created_at.desc&limit=20`, { headers });
+      return res.status(200).json(r.ok ? await r.json() : []);
+    } catch(e) { return res.status(200).json([]); }
   }
 
   // ── MODERATION ──────────────────────────────────────────────────────────

@@ -170,6 +170,26 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` })
+      }).then(async () => {
+        // Corrige comissão com o percentual real do nível (comissao_percentual do banco)
+        try {
+          const subRef = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: supaHeaders });
+          const refData = subRef.ok ? await subRef.json() : [];
+          const refCode = refData?.[0]?.affiliate_ref;
+          if (!refCode) return;
+          const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,email`, { headers: supaHeaders });
+          const aff = affRes.ok ? (await affRes.json())?.[0] : null;
+          if (!aff?.comissao_percentual) return;
+          const rate = aff.comissao_percentual / 100;
+          const planAmount = plan === 'master' ? 89.99 : 29.99;
+          const correctedAmount = parseFloat((planAmount * rate).toFixed(2));
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(email)}&order=created_at.desc&limit=1`, {
+            method: 'PATCH',
+            headers: supaHeaders,
+            body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount })
+          });
+          console.log(`💰 Commission corrected: ${aff.email} nivel=${aff.nivel} ${(rate*100).toFixed(0)}% = R$${correctedAmount} (${email})`);
+        } catch(e) { console.error('Commission correction error:', e.message); }
       }).catch(() => {});
     }
 
@@ -202,10 +222,32 @@ export default async function handler(req, res) {
 
       // Comissão recorrente do afiliado
       const SITE_URL_R = process.env.SITE_URL || 'https://bluetubeviral.com';
+      const renewEmail = subs[0].email;
+      const renewPlan = subs[0].plan;
       fetch(`${SITE_URL_R}/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'renewal', email: subs[0].email, plan: subs[0].plan })
+        body: JSON.stringify({ action: 'renewal', email: renewEmail, plan: renewPlan })
+      }).then(async () => {
+        // Corrige comissão com o percentual real do nível
+        try {
+          const subRef = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(renewEmail)}&select=affiliate_ref`, { headers: supaHeaders });
+          const refData = subRef.ok ? await subRef.json() : [];
+          const refCode = refData?.[0]?.affiliate_ref;
+          if (!refCode) return;
+          const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel`, { headers: supaHeaders });
+          const aff = affRes.ok ? (await affRes.json())?.[0] : null;
+          if (!aff?.comissao_percentual) return;
+          const rate = aff.comissao_percentual / 100;
+          const planAmount = renewPlan === 'master' ? 89.99 : 29.99;
+          const correctedAmount = parseFloat((planAmount * rate).toFixed(2));
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(renewEmail)}&order=created_at.desc&limit=1`, {
+            method: 'PATCH',
+            headers: supaHeaders,
+            body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount })
+          });
+          console.log(`🔄 Renewal commission corrected: nivel=${aff.nivel} ${(rate*100).toFixed(0)}% = R$${correctedAmount}`);
+        } catch(e) { console.error('Renewal commission correction error:', e.message); }
       }).catch(() => {});
     }
 
