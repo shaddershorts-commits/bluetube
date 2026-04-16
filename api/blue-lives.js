@@ -324,5 +324,53 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // ── CONVIDAR CO-HOST ─────────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'convidar-cohost') {
+    const { token, live_id, convidado_id } = req.body;
+    const user = await getUser(token);
+    if (!user) return res.status(401).json({ error: 'Token inválido' });
+    try {
+      // Verify user owns the live
+      const lR = await fetch(`${SU}/rest/v1/blue_lives?id=eq.${live_id}&user_id=eq.${user.id}&status=eq.ativa&select=room_id,titulo`, { headers: h });
+      const live = lR.ok ? (await lR.json())[0] : null;
+      if (!live) return res.status(403).json({ error: 'Apenas o host pode convidar' });
+      // Notify invited user
+      const uname = user.profile?.display_name || user.profile?.username || 'Alguém';
+      await fetch(`${SU}/rest/v1/blue_notificacoes`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ user_id: convidado_id, tipo: 'cohost', titulo: '🎬 Convite para live!', mensagem: `${uname} te convidou para participar da live: ${live.titulo}`, dados: { live_id, room_id: live.room_id, host_id: user.id } })
+      });
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── ACEITAR CO-HOST ─────────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'aceitar-cohost') {
+    const { token, live_id } = req.body;
+    const user = await getUser(token);
+    if (!user) return res.status(401).json({ error: 'Token inválido' });
+    try {
+      const lR = await fetch(`${SU}/rest/v1/blue_lives?id=eq.${live_id}&status=eq.ativa&select=room_id`, { headers: h });
+      const live = lR.ok ? (await lR.json())[0] : null;
+      if (!live) return res.status(404).json({ error: 'Live não encontrada' });
+      // Generate co-host token (same as host role)
+      const cohostToken = await generateRoomToken(live.room_id, 'host', user.id, user.profile?.display_name || 'Co-host');
+      return res.status(200).json({ ok: true, token_acesso: cohostToken, room_id: live.room_id });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── LIMPAR LIVES ANTIGAS (cron) ─────────────────────────────────────────
+  if (action === 'limpar-lives-antigas') {
+    try {
+      const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+      // Mark stale active lives as ended
+      await fetch(`${SU}/rest/v1/blue_lives?status=eq.ativa&started_at=lt.${oneDayAgo}`, {
+        method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ status: 'encerrada', ended_at: new Date().toISOString(), viewers_count: 0 })
+      });
+      cacheDel('lives:ativas');
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(200).json({ ok: false }); }
+  }
+
   return res.status(404).json({ error: 'Action não encontrada' });
 };
