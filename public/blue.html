@@ -4073,7 +4073,7 @@ async function loadGruposDesc(){
 }
 async function entrarGrupo(id,nome){
   const tk=localStorage.getItem('bt_token');
-  if(!tk){showToast('Entre para participar de grupos');return;}
+  if(!tk){toast('Entre para participar de grupos');return;}
   try{
     await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'entrar',grupo_id:id,token:tk})});
     openGrupoChat(id,nome);
@@ -4128,12 +4128,12 @@ async function sendGpMsg(){
   const txt=(inp?.value||'').trim();
   if(!txt||!_currentGrupoId)return;
   const tk=localStorage.getItem('bt_token');
-  if(!tk){showToast('Entre para enviar mensagens');return;}
+  if(!tk){toast('Entre para enviar mensagens');return;}
   inp.value='';
   try{
     await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'mensagem',grupo_id:_currentGrupoId,mensagem:txt,token:tk})});
     loadGrupoMensagens(_currentGrupoId);
-  }catch(e){showToast('Erro ao enviar');}
+  }catch(e){toast('Erro ao enviar');}
 }
 function openCriarGrupo(){
   document.getElementById('criarGrupoModal').classList.add('open');
@@ -4155,7 +4155,7 @@ async function criarGrupo(){
     const d=await r.json();
     if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
     closeCriarGrupo();
-    showToast('Grupo criado!');
+    toast('Grupo criado!');
     loadGruposMeus();
     if(d.grupo?.id) openGrupoChat(d.grupo.id,nome);
   }catch(e){if(msg)msg.textContent='Erro ao criar';}
@@ -4228,7 +4228,7 @@ async function comprarProduto(prodId){
     const d=await r.json();
     if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
     if(msg)msg.textContent='Compra realizada! ✅';
-    showToast('Compra realizada!');
+    toast('Compra realizada!');
   }catch(e){if(msg)msg.textContent='Erro ao processar';}
 }
 function openAddProdModal(){
@@ -4253,7 +4253,7 @@ async function publicarProduto(){
     const d=await r.json();
     if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
     closeAddProdModal();
-    showToast('Produto publicado!');
+    toast('Produto publicado!');
     if(_shopUserId) loadShopTab(_shopUserId,_shopIsOwn);
   }catch(e){if(msg)msg.textContent='Erro ao publicar';}
 }
@@ -4295,16 +4295,16 @@ function closeAssinaturaModal(){
 }
 async function assinarPlano(planoId){
   const tk=localStorage.getItem('bt_token');
-  if(!tk){showToast('Entre para assinar');return;}
+  if(!tk){toast('Entre para assinar');return;}
   const btn=event.target;
   if(btn)btn.textContent='Processando…';
   try{
     const r=await fetch('/api/blue-assinatura',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'assinar',plano_id:planoId,token:tk})});
     const d=await r.json();
-    if(!r.ok){showToast(d.error||'Erro ao assinar');if(btn)btn.textContent='Assinar';return;}
-    showToast('Assinatura realizada! ⭐');
+    if(!r.ok){toast(d.error||'Erro ao assinar');if(btn)btn.textContent='Assinar';return;}
+    toast('Assinatura realizada! ⭐');
     closeAssinaturaModal();
-  }catch(e){showToast('Erro ao assinar');if(btn)btn.textContent='Assinar';}
+  }catch(e){toast('Erro ao assinar');if(btn)btn.textContent='Assinar';}
 }
 function openCriarPlanoModal(){
   document.getElementById('criarPlanoModal')?.classList.add('open');
@@ -4328,7 +4328,7 @@ async function criarPlano(){
     const d=await r.json();
     if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
     closeCriarPlanoModal();
-    showToast('Plano criado!');
+    toast('Plano criado!');
   }catch(e){if(msg)msg.textContent='Erro ao criar plano';}
 }
 
