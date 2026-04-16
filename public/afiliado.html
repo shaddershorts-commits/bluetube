@@ -132,6 +132,24 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
 .notif.show{opacity:1;transform:translateX(0)}
 .notif.success{border:1px solid rgba(34,197,94,.4)}
 .notif.upgrade{border:1px solid rgba(251,191,36,.4)}
+/* NIVEL THEMES */
+@keyframes shimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes golden-pulse{0%,100%{box-shadow:0 0 20px rgba(255,215,0,.3)}50%{box-shadow:0 0 40px rgba(255,215,0,.6),0 0 60px rgba(255,165,0,.3)}}
+@keyframes golden-particle{0%{transform:translateY(0) scale(1);opacity:.6}50%{opacity:1}100%{transform:translateY(-60px) scale(0);opacity:0}}
+.nivel-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 18px;border-radius:100px;font-weight:800;font-size:13px;letter-spacing:.06em;margin-bottom:16px}
+.nivel-badge.bronze{background:rgba(205,127,50,.15);border:1px solid rgba(205,127,50,.3);color:#cd7f32}
+.nivel-badge.prata{background:linear-gradient(135deg,rgba(192,192,192,.15),rgba(230,230,230,.1));border:1px solid rgba(192,192,192,.4);color:#e0e0e0}
+.nivel-badge.ouro{background:linear-gradient(135deg,#B8860B,#FFD700,#FFA500);color:#000;animation:golden-pulse 2s infinite;font-size:14px}
+.theme-ouro nav{background:linear-gradient(135deg,rgba(184,134,11,.15),rgba(255,215,0,.08),rgba(255,165,0,.1));border-bottom-color:rgba(255,215,0,.3)}
+.theme-ouro .link-card,.theme-ouro .metric-box,.theme-ouro .revenue-card,.theme-ouro .chart-card,.theme-ouro .history-card,.theme-ouro .table-card,.theme-ouro .today-card{border-color:rgba(255,215,0,.2);box-shadow:0 0 15px rgba(255,215,0,.05)}
+.theme-ouro .prog-card{background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(10,22,40,.9))!important;border-color:rgba(255,215,0,.4)!important;animation:golden-pulse 3s infinite}
+.theme-prata nav{background:linear-gradient(135deg,rgba(192,192,192,.08),rgba(10,22,40,.95));border-bottom-color:rgba(192,192,192,.25)}
+.theme-prata .link-card,.theme-prata .metric-box,.theme-prata .revenue-card,.theme-prata .chart-card,.theme-prata .history-card,.theme-prata .table-card{border-color:rgba(192,192,192,.15)}
+.gold-particles{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.gold-particle{position:absolute;width:4px;height:4px;background:#FFD700;border-radius:50%;animation:golden-particle 3s infinite}
+.benefits-card{background:linear-gradient(135deg,rgba(255,215,0,.06),rgba(10,22,40,.9));border:1px solid rgba(255,215,0,.25);border-radius:16px;padding:22px;margin-bottom:18px}
+.benefits-card li{font-size:13px;color:var(--text-sec);padding:6px 0;list-style:none;display:flex;align-items:center;gap:8px}
+.benefits-card li::before{content:'✅';font-size:14px}
 @media(max-width:640px){nav{padding:12px 16px}.levels-grid,.steps,.rev-grid{grid-template-columns:1fr}.metrics-grid{grid-template-columns:1fr}.rev-div{display:none}.landing-h1{font-size:38px}}
 </style>
 </head>
@@ -242,7 +260,7 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
         <div class="link-url" id="refLinkDisplay">—</div>
         <button class="btn-copy" id="btnCopy">📋 Copiar</button>
       </div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px">Cookie 60 dias · Rastreamento automático · Compartilhe em qualquer plataforma</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px">Cookie 60 dias · Rastreamento automático · <span id="linkComissaoTip"></span></div>
     </div>
 
     <!-- HOJE -->
@@ -471,34 +489,76 @@ async function loadDash(){
 
 function renderDash(data){
   const{affiliate,stats,conversions,monthlyHistory,todayEarnings}=data;
-  const lv=stats.level;
-  const lc={bronze:'var(--bronze)',silver:'var(--silver)',gold:'var(--gold)'}[lv];
-  const ln={bronze:'🥉 Bronze',silver:'🥈 Prata',gold:'🥇 Ouro'}[lv];
+  // Usa nivel do admin (comissao_percentual real) se disponível, senão fallback pro level auto
+  const nivel=affiliate.nivel||'bronze';
+  const comissaoReal=affiliate.comissao_percentual||30;
+  const lv=nivel; // tema baseado no nivel admin
+  const lc={bronze:'var(--bronze)',prata:'var(--silver)',ouro:'var(--gold)'}[lv]||'var(--bronze)';
+  const ln={bronze:'🥉 Bronze',prata:'🥈 Prata',ouro:'🥇 Ouro'}[lv]||'🥉 Bronze';
+
+  // Aplica tema global
+  document.body.classList.remove('theme-bronze','theme-prata','theme-ouro');
+  document.body.classList.add('theme-'+lv);
+
+  // Badge de nível no topo
+  let nivelBadgeEl=document.getElementById('nivelBadgeTop');
+  if(!nivelBadgeEl){
+    nivelBadgeEl=document.createElement('div');nivelBadgeEl.id='nivelBadgeTop';nivelBadgeEl.style.textAlign='center';
+    const ds=document.getElementById('dashboardSection');
+    if(ds)ds.insertBefore(nivelBadgeEl,ds.firstChild);
+  }
+  nivelBadgeEl.innerHTML=`<div class="nivel-badge ${lv}">${ln}</div>`;
+
+  // Gold particles
+  let particlesEl=document.getElementById('goldParticles');
+  if(lv==='ouro'&&!particlesEl){
+    particlesEl=document.createElement('div');particlesEl.id='goldParticles';particlesEl.className='gold-particles';
+    for(let i=0;i<20;i++){const p=document.createElement('div');p.className='gold-particle';p.style.left=Math.random()*100+'%';p.style.top=(60+Math.random()*40)+'%';p.style.animationDelay=Math.random()*3+'s';p.style.animationDuration=(2+Math.random()*2)+'s';particlesEl.appendChild(p);}
+    document.body.appendChild(particlesEl);
+  }else if(lv!=='ouro'&&particlesEl){particlesEl.remove();}
+
+  // Benefits card for Ouro
+  let benefitsEl=document.getElementById('ouroBenefits');
+  if(lv==='ouro'){
+    if(!benefitsEl){
+      benefitsEl=document.createElement('div');benefitsEl.id='ouroBenefits';benefitsEl.className='benefits-card';
+      benefitsEl.innerHTML=`<div class="sec-title" style="color:#FFD700">👑 Benefícios Ouro</div><ul style="margin:0;padding:0"><li>58% de comissão vitalícia</li><li>Pagamentos priorizados</li><li>Suporte dedicado</li><li>Acesso antecipado a novidades</li></ul>`;
+      const revenueCard=document.querySelector('.revenue-card');
+      if(revenueCard)revenueCard.parentNode.insertBefore(benefitsEl,revenueCard.nextSibling);
+    }
+  }else if(benefitsEl){benefitsEl.remove();}
+
   // Level card
-  const lcard=document.getElementById('levelCard');lcard.className=`prog-card ${lv}`;
-  const lb=document.getElementById('levelBadge');lb.className=`lvl-badge ${lv}`;lb.textContent=ln;
-  document.getElementById('levelRate').textContent=(stats.commissionRate*100).toFixed(0)+'%';
+  const lcard=document.getElementById('levelCard');lcard.className=`prog-card ${lv==='prata'?'silver':lv}`;
+  const lb=document.getElementById('levelBadge');lb.className=`lvl-badge ${lv==='prata'?'silver':lv}`;lb.textContent=ln;
+  document.getElementById('levelRate').textContent=comissaoReal+'%';
   document.getElementById('levelRate').style.color=lc;
-  const nx=stats.nextLevel;const nxn={silver:'Prata',gold:'Ouro',null:''}[nx?.next];
-  const mot=lv==='gold'?'🏆 Nível máximo! Continue indicando para maximizar seus ganhos recorrentes.':
-    `Faltam <strong>${nx.needed} pagantes</strong> para atingir <strong>${nxn}</strong> e ganhar <strong>${(nx.nextRate*100).toFixed(0)}%</strong> de comissão.`;
+  // Motivação e progresso baseado no nivel admin
+  const nivelUp={bronze:{next:'prata',nextRate:45,label:'Prata'},prata:{next:'ouro',nextRate:58,label:'Ouro'},ouro:{next:null}};
+  const nup=nivelUp[lv]||{next:null};
+  const mot=lv==='ouro'?'🏆 Nível máximo! Você recebe <strong>58%</strong> de comissão em cada indicação.':
+    `Seu nível atual: <strong>${ln}</strong> com <strong>${comissaoReal}%</strong> de comissão. Próximo: <strong>${nup.label}</strong> com <strong>${nup.nextRate}%</strong>.`;
   document.getElementById('levelMotivation').innerHTML=mot;
+  const nx=stats.nextLevel;
   const pct=nx?.needed>0?Math.min(100,Math.round(((nx.total-nx.needed)/nx.total)*100)):100;
   document.getElementById('progLeft').textContent=`${stats.totalPaying} pagantes`;
-  document.getElementById('progRight').textContent=lv!=='gold'?`${nx.total} para ${nxn}`:'Nível máximo';
+  document.getElementById('progRight').textContent=lv!=='ouro'&&nup.next?`Rumo ao ${nup.label}`:'Nível máximo';
   setTimeout(()=>{const pf=document.getElementById('progFill');pf.style.width=pct+'%';pf.style.background=lc;},200);
-  if(lv==='gold')document.getElementById('progressWrap').style.display='none';
+  if(lv==='ouro')document.getElementById('progressWrap').style.display='none';
+  else document.getElementById('progressWrap').style.display='';
   // Bônus por nível
   const bonusEl=document.getElementById('bonusTip');
   if(bonusEl){
     if(lv==='bronze'){bonusEl.style.display='block';bonusEl.innerHTML='🎁 Bônus de <strong>R$ 3.680</strong> ao atingir Prata + <strong>R$ 5.780</strong> ao atingir Ouro';}
-    else if(lv==='silver'){bonusEl.style.display='block';bonusEl.innerHTML='🎁 Bônus de <strong>R$ 5.780</strong> ao atingir o Nível Ouro!';}
+    else if(lv==='prata'){bonusEl.style.display='block';bonusEl.innerHTML='🎁 Bônus de <strong>R$ 5.780</strong> ao atingir o Nível Ouro!';}
     else{bonusEl.style.display='none';}
   }
   // Link
   const rl=`${SITE}/?ref=${affiliate.ref_code}`;
   document.getElementById('refLinkDisplay').textContent=rl;
   document.getElementById('btnCopy').onclick=()=>{navigator.clipboard.writeText(rl).catch(()=>{});toast('✅ Link copiado!');};
+  const linkTip=document.getElementById('linkComissaoTip');
+  if(linkTip)linkTip.innerHTML=`<span style="color:${lc};font-weight:600">💰 ${comissaoReal}% de comissão</span>`;
   // Hoje
   document.getElementById('todayEarnings').textContent=fm(todayEarnings);
   document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('pt-BR');
@@ -549,7 +609,8 @@ function startPoll(){
         const nw=d.conversions[0];
         const pl=nw.plan==='master'?'👑 Master':nw.plan==='full'?'⚡ Full':'🆓 Free';
         if(nw.plan==='master'||nw.plan==='full'){
-          notif(`Novo assinante ${pl} via seu link!<br><span style="color:var(--green);font-size:11px">+${fm((d.stats?.commissionRate||0.35)*(nw.plan==='master'?89.99:29.99))} de comissão</span>`,'upgrade');
+          const realRate=(d.affiliate?.comissao_percentual||30)/100;
+          notif(`Novo assinante ${pl} via seu link!<br><span style="color:var(--green);font-size:11px">+${fm(realRate*(nw.plan==='master'?89.99:29.99))} de comissão</span>`,'upgrade');
         }else{notif(`Novo cadastro via seu link!`,'success');}
         lastCC=nc;
       }

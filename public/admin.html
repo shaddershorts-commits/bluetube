@@ -102,6 +102,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 .empty-state{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:36px}
 .loading-txt{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:center;padding:30px;animation:blink 1.5s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes golden-pulse{0%,100%{box-shadow:0 0 8px rgba(255,215,0,.3)}50%{box-shadow:0 0 20px rgba(255,215,0,.6),0 0 30px rgba(255,165,0,.2)}}
 
 /* PROGRESS BAR */
 .progress-bar{height:3px;background:rgba(0,170,255,0.1);border-radius:2px;overflow:hidden;position:fixed;top:0;left:0;right:0;z-index:200}
@@ -331,10 +332,61 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- AFILIADOS -->
     <div class="section" id="affiliatesSection">
       <div class="section-header">
-        <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— aprovar e gerenciar afiliados</span></div>
-        <div id="pendingAffBadge" style="display:none;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow)">⏳ <span id="pendingAffCount">0</span> aguardando aprovação</div>
+        <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— gestão de níveis e comissões</span></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <div id="pendingAffBadge" style="display:none;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow)">⏳ <span id="pendingAffCount">0</span> aguardando</div>
+          <div style="display:flex;gap:4px" id="affNivelFilters">
+            <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="filterAffs('all')" data-afilter="all">Todos</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:#cd7f32" onclick="filterAffs('bronze')" data-afilter="bronze">🥉 Bronze</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:#c0c0c0" onclick="filterAffs('prata')" data-afilter="prata">🥈 Prata</button>
+            <button class="action-btn" style="font-size:10px;padding:5px 10px;color:#fbbf24" onclick="filterAffs('ouro')" data-afilter="ouro">🥇 Ouro</button>
+          </div>
+        </div>
       </div>
+      <!-- Resumo -->
+      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Total afiliados</div><div class="stat-value blue" id="affTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">🥇 Ouro</div><div class="stat-value" style="color:#fbbf24" id="affOuro">—</div></div>
+        <div class="stat-card"><div class="stat-label">🥈 Prata</div><div class="stat-value" style="color:#c0c0c0" id="affPrata">—</div></div>
+        <div class="stat-card"><div class="stat-label">💰 Total pago</div><div class="stat-value green" id="affPaid">—</div></div>
+        <div class="stat-card"><div class="stat-label">⏳ Pendente</div><div class="stat-value yellow" id="affPending">—</div></div>
+      </div>
+      <input id="affSearchInp" oninput="onAffSearch()" class="plan-input" style="margin-bottom:10px;font-size:11px;padding:9px 12px" placeholder="🔍 Buscar por nome ou email..."/>
       <div class="table-wrap" id="affiliatesTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
+    <!-- MODAL PROMOÇÃO DE NÍVEL -->
+    <div id="nivelModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+      <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.25);border-radius:20px;padding:32px;width:100%;max-width:480px;position:relative">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(0,170,255,0.5),transparent);border-radius:20px 20px 0 0"></div>
+        <button onclick="closeNivelModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer">✕</button>
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">🎖 Alterar nível de afiliado</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:6px" id="nivelModalEmail">—</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:20px">Nível atual: <span id="nivelModalCurrent" style="font-weight:700"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
+          <div onclick="selectNivel('bronze')" id="nivelOptBronze" style="border:2px solid rgba(205,127,50,.2);border-radius:12px;padding:16px 10px;text-align:center;cursor:pointer;transition:all .2s">
+            <div style="font-size:28px;margin-bottom:6px">🥉</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#cd7f32">Bronze</div>
+            <div style="font-size:24px;font-weight:800;color:#cd7f32;margin:4px 0">30%</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Nível padrão</div>
+          </div>
+          <div onclick="selectNivel('prata')" id="nivelOptPrata" style="border:2px solid rgba(192,192,192,.2);border-radius:12px;padding:16px 10px;text-align:center;cursor:pointer;transition:all .2s">
+            <div style="font-size:28px;margin-bottom:6px">🥈</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#c0c0c0">Prata</div>
+            <div style="font-size:24px;font-weight:800;color:#c0c0c0;margin:4px 0">45%</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Intermediário</div>
+          </div>
+          <div onclick="selectNivel('ouro')" id="nivelOptOuro" style="border:2px solid rgba(251,191,36,.2);border-radius:12px;padding:16px 10px;text-align:center;cursor:pointer;transition:all .2s;position:relative">
+            <div style="font-size:28px;margin-bottom:6px">🥇</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#fbbf24">Ouro</div>
+            <div style="font-size:24px;font-weight:800;color:#fbbf24;margin:4px 0">58%</div>
+            <div style="font-family:var(--mono);font-size:10px;color:#fbbf24">Premium ✨</div>
+          </div>
+        </div>
+        <input class="plan-input" id="nivelMotivo" placeholder="Motivo da promoção (opcional)" style="margin-bottom:14px"/>
+        <button onclick="confirmNivel()" style="width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:13px;font-family:var(--display);font-size:14px;font-weight:700;color:#fff;cursor:pointer">Confirmar promoção →</button>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px;text-align:center" id="nivelModalMsg"></div>
+      </div>
     </div>
 
     <!-- ÚLTIMOS CADASTROS -->
@@ -841,44 +893,7 @@ async function loadData(){
     loadBlueHealth();
 
     // 🤝 Afiliados
-    fetch(`/api/admin?action=list_affiliates`, { headers: { 'Authorization': `Bearer ${adminKey}` } })
-      .then(r => r.json()).then(affiliates => {
-        if (!Array.isArray(affiliates) || !affiliates.length) {
-          document.getElementById('affiliatesTable').innerHTML = '<div class="empty-state">Nenhum afiliado cadastrado ainda.</div>';
-          return;
-        }
-        const statusColor = { active:'var(--green)', pending:'var(--yellow)', suspended:'var(--red)' };
-        const statusLabel = { active:'✅ Ativo', pending:'⏳ Aguardando', suspended:'🚫 Suspenso' };
-        // Atualiza badge de pendentes
-        const pendingCount = affiliates.filter(a => a.status === 'pending').length;
-        const badge = document.getElementById('pendingAffBadge');
-        if(badge){ badge.style.display = pendingCount > 0 ? 'block' : 'none'; }
-        const badgeCount = document.getElementById('pendingAffCount');
-        if(badgeCount) badgeCount.textContent = pendingCount;
-
-        const lc = { gold:'var(--yellow)', silver:'#c0c0c0', bronze:'#cd7f32' };
-        const rows = affiliates.map(a => {
-          const paying = (a.total_full||0)+(a.total_master||0);
-          const isPending = a.status === 'pending';
-          const handshake = isPending ? ' 🤝' : '';
-          let btns = '';
-          if(a.status !== 'active') btns += `<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅ Aprovar</button> `;
-          if(a.status !== 'suspended') btns += `<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫 Suspender</button>`;
-          const sc = statusColor[a.status]||'var(--dim)';
-          const sl = statusLabel[a.status]||a.status;
-          const lcolor = lc[a.level]||'var(--dim)';
-          return '<tr>'
-            + '<td style="color:var(--text)">' + a.email + handshake + '</td>'
-            + '<td style="font-family:var(--mono);font-size:11px;color:var(--neon)">' + (a.ref_code||'—') + '</td>'
-            + '<td><span style="font-family:var(--mono);font-size:11px;color:' + lcolor + '">' + (a.level||'bronze').toUpperCase() + '</span></td>'
-            + '<td style="color:var(--text)">' + paying + '</td>'
-            + '<td style="color:var(--green)">$' + parseFloat(a.total_earnings||0).toFixed(2) + '</td>'
-            + '<td><span style="font-family:var(--mono);font-size:11px;color:' + sc + '">' + sl + '</span></td>'
-            + '<td><div style="display:flex;gap:6px">' + btns + '</div></td>'
-            + '</tr>';
-        }).join('');
-        document.getElementById('affiliatesTable').innerHTML = '<table><thead><tr><th>Email</th><th>Código</th><th>Nível</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table>';
-      }).catch(() => {});
+    loadAffiliates();
 
     // 🆕 Últimos cadastros (inclui free)
     if(d.recent_signups?.length){
@@ -1015,15 +1030,14 @@ async function saveEditPlan(){
 }
 
 async function setAffiliateStatus(email, status) {
-  const secret = localStorage.getItem('admin_secret') || prompt('Admin secret:');
   if (!confirm(`${status === 'active' ? '✅ Aprovar' : status === 'suspended' ? '🚫 Suspender' : '⏳ Pendente'}: ${email}?`)) return;
   const r = await fetch('/api/admin', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${secret}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminKey}` },
     body: JSON.stringify({ action: 'set_affiliate_status', email, status })
   });
-  if (r.ok) { location.reload(); }
-  else alert('Erro ao atualizar status');
+  if (r.ok) { toast(`✅ Status de ${email} atualizado`); loadAffiliates(); }
+  else toast('Erro ao atualizar status');
 }
 
 async function quickEditPlan(email, currentPlan){
@@ -1174,6 +1188,131 @@ async function deleteLrnExample(id){
       body:JSON.stringify({action:'delete_learning_example',id})});
     toast('Exemplo removido');loadData();
   }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── AFFILIATE LEVEL MANAGEMENT ───────────────────────────────────────────
+let _allAffiliates=[], _affFilter='all', _affSearch='', _nivelEditId='', _nivelEditEmail='', _selectedNivel='bronze';
+
+function filterAffs(f){
+  _affFilter=f;
+  document.querySelectorAll('#affNivelFilters button').forEach(b=>{
+    const bf=b.getAttribute('data-afilter');
+    b.style.background=bf===f?'rgba(0,170,255,0.15)':'';
+    b.style.borderColor=bf===f?'rgba(0,170,255,0.4)':'';
+  });
+  renderAffTable();
+}
+function onAffSearch(){
+  clearTimeout(window._affSearchTimer);
+  window._affSearchTimer=setTimeout(()=>{_affSearch=(document.getElementById('affSearchInp')?.value||'').toLowerCase();renderAffTable();},300);
+}
+
+async function loadAffiliates(){
+  try{
+    const r=await fetch('/api/admin?action=list_affiliates',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    _allAffiliates=await r.json();
+    if(!Array.isArray(_allAffiliates))_allAffiliates=[];
+    renderAffSummary();
+    renderAffTable();
+  }catch(e){document.getElementById('affiliatesTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
+}
+
+function renderAffSummary(){
+  const a=_allAffiliates;
+  document.getElementById('affTotal').textContent=a.length;
+  document.getElementById('affOuro').textContent=a.filter(x=>x.nivel==='ouro').length;
+  document.getElementById('affPrata').textContent=a.filter(x=>x.nivel==='prata').length;
+  document.getElementById('affPaid').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_paid||0),0).toFixed(2);
+  document.getElementById('affPending').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_pending||0),0).toFixed(2);
+  const pendingCount=a.filter(x=>x.status==='pending').length;
+  const badge=document.getElementById('pendingAffBadge');
+  if(badge)badge.style.display=pendingCount>0?'block':'none';
+  const bc=document.getElementById('pendingAffCount');
+  if(bc)bc.textContent=pendingCount;
+}
+
+function renderAffTable(){
+  let filtered=_allAffiliates;
+  if(_affFilter!=='all')filtered=filtered.filter(a=>(a.nivel||'bronze')===_affFilter);
+  if(_affSearch)filtered=filtered.filter(a=>(a.email||'').toLowerCase().includes(_affSearch)||(a.name||'').toLowerCase().includes(_affSearch));
+  if(!filtered.length){document.getElementById('affiliatesTable').innerHTML='<div class="empty-state">Nenhum afiliado encontrado.</div>';return;}
+
+  const nc={bronze:'#cd7f32',prata:'#c0c0c0',ouro:'#fbbf24'};
+  const ne={bronze:'🥉',prata:'🥈',ouro:'🥇'};
+  const sc={active:'var(--green)',pending:'var(--yellow)',suspended:'var(--red)'};
+  const sl={active:'✅ Ativo',pending:'⏳ Aguardando',suspended:'🚫 Suspenso'};
+
+  const rows=filtered.map(a=>{
+    const nv=a.nivel||'bronze';
+    const color=nc[nv]||'var(--dim)';
+    const emoji=ne[nv]||'';
+    const comissao=a.comissao_percentual||30;
+    const paying=(a.total_full||0)+(a.total_master||0);
+    const isGold=nv==='ouro';
+    const badgeStyle=isGold
+      ?`background:linear-gradient(135deg,#B8860B,#FFD700,#FFA500);color:#000;font-weight:900;padding:3px 10px;border-radius:100px;font-size:10px;animation:golden-pulse 2s infinite`
+      :`font-family:var(--mono);font-size:11px;font-weight:700;color:${color};background:${color}15;border:1px solid ${color}33;padding:3px 9px;border-radius:100px`;
+
+    let btns=`<button onclick="openNivelModal('${a.id}','${a.email}','${nv}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:5px;padding:4px 8px;cursor:pointer">⬆️ Nível</button> `;
+    if(a.status!=='active')btns+=`<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅</button> `;
+    if(a.status!=='suspended')btns+=`<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫</button>`;
+
+    return `<tr>
+      <td style="color:var(--text)">${a.name||a.email?.split('@')[0]||'—'}</td>
+      <td style="color:var(--dim);font-size:11px">${a.email}</td>
+      <td><span style="${badgeStyle}">${emoji} ${nv.charAt(0).toUpperCase()+nv.slice(1)}</span></td>
+      <td style="font-weight:700;color:${color}">${comissao}%</td>
+      <td style="color:var(--text)">${paying}</td>
+      <td style="color:var(--green);font-weight:600">R$${(a.commissions_total||0).toFixed(2)}</td>
+      <td><span style="font-family:var(--mono);font-size:11px;color:${sc[a.status]||'var(--dim)'}">${sl[a.status]||a.status}</span></td>
+      <td><div style="display:flex;gap:4px">${btns}</div></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function openNivelModal(id,email,currentNivel){
+  _nivelEditId=id;_nivelEditEmail=email;
+  document.getElementById('nivelModalEmail').textContent=email;
+  const nl={bronze:'🥉 Bronze (30%)',prata:'🥈 Prata (45%)',ouro:'🥇 Ouro (58%)'};
+  document.getElementById('nivelModalCurrent').textContent=nl[currentNivel]||currentNivel;
+  document.getElementById('nivelModalCurrent').style.color={bronze:'#cd7f32',prata:'#c0c0c0',ouro:'#fbbf24'}[currentNivel]||'var(--dim)';
+  document.getElementById('nivelMotivo').value='';
+  document.getElementById('nivelModalMsg').textContent='';
+  selectNivel(currentNivel);
+  document.getElementById('nivelModal').style.display='flex';
+}
+function closeNivelModal(){document.getElementById('nivelModal').style.display='none';}
+
+function selectNivel(nv){
+  _selectedNivel=nv;
+  const opts={bronze:{border:'rgba(205,127,50,.5)',shadow:'rgba(205,127,50,.2)'},prata:{border:'rgba(192,192,192,.5)',shadow:'rgba(192,192,192,.2)'},ouro:{border:'rgba(251,191,36,.6)',shadow:'rgba(251,191,36,.3)'}};
+  ['bronze','prata','ouro'].forEach(n=>{
+    const el=document.getElementById('nivelOpt'+n.charAt(0).toUpperCase()+n.slice(1));
+    if(el){
+      el.style.borderColor=n===nv?opts[n].border:'rgba(255,255,255,.08)';
+      el.style.boxShadow=n===nv?`0 0 20px ${opts[n].shadow}`:'none';
+      el.style.transform=n===nv?'scale(1.05)':'scale(1)';
+    }
+  });
+}
+
+async function confirmNivel(){
+  const motivo=document.getElementById('nivelMotivo').value.trim();
+  const msg=document.getElementById('nivelModalMsg');
+  msg.style.color='var(--neon)';msg.textContent='Aplicando…';
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'set_affiliate_level',affiliate_id:_nivelEditId,nivel:_selectedNivel,motivo})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Erro');
+    if(d.message){msg.style.color='var(--yellow)';msg.textContent=d.message;return;}
+    const nl={bronze:'🥉 Bronze',prata:'🥈 Prata',ouro:'🥇 Ouro'};
+    msg.style.color='var(--green)';msg.textContent=`✅ Promovido para ${nl[_selectedNivel]}!`;
+    toast(`✅ ${_nivelEditEmail} promovido para ${nl[_selectedNivel]} com sucesso!`);
+    setTimeout(()=>{closeNivelModal();loadAffiliates();},1500);
+  }catch(e){msg.style.color='var(--red)';msg.textContent='Erro: '+e.message;}
 }
 
 function exportCSV(){
