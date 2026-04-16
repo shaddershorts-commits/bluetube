@@ -787,7 +787,9 @@ async function loadData(){
     const manualTotal=(d.subscribers.manual_full||0)+(d.subscribers.manual_master||0);
     document.getElementById('statTotal').textContent=d.subscribers.total;
     if(_lastTotal===0) _lastTotal=d.subscribers.total; // baseline para realtime watch
-    document.getElementById('statPaid').textContent=payingTotal;
+    document.getElementById('statPaid').textContent=payingTotal>0?payingTotal:manualTotal>0?'0 pagos':'0';
+    document.getElementById('statPaid').closest('.stat-card').querySelector('.stat-sub').textContent=
+      manualTotal>0?`+ ${manualTotal} manual${manualTotal>1?'is':''} (🎁)`:'Full + Master ativos';
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
     // Online count from ip_online table
