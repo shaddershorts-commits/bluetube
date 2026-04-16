@@ -396,6 +396,21 @@ module.exports = async function handler(req, res) {
   const cursor = req.query.cursor;
   const feedToken = req.query.token;
 
+  // Cursor format: base64("<created_at>|<id>"). Legacy cursors (plain ISO) fall back to created_at only.
+  function decodeCursor(c) {
+    if (!c) return null;
+    try {
+      const decoded = Buffer.from(c, 'base64').toString('utf8');
+      const [ts, id] = decoded.split('|');
+      if (ts && id && ts.includes('T')) return { ts, id };
+    } catch(e) {}
+    if (c.includes('T')) return { ts: c, id: null };
+    return null;
+  }
+  function encodeCursor(ts, id) {
+    return Buffer.from(`${ts}|${id}`, 'utf8').toString('base64');
+  }
+
   // Load user preferences if logged in
   let userPrefs = null;
   let blockedIds = [];
@@ -423,8 +438,16 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc&limit=${limit * 3}&select=*`;
-    if (cursor) url += `&created_at=lt.${cursor}`;
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc,id.desc&limit=${limit * 3}&select=*`;
+    const cur = decodeCursor(cursor);
+    if (cur) {
+      if (cur.id) {
+        // Compound predicate: (created_at < ts) OR (created_at = ts AND id < id)
+        url += `&or=(created_at.lt.${cur.ts},and(created_at.eq.${cur.ts},id.lt.${cur.id}))`;
+      } else {
+        url += `&created_at=lt.${cur.ts}`;
+      }
+    }
 
     const r = await fetch(url, { headers: h });
     if (!r.ok) {
@@ -460,7 +483,8 @@ module.exports = async function handler(req, res) {
 
     const videos = raw.slice(0, limit);
     const has_more = raw.length > limit;
-    const next_cursor = videos.length > 0 ? videos[videos.length - 1].created_at : null;
+    const last = videos[videos.length - 1];
+    const next_cursor = last ? encodeCursor(last.created_at, last.id) : null;
 
     // Enrich with creator profiles
     const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
