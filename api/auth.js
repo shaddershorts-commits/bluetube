@@ -1891,18 +1891,11 @@ Responda APENAS em JSON válido sem markdown:
       });
 
       // Incrementa total_clicks
-      await fetch(`${SUPA_URL}/rest/v1/rpc/increment_affiliate_clicks`, {
-        method: 'POST',
-        headers: supaH,
-        body: JSON.stringify({ ref: ref })
-      }).catch(() => {
-        // Fallback se RPC não existir
-        fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}`, {
-          method: 'PATCH',
-          headers: { ...supaH, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ updated_at: new Date().toISOString() })
-        });
-      });
+      await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}`, {
+        method: 'PATCH',
+        headers: { ...supaH, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ total_clicks: (affiliate.total_clicks || 0) + 1, updated_at: new Date().toISOString() })
+      }).catch(() => {});
 
       return res.status(200).json({ ok: true, affiliate_id: affiliate.id });
     } catch(e) {
