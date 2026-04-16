@@ -430,6 +430,11 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-card"><div class="stat-label">💎 Monetização (popup 3)</div><div class="stat-value purple" id="fpMonetizacao">—</div><div class="stat-sub" id="fpMonetizacaoRate">—</div></div>
         <div class="stat-card"><div class="stat-label">📋 Waitlist monetização</div><div class="stat-value green" id="fpWaitlist">—</div><div class="stat-sub">emails na lista</div></div>
       </div>
+      <div class="section-header" style="margin-top:8px">
+        <div class="section-title" style="font-size:13px">🏆 Desafio Pioneiros <span class="section-subtitle">— quem aceitou o desafio · seguidores em tempo real</span></div>
+        <button class="action-btn" onclick="loadPopupConversions()">↻ Atualizar</button>
+      </div>
+      <div class="table-wrap" id="fpConversionsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
     <div class="section" id="blueHealthSection">
@@ -1220,6 +1225,39 @@ async function loadPopupStats(){
     const wl=document.getElementById('fpWaitlist');
     if(wl)wl.textContent=d.waitlist_total||0;
   }catch(e){}
+  loadPopupConversions();
+}
+
+async function loadPopupConversions(){
+  try{
+    const r=await fetch('/api/blue-feed?action=popup_conversions');
+    const d=await r.json();
+    const list=d.conversions||[];
+    const el=document.getElementById('fpConversionsTable');
+    if(!list.length){el.innerHTML='<div class="empty-state">Nenhum usuário aceitou o desafio ainda.</div>';return;}
+    const rows=list.map(c=>{
+      const p=c.profile||{};
+      const name=p.display_name||p.username||'—';
+      const user=p.username?'@'+p.username:'—';
+      const av=p.avatar_url?`<img src="${p.avatar_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px">`:'';
+      const fColor=c.followers>=1000?'var(--green)':c.followers>=100?'var(--neon)':'var(--text)';
+      const fBold=c.followers>=1000?'font-weight:800':'';
+      const progPct=Math.min(100,Math.round((c.followers/1000)*100));
+      const progColor=c.followers>=1000?'var(--green)':c.followers>=500?'var(--yellow)':'var(--neon)';
+      const popupLabel={pioneiro:'🎁 Pioneiro',futuro:'✨ Futuro',monetizacao:'💎 Monetização'}[c.popup_tipo]||c.popup_tipo;
+      const when=c.accepted_at?new Date(c.accepted_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+      return`<tr>
+        <td>${av}<span style="color:var(--text)">${name}</span></td>
+        <td style="color:var(--dim);font-size:11px">${user}</td>
+        <td style="color:${fColor};${fBold};font-size:16px">${c.followers.toLocaleString('pt-BR')}${c.followers>=1000?' 🎉':''}</td>
+        <td><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:${progPct}%;background:${progColor};border-radius:2px"></div></div><span style="font-family:var(--mono);font-size:10px;color:var(--dim)">${progPct}%</span></div></td>
+        <td style="color:var(--text)">${c.videos}</td>
+        <td style="font-size:11px">${popupLabel}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--dim)">${when}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML=`<table><thead><tr><th>Criador</th><th>@</th><th>Seguidores</th><th>Progresso (1K)</th><th>Vídeos</th><th>Popup</th><th>Aceitou em</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch(e){document.getElementById('fpConversionsTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
 }
 
 // ── AFFILIATE LEVEL MANAGEMENT ───────────────────────────────────────────

@@ -1992,6 +1992,7 @@ async function doAuth(){
       loadFeed();
       if(_bpPendingUpload){
         _bpPendingUpload=false;
+        _bpSaveConversion(); // registra conversão com user_id real
         _bpStartOnboarding();
       }else{
         openUpload();
@@ -3087,24 +3088,36 @@ function _bpClose(tipo){
   },350);
 }
 
+let _bpConvertTipo=null; // qual popup gerou a conversão
+
 function _bpConvert(tipo){
+  _bpConvertTipo=tipo;
   const uid=window._myUserId||null;
-  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:tipo,user_id:uid,converteu:true})}).catch(()=>{});
+  // Se já logado, salva conversão com user_id agora
+  if(uid){
+    fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:tipo,user_id:uid,converteu:true})}).catch(()=>{});
+  }
   _bpClose(tipo);
   if(tipo==='monetizacao')return;
-  // Verifica se logado → se não, abre auth → após login, onboarding → depois upload
   TOKEN=localStorage.getItem('bt_token');
   if(!TOKEN){
-    _bpPendingUpload=true; // flag para abrir onboarding após login
-    openUpload(); // abre o upload overlay que mostra auth wall
+    _bpPendingUpload=true;
+    openUpload();
     return;
   }
-  // Logado: verifica se perfil já está configurado
   if(myProfile&&myProfile.display_name&&myProfile.username){
     openUpload();
   }else{
     _bpStartOnboarding();
   }
+}
+
+// Salva conversão com user_id real após login/onboarding
+function _bpSaveConversion(){
+  const uid=window._myUserId||myProfile?.user_id||null;
+  if(!uid||!_bpConvertTipo)return;
+  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:_bpConvertTipo,user_id:uid,converteu:true})}).catch(()=>{});
+  _bpConvertTipo=null;
 }
 
 let _bpPendingUpload=false;
@@ -3175,6 +3188,7 @@ async function _obFinish(){
     toast('✅ Perfil configurado!');
     await loadMyProfile();
     updateHdAvatar();
+    _bpSaveConversion(); // registra conversão com user_id real após onboarding
     // Fecha onboarding
     const el=document.getElementById('bp-onboarding');
     el.classList.remove('bp-on');el.classList.add('bp-out');

@@ -85,6 +85,50 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ waitlist_total: 0 }); }
   }
 
+  // ── POPUP CONVERSIONS (admin — quem aceitou o desafio + seguidores) ─────
+  if (action === 'popup_conversions') {
+    try {
+      // Busca conversões com user_id real (não null)
+      const impR = await fetch(`${SU}/rest/v1/blue_popup_impressoes?converteu=eq.true&user_id=not.is.null&select=user_id,popup_tipo,created_at&order=created_at.desc&limit=200`, { headers: h });
+      const imps = impR.ok ? await impR.json() : [];
+      if (!imps.length) return res.status(200).json({ conversions: [] });
+
+      // Deduplica por user_id (mantém a mais recente)
+      const seen = new Set();
+      const unique = imps.filter(i => { if (seen.has(i.user_id)) return false; seen.add(i.user_id); return true; });
+      const userIds = unique.map(i => i.user_id);
+
+      // Busca perfis
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url`, { headers: h });
+      const profiles = pR.ok ? await pR.json() : [];
+      const profMap = {};
+      profiles.forEach(p => { profMap[p.user_id] = p; });
+
+      // Busca contagem de seguidores para cada user
+      const fR = await fetch(`${SU}/rest/v1/blue_follows?following_id=in.(${userIds.join(',')})&select=following_id`, { headers: h });
+      const follows = fR.ok ? await fR.json() : [];
+      const followerCount = {};
+      follows.forEach(f => { followerCount[f.following_id] = (followerCount[f.following_id] || 0) + 1; });
+
+      // Busca contagem de vídeos postados
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?user_id=in.(${userIds.join(',')})&status=eq.active&select=user_id`, { headers: h });
+      const vids = vR.ok ? await vR.json() : [];
+      const videoCount = {};
+      vids.forEach(v => { videoCount[v.user_id] = (videoCount[v.user_id] || 0) + 1; });
+
+      const conversions = unique.map(i => ({
+        user_id: i.user_id,
+        popup_tipo: i.popup_tipo,
+        accepted_at: i.created_at,
+        profile: profMap[i.user_id] || null,
+        followers: followerCount[i.user_id] || 0,
+        videos: videoCount[i.user_id] || 0,
+      }));
+
+      return res.status(200).json({ conversions });
+    } catch(e) { return res.status(200).json({ conversions: [], error: e.message }); }
+  }
+
   // ── FEED PADRÃO ──────────────────────────────────────────────────────────
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   const cursor = req.query.cursor;
