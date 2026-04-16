@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<title>Blue Camera</title>
+<style>
+:root{--neon:#3b82f6;--red:#ef4444}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#000;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;height:100dvh;overflow:hidden;-webkit-user-select:none;user-select:none}
+.cam-wrap{position:fixed;inset:0;background:#000}
+#preview{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#preview.back{transform:none}
+.topbar{position:fixed;top:env(safe-area-inset-top,0);left:0;right:0;z-index:10;padding:14px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to bottom,rgba(0,0,0,.5),transparent)}
+.iconbtn{background:rgba(0,0,0,.4);border:none;width:40px;height:40px;border-radius:50%;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+.iconbtn.on{background:rgba(251,191,36,.9)}
+/* Progress segments bar */
+.segments-bar{position:fixed;top:calc(env(safe-area-inset-top,0) + 60px);left:16px;right:16px;height:3px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden;display:flex;z-index:10}
+.segment{height:100%;background:var(--red);border-right:2px solid #fff}
+.timer{position:fixed;top:calc(env(safe-area-inset-top,0) + 16px);left:50%;transform:translateX(-50%);background:rgba(239,68,68,.9);color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;z-index:10;display:none}
+.timer.on{display:block}
+/* Bottom controls */
+.bottom{position:fixed;bottom:env(safe-area-inset-bottom,0);left:0;right:0;z-index:10;padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:linear-gradient(transparent,rgba(0,0,0,.6))}
+.mode-tabs{display:flex;gap:16px;margin-bottom:8px}
+.mode-tab{background:none;border:none;color:rgba(255,255,255,.6);font-size:12px;font-weight:700;cursor:pointer;padding:6px 12px;border-radius:14px;transition:all .2s}
+.mode-tab.active{background:rgba(255,255,255,.15);color:#fff}
+.record-row{display:flex;align-items:center;gap:30px}
+.side-btn{width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px}
+.record-btn{width:78px;height:78px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.3);cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.record-btn.recording{background:var(--red);border-color:rgba(239,68,68,.3);width:60px;height:60px;border-radius:12px}
+.record-btn:active{transform:scale(.95)}
+/* Countdown */
+.countdown{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.3)}
+.countdown.on{display:flex}
+.countdown-num{font-size:120px;font-weight:900;color:#fff;animation:cdPop 1s ease}
+@keyframes cdPop{0%{transform:scale(0);opacity:0}30%{transform:scale(1.2);opacity:1}100%{transform:scale(1);opacity:1}}
+/* Review screen */
+.review{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;background:#000}
+.review.on{display:flex}
+.review-video{flex:1;background:#000;position:relative}
+.review-video video{width:100%;height:100%;object-fit:contain}
+.review-tools{display:flex;justify-content:space-around;padding:16px;background:rgba(0,0,0,.8);gap:8px}
+.tool-btn{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px;color:#fff;font-size:11px;font-weight:600;cursor:pointer}
+.tool-btn.active{background:var(--neon)}
+.review-actions{padding:16px;padding-bottom:calc(env(safe-area-inset-bottom,0) + 16px);display:flex;gap:10px}
+.review-actions button{flex:1;padding:14px;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-discard{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15)}
+.btn-publish{background:linear-gradient(135deg,#1d4ed8,var(--neon));color:#fff}
+/* Publish screen */
+.publish{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;background:#020817;padding:env(safe-area-inset-top,20px) 16px 16px;overflow-y:auto}
+.publish.on{display:flex}
+.publish-title{font-size:18px;font-weight:800;margin-bottom:14px;text-align:center}
+.pub-preview{width:120px;height:213px;margin:0 auto 16px;border-radius:14px;background:#111;overflow:hidden}
+.pub-preview video{width:100%;height:100%;object-fit:cover}
+.pub-field{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;font-size:14px;color:#fff;outline:none;font-family:inherit;margin-bottom:10px;resize:none}
+.pub-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.pub-label{font-size:13px;color:rgba(255,255,255,.8)}
+.pub-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px;color:#fff;font-size:12px;font-family:inherit}
+.pub-publish{width:100%;padding:15px;background:linear-gradient(135deg,#1d4ed8,var(--neon));border:none;border-radius:12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;margin-top:20px}
+.pub-close{position:absolute;top:16px;right:16px;background:none;border:none;color:rgba(255,255,255,.6);font-size:24px;cursor:pointer;z-index:2}
+.pub-progress{display:none;margin-top:16px}
+.pub-progress.on{display:block}
+.pub-prog-bar{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden}
+.pub-prog-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);width:0;transition:width .3s}
+.pub-prog-msg{font-size:12px;color:rgba(150,190,230,.6);margin-top:8px;text-align:center}
+/* Text overlay editor */
+.text-editor{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;background:rgba(0,0,0,.7);align-items:center;justify-content:center;padding:20px}
+.text-editor.on{display:flex}
+.text-input-big{width:100%;max-width:400px;background:rgba(0,0,0,.8);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:14px;font-size:18px;color:#fff;outline:none;text-align:center;margin-bottom:16px}
+.text-colors{display:flex;gap:8px;margin-bottom:20px}
+.text-color{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.text-color.selected{border-color:#fff}
+.filter-bar{display:flex;gap:8px;overflow-x:auto;padding:8px 0;margin-bottom:10px;-webkit-overflow-scrolling:touch}
+.filter-bar::-webkit-scrollbar{display:none}
+.filter-chip{flex-shrink:0;padding:6px 14px;border-radius:16px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);white-space:nowrap}
+.filter-chip.active{background:var(--neon);color:#fff;border-color:var(--neon)}
+</style>
+</head>
+<body>
+
+<!-- CAMERA PREVIEW -->
+<div class="cam-wrap">
+  <video id="preview" autoplay muted playsinline></video>
+</div>
+
+<div class="timer" id="timer">0:00</div>
+<div class="segments-bar" id="segmentsBar"></div>
+
+<div class="topbar">
+  <button class="iconbtn" id="flashBtn" onclick="toggleFlash()" title="Flash">⚡</button>
+  <button class="iconbtn" onclick="leaveCamera()" title="Fechar">✕</button>
+  <button class="iconbtn" id="flipBtn" onclick="flipCamera()" title="Virar">🔄</button>
+</div>
+
+<div class="bottom">
+  <div class="mode-tabs">
+    <button class="mode-tab" data-t="15" onclick="setMode(15)">15s</button>
+    <button class="mode-tab active" data-t="30" onclick="setMode(30)">30s</button>
+    <button class="mode-tab" data-t="60" onclick="setMode(60)">60s</button>
+  </div>
+  <div class="record-row">
+    <button class="side-btn" onclick="undoSegment()" title="Desfazer">↶</button>
+    <button class="record-btn" id="recBtn" ontouchstart="startRecord(event)" ontouchend="stopRecord(event)" onmousedown="startRecord(event)" onmouseup="stopRecord(event)"></button>
+    <button class="side-btn" id="doneBtn" onclick="finishRecording()" style="visibility:hidden" title="Concluir">✓</button>
+  </div>
+</div>
+
+<!-- Countdown -->
+<div class="countdown" id="countdown"><div class="countdown-num" id="cdNum">3</div></div>
+
+<!-- Review screen -->
+<div class="review" id="review">
+  <div class="review-video"><video id="reviewVid" controls playsinline></video></div>
+  <div class="filter-bar" id="reviewFilters">
+    <div class="filter-chip active" onclick="applyReviewFilter('none',this)">Original</div>
+    <div class="filter-chip" onclick="applyReviewFilter('brightness(1.1) contrast(1.2) saturate(1.3)',this)">Neon</div>
+    <div class="filter-chip" onclick="applyReviewFilter('sepia(0.5) contrast(1.1)',this)">Vintage</div>
+    <div class="filter-chip" onclick="applyReviewFilter('brightness(0.8) contrast(1.3)',this)">Dark</div>
+    <div class="filter-chip" onclick="applyReviewFilter('grayscale(1)',this)">B&W</div>
+    <div class="filter-chip" onclick="applyReviewFilter('hue-rotate(30deg) saturate(1.4)',this)">Warm</div>
+    <div class="filter-chip" onclick="applyReviewFilter('contrast(1.5)',this)">Drama</div>
+  </div>
+  <div class="review-actions">
+    <button class="btn-discard" onclick="discardVideo()">Descartar</button>
+    <button class="btn-publish" onclick="goPublish()">Próximo →</button>
+  </div>
+</div>
+
+<!-- Publish screen -->
+<div class="publish" id="publish">
+  <button class="pub-close" onclick="document.getElementById('publish').classList.remove('on')">✕</button>
+  <div class="publish-title">Publicar vídeo</div>
+  <div class="pub-preview"><video id="pubVid" muted autoplay loop playsinline></video></div>
+  <textarea class="pub-field" id="pubTitle" rows="2" placeholder="Adicione um título..." maxlength="100"></textarea>
+  <textarea class="pub-field" id="pubDesc" rows="3" placeholder="Descrição (opcional) #hashtags @mentions" maxlength="300"></textarea>
+  <div class="pub-row">
+    <span class="pub-label">Quem pode ver</span>
+    <select class="pub-select" id="pubVis"><option value="public">🌎 Todos</option><option value="followers">👥 Seguidores</option><option value="private">🔒 Só eu</option></select>
+  </div>
+  <div class="pub-row">
+    <span class="pub-label">Comentários</span>
+    <select class="pub-select" id="pubComments"><option value="1">Permitir</option><option value="0">Desativar</option></select>
+  </div>
+  <button class="pub-publish" id="pubBtn" onclick="publishVideo()">🚀 Publicar</button>
+  <div class="pub-progress" id="pubProgress">
+    <div class="pub-prog-bar"><div class="pub-prog-fill" id="pubProgFill"></div></div>
+    <div class="pub-prog-msg" id="pubProgMsg">Preparando...</div>
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('bt_token');
+if (!TOKEN) { alert('Faça login para gravar'); window.location.href = '/blue.html'; }
+
+let stream = null;
+let mediaRecorder = null;
+let chunks = [];
+let segments = []; // Array of blobs
+let recordingMode = 30; // max seconds
+let totalRecorded = 0;
+let recordStart = 0;
+let timerInterval = null;
+let facingMode = 'user';
+let currentFilter = 'none';
+let recordingActive = false;
+let finalBlob = null;
+
+async function initCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1080 }, height: { ideal: 1920 } },
+      audio: true
+    });
+    const preview = document.getElementById('preview');
+    preview.srcObject = stream;
+    preview.classList.toggle('back', facingMode === 'environment');
+  } catch(e) { alert('Erro ao acessar câmera: ' + e.message); }
+}
+
+function flipCamera() {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  initCamera();
+}
+
+function toggleFlash() {
+  // Flash toggle (limited browser support)
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return;
+  const caps = track.getCapabilities?.();
+  if (!caps?.torch) { return; }
+  const btn = document.getElementById('flashBtn');
+  btn.classList.toggle('on');
+  track.applyConstraints({ advanced: [{ torch: btn.classList.contains('on') }] }).catch(()=>{});
+}
+
+function setMode(s) {
+  recordingMode = s;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', parseInt(t.dataset.t) === s));
+}
+
+async function startRecord(e) {
+  e.preventDefault();
+  if (recordingActive) return;
+  if (totalRecorded >= recordingMode) return;
+
+  recordingActive = true;
+  document.getElementById('recBtn').classList.add('recording');
+
+  // Countdown 3s first time only
+  if (segments.length === 0) {
+    await runCountdown();
+  }
+
+  chunks = [];
+  try {
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
+               : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '';
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+    mediaRecorder.ondataavailable = ev => { if (ev.data.size > 0) chunks.push(ev.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const segDur = (Date.now() - recordStart) / 1000;
+      segments.push({ blob, duration: segDur });
+      totalRecorded += segDur;
+      updateSegmentsBar();
+      document.getElementById('doneBtn').style.visibility = segments.length > 0 ? 'visible' : 'hidden';
+    };
+    mediaRecorder.start();
+    recordStart = Date.now();
+    document.getElementById('timer').classList.add('on');
+    startTimer();
+  } catch(err) { alert('Erro: ' + err.message); recordingActive = false; document.getElementById('recBtn').classList.remove('recording'); }
+}
+
+function stopRecord(e) {
+  e.preventDefault();
+  if (!recordingActive) return;
+  recordingActive = false;
+  document.getElementById('recBtn').classList.remove('recording');
+  document.getElementById('timer').classList.remove('on');
+  clearInterval(timerInterval);
+  try { mediaRecorder?.stop(); } catch(e) {}
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const elapsed = totalRecorded + (Date.now() - recordStart) / 1000;
+    const m = Math.floor(elapsed / 60);
+    const s = Math.floor(elapsed % 60);
+    document.getElementById('timer').textContent = m + ':' + String(s).padStart(2, '0');
+    if (elapsed >= recordingMode) { stopRecord(new Event('stop')); }
+  }, 100);
+}
+
+function updateSegmentsBar() {
+  const bar = document.getElementById('segmentsBar');
+  const totalWidth = 100 / recordingMode;
+  bar.innerHTML = segments.map(s => `<div class="segment" style="width:${(s.duration * totalWidth).toFixed(2)}%"></div>`).join('');
+}
+
+function undoSegment() {
+  if (recordingActive) return;
+  if (!segments.length) return;
+  const removed = segments.pop();
+  totalRecorded -= removed.duration;
+  updateSegmentsBar();
+  document.getElementById('doneBtn').style.visibility = segments.length > 0 ? 'visible' : 'hidden';
+}
+
+async function runCountdown() {
+  const el = document.getElementById('countdown');
+  const num = document.getElementById('cdNum');
+  el.classList.add('on');
+  for (let i = 3; i > 0; i--) {
+    num.textContent = i;
+    num.style.animation = 'none';
+    void num.offsetWidth;
+    num.style.animation = 'cdPop 1s ease';
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  el.classList.remove('on');
+}
+
+async function finishRecording() {
+  if (!segments.length) return;
+  // Combine segments into single blob
+  const combined = new Blob(segments.map(s => s.blob), { type: 'video/webm' });
+  finalBlob = combined;
+  // Stop camera
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  // Show review
+  const rv = document.getElementById('reviewVid');
+  rv.src = URL.createObjectURL(combined);
+  document.getElementById('review').classList.add('on');
+}
+
+function applyReviewFilter(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('#reviewFilters .filter-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('reviewVid').style.filter = filter === 'none' ? '' : filter;
+}
+
+function discardVideo() {
+  if (!confirm('Descartar vídeo?')) return;
+  segments = []; totalRecorded = 0; finalBlob = null;
+  document.getElementById('review').classList.remove('on');
+  initCamera();
+  updateSegmentsBar();
+  document.getElementById('doneBtn').style.visibility = 'hidden';
+}
+
+function goPublish() {
+  document.getElementById('review').classList.remove('on');
+  document.getElementById('publish').classList.add('on');
+  const pv = document.getElementById('pubVid');
+  pv.src = URL.createObjectURL(finalBlob);
+  pv.style.filter = document.getElementById('reviewVid').style.filter;
+}
+
+async function publishVideo() {
+  if (!finalBlob) return;
+  const title = document.getElementById('pubTitle').value.trim();
+  if (!title) { alert('Adicione um título'); return; }
+  const desc = document.getElementById('pubDesc').value.trim();
+
+  document.getElementById('pubBtn').disabled = true;
+  document.getElementById('pubProgress').classList.add('on');
+  const progFill = document.getElementById('pubProgFill');
+  const progMsg = document.getElementById('pubProgMsg');
+
+  try {
+    progMsg.textContent = 'Preparando upload...'; progFill.style.width = '10%';
+
+    // Get duration
+    const tmpVid = document.createElement('video');
+    tmpVid.src = URL.createObjectURL(finalBlob);
+    await new Promise(r => tmpVid.onloadedmetadata = r);
+    const duration = tmpVid.duration || totalRecorded;
+    const vW = tmpVid.videoWidth || 720;
+    const vH = tmpVid.videoHeight || 1280;
+
+    // Generate thumbnail
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(vW, 480);
+    canvas.height = Math.round(canvas.width * (vH / vW));
+    tmpVid.currentTime = 0.5;
+    await new Promise(r => tmpVid.onseeked = r);
+    canvas.getContext('2d').drawImage(tmpVid, 0, 0, canvas.width, canvas.height);
+    const thumbB64 = canvas.toDataURL('image/jpeg', 0.7);
+
+    // Request upload
+    progMsg.textContent = 'Requisitando upload...'; progFill.style.width = '30%';
+    const r = await fetch('/api/blue-upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: TOKEN, title, description: desc,
+        duration, width: vW, height: vH,
+        file_name: 'video.webm', content_type: 'video/webm', file_size: finalBlob.size,
+        thumbnail_data: thumbB64
+      })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Upload failed');
+
+    // Upload to Supabase Storage
+    progMsg.textContent = 'Enviando vídeo...'; progFill.style.width = '50%';
+    const uploadUrl = d.supabase_url + '/storage/v1/object/blue-videos/' + d.storage_path;
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl);
+    xhr.setRequestHeader('apikey', d.anon_key);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + d.user_token);
+    xhr.setRequestHeader('Content-Type', 'video/webm');
+    xhr.setRequestHeader('x-upsert', 'true');
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = 50 + (e.loaded / e.total) * 45;
+        progFill.style.width = pct + '%';
+        progMsg.textContent = 'Enviando ' + Math.round((e.loaded/e.total)*100) + '%...';
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        progFill.style.width = '100%';
+        progMsg.textContent = '✅ Publicado!';
+        setTimeout(() => { window.location.href = '/blue.html'; }, 1500);
+      } else { progMsg.textContent = 'Erro: ' + xhr.status; document.getElementById('pubBtn').disabled = false; }
+    };
+    xhr.onerror = () => { progMsg.textContent = 'Erro de conexão'; document.getElementById('pubBtn').disabled = false; };
+    xhr.send(finalBlob);
+  } catch(e) {
+    progMsg.textContent = 'Erro: ' + e.message;
+    document.getElementById('pubBtn').disabled = false;
+  }
+}
+
+function leaveCamera() {
+  if (segments.length && !confirm('Descartar gravação e sair?')) return;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  window.location.href = '/blue.html';
+}
+
+initCamera();
+</script>
+</body>
+</html>

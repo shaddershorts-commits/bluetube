@@ -47,3 +47,25 @@ self.addEventListener('fetch', e => {
     }).catch(() => caches.match(e.request))
   );
 });
+
+// Push notifications
+self.addEventListener('push', event => {
+  if (!event.data) return;
+  let data = {};
+  try { data = event.data.json(); } catch(e) { data = { titulo: 'Blue', mensagem: event.data.text() }; }
+  event.waitUntil(
+    self.registration.showNotification(data.titulo || 'Blue', {
+      body: data.mensagem || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: data.url || '/blue.html' },
+      tag: data.tipo || 'blue',
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/blue.html';
+  event.waitUntil(clients.openWindow(url));
+});

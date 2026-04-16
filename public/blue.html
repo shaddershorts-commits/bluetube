@@ -528,6 +528,9 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .filter-chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(150,190,230,.6);transition:all .2s;white-space:nowrap}
 .filter-chip.active{background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#3b82f6}
 
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+
 /* ── ONBOARDING WIZARD ──────────────────────────────────────────────────── */
 #onboardOv{position:fixed;inset:0;z-index:10000;background:#020817;display:none;flex-direction:column;overflow-y:auto;padding:env(safe-area-inset-top,20px) 20px 40px}
 #onboardOv.on{display:flex}
@@ -666,7 +669,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openSearch()">🔍</button>
-    <button class="tbtn" onclick="openUpload()">+ Postar</button>
+    <button class="tbtn" onclick="openPostMenu()">+ Postar</button>
     <button class="tbtn" onclick="openTrending()" title="Em alta">🔥</button>
     <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
     <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
@@ -3633,6 +3636,75 @@ async function _bpWaitlist(){
 </div>
 
 <script>
+// ══════════════════════ POST MENU (camera or upload) ══════════════════════
+function openPostMenu() {
+  const TK = localStorage.getItem('bt_token');
+  if (!TK) { openUpload(); return; } // Not logged in → go through auth flow
+  // Show quick choice menu
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px';
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `
+    <div style="background:#0a1628;border:1px solid rgba(59,130,246,.2);border-radius:20px;padding:24px;max-width:320px;width:100%">
+      <div style="font-size:16px;font-weight:800;text-align:center;margin-bottom:6px">Como quer postar?</div>
+      <div style="font-size:12px;color:rgba(150,190,230,.5);text-align:center;margin-bottom:20px">Escolha uma opção</div>
+      <button onclick="window.location.href='/blue-camera.html'" style="width:100%;padding:16px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;border-radius:12px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:12px"><span style="font-size:22px">📷</span><div style="flex:1;text-align:left"><div>Gravar agora</div><div style="font-size:11px;opacity:.8;font-weight:400">Câmera do celular</div></div></button>
+      <button onclick="this.closest('div[style*=fixed]').remove();openUpload()" style="width:100%;padding:16px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:12px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:12px"><span style="font-size:22px">📁</span><div style="flex:1;text-align:left"><div>Upload</div><div style="font-size:11px;opacity:.8;font-weight:400">Enviar vídeo da galeria</div></div></button>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="width:100%;padding:12px;background:none;border:none;color:rgba(150,190,230,.4);font-size:13px;cursor:pointer">Cancelar</button>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+// ══════════════════════ PWA INSTALL BANNER ══════════════════════
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  if (localStorage.getItem('bt_install_dismissed')) return;
+  setTimeout(showInstallBanner, 5000);
+});
+
+function showInstallBanner() {
+  if (document.getElementById('installBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'installBanner';
+  b.style.cssText = 'position:fixed;bottom:80px;left:12px;right:12px;background:rgba(10,22,40,.97);border:1px solid rgba(59,130,246,.3);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;z-index:500;backdrop-filter:blur(10px);animation:slideUp .3s ease';
+  b.innerHTML = `
+    <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#1a6bff,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🎬</div>
+    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">Instalar Blue</div><div style="font-size:11px;color:rgba(150,190,230,.5)">Acesso rápido na tela inicial</div></div>
+    <button onclick="installBlueApp()" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">Instalar</button>
+    <button onclick="dismissInstallBanner()" style="background:none;border:none;color:rgba(150,190,230,.4);font-size:16px;cursor:pointer;padding:4px 6px">✕</button>`;
+  document.body.appendChild(b);
+}
+
+async function installBlueApp() {
+  if (!_deferredPrompt) return;
+  _deferredPrompt.prompt();
+  const { outcome } = await _deferredPrompt.userChoice;
+  _deferredPrompt = null;
+  document.getElementById('installBanner')?.remove();
+  if (outcome === 'accepted') localStorage.setItem('bt_installed', '1');
+}
+
+function dismissInstallBanner() {
+  localStorage.setItem('bt_install_dismissed', '1');
+  document.getElementById('installBanner')?.remove();
+}
+
+// ══════════════════════ PUSH NOTIFICATIONS ══════════════════════
+async function subscribePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    // Basic push subscription (skeleton — needs VAPID key configured)
+    const perm = Notification.permission;
+    if (perm === 'granted') {
+      console.log('[push] Notifications already granted');
+    }
+  } catch(e) {}
+}
+setTimeout(subscribePush, 3000);
+
 // ══════════════════════ ONBOARDING ══════════════════════
 let _obStep = 0;
 let _obInteresses = [];
