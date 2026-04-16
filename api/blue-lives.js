@@ -2,6 +2,7 @@
 // CommonJS
 
 const crypto = require('crypto');
+const { cacheGetOrSet, cacheDel } = require('./_helpers/cache');
 
 const GORJETA_MAP = {
   '🌟': { coins: 10, valor: 0.50 },
@@ -135,6 +136,7 @@ module.exports = async function handler(req, res) {
         }).catch(() => {});
       }
 
+      cacheDel('lives:ativas');
       return res.status(200).json({ ok: true, live_id: live?.id, room_id: room.id, token_acesso: hostToken });
     } catch(e) {
       console.error('Live start error:', e.message);
@@ -207,6 +209,7 @@ module.exports = async function handler(req, res) {
       const gorjetas = gR.ok ? await gR.json() : [];
       const totalGorjetas = gorjetas.reduce((s, g) => s + parseFloat(g.valor || 0), 0);
 
+      cacheDel('lives:ativas');
       return res.status(200).json({
         ok: true,
         resumo: {
@@ -219,21 +222,21 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ── LIVES ATIVAS ────────────────────────────────────────────────────────
+  // ── LIVES ATIVAS — cached 30s ────────────────────────────────────────
   if (action === 'lives-ativas') {
     try {
-      const lR = await fetch(`${SU}/rest/v1/blue_lives?status=eq.ativa&order=viewers_count.desc&limit=20&select=*`, { headers: h });
-      const lives = lR.ok ? await lR.json() : [];
-      // Enrich with profiles
-      const uIds = [...new Set(lives.map(l => l.user_id).filter(Boolean))];
-      let profiles = {};
-      if (uIds.length) {
-        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
-        if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
-      }
-      return res.status(200).json({
-        lives: lives.map(l => ({ ...l, host: profiles[l.user_id] || null }))
-      });
+      const data = await cacheGetOrSet('lives:ativas', async () => {
+        const lR = await fetch(`${SU}/rest/v1/blue_lives?status=eq.ativa&order=viewers_count.desc&limit=20&select=*`, { headers: h });
+        const lives = lR.ok ? await lR.json() : [];
+        const uIds = [...new Set(lives.map(l => l.user_id).filter(Boolean))];
+        let profiles = {};
+        if (uIds.length) {
+          const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+          if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
+        }
+        return { lives: lives.map(l => ({ ...l, host: profiles[l.user_id] || null })) };
+      }, 30);
+      return res.status(200).json(data);
     } catch(e) { return res.status(200).json({ lives: [] }); }
   }
 

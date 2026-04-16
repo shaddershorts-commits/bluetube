@@ -163,6 +163,56 @@ module.exports = async function handler(req, res) {
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
 
+    // ── EMBEDDING PARA BUSCA SEMÂNTICA (assíncrona) ─────────────────────
+    if (process.env.OPENAI_API_KEY && (cleanTitle || cleanDesc)) {
+      (async () => {
+        try {
+          const input = [cleanTitle, cleanDesc].filter(Boolean).join(' ');
+          const eR = await fetch('https://api.openai.com/v1/embeddings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
+            body: JSON.stringify({ input, model: 'text-embedding-3-small' })
+          });
+          if (eR.ok) {
+            const eD = await eR.json();
+            const emb = eD.data?.[0]?.embedding;
+            if (emb) {
+              await fetch(`${SU}/rest/v1/blue_videos?id=eq.${videoId}`, {
+                method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ embedding: JSON.stringify(emb) })
+              });
+            }
+          }
+        } catch(e) { console.error('Embedding error:', e.message); }
+      })();
+    }
+
+    // ── CLOUDFLARE STREAM TRANSCODIFICAÇÃO (assíncrona) ──────────────────
+    const CF_TOKEN = process.env.CF_STREAM_TOKEN;
+    const CF_ACCOUNT = process.env.CF_ACCOUNT_ID;
+    if (CF_TOKEN && CF_ACCOUNT && videoUrl) {
+      (async () => {
+        try {
+          const cfR = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/stream/copy`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: videoUrl, meta: { name: videoId }, requireSignedURLs: false })
+          });
+          if (cfR.ok) {
+            const cfData = await cfR.json();
+            const cfUid = cfData.result?.uid;
+            if (cfUid) {
+              await fetch(`${SU}/rest/v1/blue_videos?id=eq.${videoId}`, {
+                method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ cloudflare_uid: cfUid })
+              });
+              console.log('☁️ CF Stream uploaded:', cfUid);
+            }
+          }
+        } catch(e) { console.error('CF Stream error:', e.message); }
+      })();
+    }
+
     // ── EXTRAÇÃO DE HASHTAGS (assíncrona) ────────────────────────────────
     const hashtagMatches = (cleanTitle + ' ' + cleanDesc).match(/#([a-zA-Z0-9\u00C0-\u024Fà-ÿ_]+)/g);
     if (hashtagMatches && hashtagMatches.length > 0) {

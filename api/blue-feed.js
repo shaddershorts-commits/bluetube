@@ -1,4 +1,6 @@
 // api/blue-feed.js — Feed de vídeos com paginação por cursor + stats + waitlist
+const { cacheGetOrSet, cacheDel } = require('./_helpers/cache');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -45,26 +47,25 @@ module.exports = async function handler(req, res) {
     if (!allowed) return res.status(429).json({ error: 'Rate limit exceeded', retry_after: 60 });
   }
 
-  // ── STATS (criadores hoje, vídeos semana, usuários 24h) ──────────────────
+  // ── STATS (criadores hoje, vídeos semana, usuários 24h) — cached 5min ───
   if (action === 'stats') {
     try {
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const weekAgo = new Date(now - 7*24*60*60*1000).toISOString();
-      const dayAgo = new Date(now - 24*60*60*1000).toISOString();
-      const [creatorsR, videosR, usersR] = await Promise.all([
-        fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${today}T00:00:00Z&status=eq.active&select=user_id`, { headers: h }),
-        fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${weekAgo}&status=eq.active&select=id`, { headers: h }),
-        fetch(`${SU}/rest/v1/ip_online?pinged_at=gte.${dayAgo}&select=ip_address`, { headers: h }),
-      ]);
-      const creators = creatorsR.ok ? await creatorsR.json() : [];
-      const vids = videosR.ok ? await videosR.json() : [];
-      const users = usersR.ok ? await usersR.json() : [];
-      return res.status(200).json({
-        creators_hoje: new Set(creators.map(c => c.user_id)).size,
-        videos_semana: vids.length,
-        usuarios_24h: users.length,
-      });
+      const data = await cacheGetOrSet('blue:stats', async () => {
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const weekAgo = new Date(now - 7*24*60*60*1000).toISOString();
+        const dayAgo = new Date(now - 24*60*60*1000).toISOString();
+        const [creatorsR, videosR, usersR] = await Promise.all([
+          fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${today}T00:00:00Z&status=eq.active&select=user_id`, { headers: h }),
+          fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${weekAgo}&status=eq.active&select=id`, { headers: h }),
+          fetch(`${SU}/rest/v1/ip_online?pinged_at=gte.${dayAgo}&select=ip_address`, { headers: h }),
+        ]);
+        const creators = creatorsR.ok ? await creatorsR.json() : [];
+        const vids = videosR.ok ? await videosR.json() : [];
+        const users = usersR.ok ? await usersR.json() : [];
+        return { creators_hoje: new Set(creators.map(c => c.user_id)).size, videos_semana: vids.length, usuarios_24h: users.length };
+      }, 300);
+      return res.status(200).json(data);
     } catch(e) { return res.status(200).json({ creators_hoje: 0, videos_semana: 0, usuarios_24h: 0 }); }
   }
 
@@ -172,11 +173,14 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ hashtags: [] }); }
   }
 
-  // ── TRENDING HASHTAGS ──────────────────────────────────────────────────
+  // ── TRENDING HASHTAGS — cached 30min ─────────────────────────────────
   if (action === 'trending-hashtags') {
     try {
-      const r = await fetch(`${SU}/rest/v1/blue_hashtags?order=usos.desc&limit=20&select=id,nome,usos,trending`, { headers: h });
-      return res.status(200).json({ hashtags: r.ok ? await r.json() : [] });
+      const data = await cacheGetOrSet('trending:hashtags', async () => {
+        const r = await fetch(`${SU}/rest/v1/blue_hashtags?order=usos.desc&limit=20&select=id,nome,usos,trending`, { headers: h });
+        return { hashtags: r.ok ? await r.json() : [] };
+      }, 1800);
+      return res.status(200).json(data);
     } catch(e) { return res.status(200).json({ hashtags: [] }); }
   }
 

@@ -522,6 +522,12 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .stc-prog{height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:10px;display:none}
 .stc-prog-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:2px;transition:width .3s}
 
+/* ── VIDEO FILTERS ──────────────────────────────────────────────────────── */
+.filter-bar{display:flex;gap:8px;overflow-x:auto;padding:10px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.filter-bar::-webkit-scrollbar{display:none}
+.filter-chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(150,190,230,.6);transition:all .2s;white-space:nowrap}
+.filter-chip.active{background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#3b82f6}
+
 /* ── LIVES BAR ─────────────────────────────────────────────────────────── */
 #livesBar::-webkit-scrollbar{display:none}
 #livesBar{scrollbar-width:none}
@@ -908,6 +914,16 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
       <div class="prev-row" id="prevRow">
         <div id="prevThumb" style="width:64px;height:64px;border-radius:8px;background:#222;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden">🎬</div>
         <div id="prevInfo" style="font-size:12px;color:#aaa;line-height:1.7"></div>
+      </div>
+      <div class="filter-bar" id="filterBar" style="display:none">
+        <div class="filter-chip active" onclick="applyFilter('none',this)">Original</div>
+        <div class="filter-chip" onclick="applyFilter('brightness(1.1) contrast(1.2) saturate(1.3)',this)">Neon</div>
+        <div class="filter-chip" onclick="applyFilter('sepia(0.5) contrast(1.1)',this)">Vintage</div>
+        <div class="filter-chip" onclick="applyFilter('brightness(0.8) contrast(1.3)',this)">Dark</div>
+        <div class="filter-chip" onclick="applyFilter('grayscale(1)',this)">B&W</div>
+        <div class="filter-chip" onclick="applyFilter('hue-rotate(30deg) saturate(1.4)',this)">Warm</div>
+        <div class="filter-chip" onclick="applyFilter('hue-rotate(180deg) saturate(0.8)',this)">Cool</div>
+        <div class="filter-chip" onclick="applyFilter('contrast(1.5) brightness(0.9)',this)">Drama</div>
       </div>
       <input class="field" id="upTitle" type="text" placeholder="Título (obrigatório)" maxlength="100" style="margin-top:12px"/>
       <textarea class="field" id="upDesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
@@ -2063,6 +2079,16 @@ async function doAuth(){
   }catch(e){msg.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
 }
 
+let _selectedFilter='none';
+function applyFilter(filter,el){
+  _selectedFilter=filter;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  if(el)el.classList.add('active');
+  // Apply to thumbnail preview
+  const thumb=document.querySelector('#prevThumb img');
+  if(thumb)thumb.style.filter=filter==='none'?'':filter;
+}
+
 function pickFile(file){
   if(!file)return;
   const mb=file.size/1024/1024;
@@ -2112,6 +2138,7 @@ function pickFile(file){
     document.getElementById('dropLbl').textContent=file.name.slice(0,30)+' ('+Math.round(mb)+'MB)';
     document.getElementById('prevInfo').innerHTML=file.name.slice(0,28)+'<br>'+Math.round(mb)+'MB · '+Math.round(vDur||0)+'s';
     document.getElementById('prevRow').style.display='flex';
+    document.getElementById('filterBar').style.display='flex';
     const btn=document.getElementById('upBtn');btn.disabled=false;btn.textContent='Publicar →';
     if(!document.getElementById('upTitle').value)document.getElementById('upTitle').value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
   };
