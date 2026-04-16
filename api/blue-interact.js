@@ -14,6 +14,22 @@ module.exports = async function handler(req, res) {
 
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
+  // Rate limiting: 30 req/min per IP for interactions
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  try {
+    const janela = new Date(Date.now() - 60000).toISOString();
+    const rlR = await fetch(`${SU}/rest/v1/blue_rate_limits?identificador=eq.${encodeURIComponent(ip)}&endpoint=eq.interact&select=requests,janela_inicio`, { headers: h });
+    const rlRows = rlR.ok ? await rlR.json() : [];
+    const rl = rlRows[0];
+    if (rl && new Date(rl.janela_inicio) >= new Date(janela) && rl.requests >= 30) {
+      return res.status(429).json({ error: 'Rate limit exceeded' });
+    }
+    const newCount = (rl && new Date(rl.janela_inicio) >= new Date(janela)) ? (rl.requests || 0) + 1 : 1;
+    const newJanela = (rl && new Date(rl.janela_inicio) >= new Date(janela)) ? rl.janela_inicio : new Date().toISOString();
+    fetch(`${SU}/rest/v1/blue_rate_limits`, { method: 'POST', headers: { ...h, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ identificador: ip, endpoint: 'interact', requests: newCount, janela_inicio: newJanela }) }).catch(() => {});
+  } catch(e) {} // fail open
+
   try {
     const { type, video_id, user_id, session_id, watch_duration = 0, video_duration = 0, completion_pct = 0 } = req.body || {};
     if (!type || !video_id) return res.status(400).json({ error: 'type e video_id obrigatórios' });

@@ -2018,6 +2018,7 @@ function pickFile(file){
   testVid.onloadedmetadata=()=>{
     vDur=testVid.duration;vW=testVid.videoWidth;vH=testVid.videoHeight;
     if(!vW||!vH){URL.revokeObjectURL(testUrl);toast('❌ Vídeo inválido.');return;}
+    if(vDur>180){URL.revokeObjectURL(testUrl);toast('❌ Vídeo muito longo. Máximo 3 minutos para o feed.');return;}
     selFile=file;
     // P3: Reliable thumbnail — try multiple timestamps
     let thumbAttempt=0;

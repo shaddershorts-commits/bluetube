@@ -12,6 +12,39 @@ module.exports = async function handler(req, res) {
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
   const action = req.query.action || (req.body && req.body.action);
 
+  // ── CDN HELPER ──────────────────────────────────────────────────────────
+  const CDN = process.env.SUPABASE_CDN_URL;
+  function applyCDN(url) {
+    if (!CDN || !url) return url;
+    return url.replace(`${SU}/storage/v1/object/public`, CDN);
+  }
+
+  // ── RATE LIMITING ───────────────────────────────────────────────────────
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  async function checkRate(id, endpoint, max, windowMin) {
+    try {
+      const janela = new Date(Date.now() - windowMin * 60000).toISOString();
+      const rr = await fetch(`${SU}/rest/v1/blue_rate_limits?identificador=eq.${encodeURIComponent(id)}&endpoint=eq.${endpoint}&select=requests,janela_inicio`, { headers: h });
+      const rows = rr.ok ? await rr.json() : [];
+      const row = rows[0];
+      if (!row || new Date(row.janela_inicio) < new Date(janela)) {
+        fetch(`${SU}/rest/v1/blue_rate_limits`, { method: 'POST', headers: { ...h, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ identificador: id, endpoint, requests: 1, janela_inicio: new Date().toISOString() }) }).catch(() => {});
+        return true;
+      }
+      if (row.requests >= max) return false;
+      fetch(`${SU}/rest/v1/blue_rate_limits?identificador=eq.${encodeURIComponent(id)}&endpoint=eq.${endpoint}`, { method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ requests: row.requests + 1 }) }).catch(() => {});
+      return true;
+    } catch(e) { return true; } // fail open
+  }
+
+  // Rate limit feed: 60 req/min per IP
+  if (!action && req.method === 'GET') {
+    const allowed = await checkRate(ip, 'feed', 60, 1);
+    if (!allowed) return res.status(429).json({ error: 'Rate limit exceeded', retry_after: 60 });
+  }
+
   // ── STATS (criadores hoje, vídeos semana, usuários 24h) ──────────────────
   if (action === 'stats') {
     try {
@@ -175,6 +208,8 @@ module.exports = async function handler(req, res) {
 
     const enriched = videos.map(v => ({
       ...v,
+      video_url: applyCDN(v.video_url),
+      thumbnail_url: applyCDN(v.thumbnail_url),
       creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' }
     }));
 

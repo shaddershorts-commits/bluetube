@@ -24,6 +24,17 @@ module.exports = async function handler(req, res) {
     if (!uR.ok) return res.status(401).json({ error: 'Token inválido — faça login novamente.' });
     const { id: userId, email } = await uR.json();
 
+    // Rate limit: 10 uploads/hora por user
+    try {
+      const rlJanela = new Date(Date.now() - 3600000).toISOString();
+      const rlR = await fetch(`${SU}/rest/v1/blue_rate_limits?identificador=eq.${userId}&endpoint=eq.upload&select=requests,janela_inicio`, { headers: h });
+      const rlRows = rlR.ok ? await rlR.json() : [];
+      const rl = rlRows[0];
+      if (rl && new Date(rl.janela_inicio) >= new Date(rlJanela) && rl.requests >= 10) {
+        return res.status(429).json({ error: 'Você atingiu o limite de uploads (10/hora). Tente novamente mais tarde.' });
+      }
+    } catch(e) {}
+
     // ── VALIDAÇÃO DE MIME TYPE ─────────────────────────────────────────────
     const allowedTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
     if (content_type && !allowedTypes.includes(content_type)) {
@@ -151,6 +162,66 @@ module.exports = async function handler(req, res) {
     }
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
+
+    // ── MODERAÇÃO COM IA (assíncrona — não bloqueia upload) ──────────────
+    if (thumbnail_data && process.env.ANTHROPIC_API_KEY) {
+      (async () => {
+        try {
+          const imgB64 = thumbnail_data.replace(/^data:image\/\w+;base64,/, '');
+          const modR = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 200,
+              messages: [{ role: 'user', content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imgB64 } },
+                { type: 'text', text: 'Analise esta imagem de um frame de vídeo para uma rede social. Verifique se contém: nudez/conteúdo sexual, violência gráfica, conteúdo de ódio, spam. Retorne APENAS JSON: {"aprovado":true/false,"motivo":"texto se reprovado","confianca":0.0-1.0}' }
+              ]}]
+            })
+          });
+          if (!modR.ok) return;
+          const modData = await modR.json();
+          const txt = modData.content?.[0]?.text || '';
+          const jsonMatch = txt.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) return;
+          const resultado = JSON.parse(jsonMatch[0]);
+
+          // Salva resultado de moderação
+          await fetch(`${SU}/rest/v1/blue_moderacao`, {
+            method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+            body: JSON.stringify({
+              video_id: videoId,
+              status: resultado.aprovado ? 'aprovado' : (resultado.confianca > 0.8 ? 'reprovado' : 'revisao'),
+              motivo: resultado.motivo || null,
+              confianca: resultado.confianca || 0
+            })
+          });
+
+          // Se reprovado com alta confiança, marcar vídeo como under_review
+          if (!resultado.aprovado && resultado.confianca > 0.8) {
+            await fetch(`${SU}/rest/v1/blue_videos?id=eq.${videoId}`, {
+              method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+              body: JSON.stringify({ status: 'under_review' })
+            });
+            console.log(`🛡️ AI moderation blocked: ${videoId} — ${resultado.motivo}`);
+          } else if (!resultado.aprovado) {
+            console.log(`🟡 AI moderation flagged for review: ${videoId} — ${resultado.motivo} (${resultado.confianca})`);
+          }
+        } catch(e) { console.error('AI moderation error:', e.message); }
+      })();
+    }
+
+    // ── RATE LIMIT: 10 uploads/hora ───────────────────────────────────────
+    try {
+      const janela = new Date(Date.now() - 3600000).toISOString();
+      fetch(`${SU}/rest/v1/blue_rate_limits`, { method: 'POST', headers: { ...h, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ identificador: userId, endpoint: 'upload', requests: 1, janela_inicio: new Date().toISOString() }) }).catch(() => {});
+    } catch(e) {}
 
     return res.status(200).json({
       ok: true, video,
