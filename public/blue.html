@@ -544,6 +544,31 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .bp-cta-purple{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;box-shadow:0 0 24px rgba(124,58,237,.3)}
 .bp-close{display:block;text-align:center;font-size:12px;color:rgba(150,190,230,.4);margin-top:14px;cursor:pointer;background:none;border:none;font-family:inherit}
 .bp-close:hover{color:rgba(150,190,230,.7)}
+.bp-x{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:rgba(150,190,230,.5);cursor:pointer;z-index:5;transition:all .2s}
+.bp-x:hover{background:rgba(255,255,255,.12);color:#fff}
+/* Onboarding setup */
+.bp-onboard{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:rgba(2,8,23,.92);backdrop-filter:blur(10px);padding:16px;opacity:0;transition:opacity .3s}
+.bp-onboard.bp-on{opacity:1}
+.bp-onboard.bp-out{opacity:0}
+.bp-ob-card{background:#0a1628;border:1px solid rgba(59,130,246,.25);border-radius:24px;padding:36px 28px;max-width:400px;width:100%;transform:translateY(30px);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+.bp-on .bp-ob-card{transform:translateY(0)}
+.bp-ob-step{display:none}.bp-ob-step.active{display:block}
+.bp-ob-title{font-size:18px;font-weight:800;text-align:center;margin-bottom:6px}
+.bp-ob-sub{font-size:12px;color:rgba(150,190,230,.5);text-align:center;margin-bottom:20px}
+.bp-ob-dots{display:flex;justify-content:center;gap:6px;margin-bottom:20px}
+.bp-ob-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.1);transition:all .3s}
+.bp-ob-dot.active{background:#3b82f6;width:20px;border-radius:4px}
+.bp-ob-input{width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px;font-size:14px;color:#e8f4ff;outline:none;font-family:inherit;margin-bottom:12px}
+.bp-ob-input:focus{border-color:rgba(59,130,246,.5)}
+.bp-ob-input::placeholder{color:rgba(150,190,230,.3)}
+.bp-ob-avatar{width:80px;height:80px;border-radius:50%;background:rgba(59,130,246,.1);border:2px dashed rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;margin:0 auto 14px;overflow:hidden;transition:all .2s;position:relative}
+.bp-ob-avatar:hover{border-color:rgba(59,130,246,.6);background:rgba(59,130,246,.15)}
+.bp-ob-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bp-ob-btn{width:100%;padding:14px;background:linear-gradient(135deg,#1a6bff,#3b82f6);border:none;border-radius:12px;font-size:15px;font-weight:800;color:#fff;cursor:pointer;transition:all .2s}
+.bp-ob-btn:hover{transform:translateY(-1px)}
+.bp-ob-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.bp-ob-skip{display:block;text-align:center;font-size:12px;color:rgba(150,190,230,.4);margin-top:12px;cursor:pointer;background:none;border:none;font-family:inherit}
+.bp-ob-skip:hover{color:rgba(150,190,230,.7)}
 .bp-note{font-size:10px;color:rgba(150,190,230,.3);text-align:center;margin-top:12px}
 @keyframes bp-glow-gold{0%,100%{box-shadow:0 0 20px rgba(255,215,0,.2)}50%{box-shadow:0 0 40px rgba(255,215,0,.45)}}
 /* Gold border popup 1 */
@@ -1961,7 +1986,17 @@ async function doAuth(){
     if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,pass);
     msg.style.color='#4ade80';msg.textContent='✅ Bem-vindo!';
-    setTimeout(()=>{closeUpload();openUpload();loadFeed();initAuth();},800);
+    setTimeout(async()=>{
+      closeUpload();
+      await initAuth();
+      loadFeed();
+      if(_bpPendingUpload){
+        _bpPendingUpload=false;
+        _bpStartOnboarding();
+      }else{
+        openUpload();
+      }
+    },800);
   }catch(e){msg.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Entrar →';}
 }
 
@@ -3057,7 +3092,95 @@ function _bpConvert(tipo){
   fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:tipo,user_id:uid,converteu:true})}).catch(()=>{});
   _bpClose(tipo);
   if(tipo==='monetizacao')return;
-  openUpload();
+  // Verifica se logado → se não, abre auth → após login, onboarding → depois upload
+  TOKEN=localStorage.getItem('bt_token');
+  if(!TOKEN){
+    _bpPendingUpload=true; // flag para abrir onboarding após login
+    openUpload(); // abre o upload overlay que mostra auth wall
+    return;
+  }
+  // Logado: verifica se perfil já está configurado
+  if(myProfile&&myProfile.display_name&&myProfile.username){
+    openUpload();
+  }else{
+    _bpStartOnboarding();
+  }
+}
+
+let _bpPendingUpload=false;
+let _obAvB64=null;
+
+function _bpStartOnboarding(){
+  const el=document.getElementById('bp-onboarding');
+  if(!el)return;
+  // Reset steps
+  document.querySelectorAll('.bp-ob-step').forEach(s=>s.classList.remove('active'));
+  document.getElementById('ob-step-1').classList.add('active');
+  _obUpdateDots(1);
+  document.getElementById('ob-name').value=myProfile?.display_name||'';
+  document.getElementById('ob-username').value=myProfile?.username||'';
+  document.getElementById('ob-bio').value=myProfile?.bio||'';
+  _obAvB64=null;
+  const avEl=document.getElementById('ob-avatar');
+  avEl.innerHTML='📷';
+  if(myProfile?.avatar_url){const img=document.createElement('img');img.src=myProfile.avatar_url;avEl.innerHTML='';avEl.appendChild(img);}
+  el.style.display='flex';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('bp-on')));
+}
+
+function _obUpdateDots(step){
+  document.querySelectorAll('.bp-ob-dot').forEach((d,i)=>{d.classList.toggle('active',i===step-1);});
+}
+
+function _obGoStep(step){
+  document.querySelectorAll('.bp-ob-step').forEach(s=>s.classList.remove('active'));
+  document.getElementById('ob-step-'+step).classList.add('active');
+  _obUpdateDots(step);
+}
+
+function _obPickAvatar(file){
+  if(!file)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    _obAvB64=e.target.result;
+    const av=document.getElementById('ob-avatar');
+    av.innerHTML='';
+    const img=document.createElement('img');img.src=_obAvB64;av.appendChild(img);
+  };
+  rd.readAsDataURL(file);
+}
+
+function _obStep1Next(){
+  const name=document.getElementById('ob-name').value.trim();
+  const username=document.getElementById('ob-username').value.trim();
+  if(!name){document.getElementById('ob-name').style.borderColor='rgba(239,68,68,.5)';return;}
+  if(!username){document.getElementById('ob-username').style.borderColor='rgba(239,68,68,.5)';return;}
+  _obGoStep(2);
+}
+
+function _obStep2Next(){
+  _obGoStep(3);
+}
+
+async function _obFinish(){
+  const btn=document.getElementById('ob-finish-btn');
+  btn.disabled=true;btn.textContent='Salvando…';
+  try{
+    const tk=localStorage.getItem('bt_token');
+    const name=document.getElementById('ob-name').value.trim();
+    const username=document.getElementById('ob-username').value.trim();
+    const bio=document.getElementById('ob-bio').value.trim();
+    const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',token:tk,display_name:name,username:username,bio:bio,avatar_data:_obAvB64})});
+    if(!r.ok){const d=await r.json();toast('Erro: '+(d.error||'falha'));btn.disabled=false;btn.textContent='Concluir e postar →';return;}
+    toast('✅ Perfil configurado!');
+    await loadMyProfile();
+    updateHdAvatar();
+    // Fecha onboarding
+    const el=document.getElementById('bp-onboarding');
+    el.classList.remove('bp-on');el.classList.add('bp-out');
+    setTimeout(()=>{el.style.display='none';el.classList.remove('bp-out');openUpload();},400);
+  }catch(e){toast('Erro: '+e.message);}
+  btn.disabled=false;btn.textContent='Concluir e postar →';
 }
 
 async function _bpLoadStats(){
@@ -3120,6 +3243,7 @@ async function _bpWaitlist(){
 <!-- POPUP 1 — PIONEIRO (após 2 vídeos) -->
 <div class="bp-overlay" id="bp-pioneiro">
   <div class="bp-card bp-gold-border">
+    <button class="bp-x" onclick="_bpClose('pioneiro')">✕</button>
     <div class="bp-particles" id="bp-particles1"></div>
     <div style="position:relative;z-index:1">
       <div class="bp-badge" style="background:linear-gradient(135deg,#B8860B,#FFD700);color:#000">🎁 OFERTA EXCLUSIVA DE PIONEIRO</div>
@@ -3142,6 +3266,7 @@ async function _bpWaitlist(){
 <!-- POPUP 2 — FUTURO (após 8 vídeos) -->
 <div class="bp-overlay" id="bp-futuro">
   <div class="bp-card bp-neon-border">
+    <button class="bp-x" onclick="_bpClose('futuro')">✕</button>
     <div class="bp-grid"></div>
     <div style="position:relative;z-index:1">
       <div style="font-size:12px;color:rgba(0,170,255,.6);margin-bottom:12px;letter-spacing:.04em">Você está assistindo o futuro do vídeo brasileiro.</div>
@@ -3169,6 +3294,7 @@ async function _bpWaitlist(){
 <!-- POPUP 3 — MONETIZAÇÃO (após 15 vídeos) -->
 <div class="bp-overlay" id="bp-monetizacao">
   <div class="bp-card bp-purple-border">
+    <button class="bp-x" onclick="_bpClose('monetizacao')">✕</button>
     <div id="bp-coins"></div>
     <div style="position:relative;z-index:1">
       <div class="bp-badge" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3);color:#a78bfa">💎 PROGRAMA BETA — ACESSO ANTECIPADO</div>
@@ -3195,6 +3321,48 @@ async function _bpWaitlist(){
         <button class="bp-wl-btn" onclick="_bpWaitlist()">Entrar →</button>
       </div>
       <button class="bp-close" onclick="_bpClose('monetizacao')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ONBOARDING — Setup de perfil -->
+<div class="bp-onboard" id="bp-onboarding">
+  <div class="bp-ob-card">
+    <div class="bp-ob-dots">
+      <div class="bp-ob-dot active"></div>
+      <div class="bp-ob-dot"></div>
+      <div class="bp-ob-dot"></div>
+    </div>
+
+    <!-- Step 1: Nome e username -->
+    <div class="bp-ob-step active" id="ob-step-1">
+      <div style="text-align:center;font-size:36px;margin-bottom:8px">👋</div>
+      <div class="bp-ob-title">Como você quer ser conhecido?</div>
+      <div class="bp-ob-sub">Escolha seu nome e seu @</div>
+      <input class="bp-ob-input" id="ob-name" type="text" placeholder="Seu nome" maxlength="40"/>
+      <input class="bp-ob-input" id="ob-username" type="text" placeholder="@seuusuario" maxlength="30" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9._]/g,'')"/>
+      <button class="bp-ob-btn" onclick="_obStep1Next()">Continuar →</button>
+    </div>
+
+    <!-- Step 2: Foto de perfil -->
+    <div class="bp-ob-step" id="ob-step-2">
+      <div class="bp-ob-title">Adicione uma foto</div>
+      <div class="bp-ob-sub">Mostre quem você é para seus seguidores</div>
+      <div class="bp-ob-avatar" id="ob-avatar" onclick="document.getElementById('ob-av-input').click()">📷</div>
+      <input type="file" id="ob-av-input" accept="image/*" style="display:none" onchange="_obPickAvatar(this.files[0])"/>
+      <button class="bp-ob-btn" onclick="_obStep2Next()">Continuar →</button>
+      <button class="bp-ob-skip" onclick="_obStep2Next()">Pular por agora</button>
+    </div>
+
+    <!-- Step 3: Bio (opcional) + finalizar -->
+    <div class="bp-ob-step" id="ob-step-3">
+      <div style="text-align:center;font-size:36px;margin-bottom:8px">✨</div>
+      <div class="bp-ob-title">Quase lá!</div>
+      <div class="bp-ob-sub">Conte um pouco sobre você (opcional)</div>
+      <textarea class="bp-ob-input" id="ob-bio" rows="3" placeholder="Ex: Criador de conteúdo, amante de tecnologia..." maxlength="150" style="resize:none" oninput="document.getElementById('ob-bio-count').textContent=this.value.length+'/150'"></textarea>
+      <div style="font-size:10px;color:rgba(150,190,230,.3);text-align:right;margin-top:-8px;margin-bottom:12px" id="ob-bio-count">0/150</div>
+      <button class="bp-ob-btn" id="ob-finish-btn" onclick="_obFinish()">Concluir e postar →</button>
+      <button class="bp-ob-skip" onclick="_obFinish()">Pular e postar</button>
     </div>
   </div>
 </div>
