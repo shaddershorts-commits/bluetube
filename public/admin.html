@@ -453,6 +453,18 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="verificacoesTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- BACKUPS -->
+    <div class="section" id="backupsSection">
+      <div class="section-header">
+        <div class="section-title">💾 Backups <span class="section-subtitle">— automático diário às 3h</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="action-btn" onclick="executarBackup()">▶ Executar agora</button>
+          <button class="action-btn" onclick="loadBackups()">↻ Atualizar</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="backupsTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <div class="section" id="blueHealthSection">
       <div class="section-header">
         <div class="section-title">🎬 Saúde da Blue <span class="section-subtitle">— manutenção automática a cada 6h</span></div>
@@ -929,6 +941,7 @@ async function loadData(){
     loadBlueHealth();
     loadPopupStats();
     loadVerificacoes();
+    loadBackups();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1332,6 +1345,40 @@ async function loadPopupConversions(){
     }).join('');
     el.innerHTML=`<table><thead><tr><th>Criador</th><th>@</th><th>Seguidores</th><th>Progresso (1K)</th><th>Vídeos</th><th>Popup</th><th>Aceitou em</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(e){document.getElementById('fpConversionsTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
+}
+
+// ── BACKUPS ───────────────────────────────────────────────────────────────
+async function loadBackups(){
+  try{
+    const r=await fetch('/api/blue-backup?action=listar',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    const list=d.backups||[];
+    const el=document.getElementById('backupsTable');
+    if(!list.length){el.innerHTML='<div class="empty-state">Nenhum backup ainda. Clique "Executar agora" para criar o primeiro.</div>';return;}
+    el.innerHTML=`<table><thead><tr><th>Data</th><th>Tabelas</th><th>Tamanho</th><th>Status</th><th>Ação</th></tr></thead><tbody>${list.map((b,i)=>{
+      const diffHours=(Date.now()-new Date(b.created_at))/3600000;
+      const highlight=i===0&&diffHours<25?'style="background:rgba(59,130,246,.05)"':'';
+      const stc=b.status==='ok'?'var(--green)':'var(--red)';
+      return`<tr ${highlight}>
+        <td style="font-size:11px">${new Date(b.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${i===0?' <span style="color:var(--neon);font-size:9px">(último)</span>':''}</td>
+        <td style="font-size:10px;color:var(--dim)">${(b.tabelas||[]).length} tabelas</td>
+        <td style="color:var(--text)">${b.tamanho_display||'—'}</td>
+        <td><span style="color:${stc};font-size:11px">${b.status==='ok'?'✅ OK':'❌ Erro'}</span></td>
+        <td>${b.download_url?`<a href="${b.download_url}" target="_blank" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:5px;padding:4px 8px;text-decoration:none">⬇ Download</a>`:'—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  }catch(e){document.getElementById('backupsTable').innerHTML='<div class="empty-state">Erro.</div>';}
+}
+
+async function executarBackup(){
+  if(!confirm('Executar backup agora?'))return;
+  toast('⏳ Executando backup...');
+  try{
+    const r=await fetch('/api/blue-backup?action=executar');
+    const d=await r.json();
+    if(d.ok){toast('✅ Backup concluído: '+(d.size/1024).toFixed(1)+'KB');loadBackups();}
+    else toast('Erro: '+(d.error||'falha'));
+  }catch(e){toast('Erro: '+e.message);}
 }
 
 // ── VERIFICAÇÃO DE CONTAS ─────────────────────────────────────────────────
