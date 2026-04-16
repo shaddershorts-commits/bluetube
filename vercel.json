@@ -45,6 +45,10 @@
     {
       "path": "/api/blue-stories?action=limpar",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/blue-feed?action=update-trending",
+      "schedule": "0 */2 * * *"
     }
   ],
   "headers": [

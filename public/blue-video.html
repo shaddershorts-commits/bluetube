@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<title>Blue — Vídeo</title>
+<!-- OG tags set dynamically by script -->
+<meta property="og:type" content="video.other"/>
+<meta property="og:site_name" content="Blue"/>
+<meta name="twitter:card" content="player"/>
+<style>
+:root{--bg:#020817;--text:#e8f4ff;--dim:rgba(150,190,230,.5);--neon:#3b82f6}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+.loader{display:flex;align-items:center;justify-content:center;height:100vh;gap:8px;color:var(--dim);font-size:13px}
+.loader::before{content:'';width:20px;height:20px;border:2px solid rgba(255,255,255,.08);border-top-color:var(--neon);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.container{max-width:420px;width:100%;padding:0 16px;margin-top:env(safe-area-inset-top,0)}
+nav{width:100%;padding:16px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:800;color:var(--text);text-decoration:none}
+.logo span{color:var(--neon)}
+.open-btn{background:var(--neon);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+.player{width:100%;aspect-ratio:9/16;border-radius:16px;overflow:hidden;background:#111;position:relative;margin-bottom:16px}
+.player video{width:100%;height:100%;object-fit:cover}
+.info{padding:0 4px 20px}
+.creator{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.creator-av{width:40px;height:40px;border-radius:50%;background:rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;overflow:hidden;flex-shrink:0}
+.creator-av img{width:100%;height:100%;object-fit:cover}
+.creator-name{font-weight:700;font-size:15px}
+.creator-user{font-size:12px;color:var(--dim)}
+.verified{display:inline-flex;align-items:center;gap:3px}
+.verified::after{content:'✓';background:var(--neon);color:#fff;font-size:9px;width:14px;height:14px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.title{font-size:15px;font-weight:600;line-height:1.5;margin-bottom:8px}
+.stats{display:flex;gap:16px;font-size:12px;color:var(--dim)}
+.share-row{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.share-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 16px;font-size:12px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s;text-decoration:none}
+.share-btn:hover{background:rgba(255,255,255,.1)}
+.cta{width:100%;text-align:center;padding:20px 0 40px}
+.cta a{display:inline-block;background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;padding:16px 40px;border-radius:14px;font-weight:800;font-size:16px;text-decoration:none;box-shadow:0 0 30px rgba(59,130,246,.3)}
+.error{text-align:center;padding:60px 20px;color:var(--dim)}
+.hashtag{color:var(--neon);cursor:pointer;text-decoration:none}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/blue.html" class="logo"><span>Blue</span></a>
+  <a href="/blue.html" class="open-btn">Abrir no Blue</a>
+</nav>
+<div class="container" id="main">
+  <div class="loader" id="loader">Carregando vídeo…</div>
+</div>
+
+<script>
+const videoId = new URLSearchParams(window.location.search).get('v') || window.location.pathname.split('/').pop();
+
+async function load(){
+  if(!videoId){document.getElementById('loader').innerHTML='<div class="error">Vídeo não encontrado.</div>';return;}
+  try{
+    const r=await fetch('/api/blue-feed?action=video-publico&id='+videoId);
+    if(!r.ok)throw new Error('not found');
+    const d=await r.json();
+    const v=d.video;
+    if(!v){document.getElementById('loader').innerHTML='<div class="error">Vídeo não encontrado ou removido.</div>';return;}
+    const c=v.creator||{};
+
+    // Update OG tags
+    document.title=(v.title||'Vídeo')+' — Blue';
+    const setMeta=(p,val)=>{let m=document.querySelector(`meta[property="${p}"]`)||document.querySelector(`meta[name="${p}"]`);if(!m){m=document.createElement('meta');m.setAttribute(p.includes(':')?'property':'name',p);document.head.appendChild(m);}m.content=val;};
+    setMeta('og:title',(v.title||'Vídeo no Blue'));
+    setMeta('og:description','@'+(c.username||'blue')+' no Blue');
+    setMeta('og:image',v.thumbnail_url||'');
+    setMeta('og:video',v.video_url);
+    setMeta('og:url',window.location.href);
+
+    const init=(c.display_name||c.username||'B').charAt(0).toUpperCase();
+    const avHtml=c.avatar_url?`<img src="${c.avatar_url}"/>`:`${init}`;
+    const verif=c.verificado?'verified':'';
+    const desc=(v.title||'').replace(/#([a-zA-Z0-9\u00C0-\u024Fà-ÿ_]+)/g,'<a class="hashtag" href="/blue.html?hashtag=$1">#$1</a>');
+    const shareUrl=window.location.href;
+    const waUrl='https://wa.me/?text='+encodeURIComponent((v.title||'Vídeo no Blue')+' '+shareUrl);
+
+    document.getElementById('main').innerHTML=`
+      <div class="player">
+        <video src="${v.video_url}" playsinline loop controls autoplay muted poster="${v.thumbnail_url||''}"></video>
+      </div>
+      <div class="info">
+        <div class="creator">
+          <div class="creator-av">${avHtml}</div>
+          <div>
+            <div class="creator-name ${verif}">${c.display_name||c.username||'Blue'}</div>
+            <div class="creator-user">@${c.username||'blue'}</div>
+          </div>
+        </div>
+        <div class="title">${desc}</div>
+        <div class="stats">
+          <span>▶ ${fmt(v.views||0)} views</span>
+          <span>❤️ ${fmt(v.likes||0)}</span>
+          <span>💬 ${fmt(v.comments||0)}</span>
+        </div>
+        <div class="share-row">
+          <button class="share-btn" onclick="navigator.clipboard.writeText('${shareUrl}');this.textContent='✅ Copiado!'">🔗 Copiar link</button>
+          <a class="share-btn" href="${waUrl}" target="_blank">💬 WhatsApp</a>
+          <button class="share-btn" onclick="if(navigator.share)navigator.share({title:'${(v.title||'').replace(/'/g,'')}',url:'${shareUrl}'})">↗️ Compartilhar</button>
+        </div>
+      </div>
+      <div class="cta">
+        <a href="/blue.html?v=${v.id}">Ver no Blue →</a>
+      </div>`;
+
+    // Auto-unmute on tap
+    const vid=document.querySelector('video');
+    vid.addEventListener('click',()=>{vid.muted=!vid.muted;});
+  }catch(e){
+    document.getElementById('loader').innerHTML='<div class="error">Vídeo não encontrado ou indisponível.</div>';
+  }
+}
+
+function fmt(n){n=parseInt(n)||0;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n);}
+
+load();
+</script>
+</body>
+</html>

@@ -162,6 +162,90 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ conversions: [], error: e.message }); }
   }
 
+  // ── HASHTAG SEARCH ───────────────────────────────────────────────────────
+  if (action === 'hashtag-search') {
+    const q = (req.query.q || '').toLowerCase().replace(/^#/, '');
+    if (!q) return res.status(200).json({ hashtags: [] });
+    try {
+      const r = await fetch(`${SU}/rest/v1/blue_hashtags?nome=ilike.${encodeURIComponent(q)}*&order=usos.desc&limit=10&select=id,nome,usos,trending`, { headers: h });
+      return res.status(200).json({ hashtags: r.ok ? await r.json() : [] });
+    } catch(e) { return res.status(200).json({ hashtags: [] }); }
+  }
+
+  // ── TRENDING HASHTAGS ──────────────────────────────────────────────────
+  if (action === 'trending-hashtags') {
+    try {
+      const r = await fetch(`${SU}/rest/v1/blue_hashtags?order=usos.desc&limit=20&select=id,nome,usos,trending`, { headers: h });
+      return res.status(200).json({ hashtags: r.ok ? await r.json() : [] });
+    } catch(e) { return res.status(200).json({ hashtags: [] }); }
+  }
+
+  // ── HASHTAG FEED ───────────────────────────────────────────────────────
+  if (action === 'hashtag-feed') {
+    const hashtag = (req.query.hashtag || '').toLowerCase().replace(/^#/, '');
+    if (!hashtag) return res.status(400).json({ error: 'hashtag obrigatória' });
+    try {
+      // Find hashtag ID
+      const hR = await fetch(`${SU}/rest/v1/blue_hashtags?nome=eq.${encodeURIComponent(hashtag)}&select=id,usos`, { headers: h });
+      const hArr = hR.ok ? await hR.json() : [];
+      if (!hArr.length) return res.status(200).json({ videos: [], has_more: false, hashtag: { nome: hashtag, usos: 0 } });
+      const hId = hArr[0].id;
+      // Get video IDs from junction table
+      const vjR = await fetch(`${SU}/rest/v1/blue_video_hashtags?hashtag_id=eq.${hId}&select=video_id&limit=50`, { headers: h });
+      const vIds = (vjR.ok ? await vjR.json() : []).map(r => r.video_id);
+      if (!vIds.length) return res.status(200).json({ videos: [], has_more: false, hashtag: hArr[0] });
+      // Get videos
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?id=in.(${vIds.join(',')})&status=eq.active&order=score.desc,created_at.desc&limit=20&select=*`, { headers: h });
+      const vids = vR.ok ? await vR.json() : [];
+      // Enrich
+      const uIds = [...new Set(vids.map(v => v.user_id).filter(Boolean))];
+      let profs = {};
+      if (uIds.length) {
+        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uIds.join(',')})&select=user_id,username,display_name,avatar_url`, { headers: h });
+        if (pR.ok) (await pR.json()).forEach(p => { profs[p.user_id] = p; });
+      }
+      return res.status(200).json({
+        videos: vids.map(v => ({ ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator: profs[v.user_id] || { username: 'blue', display_name: 'Blue' } })),
+        has_more: false, hashtag: hArr[0]
+      });
+    } catch(e) { return res.status(200).json({ videos: [], has_more: false, error: e.message }); }
+  }
+
+  // ── UPDATE TRENDING (cron) ─────────────────────────────────────────────
+  if (action === 'update-trending') {
+    try {
+      // Reset all trending
+      await fetch(`${SU}/rest/v1/blue_hashtags?trending=eq.true`, { method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' }, body: JSON.stringify({ trending: false }) });
+      // Get top 20 by usage
+      const r = await fetch(`${SU}/rest/v1/blue_hashtags?order=usos.desc&limit=20&select=id`, { headers: h });
+      const top = r.ok ? await r.json() : [];
+      if (top.length) {
+        await fetch(`${SU}/rest/v1/blue_hashtags?id=in.(${top.map(t => t.id).join(',')})`, {
+          method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' }, body: JSON.stringify({ trending: true })
+        });
+      }
+      return res.status(200).json({ ok: true, updated: top.length });
+    } catch(e) { return res.status(200).json({ ok: false, error: e.message }); }
+  }
+
+  // ── VIDEO PÚBLICO (sem login) ──────────────────────────────────────────
+  if (action === 'video-publico') {
+    const videoId = req.query.id;
+    if (!videoId) return res.status(400).json({ error: 'id obrigatório' });
+    try {
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${videoId}&status=eq.active&select=*`, { headers: h });
+      const vArr = vR.ok ? await vR.json() : [];
+      if (!vArr.length) return res.status(404).json({ error: 'Vídeo não encontrado' });
+      const v = vArr[0];
+      let creator = { username: 'blue', display_name: 'Blue' };
+      if (v.user_id) {
+        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${v.user_id}&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+        if (pR.ok) { const pArr = await pR.json(); if (pArr[0]) creator = pArr[0]; }
+      }
+      return res.status(200).json({ video: { ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator } });
+    } catch(e) { return res.status(404).json({ error: e.message }); }
+  }
+
   // ── FEED PADRÃO ──────────────────────────────────────────────────────────
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   const cursor = req.query.cursor;

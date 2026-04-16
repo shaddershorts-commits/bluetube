@@ -163,6 +163,38 @@ module.exports = async function handler(req, res) {
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
 
+    // ── EXTRAÇÃO DE HASHTAGS (assíncrona) ────────────────────────────────
+    const hashtagMatches = (cleanTitle + ' ' + cleanDesc).match(/#([a-zA-Z0-9\u00C0-\u024Fà-ÿ_]+)/g);
+    if (hashtagMatches && hashtagMatches.length > 0) {
+      (async () => {
+        try {
+          const tags = [...new Set(hashtagMatches.map(t => t.slice(1).toLowerCase()))].slice(0, 10);
+          for (const tag of tags) {
+            // Upsert hashtag
+            await fetch(`${SU}/rest/v1/blue_hashtags`, {
+              method: 'POST', headers: { ...h, 'Prefer': 'resolution=ignore,return=representation' },
+              body: JSON.stringify({ nome: tag, usos: 1 })
+            });
+            // Get hashtag id
+            const hR = await fetch(`${SU}/rest/v1/blue_hashtags?nome=eq.${encodeURIComponent(tag)}&select=id,usos`, { headers: h });
+            const hArr = hR.ok ? await hR.json() : [];
+            if (hArr[0]) {
+              // Increment usage
+              await fetch(`${SU}/rest/v1/blue_hashtags?id=eq.${hArr[0].id}`, {
+                method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ usos: (hArr[0].usos || 0) + 1 })
+              });
+              // Link to video
+              await fetch(`${SU}/rest/v1/blue_video_hashtags`, {
+                method: 'POST', headers: { ...h, 'Prefer': 'resolution=ignore,return=minimal' },
+                body: JSON.stringify({ video_id: videoId, hashtag_id: hArr[0].id })
+              });
+            }
+          }
+        } catch(e) { console.error('Hashtag extraction error:', e.message); }
+      })();
+    }
+
     // ── MODERAÇÃO COM IA (assíncrona — não bloqueia upload) ──────────────
     if (thumbnail_data && process.env.ANTHROPIC_API_KEY) {
       (async () => {

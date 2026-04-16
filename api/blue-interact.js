@@ -31,7 +31,86 @@ module.exports = async function handler(req, res) {
   } catch(e) {} // fail open
 
   try {
-    const { type, video_id, user_id, session_id, watch_duration = 0, video_duration = 0, completion_pct = 0 } = req.body || {};
+    const body = req.body || {};
+    const { type, action: interactAction, video_id, user_id, session_id, watch_duration = 0, video_duration = 0, completion_pct = 0 } = body;
+
+    // ── SALVAR / DESALVAR VÍDEO ────────────────────────────────────────────
+    if (interactAction === 'salvar') {
+      const { token, video_id: vid } = body;
+      if (!token || !vid) return res.status(400).json({ error: 'token e video_id obrigatórios' });
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      // Check if already saved
+      const eR = await fetch(`${SU}/rest/v1/blue_salvos?user_id=eq.${uid}&video_id=eq.${vid}&select=id`, { headers: h });
+      const existing = eR.ok ? await eR.json() : [];
+      if (existing.length) {
+        await fetch(`${SU}/rest/v1/blue_salvos?id=eq.${existing[0].id}`, { method: 'DELETE', headers: h });
+        return res.status(200).json({ ok: true, saved: false });
+      }
+      await fetch(`${SU}/rest/v1/blue_salvos`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ user_id: uid, video_id: vid, colecao: body.colecao || 'Salvos' }) });
+      return res.status(200).json({ ok: true, saved: true });
+    }
+
+    // ── MEUS SALVOS ────────────────────────────────────────────────────────
+    if (interactAction === 'meus-salvos') {
+      const { token } = body;
+      if (!token) return res.status(401).json({ error: 'token obrigatório' });
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      const sR = await fetch(`${SU}/rest/v1/blue_salvos?user_id=eq.${uid}&order=created_at.desc&limit=50&select=video_id,colecao,created_at`, { headers: h });
+      const salvos = sR.ok ? await sR.json() : [];
+      if (!salvos.length) return res.status(200).json({ salvos: [] });
+      const vIds = salvos.map(s => s.video_id);
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?id=in.(${vIds.join(',')})&status=eq.active&select=id,title,thumbnail_url,video_url,views,likes,user_id`, { headers: h });
+      const vids = vR.ok ? await vR.json() : [];
+      const vidMap = {}; vids.forEach(v => { vidMap[v.id] = v; });
+      return res.status(200).json({ salvos: salvos.map(s => ({ ...s, video: vidMap[s.video_id] || null })).filter(s => s.video) });
+    }
+
+    // ── NOTIFICAÇÕES ───────────────────────────────────────────────────────
+    if (interactAction === 'notificacoes') {
+      const { token } = body;
+      if (!token) return res.status(401).json({ error: 'token obrigatório' });
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      const nR = await fetch(`${SU}/rest/v1/blue_notificacoes?user_id=eq.${uid}&order=created_at.desc&limit=30&select=*`, { headers: h });
+      const notifs = nR.ok ? await nR.json() : [];
+      const unread = notifs.filter(n => !n.lida).length;
+      return res.status(200).json({ notificacoes: notifs, unread });
+    }
+
+    // ── MARCAR NOTIFICAÇÕES COMO LIDAS ─────────────────────────────────────
+    if (interactAction === 'marcar-lidas') {
+      const { token } = body;
+      if (!token) return res.status(401).json({ error: 'token obrigatório' });
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      await fetch(`${SU}/rest/v1/blue_notificacoes?user_id=eq.${uid}&lida=eq.false`, {
+        method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' }, body: JSON.stringify({ lida: true })
+      });
+      return res.status(200).json({ ok: true });
+    }
+
+    // ── ANALYTICS (registra watch data) ────────────────────────────────────
+    if (interactAction === 'analytics') {
+      const { video_id: aVid, user_id: aUid, percentual_assistido, origem } = body;
+      if (aVid) {
+        fetch(`${SU}/rest/v1/blue_video_analytics`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ video_id: aVid, user_id: aUid || null, percentual_assistido: percentual_assistido || 0, origem: origem || 'feed' })
+        }).catch(() => {});
+      }
+      return res.status(200).json({ ok: true });
+    }
+
     if (!type || !video_id) return res.status(400).json({ error: 'type e video_id obrigatórios' });
 
     const completed = completion_pct >= 80;
@@ -81,18 +160,15 @@ module.exports = async function handler(req, res) {
         fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
           .then(r => r.ok ? r.json() : []).then(p => {
             const uname = p?.[0]?.username || 'alguém';
-            fetch(`${SU}/rest/v1/blue_notifications`, {
+            fetch(`${SU}/rest/v1/blue_notificacoes`, {
               method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-              body: JSON.stringify({
-                user_id: v.user_id, type: 'like', from_user_id: user_id, video_id,
-                message: `@${uname} curtiu seu vídeo`, read: false
-              })
+              body: JSON.stringify({ user_id: v.user_id, tipo: 'like', titulo: 'Nova curtida', mensagem: `@${uname} curtiu seu vídeo`, dados: { from_user_id: user_id, video_id } })
             }).catch(() => {});
           }).catch(() => {});
       }
-    else if (type === 'unlike')   { patch.likes = Math.max(0, (v.likes || 0) - 1); }
-    else if (type === 'save')     { patch.saves = Math.max(0, (v.saves || 0) + 1); }
-    else if (type === 'unsave')   { patch.saves = Math.max(0, (v.saves || 0) - 1); }
+    } else if (type === 'unlike') { patch.likes = Math.max(0, (v.likes || 0) - 1);
+    } else if (type === 'save')   { patch.saves = Math.max(0, (v.saves || 0) + 1);
+    } else if (type === 'unsave') { patch.saves = Math.max(0, (v.saves || 0) - 1); }
 
     // Recalcula score (0-100)
     const newLikes    = patch.likes !== undefined ? patch.likes : (v.likes || 0);
