@@ -152,38 +152,101 @@ export default async function handler(req, res) {
         })
       });
 
-      // Email de notificação
+      // Email de notificação — motivacional e personalizado por nível
       const RESEND = process.env.RESEND_API_KEY;
       if (RESEND && affiliate.email) {
         const nivelLabel = { bronze: 'Bronze', prata: 'Prata', ouro: 'Ouro' }[nivel];
         const nivelEmoji = { bronze: '🥉', prata: '🥈', ouro: '🥇' }[nivel];
         const nivelColor = { bronze: '#cd7f32', prata: '#c0c0c0', ouro: '#FFD700' }[nivel];
-        const exemplo = nivel === 'ouro' ? '<p style="margin-top:16px;font-size:13px;color:#999">Exemplo: 10 assinantes Full (R$29,99) = <strong style="color:#FFD700">R$' + (10 * 29.99 * comissao / 100).toFixed(2) + '/mês</strong> pra você!</p>' : '';
+        const anteriorLabel = { bronze: 'Bronze', prata: 'Prata', ouro: 'Ouro' }[nivelAnterior] || 'Bronze';
+        const anteriorRate = { bronze: 30, prata: 45, ouro: 58 }[nivelAnterior] || 30;
+        const nome = affiliate.name || affiliate.email.split('@')[0];
+        const exFull = (10 * 29.99 * comissao / 100).toFixed(2);
+        const exMaster = (10 * 89.99 * comissao / 100).toFixed(2);
+
+        const mensagens = {
+          prata: {
+            subject: `🥈 ${nome}, você foi promovido para Afiliado Prata!`,
+            titulo: `Você mereceu, ${nome}!`,
+            texto: `Seu esforço e dedicação chamaram nossa atenção. Você não é mais um afiliado comum — agora faz parte do grupo seleto de parceiros <strong style="color:#c0c0c0">Prata</strong> da BlueTube.`,
+            motivacao: `Cada indicação sua ajuda criadores de conteúdo a transformarem seus canais. Isso tem um impacto real — e a gente reconhece quem faz a diferença.`,
+            destaque: `Continue assim e o nível <strong style="color:#FFD700">Ouro (58%)</strong> está ao seu alcance. Nós acreditamos em você.`,
+          },
+          ouro: {
+            subject: `🥇 ${nome}, bem-vindo ao nível Ouro! Você é elite.`,
+            titulo: `${nome}, você chegou ao topo.`,
+            texto: `Poucos chegam aqui. Você acaba de entrar para o grupo de parceiros mais valiosos da BlueTube — o nível <strong style="color:#FFD700">Ouro</strong>. Isso não é sorte, é resultado do seu trabalho excepcional.`,
+            motivacao: `Você provou que é mais do que um afiliado — é um verdadeiro embaixador. Cada pessoa que você traz encontra uma ferramenta que transforma a vida dela como criador de conteúdo. Esse é o seu legado.`,
+            destaque: `A partir de agora, você tem a maior comissão possível do programa: <strong style="color:#FFD700">58% vitalício</strong>. Pagamentos priorizados, suporte dedicado e acesso antecipado a novidades.`,
+          },
+          bronze: {
+            subject: `🥉 ${nome}, seu nível foi atualizado para Bronze`,
+            titulo: `${nome}, seu nível foi ajustado.`,
+            texto: `Seu nível no programa de afiliados foi atualizado para <strong style="color:#cd7f32">Bronze</strong>. Isso não muda o quanto valorizamos sua parceria.`,
+            motivacao: `Continue indicando a BlueTube e seu nível pode subir novamente. Cada indicação conta, e estamos torcendo por você.`,
+            destaque: `Lembre-se: mesmo no Bronze, você ganha comissão recorrente em cada assinatura indicada. Seu potencial é ilimitado.`,
+          },
+        };
+        const msg = mensagens[nivel] || mensagens.bronze;
+
         fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
           body: JSON.stringify({
             from: 'BlueTube <noreply@bluetubeviral.com>',
             to: [affiliate.email],
-            subject: `${nivelEmoji} Parabéns! Você é agora um Afiliado ${nivelLabel}!`,
-            html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:32px;border-radius:16px;max-width:500px;margin:0 auto">
-              <div style="text-align:center;margin-bottom:24px">
-                <div style="font-size:48px;margin-bottom:8px">${nivelEmoji}</div>
-                <h1 style="font-size:24px;margin:0;color:${nivelColor}">Afiliado ${nivelLabel}</h1>
-                <p style="color:#999;font-size:14px">Seu nível foi atualizado!</p>
+            subject: msg.subject,
+            html: `<div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#0a1628;color:#e8f4ff;max-width:520px;margin:0 auto;border-radius:20px;overflow:hidden">
+              <!-- Header com gradiente do nível -->
+              <div style="background:linear-gradient(135deg,${nivel==='ouro'?'#B8860B,#FFD700,#FFA500':nivel==='prata'?'#808080,#c0c0c0,#e0e0e0':'#8B4513,#cd7f32,#D2691E'});padding:36px 32px;text-align:center">
+                <div style="font-size:56px;margin-bottom:8px">${nivelEmoji}</div>
+                <h1 style="font-size:22px;font-weight:800;margin:0;color:${nivel==='prata'?'#1a1a2e':'#fff'}">${msg.titulo}</h1>
               </div>
-              <div style="background:rgba(255,255,255,0.05);border:1px solid ${nivelColor}44;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px">
-                <div style="font-size:14px;color:#999;margin-bottom:4px">Sua nova comissão</div>
-                <div style="font-size:48px;font-weight:900;color:${nivelColor}">${comissao}%</div>
-                <div style="font-size:13px;color:#999">de cada assinatura indicada</div>
-              </div>
-              ${exemplo}
-              <div style="text-align:center;margin-top:24px">
-                <a href="https://bluetubeviral.com/afiliado.html" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px">Ver meu painel →</a>
+
+              <div style="padding:32px">
+                <!-- Texto motivacional -->
+                <p style="font-size:15px;line-height:1.7;color:#c8d6e5;margin:0 0 16px">${msg.texto}</p>
+                <p style="font-size:14px;line-height:1.7;color:#99aabb;margin:0 0 20px">${msg.motivacao}</p>
+
+                <!-- Card de comissão: antes → depois -->
+                <div style="background:rgba(255,255,255,0.04);border:1px solid ${nivelColor}33;border-radius:14px;padding:24px;text-align:center;margin-bottom:20px">
+                  <div style="display:inline-block;vertical-align:middle">
+                    <div style="font-size:11px;color:#667;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Antes</div>
+                    <div style="font-size:28px;font-weight:800;color:#556;text-decoration:line-through">${anteriorRate}%</div>
+                    <div style="font-size:10px;color:#556">${anteriorLabel}</div>
+                  </div>
+                  <div style="display:inline-block;vertical-align:middle;margin:0 20px;font-size:24px;color:${nivelColor}">→</div>
+                  <div style="display:inline-block;vertical-align:middle">
+                    <div style="font-size:11px;color:${nivelColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Agora</div>
+                    <div style="font-size:42px;font-weight:900;color:${nivelColor}">${comissao}%</div>
+                    <div style="font-size:10px;color:${nivelColor}">${nivelLabel}</div>
+                  </div>
+                </div>
+
+                <!-- Destaque -->
+                <p style="font-size:14px;line-height:1.7;color:#c8d6e5;margin:0 0 20px">${msg.destaque}</p>
+
+                <!-- Exemplos de ganhos -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:16px;margin-bottom:24px">
+                  <div style="font-size:11px;color:#667;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Seus ganhos potenciais</div>
+                  <div style="font-size:13px;color:#99aabb;margin-bottom:6px">10 assinantes Full (R$29,99) = <strong style="color:${nivelColor}">R$${exFull}/mês</strong></div>
+                  <div style="font-size:13px;color:#99aabb">10 assinantes Master (R$89,99) = <strong style="color:${nivelColor}">R$${exMaster}/mês</strong></div>
+                </div>
+
+                <!-- CTA -->
+                <div style="text-align:center">
+                  <a href="https://bluetubeviral.com/afiliado.html" style="display:inline-block;background:linear-gradient(135deg,${nivel==='ouro'?'#B8860B,#FFD700':nivel==='prata'?'#808080,#c0c0c0':'#4f46e5,#7c3aed'});color:${nivel==='prata'?'#1a1a2e':'#fff'};padding:16px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:15px">Ver meu painel →</a>
+                </div>
+
+                <!-- Assinatura -->
+                <div style="text-align:center;margin-top:28px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.06)">
+                  <div style="font-size:13px;color:#556">Equipe BlueTube</div>
+                  <div style="font-size:11px;color:#445;margin-top:4px">Obrigado por fazer parte dessa jornada com a gente.</div>
+                </div>
               </div>
             </div>`
           })
-        }).catch(() => {});
+        }).catch((e) => console.error('Email send error:', e.message));
       }
 
       console.log(`🎖 Affiliate level: ${affiliate.email} ${nivelAnterior} → ${nivel} (${comissao}%)`);
