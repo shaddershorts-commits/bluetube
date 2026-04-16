@@ -528,9 +528,6 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .filter-chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(150,190,230,.6);transition:all .2s;white-space:nowrap}
 .filter-chip.active{background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#3b82f6}
 
-@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-
 /* ── ONBOARDING WIZARD ──────────────────────────────────────────────────── */
 #onboardOv{position:fixed;inset:0;z-index:10000;background:#020817;display:none;flex-direction:column;overflow-y:auto;padding:env(safe-area-inset-top,20px) 20px 40px}
 #onboardOv.on{display:flex}
@@ -661,17 +658,88 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 .bp-wl-btn{background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
 @media(max-width:420px){.bp-card{padding:28px 20px}.bp-title{font-size:19px}.bp-wl-wrap{flex-direction:column}}
 
+
+/* === GRUPOS PANEL === */
+.grupos-panel{position:fixed;z-index:300;background:#0d0d12;border-left:1px solid rgba(255,255,255,.08);
+  bottom:0;right:0;width:100%;max-width:380px;height:85vh;border-radius:18px 18px 0 0;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+@media(min-width:480px){.grupos-panel{top:0;border-radius:0;height:100vh;transform:translateX(100%)}}
+.grupos-panel.open{transform:translateY(0)}
+@media(min-width:480px){.grupos-panel.open{transform:translateX(0)}}
+.gp-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07)}
+.gp-ttl{font-size:16px;font-weight:700;color:#fff}
+.gp-x{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px}
+.gp-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.07)}
+.gp-tab{flex:1;background:none;border:none;color:rgba(255,255,255,.5);padding:10px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;transition:.2s}
+.gp-tab.on{color:#3b82f6;border-bottom-color:#3b82f6}
+.gp-body{flex:1;overflow-y:auto;padding:12px}
+.gp-body::-webkit-scrollbar{display:none}
+.gp-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;cursor:pointer;transition:background .2s}
+.gp-item:hover,.gp-item:active{background:rgba(255,255,255,.06)}
+.gp-av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.gp-info{flex:1;min-width:0}
+.gp-name{font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gp-desc{font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gp-add-btn{background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;color:#fff;border-radius:12px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+/* Grupo Chat */
+.gp-chat{position:fixed;inset:0;z-index:350;background:#0d0d12;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s}
+.gp-chat.open{transform:translateX(0)}
+.gp-chat-hd{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.gp-chat-back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer}
+.gp-chat-name{font-size:15px;font-weight:700;color:#fff}
+.gp-chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.gp-chat-msgs::-webkit-scrollbar{display:none}
+.gp-msg{display:flex;gap:8px;align-items:flex-start}
+.gp-msg-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.gp-msg-body{background:rgba(255,255,255,.07);border-radius:12px;padding:8px 12px;max-width:75%}
+.gp-msg-author{font-size:10px;color:#3b82f6;font-weight:600;margin-bottom:3px}
+.gp-msg-text{font-size:13px;color:#fff}
+.gp-msg.own{flex-direction:row-reverse}
+.gp-msg.own .gp-msg-body{background:rgba(59,130,246,.25)}
+.gp-chat-inp{display:flex;gap:8px;padding:12px 16px;border-top:1px solid rgba(255,255,255,.07)}
+.gp-chat-inp input{flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:10px 16px;color:#fff;font-size:14px;outline:none}
+.gp-chat-inp input::placeholder{color:rgba(255,255,255,.4)}
+.gp-chat-send{background:#3b82f6;border:none;border-radius:50%;width:38px;height:38px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0}
+/* Shop tab */
+.shop-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:12px 16px}
+.shop-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .2s}
+.shop-card:active{transform:scale(.97)}
+.shop-card-img{width:100%;aspect-ratio:1;object-fit:cover;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:40px}
+.shop-card-body{padding:10px}
+.shop-card-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px}
+.shop-card-price{background:rgba(59,130,246,.2);color:#3b82f6;border-radius:8px;padding:3px 8px;font-size:12px;font-weight:700;display:inline-block}
+.shop-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,.4);font-size:13px}
+/* Subscription */
+.sub-plans{display:flex;flex-direction:column;gap:10px;padding:12px 0}
+.sub-plan{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px}
+.sub-plan-name{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
+.sub-plan-price{font-size:20px;font-weight:800;color:#f59e0b;margin-bottom:6px}
+.sub-plan-benefits{font-size:12px;color:rgba(255,255,255,.6);margin-bottom:12px}
+.sub-plan-btn{width:100%;background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;border-radius:10px;padding:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+/* Generic modal for shop/sub */
+.blu-modal-back{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:none;align-items:flex-end;justify-content:center}
+.blu-modal-back.open{display:flex}
+.blu-modal{background:#161620;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto}
+.blu-modal::-webkit-scrollbar{display:none}
+.blu-modal-title{font-size:18px;font-weight:800;color:#fff;margin-bottom:16px}
+.blu-modal-inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:#fff;font-size:14px;margin-bottom:10px;outline:none;box-sizing:border-box}
+.blu-modal-inp::placeholder{color:rgba(255,255,255,.4)}
+.blu-modal-btn{width:100%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;border-radius:12px;padding:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}
+.blu-modal-btn.gold{background:linear-gradient(135deg,#f59e0b,#ef4444)}
+.blu-modal-close{float:right;background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;margin-top:-4px}
+.prof-subscribe-btn{background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
 </style>
-</head>
+</head>>
 <body>
 
 <div class="topbar">
   <a class="logo" href="/blue.html">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openSearch()">🔍</button>
-    <button class="tbtn" onclick="openPostMenu()">+ Postar</button>
+    <button class="tbtn" onclick="openUpload()">+ Postar</button>
     <button class="tbtn" onclick="openTrending()" title="Em alta">🔥</button>
     <button class="tbtn" onclick="openInbox()" id="inboxBtn" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
+    <button class="tbtn" onclick="openGrupos()" id="gruposBtn" style="position:relative">=e<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
     <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden">?</div>
     <a class="tbtn" href="/">BlueTube</a>
   </div>
@@ -844,15 +912,21 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;flex:1" onclick="openEditProfile()">Editar perfil</button>
     <a id="profAnalyticsBtn" href="/blue-analytics.html" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#3b82f6;text-decoration:none;text-align:center">📊</a>
     <a id="profMonetBtn" href="/blue-monetizacao.html" style="display:none;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#22c55e;text-decoration:none;text-align:center">💰</a>
+    
+    <button class="prof-subscribe-btn" id="profSubscribeBtn" style="display:none" onclick="openAssinaturaModal()">P Assinar</button>
+    <button class="prof-add-product-btn" id="profAddProductBtn" style="display:none;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer" onclick="openAddProdModal()">+ Produto</button>
+    <button class="prof-create-plan-btn" id="profCreatePlanBtn" style="display:none;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#f59e0b;cursor:pointer" onclick="openCriarPlanoModal()">P Criar plano</button>
     <button class="prof-follow-btn" id="profFollowBtn" style="display:none" onclick="toggleFollow()">+ Seguir</button>
     <button class="prof-msg-btn" id="profMsgBtn" style="display:none" onclick="openChatWithUser()">💬</button>
   </div>
   <div class="prof-tabs" id="profTabs">
     <button class="prof-tab on" onclick="showProfTab('videos',this)">🎬 Vídeos</button>
     <button class="prof-tab" onclick="showProfTab('analytics',this)" id="analyticsTabBtn" style="display:none">📊 Analytics</button>
+    <button class="prof-tab" onclick="showProfTab('loja',this)" id="lojaTabBtn">=� Loja</button>
   </div>
   <div class="prof-grid" id="profGrid"><div class="pg-empty">Carregando…</div></div>
   <div id="analyticsPanel" style="display:none;padding:12px 0"></div>
+  <div id="shopPanel" style="display:none"></div>
 </div>
 
 <!-- DOTS MENU -->
@@ -1025,6 +1099,100 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   </div>
 </div>
 
+
+<!-- GRUPOS PANEL -->
+<div class="back-drop" id="gruposBack" onclick="closeGrupos()" style="z-index:299;display:none"></div>
+<div class="grupos-panel" id="gruposPanel">
+  <div class="gp-hd">
+    <div class="gp-ttl">=e Grupos</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="gp-add-btn" onclick="openCriarGrupo()"></button>
+      <button class="gp-x" onclick="closeGrupos()"></button>
+    </div>
+  </div>
+  <div class="gp-tabs">
+    <button class="gp-tab on" id="gpTabMeus" onclick="showGpTab('meus',this)">Meus grupos</button>
+    <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)">Descobrir</button>
+  </div>
+  <div class="gp-body" id="gpBody"><div class="shop-empty">Carregando&</div></div>
+</div>
+
+<!-- GRUPO CHAT -->
+<div class="gp-chat" id="gpChat">
+  <div class="gp-chat-hd">
+    <button class="gp-chat-back" onclick="closeGpChat()">�</button>
+    <div class="gp-chat-name" id="gpChatName">Grupo</div>
+  </div>
+  <div class="gp-chat-msgs" id="gpChatMsgs"><div class="shop-empty">Carregando&</div></div>
+  <div class="gp-chat-inp">
+    <input id="gpMsgInp" placeholder="Mensagem&" onkeydown="if(event.key==='Enter')sendGpMsg()"/>
+    <button class="gp-chat-send" onclick="sendGpMsg()">�</button>
+  </div>
+</div>
+
+<!-- MODAL CRIAR GRUPO -->
+<div class="blu-modal-back" id="criarGrupoModal">
+  <div class="blu-modal">
+    <button class="blu-modal-close" onclick="closeCriarGrupo()"></button>
+    <div class="blu-modal-title">Criar grupo</div>
+    <input class="blu-modal-inp" id="gpNome" placeholder="Nome do grupo"/>
+    <textarea class="blu-modal-inp" id="gpDesc" placeholder="Descri��o (opcional)" rows="2" style="resize:none"></textarea>
+    <select class="blu-modal-inp" id="gpTipo">
+      <option value="publico">P�blico</option>
+      <option value="privado">Privado</option>
+    </select>
+    <button class="blu-modal-btn" onclick="criarGrupo()">Criar grupo</button>
+    <div id="criarGrupoMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+  </div>
+</div>
+
+<!-- MODAL PRODUTO (SHOP) -->
+<div class="blu-modal-back" id="shopProdModal">
+  <div class="blu-modal">
+    <button class="blu-modal-close" onclick="closeShopProdModal()"></button>
+    <div class="blu-modal-title" id="shopProdTitle">Produto</div>
+    <div id="shopProdBody"></div>
+  </div>
+</div>
+
+<!-- MODAL ADICIONAR PRODUTO -->
+<div class="blu-modal-back" id="addProdModal">
+  <div class="blu-modal">
+    <button class="blu-modal-close" onclick="closeAddProdModal()"></button>
+    <div class="blu-modal-title">Adicionar produto</div>
+    <input class="blu-modal-inp" id="addProdNome" placeholder="Nome do produto"/>
+    <textarea class="blu-modal-inp" id="addProdDesc" placeholder="Descri��o" rows="2" style="resize:none"></textarea>
+    <input class="blu-modal-inp" id="addProdPreco" placeholder="Pre�o (R$)" type="number" step="0.01" min="0"/>
+    <select class="blu-modal-inp" id="addProdTipo">
+      <option value="digital">Digital</option>
+      <option value="fisico">F�sico</option>
+    </select>
+    <button class="blu-modal-btn" onclick="publicarProduto()">Publicar produto</button>
+    <div id="addProdMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+  </div>
+</div>
+
+<!-- MODAL ASSINATURA -->
+<div class="blu-modal-back" id="assinaturaModal">
+  <div class="blu-modal">
+    <button class="blu-modal-close" onclick="closeAssinaturaModal()"></button>
+    <div class="blu-modal-title" id="assinaturaModalTitle">Planos</div>
+    <div id="assinaturaModalBody"></div>
+  </div>
+</div>
+
+<!-- MODAL CRIAR PLANO -->
+<div class="blu-modal-back" id="criarPlanoModal">
+  <div class="blu-modal">
+    <button class="blu-modal-close" onclick="closeCriarPlanoModal()"></button>
+    <div class="blu-modal-title">Criar plano de assinatura</div>
+    <input class="blu-modal-inp" id="planoNome" placeholder="Nome do plano"/>
+    <input class="blu-modal-inp" id="planoPreco" placeholder="Pre�o mensal (R$)" type="number" step="0.01" min="1"/>
+    <textarea class="blu-modal-inp" id="planoBeneficios" placeholder="Benef�cios (um por linha)" rows="3" style="resize:none"></textarea>
+    <button class="blu-modal-btn gold" onclick="criarPlano()">Criar plano</button>
+    <div id="criarPlanoMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1124,10 +1292,10 @@ function mkSlide(v,i){
   // Determine if video is portrait (should cover) or landscape (contain)
   const isPortrait = !v.width || !v.height || v.height >= v.width;
   const vidStyle = isPortrait ? 'object-fit:cover' : 'object-fit:contain;background:#000';
-  // Detecta conexão lenta para otimizar: apenas o 1º vídeo pré-carrega
+  // Lazy loading otimizado — detecta conexão lenta para economizar dados em redes móveis
   const conn = navigator.connection||navigator.mozConnection||navigator.webkitConnection;
   const isSlow = conn && (conn.effectiveType==='2g'||conn.effectiveType==='slow-2g'||conn.saveData);
-  const eagerCount = isSlow ? 1 : 2; // 4G: 2 vídeos, 2G/slow: 1 só
+  const eagerCount = isSlow ? 1 : 2;
   const vidSrc = i < eagerCount ? v.video_url : '';
   const vidDataSrc = i >= eagerCount ? v.video_url : '';
   const preloadMode = i === 0 ? 'auto' : (i < eagerCount ? 'metadata' : 'none');
@@ -1184,7 +1352,7 @@ function vidErr(vid){
   const sl=vid.closest('.slide');
   if(!sl)return;
   const videoId=sl.dataset?.id;
-  // Retry silencioso primeiro — erro pode ser temporário (rede, autoplay bloqueado, etc)
+  // Retry silencioso 2x — erro pode ser temporário (rede, autoplay bloqueado, etc)
   if(!vid._retryCount)vid._retryCount=0;
   if(vid._retryCount<2){
     vid._retryCount++;
@@ -1198,11 +1366,9 @@ function vidErr(vid){
     },1000);
     return;
   }
-  // Só depois de 2 retries que consideramos o vídeo problemático
-  // NÃO reportamos pro backend automaticamente (evita falsos positivos)
-  // Só removemos localmente da sessão do usuário
+  // Após 2 retries, remove silenciosamente — sem mensagem de erro
+  // NÃO reporta pro backend (evita falsos positivos em massa)
   if(videoId)videos=videos.filter(x=>x.id!==videoId);
-  const idx=parseInt(sl.dataset.i)||0;
   sl.remove();
   const feed=document.getElementById('feed');
   const next=feed.querySelector('.slide');
@@ -1268,10 +1434,13 @@ function setupObs(){
         if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
         ping('view',sl.dataset.id);
 
-        // Preload next 2 videos
-        for(let n=1;n<=2;n++){
+        // Preload próximos vídeos — adaptativo pela conexão
+        const _conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+        const _isSlow=_conn&&(_conn.effectiveType==='2g'||_conn.effectiveType==='slow-2g'||_conn.saveData);
+        const _preloadCount=_isSlow?1:2;
+        for(let n=1;n<=_preloadCount;n++){
           const nxt=videos[idx+n];
-          if(nxt){const ns=document.getElementById('s-'+nxt.id);if(ns){const nv=ns.querySelector('video');if(nv){if(!nv.src&&nv.dataset.src)nv.src=nv.dataset.src;nv.preload='auto';}}}
+          if(nxt){const ns=document.getElementById('s-'+nxt.id);if(ns){const nv=ns.querySelector('video');if(nv){if(!nv.src&&nv.dataset.src)nv.src=nv.dataset.src;nv.preload=n===1?'auto':'metadata';}}}
         }
 
         // Unload videos far away to free memory (>5 slides away)
@@ -3659,75 +3828,6 @@ async function _bpWaitlist(){
 </div>
 
 <script>
-// ══════════════════════ POST MENU (camera or upload) ══════════════════════
-function openPostMenu() {
-  const TK = localStorage.getItem('bt_token');
-  if (!TK) { openUpload(); return; } // Not logged in → go through auth flow
-  // Show quick choice menu
-  const m = document.createElement('div');
-  m.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px';
-  m.onclick = e => { if (e.target === m) m.remove(); };
-  m.innerHTML = `
-    <div style="background:#0a1628;border:1px solid rgba(59,130,246,.2);border-radius:20px;padding:24px;max-width:320px;width:100%">
-      <div style="font-size:16px;font-weight:800;text-align:center;margin-bottom:6px">Como quer postar?</div>
-      <div style="font-size:12px;color:rgba(150,190,230,.5);text-align:center;margin-bottom:20px">Escolha uma opção</div>
-      <button onclick="window.location.href='/blue-camera.html'" style="width:100%;padding:16px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;border-radius:12px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:12px"><span style="font-size:22px">📷</span><div style="flex:1;text-align:left"><div>Gravar agora</div><div style="font-size:11px;opacity:.8;font-weight:400">Câmera do celular</div></div></button>
-      <button onclick="this.closest('div[style*=fixed]').remove();openUpload()" style="width:100%;padding:16px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:12px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:12px"><span style="font-size:22px">📁</span><div style="flex:1;text-align:left"><div>Upload</div><div style="font-size:11px;opacity:.8;font-weight:400">Enviar vídeo da galeria</div></div></button>
-      <button onclick="this.closest('div[style*=fixed]').remove()" style="width:100%;padding:12px;background:none;border:none;color:rgba(150,190,230,.4);font-size:13px;cursor:pointer">Cancelar</button>
-    </div>`;
-  document.body.appendChild(m);
-}
-
-// ══════════════════════ PWA INSTALL BANNER ══════════════════════
-let _deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  _deferredPrompt = e;
-  if (localStorage.getItem('bt_install_dismissed')) return;
-  setTimeout(showInstallBanner, 5000);
-});
-
-function showInstallBanner() {
-  if (document.getElementById('installBanner')) return;
-  const b = document.createElement('div');
-  b.id = 'installBanner';
-  b.style.cssText = 'position:fixed;bottom:80px;left:12px;right:12px;background:rgba(10,22,40,.97);border:1px solid rgba(59,130,246,.3);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;z-index:500;backdrop-filter:blur(10px);animation:slideUp .3s ease';
-  b.innerHTML = `
-    <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#1a6bff,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🎬</div>
-    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">Instalar Blue</div><div style="font-size:11px;color:rgba(150,190,230,.5)">Acesso rápido na tela inicial</div></div>
-    <button onclick="installBlueApp()" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">Instalar</button>
-    <button onclick="dismissInstallBanner()" style="background:none;border:none;color:rgba(150,190,230,.4);font-size:16px;cursor:pointer;padding:4px 6px">✕</button>`;
-  document.body.appendChild(b);
-}
-
-async function installBlueApp() {
-  if (!_deferredPrompt) return;
-  _deferredPrompt.prompt();
-  const { outcome } = await _deferredPrompt.userChoice;
-  _deferredPrompt = null;
-  document.getElementById('installBanner')?.remove();
-  if (outcome === 'accepted') localStorage.setItem('bt_installed', '1');
-}
-
-function dismissInstallBanner() {
-  localStorage.setItem('bt_install_dismissed', '1');
-  document.getElementById('installBanner')?.remove();
-}
-
-// ══════════════════════ PUSH NOTIFICATIONS ══════════════════════
-async function subscribePush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    // Basic push subscription (skeleton — needs VAPID key configured)
-    const perm = Notification.permission;
-    if (perm === 'granted') {
-      console.log('[push] Notifications already granted');
-    }
-  } catch(e) {}
-}
-setTimeout(subscribePush, 3000);
-
 // ══════════════════════ ONBOARDING ══════════════════════
 let _obStep = 0;
 let _obInteresses = [];
@@ -3930,6 +4030,361 @@ function toggleCC(videoId) {
   });
   mo.observe(document.body, { childList: true, subtree: true });
 })();
+
+
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+// GRUPOS
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+let _currentGrupoId = null;
+let _gpPolling = null;
+
+function openGrupos(){
+  haptic('light');
+  document.getElementById('gruposBack').style.display='block';
+  document.getElementById('gruposPanel').classList.add('open');
+  loadGruposMeus();
+}
+function closeGrupos(){
+  document.getElementById('gruposBack').style.display='none';
+  document.getElementById('gruposPanel').classList.remove('open');
+  stopGpPolling();
+}
+function showGpTab(tab,btn){
+  document.querySelectorAll('.gp-tab').forEach(t=>t.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  if(tab==='meus') loadGruposMeus();
+  else loadGruposDesc();
+}
+async function loadGruposMeus(){
+  const body=document.getElementById('gpBody');
+  if(!body)return;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){body.innerHTML='<div class="shop-empty">Entre para ver seus grupos</div>';return;}
+  body.innerHTML='<div class="shop-empty">Carregando&</div>';
+  try{
+    const r=await fetch('/api/blue-grupos?action=listar&token='+encodeURIComponent(tk));
+    const d=await r.json();
+    const list=d.grupos||[];
+    if(!list.length){body.innerHTML='<div class="shop-empty">Nenhum grupo ainda.<br>Crie ou descubra grupos!</div>';return;}
+    body.innerHTML=list.map(g=>`
+      <div class="gp-item" onclick="openGrupoChat('${g.id}','${(g.nome||'Grupo').replace(/'/g,\"\'\")}')" >
+        <div class="gp-av">${(g.nome||'G').charAt(0).toUpperCase()}</div>
+        <div class="gp-info">
+          <div class="gp-name">${g.nome||'Grupo'}</div>
+          <div class="gp-desc">${g.descricao||g.tipo||''}</div>
+        </div>
+      </div>`).join('');
+  }catch(e){body.innerHTML='<div class="shop-empty">Erro ao carregar grupos</div>';}
+}
+async function loadGruposDesc(){
+  const body=document.getElementById('gpBody');
+  if(!body)return;
+  body.innerHTML='<div class="shop-empty">Carregando&</div>';
+  try{
+    const r=await fetch('/api/blue-grupos?action=listar&tipo=publico');
+    const d=await r.json();
+    const list=d.grupos||[];
+    if(!list.length){body.innerHTML='<div class="shop-empty">Nenhum grupo p�blico ainda</div>';return;}
+    body.innerHTML=list.map(g=>`
+      <div class="gp-item" onclick="entrarGrupo('${g.id}','${(g.nome||'Grupo').replace(/'/g,\"\'\")}')" >
+        <div class="gp-av">${(g.nome||'G').charAt(0).toUpperCase()}</div>
+        <div class="gp-info">
+          <div class="gp-name">${g.nome||'Grupo'}</div>
+          <div class="gp-desc">${g.descricao||''} � ${g.membros_count||0} membros</div>
+        </div>
+      </div>`).join('');
+  }catch(e){body.innerHTML='<div class="shop-empty">Erro ao carregar</div>';}
+}
+async function entrarGrupo(id,nome){
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para participar de grupos');return;}
+  try{
+    await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'entrar',grupo_id:id,token:tk})});
+    openGrupoChat(id,nome);
+  }catch(e){}
+}
+function openGrupoChat(id,nome){
+  _currentGrupoId=id;
+  document.getElementById('gpChatName').textContent=nome;
+  document.getElementById('gpChat').classList.add('open');
+  loadGrupoMensagens(id);
+  startGpPolling(id);
+}
+function closeGpChat(){
+  document.getElementById('gpChat').classList.remove('open');
+  _currentGrupoId=null;
+  stopGpPolling();
+}
+function startGpPolling(id){
+  stopGpPolling();
+  _gpPolling=setInterval(()=>loadGrupoMensagens(id),5000);
+}
+function stopGpPolling(){
+  if(_gpPolling){clearInterval(_gpPolling);_gpPolling=null;}
+}
+async function loadGrupoMensagens(id){
+  const msgs=document.getElementById('gpChatMsgs');
+  if(!msgs)return;
+  const tk=localStorage.getItem('bt_token');
+  try{
+    const r=await fetch('/api/blue-grupos?action=mensagens&grupo_id='+id+(tk?'&token='+encodeURIComponent(tk):''));
+    const d=await r.json();
+    const list=d.mensagens||[];
+    const myId=myProfile?.user_id;
+    const atBottom=msgs.scrollHeight-msgs.scrollTop<=msgs.clientHeight+50;
+    if(!list.length){msgs.innerHTML='<div class="shop-empty">Nenhuma mensagem ainda. Seja o primeiro!</div>';return;}
+    msgs.innerHTML=list.map(m=>{
+      const isOwn=m.user_id===myId;
+      const init=(m.creator?.display_name||m.creator?.username||'?').charAt(0).toUpperCase();
+      return `<div class="gp-msg${isOwn?' own':''}">
+        <div class="gp-msg-av">${init}</div>
+        <div class="gp-msg-body">
+          ${!isOwn?`<div class="gp-msg-author">@${m.creator?.username||'usuario'}</div>`:''}
+          <div class="gp-msg-text">${m.mensagem||''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    if(atBottom) msgs.scrollTop=msgs.scrollHeight;
+  }catch(e){}
+}
+async function sendGpMsg(){
+  const inp=document.getElementById('gpMsgInp');
+  const txt=(inp?.value||'').trim();
+  if(!txt||!_currentGrupoId)return;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para enviar mensagens');return;}
+  inp.value='';
+  try{
+    await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'mensagem',grupo_id:_currentGrupoId,mensagem:txt,token:tk})});
+    loadGrupoMensagens(_currentGrupoId);
+  }catch(e){toast('Erro ao enviar');}
+}
+function openCriarGrupo(){
+  document.getElementById('criarGrupoModal').classList.add('open');
+}
+function closeCriarGrupo(){
+  document.getElementById('criarGrupoModal').classList.remove('open');
+}
+async function criarGrupo(){
+  const nome=(document.getElementById('gpNome')?.value||'').trim();
+  const desc=(document.getElementById('gpDesc')?.value||'').trim();
+  const tipo=document.getElementById('gpTipo')?.value||'publico';
+  const msg=document.getElementById('criarGrupoMsg');
+  const tk=localStorage.getItem('bt_token');
+  if(!nome){if(msg)msg.textContent='Digite um nome';return;}
+  if(!tk){if(msg)msg.textContent='Voc� precisa estar logado';return;}
+  if(msg)msg.textContent='Criando&';
+  try{
+    const r=await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'criar',nome,descricao:desc,tipo,token:tk})});
+    const d=await r.json();
+    if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
+    closeCriarGrupo();
+    toast('Grupo criado!');
+    loadGruposMeus();
+    if(d.grupo?.id) openGrupoChat(d.grupo.id,nome);
+  }catch(e){if(msg)msg.textContent='Erro ao criar';}
+}
+
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+// SHOP (Loja do criador)
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+let _shopUserId = null;
+let _shopIsOwn = false;
+
+async function loadShopTab(userId,isOwn){
+  _shopUserId=userId;
+  _shopIsOwn=isOwn;
+  const panel=document.getElementById('shopPanel');
+  if(!panel)return;
+  panel.innerHTML='<div class="shop-empty">Carregando&</div>';
+  try{
+    const r=await fetch('/api/blue-shop?action=loja&creator_id='+encodeURIComponent(userId));
+    const d=await r.json();
+    const prods=d.produtos||[];
+    let html='<div class="shop-grid">';
+    if(prods.length){
+      html+=prods.map(p=>`
+        <div class="shop-card" onclick="openShopProd('${p.id}',${JSON.stringify(JSON.stringify(p))})">
+          <div class="shop-card-img">${p.imagem_url?`<img src="${p.imagem_url}" style="width:100%;height:100%;object-fit:cover">`:'=�'}</div>
+          <div class="shop-card-body">
+            <div class="shop-card-name">${p.nome||'Produto'}</div>
+            <span class="shop-card-price">R$${parseFloat(p.preco||0).toFixed(2)}</span>
+          </div>
+        </div>`).join('');
+    } else {
+      html+='</div><div class="shop-empty">Nenhum produto ainda</div>';
+    }
+    html+='</div>';
+    if(isOwn){
+      html+='<div style="padding:0 16px 16px"><button class="blu-modal-btn" style="margin-top:8px" onclick="openAddProdModal()">+ Adicionar produto</button></div>';
+    }
+    panel.innerHTML=html;
+  }catch(e){panel.innerHTML='<div class="shop-empty">Erro ao carregar loja</div>';}
+}
+function openShopProd(id,pJson){
+  let p;
+  try{p=JSON.parse(pJson);}catch(e){return;}
+  const modal=document.getElementById('shopProdModal');
+  const title=document.getElementById('shopProdTitle');
+  const body=document.getElementById('shopProdBody');
+  if(!modal||!title||!body)return;
+  title.textContent=p.nome||'Produto';
+  const tk=localStorage.getItem('bt_token');
+  body.innerHTML=`
+    ${p.imagem_url?`<img src="${p.imagem_url}" style="width:100%;border-radius:12px;margin-bottom:12px">`:''}
+    <div style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:12px">${p.descricao||''}</div>
+    <div style="font-size:24px;font-weight:800;color:#3b82f6;margin-bottom:16px">R$${parseFloat(p.preco||0).toFixed(2)}</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px">${p.tipo==='digital'?'= Produto digital':'=� Produto f�sico'}</div>
+    ${tk?`<button class="blu-modal-btn gold" onclick="comprarProduto('${id}')">Comprar R$${parseFloat(p.preco||0).toFixed(2)}</button>`:'<div style="color:rgba(255,255,255,.5);font-size:13px;text-align:center">Entre para comprar</div>'}
+    <div id="shopComprarMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>`;
+  modal.classList.add('open');
+}
+function closeShopProdModal(){
+  document.getElementById('shopProdModal')?.classList.remove('open');
+}
+async function comprarProduto(prodId){
+  const tk=localStorage.getItem('bt_token');
+  const msg=document.getElementById('shopComprarMsg');
+  if(!tk){if(msg)msg.textContent='Entre para comprar';return;}
+  if(msg)msg.textContent='Processando&';
+  try{
+    const r=await fetch('/api/blue-shop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'comprar',produto_id:prodId,token:tk})});
+    const d=await r.json();
+    if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
+    if(msg)msg.textContent='Compra realizada! ';
+    toast('Compra realizada!');
+  }catch(e){if(msg)msg.textContent='Erro ao processar';}
+}
+function openAddProdModal(){
+  document.getElementById('addProdModal')?.classList.add('open');
+}
+function closeAddProdModal(){
+  document.getElementById('addProdModal')?.classList.remove('open');
+}
+async function publicarProduto(){
+  const nome=(document.getElementById('addProdNome')?.value||'').trim();
+  const desc=(document.getElementById('addProdDesc')?.value||'').trim();
+  const preco=parseFloat(document.getElementById('addProdPreco')?.value||0);
+  const tipo=document.getElementById('addProdTipo')?.value||'digital';
+  const msg=document.getElementById('addProdMsg');
+  const tk=localStorage.getItem('bt_token');
+  if(!nome){if(msg)msg.textContent='Digite um nome';return;}
+  if(!preco||preco<=0){if(msg)msg.textContent='Digite um pre�o v�lido';return;}
+  if(!tk){if(msg)msg.textContent='Voc� precisa estar logado';return;}
+  if(msg)msg.textContent='Publicando&';
+  try{
+    const r=await fetch('/api/blue-shop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'criar-produto',nome,descricao:desc,preco,tipo,token:tk})});
+    const d=await r.json();
+    if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
+    closeAddProdModal();
+    toast('Produto publicado!');
+    if(_shopUserId) loadShopTab(_shopUserId,_shopIsOwn);
+  }catch(e){if(msg)msg.textContent='Erro ao publicar';}
+}
+
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+// ASSINATURA (Subscription)
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+let _assinaturaUserId = null;
+
+async function openAssinaturaModal(){
+  const userId=_assinaturaUserId||_chatTargetUser;
+  if(!userId)return;
+  const modal=document.getElementById('assinaturaModal');
+  const title=document.getElementById('assinaturaModalTitle');
+  const body=document.getElementById('assinaturaModalBody');
+  if(!modal||!body)return;
+  if(title)title.textContent='Planos de assinatura';
+  body.innerHTML='<div style="text-align:center;color:rgba(255,255,255,.5);padding:20px">Carregando&</div>';
+  modal.classList.add('open');
+  try{
+    const r=await fetch('/api/blue-assinatura?action=planos-do-canal&creator_id='+encodeURIComponent(userId));
+    const d=await r.json();
+    const planos=d.planos||[];
+    if(!planos.length){
+      body.innerHTML='<div style="text-align:center;color:rgba(255,255,255,.5);padding:20px">Este criador n�o tem planos de assinatura ainda</div>';
+      return;
+    }
+    body.innerHTML='<div class="sub-plans">'+planos.map(p=>`
+      <div class="sub-plan">
+        <div class="sub-plan-name">${p.nome||'Plano'}</div>
+        <div class="sub-plan-price">R$${parseFloat(p.preco_mensal||0).toFixed(2)}/m�s</div>
+        <div class="sub-plan-benefits">${Array.isArray(p.beneficios)?p.beneficios.join(' � '):(p.beneficios||'')}</div>
+        <button class="sub-plan-btn" onclick="assinarPlano('${p.id}')">Assinar R$${parseFloat(p.preco_mensal||0).toFixed(2)}/m�s</button>
+      </div>`).join('')+'</div>';
+  }catch(e){body.innerHTML='<div style="color:rgba(255,255,255,.5);text-align:center;padding:20px">Erro ao carregar planos</div>';}
+}
+function closeAssinaturaModal(){
+  document.getElementById('assinaturaModal')?.classList.remove('open');
+}
+async function assinarPlano(planoId){
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){toast('Entre para assinar');return;}
+  const btn=event.target;
+  if(btn)btn.textContent='Processando&';
+  try{
+    const r=await fetch('/api/blue-assinatura',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'assinar',plano_id:planoId,token:tk})});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'Erro ao assinar');if(btn)btn.textContent='Assinar';return;}
+    toast('Assinatura realizada! P');
+    closeAssinaturaModal();
+  }catch(e){toast('Erro ao assinar');if(btn)btn.textContent='Assinar';}
+}
+function openCriarPlanoModal(){
+  document.getElementById('criarPlanoModal')?.classList.add('open');
+}
+function closeCriarPlanoModal(){
+  document.getElementById('criarPlanoModal')?.classList.remove('open');
+}
+async function criarPlano(){
+  const nome=(document.getElementById('planoNome')?.value||'').trim();
+  const preco=parseFloat(document.getElementById('planoPreco')?.value||0);
+  const benefTxt=(document.getElementById('planoBeneficios')?.value||'').trim();
+  const beneficios=benefTxt?benefTxt.split('\n').map(s=>s.trim()).filter(Boolean):[];
+  const msg=document.getElementById('criarPlanoMsg');
+  const tk=localStorage.getItem('bt_token');
+  if(!nome){if(msg)msg.textContent='Digite um nome';return;}
+  if(!preco||preco<=0){if(msg)msg.textContent='Digite um pre�o v�lido';return;}
+  if(!tk){if(msg)msg.textContent='Voc� precisa estar logado';return;}
+  if(msg)msg.textContent='Criando&';
+  try{
+    const r=await fetch('/api/blue-assinatura',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'criar-plano',nome,preco_mensal:preco,beneficios,token:tk})});
+    const d=await r.json();
+    if(!r.ok){if(msg)msg.textContent=d.error||'Erro';return;}
+    closeCriarPlanoModal();
+    toast('Plano criado!');
+  }catch(e){if(msg)msg.textContent='Erro ao criar plano';}
+}
+
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+// HOOKS: Extend showProfTab + setProfileHeader for Shop/Sub
+// PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+const _origShowProfTab = showProfTab;
+showProfTab = function(tab,btn){
+  _origShowProfTab(tab,btn);
+  const sp=document.getElementById('shopPanel');
+  if(sp)sp.style.display=tab==='loja'?'block':'none';
+  if(tab==='loja'){
+    const uid=_assinaturaUserId||_chatTargetUser||(myProfile?.user_id);
+    const isOwn=myProfile&&(uid===myProfile.user_id);
+    if(uid) loadShopTab(uid,isOwn);
+  }
+};
+
+const _origSetProfileHeader = setProfileHeader;
+setProfileHeader = function(p,isOwn){
+  _origSetProfileHeader(p,isOwn);
+  _assinaturaUserId=p?.user_id||null;
+  const subBtn=document.getElementById('profSubscribeBtn');
+  const addProdBtn=document.getElementById('profAddProductBtn');
+  const createPlanBtn=document.getElementById('profCreatePlanBtn');
+  const lojaTab=document.getElementById('lojaTabBtn');
+  if(subBtn) subBtn.style.display=isOwn?'none':'block';
+  if(addProdBtn) addProdBtn.style.display=isOwn?'block':'none';
+  if(createPlanBtn) createPlanBtn.style.display=isOwn?'block':'none';
+  if(lojaTab) lojaTab.style.display='';
+};
+
 </script>
 
 </body>
