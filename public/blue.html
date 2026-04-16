@@ -522,6 +522,67 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .stc-prog{height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:10px;display:none}
 .stc-prog-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:2px;transition:width .3s}
 
+/* ── POPUPS FOMO ───────────────────────────────────────────────────────── */
+.bp-overlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(2,8,23,.88);backdrop-filter:blur(8px);opacity:0;transition:opacity .3s ease;padding:16px}
+.bp-overlay.bp-on{opacity:1}
+.bp-overlay.bp-out{opacity:0}
+.bp-card{background:#0a1628;border-radius:24px;padding:36px 28px;max-width:400px;width:100%;position:relative;transform:translateY(40px);transition:transform .45s cubic-bezier(.34,1.56,.64,1);overflow:hidden}
+.bp-on .bp-card{transform:translateY(0)}
+.bp-badge{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;padding:5px 14px;border-radius:100px;margin-bottom:16px}
+.bp-title{font-size:22px;font-weight:800;letter-spacing:-.5px;line-height:1.2;margin-bottom:8px}
+.bp-sub{font-size:13px;color:rgba(150,190,230,.6);line-height:1.5;margin-bottom:16px}
+.bp-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(0,170,255,.4),transparent);margin:16px 0}
+.bp-steps{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}
+.bp-step{display:flex;align-items:center;gap:12px;font-size:14px;color:#c8d6e5}
+.bp-step-icon{font-size:22px;width:36px;text-align:center;flex-shrink:0}
+.bp-urgency{background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:12px;padding:14px;text-align:center;margin-bottom:18px;font-size:13px;color:rgba(255,215,0,.9)}
+.bp-urgency strong{font-size:20px;color:#FFD700}
+.bp-cta{width:100%;padding:16px;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:-.3px;transition:all .2s}
+.bp-cta:hover{transform:translateY(-1px)}
+.bp-cta-gold{background:linear-gradient(135deg,#B8860B,#FFD700,#FFA500);color:#000;animation:bp-glow-gold 2s infinite}
+.bp-cta-blue{background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;box-shadow:0 0 24px rgba(0,170,255,.3)}
+.bp-cta-purple{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;box-shadow:0 0 24px rgba(124,58,237,.3)}
+.bp-close{display:block;text-align:center;font-size:12px;color:rgba(150,190,230,.4);margin-top:14px;cursor:pointer;background:none;border:none;font-family:inherit}
+.bp-close:hover{color:rgba(150,190,230,.7)}
+.bp-note{font-size:10px;color:rgba(150,190,230,.3);text-align:center;margin-top:12px}
+@keyframes bp-glow-gold{0%,100%{box-shadow:0 0 20px rgba(255,215,0,.2)}50%{box-shadow:0 0 40px rgba(255,215,0,.45)}}
+/* Gold border popup 1 */
+.bp-gold-border{border:1px solid transparent;background:linear-gradient(#0a1628,#0a1628) padding-box,linear-gradient(135deg,#B8860B,#FFD700,#FFA500) border-box;animation:bp-glow-gold 2.5s infinite}
+/* Neon border popup 2 */
+.bp-neon-border{border:1px solid rgba(0,170,255,.35);box-shadow:0 0 30px rgba(0,170,255,.15)}
+/* Purple border popup 3 */
+.bp-purple-border{border:1px solid rgba(124,58,237,.35);box-shadow:0 0 30px rgba(124,58,237,.15)}
+/* Partículas douradas */
+.bp-particles{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:24px}
+.bp-p{position:absolute;width:3px;height:3px;border-radius:50%;background:#FFD700;opacity:.5;animation:bp-pfloat linear infinite}
+@keyframes bp-pfloat{0%{transform:translateY(0);opacity:.6}100%{transform:translateY(-120px);opacity:0}}
+/* Grid animada popup 2 */
+.bp-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.03) 1px,transparent 1px);background-size:40px 40px;animation:bp-gridmove 8s linear infinite;pointer-events:none;border-radius:24px}
+@keyframes bp-gridmove{0%{background-position:0 0}100%{background-position:40px 40px}}
+/* Chuva de moedas popup 3 */
+.bp-coin{position:absolute;font-size:16px;opacity:.4;animation:bp-coinfall linear infinite;pointer-events:none}
+@keyframes bp-coinfall{0%{transform:translateY(-20px);opacity:0}10%{opacity:.4}90%{opacity:.4}100%{transform:translateY(420px);opacity:0}}
+/* Comparação popup 2 */
+.bp-compare{background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:12px;padding:16px;margin-bottom:16px;font-size:13px;color:#8899aa;line-height:1.8}
+.bp-compare strong{color:#e8f4ff}
+/* Stats popup 2 */
+.bp-stats{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.bp-stat{display:flex;align-items:center;gap:8px;font-size:13px;color:#8899aa}
+.bp-stat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+/* Cards monetização */
+.bp-mcards{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.bp-mcard{background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.15);border-radius:12px;padding:14px;display:flex;align-items:flex-start;gap:10px}
+.bp-mcard-icon{font-size:22px;flex-shrink:0}
+.bp-mcard-txt{font-size:13px;color:#c8d6e5;line-height:1.5}
+.bp-mcard-txt strong{color:#e8f4ff}
+/* Waitlist input */
+.bp-wl-wrap{display:flex;gap:8px;margin-bottom:14px}
+.bp-wl-input{flex:1;background:rgba(0,0,0,.3);border:1px solid rgba(124,58,237,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#e8f4ff;outline:none;font-family:inherit}
+.bp-wl-input:focus{border-color:rgba(124,58,237,.5)}
+.bp-wl-input::placeholder{color:rgba(150,190,230,.3)}
+.bp-wl-btn{background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
+@media(max-width:420px){.bp-card{padding:28px 20px}.bp-title{font-size:19px}.bp-wl-wrap{flex-direction:column}}
+
 </style>
 </head>
 <body>
@@ -2944,6 +3005,177 @@ setInterval(async()=>{
   if(r.ok){const d=await r.json();const t=d.session?.access_token||d.access_token;const rf=d.session?.refresh_token;if(t){localStorage.setItem('bt_token',t);TOKEN=t;}if(rf)localStorage.setItem('bt_refresh_token',rf);}}catch(e){}
 },45*60*1000);
 
+// ── POPUPS FOMO ─────────────────────────────────────────────────────────────
+let _bpWatched=0, _bpShown=new Set();
+
+function _bpOnProgress(vid){
+  if(!vid.duration||vid._bpCounted)return;
+  if(vid.currentTime>=vid.duration*.5){
+    vid._bpCounted=true;
+    _bpWatched++;
+    if(_bpWatched===2&&!_bpShown.has('pioneiro'))setTimeout(()=>_bpShow('pioneiro'),800);
+    if(_bpWatched===8&&!_bpShown.has('futuro')){_bpLoadStats();setTimeout(()=>_bpShow('futuro'),800);}
+    if(_bpWatched===15&&!_bpShown.has('monetizacao'))setTimeout(()=>_bpShow('monetizacao'),800);
+  }
+}
+
+function _bpShow(tipo){
+  _bpShown.add(tipo);
+  // Pausa vídeo atual
+  document.querySelectorAll('.slide video').forEach(v=>{if(!v.paused)v.pause();});
+  const el=document.getElementById('bp-'+tipo);
+  if(!el)return;
+  el.style.display='flex';
+  requestAnimationFrame(()=>el.classList.add('bp-on'));
+  // Salvar impressão
+  const uid=window._myUserId||null;
+  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:tipo,user_id:uid})}).catch(()=>{});
+}
+
+function _bpClose(tipo){
+  const el=document.getElementById('bp-'+tipo);
+  if(!el)return;
+  el.classList.remove('bp-on');el.classList.add('bp-out');
+  setTimeout(()=>{el.style.display='none';el.classList.remove('bp-out');},300);
+  // Retoma vídeo
+  const cur=document.querySelector('.slide video[src]');
+  if(cur)cur.play().catch(()=>{});
+}
+
+function _bpConvert(tipo){
+  const uid=window._myUserId||null;
+  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:tipo,user_id:uid,converteu:true})}).catch(()=>{});
+  _bpClose(tipo);
+  if(tipo==='monetizacao')return; // waitlist tem seu próprio flow
+  openUpload();
+}
+
+async function _bpLoadStats(){
+  try{
+    const r=await fetch('/api/blue-feed?action=stats');
+    const d=await r.json();
+    const el1=document.getElementById('bp-stat-creators');if(el1)el1.textContent=d.creators_hoje||0;
+    const el2=document.getElementById('bp-stat-videos');if(el2)el2.textContent=d.videos_semana||0;
+    const el3=document.getElementById('bp-stat-users');if(el3)el3.textContent=d.usuarios_24h||0;
+  }catch(e){}
+}
+
+async function _bpWaitlist(){
+  const inp=document.getElementById('bp-wl-email');
+  const email=inp?.value?.trim();
+  if(!email||!email.includes('@')){inp.style.borderColor='rgba(239,68,68,.5)';return;}
+  const btn=document.querySelector('.bp-wl-btn');
+  if(btn){btn.textContent='Enviando…';btn.disabled=true;}
+  try{
+    const uid=window._myUserId||null;
+    const r=await fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'waitlist',email,user_id:uid})});
+    const d=await r.json();
+    if(btn){btn.textContent='✅ Na lista!';btn.style.background='#22c55e';}
+    inp.value='';inp.disabled=true;
+    // Log conversion
+    fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'popup_impression',popup_tipo:'monetizacao',user_id:uid,converteu:true})}).catch(()=>{});
+    setTimeout(()=>_bpClose('monetizacao'),2500);
+  }catch(e){if(btn){btn.textContent='Erro';setTimeout(()=>{btn.textContent='Entrar →';btn.disabled=false;},2000);}}
+}
+
+// Hook: inject timeupdate listener for FOMO tracking
+(function(){
+  const _origOnTU=window.onTU;
+  window.onTU=function(vid,id){
+    if(_origOnTU)_origOnTU(vid,id);
+    _bpOnProgress(vid);
+  };
+})();
+
+</script>
+
+<!-- POPUP 1 — PIONEIRO (após 2 vídeos) -->
+<div class="bp-overlay" id="bp-pioneiro">
+  <div class="bp-card bp-gold-border">
+    <div class="bp-particles" id="bp-particles1"></div>
+    <div style="position:relative;z-index:1">
+      <div class="bp-badge" style="background:linear-gradient(135deg,#B8860B,#FFD700);color:#000">🎁 OFERTA EXCLUSIVA DE PIONEIRO</div>
+      <div class="bp-title" style="color:#FFD700">Chegue a 1.000 seguidores<br>e ganhe R$ 1.000,00</div>
+      <div class="bp-sub" style="color:rgba(255,215,0,.7)">Sim. Dinheiro real na sua conta.</div>
+      <div class="bp-divider" style="background:linear-gradient(90deg,transparent,rgba(255,215,0,.4),transparent)"></div>
+      <div class="bp-steps">
+        <div class="bp-step"><div class="bp-step-icon">📱</div><div>Poste seu primeiro vídeo no Blue</div></div>
+        <div class="bp-step"><div class="bp-step-icon">👥</div><div>Alcance 1.000 seguidores</div></div>
+        <div class="bp-step"><div class="bp-step-icon">💰</div><div>Receba R$1.000 no Pix</div></div>
+      </div>
+      <div class="bp-urgency">⏰ Essa oferta é apenas para os primeiros criadores do Blue.<br><strong>47 vagas restantes</strong></div>
+      <button class="bp-cta bp-cta-gold" onclick="_bpConvert('pioneiro')">🚀 Quero ser pioneiro →</button>
+      <button class="bp-close" onclick="_bpClose('pioneiro')">Continuar assistindo</button>
+      <div class="bp-note">*Bônus pago após verificação de 1.000 seguidores reais</div>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP 2 — FUTURO (após 8 vídeos) -->
+<div class="bp-overlay" id="bp-futuro">
+  <div class="bp-card bp-neon-border">
+    <div class="bp-grid"></div>
+    <div style="position:relative;z-index:1">
+      <div style="font-size:12px;color:rgba(0,170,255,.6);margin-bottom:12px;letter-spacing:.04em">Você está assistindo o futuro do vídeo brasileiro.</div>
+      <div class="bp-title" style="background:linear-gradient(135deg,#3b82f6,#00aaff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Em 2026, todo mundo vai<br>estar no Blue.</div>
+      <div class="bp-sub">Hoje você ainda pode ser um dos primeiros.</div>
+      <div class="bp-compare">
+        Os primeiros do <strong>TikTok em 2018</strong> hoje têm milhões de seguidores.<br>
+        Os primeiros do <strong>YouTube em 2006</strong> hoje são milionários.<br>
+        E os primeiros do <strong>Blue em 2025</strong>... serão você?
+      </div>
+      <div class="bp-stats">
+        <div class="bp-stat"><div class="bp-stat-dot" style="background:#ef4444"></div>🔴 <strong id="bp-stat-creators">—</strong> criadores já postaram hoje</div>
+        <div class="bp-stat"><div class="bp-stat-dot" style="background:#22c55e"></div>📈 <strong id="bp-stat-videos">—</strong> vídeos publicados esta semana</div>
+        <div class="bp-stat"><div class="bp-stat-dot" style="background:#3b82f6"></div>👥 <strong id="bp-stat-users">—</strong> usuários ativos nas últimas 24h</div>
+      </div>
+      <div style="background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.12);border-radius:10px;padding:12px;font-size:12px;color:rgba(0,170,255,.7);text-align:center;margin-bottom:16px">
+        💰 Em breve: programa de monetização para criadores.<br>Os que chegarem primeiro vão ganhar mais.
+      </div>
+      <button class="bp-cta bp-cta-blue" onclick="_bpConvert('futuro')">✨ Quero ser pioneiro →</button>
+      <button class="bp-close" onclick="_bpClose('futuro')">Me lembre mais tarde</button>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP 3 — MONETIZAÇÃO (após 15 vídeos) -->
+<div class="bp-overlay" id="bp-monetizacao">
+  <div class="bp-card bp-purple-border">
+    <div id="bp-coins"></div>
+    <div style="position:relative;z-index:1">
+      <div class="bp-badge" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3);color:#a78bfa">💎 PROGRAMA BETA — ACESSO ANTECIPADO</div>
+      <div class="bp-title" style="color:#a78bfa">O Blue vai pagar<br>seus criadores.</div>
+      <div class="bp-sub">Estamos construindo o programa de monetização mais justo do Brasil.</div>
+      <div class="bp-mcards">
+        <div class="bp-mcard">
+          <div class="bp-mcard-icon">💰</div>
+          <div class="bp-mcard-txt"><strong>Fundo de Criadores</strong><br>Parte da receita do Blue dividida entre os criadores ativos</div>
+        </div>
+        <div class="bp-mcard">
+          <div class="bp-mcard-icon">🎁</div>
+          <div class="bp-mcard-txt"><strong>Gorjetas ao Vivo</strong><br>Seus fãs podem te enviar presentes em tempo real</div>
+        </div>
+        <div class="bp-mcard">
+          <div class="bp-mcard-icon">⭐</div>
+          <div class="bp-mcard-txt"><strong>Assinatura de Canal</strong><br>Seguidores pagam para acessar seu conteúdo exclusivo</div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#8899aa;text-align:center;margin-bottom:16px;line-height:1.6">Quem chegar primeiro tem vantagem.<br>Os maiores criadores recebem uma fatia maior do fundo.</div>
+      <div style="font-size:12px;color:rgba(167,139,250,.6);margin-bottom:8px">Entre na lista de espera do programa:</div>
+      <div class="bp-wl-wrap">
+        <input class="bp-wl-input" id="bp-wl-email" type="email" placeholder="seu@email.com"/>
+        <button class="bp-wl-btn" onclick="_bpWaitlist()">Entrar →</button>
+      </div>
+      <button class="bp-close" onclick="_bpClose('monetizacao')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Gera partículas douradas no popup 1
+(function(){const c=document.getElementById('bp-particles1');if(!c)return;for(let i=0;i<15;i++){const p=document.createElement('div');p.className='bp-p';p.style.left=Math.random()*100+'%';p.style.bottom='-4px';p.style.animationDuration=(2+Math.random()*3)+'s';p.style.animationDelay=Math.random()*3+'s';c.appendChild(p);}})();
+// Gera moedas no popup 3
+(function(){const c=document.getElementById('bp-coins');if(!c)return;const coins=['💰','💵','🪙','💎'];for(let i=0;i<12;i++){const m=document.createElement('div');m.className='bp-coin';m.textContent=coins[i%coins.length];m.style.left=Math.random()*90+'%';m.style.animationDuration=(3+Math.random()*4)+'s';m.style.animationDelay=Math.random()*5+'s';c.appendChild(m);}})();
 </script>
 </body>
 </html>

@@ -419,6 +419,19 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="modTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- POPUPS FOMO -->
+    <div class="section" id="popupFomoSection">
+      <div class="section-header">
+        <div class="section-title">🎯 Popups de Conversão <span class="section-subtitle">— FOMO no feed da Blue</span></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">🎁 Pioneiro (popup 1)</div><div class="stat-value yellow" id="fpPioneiro">—</div><div class="stat-sub" id="fpPioneiroRate">—</div></div>
+        <div class="stat-card"><div class="stat-label">✨ Futuro (popup 2)</div><div class="stat-value blue" id="fpFuturo">—</div><div class="stat-sub" id="fpFuturoRate">—</div></div>
+        <div class="stat-card"><div class="stat-label">💎 Monetização (popup 3)</div><div class="stat-value purple" id="fpMonetizacao">—</div><div class="stat-sub" id="fpMonetizacaoRate">—</div></div>
+        <div class="stat-card"><div class="stat-label">📋 Waitlist monetização</div><div class="stat-value green" id="fpWaitlist">—</div><div class="stat-sub">emails na lista</div></div>
+      </div>
+    </div>
+
     <div class="section" id="blueHealthSection">
       <div class="section-header">
         <div class="section-title">🎬 Saúde da Blue <span class="section-subtitle">— manutenção automática a cada 6h</span></div>
@@ -891,6 +904,7 @@ async function loadData(){
     loadModeration();
     loadEmailMarketing();
     loadBlueHealth();
+    loadPopupStats();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1188,6 +1202,22 @@ async function deleteLrnExample(id){
       body:JSON.stringify({action:'delete_learning_example',id})});
     toast('Exemplo removido');loadData();
   }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── POPUP FOMO STATS ─────────────────────────────────────────────────────
+async function loadPopupStats(){
+  try{
+    const r=await fetch('/api/blue-feed?action=popup_stats');
+    const d=await r.json();
+    ['pioneiro','futuro','monetizacao'].forEach(t=>{
+      const el=document.getElementById('fp'+t.charAt(0).toUpperCase()+t.slice(1));
+      const rateEl=document.getElementById('fp'+t.charAt(0).toUpperCase()+t.slice(1)+'Rate');
+      if(el)el.textContent=d[t]?.impressoes||0;
+      if(rateEl)rateEl.textContent=`${d[t]?.conversoes||0} conv · ${d[t]?.taxa||0}%`;
+    });
+    const wl=document.getElementById('fpWaitlist');
+    if(wl)wl.textContent=d.waitlist_total||0;
+  }catch(e){}
 }
 
 // ── AFFILIATE LEVEL MANAGEMENT ───────────────────────────────────────────
