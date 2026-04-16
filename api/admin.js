@@ -267,6 +267,46 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(200).json([]); }
   }
 
+  // ── VERIFICAÇÃO DE CONTAS ─────────────────────────────────────────────
+  if (req.method === 'GET' && action === 'list_verificacoes') {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/blue_verificacao_solicitacoes?status=eq.pendente&select=*&order=created_at.desc`, { headers });
+      return res.status(200).json(r.ok ? await r.json() : []);
+    } catch(e) { return res.status(200).json([]); }
+  }
+
+  if (req.method === 'POST' && action === 'aprovar_verificacao') {
+    const { user_id: vUserId, solicitacao_id } = req.body;
+    if (!vUserId) return res.status(400).json({ error: 'user_id obrigatório' });
+    try {
+      await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/blue_profiles?user_id=eq.${vUserId}`, {
+          method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ verificado: true, verificado_em: new Date().toISOString() })
+        }),
+        solicitacao_id ? fetch(`${SUPABASE_URL}/rest/v1/blue_verificacao_solicitacoes?id=eq.${solicitacao_id}`, {
+          method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ status: 'aprovado' })
+        }) : Promise.resolve(),
+        fetch(`${SUPABASE_URL}/rest/v1/blue_notificacoes`, {
+          method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ user_id: vUserId, tipo: 'verificacao', titulo: 'Conta verificada!', mensagem: 'Parabéns! Sua conta Blue foi verificada. O badge ✓ agora aparece no seu perfil.' })
+        }),
+      ]);
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  if (req.method === 'POST' && action === 'rejeitar_verificacao') {
+    const { solicitacao_id } = req.body;
+    if (!solicitacao_id) return res.status(400).json({ error: 'solicitacao_id obrigatório' });
+    await fetch(`${SUPABASE_URL}/rest/v1/blue_verificacao_solicitacoes?id=eq.${solicitacao_id}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: 'rejeitado' })
+    });
+    return res.status(200).json({ ok: true });
+  }
+
   // ── MODERATION ──────────────────────────────────────────────────────────
   if (req.method === 'GET' && action === 'moderation') {
     try {

@@ -437,6 +437,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="fpConversionsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- VERIFICAÇÃO DE CONTAS -->
+    <div class="section" id="verificacaoSection">
+      <div class="section-header">
+        <div class="section-title">🏅 Verificação de Contas <span class="section-subtitle">— solicitações pendentes</span></div>
+        <button class="action-btn" onclick="loadVerificacoes()">↻ Atualizar</button>
+      </div>
+      <div class="table-wrap" id="verificacoesTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <div class="section" id="blueHealthSection">
       <div class="section-header">
         <div class="section-title">🎬 Saúde da Blue <span class="section-subtitle">— manutenção automática a cada 6h</span></div>
@@ -912,6 +921,7 @@ async function loadData(){
     loadEmailMarketing();
     loadBlueHealth();
     loadPopupStats();
+    loadVerificacoes();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1258,6 +1268,36 @@ async function loadPopupConversions(){
     }).join('');
     el.innerHTML=`<table><thead><tr><th>Criador</th><th>@</th><th>Seguidores</th><th>Progresso (1K)</th><th>Vídeos</th><th>Popup</th><th>Aceitou em</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(e){document.getElementById('fpConversionsTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
+}
+
+// ── VERIFICAÇÃO DE CONTAS ─────────────────────────────────────────────────
+async function loadVerificacoes(){
+  try{
+    const r=await fetch('/api/admin?action=list_verificacoes',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const list=r.ok?await r.json():[];
+    const el=document.getElementById('verificacoesTable');
+    if(!Array.isArray(list)||!list.length){el.innerHTML='<div class="empty-state">Nenhuma solicitação pendente.</div>';return;}
+    el.innerHTML=`<table><thead><tr><th>Usuário</th><th>Motivo</th><th>Redes</th><th>Data</th><th>Ação</th></tr></thead><tbody>${list.map(s=>`<tr>
+      <td style="color:var(--text)">${s.user_id?.slice(0,8)||'—'}</td>
+      <td style="font-size:11px;max-width:200px;word-break:break-word">${s.motivo||'—'}</td>
+      <td style="font-size:10px;color:var(--dim)">${s.redes_sociais?JSON.stringify(s.redes_sociais).slice(0,60):'—'}</td>
+      <td style="font-size:10px;color:var(--dim)">${s.created_at?new Date(s.created_at).toLocaleDateString('pt-BR'):'—'}</td>
+      <td><div style="display:flex;gap:4px">
+        <button onclick="aprovarVerificacao('${s.user_id}','${s.id}')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✓ Verificar</button>
+        <button onclick="rejeitarVerificacao('${s.id}')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✗ Rejeitar</button>
+      </div></td>
+    </tr>`).join('')}</tbody></table>`;
+  }catch(e){document.getElementById('verificacoesTable').innerHTML='<div class="empty-state">Erro.</div>';}
+}
+async function aprovarVerificacao(userId,solId){
+  if(!confirm('Verificar esta conta?'))return;
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'aprovar_verificacao',user_id:userId,solicitacao_id:solId})});
+  toast('✅ Conta verificada!');loadVerificacoes();
+}
+async function rejeitarVerificacao(solId){
+  if(!confirm('Rejeitar solicitação?'))return;
+  await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'rejeitar_verificacao',solicitacao_id:solId})});
+  toast('✗ Rejeitada');loadVerificacoes();
 }
 
 // ── AFFILIATE LEVEL MANAGEMENT ───────────────────────────────────────────

@@ -246,16 +246,174 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(404).json({ error: e.message }); }
   }
 
-  // ── FEED PADRÃO ──────────────────────────────────────────────────────────
+  // ── ANALYTICS OVERVIEW ───────────────────────────────────────────────────
+  if (action === 'analytics-overview') {
+    const { token, periodo } = req.query;
+    if (!token) return res.status(401).json({ error: 'token obrigatório' });
+    const AK = process.env.SUPABASE_ANON_KEY || SK;
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      const days = parseInt(periodo) || 28;
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const prevSince = new Date(Date.now() - days * 2 * 86400000).toISOString();
+
+      // Current period videos
+      const [vR, fR, fPrevR, aR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_videos?user_id=eq.${uid}&status=eq.active&select=id,title,thumbnail_url,views,likes,comments,saves,completion_rate,skip_rate,score,created_at,duration&order=created_at.desc`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_follows?following_id=eq.${uid}&created_at=gte.${since}&select=id`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_follows?following_id=eq.${uid}&created_at=gte.${prevSince}&created_at=lt.${since}&select=id`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_video_analytics?user_id=eq.${uid}&created_at=gte.${since}&select=percentual_assistido,origem,created_at&order=created_at.desc&limit=5000`, { headers: h }),
+      ]);
+      const vids = vR.ok ? await vR.json() : [];
+      const newFollowers = fR.ok ? (await fR.json()).length : 0;
+      const prevFollowers = fPrevR.ok ? (await fPrevR.json()).length : 0;
+      const analytics = aR.ok ? await aR.json() : [];
+
+      const totalViews = vids.reduce((s, v) => s + (v.views || 0), 0);
+      const totalLikes = vids.reduce((s, v) => s + (v.likes || 0), 0);
+      const totalComments = vids.reduce((s, v) => s + (v.comments || 0), 0);
+      const engRate = totalViews > 0 ? ((totalLikes + totalComments) / totalViews * 100).toFixed(1) : '0';
+      const followerGrowth = prevFollowers > 0 ? ((newFollowers - prevFollowers) / prevFollowers * 100).toFixed(0) : newFollowers > 0 ? '+100' : '0';
+
+      // Origem breakdown
+      const origemMap = {};
+      analytics.forEach(a => { const o = a.origem || 'feed'; origemMap[o] = (origemMap[o] || 0) + 1; });
+
+      // Heatmap: day x hour
+      const heatmap = Array(7).fill(null).map(() => Array(24).fill(0));
+      analytics.forEach(a => {
+        const d = new Date(a.created_at);
+        heatmap[d.getDay()][d.getHours()]++;
+      });
+
+      // Best hours
+      let bestSlots = [];
+      heatmap.forEach((day, di) => { day.forEach((count, hi) => { if (count > 0) bestSlots.push({ day: di, hour: hi, count }); }); });
+      bestSlots.sort((a, b) => b.count - a.count);
+
+      return res.status(200).json({
+        overview: { totalViews, totalLikes, totalComments, engRate, newFollowers, followerGrowth, alcance: totalViews },
+        videos: vids.map(v => ({ ...v, thumbnail_url: applyCDN(v.thumbnail_url) })),
+        origem: origemMap,
+        heatmap,
+        bestHours: bestSlots.slice(0, 5),
+        periodo: days,
+      });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── ANALYTICS VIDEO (retenção detalhada) ────────────────────────────────
+  if (action === 'analytics-video') {
+    const { video_id: avId, token } = req.query;
+    if (!token || !avId) return res.status(400).json({ error: 'token e video_id obrigatórios' });
+    try {
+      const aR = await fetch(`${SU}/rest/v1/blue_video_analytics?video_id=eq.${avId}&select=percentual_assistido,origem,created_at&limit=2000`, { headers: h });
+      const data = aR.ok ? await aR.json() : [];
+      // Retention curve: for each 10% bucket, count how many viewers reached it
+      const total = data.length || 1;
+      const retention = [];
+      for (let p = 0; p <= 100; p += 10) {
+        retention.push({ percentual: p, viewers: data.filter(d => (d.percentual_assistido || 0) >= p).length, pct: Math.round(data.filter(d => (d.percentual_assistido || 0) >= p).length / total * 100) });
+      }
+      const origemMap = {};
+      data.forEach(d => { const o = d.origem || 'feed'; origemMap[o] = (origemMap[o] || 0) + 1; });
+      return res.status(200).json({ retention, origem: origemMap, total_views: total });
+    } catch(e) { return res.status(200).json({ retention: [], error: e.message }); }
+  }
+
+  // ── TRACK VIEW (analytics logging from frontend) ────────────────────────
+  if (req.method === 'POST' && action === 'track-view') {
+    const { video_id: tvId, percentual, origem, token } = req.body || {};
+    if (!tvId) return res.status(200).json({ ok: true });
+    let uid = null;
+    if (token) {
+      try {
+        const AK = process.env.SUPABASE_ANON_KEY || SK;
+        const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+        if (uR.ok) uid = (await uR.json()).id;
+      } catch(e) {}
+    }
+    fetch(`${SU}/rest/v1/blue_video_analytics`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ video_id: tvId, user_id: uid, percentual_assistido: percentual || 0, origem: origem || 'feed' })
+    }).catch(() => {});
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── BUSCA COMPLETA ──────────────────────────────────────────────────────
+  if (action === 'busca') {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(200).json({ usuarios: [], hashtags: [], videos: [] });
+    try {
+      const [uR, hR, vR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_profiles?or=(username.ilike.*${encodeURIComponent(q)}*,display_name.ilike.*${encodeURIComponent(q)}*)&select=user_id,username,display_name,avatar_url,verificado&limit=10`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_hashtags?nome=ilike.*${encodeURIComponent(q)}*&order=usos.desc&limit=10&select=id,nome,usos,trending`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_videos?status=eq.active&or=(title.ilike.*${encodeURIComponent(q)}*,description.ilike.*${encodeURIComponent(q)}*)&order=score.desc&limit=10&select=id,title,thumbnail_url,views,likes,user_id`, { headers: h }),
+      ]);
+      return res.status(200).json({
+        usuarios: uR.ok ? await uR.json() : [],
+        hashtags: hR.ok ? await hR.json() : [],
+        videos: vR.ok ? await vR.json() : [],
+      });
+    } catch(e) { return res.status(200).json({ usuarios: [], hashtags: [], videos: [], error: e.message }); }
+  }
+
+  // ── VERIFICAÇÃO: SOLICITAR ──────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'solicitar-verificacao') {
+    const { token, motivo, redes_sociais } = req.body || {};
+    if (!token) return res.status(401).json({ error: 'token obrigatório' });
+    try {
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      const uid = (await uR.json()).id;
+      // Check if already pending
+      const eR = await fetch(`${SU}/rest/v1/blue_verificacao_solicitacoes?user_id=eq.${uid}&status=eq.pendente&select=id`, { headers: h });
+      if (eR.ok && (await eR.json()).length) return res.status(200).json({ ok: true, message: 'Solicitação já enviada' });
+      await fetch(`${SU}/rest/v1/blue_verificacao_solicitacoes`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ user_id: uid, motivo: motivo || '', redes_sociais: redes_sociais || {}, status: 'pendente' }) });
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── LIMPAR RATE LIMITS (cron diário) ────────────────────────────────────
+  if (action === 'limpar-rate-limits') {
+    try {
+      const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+      await fetch(`${SU}/rest/v1/blue_rate_limits?janela_inicio=lt.${oneDayAgo}`, { method: 'DELETE', headers: h });
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(200).json({ ok: false }); }
+  }
+
+  // ── FEED INTELIGENTE ────────────────────────────────────────────────────
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   const cursor = req.query.cursor;
+  const feedToken = req.query.token;
+
+  // Load user preferences if logged in
+  let userPrefs = null;
+  if (feedToken) {
+    try {
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + feedToken } });
+      if (uR.ok) {
+        const uid = (await uR.json()).id;
+        // Get following list + recent seen
+        const [flR, seenR] = await Promise.all([
+          fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${uid}&select=following_id`, { headers: h }),
+          fetch(`${SU}/rest/v1/blue_feed_seen?user_id=eq.${uid}&select=video_id&order=seen_at.desc&limit=100`, { headers: h }),
+        ]);
+        const following = flR.ok ? (await flR.json()).map(f => f.following_id) : [];
+        const seen = seenR.ok ? (await seenR.json()).map(s => s.video_id) : [];
+        userPrefs = { uid, following, seen };
+      }
+    } catch(e) {}
+  }
 
   try {
-    // Build query with cursor-based pagination
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc&limit=${limit + 1}&select=*`;
-    if (cursor) {
-      url += `&created_at=lt.${cursor}`;
-    }
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=score.desc,created_at.desc&limit=${limit * 3}&select=*`;
+    if (cursor) url += `&created_at=lt.${cursor}`;
 
     const r = await fetch(url, { headers: h });
     if (!r.ok) {
@@ -264,16 +422,30 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ videos: [], has_more: false });
     }
 
-    const raw = await r.json();
+    let raw = (await r.json()).filter(v => v.video_url && v.status === 'active');
 
-    // Filter safety: double-check status and video_url
-    const safe = raw.filter(v => v.video_url && v.status === 'active');
+    // Apply intelligent scoring if user is logged in
+    if (userPrefs) {
+      raw = raw.filter(v => !userPrefs.seen.includes(v.id)); // remove already seen
+      raw.forEach(v => {
+        let s = v.score || 0;
+        // Boost followed creators
+        if (userPrefs.following.includes(v.user_id)) s += 20;
+        // Recency bonus
+        const hoursAgo = (Date.now() - new Date(v.created_at)) / 3600000;
+        if (hoursAgo < 6) s += 15;
+        else if (hoursAgo < 24) s += 8;
+        // Engagement bonus
+        const views = v.views || 1;
+        const engRate = ((v.likes || 0) * 3 + (v.saves || 0) * 5) / views;
+        s += Math.min(20, engRate * 10);
+        v._feedScore = s;
+      });
+      raw.sort((a, b) => (b._feedScore || b.score || 0) - (a._feedScore || a.score || 0));
+    }
 
-    // Determine has_more: if we got limit+1 results, there are more
-    const has_more = safe.length > limit;
-    const videos = has_more ? safe.slice(0, limit) : safe;
-
-    // Next cursor = created_at of last video returned
+    const videos = raw.slice(0, limit);
+    const has_more = raw.length > limit;
     const next_cursor = videos.length > 0 ? videos[videos.length - 1].created_at : null;
 
     // Enrich with creator profiles
@@ -281,13 +453,10 @@ module.exports = async function handler(req, res) {
     let profiles = {};
     if (userIds.length > 0) {
       const pR = await fetch(
-        `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url`,
+        `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
         { headers: h }
       );
-      if (pR.ok) {
-        const pData = await pR.json();
-        pData.forEach(p => { profiles[p.user_id] = p; });
-      }
+      if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
     }
 
     const enriched = videos.map(v => ({

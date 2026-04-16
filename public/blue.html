@@ -786,6 +786,7 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   <div class="prof-bio" id="profBio" style="display:none"></div>
   <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0;align-items:center">
     <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;flex:1" onclick="openEditProfile()">Editar perfil</button>
+    <a id="profAnalyticsBtn" href="/blue-analytics.html" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#3b82f6;text-decoration:none;text-align:center">📊</a>
     <button class="prof-follow-btn" id="profFollowBtn" style="display:none" onclick="toggleFollow()">+ Seguir</button>
     <button class="prof-msg-btn" id="profMsgBtn" style="display:none" onclick="openChatWithUser()">💬</button>
   </div>
@@ -1006,13 +1007,15 @@ async function getValidToken(){
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
+let _feedOrigem='feed'; // tracks where user came from for analytics
 
 async function loadFeed(){
   const feed=document.getElementById('feed');
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#555">Carregando…</div></div>';
   _feedCursor=null; _feedHasMore=true; videos=[];
   try{
-    const r=await fetch('/api/blue-feed?limit=8&session='+SID);
+    const tkParam=TOKEN?'&token='+encodeURIComponent(TOKEN):'';
+    const r=await fetch('/api/blue-feed?limit=8&session='+SID+tkParam);
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
@@ -1071,7 +1074,7 @@ function mkSlide(v,i){
       '<button class="act" onclick="event.stopPropagation();openDotsMenu(\''+v.id+'\',\''+esc(v.title||'').replace(/'/g,'')+'\',\'\','+(v.user_id===myProfile?.user_id)+')"><div class="act-ico" style="font-size:16px">⋯</div></button>'+
     '</div>'+
     '<div class="info">'+
-      '<div class="info-user" onclick="openCreatorProfile(\''+v.user_id+'\')">@'+(c.username||'blue')+'</div>'+
+      '<div class="info-user" onclick="openCreatorProfile(\''+v.user_id+'\')">@'+(c.username||'blue')+(c.verificado?' <span style="display:inline-block;background:#3b82f6;color:#fff;font-size:9px;width:14px;height:14px;border-radius:50%;text-align:center;line-height:14px;vertical-align:middle;margin-left:3px" title="Verificado">✓</span>':'')+'</div>'+
       (v.title?'<div class="info-title">'+hashify(esc(v.title))+'</div>':'')+
       (v.description?'<div class="info-desc">'+hashify(esc(v.description))+'</div>':'')+
     '</div>'+
@@ -1083,14 +1086,22 @@ function mkSlide(v,i){
   // Tap to toggle sound
   const _vid=el.querySelector('video');
   _vid.addEventListener('click',()=>toggleSound(_vid,v.id));
-  // FOMO popup tracker — 50% watch trigger
-  if(typeof _bpWatched!=='undefined'){
-    _vid._bpTracked=true;
-    _vid.addEventListener('timeupdate',function(){
-      if(!_vid.duration||_vid._bpCounted)return;
-      if(_vid.currentTime>=_vid.duration*.5){_vid._bpCounted=true;_bpWatched++;_bpCheck();}
-    });
-  }
+  // FOMO popup tracker + analytics tracker
+  const _vidId=v.id;
+  let _lastPctLogged=-1;
+  _vid.addEventListener('timeupdate',function(){
+    if(!_vid.duration)return;
+    const pct=Math.floor(_vid.currentTime/_vid.duration*10)*10;
+    // Analytics: log every 10% milestone
+    if(pct>_lastPctLogged&&pct>=10){
+      _lastPctLogged=pct;
+      fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'track-view',video_id:_vidId,percentual:pct,origem:_feedOrigem||'feed',token:TOKEN})}).catch(()=>{});
+    }
+    // FOMO popup at 50%
+    if(typeof _bpWatched!=='undefined'&&!_vid._bpCounted&&_vid.currentTime>=_vid.duration*.5){
+      _vid._bpCounted=true;_bpWatched++;_bpCheck();
+    }
+  });
   return el;
 }
 
@@ -1309,7 +1320,7 @@ async function openCreatorProfile(userId){
   page.classList.add('open');
 
   // Esconde botões do próprio perfil, mostra Seguir + Chat
-  ['pNavEdit','profAvCam','profEditBtn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  ['pNavEdit','profAvCam','profEditBtn','profAnalyticsBtn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   const msgBtn=document.getElementById('profMsgBtn'); if(msgBtn) msgBtn.style.display='flex';
   const followBtn=document.getElementById('profFollowBtn'); if(followBtn){followBtn.style.display='block';followBtn.textContent='+ Seguir';followBtn.classList.remove('following');}
   document.getElementById('pFollowers').textContent='—';
@@ -1373,6 +1384,7 @@ function setProfileHeader(p,isOwn){
   if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
   show('pNavEdit', isOwn ? 'block' : 'none');
   show('profEditBtn', isOwn ? 'block' : 'none');
+  show('profAnalyticsBtn', isOwn ? 'flex' : 'none');
   show('profFollowBtn', isOwn ? 'none' : 'block');
   show('profMsgBtn', isOwn ? 'none' : 'flex');
   if(isOwn){ _chatTargetUser=null; if(p.user_id) loadFollowerCount(p.user_id); }
@@ -1456,12 +1468,52 @@ function openInbox() {
   if (!TOKEN) { toast('Entre para acessar mensagens'); return; }
   const inbox = document.getElementById('inbox');
   const isOpen = inbox.classList.contains('open');
-  if (isOpen) { closeInbox(); return; } // Toggle
+  if (isOpen) { closeInbox(); return; }
   inbox.classList.add('open');
   if (window.innerWidth <= 600) document.getElementById('inboxBack').classList.add('on');
   updateStatusBtns(_myStatus);
   loadConversations();
+  loadNotificacoes();
 }
+
+async function loadNotificacoes(){
+  try{
+    const r=await fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'notificacoes',token:TOKEN})});
+    const d=await r.json();
+    const notifs=d.notificacoes||[];
+    const badge=document.getElementById('inboxBadge');
+    if(badge)badge.textContent=d.unread||0;
+    if(badge)badge.style.display=(d.unread>0)?'flex':'none';
+    // Inject notification panel before conversation list if not exists
+    let np=document.getElementById('notifPanel');
+    if(!np){
+      np=document.createElement('div');np.id='notifPanel';
+      np.style.cssText='max-height:200px;overflow-y:auto;border-bottom:1px solid rgba(59,130,246,.1);margin-bottom:8px';
+      const cl=document.getElementById('convList');
+      if(cl)cl.parentNode.insertBefore(np,cl);
+    }
+    if(!notifs.length){np.innerHTML='';return;}
+    const unread=notifs.filter(n=>!n.lida);
+    if(!unread.length){np.innerHTML='';return;}
+    np.innerHTML=`<div style="padding:8px 14px;font-size:11px;font-weight:700;color:rgba(59,130,246,.7);display:flex;justify-content:space-between;align-items:center">Notificações (${unread.length})<button onclick="marcarNotifsLidas()" style="background:none;border:none;color:rgba(150,190,230,.4);font-size:10px;cursor:pointer">Marcar lidas</button></div>`+
+      unread.slice(0,8).map(n=>{
+        const icon={like:'❤️',comment:'💬',follow:'👥',verificacao:'🏅',milestone:'🎉'}[n.tipo]||'🔔';
+        return`<div style="padding:8px 14px;font-size:12px;color:#c8d6e5;border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:8px;align-items:center"><span style="font-size:16px">${icon}</span><div style="flex:1"><div style="font-weight:600;font-size:12px">${n.titulo}</div>${n.mensagem?'<div style="font-size:11px;color:rgba(150,190,230,.5);margin-top:2px">'+n.mensagem+'</div>':''}</div><div style="font-size:9px;color:rgba(150,190,230,.3)">${ago(n.created_at)}</div></div>`;
+      }).join('');
+  }catch(e){}
+}
+
+async function marcarNotifsLidas(){
+  await fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'marcar-lidas',token:TOKEN})});
+  const badge=document.getElementById('inboxBadge');
+  if(badge){badge.textContent='0';badge.style.display='none';}
+  const np=document.getElementById('notifPanel');
+  if(np)np.innerHTML='';
+  toast('✅ Notificações lidas');
+}
+
+// Poll notifications every 30s
+setInterval(()=>{if(TOKEN)loadNotificacoes();},30000);
 function closeInbox() {
   document.getElementById('inbox').classList.remove('open');
   document.getElementById('inboxBack').classList.remove('on');
@@ -3054,6 +3106,7 @@ setInterval(async()=>{
 
 // ── HASHTAG FEED & TRENDING ──────────────────────────────────────────────────
 async function openHashtagFeed(tag){
+  _feedOrigem='hashtag';
   tag=tag.toLowerCase().replace(/^#/,'');
   const feed=document.getElementById('feed');
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13px;color:#3b82f6">#'+tag+'</div></div>';
