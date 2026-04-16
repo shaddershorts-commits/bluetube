@@ -1,7 +1,7 @@
-// api/blue-feed.js — Feed de vídeos com paginação por cursor
+// api/blue-feed.js — Feed de vídeos com paginação por cursor + stats + waitlist
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -9,9 +9,85 @@ module.exports = async function handler(req, res) {
   const SK = process.env.SUPABASE_SERVICE_KEY;
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
 
-  const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+  const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+  const action = req.query.action || (req.body && req.body.action);
+
+  // ── STATS (criadores hoje, vídeos semana, usuários 24h) ──────────────────
+  if (action === 'stats') {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const weekAgo = new Date(now - 7*24*60*60*1000).toISOString();
+      const dayAgo = new Date(now - 24*60*60*1000).toISOString();
+      const [creatorsR, videosR, usersR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${today}T00:00:00Z&status=eq.active&select=user_id`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_videos?created_at=gte.${weekAgo}&status=eq.active&select=id`, { headers: h }),
+        fetch(`${SU}/rest/v1/ip_online?pinged_at=gte.${dayAgo}&select=ip_address`, { headers: h }),
+      ]);
+      const creators = creatorsR.ok ? await creatorsR.json() : [];
+      const vids = videosR.ok ? await videosR.json() : [];
+      const users = usersR.ok ? await usersR.json() : [];
+      return res.status(200).json({
+        creators_hoje: new Set(creators.map(c => c.user_id)).size,
+        videos_semana: vids.length,
+        usuarios_24h: users.length,
+      });
+    } catch(e) { return res.status(200).json({ creators_hoje: 0, videos_semana: 0, usuarios_24h: 0 }); }
+  }
+
+  // ── WAITLIST MONETIZAÇÃO ─────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'waitlist') {
+    const { email, user_id } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'email obrigatório' });
+    try {
+      await fetch(`${SU}/rest/v1/blue_monetizacao_waitlist`, {
+        method: 'POST',
+        headers: { ...h, 'Prefer': 'return=minimal,resolution=ignore' },
+        body: JSON.stringify({ email, user_id: user_id || null })
+      });
+      const countR = await fetch(`${SU}/rest/v1/blue_monetizacao_waitlist?select=id`, { headers: { ...h, 'Prefer': 'count=exact' } });
+      const total = parseInt(countR.headers?.get('content-range')?.split('/')[1] || '0');
+      return res.status(200).json({ ok: true, posicao_na_lista: total });
+    } catch(e) { return res.status(200).json({ ok: false, error: e.message }); }
+  }
+
+  // ── POPUP IMPRESSION ─────────────────────────────────────────────────────
+  if (req.method === 'POST' && action === 'popup_impression') {
+    const { popup_tipo, user_id, converteu } = req.body || {};
+    if (!popup_tipo) return res.status(400).json({ error: 'popup_tipo obrigatório' });
+    try {
+      await fetch(`${SU}/rest/v1/blue_popup_impressoes`, {
+        method: 'POST',
+        headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ popup_tipo, user_id: user_id || null, converteu: converteu || false })
+      });
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(200).json({ ok: false }); }
+  }
+
+  // ── POPUP STATS (admin) ──────────────────────────────────────────────────
+  if (action === 'popup_stats') {
+    try {
+      const [impR, wlR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_popup_impressoes?select=popup_tipo,converteu,created_at&order=created_at.desc&limit=5000`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_monetizacao_waitlist?select=id`, { headers: { ...h, 'Prefer': 'count=exact' } }),
+      ]);
+      const imps = impR.ok ? await impR.json() : [];
+      const wlTotal = parseInt(wlR.headers?.get('content-range')?.split('/')[1] || '0');
+      const tipos = ['pioneiro', 'futuro', 'monetizacao'];
+      const stats = {};
+      tipos.forEach(t => {
+        const tipImps = imps.filter(i => i.popup_tipo === t);
+        stats[t] = { impressoes: tipImps.length, conversoes: tipImps.filter(i => i.converteu).length };
+        stats[t].taxa = tipImps.length > 0 ? ((stats[t].conversoes / tipImps.length) * 100).toFixed(1) : '0';
+      });
+      return res.status(200).json({ ...stats, waitlist_total: wlTotal });
+    } catch(e) { return res.status(200).json({ waitlist_total: 0 }); }
+  }
+
+  // ── FEED PADRÃO ──────────────────────────────────────────────────────────
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-  const cursor = req.query.cursor; // ISO timestamp of last seen video's created_at
+  const cursor = req.query.cursor;
 
   try {
     // Build query with cursor-based pagination
