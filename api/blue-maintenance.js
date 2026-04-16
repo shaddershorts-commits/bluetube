@@ -64,12 +64,12 @@ module.exports = async function handler(req, res) {
   }
 
   // ── REPORT BROKEN (from frontend) ──────────────────────────────────────────
+  // Só marca unavailable se: 10+ reports E verificação HTTP confirmar que está quebrado
   if (req.method === 'POST' && req.body?.action === 'report-broken') {
     const { video_id } = req.body;
     if (!video_id) return res.status(400).json({ error: 'Missing video_id' });
     try {
-      // Get current broken_reports count
-      const gr = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&select=broken_reports,status`, { headers: H });
+      const gr = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&select=broken_reports,status,video_url`, { headers: H });
       if (!gr.ok) return res.status(200).json({ ok: false });
       const gd = await gr.json();
       const vid = gd?.[0];
@@ -78,10 +78,23 @@ module.exports = async function handler(req, res) {
       const newCount = (vid.broken_reports || 0) + 1;
       const updates = { broken_reports: newCount, last_checked_at: now };
 
-      // Auto-mark unavailable after 3 reports
-      if (newCount >= 3 && vid.status === 'active') {
-        updates.status = 'unavailable';
-        console.log(`[maintenance] Auto-unavailable: ${video_id} (${newCount} reports)`);
+      // Threshold muito mais alto (10 em vez de 3) E verificação HTTP real
+      if (newCount >= 10 && vid.status === 'active' && vid.video_url) {
+        try {
+          const hr = await fetch(vid.video_url, { method: 'HEAD', signal: AbortSignal.timeout(15000) });
+          // Só marca unavailable se HTTP realmente retornou 404/403 (arquivo deletado)
+          if (hr.status === 404 || hr.status === 403) {
+            updates.status = 'unavailable';
+            console.log(`[maintenance] Confirmed broken: ${video_id} (HTTP ${hr.status})`);
+          } else {
+            // Reset counter — vídeo está ok, reports eram falsos positivos
+            updates.broken_reports = 0;
+            console.log(`[maintenance] False positive reset: ${video_id} (HTTP ${hr.status})`);
+          }
+        } catch(e) {
+          // Timeout/erro de rede — NÃO marca unavailable, só reseta pra evitar acumular
+          updates.broken_reports = Math.max(0, newCount - 5);
+        }
       }
 
       await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
@@ -130,14 +143,26 @@ module.exports = async function handler(req, res) {
         let broken = false;
 
         if (v.video_url) {
-          try {
-            const hr = await fetch(v.video_url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
-            if (hr.status === 404 || hr.status === 403) broken = true;
-          } catch (e) {
-            broken = true; // network error = likely removed
+          // Tenta 2x antes de marcar como broken (retry para evitar falsos positivos)
+          let attempts = 0;
+          let confirmedBroken = false;
+          while (attempts < 2 && !confirmedBroken) {
+            try {
+              const hr = await fetch(v.video_url, { method: 'HEAD', signal: AbortSignal.timeout(15000) });
+              // Só 404/403 conta como realmente quebrado (arquivo deletado)
+              if (hr.status === 404 || hr.status === 403) { confirmedBroken = true; break; }
+              // 200, 500, 503, etc = vídeo existe mas teve problema temporário — NÃO marca
+              if (hr.status >= 200 && hr.status < 500) break; // OK
+            } catch (e) {
+              // Timeout/network error: tenta de novo. Se falhar 2x, NÃO marca mais como broken
+              // (evita falsos positivos em redes instáveis)
+            }
+            attempts++;
+            if (attempts < 2) await new Promise(r => setTimeout(r, 1000));
           }
+          broken = confirmedBroken;
         } else {
-          broken = true; // no URL
+          broken = true; // sem URL = realmente quebrado
         }
 
         const updates = { last_checked_at: now };
