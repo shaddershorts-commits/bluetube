@@ -299,6 +299,30 @@ export default async function handler(req, res) {
     } catch (e) { return res.status(200).json({ error: e.message }); }
   }
 
+  // ── REALTIME PULSE (lightweight, for 10s polling) ────────────────────────
+  if (req.method === 'GET' && action === 'realtime_pulse') {
+    try {
+      const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const [countRes, onlineRes, cancelRes, latestRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=id`, { headers: { ...headers, 'Prefer': 'count=exact' } }),
+        fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers?plan=eq.free&stripe_customer_id=not.is.null&select=email,updated_at&order=updated_at.desc&limit=1`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=email&order=created_at.desc&limit=1`, { headers }),
+      ]);
+      const totalHeader = countRes.headers?.get('content-range');
+      const total = totalHeader ? parseInt(totalHeader.split('/')[1]) || 0 : 0;
+      const online = onlineRes.ok ? (await onlineRes.json()).length : 0;
+      const cancel = cancelRes.ok ? (await cancelRes.json())[0] : null;
+      const latest = latestRes.ok ? (await latestRes.json())[0] : null;
+      return res.status(200).json({
+        total,
+        online_now: online,
+        latest_email: latest?.email || null,
+        latest_cancel_email: cancel?.email || null,
+      });
+    } catch(e) { return res.status(200).json({ total: 0, online_now: 0 }); }
+  }
+
   // ── GET DASHBOARD DATA ────────────────────────────────────────────────────
   try {
     const today = new Date().toISOString().split('T')[0];

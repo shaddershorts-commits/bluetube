@@ -447,6 +447,15 @@ let lastKnownSubscriberId=null;
 let currentFilter='all';
 let _subsPage=1, _subsSearch='', _fbPage=1;
 
+// ── TOAST (feedback visual para ações admin) ─────────────────────────────
+function toast(msg, duration=4000){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(10,22,40,.98);border:1px solid rgba(0,170,255,.3);border-radius:12px;padding:12px 22px;font-family:var(--mono);font-size:12px;color:var(--text);box-shadow:0 0 30px rgba(0,0,0,.5);max-width:400px;text-align:center;animation:slideIn .3s ease';
+  el.textContent=msg;
+  document.body.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300);},duration);
+}
+
 // ── PAGINATION HELPER ─────────────────────────────────────────────────────
 function renderPagination(total, page, pages, onChange, prefix){
   if(pages<=1)return'';
@@ -674,7 +683,9 @@ function doLogin(){
 
 function doLogout(){
   adminKey='';
-  clearInterval(refreshInterval);
+  clearInterval(refreshInterval); refreshInterval=null;
+  clearInterval(_rtInt); _rtInt=null;
+  _lastTotal=0; _lastCancelEmail=null;
   document.getElementById('dashboard').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('adminKey').value='';
@@ -710,6 +721,7 @@ async function loadData(){
     const payingTotal=(d.subscribers.paying_full||0)+(d.subscribers.paying_master||0);
     const manualTotal=(d.subscribers.manual_full||0)+(d.subscribers.manual_master||0);
     document.getElementById('statTotal').textContent=d.subscribers.total;
+    if(_lastTotal===0) _lastTotal=d.subscribers.total; // baseline para realtime watch
     document.getElementById('statPaid').textContent=payingTotal;
     document.getElementById('statIPs').textContent=d.today.active_ips;
     document.getElementById('statScripts').textContent=d.today.total_scripts_generated;
@@ -926,8 +938,9 @@ async function loadData(){
     showProgress(100);
     setTimeout(()=>showProgress(0),500);
 
-    // Start auto-refresh
+    // Start auto-refresh + realtime watch
     if(!refreshInterval) startAutoRefresh();
+    if(!_rtInt) startRealtimeWatch();
 
   }catch(err){
     console.error('Admin loadData error:', err);
@@ -1186,28 +1199,33 @@ function startRealtimeWatch(){
   if(_rtInt) clearInterval(_rtInt);
   _rtInt = setInterval(async()=>{
     try{
-      const r = await fetch('/api/admin?action=stats', { headers:{'Authorization':'Bearer '+adminSecret} });
+      // Lightweight: only fetch subscriber count + latest signup
+      const r = await fetch('/api/admin?action=realtime_pulse', { headers:{'Authorization':'Bearer '+adminKey} });
       if(!r.ok) return;
       const d = await r.json();
       // Novo cadastro
-      const newTotal = d.subscribers?.total || 0;
+      const newTotal = d.total || 0;
       if(_lastTotal > 0 && newTotal > _lastTotal){
         const diff = newTotal - _lastTotal;
         showAdminToast('🎉 +'+diff+' novo'+(diff>1?'s':'')+' cadastro'+(diff>1?'s':'')+'!',
-          d.latest_signup?.email||'', '#4ecca3', 'rgba(78,204,163,.5)');
-        loadData();
+          d.latest_email||'', '#4ecca3', 'rgba(78,204,163,.5)');
+        nextRefreshSecs=0; // força refresh imediato no próximo tick
       }
       _lastTotal = newTotal;
       // Cancelamento
-      const cancel = d.latest_cancellation;
-      if(cancel?.email && cancel.email !== _lastCancelEmail){
-        const when = cancel.updated_at ? new Date(cancel.updated_at).toLocaleTimeString('pt-BR') : '';
-        showAdminToast('❌ Cancelamento', cancel.email+(when?' às '+when:''), '#ff7a5a', 'rgba(255,122,90,.5)');
-        _lastCancelEmail = cancel.email;
-        loadData();
+      const cancelEmail = d.latest_cancel_email;
+      if(cancelEmail && cancelEmail !== _lastCancelEmail){
+        showAdminToast('❌ Cancelamento', cancelEmail, '#ff7a5a', 'rgba(255,122,90,.5)');
+        _lastCancelEmail = cancelEmail;
+        nextRefreshSecs=0;
+      }
+      // Online count atualizado
+      if(d.online_now !== undefined){
+        const el = document.getElementById('onlineCount');
+        if(el) el.textContent = d.online_now;
       }
     }catch(e){}
-  }, 8000);
+  }, 10000);
 }
 function showAdminToast(title, sub, color, border){
   const el=document.createElement('div');
