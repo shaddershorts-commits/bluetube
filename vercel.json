@@ -1,6 +1,11 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/blue/@:username", "destination": "/blue.html" },
+    { "source": "/blue/v/:videoId", "destination": "/blue.html" },
+    { "source": "/blue/hashtag/:tag", "destination": "/blue.html" }
+  ],
   "functions": {
     "api/transcript.js": { "maxDuration": 60 },
     "api/auth.js": { "maxDuration": 60 },

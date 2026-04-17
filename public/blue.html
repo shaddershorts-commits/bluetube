@@ -2122,6 +2122,87 @@ async function sendComment(){debounced('comment',async()=>{
   btn.disabled=false;
 },1000);}
 
+// ── HISTORY API: URLs bonitas + botao voltar do browser ───────────────────────
+// Modulo auto-contido. Rotas cobertas:
+//   /blue            -> feed principal
+//   /blue/@username  -> perfil publico de um criador
+//   /blue/hashtag/X  -> feed de uma hashtag
+// popstate reage ao botao voltar; handleInitialRoute() parseia URL ao carregar.
+const BlueRouter = (() => {
+  const ROTAS = {
+    feed: '/blue',
+    perfil: (u) => `/blue/@${u}`,
+    hashtag: (t) => `/blue/hashtag/${encodeURIComponent(t)}`,
+  };
+  function push(url, estado = {}, titulo = 'Blue') {
+    if (window.location.pathname === url) return; // evita duplicar history entry
+    try {
+      history.pushState({ ...estado, _url: url }, '', url);
+      document.title = titulo === 'Blue' ? 'Blue' : `${titulo} — Blue`;
+    } catch (e) {}
+  }
+  function replace(url, estado = {}, titulo = 'Blue') {
+    try {
+      history.replaceState({ ...estado, _url: url }, '', url);
+      document.title = titulo === 'Blue' ? 'Blue' : `${titulo} — Blue`;
+    } catch (e) {}
+  }
+  return { ROTAS, push, replace };
+})();
+window.BlueRouter = BlueRouter;
+
+window.addEventListener('popstate', () => {
+  const url = window.location.pathname;
+  try {
+    if (url === '/blue' || url === '/blue/' || url === '/') {
+      const prof = document.getElementById('profPage');
+      if (prof && prof.classList.contains('open')) prof.classList.remove('open');
+      if (typeof loadFeed === 'function') loadFeed();
+    } else if (url.startsWith('/blue/@')) {
+      const username = decodeURIComponent(url.replace('/blue/@', ''));
+      if (username) openCreatorProfileByUsername(username);
+    } else if (url.startsWith('/blue/hashtag/')) {
+      const tag = decodeURIComponent(url.replace('/blue/hashtag/', ''));
+      if (tag && typeof openHashtagFeed === 'function') openHashtagFeed(tag);
+    }
+  } catch (e) {}
+});
+
+// Resolve username -> user_id e delega pro openCreatorProfile ja existente
+async function openCreatorProfileByUsername(username) {
+  if (!username) return;
+  try {
+    const r = await fetch('/api/blue-profile?username=' + encodeURIComponent(username));
+    if (!r.ok) return;
+    const d = await r.json();
+    const uid = d?.profile?.user_id || d?.user_id;
+    if (uid && typeof openCreatorProfile === 'function') openCreatorProfile(uid);
+  } catch (e) {}
+}
+window.openCreatorProfileByUsername = openCreatorProfileByUsername;
+
+function handleInitialRoute() {
+  const url = window.location.pathname;
+  if (url.startsWith('/blue/@')) {
+    const username = decodeURIComponent(url.replace('/blue/@', ''));
+    if (username) setTimeout(() => openCreatorProfileByUsername(username), 400);
+  } else if (url.startsWith('/blue/hashtag/')) {
+    const tag = decodeURIComponent(url.replace('/blue/hashtag/', ''));
+    if (tag) setTimeout(() => { if (typeof openHashtagFeed === 'function') openHashtagFeed(tag); }, 400);
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', handleInitialRoute);
+else handleInitialRoute();
+
+// Volta pro feed atualizando URL (usado pelos botoes <- das telas hashtag/trending)
+function voltarParaFeed(){
+  if (window.location.pathname !== '/blue' && window.location.pathname !== '/blue/') {
+    BlueRouter.push('/blue', {}, 'Blue');
+  }
+  if (typeof loadFeed === 'function') loadFeed();
+}
+window.voltarParaFeed = voltarParaFeed;
+
 // ── PROFILE ───────────────────────────────────────────────────────────────────
 function openProfile(){
   haptic('light');
@@ -2138,7 +2219,13 @@ function openProfile(){
   }
   loadMyProfile();
 }
-function closeProfile(){document.getElementById('profPage').classList.remove('open');}
+function closeProfile(){
+  document.getElementById('profPage').classList.remove('open');
+  // Volta URL pro feed se estavamos numa rota de perfil
+  if (window.location.pathname.startsWith('/blue/@')) {
+    BlueRouter.push(BlueRouter.ROTAS.feed, {}, 'Blue');
+  }
+}
 
 // Reabre o modal de auth (reaproveitando o authWall do upload) sem forcar
 // o fluxo de upload. Setando _authReturnTo, doAuth() sabe voltar pro perfil
@@ -2174,11 +2261,22 @@ async function openCreatorProfile(userId){
   const cr=feedVid?.creator||{};
   setProfileHeader({display_name:cr.display_name,username:cr.username,avatar_url:cr.avatar_url,user_id:userId},false);
 
+  // Atualiza URL (History API) assim que tem username (melhor caso: ja do feed)
+  if (cr.username) BlueRouter.push(BlueRouter.ROTAS.perfil(cr.username), { userId, username: cr.username }, '@' + cr.username);
+
   // Busca perfil completo, contagem de seguidores e status de follow em paralelo
   Promise.all([
     fetch('/api/blue-profile?user_id='+encodeURIComponent(userId))
       .then(r=>r.ok?r.json():null)
-      .then(d=>{ if(d?.profile) setProfileHeader({...d.profile},false); })
+      .then(d=>{
+        if(d?.profile){
+          setProfileHeader({...d.profile},false);
+          // Se nao sabiamos o username no feed, atualiza URL agora
+          if (!cr.username && d.profile.username) {
+            BlueRouter.replace(BlueRouter.ROTAS.perfil(d.profile.username), { userId, username: d.profile.username }, '@' + d.profile.username);
+          }
+        }
+      })
       .catch(()=>{}),
     loadFollowerCount(userId),
     checkFollowStatus(userId),
@@ -4163,6 +4261,8 @@ setInterval(loadLives,15000);
 async function openHashtagFeed(tag){
   _feedOrigem='hashtag';
   tag=tag.toLowerCase().replace(/^#/,'');
+  // Atualiza URL — permite compartilhar/voltar do browser pra hashtag
+  BlueRouter.push(BlueRouter.ROTAS.hashtag(tag), { tag }, '#' + tag);
   const feed=document.getElementById('feed');
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13px;color:#3b82f6">#'+tag+'</div></div>';
   try{
@@ -4170,10 +4270,10 @@ async function openHashtagFeed(tag){
     const d=await r.json();
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
     feed.innerHTML='';
-    if(!videos.length){feed.innerHTML='<div style="height:60dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(150,190,230,.5)"><div style="font-size:32px">#</div><div>Nenhum video com #'+tag+'</div><button onclick="loadFeed()" style="margin-top:12px;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:10px 20px;color:#3b82f6;font-size:13px;font-weight:600;cursor:pointer">Voltar ao feed</button></div>';return;}
+    if(!videos.length){feed.innerHTML='<div style="height:60dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(150,190,230,.5)"><div style="font-size:32px">#</div><div>Nenhum video com #'+tag+'</div><button onclick="voltarParaFeed()" style="margin-top:12px;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:10px 20px;color:#3b82f6;font-size:13px;font-weight:600;cursor:pointer">Voltar ao feed</button></div>';return;}
     const hdr=document.createElement('div');
     hdr.style.cssText='position:sticky;top:48px;z-index:80;background:rgba(2,8,23,.95);backdrop-filter:blur(10px);padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(59,130,246,.15)';
-    hdr.innerHTML='<button onclick="loadFeed()" style="background:none;border:none;color:#3b82f6;font-size:18px;cursor:pointer">&#8592;</button><div style="font-size:15px;font-weight:700;color:#3b82f6">#'+tag+'</div><div style="font-size:11px;color:rgba(150,190,230,.4)">'+(d.hashtag?.usos||0)+' usos</div>';
+    hdr.innerHTML='<button onclick="voltarParaFeed()" style="background:none;border:none;color:#3b82f6;font-size:18px;cursor:pointer">&#8592;</button><div style="font-size:15px;font-weight:700;color:#3b82f6">#'+tag+'</div><div style="font-size:11px;color:rgba(150,190,230,.4)">'+(d.hashtag?.usos||0)+' usos</div>';
     feed.appendChild(hdr);
     videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
     setupObs();
@@ -4190,7 +4290,7 @@ async function openTrending(){
     feed.innerHTML='';
     const hdr=document.createElement('div');
     hdr.style.cssText='padding:60px 16px 16px';
-    let html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><button onclick="loadFeed()" style="background:none;border:none;color:#3b82f6;font-size:18px;cursor:pointer">&#8592;</button><div style="font-size:18px;font-weight:800">Em alta</div></div>';
+    let html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><button onclick="voltarParaFeed()" style="background:none;border:none;color:#3b82f6;font-size:18px;cursor:pointer">&#8592;</button><div style="font-size:18px;font-weight:800">Em alta</div></div>';
     if(!tags.length)html+='<div style="color:rgba(150,190,230,.4);font-size:13px">Nenhuma hashtag em alta ainda.</div>';
     else tags.forEach((t,i)=>{html+='<div onclick="openHashtagFeed(\''+t.nome+'\')" style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer"><div style="font-size:16px;font-weight:800;color:rgba(150,190,230,.3);width:28px">'+(i+1)+'</div><div><div style="font-weight:700;font-size:15px;color:#e8f4ff">#'+t.nome+(t.trending?' \uD83D\uDD25':'')+'</div><div style="font-size:11px;color:rgba(150,190,230,.4)">'+t.usos+' videos</div></div></div>';});
     hdr.innerHTML=html;
