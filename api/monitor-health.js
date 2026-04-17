@@ -76,6 +76,34 @@ module.exports = async function handler(req, res) {
 // Armazena hash anterior em memória do processo (reset a cada cold start).
 const changelogHashes = {};
 
+// Extrai o texto "estável" da página: remove scripts, styles, SVGs, comments,
+// atributos dinâmicos (nonces, ids, classes minificadas, csrf), hashes hex
+// e timestamps. Isso evita falsos positivos quando a página só muda por
+// build hash / CSP nonce / token de sessão. Resultado: só alerta quando o
+// texto visível muda de verdade.
+function extractStableText(raw) {
+  return raw
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, '')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
+    // Remove atributos que mudam a cada request (nonce, csrf, ids hash, classes minificadas)
+    .replace(/\s(nonce|data-[\w-]+|id|class|style|srcset|integrity|crossorigin)="[^"]*"/gi, '')
+    // Remove hashes hex longos (build ids, asset hashes)
+    .replace(/\b[a-f0-9]{16,}\b/gi, '')
+    // Remove timestamps / numeros grandes (session ids, epoch)
+    .replace(/\b\d{10,}\b/g, '')
+    // Reduz qualquer tag restante a só o nome
+    .replace(/<(\/?\w+)[^>]*>/g, '<$1>')
+    // Colapsa whitespace
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 async function checkAPIChangelogs() {
   const endpoints = [
     { name: 'OpenAI', url: 'https://platform.openai.com/docs/changelog' },
@@ -90,7 +118,9 @@ async function checkAPIChangelogs() {
       const r = await fetch(ep.url, { signal: AbortSignal.timeout(5000) });
       if (!r.ok) continue;
       const text = await r.text();
-      const sample = text.slice(0, 2000); // só o topo — changelogs novos aparecem primeiro
+      const cleaned = extractStableText(text);
+      // Amostra maior agora (3000) — scripts/styles removidos liberam espaço
+      const sample = cleaned.slice(0, 3000);
       const hash = crypto.createHash('md5').update(sample).digest('hex');
       const prev = changelogHashes[ep.name];
       changelogHashes[ep.name] = hash;
