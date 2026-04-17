@@ -563,10 +563,14 @@ let paginaHistorico = 1;
 async function carregarHistorico(pagina){
   try {
     const region = document.getElementById('regionSelect')?.value || '';
+    // Usa o mesmo periodo selecionado pela busca ativa — assim o historico
+    // respeita o filtro 24h / 7d / 30d. Rotacao 24h -> 7d -> 30d automatica.
+    const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
     const params = new URLSearchParams({
       action: 'historico',
       pagina: String(pagina || 1),
-      pais: region || ''
+      pais: region || '',
+      periodo: periodo
     });
     const r = await fetch(`/api/virais?${params}`);
     if (!r.ok) return;

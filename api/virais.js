@@ -91,6 +91,7 @@ async function historicoAction(req, res) {
   const idioma = (req.query.idioma || '').toString().trim();
   const pais   = (req.query.pais   || '').toString().trim();
   const ordem  = (req.query.ordem  || 'recentes').toLowerCase();
+  const periodo = (req.query.periodo || 'todos').toString().toLowerCase(); // 24h | 7d | 30d | todos
   const pagina = Math.max(1, parseInt(req.query.pagina || '1', 10) || 1);
   const limite = 20;
   const offset = (pagina - 1) * limite;
@@ -99,6 +100,19 @@ async function historicoAction(req, res) {
   if (nicho  && nicho  !== 'todos' && nicho  !== '') parts.push(`nicho=eq.${encodeURIComponent(nicho)}`);
   if (idioma && idioma !== 'todos' && idioma !== '') parts.push(`idioma=eq.${encodeURIComponent(idioma)}`);
   if (pais   && pais   !== 'todos' && pais   !== '') parts.push(`pais=eq.${encodeURIComponent(pais.toUpperCase())}`);
+
+  // Filtro por periodo de publicacao — rotacao automatica 24h -> 7d -> 30d.
+  // Mesmo em "todos" aplicamos teto de 30 dias: video >30d sai da pagina.
+  // Um video passa naturalmente de bucket conforme envelhece (sem cron).
+  const MS_24H = 86400000;
+  const agora = Date.now();
+  let limiteDias = 30;
+  if (periodo === '24h') limiteDias = 1;
+  else if (periodo === '7d') limiteDias = 7;
+  else if (periodo === '30d') limiteDias = 30;
+  // 'todos' fica com 30 (requisito: videos somem do banco apos 30 dias).
+  const desde = new Date(agora - limiteDias * MS_24H).toISOString();
+  parts.push(`publicado_em=gte.${desde}`);
 
   const orderMap = {
     views: 'views.desc',
@@ -137,5 +151,7 @@ async function historicoAction(req, res) {
     pagina,
     total_paginas,
     tem_mais: offset + limite < total,
+    periodo_aplicado: periodo,
+    limite_dias: limiteDias,
   });
 }
