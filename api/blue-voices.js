@@ -1,5 +1,6 @@
 // api/blue-voices.js — Vozes customizadas do BlueVoice salvas no Supabase
 // com metadados reais de idioma/sotaque/gênero/estilo do ElevenLabs
+const { generateSpeech } = require('./_helpers/tts.js');
 
 // ── HELPERS DE NORMALIZAÇÃO DE METADADOS ELEVENLABS ─────────────────────────
 const LANG_MAP = [
@@ -330,13 +331,13 @@ module.exports = async function handler(req, res) {
           }
           if (!previewB64) {
             try {
-              const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
-                method: 'POST',
-                headers: { 'xi-api-key': xiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-                body: JSON.stringify({ text: 'Olá! Essa é uma prévia da minha voz.', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+              const { audio } = await generateSpeech('Olá! Essa é uma prévia da minha voz.', voice_id, {
+                stability: 0.5,
+                similarity: 0.75,
+                modelId: 'eleven_multilingual_v2',
               });
-              if (ttsR.ok) previewB64 = Buffer.from(await ttsR.arrayBuffer()).toString('base64');
-            } catch (e) {}
+              previewB64 = audio.toString('base64');
+            } catch (e) { /* preview é opcional */ }
           }
         } else {
           console.log('[blue-voices] Voice not accessible via API:', voice_id);

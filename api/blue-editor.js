@@ -1,4 +1,6 @@
 // api/blue-editor.js
+const { generateSpeech } = require('./_helpers/tts.js');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -236,16 +238,20 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ roteiros, videoId: vid });
   }
 
-  // ── tts: gera áudio narração ────────────────────────────────────────────────
+  // ── tts: gera áudio narração (via helper multi-provider) ──────────────────
   if (action === 'tts') {
-    if (!roteiro||!voiceId) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
-    if (!ELABS) return res.status(500).json({ error: 'ElevenLabs não configurado' });
+    if (!roteiro || !voiceId) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, { method:'POST', headers:{'xi-api-key':ELABS,'Content-Type':'application/json',Accept:'audio/mpeg'}, body:JSON.stringify({text:roteiro,model_id:'eleven_multilingual_v2',voice_settings:{stability:0.45,similarity_boost:0.78}}) });
-      if (!r.ok) { const e=await r.text(); return res.status(r.status).json({ error:'ElevenLabs: '+e.slice(0,100) }); }
-      const buf = await r.arrayBuffer();
-      return res.status(200).json({ audio_b64: Buffer.from(buf).toString('base64') });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
+      const { audio, provider, warning } = await generateSpeech(roteiro, voiceId, {
+        stability: 0.45,
+        similarity: 0.78,
+        modelId: 'eleven_multilingual_v2',
+      });
+      return res.status(200).json({ audio_b64: audio.toString('base64'), provider, warning });
+    } catch (e) {
+      console.error('[blue-editor tts]', e.message, e.attempts || '');
+      return res.status(502).json({ error: 'TTS falhou em todos os providers: ' + e.message });
+    }
   }
 
   // ── voice-preview: URL de preview de voz ElevenLabs ────────────────────────
@@ -431,25 +437,22 @@ module.exports = async function handler(req, res) {
     const rot = roteiro || req.body?.roteiro;
     const vid4 = voiceId || req.body?.voiceId;
     if (!rot || !vid4) return res.status(400).json({ error: 'roteiro e voiceId obrigatórios' });
-    if (!ELABS) return res.status(500).json({ error: 'ElevenLabs não configurado' });
     if (!OPENAI) return res.status(500).json({ error: 'OPENAI_API_KEY não configurada (precisa para Whisper)' });
 
     try {
-      // 1) Gera MP3 via ElevenLabs
-      const ttsR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid4}`, {
-        method: 'POST',
-        headers: { 'xi-api-key': ELABS, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-        body: JSON.stringify({
-          text: rot,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.45, similarity_boost: 0.78 }
-        })
-      });
-      if (!ttsR.ok) {
-        const et = await ttsR.text();
-        return res.status(ttsR.status).json({ error: 'ElevenLabs: ' + et.slice(0, 150) });
+      // 1) Gera MP3 via helper multi-provider (ElevenLabs → OpenAI TTS)
+      let audioBuf;
+      try {
+        const { audio } = await generateSpeech(rot, vid4, {
+          stability: 0.45,
+          similarity: 0.78,
+          modelId: 'eleven_multilingual_v2',
+        });
+        audioBuf = audio;
+      } catch (ttsErr) {
+        console.error('[blue-editor tts]', ttsErr.message, ttsErr.attempts || '');
+        return res.status(502).json({ error: 'TTS falhou: ' + ttsErr.message });
       }
-      const audioBuf = Buffer.from(await ttsR.arrayBuffer());
 
       // 2) Upload para Supabase Storage
       const jobIdShort = Math.random().toString(36).slice(2, 10);
