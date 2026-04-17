@@ -124,9 +124,13 @@ module.exports = async function handler(req, res) {
     }),
 
     check('upstash_redis', async (signal) => {
-      if (!process.env.UPSTASH_REDIS_URL) throw new Error('não configurado');
-      const r = await fetch(`${process.env.UPSTASH_REDIS_URL}/ping`, {
-        headers: { Authorization: 'Bearer ' + process.env.UPSTASH_REDIS_TOKEN },
+      // Aceita os dois padrões: o antigo (UPSTASH_REDIS_URL) e o atual do
+      // pacote @upstash/redis (UPSTASH_REDIS_REST_URL).
+      const url = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+      const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
+      if (!url || !token) throw new Error('não configurado');
+      const r = await fetch(`${url}/ping`, {
+        headers: { Authorization: 'Bearer ' + token },
         signal,
       });
       if (!r.ok) throw new Error(`status ${r.status}`);
