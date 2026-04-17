@@ -444,6 +444,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="fpConversionsTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- PROGRAMA PIONEIROS -->
+    <div class="section" id="pioneirosSection">
+      <div class="section-header">
+        <div class="section-title">🏆 Programa Pioneiros <span class="section-subtitle">— R$1.000 a cada 100 assinantes qualificados indicados</span></div>
+        <button class="action-btn" onclick="loadPioneiros()">↻ Atualizar</button>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Pioneiros ativos</div><div class="stat-value blue" id="pnAtivos">—</div><div class="stat-sub">total: <span id="pnTotal">—</span></div></div>
+        <div class="stat-card"><div class="stat-label">Pendente pagamento</div><div class="stat-value yellow" id="pnPendente">—</div><div class="stat-sub">meta atingida</div></div>
+        <div class="stat-card"><div class="stat-label">Prêmios pagos</div><div class="stat-value green" id="pnPagos">—</div><div class="stat-sub">R$ <span id="pnPagosBrl">—</span></div></div>
+        <div class="stat-card"><div class="stat-label">Indicações qualificadas</div><div class="stat-value purple" id="pnQualificados">—</div><div class="stat-sub">total: <span id="pnIndicados">—</span></div></div>
+      </div>
+      <div class="table-wrap" id="pioneirosTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <!-- VERIFICAÇÃO DE CONTAS -->
     <div class="section" id="verificacaoSection">
       <div class="section-header">
@@ -966,6 +981,7 @@ async function loadData(){
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
+    loadPioneiros();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1427,6 +1443,69 @@ async function executarBackup(){
     if(d.ok){toast('✅ Backup concluído: '+(d.size/1024).toFixed(1)+'KB');loadBackups();}
     else toast('Erro: '+(d.error||'falha'));
   }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── PROGRAMA PIONEIROS ────────────────────────────────────────────────────
+async function loadPioneiros(){
+  try{
+    const r=await fetch('/api/pioneiros?action=admin-listar',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(!r.ok){document.getElementById('pioneirosTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';return;}
+    const d=await r.json();
+    const stats=d.stats||{};
+    document.getElementById('pnAtivos').textContent=stats.ativos||0;
+    document.getElementById('pnTotal').textContent=stats.total||0;
+    document.getElementById('pnPendente').textContent=stats.pendente_pagamento||0;
+    document.getElementById('pnPagos').textContent=stats.premios_pagos||0;
+    document.getElementById('pnPagosBrl').textContent=(stats.total_premios_brl||0).toLocaleString('pt-BR');
+    document.getElementById('pnQualificados').textContent=stats.total_qualificados||0;
+    document.getElementById('pnIndicados').textContent=stats.total_indicados||0;
+
+    const list=d.pioneiros||[];
+    if(!list.length){document.getElementById('pioneirosTable').innerHTML='<div class="empty-state">Nenhum pioneiro ainda.</div>';return;}
+
+    const statusBadge=(s)=>{
+      if(s==='concluido')return '<span class="badge" style="background:rgba(78,204,163,.15);color:var(--green);border:1px solid rgba(78,204,163,.3)">✅ Concluído</span>';
+      if(s==='pendente_pagamento')return '<span class="badge" style="background:rgba(251,191,36,.15);color:var(--yellow);border:1px solid rgba(251,191,36,.3)">⏳ Pagamento</span>';
+      return '<span class="badge" style="background:rgba(0,170,255,.12);color:var(--neon);border:1px solid rgba(0,170,255,.25)">▶ Ativo</span>';
+    };
+    const fmtDate=(iso)=>iso?new Date(iso).toLocaleDateString('pt-BR'):'—';
+
+    document.getElementById('pioneirosTable').innerHTML=`
+      <table>
+        <thead><tr><th>Usuário</th><th>Email</th><th>Status</th><th>Qualificados</th><th>Indicados</th><th>Prêmio</th><th>Desbloqueio</th><th>Link ref</th></tr></thead>
+        <tbody>${list.map(p=>{
+          const progresso=Math.min(100,Math.round((p.assinantes_qualificados/100)*100));
+          const barColor=p.premio_liberado?'var(--green)':p.assinantes_qualificados>50?'var(--yellow)':'var(--neon)';
+          const premioCel=p.premio_pago_em
+            ? `<span style="color:var(--green);font-size:11px">💰 Pago ${fmtDate(p.premio_pago_em)}</span>`
+            : p.premio_liberado
+              ? '<span style="color:var(--yellow);font-size:11px">🏆 Liberado</span>'
+              : '<span style="color:var(--dim);font-size:11px">—</span>';
+          const userCel=p.username
+            ? `<span style="color:var(--text)">@${p.username}</span>${p.display_name?`<div style="font-size:10px;color:var(--dim)">${p.display_name}</div>`:''}`
+            : `<span style="color:var(--dim);font-family:var(--mono);font-size:10px">${(p.user_id||'').slice(0,8)}…</span>`;
+          return `<tr>
+            <td>${userCel}</td>
+            <td style="font-size:11px;color:var(--dim)">${p.email||'—'}</td>
+            <td>${statusBadge(p.status)}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;min-width:60px;max-width:100px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden">
+                  <div style="width:${progresso}%;height:100%;background:${barColor}"></div>
+                </div>
+                <span style="font-family:var(--mono);font-size:11px;color:var(--text)">${p.assinantes_qualificados}/100</span>
+              </div>
+            </td>
+            <td style="color:var(--dim);font-family:var(--mono);font-size:11px">${p.assinantes_indicados}</td>
+            <td>${premioCel}</td>
+            <td style="color:var(--dim);font-size:11px">${fmtDate(p.desbloqueado_em)}</td>
+            <td><code style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.06);padding:2px 6px;border-radius:4px">${p.link_ref||'—'}</code></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+  }catch(e){
+    document.getElementById('pioneirosTable').innerHTML='<div class="empty-state">Erro: '+e.message+'</div>';
+  }
 }
 
 // ── VERIFICAÇÃO DE CONTAS ─────────────────────────────────────────────────

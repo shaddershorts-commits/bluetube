@@ -26,6 +26,16 @@ module.exports = async function handler(req, res) {
     return processarQualificacoes(req, res, { SU, SK, h });
   }
 
+  // Admin: listar todos os pioneiros (auth via ADMIN_SECRET Bearer)
+  if (action === 'admin-listar') {
+    const authHeader = req.headers['authorization'] || '';
+    const ADMIN_SECRET = process.env.ADMIN_SECRET;
+    if (!ADMIN_SECRET || authHeader !== 'Bearer ' + ADMIN_SECRET) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    return adminListarAction(res, { SU, h });
+  }
+
   // Demais actions precisam de token
   const token = req.query.token || (req.body && req.body.token);
   if (!token) return res.status(401).json({ error: 'token_obrigatorio' });
@@ -314,6 +324,94 @@ async function solicitarPagamentoAction(res, userId, ctx) {
     });
     return res.status(500).json({ error: e.message });
   }
+}
+
+async function adminListarAction(res, { SU, h }) {
+  try {
+    // 1. Todos os pioneiros, mais recentes primeiro
+    const pR = await fetch(
+      `${SU}/rest/v1/pioneiros_programa?select=*&order=desbloqueado_em.desc.nullslast&limit=500`,
+      { headers: h }
+    );
+    if (!pR.ok) return res.status(502).json({ error: 'supabase_falhou' });
+    const pioneiros = await pR.json();
+    if (!pioneiros.length) {
+      return res.status(200).json({ total: 0, pioneiros: [], stats: zeroStats() });
+    }
+
+    const userIds = pioneiros.map((p) => p.user_id).filter(Boolean);
+    const inList = userIds.map((id) => `"${id}"`).join(',');
+
+    // 2. Perfis Blue (username + display_name) em batch
+    const profR = await fetch(
+      `${SU}/rest/v1/blue_profiles?user_id=in.(${inList})&select=user_id,username,display_name`,
+      { headers: h }
+    );
+    const profiles = profR.ok ? await profR.json() : [];
+    const profMap = Object.fromEntries(profiles.map((pr) => [pr.user_id, pr]));
+
+    // 3. Emails (subscribers) em batch
+    const subR = await fetch(
+      `${SU}/rest/v1/subscribers?user_id=in.(${inList})&select=user_id,email`,
+      { headers: h }
+    );
+    const subs = subR.ok ? await subR.json() : [];
+    const emailMap = Object.fromEntries(subs.map((s) => [s.user_id, s.email]));
+
+    // 4. Pagamentos em batch (último por pioneiro)
+    const pioneiroIds = pioneiros.map((p) => `"${p.id}"`).join(',');
+    const pagR = await fetch(
+      `${SU}/rest/v1/pioneiros_pagamentos?pioneiro_id=in.(${pioneiroIds})&select=pioneiro_id,status,valor,stripe_transfer_id,processado_em,erro&order=processado_em.desc.nullslast`,
+      { headers: h }
+    );
+    const pagamentos = pagR.ok ? await pagR.json() : [];
+    const pagMap = {};
+    for (const pag of pagamentos) {
+      if (!pagMap[pag.pioneiro_id]) pagMap[pag.pioneiro_id] = pag;
+    }
+
+    // 5. Monta linhas enriquecidas
+    const linhas = pioneiros.map((p) => {
+      const prof = profMap[p.user_id] || {};
+      return {
+        id: p.id,
+        user_id: p.user_id,
+        username: prof.username || null,
+        display_name: prof.display_name || null,
+        email: emailMap[p.user_id] || null,
+        status: p.status,
+        link_ref: p.link_ref,
+        assinantes_indicados: p.assinantes_indicados || 0,
+        assinantes_qualificados: p.assinantes_qualificados || 0,
+        premio_liberado: !!p.premio_liberado,
+        premio_pago_em: p.premio_pago_em,
+        desbloqueado_em: p.desbloqueado_em,
+        stripe_payout_id: p.stripe_payout_id,
+        ultimo_pagamento: pagMap[p.id] || null,
+      };
+    });
+
+    // 6. Estatísticas agregadas
+    const stats = {
+      total: linhas.length,
+      ativos: linhas.filter((l) => l.status === 'ativo').length,
+      pendente_pagamento: linhas.filter((l) => l.status === 'pendente_pagamento').length,
+      concluidos: linhas.filter((l) => l.status === 'concluido').length,
+      premios_pagos: linhas.filter((l) => l.premio_pago_em).length,
+      total_indicados: linhas.reduce((a, l) => a + l.assinantes_indicados, 0),
+      total_qualificados: linhas.reduce((a, l) => a + l.assinantes_qualificados, 0),
+      total_premios_brl: linhas.filter((l) => l.premio_pago_em).length * 1000,
+    };
+
+    return res.status(200).json({ total: linhas.length, pioneiros: linhas, stats });
+  } catch (e) {
+    console.error('[pioneiros admin-listar]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+function zeroStats() {
+  return { total: 0, ativos: 0, pendente_pagamento: 0, concluidos: 0, premios_pagos: 0, total_indicados: 0, total_qualificados: 0, total_premios_brl: 0 };
 }
 
 async function processarQualificacoes(req, res, { SU, SK, h }) {
