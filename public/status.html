@@ -1,44 +1,226 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Status — BlueTube</title>
-<style>:root{--bg:#020817;--text:#e8f4ff;--dim:rgba(150,190,230,.4);--neon:#00aaff;--green:#22c55e;--red:#ef4444;--yellow:#fbbf24}
-*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;padding:40px 20px}
-.wrap{max-width:640px;margin:0 auto}.back{display:inline-block;margin-bottom:24px;color:var(--dim);text-decoration:none;font-size:13px}.back:hover{color:var(--neon)}
-h1{font-size:28px;font-weight:800;margin-bottom:4px}.sub{font-size:13px;color:var(--dim);margin-bottom:28px}
-.status-badge{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:100px;font-size:14px;font-weight:700;margin-bottom:28px}
-.status-badge.ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:var(--green)}
-.status-badge.degraded{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--yellow)}
-.status-badge.down{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red)}
-.dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.card{background:rgba(10,22,40,.8);border:1px solid rgba(0,170,255,.1);border-radius:14px;padding:16px 20px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
-.card-name{font-size:14px;font-weight:600}.card-status{display:flex;align-items:center;gap:8px;font-size:12px;font-family:monospace}
-.updated{font-size:12px;color:var(--dim);margin-top:20px;text-align:center}
-</style></head><body><div class="wrap">
-<a href="/" class="back">← Voltar ao BlueTube</a>
-<h1>Status do sistema</h1>
-<p class="sub">Atualiza automaticamente a cada 30 segundos</p>
-<div id="badge" class="status-badge ok"><span class="dot" style="background:var(--green)"></span> Verificando...</div>
-<div id="services"></div>
-<div class="updated" id="updated">Verificando...</div>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Status — BlueTube</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817; --card:rgba(10,22,40,.8); --text:#e8f4ff; --dim:rgba(150,190,230,.5);
+  --dim2:rgba(232,244,255,.35); --neon:#00aaff; --primary:#1a6bff;
+  --green:#22c55e; --yellow:#fbbf24; --red:#ef4444;
+  --border:rgba(0,170,255,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+body{padding:40px 20px;background:radial-gradient(ellipse 900px 600px at 50% -10%,rgba(26,107,255,.12),transparent 60%),var(--bg)}
+.wrap{max-width:780px;margin:0 auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+.logo{font-size:22px;font-weight:800;background:linear-gradient(135deg,#3b82f6,#00aaff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+.back{color:var(--dim);text-decoration:none;font-size:13px;font-weight:500}
+.back:hover{color:var(--neon)}
+
+.header{text-align:center;margin-bottom:28px}
+h1{font-size:32px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px}
+.sub{font-size:13px;color:var(--dim)}
+
+.status-badge{display:flex;align-items:center;justify-content:center;gap:12px;padding:22px 24px;border-radius:16px;font-size:16px;font-weight:700;margin:0 auto 32px;max-width:520px;border:1px solid var(--border);backdrop-filter:blur(10px)}
+.status-badge.ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.3);color:var(--green)}
+.status-badge.partial{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:var(--yellow)}
+.status-badge.degraded{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.4);color:var(--yellow)}
+.status-badge.critical{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);color:var(--red)}
+.dot{width:12px;height:12px;border-radius:50%;animation:pulse 2s infinite;flex-shrink:0}
+.dot.ok{background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+.dot.partial,.dot.degraded{background:var(--yellow);box-shadow:0 0 0 4px rgba(251,191,36,.15)}
+.dot.critical{background:var(--red);box-shadow:0 0 0 4px rgba(239,68,68,.15)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+.section{margin-bottom:36px}
+.section-title{font-size:13px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-left:4px}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s}
+.card:hover{border-color:rgba(0,170,255,.3)}
+.card-left{display:flex;align-items:center;gap:12px}
+.card-name{font-size:15px;font-weight:600}
+.card-right{display:flex;align-items:center;gap:14px}
+.card-latency{font-family:'SF Mono','Consolas',monospace;font-size:11px;color:var(--dim2)}
+.card-status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.card-status.ok{color:var(--green)}
+.card-status.error{color:var(--red)}
+.card-error{font-family:monospace;font-size:11px;color:var(--dim2);margin-top:4px}
+
+.uptime-grid{display:grid;grid-template-columns:repeat(90,1fr);gap:2px;padding:16px;background:var(--card);border:1px solid var(--border);border-radius:12px}
+.uptime-bar{height:30px;border-radius:2px;cursor:pointer;background:var(--green)}
+.uptime-bar.partial{background:var(--yellow)}
+.uptime-bar.degraded{background:var(--yellow);opacity:.8}
+.uptime-bar.critical{background:var(--red)}
+.uptime-bar.missing{background:rgba(255,255,255,.05)}
+.uptime-legend{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:8px;padding:0 4px}
+
+.incident{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--yellow);border-radius:10px;padding:14px 18px;margin-bottom:10px}
+.incident.resolved{border-left-color:var(--green);opacity:.75}
+.incident.critical{border-left-color:var(--red)}
+.incident-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:12px}
+.incident-title{font-size:14px;font-weight:600}
+.incident-date{font-size:11px;color:var(--dim2);white-space:nowrap}
+.incident-body{font-size:13px;color:var(--dim);line-height:1.5}
+
+.updated{font-size:12px;color:var(--dim2);text-align:center;margin-top:32px}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,170,255,.2);border-top-color:var(--neon);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:640px){
+  body{padding:24px 14px}
+  h1{font-size:26px}
+  .uptime-grid{grid-template-columns:repeat(45,1fr)}
+  .uptime-grid > :nth-child(n+46){display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="logo" href="/">BlueTube</a>
+    <a class="back" href="/">← Voltar</a>
+  </div>
+
+  <div class="header">
+    <h1>Status do sistema</h1>
+    <p class="sub">Monitoramento em tempo real · atualiza a cada 60 segundos</p>
+  </div>
+
+  <div id="badge" class="status-badge">
+    <span class="dot ok"></span>
+    <span id="badgeText"><span class="spinner"></span> Verificando...</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Serviços</div>
+    <div id="services"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Uptime — últimos 90 dias</div>
+    <div class="uptime-grid" id="uptimeGrid"></div>
+    <div class="uptime-legend">
+      <span>90 dias atrás</span>
+      <span>hoje</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Incidentes recentes</div>
+    <div id="incidents"><div class="card" style="justify-content:center;color:var(--dim)">Nenhum incidente ativo ✨</div></div>
+  </div>
+
+  <div class="updated" id="updated">—</div>
 </div>
+
 <script>
-async function check(){
+const LABELS = {
+  supabase:'Banco de dados (Supabase)',
+  openai:'IA — OpenAI',
+  gemini:'IA — Gemini (10 chaves)',
+  anthropic:'IA — Claude',
+  elevenlabs:'BlueVoice (ElevenLabs)',
+  stripe:'Pagamentos (Stripe)',
+  youtube_api:'YouTube Data API',
+  resend:'Emails (Resend)',
+  cobalt:'BaixaBlue (Cobalt)',
+  upstash_redis:'Cache (Upstash Redis)',
+};
+const STATUS_TEXT = {
+  ok:'Todos os sistemas operacionais',
+  partial:'Degradação pontual — 1-2 serviços com intermitência',
+  degraded:'Degradação parcial — múltiplos serviços afetados',
+  critical:'Incidente em andamento — serviço crítico afetado',
+};
+
+async function loadCurrent(){
   try{
-    const r=await fetch('/api/health');
-    const d=await r.json();
-    const b=document.getElementById('badge');
-    const allOk=Object.values(d.services||{}).every(Boolean);
-    b.className='status-badge '+(allOk?'ok':'degraded');
-    b.innerHTML='<span class="dot" style="background:var(--'+(allOk?'green':'yellow')+')"></span> '+(allOk?'Todos os sistemas operacionais':'Degradação parcial');
-    const map={supabase:'Banco de dados',openai:'Geração de roteiros',gemini:'IA Gemini (fallback)',elevenlabs:'BlueVoice (narração)',stripe:'Pagamentos',anthropic:'Monitor de erros'};
-    document.getElementById('services').innerHTML=Object.entries(d.services||{}).map(([k,v])=>{
-      const c=v?'var(--green)':'var(--red)';
-      return'<div class="card"><div class="card-name">'+(map[k]||k)+'</div><div class="card-status"><span class="dot" style="background:'+c+'"></span><span style="color:'+c+'">'+(v?'Online':'Offline')+'</span></div></div>';
-    }).join('');
-    document.getElementById('updated').textContent='Atualizado: '+new Date().toLocaleTimeString('pt-BR');
+    const r = await fetch('/api/health', { cache:'no-store' });
+    const d = await r.json();
+    renderBadge(d.status || 'critical');
+    renderServices(d.services || {});
+    const last = new Date(d.timestamp).toLocaleString('pt-BR');
+    document.getElementById('updated').textContent = 'Última verificação: ' + last + ' · latência ' + (d.latency_total_ms||0) + 'ms';
   }catch(e){
-    document.getElementById('badge').className='status-badge down';
-    document.getElementById('badge').innerHTML='<span class="dot" style="background:var(--red)"></span> Não foi possível verificar';
+    renderBadge('critical');
+    document.getElementById('services').innerHTML = '<div class="card" style="color:var(--red)">Não foi possível contatar /api/health</div>';
   }
 }
-check();setInterval(check,30000);
-</script></body></html>
+
+function renderBadge(status){
+  const b = document.getElementById('badge');
+  b.className = 'status-badge ' + status;
+  const dot = status === 'ok' ? 'ok' : status === 'critical' ? 'critical' : 'partial';
+  b.innerHTML = '<span class="dot '+dot+'"></span><span>'+(STATUS_TEXT[status]||status)+'</span>';
+}
+
+function renderServices(services){
+  const container = document.getElementById('services');
+  const order = ['supabase','stripe','openai','gemini','anthropic','elevenlabs','youtube_api','resend','cobalt','upstash_redis'];
+  const html = order.filter(k => services[k]).map(k => {
+    const s = services[k];
+    const okClass = s.status === 'ok' ? 'ok' : 'error';
+    const icon = s.status === 'ok' ? '●' : '●';
+    const errLine = s.status !== 'ok' && s.error ? '<div class="card-error">'+escape(s.error)+'</div>' : '';
+    return `
+      <div class="card">
+        <div class="card-left"><div class="card-name">${LABELS[k] || k}</div></div>
+        <div class="card-right">
+          <span class="card-latency">${s.latency_ms||0}ms</span>
+          <span class="card-status ${okClass}">${icon} ${s.status === 'ok' ? 'operacional' : 'offline'}</span>
+        </div>
+      </div>${errLine}`;
+  }).join('');
+  container.innerHTML = html || '<div class="card" style="color:var(--dim)">Sem dados</div>';
+}
+
+async function loadHistory(){
+  try{
+    // Últimas 24h pra granularidade boa (288 pontos se 5/5min); vamos agregar por dia
+    const r = await fetch('/api/monitor-health?action=history&limit=500', { cache:'no-store' });
+    const d = await r.json();
+    renderUptime(d.history || []);
+  }catch(e){
+    renderUptime([]);
+  }
+}
+
+function renderUptime(history){
+  const grid = document.getElementById('uptimeGrid');
+  const now = Date.now();
+  const days = [];
+  for (let i = 89; i >= 0; i--) {
+    const start = new Date(now - i * 86400000); start.setHours(0,0,0,0);
+    const end = new Date(start); end.setDate(end.getDate()+1);
+    const snaps = history.filter(h => {
+      const t = new Date(h.created_at).getTime();
+      return t >= start.getTime() && t < end.getTime();
+    });
+    if (!snaps.length) { days.push({ status:'missing', date:start }); continue; }
+    const worst = snaps.reduce((acc, s) => rank(s.status) > rank(acc) ? s.status : acc, 'ok');
+    days.push({ status: worst, date: start, count: snaps.length });
+  }
+  grid.innerHTML = days.map(d => {
+    const label = d.date.toLocaleDateString('pt-BR') + ' · ' + (d.status === 'missing' ? 'sem dados' : d.status);
+    return '<div class="uptime-bar '+d.status+'" title="'+label+'"></div>';
+  }).join('');
+}
+
+function rank(s){ return { ok:0, partial:1, degraded:2, critical:3, missing:-1 }[s] ?? 0; }
+
+function escape(s){ return String(s).replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c])); }
+
+async function boot(){
+  await Promise.all([loadCurrent(), loadHistory()]);
+}
+boot();
+setInterval(loadCurrent, 60000);
+setInterval(loadHistory, 300000); // a cada 5 min
+</script>
+</body>
+</html>
