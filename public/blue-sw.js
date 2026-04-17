@@ -1,8 +1,9 @@
 // Blue Service Worker — Network first, cache only as offline fallback
-// v3: bypass HTTP memory cache for HTML via fetch(req, {cache:'no-store'})
-//     + force JS/CSS re-check with cache: 'no-cache'
+// v4: bump pra forçar reg.update() detectar mudança e disparar reload
+//     automático via updatefound handler no cliente. Continua com a mesma
+//     estrategia de v3 (no-store em HTML, no-cache em JS/CSS).
 
-const CACHE_NAME = 'blue-v3';
+const CACHE_NAME = 'blue-v4';
 
 self.addEventListener('install', e => {
   self.skipWaiting(); // Activate immediately

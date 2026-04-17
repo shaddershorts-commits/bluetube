@@ -4160,6 +4160,63 @@ if('serviceWorker' in navigator){
   }).catch(()=>{});
 }
 
+// ── AUTO-UPDATE CHECKER ─────────────────────────────────────────────────────
+// Polling em /api/version a cada 2min. Se o commit SHA mudou desde a carga
+// da pagina, mostra banner "Nova versao disponivel" com botao "Atualizar"
+// e auto-reloada em 60s. Cobre o caso de user com aba aberta ha horas/dias
+// (service worker sozinho nao reloada se o blue.html em memoria eh antigo).
+(function autoUpdateChecker(){
+  let _loadedVersion = null;
+  let _bannerShown = false;
+
+  async function getVersion(){
+    try {
+      const r = await fetch('/api/version', { cache: 'no-store' });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d.version || null;
+    } catch(e) { return null; }
+  }
+
+  function showUpdateBanner(newVersion){
+    if (_bannerShown) return;
+    _bannerShown = true;
+    const b = document.createElement('div');
+    b.id = 'bt-update-banner';
+    b.style.cssText = 'position:fixed;bottom:max(80px,env(safe-area-inset-bottom));left:50%;'
+      + 'transform:translateX(-50%) translateY(20px);z-index:9998;'
+      + 'background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;'
+      + 'padding:12px 18px;border-radius:14px;font-size:13px;font-weight:600;'
+      + 'box-shadow:0 10px 40px rgba(26,107,255,.5);display:flex;align-items:center;gap:12px;'
+      + 'max-width:calc(100% - 24px);opacity:0;transition:opacity .3s,transform .3s';
+    b.innerHTML = '<span>🔄 Nova versão disponível</span>'
+      + '<button style="background:rgba(255,255,255,.22);border:none;color:#fff;padding:7px 14px;'
+      + 'border-radius:10px;font-weight:700;cursor:pointer;font-size:12px" '
+      + 'onclick="window.location.reload()">Atualizar agora</button>';
+    document.body.appendChild(b);
+    requestAnimationFrame(() => { b.style.opacity='1'; b.style.transform='translateX(-50%) translateY(0)'; });
+    // Auto-reload em 60s se o user nao responder
+    setTimeout(() => { try { window.location.reload(); } catch(e) {} }, 60000);
+  }
+
+  // Carga inicial: grava a versao atual
+  getVersion().then(v => { _loadedVersion = v; });
+
+  // Polling a cada 2min
+  setInterval(async () => {
+    const v = await getVersion();
+    if (!v || !_loadedVersion) return;
+    if (v !== _loadedVersion) showUpdateBanner(v);
+  }, 2 * 60 * 1000);
+
+  // Tambem checa toda vez que a aba volta a ficar visivel (user trocou pra outra aba)
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || _bannerShown) return;
+    const v = await getVersion();
+    if (v && _loadedVersion && v !== _loadedVersion) showUpdateBanner(v);
+  });
+})();
+
 // ── P12: GESTURES — SWIPE DOWN TO CLOSE + DOUBLE TAP TO LIKE ────────────────
 // Swipe down to close panels
 function enableSwipeClose(panelId,closeFn){
