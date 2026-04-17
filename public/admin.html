@@ -182,7 +182,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="page-sub">Atualiza automaticamente a cada 15 segundos · <span id="nextRefresh">—</span></div>
     </div>
 
-    <!-- REVENUE -->
+    <!-- REVENUE (bruto) -->
     <div class="revenue-bar">
       <div class="revenue-item">
         <div class="revenue-label">MRR — Receita mensal</div>
@@ -202,6 +202,34 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="revenue-item">
         <div class="revenue-label">Master (R$89,99 × assinantes)</div>
         <div class="revenue-value" style="color:var(--yellow);font-size:22px" id="revMaster">R$0,00</div>
+      </div>
+    </div>
+
+    <!-- RECEITA LIQUIDA (apos taxas Stripe + ASAAS) -->
+    <div class="revenue-bar" style="background:linear-gradient(135deg,rgba(34,197,94,.06),rgba(0,170,255,.04));border:1px solid rgba(34,197,94,.25);margin-top:10px">
+      <div class="revenue-item">
+        <div class="revenue-label">💚 MRR líquido</div>
+        <div class="revenue-value" style="color:#22c55e;font-size:24px" id="revNetMRR">R$0,00</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:2px">após taxas Stripe + ASAAS</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">💚 ARR líquido</div>
+        <div class="revenue-value" style="color:#22c55e;font-size:22px" id="revNetARR">R$0,00</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">Taxas mensais pagas</div>
+        <div class="revenue-value" style="color:#f87171;font-size:22px" id="revFees">R$0,00</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:2px" id="revFeesBreakdown">—</div>
+      </div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-item">
+        <div class="revenue-label">Full / Master líquido</div>
+        <div style="display:flex;gap:14px;align-items:baseline">
+          <div style="color:var(--neon);font-size:17px;font-weight:600;font-family:var(--mono)" id="revNetFull">R$0,00</div>
+          <div style="color:var(--yellow);font-size:17px;font-weight:600;font-family:var(--mono)" id="revNetMaster">R$0,00</div>
+        </div>
       </div>
     </div>
 
@@ -898,6 +926,20 @@ async function loadData(){
     document.getElementById('revARR').textContent=fmt(mrr*12);
     document.getElementById('revFull').textContent=fmt(d.revenue?.full_revenue||0);
     document.getElementById('revMaster').textContent=fmt(d.revenue?.master_revenue||0);
+
+    // Receita liquida (apos taxas Stripe + ASAAS)
+    const netMrr=d.revenue?.net_monthly_mrr||0;
+    const stripeFees=d.revenue?.stripe_fees||0;
+    const asaasFees=d.revenue?.asaas_fees||0;
+    const totalFees=d.revenue?.total_fees||0;
+    const activeAff=d.revenue?.active_affiliates||0;
+    document.getElementById('revNetMRR').textContent=fmt(netMrr);
+    document.getElementById('revNetARR').textContent=fmt(netMrr*12);
+    document.getElementById('revFees').textContent=fmt(totalFees);
+    document.getElementById('revFeesBreakdown').textContent=
+      `Stripe ${fmt(stripeFees)} + ASAAS ${fmt(asaasFees)} (${activeAff} saque${activeAff===1?'':'s'} dia 22)`;
+    document.getElementById('revNetFull').textContent=fmt(d.revenue?.net_full_revenue||0);
+    document.getElementById('revNetMaster').textContent=fmt(d.revenue?.net_master_revenue||0);
 
     // Stats
     const payingTotal=(d.subscribers.paying_full||0)+(d.subscribers.paying_master||0);

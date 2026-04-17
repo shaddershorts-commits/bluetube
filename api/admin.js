@@ -676,12 +676,66 @@ export default async function handler(req, res) {
         manual_master: subscribers.filter(s => s.plan === 'master' && s.is_manual).length,
         list: subscribers
       },
-      revenue: {
-        monthly_mrr: (subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 29.99) +
-                     (subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 89.99),
-        full_revenue: subscribers.filter(s => s.plan === 'full' && !s.is_manual).length * 29.99,
-        master_revenue: subscribers.filter(s => s.plan === 'master' && !s.is_manual).length * 89.99
-      },
+      revenue: await (async () => {
+        // Stripe Brasil cartao de credito (padrao): 3.99% + R$ 0,39 por transacao mensal.
+        // ASAAS R$ 1,99: taxa de SAQUE por afiliado que retira no dia 22 (uma vez por mes
+        // por afiliado com saldo > 0), NAO por cada transacao de assinatura.
+        const STRIPE_PCT = parseFloat(process.env.STRIPE_FEE_PCT || '0.0399');
+        const STRIPE_FIXED = parseFloat(process.env.STRIPE_FEE_FIXED || '0.39');
+        const ASAAS_WITHDRAW = parseFloat(process.env.ASAAS_FEE_FIXED || '1.99');
+
+        const qtyFull = subscribers.filter(s => s.plan === 'full' && !s.is_manual).length;
+        const qtyMaster = subscribers.filter(s => s.plan === 'master' && !s.is_manual).length;
+        const qtyPaying = qtyFull + qtyMaster;
+        const grossFull = +(qtyFull * 29.99).toFixed(2);
+        const grossMaster = +(qtyMaster * 89.99).toFixed(2);
+        const grossMrr = +(grossFull + grossMaster).toFixed(2);
+
+        // Taxas Stripe: % + fixa por assinante
+        const stripeFullFeePer = +(29.99 * STRIPE_PCT + STRIPE_FIXED).toFixed(2);
+        const stripeMasterFeePer = +(89.99 * STRIPE_PCT + STRIPE_FIXED).toFixed(2);
+        const stripeFees = +(qtyFull * stripeFullFeePer + qtyMaster * stripeMasterFeePer).toFixed(2);
+
+        // ASAAS: 1 saque/mes por afiliado com saldo > 0.
+        let activeAffiliates = 0;
+        try {
+          const rA = await fetch(
+            `${SUPABASE_URL}/rest/v1/affiliates?select=id&or=(total_full.gt.0,total_master.gt.0)`,
+            { headers: { ...supaHeaders, Prefer: 'count=exact', Range: '0-0' } }
+          );
+          if (rA.ok) {
+            const m = (rA.headers.get('content-range') || '').match(/\/(\d+)$/);
+            activeAffiliates = m ? parseInt(m[1], 10) : 0;
+          }
+        } catch(e) {}
+        const asaasFees = +(activeAffiliates * ASAAS_WITHDRAW).toFixed(2);
+
+        const totalFees = +(stripeFees + asaasFees).toFixed(2);
+        const netMrr = +(grossMrr - totalFees).toFixed(2);
+        const netFull = +(grossFull - (qtyFull * stripeFullFeePer)).toFixed(2);
+        const netMaster = +(grossMaster - (qtyMaster * stripeMasterFeePer)).toFixed(2);
+
+        return {
+          // Bruto
+          monthly_mrr: grossMrr,
+          full_revenue: grossFull,
+          master_revenue: grossMaster,
+          // Liquido (apos taxas Stripe + ASAAS saques)
+          net_monthly_mrr: netMrr,
+          net_full_revenue: netFull,
+          net_master_revenue: netMaster,
+          // Breakdown das taxas
+          stripe_fees: stripeFees,
+          asaas_fees: asaasFees,
+          total_fees: totalFees,
+          active_affiliates: activeAffiliates,
+          fees_config: {
+            stripe_pct: STRIPE_PCT,
+            stripe_fixed: STRIPE_FIXED,
+            asaas_withdraw: ASAAS_WITHDRAW,
+          },
+        };
+      })(),
       conversion: {
         total_free: subscribers.filter(s => s.plan === 'free').length,
         total_paying: subscribers.filter(s => s.plan !== 'free' && !s.is_manual).length,
