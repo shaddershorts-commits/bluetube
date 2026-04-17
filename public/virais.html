@@ -268,8 +268,22 @@ function setPeriod(p, btn) {
   currentPeriod = p;
   document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  // Atualiza o historico imediatamente (zero cota) — nao espera o fetchVirals
+  carregarHistorico(1);
+  atualizarBadgeBanco();
   fetchVirals();
 }
+
+// Recarrega historico quando muda a regiao (antes do fetchVirals disparar)
+document.addEventListener('DOMContentLoaded', () => {
+  const reg = document.getElementById('regionSelect');
+  if (reg) {
+    reg.addEventListener('change', () => {
+      carregarHistorico(1);
+      atualizarBadgeBanco();
+    }, { capture: true });
+  }
+});
 
 // ── FETCH VIRALS ─────────────────────────────────────────────────────────────
 async function fetchVirals() {
@@ -548,12 +562,28 @@ function indexarNoBanco(videos, filtros){
   } catch(e) { /* silent */ }
 }
 
-// Carrega badge discreto com total de videos no banco (chamado no init)
+// Badge reflete os FILTROS ATIVOS (regiao + periodo) — total real
+// disponivel no banco pra essa combinacao, sem precisar clicar Buscar.
 function atualizarBadgeBanco(){
-  fetch('/api/virais?action=historico&pagina=1&pais=todos').then(r => r.json()).then(d => {
-    if (d && typeof d.total === 'number' && d.total > 0){
-      const el = document.getElementById('banco-stats');
-      if (el) el.textContent = `📦 ${d.total.toLocaleString('pt-BR')} vídeos no banco histórico`;
+  const region = document.getElementById('regionSelect')?.value || '';
+  const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
+  const params = new URLSearchParams({
+    action: 'historico',
+    pagina: '1',
+    pais: region,
+    periodo: periodo,
+  });
+  fetch(`/api/virais?${params}`).then(r => r.json()).then(d => {
+    const el = document.getElementById('banco-stats');
+    if (!el) return;
+    if (d && typeof d.total === 'number'){
+      const regionLabel = { BR:'🇧🇷 Brasil', US:'🇺🇸 EUA', ES:'🇪🇸 Espanha', JP:'🇯🇵 Japão', DE:'🇩🇪 Alemanha', FR:'🇫🇷 França' }[region] || region || 'Todos';
+      const periodoLabel = { '24h':'24h', '7d':'7 dias', '30d':'30 dias', 'todos':'30 dias' }[periodo] || periodo;
+      if (d.total > 0) {
+        el.textContent = `📦 ${d.total.toLocaleString('pt-BR')} vídeos no banco · ${regionLabel} · ${periodoLabel}`;
+      } else {
+        el.textContent = `📦 Banco vazio pra esta combinação (${regionLabel} · ${periodoLabel}) — clique em Buscar`;
+      }
     }
   }).catch(() => {});
 }
