@@ -201,6 +201,9 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 .prof-nav-name{font-size:16px;font-weight:700;flex:1}
 .prof-nav-edit{border:1px solid rgba(255,255,255,.3);background:none;border-radius:8px;
   padding:7px 16px;font-size:13px;font-weight:600;color:#fff;cursor:pointer}
+.prof-nav-menu{background:none;border:none;color:#fff;font-size:24px;cursor:pointer;
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-left:2px;line-height:1;padding:0}
+.prof-nav-menu:hover{background:rgba(255,255,255,.08)}
 .prof-hd{padding:20px 20px 0;display:flex;gap:16px;align-items:flex-start}
 .prof-av{width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,255,255,.12);
   background:linear-gradient(135deg,#3b82f6,#8b5cf6);overflow:hidden;flex-shrink:0;
@@ -1138,6 +1141,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     <button class="prof-back" onclick="closeProfile()">←</button>
     <div class="prof-nav-name" id="pNavName">Perfil</div>
     <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()">Editar</button>
+    <button class="prof-nav-menu" id="pNavMenu" style="display:none" onclick="openProfMenu()" title="Mais opções" aria-label="Menu">⋮</button>
   </div>
   <div class="prof-hd">
     <div class="prof-av" id="profAv">?
@@ -1180,6 +1184,42 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="prof-grid" id="profGrid"><div class="pg-empty">Carregando…</div></div>
   <div id="analyticsPanel" style="display:none;padding:12px 0"></div>
   <div id="shopPanel" style="display:none"></div>
+</div>
+
+<!-- PROFILE MENU (⋮ do proprio perfil — compartilhar, config, sair) -->
+<div class="bt-modal-overlay" id="profMenu" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-body" style="padding:8px 24px 16px">
+      <button class="bt-menu-item" onclick="shareMyProfile()">
+        <div class="bt-menu-icon">🔗</div>
+        <div class="bt-menu-text"><div class="title">Compartilhar perfil</div><div class="subtitle">Copia o link do seu perfil</div></div>
+      </button>
+      <a class="bt-menu-item" href="/blue-analytics" style="text-decoration:none">
+        <div class="bt-menu-icon">📊</div>
+        <div class="bt-menu-text"><div class="title">Analytics</div><div class="subtitle">Views, curtidas e retenção</div></div>
+      </a>
+      <a class="bt-menu-item" href="/blue-monetizacao" style="text-decoration:none">
+        <div class="bt-menu-icon">💰</div>
+        <div class="bt-menu-text"><div class="title">Monetização</div><div class="subtitle">Saldo e pagamentos</div></div>
+      </a>
+      <a class="bt-menu-item" href="/pioneiros" style="text-decoration:none">
+        <div class="bt-menu-icon">🏆</div>
+        <div class="bt-menu-text"><div class="title">Programa Pioneiros</div><div class="subtitle">R$ 1.000 por indicações</div></div>
+      </a>
+      <a class="bt-menu-item" href="/" style="text-decoration:none">
+        <div class="bt-menu-icon">⚙️</div>
+        <div class="bt-menu-text"><div class="title">Configurações da conta</div><div class="subtitle">Planos, assinatura e privacidade</div></div>
+      </a>
+      <button class="bt-menu-item danger" onclick="doLogoutBlue()">
+        <div class="bt-menu-icon danger">🚪</div>
+        <div class="bt-menu-text"><div class="title">Sair da conta</div><div class="subtitle">Desconectar deste dispositivo</div></div>
+      </button>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeProfMenu()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <!-- DOTS MENU -->
@@ -2228,6 +2268,40 @@ function closeProfile(){
   }
 }
 
+// ── PROFILE MENU (⋮ do proprio perfil) ───────────────────────────────────────
+function openProfMenu(){ btModalOpen('profMenu'); }
+function closeProfMenu(){ btModalClose('profMenu'); }
+
+function shareMyProfile(){
+  closeProfMenu();
+  const uname = myProfile && myProfile.username;
+  if (!uname) { toast('Carregando perfil…'); return; }
+  const url = 'https://bluetubeviral.com/@' + uname;
+  if (navigator.share) {
+    navigator.share({ title: 'Meu perfil no Blue', text: '@' + uname + ' no Blue', url }).catch(()=>{});
+    return;
+  }
+  try {
+    navigator.clipboard.writeText(url);
+    toast('Link copiado: ' + url);
+  } catch(e) { toast(url); }
+}
+
+function doLogoutBlue(){
+  if (!confirm('Sair da sua conta no Blue?')) return;
+  try {
+    localStorage.removeItem('bt_token');
+    localStorage.removeItem('bt_refresh_token');
+    sessionStorage.clear();
+  } catch(e) {}
+  // Reload via /blue pra cair no estado "visitante"
+  window.location.href = '/blue';
+}
+window.openProfMenu = openProfMenu;
+window.closeProfMenu = closeProfMenu;
+window.shareMyProfile = shareMyProfile;
+window.doLogoutBlue = doLogoutBlue;
+
 // Reabre o modal de auth (reaproveitando o authWall do upload) sem forcar
 // o fluxo de upload. Setando _authReturnTo, doAuth() sabe voltar pro perfil
 // apos login com sucesso ao inves de abrir o upload.
@@ -2349,6 +2423,10 @@ async function checkPioneirosBanner(){
 
 function setProfileHeader(p,isOwn){
   if(!p)return;
+  // Reconciliacao: se myProfile ja carregou, usa user_id como verdade (corrige
+  // race condition quando handleInitialRoute dispara openCreatorProfile antes
+  // do loadMyProfile terminar — caso em que o proprio perfil mostrava "+ Seguir").
+  if (myProfile && p.user_id && myProfile.user_id === p.user_id) isOwn = true;
   const $ = id => document.getElementById(id);
   const set = (id,val) => { const el=$(id); if(el) el.textContent=val; };
   const show = (id,v) => { const el=$(id); if(el) el.style.display=v; };
@@ -2373,6 +2451,7 @@ function setProfileHeader(p,isOwn){
   const bioEl=$('profBio');
   if(bioEl){ if(p.bio){bioEl.textContent=p.bio;bioEl.style.display='block';}else{bioEl.style.display='none';} }
   show('pNavEdit', isOwn ? 'block' : 'none');
+  show('pNavMenu', isOwn ? 'flex' : 'none');
   show('profEditBtn', isOwn ? 'block' : 'none');
   show('profAnalyticsBtn', isOwn ? 'flex' : 'none');
   show('profMonetBtn', isOwn ? 'flex' : 'none');
@@ -2401,6 +2480,8 @@ function openProfileFeed(vids, startId, username) {
   pfVids = vids.filter(v => v && v.video_url);
   if (!pfVids.length) { toast('Sem vídeos disponíveis'); return; }
   pfUserId = pfVids[0]?.user_id || null;
+  // Pausa TODOS os videos do feed principal pra nao tocar de fundo
+  document.querySelectorAll('#feed video').forEach(v => { try { v.pause(); } catch(e){} });
   document.getElementById('pfTitle').textContent = '@' + (username || 'usuário');
   const feed = document.getElementById('pfFeed');
   feed.innerHTML = '';
@@ -2414,21 +2495,37 @@ function openProfileFeed(vids, startId, username) {
     }
   });
   document.getElementById('pfOverlay').classList.add('open');
-  setupPfObs();
-  // Scroll to clicked video
-  setTimeout(() => {
+  // Scroll para o video clicado ANTES do observer pra evitar flicker/conflito
+  requestAnimationFrame(() => {
     const startIdx = pfVids.findIndex(v => v.id === startId);
     if (startIdx > 0) {
       const slides = feed.querySelectorAll('.slide');
-      if (slides[startIdx]) slides[startIdx].scrollIntoView({ block: 'start' });
+      if (slides[startIdx]) slides[startIdx].scrollIntoView({ block: 'start', behavior: 'auto' });
     }
-  }, 100);
+    setupPfObs();
+  });
 }
 
 function closePfOverlay() {
   document.getElementById('pfOverlay').classList.remove('open');
-  if (pfObs) pfObs.disconnect();
-  document.querySelectorAll('#pfFeed video').forEach(v => v.pause());
+  if (pfObs) { pfObs.disconnect(); pfObs = null; }
+  // Pausa e limpa videos do pf-overlay
+  document.querySelectorAll('#pfFeed video').forEach(v => { try { v.pause(); } catch(e){} });
+  // Limpa o conteudo apos a animacao de fechamento (evita que videos fiquem no DOM)
+  setTimeout(() => { const f = document.getElementById('pfFeed'); if (f) f.innerHTML = ''; }, 350);
+  // Religa o video ativo do feed principal (o slide visivel atualmente)
+  setTimeout(() => {
+    document.querySelectorAll('#feed .slide video').forEach(v => {
+      const sl = v.closest('.slide');
+      if (!sl) return;
+      const r = sl.getBoundingClientRect();
+      // Toca o video do slide que esta visivel na viewport
+      if (r.top >= -50 && r.bottom <= window.innerHeight + 50) {
+        if (!v.src && v.dataset.src) v.src = v.dataset.src;
+        try { v.muted = !_interacted; v.play().catch(() => { v.muted = true; v.play().catch(()=>{}); }); } catch(e) {}
+      }
+    });
+  }, 100);
 }
 
 function setupPfObs() {
@@ -3338,6 +3435,17 @@ function initAuth(){
       if(d?.profile){
         myProfile=d.profile;
         updateHdAvatar();
+        // Se prof-page ja esta aberto com o proprio perfil (race condition
+        // entre handleInitialRoute e initAuth), re-renderiza como owner.
+        try {
+          const prof = document.getElementById('profPage');
+          const url = window.location.pathname;
+          if (prof && prof.classList.contains('open')
+              && (url === '/blue' || url === '/blue/'
+                  || url === '/blue/@' + myProfile.username)) {
+            setProfileHeader(myProfile, true);
+          }
+        } catch(e) {}
       }
     }).catch(()=>{});
 }
