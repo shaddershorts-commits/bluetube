@@ -186,4 +186,11 @@ const db = {
   get state() { return { ...state }; },
 };
 
-module.exports = { db, DEFAULT_HEADERS };
+// dbRetry(fn, opts) — wrapper standalone pra arquivos legados que já usam
+// fetch direto no Supabase e só querem ganhar retry + circuit breaker sem
+// reescrever o resto. Ex.: dbRetry(() => fetch(url, {...}))
+async function dbRetry(fn, opts) {
+  return execute(fn, opts);
+}
+
+module.exports = { db, dbRetry, DEFAULT_HEADERS };

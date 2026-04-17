@@ -1,6 +1,19 @@
 // api/blue-feed.js — Feed de vídeos com paginação por cursor + stats + waitlist
 const { cacheGetOrSet, cacheDel } = require('./_helpers/cache');
 const { checkBan } = require('./_helpers/checkBan');
+const { dbRetry } = require('./_helpers/db');
+
+// Wrapper minimo: retry+circuit-breaker em fetches criticos ao Supabase.
+// So joga pro retry em 5xx/network (client errors 4xx nao disparam o breaker).
+async function fetchDb(url, init) {
+  return dbRetry(async () => {
+    const r = await fetch(url, init);
+    if (r.status >= 500 || r.status === 0) {
+      throw new Error(`supabase ${r.status}`);
+    }
+    return r;
+  });
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -452,7 +465,13 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const r = await fetch(url, { headers: h });
+    let r;
+    try {
+      r = await fetchDb(url, { headers: h });
+    } catch (e) {
+      console.error('blue-feed retry esgotado:', e.message);
+      return res.status(200).json({ videos: [], has_more: false });
+    }
     if (!r.ok) {
       const err = await r.text();
       console.error('blue-feed error:', r.status, err);
@@ -492,15 +511,19 @@ module.exports = async function handler(req, res) {
     const has_more = rawSql.length >= limit * 3;
     const next_cursor = has_more && lastSql ? encodeCursor(lastSql.created_at, lastSql.id) : null;
 
-    // Enrich with creator profiles
+    // Enrich with creator profiles (com retry+CB — falha silenciosa mantém feed)
     const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
     let profiles = {};
     if (userIds.length > 0) {
-      const pR = await fetch(
-        `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
-        { headers: h }
-      );
-      if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
+      try {
+        const pR = await fetchDb(
+          `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
+          { headers: h }
+        );
+        if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
+      } catch (e) {
+        console.warn('blue-feed enrich retry esgotado:', e.message);
+      }
     }
 
     const enriched = videos.map(v => ({
