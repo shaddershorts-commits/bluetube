@@ -62,6 +62,15 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to update plan: ' + JSON.stringify(patchData) });
     }
 
+    // Email motivacional pro usuário quando admin promove manualmente pra Full ou Master.
+    // Fire-and-forget — não bloqueia resposta do admin.
+    if (plan === 'full' || plan === 'master') {
+      try {
+        const { sendUpgradeEmail } = require('./_helpers/upgradeEmail.js');
+        sendUpgradeEmail(email, plan, 'monthly').catch((e) => console.error('upgradeEmail (admin):', e.message));
+      } catch (e) { console.error('upgradeEmail import (admin):', e.message); }
+    }
+
     return res.status(200).json({ success: true, email, plan });
   }
 
