@@ -2402,6 +2402,9 @@ function generateAllScripts(lang){
 // ── GERAR DO ZERO ─────────────────────────────────────────────────────────────
 async function generateFromZero(lang){
   const videoUrl = 'https://www.youtube.com/shorts/' + currentVideoId;
+  // Reset das caixas de título a cada rerun (evita título antigo travado se 2ª geração vier sem titleCasual/titleApelativo)
+  ['titleCasualBox','titleApelatBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  ['titleCasualText','titleApelatText'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
   const lbl1=document.getElementById('labelV1'), lbl2=document.getElementById('labelV2');
   // Loading steps rotativos — simulam o fluxo real (Claude Vision leva ~10-20s)
   const loadingSteps = [
