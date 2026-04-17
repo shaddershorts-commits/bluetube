@@ -4,9 +4,8 @@
 
 // Helpers inlined for ESM compatibility on Vercel
 import crypto from 'crypto';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { callAI } = require('./_helpers/ai');
+// ai.js é CJS — importamos via dynamic import() dentro do handler pra
+// evitar problemas de resolução do createRequire no runtime ESM do Vercel.
 function _ck(parts){ return crypto.createHash('md5').update(parts.join('|')).digest('hex'); }
 
 export default async function handler(req, res) {
@@ -381,6 +380,9 @@ Regras:
   }
 
   try {
+    const aiMod = await import('./_helpers/ai.js');
+    const callAI = aiMod.callAI || aiMod.default?.callAI;
+    if (typeof callAI !== 'function') throw new Error('callAI não exportado do helper');
     const { result: raw, provider } = await callAI(userPrompt, systemPrompt, 600, null, {
       temperature: isAdjust ? 0.55 : 0.85,
       topP: 0.95,
