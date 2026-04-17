@@ -1094,6 +1094,23 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   </div>
 </section>
 
+<!-- ── PROGRAMA PIONEIROS ────────────────────────────────────────────────── -->
+<section style="padding:40px 20px;background:radial-gradient(ellipse 800px 400px at 50% 50%,rgba(255,215,0,.06),transparent 60%)">
+  <div style="max-width:760px;margin:0 auto">
+    <a href="/pioneiros.html" style="display:block;background:linear-gradient(180deg,rgba(10,22,40,.8),rgba(2,8,23,.95));border:1px solid rgba(255,215,0,.25);border-radius:20px;padding:32px;text-decoration:none;color:#e8f4ff;position:relative;overflow:hidden;transition:transform .2s,border-color .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='rgba(255,215,0,.5)'" onmouseout="this.style.transform='';this.style.borderColor='rgba(255,215,0,.25)'">
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,#FFD700,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:36px;flex-shrink:0;box-shadow:0 8px 32px rgba(255,215,0,.3)">🏆</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:#FFD700;text-transform:uppercase;margin-bottom:6px">Programa Pioneiros</div>
+          <h3 style="font-size:24px;font-weight:900;letter-spacing:-.5px;margin-bottom:8px">Ganhe <span style="background:linear-gradient(135deg,#FFD700,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent">R$1.000</span></h3>
+          <p style="font-size:14px;color:rgba(232,244,255,.6);line-height:1.5;margin-bottom:10px">Chegue a 1.000 seguidores no Blue, desbloqueie seu link exclusivo e receba R$1.000 no Pix a cada 100 assinantes indicados.</p>
+          <div style="font-size:13px;color:#00aaff;font-weight:600">Ver como participar →</div>
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+
 <!-- ── PLANS ──────────────────────────────────────────────────────────────── -->
 <section class="plans-section" id="plansSection">
   <div class="plans-inner">
@@ -1677,10 +1694,11 @@ async function handleUpgradeClick(plan){
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
   try{
+    const ref = (() => { try { return localStorage.getItem('bt_ref'); } catch { return null; } })();
     const r=await fetch('/api/create-checkout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({plan, billing, token})
+      body:JSON.stringify({plan, billing, token, ref})
     });
     const d=await r.json();
     if(d.url) window.location.href=d.url;
@@ -3522,6 +3540,8 @@ function closeToolModal(){document.getElementById('toolModal').classList.remove(
   // Salva cookie de 60 dias
   const exp = new Date(Date.now() + 60*24*60*60*1000).toUTCString();
   document.cookie = `bt_ref=${ref};expires=${exp};path=/;SameSite=Lax`;
+  // Programa Pioneiros também usa bt_ref — salva em localStorage pro checkout ler
+  try { localStorage.setItem('bt_ref', ref); } catch {}
   // Cookie ID único para rastrear a sessão
   let cid = localStorage.getItem('bt_cookie_id');
   if (!cid) { cid = 'ck_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('bt_cookie_id', cid); }

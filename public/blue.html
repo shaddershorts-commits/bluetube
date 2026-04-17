@@ -1860,7 +1860,38 @@ async function loadMyProfile(){
     myProfile=d.profile;
     setProfileHeader(myProfile,true);
     loadMyVideos();
+    checkPioneirosBanner();
   }catch(e){console.error('loadMyProfile:',e);}
+}
+
+// Programa Pioneiros — banner no perfil quando >= 900 seguidores ou ja desbloqueado
+async function checkPioneirosBanner(){
+  try{
+    const tk=localStorage.getItem('bt_token');
+    if(!tk)return;
+    const r=await fetch('/api/pioneiros?action=status&token='+encodeURIComponent(tk));
+    if(!r.ok)return;
+    const d=await r.json();
+    const host=document.querySelector('.prof-page')||document.body;
+    let banner=document.getElementById('pioneiros-banner');
+    if(!banner){
+      banner=document.createElement('a');
+      banner.id='pioneiros-banner';
+      banner.href='/pioneiros.html';
+      banner.style.cssText='display:none;align-items:center;gap:10px;padding:12px 16px;margin:8px 12px;border-radius:12px;background:linear-gradient(135deg,rgba(255,215,0,.08),rgba(245,158,11,.08));border:1px solid rgba(255,215,0,.25);text-decoration:none;color:#fff;font-size:13px';
+      host.insertBefore(banner,host.firstChild);
+    }
+    if(d.status==='bloqueado' && d.seguidores>=900){
+      banner.innerHTML='<span style="font-size:20px">🔓</span><span>Faltam <b>'+d.faltam+'</b> seguidores pra desbloquear <b style="color:#FFD700">R$1.000</b> →</span>';
+      banner.style.display='flex';
+    }else if(d.status==='ativo' || d.status==='pendente_pagamento'){
+      banner.innerHTML='<span style="font-size:20px">🎯</span><span>Programa Pioneiros: <b>'+(d.assinantes_qualificados||0)+'/100</b> qualificados →</span>';
+      banner.style.display='flex';
+    }else if(d.status==='concluido'){
+      banner.innerHTML='<span style="font-size:20px">✅</span><span>Prêmio recebido no Programa Pioneiros →</span>';
+      banner.style.display='flex';
+    }
+  }catch(e){}
 }
 
 function setProfileHeader(p,isOwn){

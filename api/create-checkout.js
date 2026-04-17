@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { plan, billing, token } = req.body;
+  const { plan, billing, token, ref } = req.body;
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
   const SITE_URL      = process.env.SITE_URL || 'https://bluetubeviral.com';
   const SUPABASE_URL  = process.env.SUPABASE_URL;
@@ -66,6 +66,11 @@ export default async function handler(req, res) {
       'metadata[plan]': plan,
       'metadata[billing]': billing || 'monthly',
     });
+    // Programa Pioneiros: propaga ref do criador indicador pro webhook
+    if (ref && /^[a-z0-9_-]{4,32}$/i.test(ref)) {
+      params.set('metadata[ref]', ref);
+      params.set('client_reference_id', ref);
+    }
 
     if (customerEmail) params.set('customer_email', customerEmail);
 
