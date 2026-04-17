@@ -58,9 +58,9 @@ td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.03)}
 <body>
 <nav>
   <a href="/blue.html">&larr;</a>
-  <h1>ð° Monetizacao</h1>
+  <h1>💰 Monetizacao</h1>
 </nav>
-<div class="content" id="main"><div class="loader">Carregandoâ¦</div></div>
+<div class="content" id="main"><div class="loader">Carregando…</div></div>
 
 <script>
 const TOKEN=localStorage.getItem('bt_token');
@@ -81,14 +81,14 @@ async function load(){
 function renderSetup(){
   document.getElementById('main').innerHTML=`
     <div style="text-align:center;padding:20px 0 30px">
-      <div style="font-size:48px;margin-bottom:12px">ð°</div>
+      <div style="font-size:48px;margin-bottom:12px">💰</div>
       <div style="font-size:22px;font-weight:800;margin-bottom:6px">Comece a ganhar com seus videos</div>
       <div style="font-size:13px;color:var(--dim)">Minimo 100 seguidores para ativar</div>
     </div>
     <div class="feature-cards">
-      <div class="feat"><div class="feat-icon">ð</div><div><div class="feat-title">Gorjetas</div><div class="feat-desc">Receba presentes dos fas em tempo real durante lives e em videos</div></div></div>
-      <div class="feat"><div class="feat-icon">ð</div><div><div class="feat-title">Fundo de Criadores</div><div class="feat-desc">10% da receita do Blue distribuido todo mes proporcionalmente as suas views</div></div></div>
-      <div class="feat"><div class="feat-icon">â­</div><div><div class="feat-title">Assinatura do canal</div><div class="feat-desc">Fas pagam por conteudo exclusivo (em breve)</div></div></div>
+      <div class="feat"><div class="feat-icon">🎁</div><div><div class="feat-title">Gorjetas</div><div class="feat-desc">Receba presentes dos fas em tempo real durante lives e em videos</div></div></div>
+      <div class="feat"><div class="feat-icon">💎</div><div><div class="feat-title">Fundo de Criadores</div><div class="feat-desc">10% da receita do Blue distribuido todo mes proporcionalmente as suas views</div></div></div>
+      <div class="feat"><div class="feat-icon">⭐</div><div><div class="feat-title">Assinatura do canal</div><div class="feat-desc">Fas pagam por conteudo exclusivo (em breve)</div></div></div>
     </div>
     <button class="btn btn-gold" onclick="criarConta()">Configurar conta de pagamento &rarr;</button>
     <div class="msg" id="setupMsg"></div>`;
@@ -97,7 +97,7 @@ function renderSetup(){
 function renderPendingSetup(){
   document.getElementById('main').innerHTML=`
     <div style="text-align:center;padding:40px 0">
-      <div style="font-size:48px;margin-bottom:12px">â³</div>
+      <div style="font-size:48px;margin-bottom:12px">⏳</div>
       <div style="font-size:18px;font-weight:800;margin-bottom:8px">Finalize seu cadastro</div>
       <div style="font-size:13px;color:var(--dim);margin-bottom:20px">Complete o setup da conta Stripe para receber pagamentos</div>
       <button class="btn btn-blue" onclick="criarConta()">Continuar setup &rarr;</button>
@@ -115,15 +115,15 @@ function renderDashboard(d){
     </div>
 
     <div class="section">
-      <div class="sec-title">ð¸ Sacar</div>
-      <div style="font-size:12px;color:var(--dim);margin-bottom:10px">Minimo R$20,00 Â· Cai em ate 2 dias uteis</div>
+      <div class="sec-title">💸 Sacar</div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:10px">Minimo R$20,00 · Cai em ate 2 dias uteis</div>
       <input class="input" id="saqueValor" type="number" step="0.01" min="20" placeholder="Valor (R$)" value="${d.saldo_disponivel>=20?d.saldo_disponivel.toFixed(2):''}"/>
       <button class="btn btn-green" onclick="sacar()" ${d.saldo_disponivel<20?'disabled':''}>Sacar agora &rarr;</button>
       <div class="msg" id="saqueMsg">${d.saldo_disponivel<20?'<span style="color:var(--dim)">Saldo minimo R$20,00 para saque</span>':''}</div>
     </div>
 
     <div class="section">
-      <div class="sec-title">ð Fundo de Criadores â ${f.mes||'este mes'}</div>
+      <div class="sec-title">💎 Fundo de Criadores — ${f.mes||'este mes'}</div>
       <div style="font-size:12px;color:var(--dim);margin-bottom:12px">10% da receita mensal distribuido proporcionalmente as views</div>
       <div class="fundo-stats">
         <div class="fs"><div class="fs-label">Suas views</div><div class="fs-value" style="color:var(--neon)">${fmt(f.minhas_views||0)}</div></div>
@@ -134,8 +134,8 @@ function renderDashboard(d){
     </div>
 
     <div class="section">
-      <div class="sec-title">ð Transacoes recentes</div>
-      <div id="transacoesTable"><div style="color:var(--dim);font-size:12px;text-align:center">Carregandoâ¦</div></div>
+      <div class="sec-title">📋 Transacoes recentes</div>
+      <div id="transacoesTable"><div style="color:var(--dim);font-size:12px;text-align:center">Carregando…</div></div>
     </div>
 
     <div class="section">
@@ -152,7 +152,7 @@ function renderDashboard(d){
 
 async function criarConta(){
   const msg=document.getElementById('setupMsg');
-  if(msg) msg.textContent='Criando contaâ¦';
+  if(msg) msg.textContent='Criando conta…';
   try{
     const r=await fetch('/api/blue-monetizacao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'criar-conta',token:TOKEN})});
     const d=await r.json();
@@ -166,7 +166,7 @@ async function sacar(){
   const msg=document.getElementById('saqueMsg');
   if(!valor||valor<20){msg.innerHTML='<span class="err">Minimo R$20,00</span>';return;}
   if(!confirm('Sacar R$'+valor.toFixed(2)+'?'))return;
-  msg.textContent='Processandoâ¦';
+  msg.textContent='Processando…';
   try{
     const r=await fetch('/api/blue-monetizacao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sacar',token:TOKEN,valor})});
     const d=await r.json();
@@ -185,7 +185,7 @@ async function loadTransacoes(){
     if(!list.length){el.innerHTML='<div style="color:var(--dim);font-size:12px;text-align:center;padding:16px">Nenhuma transacao ainda</div>';return;}
     el.innerHTML=`<table><thead><tr><th>Tipo</th><th>Valor</th><th>Data</th></tr></thead><tbody>${list.map(t=>{
       const badge=t.tipo==='gorjeta'?'badge-gorjeta':t.tipo==='fundo'?'badge-fundo':'badge-saque';
-      const label=t.tipo==='gorjeta'?(t.emoji||'ð')+' Gorjeta':t.tipo==='fundo'?'ð Fundo':'ð¸ Saque';
+      const label=t.tipo==='gorjeta'?(t.emoji||'🎁')+' Gorjeta':t.tipo==='fundo'?'💎 Fundo':'💸 Saque';
       const color=t.valor>=0?'var(--green)':'var(--red)';
       return`<tr><td><span class="badge ${badge}">${label}</span></td><td style="font-weight:700;color:${color}">R$${Math.abs(t.valor).toFixed(2)}</td><td style="color:var(--dim)">${new Date(t.data).toLocaleDateString('pt-BR')}</td></tr>`;
     }).join('')}</tbody></table>`;
