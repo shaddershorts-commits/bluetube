@@ -159,64 +159,35 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       <div class="page-eyebrow"><span class="live-dot"></span>Atualizado em tempo real · Exclusivo Master</div>
       <h1 class="page-title">Shorts <span class="accent">virais</span><br>em alta agora.</h1>
       <div class="page-sub">Shorts narrados de curiosidades com milhões de views — filtre por período e país</div>
+      <div id="banco-stats" style="font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px"></div>
     </div>
 
     <!-- FILTERS -->
     <div class="filters">
-      <!-- Periodo (filtra por data de publicacao) -->
+      <!-- Period -->
       <div class="filter-group">
-        <button class="filter-btn" data-period="24h" onclick="setPeriod('24h',this)">24h</button>
+        <button class="filter-btn active" data-period="24h" onclick="setPeriod('24h',this)">24h</button>
         <div class="filter-divider"></div>
-        <button class="filter-btn active" data-period="7d" onclick="setPeriod('7d',this)">7 dias</button>
+        <button class="filter-btn" data-period="7d" onclick="setPeriod('7d',this)">7 dias</button>
         <div class="filter-divider"></div>
         <button class="filter-btn" data-period="30d" onclick="setPeriod('30d',this)">30 dias</button>
-        <div class="filter-divider"></div>
-        <button class="filter-btn" data-period="todos" onclick="setPeriod('todos',this)">Todos</button>
       </div>
 
-      <!-- Pais -->
-      <select class="filter-select" id="paisSelect" onchange="fetchVirals()">
-        <option value="todos">🌎 Todos os países</option>
+      <!-- Region -->
+      <select class="filter-select" id="regionSelect" onchange="fetchVirals()">
         <option value="BR" selected>🇧🇷 Brasil</option>
-        <option value="US">🇺🇸 Estados Unidos</option>
-        <option value="MX">🇲🇽 México</option>
-        <option value="AR">🇦🇷 Argentina</option>
-        <option value="CO">🇨🇴 Colômbia</option>
-        <option value="PT">🇵🇹 Portugal</option>
-        <option value="ES">🇪🇸 Espanha</option>
+        <option value="US">🇺🇸 EUA</option>
+        <option value="ES">🇪🇸 Espanhol</option>
+        <option value="JP">🇯🇵 Japão</option>
+        <option value="DE">🇩🇪 Alemanha</option>
+        <option value="FR">🇫🇷 França</option>
       </select>
 
-      <!-- Nicho -->
-      <select class="filter-select" id="nichoSelect" onchange="fetchVirals()">
-        <option value="todos" selected>🔥 Todos os nichos</option>
-        <option value="humor">😂 Humor</option>
-        <option value="culinaria">🍳 Culinária</option>
-        <option value="fitness">💪 Fitness</option>
-        <option value="financas">💰 Finanças</option>
-        <option value="educacao">📚 Educação</option>
-        <option value="beleza">💄 Beleza</option>
-        <option value="games">🎮 Games</option>
-        <option value="musica">🎵 Música</option>
-        <option value="esportes">⚽ Esportes</option>
-        <option value="tecnologia">💻 Tecnologia</option>
-        <option value="viagens">✈️ Viagens</option>
-        <option value="pets">🐶 Pets</option>
-      </select>
-
-      <!-- Ordenacao -->
-      <select class="filter-select" id="ordemSelect" onchange="fetchVirals()">
-        <option value="coletado" selected>🆕 Mais recentes (banco)</option>
-        <option value="viral_score">🔥 Viral Score</option>
-        <option value="views">👁 Mais views</option>
-        <option value="engajamento">❤️ Engajamento</option>
-        <option value="recentes">🕒 Publicados recentemente</option>
-      </select>
-
-      <button class="btn-fetch" id="fetchBtn" onclick="fetchVirais()">
+      <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
         <span id="fetchBtnIcon">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         </span>
-        Atualizar
+        Buscar
       </button>
     </div>
   </div>
@@ -253,6 +224,20 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     </div>
   </div>
 
+  <!-- SECAO HISTORICO (banco acumulativo) -->
+  <div id="secao-historico" style="margin-top:48px;display:none">
+    <div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:24px;margin-bottom:20px">
+      <h3 style="color:var(--text);font-size:16px;margin:0 0 4px;font-weight:700">📼 Vídeos do banco histórico</h3>
+      <p style="color:rgba(255,255,255,0.4);font-size:12px;margin:0;font-family:var(--mono)">Vídeos coletados anteriormente com os filtros ativos</p>
+    </div>
+    <div class="shorts-grid" id="historico-grid"></div>
+    <div id="historico-paginacao" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px">
+      <button id="btn-historico-anterior" onclick="mudarPaginaHistorico(-1)" style="display:none;padding:8px 16px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e8f4ff;cursor:pointer;font-family:var(--mono);font-size:12px">← Anterior</button>
+      <span id="historico-pagina-info" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:12px;font-family:var(--mono)"></span>
+      <button id="btn-historico-proximo" onclick="mudarPaginaHistorico(1)" style="display:none;padding:8px 16px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e8f4ff;cursor:pointer;font-family:var(--mono);font-size:12px">Próximos →</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -276,124 +261,86 @@ const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
 // ── STATE ────────────────────────────────────────────────────────────────────
-let currentPeriod = '7d';
+let currentPeriod = '24h';
 let lastResults = [];
-let cursor = null;
-let carregando = false;
-let hasMore = true;
 
 function setPeriod(p, btn) {
   currentPeriod = p;
   document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  fetchVirais();
+  fetchVirals();
 }
 
-// Alias legado (alguns botoes ainda chamam fetchVirals)
-async function fetchVirais(){ return fetchVirals(); }
-
 // ── FETCH VIRALS ─────────────────────────────────────────────────────────────
-async function fetchVirals(append) {
+async function fetchVirals() {
   const btn = document.getElementById('fetchBtn');
   const icon = document.getElementById('fetchBtnIcon');
-  if (!append) {
-    btn.disabled = true;
-    icon.innerHTML = '<span class="spinner"></span>';
-    cursor = null;
-    hasMore = true;
-    lastResults = [];
-    showSkeletons();
-  }
+  btn.disabled = true;
+  icon.innerHTML = '<span class="spinner"></span>';
 
-  carregando = true;
+  const region = document.getElementById('regionSelect').value;
+  const category = '';
+  const q = '';
 
-  const nicho = document.getElementById('nichoSelect')?.value || 'todos';
-  const ordem = document.getElementById('ordemSelect')?.value || 'coletado';
-  const pais = document.getElementById('paisSelect')?.value || 'BR';
-  const periodo = currentPeriod;
-
+  // Show skeletons
   _saveViraisState();
+  showSkeletons();
 
   try {
-    const params = new URLSearchParams({
-      action: 'feed',
-      token: token || '',
-      nicho, ordem, periodo, pais,
-      limit: '24',
-    });
-    if (cursor) params.set('cursor', cursor);
-
-    const r = await fetch(`/api/virais?${params}`);
-    const data = await r.json();
-    if (!r.ok || data.error) {
-      if (!append) showError(data.mensagem || data.error || 'Erro ao carregar banco.');
+    const params = new URLSearchParams({ action:'viral-shorts', period: currentPeriod, region, category, q });
+    const url = `/api/auth?${params}&_t=${Date.now()}`;
+    
+    let r, data;
+    try {
+      r = await fetch(url);
+    } catch(fe) {
+      console.error('Fetch network error:', fe);
+      showError('Erro de rede. Verifique sua conexão.');
       return;
     }
-    const items = (data.videos || []).map(normalizeVirais);
-    if (append) {
-      lastResults = [...lastResults, ...items];
-    } else {
-      lastResults = items;
-    }
-    cursor = data.cursor || null;
-    hasMore = !!data.has_more;
-    renderVideos(lastResults);
 
-    // Stats do banco (primeira carga)
-    if (!append) loadStats();
-  } catch (e) {
-    if (!append) showError('Erro de conexão. Tente novamente.');
+    // Tenta parsear mesmo se não for ok
+    const text = await r.text();
+    try { data = JSON.parse(text); }
+    catch(je) {
+      console.error('JSON parse error, status:', r.status, 'body:', text.slice(0,200));
+      showError('Erro ao processar resposta do servidor (HTTP ' + r.status + ').');
+      return;
+    }
+
+    if (!r.ok || data.error) {
+      showError(data.error || 'Erro ao buscar vídeos (HTTP ' + r.status + ').');
+      return;
+    }
+
+    const newVideos = data.videos || [];
+    if (!newVideos.length) {
+      // Se tem cache local, mostra ele em vez de erro
+      if (lastResults.length) {
+        renderVideos(lastResults);
+      } else {
+        showError('Nenhum vídeo encontrado para este filtro. Tente outro período ou região.');
+      }
+      return;
+    }
+    lastResults = newVideos;
+    renderVideos(lastResults);
+    // Fire-and-forget: indexa no banco pra historico acumulativo (nao bloqueia UI)
+    indexarNoBanco(newVideos, { pais: region, idioma: 'pt' });
+    // Recarrega historico com filtros atuais
+    carregarHistorico(1);
+
+  } catch(e) {
+    console.error('fetchVirals error:', e);
+    if (lastResults.length) {
+      renderVideos(lastResults); // mostra cache local
+    } else {
+      showError('Erro ao buscar vídeos. Tente novamente.');
+    }
   } finally {
-    carregando = false;
     btn.disabled = false;
     icon.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
   }
-}
-
-function normalizeVirais(v) {
-  // Mapeia o shape do virais_banco pro shape legado que renderVideos espera
-  return {
-    id: v.youtube_id,
-    title: v.titulo,
-    thumbnail: v.thumbnail_url,
-    url: v.url,
-    channel: v.canal_nome,
-    views: v.views,
-    viewsFormatted: formatViews(v.views),
-    publishedAt: v.publicado_em,
-    viralScore: Math.round(v.viral_score || 0),
-    nicho: v.nicho,
-    engajamento: v.taxa_engajamento,
-  };
-}
-
-function formatViews(n) {
-  n = Number(n || 0);
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return (n/1000).toFixed(n >= 10000 ? 0 : 1) + 'K';
-  return (n/1_000_000).toFixed(1) + 'M';
-}
-
-// Scroll infinito
-window.addEventListener('scroll', () => {
-  if (!hasMore || carregando || !lastResults.length) return;
-  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500) {
-    fetchVirals(true);
-  }
-});
-
-// Stats do banco
-async function loadStats() {
-  try {
-    const r = await fetch(`/api/virais?action=stats&token=${encodeURIComponent(token||'')}`);
-    if (!r.ok) return;
-    const d = await r.json();
-    const total = (d.total_videos || 0).toLocaleString('pt-BR');
-    const hoje = d.adicionados_hoje || 0;
-    const ult = d.ultima_atualizacao ? timeAgo(d.ultima_atualizacao) : '—';
-    const bar = document.getElementById('statLastUpdate');
-    if (bar) bar.textContent = `📊 ${total} vídeos no banco · +${hoje} hoje · coletado ${ult}`;
-  } catch (e) {}
 }
 
 function showSkeletons() {
@@ -423,12 +370,29 @@ function renderVideos(videos) {
     return;
   }
 
-  const periodLabels = { '24h': 'Últimas 24h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', 'todos': 'Todo o banco' };
+  const periodLabels = { '24h': 'Últimas 24h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias' };
   document.getElementById('statTotal').textContent = videos.length;
+  // Ocultar aviso de data (não relevante)
   const dateWarn = document.getElementById('dateFilterWarn');
   if (dateWarn) dateWarn.style.display = 'none';
-  document.getElementById('statPeriod').textContent = periodLabels[currentPeriod] || currentPeriod;
+  document.getElementById('statPeriod').textContent = periodLabels[currentPeriod];
   document.getElementById('statTopViews').textContent = videos[0]?.viewsFormatted || '—';
+  // Atualiza horário e inicia contador regressivo
+  const updateTime = new Date();
+  const timeStr = updateTime.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('statLastUpdate').textContent = `🔴 Ao vivo · Atualizado às ${timeStr}`;
+
+  // Contador regressivo até próximo refresh
+  if (window._refreshCountdown) clearInterval(window._refreshCountdown);
+  let secsLeft = 50400;
+  window._refreshCountdown = setInterval(() => {
+    secsLeft--;
+    if (secsLeft <= 0) { clearInterval(window._refreshCountdown); return; }
+    const mins = Math.floor(secsLeft/60);
+    const secs = secsLeft % 60;
+    const el = document.getElementById('statLastUpdate');
+    if (el) el.textContent = `🔴 Ao vivo · Atualizado às ${timeStr} · próximo em ${mins}:${String(secs).padStart(2,'0')}`;
+  }, 1000);
   document.getElementById('statsBar').style.display = 'flex';
 
   grid.innerHTML = videos.map((v, i) => {
@@ -436,9 +400,6 @@ function renderVideos(videos) {
     const isTop3 = rank <= 3;
     const rankLabel = rank === 1 ? '🥇 #1' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
     const ago = timeAgo(v.publishedAt);
-    const score = v.viralScore || 0;
-    const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#fbbf24' : '#f87171';
-    const scoreBg = score >= 70 ? 'rgba(34,197,94,.15)' : score >= 40 ? 'rgba(251,191,36,.15)' : 'rgba(239,68,68,.1)';
 
     return `
     <a class="short-card" href="${v.url}" target="_blank" rel="noopener">
@@ -451,7 +412,6 @@ function renderVideos(videos) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
         </div>
         <div class="card-rank ${isTop3?'top3':''}">${rankLabel}</div>
-        <div title="Viral Score — velocidade + engajamento + viralidade (0-100)" style="position:absolute;top:10px;right:10px;font-family:var(--mono);font-size:10px;font-weight:700;background:${scoreBg};border:1px solid ${scoreColor}55;color:${scoreColor};border-radius:6px;padding:3px 8px;backdrop-filter:blur(6px)">🔥 ${score}</div>
       </div>
       <div class="card-info">
         <div class="card-title">${escHtml(v.title)}</div>
@@ -463,7 +423,6 @@ function renderVideos(videos) {
           <span class="card-views-badge">${v.viewsFormatted}</span>
           <span class="card-date">${ago}</span>
         </div>
-        ${v.nicho ? `<div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${v.nicho}</div>` : ''}
         <div class="card-use-btn" onclick="useShort(event,'${v.id}','${escHtml(v.url)}')">
           ↗ Usar no BlueTube
         </div>
@@ -504,11 +463,13 @@ function escHtml(s) {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
-// Full ou Master tem acesso ao banco de virais
-if (token && (plan === 'full' || plan === 'master')) {
+if (plan === 'master') {
   fetchVirals();
-  // Refresh leve a cada 5 min (le do banco, custo zero de cota)
-  setInterval(() => { if (!carregando && !hasMore) return; fetchVirals(); }, 5 * 60 * 1000);
+  // Auto-refresh a cada 14 horas (cache de 14h no servidor economiza quota)
+  setInterval(() => {
+    console.log('[Virais] Auto-refresh...');
+    fetchVirals();
+  }, 14 * 60 * 60 * 1000);
 }
 
 // Also handle prefill on main page
@@ -529,9 +490,7 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
 (function(){
   const s=_load('bt_virais');
   if(!s) return;
-  if(s.nicho){const e=document.getElementById('nichoSelect');if(e)e.value=s.nicho;}
-  if(s.ordem){const e=document.getElementById('ordemSelect');if(e)e.value=s.ordem;}
-  if(s.pais){const e=document.getElementById('paisSelect');if(e)e.value=s.pais;}
+  if(s.region){const e=document.getElementById('regionSelect');if(e)e.value=s.region;}
   if(s.period&&typeof currentPeriod!=='undefined'){
     currentPeriod=s.period;
     document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset&&b.dataset.period===s.period));
@@ -539,9 +498,7 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
 })();
 function _saveViraisState(){
   _save('bt_virais',{
-    nicho:document.getElementById('nichoSelect')?.value||'todos',
-    ordem:document.getElementById('ordemSelect')?.value||'coletado',
-    pais:document.getElementById('paisSelect')?.value||'BR',
+    region:document.getElementById('regionSelect')?.value||'BR',
     period:typeof currentPeriod!=='undefined'?currentPeriod:'7d'
   });
 }
@@ -561,6 +518,123 @@ function _switchTool(name){
       if(map[name]) window.location.href = map[name];
     }
   }catch(e){ window.location.href='/'; }
+}
+
+// ═══ BANCO DE VIRAIS (complemento acumulativo) ═════════════════════════════
+// Fire-and-forget: salva os videos da busca ativa no banco.
+// Se falhar, ninguem percebe — a busca ativa segue funcionando normal.
+function indexarNoBanco(videos, filtros){
+  try {
+    if (!Array.isArray(videos) || !videos.length) return;
+    // Mapeia os campos do resultado do viral-shorts pro shape esperado pelo backend
+    const payload = {
+      filtros: filtros || {},
+      videos: videos.map(v => ({
+        id: v.id,
+        titulo: v.title || v.titulo,
+        thumbnail: v.thumbnail,
+        url: v.url,
+        canal: v.channel || v.canal,
+        views: Number(v.views || 0) || 0,
+        publishedAt: v.publishedAt,
+        hashtags: v.hashtags || []
+      })).filter(v => v.id)
+    };
+    fetch('/api/virais?action=indexar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  } catch(e) { /* silent */ }
+}
+
+// Carrega badge discreto com total de videos no banco (chamado no init)
+function atualizarBadgeBanco(){
+  fetch('/api/virais?action=historico&pagina=1&pais=todos').then(r => r.json()).then(d => {
+    if (d && typeof d.total === 'number' && d.total > 0){
+      const el = document.getElementById('banco-stats');
+      if (el) el.textContent = `📦 ${d.total.toLocaleString('pt-BR')} vídeos no banco histórico`;
+    }
+  }).catch(() => {});
+}
+
+// Carrega a secao de historico com os filtros atuais da pagina
+let paginaHistorico = 1;
+async function carregarHistorico(pagina){
+  try {
+    const region = document.getElementById('regionSelect')?.value || '';
+    const params = new URLSearchParams({
+      action: 'historico',
+      pagina: String(pagina || 1),
+      pais: region || ''
+    });
+    const r = await fetch(`/api/virais?${params}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const secao = document.getElementById('secao-historico');
+    const grid = document.getElementById('historico-grid');
+    if (!secao || !grid) return;
+    if (!d.videos || !d.videos.length){
+      secao.style.display = 'none';
+      return;
+    }
+    secao.style.display = 'block';
+    // Renderiza com o mesmo visual dos cards ativos
+    grid.innerHTML = d.videos.map((v, i) => {
+      const title = v.titulo || '';
+      const thumb = v.thumbnail_url || '';
+      const channel = v.canal_nome || '';
+      const url = v.url || `https://youtube.com/shorts/${v.youtube_id}`;
+      const views = Number(v.views) || 0;
+      const viewsFormatted = views >= 1_000_000 ? (views/1_000_000).toFixed(1)+'M'
+                          : views >= 1000 ? (views/1000).toFixed(views>=10000?0:1)+'K'
+                          : String(views);
+      const ago = timeAgo(v.publicado_em);
+      return `
+      <a class="short-card" href="${url}" target="_blank" rel="noopener">
+        <div class="card-thumb-wrap">
+          ${thumb ? `<img class="card-thumb" src="${thumb}" alt="${escHtml(title)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}
+          <div class="card-overlay"><span class="card-views">${viewsFormatted} views</span></div>
+          <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+          <div class="card-rank">#${i+1}</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title">${escHtml(title)}</div>
+          <div class="card-channel">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+            ${escHtml(channel)}
+          </div>
+          <div class="card-meta">
+            <span class="card-views-badge">${viewsFormatted}</span>
+            <span class="card-date">${ago}</span>
+          </div>
+          <div class="card-use-btn" onclick="useShort(event,'${v.youtube_id}','${escHtml(url)}')">↗ Usar no BlueTube</div>
+        </div>
+      </a>`;
+    }).join('');
+
+    // Paginacao
+    paginaHistorico = d.pagina || pagina || 1;
+    const info = document.getElementById('historico-pagina-info');
+    if (info) info.textContent = `Página ${paginaHistorico} de ${d.total_paginas || 1} · ${d.total || 0} vídeos`;
+    const btnAnt = document.getElementById('btn-historico-anterior');
+    const btnProx = document.getElementById('btn-historico-proximo');
+    if (btnAnt) btnAnt.style.display = paginaHistorico > 1 ? 'inline-block' : 'none';
+    if (btnProx) btnProx.style.display = paginaHistorico < (d.total_paginas || 1) ? 'inline-block' : 'none';
+  } catch(e){ /* silent */ }
+}
+
+function mudarPaginaHistorico(direcao){
+  carregarHistorico(Math.max(1, paginaHistorico + direcao));
+  const sec = document.getElementById('secao-historico');
+  if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Carrega badge no init (assim que a pagina monta)
+if (typeof token !== 'undefined' && token){
+  atualizarBadgeBanco();
+  // Carrega historico imediato com filtros atuais
+  setTimeout(() => carregarHistorico(1), 200);
 }
 
 </script>
