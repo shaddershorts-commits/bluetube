@@ -3485,7 +3485,7 @@ let _stRealtimeCh = null;
 const STC_COLORS = ['#020817','#0f172a','#1e3a5f','#0d1117','#1a0a2e','#0d260d','#2d0a0a','#1a1a0d'];
 
 async function loadStories(){
-  const tok = getValidToken();
+  const tok = await getValidToken();
   if(!tok){ document.getElementById('storiesBar').style.display='none'; return; }
   try{
     const r = await fetch('/api/blue-stories?action=feed&token='+encodeURIComponent(tok));
@@ -3981,13 +3981,16 @@ function _subscribeStoryReactions(){
         function(){
           const isOwner = _stMyUserId && (_stViewerUser&&_stViewerUser.user_id === _stMyUserId);
           if(isOwner && document.getElementById('stvViewsCount')){
-            fetch('/api/blue-stories?action=ver&story_id='+storyId+'&token='+encodeURIComponent(getValidToken()||''))
+            (async () => {
+              const _tkv = (await getValidToken()) || '';
+              fetch('/api/blue-stories?action=ver&story_id='+storyId+'&token='+encodeURIComponent(_tkv))
               .then(function(r){ return r.ok?r.json():null; })
               .then(function(d){
                 if(!d) return;
                 const cnt = d.visualizacoes||0;
                 document.getElementById('stvViewsCount').textContent='&#x1F441; '+cnt+' visualiza'+(cnt===1?'cao':'coes');
               }).catch(function(){});
+            })();
           }
         })
       .subscribe();
@@ -5077,7 +5080,7 @@ async function loadGruposMeus(){
     const list=d.grupos||[];
     if(!list.length){body.innerHTML='<div class="shop-empty">Nenhum grupo ainda.<br>Crie ou descubra grupos!</div>';return;}
     body.innerHTML=list.map(g=>`
-      <div class="gp-item" onclick="openGrupoChat('${g.id}','${(g.nome||'Grupo').replace(/'/g,\"\'\")}')" >
+      <div class="gp-item" onclick="openGrupoChat('${g.id}','${(g.nome||'Grupo').replace(/'/g,"\\'")}')" >
         <div class="gp-av">${(g.nome||'G').charAt(0).toUpperCase()}</div>
         <div class="gp-info">
           <div class="gp-name">${g.nome||'Grupo'}</div>
@@ -5096,7 +5099,7 @@ async function loadGruposDesc(){
     const list=d.grupos||[];
     if(!list.length){body.innerHTML='<div class="shop-empty">Nenhum grupo p�blico ainda</div>';return;}
     body.innerHTML=list.map(g=>`
-      <div class="gp-item" onclick="entrarGrupo('${g.id}','${(g.nome||'Grupo').replace(/'/g,\"\'\")}')" >
+      <div class="gp-item" onclick="entrarGrupo('${g.id}','${(g.nome||'Grupo').replace(/'/g,"\\'")}')" >
         <div class="gp-av">${(g.nome||'G').charAt(0).toUpperCase()}</div>
         <div class="gp-info">
           <div class="gp-name">${g.nome||'Grupo'}</div>
