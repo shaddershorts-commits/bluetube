@@ -479,6 +479,29 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div id="bmLog" style="font-family:var(--mono);font-size:11px;color:var(--dim)"></div>
     </div>
 
+    <!-- APP HEALTH (Sentry + GitHub Actions auto-fix) -->
+    <div class="section" id="appHealthSection">
+      <div class="section-header">
+        <div class="section-title">📱 App Health <span class="section-subtitle">— Sentry + auto-fix pipeline</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <a class="action-btn" href="https://bluetube-viral.sentry.io/issues/" target="_blank" rel="noopener">🔍 Sentry</a>
+          <a class="action-btn" href="https://github.com/shaddershorts-commits/bluetube-app/actions" target="_blank" rel="noopener">⚙️ Actions</a>
+          <button class="action-btn" onclick="loadAppHealth()">↻ Atualizar</button>
+        </div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Issues 24h</div><div class="stat-value" style="color:var(--red)" id="ahIssues24h">—</div></div>
+        <div class="stat-card"><div class="stat-label">Usuários afetados</div><div class="stat-value" style="color:var(--yellow)" id="ahUsersAffected">—</div></div>
+        <div class="stat-card"><div class="stat-label">Auto-fixes (7d)</div><div class="stat-value green" id="ahAutoFixes">—</div></div>
+        <div class="stat-card"><div class="stat-label">Taxa sucesso</div><div class="stat-value blue" id="ahSuccessRate">—</div></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Versão produção</div><div class="stat-value blue" style="font-size:14px" id="ahVersion">—</div></div>
+        <div class="stat-card"><div class="stat-label">Último fix automático</div><div class="stat-value" style="font-size:13px;color:var(--dim)" id="ahLastFix">—</div></div>
+      </div>
+      <div id="ahIssuesList" style="font-family:var(--mono);font-size:11px;color:var(--dim)"></div>
+    </div>
+
     <!-- EMAIL MARKETING -->
     <div class="section" id="emailMarketingSection">
       <div class="section-header">
@@ -939,6 +962,7 @@ async function loadData(){
     loadModeration();
     loadEmailMarketing();
     loadBlueHealth();
+    loadAppHealth();
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
@@ -1264,6 +1288,30 @@ async function runBlueMaintenance(){
 }
 
 // Load last maintenance result from cache
+async function loadAppHealth(){
+  try{
+    const r=await fetch('/api/app-health');
+    if(!r.ok) return;
+    const d=await r.json();
+    const $=(id)=>document.getElementById(id);
+    $('ahIssues24h').textContent=d.sentry?.issues_24h ?? '—';
+    $('ahUsersAffected').textContent=d.sentry?.users_affected ?? '—';
+    $('ahAutoFixes').textContent=d.github?.auto_fixes_7d ?? '—';
+    const rate=d.github?.success_rate;
+    $('ahSuccessRate').textContent=(rate!=null?Math.round(rate*100)+'%':'—');
+    $('ahVersion').textContent=d.app?.version || '—';
+    $('ahLastFix').textContent=d.github?.last_fix_at ? new Date(d.github.last_fix_at).toLocaleString('pt-BR') : 'Nenhum ainda';
+    const list=d.sentry?.top_issues||[];
+    $('ahIssuesList').innerHTML = list.length
+      ? list.slice(0,5).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(0,170,255,.05)">
+          <span style="color:var(--${i.level==='fatal'?'red':i.level==='error'?'yellow':'dim'})">${(i.level||'info').toUpperCase()}</span>
+          <span style="color:var(--text);margin-left:8px">${(i.title||'').slice(0,80)}</span>
+          <span style="color:var(--dim);margin-left:8px">· ${i.count||0} eventos · ${i.userCount||0} users</span>
+        </div>`).join('')
+      : '<div style="padding:12px 0;text-align:center">Sem issues abertas</div>';
+  }catch(e){console.warn('app-health:',e);}
+}
+
 async function loadBlueHealth(){
   try{
     const SU=window._supaUrl||'';if(!SU)return;
