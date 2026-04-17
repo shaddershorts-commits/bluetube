@@ -86,6 +86,10 @@
     {
       "path": "/api/blue-feed?action=update-metrics",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/blue-ml?action=calcular-features",
+      "schedule": "0 */6 * * *"
     }
   ],
   "headers": [

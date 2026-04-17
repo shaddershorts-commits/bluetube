@@ -1552,20 +1552,33 @@ async function loadFeed(){
 }
 
 // ── ALGORITMO: rastreia engajamento por video ────────────────────────────────
-// _videoStates armazena por video.id: {inicio, maxPct, replay, lastPct, flushed}
-// trackSignal envia POST /api/blue-feed action=track-view com os sinais
-// pra alimentar blue_feed_historico + blue_user_interests em tempo real.
+// _videoStates: estado acumulado por video na sessao atual.
+// Alimenta 2 destinos:
+//  - /api/blue-feed track-view (algoritmo de regras em tempo real)
+//  - /api/blue-ml registrar (dataset de ML em background, so na flush)
 const _videoStates=new Map();
 function _vsGet(id){
-  if(!_videoStates.has(id))_videoStates.set(id,{inicio:Date.now(),maxPct:0,replay:false,flushed:false,flaggedCreator:false});
+  if(!_videoStates.has(id))_videoStates.set(id,{
+    inicio:Date.now(),maxPct:0,replay:false,flushed:false,
+    curtiu:false,salvou:false,comentou:false,compartilhou:false,abriu_perfil:false,
+  });
   return _videoStates.get(id);
 }
-function trackSignal(videoId,extra){
+function trackSignal(videoId,extra,opts){
   if(!videoId)return;
   const st=_vsGet(videoId);
+  // Acumula flags de interacao no state (consolidacao pro ML)
+  if(extra){
+    if(extra.curtiu)st.curtiu=true;
+    if(extra.salvou)st.salvou=true;
+    if(extra.comentou)st.comentou=true;
+    if(extra.compartilhou)st.compartilhou=true;
+    if(extra.abriu_perfil)st.abriu_perfil=true;
+  }
   const tempoTotal=Math.floor((Date.now()-st.inicio)/1000);
-  const pulou=tempoTotal<2&&st.maxPct<10&&!extra?.curtiu&&!extra?.salvou&&!extra?.abriu_perfil;
-  const body={
+  const pulou=tempoTotal<2&&st.maxPct<10&&!st.curtiu&&!st.salvou&&!st.abriu_perfil;
+  // 1. Algoritmo de regras (sempre)
+  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     action:'track-view',
     token:TOKEN||undefined,
     video_id:videoId,
@@ -1573,10 +1586,37 @@ function trackSignal(videoId,extra){
     tempo_total_segundos:tempoTotal,
     pulou,
     replay:st.replay,
+    curtiu:st.curtiu,
+    salvou:st.salvou,
+    comentou:st.comentou,
+    compartilhou:st.compartilhou,
+    abriu_perfil:st.abriu_perfil,
     origem:_feedOrigem||'feed',
-    ...(extra||{})
-  };
-  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
+  })}).catch(()=>{});
+  // 2. Dataset ML (so na flush — 1 linha por impressao consolidada)
+  if(opts&&opts.flush&&TOKEN){
+    const vidEl=document.getElementById('s-'+videoId)?.querySelector('video');
+    const posicao=videos.findIndex(v=>v.id===videoId);
+    fetch('/api/blue-ml',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      action:'registrar',
+      token:TOKEN,
+      video_id:videoId,
+      sessao_id:SID,
+      posicao:posicao>=0?posicao:0,
+      percentual_assistido:st.maxPct,
+      tempo_assistido_segundos:tempoTotal,
+      tempo_ate_pular_segundos:pulou?tempoTotal:null,
+      pulou,
+      replay:st.replay,
+      curtiu:st.curtiu,
+      salvou:st.salvou,
+      comentou:st.comentou,
+      compartilhou:st.compartilhou,
+      abriu_perfil:st.abriu_perfil,
+      duracao_video:vidEl?.duration?Math.round(vidEl.duration):null,
+      dispositivo:/Mobile|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop',
+    })}).catch(()=>{});
+  }
 }
 
 function mkSlide(v,i){
@@ -1758,7 +1798,7 @@ function setupObs(){
         const vidId=sl.dataset.id;
         if(vidId&&TOKEN){
           const st=_videoStates.get(vidId);
-          if(st&&!st.flushed){st.flushed=true;trackSignal(vidId);}
+          if(st&&!st.flushed){st.flushed=true;trackSignal(vidId,null,{flush:true});}
         }
       }
     });
