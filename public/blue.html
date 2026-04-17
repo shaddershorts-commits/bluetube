@@ -17,19 +17,79 @@
 html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helvetica Neue',sans-serif;overflow:hidden}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── TOP BAR ─────────────────────────────────────────────────────────────── */
+/* ── TOP BAR (mobile limpo estilo TikTok) ────────────────────────────────── */
 .topbar{position:fixed;top:0;left:50%;transform:translateX(-50%);
   width:100%;max-width:412px;z-index:100;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:max(14px,env(safe-area-inset-top)) 16px 12px;
-  background:linear-gradient(to bottom,rgba(0,0,0,.7),transparent);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:max(12px,env(safe-area-inset-top)) 14px 10px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.55),transparent);
   pointer-events:none}
 .logo{font-size:22px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;pointer-events:all;text-decoration:none}
 .topbtns{display:flex;gap:6px;pointer-events:all;align-items:center}
-.tbtn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);
-  border-radius:18px;padding:6px 10px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;
-  display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:32px;line-height:1}
+.tbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;padding:6px 10px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:34px;line-height:1}
+.tbtn.icon-only{background:transparent;border:none;font-size:22px;min-width:32px}
+/* Botoes que sao movidos pro bottom-nav no mobile e pro sidebar no desktop */
+.tb-move{display:none!important}
+/* Tabs inline no topbar */
+.topbar-tabs{display:flex;gap:18px;pointer-events:all;align-items:center}
+.topbar-tabs .tt-btn{background:none;border:none;color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:4px 0;cursor:pointer;opacity:.55;border-bottom:2px solid transparent;line-height:1.2}
+.topbar-tabs .tt-btn.active{opacity:1;border-bottom-color:#fff}
+
+/* ── BOTTOM NAV (mobile) ─────────────────────────────────────────────────── */
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:412px;z-index:100;
+  display:flex;justify-content:space-around;align-items:center;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+  background:rgba(10,10,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid rgba(255,255,255,.06)}
+.bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;
+  background:none;border:none;color:#fff;cursor:pointer;opacity:.65;
+  font-family:inherit;font-size:10px;font-weight:600;padding:4px 8px;min-width:52px;
+  transition:opacity .15s}
+.bn-item.active{opacity:1}
+.bn-item .bn-ic{font-size:22px;line-height:1}
+.bn-item .bn-plus{background:linear-gradient(135deg,#3b82f6,#00aaff);border-radius:10px;
+  width:44px;height:28px;display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:20px;color:#fff;box-shadow:0 2px 10px rgba(59,130,246,.35)}
+.bn-badge{position:absolute;top:-4px;right:-6px;background:#ef4444;color:#fff;
+  border-radius:9px;min-width:16px;height:16px;padding:0 4px;font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;line-height:1}
+
+/* ── DESKTOP SIDEBAR (>=1024px) ──────────────────────────────────────────── */
+.desktop-sidebar{display:none;position:fixed;top:0;left:0;height:100vh;width:240px;z-index:99;
+  background:rgba(10,10,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-right:1px solid rgba(255,255,255,.05);
+  padding:24px 12px;overflow-y:auto;flex-direction:column;gap:3px}
+.ds-logo{font-size:30px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#60a5fa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  padding:0 14px 22px;display:block;text-decoration:none}
+.ds-item{display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:8px;
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;background:none;border:none;
+  text-align:left;transition:background .15s;text-decoration:none;font-family:inherit;position:relative}
+.ds-item:hover{background:rgba(255,255,255,.06)}
+.ds-item.active{background:rgba(59,130,246,.12);color:#60a5fa}
+.ds-ic{font-size:22px;width:24px;text-align:center;line-height:1}
+.ds-badge{position:absolute;left:28px;top:8px;background:#ef4444;color:#fff;border-radius:9px;
+  min-width:16px;height:16px;padding:0 4px;font-size:10px;font-weight:700;display:flex;
+  align-items:center;justify-content:center;line-height:1}
+
+/* ── BREAKPOINT DESKTOP ──────────────────────────────────────────────────── */
+@media (min-width:1024px){
+  .desktop-sidebar{display:flex}
+  .topbar{display:none}
+  .bottom-nav{display:none}
+  /* Feed continua centralizado no viewport inteiro (nao compete com sidebar) */
+}
+
+/* ── MOBILE: sobe .side/.info/.prog-bar acima do bottom-nav ──────────────── */
+@media (max-width:1023px){
+  .side{bottom:calc(90px + 60px)}
+  .info{padding-bottom:calc(60px + max(20px,env(safe-area-inset-bottom)))}
+  .prog-bar{bottom:calc(60px + env(safe-area-inset-bottom))}
+}
 
 /* ── FEED ────────────────────────────────────────────────────────────────── */
 #feed{position:fixed;inset:0;left:50%;transform:translateX(-50%);
@@ -798,17 +858,49 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 </head>>
 <body>
 
+<!-- TOP BAR mobile: menu | tabs | busca (demais ícones vão pro bottom-nav) -->
 <div class="topbar">
-  <a class="logo" href="/blue">Blue</a>
-  <div class="topbtns">
-    <button class="tbtn" onclick="openSearch()" title="Buscar">🔍</button>
-    <button class="tbtn" onclick="openUpload()" title="Postar" style="font-size:18px">+</button>
-    <button class="tbtn" onclick="openTrending()" title="Em alta">🔥</button>
-    <button class="tbtn" onclick="openGrupos()" id="gruposBtn" title="Grupos" style="position:relative">👥<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
-    <button class="tbtn" onclick="openInbox()" id="inboxBtn" title="Notificações" style="position:relative">🔔<span id="inboxBadge" class="inbox-badge">0</span></button>
-    <div id="hdAv" onclick="openProfile()" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;overflow:hidden;flex-shrink:0">?</div>
+  <button class="tbtn icon-only" onclick="openGrupos()" id="gruposBtn" title="Grupos" style="position:relative">☰<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
+  <div class="topbar-tabs">
+    <button id="tabForYou" class="tt-btn active" onclick="switchFeedMode('foryou')">Para Você</button>
+    <button id="tabFollowing" class="tt-btn" onclick="switchFeedMode('following')">Seguindo</button>
   </div>
+  <button class="tbtn icon-only" onclick="openSearch()" title="Buscar">🔍</button>
 </div>
+
+<!-- BOTTOM NAV mobile: Início · Descobrir · Criar · Caixa · Perfil -->
+<nav class="bottom-nav">
+  <button class="bn-item active" id="bnHome" onclick="scrollToFeedTop()" title="Início">
+    <div class="bn-ic">🏠</div><div>Início</div>
+  </button>
+  <button class="bn-item" onclick="openTrending()" title="Descobrir">
+    <div class="bn-ic">🧭</div><div>Descobrir</div>
+  </button>
+  <button class="bn-item" onclick="openUpload()" title="Criar">
+    <div class="bn-plus">+</div><div style="margin-top:2px">Criar</div>
+  </button>
+  <button class="bn-item" onclick="openInbox()" title="Caixa" style="position:relative">
+    <div class="bn-ic" style="position:relative">🔔<span id="inboxBadge" class="bn-badge" style="display:none">0</span></div>
+    <div>Caixa</div>
+  </button>
+  <button class="bn-item" onclick="openProfile()" title="Perfil">
+    <div class="bn-ic" id="hdAv" style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;overflow:hidden">?</div>
+    <div>Perfil</div>
+  </button>
+</nav>
+
+<!-- DESKTOP SIDEBAR: nav vertical, só aparece em >=1024px -->
+<nav class="desktop-sidebar" id="desktopSidebar">
+  <a class="ds-logo" href="/blue">Blue</a>
+  <button class="ds-item active" onclick="switchFeedMode('foryou');scrollToFeedTop()"><span class="ds-ic">🏠</span>Para você</button>
+  <button class="ds-item" onclick="openTrending()"><span class="ds-ic">🧭</span>Explorar</button>
+  <button class="ds-item" onclick="switchFeedMode('following')"><span class="ds-ic">👥</span>Seguindo</button>
+  <button class="ds-item" onclick="openUpload()"><span class="ds-ic">➕</span>Carregar</button>
+  <button class="ds-item" onclick="openGrupos()" style="position:relative"><span class="ds-ic">💬</span>Grupos<span id="gruposBadgeDesk" class="ds-badge" style="display:none">0</span></button>
+  <button class="ds-item" onclick="openInbox()" style="position:relative"><span class="ds-ic">🔔</span>Notificações<span id="inboxBadgeDesk" class="ds-badge" style="display:none">0</span></button>
+  <button class="ds-item" onclick="openProfile()"><span class="ds-ic">👤</span>Perfil</button>
+  <button class="ds-item" onclick="openSearch()"><span class="ds-ic">🔍</span>Buscar</button>
+</nav>
 
 <!-- Search panel -->
 <div class="bt-modal-overlay" id="searchPanel" style="display:none">
@@ -935,11 +1027,6 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   </div>
 </div>
 
-<!-- Feed tabs (Para Você / Seguindo) -->
-<div id="feedTabs" style="position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:99;display:flex;gap:20px;padding:6px 16px;pointer-events:auto">
-  <button id="tabForYou" onclick="switchFeedMode('foryou')" style="background:none;border:none;color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:4px 0;cursor:pointer;opacity:1;border-bottom:2px solid #fff">Para Você</button>
-  <button id="tabFollowing" onclick="switchFeedMode('following')" style="background:none;border:none;color:#fff;font-family:inherit;font-size:15px;font-weight:600;padding:4px 0;cursor:pointer;opacity:.55;border-bottom:2px solid transparent">Seguindo</button>
-</div>
 <div id="feed"></div>
 
 <div class="empty" id="empty">
@@ -1495,30 +1582,52 @@ let _ccEnabled = localStorage.getItem('legendas_ativas') !== 'false';
 let _feedOrigem='feed'; // tracks where user came from for analytics
 let _feedMode=localStorage.getItem('bl_feed_mode')||'foryou'; // 'foryou' | 'following'
 
-function switchFeedMode(mode){
-  if(mode===_feedMode)return;
-  if(mode==='following'&&!TOKEN){toast('Faça login pra ver quem você segue');return;}
-  _feedMode=mode;
-  localStorage.setItem('bl_feed_mode',mode);
-  // Atualiza visual das tabs
+function _syncTabsVisual(){
   const ty=document.getElementById('tabForYou');
   const tf=document.getElementById('tabFollowing');
-  if(ty){ty.style.opacity=mode==='foryou'?'1':'.55';ty.style.borderBottom=mode==='foryou'?'2px solid #fff':'2px solid transparent';}
-  if(tf){tf.style.opacity=mode==='following'?'1':'.55';tf.style.borderBottom=mode==='following'?'2px solid #fff':'2px solid transparent';}
-  // Reseta e recarrega
+  if(ty)ty.classList.toggle('active',_feedMode==='foryou');
+  if(tf)tf.classList.toggle('active',_feedMode==='following');
+}
+// Mirror badges mobile (bottom-nav/topbar) -> desktop sidebar
+(function(){
+  const mirror=(srcId,dstId)=>{
+    const s=document.getElementById(srcId),d=document.getElementById(dstId);
+    if(!s||!d)return;
+    d.textContent=s.textContent;
+    d.style.display=s.style.display;
+  };
+  const sync=()=>{mirror('inboxBadge','inboxBadgeDesk');mirror('gruposBadge','gruposBadgeDesk');};
+  const init=()=>{
+    ['inboxBadge','gruposBadge'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el||el._mirrored)return;
+      el._mirrored=true;
+      new MutationObserver(sync).observe(el,{attributes:true,childList:true,characterData:true,subtree:true});
+    });
+    sync();
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+  else init();
+})();
+function switchFeedMode(mode){
+  if(mode==='following'&&!TOKEN){toast('Faça login pra ver quem você segue');return;}
+  if(mode===_feedMode){scrollToFeedTop();return;}
+  _feedMode=mode;
+  localStorage.setItem('bl_feed_mode',mode);
+  _syncTabsVisual();
   videos=[];_feedCursor=null;_feedHasMore=true;
   loadFeed();
+}
+function scrollToFeedTop(){
+  const f=document.getElementById('feed');
+  if(f)f.scrollTo({top:0,behavior:'smooth'});
 }
 
 async function loadFeed(){
   const feed=document.getElementById('feed');
-  // Sync visual das tabs com _feedMode
-  const ty=document.getElementById('tabForYou');
-  const tf=document.getElementById('tabFollowing');
-  if(ty){ty.style.opacity=_feedMode==='foryou'?'1':'.55';ty.style.borderBottom=_feedMode==='foryou'?'2px solid #fff':'2px solid transparent';}
-  if(tf){tf.style.opacity=_feedMode==='following'?'1':'.55';tf.style.borderBottom=_feedMode==='following'?'2px solid #fff':'2px solid transparent';}
   // Se usuario nao tem token e escolheu following antes, volta pra foryou
   if(_feedMode==='following'&&!TOKEN){_feedMode='foryou';}
+  _syncTabsVisual();
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#555">Carregando…</div></div>';
   _feedCursor=null; _feedHasMore=true; videos=[];
   try{
@@ -2724,7 +2833,8 @@ async function saveProfile(){
 function updateHdAvatar(){
   if(!myProfile)return;
   const av=document.getElementById('hdAv');
-  if(myProfile.avatar_url){const img=new Image();img.style.cssText='width:32px;height:32px;border-radius:50%;object-fit:cover';img.src=myProfile.avatar_url+'?t='+Date.now();img.onload=()=>{av.innerHTML='';av.appendChild(img);};} 
+  if(!av)return;
+  if(myProfile.avatar_url){const img=new Image();img.style.cssText='width:100%;height:100%;border-radius:50%;object-fit:cover';img.src=myProfile.avatar_url+'?t='+Date.now();img.onload=()=>{av.innerHTML='';av.appendChild(img);};}
   else{av.textContent=(myProfile.display_name||myProfile.username||'B').charAt(0).toUpperCase();}
 }
 
