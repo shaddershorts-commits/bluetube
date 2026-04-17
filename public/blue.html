@@ -1762,6 +1762,22 @@ function trackSignal(videoId,extra,opts){
   }
 }
 
+// Recalcula object-fit usando as dimensoes reais lidas pelo browser.
+// Disparado no loadedmetadata do <video> pra corrigir slides cujos metadados
+// (width/height) nao estavam salvos no banco e foram chutados em mkSlide.
+function applyVideoFit(vid){
+  const w=vid.videoWidth, h=vid.videoHeight;
+  if(!w||!h)return;
+  const aspect=w/h;
+  if(aspect<0.85){
+    vid.style.objectFit='cover';
+    vid.style.background='';
+  }else{
+    vid.style.objectFit='contain';
+    vid.style.background='#000';
+  }
+}
+
 function mkSlide(v,i){
   if(!v||!v.video_url)return null;
   const c=v.creator||{};
@@ -1771,9 +1787,16 @@ function mkSlide(v,i){
 
   const el=document.createElement('div');
   el.className='slide'; el.id='s-'+v.id; el.dataset.id=v.id; el.dataset.i=i;
-  // Determine if video is portrait (should cover) or landscape (contain)
-  const isPortrait = !v.width || !v.height || v.height >= v.width;
-  const vidStyle = isPortrait ? 'object-fit:cover' : 'object-fit:contain;background:#000';
+  // Fit adaptativo por aspect ratio (w/h):
+  //   < 0.85 = portrait/vertical (9:16, 3:4) -> cover, preenche tela
+  //   0.85-1.15 = square-ish (1:1) -> contain, letterbox fino
+  //   > 1.15 = landscape (16:9, 4:3) -> contain, letterbox
+  // Se metadata faltar no banco, assume portrait (estatisticamente o mais comum).
+  // applyVideoFit() recalcula quando o browser le as dimensoes reais no onloadedmetadata.
+  const initAspect = (v.width && v.height) ? (v.width / v.height) : 0.5625;
+  const vidStyle = initAspect < 0.85
+    ? 'object-fit:cover'
+    : 'object-fit:contain;background:#000';
   // Lazy loading otimizado — detecta conexão lenta para economizar dados em redes móveis
   const conn = navigator.connection||navigator.mozConnection||navigator.webkitConnection;
   const isSlow = conn && (conn.effectiveType==='2g'||conn.effectiveType==='slow-2g'||conn.saveData);
@@ -1811,6 +1834,8 @@ function mkSlide(v,i){
   // Tap to toggle sound
   const _vid=el.querySelector('video');
   _vid.addEventListener('click',()=>toggleSound(_vid,v.id));
+  // Corrige object-fit assim que o browser souber o aspect real do video
+  _vid.addEventListener('loadedmetadata',()=>applyVideoFit(_vid));
   // FOMO popup tracker + analytics tracker + algoritmo tracker
   const _vidId=v.id;
   let _lastPctLogged=-1;
