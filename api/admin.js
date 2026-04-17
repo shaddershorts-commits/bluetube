@@ -468,6 +468,68 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true });
   }
 
+  // ── STRIPE WEBHOOKS (stats + lista recente) ──────────────────────────────
+  if (req.method === 'GET' && action === 'stripe_webhooks') {
+    try {
+      const diaAtras = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Ultimos 30 eventos (sem payload pra response enxuto)
+      const listR = await fetch(
+        `${SUPABASE_URL}/rest/v1/stripe_webhook_log?select=id,stripe_event_id,tipo,status,tentativas,ultimo_erro,processado_em,created_at&order=created_at.desc&limit=30`,
+        { headers }
+      );
+      const list = listR.ok ? await listR.json() : [];
+
+      // Counts
+      async function count(query) {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/stripe_webhook_log?select=id${query}`, {
+          headers: { ...headers, Prefer: 'count=exact' },
+        });
+        const cr = r.headers.get('content-range') || '';
+        return parseInt(cr.split('/')[1] || '0') || 0;
+      }
+
+      const [processados24h, concluidos24h, errosAtuais, processando, falhaPerm] = await Promise.all([
+        count(`&created_at=gte.${diaAtras}`),
+        count(`&created_at=gte.${diaAtras}&status=eq.concluido`),
+        count(`&status=eq.erro`),
+        count(`&status=eq.processando`),
+        count(`&status=eq.falha_permanente`),
+      ]);
+
+      const ultimo = list[0];
+      const agora = Date.now();
+      const minutosUltimo = ultimo ? Math.round((agora - new Date(ultimo.created_at).getTime()) / 60000) : null;
+
+      return res.status(200).json({
+        stats: {
+          processados_24h: processados24h,
+          concluidos_24h: concluidos24h,
+          erros_atuais: errosAtuais,
+          processando: processando,
+          falha_permanente: falhaPerm,
+          ultimo_recebido_min: minutosUltimo,
+        },
+        events: list,
+      });
+    } catch (e) {
+      console.error('[admin stripe_webhooks]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── TRIGGER REPROCESSAMENTO DE WEBHOOKS COM ERRO ─────────────────────────
+  if (req.method === 'POST' && action === 'stripe_reprocess') {
+    try {
+      const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+      const r = await fetch(`${SITE_URL}/api/webhook?action=reprocessar`, { method: 'GET' });
+      const d = await r.json();
+      return res.status(200).json({ ok: true, result: d });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── PAGINATED LIST SUBSCRIBERS ──────────────────────────────────────────
   if (req.method === 'GET' && action === 'list_subscribers') {
     const page = parseInt(req.query.page) || 1;

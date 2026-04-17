@@ -459,6 +459,25 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="pioneirosTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- STRIPE WEBHOOKS -->
+    <div class="section" id="stripeWebhooksSection">
+      <div class="section-header">
+        <div class="section-title">💳 Stripe Webhooks <span class="section-subtitle">— idempotência + retry automático a cada 15min</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="action-btn" onclick="reprocessarWebhooks()">▶ Reprocessar erros agora</button>
+          <button class="action-btn" onclick="loadStripeWebhooks()">↻ Atualizar</button>
+        </div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Processados 24h</div><div class="stat-value blue" id="swProcessados">—</div><div class="stat-sub">concluídos: <span id="swConcluidos">—</span></div></div>
+        <div class="stat-card"><div class="stat-label">Com erro</div><div class="stat-value" style="color:var(--red)" id="swErros">—</div><div class="stat-sub">tentativas &lt; 5</div></div>
+        <div class="stat-card"><div class="stat-label">Processando</div><div class="stat-value yellow" id="swProcessando">—</div><div class="stat-sub">em vôo</div></div>
+        <div class="stat-card"><div class="stat-label">Falha permanente</div><div class="stat-value" style="color:var(--red)" id="swFalhaPerm">—</div><div class="stat-sub">&gt;= 5 tentativas</div></div>
+        <div class="stat-card"><div class="stat-label">Último recebido</div><div class="stat-value blue" style="font-size:14px" id="swUltimo">—</div><div class="stat-sub">min atrás</div></div>
+      </div>
+      <div class="table-wrap" id="stripeWebhooksTable"><div class="loading-txt">Carregando…</div></div>
+    </div>
+
     <!-- VERIFICAÇÃO DE CONTAS -->
     <div class="section" id="verificacaoSection">
       <div class="section-header">
@@ -982,6 +1001,7 @@ async function loadData(){
     loadVerificacoes();
     loadBackups();
     loadPioneiros();
+    loadStripeWebhooks();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1442,6 +1462,68 @@ async function executarBackup(){
     const d=await r.json();
     if(d.ok){toast('✅ Backup concluído: '+(d.size/1024).toFixed(1)+'KB');loadBackups();}
     else toast('Erro: '+(d.error||'falha'));
+  }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── STRIPE WEBHOOKS ───────────────────────────────────────────────────────
+async function loadStripeWebhooks(){
+  try{
+    const r=await fetch('/api/admin?action=stripe_webhooks',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(!r.ok){document.getElementById('stripeWebhooksTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';return;}
+    const d=await r.json();
+    const s=d.stats||{};
+    document.getElementById('swProcessados').textContent=s.processados_24h||0;
+    document.getElementById('swConcluidos').textContent=s.concluidos_24h||0;
+    const errosEl=document.getElementById('swErros');
+    errosEl.textContent=s.erros_atuais||0;
+    errosEl.style.color=(s.erros_atuais||0)>0?'var(--red)':'var(--green)';
+    document.getElementById('swProcessando').textContent=s.processando||0;
+    document.getElementById('swFalhaPerm').textContent=s.falha_permanente||0;
+    const min=s.ultimo_recebido_min;
+    document.getElementById('swUltimo').textContent=min==null?'—':(min<60?(min+' min'):Math.round(min/60)+'h');
+
+    const list=d.events||[];
+    if(!list.length){document.getElementById('stripeWebhooksTable').innerHTML='<div class="empty-state">Nenhum webhook recebido ainda.</div>';return;}
+
+    const badge=(st)=>{
+      if(st==='concluido')return '<span class="badge" style="background:rgba(78,204,163,.15);color:var(--green);border:1px solid rgba(78,204,163,.3)">✓ Concluído</span>';
+      if(st==='erro')return '<span class="badge" style="background:rgba(255,122,90,.15);color:var(--red);border:1px solid rgba(255,122,90,.3)">✗ Erro</span>';
+      if(st==='processando')return '<span class="badge" style="background:rgba(251,191,36,.15);color:var(--yellow);border:1px solid rgba(251,191,36,.3)">⟳ Processando</span>';
+      if(st==='falha_permanente')return '<span class="badge" style="background:rgba(255,80,80,.2);color:var(--red);border:1px solid rgba(255,80,80,.4)">⛔ Falha Permanente</span>';
+      return '<span class="badge" style="background:rgba(150,190,230,.1);color:var(--dim)">'+st+'</span>';
+    };
+    const fmtDate=(iso)=>iso?new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+
+    document.getElementById('stripeWebhooksTable').innerHTML=`
+      <table>
+        <thead><tr><th>Tipo</th><th>Status</th><th>Tentativas</th><th>Recebido</th><th>Processado</th><th>Último erro</th></tr></thead>
+        <tbody>${list.map(e=>`
+          <tr>
+            <td style="font-family:var(--mono);font-size:11px;color:var(--text)">${e.tipo}</td>
+            <td>${badge(e.status)}</td>
+            <td style="font-family:var(--mono);font-size:11px;color:${(e.tentativas||0)>1?'var(--yellow)':'var(--dim)'}">${e.tentativas||0}</td>
+            <td style="color:var(--dim);font-size:11px">${fmtDate(e.created_at)}</td>
+            <td style="color:var(--dim);font-size:11px">${fmtDate(e.processado_em)}</td>
+            <td style="font-size:10px;color:${e.ultimo_erro?'var(--red)':'var(--dim)'};max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.ultimo_erro||'').replace(/"/g,'&quot;')}">${e.ultimo_erro||'—'}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`;
+  }catch(e){
+    document.getElementById('stripeWebhooksTable').innerHTML='<div class="empty-state">Erro: '+e.message+'</div>';
+  }
+}
+
+async function reprocessarWebhooks(){
+  if(!confirm('Disparar reprocessamento manual dos webhooks com erro?'))return;
+  try{
+    const r=await fetch('/api/admin?action=stripe_reprocess',{method:'POST',headers:{'Authorization':`Bearer ${adminKey}`,'Content-Type':'application/json'}});
+    const d=await r.json();
+    if(d.ok){
+      toast('▶ Reprocessamento: '+(d.result?.reprocessados||0)+' eventos, '+(d.result?.sucesso||0)+' sucessos, '+(d.result?.falhou||0)+' falhas');
+      loadStripeWebhooks();
+    }else{
+      toast('Erro: '+(d.error||'falha'));
+    }
   }catch(e){toast('Erro: '+e.message);}
 }
 
