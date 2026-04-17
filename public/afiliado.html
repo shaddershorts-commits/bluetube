@@ -299,6 +299,37 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
       </div>
     </div>
 
+    <!-- SAQUES VIA PIX (dia 22 de cada mes) -->
+    <div class="revenue-card" id="saquesSection" style="margin-top:18px">
+      <div class="sec-title">💸 Saques via Pix</div>
+      <div id="saquesBody" style="padding:16px 4px 4px;font-size:13px;color:var(--text-dim)">
+        Carregando…
+      </div>
+      <div id="saquesHistorico" style="margin-top:18px"></div>
+    </div>
+    <style>
+      .sq-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;margin-bottom:12px}
+      .sq-saldo{font-size:36px;font-weight:900;font-family:var(--mono,monospace);letter-spacing:-.5px}
+      .sq-btn{display:block;width:100%;text-align:center;padding:14px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;transition:all .2s;font-family:inherit}
+      .sq-btn-primary{background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff}
+      .sq-btn-disabled{background:rgba(255,255,255,.06);color:rgba(255,255,255,.35);cursor:not-allowed}
+      .sq-btn-pulse{background:linear-gradient(135deg,#00c853,#00e676);color:#fff;animation:pulseGreen 2s infinite}
+      @keyframes pulseGreen{0%,100%{box-shadow:0 0 0 0 rgba(0,200,83,.45)}50%{box-shadow:0 0 0 14px rgba(0,200,83,0)}}
+      .sq-alert{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:12px;padding:14px 16px;margin-bottom:14px;color:#fbbf24;font-size:13px;line-height:1.55}
+      .sq-info{background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:10px 14px;font-size:12px;color:rgba(232,244,255,.7);margin-top:10px}
+      .sq-input{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;margin-top:8px}
+      .sq-select{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit}
+      .sq-progress{height:6px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;margin-top:10px}
+      .sq-progress-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#00aaff);transition:width .4s}
+      .sq-hist-row{display:grid;grid-template-columns:80px 1fr 80px 90px;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;align-items:center}
+      .sq-hist-row.head{color:rgba(255,255,255,.35);font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px}
+      .sq-hist-status{display:inline-block;padding:3px 8px;border-radius:100px;font-size:10px;font-weight:700}
+      .sq-hist-status.pago{background:rgba(34,197,94,.15);color:#22c55e}
+      .sq-hist-status.processando{background:rgba(59,130,246,.15);color:#3b82f6}
+      .sq-hist-status.pendente_manual{background:rgba(251,191,36,.15);color:#fbbf24}
+      .sq-hist-status.falhou{background:rgba(239,68,68,.15);color:#f87171}
+    </style>
+
     <!-- CLIQUES -->
     <div class="chart-card">
       <div class="sec-title">📈 Cliques — últimos 7 dias</div>
@@ -594,6 +625,153 @@ function renderDash(data){
   const tl={signup:'Cadastro',upgrade_full:'⚡ Full',upgrade_master:'👑 Master'};
   if(conversions?.length){cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Data</th></tr></thead><tbody>${conversions.map(c=>`<tr><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span></td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`).join('')}</tbody></table>`;}
   else cvEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhuma conversão ainda. Compartilhe seu link!</div>';
+  // Saques (secao independente — nao bloqueia render se falhar)
+  loadSaques().catch(()=>{});
+}
+
+// ── SAQUES via Pix (dia 22) ─────────────────────────────────────────────────
+function _sqMaskar(chave,tipo){
+  if(!chave)return '';
+  if(tipo==='email'){const[u,d]=chave.split('@');return(u?.[0]||'')+'***@'+(d||'');}
+  if(tipo==='cpf'){const c=chave.replace(/\D/g,'');return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.***.$3-**');}
+  if(tipo==='telefone')return chave.replace(/(\+?55)(\d{2})\d{5}(\d{4})/,'$1 $2 *****-$3');
+  if(tipo==='aleatoria')return chave.slice(0,4)+'…'+chave.slice(-4);
+  return chave.slice(0,3)+'…'+chave.slice(-3);
+}
+function _sqFmt(v){return 'R$ '+Number(v||0).toFixed(2).replace('.',',');}
+function _sqFmtData(d){if(!d)return '—';try{return new Date(d).toLocaleDateString('pt-BR');}catch(e){return '—';}}
+
+async function loadSaques(){
+  if(!token)return;
+  const body=document.getElementById('saquesBody');
+  if(!body)return;
+  try{
+    const r=await fetch(`/api/affiliate-saques?action=status&token=${encodeURIComponent(token)}`);
+    if(!r.ok){body.innerHTML='<div style="color:var(--text-dim)">Indisponivel no momento.</div>';return;}
+    const s=await r.json();
+    body.innerHTML=renderSaquesUI(s);
+  }catch(e){body.innerHTML='<div style="color:var(--text-dim)">Erro ao carregar.</div>';}
+  // Historico
+  try{
+    const rh=await fetch(`/api/affiliate-saques?action=historico&token=${encodeURIComponent(token)}`);
+    if(rh.ok){
+      const d=await rh.json();
+      renderSaquesHistorico(d.saques||[]);
+    }
+  }catch(e){}
+}
+
+function renderSaquesUI(s){
+  // ESTADO 1 — sem chave Pix
+  if(!s.tem_chave){
+    return `
+      <div class="sq-alert">⚠️ <b>Cadastre sua chave Pix</b> pra começar a sacar suas comissões no dia 22 de cada mês.</div>
+      <div class="sq-card">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">Tipo de chave</div>
+        <select class="sq-select" id="sqTipo" onchange="_sqAtualizaPlaceholder()">
+          <option value="cpf">CPF</option>
+          <option value="telefone">Telefone (+55DDD9XXXX)</option>
+          <option value="email">Email</option>
+          <option value="aleatoria">Chave aleatória (UUID)</option>
+        </select>
+        <input class="sq-input" id="sqChave" placeholder="Digite seu CPF (só números)" />
+        <button class="sq-btn sq-btn-primary" style="margin-top:12px" onclick="cadastrarPix()">Salvar chave Pix →</button>
+      </div>`;
+  }
+  // ESTADO 4 — ja sacou esse mes
+  if(s.ja_sacou_esse_mes){
+    return `
+      <div class="sq-card" style="border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.05)">
+        <div style="font-size:13px;color:#22c55e;font-weight:700;margin-bottom:6px">✅ Saque realizado este mês</div>
+        <div style="font-size:12px;color:var(--text-dim)">Último saque: ${_sqFmtData(s.ultimo_saque_em)}</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:4px">Total sacado histórico: <b style="color:#fff">${_sqFmt(s.total_sacado)}</b></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:10px">Próximo saque disponível em <b style="color:#fff">${s.dias_para_proximo_saque} dia${s.dias_para_proximo_saque!==1?'s':''}</b> (dia 22).</div>
+      </div>`;
+  }
+  // ESTADO 3 — dia 22, pode sacar
+  if(s.pode_sacar_hoje){
+    return `
+      <div class="sq-card" style="border:2px solid #22c55e;background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(0,170,255,.04))">
+        <div style="font-size:14px;color:#22c55e;font-weight:800;margin-bottom:4px">🎉 Hoje é dia de saque!</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Pix enviado pra chave <b style="color:#fff">${s.chave_mascarada}</b></div>
+        <div class="sq-saldo" style="color:#22c55e">${_sqFmt(s.saldo_disponivel)}</div>
+        <button class="sq-btn sq-btn-pulse" style="margin-top:16px" onclick="confirmarSaque(${s.saldo_disponivel},'${s.chave_mascarada}')">💸 Sacar ${_sqFmt(s.saldo_disponivel)} agora →</button>
+      </div>`;
+  }
+  // ESTADO 2 — tem chave, fora do dia 22 (ou sem saldo minimo)
+  const pct=Math.min(100,Math.round(((30-s.dias_para_proximo_saque)/30)*100));
+  const semSaldo = s.saldo_disponivel < s.valor_minimo;
+  return `
+    <div class="sq-card">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">💰 Saldo disponível</div>
+      <div class="sq-saldo" style="color:${semSaldo?'var(--text-dim)':'#22c55e'}">${_sqFmt(s.saldo_disponivel)}</div>
+      ${semSaldo?`<div style="font-size:11px;color:var(--gold);margin-top:6px">Mínimo pra sacar: ${_sqFmt(s.valor_minimo)}</div>`:''}
+      <div style="font-size:12px;color:var(--text-dim);margin-top:16px">📅 Próximo saque em <b style="color:#fff">${s.dias_para_proximo_saque} dia${s.dias_para_proximo_saque!==1?'s':''}</b> (dia 22)</div>
+      <div class="sq-progress"><div class="sq-progress-fill" style="width:${pct}%"></div></div>
+      <button class="sq-btn sq-btn-disabled" style="margin-top:14px" disabled>🔒 Saque disponível no dia 22</button>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:10px">Pix: <b style="color:#fff">${s.chave_mascarada}</b> · <span style="color:var(--neon);cursor:pointer" onclick="alterarPix()">✏️ Alterar</span></div>
+      ${!s.asaas_configurado?'<div class="sq-info" style="margin-top:12px">ℹ️ Processamento será manual pelo admin neste mês (ASAAS em configuração).</div>':''}
+    </div>`;
+}
+
+function renderSaquesHistorico(saques){
+  const el=document.getElementById('saquesHistorico');
+  if(!el)return;
+  if(!saques.length){el.innerHTML='';return;}
+  const stLabel={pago:'Pago',processando:'Processando',pendente_manual:'Em fila',falhou:'Falhou'};
+  el.innerHTML=`
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:10px">Últimos saques</div>
+    <div class="sq-hist-row head"><div>Data</div><div>Chave</div><div>Valor</div><div>Status</div></div>
+    ${saques.map(s=>`
+      <div class="sq-hist-row">
+        <div style="color:var(--text-dim);font-size:11px">${_sqFmtData(s.solicitado_em)}</div>
+        <div style="font-family:var(--mono);font-size:11px">${s.chave_mascarada}</div>
+        <div style="color:#fff;font-weight:600">${_sqFmt(s.valor)}</div>
+        <div><span class="sq-hist-status ${s.status}">${stLabel[s.status]||s.status}</span></div>
+      </div>`).join('')}`;
+}
+
+function _sqAtualizaPlaceholder(){
+  const t=document.getElementById('sqTipo')?.value;
+  const inp=document.getElementById('sqChave');
+  if(!inp)return;
+  const ph={cpf:'Digite seu CPF (só números)',telefone:'+5511999999999',email:'seu@email.com',aleatoria:'uuid da chave aleatória'};
+  inp.placeholder=ph[t]||'';
+  inp.value='';
+}
+
+async function cadastrarPix(){
+  const tipo=document.getElementById('sqTipo').value;
+  const chave=document.getElementById('sqChave').value.trim();
+  if(!chave){alert('Preencha a chave Pix');return;}
+  try{
+    const r=await fetch('/api/affiliate-saques',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cadastrar-pix',token,chave_pix:chave,tipo_chave_pix:tipo})});
+    const d=await r.json();
+    if(!r.ok){alert(d.mensagem||d.error||'Erro');return;}
+    alert(d.mensagem||'Chave Pix cadastrada!');
+    loadSaques();
+  }catch(e){alert('Erro de conexão');}
+}
+
+function alterarPix(){
+  if(!confirm('Alterar sua chave Pix?'))return;
+  // Força estado "sem chave" pra reaparecer formulario
+  const body=document.getElementById('saquesBody');
+  body.innerHTML=renderSaquesUI({tem_chave:false,saldo_disponivel:0,valor_minimo:50,dias_para_proximo_saque:0,asaas_configurado:false});
+}
+
+async function confirmarSaque(valor,chaveMascarada){
+  if(!confirm(`Confirmar saque de R$${Number(valor).toFixed(2)} pra ${chaveMascarada}?`))return;
+  const body=document.getElementById('saquesBody');
+  const original=body.innerHTML;
+  body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim)">⏳ Processando saque…</div>';
+  try{
+    const r=await fetch('/api/affiliate-saques',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'solicitar-saque',token})});
+    const d=await r.json();
+    if(!r.ok){body.innerHTML=original;alert(d.mensagem||d.error||'Erro ao sacar');return;}
+    alert(d.mensagem||'✅ Saque solicitado!');
+    loadSaques();
+  }catch(e){body.innerHTML=original;alert('Erro de conexão');}
 }
 
 function startPoll(){

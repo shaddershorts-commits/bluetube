@@ -95,6 +95,14 @@
     {
       "path": "/api/blue-ml?action=calcular-features",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/affiliate-saques?action=lembrete-dia22",
+      "schedule": "0 9 20 * *"
+    },
+    {
+      "path": "/api/affiliate-saques?action=lembrete-dia22",
+      "schedule": "0 9 21 * *"
     }
   ],
   "headers": [

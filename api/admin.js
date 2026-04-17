@@ -21,6 +21,14 @@ export default async function handler(req, res) {
 
   const { action, email, plan } = req.method === 'POST' ? req.body : req.query;
 
+  // ── SAQUES: painel + acoes manuais ───────────────────────────────────────
+  if (req.method === 'GET' && action === 'saques-panel') {
+    return saquesPanelAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'marcar-saque-pago') {
+    return marcarSaquePagoAction(req, res, { SUPABASE_URL, headers });
+  }
+
   // ── SET PLAN MANUALLY ────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_plan') {
     if (!email || !plan) return res.status(400).json({ error: 'Missing email or plan' });
@@ -782,5 +790,134 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('Admin error:', err);
     return res.status(500).json({ error: 'Failed to fetch admin data: ' + err.message });
+  }
+}
+
+// ── SAQUES: painel admin + marcar pago manualmente ─────────────────────────
+async function saquesPanelAction(req, res, { SUPABASE_URL, headers }) {
+  try {
+    const VALOR_MINIMO = 50;
+    const now = new Date();
+    const mesStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    // Commissions pending agrupadas por afiliado (pra calcular elegiveis + previsto)
+    const cR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?status=eq.pending&select=affiliate_id,commission_amount`,
+      { headers }
+    );
+    const pendings = cR.ok ? await cR.json() : [];
+    const porAff = new Map();
+    for (const p of pendings) {
+      porAff.set(p.affiliate_id, (porAff.get(p.affiliate_id) || 0) + parseFloat(p.commission_amount || 0));
+    }
+    const elegiveis = Array.from(porAff.entries()).filter(([, v]) => v >= VALOR_MINIMO);
+    const previsto = elegiveis.reduce((s, [, v]) => s + v, 0);
+
+    // Saques deste mes
+    const sR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_saques?solicitado_em=gte.${mesStart}&select=id,affiliate_id,valor,status,solicitado_em,pago_em,tipo_chave_pix,chave_pix,erro_mensagem&order=solicitado_em.desc&limit=200`,
+      { headers }
+    );
+    const saques = sR.ok ? await sR.json() : [];
+    const totalPago = saques.filter(s => s.status === 'pago').reduce((s, r) => s + parseFloat(r.valor || 0), 0);
+
+    // Enriquece com email do afiliado
+    const affIds = [...new Set(saques.map(s => s.affiliate_id))];
+    let affByid = {};
+    if (affIds.length) {
+      const aR = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliates?id=in.(${affIds.join(',')})&select=id,email,name,nivel`,
+        { headers }
+      );
+      if (aR.ok) {
+        (await aR.json()).forEach(a => { affByid[a.id] = a; });
+      }
+    }
+
+    // Saldo ASAAS (se API key)
+    let saldoAsaas = null, asaasStatus = 'nao_configurado';
+    const ASAAS_KEY = process.env.ASAAS_API_KEY || '';
+    if (ASAAS_KEY) {
+      try {
+        const ASAAS_URL = (process.env.ASAAS_ENVIRONMENT === 'production') ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/api/v3';
+        const bR = await fetch(ASAAS_URL + '/finance/balance', { headers: { access_token: ASAAS_KEY } });
+        if (bR.ok) {
+          const bd = await bR.json();
+          saldoAsaas = typeof bd.balance === 'number' ? bd.balance : null;
+          asaasStatus = 'ok';
+        } else { asaasStatus = 'erro'; }
+      } catch (e) { asaasStatus = 'erro'; }
+    }
+
+    return res.status(200).json({
+      total_mes: +totalPago.toFixed(2),
+      afiliados_elegiveis: elegiveis.length,
+      previsto_dia22: +previsto.toFixed(2),
+      saldo_asaas: saldoAsaas,
+      asaas_status: asaasStatus,
+      alerta_saldo: (saldoAsaas !== null && saldoAsaas < previsto),
+      saques: saques.map(s => ({
+        id: s.id,
+        valor: s.valor,
+        status: s.status,
+        solicitado_em: s.solicitado_em,
+        pago_em: s.pago_em,
+        erro: s.erro_mensagem,
+        afiliado_email: affByid[s.affiliate_id]?.email || null,
+        afiliado_nivel: affByid[s.affiliate_id]?.nivel || null,
+        tipo_chave: s.tipo_chave_pix,
+        chave: s.chave_pix, // admin ve completa pra processar manual
+      })),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function marcarSaquePagoAction(req, res, { SUPABASE_URL, headers }) {
+  const { saque_id, asaas_transfer_id } = req.body || {};
+  if (!saque_id) return res.status(400).json({ error: 'saque_id_obrigatorio' });
+  try {
+    // Busca saque + afiliado pra atualizar stats
+    const sR = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques?id=eq.${saque_id}&select=*&limit=1`, { headers });
+    if (!sR.ok) return res.status(502).json({ error: 'erro_banco' });
+    const [saque] = await sR.json();
+    if (!saque) return res.status(404).json({ error: 'saque_nao_encontrado' });
+
+    await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques?id=eq.${saque_id}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'pago',
+        asaas_transfer_id: asaas_transfer_id || saque.asaas_transfer_id || 'manual',
+        pago_em: new Date().toISOString(),
+      }),
+    });
+
+    // Atualiza afiliado
+    const aR = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${saque.affiliate_id}&select=*&limit=1`, { headers });
+    const [afiliado] = aR.ok ? await aR.json() : [];
+    if (afiliado) {
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${afiliado.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ultimo_saque_em: new Date().toISOString(),
+          total_sacado: parseFloat(afiliado.total_sacado || 0) + parseFloat(saque.valor || 0),
+          saldo_disponivel: 0,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      // Marca commissions pending como paid
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paid' }),
+      });
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 }
