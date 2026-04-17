@@ -1,6 +1,7 @@
 // api/generate-from-zero.js — CommonJS
 const { applyRateLimit } = require('./helpers/rate-limit.js');
 const { detectInjection, sanitizeInput } = require('./helpers/sanitize.js');
+const { callAI } = require('./_helpers/ai.js');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -389,45 +390,30 @@ module.exports = async function handler(req, res) {
       '{"casual":"roteiro casual (80-110 palavras, payoff concreto)","apelativo":"roteiro apelativo (80-110 palavras, payoff concreto)","titleCasual":"título casual","titleApelativo":"título apelativo","narrative_arc":"gancho → virada → desfecho [' + nicheLabel + ']"}'
     ].join('\n');
 
-    // ── 8. Gera com OpenAI (primary) + Gemini (fallback) ─────────────────────
-    let result = null;
+    // ── 8. Gera via callAI multi-provider (OpenAI → Gemini → Claude) ─────────
+    const SYS_MAIN = 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. REGRA MAIS IMPORTANTE: o desfecho SEMPRE entrega um fato concreto (número, nome, imagem específica) — NUNCA use "vai te surpreender", "incrível", "você não vai acreditar" ou qualquer promessa sem entrega. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). ESCREVA NO IDIOMA PEDIDO. Responda SOMENTE JSON válido.';
 
-    if (OPENAI_KEY) {
+    function _parseJsonResult(raw, requiredKeys) {
+      let text = (raw || '').trim().replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const si = text.indexOf('{'), ei = text.lastIndexOf('}');
+      if (si < 0 || ei < 0) return null;
       try {
-        const r = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini', max_tokens: 900, temperature: 0.92,
-            messages: [
-              { role: 'system', content: 'Você é um narrador EXTERNO de YouTube Shorts. NUNCA simule a voz das pessoas do vídeo. Fale SOBRE eles em terceira pessoa. REGRA MAIS IMPORTANTE: o desfecho SEMPRE entrega um fato concreto (número, nome, imagem específica) — NUNCA use "vai te surpreender", "incrível", "você não vai acreditar" ou qualquer promessa sem entrega. Máximo 1 pergunta por roteiro (só no gancho ou desfecho). ESCREVA NO IDIOMA PEDIDO. Responda SOMENTE JSON válido.' },
-              { role: 'user', content: prompt }
-            ]
-          })
-        });
-        const d = await r.json();
-        if (r.ok && d.choices && d.choices[0]) {
-          let text = d.choices[0].message.content.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const si = text.indexOf('{'), ei = text.lastIndexOf('}');
-          if (si >= 0 && ei >= 0) { const p = JSON.parse(text.slice(si, ei+1)); if (p.casual && p.apelativo) result = p; }
-        }
-      } catch(e) { console.error('OpenAI error:', e.message); }
+        const p = JSON.parse(text.slice(si, ei + 1));
+        for (const k of requiredKeys) if (!p[k]) return null;
+        return p;
+      } catch { return null; }
     }
 
-    for (let i = 0; i < GK.length && !result; i++) {
-      try {
-        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GK[i], {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.92, maxOutputTokens: 1000, topP: 0.95 } })
-        });
-        const d = await r.json();
-        if (d.error && (d.error.code === 429 || d.error.code === 503)) continue;
-        if (!r.ok) continue;
-        let text = d.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
-        if (!text) continue;
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const si = text.indexOf('{'), ei = text.lastIndexOf('}');
-        if (si >= 0 && ei >= 0) { const p = JSON.parse(text.slice(si, ei+1)); if (p.casual && p.apelativo) result = p; }
-      } catch(e) { continue; }
+    let result = null;
+    try {
+      const { result: raw } = await callAI(prompt, SYS_MAIN, 1000, null, {
+        temperature: 0.92,
+        topP: 0.95,
+        geminiModel: 'gemini-2.5-flash',
+      });
+      result = _parseJsonResult(raw, ['casual', 'apelativo']);
+    } catch (e) {
+      console.error('[gen-from-zero] callAI main falhou:', e.message, e.attempts ? JSON.stringify(e.attempts) : '');
     }
 
     if (!result) return res.status(503).json({ error: 'Falha ao gerar roteiros. Tente em alguns instantes.' });
@@ -464,40 +450,16 @@ TÍTULO APELATIVO: "${finalTitleApelativo}"
 Responda SOMENTE com JSON válido, sem markdown:
 {"casual":"roteiro casual adaptado","apelativo":"roteiro apelativo adaptado","titleCasual":"título adaptado","titleApelativo":"título adaptado"}`;
 
-      // Try OpenAI first, then Gemini
+      // Adaptação cultural via callAI multi-provider
       let adapted = null;
-      if (OPENAI_KEY) {
-        try {
-          const ar = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + OPENAI_KEY },
-            body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 600, temperature: 0.8,
-              messages: [{ role: 'system', content: 'Adapte roteiros para ' + safeLang + '. Responda SOMENTE JSON.' }, { role: 'user', content: adaptPrompt }]
-            })
-          });
-          const ad = await ar.json();
-          if (ar.ok && ad.choices?.[0]?.message?.content) {
-            let txt = ad.choices[0].message.content.trim().replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-            const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
-            if (si >= 0 && ei >= 0) { const p = JSON.parse(txt.slice(si, ei+1)); if (p.casual) adapted = p; }
-          }
-        } catch(e) { console.error('adapt openai:', e.message); }
-      }
-      if (!adapted) {
-        for (const key of GK) {
-          try {
-            const ar = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + key, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: adaptPrompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 700 } })
-            });
-            const ad = await ar.json();
-            if (ad.error?.code === 429) continue;
-            let txt = ad.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
-            if (!txt) continue;
-            txt = txt.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-            const si = txt.indexOf('{'), ei = txt.lastIndexOf('}');
-            if (si >= 0 && ei >= 0) { const p = JSON.parse(txt.slice(si, ei+1)); if (p.casual) { adapted = p; break; } }
-          } catch(e) { continue; }
-        }
+      try {
+        const { result: rawAdapt } = await callAI(adaptPrompt, 'Adapte roteiros para ' + safeLang + '. Responda SOMENTE JSON.', 700, null, {
+          temperature: 0.8,
+          geminiModel: 'gemini-2.5-flash',
+        });
+        adapted = _parseJsonResult(rawAdapt, ['casual']);
+      } catch (e) {
+        console.error('[gen-from-zero] callAI adapt falhou:', e.message);
       }
       if (adapted) {
         finalCasual = adapted.casual || finalCasual;
