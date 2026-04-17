@@ -391,17 +391,17 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
 
-// Verificação de plano — mostra versão bloqueada para não-Master
-if (!token || plan !== 'master') {
+// Verificação de plano — Full e Master tem acesso
+if (!token || (plan !== 'full' && plan !== 'master')) {
   document.getElementById('inputSection').innerHTML = `
     <div class="locked-overlay">
       <div class="locked-icon">🔒</div>
-      <div class="locked-title">BlueScore é exclusivo Master</div>
+      <div class="locked-title">Assine para usar o BlueScore</div>
       <div class="locked-sub">
         O BlueScore analisa a confiança algorítmica do seu canal com base em dados reais.<br>
-        Disponível apenas no plano Master.
+        Disponível nos planos <b>Full</b> e <b>Master</b>.
       </div>
-      <a href="/#plans" class="btn-upgrade">👑 Ver plano Master →</a>
+      <a href="/#plans" class="btn-upgrade">⚡ Ver planos →</a>
     </div>`;
 }
 

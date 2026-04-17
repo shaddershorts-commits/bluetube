@@ -250,14 +250,14 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
 
-// Bloquear não-Master
-if (!token || plan !== 'master') {
+// Bloquear Free — Full e Master tem acesso
+if (!token || (plan !== 'full' && plan !== 'master')) {
   document.getElementById('inputSection').innerHTML = `
     <div class="locked-card">
       <div style="font-size:48px;margin-bottom:20px">🔒</div>
-      <div style="font-size:22px;font-weight:800;margin-bottom:10px">BlueLens é exclusivo Master</div>
-      <div style="font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:28px">Rastreie a origem de qualquer vídeo viral e descubra se é repost.<br>Disponível apenas no plano Master.</div>
-      <a href="/#plans" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none">👑 Ver plano Master →</a>
+      <div style="font-size:22px;font-weight:800;margin-bottom:10px">Assine para usar o BlueLens</div>
+      <div style="font-size:14px;color:var(--text-sec);line-height:1.6;margin-bottom:28px">Rastreie a origem de qualquer vídeo viral e descubra se é repost.<br>Disponível nos planos <b>Full</b> e <b>Master</b>.</div>
+      <a href="/#plans" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none">⚡ Ver planos →</a>
     </div>`;
 }
 

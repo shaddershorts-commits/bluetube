@@ -229,12 +229,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 // ── AUTH CHECK ───────────────────────────────────────────────────────────────
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
-if (!token || plan !== 'master') {
+if (!token || (plan !== 'full' && plan !== 'master')) {
   document.getElementById('grid').innerHTML = `
     <div class="state-box">
-      <div class="state-icon">👑</div>
-      <div class="state-title">Exclusivo para assinantes Master</div>
-      <div class="state-sub">Esta ferramenta está disponível apenas no plano Master.<br>
+      <div class="state-icon">⚡</div>
+      <div class="state-title">Assine para ver os virais</div>
+      <div class="state-sub">Esta ferramenta está disponível nos planos <b>Full</b> e <b>Master</b>.<br>
         <a href="/#plans" style="color:var(--neon);text-decoration:none">Ver planos →</a>
       </div>
     </div>`;
