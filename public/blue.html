@@ -3791,8 +3791,11 @@ function _bpWasShown(t){try{return(JSON.parse(localStorage.getItem(_BP_KEY)||'[]
 function _bpMarkShown(t){try{const a=JSON.parse(localStorage.getItem(_BP_KEY)||'[]');if(!a.includes(t)){a.push(t);localStorage.setItem(_BP_KEY,JSON.stringify(a));}}catch(e){}}
 
 function _bpCheck(){
-  if(_bpWatched===2&&!_bpWasShown('pioneiro'))setTimeout(()=>_bpShow('pioneiro'),800);
-  if(_bpWatched===8&&!_bpWasShown('futuro')){_bpLoadStats();setTimeout(()=>_bpShow('futuro'),800);}
+  // 2 videos: intro suave (stats do Blue) — cria curiosidade
+  if(_bpWatched===2&&!_bpWasShown('futuro')){_bpLoadStats();setTimeout(()=>_bpShow('futuro'),800);}
+  // 8 videos: R$1.000 hook — usuario ja esta engajado, hora da oferta forte
+  if(_bpWatched===8&&!_bpWasShown('pioneiro'))setTimeout(()=>_bpShow('pioneiro'),800);
+  // 15 videos: monetizacao / waitlist
   if(_bpWatched===15&&!_bpWasShown('monetizacao'))setTimeout(()=>_bpShow('monetizacao'),800);
 }
 
@@ -3987,7 +3990,7 @@ async function _bpWaitlist(){
 
 </script>
 
-<!-- POPUP 1 — PIONEIRO (após 2 vídeos) -->
+<!-- POPUP 1 — PIONEIRO (após 8 vídeos — usuário engajado) -->
 <div class="bp-overlay" id="bp-pioneiro">
   <div class="bp-card bp-gold-border">
     <button class="bp-x" onclick="_bpClose('pioneiro')">✕</button>
@@ -4010,7 +4013,7 @@ async function _bpWaitlist(){
   </div>
 </div>
 
-<!-- POPUP 2 — FUTURO (após 8 vídeos) -->
+<!-- POPUP 2 — FUTURO (após 2 vídeos — intro suave) -->
 <div class="bp-overlay" id="bp-futuro">
   <div class="bp-card bp-neon-border">
     <button class="bp-x" onclick="_bpClose('futuro')">✕</button>
