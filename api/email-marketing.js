@@ -35,14 +35,35 @@ module.exports = async function handler(req, res) {
     }
 
     // ── FIND ELIGIBLE USERS ─────────────────────────────────────────────
-    const tenDaysAgo = new Date(now - 10 * 86400000).toISOString();
-    const threeDaysAgo = new Date(now - 3 * 86400000).toISOString();
-
-    const eligRes = await fetch(
-      `${SU}/rest/v1/email_marketing?unsubscribed=eq.false&created_at=lt.${threeDaysAgo}&or=(last_sent_at.is.null,last_sent_at.lt.${tenDaysAgo})&select=*&limit=200&order=last_sent_at.asc.nullsfirst`,
-      { headers: H }
-    );
-    const eligible = eligRes.ok ? await eligRes.json() : [];
+    // Modo teste: ?test_emails=foo@x.com,bar@y.com → ignora regras de
+    // elegibilidade (3 dias + 10 dias) e envia pros emails passados.
+    // Útil pra validar dashboard sem spammar base real.
+    const testEmailsParam = req.query?.test_emails;
+    let eligible = [];
+    if (testEmailsParam) {
+      const list = String(testEmailsParam).split(',').map((e) => e.trim()).filter(Boolean);
+      // Garante que os test emails existem na tabela (insere se faltar)
+      for (const e of list) {
+        if (!existing.has(e)) {
+          await fetch(`${SU}/rest/v1/email_marketing`, {
+            method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+            body: JSON.stringify({ email: e, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: now.toISOString() })
+          }).catch(() => {});
+        }
+      }
+      const inList = list.map(encodeURIComponent).join(',');
+      const emR = await fetch(`${SU}/rest/v1/email_marketing?email=in.(${inList})&unsubscribed=eq.false&select=*`, { headers: H });
+      eligible = emR.ok ? await emR.json() : [];
+      console.log(`[email-marketing] MODO TESTE — alvo: ${list.join(', ')} — encontrados: ${eligible.length}`);
+    } else {
+      const tenDaysAgo = new Date(now - 10 * 86400000).toISOString();
+      const threeDaysAgo = new Date(now - 3 * 86400000).toISOString();
+      const eligRes = await fetch(
+        `${SU}/rest/v1/email_marketing?unsubscribed=eq.false&created_at=lt.${threeDaysAgo}&or=(last_sent_at.is.null,last_sent_at.lt.${tenDaysAgo})&select=*&limit=200&order=last_sent_at.asc.nullsfirst`,
+        { headers: H }
+      );
+      eligible = eligRes.ok ? await eligRes.json() : [];
+    }
 
     // ── GET PLATFORM STATS for FOMO email ───────────────────────────────
     let stats = { scripts: 0, narrations: 0, virals: 0, channels: 0 };
