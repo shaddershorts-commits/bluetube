@@ -1846,8 +1846,20 @@ async function openCreatorProfile(userId){
     checkFollowStatus(userId),
   ]);
 
-  const theirVids=videos.filter(x=>x.user_id===userId);
-  renderGrid(theirVids,false);
+  // Busca TODOS os videos do criador direto da API (nao mais filtro do feed local).
+  // Antes: videos.filter(x=>x.user_id===userId) mostrava so o subset que estava
+  // no feed daquele momento, dando contagens/numeros diferentes por sessao.
+  try{
+    const vr=await fetch('/api/blue-profile?action=user-videos&user_id='+encodeURIComponent(userId));
+    if(vr.ok){
+      const vd=await vr.json();
+      renderGrid(vd.videos||[],false);
+    }else{
+      renderGrid(videos.filter(x=>x.user_id===userId),false);
+    }
+  }catch(e){
+    renderGrid(videos.filter(x=>x.user_id===userId),false);
+  }
 }
 
 async function loadMyProfile(){

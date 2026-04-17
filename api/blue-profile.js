@@ -113,6 +113,21 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // GET videos publicos de qualquer usuario (sem auth) — usado em openCreatorProfile.
+  // Antes o frontend filtrava videos do feed local, o que dava contagens
+  // diferentes dependendo do que estava no feed naquela sessao.
+  if (req.method === 'GET' && action === 'user-videos') {
+    const queryUserId = req.query.user_id;
+    if (!queryUserId) return res.status(400).json({ error: 'user_id obrigatório' });
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/blue_videos?user_id=eq.${encodeURIComponent(queryUserId)}&status=eq.active&order=created_at.desc&select=*`,
+        { headers: h }
+      );
+      return res.status(200).json({ videos: r.ok ? await r.json() : [] });
+    } catch(e) { return res.status(500).json({ error: e.message, videos: [] }); }
+  }
+
   // POST update profile
   if (req.method === 'POST' && action === 'update') {
     if (!userId) return res.status(401).json({ error: 'Login necessário' });
