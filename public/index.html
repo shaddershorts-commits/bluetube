@@ -483,6 +483,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .mode-btn.active-adapt .mode-badge{background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2)}
 .mode-lock-overlay{position:absolute;inset:0;border-radius:9px;backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(2,8,23,.3)}
 </style>
+<script src="/_ref-tracker.js" defer></script>
 </head>
 <body>
 
@@ -1694,7 +1695,8 @@ async function handleUpgradeClick(plan){
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
   try{
-    const ref = (() => { try { return localStorage.getItem('bt_ref'); } catch { return null; } })();
+    // Usa _ref-tracker.js (janela.getRefAfiliado) que le LS/cookie/sessionStorage
+    const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
     const r=await fetch('/api/create-checkout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -1881,7 +1883,8 @@ async function handleEmailSignup(){
   if(password!==confirm){setAuthMsg('As senhas não coincidem.','');return;}
   setAuthMsg('Criando conta…','ok');
   try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:(()=>{const c=document.cookie.split(';').find(x=>x.trim().startsWith('bt_ref='));return c?c.split('=')[1].trim():null;})()} )});
+    const _refSignup = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:_refSignup})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
 
@@ -3546,20 +3549,46 @@ function openMasterTool(tool){
 function closeToolModal(){document.getElementById('toolModal').classList.remove('on');}
 
 // ── AFFILIATE TRACKING ─────────────────────────────────────────────────────
+// Persistencia do ref eh feita pelo /_ref-tracker.js (carregado via <script defer>).
+// Este bloco cuida do click tracking no backend + banner "@X te indicou".
 (function() {
   const params = new URLSearchParams(window.location.search);
   const ref = params.get('ref');
   if (!ref) return;
-  // Salva cookie de 60 dias
-  const exp = new Date(Date.now() + 60*24*60*60*1000).toUTCString();
-  document.cookie = `bt_ref=${ref};expires=${exp};path=/;SameSite=Lax`;
-  // Programa Pioneiros também usa bt_ref — salva em localStorage pro checkout ler
-  try { localStorage.setItem('bt_ref', ref); } catch {}
-  // Cookie ID único para rastrear a sessão
+  // Cookie ID único para rastrear a sessao (so 1x)
   let cid = localStorage.getItem('bt_cookie_id');
   if (!cid) { cid = 'ck_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('bt_cookie_id', cid); }
   // Registra clique no backend
   fetch(`/api/auth?action=click&ref=${encodeURIComponent(ref)}&cookie_id=${cid}&referrer=${encodeURIComponent(document.referrer)}`).catch(()=>{});
+})();
+
+// Banner sutil "@X te indicou" (so aparece se tem ref ativo — 1x por sessao)
+(function mostrarBannerAfiliado(){
+  try {
+    const refAtivo = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
+    if (!refAtivo) return;
+    if (sessionStorage.getItem('bt_ref_banner_dismissed') === '1') return;
+    fetch('/api/pioneiros?action=info-ref&ref=' + encodeURIComponent(refAtivo))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || !d.username) return;
+        const b = document.createElement('div');
+        b.id = 'bt-ref-banner';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;'
+          + 'background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;'
+          + 'text-align:center;padding:9px 40px 9px 14px;font-size:13px;font-weight:600;'
+          + 'box-shadow:0 2px 14px rgba(26,107,255,.35);letter-spacing:.2px;'
+          + 'opacity:0;transform:translateY(-8px);transition:opacity .3s,transform .3s';
+        b.innerHTML = '🎯 Você veio pela indicação de <b>@' + d.username.replace(/[<>"&]/g,'') + '</b>'
+          + '<button aria-label="Fechar" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);'
+          + 'background:rgba(255,255,255,.18);border:none;color:#fff;width:26px;height:26px;'
+          + 'border-radius:50%;cursor:pointer;font-size:15px;line-height:1" '
+          + 'onclick="this.parentElement.remove();try{sessionStorage.setItem(\'bt_ref_banner_dismissed\',\'1\')}catch(e){}">×</button>';
+        document.body.appendChild(b);
+        requestAnimationFrame(() => { b.style.opacity = '1'; b.style.transform = 'translateY(0)'; });
+      })
+      .catch(() => {});
+  } catch(e) {}
 })();
 
 // ── BLUBLU MASCOT ──────────────────────────────────────────────────────────

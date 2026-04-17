@@ -26,6 +26,38 @@ module.exports = async function handler(req, res) {
     return processarQualificacoes(req, res, { SU, SK, h });
   }
 
+  // Publico: buscar info minima de um pioneiro pelo link_ref (pra banner "@X te indicou")
+  if (action === 'info-ref') {
+    const ref = (req.query.ref || '').trim();
+    if (!ref || !/^[a-zA-Z0-9_-]{4,64}$/.test(ref)) {
+      return res.status(400).json({ error: 'ref_invalido' });
+    }
+    try {
+      const pR = await fetch(
+        `${SU}/rest/v1/pioneiros_programa?link_ref=eq.${encodeURIComponent(ref)}&select=user_id,link_ref&limit=1`,
+        { headers: h }
+      );
+      if (!pR.ok) return res.status(502).json({ error: 'upstream' });
+      const rows = await pR.json();
+      const pio = Array.isArray(rows) ? rows[0] : null;
+      if (!pio) return res.status(404).json({ error: 'nao_encontrado' });
+      const prR = await fetch(
+        `${SU}/rest/v1/blue_profiles?user_id=eq.${pio.user_id}&select=username,display_name,avatar_url&limit=1`,
+        { headers: h }
+      );
+      const prRows = prR.ok ? await prR.json() : [];
+      const perfil = prRows[0] || {};
+      res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      return res.status(200).json({
+        username: perfil.username || null,
+        nome: perfil.display_name || null,
+        avatar_url: perfil.avatar_url || null,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'erro_interno' });
+    }
+  }
+
   // Admin: listar todos os pioneiros (auth via ADMIN_SECRET Bearer)
   if (action === 'admin-listar') {
     const authHeader = req.headers['authorization'] || '';
