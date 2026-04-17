@@ -224,18 +224,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     </div>
   </div>
 
-  <!-- SECAO HISTORICO (banco acumulativo) -->
-  <div id="secao-historico" style="margin-top:48px;display:none">
-    <div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:24px;margin-bottom:20px">
-      <h3 style="color:var(--text);font-size:16px;margin:0 0 4px;font-weight:700">📼 Vídeos do banco histórico</h3>
-      <p style="color:rgba(255,255,255,0.4);font-size:12px;margin:0;font-family:var(--mono)">Vídeos coletados anteriormente com os filtros ativos</p>
-    </div>
-    <div class="shorts-grid" id="historico-grid"></div>
-    <div id="historico-paginacao" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px">
-      <button id="btn-historico-anterior" onclick="mudarPaginaHistorico(-1)" style="display:none;padding:8px 16px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e8f4ff;cursor:pointer;font-family:var(--mono);font-size:12px">← Anterior</button>
-      <span id="historico-pagina-info" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:12px;font-family:var(--mono)"></span>
-      <button id="btn-historico-proximo" onclick="mudarPaginaHistorico(1)" style="display:none;padding:8px 16px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e8f4ff;cursor:pointer;font-family:var(--mono);font-size:12px">Próximos →</button>
-    </div>
+  <!-- BOTAO "carregar mais" — adiciona videos do banco ao mesmo grid acima -->
+  <div id="historico-paginacao" style="display:none;justify-content:center;align-items:center;gap:8px;margin-top:24px">
+    <button id="btn-carregar-mais" onclick="mudarPaginaHistorico(1)" style="padding:10px 22px;border-radius:10px;background:rgba(0,170,255,0.08);border:1px solid rgba(0,170,255,0.18);color:var(--neon);cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600">⬇ Carregar mais</button>
+    <span id="historico-pagina-info" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:11px;font-family:var(--mono)"></span>
   </div>
 
 </div>
@@ -416,7 +408,7 @@ function renderVideos(videos) {
     const ago = timeAgo(v.publishedAt);
 
     return `
-    <a class="short-card" href="${v.url}" target="_blank" rel="noopener">
+    <a class="short-card" href="${v.url}" target="_blank" rel="noopener" data-vid="${escHtml(v.id||'')}">
       <div class="card-thumb-wrap">
         <img class="card-thumb" src="${v.thumbnail}" alt="${escHtml(v.title)}" loading="lazy" onerror="this.style.display='none'"/>
         <div class="card-overlay">
@@ -588,13 +580,27 @@ function atualizarBadgeBanco(){
   }).catch(() => {});
 }
 
-// Carrega a secao de historico com os filtros atuais da pagina
-let paginaHistorico = 1;
+// Acrescenta videos do banco ABAIXO dos da busca ativa, no mesmo grid.
+// Sem cabecalho, sem divisao visivel. Dedupe por youtube_id pra nao
+// repetir videos que ja vieram da busca ativa.
+let paginaHistorico = 0; // 0 = ainda nao carregou nenhuma pagina do banco
+
 async function carregarHistorico(pagina){
   try {
+    const grid = document.getElementById('grid');
+    if (!grid) return;
+
+    // Pagina 1 = reset: limpa qualquer banco anterior e recomeca a partir
+    // dos cards da busca ativa atual (lastResults).
+    if (pagina === 1) {
+      paginaHistorico = 0;
+      // Recompoe o grid so com a busca ativa antes de adicionar o banco
+      if (lastResults && lastResults.length) {
+        renderVideos(lastResults);
+      }
+    }
+
     const region = document.getElementById('regionSelect')?.value || '';
-    // Usa o mesmo periodo selecionado pela busca ativa — assim o historico
-    // respeita o filtro 24h / 7d / 30d. Rotacao 24h -> 7d -> 30d automatica.
     const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
     const params = new URLSearchParams({
       action: 'historico',
@@ -605,63 +611,83 @@ async function carregarHistorico(pagina){
     const r = await fetch(`/api/virais?${params}`);
     if (!r.ok) return;
     const d = await r.json();
-    const secao = document.getElementById('secao-historico');
-    const grid = document.getElementById('historico-grid');
-    if (!secao || !grid) return;
     if (!d.videos || !d.videos.length){
-      secao.style.display = 'none';
+      const pag = document.getElementById('historico-paginacao');
+      if (pag) pag.style.display = 'none';
       return;
     }
-    secao.style.display = 'block';
-    // Renderiza com o mesmo visual dos cards ativos
-    grid.innerHTML = d.videos.map((v, i) => {
-      const title = v.titulo || '';
-      const thumb = v.thumbnail_url || '';
-      const channel = v.canal_nome || '';
-      const url = v.url || `https://youtube.com/shorts/${v.youtube_id}`;
-      const views = Number(v.views) || 0;
-      const viewsFormatted = views >= 1_000_000 ? (views/1_000_000).toFixed(1)+'M'
-                          : views >= 1000 ? (views/1000).toFixed(views>=10000?0:1)+'K'
-                          : String(views);
-      const ago = timeAgo(v.publicado_em);
-      return `
-      <a class="short-card" href="${url}" target="_blank" rel="noopener">
-        <div class="card-thumb-wrap">
-          ${thumb ? `<img class="card-thumb" src="${thumb}" alt="${escHtml(title)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}
-          <div class="card-overlay"><span class="card-views">${viewsFormatted} views</span></div>
-          <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-          <div class="card-rank">#${i+1}</div>
-        </div>
-        <div class="card-info">
-          <div class="card-title">${escHtml(title)}</div>
-          <div class="card-channel">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
-            ${escHtml(channel)}
-          </div>
-          <div class="card-meta">
-            <span class="card-views-badge">${viewsFormatted}</span>
-            <span class="card-date">${ago}</span>
-          </div>
-          <div class="card-use-btn" onclick="useShort(event,'${v.youtube_id}','${escHtml(url)}')">↗ Usar no BlueTube</div>
-        </div>
-      </a>`;
-    }).join('');
 
-    // Paginacao
+    // Dedupe: ignora videos cujo youtube_id ja esta no grid
+    const idsExistentes = new Set();
+    grid.querySelectorAll('a.short-card[data-vid]').forEach(a => idsExistentes.add(a.dataset.vid));
+    // Tambem dedupe contra a busca ativa (lastResults usa v.id)
+    if (lastResults && lastResults.length) {
+      lastResults.forEach(v => v.id && idsExistentes.add(v.id));
+    }
+    const novos = d.videos.filter(v => v.youtube_id && !idsExistentes.has(v.youtube_id));
+
+    // Renderiza e ANEXA ao grid (insertAdjacentHTML beforeend)
+    if (novos.length) {
+      const baseRank = grid.querySelectorAll('a.short-card').length;
+      const html = novos.map((v, i) => {
+        const title = v.titulo || '';
+        const thumb = v.thumbnail_url || '';
+        const channel = v.canal_nome || '';
+        const url = v.url || `https://youtube.com/shorts/${v.youtube_id}`;
+        const views = Number(v.views) || 0;
+        const viewsFormatted = views >= 1_000_000 ? (views/1_000_000).toFixed(1)+'M'
+                            : views >= 1000 ? (views/1000).toFixed(views>=10000?0:1)+'K'
+                            : String(views);
+        const ago = timeAgo(v.publicado_em);
+        const rank = baseRank + i + 1;
+        return `
+        <a class="short-card" href="${url}" target="_blank" rel="noopener" data-vid="${escHtml(v.youtube_id)}">
+          <div class="card-thumb-wrap">
+            ${thumb ? `<img class="card-thumb" src="${thumb}" alt="${escHtml(title)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}
+            <div class="card-overlay"><span class="card-views">${viewsFormatted} views</span></div>
+            <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+            <div class="card-rank">#${rank}</div>
+          </div>
+          <div class="card-info">
+            <div class="card-title">${escHtml(title)}</div>
+            <div class="card-channel">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+              ${escHtml(channel)}
+            </div>
+            <div class="card-meta">
+              <span class="card-views-badge">${viewsFormatted}</span>
+              <span class="card-date">${ago}</span>
+            </div>
+            <div class="card-use-btn" onclick="useShort(event,'${v.youtube_id}','${escHtml(url)}')">↗ Usar no BlueTube</div>
+          </div>
+        </a>`;
+      }).join('');
+      grid.insertAdjacentHTML('beforeend', html);
+    }
+
     paginaHistorico = d.pagina || pagina || 1;
+    const totalPag = d.total_paginas || 1;
+    const pag = document.getElementById('historico-paginacao');
     const info = document.getElementById('historico-pagina-info');
-    if (info) info.textContent = `Página ${paginaHistorico} de ${d.total_paginas || 1} · ${d.total || 0} vídeos`;
-    const btnAnt = document.getElementById('btn-historico-anterior');
-    const btnProx = document.getElementById('btn-historico-proximo');
-    if (btnAnt) btnAnt.style.display = paginaHistorico > 1 ? 'inline-block' : 'none';
-    if (btnProx) btnProx.style.display = paginaHistorico < (d.total_paginas || 1) ? 'inline-block' : 'none';
+    const btnMais = document.getElementById('btn-carregar-mais');
+    if (paginaHistorico < totalPag) {
+      if (pag) pag.style.display = 'flex';
+      if (btnMais) btnMais.style.display = 'inline-block';
+      if (info) info.textContent = `mostrando ${grid.querySelectorAll('a.short-card').length} de ${d.total || 0} vídeos`;
+    } else {
+      // Acabou — esconde botao mas pode mostrar contagem total
+      if (btnMais) btnMais.style.display = 'none';
+      if (pag) {
+        pag.style.display = 'flex';
+        if (info) info.textContent = `${grid.querySelectorAll('a.short-card').length} vídeos no total`;
+      }
+    }
   } catch(e){ /* silent */ }
 }
 
 function mudarPaginaHistorico(direcao){
-  carregarHistorico(Math.max(1, paginaHistorico + direcao));
-  const sec = document.getElementById('secao-historico');
-  if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // direcao=1 carrega proxima pagina (append). Sempre soma a partir da paginaHistorico atual.
+  carregarHistorico((paginaHistorico || 0) + Math.max(1, direcao));
 }
 
 // Carrega badge no init (assim que a pagina monta)
