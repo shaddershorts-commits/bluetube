@@ -79,7 +79,9 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
 
 /* ── BREAKPOINT DESKTOP ──────────────────────────────────────────────────── */
 @media (min-width:1024px){
-  .desktop-sidebar{display:flex}
+  /* z-index ALTO pra garantir que a sidebar sempre receba cliques, mesmo
+     com prof-page/pf-overlay abertos (que tem z-index 250/270). */
+  .desktop-sidebar{display:flex;z-index:400}
   .topbar{display:none}
   .bottom-nav{display:none}
   /* Feed: aspect ratio 9:16 exato (nao achata o video portrait) */
@@ -1174,14 +1176,14 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     </div>
   </div>
   <div class="prof-bio" id="profBio" style="display:none"></div>
-  <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0;align-items:center">
+  <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0;align-items:center;flex-wrap:wrap">
     <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;flex:1" onclick="openEditProfile()">Editar perfil</button>
     <a id="profAnalyticsBtn" href="/blue-analytics" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#3b82f6;text-decoration:none;text-align:center">📊</a>
     <a id="profMonetBtn" href="/blue-monetizacao" style="display:none;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#22c55e;text-decoration:none;text-align:center">💰</a>
     
-    <button class="prof-subscribe-btn" id="profSubscribeBtn" style="display:none" onclick="openAssinaturaModal()">P Assinar</button>
+    <button class="prof-subscribe-btn" id="profSubscribeBtn" style="display:none" onclick="openAssinaturaModal()">⭐ Assinar canal</button>
     <button class="prof-add-product-btn" id="profAddProductBtn" style="display:none;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer" onclick="openAddProdModal()">+ Produto</button>
-    <button class="prof-create-plan-btn" id="profCreatePlanBtn" style="display:none;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#f59e0b;cursor:pointer" onclick="openCriarPlanoModal()">P Criar plano</button>
+    <button class="prof-create-plan-btn" id="profCreatePlanBtn" style="display:none;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#f59e0b;cursor:pointer" onclick="openCriarPlanoModal()">$ Criar plano</button>
     <button class="prof-follow-btn" id="profFollowBtn" style="display:none" onclick="toggleFollow()">+ Seguir</button>
     <button class="prof-msg-btn" id="profMsgBtn" style="display:none" onclick="openChatWithUser()">💬</button>
   </div>
@@ -2397,6 +2399,11 @@ async function loadMyProfile(){
     const d=await r.json();
     myProfile=d.profile;
     setProfileHeader(myProfile,true);
+    // Atualiza URL pro proprio perfil — garante que compartilhar/voltar do
+    // browser funcionem igual ao fluxo de openCreatorProfile.
+    if (myProfile?.username) {
+      try { BlueRouter.push(BlueRouter.ROTAS.perfil(myProfile.username), { userId: myProfile.user_id, username: myProfile.username, isOwn: true }, '@' + myProfile.username); } catch(e){}
+    }
     loadMyVideos();
     checkPioneirosBanner();
   }catch(e){console.error('loadMyProfile:',e);}
@@ -5428,6 +5435,9 @@ showProfTab = function(tab,btn){
 
 const _origSetProfileHeader = setProfileHeader;
 setProfileHeader = function(p,isOwn){
+  // Mesma reconciliacao do original — evita que o wrap use isOwn errado
+  // quando myProfile carrega depois do openCreatorProfile (race condition).
+  if (myProfile && p && p.user_id && myProfile.user_id === p.user_id) isOwn = true;
   _origSetProfileHeader(p,isOwn);
   _assinaturaUserId=p?.user_id||null;
   const subBtn=document.getElementById('profSubscribeBtn');
