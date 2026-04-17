@@ -512,9 +512,25 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
   document.getElementById('resultCard').style.display = 'block';
 }
 
+// Algumas URLs retornadas pelo Cobalt/YouTube são IP-bound (googlevideo.com)
+// e dão 403 quando o browser do usuário tenta baixar direto. Reescreve
+// pra passar pelo nosso /api/auth?action=proxy-download, que já existe
+// e faz o fetch do servidor (mesmo IP do Cobalt) e stream pro usuário.
+function wrapProxyIfNeeded(rawUrl, platform, filename) {
+  if (!rawUrl) return rawUrl;
+  // Se já é o nosso proxy ou o Railway proxy, nao re-envelopa
+  if (rawUrl.includes('/api/auth?action=proxy-download')) return rawUrl;
+  if (rawUrl.includes('/proxy-download?')) return rawUrl;
+  const ipBound = /googlevideo\.com|redirector\.google|v\.redd\.it\/DASH|rpan\.reddit\.com/i.test(rawUrl);
+  if (!ipBound) return rawUrl;
+  return `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(rawUrl)}&filename=${encodeURIComponent(filename)}`;
+}
+
 async function triggerDownload(url, title, platform){
   const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
   const filename = `BaixaBlue_${platform}_${safeTitle}.mp4`;
+  // Envelope URLs IP-bound antes do fetch pra evitar 403 no browser
+  url = wrapProxyIfNeeded(url, platform, filename);
 
   const btn = document.getElementById('downloadLink');
   const origContent = btn.innerHTML;

@@ -134,34 +134,68 @@ module.exports = async function handler(req, res) {
 
       let cleanUrl = url.replace(/\?.*$/, '').replace(/\/$/, '');
 
-      // Follow redd.it redirects
+      // Resolve redd.it short links seguindo redirect
       if (url.includes('redd.it') && !url.includes('reddit.com')) {
-        try { const rd = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } }); cleanUrl = rd.url.replace(/\?.*$/, '').replace(/\/$/, ''); } catch(e) {}
+        try {
+          const rd = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } });
+          cleanUrl = rd.url.replace(/\?.*$/, '').replace(/\/$/, '');
+        } catch(e) {}
       }
 
-      // Try .json API
-      let post = null;
-      try {
-        const r = await fetch(cleanUrl + '.json', { headers: { 'User-Agent': 'web:bluetube:v1.0 (by /u/bluetube)' }, redirect: 'follow' });
-        if (r.ok) {
-          const data = await r.json();
-          post = Array.isArray(data) ? data[0]?.data?.children?.[0]?.data : data?.data?.children?.[0]?.data;
-        }
-      } catch(e) {}
+      // Normaliza pra path-only (sem host) pra tentar vários hosts do Reddit
+      const pathMatch = cleanUrl.match(/reddit\.com(\/r\/[^?#]+)/i);
+      const postPath = pathMatch ? pathMatch[1] : cleanUrl.replace(/^https?:\/\/[^/]+/, '');
 
-      // Try HTML scraping fallback
-      if (!post) {
+      // Fontes pra tentar em ordem — old.reddit tem API mais estável e menos
+      // rate-limited que www. api.reddit é oauth-free e deprecated mas ainda responde.
+      const redditHeaders = {
+        'User-Agent': 'Mozilla/5.0 (compatible; BaixaBlue/1.0; +https://bluetubeviral.com)',
+        'Accept': 'application/json, text/html;q=0.9',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+      };
+      const sources = [
+        `https://old.reddit.com${postPath}.json?raw_json=1`,
+        `https://www.reddit.com${postPath}.json?raw_json=1`,
+        `https://api.reddit.com${postPath}?raw_json=1`,
+      ];
+
+      let post = null;
+      let lastDebug = '';
+      for (const src of sources) {
         try {
-          const r = await fetch(cleanUrl, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, redirect: 'follow' });
-          if (r.ok) {
+          const r = await fetch(src, { headers: redditHeaders, redirect: 'follow' });
+          lastDebug = `${src} → ${r.status}`;
+          if (!r.ok) { console.log('[reddit]', lastDebug); continue; }
+          const data = await r.json();
+          const candidate = Array.isArray(data)
+            ? data[0]?.data?.children?.[0]?.data
+            : data?.data?.children?.[0]?.data || data?.data || data;
+          if (candidate && (candidate.title || candidate.media || candidate.url)) {
+            post = candidate;
+            break;
+          }
+        } catch(e) {
+          lastDebug = `${src} → ${e.message}`;
+        }
+      }
+
+      // HTML fallback — old.reddit mantém fallback_url inline no HTML
+      if (!post) {
+        for (const host of ['old.reddit.com', 'www.reddit.com']) {
+          try {
+            const r = await fetch(`https://${host}${postPath}`, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, redirect: 'follow' });
+            if (!r.ok) continue;
             const html = await r.text();
             const fallback = html.match(/"fallback_url"\s*:\s*"([^"]+)"/);
             if (fallback) {
               const redUrl = fallback[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
-              return res.status(200).json({ url: proxyWrap(redUrl, 'reddit', 'Reddit_Video'), title: 'Reddit Video', platform: 'reddit' });
+              const titleM = html.match(/<title>([^<]+)<\/title>/i);
+              const hTitle = titleM ? titleM[1].replace(/ : r\/.*$/, '').trim() : 'Reddit Video';
+              return res.status(200).json({ url: proxyWrap(redUrl, 'reddit', hTitle), title: hTitle, platform: 'reddit' });
             }
-          }
-        } catch(e) {}
+          } catch(e) {}
+        }
       }
 
       if (post) {
@@ -176,6 +210,10 @@ module.exports = async function handler(req, res) {
           const u = post.crosspost_parent_list[0].media.reddit_video.fallback_url.replace(/\?.*$/, '');
           return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
         }
+        if (post.preview?.reddit_video_preview?.fallback_url) {
+          const u = post.preview.reddit_video_preview.fallback_url.replace(/\?.*$/, '');
+          return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
+        }
         if (post.url && (post.url.includes('.gif') || post.url.includes('gifv'))) {
           const u = post.url.replace('.gifv', '.mp4');
           return res.status(200).json({ url: proxyWrap(u, 'reddit', title), title, thumbnail, platform: 'reddit' });
@@ -185,10 +223,11 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Todos falharam: erro explícito
+      console.log('[reddit] Todas as fontes falharam. Último:', lastDebug);
       return res.status(502).json({
-        error: 'Não foi possível extrair este post do Reddit. Verifique se o link é público.',
-        platform: 'reddit'
+        error: 'Não foi possível extrair este post do Reddit. Verifique se o link é público (não NSFW/privado) e tente novamente.',
+        platform: 'reddit',
+        debug: lastDebug,
       });
     }
 
