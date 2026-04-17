@@ -341,10 +341,18 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ retention: [], error: e.message }); }
   }
 
-  // ── TRACK VIEW (analytics logging from frontend) ────────────────────────
+  // ── TRACK VIEW (analytics + algoritmo em tempo real) ────────────────────
+  // POST body: { token, video_id, percentual, origem, pulou, replay, curtiu,
+  //              salvou, comentou, compartilhou, abriu_perfil, tempo_total_segundos }
+  // Registra em blue_video_analytics + blue_feed_historico + atualiza
+  // blue_user_interests de forma assincrona (fire-and-forget pros 2 ultimos).
   if (req.method === 'POST' && action === 'track-view') {
-    const { video_id: tvId, percentual, origem, token } = req.body || {};
+    const body = req.body || {};
+    const tvId = body.video_id;
+    const token = body.token;
     if (!tvId) return res.status(200).json({ ok: true });
+
+    // Resolve user (opcional — visitante ainda grava em analytics)
     let uid = null;
     if (token) {
       try {
@@ -353,10 +361,59 @@ module.exports = async function handler(req, res) {
         if (uR.ok) uid = (await uR.json()).id;
       } catch(e) {}
     }
-    fetch(`${SU}/rest/v1/blue_video_analytics`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ video_id: tvId, user_id: uid, percentual_assistido: percentual || 0, origem: origem || 'feed' })
+
+    const pct = Math.max(0, Math.min(100, parseInt(body.percentual) || 0));
+    const pulou = !!body.pulou;
+
+    // Grava em blue_video_analytics (backward-compat com codigo existente)
+    fetch(`${SU}/rest/v1/blue_video_analytics`, {
+      method: 'POST',
+      headers: { ...h, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        video_id: tvId,
+        user_id: uid,
+        percentual_assistido: pct,
+        origem: body.origem || 'feed',
+      }),
     }).catch(() => {});
-    return res.status(200).json({ ok: true });
+
+    // Se nao estiver logado, para aqui — algoritmo personalizado so para logados
+    if (!uid) return res.status(200).json({ ok: true });
+
+    // Responde rapido — o resto eh fire-and-forget
+    res.status(200).json({ ok: true });
+
+    // Upsert em blue_feed_historico (uma linha por user+video, agrega sinais)
+    const historicoPayload = {
+      user_id: uid,
+      video_id: tvId,
+      percentual_assistido: pct,
+      pulou,
+      replay: !!body.replay,
+      curtiu: !!body.curtiu,
+      salvou: !!body.salvou,
+      comentou: !!body.comentou,
+      compartilhou: !!body.compartilhou,
+      abriu_perfil: !!body.abriu_perfil,
+      tempo_total_segundos: parseInt(body.tempo_total_segundos) || 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await fetch(`${SU}/rest/v1/blue_feed_historico?on_conflict=user_id,video_id`, {
+        method: 'POST',
+        headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(historicoPayload),
+      });
+    } catch (e) { console.error('[feed hist]', e.message); return; }
+
+    // Atualiza perfil de interesses (async, nao bloqueia)
+    try {
+      await atualizarInteresses(uid, tvId, historicoPayload, { SU, h });
+    } catch (e) {
+      console.error('[feed interesses]', e.message);
+    }
+    return;
   }
 
   // ── BUSCA COMPLETA ──────────────────────────────────────────────────────
@@ -539,3 +596,122 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: err.message, videos: [], has_more: false });
   }
 };
+
+// ──────────────────────────────────────────────────────────────────────────
+// Algoritmo: atualiza perfil de interesses do usuario em tempo real
+// ──────────────────────────────────────────────────────────────────────────
+async function atualizarInteresses(userId, videoId, sinal, { SU, h }) {
+  // 1. Busca video (nichos, hashtags, user_id do criador)
+  const vR = await fetch(
+    `${SU}/rest/v1/blue_videos?id=eq.${videoId}&select=user_id,nichos,hashtags&limit=1`,
+    { headers: h }
+  );
+  const [video] = vR.ok ? await vR.json() : [];
+  if (!video) return;
+
+  // 2. Busca interesses atuais
+  const iR = await fetch(
+    `${SU}/rest/v1/blue_user_interests?user_id=eq.${userId}&select=*&limit=1`,
+    { headers: h }
+  );
+  const [atual] = iR.ok ? await iR.json() : [];
+  const nichos = atual?.nichos || {};
+  const criadoresFav = Array.isArray(atual?.criadores_favoritos) ? atual.criadores_favoritos : [];
+  const criadoresBloq = Array.isArray(atual?.criadores_bloqueados) ? atual.criadores_bloqueados : [];
+  const tagsPos = Array.isArray(atual?.tags_positivas) ? atual.tags_positivas : [];
+  const tagsNeg = Array.isArray(atual?.tags_negativas) ? atual.tags_negativas : [];
+
+  // 3. Calcula forca do sinal (-1.0 a +1.0)
+  let forca = 0;
+  if (sinal.pulou) {
+    forca = -0.5;
+  } else {
+    forca = (sinal.percentual_assistido / 100) * 0.3;
+    if (sinal.curtiu) forca += 0.2;
+    if (sinal.salvou) forca += 0.3;
+    if (sinal.comentou) forca += 0.2;
+    if (sinal.compartilhou) forca += 0.4;
+    if (sinal.replay) forca += 0.3;
+    if (sinal.abriu_perfil) forca += 0.2;
+    forca = Math.min(1, forca);
+  }
+
+  // 4. Atualiza score de nichos (usa 'nichos' se existir, senao hashtags como proxy)
+  const nichosVideo = (video.nichos && video.nichos.length) ? video.nichos
+    : (Array.isArray(video.hashtags) ? video.hashtags.slice(0, 3) : []);
+
+  nichosVideo.forEach((nicho) => {
+    if (!nicho) return;
+    const atualScore = nichos[nicho] != null ? nichos[nicho] : 0.5;
+    // Decay exponencial em direcao ao novo sinal (80% historia + 20% novo)
+    const alvo = forca >= 0 ? Math.min(1, 0.5 + forca) : Math.max(0, 0.5 + forca);
+    nichos[nicho] = Math.max(0, Math.min(1, atualScore * 0.8 + alvo * 0.2));
+  });
+
+  // 5. Atualiza afinidade com criador
+  if (video.user_id && video.user_id !== userId) {
+    const idxFav = criadoresFav.findIndex((c) => c.id === video.user_id);
+    if (forca > 0) {
+      if (idxFav >= 0) {
+        criadoresFav[idxFav].score = Math.min(1, (criadoresFav[idxFav].score || 0.5) + forca * 0.1);
+      } else {
+        criadoresFav.push({ id: video.user_id, score: 0.5 + forca });
+      }
+      // Remove da lista de bloqueados se estava la
+      const idxBlq = criadoresBloq.indexOf(video.user_id);
+      if (idxBlq >= 0) criadoresBloq.splice(idxBlq, 1);
+    } else if (forca < -0.3) {
+      // Conta quantos videos deste criador o usuario pulou
+      const pulosR = await fetch(
+        `${SU}/rest/v1/blue_feed_historico?user_id=eq.${userId}&pulou=eq.true&select=video_id&limit=100`,
+        { headers: { ...h, Prefer: 'count=exact' } }
+      );
+      const pulos = pulosR.ok ? await pulosR.json() : [];
+      // Quais desses videos sao deste criador?
+      const pulosIds = pulos.map((p) => p.video_id);
+      if (pulosIds.length > 0) {
+        const vidsCriadorR = await fetch(
+          `${SU}/rest/v1/blue_videos?id=in.(${pulosIds.join(',')})&user_id=eq.${video.user_id}&select=id`,
+          { headers: h }
+        );
+        const vidsCriador = vidsCriadorR.ok ? await vidsCriadorR.json() : [];
+        if (vidsCriador.length >= 3 && !criadoresBloq.includes(video.user_id)) {
+          criadoresBloq.push(video.user_id);
+        }
+      }
+    }
+  }
+
+  // 6. Atualiza tags positivas/negativas (usa hashtags do video)
+  const hashtags = Array.isArray(video.hashtags) ? video.hashtags : [];
+  if (forca > 0.3) {
+    hashtags.forEach((t) => {
+      if (t && !tagsPos.includes(t)) tagsPos.push(t);
+      const idxNeg = tagsNeg.indexOf(t);
+      if (idxNeg >= 0) tagsNeg.splice(idxNeg, 1);
+    });
+  } else if (forca < -0.3) {
+    hashtags.forEach((t) => {
+      if (t && !tagsNeg.includes(t) && !tagsPos.includes(t)) tagsNeg.push(t);
+    });
+  }
+
+  // 7. Ultimo nicho (pra diversificacao)
+  const ultimoNicho = nichosVideo[0] || atual?.ultimo_nicho || null;
+
+  // 8. Upsert final
+  await fetch(`${SU}/rest/v1/blue_user_interests?on_conflict=user_id`, {
+    method: 'POST',
+    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      user_id: userId,
+      nichos,
+      criadores_favoritos: criadoresFav.slice(-50),
+      criadores_bloqueados: criadoresBloq.slice(-100),
+      tags_positivas: tagsPos.slice(-100),
+      tags_negativas: tagsNeg.slice(-50),
+      ultimo_nicho: ultimoNicho,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+}
