@@ -458,9 +458,10 @@ async function processarQualificacoes(req, res, { SU, SK, h }) {
       }).catch(() => {});
     }
 
-    // Fire-and-forget email pra quem acabou de bater a meta
+    // Fire-and-forget email + push pra quem acabou de bater a meta
     for (const n of notificaveis) {
       enviarEmailMetaAtingida(n.user_id, n.pioneiro_id, { SU, h }).catch(() => {});
+      enviarPushMetaAtingida(n.user_id).catch(() => {});
     }
 
     return res.status(200).json({ ok: true, qualificadas: pendentes.length, pioneiros_afetados: pioneirosAtualizados.size, novos_premios_liberados: notificaveis.length });
@@ -502,6 +503,19 @@ async function enviarEmailDesbloqueio(userId, pioneiro, ctx, emailOverride) {
         </div>`,
     }),
   }).catch(() => {});
+}
+
+async function enviarPushMetaAtingida(userId) {
+  try {
+    const { sendPushToUser } = require('./_helpers/push.js');
+    await sendPushToUser(userId, {
+      title: '🏆 R$1.000 são seus!',
+      body: 'Você bateu a meta de 100 assinantes qualificados. Abra o painel e solicite o pagamento.',
+      data: { url: 'https://bluetubeviral.com/pioneiros.html', type: 'pioneiros_meta' },
+    });
+  } catch (e) {
+    console.error('[pioneiros push]', e.message);
+  }
 }
 
 async function enviarEmailMetaAtingida(userId, pioneiroId, ctx) {
