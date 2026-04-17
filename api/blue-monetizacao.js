@@ -90,8 +90,8 @@ module.exports = async function handler(req, res) {
       // Generate onboarding link
       const link = await stripePost('/account_links', {
         account: accountId,
-        refresh_url: SITE + '/blue-monetizacao.html',
-        return_url: SITE + '/blue-monetizacao.html?setup=ok',
+        refresh_url: SITE + '/blue-monetizacao',
+        return_url: SITE + '/blue-monetizacao?setup=ok',
         type: 'account_onboarding',
       });
       if (link.error) return res.status(500).json({ error: 'Erro ao gerar link: ' + link.error.message });

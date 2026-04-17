@@ -44,8 +44,8 @@ nav{width:100%;padding:16px;display:flex;align-items:center;justify-content:spac
 </head>
 <body>
 <nav>
-  <a href="/blue.html" class="logo"><span>Blue</span></a>
-  <a href="/blue.html" class="open-btn">Abrir no Blue</a>
+  <a href="/blue" class="logo"><span>Blue</span></a>
+  <a href="/blue" class="open-btn">Abrir no Blue</a>
 </nav>
 <div class="container" id="main">
   <div class="loader" id="loader">Carregando vídeo…</div>
@@ -76,7 +76,7 @@ async function load(){
     const init=(c.display_name||c.username||'B').charAt(0).toUpperCase();
     const avHtml=c.avatar_url?`<img src="${c.avatar_url}"/>`:`${init}`;
     const verif=c.verificado?'verified':'';
-    const desc=(v.title||'').replace(/#([a-zA-Z0-9\u00C0-\u024Fà-ÿ_]+)/g,'<a class="hashtag" href="/blue.html?hashtag=$1">#$1</a>');
+    const desc=(v.title||'').replace(/#([a-zA-Z0-9\u00C0-\u024Fà-ÿ_]+)/g,'<a class="hashtag" href="/blue?hashtag=$1">#$1</a>');
     const shareUrl=window.location.href;
     const waUrl='https://wa.me/?text='+encodeURIComponent((v.title||'Vídeo no Blue')+' '+shareUrl);
 
@@ -105,7 +105,7 @@ async function load(){
         </div>
       </div>
       <div class="cta">
-        <a href="/blue.html?v=${v.id}">Ver no Blue →</a>
+        <a href="/blue?v=${v.id}">Ver no Blue →</a>
       </div>`;
 
     // Auto-unmute on tap

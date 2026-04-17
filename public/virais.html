@@ -142,10 +142,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
   </a>
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
     <a href="/" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📝 Roteiros</a>
-    <a href="/virais.html" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s">🔥 Virais</a>
-    <a href="/blueVoice.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🎙️ BlueVoice</a>
-    <a href="/blueScore.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📊 BlueScore</a>
-    <a href="/baixaBlue.html" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">⬇️ BaixaBlue</a>
+    <a href="/virais" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s">🔥 Virais</a>
+    <a href="/blueVoice" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🎙️ BlueVoice</a>
+    <a href="/blueScore" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📊 BlueScore</a>
+    <a href="/baixaBlue" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">⬇️ BaixaBlue</a>
     <span class="master-badge" style="margin-left:2px">👑 Master</span>
   </div>
 </nav>
@@ -494,7 +494,7 @@ function _switchTool(name){
     if(window.parent !== window){
       window.parent.postMessage({type:'bt-switch',tool:name}, '*');
     } else {
-      const map={roteiros:'/',virais:'/virais.html',voice:'/blueVoice.html',score:'/blueScore.html',baixa:'/baixaBlue.html'};
+      const map={roteiros:'/',virais:'/virais',voice:'/blueVoice',score:'/blueScore',baixa:'/baixaBlue'};
       if(map[name]) window.location.href = map[name];
     }
   }catch(e){ window.location.href='/'; }

@@ -44,7 +44,7 @@ function renderEmail(variant, todayScripts) {
     <a href="https://bluetubeviral.com" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:16px;border-radius:12px;text-align:center;font-weight:700;font-size:15px">${variant.cta}</a>
     <p style="font-size:11px;color:rgba(150,190,230,.35);margin-top:24px;text-align:center;line-height:1.6">
       Você recebe este email porque criou uma conta no BlueTube.<br>
-      <a href="https://bluetubeviral.com/privacidade.html" style="color:rgba(150,190,230,.5)">Cancelar inscrição</a>
+      <a href="https://bluetubeviral.com/privacidade" style="color:rgba(150,190,230,.5)">Cancelar inscrição</a>
     </p>
   </div>`;
   return { subject, html };

@@ -58,7 +58,7 @@ self.addEventListener('push', event => {
       body: data.mensagem || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      data: { url: data.url || '/blue.html' },
+      data: { url: data.url || '/blue' },
       tag: data.tipo || 'blue',
     })
   );
@@ -66,6 +66,6 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = event.notification.data?.url || '/blue.html';
+  const url = event.notification.data?.url || '/blue';
   event.waitUntil(clients.openWindow(url));
 });

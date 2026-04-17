@@ -799,7 +799,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <body>
 
 <div class="topbar">
-  <a class="logo" href="/blue.html">Blue</a>
+  <a class="logo" href="/blue">Blue</a>
   <div class="topbtns">
     <button class="tbtn" onclick="openSearch()" title="Buscar">🔍</button>
     <button class="tbtn" onclick="openUpload()" title="Postar" style="font-size:18px">+</button>
@@ -989,8 +989,8 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="prof-bio" id="profBio" style="display:none"></div>
   <div id="profActRow" style="display:flex;gap:10px;margin:16px 20px 0;align-items:center">
     <button class="prof-edit-btn" id="profEditBtn" style="display:none;margin:0;flex:1" onclick="openEditProfile()">Editar perfil</button>
-    <a id="profAnalyticsBtn" href="/blue-analytics.html" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#3b82f6;text-decoration:none;text-align:center">📊</a>
-    <a id="profMonetBtn" href="/blue-monetizacao.html" style="display:none;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#22c55e;text-decoration:none;text-align:center">💰</a>
+    <a id="profAnalyticsBtn" href="/blue-analytics" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#3b82f6;text-decoration:none;text-align:center">📊</a>
+    <a id="profMonetBtn" href="/blue-monetizacao" style="display:none;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#22c55e;text-decoration:none;text-align:center">💰</a>
     
     <button class="prof-subscribe-btn" id="profSubscribeBtn" style="display:none" onclick="openAssinaturaModal()">P Assinar</button>
     <button class="prof-add-product-btn" id="profAddProductBtn" style="display:none;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:600;color:#fff;cursor:pointer" onclick="openAddProdModal()">+ Produto</button>
@@ -1728,7 +1728,7 @@ function doSave(id){debounced('save-'+id,()=>{
 });}
 async function doShare(url,title){
   const vid=_curVideo?.id;
-  const shareUrl=vid?window.location.origin+'/blue-video.html?v='+vid:url;
+  const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
   if(navigator.share){try{await navigator.share({title:title||'Blue',url:shareUrl});}catch(e){}}
   else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast('🔗 Link copiado!');}
 }
@@ -1877,7 +1877,7 @@ async function checkPioneirosBanner(){
     if(!banner){
       banner=document.createElement('a');
       banner.id='pioneiros-banner';
-      banner.href='/pioneiros.html';
+      banner.href='/pioneiros';
       banner.style.cssText='display:none;align-items:center;gap:10px;padding:12px 16px;margin:8px 12px;border-radius:12px;background:linear-gradient(135deg,rgba(255,215,0,.08),rgba(245,158,11,.08));border:1px solid rgba(255,215,0,.25);text-decoration:none;color:#fff;font-size:13px';
       host.insertBefore(banner,host.firstChild);
     }
@@ -2475,7 +2475,7 @@ function openDotsMenu(id,title,desc,isOwn){
 function closeDotsMenu(){btModalClose('dotsMenu');}
 function copyVideoLink(){
   const v=_dotsVid;if(!v)return;
-  const url='https://bluetubeviral.com/blue-video.html?v='+v.id;
+  const url='https://bluetubeviral.com/blue-video?v='+v.id;
   (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>btToast('Link copiado','success')).catch(()=>btToast(url,'info'));
   closeDotsMenu();
 }
@@ -3493,7 +3493,7 @@ function showSkeleton(){
 
 // ── P9: DEEP LINKS ───────────────────────────────────────────────────────────
 function updateDeepLink(videoId){
-  if(videoId) history.replaceState({},'','/blue.html?v='+videoId);
+  if(videoId) history.replaceState({},'','/blue?v='+videoId);
 }
 async function handleDeepLink(){
   const params=new URLSearchParams(window.location.search);
@@ -3649,7 +3649,7 @@ function scrollToVideo(id){
   if(!id) return;
   const el=document.getElementById('s-'+id);
   if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); return; }
-  location.href='/blue-video.html?v='+encodeURIComponent(id);
+  location.href='/blue-video?v='+encodeURIComponent(id);
 }
 function onSearchInput(){
   clearTimeout(_searchTimer);
@@ -3731,12 +3731,12 @@ async function loadLives(){
     const lives=d.lives||[];
     if(!lives.length){bar.style.display='none';return;}
     bar.style.display='block';
-    bar.innerHTML='<a href="/blue-live.html?mode=host" style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin-right:12px;text-decoration:none;vertical-align:top;width:64px"><div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#dc2626);display:flex;align-items:center;justify-content:center;font-size:18px">+</div><div style="font-size:9px;color:rgba(239,68,68,.8)">Ir ao vivo</div></a>'+
+    bar.innerHTML='<a href="/blue-live?mode=host" style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin-right:12px;text-decoration:none;vertical-align:top;width:64px"><div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#dc2626);display:flex;align-items:center;justify-content:center;font-size:18px">+</div><div style="font-size:9px;color:rgba(239,68,68,.8)">Ir ao vivo</div></a>'+
     lives.map(l=>{
       const host=l.host||{};
       const init=(host.display_name||host.username||'?').charAt(0).toUpperCase();
       const avHtml=host.avatar_url?'<img src="'+host.avatar_url+'" style="width:100%;height:100%;object-fit:cover"/>':init;
-      return'<a href="/blue-live.html?id='+l.id+'" style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin-right:12px;text-decoration:none;vertical-align:top;width:64px">'+
+      return'<a href="/blue-live?id='+l.id+'" style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin-right:12px;text-decoration:none;vertical-align:top;width:64px">'+
         '<div style="width:48px;height:48px;border-radius:50%;border:2px solid #ef4444;overflow:hidden;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;position:relative">'+avHtml+
         '<div style="position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;font-size:7px;font-weight:800;padding:1px 5px;border-radius:4px;letter-spacing:.05em">LIVE</div></div>'+
         '<div style="font-size:9px;color:#fff;text-align:center;overflow:hidden;text-overflow:ellipsis;max-width:64px">'+(host.display_name||host.username||'—')+'</div>'+
@@ -4094,7 +4094,7 @@ async function _bpWaitlist(){
         O <b>Programa Pioneiros</b> está desbloqueado pra você.<br>
         Agora é só indicar <b>100 assinantes</b> pelo seu link e o prêmio cai no seu Pix.
       </div>
-      <a href="/pioneiros.html" class="bp-cta bp-cta-gold" style="display:block;text-align:center;text-decoration:none" onclick="_bpClose('celebrate-1k')">🚀 Ver meu painel de Pioneiro →</a>
+      <a href="/pioneiros" class="bp-cta bp-cta-gold" style="display:block;text-align:center;text-decoration:none" onclick="_bpClose('celebrate-1k')">🚀 Ver meu painel de Pioneiro →</a>
       <button class="bp-close" onclick="_bpClose('celebrate-1k')">Depois</button>
     </div>
   </div>

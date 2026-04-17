@@ -127,7 +127,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="sum-card"><div class="sum-label">Gorjetas</div><div class="sum-value" style="color:var(--gold)" id="sumTips">—</div></div>
     <div class="sum-card"><div class="sum-label">Total gorjetas</div><div class="sum-value" style="color:var(--green)" id="sumTotal">—</div></div>
   </div>
-  <a href="/blue.html" style="display:inline-block;background:var(--neon);color:#fff;padding:14px 32px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;margin-top:12px">Voltar ao Blue</a>
+  <a href="/blue" style="display:inline-block;background:var(--neon);color:#fff;padding:14px 32px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;margin-top:12px">Voltar ao Blue</a>
 </div>
 
 <script>
@@ -150,7 +150,7 @@ async function init() {
   } else if (LIVE_ID) {
     joinLive(LIVE_ID);
   } else {
-    window.location.href = '/blue.html';
+    window.location.href = '/blue';
   }
 }
 
@@ -186,7 +186,7 @@ async function joinLive(liveId) {
     const r = await fetch('/api/blue-lives', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'entrar', token: TOKEN, live_id: liveId }) });
     const d = await r.json();
-    if (!r.ok || !d.ok) { alert(d.error || 'Live não disponível'); window.location.href = '/blue.html'; return; }
+    if (!r.ok || !d.ok) { alert(d.error || 'Live não disponível'); window.location.href = '/blue'; return; }
     _roomId = d.room_id;
     const live = d.live || {};
     const host = live.host || {};
@@ -199,7 +199,7 @@ async function joinLive(liveId) {
     addChat('Sistema', '🔴 Você entrou na live');
     // Load coin balance
     loadCoinBalance();
-  } catch(e) { alert('Erro: ' + e.message); window.location.href = '/blue.html'; }
+  } catch(e) { alert('Erro: ' + e.message); window.location.href = '/blue'; }
 }
 
 function showLiveUI(isHost, titulo) {
@@ -243,7 +243,7 @@ async function endLive() {
 
 function leaveLive() {
   if (_isHost) { endLive(); return; }
-  window.location.href = '/blue.html';
+  window.location.href = '/blue';
 }
 
 // ── CHAT ──────────────────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ setInterval(async () => {
     const d = await r.json();
     const live = (d.lives || []).find(l => l.id === _liveId);
     if (live) document.getElementById('viewerCount').textContent = '👁 ' + (live.viewers_count || 0);
-    else if (!_isHost) { addChat('Sistema', 'Live encerrada'); setTimeout(() => window.location.href = '/blue.html', 2000); }
+    else if (!_isHost) { addChat('Sistema', 'Live encerrada'); setTimeout(() => window.location.href = '/blue', 2000); }
   } catch(e) {}
 }, 10000);
 

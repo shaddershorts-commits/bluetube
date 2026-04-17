@@ -113,7 +113,7 @@ async function carregar() {
         <td>${c.plano || '—'}</td>
         <td><span class="pill p-${c.status === 'ativo' ? 'ok' : 'warn'}">${c.status}</span></td>
         <td style="color:var(--mudo)">${new Date(c.created_at).toLocaleDateString('pt-BR')}</td>
-        <td><a href="/lipy/cliente.html?id=${c.id}" style="color:var(--roxo);font-size:12px;">Abrir portal →</a></td>
+        <td><a href="/lipy/cliente?id=${c.id}" style="color:var(--roxo);font-size:12px;">Abrir portal →</a></td>
       </tr>
     `).join('') || '<tr><td colspan="5" style="color:var(--mudo);text-align:center;padding:32px;">Nenhum cliente ainda</td></tr>';
   } catch (e) {

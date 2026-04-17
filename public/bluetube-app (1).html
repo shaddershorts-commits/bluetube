@@ -55,7 +55,7 @@ iframe.active{display:block}
 
 <!-- Iframes — cada ferramenta vive aqui permanentemente -->
 <div id="frames">
-  <iframe id="f-roteiros" src="/index.html"       class="active" title="Roteiros"></iframe>
+  <iframe id="f-roteiros" src="/"       class="active" title="Roteiros"></iframe>
   <iframe id="f-virais"   src=""                  title="Virais"></iframe>
   <iframe id="f-voice"    src=""                  title="BlueVoice"></iframe>
   <iframe id="f-score"    src=""                  title="BlueScore"></iframe>
@@ -64,11 +64,11 @@ iframe.active{display:block}
 
 <script>
 const TOOLS = {
-  roteiros: { frame: 'f-roteiros', src: '/index.html' },
-  virais:   { frame: 'f-virais',   src: '/virais.html' },
-  voice:    { frame: 'f-voice',    src: '/blueVoice.html' },
-  score:    { frame: 'f-score',    src: '/blueScore.html' },
-  baixa:    { frame: 'f-baixa',    src: '/baixaBlue.html' },
+  roteiros: { frame: 'f-roteiros', src: '/' },
+  virais:   { frame: 'f-virais',   src: '/virais' },
+  voice:    { frame: 'f-voice',    src: '/blueVoice' },
+  score:    { frame: 'f-score',    src: '/blueScore' },
+  baixa:    { frame: 'f-baixa',    src: '/baixaBlue' },
 };
 
 let current = 'roteiros';

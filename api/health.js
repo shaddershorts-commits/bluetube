@@ -175,7 +175,7 @@ module.exports = async function handler(req, res) {
           <h2 style="color:#ff4444">Status: ${status.toUpperCase()}</h2>
           <p>Críticos abaixo: ${criticalDown.length ? '<b>' + criticalDown.join(', ') + '</b>' : 'nenhum'}</p>
           <ul>${failed}</ul>
-          <p><a href="https://bluetubeviral.com/status.html">Status page →</a></p>
+          <p><a href="https://bluetubeviral.com/status">Status page →</a></p>
         `,
       }),
     }).catch(() => {});

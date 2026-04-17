@@ -48,7 +48,7 @@ tr:hover td{background:rgba(59,130,246,.03)}
 </head>
 <body>
 <nav>
-  <a href="/blue.html">&larr;</a>
+  <a href="/blue">&larr;</a>
   <h1>📊 Analytics</h1>
 </nav>
 
@@ -68,7 +68,7 @@ tr:hover td{background:rgba(59,130,246,.03)}
 
 <script>
 const TOKEN=localStorage.getItem('bt_token');
-if(!TOKEN){window.location.href='/blue.html';throw new Error('no token');}
+if(!TOKEN){window.location.href='/blue';throw new Error('no token');}
 
 let _data=null, _periodo=28, _retChartInst=null, _origemChartInst=null;
 

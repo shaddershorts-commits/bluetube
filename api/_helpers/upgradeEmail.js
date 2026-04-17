@@ -42,7 +42,7 @@ async function sendUpgradeEmail(email, plan, billing) {
     <div style="margin-top:20px;padding:16px;background:linear-gradient(135deg,rgba(255,215,0,.08),rgba(245,158,11,.08));border:1px solid rgba(255,215,0,.25);border-radius:14px">
       <div style="font-size:11px;font-weight:700;color:#FFD700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">🏆 Exclusivo Master</div>
       <div style="color:#fff;font-size:14px;font-weight:700;margin-bottom:4px">Programa Pioneiros</div>
-      <div style="color:rgba(200,225,255,.7);font-size:13px;line-height:1.5">Chegue a 1.000 seguidores no Blue e <b style="color:#FFD700">ganhe R$1.000</b> indicando 100 assinantes. <a href="https://bluetubeviral.com/pioneiros.html" style="color:#00aaff;text-decoration:none;font-weight:600">Ver programa →</a></div>
+      <div style="color:rgba(200,225,255,.7);font-size:13px;line-height:1.5">Chegue a 1.000 seguidores no Blue e <b style="color:#FFD700">ganhe R$1.000</b> indicando 100 assinantes. <a href="https://bluetubeviral.com/pioneiros" style="color:#00aaff;text-decoration:none;font-weight:600">Ver programa →</a></div>
     </div>` : '';
 
   const html = `<div style="font-family:-apple-system,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#020817;color:#e8f4ff">

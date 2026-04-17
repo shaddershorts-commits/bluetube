@@ -134,7 +134,7 @@ const TEMPLATES = [
       <p>16 idiomas. Vozes masculinas e femininas. Até sua própria voz clonada.</p>
       <p style="color:#fbbf24;font-weight:700">Criadores que usam BlueVoice publicam 3x mais rápido.</p>`,
     cta: 'Narrar meu próximo Short agora →',
-    url: 'https://bluetubeviral.com/blueVoice.html'
+    url: 'https://bluetubeviral.com/blueVoice'
   },
   {
     subject: '🔥 Os Shorts que estão bombando agora (você deveria ver isso)',
@@ -144,7 +144,7 @@ const TEMPLATES = [
       <p>Surfe o hype antes que todo mundo descubra. Timing é tudo em Shorts.</p>
       <p style="color:#fbbf24;font-weight:700">Criadores que monitoram virais publicam no momento certo.</p>`,
     cta: 'Ver o que está viral agora →',
-    url: 'https://bluetubeviral.com/virais.html'
+    url: 'https://bluetubeviral.com/virais'
   },
   {
     subject: '📊 Você sabe por que seu canal não cresce? Descubra em 30 segundos',
@@ -153,7 +153,7 @@ const TEMPLATES = [
     body: `<p>O <strong>BlueScore</strong> analisa qualquer canal do YouTube em segundos e revela:</p>
       <p>✦ Score algorítmico do canal<br>✦ Frequência ideal de postagem<br>✦ Melhores horários para publicar<br>✦ O que melhorar para crescer</p>`,
     cta: 'Analisar meu canal agora →',
-    url: 'https://bluetubeviral.com/blueScore.html'
+    url: 'https://bluetubeviral.com/blueScore'
   },
   {
     subject: '🔍 Alguém pode estar repostando seus vídeos sem você saber',
@@ -163,7 +163,7 @@ const TEMPLATES = [
       <p>Descubra quem está usando seu conteúdo e tome as medidas necessárias.</p>
       <p style="color:#fbbf24;font-weight:700">Seu conteúdo, seu controle.</p>`,
     cta: 'Verificar meus vídeos agora →',
-    url: 'https://bluetubeviral.com/blueLens.html'
+    url: 'https://bluetubeviral.com/blueLens'
   },
   {
     subject: '✨ 1 Short novo em 1 clique. Não é clickbait.',
@@ -173,7 +173,7 @@ const TEMPLATES = [
       <p>✦ Remove a voz original<br>✦ Adiciona sua narração IA<br>✦ Legendas sincronizadas automáticas<br>✦ Música de fundo</p>
       <p style="color:#fbbf24;font-weight:700">Um Short profissional em menos de 1 minuto.</p>`,
     cta: 'Criar meu Short agora →',
-    url: 'https://bluetubeviral.com/blueEditor.html'
+    url: 'https://bluetubeviral.com/blueEditor'
   },
   {
     subject: '🎬 A IA assistiu o vídeo e criou um roteiro viral do zero',
@@ -231,7 +231,7 @@ function buildEmail(template, email, unsubUrl, stats) {
       ${template.stat && !template.isFomo ? `<div style="font-family:monospace;font-size:12px;color:#00aaff;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:10px 14px;margin:16px 0">${template.stat}</div>` : ''}
       <div style="font-size:14px;color:rgba(200,225,255,.7);line-height:1.7;margin:16px 0">${bodyContent}</div>
       <a href="${template.url}" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;text-align:center;font-size:15px;font-weight:700;margin:24px 0;box-shadow:0 0 24px rgba(0,170,255,.3)">${template.cta}</a>
-      ${template.isFomo ? '<a href="https://bluetubeviral.com/blue.html" style="display:block;text-align:center;color:#00aaff;font-size:13px;text-decoration:none;margin-bottom:12px">Ver a plataforma Blue →</a>' : ''}
+      ${template.isFomo ? '<a href="https://bluetubeviral.com/blue" style="display:block;text-align:center;color:#00aaff;font-size:13px;text-decoration:none;margin-bottom:12px">Ver a plataforma Blue →</a>' : ''}
     </div>
     <div style="padding:20px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center">
       <div style="font-size:11px;color:rgba(150,190,230,.3);line-height:1.6">

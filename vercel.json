@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "cleanUrls": true,
   "functions": {
     "api/transcript.js": { "maxDuration": 60 },
     "api/auth.js": { "maxDuration": 60 },
@@ -92,7 +93,7 @@
       ]
     },
     {
-      "source": "/blueEditor.html",
+      "source": "/blueEditor",
       "headers": [
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
         { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" }

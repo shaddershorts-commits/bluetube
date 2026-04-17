@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
               body: JSON.stringify({
                 from: 'BlueTube <noreply@bluetubeviral.com>', to: [ADMIN_EMAIL],
                 subject: `⚑ Vídeo com 5+ denúncias — ${video_id}`,
-                html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><h3 style="color:#ff7a5a">⚑ Vídeo denunciado 5+ vezes</h3><p>ID: ${video_id}</p><p>Última razão: ${reason}</p><p>Total: ${reports.length} denúncias</p><p>Status: under_review (removido do feed automaticamente)</p><a href="https://bluetubeviral.com/admin.html" style="color:#00aaff">Abrir painel admin →</a></div>`
+                html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px"><h3 style="color:#ff7a5a">⚑ Vídeo denunciado 5+ vezes</h3><p>ID: ${video_id}</p><p>Última razão: ${reason}</p><p>Total: ${reports.length} denúncias</p><p>Status: under_review (removido do feed automaticamente)</p><a href="https://bluetubeviral.com/admin" style="color:#00aaff">Abrir painel admin →</a></div>`
               })
             }).catch(() => {});
           }

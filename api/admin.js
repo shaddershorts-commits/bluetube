@@ -244,7 +244,7 @@ export default async function handler(req, res) {
 
                 <!-- CTA -->
                 <div style="text-align:center">
-                  <a href="https://bluetubeviral.com/afiliado.html" style="display:inline-block;background:linear-gradient(135deg,${nivel==='ouro'?'#B8860B,#FFD700':nivel==='prata'?'#808080,#c0c0c0':'#4f46e5,#7c3aed'});color:${nivel==='prata'?'#1a1a2e':'#fff'};padding:16px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:15px">Ver meu painel →</a>
+                  <a href="https://bluetubeviral.com/afiliado" style="display:inline-block;background:linear-gradient(135deg,${nivel==='ouro'?'#B8860B,#FFD700':nivel==='prata'?'#808080,#c0c0c0':'#4f46e5,#7c3aed'});color:${nivel==='prata'?'#1a1a2e':'#fff'};padding:16px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:15px">Ver meu painel →</a>
                 </div>
 
                 <!-- Assinatura -->

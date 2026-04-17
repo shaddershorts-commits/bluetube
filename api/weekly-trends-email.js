@@ -106,9 +106,9 @@ Responda APENAS com JSON array: [{"nicho":"...","motivo":"...","tipo_conteudo":"
                 <a href="https://bluetubeviral.com" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:14px;border-radius:12px;text-align:center;font-size:15px;font-weight:700;margin:24px 0">Criar roteiro viral agora →</a>
                 <div style="font-size:12px;color:rgba(150,190,230,.5);line-height:1.8;margin-top:12px">
                   Ferramentas para aproveitar:<br>
-                  <a href="https://bluetubeviral.com/virais.html" style="color:#00aaff;text-decoration:none">🔥 Buscador de Virais</a> ·
-                  <a href="https://bluetubeviral.com/blueScore.html" style="color:#00aaff;text-decoration:none">📊 BlueScore</a> ·
-                  <a href="https://bluetubeviral.com/blueEditor.html" style="color:#00aaff;text-decoration:none">✨ BlueEditor</a>
+                  <a href="https://bluetubeviral.com/virais" style="color:#00aaff;text-decoration:none">🔥 Buscador de Virais</a> ·
+                  <a href="https://bluetubeviral.com/blueScore" style="color:#00aaff;text-decoration:none">📊 BlueScore</a> ·
+                  <a href="https://bluetubeviral.com/blueEditor" style="color:#00aaff;text-decoration:none">✨ BlueEditor</a>
                 </div>
               </div>
               <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center;font-size:11px;color:rgba(150,190,230,.3)">

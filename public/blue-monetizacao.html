@@ -57,14 +57,14 @@ td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.03)}
 </head>
 <body>
 <nav>
-  <a href="/blue.html">&larr;</a>
+  <a href="/blue">&larr;</a>
   <h1>💰 Monetizacao</h1>
 </nav>
 <div class="content" id="main"><div class="loader">Carregando…</div></div>
 
 <script>
 const TOKEN=localStorage.getItem('bt_token');
-if(!TOKEN){window.location.href='/blue.html';}
+if(!TOKEN){window.location.href='/blue';}
 const params=new URLSearchParams(window.location.search);
 
 async function load(){

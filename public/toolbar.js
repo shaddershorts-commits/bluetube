@@ -7,7 +7,8 @@
 if ('serviceWorker' in navigator) {
   const isBluePage = window.location.pathname === '/blue.html' ||
                      window.location.pathname === '/blue' ||
-                     window.location.pathname.endsWith('/blue.html');
+                     window.location.pathname.endsWith('/blue.html') ||
+                     window.location.pathname.endsWith('/blue');
   navigator.serviceWorker.getRegistrations().then(regs => {
     let unregistered = false;
     regs.forEach(reg => {
@@ -31,23 +32,27 @@ if ('serviceWorker' in navigator) {
   // ── TOOLBAR ─────────────────────────────────────────────────────────────────
   const TOOLS = [
     { id:'roteiro',  icon:'📝', label:'Roteiro',     href:'/' },
-    { id:'voice',    icon:'🎙️', label:'BlueVoice',   href:'/blueVoice.html' },
-    { id:'score',    icon:'📊', label:'BlueScore',   href:'/blueScore.html' },
-    { id:'lens',     icon:'🔍', label:'BlueLens',    href:'/blueLens.html' },
-    { id:'virais',   icon:'🔥', label:'Virais',      href:'/virais.html' },
-    { id:'baixa',    icon:'⬇️', label:'BaixaBlue',   href:'/baixaBlue.html' },
-    { id:'editor',   icon:'✨', label:'BlueEditor',  href:'/blueEditor.html' },
-    { id:'clean',    icon:'🧹', label:'BlueClean',   href:'/blueClean.html' },
-    { id:'blue',     icon:'🎬', label:'Blue',        href:'/blue.html' },
+    { id:'voice',    icon:'🎙️', label:'BlueVoice',   href:'/blueVoice' },
+    { id:'score',    icon:'📊', label:'BlueScore',   href:'/blueScore' },
+    { id:'lens',     icon:'🔍', label:'BlueLens',    href:'/blueLens' },
+    { id:'virais',   icon:'🔥', label:'Virais',      href:'/virais' },
+    { id:'baixa',    icon:'⬇️', label:'BaixaBlue',   href:'/baixaBlue' },
+    { id:'editor',   icon:'✨', label:'BlueEditor',  href:'/blueEditor' },
+    { id:'clean',    icon:'🧹', label:'BlueClean',   href:'/blueClean' },
+    { id:'blue',     icon:'🎬', label:'Blue',        href:'/blue' },
   ];
 
   const path = window.location.pathname;
   const PAGE_MAP = {
-    '/':'roteiro', '/index.html':'roteiro',
-    '/blueVoice.html':'voice', '/blueScore.html':'score',
-    '/blueLens.html':'lens', '/virais.html':'virais',
-    '/baixaBlue.html':'baixa', '/blueEditor.html':'editor',
-    '/blueClean.html':'clean', '/blue.html':'blue',
+    '/':'roteiro', '/index.html':'roteiro', '/index':'roteiro',
+    '/blueVoice.html':'voice', '/blueVoice':'voice',
+    '/blueScore.html':'score', '/blueScore':'score',
+    '/blueLens.html':'lens', '/blueLens':'lens',
+    '/virais.html':'virais', '/virais':'virais',
+    '/baixaBlue.html':'baixa', '/baixaBlue':'baixa',
+    '/blueEditor.html':'editor', '/blueEditor':'editor',
+    '/blueClean.html':'clean', '/blueClean':'clean',
+    '/blue.html':'blue', '/blue':'blue',
   };
   const activeTool = PAGE_MAP[path] || '';
 

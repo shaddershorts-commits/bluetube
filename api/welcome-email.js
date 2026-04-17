@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
             <a href="https://bluetubeviral.com" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:16px;border-radius:12px;text-align:center;font-size:15px;font-weight:700;box-shadow:0 0 24px rgba(0,170,255,.3)">Criar meu primeiro roteiro →</a>
           </div>
           <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);font-size:11px;color:rgba(150,190,230,.3);text-align:center">
-            BlueTube · <a href="https://bluetubeviral.com/privacidade.html" style="color:rgba(150,190,230,.4)">Privacidade</a> · <a href="https://bluetubeviral.com/termos.html" style="color:rgba(150,190,230,.4)">Termos</a>
+            BlueTube · <a href="https://bluetubeviral.com/privacidade" style="color:rgba(150,190,230,.4)">Privacidade</a> · <a href="https://bluetubeviral.com/termos" style="color:rgba(150,190,230,.4)">Termos</a>
           </div>
         </div>`
       })

@@ -249,10 +249,10 @@ async function solicitarPagamentoAction(res, userId, ctx) {
   const accR = await fetch(`${SU}/rest/v1/blue_creator_accounts?user_id=eq.${userId}&select=stripe_account_id,stripe_onboarding_completo&limit=1`, { headers: h });
   const [account] = accR.ok ? await accR.json() : [];
   if (!account?.stripe_account_id) {
-    return res.status(400).json({ error: 'conta_stripe_nao_configurada', setup_url: '/blue-monetizacao.html' });
+    return res.status(400).json({ error: 'conta_stripe_nao_configurada', setup_url: '/blue-monetizacao' });
   }
   if (!account.stripe_onboarding_completo) {
-    return res.status(400).json({ error: 'onboarding_incompleto', setup_url: '/blue-monetizacao.html' });
+    return res.status(400).json({ error: 'onboarding_incompleto', setup_url: '/blue-monetizacao' });
   }
 
   // Registro do pagamento
@@ -499,7 +499,7 @@ async function enviarEmailDesbloqueio(userId, pioneiro, ctx, emailOverride) {
             <div style="font-size:12px;color:#00aaff;margin-bottom:6px">SEU LINK EXCLUSIVO</div>
             <code style="font-size:14px;word-break:break-all">${url}</code>
           </div>
-          <a href="https://bluetubeviral.com/pioneiros.html" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700">Ver meu painel →</a>
+          <a href="https://bluetubeviral.com/pioneiros" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700">Ver meu painel →</a>
         </div>`,
     }),
   }).catch(() => {});
@@ -511,7 +511,7 @@ async function enviarPushMetaAtingida(userId) {
     await sendPushToUser(userId, {
       title: '🏆 R$1.000 são seus!',
       body: 'Você bateu a meta de 100 assinantes qualificados. Abra o painel e solicite o pagamento.',
-      data: { url: 'https://bluetubeviral.com/pioneiros.html', type: 'pioneiros_meta' },
+      data: { url: 'https://bluetubeviral.com/pioneiros', type: 'pioneiros_meta' },
     });
   } catch (e) {
     console.error('[pioneiros push]', e.message);
@@ -535,8 +535,8 @@ async function enviarEmailMetaAtingida(userId, pioneiroId, ctx) {
         <div style="background:#020817;color:#e8f4ff;padding:40px;font-family:system-ui;border-radius:16px;max-width:560px;margin:0 auto">
           <h1 style="color:#FFD700;margin:0 0 12px">🏆 Meta atingida!</h1>
           <p>Você indicou <b>100 assinantes qualificados</b> e ganhou <b>R$1.000,00</b>.</p>
-          <a href="https://bluetubeviral.com/pioneiros.html" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#FFD700);color:#020817;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:800">Solicitar pagamento →</a>
-          <p style="font-size:12px;color:rgba(232,244,255,.5);margin-top:16px">O valor chegará em 1-2 dias úteis na conta Stripe Connect configurada em /blue-monetizacao.html.</p>
+          <a href="https://bluetubeviral.com/pioneiros" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#FFD700);color:#020817;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:800">Solicitar pagamento →</a>
+          <p style="font-size:12px;color:rgba(232,244,255,.5);margin-top:16px">O valor chegará em 1-2 dias úteis na conta Stripe Connect configurada em /blue-monetizacao.</p>
         </div>`,
     }),
   }).catch(() => {});

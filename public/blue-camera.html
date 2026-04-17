@@ -151,7 +151,7 @@ body{background:#000;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;heig
 
 <script>
 const TOKEN = localStorage.getItem('bt_token');
-if (!TOKEN) { alert('Faça login para gravar'); window.location.href = '/blue.html'; }
+if (!TOKEN) { alert('Faça login para gravar'); window.location.href = '/blue'; }
 
 let stream = null;
 let mediaRecorder = null;
@@ -386,7 +386,7 @@ async function publishVideo() {
       if (xhr.status >= 200 && xhr.status < 300) {
         progFill.style.width = '100%';
         progMsg.textContent = '✅ Publicado!';
-        setTimeout(() => { window.location.href = '/blue.html'; }, 1500);
+        setTimeout(() => { window.location.href = '/blue'; }, 1500);
       } else { progMsg.textContent = 'Erro: ' + xhr.status; document.getElementById('pubBtn').disabled = false; }
     };
     xhr.onerror = () => { progMsg.textContent = 'Erro de conexão'; document.getElementById('pubBtn').disabled = false; };
@@ -400,7 +400,7 @@ async function publishVideo() {
 function leaveCamera() {
   if (segments.length && !confirm('Descartar gravação e sair?')) return;
   if (stream) stream.getTracks().forEach(t => t.stop());
-  window.location.href = '/blue.html';
+  window.location.href = '/blue';
 }
 
 initCamera();

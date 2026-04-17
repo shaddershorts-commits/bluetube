@@ -81,7 +81,7 @@ module.exports = async function handler(req, res) {
                   ✦ Sistema de notificações de curtidas e comentários
                 </div>
 
-                <a href="https://bluetubeviral.com/blueClean.html" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:16px;border-radius:12px;text-align:center;font-size:16px;font-weight:700;box-shadow:0 0 24px rgba(0,170,255,.3)">Experimentar BlueClean →</a>
+                <a href="https://bluetubeviral.com/blueClean" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:16px;border-radius:12px;text-align:center;font-size:16px;font-weight:700;box-shadow:0 0 24px rgba(0,170,255,.3)">Experimentar BlueClean →</a>
 
                 <a href="https://bluetubeviral.com" style="display:block;text-align:center;color:#00aaff;font-size:13px;text-decoration:none;margin-top:12px">Ver todas as novidades →</a>
               </div>
