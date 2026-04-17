@@ -1891,6 +1891,10 @@ async function checkPioneirosBanner(){
       banner.innerHTML='<span style="font-size:20px">✅</span><span>Prêmio recebido no Programa Pioneiros →</span>';
       banner.style.display='flex';
     }
+    // Popup comemorativo 999→1.000 — aparece 1x na vida do device (_bpShow gerencia localStorage)
+    if(d.seguidores>=1000 && !_bpWasShown('celebrate-1k')){
+      setTimeout(()=>_bpShow('celebrate-1k'),1200);
+    }
   }catch(e){}
 }
 
@@ -4071,6 +4075,27 @@ async function _bpWaitlist(){
         <button class="bp-wl-btn" onclick="_bpWaitlist()">Entrar →</button>
       </div>
       <button class="bp-close" onclick="_bpClose('monetizacao')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP 4 — CELEBRAÇÃO 1.000 SEGUIDORES (ao cruzar 999→1.000) -->
+<div class="bp-overlay" id="bp-celebrate-1k">
+  <div class="bp-card bp-gold-border" style="text-align:center">
+    <button class="bp-x" onclick="_bpClose('celebrate-1k')">✕</button>
+    <div class="bp-particles" id="bp-particles-1k"></div>
+    <div style="position:relative;z-index:1">
+      <div style="font-size:64px;line-height:1;margin-bottom:8px">🎉</div>
+      <div class="bp-badge" style="background:linear-gradient(135deg,#B8860B,#FFD700);color:#000">🏆 CONQUISTA DESBLOQUEADA</div>
+      <div class="bp-title" style="color:#FFD700">1.000 seguidores!</div>
+      <div class="bp-sub" style="color:rgba(255,215,0,.85);font-size:15px">Você acabou de entrar para o clube dos criadores que vão ganhar <b>R$1.000 no Pix</b>.</div>
+      <div class="bp-divider" style="background:linear-gradient(90deg,transparent,rgba(255,215,0,.4),transparent)"></div>
+      <div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.25);border-radius:12px;padding:16px;margin-bottom:16px;font-size:13px;color:rgba(255,215,0,.85);line-height:1.6">
+        O <b>Programa Pioneiros</b> está desbloqueado pra você.<br>
+        Agora é só indicar <b>100 assinantes</b> pelo seu link e o prêmio cai no seu Pix.
+      </div>
+      <a href="/pioneiros.html" class="bp-cta bp-cta-gold" style="display:block;text-align:center;text-decoration:none" onclick="_bpClose('celebrate-1k')">🚀 Ver meu painel de Pioneiro →</a>
+      <button class="bp-close" onclick="_bpClose('celebrate-1k')">Depois</button>
     </div>
   </div>
 </div>
