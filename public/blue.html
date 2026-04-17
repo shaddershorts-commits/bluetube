@@ -2086,12 +2086,24 @@ function openProfile(){
   if(!TOKEN){
     document.getElementById('profName').textContent='Visitante';
     document.getElementById('profUname').textContent='Entre para ver seu perfil';
-    document.getElementById('profGrid').innerHTML='<div class="pg-empty"><a href="/" style="color:#3b82f6">Fazer login →</a></div>';
+    document.getElementById('profGrid').innerHTML='<div class="pg-empty">Entre para ver seu perfil<br><br><button onclick="openAuthOnly()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Fazer login →</button></div>';
     return;
   }
   loadMyProfile();
 }
 function closeProfile(){document.getElementById('profPage').classList.remove('open');}
+
+// Reabre o modal de auth (reaproveitando o authWall do upload) sem forcar
+// o fluxo de upload. Setando _authReturnTo, doAuth() sabe voltar pro perfil
+// apos login com sucesso ao inves de abrir o upload.
+let _authReturnTo=null;
+function openAuthOnly(returnTo){
+  _authReturnTo=returnTo||'profile';
+  btModalOpen('upOv');
+  document.getElementById('authWall').style.display='block';
+  document.getElementById('upForm').style.display='none';
+  const foot=document.getElementById('upFooter');if(foot)foot.style.display='none';
+}
 
 async function openCreatorProfile(userId){
   if(!userId)return;
@@ -2935,6 +2947,12 @@ async function doAuth(){
       closeUpload();
       await initAuth();
       loadFeed();
+      // Auth aberto via openAuthOnly() — nao reabre o upload, volta pro destino pedido
+      if(_authReturnTo==='profile'){
+        _authReturnTo=null;
+        openProfile();
+        return;
+      }
       if(_bpPendingUpload){
         _bpPendingUpload=false;
         _bpSaveConversion(); // registra conversão com user_id real
