@@ -171,14 +171,41 @@ module.exports = async function handler(req, res) {
       if (!account.stripe_onboarding_completo) return res.status(400).json({ error: 'Complete o setup da conta de pagamento primeiro' });
       if (parseFloat(account.saldo_disponivel || 0) < amount) return res.status(400).json({ error: 'Saldo insuficiente' });
 
-      // Create Stripe transfer
-      const transfer = await stripePost('/transfers', {
-        amount: Math.round(amount * 100),
-        currency: 'brl',
-        destination: account.stripe_account_id,
-        description: 'Blue Creator Payout',
+      // Cria registro de saque ANTES do transfer — UUID vira idempotency key.
+      // Isso impede double-click / retry criarem 2 transfers Stripe.
+      const saqueR = await fetch(`${SU}/rest/v1/blue_creator_saques`, {
+        method: 'POST', headers: { ...h, 'Prefer': 'return=representation' },
+        body: JSON.stringify({
+          user_id: user.id,
+          stripe_account_id: account.stripe_account_id,
+          valor: amount,
+          status: 'processando',
+        })
       });
-      if (transfer.error) return res.status(500).json({ error: 'Erro Stripe: ' + transfer.error.message });
+      const [saqueRow] = saqueR.ok ? await saqueR.json() : [null];
+      if (!saqueRow) return res.status(500).json({ error: 'Falha ao registrar saque' });
+
+      // Stripe transfer com idempotency baseada no UUID do saque
+      const { criarTransfer } = require('./_helpers/stripe.js');
+      let transfer;
+      try {
+        transfer = await criarTransfer({
+          amount: Math.round(amount * 100),
+          currency: 'brl',
+          destination: account.stripe_account_id,
+          metadata: {
+            user_id: user.id,
+            saque_id: saqueRow.id,
+            referencia: 'blue_creator_payout',
+          },
+        }, `creator-saque-${saqueRow.id}`);
+      } catch (stripeErr) {
+        await fetch(`${SU}/rest/v1/blue_creator_saques?id=eq.${saqueRow.id}`, {
+          method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ status: 'falhou', erro: stripeErr.message, processado_em: new Date().toISOString() })
+        });
+        return res.status(500).json({ error: 'Erro Stripe: ' + stripeErr.message });
+      }
 
       // Update balances
       const newSaldo = parseFloat(account.saldo_disponivel) - amount;
@@ -187,10 +214,10 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({ saldo_disponivel: newSaldo, total_sacado: parseFloat(account.total_sacado || 0) + amount, updated_at: new Date().toISOString() })
       });
 
-      // Record saque
-      await fetch(`${SU}/rest/v1/blue_creator_saques`, {
-        method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ user_id: user.id, stripe_account_id: account.stripe_account_id, valor: amount, status: 'processado', stripe_payout_id: transfer.id, processado_em: new Date().toISOString() })
+      // Finaliza o registro do saque
+      await fetch(`${SU}/rest/v1/blue_creator_saques?id=eq.${saqueRow.id}`, {
+        method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ status: 'processado', stripe_payout_id: transfer.id, processado_em: new Date().toISOString() })
       });
 
       // Notify

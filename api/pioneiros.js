@@ -270,33 +270,28 @@ async function solicitarPagamentoAction(res, userId, ctx) {
   const [pag] = pR.ok ? await pR.json() : [null];
   if (!pag) return res.status(500).json({ error: 'falha_registrar_pagamento' });
 
-  // Stripe transfer
+  // Stripe transfer via helper (retry + idempotency + timeout)
   try {
-    const formBody = new URLSearchParams({
-      amount: String(Math.round(PREMIO_VALOR * 100)),
-      currency: 'brl',
-      destination: account.stripe_account_id,
-      'metadata[programa]': 'pioneiros',
-      'metadata[user_id]': userId,
-      'metadata[pagamento_id]': pag.id,
-    }).toString();
-    const tR = await fetch('https://api.stripe.com/v1/transfers', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + STRIPE_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Idempotency-Key': `pioneiros-${pag.id}`,
-      },
-      body: formBody,
-    });
-    const tD = await tR.json();
-    if (!tR.ok) {
+    const { criarTransfer } = require('./_helpers/stripe.js');
+    let tD;
+    try {
+      tD = await criarTransfer({
+        amount: Math.round(PREMIO_VALOR * 100),
+        currency: 'brl',
+        destination: account.stripe_account_id,
+        metadata: {
+          programa: 'pioneiros',
+          user_id: userId,
+          pagamento_id: pag.id,
+        },
+      }, `pioneiros-${pag.id}`); // idempotency key custom — nao criar 2x o mesmo premio
+    } catch (stripeErr) {
       await fetch(`${SU}/rest/v1/pioneiros_pagamentos?id=eq.${pag.id}`, {
         method: 'PATCH',
         headers: h,
-        body: JSON.stringify({ status: 'falhou', erro: tD.error?.message || 'unknown', processado_em: new Date().toISOString() }),
+        body: JSON.stringify({ status: 'falhou', erro: stripeErr.message || 'unknown', processado_em: new Date().toISOString() }),
       });
-      return res.status(502).json({ error: 'stripe_transfer_falhou', detalhes: tD.error?.message });
+      return res.status(502).json({ error: 'stripe_transfer_falhou', detalhes: stripeErr.message });
     }
 
     // Atualizar pioneiro + pagamento
