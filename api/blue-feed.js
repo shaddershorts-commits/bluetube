@@ -461,7 +461,92 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ ok: false }); }
   }
 
-  // ── FEED INTELIGENTE ────────────────────────────────────────────────────
+  // ── FEED SEGUINDO (tab "Seguindo" — simples, cronologico, so seguidos) ──
+  if (action === 'feed-seguindo') {
+    const seguindoToken = req.query.token;
+    if (!seguindoToken) return res.status(401).json({ error: 'token obrigatorio' });
+    const segLimit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const segCursor = req.query.cursor;
+    try {
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + seguindoToken } });
+      if (!uR.ok) return res.status(401).json({ error: 'token invalido' });
+      const uid = (await uR.json()).id;
+
+      const fR = await fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${uid}&select=following_id`, { headers: h });
+      const following = fR.ok ? (await fR.json()).map(f => f.following_id) : [];
+      if (!following.length) return res.status(200).json({ videos: [], has_more: false, next_cursor: null });
+
+      let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=in.(${following.join(',')})&order=created_at.desc,id.desc&limit=${segLimit + 1}&select=*`;
+      if (segCursor) {
+        try {
+          const decoded = Buffer.from(segCursor, 'base64').toString('utf8');
+          const [ts, id] = decoded.split('|');
+          if (ts && id) url += `&or=(created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${id}))`;
+        } catch(e) {}
+      }
+      const vR = await fetch(url, { headers: h });
+      const vids = vR.ok ? await vR.json() : [];
+      const hasMore = vids.length > segLimit;
+      const videos = hasMore ? vids.slice(0, segLimit) : vids;
+      const last = videos[videos.length - 1];
+      const nextCursor = hasMore && last
+        ? Buffer.from(`${last.created_at}|${last.id}`, 'utf8').toString('base64')
+        : null;
+
+      // Enrich profiles
+      const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
+      let profiles = {};
+      if (userIds.length) {
+        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+        if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
+      }
+      const enriched = videos.map(v => ({
+        ...v,
+        video_url: applyCDN(v.video_url),
+        thumbnail_url: applyCDN(v.thumbnail_url),
+        creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' },
+      }));
+      return res.status(200).json({ videos: enriched, has_more: hasMore, next_cursor: nextCursor });
+    } catch(e) {
+      console.error('feed-seguindo:', e.message);
+      return res.status(200).json({ videos: [], has_more: false, error: e.message });
+    }
+  }
+
+  // ── UPDATE METRICS (cron horario — agrega avg_watch_percent + views_24h) ─
+  if (action === 'update-metrics') {
+    try {
+      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      // Busca analytics das ultimas 24h agrupadas por video
+      const aR = await fetch(
+        `${SU}/rest/v1/blue_video_analytics?created_at=gte.${dayAgo}&select=video_id,percentual_assistido&limit=10000`,
+        { headers: h }
+      );
+      const rows = aR.ok ? await aR.json() : [];
+      const perVideo = {};
+      for (const row of rows) {
+        if (!perVideo[row.video_id]) perVideo[row.video_id] = { sum: 0, count: 0 };
+        perVideo[row.video_id].count++;
+        perVideo[row.video_id].sum += (row.percentual_assistido || 0);
+      }
+      let atualizados = 0;
+      for (const [vid, agg] of Object.entries(perVideo)) {
+        const avg = Math.round(agg.sum / agg.count);
+        await fetch(`${SU}/rest/v1/blue_videos?id=eq.${vid}`, {
+          method: 'PATCH',
+          headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify({ avg_watch_percent: avg, views_24h: agg.count }),
+        }).catch(() => {});
+        atualizados++;
+      }
+      return res.status(200).json({ ok: true, videos_atualizados: atualizados });
+    } catch(e) {
+      return res.status(200).json({ ok: false, error: e.message });
+    }
+  }
+
+  // ── FEED INTELIGENTE (Para Voce) ────────────────────────────────────────
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   const cursor = req.query.cursor;
   const feedToken = req.query.token;
@@ -490,19 +575,23 @@ module.exports = async function handler(req, res) {
       const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + feedToken } });
       if (uR.ok) {
         const uid = (await uR.json()).id;
-        // Check ban
         const ban = await checkBan(uid, SU, h);
         if (ban) return res.status(403).json({ error: 'Conta suspensa', motivo: ban.motivo, expira_em: ban.expira_em });
-        // Get following + seen + blocked in parallel
-        const [flR, seenR, blkR] = await Promise.all([
+        // Following + seen (legacy) + historico (500 mais recentes, fonte da verdade) + blocked + interests
+        const [flR, seenR, histR, blkR, intR] = await Promise.all([
           fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${uid}&select=following_id`, { headers: h }),
           fetch(`${SU}/rest/v1/blue_feed_seen?user_id=eq.${uid}&select=video_id&order=seen_at.desc&limit=100`, { headers: h }),
+          fetch(`${SU}/rest/v1/blue_feed_historico?user_id=eq.${uid}&select=video_id&order=created_at.desc&limit=500`, { headers: h }),
           fetch(`${SU}/rest/v1/blue_bloqueios?user_id=eq.${uid}&select=bloqueado_id`, { headers: h }),
+          fetch(`${SU}/rest/v1/blue_user_interests?user_id=eq.${uid}&select=*&limit=1`, { headers: h }),
         ]);
         const following = flR.ok ? (await flR.json()).map(f => f.following_id) : [];
-        const seen = seenR.ok ? (await seenR.json()).map(s => s.video_id) : [];
+        const seenLegacy = seenR.ok ? (await seenR.json()).map(s => s.video_id) : [];
+        const seenHist = histR.ok ? (await histR.json()).map(r => r.video_id) : [];
+        const seen = [...new Set([...seenLegacy, ...seenHist])];
         blockedIds = blkR.ok ? (await blkR.json()).map(b => b.bloqueado_id) : [];
-        userPrefs = { uid, following, seen };
+        const interests = intR.ok ? (await intR.json())[0] || null : null;
+        userPrefs = { uid, following, seen, interests };
       }
     } catch(e) {}
   }
@@ -547,21 +636,94 @@ module.exports = async function handler(req, res) {
     // Apply intelligent scoring if user is logged in
     if (userPrefs) {
       raw = raw.filter(v => !userPrefs.seen.includes(v.id));
+      const I = userPrefs.interests || null;
+      const nichosScore = (I && I.nichos) || {};
+      const criadoresFav = Array.isArray(I?.criadores_favoritos) ? I.criadores_favoritos : [];
+      const criadoresBloq = Array.isArray(I?.criadores_bloqueados) ? I.criadores_bloqueados : [];
+      const tagsPos = Array.isArray(I?.tags_positivas) ? I.tags_positivas : [];
+      const tagsNeg = Array.isArray(I?.tags_negativas) ? I.tags_negativas : [];
+      const ultimoNicho = I?.ultimo_nicho || null;
+
       raw.forEach(v => {
         let s = v.score || 0;
-        // Boost followed creators
-        if (userPrefs.following.includes(v.user_id)) s += 20;
-        // Recency bonus
-        const hoursAgo = (Date.now() - new Date(v.created_at)) / 3600000;
-        if (hoursAgo < 6) s += 15;
-        else if (hoursAgo < 24) s += 8;
-        // Engagement bonus
+
+        // Engagement de video (sinal mais forte)
+        s += (v.avg_watch_percent || 0) * 0.4; // ate 40 pontos
         const views = v.views || 1;
-        const engRate = ((v.likes || 0) * 3 + (v.saves || 0) * 5) / views;
-        s += Math.min(20, engRate * 10);
-        v._feedScore = s;
+        const likes = v.likes || 0;
+        const comments = v.comments || 0;
+        const saves = v.saves || 0;
+        s += Math.min(20, (likes / views) * 200); // like rate
+        s += Math.min(15, (comments / views) * 300); // comment rate
+        s += Math.min(10, (saves / views) * 500); // save rate
+
+        // Afinidade com criador
+        if (userPrefs.following.includes(v.user_id)) s += 20;
+        const fav = criadoresFav.find(c => c.id === v.user_id);
+        if (fav) s += (fav.score || 0.5) * 25;
+        if (criadoresBloq.includes(v.user_id)) s -= 50;
+
+        // Nichos
+        const nichosVideo = (v.nichos && v.nichos.length) ? v.nichos
+          : (Array.isArray(v.hashtags) ? v.hashtags.slice(0, 3) : []);
+        nichosVideo.forEach(n => {
+          const sc = nichosScore[n];
+          if (sc != null) s += sc * 30; // ate 30 pontos por nicho ativo
+        });
+
+        // Tags
+        const hashtags = Array.isArray(v.hashtags) ? v.hashtags : [];
+        hashtags.forEach(t => {
+          if (tagsPos.includes(t)) s += 5;
+          if (tagsNeg.includes(t)) s -= 10;
+        });
+
+        // Recencia
+        const hoursAgo = (Date.now() - new Date(v.created_at)) / 3600000;
+        if (hoursAgo < 1) s += 20;
+        else if (hoursAgo < 6) s += 15;
+        else if (hoursAgo < 24) s += 10;
+        else if (hoursAgo < 72) s += 5;
+        else if (hoursAgo > 168) s -= 5;
+
+        // Viralizando (velho mas com views_24h alto)
+        if (hoursAgo > 24 && (v.views_24h || 0) > 1000) s += 10;
+
+        // Diversificacao: penaliza se mesmo nicho do ultimo assistido
+        if (ultimoNicho && nichosVideo.includes(ultimoNicho)) s -= 15;
+
+        v._feedScore = Math.max(0, s);
       });
+
       raw.sort((a, b) => (b._feedScore || b.score || 0) - (a._feedScore || a.score || 0));
+
+      // 80/20: mistura 80% top-score + 20% exploracao (random do resto)
+      if (raw.length > limit) {
+        const slice80 = Math.floor(limit * 0.8);
+        const slice20 = limit - slice80;
+        const top = raw.slice(0, slice80);
+        const pool = raw.slice(slice80);
+        // Shuffle pool e pega slice20 — exploracao
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        const exploration = pool.slice(0, slice20);
+        // Interleave pra nao concentrar exploracao no fim
+        const merged = [];
+        let ti = 0, ei = 0;
+        const every = Math.max(3, Math.floor(slice80 / Math.max(1, slice20)));
+        for (let i = 0; i < limit; i++) {
+          if (i > 0 && i % every === 0 && ei < exploration.length) {
+            merged.push(exploration[ei++]);
+          } else if (ti < top.length) {
+            merged.push(top[ti++]);
+          } else if (ei < exploration.length) {
+            merged.push(exploration[ei++]);
+          }
+        }
+        raw = merged;
+      }
     }
 
     const videos = raw.slice(0, limit);

@@ -82,6 +82,10 @@
     {
       "path": "/api/webhook?action=reprocessar",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/blue-feed?action=update-metrics",
+      "schedule": "15 * * * *"
     }
   ],
   "headers": [
