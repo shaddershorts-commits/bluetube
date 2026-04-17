@@ -368,6 +368,21 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 #pfFeed{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
 #pfFeed::-webkit-scrollbar{display:none}
 
+/* DESKTOP: pf-overlay centralizado em aspect 9:16, igual ao feed principal */
+@media (min-width:1024px){
+  .pf-overlay{ left:240px }
+  #pfFeed{ position:absolute; left:50%; transform:translateX(-50%);
+    top:4dvh; bottom:4dvh; height:92dvh;
+    width:calc(92dvh * 9 / 16);
+    max-width:min(560px, calc(92dvh * 9 / 16));
+    border-radius:18px; overflow:hidden; overflow-y:scroll;
+    box-shadow:0 20px 60px rgba(0,0,0,.5) }
+  #pfFeed .slide{ height:92dvh }
+  .pf-topbar{ left:50%; transform:translateX(-50%);
+    width:calc(92dvh * 9 / 16); max-width:560px;
+    padding-top:28px }
+}
+
 /* ── CHAT SYSTEM ─────────────────────────────────────────────────────────── */
 /* Inbox — bottom sheet mobile, right popup desktop */
 .inbox{position:fixed;z-index:300;background:#0d0d0d;
@@ -2480,6 +2495,8 @@ function openProfileFeed(vids, startId, username) {
   pfVids = vids.filter(v => v && v.video_url);
   if (!pfVids.length) { toast('Sem vídeos disponíveis'); return; }
   pfUserId = pfVids[0]?.user_id || null;
+  // Atualiza URL pra /blue/v/:videoId (permite compartilhar link direto do video)
+  if (startId) try { BlueRouter.push('/blue/v/' + encodeURIComponent(startId), { videoId: startId, fromProfile: username }, 'Video'); } catch(e){}
   // Pausa TODOS os videos do feed principal pra nao tocar de fundo
   document.querySelectorAll('#feed video').forEach(v => { try { v.pause(); } catch(e){} });
   document.getElementById('pfTitle').textContent = '@' + (username || 'usuário');
@@ -3430,13 +3447,52 @@ function initAuth(){
   TOKEN=localStorage.getItem('bt_token');
   if(!TOKEN)return;
   fetch('/api/blue-profile?token='+encodeURIComponent(TOKEN))
-    .then(r=>r.ok?r.json():null)
+    .then(async r => {
+      if (r.status === 401 || r.status === 403) {
+        // Token invalido/expirado — tenta refresh com bt_refresh_token
+        const rf = localStorage.getItem('bt_refresh_token');
+        if (!rf) {
+          console.warn('[auth] token invalido e sem refresh, limpando');
+          localStorage.removeItem('bt_token');
+          TOKEN = null;
+          return null;
+        }
+        try {
+          const r2 = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'refresh', refresh_token: rf })
+          });
+          if (r2.ok) {
+            const d2 = await r2.json();
+            const nt = d2.session?.access_token || d2.access_token;
+            const nr = d2.session?.refresh_token;
+            if (nt) {
+              localStorage.setItem('bt_token', nt);
+              TOKEN = nt;
+              if (nr) localStorage.setItem('bt_refresh_token', nr);
+              // Reretry com o novo token
+              const r3 = await fetch('/api/blue-profile?token=' + encodeURIComponent(nt));
+              return r3.ok ? r3.json() : null;
+            }
+          }
+          // Refresh falhou — limpa tudo e volta pro estado deslogado
+          console.warn('[auth] refresh falhou, limpando sessao');
+          localStorage.removeItem('bt_token');
+          localStorage.removeItem('bt_refresh_token');
+          TOKEN = null;
+          return null;
+        } catch(e) {
+          console.warn('[auth] erro refresh:', e.message);
+          return null;
+        }
+      }
+      return r.ok ? r.json() : null;
+    })
     .then(d=>{
       if(d?.profile){
         myProfile=d.profile;
         updateHdAvatar();
-        // Se prof-page ja esta aberto com o proprio perfil (race condition
-        // entre handleInitialRoute e initAuth), re-renderiza como owner.
         try {
           const prof = document.getElementById('profPage');
           const url = window.location.pathname;
@@ -3447,7 +3503,7 @@ function initAuth(){
           }
         } catch(e) {}
       }
-    }).catch(()=>{});
+    }).catch((e)=>{ console.warn('[auth] initAuth error:', e.message); });
 }
 
 // ── KEYBOARD ──────────────────────────────────────────────────────────────────
