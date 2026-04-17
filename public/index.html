@@ -3442,28 +3442,38 @@ async function finalCancel(){
   document.getElementById('cancelStep3').style.display='block';
 
   const token=localStorage.getItem('bt_token');
+  let result={};
   try{
     const r=await fetch('/api/cancel-subscription',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({token})
     });
-    const d=await r.json();
-    console.log('Cancel result:',d);
+    result=await r.json();
+    console.log('Cancel result:',result);
   }catch(e){console.error('Cancel error:',e);}
 
-  // Downgrade locally immediately
-  userPlan='free';
-  localStorage.setItem('bt_plan','free');
-  localStorage.removeItem('bt_plan_start');
-  localStorage.removeItem('bt_plan_expiry');
-
-  // Update navbar after showing goodbye message
-  setTimeout(()=>{
-    closeCancelModal();
-    setLoggedIn(currentUserEmail,'free');
-    updateLangOptions();
-  },3000);
+  // Se Stripe confirmou o cancelamento agendado, usuario mantem acesso ate fim do periodo
+  if(result.stripe_cancelled && result.plan_expires_at){
+    const d=new Date(result.plan_expires_at);
+    const dataFmt=d.toLocaleDateString('pt-BR');
+    const msgEl=document.querySelector('#cancelStep3 > div:nth-child(3)');
+    if(msgEl) msgEl.innerHTML='Cancelamento agendado. Voce continua com acesso <strong style="color:var(--neon)">'+(result.plan||'').toUpperCase()+'</strong> ate <strong>'+dataFmt+'</strong>. Depois disso o plano volta automaticamente pra Free e nenhuma cobranca sera feita.';
+    // Mantem plano local ate a data — webhook customer.subscription.deleted fara o downgrade final
+    localStorage.setItem('bt_plan_expiry',result.plan_expires_at);
+    setTimeout(()=>closeCancelModal(),8000);
+  }else{
+    // Plano manual / ja free / sem assinatura Stripe — rebaixa imediato
+    userPlan='free';
+    localStorage.setItem('bt_plan','free');
+    localStorage.removeItem('bt_plan_start');
+    localStorage.removeItem('bt_plan_expiry');
+    setTimeout(()=>{
+      closeCancelModal();
+      setLoggedIn(currentUserEmail,'free');
+      updateLangOptions();
+    },3000);
+  }
 }
 
 // ── MOBILE TOOLS DROPDOWN ────────────────────────────────────────────────────
