@@ -370,19 +370,23 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 #pfFeed{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
 #pfFeed::-webkit-scrollbar{display:none}
 
-/* DESKTOP: pf-overlay centralizado em aspect 9:16, igual ao feed principal */
+/* DESKTOP: pf-overlay — slides como cards 9:16 centralizados (margin auto,
+   SEM transform no container — evita conflito com transform animado de
+   entrada da .pf-overlay que causava "video indo pra lateral"). */
 @media (min-width:1024px){
   .pf-overlay{ left:240px }
-  #pfFeed{ position:absolute; left:50%; transform:translateX(-50%);
-    top:4dvh; bottom:4dvh; height:92dvh;
+  #pfFeed{ height:100%; overflow-y:scroll; padding:4dvh 0 }
+  #pfFeed .slide{
+    height:92dvh;
+    margin:0 auto 12px;
     width:calc(92dvh * 9 / 16);
     max-width:min(560px, calc(92dvh * 9 / 16));
-    border-radius:18px; overflow:hidden; overflow-y:scroll;
-    box-shadow:0 20px 60px rgba(0,0,0,.5) }
-  #pfFeed .slide{ height:92dvh }
-  .pf-topbar{ left:50%; transform:translateX(-50%);
-    width:calc(92dvh * 9 / 16); max-width:560px;
-    padding-top:28px }
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  #pfFeed .slide:last-child{ margin-bottom:4dvh }
+  .pf-topbar{ padding-top:28px }
 }
 
 /* ── CHAT SYSTEM ─────────────────────────────────────────────────────────── */
@@ -2515,6 +2519,13 @@ function openProfileFeed(vids, startId, username) {
       // Rename all IDs to avoid conflict with main feed
       s.id = 'pf-' + v.id;
       s.querySelectorAll('[id]').forEach(el => { el.id = 'pf-' + el.id; });
+      // Promove data-src -> src pra todos os videos (no pf-overlay queremos
+      // todos carregaveis sem depender do lazy loader do feed principal).
+      const vEl = s.querySelector('video');
+      if (vEl && !vEl.src && vEl.dataset.src) {
+        vEl.src = vEl.dataset.src;
+        vEl.removeAttribute('data-src');
+      }
       feed.appendChild(s);
     }
   });
@@ -2558,7 +2569,13 @@ function setupPfObs() {
   pfObs = new IntersectionObserver(entries => {
     entries.forEach(e => {
       const vid = e.target.querySelector('video');
-      if (!vid || !vid.src) return;
+      if (!vid) return;
+      // Lazy-load defensivo: se ainda nao tem src, puxa do data-src
+      if (!vid.src && vid.dataset.src) {
+        vid.src = vid.dataset.src;
+        vid.removeAttribute('data-src');
+      }
+      if (!vid.src) return;
       if (e.isIntersecting && e.intersectionRatio > .6) {
         feed.querySelectorAll('video').forEach(v => { if(v!==vid){v.pause();v.currentTime=0;} });
         vid.preload = 'auto'; vid.muted = !_interacted;
