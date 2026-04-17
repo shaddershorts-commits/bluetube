@@ -635,7 +635,17 @@ module.exports = async function handler(req, res) {
 
     // Apply intelligent scoring if user is logged in
     if (userPrefs) {
-      raw = raw.filter(v => !userPrefs.seen.includes(v.id));
+      // ANTI-FEED-VAZIO: separa nao-vistos e vistos. Se nao-vistos < limit,
+      // anexa os vistos no final (preferindo nao-vistos no topo). Garante
+      // que o usuario nunca veja "Nenhum video" mesmo apos consumir tudo.
+      const seenSet = new Set(userPrefs.seen || []);
+      const naoVistos = raw.filter(v => !seenSet.has(v.id));
+      if (naoVistos.length >= limit) {
+        raw = naoVistos;
+      } else {
+        const vistos = raw.filter(v => seenSet.has(v.id));
+        raw = [...naoVistos, ...vistos];
+      }
       const I = userPrefs.interests || null;
       const nichosScore = (I && I.nichos) || {};
       const criadoresFav = Array.isArray(I?.criadores_favoritos) ? I.criadores_favoritos : [];
@@ -726,9 +736,26 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const videos = raw.slice(0, limit);
+    let videos = raw.slice(0, limit);
     const has_more = rawSql.length >= limit * 3;
     const next_cursor = has_more && lastSql ? encodeCursor(lastSql.created_at, lastSql.id) : null;
+
+    // FALLBACK FINAL: se mesmo apos tudo o feed ficou vazio (ex: usuario novo
+    // sem cursor + filtros muito restritivos retornaram 0), busca top videos
+    // populares do banco inteiro pra nunca mostrar "Nenhum video ainda".
+    if (videos.length === 0) {
+      try {
+        const fbR = await fetchDb(
+          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=*`,
+          { headers: h }
+        );
+        if (fbR.ok) {
+          let fb = (await fbR.json()).filter(v => v.video_url && v.status === 'active');
+          if (blockedIds.length) fb = fb.filter(v => !blockedIds.includes(v.user_id));
+          videos = fb;
+        }
+      } catch (e) { /* fail-soft */ }
+    }
 
     // Enrich with creator profiles (com retry+CB — falha silenciosa mantém feed)
     const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
