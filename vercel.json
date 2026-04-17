@@ -73,6 +73,10 @@
     {
       "path": "/api/monitor-health",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/pioneiros?action=processar-qualificacoes",
+      "schedule": "0 6 * * *"
     }
   ],
   "headers": [

@@ -191,6 +191,48 @@ export default async function handler(req, res) {
           console.log(`💰 Commission corrected: ${aff.email} nivel=${aff.nivel} ${(rate*100).toFixed(0)}% = R$${correctedAmount} (${email})`);
         } catch(e) { console.error('Commission correction error:', e.message); }
       }).catch(() => {});
+
+      // ── Programa Pioneiros: registra indicação se houver ref ────────────
+      try {
+        const pioRef = session.metadata?.ref || session.client_reference_id;
+        if (pioRef) {
+          const pioR = await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_programa?link_ref=eq.${encodeURIComponent(pioRef)}&select=id,status&limit=1`, { headers: supaHeaders });
+          const [pioneiro] = pioR.ok ? await pioR.json() : [];
+          if (pioneiro && pioneiro.status !== 'bloqueado') {
+            await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_indicacoes`, {
+              method: 'POST',
+              headers: { ...supaHeaders, Prefer: 'return=minimal' },
+              body: JSON.stringify({
+                pioneiro_id: pioneiro.id,
+                link_ref: pioRef,
+                assinante_email: email,
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+                plano: plan,
+                valor_mensal: plan === 'master' ? 89.99 : 29.99,
+                meses_ativos: 1,
+                primeira_cobranca_em: new Date().toISOString(),
+                ultima_cobranca_em: new Date().toISOString(),
+              }),
+            });
+            await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_pioneiro_indicados`, {
+              method: 'POST',
+              headers: { ...supaHeaders, Prefer: 'return=minimal' },
+              body: JSON.stringify({ pid: pioneiro.id }),
+            }).catch(async () => {
+              // Fallback se a função RPC não existir — PATCH direto
+              const cur = await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_programa?id=eq.${pioneiro.id}&select=assinantes_indicados`, { headers: supaHeaders });
+              const [row] = cur.ok ? await cur.json() : [{ assinantes_indicados: 0 }];
+              await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_programa?id=eq.${pioneiro.id}`, {
+                method: 'PATCH',
+                headers: supaHeaders,
+                body: JSON.stringify({ assinantes_indicados: (row.assinantes_indicados || 0) + 1, updated_at: new Date().toISOString() }),
+              });
+            });
+            console.log(`🏆 Pioneiros: indicação registrada para ref=${pioRef} (${email})`);
+          }
+        }
+      } catch (e) { console.error('Pioneiros tracking error:', e.message); }
     }
 
     // ── RENOVAÇÃO → Atualiza plan_expires_at ─────────────────────────────────
@@ -219,6 +261,23 @@ export default async function handler(req, res) {
       });
 
       console.log(`🔄 Renewal: ${subs[0].email} → expires ${expiresAt.split('T')[0]}`);
+
+      // ── Programa Pioneiros: incrementa meses_ativos se for indicação ────
+      try {
+        const indR = await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_indicacoes?stripe_subscription_id=eq.${subscriptionId}&select=id,meses_ativos,cancelado&limit=1`, { headers: supaHeaders });
+        const [ind] = indR.ok ? await indR.json() : [];
+        if (ind && !ind.cancelado) {
+          await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_indicacoes?id=eq.${ind.id}`, {
+            method: 'PATCH',
+            headers: supaHeaders,
+            body: JSON.stringify({
+              meses_ativos: (ind.meses_ativos || 0) + 1,
+              ultima_cobranca_em: new Date().toISOString(),
+            }),
+          });
+          console.log(`🏆 Pioneiros: indicação ${ind.id} cresceu pra ${(ind.meses_ativos || 0) + 1} mes(es)`);
+        }
+      } catch (e) { console.error('Pioneiros renewal tracking error:', e.message); }
 
       // Comissão recorrente do afiliado
       const SITE_URL_R = process.env.SITE_URL || 'https://bluetubeviral.com';
@@ -325,6 +384,15 @@ export default async function handler(req, res) {
       });
 
       console.log(`⬇️ Subscription cancelled: ${cancelledEmail || customerId} | Active until: ${expiresAt.toISOString()} | Still active: ${stillActive}`);
+
+      // Programa Pioneiros: marca indicação como cancelada (perde qualificação)
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/pioneiros_indicacoes?stripe_subscription_id=eq.${sub.id}`, {
+          method: 'PATCH',
+          headers: supaHeaders,
+          body: JSON.stringify({ cancelado: true, qualificado: false }),
+        });
+      } catch(e) { console.error('Pioneiros cancel tracking:', e.message); }
 
       notifyStripe(`😢 Cancelamento — ${currentPlan.toUpperCase()} — ${cancelledEmail || customerId}`, [
         ['Cliente', cancelledEmail || customerId],
