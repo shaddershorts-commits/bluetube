@@ -477,7 +477,8 @@ module.exports = async function handler(req, res) {
       const following = fR.ok ? (await fR.json()).map(f => f.following_id) : [];
       if (!following.length) return res.status(200).json({ videos: [], has_more: false, next_cursor: null });
 
-      let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=in.(${following.join(',')})&order=created_at.desc,id.desc&limit=${segLimit + 1}&select=*`;
+      // user_id=neq.${uid} blinda contra eventual self-follow — proprio usuario nao aparece no Seguindo.
+      let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=in.(${following.join(',')})&user_id=neq.${uid}&order=created_at.desc,id.desc&limit=${segLimit + 1}&select=*`;
       if (segCursor) {
         try {
           const decoded = Buffer.from(segCursor, 'base64').toString('utf8');
@@ -600,7 +601,9 @@ module.exports = async function handler(req, res) {
     // ORDER matches cursor dimensions so pagination can't skip rows.
     // Score is applied post-hoc in JS re-rank; keeping score in SQL ORDER would
     // break the (created_at,id) cursor and silently hide newly-posted videos.
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=created_at.desc,id.desc&limit=${limit * 3}&select=*`;
+    // Exclui videos do proprio usuario logado (nao faz sentido aparecer no For You).
+    const excludeSelf = userPrefs?.uid ? `&user_id=neq.${userPrefs.uid}` : '';
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=*`;
     const cur = decodeCursor(cursor);
     if (cur) {
       if (cur.id) {
@@ -745,8 +748,9 @@ module.exports = async function handler(req, res) {
     // populares do banco inteiro pra nunca mostrar "Nenhum video ainda".
     if (videos.length === 0) {
       try {
+        const fbExclude = userPrefs?.uid ? `&user_id=neq.${userPrefs.uid}` : '';
         const fbR = await fetchDb(
-          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=*`,
+          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${fbExclude}&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=*`,
           { headers: h }
         );
         if (fbR.ok) {
