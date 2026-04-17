@@ -12,6 +12,32 @@ function getLevel(totalPaying) {
   return 'bronze';
 }
 
+// Retorna a taxa efetiva de um afiliado:
+// - Se admin setou comissao_percentual (override manual via painel), usa.
+// - Senao, cai no nivel calculado por totalPaying (bronze/silver/gold).
+function getEffectiveRate(affiliate, totalPaying) {
+  if (affiliate && typeof affiliate.comissao_percentual === 'number' && affiliate.comissao_percentual > 0) {
+    return affiliate.comissao_percentual / 100;
+  }
+  return COMMISSION_RATES[getLevel(totalPaying)];
+}
+
+// Idempotencia: ja existe commission paga/pending pra este afiliado+email+plano?
+async function commissionAlreadyExists(SUPA_URL, supaH, affiliateId, email, plan) {
+  try {
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliateId}`
+      + `&subscriber_email=eq.${encodeURIComponent(email)}`
+      + `&plan=eq.${plan}`
+      + `&status=in.(pending,paid)&select=id&limit=1`,
+      { headers: supaH }
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) { return false; }
+}
+
 function generateRefCode(email) {
   const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
   const suffix = crypto.randomBytes(3).toString('hex');
@@ -163,10 +189,10 @@ export default async function handler(req, res) {
       const clkr = await fetch(`${SUPA_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${thirtyDaysAgo}&select=landed_at`, { headers: supaH });
       const clicks = await clkr.json() || [];
 
-      // Calcula stats
+      // Calcula stats — usa taxa efetiva (admin override via comissao_percentual OU nivel calculado)
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
       const level = getLevel(totalPaying);
-      const rate = COMMISSION_RATES[level];
+      const rate = getEffectiveRate(affiliate, totalPaying);
 
       const pendingCommissions = commissions.filter(c => c.status === 'pending');
       const paidCommissions = commissions.filter(c => c.status === 'paid');
@@ -275,45 +301,49 @@ export default async function handler(req, res) {
         });
         const conv = await convR.json();
 
-        // Se plano pago, cria comissão
+        // Se plano pago, cria comissão (com idempotencia)
         if (plan === 'full' || plan === 'master') {
-          const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0) + 1;
-          const level = getLevel(totalPaying);
-          const rate = COMMISSION_RATES[level];
-          const planAmount = PLAN_AMOUNTS[plan];
-          const commissionAmount = planAmount * rate;
+          const alreadyHas = await commissionAlreadyExists(SUPA_URL, supaH, affiliate.id, email, plan);
+          if (alreadyHas) {
+            console.log(`[affiliate] commission ja existe pra ${affiliate.email} ← ${email} (${plan}), skip`);
+          } else {
+            const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0) + 1;
+            const rate = getEffectiveRate(affiliate, totalPaying);
+            const planAmount = PLAN_AMOUNTS[plan];
+            const commissionAmount = parseFloat((planAmount * rate).toFixed(2));
 
-          await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions`, {
-            method: 'POST',
-            headers: { ...supaH, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({
-              affiliate_id: affiliate.id,
-              conversion_id: conv?.[0]?.id || null,
-              subscriber_email: email,
-              plan,
-              plan_amount: planAmount,
-              commission_rate: rate,
-              commission_amount: commissionAmount,
-              status: 'pending',
-              period_start: new Date().toISOString(),
-              period_end: new Date(Date.now() + 37*24*60*60*1000).toISOString()
-            })
-          });
+            await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions`, {
+              method: 'POST',
+              headers: { ...supaH, 'Prefer': 'return=minimal' },
+              body: JSON.stringify({
+                affiliate_id: affiliate.id,
+                conversion_id: conv?.[0]?.id || null,
+                subscriber_email: email,
+                plan,
+                plan_amount: planAmount,
+                commission_rate: rate,
+                commission_amount: commissionAmount,
+                status: 'pending',
+                period_start: new Date().toISOString(),
+                period_end: new Date(Date.now() + 37*24*60*60*1000).toISOString()
+              })
+            });
 
-          // Atualiza stats do afiliado
-          const field = plan === 'full' ? 'total_full' : 'total_master';
-          await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
-            method: 'PATCH',
-            headers: supaH,
-            body: JSON.stringify({
-              [field]: (affiliate[field] || 0) + 1,
-              total_earnings: parseFloat((affiliate.total_earnings || 0) + commissionAmount).toFixed(2),
-              level: getLevel(totalPaying),
-              updated_at: new Date().toISOString()
-            })
-          });
+            // Atualiza stats do afiliado
+            const field = plan === 'full' ? 'total_full' : 'total_master';
+            await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
+              method: 'PATCH',
+              headers: supaH,
+              body: JSON.stringify({
+                [field]: (affiliate[field] || 0) + 1,
+                total_earnings: parseFloat(((affiliate.total_earnings || 0) + commissionAmount)).toFixed(2),
+                level: getLevel(totalPaying),
+                updated_at: new Date().toISOString()
+              })
+            });
 
-          console.log(`💰 Commission: ${affiliate.email} ← ${email} (${plan}) = $${commissionAmount.toFixed(2)}`);
+            console.log(`💰 Commission: ${affiliate.email} ← ${email} (${plan}) @ ${(rate*100).toFixed(0)}% = R$${commissionAmount.toFixed(2)}`);
+          }
         } else if (plan === 'free') {
           // Incrementa total_free
           await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
@@ -353,10 +383,9 @@ export default async function handler(req, res) {
       if (!affiliate) return res.status(200).json({ ok: true, skipped: 'no_affiliate' });
 
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
-      const level = getLevel(totalPaying);
-      const rate = COMMISSION_RATES[level];
+      const rate = getEffectiveRate(affiliate, totalPaying);
       const planAmount = PLAN_AMOUNTS[plan] || 0;
-      const commissionAmount = planAmount * rate;
+      const commissionAmount = parseFloat((planAmount * rate).toFixed(2));
 
       await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions`, {
         method: 'POST',
