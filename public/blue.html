@@ -729,6 +729,71 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 .blu-modal-btn.gold{background:linear-gradient(135deg,#f59e0b,#ef4444)}
 .blu-modal-close{float:right;background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;margin-top:-4px}
 .prof-subscribe-btn{background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap}
+
+/* ===== BT MODAL SYSTEM — design unificado ===== */
+.bt-modal-overlay{position:fixed;inset:0;z-index:9999;display:none;align-items:flex-end;justify-content:center;background:rgba(2,8,23,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);opacity:0;transition:opacity .25s ease}
+.bt-modal-overlay.active{display:flex;opacity:1}
+.bt-modal-overlay.center{align-items:center}
+.bt-modal{background:linear-gradient(180deg,#0a1628 0%,#020817 100%);border:1px solid rgba(0,170,255,.2);border-radius:24px 24px 0 0;width:100%;max-width:480px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;transform:translateY(40px);transition:transform .3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 -8px 60px rgba(0,0,0,.6),0 0 0 1px rgba(0,170,255,.05)}
+.bt-modal-overlay.active .bt-modal{transform:translateY(0)}
+.bt-modal-overlay.center .bt-modal{border-radius:24px;max-width:420px;width:90%;transform:scale(.95)}
+.bt-modal-overlay.center.active .bt-modal{transform:scale(1)}
+.bt-modal-handle{width:40px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:12px auto 0;flex-shrink:0}
+.bt-modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid rgba(0,170,255,.08);flex-shrink:0;gap:12px}
+.bt-modal-title{font-size:17px;font-weight:700;color:#e8f4ff;letter-spacing:-.3px}
+.bt-modal-close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:rgba(232,244,255,.6);font-size:16px;transition:all .15s;flex-shrink:0}
+.bt-modal-close:hover{background:rgba(255,255,255,.1);color:#e8f4ff}
+.bt-modal-header-action{background:none;border:none;color:#00aaff;font-size:13px;font-weight:600;cursor:pointer;padding:6px 10px}
+.bt-modal-body{flex:1;overflow-y:auto;padding:20px 24px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.bt-modal-body::-webkit-scrollbar{display:none}
+.bt-modal-footer{padding:16px 24px 24px;border-top:1px solid rgba(0,170,255,.08);display:flex;gap:10px;flex-shrink:0}
+.bt-btn-primary{flex:1;padding:14px;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:14px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:transform .15s,opacity .15s;letter-spacing:-.2px}
+.bt-btn-primary:active{transform:scale(.97);opacity:.9}
+.bt-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.bt-btn-secondary{flex:1;padding:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;color:rgba(232,244,255,.6);font-size:15px;font-weight:600;cursor:pointer;transition:transform .15s}
+.bt-btn-secondary:active{transform:scale(.97)}
+.bt-btn-danger{flex:1;padding:14px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.3);border-radius:14px;color:#ff6b8a;font-size:15px;font-weight:700;cursor:pointer;transition:transform .15s}
+.bt-btn-danger:active{transform:scale(.97)}
+.bt-input{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:14px 16px;color:#e8f4ff;font-size:15px;outline:none;transition:border-color .2s;box-sizing:border-box;font-family:inherit}
+.bt-input:focus{border-color:rgba(0,170,255,.5);box-shadow:0 0 0 3px rgba(0,170,255,.08)}
+.bt-input::placeholder{color:rgba(232,244,255,.25)}
+.bt-textarea{resize:none;min-height:80px;line-height:1.5}
+.bt-input-label{font-size:12px;font-weight:600;color:rgba(0,170,255,.7);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;display:block}
+.bt-input-group{margin-bottom:16px}
+.bt-counter{font-size:11px;color:rgba(232,244,255,.4);text-align:right;margin-top:4px}
+.bt-menu-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid rgba(0,170,255,.06);cursor:pointer;transition:opacity .15s;background:none;border-left:none;border-right:none;border-top:none;width:100%;text-align:left;color:#e8f4ff;font-family:inherit}
+.bt-menu-item:last-child{border-bottom:none}
+.bt-menu-item:active{opacity:.7}
+.bt-menu-icon{width:40px;height:40px;border-radius:12px;background:rgba(0,170,255,.08);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.bt-menu-icon.danger{background:rgba(255,68,68,.1)}
+.bt-menu-text{flex:1;min-width:0}
+.bt-menu-text .title{font-size:15px;font-weight:600;color:#e8f4ff}
+.bt-menu-text .subtitle{font-size:12px;color:rgba(232,244,255,.4);margin-top:2px}
+.bt-menu-item.danger .title{color:#ff6b8a}
+.bt-toast-container{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:90%;max-width:360px}
+.bt-toast{background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.25);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;color:#e8f4ff;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:btToastIn .3s cubic-bezier(.34,1.56,.64,1) forwards;pointer-events:auto}
+.bt-toast.success{border-color:rgba(0,230,118,.3)}
+.bt-toast.error{border-color:rgba(255,68,68,.3)}
+.bt-toast.warning{border-color:rgba(255,170,0,.3)}
+@keyframes btToastIn{from{opacity:0;transform:translateY(-12px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes btToastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-8px)}}
+.bt-spinner{width:20px;height:20px;border:2px solid rgba(0,170,255,.2);border-top-color:#00aaff;border-radius:50%;animation:btSpin .7s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes btSpin{to{transform:rotate(360deg)}}
+.bt-pressable{transition:transform .15s,opacity .15s;cursor:pointer}
+.bt-pressable:active{transform:scale(.95);opacity:.8}
+.bt-radio-group{display:flex;flex-direction:column;gap:8px}
+.bt-radio{display:flex;align-items:center;gap:12px;padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(0,170,255,.1);border-radius:12px;cursor:pointer;transition:border-color .15s,background .15s}
+.bt-radio:hover{background:rgba(0,170,255,.05);border-color:rgba(0,170,255,.25)}
+.bt-radio.selected{background:rgba(0,170,255,.08);border-color:rgba(0,170,255,.5)}
+.bt-radio input{display:none}
+.bt-radio-circle{width:20px;height:20px;border-radius:50%;border:2px solid rgba(0,170,255,.3);flex-shrink:0;position:relative;transition:border-color .15s}
+.bt-radio.selected .bt-radio-circle{border-color:#00aaff}
+.bt-radio.selected .bt-radio-circle::after{content:'';position:absolute;inset:3px;border-radius:50%;background:#00aaff}
+.bt-radio-label{font-size:14px;color:#e8f4ff;font-weight:500}
+.bt-empty{text-align:center;padding:48px 24px;color:rgba(232,244,255,.35)}
+.bt-empty-icon{font-size:48px;margin-bottom:12px;opacity:.6}
+/* ===== FIM BT MODAL SYSTEM ===== */
+
 </style>
 </head>>
 <body>
@@ -746,10 +811,21 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 </div>
 
 <!-- Search panel -->
-<div class="back-drop" id="searchBack" onclick="closeSearch()" style="z-index:299"></div>
-<div id="searchPanel" style="display:none;position:fixed;top:48px;left:0;right:0;z-index:300;background:rgba(0,0,0,.97);max-height:70vh;overflow-y:auto;border-bottom:1px solid rgba(59,130,246,.2);padding:12px 16px">
-  <input id="searchInp" type="text" placeholder="Buscar vídeos e pessoas..." oninput="onSearchInput()" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;font-family:monospace;font-size:14px;color:#fff;outline:none;margin-bottom:12px"/>
-  <div id="searchResults" style="font-size:13px;color:#888"></div>
+<div class="bt-modal-overlay" id="searchPanel" style="display:none">
+  <div class="bt-modal" style="max-height:85vh">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Buscar</span>
+      <button class="bt-modal-close" onclick="closeSearch()">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div style="position:relative;margin-bottom:16px">
+        <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:.5">🔍</span>
+        <input class="bt-input" id="searchInp" type="text" placeholder="Buscar vídeos e pessoas..." oninput="onSearchInput()" style="padding-left:42px"/>
+      </div>
+      <div id="searchResults" style="font-size:13px"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Offline banner -->
@@ -870,18 +946,21 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 </div>
 
 <!-- COMMENTS -->
-<div class="back-drop" id="cpBack" onclick="closeComments()"></div>
-<div class="cpanel" id="cpanel">
-  <div class="cp-hd">
-    <div class="cp-ttl">Comentários <span id="cpCnt" style="color:#555;font-weight:400"></span></div>
-    <button class="cp-x" onclick="closeComments()">✕</button>
-  </div>
-  <div class="cp-list" id="cpList"><div class="cp-empty">Carregando…</div></div>
-  <div class="cp-inp-row">
-    <textarea class="cp-inp" id="cpInp" placeholder="Comentar…" rows="1"
-      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment();}"
-      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
-    <button class="cp-send" id="cpSend" onclick="sendComment()">↑</button>
+<div class="bt-modal-overlay" id="cpanel" style="display:none">
+  <div class="bt-modal" style="max-height:80vh">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Comentários <span id="cpCnt" style="color:rgba(232,244,255,.4);font-weight:400;margin-left:4px"></span></span>
+      <button class="bt-modal-close" onclick="closeComments()">✕</button>
+    </div>
+    <div class="bt-modal-body cp-list" id="cpList"><div class="bt-empty"><div class="bt-empty-icon">💬</div>Carregando…</div></div>
+    <div class="bt-modal-footer cp-inp-row" style="align-items:flex-end">
+      <textarea class="bt-input bt-textarea cp-inp" id="cpInp" placeholder="Adicione um comentário…" rows="1"
+        style="min-height:44px;max-height:120px;flex:1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment();}"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+      <button class="bt-btn-primary cp-send" id="cpSend" onclick="sendComment()" style="flex:0 0 auto;padding:12px 18px">↑</button>
+    </div>
   </div>
 </div>
 
@@ -930,125 +1009,212 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 </div>
 
 <!-- DOTS MENU -->
-<div class="back-drop" id="dotsBack" onclick="closeDotsMenu()" style="z-index:399"></div>
-<div class="dots-menu" id="dotsMenu">
-  <button class="dm-item" id="dmEdit" onclick="startEditVideo()">✏️ &nbsp;Editar vídeo</button>
-  <div class="dm-sep" id="dmEditSep"></div>
-  <button class="dm-item red" id="dmDelete" onclick="startDeleteVideo()">🗑️ &nbsp;Excluir vídeo</button>
-  <div class="dm-sep"></div>
-  <button class="dm-item" onclick="openReportMenu()">🚫 &nbsp;Denunciar</button>
-  <button class="dm-item" id="dmBlock" onclick="doBlockUser()" style="display:none">🔕 &nbsp;Bloquear</button>
-  <div class="dm-sep"></div>
-  <button class="dm-item" onclick="closeDotsMenu()">✕ &nbsp;Cancelar</button>
+<div class="bt-modal-overlay" id="dotsMenu" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-body" style="padding:8px 24px 16px">
+      <button class="bt-menu-item" id="dmEdit" onclick="startEditVideo()">
+        <div class="bt-menu-icon">✏️</div>
+        <div class="bt-menu-text"><div class="title">Editar vídeo</div><div class="subtitle">Título e descrição</div></div>
+      </button>
+      <button class="bt-menu-item" onclick="copyVideoLink()">
+        <div class="bt-menu-icon">🔗</div>
+        <div class="bt-menu-text"><div class="title">Copiar link</div></div>
+      </button>
+      <button class="bt-menu-item" onclick="openReportMenu()">
+        <div class="bt-menu-icon danger">🚫</div>
+        <div class="bt-menu-text"><div class="title">Denunciar</div><div class="subtitle">Sinalizar conteúdo inapropriado</div></div>
+      </button>
+      <button class="bt-menu-item danger" id="dmBlock" onclick="doBlockUser()" style="display:none">
+        <div class="bt-menu-icon danger">🔕</div>
+        <div class="bt-menu-text"><div class="title">Bloquear usuário</div><div class="subtitle">Você não verá mais vídeos dele</div></div>
+      </button>
+      <button class="bt-menu-item danger" id="dmDelete" onclick="startDeleteVideo()">
+        <div class="bt-menu-icon danger">🗑️</div>
+        <div class="bt-menu-text"><div class="title">Excluir vídeo</div><div class="subtitle">Remover permanentemente</div></div>
+      </button>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeDotsMenu()">Cancelar</button>
+    </div>
+  </div>
 </div>
 <!-- REPORT MENU -->
-<div class="back-drop" id="reportBack" onclick="closeReportMenu()" style="z-index:499;display:none"></div>
-<div class="dots-menu" id="reportMenu" style="display:none;z-index:500">
-  <div style="padding:10px 16px;font-size:12px;font-weight:700;color:#fff;opacity:.6">Por que está denunciando?</div>
-  <button class="dm-item" onclick="submitReport('spam')">📢 Spam ou conteúdo enganoso</button>
-  <button class="dm-item" onclick="submitReport('nudez')">🚫 Nudez ou conteúdo sexual</button>
-  <button class="dm-item" onclick="submitReport('violencia')">⚠️ Violência ou conteúdo chocante</button>
-  <button class="dm-item" onclick="submitReport('assedio')">🔕 Assédio ou bullying</button>
-  <button class="dm-item" onclick="submitReport('fake')">❌ Informação falsa</button>
-  <button class="dm-item" onclick="submitReport('outro')">📝 Outro motivo</button>
-  <div class="dm-sep"></div>
-  <button class="dm-item" onclick="closeReportMenu()">✕ &nbsp;Cancelar</button>
+<div class="bt-modal-overlay center" id="reportMenu" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Denunciar conteúdo</span>
+      <button class="bt-modal-close" onclick="closeReportMenu()">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div style="color:rgba(232,244,255,.5);font-size:13px;margin-bottom:16px">Por que você está denunciando?</div>
+      <div class="bt-radio-group" id="reportOptions">
+        <label class="bt-radio" onclick="selectReportReason(this,'spam')"><span class="bt-radio-circle"></span><span class="bt-radio-label">📢 Spam ou conteúdo enganoso</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'nudez')"><span class="bt-radio-circle"></span><span class="bt-radio-label">🚫 Nudez ou conteúdo sexual</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'violencia')"><span class="bt-radio-circle"></span><span class="bt-radio-label">⚠️ Violência ou conteúdo chocante</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'assedio')"><span class="bt-radio-circle"></span><span class="bt-radio-label">🔕 Assédio ou bullying</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'fake')"><span class="bt-radio-circle"></span><span class="bt-radio-label">❌ Informação falsa</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'outro')"><span class="bt-radio-circle"></span><span class="bt-radio-label">📝 Outro motivo</span></label>
+      </div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeReportMenu()">Cancelar</button>
+      <button class="bt-btn-danger" id="reportSubmitBtn" disabled onclick="submitReport(_reportReason)">Enviar denúncia</button>
+    </div>
+  </div>
+</div>
+
+<!-- BLOCK USER CONFIRM -->
+<div class="bt-modal-overlay center" id="blockConfirmOv" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Bloquear <span id="blockUserName">usuário</span>?</span>
+      <button class="bt-modal-close" onclick="btModalClose('blockConfirmOv')">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div style="text-align:center;font-size:48px;margin-bottom:16px">🔕</div>
+      <div style="color:rgba(232,244,255,.75);font-size:14px;line-height:1.55;text-align:center">Esta pessoa não vai mais aparecer no seu feed, comentários ou busca. Você pode desfazer a qualquer momento nas configurações.</div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="btModalClose('blockConfirmOv')">Cancelar</button>
+      <button class="bt-btn-danger" onclick="confirmBlockUser()">Bloquear</button>
+    </div>
+  </div>
 </div>
 
 <!-- EDIT PROFILE MODAL -->
-<div class="overlay" id="editProfileOv">
-  <div class="edit-box" onclick="event.stopPropagation()">
-    <div class="edit-hd">
-      <div class="edit-ttl">Editar perfil</div>
-      <button class="edit-save" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
+<div class="bt-modal-overlay" id="editProfileOv" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Editar perfil</span>
+      <button class="bt-modal-close" onclick="btModalClose('editProfileOv')">✕</button>
     </div>
-    <div class="edit-av-wrap">
-      <label style="cursor:pointer">
-        <div class="edit-av" id="editAv">?<div class="edit-av-ov">📷</div></div>
-        <input type="file" accept="image/*" style="display:none" onchange="pickAvatar(this.files[0])"/>
-      </label>
+    <div class="bt-modal-body">
+      <div class="edit-av-wrap" style="display:flex;justify-content:center;margin-bottom:20px">
+        <label style="cursor:pointer">
+          <div class="edit-av" id="editAv">?<div class="edit-av-ov">📷</div></div>
+          <input type="file" accept="image/*" style="display:none" onchange="pickAvatar(this.files[0])"/>
+        </label>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Nome</label>
+        <input class="bt-input" id="eName" type="text" maxlength="50" placeholder="Seu nome"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Username</label>
+        <input class="bt-input" id="eUser" type="text" maxlength="30" placeholder="@username"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Bio</label>
+        <textarea class="bt-input bt-textarea" id="eBio" rows="3" maxlength="150" placeholder="Fale sobre você…"
+          oninput="document.getElementById('eBioChar').textContent=this.value.length+'/150'"></textarea>
+        <div class="bt-counter" id="eBioChar">0/150</div>
+      </div>
     </div>
-    <div class="lbl">Nome</div><input class="field" id="eName" type="text" maxlength="50" placeholder="Seu nome"/>
-    <div class="lbl">Username</div><input class="field" id="eUser" type="text" maxlength="30" placeholder="@username"/>
-    <div class="lbl">Bio</div>
-    <textarea class="field" id="eBio" rows="3" maxlength="150" placeholder="Fale sobre você…"
-      oninput="document.getElementById('eBioChar').textContent=this.value.length+'/150'"></textarea>
-    <div class="char-ct" id="eBioChar">0/150</div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="btModalClose('editProfileOv')">Cancelar</button>
+      <button class="bt-btn-primary" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
+    </div>
   </div>
 </div>
 
 <!-- EDIT VIDEO MODAL -->
-<div class="overlay" id="editVideoOv">
-  <div class="edit-box" onclick="event.stopPropagation()">
-    <div class="edit-hd">
-      <div class="edit-ttl">Editar vídeo</div>
-      <button class="edit-save" onclick="saveVideoEdit()">Salvar</button>
+<div class="bt-modal-overlay" id="editVideoOv" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Editar vídeo</span>
+      <button class="bt-modal-close" onclick="btModalClose('editVideoOv')">✕</button>
     </div>
-    <div class="lbl">Título</div><input class="field" id="evTitle" type="text" maxlength="100"/>
-    <div class="lbl">Descrição</div><textarea class="field" id="evDesc" rows="3" maxlength="500"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="document.getElementById('editVideoOv').classList.remove('on')" style="background:none;border:1px solid #333;border-radius:10px;padding:10px 20px;color:#aaa;cursor:pointer">Cancelar</button>
+    <div class="bt-modal-body">
+      <div class="bt-input-group">
+        <label class="bt-input-label">Título</label>
+        <input class="bt-input" id="evTitle" type="text" maxlength="100"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Descrição</label>
+        <textarea class="bt-input bt-textarea" id="evDesc" rows="3" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="btModalClose('editVideoOv')">Cancelar</button>
+      <button class="bt-btn-primary" onclick="saveVideoEdit()">Salvar</button>
     </div>
   </div>
 </div>
 
 <!-- UPLOAD MODAL -->
-<div class="up-ov" id="upOv" onclick="if(event.target===this)closeUpload()">
-  <div class="up-box">
-    <div class="up-hd"><div class="up-ttl">📹 Publicar vídeo</div><button class="up-x" onclick="closeUpload()">✕</button></div>
-
-    <!-- Auth wall -->
-    <div id="authWall" style="display:none">
-      <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:32px;margin-bottom:8px">🎬</div>
-        <div style="font-size:16px;font-weight:700;margin-bottom:4px">Entre para publicar</div>
-        <div style="font-size:12px;color:#aaa">Use a mesma conta do BlueTube</div>
-      </div>
-      <div class="aw-tabs">
-        <button class="aw-tab on" id="awT1" onclick="awTab('signin')">Entrar</button>
-        <button class="aw-tab off" id="awT2" onclick="awTab('signup')">Criar conta</button>
-      </div>
-      <form onsubmit="doAuth();return false;" autocomplete="on">
-      <input class="aw-f" id="awEmail" type="email" placeholder="Email" autocomplete="email" name="email"/>
-      <div style="position:relative;margin-bottom:0">
-        <input class="aw-f" id="awPass" type="password" placeholder="Senha" autocomplete="current-password" name="password" style="padding-right:44px;margin-bottom:0"/>
-        <button type="button" id="awEye" onclick="(function(){var i=document.getElementById('awPass');i.type=i.type==='password'?'text':'password';document.getElementById('awEye').textContent=i.type==='password'?'👁':'🙈';})()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1">👁</button>
-      </div>
-      <button type="submit" class="aw-btn" id="awBtn" style="margin-top:10px">Entrar →</button>
-      </form>
-      <div class="aw-msg" id="awMsg"></div>
+<div class="bt-modal-overlay" id="upOv" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">📹 Publicar vídeo</span>
+      <button class="bt-modal-close" onclick="closeUpload()">✕</button>
     </div>
+    <div class="bt-modal-body">
+      <!-- Auth wall -->
+      <div id="authWall" style="display:none">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:40px;margin-bottom:10px">🎬</div>
+          <div style="font-size:17px;font-weight:700;margin-bottom:4px;color:#e8f4ff">Entre para publicar</div>
+          <div style="font-size:13px;color:rgba(232,244,255,.5)">Use a mesma conta do BlueTube</div>
+        </div>
+        <div class="aw-tabs">
+          <button class="aw-tab on" id="awT1" onclick="awTab('signin')">Entrar</button>
+          <button class="aw-tab off" id="awT2" onclick="awTab('signup')">Criar conta</button>
+        </div>
+        <form onsubmit="doAuth();return false;" autocomplete="on">
+          <div class="bt-input-group">
+            <input class="bt-input" id="awEmail" type="email" placeholder="Email" autocomplete="email" name="email"/>
+          </div>
+          <div class="bt-input-group" style="position:relative">
+            <input class="bt-input" id="awPass" type="password" placeholder="Senha" autocomplete="current-password" name="password" style="padding-right:44px"/>
+            <button type="button" id="awEye" onclick="(function(){var i=document.getElementById('awPass');i.type=i.type==='password'?'text':'password';document.getElementById('awEye').textContent=i.type==='password'?'👁':'🙈';})()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1">👁</button>
+          </div>
+          <button type="submit" class="bt-btn-primary" id="awBtn" style="width:100%">Entrar →</button>
+        </form>
+        <div class="aw-msg" id="awMsg" style="margin-top:12px;font-size:13px;text-align:center"></div>
+      </div>
 
-    <!-- Upload form -->
-    <div id="upForm">
-      <div class="drop" id="upDrop" onclick="document.getElementById('upFile').click()"
-        ondragover="event.preventDefault();this.classList.add('ov')"
-        ondragleave="this.classList.remove('ov')"
-        ondrop="onDrop(event)">
-        <input type="file" id="upFile" accept="video/*" onchange="pickFile(this.files[0])"/>
-        <div class="drop-icon" id="dropIcon">🎬</div>
-        <div class="drop-lbl" id="dropLbl">Toque para selecionar</div>
-        <div class="drop-sub">MP4, MOV, WebM</div>
+      <!-- Upload form -->
+      <div id="upForm">
+        <div class="drop" id="upDrop" onclick="document.getElementById('upFile').click()"
+          ondragover="event.preventDefault();this.classList.add('ov')"
+          ondragleave="this.classList.remove('ov')"
+          ondrop="onDrop(event)">
+          <input type="file" id="upFile" accept="video/*" onchange="pickFile(this.files[0])"/>
+          <div class="drop-icon" id="dropIcon">🎬</div>
+          <div class="drop-lbl" id="dropLbl">Toque para selecionar</div>
+          <div class="drop-sub">MP4, MOV, WebM</div>
+        </div>
+        <div class="prev-row" id="prevRow">
+          <div id="prevThumb" style="width:64px;height:64px;border-radius:8px;background:#222;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden">🎬</div>
+          <div id="prevInfo" style="font-size:12px;color:rgba(232,244,255,.5);line-height:1.7"></div>
+        </div>
+        <div class="filter-bar" id="filterBar" style="display:none">
+          <div class="filter-chip active" onclick="applyFilter('none',this)">Original</div>
+          <div class="filter-chip" onclick="applyFilter('brightness(1.1) contrast(1.2) saturate(1.3)',this)">Neon</div>
+          <div class="filter-chip" onclick="applyFilter('sepia(0.5) contrast(1.1)',this)">Vintage</div>
+          <div class="filter-chip" onclick="applyFilter('brightness(0.8) contrast(1.3)',this)">Dark</div>
+          <div class="filter-chip" onclick="applyFilter('grayscale(1)',this)">B&W</div>
+          <div class="filter-chip" onclick="applyFilter('hue-rotate(30deg) saturate(1.4)',this)">Warm</div>
+          <div class="filter-chip" onclick="applyFilter('hue-rotate(180deg) saturate(0.8)',this)">Cool</div>
+          <div class="filter-chip" onclick="applyFilter('contrast(1.5) brightness(0.9)',this)">Drama</div>
+        </div>
+        <div class="bt-input-group" style="margin-top:12px">
+          <input class="bt-input" id="upTitle" type="text" placeholder="Título (obrigatório)" maxlength="100"/>
+        </div>
+        <div class="bt-input-group">
+          <textarea class="bt-input bt-textarea" id="upDesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
+        </div>
+        <div class="up-prog" id="upProg"><div class="up-prog-fill" id="upFill"></div></div>
+        <div class="up-msg" id="upMsg"></div>
       </div>
-      <div class="prev-row" id="prevRow">
-        <div id="prevThumb" style="width:64px;height:64px;border-radius:8px;background:#222;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden">🎬</div>
-        <div id="prevInfo" style="font-size:12px;color:#aaa;line-height:1.7"></div>
-      </div>
-      <div class="filter-bar" id="filterBar" style="display:none">
-        <div class="filter-chip active" onclick="applyFilter('none',this)">Original</div>
-        <div class="filter-chip" onclick="applyFilter('brightness(1.1) contrast(1.2) saturate(1.3)',this)">Neon</div>
-        <div class="filter-chip" onclick="applyFilter('sepia(0.5) contrast(1.1)',this)">Vintage</div>
-        <div class="filter-chip" onclick="applyFilter('brightness(0.8) contrast(1.3)',this)">Dark</div>
-        <div class="filter-chip" onclick="applyFilter('grayscale(1)',this)">B&W</div>
-        <div class="filter-chip" onclick="applyFilter('hue-rotate(30deg) saturate(1.4)',this)">Warm</div>
-        <div class="filter-chip" onclick="applyFilter('hue-rotate(180deg) saturate(0.8)',this)">Cool</div>
-        <div class="filter-chip" onclick="applyFilter('contrast(1.5) brightness(0.9)',this)">Drama</div>
-      </div>
-      <input class="field" id="upTitle" type="text" placeholder="Título (obrigatório)" maxlength="100" style="margin-top:12px"/>
-      <textarea class="field" id="upDesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
-      <div class="up-prog" id="upProg"><div class="up-prog-fill" id="upFill"></div></div>
-      <div class="up-msg" id="upMsg"></div>
-      <button class="up-pub" id="upBtn" disabled onclick="doUpload()">Selecione um vídeo</button>
+    </div>
+    <div class="bt-modal-footer" id="upFooter">
+      <button class="bt-btn-secondary" onclick="closeUpload()">Cancelar</button>
+      <button class="bt-btn-primary" id="upBtn" disabled onclick="doUpload()">Selecione um vídeo</button>
     </div>
   </div>
 </div>
@@ -1063,134 +1229,203 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 </div>
 
 <!-- CHAT INBOX -->
-<div class="back-drop" id="inboxBack" onclick="closeInbox()" style="z-index:299;display:none"></div>
-<div class="inbox" id="inbox">
-  <div class="inbox-hd">
-    <div class="inbox-ttl">💬 Mensagens</div>
-    <button class="inbox-x" onclick="closeInbox()">✕</button>
+<div class="bt-modal-overlay" id="inbox" style="display:none">
+  <div class="bt-modal" style="max-height:90vh">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">💬 Mensagens</span>
+      <button class="bt-modal-close" onclick="closeInbox()">✕</button>
+    </div>
+    <div class="bt-modal-body" style="padding:0">
+      <div class="status-row" style="padding:16px 24px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(0,170,255,.06)">
+        <button class="st-btn online" onclick="setMyStatus('online')">● Online</button>
+        <button class="st-btn away" onclick="setMyStatus('away')">● Ausente</button>
+        <button class="st-btn busy" onclick="setMyStatus('busy')">● Ocupado</button>
+        <button class="st-btn offline" onclick="setMyStatus('offline')">● Offline</button>
+      </div>
+      <div class="conv-list" id="convList" style="padding:8px 0"><div class="bt-empty"><div class="bt-empty-icon">💬</div>Nenhuma conversa ainda.<br>Envie uma mensagem para alguém!</div></div>
+    </div>
   </div>
-  <div class="status-row">
-    <button class="st-btn online" onclick="setMyStatus('online')">● Online</button>
-    <button class="st-btn away" onclick="setMyStatus('away')">● Ausente</button>
-    <button class="st-btn busy" onclick="setMyStatus('busy')">● Ocupado</button>
-    <button class="st-btn offline" onclick="setMyStatus('offline')">● Offline</button>
-  </div>
-  <div class="conv-list" id="convList"><div class="inbox-empty">Nenhuma conversa ainda.<br>Envie uma mensagem para alguém!</div></div>
 </div>
 
 <!-- CHAT WINDOW -->
-<div class="chat-win" id="chatWin">
-  <div class="chat-hd">
-    <button class="chat-back" onclick="closeChatWin()">←</button>
-    <div class="chat-hd-av" id="chatHdAv">?</div>
-    <div class="chat-hd-info">
-      <div class="chat-hd-name" id="chatHdName">—</div>
-      <div class="chat-hd-status offline" id="chatHdStatus">offline</div>
+<div class="bt-modal-overlay" id="chatWin" style="display:none">
+  <div class="bt-modal" style="max-height:92vh">
+    <div class="bt-modal-header" style="gap:12px">
+      <button class="bt-modal-close" onclick="closeChatWin()" style="width:36px;height:36px">←</button>
+      <div class="chat-hd-av" id="chatHdAv" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,#00aaff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px">?</div>
+      <div style="flex:1;min-width:0">
+        <div class="chat-hd-name" id="chatHdName" style="color:#e8f4ff;font-weight:700;font-size:15px">—</div>
+        <div class="chat-hd-status offline" id="chatHdStatus" style="color:rgba(232,244,255,.4);font-size:11px">offline</div>
+      </div>
     </div>
-  </div>
-  <div class="chat-msgs" id="chatMsgs"></div>
-  <div class="chat-inp-wrap">
-    <div class="emoji-picker-wrap" id="emojiPicker"></div>
-    <button class="emoji-btn" onclick="toggleEmojiPicker()">😊</button>
-    <textarea class="chat-inp" id="chatInp" placeholder="Mensagem…" rows="1"
-      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"
-      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
-    <button class="chat-send" id="chatSendBtn" onclick="sendMsg()">↑</button>
+    <div class="bt-modal-body chat-msgs" id="chatMsgs" style="padding:16px 20px"></div>
+    <div class="bt-modal-footer chat-inp-wrap" style="align-items:flex-end;gap:8px">
+      <div class="emoji-picker-wrap" id="emojiPicker"></div>
+      <button class="emoji-btn" onclick="toggleEmojiPicker()" style="background:rgba(255,255,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:12px;width:44px;height:44px;cursor:pointer;font-size:20px;flex-shrink:0">😊</button>
+      <textarea class="bt-input bt-textarea chat-inp" id="chatInp" placeholder="Mensagem…" rows="1" style="min-height:44px;max-height:120px;flex:1"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+      <button class="bt-btn-primary chat-send" id="chatSendBtn" onclick="sendMsg()" style="flex:0 0 auto;padding:12px 18px">↑</button>
+    </div>
   </div>
 </div>
 
 
 <!-- GRUPOS PANEL -->
-<div class="back-drop" id="gruposBack" onclick="closeGrupos()" style="z-index:299;display:none"></div>
-<div class="grupos-panel" id="gruposPanel">
-  <div class="gp-hd">
-    <div class="gp-ttl">=e Grupos</div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button class="gp-add-btn" onclick="openCriarGrupo()"></button>
-      <button class="gp-x" onclick="closeGrupos()"></button>
+<div class="bt-modal-overlay" id="gruposPanel" style="display:none">
+  <div class="bt-modal" style="max-height:90vh">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">👥 Grupos</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="bt-modal-header-action" onclick="openCriarGrupo()">+ Criar</button>
+        <button class="bt-modal-close" onclick="closeGrupos()">✕</button>
+      </div>
     </div>
+    <div class="gp-tabs" style="display:flex;gap:6px;padding:12px 24px 0;border-bottom:1px solid rgba(0,170,255,.08)">
+      <button class="gp-tab on" id="gpTabMeus" onclick="showGpTab('meus',this)">Meus grupos</button>
+      <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)">Descobrir</button>
+    </div>
+    <div class="bt-modal-body gp-body" id="gpBody"><div class="bt-empty"><div class="bt-empty-icon">👥</div>Carregando…</div></div>
   </div>
-  <div class="gp-tabs">
-    <button class="gp-tab on" id="gpTabMeus" onclick="showGpTab('meus',this)">Meus grupos</button>
-    <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)">Descobrir</button>
-  </div>
-  <div class="gp-body" id="gpBody"><div class="shop-empty">Carregando&</div></div>
 </div>
 
 <!-- GRUPO CHAT -->
-<div class="gp-chat" id="gpChat">
-  <div class="gp-chat-hd">
-    <button class="gp-chat-back" onclick="closeGpChat()">�</button>
-    <div class="gp-chat-name" id="gpChatName">Grupo</div>
-  </div>
-  <div class="gp-chat-msgs" id="gpChatMsgs"><div class="shop-empty">Carregando&</div></div>
-  <div class="gp-chat-inp">
-    <input id="gpMsgInp" placeholder="Mensagem&" onkeydown="if(event.key==='Enter')sendGpMsg()"/>
-    <button class="gp-chat-send" onclick="sendGpMsg()">�</button>
+<div class="bt-modal-overlay" id="gpChat" style="display:none">
+  <div class="bt-modal" style="max-height:92vh">
+    <div class="bt-modal-header">
+      <button class="bt-modal-close" onclick="closeGpChat()" style="width:36px;height:36px">←</button>
+      <span class="bt-modal-title" id="gpChatName">Grupo</span>
+      <span style="width:32px"></span>
+    </div>
+    <div class="bt-modal-body gp-chat-msgs" id="gpChatMsgs"><div class="bt-empty">Carregando…</div></div>
+    <div class="bt-modal-footer gp-chat-inp" style="align-items:center;gap:8px">
+      <input class="bt-input" id="gpMsgInp" placeholder="Mensagem…" style="flex:1" onkeydown="if(event.key==='Enter')sendGpMsg()"/>
+      <button class="bt-btn-primary gp-chat-send" onclick="sendGpMsg()" style="flex:0 0 auto;padding:12px 18px">↑</button>
+    </div>
   </div>
 </div>
 
 <!-- MODAL CRIAR GRUPO -->
-<div class="blu-modal-back" id="criarGrupoModal">
-  <div class="blu-modal">
-    <button class="blu-modal-close" onclick="closeCriarGrupo()"></button>
-    <div class="blu-modal-title">Criar grupo</div>
-    <input class="blu-modal-inp" id="gpNome" placeholder="Nome do grupo"/>
-    <textarea class="blu-modal-inp" id="gpDesc" placeholder="Descri��o (opcional)" rows="2" style="resize:none"></textarea>
-    <select class="blu-modal-inp" id="gpTipo">
-      <option value="publico">P�blico</option>
-      <option value="privado">Privado</option>
-    </select>
-    <button class="blu-modal-btn" onclick="criarGrupo()">Criar grupo</button>
-    <div id="criarGrupoMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+<div class="bt-modal-overlay center" id="criarGrupoModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Criar grupo</span>
+      <button class="bt-modal-close" onclick="closeCriarGrupo()">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div class="bt-input-group">
+        <label class="bt-input-label">Nome</label>
+        <input class="bt-input" id="gpNome" placeholder="Ex: Criadores BR"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Descrição (opcional)</label>
+        <textarea class="bt-input bt-textarea" id="gpDesc" placeholder="Sobre o que é esse grupo?" rows="2"></textarea>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Tipo</label>
+        <select class="bt-input" id="gpTipo">
+          <option value="publico">Público — qualquer pessoa pode entrar</option>
+          <option value="privado">Privado — só com convite</option>
+        </select>
+      </div>
+      <div id="criarGrupoMsg" style="color:rgba(232,244,255,.5);font-size:12px;margin-top:8px;text-align:center"></div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeCriarGrupo()">Cancelar</button>
+      <button class="bt-btn-primary" onclick="criarGrupo()">Criar grupo</button>
+    </div>
   </div>
 </div>
 
 <!-- MODAL PRODUTO (SHOP) -->
-<div class="blu-modal-back" id="shopProdModal">
-  <div class="blu-modal">
-    <button class="blu-modal-close" onclick="closeShopProdModal()"></button>
-    <div class="blu-modal-title" id="shopProdTitle">Produto</div>
-    <div id="shopProdBody"></div>
+<div class="bt-modal-overlay center" id="shopProdModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title" id="shopProdTitle">Produto</span>
+      <button class="bt-modal-close" onclick="closeShopProdModal()">✕</button>
+    </div>
+    <div class="bt-modal-body" id="shopProdBody"></div>
   </div>
 </div>
 
 <!-- MODAL ADICIONAR PRODUTO -->
-<div class="blu-modal-back" id="addProdModal">
-  <div class="blu-modal">
-    <button class="blu-modal-close" onclick="closeAddProdModal()"></button>
-    <div class="blu-modal-title">Adicionar produto</div>
-    <input class="blu-modal-inp" id="addProdNome" placeholder="Nome do produto"/>
-    <textarea class="blu-modal-inp" id="addProdDesc" placeholder="Descri��o" rows="2" style="resize:none"></textarea>
-    <input class="blu-modal-inp" id="addProdPreco" placeholder="Pre�o (R$)" type="number" step="0.01" min="0"/>
-    <select class="blu-modal-inp" id="addProdTipo">
-      <option value="digital">Digital</option>
-      <option value="fisico">F�sico</option>
-    </select>
-    <button class="blu-modal-btn" onclick="publicarProduto()">Publicar produto</button>
-    <div id="addProdMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+<div class="bt-modal-overlay" id="addProdModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">🛒 Adicionar produto</span>
+      <button class="bt-modal-close" onclick="closeAddProdModal()">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div class="bt-input-group">
+        <label class="bt-input-label">Nome do produto</label>
+        <input class="bt-input" id="addProdNome" placeholder="Ex: Preset Lightroom Verão"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Descrição</label>
+        <textarea class="bt-input bt-textarea" id="addProdDesc" placeholder="O que o cliente recebe?" rows="2"></textarea>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Preço (R$)</label>
+        <input class="bt-input" id="addProdPreco" placeholder="0,00" type="number" step="0.01" min="0"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Tipo</label>
+        <select class="bt-input" id="addProdTipo">
+          <option value="digital">Digital — download</option>
+          <option value="fisico">Físico — com frete</option>
+        </select>
+      </div>
+      <div id="addProdMsg" style="color:rgba(232,244,255,.5);font-size:12px;margin-top:8px;text-align:center"></div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeAddProdModal()">Cancelar</button>
+      <button class="bt-btn-primary" onclick="publicarProduto()">Publicar produto</button>
+    </div>
   </div>
 </div>
 
 <!-- MODAL ASSINATURA -->
-<div class="blu-modal-back" id="assinaturaModal">
-  <div class="blu-modal">
-    <button class="blu-modal-close" onclick="closeAssinaturaModal()"></button>
-    <div class="blu-modal-title" id="assinaturaModalTitle">Planos</div>
-    <div id="assinaturaModalBody"></div>
+<div class="bt-modal-overlay center" id="assinaturaModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title" id="assinaturaModalTitle">Planos</span>
+      <button class="bt-modal-close" onclick="closeAssinaturaModal()">✕</button>
+    </div>
+    <div class="bt-modal-body" id="assinaturaModalBody"></div>
   </div>
 </div>
 
 <!-- MODAL CRIAR PLANO -->
-<div class="blu-modal-back" id="criarPlanoModal">
-  <div class="blu-modal">
-    <button class="blu-modal-close" onclick="closeCriarPlanoModal()"></button>
-    <div class="blu-modal-title">Criar plano de assinatura</div>
-    <input class="blu-modal-inp" id="planoNome" placeholder="Nome do plano"/>
-    <input class="blu-modal-inp" id="planoPreco" placeholder="Pre�o mensal (R$)" type="number" step="0.01" min="1"/>
-    <textarea class="blu-modal-inp" id="planoBeneficios" placeholder="Benef�cios (um por linha)" rows="3" style="resize:none"></textarea>
-    <button class="blu-modal-btn gold" onclick="criarPlano()">Criar plano</button>
-    <div id="criarPlanoMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>
+<div class="bt-modal-overlay center" id="criarPlanoModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-header">
+      <span class="bt-modal-title">Criar plano de assinatura</span>
+      <button class="bt-modal-close" onclick="closeCriarPlanoModal()">✕</button>
+    </div>
+    <div class="bt-modal-body">
+      <div class="bt-input-group">
+        <label class="bt-input-label">Nome do plano</label>
+        <input class="bt-input" id="planoNome" placeholder="Ex: VIP"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Preço mensal (R$)</label>
+        <input class="bt-input" id="planoPreco" placeholder="29,90" type="number" step="0.01" min="1"/>
+      </div>
+      <div class="bt-input-group">
+        <label class="bt-input-label">Benefícios (um por linha)</label>
+        <textarea class="bt-input bt-textarea" id="planoBeneficios" placeholder="Acesso a conteúdo exclusivo
+Lives privadas
+Badge VIP" rows="3"></textarea>
+      </div>
+      <div id="criarPlanoMsg" style="color:rgba(232,244,255,.5);font-size:12px;margin-top:8px;text-align:center"></div>
+    </div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" onclick="closeCriarPlanoModal()">Cancelar</button>
+      <button class="bt-btn-primary" onclick="criarPlano()">Criar plano</button>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1222,7 +1457,14 @@ function fmt(n){n=parseInt(n)||0;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n
 function ago(t){if(!t)return'';const d=(Date.now()-new Date(t))/1000;if(d<60)return'agora';if(d<3600)return Math.floor(d/60)+'min';if(d<86400)return Math.floor(d/3600)+'h';return Math.floor(d/86400)+'d';}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function hashify(t){return t.replace(/#([a-zA-Z0-9_\u00C0-\u024F]+)/g,'<span style="color:#3b82f6;cursor:pointer" onclick="event.stopPropagation();openHashtagFeed(\'$1\')">#$1</span>');}
-let _tt; function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2600);}
+// ── BT MODAL SYSTEM ──────────────────────────────────────────────────────────
+function btModalOpen(id){const o=document.getElementById(id);if(!o)return;o.style.display='flex';requestAnimationFrame(()=>o.classList.add('active'));document.body.style.overflow='hidden';}
+function btModalClose(id){const o=document.getElementById(id);if(!o)return;o.classList.remove('active');setTimeout(()=>{o.style.display='none';if(!document.querySelector('.bt-modal-overlay.active'))document.body.style.overflow='';},300);}
+document.addEventListener('click',e=>{if(e.target.classList&&e.target.classList.contains('bt-modal-overlay'))btModalClose(e.target.id);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.bt-modal-overlay.active').forEach(m=>btModalClose(m.id));});
+function btToast(msg,tipo){tipo=tipo||'info';const icons={success:'✅',error:'❌',warning:'⚠️',info:'ℹ️'};let c=document.getElementById('bt-toast-container');if(!c){c=document.createElement('div');c.id='bt-toast-container';c.className='bt-toast-container';document.body.appendChild(c);}const t=document.createElement('div');t.className='bt-toast '+tipo;t.innerHTML='<span>'+(icons[tipo]||icons.info)+'</span><span>'+String(msg).replace(/</g,'&lt;')+'</span>';c.appendChild(t);setTimeout(()=>{t.style.animation='btToastOut .3s forwards';setTimeout(()=>t.remove(),300);},3000);}
+// Alias retrocompat: toast() antigo agora usa o novo visual
+let _tt; function toast(m){btToast(m,'info');const e=document.getElementById('toast');if(e){e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2600);}}
 function ping(type,id){fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{});}
 
 async function getValidToken(){
@@ -1495,13 +1737,12 @@ async function doShare(url,title){
 let _curCmtVid=null;
 function openComments(id,cnt){
   _curCmtVid=id;
-  document.getElementById('cpanel').classList.add('open');
-  document.getElementById('cpBack').classList.add('on');
+  btModalOpen('cpanel');
   document.getElementById('cpCnt').textContent=cnt>0?'('+fmt(cnt)+')':'';
   loadComments(id);
   setTimeout(()=>document.getElementById('cpInp').focus(),350);
 }
-function closeComments(){document.getElementById('cpanel').classList.remove('open');document.getElementById('cpBack').classList.remove('on');}
+function closeComments(){btModalClose('cpanel');}
 
 async function loadComments(id){
   const list=document.getElementById('cpList');
@@ -1731,12 +1972,10 @@ let _myStatus = localStorage.getItem('blue_status') || 'online';
 const EMOJIS = ['😀','😂','🥰','😍','🤔','😎','🥺','😭','🔥','❤️','👍','👏','🎉','✨','💯','🙌','😅','🤣','😊','🫡','💪','🤝','🎬','📹','⚡','🚀','💬','👀','🫶','😏'];
 
 function openInbox() {
-  if (!TOKEN) { toast('Entre para acessar mensagens'); return; }
+  if (!TOKEN) { btToast('Entre para acessar mensagens','warning'); return; }
   const inbox = document.getElementById('inbox');
-  const isOpen = inbox.classList.contains('open');
-  if (isOpen) { closeInbox(); return; }
-  inbox.classList.add('open');
-  if (window.innerWidth <= 600) document.getElementById('inboxBack').classList.add('on');
+  if (inbox.classList.contains('active')) { closeInbox(); return; }
+  btModalOpen('inbox');
   updateStatusBtns(_myStatus);
   loadConversations();
   loadNotificacoes();
@@ -1781,9 +2020,8 @@ async function marcarNotifsLidas(){
 // Poll notifications every 30s
 setInterval(()=>{if(TOKEN)loadNotificacoes();},30000);
 function closeInbox() {
-  document.getElementById('inbox').classList.remove('open');
-  document.getElementById('inboxBack').classList.remove('on');
-  document.getElementById('chatWin').classList.remove('open');
+  btModalClose('inbox');
+  btModalClose('chatWin');
 }
 
 async function loadConversations() {
@@ -1831,7 +2069,7 @@ async function openChatWin(convId, otherUser) {
   const st = otherUser.status || 'offline';
   stEl.textContent = {online:'🟢 Online', away:'🟡 Ausente', busy:'🔴 Ocupado', offline:'⚫ Offline'}[st] || st;
   stEl.className = 'chat-hd-status ' + st;
-  document.getElementById('chatWin').classList.add('open');
+  btModalOpen('chatWin');
   setupEmojiPicker();
   await loadMessages();
   if (_chatPoll) clearInterval(_chatPoll);
@@ -1839,9 +2077,9 @@ async function openChatWin(convId, otherUser) {
 }
 
 function closeChatWin() {
-  document.getElementById('chatWin').classList.remove('open');
+  btModalClose('chatWin');
   if (_chatPoll) { clearInterval(_chatPoll); _chatPoll = null; }
-  document.getElementById('emojiPicker').classList.remove('show');
+  const ep=document.getElementById('emojiPicker');if(ep)ep.classList.remove('show');
 }
 
 let _chatErrors=0;
@@ -2185,76 +2423,92 @@ function renderGrid(vids,isOwn){
 
 // ── DOTS MENU ─────────────────────────────────────────────────────────────────
 function openDotsMenu(id,title,desc,isOwn){
-  // Find video's user_id
   const vid = videos.find(v => v.id === id);
   _dotsVid = { id, title, desc, user_id: vid?.user_id || null };
-  document.getElementById('dotsMenu').classList.add('open');
-  document.getElementById('dotsBack').classList.add('on');
+  btModalOpen('dotsMenu');
   const showOwn = isOwn ? '' : 'none';
   document.getElementById('dmEdit').style.display = showOwn;
-  document.getElementById('dmEditSep').style.display = showOwn;
   document.getElementById('dmDelete').style.display = showOwn;
-  // Show block button only for other users' content
   const blockBtn = document.getElementById('dmBlock');
   if (blockBtn) {
     const uname = vid?.creator?.username || '';
     blockBtn.style.display = isOwn ? 'none' : '';
-    blockBtn.textContent = '🔕  Bloquear' + (uname ? ' @' + uname : '');
+    const sub = blockBtn.querySelector('.subtitle');
+    if(sub) sub.textContent = uname ? 'Não ver vídeos de @' + uname : 'Você não verá mais vídeos dele';
   }
 }
-function closeDotsMenu(){document.getElementById('dotsMenu').classList.remove('open');document.getElementById('dotsBack').classList.remove('on');}
+function closeDotsMenu(){btModalClose('dotsMenu');}
+function copyVideoLink(){
+  const v=_dotsVid;if(!v)return;
+  const url='https://bluetubeviral.com/blue-video.html?v='+v.id;
+  (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>btToast('Link copiado','success')).catch(()=>btToast(url,'info'));
+  closeDotsMenu();
+}
+let _reportReason=null;
+function selectReportReason(el,reason){
+  _reportReason=reason;
+  document.querySelectorAll('#reportOptions .bt-radio').forEach(r=>r.classList.remove('selected'));
+  el.classList.add('selected');
+  const b=document.getElementById('reportSubmitBtn');if(b)b.disabled=false;
+}
 function openReportMenu(){
   closeDotsMenu();
-  document.getElementById('reportMenu').style.display='block';
-  document.getElementById('reportMenu').classList.add('open');
-  document.getElementById('reportBack').style.display='block';
-  document.getElementById('reportBack').classList.add('on');
+  _reportReason=null;
+  document.querySelectorAll('#reportOptions .bt-radio').forEach(r=>r.classList.remove('selected'));
+  const b=document.getElementById('reportSubmitBtn');if(b)b.disabled=true;
+  setTimeout(()=>btModalOpen('reportMenu'),320);
 }
-function closeReportMenu(){
-  document.getElementById('reportMenu').classList.remove('open');
-  document.getElementById('reportBack').classList.remove('on');
-  setTimeout(()=>{document.getElementById('reportMenu').style.display='none';document.getElementById('reportBack').style.display='none';},300);
-}
+function closeReportMenu(){btModalClose('reportMenu');}
 async function submitReport(motivo){
+  if(!motivo){btToast('Selecione um motivo','warning');return;}
   closeReportMenu();
   if(!_dotsVid?.id)return;
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para denunciar');return;}
+  if(!tk){btToast('Entre para denunciar','warning');return;}
   try{
     const r=await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'reportar',token:tk,tipo_alvo:'video',alvo_id:_dotsVid.id,motivo})});
     const d=await r.json();
-    toast(d.message||'Denúncia registrada ✅');
-  }catch(e){toast('Erro ao denunciar');}
+    btToast(d.message||'Denúncia registrada','success');
+  }catch(e){btToast('Erro ao denunciar','error');}
 }
 
-async function doBlockUser(){
+function doBlockUser(){
   closeDotsMenu();
   if(!_dotsVid?.user_id)return;
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para bloquear');return;}
+  if(!tk){btToast('Entre para bloquear','warning');return;}
   const vid=videos.find(v=>v.id===_dotsVid.id);
   const uname=vid?.creator?.username||'este usuário';
-  if(!confirm('Bloquear @'+uname+'?\n\nEle não aparecerá mais no seu feed, comentários ou busca.'))return;
+  document.getElementById('blockUserName').textContent='@'+uname;
+  setTimeout(()=>btModalOpen('blockConfirmOv'),320);
+}
+async function confirmBlockUser(){
+  btModalClose('blockConfirmOv');
+  if(!_dotsVid?.user_id)return;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){btToast('Entre para bloquear','warning');return;}
+  const vid=videos.find(v=>v.id===_dotsVid.id);
+  const uname=vid?.creator?.username||'este usuário';
   try{
     const r=await fetch('/api/blue-report',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'bloquear',token:tk,bloqueado_id:_dotsVid.user_id})});
     const d=await r.json();
     if(d.bloqueado){
-      toast('🔕 @'+uname+' bloqueado');
+      btToast('@'+uname+' bloqueado','success');
       videos=videos.filter(v=>v.user_id!==_dotsVid.user_id);
       document.getElementById('feed').innerHTML='';
       videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)document.getElementById('feed').appendChild(s);});
       setupObs();
-    }else{toast('Desbloqueado');}
-  }catch(e){toast('Erro ao bloquear');}
+    }else{btToast('Desbloqueado','info');}
+  }catch(e){btToast('Erro ao bloquear','error');}
 }
 function startEditVideo(){
   closeDotsMenu();
   if(!_dotsVid)return;
   document.getElementById('evTitle').value=_dotsVid.title;
   document.getElementById('evDesc').value=_dotsVid.desc;
-  document.getElementById('editVideoOv').classList.add('on');
+  btModalOpen('editVideoOv');
 }
 function startDeleteVideo(){
   closeDotsMenu();
@@ -2269,7 +2523,7 @@ async function saveVideoEdit(){
   if(!_dotsVid)return;
   const tk=localStorage.getItem('bt_token');
   const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-video',token:tk,video_id:_dotsVid.id,title:document.getElementById('evTitle').value,description:document.getElementById('evDesc').value})});
-  if(r.ok){toast('✅ Atualizado');document.getElementById('editVideoOv').classList.remove('on');loadMyVideos();}
+  if(r.ok){toast('✅ Atualizado');btModalClose('editVideoOv');loadMyVideos();}
   else toast('Erro ao salvar');
 }
 
@@ -2285,7 +2539,7 @@ function openEditProfile(){
   eav.textContent=(myProfile.display_name||'?').charAt(0).toUpperCase();
   eav.insertAdjacentHTML('beforeend','<div class="edit-av-ov">📷</div>');
   if(myProfile.avatar_url){const img=new Image();img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';img.src=myProfile.avatar_url;img.onload=()=>{eav.insertBefore(img,eav.querySelector('.edit-av-ov'));};} 
-  document.getElementById('editProfileOv').classList.add('on');
+  btModalOpen('editProfileOv');
 }
 function pickAvatar(file){
   if(!file)return;
@@ -2304,7 +2558,7 @@ async function saveProfile(){
   try{
     const tk=localStorage.getItem('bt_token');
     const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',token:tk,display_name:document.getElementById('eName').value.trim(),username:document.getElementById('eUser').value.trim(),bio:document.getElementById('eBio').value.trim(),avatar_data:_editAvB64})});
-    if(r.ok){toast('✅ Perfil atualizado');document.getElementById('editProfileOv').classList.remove('on');loadMyProfile();updateHdAvatar();}
+    if(r.ok){toast('✅ Perfil atualizado');btModalClose('editProfileOv');loadMyProfile();updateHdAvatar();}
     else{const d=await r.json();toast('Erro: '+(d.error||'falha'));}
   }catch(e){toast('Erro: '+e.message);}
   btn.disabled=false;btn.textContent='Salvar';
@@ -2319,11 +2573,12 @@ function updateHdAvatar(){
 // ── UPLOAD / AUTH ─────────────────────────────────────────────────────────────
 function openUpload(){
   TOKEN=localStorage.getItem('bt_token');
-  document.getElementById('upOv').classList.add('on');
+  btModalOpen('upOv');
   document.getElementById('authWall').style.display=TOKEN?'none':'block';
   document.getElementById('upForm').style.display=TOKEN?'block':'none';
+  const foot=document.getElementById('upFooter');if(foot)foot.style.display=TOKEN?'flex':'none';
 }
-function closeUpload(){document.getElementById('upOv').classList.remove('on');}
+function closeUpload(){btModalClose('upOv');}
 function onDrop(e){e.preventDefault();e.currentTarget.classList.remove('ov');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('video/'))pickFile(f);}
 function awTab(mode){
   _awMode=mode;
@@ -2550,7 +2805,8 @@ document.addEventListener('keydown',e=>{
   const f=document.getElementById('feed');
   if(e.key==='ArrowDown'||e.key==='j')f.scrollBy({top:window.innerHeight,behavior:'smooth'});
   if(e.key==='ArrowUp'||e.key==='k')f.scrollBy({top:-window.innerHeight,behavior:'smooth'});
-  if(e.key==='Escape'){closeComments();closeUpload();closeDotsMenu();document.getElementById('editProfileOv').classList.remove('on');document.getElementById('editVideoOv').classList.remove('on');}
+  // ESC é tratado globalmente pelo handler do bt-modal. Mantém fallback para modais legados.
+  if(e.key==='Escape'){}
 });
 
 
@@ -3266,7 +3522,7 @@ function enableSwipeClose(panelId,closeFn){
   },{passive:true});
 }
 setTimeout(()=>{
-  enableSwipeClose('cpanel',()=>{document.getElementById('cpanel').classList.remove('open');document.getElementById('cpBack').classList.remove('on');});
+  enableSwipeClose('cpanel',()=>btModalClose('cpanel'));
   enableSwipeClose('profPage',()=>{document.getElementById('profPage').classList.remove('open');});
   enableSwipeClose('inbox',closeInbox);
 },500);
@@ -3341,20 +3597,19 @@ document.addEventListener('visibilitychange',()=>{
 // ── P6: SEARCH ───────────────────────────────────────────────────────────────
 let _searchTimer=null;
 function openSearch(){
-  document.getElementById('searchPanel').style.display='block';
-  document.getElementById('searchBack').classList.add('on');
-  setTimeout(()=>document.getElementById('searchInp').focus(),100);
+  btModalOpen('searchPanel');
+  setTimeout(()=>document.getElementById('searchInp').focus(),350);
   fetch('/api/blue-search?q=').then(r=>r.json()).then(d=>{
     if(d.trending&&d.videos?.length){
-      document.getElementById('searchResults').innerHTML='<div style="font-weight:700;margin-bottom:8px">🔥 Em alta</div>'+
-        d.videos.map(v=>`<div onclick="closeSearch();scrollToVideo('${v.id}')" style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;align-items:center">
-          <div style="width:48px;height:64px;border-radius:6px;background:#222;overflow:hidden;flex-shrink:0">${v.thumbnail_url?'<img src="'+v.thumbnail_url+'" style="width:100%;height:100%;object-fit:cover">':'🎬'}</div>
-          <div><div style="color:#fff;font-size:13px">${esc(v.title||'Sem título')}</div><div style="color:#666;font-size:11px">▶ ${fmt(v.views||0)}</div></div>
+      document.getElementById('searchResults').innerHTML='<div style="font-weight:700;margin-bottom:8px;color:#e8f4ff">🔥 Em alta</div>'+
+        d.videos.map(v=>`<div onclick="closeSearch();scrollToVideo('${v.id}')" style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid rgba(0,170,255,.06);cursor:pointer;align-items:center">
+          <div style="width:48px;height:64px;border-radius:8px;background:#222;overflow:hidden;flex-shrink:0">${v.thumbnail_url?'<img src="'+v.thumbnail_url+'" style="width:100%;height:100%;object-fit:cover">':'🎬'}</div>
+          <div><div style="color:#e8f4ff;font-size:13px">${esc(v.title||'Sem título')}</div><div style="color:rgba(232,244,255,.4);font-size:11px">▶ ${fmt(v.views||0)}</div></div>
         </div>`).join('');
     }
   }).catch(()=>{});
 }
-function closeSearch(){document.getElementById('searchPanel').style.display='none';document.getElementById('searchBack').classList.remove('on');}
+function closeSearch(){btModalClose('searchPanel');}
 function scrollToVideo(id){
   if(!id) return;
   const el=document.getElementById('s-'+id);
@@ -4061,13 +4316,11 @@ let _gpPolling = null;
 
 function openGrupos(){
   haptic('light');
-  document.getElementById('gruposBack').style.display='block';
-  document.getElementById('gruposPanel').classList.add('open');
+  btModalOpen('gruposPanel');
   loadGruposMeus();
 }
 function closeGrupos(){
-  document.getElementById('gruposBack').style.display='none';
-  document.getElementById('gruposPanel').classList.remove('open');
+  btModalClose('gruposPanel');
   stopGpPolling();
 }
 function showGpTab(tab,btn){
@@ -4127,12 +4380,12 @@ async function entrarGrupo(id,nome){
 function openGrupoChat(id,nome){
   _currentGrupoId=id;
   document.getElementById('gpChatName').textContent=nome;
-  document.getElementById('gpChat').classList.add('open');
+  btModalOpen('gpChat');
   loadGrupoMensagens(id);
   startGpPolling(id);
 }
 function closeGpChat(){
-  document.getElementById('gpChat').classList.remove('open');
+  btModalClose('gpChat');
   _currentGrupoId=null;
   stopGpPolling();
 }
@@ -4180,12 +4433,8 @@ async function sendGpMsg(){
     loadGrupoMensagens(_currentGrupoId);
   }catch(e){toast('Erro ao enviar');}
 }
-function openCriarGrupo(){
-  document.getElementById('criarGrupoModal').classList.add('open');
-}
-function closeCriarGrupo(){
-  document.getElementById('criarGrupoModal').classList.remove('open');
-}
+function openCriarGrupo(){btModalOpen('criarGrupoModal');}
+function closeCriarGrupo(){btModalClose('criarGrupoModal');}
 async function criarGrupo(){
   const nome=(document.getElementById('gpNome')?.value||'').trim();
   const desc=(document.getElementById('gpDesc')?.value||'').trim();
@@ -4258,11 +4507,9 @@ function openShopProd(id,pJson){
     <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px">${p.tipo==='digital'?'= Produto digital':'=� Produto f�sico'}</div>
     ${tk?`<button class="blu-modal-btn gold" onclick="comprarProduto('${id}')">Comprar R$${parseFloat(p.preco||0).toFixed(2)}</button>`:'<div style="color:rgba(255,255,255,.5);font-size:13px;text-align:center">Entre para comprar</div>'}
     <div id="shopComprarMsg" style="color:rgba(255,255,255,.6);font-size:12px;margin-top:8px;text-align:center"></div>`;
-  modal.classList.add('open');
+  btModalOpen('shopProdModal');
 }
-function closeShopProdModal(){
-  document.getElementById('shopProdModal')?.classList.remove('open');
-}
+function closeShopProdModal(){btModalClose('shopProdModal');}
 async function comprarProduto(prodId){
   const tk=localStorage.getItem('bt_token');
   const msg=document.getElementById('shopComprarMsg');
@@ -4276,12 +4523,8 @@ async function comprarProduto(prodId){
     toast('Compra realizada!');
   }catch(e){if(msg)msg.textContent='Erro ao processar';}
 }
-function openAddProdModal(){
-  document.getElementById('addProdModal')?.classList.add('open');
-}
-function closeAddProdModal(){
-  document.getElementById('addProdModal')?.classList.remove('open');
-}
+function openAddProdModal(){btModalOpen('addProdModal');}
+function closeAddProdModal(){btModalClose('addProdModal');}
 async function publicarProduto(){
   const nome=(document.getElementById('addProdNome')?.value||'').trim();
   const desc=(document.getElementById('addProdDesc')?.value||'').trim();
@@ -4317,7 +4560,7 @@ async function openAssinaturaModal(){
   if(!modal||!body)return;
   if(title)title.textContent='Planos de assinatura';
   body.innerHTML='<div style="text-align:center;color:rgba(255,255,255,.5);padding:20px">Carregando&</div>';
-  modal.classList.add('open');
+  btModalOpen('assinaturaModal');
   try{
     const r=await fetch('/api/blue-assinatura?action=planos-do-canal&creator_id='+encodeURIComponent(userId));
     const d=await r.json();
@@ -4335,9 +4578,7 @@ async function openAssinaturaModal(){
       </div>`).join('')+'</div>';
   }catch(e){body.innerHTML='<div style="color:rgba(255,255,255,.5);text-align:center;padding:20px">Erro ao carregar planos</div>';}
 }
-function closeAssinaturaModal(){
-  document.getElementById('assinaturaModal')?.classList.remove('open');
-}
+function closeAssinaturaModal(){btModalClose('assinaturaModal');}
 async function assinarPlano(planoId){
   const tk=localStorage.getItem('bt_token');
   if(!tk){toast('Entre para assinar');return;}
@@ -4352,11 +4593,9 @@ async function assinarPlano(planoId){
   }catch(e){toast('Erro ao assinar');if(btn)btn.textContent='Assinar';}
 }
 function openCriarPlanoModal(){
-  document.getElementById('criarPlanoModal')?.classList.add('open');
+  btModalOpen('criarPlanoModal');
 }
-function closeCriarPlanoModal(){
-  document.getElementById('criarPlanoModal')?.classList.remove('open');
-}
+function closeCriarPlanoModal(){btModalClose('criarPlanoModal');}
 async function criarPlano(){
   const nome=(document.getElementById('planoNome')?.value||'').trim();
   const preco=parseFloat(document.getElementById('planoPreco')?.value||0);
