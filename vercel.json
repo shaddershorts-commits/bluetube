@@ -69,6 +69,10 @@
     {
       "path": "/api/blue-monetizacao?action=distribuir-fundo",
       "schedule": "0 10 1 * *"
+    },
+    {
+      "path": "/api/monitor-health",
+      "schedule": "*/5 * * * *"
     }
   ],
   "headers": [
