@@ -4,9 +4,7 @@
   "rewrites": [
     { "source": "/@:username", "destination": "/api/og-perfil?u=:username" },
     { "source": "/v/:videoId", "destination": "/api/og-video?v=:videoId" },
-    { "source": "/blue/@:username", "destination": "/blue.html" },
-    { "source": "/blue/v/:videoId", "destination": "/blue.html" },
-    { "source": "/blue/hashtag/:tag", "destination": "/blue.html" }
+    { "source": "/blue/:path*", "destination": "/blue.html" }
   ],
   "functions": {
     "api/transcript.js": { "maxDuration": 60 },
