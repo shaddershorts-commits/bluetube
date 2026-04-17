@@ -460,6 +460,9 @@ if (!token) {
       <div style="font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-bottom:24px">O BlueVoice está disponível gratuitamente para todos os usuários cadastrados.</div>
       <a href="/" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;text-decoration:none">Criar conta grátis →</a>
     </div>`;
+  // Aborta o resto do script: os elementos (scriptText, charCount, voices...)
+  // foram removidos pelo innerHTML acima, qualquer addEventListener crasharia.
+  throw new Error('auth_required');
 }
 
 // ── MOUSE GLOW ───────────────────────────────────────────────────────────────
