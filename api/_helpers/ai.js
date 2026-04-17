@@ -29,25 +29,28 @@ const PROVIDERS = [
   {
     name: 'openai',
     available: () => !!process.env.OPENAI_API_KEY,
-    call: async (prompt, systemPrompt, maxTokens) => {
+    call: async (prompt, systemPrompt, maxTokens, opts) => {
       const t = withTimeout(TIMEOUT_MS);
       try {
+        const body = {
+          model: opts?.openaiModel || 'gpt-4o-mini',
+          max_tokens: maxTokens,
+          messages: [
+            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+            { role: 'user', content: prompt },
+          ],
+        };
+        if (opts?.temperature != null) body.temperature = opts.temperature;
+        if (opts?.topP != null) body.top_p = opts.topP;
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            max_tokens: maxTokens,
-            messages: [
-              ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-              { role: 'user', content: prompt },
-            ],
-          }),
+          body: JSON.stringify(body),
           signal: t.signal,
         });
         if (!r.ok) {
-          const body = await r.text().catch(() => '');
-          throw new Error(`OpenAI ${r.status} ${body.slice(0, 200)}`);
+          const err = await r.text().catch(() => '');
+          throw new Error(`OpenAI ${r.status} ${err.slice(0, 200)}`);
         }
         const d = await r.json();
         return d.choices?.[0]?.message?.content || '';
@@ -57,39 +60,51 @@ const PROVIDERS = [
   {
     name: 'gemini',
     available: () => listGeminiKeys().length > 0,
-    call: async (prompt, systemPrompt, maxTokens) => {
+    call: async (prompt, systemPrompt, maxTokens, opts) => {
       const key = nextGeminiKey();
       if (!key) throw new Error('Gemini sem chaves disponíveis');
       const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+      const model = opts?.geminiModel || 'gemini-2.0-flash';
+      const genConfig = { maxOutputTokens: maxTokens };
+      if (opts?.temperature != null) genConfig.temperature = opts.temperature;
+      if (opts?.topP != null) genConfig.topP = opts.topP;
       const t = withTimeout(TIMEOUT_MS);
       try {
         const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: fullPrompt }] }],
-              generationConfig: { maxOutputTokens: maxTokens },
+              generationConfig: genConfig,
             }),
             signal: t.signal,
           }
         );
         if (!r.ok) {
-          const body = await r.text().catch(() => '');
-          throw new Error(`Gemini ${r.status} ${body.slice(0, 200)}`);
+          const err = await r.text().catch(() => '');
+          throw new Error(`Gemini ${r.status} ${err.slice(0, 200)}`);
         }
         const d = await r.json();
-        return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return d.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
       } finally { t.clear(); }
     },
   },
   {
     name: 'claude',
     available: () => !!process.env.ANTHROPIC_API_KEY,
-    call: async (prompt, systemPrompt, maxTokens) => {
+    call: async (prompt, systemPrompt, maxTokens, opts) => {
       const t = withTimeout(TIMEOUT_MS);
       try {
+        const body = {
+          model: opts?.claudeModel || 'claude-haiku-4-5',
+          max_tokens: maxTokens,
+          system: systemPrompt || undefined,
+          messages: [{ role: 'user', content: prompt }],
+        };
+        if (opts?.temperature != null) body.temperature = opts.temperature;
+        if (opts?.topP != null) body.top_p = opts.topP;
         const r = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -97,17 +112,12 @@ const PROVIDERS = [
             'x-api-key': process.env.ANTHROPIC_API_KEY,
             'anthropic-version': '2023-06-01',
           },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5',
-            max_tokens: maxTokens,
-            system: systemPrompt || undefined,
-            messages: [{ role: 'user', content: prompt }],
-          }),
+          body: JSON.stringify(body),
           signal: t.signal,
         });
         if (!r.ok) {
-          const body = await r.text().catch(() => '');
-          throw new Error(`Claude ${r.status} ${body.slice(0, 200)}`);
+          const err = await r.text().catch(() => '');
+          throw new Error(`Claude ${r.status} ${err.slice(0, 200)}`);
         }
         const d = await r.json();
         return d.content?.[0]?.text || '';
@@ -144,9 +154,10 @@ function recordSuccess(name) {
  * @param {string} [systemPrompt]
  * @param {number} [maxTokens=1000]
  * @param {string} [preferred] — 'openai' | 'gemini' | 'claude'
+ * @param {object} [options] — { temperature, topP, openaiModel, geminiModel, claudeModel }
  * @returns {Promise<{ result: string, provider: string }>}
  */
-async function callAI(prompt, systemPrompt = '', maxTokens = 1000, preferred = null) {
+async function callAI(prompt, systemPrompt = '', maxTokens = 1000, preferred = null, options = {}) {
   const ordered = preferred
     ? [PROVIDERS.find((p) => p.name === preferred), ...PROVIDERS.filter((p) => p.name !== preferred)].filter(Boolean)
     : PROVIDERS;
@@ -156,7 +167,7 @@ async function callAI(prompt, systemPrompt = '', maxTokens = 1000, preferred = n
     if (!p.available()) { errors.push({ provider: p.name, error: 'unavailable' }); continue; }
     if (isBlocked(p.name)) { errors.push({ provider: p.name, error: 'blocked' }); continue; }
     try {
-      const result = await p.call(prompt, systemPrompt, maxTokens);
+      const result = await p.call(prompt, systemPrompt, maxTokens, options);
       if (!result) throw new Error('resposta vazia');
       recordSuccess(p.name);
       console.log(`[ai] ${p.name} ok (${result.length} chars)`);

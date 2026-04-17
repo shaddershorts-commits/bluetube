@@ -1,9 +1,12 @@
 // api/rewrite.js — BlueTube Viral Script Agent v10
 // Super Prompt literal + Supabase real viral examples as living memory
-// Primary: OpenAI GPT-4o mini | Fallback: Gemini rotation
+// IA via api/_helpers/ai.js: OpenAI → Gemini → Claude com circuit breaker.
 
 // Helpers inlined for ESM compatibility on Vercel
 import crypto from 'crypto';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { callAI } = require('./_helpers/ai');
 function _ck(parts){ return crypto.createHash('md5').update(parts.join('|')).digest('hex'); }
 
 export default async function handler(req, res) {
@@ -364,97 +367,28 @@ Regras:
     } catch(e){}
   }
 
-  // ── PRIMARY: OPENAI GPT-4o mini ───────────────────────────────────────────
-  const OPENAI_KEY = process.env.OPENAI_API_KEY;
-  if (OPENAI_KEY) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 30000);
-      const r = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          max_tokens: 400,
-          temperature: isAdjust ? 0.55 : 0.85
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-
-      const data = await r.json();
-      if (r.ok && data.choices?.[0]?.message?.content) {
-        let text = data.choices[0].message.content.trim();
-        text = text
-          .replace(/^#+\s.*/gm, '')
-          .replace(/\*\*(.*?)\*\*/g, '$1')
-          .replace(/\*(.*?)\*/g, '$1')
-          .replace(/^\s*[-•]\s/gm, '')
-          .replace(/\n{2,}/g, ' ')
-          .trim();
-        const result = { text, engine: 'openai' };
-        if (_ckRewrite && _SU2 && _SK2) {
-          fetch(`${_SU2}/rest/v1/api_cache?cache_key=eq.${_ckRewrite}`, { method:'DELETE', headers:{'apikey':_SK2,'Authorization':`Bearer ${_SK2}`} }).catch(()=>{});
-          fetch(`${_SU2}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':_SK2,'Authorization':`Bearer ${_SK2}`,'Prefer':'return=minimal'},
-            body:JSON.stringify({cache_key:_ckRewrite,value:result,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600*1000).toISOString()})
-          }).catch(()=>{});
-        }
-        return saveAndReturn(result);
-      }
-      console.log('OpenAI failed:', data.error?.message);
-    } catch (err) {
-      console.log('OpenAI error:', err.name === 'AbortError' ? 'timeout' : err.message);
-    }
+  // ── AI via helper multi-provider (OpenAI → Gemini → Claude) ───────────────
+  // Circuit breaker por provider + rotação automática das chaves Gemini.
+  // Preserva modelo original (gpt-4o-mini, gemini-2.5-flash) e temperatura.
+  function _clean(s) {
+    return String(s || '')
+      .replace(/^#+\s.*/gm, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/^\s*[-•]\s/gm, '')
+      .replace(/\n{2,}/g, ' ')
+      .trim();
   }
 
-  // ── FALLBACK: GEMINI with key rotation ───────────────────────────────────
-  const GEMINI_KEYS = [
-    process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3,
-    process.env.GEMINI_KEY_4, process.env.GEMINI_KEY_5, process.env.GEMINI_KEY_6,
-    process.env.GEMINI_KEY_7, process.env.GEMINI_KEY_8, process.env.GEMINI_KEY_9,
-    process.env.GEMINI_KEY_10,
-  ].filter(Boolean);
-
-  const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-  const shuffledKeys = [...GEMINI_KEYS].sort(() => Math.random() - 0.5);
-
-  for (const key of shuffledKeys) {
-    try {
-      const gc = new AbortController();
-      const gt = setTimeout(() => gc.abort(), 30000);
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: fullPrompt }] }],
-            generationConfig: { temperature: isAdjust ? 0.55 : 0.85, maxOutputTokens: 600, topP: 0.95 }
-          }),
-          signal: gc.signal
-        }
-      );
-      clearTimeout(gt);
-      const data = await r.json();
-      if (r.status === 429 || data.error?.code === 429) continue;
-      if (!r.ok) continue;
-      let text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
-      if (!text) continue;
-      text = text
-        .replace(/^#+\s.*/gm, '')
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/^\s*[-•]\s/gm, '')
-        .replace(/\n{2,}/g, ' ')
-        .trim();
-      const result = { text, engine: 'gemini' };
+  try {
+    const { result: raw, provider } = await callAI(userPrompt, systemPrompt, 600, null, {
+      temperature: isAdjust ? 0.55 : 0.85,
+      topP: 0.95,
+      geminiModel: 'gemini-2.5-flash',
+    });
+    const text = _clean(raw);
+    if (text) {
+      const result = { text, engine: provider };
       if (_ckRewrite && _SU2 && _SK2) {
         fetch(`${_SU2}/rest/v1/api_cache?cache_key=eq.${_ckRewrite}`, { method:'DELETE', headers:{'apikey':_SK2,'Authorization':`Bearer ${_SK2}`} }).catch(()=>{});
         fetch(`${_SU2}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':_SK2,'Authorization':`Bearer ${_SK2}`,'Prefer':'return=minimal'},
@@ -462,7 +396,9 @@ Regras:
         }).catch(()=>{});
       }
       return saveAndReturn(result);
-    } catch (e) { continue; }
+    }
+  } catch (err) {
+    console.log('[rewrite] callAI falhou:', err.message, err.attempts ? JSON.stringify(err.attempts) : '');
   }
 
   // ── FALLBACK: return example script when all AI providers fail ──────────
