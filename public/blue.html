@@ -935,6 +935,11 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   </div>
 </div>
 
+<!-- Feed tabs (Para Você / Seguindo) -->
+<div id="feedTabs" style="position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:99;display:flex;gap:20px;padding:6px 16px;pointer-events:auto">
+  <button id="tabForYou" onclick="switchFeedMode('foryou')" style="background:none;border:none;color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:4px 0;cursor:pointer;opacity:1;border-bottom:2px solid #fff">Para Você</button>
+  <button id="tabFollowing" onclick="switchFeedMode('following')" style="background:none;border:none;color:#fff;font-family:inherit;font-size:15px;font-weight:600;padding:4px 0;cursor:pointer;opacity:.55;border-bottom:2px solid transparent">Seguindo</button>
+</div>
 <div id="feed"></div>
 
 <div class="empty" id="empty">
@@ -1488,14 +1493,38 @@ async function getValidToken(){
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
 let _ccEnabled = localStorage.getItem('legendas_ativas') !== 'false';
 let _feedOrigem='feed'; // tracks where user came from for analytics
+let _feedMode=localStorage.getItem('bl_feed_mode')||'foryou'; // 'foryou' | 'following'
+
+function switchFeedMode(mode){
+  if(mode===_feedMode)return;
+  if(mode==='following'&&!TOKEN){toast('Faça login pra ver quem você segue');return;}
+  _feedMode=mode;
+  localStorage.setItem('bl_feed_mode',mode);
+  // Atualiza visual das tabs
+  const ty=document.getElementById('tabForYou');
+  const tf=document.getElementById('tabFollowing');
+  if(ty){ty.style.opacity=mode==='foryou'?'1':'.55';ty.style.borderBottom=mode==='foryou'?'2px solid #fff':'2px solid transparent';}
+  if(tf){tf.style.opacity=mode==='following'?'1':'.55';tf.style.borderBottom=mode==='following'?'2px solid #fff':'2px solid transparent';}
+  // Reseta e recarrega
+  videos=[];_feedCursor=null;_feedHasMore=true;
+  loadFeed();
+}
 
 async function loadFeed(){
   const feed=document.getElementById('feed');
+  // Sync visual das tabs com _feedMode
+  const ty=document.getElementById('tabForYou');
+  const tf=document.getElementById('tabFollowing');
+  if(ty){ty.style.opacity=_feedMode==='foryou'?'1':'.55';ty.style.borderBottom=_feedMode==='foryou'?'2px solid #fff':'2px solid transparent';}
+  if(tf){tf.style.opacity=_feedMode==='following'?'1':'.55';tf.style.borderBottom=_feedMode==='following'?'2px solid #fff':'2px solid transparent';}
+  // Se usuario nao tem token e escolheu following antes, volta pra foryou
+  if(_feedMode==='following'&&!TOKEN){_feedMode='foryou';}
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:12px;color:#555">Carregando…</div></div>';
   _feedCursor=null; _feedHasMore=true; videos=[];
   try{
     const tkParam=TOKEN?'&token='+encodeURIComponent(TOKEN):'';
-    const r=await fetch('/api/blue-feed?limit=8&session='+SID+tkParam);
+    const actionParam=(_feedMode==='following'&&TOKEN)?'action=feed-seguindo&':'';
+    const r=await fetch('/api/blue-feed?'+actionParam+'limit=8&session='+SID+tkParam);
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
@@ -1520,6 +1549,34 @@ async function loadFeed(){
   document.getElementById('empty').classList.remove('on');
   videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
   setupObs();
+}
+
+// ── ALGORITMO: rastreia engajamento por video ────────────────────────────────
+// _videoStates armazena por video.id: {inicio, maxPct, replay, lastPct, flushed}
+// trackSignal envia POST /api/blue-feed action=track-view com os sinais
+// pra alimentar blue_feed_historico + blue_user_interests em tempo real.
+const _videoStates=new Map();
+function _vsGet(id){
+  if(!_videoStates.has(id))_videoStates.set(id,{inicio:Date.now(),maxPct:0,replay:false,flushed:false,flaggedCreator:false});
+  return _videoStates.get(id);
+}
+function trackSignal(videoId,extra){
+  if(!videoId)return;
+  const st=_vsGet(videoId);
+  const tempoTotal=Math.floor((Date.now()-st.inicio)/1000);
+  const pulou=tempoTotal<2&&st.maxPct<10&&!extra?.curtiu&&!extra?.salvou&&!extra?.abriu_perfil;
+  const body={
+    action:'track-view',
+    token:TOKEN||undefined,
+    video_id:videoId,
+    percentual:st.maxPct,
+    tempo_total_segundos:tempoTotal,
+    pulou,
+    replay:st.replay,
+    origem:_feedOrigem||'feed',
+    ...(extra||{})
+  };
+  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
 }
 
 function mkSlide(v,i){
@@ -1571,13 +1628,18 @@ function mkSlide(v,i){
   // Tap to toggle sound
   const _vid=el.querySelector('video');
   _vid.addEventListener('click',()=>toggleSound(_vid,v.id));
-  // FOMO popup tracker + analytics tracker
+  // FOMO popup tracker + analytics tracker + algoritmo tracker
   const _vidId=v.id;
   let _lastPctLogged=-1;
   _vid.addEventListener('timeupdate',function(){
     if(!_vid.duration)return;
-    const pct=Math.floor(_vid.currentTime/_vid.duration*10)*10;
-    // Analytics: log every 10% milestone
+    const pctExact=Math.floor(_vid.currentTime/_vid.duration*100);
+    const pct=Math.floor(pctExact/10)*10;
+    // Atualiza state do algoritmo (maxPct + detecta replay)
+    const st=_vsGet(_vidId);
+    if(pctExact>st.maxPct)st.maxPct=pctExact;
+    if(_vid.currentTime<2&&st.maxPct>80)st.replay=true;
+    // Analytics: log a cada 10% (backward-compat com blue_video_analytics)
     if(pct>_lastPctLogged&&pct>=10){
       _lastPctLogged=pct;
       fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'track-view',video_id:_vidId,percentual:pct,origem:_feedOrigem||'feed',token:TOKEN})}).catch(()=>{});
@@ -1692,6 +1754,12 @@ function setupObs(){
         }
       } else {
         if(vid&&!vid.paused)vid.pause();
+        // Video saiu da tela — flush do signal final se ainda nao flushou
+        const vidId=sl.dataset.id;
+        if(vidId&&TOKEN){
+          const st=_videoStates.get(vidId);
+          if(st&&!st.flushed){st.flushed=true;trackSignal(vidId);}
+        }
       }
     });
   },{threshold:.6});
@@ -1717,13 +1785,13 @@ function doLike(id){debounced('like-'+id,()=>{
   const ic=document.getElementById('li-'+id),lc=document.getElementById('lc-'+id);
   if(!ic)return;
   if(liked.has(id)){liked.delete(id);ic.textContent='🤍';ic.classList.remove('red');lc.textContent=fmt(Math.max(0,(parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)-1));ping('unlike',id);}
-  else{liked.add(id);ic.textContent='❤️';ic.classList.add('red');lc.textContent=fmt((parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)+1);ping('like',id);haptic('success');}
+  else{liked.add(id);ic.textContent='❤️';ic.classList.add('red');lc.textContent=fmt((parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)+1);ping('like',id);haptic('success');trackSignal(id,{curtiu:true});}
   localStorage.setItem('bl_liked',JSON.stringify([...liked]));
 });}
 function doSave(id){debounced('save-'+id,()=>{
   const ic=document.getElementById('si-'+id);if(!ic)return;
   if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast('Removido');}
-  else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast('💾 Salvo!');}
+  else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast('💾 Salvo!');trackSignal(id,{salvou:true});}
   localStorage.setItem('bl_saved',JSON.stringify([...saved]));
 });}
 async function doShare(url,title){
@@ -1731,6 +1799,7 @@ async function doShare(url,title){
   const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
   if(navigator.share){try{await navigator.share({title:title||'Blue',url:shareUrl});}catch(e){}}
   else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast('🔗 Link copiado!');}
+  if(vid)trackSignal(vid,{compartilhou:true});
 }
 
 // ── COMMENTS ──────────────────────────────────────────────────────────────────
@@ -1819,6 +1888,8 @@ function closeProfile(){document.getElementById('profPage').classList.remove('op
 async function openCreatorProfile(userId){
   if(!userId)return;
   if(myProfile&&myProfile.user_id===userId){openProfile();return;}
+  // Algoritmo: registra que usuario abriu perfil do criador do video atual
+  if(_curVideo?.id&&_curVideo.user_id===userId)trackSignal(_curVideo.id,{abriu_perfil:true});
   _chatTargetUser = userId;
   const page=document.getElementById('profPage');
   page.classList.add('open');
@@ -2799,7 +2870,9 @@ async function loadMoreFeed(){
   if(_feedLoading || !_feedHasMore || !_feedCursor) return;
   _feedLoading=true;
   try{
-    const r=await fetch(`/api/blue-feed?limit=8&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}`);
+    const tkParam=TOKEN?`&token=${encodeURIComponent(TOKEN)}`:'';
+    const actionParam=(_feedMode==='following'&&TOKEN)?'action=feed-seguindo&':'';
+    const r=await fetch(`/api/blue-feed?${actionParam}limit=8&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}${tkParam}`);
     if(!r.ok) return;
     const d=await r.json();
     const seen=new Set(videos.map(v=>v.id));
