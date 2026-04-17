@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23FFD700'/><path d='M16 4l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z' fill='%23020817'/></svg>"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Programa Pioneiros — BlueTube</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817; --card:rgba(10,22,40,.8); --text:#e8f4ff; --dim:rgba(150,190,230,.5);
+  --dim2:rgba(232,244,255,.4); --neon:#00aaff; --primary:#1a6bff;
+  --gold:#FFD700; --gold2:#f59e0b; --green:#22c55e; --red:#ef4444;
+  --border:rgba(0,170,255,.15); --border-gold:rgba(255,215,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+body{padding:24px 16px 60px;background:radial-gradient(ellipse 900px 700px at 50% -100px,rgba(255,215,0,.08),transparent 60%),var(--bg)}
+.wrap{max-width:780px;margin:0 auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+.logo{font-size:22px;font-weight:800;background:linear-gradient(135deg,#3b82f6,#00aaff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+.back{color:var(--dim);text-decoration:none;font-size:13px;font-weight:500}
+.back:hover{color:var(--neon)}
+
+.header{text-align:center;margin-bottom:40px}
+h1{font-size:36px;font-weight:900;letter-spacing:-.8px;line-height:1.1;margin-bottom:10px}
+h1 .gold{background:linear-gradient(135deg,#FFD700,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{font-size:15px;color:var(--dim);max-width:560px;margin:0 auto;line-height:1.5}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:28px;margin-bottom:16px;backdrop-filter:blur(10px)}
+.card.gold{border-color:var(--border-gold);background:radial-gradient(ellipse 600px 300px at 50% 0%,rgba(255,215,0,.06),var(--card))}
+.card-lock{width:64px;height:64px;border-radius:20px;background:rgba(0,170,255,.1);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px}
+.card-trophy{width:80px;height:80px;border-radius:24px;background:linear-gradient(135deg,#FFD700,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 20px;box-shadow:0 8px 40px rgba(255,215,0,.3)}
+
+.big-title{font-size:28px;font-weight:900;text-align:center;letter-spacing:-.5px;margin-bottom:8px}
+.big-sub{font-size:14px;color:var(--dim);text-align:center;margin-bottom:24px}
+.highlight{font-size:48px;font-weight:900;text-align:center;background:linear-gradient(135deg,#FFD700,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:12px 0 6px}
+
+.progress-wrap{margin:20px 0}
+.progress-label{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:600}
+.progress-bar{height:12px;background:rgba(255,255,255,.05);border-radius:999px;overflow:hidden;position:relative}
+.progress-fill{height:100%;background:linear-gradient(90deg,#1a6bff,#00aaff);border-radius:999px;transition:width .6s ease;box-shadow:0 0 20px rgba(0,170,255,.4)}
+.progress-fill.gold{background:linear-gradient(90deg,#FFD700,#f59e0b);box-shadow:0 0 20px rgba(255,215,0,.4)}
+.progress-meta{font-size:13px;color:var(--dim2);text-align:center;margin-top:10px}
+
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0}
+.stat{background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.08);border-radius:14px;padding:16px;text-align:center}
+.stat-label{font-size:11px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.stat-value{font-size:22px;font-weight:800;letter-spacing:-.3px}
+.stat-value.green{color:var(--green)}
+.stat-value.gold{color:var(--gold)}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}
+.step{background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.08);border-radius:14px;padding:20px;text-align:center}
+.step-icon{font-size:32px;margin-bottom:10px}
+.step-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.step-text{font-size:12px;color:var(--dim);line-height:1.4}
+
+.link-box{background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:14px;padding:18px;margin:16px 0;display:flex;align-items:center;gap:12px}
+.link-box code{flex:1;font-family:'SF Mono','Consolas',monospace;font-size:13px;color:var(--text);word-break:break-all}
+.copy-btn{background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:10px;padding:10px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;transition:transform .15s}
+.copy-btn:active{transform:scale(.95)}
+
+.share-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.share-btn{flex:1;min-width:100px;padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;transition:all .15s}
+.share-btn:hover{border-color:rgba(0,170,255,.4);background:rgba(0,170,255,.06)}
+
+.tips{background:rgba(255,215,0,.05);border:1px solid rgba(255,215,0,.15);border-radius:14px;padding:16px 20px;margin:16px 0;font-size:13px;line-height:1.7;color:var(--dim)}
+.tips b{color:var(--gold);font-weight:700}
+
+table.indicacoes{width:100%;border-collapse:collapse;margin:16px 0 0;font-size:13px}
+table.indicacoes th{text-align:left;color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:10px 8px;border-bottom:1px solid var(--border)}
+table.indicacoes td{padding:12px 8px;border-bottom:1px solid rgba(0,170,255,.05)}
+table.indicacoes tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600}
+.pill.green{background:rgba(34,197,94,.12);color:var(--green)}
+.pill.yellow{background:rgba(251,191,36,.12);color:#fbbf24}
+.pill.red{background:rgba(239,68,68,.12);color:var(--red)}
+
+.cta-primary{display:inline-block;width:100%;padding:18px;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;text-align:center;cursor:pointer;transition:transform .15s;text-decoration:none;letter-spacing:-.2px;box-shadow:0 8px 32px rgba(0,170,255,.25)}
+.cta-primary:active{transform:scale(.98)}
+.cta-primary:disabled{opacity:.5;cursor:not-allowed}
+.cta-gold{background:linear-gradient(135deg,#FFD700,#f59e0b);color:#020817;box-shadow:0 8px 32px rgba(255,215,0,.35)}
+.cta-secondary{display:inline-block;width:100%;padding:16px;background:rgba(255,255,255,.04);color:var(--text);border:1px solid var(--border);border-radius:14px;font-size:14px;font-weight:600;text-align:center;cursor:pointer;text-decoration:none;margin-top:10px;transition:all .15s}
+.cta-secondary:hover{border-color:rgba(0,170,255,.3)}
+
+.hidden{display:none !important}
+.loading{text-align:center;padding:60px 0;color:var(--dim)}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid rgba(0,170,255,.2);border-top-color:var(--neon);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.confetti{position:fixed;top:-20px;left:50%;width:8px;height:14px;background:var(--gold);pointer-events:none;animation:confetti 3s ease-in forwards}
+@keyframes confetti{to{transform:translate(calc(-50% + var(--dx,0px)),110vh) rotate(720deg);opacity:0}}
+
+@media(max-width:640px){
+  h1{font-size:28px}
+  .highlight{font-size:38px}
+  .steps,.stats-grid{grid-template-columns:1fr;gap:8px}
+  table.indicacoes{font-size:12px}
+  table.indicacoes td,table.indicacoes th{padding:8px 4px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="logo" href="/">BlueTube</a>
+    <a class="back" href="/">← Voltar</a>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div>Carregando programa...</div>
+  </div>
+
+  <!-- ESTADO 1: BLOQUEADO -->
+  <div id="view-bloqueado" class="hidden">
+    <div class="header">
+      <h1>🔒 Programa <span class="gold">Pioneiros</span></h1>
+      <p class="sub">Criadores que chegam aos primeiros 1.000 seguidores do Blue ganham acesso ao programa que paga <b>R$1.000</b> por 100 indicações qualificadas.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-lock">🔒</div>
+      <div class="big-title">Ganhe <span style="background:linear-gradient(135deg,#FFD700,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent">R$1.000</span></div>
+      <div class="big-sub">Chegue a 1.000 seguidores no Blue e entre para o Programa Pioneiros.</div>
+
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span><span id="bl-seguidores">—</span> / 1.000 seguidores</span>
+          <span id="bl-percent">—%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="bl-fill" style="width:0%"></div></div>
+        <div class="progress-meta" id="bl-faltam">Faltam <b>—</b> seguidores para desbloquear</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-icon">📱</div><div class="step-title">1.000 seguidores no Blue</div><div class="step-text">Poste conteúdo bom e conquiste fãs na nossa rede social.</div></div>
+      <div class="step"><div class="step-icon">🔗</div><div class="step-title">Link exclusivo</div><div class="step-text">Compartilhe seu link pessoal em qualquer lugar.</div></div>
+      <div class="step"><div class="step-icon">💰</div><div class="step-title">R$1.000 no Pix</div><div class="step-text">100 assinantes qualificados = prêmio via Stripe.</div></div>
+    </div>
+
+    <a href="/blue.html" class="cta-primary">Ir para o Blue →</a>
+  </div>
+
+  <!-- ESTADO 2: ATIVO -->
+  <div id="view-ativo" class="hidden">
+    <div class="header">
+      <h1>🎯 Programa <span class="gold">Pioneiros</span> <span style="font-size:16px;vertical-align:middle;background:rgba(34,197,94,.12);color:var(--green);padding:5px 12px;border-radius:100px;font-weight:700">✓ Desbloqueado</span></h1>
+      <p class="sub">Compartilhe seu link e acumule assinantes qualificados para receber <b>R$1.000</b>.</p>
+    </div>
+
+    <div class="card gold">
+      <div class="big-sub">💰 R$1.000 te aguardam</div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span><span id="at-quali">0</span> / 100 assinantes qualificados</span>
+          <span id="at-percent">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill gold" id="at-fill" style="width:0%"></div></div>
+        <div class="progress-meta" id="at-faltam">Faltam <b>100</b> para receber o prêmio</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Seu link exclusivo</div>
+      <div class="link-box">
+        <code id="at-url">—</code>
+        <button class="copy-btn" onclick="copyLink()">📋 Copiar</button>
+      </div>
+      <div class="share-row">
+        <a class="share-btn" id="at-wpp" target="_blank" rel="noopener">📱 WhatsApp</a>
+        <a class="share-btn" id="at-tw" target="_blank" rel="noopener">𝕏 Twitter</a>
+        <a class="share-btn" href="#" onclick="event.preventDefault();shareInsta()">📸 Instagram</a>
+      </div>
+      <div class="tips">
+        <b>💡 Dicas pra divulgar:</b><br>
+        • Cole no Stories do Instagram semanalmente<br>
+        • Mencione no final de cada vídeo do Blue<br>
+        • Coloque na bio do seu perfil<br>
+        • Fale em grupos de criadores
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">Suas estatísticas</div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-label">Total indicados</div><div class="stat-value" id="st-indicados">0</div></div>
+        <div class="stat"><div class="stat-label">Qualificados</div><div class="stat-value green" id="st-quali">0</div></div>
+        <div class="stat"><div class="stat-label">Aguardando 2º mês</div><div class="stat-value" id="st-aguardando" style="color:#fbbf24">0</div></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+        <div class="stat"><div class="stat-label">Receita gerada</div><div class="stat-value gold" id="st-receita">R$ 0</div></div>
+        <div class="stat"><div class="stat-label">Previsão do prêmio</div><div class="stat-value" id="st-previsao" style="font-size:15px;color:var(--dim)">—</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="indicacoes-card">
+      <div style="font-size:13px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Últimas indicações</div>
+      <table class="indicacoes" id="indicacoes-table"><tbody><tr><td colspan="4" style="text-align:center;color:var(--dim);padding:24px">Nenhuma indicação ainda — compartilhe seu link pra começar!</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ESTADO 3: PRÊMIO LIBERADO -->
+  <div id="view-liberado" class="hidden">
+    <div class="header">
+      <h1>🏆 PARABÉNS!</h1>
+      <p class="sub" id="lib-sub">Você conquistou <b>R$1.000</b> indicando 100 assinantes qualificados.</p>
+    </div>
+
+    <div class="card gold" style="text-align:center">
+      <div class="card-trophy">🏆</div>
+      <div class="highlight">R$ 1.000,00</div>
+      <div class="big-sub">Disponível pra saque</div>
+
+      <div id="lib-com-conta" class="hidden">
+        <button class="cta-primary cta-gold" onclick="solicitarPagamento()" id="btn-sacar">💰 Solicitar R$1.000 agora →</button>
+        <div style="font-size:12px;color:var(--dim);margin-top:12px">O valor chegará em 1-2 dias úteis na sua conta Stripe Connect</div>
+      </div>
+
+      <div id="lib-sem-conta" class="hidden">
+        <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:16px;margin:16px 0;font-size:13px;color:var(--dim)">
+          ⚠️ Pra receber, você precisa configurar uma conta Stripe Connect antes.
+        </div>
+        <a href="/blue-monetizacao.html" class="cta-primary cta-gold">Configurar conta →</a>
+      </div>
+
+      <div id="lib-erro" class="hidden" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:14px;margin-top:14px;font-size:13px;color:#ff6b8a"></div>
+    </div>
+  </div>
+
+  <!-- ESTADO 4: CONCLUÍDO -->
+  <div id="view-concluido" class="hidden">
+    <div class="header">
+      <h1>✅ Programa concluído</h1>
+      <p class="sub">Você recebeu seu prêmio do Programa Pioneiros.</p>
+    </div>
+    <div class="card gold" style="text-align:center">
+      <div class="card-trophy" style="background:linear-gradient(135deg,#22c55e,#16a34a)">✅</div>
+      <div class="highlight" style="background:linear-gradient(135deg,#22c55e,#16a34a);-webkit-background-clip:text;-webkit-text-fill-color:transparent">R$ 1.000,00</div>
+      <div class="big-sub">Prêmio pago em <span id="con-data">—</span></div>
+      <div style="font-size:13px;color:var(--dim);margin-top:14px">Continue indicando — novos prêmios virão em próximas edições do programa.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = (() => { try { return localStorage.getItem('bt_token'); } catch { return null; } })();
+let state = null;
+
+async function load() {
+  if (!TOKEN) {
+    document.getElementById('loading').innerHTML = '<div>Você precisa estar logado. <a href="/" style="color:var(--neon)">Entrar →</a></div>';
+    return;
+  }
+  try {
+    const r = await fetch('/api/pioneiros?action=painel&token=' + encodeURIComponent(TOKEN));
+    if (r.status === 403) {
+      // Bloqueado — carrega status pra mostrar progresso
+      const sr = await fetch('/api/pioneiros?action=status&token=' + encodeURIComponent(TOKEN));
+      const sd = await sr.json();
+      state = sd;
+      renderBloqueado(sd);
+      return;
+    }
+    const d = await r.json();
+    state = d;
+    if (d.status === 'concluido') return renderConcluido(d);
+    if (d.premio_liberado) return renderLiberado(d);
+    renderAtivo(d);
+  } catch (e) {
+    document.getElementById('loading').textContent = 'Erro: ' + e.message;
+  }
+}
+
+function show(id) {
+  document.getElementById('loading').classList.add('hidden');
+  ['view-bloqueado', 'view-ativo', 'view-liberado', 'view-concluido'].forEach(v => {
+    document.getElementById(v).classList.toggle('hidden', v !== id);
+  });
+}
+
+function renderBloqueado(d) {
+  show('view-bloqueado');
+  const pct = Math.min(100, d.progresso_seguidores || 0);
+  document.getElementById('bl-seguidores').textContent = (d.seguidores || 0).toLocaleString('pt-BR');
+  document.getElementById('bl-percent').textContent = pct + '%';
+  document.getElementById('bl-fill').style.width = pct + '%';
+  document.getElementById('bl-faltam').innerHTML = 'Faltam <b>' + (d.faltam || 0).toLocaleString('pt-BR') + '</b> seguidores para desbloquear';
+}
+
+function renderAtivo(d) {
+  show('view-ativo');
+  const pct = Math.min(100, d.progresso || 0);
+  document.getElementById('at-quali').textContent = d.assinantes_qualificados || 0;
+  document.getElementById('at-percent').textContent = pct + '%';
+  document.getElementById('at-fill').style.width = pct + '%';
+  document.getElementById('at-faltam').innerHTML = 'Faltam <b>' + Math.max(0, 100 - (d.assinantes_qualificados || 0)) + '</b> para receber o prêmio';
+  document.getElementById('at-url').textContent = d.url_indicacao;
+
+  document.getElementById('st-indicados').textContent = d.assinantes_indicados || 0;
+  document.getElementById('st-quali').textContent = d.assinantes_qualificados || 0;
+  document.getElementById('st-aguardando').textContent = Math.max(0, (d.assinantes_indicados || 0) - (d.assinantes_qualificados || 0));
+  document.getElementById('st-receita').textContent = 'R$ ' + (d.estimativa_receita_gerada || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  document.getElementById('st-previsao').textContent = d.previsao_premio ? new Date(d.previsao_premio).toLocaleDateString('pt-BR') : 'Indique mais pra ter previsão';
+
+  // Share buttons
+  const msg = encodeURIComponent('🎬 Entre no Blue, a nova rede de vídeos do Brasil: ' + d.url_indicacao);
+  document.getElementById('at-wpp').href = 'https://wa.me/?text=' + msg;
+  document.getElementById('at-tw').href = 'https://twitter.com/intent/tweet?text=' + msg;
+
+  // Tabela
+  const rows = (d.lista_indicacoes || []).map(i => {
+    const statusPill = i.cancelado
+      ? '<span class="pill red">❌ Cancelada</span>'
+      : i.qualificado
+        ? '<span class="pill green">✓ Qualificado</span>'
+        : '<span class="pill yellow">⏳ ' + (i.meses_ativos || 0) + '/2 meses</span>';
+    return '<tr><td>' + i.email_mascarado + '</td><td>' + (i.plano || '—') + '</td><td>' + (i.meses_ativos || 0) + ' mês(es)</td><td>' + statusPill + '</td></tr>';
+  }).join('');
+  if (rows) {
+    document.getElementById('indicacoes-table').innerHTML = '<thead><tr><th>Assinante</th><th>Plano</th><th>Tempo</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody>';
+  }
+}
+
+function renderLiberado(d) {
+  show('view-liberado');
+  document.getElementById('lib-sub').innerHTML = 'Você conquistou <b>R$1.000</b> indicando ' + (d.assinantes_qualificados || 100) + ' assinantes qualificados.';
+  // Checa se tem conta Stripe Connect
+  fetch('/api/blue-monetizacao?action=status&token=' + encodeURIComponent(TOKEN))
+    .then(r => r.json())
+    .then(s => {
+      const temConta = s && s.stripe_account_id && s.onboarding_completo;
+      document.getElementById(temConta ? 'lib-com-conta' : 'lib-sem-conta').classList.remove('hidden');
+    })
+    .catch(() => document.getElementById('lib-sem-conta').classList.remove('hidden'));
+  confetti();
+}
+
+function renderConcluido(d) {
+  show('view-concluido');
+  document.getElementById('con-data').textContent = d.premio_pago_em ? new Date(d.premio_pago_em).toLocaleDateString('pt-BR') : '—';
+}
+
+function copyLink() {
+  const url = document.getElementById('at-url').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✅ Copiado!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }).catch(() => alert('Não foi possível copiar — selecione e copie manualmente.'));
+}
+
+function shareInsta() {
+  copyLink();
+  alert('Link copiado! Cole no seu Stories do Instagram.');
+}
+
+async function solicitarPagamento() {
+  const btn = document.getElementById('btn-sacar');
+  const erro = document.getElementById('lib-erro');
+  btn.disabled = true;
+  btn.textContent = 'Processando...';
+  erro.classList.add('hidden');
+  try {
+    const r = await fetch('/api/pioneiros', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'solicitar-pagamento', token: TOKEN }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      erro.textContent = '❌ ' + (d.error || 'Falha no pagamento');
+      erro.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = '💰 Solicitar R$1.000 agora →';
+      return;
+    }
+    confetti(40);
+    btn.textContent = '✅ Transferência iniciada!';
+    setTimeout(load, 2500);
+  } catch (e) {
+    erro.textContent = '❌ Erro de conexão. Tente novamente.';
+    erro.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = '💰 Solicitar R$1.000 agora →';
+  }
+}
+
+function confetti(count = 24) {
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = (20 + Math.random() * 60) + '%';
+    c.style.setProperty('--dx', (Math.random() * 300 - 150) + 'px');
+    c.style.background = ['#FFD700', '#f59e0b', '#00aaff', '#22c55e'][Math.floor(Math.random() * 4)];
+    c.style.animationDelay = (Math.random() * 0.6) + 's';
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 3500);
+  }
+}
+
+load();
+</script>
+</body>
+</html>
