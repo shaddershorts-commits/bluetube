@@ -81,7 +81,18 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
   .desktop-sidebar{display:flex}
   .topbar{display:none}
   .bottom-nav{display:none}
-  /* Feed continua centralizado no viewport inteiro (nao compete com sidebar) */
+  /* Feed: aspect ratio 9:16 exato (nao achata o video portrait) */
+  #feed{
+    top:4dvh;bottom:4dvh;left:50%;right:auto;
+    height:92dvh;
+    width:calc(92dvh * 9 / 16);
+    max-width:min(560px, calc(92dvh * 9 / 16));
+    border-radius:18px;overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.5)
+  }
+  .slide{height:92dvh}
+  /* Prog bar volta pro fundo do slide no desktop (sem bottom-nav) */
+  .prog-bar{bottom:0}
 }
 
 /* ── MOBILE: sobe .side/.info/.prog-bar acima do bottom-nav ──────────────── */
@@ -891,7 +902,30 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 
 <!-- DESKTOP SIDEBAR: nav vertical, só aparece em >=1024px -->
 <nav class="desktop-sidebar" id="desktopSidebar">
-  <a class="ds-logo" href="/blue">Blue</a>
+  <a class="ds-logo" href="/blue" style="padding:0 14px 22px;display:block">
+    <svg width="170" height="54" viewBox="0 0 170 54" xmlns="http://www.w3.org/2000/svg" style="display:block">
+      <defs>
+        <linearGradient id="bt-box" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#7dd3fc"/>
+          <stop offset="50%" stop-color="#38bdf8"/>
+          <stop offset="100%" stop-color="#0284c7"/>
+        </linearGradient>
+        <linearGradient id="bt-gloss" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fff" stop-opacity=".45"/>
+          <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="bt-tube" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#60a5fa"/>
+          <stop offset="100%" stop-color="#1a6bff"/>
+        </linearGradient>
+      </defs>
+      <rect x="1" y="6" width="42" height="42" rx="9" fill="url(#bt-box)" stroke="#0284c7" stroke-width="1"/>
+      <rect x="3" y="8" width="38" height="20" rx="7" fill="url(#bt-gloss)"/>
+      <path d="M17,18 L17,36 L32,27 Z" fill="#fff"/>
+      <text x="53" y="25" font-family="'Syne','Arial Black',sans-serif" font-size="18" font-weight="900" fill="#fff" letter-spacing="-.5">Blue</text>
+      <text x="53" y="45" font-family="'Syne','Arial Black',sans-serif" font-size="18" font-weight="900" fill="url(#bt-tube)" letter-spacing="-.5">Tube</text>
+    </svg>
+  </a>
   <button class="ds-item active" onclick="switchFeedMode('foryou');scrollToFeedTop()"><span class="ds-ic">🏠</span>Para você</button>
   <button class="ds-item" onclick="openTrending()"><span class="ds-ic">🧭</span>Explorar</button>
   <button class="ds-item" onclick="switchFeedMode('following')"><span class="ds-ic">👥</span>Seguindo</button>
