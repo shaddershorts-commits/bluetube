@@ -233,6 +233,40 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- BANCO DE VIRAIS (Shorts coletados por crons) -->
+    <div style="background:#0a1220;border:1px solid rgba(255,80,80,.22);border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-family:var(--font);font-weight:800;font-size:16px;color:#ff6464">🔥 Banco de Virais</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">cron a cada 2h</div>
+          <button onclick="coletarAgora('coletar-trending')" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">↻ Coletar trending</button>
+          <button onclick="coletarAgora('coletar-nichos')" style="background:#1a6bff;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">+ Coletar nichos</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700">Total no banco</div>
+          <div style="font-family:var(--mono);font-size:22px;color:#ff6464;font-weight:700" id="vbTotal">—</div>
+        </div>
+        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700">Novos hoje</div>
+          <div style="font-family:var(--mono);font-size:22px;color:#22c55e;font-weight:700" id="vbHoje">—</div>
+        </div>
+        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700">Última coleta</div>
+          <div style="font-family:var(--mono);font-size:13px;color:#fff;font-weight:700" id="vbUltima">—</div>
+          <div style="font-size:9px;color:var(--dim)" id="vbUltimaStatus">—</div>
+        </div>
+        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700">Cota gasta hoje</div>
+          <div style="font-family:var(--mono);font-size:22px;color:var(--gold);font-weight:700" id="vbCota">—</div>
+          <div style="font-size:9px;color:var(--dim)">/ 10.000 por dia (YouTube)</div>
+        </div>
+      </div>
+      <div id="vbNichos" style="margin-top:14px"></div>
+      <div id="vbColetas" style="margin-top:14px"></div>
+    </div>
+
     <!-- SAQUES DE AFILIADOS (dia 22) -->
     <div style="background:#0a1220;border:1px solid rgba(0,200,83,.25);border-radius:14px;padding:18px;margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -947,6 +981,7 @@ async function loadData(){
     showProgress(90);
     // Saques panel roda em paralelo — nao bloqueia UI principal se falhar
     loadSaquesAdminPanel().catch(()=>{});
+    loadViraisAdminPanel().catch(()=>{});
 
     // Show dashboard
     document.getElementById('loginScreen').style.display='none';
@@ -1987,6 +2022,83 @@ async function loadSaquesAdminPanel(){
             </td>
           </tr>`).join('')}</tbody></table></div>`;
   }catch(e){console.error('[saques]',e);}
+}
+
+// ── BANCO DE VIRAIS (admin) ─────────────────────────────────────────────────
+async function loadViraisAdminPanel(){
+  try{
+    const r = await fetch('/api/virais-coletor?action=status');
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('vbTotal').textContent = (d.total_videos||0).toLocaleString('pt-BR');
+    document.getElementById('vbHoje').textContent = '+' + (d.adicionados_hoje||0).toLocaleString('pt-BR');
+
+    const ult = d.ultimas_coletas?.[0];
+    if (ult){
+      const min = Math.max(0, Math.floor((Date.now() - new Date(ult.created_at).getTime())/60000));
+      document.getElementById('vbUltima').textContent = min + ' min atrás';
+      document.getElementById('vbUltimaStatus').textContent = (ult.tipo_busca||'?') + ' · +' + (ult.videos_novos||0) + ' novos';
+    } else {
+      document.getElementById('vbUltima').textContent = 'nunca';
+      document.getElementById('vbUltimaStatus').textContent = 'rode "Coletar trending" →';
+    }
+
+    // Cota gasta hoje (soma das coletas das ultimas 24h)
+    const hoje = Date.now() - 86400000;
+    const cotaHoje = (d.ultimas_coletas||[]).filter(c => new Date(c.created_at).getTime() > hoje).reduce((s,c)=>s+(c.cota_gasta||0),0);
+    document.getElementById('vbCota').textContent = cotaHoje.toLocaleString('pt-BR');
+
+    // Por nicho (bar chart simples)
+    const nichos = d.por_nicho || {};
+    const entries = Object.entries(nichos).sort((a,b)=>b[1]-a[1]);
+    if (entries.length){
+      const max = Math.max(...entries.map(e=>e[1]));
+      document.getElementById('vbNichos').innerHTML =
+        '<div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700;margin-bottom:8px">Vídeos por nicho</div>'
+        + entries.map(([n,c])=>{
+            const pct = Math.round((c/max)*100);
+            return `<div style="display:grid;grid-template-columns:90px 1fr 60px;gap:10px;align-items:center;font-size:11px;padding:4px 0">
+              <div style="color:var(--dim);text-transform:capitalize">${n}</div>
+              <div style="height:8px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#ff6464,#fbbf24);border-radius:4px"></div></div>
+              <div style="font-family:var(--mono);color:#fff;font-weight:700;text-align:right">${c}</div>
+            </div>`;
+          }).join('');
+    }
+
+    // Ultimas coletas (tabela)
+    const coletas = (d.ultimas_coletas||[]).slice(0,6);
+    if (coletas.length){
+      document.getElementById('vbColetas').innerHTML =
+        '<div style="font-size:10px;color:var(--dim);text-transform:uppercase;font-weight:700;margin-bottom:8px;margin-top:14px">Últimas coletas</div>'
+        + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'
+        + '<thead><tr style="color:var(--dim);text-transform:uppercase;font-size:9px;letter-spacing:.5px">'
+        +   '<th style="text-align:left;padding:6px 4px">Data</th><th style="text-align:left;padding:6px 4px">Tipo</th>'
+        +   '<th style="text-align:right;padding:6px 4px">Novos</th><th style="text-align:right;padding:6px 4px">Atualizados</th>'
+        +   '<th style="text-align:right;padding:6px 4px">Cota</th><th style="text-align:right;padding:6px 4px">Duração</th>'
+        + '</tr></thead><tbody>'
+        + coletas.map(c => `<tr style="border-top:1px solid rgba(255,255,255,.05)">
+            <td style="padding:6px 4px;color:var(--dim);font-family:var(--mono)">${new Date(c.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+            <td style="padding:6px 4px;color:#fff">${c.tipo_busca}${c.erro?' <span style="color:#f87171">⚠</span>':''}</td>
+            <td style="padding:6px 4px;text-align:right;color:#22c55e;font-family:var(--mono);font-weight:700">+${c.videos_novos||0}</td>
+            <td style="padding:6px 4px;text-align:right;color:#3b82f6;font-family:var(--mono)">${c.videos_atualizados||0}</td>
+            <td style="padding:6px 4px;text-align:right;color:var(--gold);font-family:var(--mono)">${c.cota_gasta||0}</td>
+            <td style="padding:6px 4px;text-align:right;color:var(--dim);font-family:var(--mono)">${Math.round((c.duracao_ms||0)/1000)}s</td>
+          </tr>`).join('')
+        + '</tbody></table></div>';
+    }
+  }catch(e){console.error('[virais-admin]',e);}
+}
+
+async function coletarAgora(action){
+  if (!confirm('Executar coleta agora? Vai gastar cota do YouTube.')) return;
+  toast('⏳ Coletando…');
+  try{
+    const r = await fetch('/api/virais-coletor?action=' + encodeURIComponent(action));
+    const d = await r.json();
+    if (r.ok) toast(`✅ Coleta ok: +${d.novos||0} novos, ${d.atualizados||0} atualizados`);
+    else alert(d.error || 'Erro');
+    loadViraisAdminPanel();
+  }catch(e){ alert('Erro de conexão'); }
 }
 
 async function marcarSaquePago(saqueId){

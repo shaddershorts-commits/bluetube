@@ -103,6 +103,34 @@
     {
       "path": "/api/affiliate-saques?action=lembrete-dia22",
       "schedule": "0 9 21 * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=coletar-trending",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=coletar-nichos",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=coletar-nichos",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=coletar-nichos",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=atualizar-metricas",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=atualizar-metricas",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=calcular-scores",
+      "schedule": "0 1 * * *"
     }
   ],
   "headers": [
