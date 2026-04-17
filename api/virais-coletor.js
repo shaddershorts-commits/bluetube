@@ -60,6 +60,16 @@ function detectarIdioma(snippet) {
   return 'other';
 }
 
+// Prioridade: regionCode explicito da coleta > idioma do audio > default BR
+function detectarPais(snippet, regionCode) {
+  if (regionCode) return regionCode.toUpperCase();
+  const lang = (snippet.defaultAudioLanguage || snippet.defaultLanguage || '').toLowerCase();
+  if (lang.startsWith('pt')) return 'BR';
+  if (lang.startsWith('en')) return 'US';
+  if (lang.startsWith('es')) return 'ES';
+  return 'BR';
+}
+
 async function supaUpsert(table, rows, onConflict) {
   if (!rows || !rows.length) return { ok: true, count: 0 };
   const qs = onConflict ? `?on_conflict=${onConflict}` : '';
@@ -105,7 +115,7 @@ async function logColeta(tipo, params, novos, atualizados, cota, duracao, erro) 
 }
 
 // ── NORMALIZACAO + SALVAR ──────────────────────────────────────────────────
-function normalizarVideo(item, nicho) {
+function normalizarVideo(item, nicho, regionCode) {
   if (!item || !item.snippet) return null;
   const youtubeId = typeof item.id === 'string' ? item.id : item.id?.videoId;
   if (!youtubeId) return null;
@@ -137,7 +147,7 @@ function normalizarVideo(item, nicho) {
     taxa_engajamento: taxaEngajamento,
     nicho: nicho || null,
     idioma: detectarIdioma(snippet),
-    pais: 'BR',
+    pais: detectarPais(snippet, regionCode),
     hashtags: extrairHashtags((snippet.description || '') + ' ' + (snippet.title || '')),
     tags: (snippet.tags || []).slice(0, 10),
     publicado_em: snippet.publishedAt || null,
@@ -145,8 +155,8 @@ function normalizarVideo(item, nicho) {
   };
 }
 
-async function salvarVideos(items, nicho) {
-  const rows = items.map(it => normalizarVideo(it, nicho)).filter(Boolean);
+async function salvarVideos(items, nicho, regionCode) {
+  const rows = items.map(it => normalizarVideo(it, nicho, regionCode)).filter(Boolean);
   if (!rows.length) return { novos: 0, atualizados: 0 };
   // Pra saber quantos sao novos, consulta existentes em lote
   const ids = rows.map(r => r.youtube_id);
@@ -162,39 +172,56 @@ async function salvarVideos(items, nicho) {
 }
 
 // ── ACTION: coletar-trending ───────────────────────────────────────────────
+// Rotaciona entre paises pra diversificar o banco. Cada execucao processa
+// 1 pais (rota via ultimo_pais salvo no log). Com crons a cada 2h, cada
+// pais pega uma coleta a cada 6h aprox.
+const PAISES_TRENDING = [
+  { code: 'BR', lang: 'pt-BR', relevance: 'pt' },
+  { code: 'US', lang: 'en',    relevance: 'en' },
+  { code: 'MX', lang: 'es',    relevance: 'es' },
+];
+
 async function coletarTrending(res) {
   const inicio = Date.now();
   let novos = 0, atualizados = 0, cota = 0;
 
+  // Escolhe o proximo pais (rotacao baseada no ultimo log de trending)
+  const last = await supaSelect(
+    `virais_coletas_log?tipo_busca=eq.trending&order=created_at.desc&limit=1&select=parametros`
+  );
+  const ultimoIdx = last?.[0]?.parametros?.pais_idx;
+  const idx = (typeof ultimoIdx === 'number' ? (ultimoIdx + 1) : 0) % PAISES_TRENDING.length;
+  const pais = PAISES_TRENDING[idx];
+
   try {
-    // 1) Trending geral BR (Shorts saem junto — filtramos por duracao no normalizar)
+    // 1) Trending geral (Shorts saem junto — filtramos por duracao no normalizar)
     const trending = await youtubeRequest('videos', {
       part: 'snippet,statistics,contentDetails',
       chart: 'mostPopular',
-      regionCode: 'BR',
+      regionCode: pais.code,
       videoCategoryId: '0',
       maxResults: 50,
-      hl: 'pt-BR',
+      hl: pais.lang,
     });
-    cota += 1; // videos.list?chart=mostPopular = 1 unit
+    cota += 1;
 
-    // 2) Busca #shorts em alta ultimas 48h
+    // 2) Busca #shorts em alta nas ultimas 48h pro pais
     const shortsSearch = await youtubeRequest('search', {
       part: 'snippet',
       q: '#shorts',
       type: 'video',
       videoDuration: 'short',
       order: 'viewCount',
-      regionCode: 'BR',
-      relevanceLanguage: 'pt',
+      regionCode: pais.code,
+      relevanceLanguage: pais.relevance,
       maxResults: 50,
       publishedAfter: new Date(Date.now() - 48 * 3600000).toISOString(),
     });
-    cota += 100; // search = 100
+    cota += 100;
 
     const shortsIds = (shortsSearch.items || []).map(v => v.id?.videoId).filter(Boolean);
 
-    // 3) Busca detalhes completos dos shorts
+    // 3) Detalhes completos dos shorts encontrados
     let shortsDetalhes = { items: [] };
     if (shortsIds.length) {
       shortsDetalhes = await youtubeRequest('videos', {
@@ -205,13 +232,17 @@ async function coletarTrending(res) {
     }
 
     const todos = [...(trending.items || []), ...(shortsDetalhes.items || [])];
-    const r = await salvarVideos(todos, null);
+    const r = await salvarVideos(todos, null, pais.code);
     novos = r.novos; atualizados = r.atualizados;
 
-    await logColeta('trending', {}, novos, atualizados, cota, Date.now() - inicio);
-    return res.status(200).json({ ok: true, novos, atualizados, cota });
+    await logColeta('trending',
+      { pais: pais.code, pais_idx: idx },
+      novos, atualizados, cota, Date.now() - inicio);
+    return res.status(200).json({ ok: true, pais: pais.code, novos, atualizados, cota });
   } catch (e) {
-    await logColeta('trending', {}, novos, atualizados, cota, Date.now() - inicio, e.message);
+    await logColeta('trending',
+      { pais: pais.code, pais_idx: idx },
+      novos, atualizados, cota, Date.now() - inicio, e.message);
     throw e;
   }
 }
@@ -274,7 +305,7 @@ async function coletarPorNichos(res) {
         });
         cota += 1;
 
-        const r = await salvarVideos(detalhes.items || [], nicho.nome);
+        const r = await salvarVideos(detalhes.items || [], nicho.nome, 'BR');
         totalNovos += r.novos;
         totalAtualizados += r.atualizados;
 

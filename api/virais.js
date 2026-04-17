@@ -60,6 +60,7 @@ module.exports = async function handler(req, res) {
 async function listFeed(req, res) {
   const nicho = (req.query.nicho || 'todos').toLowerCase();
   const idioma = (req.query.idioma || 'todos').toLowerCase();
+  const pais = (req.query.pais || 'BR').toUpperCase(); // default BR
   const ordem = (req.query.ordem || 'coletado').toLowerCase();
   const periodo = (req.query.periodo || 'todos').toLowerCase(); // 24h | 7d | 30d | todos
   const cursor = req.query.cursor || null;
@@ -68,6 +69,7 @@ async function listFeed(req, res) {
   const parts = ['ativo=eq.true'];
   if (nicho !== 'todos') parts.push(`nicho=eq.${encodeURIComponent(nicho)}`);
   if (idioma !== 'todos') parts.push(`idioma=eq.${encodeURIComponent(idioma)}`);
+  if (pais !== 'TODOS') parts.push(`pais=eq.${encodeURIComponent(pais)}`);
 
   if (periodo === '24h') parts.push(`publicado_em=gte.${new Date(Date.now() - 86400000).toISOString()}`);
   else if (periodo === '7d')  parts.push(`publicado_em=gte.${new Date(Date.now() - 7*86400000).toISOString()}`);
@@ -94,7 +96,7 @@ async function listFeed(req, res) {
     }
   }
 
-  const select = 'id,youtube_id,titulo,thumbnail_url,url,canal_id,canal_nome,views,likes,comentarios,duracao_segundos,taxa_engajamento,viral_score,velocidade_views,nicho,idioma,hashtags,publicado_em,coletado_em';
+  const select = 'id,youtube_id,titulo,thumbnail_url,url,canal_id,canal_nome,views,likes,comentarios,duracao_segundos,taxa_engajamento,viral_score,velocidade_views,nicho,idioma,pais,hashtags,publicado_em,coletado_em';
   const qs = `${parts.join('&')}&order=${orderBy}&limit=${limite}&select=${select}`;
   const r = await fetch(`${SU}/rest/v1/virais_banco?${qs}`, { headers: HDR });
   if (!r.ok) {
@@ -115,7 +117,7 @@ async function listFeed(req, res) {
     videos,
     cursor: nextCursor,
     has_more: !!nextCursor,
-    filtros: { nicho, idioma, ordem, periodo },
+    filtros: { nicho, idioma, pais, ordem, periodo },
   });
 }
 

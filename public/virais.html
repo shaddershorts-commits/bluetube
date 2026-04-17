@@ -174,6 +174,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <button class="filter-btn" data-period="todos" onclick="setPeriod('todos',this)">Todos</button>
       </div>
 
+      <!-- Pais -->
+      <select class="filter-select" id="paisSelect" onchange="fetchVirals()">
+        <option value="todos">🌎 Todos os países</option>
+        <option value="BR" selected>🇧🇷 Brasil</option>
+        <option value="US">🇺🇸 Estados Unidos</option>
+        <option value="MX">🇲🇽 México</option>
+        <option value="AR">🇦🇷 Argentina</option>
+        <option value="CO">🇨🇴 Colômbia</option>
+        <option value="PT">🇵🇹 Portugal</option>
+        <option value="ES">🇪🇸 Espanha</option>
+      </select>
+
       <!-- Nicho -->
       <select class="filter-select" id="nichoSelect" onchange="fetchVirals()">
         <option value="todos" selected>🔥 Todos os nichos</option>
@@ -297,6 +309,7 @@ async function fetchVirals(append) {
 
   const nicho = document.getElementById('nichoSelect')?.value || 'todos';
   const ordem = document.getElementById('ordemSelect')?.value || 'coletado';
+  const pais = document.getElementById('paisSelect')?.value || 'BR';
   const periodo = currentPeriod;
 
   _saveViraisState();
@@ -305,7 +318,7 @@ async function fetchVirals(append) {
     const params = new URLSearchParams({
       action: 'feed',
       token: token || '',
-      nicho, ordem, periodo,
+      nicho, ordem, periodo, pais,
       limit: '24',
     });
     if (cursor) params.set('cursor', cursor);
@@ -518,6 +531,7 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
   if(!s) return;
   if(s.nicho){const e=document.getElementById('nichoSelect');if(e)e.value=s.nicho;}
   if(s.ordem){const e=document.getElementById('ordemSelect');if(e)e.value=s.ordem;}
+  if(s.pais){const e=document.getElementById('paisSelect');if(e)e.value=s.pais;}
   if(s.period&&typeof currentPeriod!=='undefined'){
     currentPeriod=s.period;
     document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset&&b.dataset.period===s.period));
@@ -527,6 +541,7 @@ function _saveViraisState(){
   _save('bt_virais',{
     nicho:document.getElementById('nichoSelect')?.value||'todos',
     ordem:document.getElementById('ordemSelect')?.value||'coletado',
+    pais:document.getElementById('paisSelect')?.value||'BR',
     period:typeof currentPeriod!=='undefined'?currentPeriod:'7d'
   });
 }

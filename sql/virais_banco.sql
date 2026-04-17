@@ -54,6 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_virais_idioma     ON virais_banco(idioma, coletad
 CREATE INDEX IF NOT EXISTS idx_virais_youtube_id ON virais_banco(youtube_id);
 CREATE INDEX IF NOT EXISTS idx_virais_views      ON virais_banco(views DESC);
 CREATE INDEX IF NOT EXISTS idx_virais_publicado  ON virais_banco(publicado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_virais_pais       ON virais_banco(pais, viral_score DESC);
 
 -- Log de coletas para monitoramento no painel admin
 CREATE TABLE IF NOT EXISTS virais_coletas_log (
