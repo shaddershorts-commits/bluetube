@@ -125,8 +125,8 @@
       "schedule": "0 20 * * *"
     },
     {
-      "path": "/api/virais-coletor?action=calcular-scores",
-      "schedule": "0 1 * * *"
+      "path": "/api/virais-coletor?action=coletar-trending",
+      "schedule": "0 19,21 * * *"
     },
     {
       "path": "/api/affiliate-robustness?action=process-queue",
