@@ -139,6 +139,22 @@
     {
       "path": "/api/affiliate-robustness?action=reconcile",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/bluetendencias?action=atualizar-tendencias",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/bluetendencias?action=detectar-emergentes",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/bluetendencias?action=analisar-titulos",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/bluetendencias?action=notificar-oportunidades",
+      "schedule": "0 9 * * *"
     }
   ],
   "headers": [

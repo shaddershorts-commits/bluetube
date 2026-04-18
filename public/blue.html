@@ -1223,6 +1223,10 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
         <div class="bt-menu-icon">📊</div>
         <div class="bt-menu-text"><div class="title">Analytics</div><div class="subtitle">Views, curtidas e retenção</div></div>
       </a>
+      <a class="bt-menu-item" href="/bluetendencias" id="menuBlueTendencias" style="text-decoration:none;display:none">
+        <div class="bt-menu-icon" style="background:linear-gradient(135deg,rgba(251,191,36,.18),rgba(0,170,255,.12))">📈</div>
+        <div class="bt-menu-text"><div class="title" style="display:flex;align-items:center;gap:6px">BlueTendências <span style="font-size:9px;background:#fbbf24;color:#0a0a0a;padding:1px 6px;border-radius:5px;font-weight:800">MASTER</span></div><div class="subtitle">Descubra tendências antes de todo mundo</div></div>
+      </a>
       <a class="bt-menu-item" href="/blue-monetizacao" style="text-decoration:none">
         <div class="bt-menu-icon">💰</div>
         <div class="bt-menu-text"><div class="title">Monetização</div><div class="subtitle">Saldo e pagamentos</div></div>
@@ -2534,6 +2538,17 @@ async function loadMyProfile(){
     }
     loadMyVideos();
     checkPioneirosBanner();
+    // BlueTendencias — so aparece no menu pra Master (chamada best-effort, nao bloqueia render)
+    try{
+      const pR = await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk})});
+      if(pR.ok){
+        const pd = await pR.json();
+        if(pd.plan==='master'){
+          const el = document.getElementById('menuBlueTendencias');
+          if(el) el.style.display='';
+        }
+      }
+    }catch(e){}
   }catch(e){console.error('loadMyProfile:',e);}
 }
 
