@@ -57,6 +57,70 @@ module.exports = async function handler(req, res) {
       } catch(e) { return res.status(200).json({ following: [] }); }
     }
 
+    // Lista de SEGUIDORES de um user (quem segue X) — paginado, com perfil
+    if (action === 'lista-seguidores' && user_id) {
+      const pagina = Math.max(1, parseInt(req.query.pagina || '1', 10) || 1);
+      const limite = 30;
+      const offset = (pagina - 1) * limite;
+      try {
+        const fr = await fetch(
+          `${SU}/rest/v1/blue_follows?following_id=eq.${user_id}&select=follower_id,created_at&order=created_at.desc&offset=${offset}&limit=${limite}`,
+          { headers: { ...h, Prefer: 'count=exact' } }
+        );
+        if (!fr.ok) return res.status(200).json({ usuarios: [], total: 0 });
+        const rows = await fr.json();
+        const cr = fr.headers.get('content-range') || '';
+        const m = cr.match(/\/(\d+)$/);
+        const total = m ? parseInt(m[1], 10) : rows.length;
+        const ids = [...new Set(rows.map(r => r.follower_id))];
+        let perfis = [];
+        if (ids.length) {
+          const pR = await fetch(
+            `${SU}/rest/v1/blue_profiles?user_id=in.(${ids.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
+            { headers: h }
+          );
+          perfis = pR.ok ? await pR.json() : [];
+        }
+        const byId = Object.fromEntries(perfis.map(p => [p.user_id, p]));
+        return res.status(200).json({
+          usuarios: rows.map(r => ({ ...byId[r.follower_id], seguindo_desde: r.created_at })).filter(u => u.user_id),
+          total, pagina, total_paginas: Math.max(1, Math.ceil(total / limite)),
+        });
+      } catch(e) { return res.status(200).json({ usuarios: [], total: 0, error: e.message }); }
+    }
+
+    // Lista de SEGUINDO (quem X segue) — paginado, com perfil
+    if (action === 'lista-seguindo' && user_id) {
+      const pagina = Math.max(1, parseInt(req.query.pagina || '1', 10) || 1);
+      const limite = 30;
+      const offset = (pagina - 1) * limite;
+      try {
+        const fr = await fetch(
+          `${SU}/rest/v1/blue_follows?follower_id=eq.${user_id}&select=following_id,created_at&order=created_at.desc&offset=${offset}&limit=${limite}`,
+          { headers: { ...h, Prefer: 'count=exact' } }
+        );
+        if (!fr.ok) return res.status(200).json({ usuarios: [], total: 0 });
+        const rows = await fr.json();
+        const cr = fr.headers.get('content-range') || '';
+        const m = cr.match(/\/(\d+)$/);
+        const total = m ? parseInt(m[1], 10) : rows.length;
+        const ids = [...new Set(rows.map(r => r.following_id))];
+        let perfis = [];
+        if (ids.length) {
+          const pR = await fetch(
+            `${SU}/rest/v1/blue_profiles?user_id=in.(${ids.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
+            { headers: h }
+          );
+          perfis = pR.ok ? await pR.json() : [];
+        }
+        const byId = Object.fromEntries(perfis.map(p => [p.user_id, p]));
+        return res.status(200).json({
+          usuarios: rows.map(r => ({ ...byId[r.following_id], seguindo_desde: r.created_at })).filter(u => u.user_id),
+          total, pagina, total_paginas: Math.max(1, Math.ceil(total / limite)),
+        });
+      } catch(e) { return res.status(200).json({ usuarios: [], total: 0, error: e.message }); }
+    }
+
     // Verifica se está seguindo um perfil específico
     if (action === 'is-following' && user_id && token) {
       const userId = await getUser(token);
@@ -89,6 +153,22 @@ module.exports = async function handler(req, res) {
           headers: { ...h, Prefer: 'return=minimal' },
           body: JSON.stringify({ follower_id: userId, following_id: target_id })
         });
+        // Notifica o alvo do seguidor (fire-and-forget)
+        try {
+          const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username,display_name`, { headers: h });
+          const [me] = pR.ok ? await pR.json() : [];
+          const uname = me?.username || 'alguém';
+          fetch(`${SU}/rest/v1/blue_notificacoes`, {
+            method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+            body: JSON.stringify({
+              user_id: target_id,
+              tipo: 'follow',
+              titulo: 'Novo seguidor',
+              mensagem: `@${uname} começou a te seguir`,
+              dados: { from_user_id: userId },
+            }),
+          }).catch(() => {});
+        } catch(e) { /* fail-soft */ }
         return res.status(200).json({ ok: true, following: true });
       } catch(e) { return res.status(200).json({ ok: true, following: true }); }
     }

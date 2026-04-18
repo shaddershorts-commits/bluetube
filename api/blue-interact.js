@@ -167,8 +167,33 @@ module.exports = async function handler(req, res) {
           }).catch(() => {});
       }
     } else if (type === 'unlike') { patch.likes = Math.max(0, (v.likes || 0) - 1);
-    } else if (type === 'save')   { patch.saves = Math.max(0, (v.saves || 0) + 1);
-    } else if (type === 'unsave') { patch.saves = Math.max(0, (v.saves || 0) - 1); }
+    } else if (type === 'save') {
+      patch.saves = Math.max(0, (v.saves || 0) + 1);
+      // Notifica o dono do video sobre o save
+      if (user_id && v.user_id && v.user_id !== user_id) {
+        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
+          .then(r => r.ok ? r.json() : []).then(p => {
+            const uname = p?.[0]?.username || 'alguém';
+            fetch(`${SU}/rest/v1/blue_notificacoes`, {
+              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+              body: JSON.stringify({ user_id: v.user_id, tipo: 'save', titulo: 'Vídeo salvo', mensagem: `@${uname} salvou seu vídeo`, dados: { from_user_id: user_id, video_id } })
+            }).catch(() => {});
+          }).catch(() => {});
+      }
+    } else if (type === 'unsave') { patch.saves = Math.max(0, (v.saves || 0) - 1);
+    } else if (type === 'share') {
+      // Nao tem coluna shares no schema atual — apenas notifica o dono.
+      if (user_id && v.user_id && v.user_id !== user_id) {
+        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
+          .then(r => r.ok ? r.json() : []).then(p => {
+            const uname = p?.[0]?.username || 'alguém';
+            fetch(`${SU}/rest/v1/blue_notificacoes`, {
+              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+              body: JSON.stringify({ user_id: v.user_id, tipo: 'share', titulo: 'Vídeo compartilhado', mensagem: `@${uname} compartilhou seu vídeo`, dados: { from_user_id: user_id, video_id } })
+            }).catch(() => {});
+          }).catch(() => {});
+      }
+    }
 
     // Recalcula score (0-100)
     const newLikes    = patch.likes !== undefined ? patch.likes : (v.likes || 0);

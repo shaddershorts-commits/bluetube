@@ -557,10 +557,12 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 #storiesBar{
   position:fixed;top:48px;left:50%;transform:translateX(-50%);
   width:100%;max-width:412px;z-index:90;
-  background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.75));
+  background:linear-gradient(to bottom,rgba(0,0,0,.55),rgba(0,0,0,0));
   padding:8px 12px 10px;
   display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
-  -webkit-overflow-scrolling:touch;pointer-events:auto}
+  -webkit-overflow-scrolling:touch;pointer-events:auto;
+  transition:opacity .25s,transform .25s}
+#storiesBar.hidden{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(-100%)}
 #storiesBar::-webkit-scrollbar{display:none}
 .st-item{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;cursor:pointer;scroll-snap-align:start}
 .st-ring{width:64px;height:64px;border-radius:50%;padding:2.5px;
@@ -1173,7 +1175,8 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <div class="prof-uname" id="profUname">@—</div>
       <div class="prof-stats">
         <div class="pstat"><span class="pstat-n" id="pVids">0</span><span class="pstat-l">Vídeos</span></div>
-        <div class="pstat"><span class="pstat-n" id="pFollowers">0</span><span class="pstat-l">Seguidores</span></div>
+        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguidores')" title="Ver seguidores"><span class="pstat-n" id="pFollowers">0</span><span class="pstat-l">Seguidores</span></div>
+        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguindo')" title="Ver quem segue"><span class="pstat-n" id="pSeguindo">0</span><span class="pstat-l">Seguindo</span></div>
         <div class="pstat"><span class="pstat-n" id="pViews">0</span><span class="pstat-l">Views</span></div>
         <div class="pstat"><span class="pstat-n" id="pLikes">0</span><span class="pstat-l">Curtidas</span></div>
       </div>
@@ -1239,6 +1242,21 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     </div>
     <div class="bt-modal-footer">
       <button class="bt-btn-secondary" onclick="closeProfMenu()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEGUIDORES / SEGUINDO MODAL -->
+<div class="bt-modal-overlay" id="seguidoresModal" style="display:none">
+  <div class="bt-modal" style="max-height:80vh">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header" style="display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.06)">
+      <button id="sgTabSeguidores" onclick="trocarSgTab('seguidores')" style="flex:1;background:none;border:none;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid #3b82f6">Seguidores <span id="sgCntSeguidores" style="opacity:.5;font-weight:500"></span></button>
+      <button id="sgTabSeguindo" onclick="trocarSgTab('seguindo')" style="flex:1;background:none;border:none;padding:14px;color:rgba(255,255,255,.5);font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent">Seguindo <span id="sgCntSeguindo" style="opacity:.5;font-weight:500"></span></button>
+      <button class="bt-modal-close" onclick="btModalClose('seguidoresModal')" style="margin-right:8px">✕</button>
+    </div>
+    <div class="bt-modal-body" id="sgListaBody" style="padding:8px 12px 16px;max-height:60vh;overflow-y:auto">
+      <div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px">Carregando…</div>
     </div>
   </div>
 </div>
@@ -2038,6 +2056,10 @@ function setupObs(){
       const idx=parseInt(sl.dataset.i)||0;
 
       if(e.isIntersecting&&e.intersectionRatio>.6){
+        // Stories bar so visivel no primeiro slide — esconde nos demais
+        // pra nao cobrir o video (igual TikTok/Instagram).
+        const sb=document.getElementById('storiesBar');
+        if(sb) sb.classList.toggle('hidden', idx>0);
         // Lazy load: set src from data-src if not loaded yet
         if(!vid.src&&vid.dataset.src){vid.src=vid.dataset.src;vid.preload='auto';}
 
@@ -2116,7 +2138,18 @@ async function doShare(url,title){
   const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
   if(navigator.share){try{await navigator.share({title:title||'Blue',url:shareUrl});}catch(e){}}
   else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast('🔗 Link copiado!');}
-  if(vid)trackSignal(vid,{compartilhou:true});
+  if(vid){
+    trackSignal(vid,{compartilhou:true});
+    // Notifica o dono via blue-interact (cria notificacao 'share')
+    try {
+      const tk=localStorage.getItem('bt_token');
+      if(tk && myProfile?.user_id){
+        fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({type:'share',video_id:vid,user_id:myProfile.user_id,session_id:SID})
+        }).catch(()=>{});
+      }
+    } catch(e){}
+  }
 }
 
 // ── COMMENTS ──────────────────────────────────────────────────────────────────
@@ -2318,6 +2351,76 @@ function doLogoutBlue(){
   // Reload via /blue pra cair no estado "visitante"
   window.location.href = '/blue';
 }
+
+// ── SEGUIDORES / SEGUINDO MODAL (estilo TikTok/Instagram) ────────────────────
+let _sgUserId = null;
+let _sgTab = 'seguidores';
+
+function abrirSeguidores(tab){
+  // Pega user_id do contexto: se proprio perfil, myProfile.user_id; senao
+  // pega do _chatTargetUser que e setado no openCreatorProfile.
+  const uid = (myProfile && document.getElementById('profPage')?.classList.contains('open') &&
+               document.getElementById('pNavName')?.textContent === myProfile.username)
+    ? myProfile.user_id
+    : (_chatTargetUser || myProfile?.user_id);
+  if (!uid) { toast('Carregando perfil…'); return; }
+  _sgUserId = uid;
+  _sgTab = tab || 'seguidores';
+  trocarSgTab(_sgTab, true);
+  btModalOpen('seguidoresModal');
+}
+
+async function trocarSgTab(tab, primeiraVez){
+  _sgTab = tab;
+  // Visual das tabs
+  const tabSegs = document.getElementById('sgTabSeguidores');
+  const tabIng = document.getElementById('sgTabSeguindo');
+  if (tabSegs && tabIng) {
+    tabSegs.style.color = tab==='seguidores' ? '#fff' : 'rgba(255,255,255,.5)';
+    tabSegs.style.borderBottomColor = tab==='seguidores' ? '#3b82f6' : 'transparent';
+    tabIng.style.color = tab==='seguindo' ? '#fff' : 'rgba(255,255,255,.5)';
+    tabIng.style.borderBottomColor = tab==='seguindo' ? '#3b82f6' : 'transparent';
+  }
+  if (!_sgUserId) return;
+  const body = document.getElementById('sgListaBody');
+  if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px">Carregando…</div>';
+  try {
+    const action = tab === 'seguindo' ? 'lista-seguindo' : 'lista-seguidores';
+    const r = await fetch(`/api/blue-follow?action=${action}&user_id=${encodeURIComponent(_sgUserId)}&pagina=1`);
+    if (!r.ok) { if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:#f87171;font-size:13px">Erro ao carregar</div>'; return; }
+    const d = await r.json();
+    const total = d.total || 0;
+    // Atualiza badges nas tabs
+    if (tab === 'seguidores' && document.getElementById('sgCntSeguidores')) {
+      document.getElementById('sgCntSeguidores').textContent = total ? '· ' + fmt(total) : '';
+    }
+    if (tab === 'seguindo' && document.getElementById('sgCntSeguindo')) {
+      document.getElementById('sgCntSeguindo').textContent = total ? '· ' + fmt(total) : '';
+    }
+    if (!d.usuarios?.length) {
+      if (body) body.innerHTML = `<div style="text-align:center;padding:32px;color:rgba(255,255,255,.4);font-size:13px">${tab==='seguindo'?'Ninguém ainda.':'Nenhum seguidor ainda.'}</div>`;
+      return;
+    }
+    if (body) body.innerHTML = d.usuarios.map(u => {
+      const init = (u.display_name || u.username || '?').charAt(0).toUpperCase();
+      const av = u.avatar_url
+        ? `<img src="${esc(u.avatar_url)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover"/>`
+        : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800">${esc(init)}</div>`;
+      const verif = u.verificado ? ' <span style="display:inline-block;background:#3b82f6;color:#fff;font-size:9px;width:14px;height:14px;border-radius:50%;text-align:center;line-height:14px;vertical-align:middle;margin-left:3px" title="Verificado">✓</span>' : '';
+      return `
+        <div onclick="btModalClose('seguidoresModal');setTimeout(()=>openCreatorProfile('${esc(u.user_id)}'),200)" style="display:flex;align-items:center;gap:12px;padding:10px 8px;cursor:pointer;border-radius:10px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='transparent'">
+          ${av}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.display_name || u.username || '—')}${verif}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@${esc(u.username || 'usuario')}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) { if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:#f87171;font-size:13px">Erro de conexão</div>'; }
+}
+
+window.abrirSeguidores = abrirSeguidores;
+window.trocarSgTab = trocarSgTab;
 window.openProfMenu = openProfMenu;
 window.closeProfMenu = closeProfMenu;
 window.shareMyProfile = shareMyProfile;
@@ -2824,6 +2927,11 @@ async function loadFollowerCount(userId){
   try{
     const r=await fetch('/api/blue-follow?action=count&user_id='+encodeURIComponent(userId));
     if(r.ok){ const d=await r.json(); const el=document.getElementById('pFollowers'); if(el) el.textContent=fmt(d.count||0); }
+  }catch(e){}
+  // Conta tambem quem o user segue (paginacao 1, total no header)
+  try{
+    const r=await fetch('/api/blue-follow?action=lista-seguindo&user_id='+encodeURIComponent(userId)+'&pagina=1');
+    if(r.ok){ const d=await r.json(); const el=document.getElementById('pSeguindo'); if(el) el.textContent=fmt(d.total||0); }
   }catch(e){}
 }
 
