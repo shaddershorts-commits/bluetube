@@ -1716,6 +1716,8 @@ async function goToCheckout(plan, billing){
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
 let pendingOTPEmail='';
 function openAuthModal(){document.getElementById('authModal').classList.add('on');}
+// Abre modal auto via ?openLogin=1 (vindo de gates tipo bluetendencias)
+(function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
 function closeAuthModal(){document.getElementById('authModal').classList.remove('on');document.getElementById('authMsg').textContent='';}
 function switchAuthTab(tab){
   document.getElementById('tabLogin').classList.toggle('active',tab==='login');

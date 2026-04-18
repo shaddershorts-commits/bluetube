@@ -815,7 +815,7 @@ async function renderSaudacao() {
 function showGate(motivo) {
   irCena('Gate');
   const conteudo = {
-    login: `<h2>Entre na sua conta</h2><p>Você precisa estar logado como Master pra usar o Studio do Blublu.</p><a class="gate-cta" href="/login?next=/bluetendencias">Fazer login →</a>`,
+    login: `<h2>Entre na sua conta</h2><p>Você precisa estar logado como Master pra usar o Studio do Blublu.</p><a class="gate-cta" href="/?openLogin=1&next=/bluetendencias">Fazer login →</a>`,
     upgrade: `<div class="gate-badge">✨ EXCLUSIVO · MASTER</div><h2>🔮 Studio do Blublu</h2><p>A IA mais avançada do mercado te espera. Dissecação cinematográfica em 5 atos + quiz interativo + sugestões práticas. Tudo personalizado pro seu canal.</p><p style="color:var(--text-dim);font-size:12px">3 análises por dia. Inclui histórico de análises salvas.</p><a class="gate-cta" href="/?upgrade=master">Fazer upgrade →</a>`,
     erro: `<h2>Erro de conexão</h2><p>Recarrega a página e tenta de novo.</p>`,
   };
