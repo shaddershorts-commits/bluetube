@@ -165,11 +165,11 @@ module.exports = async function handler(req, res) {
 async function statusAction(res, { h, SU, afiliado }) {
   const saldo = parseFloat(afiliado.saldo_disponivel || 0);
   // Se saldo_disponivel ainda nao foi populado, calcular on-the-fly a partir
-  // das commissions pending (nao cancelled / nao paid):
+  // das commissions pending (nao cancelled / nao paid / nao flagged):
   let saldoCalculado = saldo;
   try {
     const cR = await fetch(
-      `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&select=commission_amount`,
+      `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&flagged=eq.false&select=commission_amount`,
       { headers: h }
     );
     if (cR.ok) {
@@ -216,9 +216,9 @@ async function solicitarSaque(res, { SU, h, afiliado }) {
     return res.status(400).json({ error: 'sem_chave', mensagem: 'Cadastre uma chave Pix antes de solicitar saque.' });
   }
 
-  // Calcular saldo real (sum das commissions pending)
+  // Calcular saldo real (sum das commissions pending NAO flaggadas)
   const cR = await fetch(
-    `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&select=id,commission_amount`,
+    `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&flagged=eq.false&select=id,commission_amount`,
     { headers: h }
   );
   const pendings = cR.ok ? await cR.json() : [];
@@ -343,7 +343,7 @@ async function lembreteDia22(res, { SU, h }) {
   // Quantos afiliados tem saldo >= minimo? Qual total previsto?
   try {
     const cR = await fetch(
-      `${SU}/rest/v1/affiliate_commissions?status=eq.pending&select=affiliate_id,commission_amount`,
+      `${SU}/rest/v1/affiliate_commissions?status=eq.pending&flagged=eq.false&select=affiliate_id,commission_amount`,
       { headers: h }
     );
     const rows = cR.ok ? await cR.json() : [];

@@ -179,10 +179,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
   // Aplica a correcao de comissao: PATCH direto + history + total_earnings delta.
   // Em caso de falha (row nao encontrada, rede, Supabase lento), enfileira retry.
-  async function applyCommissionCorrection({ affiliate, email, plan, rate, paidAmount, couponApplied, couponDiscount, source }) {
+  async function applyCommissionCorrection({ affiliate, email, plan, rate, paidAmount, couponApplied, couponDiscount, source, stripeCustomerId }) {
     const correctedAmount = parseFloat((paidAmount * rate).toFixed(2));
     try {
-      const curRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_rate,plan_amount,commission_history`, { headers: supaHeaders });
+      const curRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_rate,plan_amount,commission_history,flagged`, { headers: supaHeaders });
       const [row] = curRes.ok ? await curRes.json() : [];
       if (!row) {
         // Linha ainda nao existe (auth.js pode ter demorado) — enfileira retry
@@ -205,6 +205,12 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         prev_plan_amount: parseFloat(row.plan_amount || 0), new_plan_amount: paidAmount,
         coupon_applied: !!couponApplied, coupon_discount: couponDiscount || 0,
       });
+      // Deteccao de self-referral — antes do PATCH, checa sinais
+      let fraudFlag = null;
+      if (!row.flagged) { // Nao re-flagga o que ja foi flaggado
+        fraudFlag = await detectSelfReferral({ affiliate, subscriberEmail: email, stripeCustomerId });
+      }
+
       const patchBody = {
         commission_rate: rate,
         commission_amount: correctedAmount,
@@ -213,6 +219,16 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       };
       if (couponApplied) patchBody.coupon_applied = true;
       if (couponDiscount > 0) patchBody.coupon_discount = couponDiscount;
+      if (fraudFlag?.flagged) {
+        patchBody.flagged = true;
+        patchBody.flagged_reason = fraudFlag.reason;
+        patchBody.flagged_at = new Date().toISOString();
+        history.push({
+          at: new Date().toISOString(), source: `${source}_self_referral_flag`,
+          reason: fraudFlag.reason, auto_flag: true,
+        });
+        patchBody.commission_history = history;
+      }
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${row.id}`, {
         method: 'PATCH', headers: supaHeaders, body: JSON.stringify(patchBody)
       });
@@ -226,17 +242,34 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         });
         return { ok: false, queued: true };
       }
-      // Ajusta total_earnings do afiliado pelo delta
-      if (delta !== 0) {
+      // Ajusta total_earnings do afiliado. Se flaggada como self-referral,
+      // reverte o valor antigo que auth.js ja tinha adicionado (não conta no
+      // saldo ate admin aprovar).
+      const earningsDelta = fraudFlag?.flagged ? -prev : delta;
+      if (earningsDelta !== 0) {
         await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
           method: 'PATCH', headers: supaHeaders,
           body: JSON.stringify({
-            total_earnings: parseFloat(((parseFloat(affiliate.total_earnings) || 0) + delta).toFixed(2)),
+            total_earnings: parseFloat(((parseFloat(affiliate.total_earnings) || 0) + earningsDelta).toFixed(2)),
             updated_at: new Date().toISOString()
           })
         });
       }
-      return { ok: true, delta, prev, correctedAmount };
+
+      // Notifica admin se flaggada
+      if (fraudFlag?.flagged) {
+        notifyStripe(`🚨 Comissao em analise — possivel auto-indicacao`, [
+          ['Afiliado', affiliate.email || '—'],
+          ['Assinante', email],
+          ['Plano', plan?.toUpperCase() || '—'],
+          ['Valor', `R$${correctedAmount.toFixed(2)}`],
+          ['Motivos', fraudFlag.reason],
+          ['Acao', 'Revise em Supabase: affiliate_commissions WHERE flagged=true'],
+        ]).catch(() => {});
+        console.log(`🚨 FLAGGED self-referral: ${affiliate.email} ← ${email} (${fraudFlag.reason})`);
+      }
+
+      return { ok: true, delta, prev, correctedAmount, flagged: !!fraudFlag?.flagged };
     } catch (e) {
       console.error('[applyCommissionCorrection] erro:', e.message);
       await enqueueCommissionPatch({
@@ -247,6 +280,82 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       });
       return { ok: false, queued: true };
     }
+  }
+
+  // Normaliza email pra detectar truques do tipo john+test@gmail = john@gmail.
+  // Strip de +tag em qualquer provedor; strip de dots no local-part do gmail.
+  function normEmail(e) {
+    if (!e || typeof e !== 'string') return '';
+    const [local, domain] = e.toLowerCase().trim().split('@');
+    if (!domain) return e.toLowerCase().trim();
+    let l = local.split('+')[0];
+    if (domain === 'gmail.com' || domain === 'googlemail.com') l = l.replace(/\./g, '');
+    return `${l}@${domain}`;
+  }
+
+  // Detecta sinais de auto-indicacao. Retorna { flagged, reason } ou null.
+  // Sinais fortes (flagga direto):
+  //  1) email normalizado do subscriber == email normalizado do afiliado
+  //  2) cookie_id do click esta em affiliate_fingerprints do proprio afiliado
+  //  3) ip_hash do click esta em affiliate_fingerprints do proprio afiliado
+  //  4) stripe_customer_id do subscriber == stripe_customer_id de outra
+  //     conta ligada ao afiliado
+  async function detectSelfReferral({ affiliate, subscriberEmail, stripeCustomerId }) {
+    const reasons = [];
+    try {
+      // 1) Email normalizado
+      if (normEmail(affiliate.email) === normEmail(subscriberEmail)) {
+        reasons.push('email_normalizado_igual');
+      }
+
+      // Busca fingerprints do afiliado
+      const fpRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_fingerprints?affiliate_id=eq.${affiliate.id}&select=ip_hash,visitor_fingerprint,cookie_id`,
+        { headers: supaHeaders }
+      );
+      const fingerprints = fpRes.ok ? await fpRes.json() : [];
+      const affCookieIds = new Set(fingerprints.map(f => f.cookie_id).filter(Boolean));
+      const affIpHashes = new Set(fingerprints.map(f => f.ip_hash).filter(Boolean));
+      const affFps = new Set(fingerprints.map(f => f.visitor_fingerprint).filter(Boolean));
+
+      // Busca clicks mais recentes pra esse afiliado (ultimos 30 dias)
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const ckRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${cutoff}&select=cookie_id,ip_hash,visitor_fingerprint&order=landed_at.desc&limit=200`,
+        { headers: supaHeaders }
+      );
+      const clicks = ckRes.ok ? await ckRes.json() : [];
+
+      // 2/3) Qualquer click com fingerprint que bata com o proprio afiliado
+      const clickMatch = clicks.find(c =>
+        (c.cookie_id && affCookieIds.has(c.cookie_id)) ||
+        (c.ip_hash && affIpHashes.has(c.ip_hash)) ||
+        (c.visitor_fingerprint && affFps.has(c.visitor_fingerprint))
+      );
+      if (clickMatch) {
+        if (clickMatch.cookie_id && affCookieIds.has(clickMatch.cookie_id)) reasons.push('click_cookie_igual_afiliado');
+        else if (clickMatch.ip_hash && affIpHashes.has(clickMatch.ip_hash)) reasons.push('click_ip_igual_afiliado');
+        else reasons.push('click_fingerprint_igual_afiliado');
+      }
+
+      // 4) Stripe customer compartilhado — afiliado eh tambem subscriber com
+      // mesmo customer_id? (cenario raro mas possivel)
+      if (stripeCustomerId) {
+        const affSubRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(affiliate.email)}&select=stripe_customer_id`,
+          { headers: supaHeaders }
+        );
+        const [affSub] = affSubRes.ok ? await affSubRes.json() : [];
+        if (affSub?.stripe_customer_id && affSub.stripe_customer_id === stripeCustomerId) {
+          reasons.push('stripe_customer_id_igual_afiliado');
+        }
+      }
+    } catch (e) {
+      console.error('[detectSelfReferral] erro:', e.message);
+      // Em caso de erro na deteccao, nao flagga — evita falso positivo
+      return null;
+    }
+    return reasons.length > 0 ? { flagged: true, reason: reasons.join(',') } : null;
   }
 
   // Resolve taxa efetiva do afiliado (override do admin > nivel auto)
@@ -356,10 +465,12 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const { rate, levelKey, source: rateSource } = effectiveRate(aff);
         const result = await applyCommissionCorrection({
           affiliate: aff, email, plan, rate, paidAmount,
-          couponApplied, couponDiscount, source: 'checkout'
+          couponApplied, couponDiscount, source: 'checkout',
+          stripeCustomerId: customerId,
         });
         if (result.ok) {
-          console.log(`💰 Commission corrected [${rateSource}]: ${aff.email} ${levelKey} ${(rate*100).toFixed(0)}% × R$${paidAmount}${couponApplied?` (cupom -R$${couponDiscount})`:''} = R$${result.correctedAmount} (antes R$${result.prev}, delta R$${result.delta}) — ${email}`);
+          const flagTag = result.flagged ? ' 🚨 FLAGGED' : '';
+          console.log(`💰 Commission corrected [${rateSource}]${flagTag}: ${aff.email} ${levelKey} ${(rate*100).toFixed(0)}% × R$${paidAmount}${couponApplied?` (cupom -R$${couponDiscount})`:''} = R$${result.correctedAmount} (antes R$${result.prev}, delta R$${result.delta}) — ${email}`);
         } else {
           console.log(`⏳ Commission queued for retry: ${aff.email} ← ${email} (${plan})`);
         }
@@ -482,10 +593,12 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           paidAmount: renewPaidAmount,
           couponApplied: renewCouponApplied,
           couponDiscount: renewCouponDiscount,
-          source: 'renewal'
+          source: 'renewal',
+          stripeCustomerId: customerId,
         });
         if (result.ok) {
-          console.log(`🔄 Renewal commission corrected [${rateSource}]: ${levelKey} ${(rate*100).toFixed(0)}% × R$${renewPaidAmount}${renewCouponApplied?' (com cupom)':''} = R$${result.correctedAmount} (delta R$${result.delta})`);
+          const flagTag = result.flagged ? ' 🚨 FLAGGED' : '';
+          console.log(`🔄 Renewal commission corrected [${rateSource}]${flagTag}: ${levelKey} ${(rate*100).toFixed(0)}% × R$${renewPaidAmount}${renewCouponApplied?' (com cupom)':''} = R$${result.correctedAmount} (delta R$${result.delta})`);
         } else {
           console.log(`⏳ Renewal commission queued for retry: ${aff.email} ← ${renewEmail}`);
         }

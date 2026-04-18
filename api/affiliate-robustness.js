@@ -1,24 +1,289 @@
 // api/affiliate-robustness.js
-// Crons de robustez do sistema de afiliados:
-//   GET ?action=process-queue — consome commission_patch_queue (a cada 15min)
-//   GET ?action=reconcile — compara total_earnings vs soma commissions (diario)
+// Robustez + antifraude do sistema de afiliados:
+//   GET  ?action=process-queue    — cron, consome commission_patch_queue (*/15min)
+//   GET  ?action=reconcile        — cron, drift total_earnings vs soma (diario)
+//   POST ?action=track-fingerprint — captura IP/UA do afiliado logado
+//   GET  ?action=list-flagged&admin_secret=X — admin lista comissoes flaggadas
+//   POST ?action=review-flagged&admin_secret=X — admin aprova/rejeita comissao
+//   GET  ?action=retro-scan&admin_secret=X — admin roda deteccao retroativa
 //
-// Ambos sao invisiveis pro afiliado. Apenas corrigem drift silenciosamente e
-// notificam admin por email se encontrarem algo relevante.
+// Tudo silencioso pro afiliado. Admin recebe email quando deteccao pega algo.
+
+const crypto = require('crypto');
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
+  const AK = process.env.SUPABASE_ANON_KEY || SK;
   const RESEND_KEY = process.env.RESEND_API_KEY;
   const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+  const ADMIN_SECRET = process.env.ADMIN_SECRET;
   if (!SU || !SK) return res.status(500).json({ error: 'Config ausente' });
   const h = { apikey: SK, Authorization: `Bearer ${SK}`, 'Content-Type': 'application/json' };
-  const action = req.query?.action;
+  const action = req.query?.action || req.body?.action;
+  const ctx = { SU, AK, h, RESEND_KEY, ADMIN_EMAIL, ADMIN_SECRET };
 
-  if (action === 'process-queue') return processQueue(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL });
-  if (action === 'reconcile')     return reconcile(req, res,    { SU, h, RESEND_KEY, ADMIN_EMAIL });
-  return res.status(400).json({ error: 'action invalida', valid: ['process-queue', 'reconcile'] });
+  if (action === 'process-queue')     return processQueue(req, res, ctx);
+  if (action === 'reconcile')         return reconcile(req, res, ctx);
+  if (action === 'track-fingerprint') return trackFingerprint(req, res, ctx);
+  if (action === 'list-flagged')      return listFlagged(req, res, ctx);
+  if (action === 'review-flagged')    return reviewFlagged(req, res, ctx);
+  if (action === 'retro-scan')        return retroScan(req, res, ctx);
+
+  return res.status(400).json({ error: 'action invalida',
+    valid: ['process-queue', 'reconcile', 'track-fingerprint', 'list-flagged', 'review-flagged', 'retro-scan'] });
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRACK FINGERPRINT — chamado pelo afiliado.html ao abrir dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+async function trackFingerprint(req, res, { SU, AK, h }) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST apenas' });
+  try {
+    const { token, cookie_id } = req.body || {};
+    if (!token) return res.status(401).json({ error: 'token obrigatorio' });
+
+    // Valida token
+    const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: `Bearer ${token}` } });
+    if (!uR.ok) return res.status(401).json({ error: 'token invalido' });
+    const user = await uR.json();
+    if (!user?.email) return res.status(401).json({ error: 'sem email' });
+
+    // Resolve afiliado pelo email
+    const aR = await fetch(`${SU}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=id`, { headers: h });
+    const [aff] = aR.ok ? await aR.json() : [];
+    if (!aff) return res.status(200).json({ ok: true, skipped: 'not_affiliate' });
+
+    // Hash do IP + UA (mesmo jeito que auth.js faz em click)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || '';
+    const ipHash = ip ? crypto.createHash('sha256').update(ip + (process.env.ADMIN_SECRET || '')).digest('hex').slice(0, 16) : null;
+    const ua = req.headers['user-agent'] || '';
+    const lang = req.headers['accept-language'] || '';
+    const fingerprint = crypto.createHash('sha256').update(ua + lang).digest('hex').slice(0, 16);
+    const uaSnippet = ua.slice(0, 180);
+
+    // Upsert: se ja existe (mesma tupla), atualiza last_seen/seen_count
+    const ipClause = ipHash ? `ip_hash=eq.${ipHash}` : 'ip_hash=is.null';
+    const ckClause = cookie_id ? `cookie_id=eq.${cookie_id}` : 'cookie_id=is.null';
+    const existingR = await fetch(
+      `${SU}/rest/v1/affiliate_fingerprints?affiliate_id=eq.${aff.id}&${ipClause}&visitor_fingerprint=eq.${fingerprint}&${ckClause}&select=id,seen_count&limit=1`,
+      { headers: h }
+    );
+    const [existing] = existingR.ok ? await existingR.json() : [];
+
+    if (existing) {
+      await fetch(`${SU}/rest/v1/affiliate_fingerprints?id=eq.${existing.id}`, {
+        method: 'PATCH', headers: h,
+        body: JSON.stringify({
+          last_seen: new Date().toISOString(),
+          seen_count: (existing.seen_count || 1) + 1,
+        }),
+      });
+    } else {
+      await fetch(`${SU}/rest/v1/affiliate_fingerprints`, {
+        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          affiliate_id: aff.id,
+          ip_hash: ipHash, visitor_fingerprint: fingerprint,
+          cookie_id: cookie_id || null, ua_snippet: uaSnippet,
+        }),
+      });
+    }
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error('[track-fingerprint] erro:', e.message);
+    return res.status(200).json({ ok: false }); // nunca bloqueia UX do afiliado
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIST FLAGGED — admin lista comissoes em analise
+// ─────────────────────────────────────────────────────────────────────────────
+async function listFlagged(req, res, { SU, h, ADMIN_SECRET }) {
+  if (req.query?.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  const r = await fetch(
+    `${SU}/rest/v1/affiliate_commissions?flagged=eq.true&admin_decision=is.null&select=*,affiliates!inner(email,id)&order=flagged_at.desc&limit=100`,
+    { headers: h }
+  );
+  const rows = r.ok ? await r.json() : [];
+  return res.status(200).json({ ok: true, flagged: rows });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEW FLAGGED — admin aprova ou rejeita uma comissao flaggada
+// ─────────────────────────────────────────────────────────────────────────────
+async function reviewFlagged(req, res, { SU, h, ADMIN_SECRET }) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST apenas' });
+  if (req.query?.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  const { commission_id, decision, note } = req.body || {};
+  if (!commission_id || !['approved', 'rejected'].includes(decision)) {
+    return res.status(400).json({ error: 'commission_id + decision (approved|rejected) obrigatorios' });
+  }
+
+  try {
+    const cr = await fetch(`${SU}/rest/v1/affiliate_commissions?id=eq.${commission_id}&select=*`, { headers: h });
+    const [row] = cr.ok ? await cr.json() : [];
+    if (!row) return res.status(404).json({ error: 'comissao nao encontrada' });
+    if (!row.flagged) return res.status(400).json({ error: 'comissao nao esta flaggada' });
+    if (row.admin_decision) return res.status(400).json({ error: 'ja decidida: ' + row.admin_decision });
+
+    const amount = parseFloat(row.commission_amount || 0);
+    const history = Array.isArray(row.commission_history) ? row.commission_history : [];
+    history.push({
+      at: new Date().toISOString(), source: 'admin_review',
+      decision, note: note || null, amount_at_review: amount,
+    });
+
+    const patchBody = {
+      admin_decision: decision,
+      admin_reviewed_at: new Date().toISOString(),
+      admin_review_note: note || null,
+      commission_history: history,
+    };
+    if (decision === 'approved') {
+      // Desflagga e soma no total_earnings
+      patchBody.flagged = false;
+      const aR = await fetch(`${SU}/rest/v1/affiliates?id=eq.${row.affiliate_id}&select=total_earnings`, { headers: h });
+      const [aff] = aR.ok ? await aR.json() : [];
+      if (aff) {
+        await fetch(`${SU}/rest/v1/affiliates?id=eq.${row.affiliate_id}`, {
+          method: 'PATCH', headers: h,
+          body: JSON.stringify({
+            total_earnings: parseFloat(((parseFloat(aff.total_earnings) || 0) + amount).toFixed(2)),
+            updated_at: new Date().toISOString(),
+          }),
+        });
+      }
+    } else {
+      // Rejeitada — status vira 'rejected', valor zerado
+      patchBody.status = 'rejected';
+      patchBody.commission_amount = 0;
+    }
+
+    await fetch(`${SU}/rest/v1/affiliate_commissions?id=eq.${commission_id}`, {
+      method: 'PATCH', headers: h, body: JSON.stringify(patchBody),
+    });
+    return res.status(200).json({ ok: true, decision, commission_id });
+  } catch (e) {
+    console.error('[review-flagged] erro:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RETRO SCAN — admin roda deteccao retroativa em comissoes antigas pending/paid
+// ─────────────────────────────────────────────────────────────────────────────
+async function retroScan(req, res, { SU, h, ADMIN_SECRET, RESEND_KEY, ADMIN_EMAIL }) {
+  if (req.query?.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+
+  try {
+    // Pega comissoes pending/paid nao-flaggadas
+    const cR = await fetch(
+      `${SU}/rest/v1/affiliate_commissions?status=in.(pending,paid)&flagged=eq.false&select=id,affiliate_id,subscriber_email,plan,commission_amount&limit=500`,
+      { headers: h }
+    );
+    const commissions = cR.ok ? await cR.json() : [];
+
+    // Carrega afiliados envolvidos + fingerprints
+    const affIds = [...new Set(commissions.map(c => c.affiliate_id))];
+    if (affIds.length === 0) return res.status(200).json({ ok: true, checked: 0, flagged: 0 });
+
+    const aR = await fetch(`${SU}/rest/v1/affiliates?id=in.(${affIds.join(',')})&select=id,email`, { headers: h });
+    const affs = aR.ok ? await aR.json() : [];
+    const affById = new Map(affs.map(a => [a.id, a]));
+
+    const fpR = await fetch(`${SU}/rest/v1/affiliate_fingerprints?affiliate_id=in.(${affIds.join(',')})&select=affiliate_id,ip_hash,visitor_fingerprint,cookie_id`, { headers: h });
+    const fps = fpR.ok ? await fpR.json() : [];
+    const fpByAff = new Map();
+    fps.forEach(f => {
+      if (!fpByAff.has(f.affiliate_id)) fpByAff.set(f.affiliate_id, { ips: new Set(), fps: new Set(), cks: new Set() });
+      const s = fpByAff.get(f.affiliate_id);
+      if (f.ip_hash) s.ips.add(f.ip_hash);
+      if (f.visitor_fingerprint) s.fps.add(f.visitor_fingerprint);
+      if (f.cookie_id) s.cks.add(f.cookie_id);
+    });
+
+    const ckR = await fetch(`${SU}/rest/v1/affiliate_clicks?affiliate_id=in.(${affIds.join(',')})&select=affiliate_id,cookie_id,ip_hash,visitor_fingerprint&limit=5000`, { headers: h });
+    const clicks = ckR.ok ? await ckR.json() : [];
+    const clicksByAff = new Map();
+    clicks.forEach(c => {
+      if (!clicksByAff.has(c.affiliate_id)) clicksByAff.set(c.affiliate_id, []);
+      clicksByAff.get(c.affiliate_id).push(c);
+    });
+
+    function normEmail(e) {
+      if (!e) return '';
+      const [local, domain] = e.toLowerCase().split('@');
+      if (!domain) return e.toLowerCase();
+      let l = local.split('+')[0];
+      if (domain === 'gmail.com' || domain === 'googlemail.com') l = l.replace(/\./g, '');
+      return `${l}@${domain}`;
+    }
+
+    let flaggedCount = 0;
+    for (const c of commissions) {
+      const aff = affById.get(c.affiliate_id);
+      if (!aff) continue;
+      const reasons = [];
+      if (normEmail(aff.email) === normEmail(c.subscriber_email)) reasons.push('email_normalizado_igual');
+      const s = fpByAff.get(c.affiliate_id);
+      const affClicks = clicksByAff.get(c.affiliate_id) || [];
+      if (s) {
+        const clickMatch = affClicks.find(ck =>
+          (ck.cookie_id && s.cks.has(ck.cookie_id)) ||
+          (ck.ip_hash && s.ips.has(ck.ip_hash)) ||
+          (ck.visitor_fingerprint && s.fps.has(ck.visitor_fingerprint))
+        );
+        if (clickMatch) {
+          if (clickMatch.cookie_id && s.cks.has(clickMatch.cookie_id)) reasons.push('click_cookie_igual_afiliado');
+          else if (clickMatch.ip_hash && s.ips.has(clickMatch.ip_hash)) reasons.push('click_ip_igual_afiliado');
+          else reasons.push('click_fingerprint_igual_afiliado');
+        }
+      }
+      if (reasons.length > 0) {
+        await fetch(`${SU}/rest/v1/affiliate_commissions?id=eq.${c.id}`, {
+          method: 'PATCH', headers: h,
+          body: JSON.stringify({
+            flagged: true,
+            flagged_reason: reasons.join(',') + ',retroactive',
+            flagged_at: new Date().toISOString(),
+          }),
+        });
+        // Reverte do total_earnings
+        const aR2 = await fetch(`${SU}/rest/v1/affiliates?id=eq.${c.affiliate_id}&select=total_earnings`, { headers: h });
+        const [affCur] = aR2.ok ? await aR2.json() : [];
+        if (affCur) {
+          const amount = parseFloat(c.commission_amount || 0);
+          await fetch(`${SU}/rest/v1/affiliates?id=eq.${c.affiliate_id}`, {
+            method: 'PATCH', headers: h,
+            body: JSON.stringify({
+              total_earnings: parseFloat(Math.max(0, (parseFloat(affCur.total_earnings) || 0) - amount).toFixed(2)),
+              updated_at: new Date().toISOString(),
+            }),
+          });
+        }
+        flaggedCount++;
+      }
+    }
+
+    if (flaggedCount > 0) {
+      await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `Retro-scan flaggou ${flaggedCount} comissao(oes)`, [
+        ['Comissoes checadas', String(commissions.length)],
+        ['Flaggadas', String(flaggedCount)],
+        ['Acao', 'Revise em list-flagged / Supabase'],
+      ]);
+    }
+    return res.status(200).json({ ok: true, checked: commissions.length, flagged: flaggedCount });
+  } catch (e) {
+    console.error('[retro-scan] erro:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROCESS QUEUE — consome commission_patch_queue

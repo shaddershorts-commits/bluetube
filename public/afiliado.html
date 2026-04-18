@@ -547,6 +547,16 @@ async function init(_isRetry){
       try{renderDash(d);}catch(re){console.error('renderDash error:',re);show('landingSection');return;}
       show('dashboardSection');
       startPoll();
+      // Antifraude — registra fingerprint do afiliado (IP/UA/cookie). Usado
+      // pra detectar auto-indicacao se o mesmo device depois clicar no link
+      // proprio e se cadastrar com outra conta.
+      try{
+        const cid=localStorage.getItem('bt_cookie_id')||null;
+        fetch('/api/affiliate-robustness?action=track-fingerprint',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({token,cookie_id:cid})
+        }).catch(()=>{});
+      }catch(e){}
     }else{
       console.log('Dashboard response:', r.status, d.error);
       show('landingSection');
@@ -681,7 +691,8 @@ function renderDash(data){
   if(conversions?.length){
     const rows=conversions.map(c=>{
       const comm=commByKey[`${c.converted_email}|${c.plan}`];
-      let pagoCell='—', commCell='—', cupomBadge='';
+      let pagoCell='—', commCell='—', cupomBadge='', statusBadge='';
+      let rowStyle='';
       if(comm){
         const planAmt=parseFloat(comm.plan_amount||0);
         const commAmt=parseFloat(comm.commission_amount||0);
@@ -693,8 +704,22 @@ function renderDash(data){
         if(planAmt>0) pagoCell=fm(planAmt);
         if(commAmt>0) commCell=fm(commAmt);
         if(teveCupom) cupomBadge=` <span style="font-size:9px;background:rgba(251,191,36,.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-weight:600" title="Cupom de desconto aplicado — comissao calculada sobre valor pago">🎟️ cupom</span>`;
+        // Badges de status: flaggada em analise, reembolsada, ou rejeitada.
+        if(comm.flagged && !comm.admin_decision){
+          statusBadge=` <span style="font-size:9px;background:rgba(96,165,250,.18);color:#60a5fa;padding:2px 6px;border-radius:4px;font-weight:600" title="Essa comissao esta em revisao — nao conta no saldo ate ser validada">🔍 em análise</span>`;
+          commCell=`<span style="color:#60a5fa">${commCell}</span>`;
+          rowStyle='opacity:.7';
+        } else if(comm.status==='refunded'){
+          statusBadge=` <span style="font-size:9px;background:rgba(239,68,68,.18);color:#fca5a5;padding:2px 6px;border-radius:4px;font-weight:600" title="Assinante pediu reembolso — comissao revertida">↩ reembolsada</span>`;
+          commCell=`<span style="color:#fca5a5;text-decoration:line-through">${commCell}</span>`;
+          rowStyle='opacity:.55';
+        } else if(comm.admin_decision==='rejected'){
+          statusBadge=` <span style="font-size:9px;background:rgba(239,68,68,.18);color:#fca5a5;padding:2px 6px;border-radius:4px;font-weight:600">✕ rejeitada</span>`;
+          commCell=`<span style="color:#fca5a5;text-decoration:line-through">${commCell}</span>`;
+          rowStyle='opacity:.55';
+        }
       }
-      return `<tr><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span>${cupomBadge}</td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">${pagoCell}</td><td style="font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600">${commCell}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`;
+      return `<tr style="${rowStyle}"><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span>${cupomBadge}${statusBadge}</td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">${pagoCell}</td><td style="font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600">${commCell}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`;
     }).join('');
     cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Pago</th><th>Comissão</th><th>Data</th></tr></thead><tbody>${rows}</tbody></table><div style="font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic">💡 Quando o assinante usa cupom, a comissão é calculada sobre o valor pago (e não sobre o preço cheio).</div>`;
   }

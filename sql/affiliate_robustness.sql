@@ -42,7 +42,42 @@ CREATE TABLE IF NOT EXISTS commission_patch_queue (
 CREATE INDEX IF NOT EXISTS idx_cpq_status_created
   ON commission_patch_queue(status, created_at);
 
--- 3) LOG de reconciliacao -----------------------------------------------------
+-- 3) ANTIFRAUDE — self-referral detection ------------------------------------
+-- Colunas em affiliate_commissions pra flag + motivo + trilha de revisao admin
+ALTER TABLE affiliate_commissions
+  ADD COLUMN IF NOT EXISTS flagged boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS flagged_reason text,
+  ADD COLUMN IF NOT EXISTS flagged_at timestamptz,
+  ADD COLUMN IF NOT EXISTS admin_reviewed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS admin_review_note text,
+  ADD COLUMN IF NOT EXISTS admin_decision text; -- 'approved' | 'rejected'
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_flagged
+  ON affiliate_commissions(flagged) WHERE flagged = true;
+
+-- Tabela de fingerprints do afiliado — capturada quando o afiliado visita o
+-- dashboard. Usada pra cruzar com affiliate_clicks e detectar auto-indicacao.
+CREATE TABLE IF NOT EXISTS affiliate_fingerprints (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  affiliate_id uuid NOT NULL,
+  ip_hash text,
+  visitor_fingerprint text,
+  cookie_id text,
+  ua_snippet text,
+  first_seen timestamptz DEFAULT now(),
+  last_seen timestamptz DEFAULT now(),
+  seen_count int DEFAULT 1,
+  UNIQUE(affiliate_id, ip_hash, visitor_fingerprint, cookie_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aff_fp_affiliate
+  ON affiliate_fingerprints(affiliate_id);
+CREATE INDEX IF NOT EXISTS idx_aff_fp_cookie
+  ON affiliate_fingerprints(cookie_id) WHERE cookie_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_aff_fp_ip
+  ON affiliate_fingerprints(ip_hash) WHERE ip_hash IS NOT NULL;
+
+-- 4) LOG de reconciliacao -----------------------------------------------------
 -- Registra execucoes do cron de reconciliacao diaria pra trail de auditoria.
 CREATE TABLE IF NOT EXISTS affiliate_reconcile_log (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
