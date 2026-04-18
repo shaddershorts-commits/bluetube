@@ -435,11 +435,15 @@ async function startDownload(){
   startProgress();
 
   try{
-    // Route Reddit/Facebook/Twitter to dedicated endpoint, YouTube/TikTok/Instagram to auth
+    // Route Reddit/Facebook/Twitter to dedicated endpoint, YouTube/TikTok/Instagram to auth.
+    // Qualquer outra plataforma (Vimeo, Twitch, Streamable, etc) vai pro generic.
     const isReddit = url.includes('reddit.com') || url.includes('redd.it');
     const isFacebook = url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com');
     const isTwitter = url.includes('twitter.com') || url.includes('x.com');
     const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
+    const isTiktok = url.includes('tiktok.com') || url.includes('tikwm') || url.includes('muscdn');
+    const isInstagram = url.includes('instagram.com') || url.includes('cdninstagram');
+    const isMainPlatform = isReddit || isFacebook || isTwitter || isYoutube || isTiktok || isInstagram;
 
     // Qualidade selecionada (só aplica pra YouTube — outros providers ignoram)
     const qualityPref = window._qualitySelectValue ? window._qualitySelectValue() : 'auto';
@@ -447,7 +451,9 @@ async function startDownload(){
 
     const endpoint = (isReddit || isFacebook || isTwitter)
       ? `/api/baixa-social?url=${encodeURIComponent(url)}`
-      : `/api/auth?action=download&url=${encodeURIComponent(url)}${qParam}`;
+      : isMainPlatform
+      ? `/api/auth?action=download&url=${encodeURIComponent(url)}${qParam}`
+      : `/api/baixa-generic?url=${encodeURIComponent(url)}`;
 
     // HQ demora mais (muxa no servidor) — atualiza feedback
     if (qParam) {
@@ -468,9 +474,22 @@ async function startDownload(){
       data = await r.json();
     }
 
-    finishProgress(r.ok && data.url);
+    finishProgress(r.ok && (data.url || data.unavailable));
+
+    // Caso especial: backend disse que a plataforma esta "chegando em breve"
+    // (unavailable:true) — mostra mensagem amigavel em vez de erro
+    if (data.unavailable) {
+      showComingSoon(data);
+      return;
+    }
 
     if(!r.ok || !data.url){
+      // Se for plataforma nao principal e backend deu erro tecnico, mostra
+      // mensagem amigavel em vez de "nao foi possivel extrair"
+      if (!isMainPlatform) {
+        showComingSoon({ platform: detectSource(url).name, host: new URL(url).hostname });
+        return;
+      }
       showError(data.error || 'Não foi possível extrair o vídeo. Verifique se o link é público.');
       return;
     }
@@ -636,8 +655,34 @@ async function triggerDownload(url, title, platform){
   }
 }
 
+function showComingSoon(data){
+  const box = document.getElementById('errorBox');
+  const plat = (data.platform || 'essa plataforma').charAt(0).toUpperCase() + (data.platform || 'essa plataforma').slice(1);
+  box.innerHTML = `
+    <div style="font-size:30px;margin-bottom:8px">🚧</div>
+    <div style="font-weight:700;color:#00aaff;font-size:14px;margin-bottom:6px">${plat} chegando em breve</div>
+    <div style="color:rgba(232,244,255,.7);font-size:12px;line-height:1.5;margin-bottom:10px">
+      ${data.message || 'Ainda estamos finalizando o suporte a essa plataforma. Registramos seu pedido — assim que liberarmos, você será um dos primeiros a usar.'}
+    </div>
+    <div style="font-size:11px;color:rgba(232,244,255,.5);font-family:var(--mono)">
+      Enquanto isso: YouTube · TikTok · Instagram · Facebook · Twitter/X · Reddit
+    </div>
+  `;
+  box.style.background = 'rgba(0,170,255,.06)';
+  box.style.borderColor = 'rgba(0,170,255,.25)';
+  box.style.color = '#e8f4ff';
+  box.style.display = 'block';
+  box.style.textAlign = 'center';
+  document.getElementById('resultCard').style.display = 'none';
+}
+
 function showError(msg){
   const box = document.getElementById('errorBox');
+  // Reseta estilo caso showComingSoon tenha alterado
+  box.style.background = '';
+  box.style.borderColor = '';
+  box.style.color = '';
+  box.style.textAlign = '';
   box.textContent = '⚠ ' + msg;
   box.style.display = 'block';
   document.getElementById('resultCard').style.display = 'none';
