@@ -31,15 +31,16 @@ if ('serviceWorker' in navigator) {
 (function(){
   // ── TOOLBAR ─────────────────────────────────────────────────────────────────
   const TOOLS = [
-    { id:'roteiro',  icon:'📝', label:'Roteiro',     href:'/' },
-    { id:'voice',    icon:'🎙️', label:'BlueVoice',   href:'/blueVoice' },
-    { id:'score',    icon:'📊', label:'BlueScore',   href:'/blueScore' },
-    { id:'lens',     icon:'🔍', label:'BlueLens',    href:'/blueLens' },
-    { id:'virais',   icon:'🔥', label:'Virais',      href:'/virais' },
-    { id:'baixa',    icon:'⬇️', label:'BaixaBlue',   href:'/baixaBlue' },
-    { id:'editor',   icon:'✨', label:'BlueEditor',  href:'/blueEditor' },
-    { id:'clean',    icon:'🧹', label:'BlueClean',   href:'/blueClean' },
-    { id:'blue',     icon:'🎬', label:'Blue',        href:'/blue' },
+    { id:'roteiro',  icon:'📝', label:'Roteiro',       href:'/' },
+    { id:'voice',    icon:'🎙️', label:'BlueVoice',     href:'/blueVoice' },
+    { id:'score',    icon:'📊', label:'BlueScore',     href:'/blueScore' },
+    { id:'lens',     icon:'🔍', label:'BlueLens',      href:'/blueLens' },
+    { id:'virais',   icon:'🔥', label:'Virais',        href:'/virais' },
+    { id:'baixa',    icon:'⬇️', label:'BaixaBlue',     href:'/baixaBlue' },
+    { id:'editor',   icon:'✨', label:'BlueEditor',    href:'/blueEditor' },
+    { id:'clean',    icon:'🧹', label:'BlueClean',     href:'/blueClean' },
+    { id:'tendencias', icon:'🚀', label:'BlueTendências', href:'/bluetendencias' },
+    { id:'blue',     icon:'🎬', label:'Blue',          href:'/blue' },
   ];
 
   const path = window.location.pathname;
@@ -52,6 +53,7 @@ if ('serviceWorker' in navigator) {
     '/baixaBlue.html':'baixa', '/baixaBlue':'baixa',
     '/blueEditor.html':'editor', '/blueEditor':'editor',
     '/blueClean.html':'clean', '/blueClean':'clean',
+    '/bluetendencias.html':'tendencias', '/bluetendencias':'tendencias',
     '/blue.html':'blue', '/blue':'blue',
   };
   const activeTool = PAGE_MAP[path] || '';
