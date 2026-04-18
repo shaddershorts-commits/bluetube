@@ -84,15 +84,14 @@ async function requireMaster(ctx, token) {
   const user = await getUser(ctx, token);
   if (!user?.email) return { ok: false, status: 401, error: 'Token invalido' };
   const r = await fetch(
-    `${ctx.SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,name&limit=1`,
+    `${ctx.SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual,name&limit=1`,
     { headers: ctx.h }
   );
   const [sub] = r.ok ? await r.json() : [];
   const plan = sub?.plan || 'free';
-  const expired = sub?.plan_expires_at && new Date(sub.plan_expires_at) < new Date();
-  if (plan !== 'master' || expired) {
-    return { ok: false, status: 403, error: 'master_required', plan };
-  }
+  // Master vale se: plan=master E (sem data expiração OU data no futuro OU is_manual=true)
+  const planOk = plan === 'master' && (!sub?.plan_expires_at || new Date(sub.plan_expires_at) > new Date() || sub?.is_manual);
+  if (!planOk) return { ok: false, status: 403, error: 'master_required', plan };
   const nome = primeiroNome(user.email, { ...(user.user_metadata || {}), full_name: sub?.name });
   return { ok: true, user, plan, nome };
 }
