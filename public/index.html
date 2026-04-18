@@ -697,7 +697,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <input class="auth-input" id="loginPassword" type="password" placeholder="Senha" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="current-password" name="password"/>
         <button type="button" onclick="togglePwd('loginPassword',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
-      <div style="text-align:right;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px">
+        <label style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none">
+          <input type="checkbox" id="loginRemember" checked style="width:14px;height:14px;accent-color:var(--neon);cursor:pointer;margin:0">
+          <span>Lembrar de mim</span>
+        </label>
         <button type="button" onclick="showForgotPassword()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline">Esqueci minha senha</button>
       </div>
       <button type="submit" class="auth-submit">Entrar →</button>
@@ -1858,8 +1862,16 @@ async function handleEmailLogin(){
     // Email not confirmed → show OTP
     if(d.needsOTP){setAuthMsg('','');showOTPForm(email);return;}
     if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
-    // Save credentials for auto re-login when token expires
-    if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,password);
+    // Lembrar de mim: salva credenciais pra auto-relogin. Checkbox default=true.
+    const remember = document.getElementById('loginRemember')?.checked !== false;
+    if (remember) {
+      localStorage.setItem('bt_remember_me', '1');
+      if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,password);
+    } else {
+      // Usuario explicitamente desmarcou — limpa qualquer cred antiga
+      localStorage.setItem('bt_remember_me', '0');
+      localStorage.removeItem('bt_saved_cred');
+    }
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
       closeAuthModal();
@@ -2855,24 +2867,28 @@ async function checkSession(_isRetry){
             }
           } catch(e) {}
         }
-        // Refresh falhou — tenta credenciais salvas (auto re-login)
-        try {
-          const saved = localStorage.getItem('bt_saved_cred');
-          if (saved) {
-            const { e: em, p: pw } = JSON.parse(atob(saved));
-            if (em && pw) {
-              const sr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email:em,password:pw})});
-              if (sr.ok) {
-                const sd = await sr.json();
-                if (sd.session?.access_token) {
-                  localStorage.setItem('bt_token', sd.session.access_token);
-                  if (sd.session.refresh_token) localStorage.setItem('bt_refresh_token', sd.session.refresh_token);
-                  return checkSession(true); // retry com token novo
+        // Refresh falhou — tenta credenciais salvas, exceto se o usuario
+        // explicitamente desmarcou "Lembrar de mim" (bt_remember_me = '0').
+        // Default (undefined ou '1') = tenta auto-relogin.
+        if (localStorage.getItem('bt_remember_me') !== '0') {
+          try {
+            const saved = localStorage.getItem('bt_saved_cred');
+            if (saved) {
+              const { e: em, p: pw } = JSON.parse(atob(saved));
+              if (em && pw) {
+                const sr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email:em,password:pw})});
+                if (sr.ok) {
+                  const sd = await sr.json();
+                  if (sd.session?.access_token) {
+                    localStorage.setItem('bt_token', sd.session.access_token);
+                    if (sd.session.refresh_token) localStorage.setItem('bt_refresh_token', sd.session.refresh_token);
+                    return checkSession(true); // retry com token novo
+                  }
                 }
               }
             }
-          }
-        } catch(e) {}
+          } catch(e) {}
+        }
       }
       // Todas as tentativas falharam — limpa tudo
       localStorage.removeItem('bt_token');
