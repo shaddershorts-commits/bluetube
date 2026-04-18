@@ -146,14 +146,40 @@ module.exports = async function handler(req, res) {
       const pathMatch = cleanUrl.match(/reddit\.com(\/r\/[^?#]+)/i);
       const postPath = pathMatch ? pathMatch[1] : cleanUrl.replace(/^https?:\/\/[^/]+/, '');
 
-      // Fontes pra tentar em ordem — old.reddit tem API mais estável e menos
-      // rate-limited que www. api.reddit é oauth-free e deprecated mas ainda responde.
+      // Headers: User-Agent de browser real (Reddit bloqueia UAs que parecem bot).
+      // Adiciona cookie null pra evitar redirect pro login mobile.
       const redditHeaders = {
-        'User-Agent': 'Mozilla/5.0 (compatible; BaixaBlue/1.0; +https://bluetubeviral.com)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/html;q=0.9',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,pt;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.reddit.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
         'Cache-Control': 'no-cache',
+        'DNT': '1',
       };
+
+      // Helper com retry automatico em 429/403 (rate limit Reddit)
+      async function fetchRedditRetry(url, maxRetries = 2) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            const r = await fetch(url, { headers: redditHeaders, redirect: 'follow' });
+            if (r.status === 429 || r.status === 403) {
+              if (attempt < maxRetries) {
+                await new Promise(rs => setTimeout(rs, 700 * (attempt + 1))); // backoff 700, 1400ms
+                continue;
+              }
+            }
+            return r;
+          } catch (e) {
+            if (attempt === maxRetries) throw e;
+            await new Promise(rs => setTimeout(rs, 500));
+          }
+        }
+      }
+
       const sources = [
         `https://old.reddit.com${postPath}.json?raw_json=1`,
         `https://www.reddit.com${postPath}.json?raw_json=1`,
@@ -164,7 +190,7 @@ module.exports = async function handler(req, res) {
       let lastDebug = '';
       for (const src of sources) {
         try {
-          const r = await fetch(src, { headers: redditHeaders, redirect: 'follow' });
+          const r = await fetchRedditRetry(src);
           lastDebug = `${src} → ${r.status}`;
           if (!r.ok) { console.log('[reddit]', lastDebug); continue; }
           const data = await r.json();
@@ -184,7 +210,7 @@ module.exports = async function handler(req, res) {
       if (!post) {
         for (const host of ['old.reddit.com', 'www.reddit.com']) {
           try {
-            const r = await fetch(`https://${host}${postPath}`, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, redirect: 'follow' });
+            const r = await fetchRedditRetry(`https://${host}${postPath}`);
             if (!r.ok) continue;
             const html = await r.text();
             const fallback = html.match(/"fallback_url"\s*:\s*"([^"]+)"/);
@@ -195,6 +221,29 @@ module.exports = async function handler(req, res) {
               return res.status(200).json({ url: proxyWrap(redUrl, 'reddit', hTitle), title: hTitle, platform: 'reddit' });
             }
           } catch(e) {}
+        }
+      }
+
+      // Fallback extremo: vxreddit / rxddit (mirror services que bypassam blocks)
+      // Sao proxies publicos que servem o conteudo do Reddit em formato simplificado
+      if (!post) {
+        const mirrors = [
+          `https://rxddit.com${postPath}.json`,
+          `https://www.redditmedia.com${postPath}.json?raw_json=1`,
+        ];
+        for (const src of mirrors) {
+          try {
+            const r = await fetch(src, { headers: redditHeaders, redirect: 'follow' });
+            if (!r.ok) { lastDebug = `mirror ${src} → ${r.status}`; continue; }
+            const data = await r.json();
+            const candidate = Array.isArray(data)
+              ? data[0]?.data?.children?.[0]?.data
+              : data?.data?.children?.[0]?.data || data?.data || data;
+            if (candidate && (candidate.title || candidate.media || candidate.url)) {
+              post = candidate;
+              break;
+            }
+          } catch (e) { lastDebug = `mirror ${src} → ${e.message}`; }
         }
       }
 
@@ -224,9 +273,11 @@ module.exports = async function handler(req, res) {
       }
 
       console.log('[reddit] Todas as fontes falharam. Último:', lastDebug);
+      // Mensagem amigavel + debug discreto no response pra diagnostico via network tab
       return res.status(502).json({
         error: 'Não foi possível extrair este post do Reddit. Verifique se o link é público (não NSFW/privado) e tente novamente.',
         platform: 'reddit',
+        _debug: lastDebug,
         debug: lastDebug,
       });
     }
