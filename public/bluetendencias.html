@@ -620,20 +620,11 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
   </div>
 </div>
 
-<!-- CENA 11: RESULTADO ANÁLISE MEU VÍDEO -->
+<!-- CENA 11: RESULTADO ANÁLISE MEU VÍDEO (etapas sequenciais) -->
 <div class="cena" id="cena11">
   <div class="atos-wrap">
-    <div id="mvTierBadge"></div>
-    <div id="mvAbertura" class="ato-blublu-intro" style="margin-bottom:24px"></div>
-    <div id="mvDiagnostico" style="background:var(--card);border:1px solid var(--border-blublu);border-radius:16px;padding:22px 26px;margin-bottom:22px;text-align:left"></div>
-    <div id="mvPontos" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px"></div>
-    <div id="mvRecomendacoes" style="display:flex;flex-direction:column;gap:12px;margin-bottom:22px"></div>
-    <div id="mvReflexao" class="ato-blublu-outro"></div>
-    <div class="ato-nav" style="display:flex;gap:10px;justify-content:center;margin-top:28px;flex-wrap:wrap">
-      <button class="ato-nav-btn" onclick="salvarAnalise()">💾 Salvar análise</button>
-      <button class="ato-nav-btn secondary" onclick="irCena('2c');$('meuVideoInput').value=''">🎬 Analisar outro</button>
-      <button class="ato-nav-btn secondary" onclick="irCena('1')">🏠 Início</button>
-    </div>
+    <div class="ato-indicador" id="mvIndicador"></div>
+    <div id="mvEtapaWrap"></div>
   </div>
 </div>
 
@@ -1002,45 +993,150 @@ async function dissectarMeuVideo() {
 
 function renderMeuVideo(d) {
   irCena('11');
+  state.mvData = d;
+  state.mvEtapa = 0;
+  mostrarEtapaMeuVideo();
+}
+
+function mostrarEtapaMeuVideo() {
+  const d = state.mvData; if (!d) return;
   const a = d.analise;
   const tier = d.tier;
-  const tierConfig = {
-    campeao: { emoji: '🔥', label: 'VOCÊ EXPLODIU', cor: '#10b981', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 1M+ em 1 dia equivalente` },
-    bom:     { emoji: '✅', label: 'PERFORMANCE BOA', cor: 'var(--neon)', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 150k-1M em 1 dia` },
-    medio:   { emoji: '⚖️', label: 'MÉDIA',          cor: '#fbbf24',     sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 40-150k em 1 dia` },
-    ruim:    { emoji: '📉', label: 'ABAIXO DO ESPERADO', cor: '#ef4444', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · menos de 40k em 1 dia` },
-  };
-  const tc = tierConfig[tier] || tierConfig.medio;
-  $('mvTierBadge').innerHTML = `
-    <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(59,130,246,.08);border:1px solid ${tc.cor};color:${tc.cor};padding:10px 20px;border-radius:28px;font-family:var(--mono);font-size:12px;font-weight:800;letter-spacing:2px;margin-bottom:20px">
-      <span style="font-size:20px">${tc.emoji}</span>
-      <div style="text-align:left"><div>${tc.label}</div><div style="font-size:10px;font-weight:500;color:var(--text-dim);letter-spacing:.5px;text-transform:none;margin-top:2px">${tc.sub}</div></div>
-    </div>`;
-  $('mvAbertura').textContent = a.abertura_blublu || '';
-  $('mvDiagnostico').innerHTML = `
-    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:10px">📊 DIAGNÓSTICO</div>
-    <div style="font-size:20px;font-weight:800;margin-bottom:10px">${esc(a.diagnostico?.titulo || '')}</div>
-    <div style="font-size:15px;line-height:1.55;color:var(--text-sec)">${esc(a.diagnostico?.resumo || '')}</div>
-  `;
-  const pontosHtml = (titulo, lista, cor) => `
-    <div style="background:var(--card);border:1px solid ${cor};border-radius:14px;padding:18px 20px;text-align:left">
-      <div style="font-size:13px;font-weight:800;color:${cor};margin-bottom:10px">${titulo}</div>
-      ${(lista || []).map(p => `<div style="font-size:13px;line-height:1.5;margin-bottom:8px;color:var(--text-sec);padding-left:12px;position:relative">
-        <span style="position:absolute;left:0;color:${cor}">›</span>${esc(p)}</div>`).join('')}
-    </div>`;
-  $('mvPontos').innerHTML =
-    pontosHtml('✓ O QUE FUNCIONOU', a.pontos_fortes, '#10b981') +
-    pontosHtml('✗ PONTOS DE ATENÇÃO', a.pontos_fracos, 'rgba(251,191,36,.5)');
-  $('mvRecomendacoes').innerHTML = `
-    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:4px;text-align:left">🎯 RECOMENDAÇÕES</div>
-    ${(a.recomendacoes || []).map((r, i) => `
-      <div class="ato-sug" style="animation-delay:${0.3 + i*0.4}s">
-        <div class="ato-sug-titulo">${i+1}. ${esc(r.titulo || '')}</div>
-        <div class="ato-sug-desc">${esc(r.descricao || '')}</div>
-        ${r.exemplo_pratico ? `<div class="ato-sug-ex">💡 ${esc(r.exemplo_pratico)}</div>` : ''}
-      </div>
-    `).join('')}`;
-  $('mvReflexao').textContent = a.reflexao_final || '';
+  const tc = {
+    campeao: { emoji: '🔥', label: 'VOCÊ EXPLODIU', cor: '#10b981' },
+    bom:     { emoji: '✅', label: 'PERFORMANCE BOA', cor: 'var(--neon)' },
+    medio:   { emoji: '⚖️', label: 'MÉDIA', cor: '#fbbf24' },
+    ruim:    { emoji: '📉', label: 'ABAIXO DO ESPERADO', cor: '#ef4444' },
+  }[tier] || { emoji: '⚖️', label: 'ANÁLISE', cor: '#fbbf24' };
+
+  const totalEtapas = 6;
+  // Indicador de progresso
+  $('mvIndicador').innerHTML = Array.from({length: totalEtapas}, (_, i) => {
+    const cls = i < state.mvEtapa ? 'done' : (i === state.mvEtapa ? 'active' : '');
+    return `<div class="ato-pill ${cls}"></div>`;
+  }).join('');
+
+  const wrap = $('mvEtapaWrap');
+  const next = `<div class="ato-nav" style="display:flex;gap:10px;justify-content:center;margin-top:32px"><button class="ato-nav-btn" onclick="proximaEtapaMeuVideo()">Continuar →</button></div>`;
+
+  switch (state.mvEtapa) {
+    case 0: // Tier badge + abertura
+      wrap.innerHTML = `
+        <div style="text-align:center;padding:20px 0">
+          <div style="display:inline-flex;align-items:center;gap:14px;background:rgba(59,130,246,.08);border:2px solid ${tc.cor};color:${tc.cor};padding:20px 32px;border-radius:32px;font-family:var(--mono);font-size:16px;font-weight:800;letter-spacing:3px;margin-bottom:28px;animation:fadeInUp .8s ease-out">
+            <span style="font-size:32px">${tc.emoji}</span>${tc.label}
+          </div>
+          <div style="font-size:clamp(32px,5vw,56px);font-weight:800;letter-spacing:-2px;margin:20px 0;background:linear-gradient(135deg,#fff,var(--blublu2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--text-dim);margin-bottom:36px">views em 1 dia equivalente · ${d.performance.dias_desde_post}d desde postagem</div>
+          <div style="max-width:540px;margin:0 auto;font-style:italic;color:var(--blublu2);font-size:18px;line-height:1.5;opacity:0;animation:fadeInUp .8s ease-out .6s forwards">${esc(a.abertura_blublu || '')}</div>
+        </div>${next}`;
+      break;
+
+    case 1: // Diagnóstico
+      wrap.innerHTML = `
+        <div class="ato-numero">DIAGNÓSTICO</div>
+        <h1 class="ato-titulo">${esc(a.diagnostico?.titulo || 'Vamos analisar')}</h1>
+        <div class="ato-conteudo" style="animation-delay:.3s">${esc(a.diagnostico?.resumo || '')}</div>${next}`;
+      break;
+
+    case 2: // O que funcionou
+      wrap.innerHTML = `
+        <div class="ato-numero" style="color:#10b981">O QUE FUNCIONOU</div>
+        <h1 class="ato-titulo" style="background:linear-gradient(135deg,#fff,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">✓ Pontos fortes</h1>
+        <div class="ato-highlights" id="mvFortesList"></div>${next}`;
+      // Revela pontos 1 por 1
+      const el1 = $('mvFortesList');
+      (a.pontos_fortes || []).forEach((p, i) => {
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = 'ato-highlight';
+          div.style.borderLeftColor = '#10b981';
+          div.style.opacity = '0'; div.style.transform = 'translateX(-10px)';
+          div.textContent = p;
+          el1?.appendChild(div);
+          requestAnimationFrame(() => {
+            div.style.transition = 'all .5s ease-out';
+            div.style.opacity = '1'; div.style.transform = 'translateX(0)';
+          });
+        }, i * 500);
+      });
+      break;
+
+    case 3: // Pontos fracos
+      wrap.innerHTML = `
+        <div class="ato-numero" style="color:#fbbf24">PONTOS DE ATENÇÃO</div>
+        <h1 class="ato-titulo" style="background:linear-gradient(135deg,#fff,#fbbf24);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">⚠ O que melhorar</h1>
+        <div class="ato-highlights" id="mvFracosList"></div>${next}`;
+      const el2 = $('mvFracosList');
+      (a.pontos_fracos || []).forEach((p, i) => {
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = 'ato-highlight';
+          div.style.borderLeftColor = '#fbbf24';
+          div.style.opacity = '0'; div.style.transform = 'translateX(-10px)';
+          div.textContent = p;
+          el2?.appendChild(div);
+          requestAnimationFrame(() => {
+            div.style.transition = 'all .5s ease-out';
+            div.style.opacity = '1'; div.style.transform = 'translateX(0)';
+          });
+        }, i * 500);
+      });
+      break;
+
+    case 4: // Recomendações (1 por vez)
+      wrap.innerHTML = `
+        <div class="ato-numero" style="color:var(--gold)">PLANO DE AÇÃO</div>
+        <h1 class="ato-titulo">🎯 O que fazer agora</h1>
+        <div class="ato-sugestoes" id="mvRecsList" style="display:flex;flex-direction:column;gap:14px"></div>${next}`;
+      const el3 = $('mvRecsList');
+      (a.recomendacoes || []).forEach((r, i) => {
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = 'ato-sug';
+          div.style.opacity = '0'; div.style.transform = 'translateY(12px)';
+          div.innerHTML = `
+            <div class="ato-sug-titulo">${i+1}. ${esc(r.titulo || '')}</div>
+            <div class="ato-sug-desc">${esc(r.descricao || '')}</div>
+            ${r.exemplo_pratico ? `<div class="ato-sug-ex">💡 ${esc(r.exemplo_pratico)}</div>` : ''}`;
+          el3?.appendChild(div);
+          requestAnimationFrame(() => {
+            div.style.transition = 'all .6s ease-out';
+            div.style.opacity = '1'; div.style.transform = 'translateY(0)';
+          });
+        }, i * 700);
+      });
+      break;
+
+    case 5: // Veredicto final adaptado ao tier
+      const veredictos = {
+        campeao: { titulo: 'PARABÉNS. VOCÊ TÁ NO TOP 1%.', cor: '#10b981', sub: 'A força é forte com você.' },
+        bom:     { titulo: 'VOCÊ TÁ NO CAMINHO CERTO.', cor: 'var(--neon)', sub: 'Só falta o próximo degrau.' },
+        medio:   { titulo: 'POTENCIAL ALTO. EXECUÇÃO MÉDIA.', cor: '#fbbf24', sub: 'O talento existe. O grind precisa aumentar.' },
+        ruim:    { titulo: 'COMEÇA DE NOVO, PADAWAN.', cor: '#ef4444', sub: 'Todo jedi já caiu. Hora do treino.' },
+      };
+      const v = veredictos[tier] || veredictos.medio;
+      wrap.innerHTML = `
+        <div style="text-align:center;padding:20px 0">
+          <div class="ato-numero" style="color:${v.cor}">VEREDICTO</div>
+          <h1 class="ato-titulo" style="background:linear-gradient(135deg,#fff,${v.cor});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:fadeInUp .8s ease-out">${v.titulo}</h1>
+          <div style="font-size:16px;color:var(--text-dim);font-family:var(--mono);letter-spacing:.5px;margin:16px 0 32px;opacity:0;animation:fadeInUp .6s ease-out .6s forwards">${v.sub}</div>
+          <div style="max-width:540px;margin:0 auto;font-style:italic;color:var(--blublu2);font-size:17px;line-height:1.55;padding:24px 28px;background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:16px;opacity:0;animation:fadeInUp .6s ease-out 1.2s forwards">${esc(a.reflexao_final || '')}</div>
+        </div>
+        <div class="ato-nav" style="display:flex;gap:10px;justify-content:center;margin-top:32px;flex-wrap:wrap;opacity:0;animation:fadeInUp .6s ease-out 2s forwards">
+          <button class="ato-nav-btn" onclick="salvarAnalise()">💾 Salvar análise</button>
+          <button class="ato-nav-btn secondary" onclick="state.meuVideoMode=false;irCena('2c');$('meuVideoInput').value=''">🎬 Analisar outro</button>
+          <button class="ato-nav-btn secondary" onclick="irCena('1')">🏠 Início</button>
+        </div>`;
+      break;
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function proximaEtapaMeuVideo() {
+  state.mvEtapa++;
+  if (state.mvEtapa >= 6) state.mvEtapa = 5;
+  mostrarEtapaMeuVideo();
 }
 
 // ═══════════ TYPEWRITER ═══════════
@@ -1408,27 +1504,34 @@ function animarViews(target, dur) {
 }
 
 function viewsVivo(base) {
-  // "Vivo": incrementa com frequencia pra parecer contador em tempo real
-  if (state.viewsVivo) clearInterval(state.viewsVivo);
-  const v = state.video;
-  // Velocidade real por segundo do video (ou fallback baseado em views totais)
-  const velPorSeg = Math.max(0.5, (v.velocidade_views_24h || v.views/86400 || 0) / 3600);
+  // "Vivo": contagem IRREGULAR (1, 1, 9, 3, 1, 1, 40, 5...) — parece real
+  if (state.viewsVivo) { clearInterval(state.viewsVivo); clearTimeout(state.viewsVivo); }
   let extra = 0;
-  // Intervalo curto (900ms-1.4s) com incrementos realistas pra parecer vivo
-  state.viewsVivo = setInterval(() => {
+  // Padroes de incremento ponderados (pesos em %)
+  // 50% = +1, 20% = +2 a +4, 20% = +5 a +15, 8% = +20 a +50, 2% = +40 a +120
+  const proximoInc = () => {
+    const r = Math.random() * 100;
+    if (r < 50) return 1;
+    if (r < 70) return Math.floor(2 + Math.random() * 3);
+    if (r < 90) return Math.floor(5 + Math.random() * 11);
+    if (r < 98) return Math.floor(20 + Math.random() * 31);
+    return Math.floor(40 + Math.random() * 81);
+  };
+  const atualizar = () => {
     if (!$('cena4').classList.contains('active')) return;
-    // Incremento com jitter (parece mais organico)
-    const inc = Math.max(1, Math.floor(velPorSeg * (0.8 + Math.random()*2.4)));
-    extra += inc;
+    extra += proximoInc();
     const el = $('dashViews');
     if (el) {
       el.textContent = fmInt(base + extra);
-      // Pulso sutil a cada update
       el.style.transition = 'text-shadow .2s';
       el.style.textShadow = '0 0 18px rgba(59,130,246,.55)';
-      setTimeout(()=>{ if(el) el.style.textShadow=''; }, 300);
+      setTimeout(()=>{ if(el) el.style.textShadow=''; }, 220);
     }
-  }, 900 + Math.random() * 500);
+    // Intervalo tambem irregular: 400ms a 1800ms
+    const proxDelay = 400 + Math.random() * 1400;
+    state.viewsVivo = setTimeout(atualizar, proxDelay);
+  };
+  state.viewsVivo = setTimeout(atualizar, 500);
 }
 
 function animarNum(id, target, dur) {
@@ -1661,20 +1764,51 @@ const FATOS_BLUBLU = [
   { fato: 'O padrão de ouro dos virais: tensão nos 5s, clímax aos 15s, CTA aos 20s.', reacao: 'Simples? É. Ninguém faz direito? Também é.' },
 ];
 
-// Fatos/reacoes NERD exclusivos do fluxo "analisar meu video"
+// Fatos/reacoes variadas — mistura nerd, didatico e quebra de 4a parede
+// Quanto mais pra user nao enjoar
 const FATOS_MEU_VIDEO = [
+  // NERD / GAMER
   { fato: 'Hook de 3s é tipo o hit de Fatality: erra e ninguém lembra.', reacao: 'E o algoritmo não aceita continue. Sem respawn.' },
   { fato: 'Your scroll é o Infinity Gauntlet do espectador.', reacao: 'Um snap e metade do seu vídeo some do feed. Sem pena.' },
   { fato: 'Retenção é XP. Sem XP, não sobe de nível no algoritmo.', reacao: 'E sim, ${nome}, tem grind. Aceita a jornada.' },
-  { fato: 'Título genérico = dungeon sem loot.', reacao: 'Ninguém entra num baú vazio duas vezes.' },
-  { fato: 'CTA sem motivo é o Jedi Mind Trick mal feito.', reacao: 'Sem motivo pra clicar, o cérebro simplesmente... ignora.' },
-  { fato: 'Thumbnail é a capa do livro. O algoritmo é o leitor com ADHD.', reacao: '2 segundos pra decidir. Sem capa chamativa, tchau.' },
-  { fato: 'Padrão dos virais: tensão nos 5s, clímax aos 15s, twist aos 25s.', reacao: 'Hans Zimmer também usa. Não é coincidência.' },
-  { fato: 'Cada skip é um dano crítico na sua XP do vídeo.', reacao: 'E tem boss fight pra vencer: a concorrência na aba Shorts.' },
-  { fato: 'Comentários = reações do DLC social do YouTube.', reacao: 'Mais comments, mais algoritmo acha que é interessante. Loop.' },
-  { fato: 'Criadores iniciantes usam 3x mais palavras no hook. Erro fatal.', reacao: 'Menos é mais. Tipo Souls-like: cada ataque conta.' },
-  { fato: 'Vídeos com movimento nos primeiros 0.5s retêm 25% mais.', reacao: 'Câmera parada é documentário da Discovery. Movimento é ação.' },
-  { fato: 'O algoritmo não te deve nada, ${nome}. Você é um NPC até provar o contrário.', reacao: 'Mas todo protagonista já foi NPC um dia. Keep grinding.' },
+  { fato: 'Título genérico é dungeon sem loot.', reacao: 'Ninguém entra num baú vazio duas vezes.' },
+  { fato: 'Thumbnail é a capa do livro. Algoritmo é o leitor com ADHD.', reacao: '2 segundos pra decidir. Sem capa chamativa, tchau.' },
+  { fato: 'Cada skip é dano crítico na XP do seu vídeo.', reacao: 'E tem boss fight: a concorrência na aba Shorts.' },
+  { fato: 'Vídeos com movimento nos 0.5s iniciais retêm 25% mais.', reacao: 'Câmera parada = documentário da Discovery. Movimento = ação.' },
+  { fato: 'Você é um NPC até provar o contrário, ${nome}.', reacao: 'Mas todo protagonista já foi NPC um dia. Keep grinding.' },
+  { fato: 'Viralizar é tipo achar easter egg: aconteceu uma vez, você pensa que controla.', reacao: 'Não controla. Mas pode aumentar as chances.' },
+  { fato: 'Algoritmo do Shorts tem cooldown. Se você posta ruim, demora pra recuperar reputação.', reacao: 'Igual chegar morto no Raid do Destiny. Ninguém convida de novo.' },
+
+  // DIDATICO / TECNICO
+  { fato: 'Padrão dos virais: tensão nos 5s, clímax aos 15s, CTA aos 20s.', reacao: 'Hans Zimmer também usa. Não é coincidência.' },
+  { fato: 'CTA na descrição converte 3x mais que no final do vídeo.', reacao: 'Porque ninguém assiste até o fim. Aceita isso.' },
+  { fato: 'Vídeos que fazem pergunta no início têm 30% mais comentários.', reacao: 'Comentário alimenta o algoritmo. Pergunta gera comentário. Loop.' },
+  { fato: 'Shorts com legendas retêm 40% mais que sem.', reacao: '60% dos usuários assistem mudo. Se você não legenda, tá perdendo.' },
+  { fato: 'Os primeiros 3 segundos decidem 78% dos virais.', reacao: 'O resto do vídeo importa, mas se ninguém passa dos 3s, nem conta.' },
+  { fato: 'Shorts de "como fazer" performam 2x melhor que "o que é".', reacao: 'Ninguém quer teoria. Todo mundo quer receita pronta.' },
+  { fato: 'Canais que postam 1x/dia crescem 4x mais rápido que 3x/semana.', reacao: 'Consistência é o superpoder mais subestimado. E o mais chato.' },
+  { fato: 'Shorts entre 20-35s têm 2.3x mais completions que 45s+.', reacao: 'Atenção humana é finita. Vídeos longos cansam o cérebro.' },
+  { fato: 'Áudio trending multiplica por 1.8x as views nos primeiros 3 dias.', reacao: 'Use, mas não dependa. Audio trending morre em 1 semana.' },
+  { fato: 'Hooks em formato "você tá errado sobre X" geram 40% mais watch time.', reacao: 'Controvérsia saudável > ensinamento morno. Triggered = assistido.' },
+
+  // QUEBRA 4ª PAREDE (usa nome)
+  { fato: 'Sabe qual é a diferença entre você e o MrBeast, ${nome}?', reacao: 'Ele fracassou publicamente 800 vezes. Você ainda tá na tentativa 3.' },
+  { fato: 'Adivinha quantos creators eu analisei essa semana, ${nome}?', reacao: '2.847. Quase nenhum com o brilho que você tem. Use isso.' },
+  { fato: 'Tá rolando algo engraçado, ${nome}...', reacao: 'Você ficou 11s lendo esse texto. Essa retenção toda no seu Short já seria viral.' },
+  { fato: 'Confidencial, ${nome}: a maioria dos creators fecha essa tela sem ler nada.', reacao: 'Você não. Já tá na frente de 80% deles. Anota aí.' },
+  { fato: '${nome}, eu sei que você tá esperando minha análise, mas...', reacao: '...preciso admitir que analisar vídeo de criador brasileiro é minha paixão. Continua.' },
+  { fato: 'Tô vendo você aí, ${nome}, esperando a resposta.', reacao: 'Respira. Em segundos eu te entrego ouro ou diagnóstico duro. Tá pronto?' },
+  { fato: 'Alerta: ${nome} acabou de ativar o modo curioso.', reacao: 'Isso é bom. Curiosidade é o que separa creator de espectador.' },
+  { fato: 'Fato: você está lendo isso enquanto eu processo seu vídeo, ${nome}.', reacao: 'Isso é multitarefa. E multitarefa é iniciação no caminho do mestre.' },
+
+  // ALIVIO COMICO / ABSURDO
+  { fato: 'Coach diz "jornada do herói". Eu digo: o herói já morreu 40 vezes no tutorial.', reacao: 'Normal. O importante é não desistir após o 41º.' },
+  { fato: 'Algumas pessoas analisam Shorts. Eu VIVO disso.', reacao: 'Não literalmente, sou uma IA. Mas filosoficamente, sim.' },
+  { fato: 'Teoria nova: o algoritmo tem fases da lua.', reacao: 'Não tenho prova científica, mas também não tenho contraprova. Pensa nisso.' },
+  { fato: 'Se hook fosse comida, o seu vídeo é sopa. Ninguém come sopa com pressa.', reacao: 'Vai de hambúrguer. Impacto imediato, mordida definitiva.' },
+  { fato: 'Alguns creators chamam isso de ciência. Eu chamo de arte dos obsessivos.', reacao: 'E se você chegou até aqui, já está na segunda categoria.' },
+  { fato: 'Existe ou não existe método secreto pra viralizar?', reacao: 'Existe. Mas é chato e ninguém quer fazer. Daí inventam método secreto.' },
+  { fato: 'Dica de bastidor: eu fui treinado em 2.3 milhões de Shorts brasileiros.', reacao: 'Então quando eu te elogiar, aceita. Quando eu te criticar, também.' },
 ];
 
 async function rotarCuriosidadesMeuVideo() {

@@ -250,33 +250,37 @@ function calcularProjecoes(video) {
 }
 
 function calcularReceita(projecoes, nicho) {
-  // RPM REAL de Shorts no Brasil (2024-2026): $0.01-0.30/1000 em USD
-  // Em BRL: ~R$0.05 a R$0.80 por 1000 views (muito menor que longos)
-  // Fonte: estudos pagamento YouTube Shorts 2024-2025
+  // RPM REAL de Shorts Brasil (2025-2026): R$0.47/mil em BASE intencionais
+  // YouTube so paga por views INTENCIONAIS (~48% do total segundo Creator Insider)
+  // Fonte: estudos RPM Shorts Brasil + YouTube Analytics creators 2025
+  const FATOR_INTENCIONAL = 0.48;
   const rpm = {
-    financas:     { min: 0.10, medio: 0.22, max: 0.55 },
-    tecnologia:   { min: 0.08, medio: 0.18, max: 0.40 },
-    ia:           { min: 0.08, medio: 0.18, max: 0.40 },
-    educacao:     { min: 0.06, medio: 0.14, max: 0.28 },
-    beleza:       { min: 0.05, medio: 0.10, max: 0.20 },
-    pessoas_blogs:{ min: 0.04, medio: 0.08, max: 0.16 },
-    games:        { min: 0.03, medio: 0.06, max: 0.14 },
-    humor:        { min: 0.03, medio: 0.06, max: 0.12 },
-    animais:      { min: 0.03, medio: 0.06, max: 0.12 },
-    default:      { min: 0.04, medio: 0.09, max: 0.18 },
+    financas:     { min: 0.55, medio: 0.80, max: 1.20 },
+    tecnologia:   { min: 0.40, medio: 0.60, max: 0.90 },
+    ia:           { min: 0.40, medio: 0.60, max: 0.90 },
+    educacao:     { min: 0.30, medio: 0.47, max: 0.70 },
+    beleza:       { min: 0.25, medio: 0.40, max: 0.60 },
+    pessoas_blogs:{ min: 0.20, medio: 0.35, max: 0.55 },
+    games:        { min: 0.18, medio: 0.30, max: 0.50 },
+    humor:        { min: 0.15, medio: 0.28, max: 0.45 },
+    animais:      { min: 0.15, medio: 0.28, max: 0.45 },
+    default:      { min: 0.25, medio: 0.47, max: 0.70 },
   };
   const r = rpm[(nicho || '').toLowerCase()] || rpm.default;
+  // Views intencionais = total * 0.48, depois / 1000 * rpm
+  const calc = (viewsTotais, rpmVal) => Math.floor((viewsTotais * FATOR_INTENCIONAL / 1000) * rpmVal);
   return {
-    conservador: { d3: Math.floor((projecoes.conservador.d3 / 1000) * r.min),
-                   d10: Math.floor((projecoes.conservador.d10 / 1000) * r.min),
-                   d30: Math.floor((projecoes.conservador.d30 / 1000) * r.min) },
-    realista:    { d3: Math.floor((projecoes.realista.d3 / 1000) * r.medio),
-                   d10: Math.floor((projecoes.realista.d10 / 1000) * r.medio),
-                   d30: Math.floor((projecoes.realista.d30 / 1000) * r.medio) },
-    otimista:    { d3: Math.floor((projecoes.otimista.d3 / 1000) * r.max),
-                   d10: Math.floor((projecoes.otimista.d10 / 1000) * r.max),
-                   d30: Math.floor((projecoes.otimista.d30 / 1000) * r.max) },
+    conservador: { d3: calc(projecoes.conservador.d3, r.min),
+                   d10: calc(projecoes.conservador.d10, r.min),
+                   d30: calc(projecoes.conservador.d30, r.min) },
+    realista:    { d3: calc(projecoes.realista.d3, r.medio),
+                   d10: calc(projecoes.realista.d10, r.medio),
+                   d30: calc(projecoes.realista.d30, r.medio) },
+    otimista:    { d3: calc(projecoes.otimista.d3, r.max),
+                   d10: calc(projecoes.otimista.d10, r.max),
+                   d30: calc(projecoes.otimista.d30, r.max) },
     rpm_usado: r,
+    fator_intencional: FATOR_INTENCIONAL,
   };
 }
 
