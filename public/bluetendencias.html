@@ -476,7 +476,7 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 /* ═════════════════════════════════════════════════════════════════
    GATE
    ═════════════════════════════════════════════════════════════════ */
-.gate{max-width:560px;margin:80px auto;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:44px 32px;text-align:center}
+.gate{max-width:680px;margin:60px auto;background:var(--card);border:1px solid var(--border-blublu);border-radius:20px;padding:40px 32px;text-align:center;box-shadow:0 20px 60px rgba(59,130,246,.15)}
 .gate-badge{display:inline-block;background:linear-gradient(135deg,var(--blublu),var(--neon));color:#fff;font-size:10px;font-weight:800;padding:6px 16px;border-radius:14px;letter-spacing:2px;margin-bottom:16px;font-family:var(--mono)}
 .gate h2{font-size:26px;font-weight:800;margin-bottom:12px;letter-spacing:-.5px}
 .gate p{color:var(--text-sec);font-size:15px;margin-bottom:20px;line-height:1.55}
@@ -1269,6 +1269,47 @@ function pararFoguete() {
 
 function showGate(motivo) {
   irCena('Gate');
+  if (motivo === 'upgrade') {
+    // Landing page completa pro free/full descobrir a ferramenta
+    $('gateCard').innerHTML = `
+      <div style="display:flex;justify-content:center;margin-bottom:20px"><div class="blublu"></div></div>
+      <div class="gate-badge" style="font-size:11px">🚀 EXCLUSIVO · MASTER</div>
+      <h2 style="font-size:clamp(26px,4vw,36px);margin-bottom:14px;letter-spacing:-1px">Conheça o Studio do Blublu</h2>
+      <p style="font-size:15px;color:var(--text-sec);margin-bottom:26px;line-height:1.55">A IA mais avançada do Brasil analisa qualquer Short em segundos. <b style="color:var(--blublu2)">Você cola o link, ela te diz <i>exatamente</i> por que viralizou — ou por que não.</b></p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:26px;text-align:left">
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">🎬</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Análise cinematográfica</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">5 atos + quiz interativo + sugestões acionáveis</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">📊</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Dashboard em tempo real</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Views ao vivo · projeções · receita estimada</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">🧠</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Blublu personalizado</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">IA com personalidade · feedback sem filtro</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">🎯</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Análise do seu vídeo</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Deep analysis adaptativa por performance</div>
+        </div>
+      </div>
+      <div style="background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(0,170,255,.06));border:1px solid rgba(251,191,36,.3);border-radius:14px;padding:18px 20px;margin-bottom:24px;text-align:left">
+        <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px;margin-bottom:8px;font-family:var(--mono)">💡 POR QUE VOCÊ PRECISA</div>
+        <div style="font-size:13px;line-height:1.55;color:var(--text-sec)">Criadores que usam análise estruturada crescem em média <b style="color:#fff">4x mais rápido</b> que quem só publica e reza. O Blublu processa 2.3M de virais brasileiros — tudo que ele diz vem de padrão real.</div>
+      </div>
+      <a class="gate-cta" href="/?upgrade=master" style="display:inline-flex;align-items:center;gap:10px">
+        <span>Quero virar Master →</span>
+      </a>
+      <p style="margin-top:16px;font-size:11px;color:var(--text-dim);font-family:var(--mono)">R$ 89,99/mês · análises ilimitadas + todas as ferramentas Master</p>
+      <p style="margin-top:10px;font-size:10px;color:var(--text-dim)">Já é Master? <a href="javascript:location.reload()" style="color:var(--blublu2)">Recarregar</a></p>
+    `;
+    return;
+  }
   const conteudo = {
     login: `
       <div style="display:flex;justify-content:center;margin-bottom:16px"><div class="blublu small"></div></div>
@@ -1282,7 +1323,6 @@ function showGate(motivo) {
       <button class="gate-cta" onclick="doInlineLogin()" id="loginBtnIn" style="border:none;cursor:pointer;font-family:inherit">Fazer login →</button>
       <p style="margin-top:18px;font-size:12px;color:var(--text-dim)">Não tem conta? <a href="/?openLogin=1" style="color:var(--blublu2)">Criar grátis</a></p>
     `,
-    upgrade: `<div class="gate-badge">✨ EXCLUSIVO · MASTER</div><h2>🔮 Studio do Blublu</h2><p>A IA mais avançada do mercado te espera. Dissecação cinematográfica em 5 atos + quiz interativo + sugestões práticas. Tudo personalizado pro seu canal.</p><p style="color:var(--text-dim);font-size:12px">3 análises por dia. Inclui histórico de análises salvas.</p><a class="gate-cta" href="/?upgrade=master">Fazer upgrade →</a>`,
     erro: `<h2>Erro de conexão</h2><p>Recarrega a página e tenta de novo.</p>`,
   };
   $('gateCard').innerHTML = conteudo[motivo] || conteudo.erro;
