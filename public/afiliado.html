@@ -443,6 +443,7 @@ async function doSignup(){
     token=d.session?.access_token;
     if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Criar conta →';return;}
     localStorage.setItem('bt_token',token);
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     hideAuth();
     // Novo usuário — vai direto para registro de afiliado
     regAffiliate();
@@ -451,7 +452,36 @@ async function doSignup(){
 
 function handleCta(){if(!token){showAuth();return;}regAffiliate();}
 
-async function regAffiliate(){
+// Tenta renovar o access_token usando refresh_token (evita "Token inválido" após expirar)
+async function _tryRefreshToken(){
+  const rt=localStorage.getItem('bt_refresh_token');
+  if(!rt) return null;
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'refresh',refresh_token:rt})});
+    const d=await r.json();
+    if(r.ok&&d.session?.access_token){
+      token=d.session.access_token;
+      localStorage.setItem('bt_token',token);
+      if(d.session.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+      return token;
+    }
+  }catch(e){}
+  return null;
+}
+
+// Sessão morreu: limpa localStorage e manda pra tela de login com mensagem clara
+function _sessionExpired(msg){
+  token=null;
+  localStorage.removeItem('bt_token');
+  localStorage.removeItem('bt_refresh_token');
+  const btn=document.getElementById('mainCta');
+  if(btn){btn.disabled=false;btn.textContent='🚀 Quero ser afiliado';}
+  const lErr=document.getElementById('loginErr');
+  if(lErr) lErr.textContent=msg||'Sua sessão expirou. Faça login novamente.';
+  showAuth();
+}
+
+async function regAffiliate(_isRetry){
   const btn=document.getElementById('mainCta');
   if(btn){btn.disabled=true;btn.textContent='Enviando pedido…';}
   try{
@@ -460,6 +490,13 @@ async function regAffiliate(){
     let d={};
     try{ d=await r.json(); }catch(je){ d={error:'Resposta inválida do servidor'}; }
     console.log('Register response:', r.status, d);
+    // Token expirado: tenta refresh automático uma vez
+    if(r.status===401&&!_isRetry){
+      const fresh=await _tryRefreshToken();
+      if(fresh){ return regAffiliate(true); }
+      _sessionExpired('Sua sessão expirou. Faça login novamente para virar afiliado.');
+      return;
+    }
     if(r.ok&&d.affiliate){
       if(d.alreadyExists){
         if(d.affiliate.status==='active') init();
@@ -490,11 +527,18 @@ async function regAffiliate(){
 const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.display=s===id?'block':'none';});};
 function showPending(){show('pendingSection');}
 
-async function init(){
+async function init(_isRetry){
   if(!token){show('landingSection');return;}
   try{
     const r=await fetch(`/api/auth?action=dashboard&token=${encodeURIComponent(token)}`);
     const d=await r.json();
+    // Token expirado: tenta refresh uma vez; se falhar, volta pra landing sem bloquear
+    if(r.status===401&&!_isRetry){
+      const fresh=await _tryRefreshToken();
+      if(fresh) return init(true);
+      token=null;localStorage.removeItem('bt_token');localStorage.removeItem('bt_refresh_token');
+      show('landingSection');return;
+    }
     if(d.error==='not_affiliate'){show('landingSection');return;}
     if(d.error==='pending_approval'){showPending();return;}
     if(d.error==='suspended'){show('landingSection');toast('⚠ Conta suspensa.');return;}
