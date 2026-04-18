@@ -1157,13 +1157,22 @@ function proximaEtapaMeuVideo() {
 
 // ═══════════ TYPEWRITER ═══════════
 async function typeOut(el, texto, speed = 24) {
+  if (!el) return;
+  // Token de execucao por elemento — se outra chamada comecar no mesmo el,
+  // essa aqui detecta e aborta (evita caracteres intercalados quando
+  // rotarCuriosidades e outros fluxos disparam typeOut em paralelo).
+  const myToken = Symbol('typeout');
+  el._typeToken = myToken;
   el.textContent = '';
   el.classList.add('cursor');
   for (let i = 0; i < texto.length; i++) {
+    if (el._typeToken !== myToken) return; // fui substituido, paro imediatamente
     el.textContent += texto[i];
     await sleep(speed);
   }
+  if (el._typeToken !== myToken) return;
   await sleep(400);
+  if (el._typeToken !== myToken) return;
   el.classList.remove('cursor');
 }
 
