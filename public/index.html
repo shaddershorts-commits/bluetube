@@ -1729,7 +1729,25 @@ async function goToCheckout(plan, billing){
 
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
 let pendingOTPEmail='';
-function openAuthModal(){document.getElementById('authModal').classList.add('on');}
+function openAuthModal(){
+  document.getElementById('authModal').classList.add('on');
+  // Pre-preenche credenciais salvas pra quem marcou "Lembrar de mim".
+  // Usa o mesmo storage do auto-relogin (bt_saved_cred em base64).
+  try {
+    if (localStorage.getItem('bt_remember_me') !== '0') {
+      const saved = localStorage.getItem('bt_saved_cred');
+      if (saved) {
+        const { e: em, p: pw } = JSON.parse(atob(saved));
+        const emailEl = document.getElementById('loginEmail');
+        const pwdEl = document.getElementById('loginPassword');
+        const remEl = document.getElementById('loginRemember');
+        if (emailEl && !emailEl.value && em) emailEl.value = em;
+        if (pwdEl && !pwdEl.value && pw) pwdEl.value = pw;
+        if (remEl) remEl.checked = true;
+      }
+    }
+  } catch(e) { /* cred corrompida — ignora, user digita manual */ }
+}
 // Abre modal auto via ?openLogin=1 (vindo de gates tipo bluetendencias)
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
 // Abre modal de upgrade auto via ?upgrade=master ou ?upgrade=full
