@@ -1729,24 +1729,45 @@ async function goToCheckout(plan, billing){
 
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
 let pendingOTPEmail='';
+let pendingOTPPassword='';
+
+// ── CRED STORAGE (UTF-8 safe) ───────────────────────────────────────────────
+// btoa/atob puros quebram com caracteres fora de Latin1 (ex: senha com acento).
+// Envelopamos em encodeURIComponent pra garantir que qualquer senha funcione.
+// _btLoadCred tem fallback pro formato antigo pra nao quebrar creds existentes.
+function _btSaveCred(email, password) {
+  if (!email || !password) return false;
+  try {
+    const payload = btoa(encodeURIComponent(JSON.stringify({ e: email, p: password })));
+    localStorage.setItem('bt_saved_cred', payload);
+    localStorage.setItem('bt_remember_me', '1');
+    console.log('[auth] cred salva ok (len:' + payload.length + ')');
+    return true;
+  } catch(e) { console.error('[auth] falha ao salvar cred:', e); return false; }
+}
+function _btLoadCred() {
+  const saved = localStorage.getItem('bt_saved_cred');
+  if (!saved) return null;
+  try { return JSON.parse(decodeURIComponent(atob(saved))); }
+  catch(e) {
+    try { return JSON.parse(atob(saved)); } // formato antigo (sem encodeURIComponent)
+    catch(e2) { console.warn('[auth] cred corrompida, removendo'); localStorage.removeItem('bt_saved_cred'); return null; }
+  }
+}
 function openAuthModal(){
   document.getElementById('authModal').classList.add('on');
   // Pre-preenche credenciais salvas pra quem marcou "Lembrar de mim".
-  // Usa o mesmo storage do auto-relogin (bt_saved_cred em base64).
-  try {
-    if (localStorage.getItem('bt_remember_me') !== '0') {
-      const saved = localStorage.getItem('bt_saved_cred');
-      if (saved) {
-        const { e: em, p: pw } = JSON.parse(atob(saved));
-        const emailEl = document.getElementById('loginEmail');
-        const pwdEl = document.getElementById('loginPassword');
-        const remEl = document.getElementById('loginRemember');
-        if (emailEl && !emailEl.value && em) emailEl.value = em;
-        if (pwdEl && !pwdEl.value && pw) pwdEl.value = pw;
-        if (remEl) remEl.checked = true;
-      }
+  if (localStorage.getItem('bt_remember_me') !== '0') {
+    const cred = _btLoadCred();
+    if (cred && cred.e && cred.p) {
+      const emailEl = document.getElementById('loginEmail');
+      const pwdEl = document.getElementById('loginPassword');
+      const remEl = document.getElementById('loginRemember');
+      if (emailEl && !emailEl.value) emailEl.value = cred.e;
+      if (pwdEl && !pwdEl.value) pwdEl.value = cred.p;
+      if (remEl) remEl.checked = true;
     }
-  } catch(e) { /* cred corrompida — ignora, user digita manual */ }
+  }
 }
 // Abre modal auto via ?openLogin=1 (vindo de gates tipo bluetendencias)
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
@@ -1886,6 +1907,11 @@ async function submitOTPCode(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Código inválido');
     if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
+    // Salva cred se a senha foi capturada no login/signup que originou o OTP
+    if (pendingOTPEmail && pendingOTPPassword) {
+      _btSaveCred(pendingOTPEmail, pendingOTPPassword);
+      pendingOTPPassword = '';
+    }
     statusEl.innerHTML='<span style="color:var(--green)">✅ Verificado!</span>';
     sendWelcomeEmail(pendingOTPEmail);
     setTimeout(()=>{closeAuthModal();checkSession();},1200);
@@ -1913,8 +1939,8 @@ async function handleEmailLogin(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email,password})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
-    // Email not confirmed → show OTP
-    if(d.needsOTP){setAuthMsg('','');showOTPForm(email);return;}
+    // Email not confirmed → show OTP (guarda senha pra salvar cred apos verify)
+    if(d.needsOTP){pendingOTPPassword=password;setAuthMsg('','');showOTPForm(email);return;}
     if(d.session?.access_token){
       localStorage.setItem('bt_token',d.session.access_token);
       if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
@@ -1922,16 +1948,10 @@ async function handleEmailLogin(){
     } else {
       console.warn('[auth] login sem session.access_token?', d);
     }
-    // Lembrar de mim: salva credenciais inline (sem depender do toolbar.js carregar)
+    // Lembrar de mim: salva credenciais (UTF-8 safe)
     const remember = document.getElementById('loginRemember')?.checked !== false;
     if (remember) {
-      localStorage.setItem('bt_remember_me', '1');
-      try {
-        localStorage.setItem('bt_saved_cred', btoa(JSON.stringify({ e: email, p: password })));
-        console.log('[auth] credenciais salvas pra auto-relogin');
-      } catch(e) { console.error('[auth] falha ao salvar cred:', e); }
-      // Tambem chama o helper do toolbar.js se ja carregou (fallback)
-      if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,password);
+      _btSaveCred(email, password);
     } else {
       localStorage.setItem('bt_remember_me', '0');
       localStorage.removeItem('bt_saved_cred');
@@ -1970,6 +1990,8 @@ async function handleEmailSignup(){
     if(d.session?.access_token){
       localStorage.setItem('bt_token', d.session.access_token);
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+      // Salva cred pra proximo login automatico (signup tambem deve lembrar)
+      _btSaveCred(email, password);
       // Fallback de atribuicao via fingerprint 72h (cookie sempre vence)
       fetch('/api/affiliate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1991,6 +2013,8 @@ async function handleEmailSignup(){
     }
 
     // No session = email confirmation required → show OTP form
+    // Guarda a senha pra salvar cred depois que OTP verificar
+    pendingOTPPassword = password;
     setAuthMsg('','ok');
     showOTPForm(email);
   }catch(e){setAuthMsg(e.message,'');}
@@ -2967,22 +2991,19 @@ async function checkSession(_isRetry){
         // explicitamente desmarcou "Lembrar de mim" (bt_remember_me = '0').
         if (localStorage.getItem('bt_remember_me') !== '0') {
           try {
-            const saved = localStorage.getItem('bt_saved_cred');
-            if (saved) {
+            const cred = _btLoadCred();
+            if (cred && cred.e && cred.p) {
               console.log('[auth] tentando auto-relogin via saved_cred...');
-              const { e: em, p: pw } = JSON.parse(atob(saved));
-              if (em && pw) {
-                const sr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email:em,password:pw})});
-                if (sr.ok) {
-                  const sd = await sr.json();
-                  if (sd.session?.access_token) {
-                    localStorage.setItem('bt_token', sd.session.access_token);
-                    if (sd.session.refresh_token) localStorage.setItem('bt_refresh_token', sd.session.refresh_token);
-                    console.log('[auth] auto-relogin OK');
-                    return checkSession(true);
-                  } else { console.warn('[auth] auto-relogin sem session:', sd); }
-                } else { console.warn('[auth] auto-relogin signin falhou:', sr.status); }
-              }
+              const sr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email:cred.e,password:cred.p})});
+              if (sr.ok) {
+                const sd = await sr.json();
+                if (sd.session?.access_token) {
+                  localStorage.setItem('bt_token', sd.session.access_token);
+                  if (sd.session.refresh_token) localStorage.setItem('bt_refresh_token', sd.session.refresh_token);
+                  console.log('[auth] auto-relogin OK');
+                  return checkSession(true);
+                } else { console.warn('[auth] auto-relogin sem session:', sd); }
+              } else { console.warn('[auth] auto-relogin signin falhou:', sr.status); }
             } else { console.log('[auth] sem saved_cred — modal de login'); }
           } catch(e) { console.warn('[auth] auto-relogin erro:', e.message); }
         }

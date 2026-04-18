@@ -203,16 +203,22 @@ if ('serviceWorker' in navigator) {
     return _btAutoRelogin();
   }
 
+  function _btDecodeCred(saved) {
+    if (!saved) return null;
+    // Formato novo (UTF-8 safe via encodeURIComponent)
+    try { return JSON.parse(decodeURIComponent(atob(saved))); } catch(e) {}
+    // Fallback: formato antigo (btoa direto)
+    try { return JSON.parse(atob(saved)); } catch(e) { return null; }
+  }
+
   async function _btAutoRelogin() {
     try {
-      const saved = localStorage.getItem('bt_saved_cred');
-      if (!saved) return false;
-      const { e, p } = JSON.parse(atob(saved));
-      if (!e || !p) return false;
+      const cred = _btDecodeCred(localStorage.getItem('bt_saved_cred'));
+      if (!cred || !cred.e || !cred.p) return false;
       const r = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'signin', email: e, password: p })
+        body: JSON.stringify({ action: 'signin', email: cred.e, password: cred.p })
       });
       if (r.ok) {
         const d = await r.json();
@@ -227,9 +233,10 @@ if ('serviceWorker' in navigator) {
     return false;
   }
 
-  // Save credentials for auto re-login (called from login handlers)
+  // Save credentials for auto re-login (UTF-8 safe via encodeURIComponent).
   window._btSaveCredentials = function(email, password) {
-    try { localStorage.setItem('bt_saved_cred', btoa(JSON.stringify({ e: email, p: password }))); } catch(e) {}
+    if (!email || !password) return;
+    try { localStorage.setItem('bt_saved_cred', btoa(encodeURIComponent(JSON.stringify({ e: email, p: password })))); } catch(e) {}
   };
 
   // Refresh immediately on page load
