@@ -41,7 +41,8 @@ module.exports = async function handler(req, res) {
     if (action === 'enviar-teste')      return enviarTeste(req, res, ctx, src);
     if (action === 'disparar-campanha') return dispararCampanha(req, res, ctx, src);
     if (action === 'status-campanha')   return statusCampanha(req, res, ctx, src);
-    return res.status(400).json({ error: 'action_invalida', actions: ['preview-email', 'enviar-teste', 'disparar-campanha', 'status-campanha'] });
+    if (action === 'stats-saudaveis')   return statsSaudaveis(req, res, ctx, src);
+    return res.status(400).json({ error: 'action_invalida', actions: ['preview-email', 'enviar-teste', 'disparar-campanha', 'status-campanha', 'stats-saudaveis'] });
   } catch (e) {
     console.error(`[email-campanha ${action}]`, e.message);
     return res.status(500).json({ error: e.message });
@@ -119,16 +120,8 @@ async function dispararCampanha(req, res, ctx, src) {
   }
   if (!ctx.RESEND_KEY) return res.status(500).json({ error: 'RESEND_API_KEY nao configurada' });
 
-  // 1) Busca subscribers (nao descadastrados)
-  // O subscribers tem o campo plan; unsubscribed mora em email_marketing
-  const [subsR, unsubR] = await Promise.all([
-    fetch(`${ctx.SU}/rest/v1/subscribers?email=not.is.null&select=email,plan&limit=5000`, { headers: ctx.h }),
-    fetch(`${ctx.SU}/rest/v1/email_marketing?unsubscribed=eq.true&select=email&limit=5000`, { headers: ctx.h }),
-  ]);
-  const subs = subsR.ok ? await subsR.json() : [];
-  const unsubList = unsubR.ok ? await unsubR.json() : [];
-  const unsubSet = new Set(unsubList.map(u => String(u.email).toLowerCase()));
-  const usuarios = subs.filter(u => !unsubSet.has(String(u.email).toLowerCase()));
+  const apenasSaudaveis = !!src.apenas_saudaveis;
+  const usuarios = await buscarUsuariosElegiveis(ctx, apenasSaudaveis);
 
   const por_plano = {
     free:   usuarios.filter(u => !u.plan || u.plan === 'free'),
@@ -210,6 +203,74 @@ async function statusCampanha(req, res, ctx, src) {
     const r = await fetch(`${ctx.SU}/rest/v1/email_campanhas?order=created_at.desc&limit=10`, { headers: ctx.h });
     const campanhas = r.ok ? await r.json() : [];
     return res.status(200).json({ ok: true, campanhas });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Busca usuarios elegiveis pra campanha.
+// apenasSaudaveis=true: aplica filtro anti-spam (mesmo que o cron automatico):
+//   - conta criada ha pelo menos 3 dias
+//   - nao recebeu email nos ultimos 10 dias (last_sent_at null ou > 10d)
+//   - nao descadastrou
+// apenasSaudaveis=false: pega todos nao-descadastrados (usar com cuidado!)
+// ─────────────────────────────────────────────────────────────────────────────
+async function buscarUsuariosElegiveis(ctx, apenasSaudaveis) {
+  const [subsR, emR] = await Promise.all([
+    fetch(`${ctx.SU}/rest/v1/subscribers?email=not.is.null&select=email,plan,created_at&limit=5000`, { headers: ctx.h }),
+    fetch(`${ctx.SU}/rest/v1/email_marketing?select=email,last_sent_at,unsubscribed&limit=5000`, { headers: ctx.h }),
+  ]);
+  const subs = subsR.ok ? await subsR.json() : [];
+  const emList = emR.ok ? await emR.json() : [];
+  const emByEmail = new Map(emList.map(e => [String(e.email).toLowerCase(), e]));
+
+  const agora = Date.now();
+  const tresDias = 3 * 86400000;
+  const dezDias = 10 * 86400000;
+
+  return subs.filter(u => {
+    const key = String(u.email).toLowerCase();
+    const em = emByEmail.get(key);
+    if (em?.unsubscribed) return false;
+    if (!apenasSaudaveis) return true;
+    // Filtro saudavel: conta > 3 dias
+    const criadoEm = u.created_at ? new Date(u.created_at).getTime() : 0;
+    if (!criadoEm || agora - criadoEm < tresDias) return false;
+    // Filtro saudavel: ultimo email > 10 dias (ou nunca)
+    if (em?.last_sent_at) {
+      const ultimo = new Date(em.last_sent_at).getTime();
+      if (agora - ultimo < dezDias) return false;
+    }
+    return true;
+  });
+}
+
+async function statsSaudaveis(req, res, ctx, src) {
+  try {
+    const [saudaveis, todos] = await Promise.all([
+      buscarUsuariosElegiveis(ctx, true),
+      buscarUsuariosElegiveis(ctx, false),
+    ]);
+
+    const contarPorPlano = (lista) => ({
+      free:   lista.filter(u => !u.plan || u.plan === 'free').length,
+      full:   lista.filter(u => u.plan === 'full').length,
+      master: lista.filter(u => u.plan === 'master').length,
+      total:  lista.length,
+    });
+
+    const stats = {
+      saudaveis_hoje: contarPorPlano(saudaveis),
+      todos_nao_descadastrados: contarPorPlano(todos),
+      nao_saudaveis_hoje: {
+        total: todos.length - saudaveis.length,
+        motivo: 'recem-cadastrados (<3d) OU receberam email nos ultimos 10d',
+        acao_recomendada: 'deixar pra rotacao automatica do email-marketing.js (cron terca/sexta 10h)',
+      },
+    };
+
+    return res.status(200).json({ ok: true, ...stats });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

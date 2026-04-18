@@ -125,7 +125,22 @@ module.exports = async function handler(req, res) {
 };
 
 // ── EMAIL TEMPLATES ──────────────────────────────────────────────────────────
+// IMPORTANTE: o primeiro template e o de LANCAMENTO da BlueTendencias.
+// Pra garantir que todos os users recebam ele primeiro na proxima rodada,
+// pode resetar sequence_position=0 via SQL:
+//   UPDATE email_marketing SET sequence_position = 0 WHERE unsubscribed = false;
+// Se nao resetar, quem ja esta em posicao >0 vai ver esse template no loop.
 const TEMPLATES = [
+  {
+    subject: '🔮 Blublu nasceu pra criadores como você',
+    hero: 'A primeira IA brasileira treinada exclusivamente em virais',
+    stat: 'Exclusivo no plano Master · 2 dissecações por dia',
+    body: `<p>Acabou de chegar a <strong>BlueTendências</strong> — uma experiência cinematográfica onde a IA <strong>Blublu</strong> disseca vídeos virais em 5 atos e te mostra exatamente por que cada um bombou.</p>
+      <p>Contador de views ao vivo · Projeções 3/10/30 dias · Receita estimada · Quiz interativo · Aplicação personalizada no seu canal.</p>
+      <p style="color:#fbbf24;font-weight:700">Não é teoria. É decifrar o algoritmo com humor afiado.</p>`,
+    cta: 'Conhecer a Blublu →',
+    url: 'https://bluetubeviral.com/bluetendencias'
+  },
   {
     subject: '🎙️ Seus concorrentes já estão narrando com IA',
     hero: 'Enquanto você lê isso, criadores estão publicando Shorts com voz IA',
