@@ -1861,16 +1861,27 @@ async function handleEmailLogin(){
     if(!r.ok)throw new Error(d.error||'Erro ao entrar');
     // Email not confirmed → show OTP
     if(d.needsOTP){setAuthMsg('','');showOTPForm(email);return;}
-    if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
-    // Lembrar de mim: salva credenciais pra auto-relogin. Checkbox default=true.
+    if(d.session?.access_token){
+      localStorage.setItem('bt_token',d.session.access_token);
+      if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+      console.log('[auth] login ok — token salvo, refresh:', !!d.session?.refresh_token);
+    } else {
+      console.warn('[auth] login sem session.access_token?', d);
+    }
+    // Lembrar de mim: salva credenciais inline (sem depender do toolbar.js carregar)
     const remember = document.getElementById('loginRemember')?.checked !== false;
     if (remember) {
       localStorage.setItem('bt_remember_me', '1');
+      try {
+        localStorage.setItem('bt_saved_cred', btoa(JSON.stringify({ e: email, p: password })));
+        console.log('[auth] credenciais salvas pra auto-relogin');
+      } catch(e) { console.error('[auth] falha ao salvar cred:', e); }
+      // Tambem chama o helper do toolbar.js se ja carregou (fallback)
       if(typeof _btSaveCredentials==='function')_btSaveCredentials(email,password);
     } else {
-      // Usuario explicitamente desmarcou — limpa qualquer cred antiga
       localStorage.setItem('bt_remember_me', '0');
       localStorage.removeItem('bt_saved_cred');
+      console.log('[auth] user desmarcou lembrar-de-mim, cred limpa');
     }
     setAuthMsg('Bem-vindo! 🎉','ok');
     setTimeout(async()=>{
@@ -2822,10 +2833,28 @@ async function checkSession(_isRetry){
     }
   } catch(e) {}
   const token=localStorage.getItem('bt_token');
-  if(!token)return;
+  if(!_isRetry) {
+    console.log('[auth] checkSession start — bt_token:', !!token,
+      '| refresh:', !!localStorage.getItem('bt_refresh_token'),
+      '| saved_cred:', !!localStorage.getItem('bt_saved_cred'),
+      '| remember:', localStorage.getItem('bt_remember_me'));
+  }
+  // Se nao tem bt_token MAS tem refresh_token ou saved_cred, tenta restaurar via eles
+  if (!token) {
+    if (_isRetry) return;
+    const rf = localStorage.getItem('bt_refresh_token');
+    const saved = localStorage.getItem('bt_saved_cred');
+    const canTry = (rf || saved) && localStorage.getItem('bt_remember_me') !== '0';
+    if (!canTry) return;
+    // Cai direto no fluxo "verify falhou" simulando
+    console.log('[auth] sem bt_token mas tem cred salva — tentando restaurar');
+    // Fall through para o bloco de cascata abaixo (simula verify fail)
+  }
   try{
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})});
-    const d=await r.json();
+    const r = token
+      ? await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',token})})
+      : { ok: false, json: async () => ({}) };
+    const d = r.ok ? await r.json() : {};
     if(r.ok&&d.user){
       // Fetch real plan from Supabase
       const planRes=await fetch('/api/get-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
@@ -2848,13 +2877,14 @@ async function checkSession(_isRetry){
         setTimeout(()=>goToCheckout(pendingPlan, pendingBilling), 1000);
       }
     }else{
-      // Token invalido/expirado — tenta 3 cascatas antes de logout:
-      // 1) refresh_token  2) saved credentials  3) remover tudo
+      // Token invalido/expirado OU inexistente — 3 cascatas
       if (!_isRetry) {
+        console.log('[auth] verify falhou/sem token, tentando cascata');
         // Tenta refresh via refresh_token
         const rf = localStorage.getItem('bt_refresh_token');
         if (rf) {
           try {
+            console.log('[auth] tentando refresh_token...');
             const rr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'refresh',refresh_token:rf})});
             if (rr.ok) {
               const rd = await rr.json();
@@ -2862,18 +2892,25 @@ async function checkSession(_isRetry){
               if (nt) {
                 localStorage.setItem('bt_token', nt);
                 if (rd.session?.refresh_token) localStorage.setItem('bt_refresh_token', rd.session.refresh_token);
-                return checkSession(true); // retry com token novo
+                console.log('[auth] refresh OK — token renovado');
+                return checkSession(true);
+              } else {
+                console.warn('[auth] refresh retornou sem access_token:', rd);
               }
+            } else {
+              console.warn('[auth] refresh falhou status:', rr.status);
             }
-          } catch(e) {}
+          } catch(e) { console.warn('[auth] refresh erro:', e.message); }
+        } else {
+          console.log('[auth] sem bt_refresh_token — pulando pro auto-relogin');
         }
         // Refresh falhou — tenta credenciais salvas, exceto se o usuario
         // explicitamente desmarcou "Lembrar de mim" (bt_remember_me = '0').
-        // Default (undefined ou '1') = tenta auto-relogin.
         if (localStorage.getItem('bt_remember_me') !== '0') {
           try {
             const saved = localStorage.getItem('bt_saved_cred');
             if (saved) {
+              console.log('[auth] tentando auto-relogin via saved_cred...');
               const { e: em, p: pw } = JSON.parse(atob(saved));
               if (em && pw) {
                 const sr = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signin',email:em,password:pw})});
@@ -2882,15 +2919,17 @@ async function checkSession(_isRetry){
                   if (sd.session?.access_token) {
                     localStorage.setItem('bt_token', sd.session.access_token);
                     if (sd.session.refresh_token) localStorage.setItem('bt_refresh_token', sd.session.refresh_token);
-                    return checkSession(true); // retry com token novo
-                  }
-                }
+                    console.log('[auth] auto-relogin OK');
+                    return checkSession(true);
+                  } else { console.warn('[auth] auto-relogin sem session:', sd); }
+                } else { console.warn('[auth] auto-relogin signin falhou:', sr.status); }
               }
-            }
-          } catch(e) {}
+            } else { console.log('[auth] sem saved_cred — modal de login'); }
+          } catch(e) { console.warn('[auth] auto-relogin erro:', e.message); }
         }
       }
       // Todas as tentativas falharam — limpa tudo
+      console.log('[auth] todas as cascatas falharam — limpando');
       localStorage.removeItem('bt_token');
       localStorage.removeItem('bt_refresh_token');
       localStorage.removeItem('bt_plan');
