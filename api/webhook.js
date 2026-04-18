@@ -455,13 +455,46 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` })
     }).then(async () => {
       try {
+        // Fonte 1 (primaria): affiliate_ref salvo no subscribers (cookie venceu no signup)
         const subRef = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: supaHeaders });
         const refData = subRef.ok ? await subRef.json() : [];
-        const refCode = refData?.[0]?.affiliate_ref;
-        if (!refCode) return;
+        let refCode = refData?.[0]?.affiliate_ref;
+        let attribSource = 'cookie_signup';
+        // Fonte 2 (fallback): metadata do Stripe — cookie NAO sobrescreve (regra),
+        // so e usado se affiliate_ref esta vazio.
+        if (!refCode) {
+          const stripeRef = session.metadata?.ref || session.client_reference_id;
+          if (stripeRef && /^[a-zA-Z0-9_-]{4,64}$/.test(stripeRef)) {
+            refCode = stripeRef;
+            attribSource = 'stripe_metadata';
+          }
+        }
+        if (!refCode) {
+          // Log "no_match" pra auditoria
+          fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
+            method: 'POST', headers: { ...supaHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ email, source: 'none', decisao: 'no_match', detalhes: { context: 'checkout_upgrade', plan } }),
+          }).catch(() => {});
+          return;
+        }
         const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
-        if (!aff) return;
+        if (!aff) {
+          fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
+            method: 'POST', headers: { ...supaHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ email, ref_code: refCode, source: attribSource, decisao: 'no_match', detalhes: { reason: 'affiliate_nao_encontrado' } }),
+          }).catch(() => {});
+          return;
+        }
+        // Log decisao de atribuicao
+        fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            email, ref_code: refCode, affiliate_id: aff.id, source: attribSource,
+            decisao: 'attributed',
+            detalhes: { context: 'checkout_upgrade', plan, affiliate_email: aff.email },
+          }),
+        }).catch(() => {});
         const { rate, levelKey, source: rateSource } = effectiveRate(aff);
         const result = await applyCommissionCorrection({
           affiliate: aff, email, plan, rate, paidAmount,
