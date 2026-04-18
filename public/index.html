@@ -1754,20 +1754,27 @@ function _btLoadCred() {
     catch(e2) { console.warn('[auth] cred corrompida, removendo'); localStorage.removeItem('bt_saved_cred'); return null; }
   }
 }
+// Pre-preenche campos de login com a cred salva (se "Lembrar de mim" ativo).
+// Chamado em openAuthModal E em switchAuthTab pra cobrir caso o user
+// abra o modal ja na aba signup e mude pra login depois.
+function _btPrefillLogin(force){
+  const rem = localStorage.getItem('bt_remember_me');
+  if (rem === '0') { console.log('[auth] prefill: remember=0, skip'); return; }
+  const cred = _btLoadCred();
+  if (!cred || !cred.e || !cred.p) { console.log('[auth] prefill: sem cred valida (saved:', !!localStorage.getItem('bt_saved_cred'), ')'); return; }
+  const emailEl = document.getElementById('loginEmail');
+  const pwdEl = document.getElementById('loginPassword');
+  const remEl = document.getElementById('loginRemember');
+  if (!emailEl || !pwdEl) { console.warn('[auth] prefill: campos nao encontrados'); return; }
+  if (force || !emailEl.value) emailEl.value = cred.e;
+  if (force || !pwdEl.value) pwdEl.value = cred.p;
+  if (remEl) remEl.checked = true;
+  console.log('[auth] prefill ok — email:', cred.e, 'senha len:', cred.p.length);
+}
+
 function openAuthModal(){
   document.getElementById('authModal').classList.add('on');
-  // Pre-preenche credenciais salvas pra quem marcou "Lembrar de mim".
-  if (localStorage.getItem('bt_remember_me') !== '0') {
-    const cred = _btLoadCred();
-    if (cred && cred.e && cred.p) {
-      const emailEl = document.getElementById('loginEmail');
-      const pwdEl = document.getElementById('loginPassword');
-      const remEl = document.getElementById('loginRemember');
-      if (emailEl && !emailEl.value) emailEl.value = cred.e;
-      if (pwdEl && !pwdEl.value) pwdEl.value = cred.p;
-      if (remEl) remEl.checked = true;
-    }
-  }
+  _btPrefillLogin(true);
 }
 // Abre modal auto via ?openLogin=1 (vindo de gates tipo bluetendencias)
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
@@ -1802,6 +1809,8 @@ function switchAuthTab(tab){
   document.getElementById('authDivider').style.display='block';
   document.getElementById('googleBtn').style.display='flex';
   document.getElementById('authMsg').textContent='';
+  // Reforca o preenchimento ao mudar pra aba de login
+  if (tab === 'login') _btPrefillLogin(true);
 }
 function showForgotPassword(){
   document.getElementById('authLoginForm').style.display='none';
