@@ -149,6 +149,7 @@ async function dispararCampanha(req, res, ctx, src) {
   // 3) Envia em lotes de 50 por plano, pausa 1s entre lotes
   const TAMANHO_LOTE = 50;
   const resultados = { enviados: 0, falhas: 0, por_plano: { free: 0, full: 0, master: 0 } };
+  const emailsEnviados = []; // pra atualizar email_marketing depois
 
   for (const [plano, lista] of Object.entries(por_plano)) {
     for (let i = 0; i < lista.length; i += TAMANHO_LOTE) {
@@ -166,8 +167,13 @@ async function dispararCampanha(req, res, ctx, src) {
               html: email.html,
             }),
           });
-          if (r.ok) { resultados.enviados++; resultados.por_plano[plano]++; }
-          else { resultados.falhas++; }
+          if (r.ok) {
+            resultados.enviados++;
+            resultados.por_plano[plano]++;
+            emailsEnviados.push(user.email);
+          } else {
+            resultados.falhas++;
+          }
         } catch (e) {
           resultados.falhas++;
           console.error(`[email-campanha] falha ${user.email}:`, e.message);
@@ -175,6 +181,39 @@ async function dispararCampanha(req, res, ctx, src) {
       }));
       // pausa entre lotes
       if (i + TAMANHO_LOTE < lista.length) await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // 3.5) Atualiza email_marketing pros enviados — evita que o cron de
+  // terca/sexta mande o template BlueTendencias (pos 0) DE NOVO pra quem
+  // acabou de receber. Seta sequence_position=1 (proximo template) e
+  // last_sent_at=agora (respeita janela de 10 dias).
+  if (emailsEnviados.length > 0) {
+    const agora = new Date().toISOString();
+    // Garante que cada um tem linha na email_marketing
+    for (const em of emailsEnviados) {
+      try {
+        // Tenta UPSERT (email e UNIQUE no email_marketing)
+        const upR = await fetch(`${ctx.SU}/rest/v1/email_marketing?on_conflict=email`, {
+          method: 'POST',
+          headers: { ...ctx.h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({
+            email: em,
+            last_sent_at: agora,
+            sequence_position: 1, // ja recebeu o template [0], pula pra [1]
+            total_sent: 1,
+            unsubscribed: false,
+          }),
+        });
+        if (!upR.ok) {
+          // Fallback explicito: PATCH se ja existia
+          await fetch(`${ctx.SU}/rest/v1/email_marketing?email=eq.${encodeURIComponent(em)}`, {
+            method: 'PATCH',
+            headers: { ...ctx.h, Prefer: 'return=minimal' },
+            body: JSON.stringify({ last_sent_at: agora, sequence_position: 1 }),
+          });
+        }
+      } catch (e) { /* nao bloqueia — se falhar, cron vai pular via last_sent_at se existir */ }
     }
   }
 
