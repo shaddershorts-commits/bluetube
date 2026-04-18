@@ -615,7 +615,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- BLUETENDENCIAS STUDIO (Dissecação cinematográfica) -->
     <div class="section" id="studioSection">
       <div class="section-header">
-        <div class="section-title">🔮 BlueTendências Studio <span class="section-subtitle">— dissecação cinematográfica · Sonnet 4.6 isolado</span></div>
+        <div class="section-title">🔮 BlueTendências Studio (Blublu) <span class="section-subtitle">— dissecação cinematográfica · Sonnet 4.6 isolado</span></div>
         <button class="action-btn" onclick="loadStudio()">↻ Atualizar</button>
       </div>
       <div id="studioStatusBadge" style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid rgba(167,139,250,0.2);border-radius:14px;padding:14px 18px;margin-bottom:14px">
@@ -1857,16 +1857,18 @@ async function loadStudio(){
     if(ultimas.length===0){
       tbl.innerHTML='<div class="empty-state">Nenhuma análise ainda.</div>';
     } else {
-      tbl.innerHTML=`<div style="display:grid;grid-template-columns:130px 1fr 130px 80px 90px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.15);font-weight:700;color:var(--dim)">
-        <div>QUANDO</div><div>VÍDEO</div><div>NICHO</div><div>CUSTO</div><div>YT ID</div>
+      tbl.innerHTML=`<div style="display:grid;grid-template-columns:120px 100px 1fr 110px 80px 80px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.15);font-weight:700;color:var(--dim)">
+        <div>QUANDO</div><div>USUÁRIO</div><div>VÍDEO</div><div>NICHO</div><div>CUSTO</div><div>YT</div>
       </div>`+ultimas.map(u=>{
         const quando=new Date(u.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const nome=escapeHtml(u.nome||'—');
         const titulo=escapeHtml((u.video_titulo||'').slice(0,60));
         const nicho=escapeHtml(u.nicho_usuario||'—');
         const custo='R$ '+(Number(u.custo_brl)||0).toFixed(3);
         const yt=escapeHtml(u.video_youtube_id||'—');
-        return `<div style="display:grid;grid-template-columns:130px 1fr 130px 80px 90px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.06)">
+        return `<div style="display:grid;grid-template-columns:120px 100px 1fr 110px 80px 80px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.06)">
           <div>${quando}</div>
+          <div style="color:#60a5fa">${nome}</div>
           <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titulo}">${titulo||'—'}</div>
           <div style="color:#fbbf24">${nicho}</div>
           <div style="color:#a78bfa">${custo}</div>
