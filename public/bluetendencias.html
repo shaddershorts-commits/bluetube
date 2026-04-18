@@ -3,646 +3,897 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BlueTendências · Exclusivo Master — BlueTube</title>
-<meta name="description" content="Descubra o que está viralizando antes de todo mundo. Análise profunda de tendências, sugestões personalizadas e comparação com seu canal.">
+<title>BlueTendências · Descoberta Cinematográfica</title>
+<meta name="description" content="Descubra o padrão oculto que faz seus vídeos virais. Análise personalizada por IA.">
 <link rel="icon" href="/favicon.ico">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
 <style>
 :root{
-  --bg:#020817;--card:rgba(10,22,40,0.9);--card-hover:rgba(14,28,50,0.95);
+  --bg:#020817;--card:rgba(10,22,40,0.85);--card-solid:#0a1628;
   --neon:#00aaff;--neon-dim:rgba(0,170,255,0.12);--neon-border:rgba(0,170,255,0.18);
   --gold:#fbbf24;--gold-dim:rgba(251,191,36,0.12);
-  --green:#4ecca3;--red:#ff6b6b;--purple:#a78bfa;
+  --green:#4ecca3;--red:#ff6b6b;--purple:#a78bfa;--magenta:#ec4899;
   --text:#e8f4ff;--text-dim:rgba(150,190,230,0.42);--text-sec:rgba(150,190,230,0.72);
   --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden;font-weight:400}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at top,rgba(26,107,255,0.08),transparent 50%),radial-gradient(ellipse at bottom right,rgba(0,170,255,0.06),transparent 40%);pointer-events:none;z-index:0}
-main{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:28px 20px 80px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden;font-weight:400;cursor:default}
+html,body{height:100%}
 
-/* HEADER */
-.tp-header{text-align:center;padding:40px 20px 28px;position:relative}
-.tp-badge{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#0a0a0a;font-size:11px;font-weight:800;padding:5px 14px;border-radius:20px;letter-spacing:1.5px;margin-bottom:14px;box-shadow:0 4px 12px rgba(251,191,36,0.35)}
-.tp-title{font-size:clamp(32px,5vw,52px);font-weight:800;line-height:1.1;margin-bottom:10px;background:linear-gradient(135deg,#e8f4ff 0%,#00aaff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.tp-sub{color:var(--text-sec);font-size:15px;max-width:640px;margin:0 auto;line-height:1.5}
+/* Canvas particles fundo */
+#particlesCanvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
 
-/* LOADING / GATE */
-.gate{max-width:520px;margin:80px auto;background:var(--card);border:1px solid var(--neon-border);border-radius:20px;padding:40px 32px;text-align:center}
-.gate h2{font-size:24px;font-weight:800;margin-bottom:10px}
-.gate p{color:var(--text-sec);margin-bottom:22px;line-height:1.5}
-.gate-cta{display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700;font-size:14px}
-.gate-master-cta{background:linear-gradient(135deg,#92400e,#fbbf24);color:#0a0a0a}
+/* Glow mouse tracker */
+#mouseGlow{position:fixed;pointer-events:none;z-index:1;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,0.1) 0%,transparent 60%);transform:translate(-50%,-50%);transition:opacity .3s;opacity:.7}
 
-/* SECTIONS */
-section{margin-bottom:48px}
-.sec-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-.sec-title{font-size:22px;font-weight:800;display:flex;align-items:center;gap:10px}
-.sec-sub{font-size:12px;color:var(--text-dim);font-family:var(--mono)}
+/* ATOS — layer full screen */
+.ato{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .6s ease}
+.ato.active{display:flex;opacity:1}
+.ato.exiting{opacity:0;pointer-events:none}
 
-/* CARDS DE VIRAL */
-.grid-videos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
-.video-card{background:var(--card);border:1px solid var(--neon-border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .2s;position:relative}
-.video-card:hover{transform:translateY(-2px);border-color:var(--neon);box-shadow:0 8px 24px rgba(0,170,255,0.18)}
-.video-thumb{position:relative;width:100%;aspect-ratio:9/16;background:#000;overflow:hidden}
-.video-thumb img{width:100%;height:100%;object-fit:cover}
-.video-thumb::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,transparent 60%,rgba(0,0,0,0.85))}
-.video-views{position:absolute;bottom:8px;left:8px;right:8px;z-index:2;color:#fff;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:end;gap:6px}
-.velocity-badge{background:rgba(78,204,163,0.9);color:#000;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:800}
-.video-body{padding:11px 13px 14px}
-.video-title{font-size:13px;font-weight:600;line-height:1.35;max-height:52px;overflow:hidden;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.video-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);font-family:var(--mono)}
-.video-canal{color:var(--text-sec);max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.video-rpm{color:var(--gold);font-weight:600}
+.ato-inner{max-width:760px;width:100%;text-align:center;position:relative;z-index:2}
 
-/* EMERGENTES */
-.emerg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
-.emerg-card{background:linear-gradient(135deg,rgba(0,170,255,0.12),rgba(167,139,250,0.08));border:1px solid rgba(0,170,255,0.4);border-radius:16px;padding:22px;position:relative;overflow:hidden}
-.emerg-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--neon),var(--purple),transparent);animation:scan 3s ease-in-out infinite}
-@keyframes scan{0%,100%{opacity:.4}50%{opacity:1}}
-.emerg-tag{display:inline-block;background:rgba(239,68,68,0.18);color:#fca5a5;font-size:10px;font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:12px;margin-bottom:10px}
-.emerg-tema{font-size:19px;font-weight:800;margin-bottom:12px;line-height:1.25}
-.emerg-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
-.emerg-stat{background:rgba(0,0,0,0.25);border-radius:10px;padding:9px 11px}
-.emerg-stat-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;font-family:var(--mono)}
-.emerg-stat-value{font-size:14px;font-weight:700}
-.emerg-rpm{background:var(--gold-dim);color:var(--gold);font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;margin-bottom:14px;text-align:center;font-family:var(--mono)}
-.emerg-cta{width:100%;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;font-family:var(--font);font-weight:700;font-size:13px;padding:12px;border-radius:10px;cursor:pointer;transition:all .15s}
-.emerg-cta:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,170,255,0.4)}
-.emerg-examples{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
-.emerg-example{flex-shrink:0;width:58px;aspect-ratio:9/16;border-radius:6px;overflow:hidden;background:#000}
-.emerg-example img{width:100%;height:100%;object-fit:cover}
+/* Back / skip links */
+.nav-bar{position:fixed;top:18px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:center;z-index:100;font-size:11px;color:var(--text-dim);font-family:var(--mono);letter-spacing:.5px}
+.nav-bar a,.nav-bar button{color:var(--text-dim);text-decoration:none;background:none;border:none;font-family:inherit;font-size:inherit;cursor:pointer;padding:6px 10px;border-radius:8px;transition:all .2s}
+.nav-bar a:hover,.nav-bar button:hover{color:var(--neon);background:rgba(0,170,255,.06)}
 
-/* MEU CANAL */
-.canal-connect-card{background:var(--card);border:1px dashed var(--neon-border);border-radius:16px;padding:32px;text-align:center}
-.canal-connect-card h3{font-size:18px;font-weight:700;margin-bottom:8px}
-.canal-connect-card p{color:var(--text-sec);font-size:13px;margin-bottom:18px;line-height:1.5}
-.canal-input-wrap{display:flex;gap:8px;max-width:440px;margin:0 auto;flex-wrap:wrap}
-.canal-input{flex:1;min-width:220px;background:rgba(0,0,0,0.4);border:1px solid var(--neon-border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none}
-.canal-input:focus{border-color:var(--neon)}
-.canal-btn{background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;padding:12px 22px;border-radius:10px;font-family:var(--font);font-weight:700;font-size:13px;cursor:pointer}
-.canal-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Progress atos — dots */
+.atos-progress{display:flex;gap:8px;justify-content:center;margin-bottom:32px;opacity:.5}
+.atos-dot{width:8px;height:8px;border-radius:50%;background:rgba(150,190,230,.2);transition:all .3s}
+.atos-dot.active{background:var(--neon);box-shadow:0 0 12px rgba(0,170,255,.5);transform:scale(1.3)}
+.atos-dot.done{background:var(--text-dim)}
 
-.canal-card{background:var(--card);border:1px solid var(--neon-border);border-radius:16px;padding:24px}
-.canal-head{display:flex;gap:16px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
-.canal-avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--neon-border);flex-shrink:0}
-.canal-info h3{font-size:18px;font-weight:700;margin-bottom:2px}
-.canal-info .meta{color:var(--text-sec);font-size:12px;font-family:var(--mono)}
-.canal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
-.canal-stat{background:rgba(0,0,0,0.2);border-radius:10px;padding:12px 14px}
-.canal-stat-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;font-family:var(--mono)}
-.canal-stat-value{font-size:17px;font-weight:800}
-.canal-stat-delta{font-size:11px;color:var(--green);font-family:var(--mono);margin-top:2px}
-.canal-stat-delta.neg{color:var(--red)}
-.canal-recs{border-top:1px solid var(--neon-border);padding-top:16px;margin-top:16px}
-.canal-recs h4{font-size:13px;font-weight:700;color:var(--neon);margin-bottom:10px;letter-spacing:0.5px}
-.canal-rec{background:rgba(0,170,255,0.06);border-left:3px solid var(--neon);padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:13px;color:var(--text-sec);line-height:1.5}
+/* ══════ ATO 1 ══════ */
+#ato1 .a1-text{font-size:clamp(22px,4vw,38px);font-weight:700;line-height:1.3;min-height:120px;margin-bottom:32px;letter-spacing:-.5px}
+#ato1 .a1-counter{color:var(--neon);font-family:var(--mono);font-weight:800;font-size:clamp(28px,5vw,48px);display:inline-block;margin:0 4px}
+#ato1 .a1-sub{color:var(--text-sec);font-size:15px;margin-bottom:36px;min-height:48px;opacity:0;transition:opacity 1s}
+#ato1 .a1-sub.show{opacity:1}
+.a1-cta{display:inline-flex;align-items:center;gap:12px;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;padding:18px 40px;border-radius:14px;font-family:var(--font);font-weight:800;font-size:16px;letter-spacing:2px;cursor:pointer;opacity:0;transform:translateY(20px);transition:all .6s;box-shadow:0 8px 32px rgba(0,170,255,.3)}
+.a1-cta.show{opacity:1;transform:translateY(0);animation:pulse 2s infinite}
+.a1-cta:hover{transform:translateY(-2px);box-shadow:0 12px 42px rgba(0,170,255,.5)}
+@keyframes pulse{0%,100%{box-shadow:0 8px 32px rgba(0,170,255,.3)}50%{box-shadow:0 8px 42px rgba(0,170,255,.6)}}
+.a1-loading{display:inline-flex;gap:6px;align-items:center;justify-content:center}
+.a1-loading .dot{width:8px;height:8px;background:var(--neon);border-radius:50%;animation:bob 1.4s infinite}
+.a1-loading .dot:nth-child(2){animation-delay:.15s}
+.a1-loading .dot:nth-child(3){animation-delay:.3s}
+@keyframes bob{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-6px)}}
 
-/* SUGESTOES */
-.sug-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
-.sug-card{background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:18px;position:relative}
-.sug-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),var(--neon));border-radius:14px 14px 0 0}
-.sug-formato{display:inline-block;font-size:10px;background:var(--gold-dim);color:var(--gold);padding:3px 10px;border-radius:10px;font-weight:700;letter-spacing:0.5px;margin-bottom:10px}
-.sug-titulo{font-size:15px;font-weight:800;line-height:1.3;margin-bottom:10px}
-.sug-hook{background:rgba(0,170,255,0.06);border-left:3px solid var(--neon);padding:9px 12px;border-radius:0 8px 8px 0;margin-bottom:12px;font-size:12px;color:var(--text-sec);font-style:italic;line-height:1.45}
-.sug-meta{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;font-family:var(--mono);font-size:11px}
-.sug-views{color:var(--green);font-weight:700}
-.sug-rpm{color:var(--gold);font-weight:700}
-.sug-pq{font-size:11px;color:var(--text-dim);line-height:1.5;margin-bottom:12px;font-style:italic}
-.sug-cta{width:100%;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border:none;padding:10px;border-radius:8px;font-family:var(--font);font-weight:700;font-size:12px;cursor:pointer;transition:all .15s}
+/* Easter egg */
+.easter-egg{margin-top:40px;font-size:12px;color:var(--gold);font-family:var(--mono);opacity:0;transition:opacity 2s}
+.easter-egg.show{opacity:.8}
 
-/* NICHO EXPLORER */
-.nicho-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
-.nicho-select{background:rgba(0,0,0,0.4);border:1px solid var(--neon-border);border-radius:10px;padding:10px 14px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;min-width:180px}
-.nicho-info{background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:18px;margin-bottom:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
-.nicho-info .stat{text-align:center}
-.nicho-info .label{font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px;font-family:var(--mono)}
-.nicho-info .val{font-size:18px;font-weight:800}
+/* ══════ ATO 2 ══════ */
+#ato2 .a2-label{font-size:10px;color:var(--neon);letter-spacing:3px;font-family:var(--mono);margin-bottom:14px;opacity:0;transition:opacity .8s}
+#ato2 .a2-label.show{opacity:1}
+#ato2 .a2-lines{min-height:120px;margin-bottom:32px}
+#ato2 .a2-line{font-size:clamp(20px,3.5vw,30px);font-weight:700;line-height:1.35;opacity:0;transform:translateY(12px);transition:all .8s;margin-bottom:10px;letter-spacing:-.3px}
+#ato2 .a2-line.show{opacity:1;transform:translateY(0)}
+#ato2 .a2-line.highlight{background:linear-gradient(120deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:800}
+.scanner-box{position:relative;background:var(--card);border:1px solid var(--neon-border);border-radius:16px;padding:22px;margin-bottom:22px;overflow:hidden;opacity:0;transform:scale(.95);transition:all .6s}
+.scanner-box.show{opacity:1;transform:scale(1)}
+.scanner-box::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(0,170,255,.25),transparent);animation:scan 2.5s infinite}
+.scanner-box.done::before{animation:none;opacity:0}
+@keyframes scan{0%{left:-100%}100%{left:100%}}
+.canal-row{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.canal-av{width:52px;height:52px;border-radius:50%;border:2px solid var(--neon-border);object-fit:cover}
+.canal-info{text-align:left;flex:1;min-width:0}
+.canal-nome{font-size:16px;font-weight:700}
+.canal-sub{font-size:12px;color:var(--text-dim);font-family:var(--mono)}
+.videos-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+.video-mini{aspect-ratio:9/16;background:#000;border-radius:6px;overflow:hidden;position:relative}
+.video-mini img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .4s}
+.video-mini.revealed img{opacity:1}
+.video-mini::after{content:'';position:absolute;inset:0;background:rgba(0,170,255,.1);opacity:0;transition:opacity .3s}
+.video-mini.highlight::after{opacity:1;box-shadow:inset 0 0 0 2px var(--neon)}
 
-/* TOAST */
-.toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--card);border:1px solid var(--neon);border-radius:12px;padding:12px 20px;font-size:13px;opacity:0;pointer-events:none;transition:all .3s;z-index:999;font-weight:600}
+/* ══════ ATO 3 ══════ */
+#ato3 .a3-badge{display:inline-block;font-size:10px;color:var(--gold);letter-spacing:3px;font-family:var(--mono);background:var(--gold-dim);padding:6px 14px;border-radius:12px;margin-bottom:18px;opacity:0;transition:opacity .6s}
+#ato3 .a3-badge.show{opacity:1}
+#ato3 .a3-padrao-nome{font-size:clamp(36px,7vw,68px);font-weight:800;letter-spacing:-2px;margin-bottom:12px;background:linear-gradient(135deg,var(--gold),var(--neon));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;opacity:0;transform:scale(.92);transition:all .8s cubic-bezier(.2,1,.3,1)}
+#ato3 .a3-padrao-nome.show{opacity:1;transform:scale(1)}
+#ato3 .a3-forca{font-size:14px;color:var(--text-dim);font-family:var(--mono);margin-bottom:28px;opacity:0;transition:opacity .6s}
+#ato3 .a3-forca.show{opacity:1}
+#ato3 .a3-evidencias{background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:22px;margin-bottom:20px;text-align:left;opacity:0;transform:translateY(14px);transition:all .7s}
+#ato3 .a3-evidencias.show{opacity:1;transform:translateY(0)}
+.evidencia-item{padding:10px 14px;background:rgba(0,170,255,.05);border-left:3px solid var(--neon);border-radius:0 10px 10px 0;margin-bottom:8px;font-size:13px;color:var(--text-sec);line-height:1.5;opacity:0;transform:translateX(-12px);transition:all .5s}
+.evidencia-item.show{opacity:1;transform:translateX(0)}
+#ato3 .a3-explicacao{font-size:16px;font-weight:600;line-height:1.6;color:var(--text);margin-bottom:22px;opacity:0;transition:opacity .8s}
+#ato3 .a3-explicacao.show{opacity:1}
+
+/* ══════ ATO 4 ══════ */
+#ato4 .a4-titulo{font-size:clamp(22px,4vw,32px);font-weight:800;margin-bottom:28px;opacity:0;transform:translateY(10px);transition:all .6s;line-height:1.25}
+#ato4 .a4-titulo.show{opacity:1;transform:translateY(0)}
+.bars-chart{max-width:640px;margin:0 auto 28px;text-align:left}
+.bar-row{display:grid;grid-template-columns:130px 1fr 70px;gap:12px;align-items:center;margin-bottom:10px;opacity:0;transform:translateX(-20px);transition:all .5s}
+.bar-row.show{opacity:1;transform:translateX(0)}
+.bar-label{font-family:var(--mono);font-size:12px;color:var(--text-dim);text-align:right;text-transform:uppercase;letter-spacing:.5px}
+.bar-row.highlight .bar-label{color:var(--gold);font-weight:700}
+.bar-track{height:26px;background:rgba(0,0,0,.25);border-radius:13px;overflow:hidden;position:relative}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--neon),var(--purple));width:0%;transition:width 1.2s cubic-bezier(.3,1,.3,1);border-radius:13px}
+.bar-row.highlight .bar-fill{background:linear-gradient(90deg,var(--gold),var(--red))}
+.bar-value{font-family:var(--mono);font-size:12px;color:var(--text-sec);font-weight:600}
+.bar-row.highlight .bar-value{color:var(--gold);font-weight:800}
+#ato4 .a4-insight{font-size:clamp(18px,3vw,24px);font-weight:700;line-height:1.4;color:var(--gold);padding:22px;background:linear-gradient(135deg,var(--gold-dim),rgba(0,170,255,.04));border:1px solid rgba(251,191,36,.25);border-radius:16px;opacity:0;transform:scale(.95);transition:all .8s}
+#ato4 .a4-insight.show{opacity:1;transform:scale(1)}
+
+/* ══════ ATO 5 ══════ */
+#ato5 .a5-loading{text-align:center;opacity:0;transition:opacity .5s}
+#ato5 .a5-loading.show{opacity:1}
+#ato5 .a5-loading.hide{opacity:0;pointer-events:none}
+#ato5 .a5-etapa{font-size:14px;color:var(--text-sec);font-family:var(--mono);margin-bottom:22px;min-height:40px;display:flex;align-items:center;justify-content:center;gap:10px}
+.load-spin{width:16px;height:16px;border:2px solid rgba(0,170,255,.2);border-top-color:var(--neon);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ato5 .a5-reveal{opacity:0;transform:scale(.92);transition:all 1s cubic-bezier(.2,1,.3,1)}
+#ato5 .a5-reveal.show{opacity:1;transform:scale(1)}
+#ato5 .a5-tag{display:inline-block;font-size:10px;color:var(--magenta);letter-spacing:3px;font-family:var(--mono);background:rgba(236,72,153,.1);padding:6px 14px;border-radius:12px;margin-bottom:18px}
+#ato5 .a5-tema{font-size:clamp(28px,5vw,52px);font-weight:800;margin-bottom:14px;line-height:1.15;background:linear-gradient(135deg,var(--gold),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+#ato5 .a5-por-que{font-size:15px;color:var(--text-sec);margin-bottom:28px;line-height:1.6;max-width:560px;margin-left:auto;margin-right:auto}
+.a5-numeros{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:28px}
+.num-card{background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:16px 12px}
+.num-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;font-family:var(--mono);margin-bottom:4px}
+.num-value{font-size:22px;font-weight:800}
+.num-card.gold .num-value{color:var(--gold)}
+.num-card.green .num-value{color:var(--green)}
+.num-card.blue .num-value{color:var(--neon)}
+
+/* ══════ ATO 6 ══════ */
+#ato6 .a6-topo{text-align:left;max-width:640px;margin:0 auto 20px}
+#ato6 .a6-tag{font-size:10px;color:var(--green);letter-spacing:3px;font-family:var(--mono);margin-bottom:10px}
+#ato6 .a6-titulo{font-size:clamp(22px,4vw,32px);font-weight:800;line-height:1.25;margin-bottom:10px}
+#ato6 .a6-prob{font-size:13px;color:var(--gold);font-family:var(--mono);font-weight:600}
+.roteiro-card{background:var(--card);border:1px solid var(--neon-border);border-radius:16px;padding:24px;text-align:left;margin-bottom:20px;max-width:640px;margin-left:auto;margin-right:auto}
+.roteiro-sec{margin-bottom:16px}
+.roteiro-sec-label{font-size:10px;color:var(--neon);letter-spacing:2px;font-family:var(--mono);margin-bottom:6px;text-transform:uppercase}
+.roteiro-sec-body{font-size:14px;line-height:1.6;color:var(--text)}
+.roteiro-sec-body.mono{font-family:var(--mono);font-size:12px;color:var(--text-sec);white-space:pre-line;background:rgba(0,0,0,.2);padding:12px;border-radius:8px}
+.hashtags span{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--neon);background:rgba(0,170,255,.1);padding:3px 9px;border-radius:10px;margin:3px 3px 0 0}
+.acoes-principais{display:grid;grid-template-columns:1fr;gap:10px;max-width:640px;margin:0 auto}
+.btn-primario{background:linear-gradient(135deg,var(--green),#2dd4bf);color:#000;border:none;padding:16px 28px;border-radius:12px;font-family:var(--font);font-weight:800;font-size:15px;cursor:pointer;transition:all .2s}
+.btn-primario:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(78,204,163,.4)}
+.btn-secundario{background:transparent;color:var(--text);border:1px solid var(--neon-border);padding:14px 28px;border-radius:12px;font-family:var(--font);font-weight:600;font-size:14px;cursor:pointer;transition:all .2s}
+.btn-secundario:hover{background:rgba(0,170,255,.06);border-color:var(--neon)}
+.btn-terciario{background:transparent;color:var(--text-dim);border:none;padding:10px;cursor:pointer;font-family:var(--mono);font-size:12px;transition:color .2s}
+.btn-terciario:hover{color:var(--text)}
+
+/* GATE — free/full/logged out */
+.gate-overlay{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px}
+.gate-card{max-width:480px;background:var(--card);border:1px solid var(--neon-border);border-radius:20px;padding:40px 32px;text-align:center}
+.gate-badge{display:inline-block;background:linear-gradient(135deg,#92400e,var(--gold));color:#000;font-size:10px;font-weight:800;padding:4px 12px;border-radius:12px;letter-spacing:1.5px;margin-bottom:14px}
+.gate-titulo{font-size:22px;font-weight:800;margin-bottom:10px}
+.gate-sub{color:var(--text-sec);font-size:14px;margin-bottom:22px;line-height:1.5}
+.gate-cta{display:inline-block;background:linear-gradient(135deg,#92400e,var(--gold));color:#000;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:800;font-size:14px}
+
+/* CONEXAO DE CANAL (overlay) */
+.conectar-overlay{position:fixed;inset:0;z-index:40;background:rgba(2,8,23,.95);display:none;align-items:center;justify-content:center;padding:20px}
+.conectar-overlay.active{display:flex}
+.conectar-card{max-width:520px;width:100%;background:var(--card);border:1px solid var(--neon-border);border-radius:20px;padding:36px 30px;text-align:center}
+.conectar-card h2{font-size:22px;font-weight:800;margin-bottom:10px}
+.conectar-card p{color:var(--text-sec);font-size:13px;line-height:1.5;margin-bottom:22px}
+.conectar-input{width:100%;background:rgba(0,0,0,.4);border:1px solid var(--neon-border);border-radius:12px;padding:14px 16px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;margin-bottom:14px}
+.conectar-input:focus{border-color:var(--neon)}
+.conectar-btn{width:100%;background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;border:none;padding:14px;border-radius:12px;font-family:var(--font);font-weight:800;font-size:14px;cursor:pointer}
+.conectar-btn:disabled{opacity:.5;cursor:not-allowed}
+.conectar-skip{display:block;margin-top:14px;background:none;border:none;color:var(--text-dim);font-family:var(--mono);font-size:12px;cursor:pointer}
+
+/* Toast */
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--card-solid);border:1px solid var(--neon);border-radius:12px;padding:12px 20px;font-size:13px;opacity:0;pointer-events:none;transition:all .3s;z-index:999;font-weight:600}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* BACK-LINK */
-.back-link{position:absolute;top:22px;left:22px;color:var(--text-dim);text-decoration:none;font-size:12px;font-family:var(--mono);letter-spacing:0.5px;transition:color .2s}
-.back-link:hover{color:var(--neon)}
-
-/* LOADING SPINNER */
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,170,255,0.2);border-top-color:var(--neon);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* SKELETON */
-.skel{background:linear-gradient(90deg,rgba(0,170,255,0.04),rgba(0,170,255,0.1),rgba(0,170,255,0.04));background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:8px}
-@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-
-/* RESPONSIVE */
 @media(max-width:600px){
-  main{padding:16px 12px 60px}
-  .tp-title{font-size:28px}
-  .grid-videos{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-  .emerg-grid{grid-template-columns:1fr}
-  .back-link{position:static;display:block;margin-bottom:8px}
+  .videos-strip{grid-template-columns:repeat(5,1fr);gap:4px}
+  .bar-row{grid-template-columns:90px 1fr 50px;gap:8px}
+  .bar-label{font-size:10px}
+  .nav-bar{font-size:10px}
 }
 </style>
 </head>
 <body>
 
-<main>
-<a class="back-link" href="/" id="backLink">← voltar</a>
+<canvas id="particlesCanvas"></canvas>
+<div id="mouseGlow"></div>
 
-<header class="tp-header">
-  <div class="tp-badge">✨ EXCLUSIVO MASTER</div>
-  <h1 class="tp-title">📊 BlueTendências</h1>
-  <p class="tp-sub">Descubra o que está viralizando <em>antes</em> de todo mundo. Análise profunda, oportunidades emergentes e sugestões personalizadas para o seu canal.</p>
-  <!-- Badge discreto de status — so aparece se houver aviso de fonte de dados -->
-  <div id="sourceBadge" style="display:none;margin-top:14px">
-    <span id="sourceBadgeChip" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:12px;font-family:var(--mono);font-weight:600"></span>
-  </div>
-</header>
-<div id="sourceBanner" style="display:none;max-width:900px;margin:0 auto 20px;padding:10px 16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:10px;font-size:12px;color:var(--text-sec);text-align:center"></div>
+<div class="nav-bar">
+  <a href="/">← sair</a>
+  <div id="navAto" style="font-family:var(--mono);letter-spacing:2px"></div>
+  <button id="btnModoClassico" onclick="abrirModoClassico()" style="display:none">ver painel clássico →</button>
+</div>
 
-<!-- GATE: bloqueia Free/Full -->
-<div id="gate" style="display:none">
-  <div class="gate" id="gateFree">
-    <h2>🔒 Recurso exclusivo do Master</h2>
-    <p>BlueTendências te dá acesso à inteligência de tendências virais, análise comparativa do seu canal e sugestões personalizadas geradas por IA.</p>
-    <a class="gate-cta gate-master-cta" href="/?upgrade=master">Fazer upgrade pra Master →</a>
-    <p style="margin-top:18px;font-size:11px;color:var(--text-dim)">Inclui tudo do Full + BlueTendências + comunidade exclusiva</p>
-  </div>
-  <div class="gate" id="gateAuth" style="display:none">
-    <h2>Entre na sua conta</h2>
-    <p>Você precisa estar logado como assinante Master pra acessar o BlueTendências.</p>
-    <a class="gate-cta" href="/login?next=/bluetendencias">Fazer login →</a>
+<!-- GATE -->
+<div class="gate-overlay" id="gate" style="display:none">
+  <div class="gate-card" id="gateCard"></div>
+</div>
+
+<!-- ATO 1 — Abertura misteriosa -->
+<div class="ato" id="ato1">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot active"></div><div class="atos-dot"></div><div class="atos-dot"></div>
+      <div class="atos-dot"></div><div class="atos-dot"></div><div class="atos-dot"></div>
+    </div>
+    <div class="a1-text" id="a1Text"></div>
+    <div class="a1-sub" id="a1Sub"></div>
+    <button class="a1-cta" id="a1Cta" onclick="avancarPraAto2()" style="display:none">DESCOBRIR →</button>
+    <div class="a1-loading" id="a1Loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="easter-egg" id="easterEgg"></div>
   </div>
 </div>
 
-<!-- DASHBOARD -->
-<div id="dash" style="display:none">
-
-  <!-- SECAO 1: Em Alta Agora -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-title">🔥 Em Alta Agora</div>
-      <div class="sec-sub">top 12 virais · atualizado a cada 4h</div>
+<!-- ATO 2 — Descoberta pessoal -->
+<div class="ato" id="ato2">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot done"></div><div class="atos-dot active"></div><div class="atos-dot"></div>
+      <div class="atos-dot"></div><div class="atos-dot"></div><div class="atos-dot"></div>
     </div>
-    <div id="topVirais" class="grid-videos"></div>
-  </section>
-
-  <!-- SECAO 2: Emergentes -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-title">🚀 Tendências Emergentes</div>
-      <div class="sec-sub">crescimento rápido · baixa concorrência</div>
-    </div>
-    <div id="emergentes" class="emerg-grid"></div>
-  </section>
-
-  <!-- SECAO 3: Meu Canal -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-title">📈 Meu Canal vs Mercado</div>
-    </div>
-    <div id="meuCanal"></div>
-  </section>
-
-  <!-- SECAO 4: Sugestoes -->
-  <section id="secSugestoes" style="display:none">
-    <div class="sec-head">
-      <div class="sec-title">💡 Sugestões Personalizadas</div>
-      <div class="sec-sub">geradas por IA com base no seu canal + tendências</div>
-    </div>
-    <div id="sugestoes" class="sug-grid"></div>
-  </section>
-
-  <!-- SECAO 6: ML Insights -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-title">🤖 Insights do ML</div>
-      <div class="sec-sub" id="mlSubtitle">carregando modelo…</div>
-    </div>
-    <div id="mlStatus" style="background:linear-gradient(135deg,rgba(167,139,250,0.08),rgba(0,170,255,0.06));border:1px solid rgba(167,139,250,0.3);border-radius:16px;padding:20px;margin-bottom:14px">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
-        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Vídeos analisados</div><div style="font-size:22px;font-weight:800" id="mlTotalVideos">—</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Clusters tema</div><div style="font-size:22px;font-weight:800" id="mlTemas">—</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Clusters formato</div><div style="font-size:22px;font-weight:800" id="mlFormatos">—</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Predições</div><div style="font-size:22px;font-weight:800" id="mlPredicoes">—</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Acurácia</div><div style="font-size:22px;font-weight:800;color:var(--green)" id="mlAcuracia">—</div></div>
+    <div class="a2-label" id="a2Label">ESCANEANDO CANAL</div>
+    <div class="scanner-box" id="a2Scanner">
+      <div class="canal-row">
+        <img class="canal-av" id="a2Avatar" alt="">
+        <div class="canal-info">
+          <div class="canal-nome" id="a2Nome">—</div>
+          <div class="canal-sub" id="a2Sub">—</div>
+        </div>
       </div>
-      <div style="margin-top:12px;height:6px;background:rgba(0,0,0,0.3);border-radius:3px;overflow:hidden"><div id="mlAccBar" style="height:100%;background:linear-gradient(90deg,var(--neon),var(--purple));width:0%;transition:width 1s"></div></div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px;font-family:var(--mono)" id="mlLastValidation">—</div>
+      <div class="videos-strip" id="a2Videos"></div>
     </div>
-    <div id="mlInsights"></div>
-  </section>
-
-  <!-- SECAO 5: Explorar por Nicho -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-title">📊 Explorar por Nicho</div>
-      <div class="sec-sub">top virais · RPM · padrões de título</div>
-    </div>
-    <div class="nicho-bar">
-      <select id="nichoSel" class="nicho-select" onchange="loadNicho(this.value)">
-        <option value="">Escolha um nicho…</option>
-        <option value="financas">💰 Finanças</option>
-        <option value="tecnologia">💻 Tecnologia</option>
-        <option value="saude">🏥 Saúde</option>
-        <option value="educacao">🎓 Educação</option>
-        <option value="beleza">💄 Beleza</option>
-        <option value="lifestyle">✨ Lifestyle</option>
-        <option value="culinaria">🍳 Culinária</option>
-        <option value="games">🎮 Games</option>
-        <option value="humor">😂 Humor</option>
-        <option value="musica">🎵 Música</option>
-        <option value="esportes">⚽ Esportes</option>
-        <option value="pets">🐶 Pets</option>
-        <option value="viagens">✈️ Viagens</option>
-        <option value="automotivo">🚗 Automotivo</option>
-      </select>
-    </div>
-    <div id="nichoContent"></div>
-  </section>
-
+    <div class="a2-lines" id="a2Lines"></div>
+    <button class="a1-cta show" style="margin-top:16px;display:none" id="a2Continuar" onclick="avancarPraAto3()">CONTINUAR →</button>
+  </div>
 </div>
 
-</main>
+<!-- ATO 3 — Revelação do padrão -->
+<div class="ato" id="ato3">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot done"></div><div class="atos-dot done"></div><div class="atos-dot active"></div>
+      <div class="atos-dot"></div><div class="atos-dot"></div><div class="atos-dot"></div>
+    </div>
+    <div class="a3-badge" id="a3Badge">PADRÃO IDENTIFICADO</div>
+    <div class="a3-padrao-nome" id="a3Nome">—</div>
+    <div class="a3-forca" id="a3Forca">—</div>
+    <div class="a3-evidencias" id="a3Evidencias"></div>
+    <div class="a3-explicacao" id="a3Explicacao">—</div>
+    <button class="a1-cta" id="a3Continuar" style="display:none" onclick="avancarPraAto4()">VER O MERCADO →</button>
+  </div>
+</div>
+
+<!-- ATO 4 — Cenário de mercado -->
+<div class="ato" id="ato4">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot done"></div><div class="atos-dot done"></div><div class="atos-dot done"></div>
+      <div class="atos-dot active"></div><div class="atos-dot"></div><div class="atos-dot"></div>
+    </div>
+    <div class="a4-titulo" id="a4Titulo">Veja seu padrão vs o resto do mercado</div>
+    <div class="bars-chart" id="a4Bars"></div>
+    <div class="a4-insight" id="a4Insight">—</div>
+    <button class="a1-cta" id="a4Continuar" style="display:none;margin-top:24px" onclick="avancarPraAto5()">DESCOBRIR A OPORTUNIDADE →</button>
+  </div>
+</div>
+
+<!-- ATO 5 — Oportunidade única -->
+<div class="ato" id="ato5">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot done"></div><div class="atos-dot done"></div><div class="atos-dot done"></div>
+      <div class="atos-dot done"></div><div class="atos-dot active"></div><div class="atos-dot"></div>
+    </div>
+    <div class="a5-loading" id="a5Loading">
+      <div class="a5-etapa" id="a5Etapa"><div class="load-spin"></div><span>Cruzando dados...</span></div>
+    </div>
+    <div class="a5-reveal" id="a5Reveal">
+      <div class="a5-tag">OPORTUNIDADE PERFEITA</div>
+      <div class="a5-tema" id="a5Tema">—</div>
+      <div class="a5-por-que" id="a5PorQue">—</div>
+      <div class="a5-numeros" id="a5Numeros"></div>
+      <button class="a1-cta show" onclick="avancarPraAto6()">RECEBER O ROTEIRO →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ATO 6 — Ação transformadora -->
+<div class="ato" id="ato6">
+  <div class="ato-inner">
+    <div class="atos-progress">
+      <div class="atos-dot done"></div><div class="atos-dot done"></div><div class="atos-dot done"></div>
+      <div class="atos-dot done"></div><div class="atos-dot done"></div><div class="atos-dot active"></div>
+    </div>
+    <div id="a6Loading" style="opacity:1">
+      <div class="a5-etapa"><div class="load-spin"></div><span>Escrevendo seu roteiro exclusivo...</span></div>
+    </div>
+    <div id="a6Content" style="display:none">
+      <div class="a6-topo">
+        <div class="a6-tag">ROTEIRO PRONTO</div>
+        <div class="a6-titulo" id="a6Titulo">—</div>
+        <div class="a6-prob" id="a6Prob">—</div>
+      </div>
+      <div class="roteiro-card">
+        <div class="roteiro-sec">
+          <div class="roteiro-sec-label">🎬 Hook (3s)</div>
+          <div class="roteiro-sec-body" id="a6Hook">—</div>
+        </div>
+        <div class="roteiro-sec">
+          <div class="roteiro-sec-label">📜 Roteiro completo</div>
+          <div class="roteiro-sec-body mono" id="a6Roteiro">—</div>
+        </div>
+        <div class="roteiro-sec">
+          <div class="roteiro-sec-label">🎨 Sugestões visuais</div>
+          <div class="roteiro-sec-body" id="a6Visuais">—</div>
+        </div>
+        <div class="roteiro-sec">
+          <div class="roteiro-sec-label">🎵 Trilha</div>
+          <div class="roteiro-sec-body" id="a6Trilha">—</div>
+        </div>
+        <div class="roteiro-sec">
+          <div class="roteiro-sec-label">⏰ Melhor horário</div>
+          <div class="roteiro-sec-body" id="a6Horario">—</div>
+        </div>
+        <div class="roteiro-sec hashtags">
+          <div class="roteiro-sec-label"># Hashtags</div>
+          <div id="a6Hashtags"></div>
+        </div>
+      </div>
+      <div class="acoes-principais">
+        <button class="btn-primario" onclick="usarRoteiro()">USAR ESTE ROTEIRO →</button>
+        <button class="btn-secundario" onclick="gerarOutroRoteiro()">Ver outras oportunidades</button>
+        <button class="btn-terciario" onclick="salvarRoteiro()">Salvar pra depois</button>
+        <button class="btn-terciario" onclick="abrirModoClassico()" style="margin-top:8px">Ver painel completo →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONECTAR CANAL -->
+<div class="conectar-overlay" id="conectarOverlay">
+  <div class="conectar-card">
+    <h2>📺 Conecte seu canal</h2>
+    <p>Para a análise personalizada, me diga qual é seu canal do YouTube. Vou ler os títulos dos seus últimos virais.</p>
+    <input class="conectar-input" id="conectarInput" placeholder="@seucanal ou UC...">
+    <button class="conectar-btn" id="conectarBtn" onclick="conectarCanal()">Conectar →</button>
+    <button class="conectar-skip" onclick="pularConexao()">continuar sem conectar — análise do nicho</button>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE GLOBAL
+// ═══════════════════════════════════════════════════════════════════════════
 const token = localStorage.getItem('bt_token');
-let dashData = null;
+const state = {
+  ato: 1,
+  sessao: null,
+  canal: null,
+  padrao: null,
+  mercado: null,
+  oportunidade: null,
+  roteiro: null,
+};
 
-const fm = (n) => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
-const toast = (msg) => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); };
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+const $ = (id) => document.getElementById(id);
+const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const fmNum = (n) => { if (n == null) return '—'; if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'K'; return String(n); };
+const escapeHtml = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function requireLogin() {
-  document.getElementById('gate').style.display = 'block';
-  document.getElementById('gateAuth').style.display = 'block';
-  document.getElementById('gateFree').style.display = 'none';
+function showAto(n) {
+  document.querySelectorAll('.ato').forEach(el => el.classList.remove('active'));
+  $('ato' + n).classList.add('active');
+  $('navAto').textContent = `ATO ${n} / 6`;
+  state.ato = n;
+  $('btnModoClassico').style.display = n >= 6 ? 'block' : 'none';
 }
-function requireMasterPlan() {
-  document.getElementById('gate').style.display = 'block';
-  document.getElementById('gateAuth').style.display = 'none';
-  document.getElementById('gateFree').style.display = 'block';
+
+// Typewriter effect — ESCREVE texto char-a-char num elemento
+function typewriter(el, text, speed = 30) {
+  return new Promise((resolve) => {
+    el.innerHTML = '';
+    const chars = text.split('');
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i >= chars.length) { clearInterval(iv); resolve(); return; }
+      el.innerHTML = chars.slice(0, ++i).join('').replace(/\{counter\}/g, `<span class="a1-counter" id="liveCounter">0</span>`);
+    }, speed);
+  });
 }
 
-async function loadDashboard() {
-  if (!token) { requireLogin(); return; }
+// Anima contador de 0 até target
+function animateCounter(el, target, duration = 1500) {
+  if (!el) return;
+  const start = Date.now();
+  const step = () => {
+    const t = Math.min(1, (Date.now() - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.floor(target * eased).toLocaleString('pt-BR');
+    if (t < 1) requestAnimationFrame(step);
+  };
+  step();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GATE CHECK
+// ═══════════════════════════════════════════════════════════════════════════
+async function checkGate() {
+  if (!token) return showGate('login');
   try {
-    const r = await fetch('/api/bluetendencias?action=dashboard&token=' + encodeURIComponent(token));
-    if (r.status === 401) { requireLogin(); return; }
-    if (r.status === 403) { requireMasterPlan(); return; }
+    const r = await fetch('/api/get-plan', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({token}) });
     const d = await r.json();
-    if (!r.ok) { toast('Erro ao carregar'); return; }
-    dashData = d;
-    document.getElementById('dash').style.display = 'block';
-    renderDashboard(d);
-    if (d.meu_canal) loadSugestoes();
-  } catch(e) { console.error(e); toast('Erro de conexão'); }
+    if (d.plan !== 'master') return showGate('upgrade');
+    return true;
+  } catch(e) { return showGate('erro'); }
 }
 
-function renderDashboard(d) {
-  renderTopVirais(d.tendencias_hoje || [], d.rpm_por_nicho || []);
-  renderEmergentes(d.emergentes || []);
-  renderMeuCanal(d.meu_canal);
-  updateSourceBadge(d);
-  loadMLStatus();
-  loadMLInsights();
+function showGate(motivo) {
+  const gate = $('gate');
+  const card = $('gateCard');
+  const contents = {
+    login: `<div class="gate-titulo">Entre na sua conta</div><p class="gate-sub">Você precisa estar logado pra descobrir seu padrão oculto.</p><a class="gate-cta" href="/login?next=/bluetendencias">Fazer login →</a>`,
+    upgrade: `<div class="gate-badge">✨ EXCLUSIVO MASTER</div><div class="gate-titulo">🔒 Análise profunda é Master</div><p class="gate-sub">Eu posso descobrir um padrão oculto nos seus vídeos e te entregar uma oportunidade perfeita com roteiro pronto. Mas essa experiência é só do Master.</p><a class="gate-cta" href="/?upgrade=master">Fazer upgrade →</a>`,
+    erro: `<div class="gate-titulo">Erro de conexão</div><p class="gate-sub">Tente recarregar a página.</p>`,
+  };
+  card.innerHTML = contents[motivo] || contents.erro;
+  gate.style.display = 'flex';
+  return false;
 }
 
-function updateSourceBadge(d) {
-  // Analisa ultima_atualizacao ou fonte global pra mostrar badge discreto
-  const badgeEl = document.getElementById('sourceBadge');
-  const chipEl = document.getElementById('sourceBadgeChip');
-  const bannerEl = document.getElementById('sourceBanner');
-  if (!badgeEl || !chipEl || !bannerEl) return;
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 1 — Abertura com SSE
+// ═══════════════════════════════════════════════════════════════════════════
+async function iniciarAto1() {
+  showAto(1);
 
-  const at = d.ultima_atualizacao ? new Date(d.ultima_atualizacao) : null;
-  const minsAtras = at ? Math.round((Date.now() - at.getTime()) / 60000) : null;
-
-  // Chip verde (recente), amarelo (>30min), azul (fonte != cache_atual)
-  if (minsAtras != null && minsAtras < 30) {
-    chipEl.style.background = 'rgba(78,204,163,.15)';
-    chipEl.style.color = 'var(--green)';
-    chipEl.textContent = `✓ atualizado há ${minsAtras} min`;
-    badgeEl.style.display = 'block';
-    bannerEl.style.display = 'none';
-  } else if (minsAtras != null) {
-    chipEl.style.background = 'rgba(251,191,36,.15)';
-    chipEl.style.color = 'var(--gold)';
-    chipEl.textContent = `⟳ atualizando — ultima ha ${minsAtras} min`;
-    badgeEl.style.display = 'block';
-    bannerEl.style.display = 'none';
-  } else {
-    badgeEl.style.display = 'none';
-  }
-
-  // Se algum campo tem aviso (fonte=cache_expirado/snapshot/estatico), mostra banner
-  const avisos = [];
-  if (d.emergentes_aviso) avisos.push(d.emergentes_aviso);
-  if (avisos.length) {
-    bannerEl.textContent = avisos[0];
-    bannerEl.style.display = 'block';
-  }
-}
-
-async function loadMLStatus() {
+  // Primeiro verifica continuacao
   try {
-    const r = await fetch('/api/bluetendencias?action=status-ml&token=' + encodeURIComponent(token));
-    if (!r.ok) return;
-    const d = await r.json();
-    document.getElementById('mlTotalVideos').textContent = fm(d.total_videos);
-    document.getElementById('mlTemas').textContent = d.clusters_tema || '0';
-    document.getElementById('mlFormatos').textContent = d.clusters_formato || '0';
-    document.getElementById('mlPredicoes').textContent = fm(d.total_predicoes);
-    if (d.acuracia_atual != null) {
-      const pct = Math.round(d.acuracia_atual * 100);
-      document.getElementById('mlAcuracia').textContent = pct + '%';
-      document.getElementById('mlAccBar').style.width = pct + '%';
-    } else {
-      document.getElementById('mlAcuracia').textContent = 'calibrando';
+    const cr = await fetch(`/api/bluetendencias?action=continuar-descoberta&token=${encodeURIComponent(token)}`);
+    if (cr.ok) {
+      const d = await cr.json();
+      if (d.tem_sessao_recente && d.sessao?.ato_atual >= 5) {
+        state.sessao = d.sessao;
+        $('a1Text').innerHTML = `Bem-vindo de volta. Desde ontem identifiquei <span class="a1-counter">${d.novas_oportunidades}</span> novos virais no seu nicho.`;
+        $('a1Sub').textContent = 'Quer ver a oportunidade que eu preparei pra você?';
+        $('a1Sub').classList.add('show');
+        $('a1Loading').style.display = 'none';
+        $('a1Cta').textContent = 'VER OPORTUNIDADE →';
+        $('a1Cta').style.display = 'inline-flex';
+        setTimeout(() => $('a1Cta').classList.add('show'), 500);
+        return;
+      }
     }
-    const lv = d.ultima_validacao ? new Date(d.ultima_validacao).toLocaleDateString('pt-BR') : 'ainda não validado';
-    document.getElementById('mlLastValidation').textContent = 'última validação: ' + lv;
-    document.getElementById('mlSubtitle').textContent = `aprendendo com ${fm(d.total_videos)} vídeos virais`;
-  } catch(e) { console.error('mlStatus error:', e); }
-}
+  } catch (e) {}
 
-async function loadMLInsights() {
-  const el = document.getElementById('mlInsights');
+  // SSE endpoint
   try {
-    const r = await fetch('/api/bluetendencias?action=insights-ml&token=' + encodeURIComponent(token));
-    if (!r.ok) { el.innerHTML = ''; return; }
+    const evtSource = new EventSource(`/api/bluetendencias?action=iniciar-descoberta&token=${encodeURIComponent(token)}`);
+    let eventos = 0;
+
+    evtSource.onmessage = async (e) => {
+      eventos++;
+      const d = JSON.parse(e.data);
+      if (d.evento === 'iniciando') {
+        $('a1Loading').style.display = 'inline-flex';
+        await typewriter($('a1Text'), d.texto + ' {counter} vídeos virais agora...', 28);
+        animateCounter($('liveCounter'), d.contador_virais || 47832, 1800);
+        if (d.easter_egg) { $('easterEgg').textContent = `✨ ${d.easter_egg}`; $('easterEgg').classList.add('show'); }
+      } else if (d.evento === 'processando') {
+        $('a1Sub').textContent = d.texto;
+        $('a1Sub').classList.add('show');
+      } else if (d.evento === 'pronto') {
+        await sleep(300);
+        $('a1Loading').style.display = 'none';
+        $('a1Cta').style.display = 'inline-flex';
+        setTimeout(() => $('a1Cta').classList.add('show'), 100);
+        state.temCanal = d.tem_canal;
+        evtSource.close();
+      }
+    };
+    evtSource.onerror = () => {
+      evtSource.close();
+      if (eventos === 0) {
+        // Fallback sem SSE
+        fakeAto1();
+      }
+    };
+  } catch(e) { fakeAto1(); }
+}
+
+async function fakeAto1() {
+  $('a1Loading').style.display = 'inline-flex';
+  await typewriter($('a1Text'), 'Estou analisando {counter} vídeos virais agora...', 28);
+  animateCounter($('liveCounter'), 47832, 1800);
+  await sleep(1600);
+  $('a1Sub').textContent = 'Detectei algo interessante sobre seu canal.';
+  $('a1Sub').classList.add('show');
+  await sleep(1800);
+  $('a1Loading').style.display = 'none';
+  $('a1Cta').style.display = 'inline-flex';
+  setTimeout(() => $('a1Cta').classList.add('show'), 100);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 2 — Analise do canal
+// ═══════════════════════════════════════════════════════════════════════════
+async function avancarPraAto2() {
+  // Se tem sessao antiga, pula direto
+  if (state.sessao?.oportunidade_principal) {
+    state.oportunidade = state.sessao.oportunidade_principal;
+    return avancarPraAto5(true);
+  }
+
+  showAto(2);
+  await sleep(300);
+
+  try {
+    const r = await fetch(`/api/bluetendencias?action=analisar-canal&token=${encodeURIComponent(token)}`);
     const d = await r.json();
-    if (!d.ok) { el.innerHTML = ''; return; }
 
-    const rec = d.recomendacao_principal;
-    const clusters = d.top_clusters_acionar || [];
-
-    let html = '';
-    if (rec) {
-      html += `<div style="background:linear-gradient(135deg,rgba(251,191,36,0.14),rgba(0,170,255,0.06));border:1px solid rgba(251,191,36,0.3);border-radius:14px;padding:18px;margin-bottom:14px">
-        <div style="font-size:10px;font-weight:800;color:#fbbf24;letter-spacing:1px;margin-bottom:6px">🎯 RECOMENDAÇÃO PRINCIPAL ML</div>
-        <div style="font-size:18px;font-weight:800;margin-bottom:6px;text-transform:capitalize">${escapeHtml(rec.tema)}</div>
-        <div style="color:var(--text-sec);font-size:13px;margin-bottom:8px">${escapeHtml(rec.motivo)}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">janela estimada: ${rec.janela_dias} dias</div>
-      </div>`;
+    if (d.precisa_conectar) {
+      $('conectarOverlay').classList.add('active');
+      return;
     }
 
-    if (clusters.length > 0) {
-      html += `<div style="background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:18px">
-        <div style="font-size:12px;font-weight:700;color:var(--neon);letter-spacing:0.5px;margin-bottom:12px">📊 CLUSTERS PRA ACIONAR AGORA</div>
-        <div style="display:grid;gap:10px">`;
-      clusters.slice(0, 5).forEach(c => {
-        const sat = parseFloat(c.saturacao_percentual || 0);
-        const tx = parseFloat(c.taxa_viralizacao || 0);
-        const satColor = sat < 30 ? 'var(--green)' : sat < 60 ? 'var(--gold)' : 'var(--red)';
-        html += `<div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:14px;text-transform:capitalize;margin-bottom:3px">${escapeHtml(c.nome || '—')}</div>
-            <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono)">${c.descricao || ''}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:14px;font-weight:800;color:${satColor}">${Math.round(tx)}%</div>
-            <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">viraliza</div>
-          </div>
-        </div>`;
-      });
-      html += '</div></div>';
+    state.canal = d.canal;
+    state.padrao = d.padrao;
+    if (d.username) {
+      $('a2Avatar').src = d.canal?.thumbnail || '';
+      $('a2Nome').textContent = '@' + d.username;
+      $('a2Sub').textContent = `${fmNum(d.canal?.inscritos)} inscritos · nicho: ${d.canal?.nicho || 'geral'}`;
     }
 
-    if (!html) {
-      html = '<div style="color:var(--text-dim);font-size:13px;padding:16px;background:var(--card);border:1px dashed var(--neon-border);border-radius:14px;text-align:center">Conecte seu canal pra ver insights ML personalizados.</div>';
+    $('a2Label').classList.add('show');
+    await sleep(400);
+    $('a2Scanner').classList.add('show');
+
+    // Revela thumbnails dos videos aos poucos
+    const videosEl = $('a2Videos');
+    videosEl.innerHTML = '';
+    const videos = (d.videos_analisados || []).slice(0, 5);
+    videos.forEach((v, i) => {
+      const yid = v.youtube_id || '';
+      const thumb = v.thumbnail || (yid ? `https://img.youtube.com/vi/${yid}/hqdefault.jpg` : '');
+      const el = document.createElement('div');
+      el.className = 'video-mini';
+      el.innerHTML = thumb ? `<img src="${thumb}" alt="">` : '';
+      videosEl.appendChild(el);
+      setTimeout(() => el.classList.add('revealed'), 500 + i * 200);
+    });
+    await sleep(1800);
+    // Scanner termina
+    $('a2Scanner').classList.add('done');
+
+    // Revela linhas de texto
+    const linhas = d.dados_insuficientes
+      ? [
+          'Acabei de analisar seu canal.',
+          d.mensagem,
+          'Mas posso te mostrar o padrão que está funcionando no seu nicho.',
+        ]
+      : [
+          'Acabei de analisar seu canal.',
+          `Você tem um padrão que ${100 - (d.padrao?.raridade_percentual || 23)}% dos criadores do seu nicho <b>NÃO TÊM</b>.`,
+          'Quer que eu te mostre qual é?',
+        ];
+
+    const linesEl = $('a2Lines');
+    linesEl.innerHTML = linhas.map((l, i) => `<div class="a2-line ${i === 1 ? 'highlight' : ''}" id="a2L${i}">${l}</div>`).join('');
+    for (let i = 0; i < linhas.length; i++) {
+      await sleep(900);
+      $('a2L' + i).classList.add('show');
     }
-    el.innerHTML = html;
-  } catch(e) { el.innerHTML = ''; }
-}
+    await sleep(500);
+    $('a2Continuar').style.display = 'inline-flex';
+    setTimeout(() => $('a2Continuar').classList.add('show'), 100);
 
-function rpmFor(rpm_por_nicho, nicho) {
-  const r = (rpm_por_nicho || []).find(x => x.nicho === nicho);
-  if (!r) return null;
-  return `R$${Number(r.rpm_minimo).toFixed(0)}-${Number(r.rpm_maximo).toFixed(0)}`;
-}
-
-function videoCard(v, rpm_por_nicho) {
-  const rpm = rpmFor(rpm_por_nicho, v.nicho);
-  const velocidade = Math.round(parseFloat(v.velocidade_views || 0) / 100);
-  return `<div class="video-card" onclick="window.open('${v.url || 'https://youtube.com/shorts/' + v.youtube_id}', '_blank')">
-    <div class="video-thumb">
-      <img src="${v.thumbnail_url}" alt="" loading="lazy" onerror="this.style.display='none'">
-      <div class="video-views">
-        <span>${fm(v.views)} views</span>
-        ${velocidade > 30 ? `<span class="velocity-badge">↑${velocidade}%</span>` : ''}
-      </div>
-    </div>
-    <div class="video-body">
-      <div class="video-title">${escapeHtml(v.titulo || '')}</div>
-      <div class="video-meta">
-        <div class="video-canal">${escapeHtml(v.canal_nome || '')}</div>
-        ${rpm ? `<div class="video-rpm">${rpm}</div>` : ''}
-      </div>
-    </div>
-  </div>`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function renderTopVirais(videos, rpm) {
-  const el = document.getElementById('topVirais');
-  if (!videos.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:20px">Nenhum viral recente. O banco está sendo alimentado — volte em algumas horas.</div>'; return; }
-  el.innerHTML = videos.map(v => videoCard(v, rpm)).join('');
-}
-
-function renderEmergentes(emergentes) {
-  const el = document.getElementById('emergentes');
-  if (!emergentes.length) {
-    el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);font-size:13px;padding:24px;background:var(--card);border:1px dashed var(--neon-border);border-radius:14px;text-align:center">Nenhuma tendência emergente detectada no momento. A cada 2h analisamos o banco — fique atento.</div>';
-    return;
-  }
-  el.innerHTML = emergentes.slice(0, 6).map(e => {
-    const rpm = e.rpm_estimado ? `RPM estimado: R$${e.rpm_estimado.min}-${e.rpm_estimado.max}` : '';
-    const exemplos = (e.videos_exemplo || []).slice(0, 5).map(v => `<div class="emerg-example"><img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`).join('');
-    return `<div class="emerg-card">
-      <div class="emerg-tag">🚨 OPORTUNIDADE DETECTADA</div>
-      <div class="emerg-tema">${escapeHtml(e.tema)}</div>
-      ${exemplos ? `<div class="emerg-examples">${exemplos}</div>` : ''}
-      <div class="emerg-stats">
-        <div class="emerg-stat"><div class="emerg-stat-label">Crescimento</div><div class="emerg-stat-value" style="color:var(--green)">↑ ${e.crescimento_percentual}%</div></div>
-        <div class="emerg-stat"><div class="emerg-stat-label">Criadores</div><div class="emerg-stat-value">${e.criadores_no_formato}</div></div>
-        <div class="emerg-stat"><div class="emerg-stat-label">Nicho</div><div class="emerg-stat-value" style="text-transform:capitalize">${e.nicho || '—'}</div></div>
-        <div class="emerg-stat"><div class="emerg-stat-label">Janela</div><div class="emerg-stat-value">~${e.janela_estimada_dias}d</div></div>
-      </div>
-      ${rpm ? `<div class="emerg-rpm">💰 ${rpm}</div>` : ''}
-      <button class="emerg-cta" onclick="gerarRoteiroTema('${escapeHtml(e.tema).replace(/'/g,"\\'")}')">Gerar roteiro neste tema →</button>
-    </div>`;
-  }).join('');
-}
-
-function gerarRoteiroTema(tema) {
-  // Salva tema no localStorage e manda pra roteirizar
-  localStorage.setItem('bt_tema_preencher', tema);
-  window.location.href = '/roteirizar?tema=' + encodeURIComponent(tema);
-}
-
-function renderMeuCanal(canal) {
-  const el = document.getElementById('meuCanal');
-  if (!canal) {
-    el.innerHTML = `<div class="canal-connect-card">
-      <div style="font-size:40px;margin-bottom:10px">📺</div>
-      <h3>Conecte seu canal do YouTube</h3>
-      <p>Receba análise comparativa com o mercado do seu nicho, recomendações específicas e sugestões de vídeos personalizadas.</p>
-      <div class="canal-input-wrap">
-        <input class="canal-input" id="canalInput" placeholder="@seucanal ou ID (UC...)">
-        <button class="canal-btn" id="canalBtn" onclick="conectarCanal()">Conectar →</button>
-      </div>
-    </div>`;
-    return;
-  }
-  // Fetch analise do canal
-  el.innerHTML = '<div style="padding:20px;color:var(--text-dim)"><span class="spinner"></span>Analisando seu canal...</div>';
-  fetch('/api/bluetendencias?action=meu-canal&token=' + encodeURIComponent(token))
-    .then(r => r.json())
-    .then(d => {
-      if (d.error) { el.innerHTML = '<div style="color:var(--red);padding:16px">Erro: ' + d.error + '</div>'; return; }
-      renderCanalAnalise(d, el);
-    })
-    .catch(() => { el.innerHTML = '<div style="color:var(--red);padding:16px">Erro de conexão</div>'; });
-}
-
-function renderCanalAnalise(d, el) {
-  const { canal, estatisticas, vs_mercado, recomendacoes, nicho_detectado } = d;
-  const durMin = Math.floor(estatisticas.duracao_media_segundos / 60);
-  const durSec = estatisticas.duracao_media_segundos % 60;
-  const deltaDur = vs_mercado?.diferenca_duracao;
-  const deltaClass = deltaDur != null && deltaDur > 0 ? 'neg' : '';
-  el.innerHTML = `<div class="canal-card">
-    <div class="canal-head">
-      <img class="canal-avatar" src="${canal.thumbnail || ''}" alt="" onerror="this.style.display='none'">
-      <div class="canal-info">
-        <h3>${escapeHtml(canal.nome)}</h3>
-        <div class="meta">${fm(canal.inscritos)} inscritos · ${fm(canal.views_totais)} views totais · nicho: <b style="color:var(--neon);text-transform:capitalize">${nicho_detectado}</b></div>
-      </div>
-      <div style="margin-left:auto"><button class="canal-btn" onclick="desconectarCanal()" style="background:transparent;border:1px solid var(--neon-border);color:var(--text-dim)">Trocar canal</button></div>
-    </div>
-    <div class="canal-stats">
-      <div class="canal-stat">
-        <div class="canal-stat-label">Views médias</div>
-        <div class="canal-stat-value">${fm(estatisticas.views_media)}</div>
-        ${vs_mercado ? `<div class="canal-stat-delta ${vs_mercado.views_acima_media ? '' : 'neg'}">${vs_mercado.views_acima_media ? '↑ acima do nicho' : '↓ abaixo do nicho'}</div>` : ''}
-      </div>
-      <div class="canal-stat">
-        <div class="canal-stat-label">Duração média</div>
-        <div class="canal-stat-value">${durMin > 0 ? durMin+'m '+durSec+'s' : durSec+'s'}</div>
-        ${deltaDur != null ? `<div class="canal-stat-delta ${deltaClass}">${deltaDur > 0 ? '+' : ''}${deltaDur}s vs ideal</div>` : ''}
-      </div>
-      <div class="canal-stat">
-        <div class="canal-stat-label">Posts/semana</div>
-        <div class="canal-stat-value">${estatisticas.postagens_por_semana}</div>
-        <div class="canal-stat-delta">${estatisticas.postagens_por_semana >= 3 ? 'ótimo ritmo' : 'pode aumentar'}</div>
-      </div>
-      <div class="canal-stat">
-        <div class="canal-stat-label">Vídeos analisados</div>
-        <div class="canal-stat-value">${estatisticas.total_videos_analisados}</div>
-      </div>
-    </div>
-    <div class="canal-recs">
-      <h4>🎯 RECOMENDAÇÕES PERSONALIZADAS</h4>
-      ${recomendacoes.map(r => `<div class="canal-rec">${escapeHtml(r)}</div>`).join('')}
-    </div>
-  </div>`;
-  // Mostra seção sugestoes
-  document.getElementById('secSugestoes').style.display = 'block';
+  } catch(e) { console.error(e); toast('Erro ao analisar canal'); }
 }
 
 async function conectarCanal() {
-  const inp = document.getElementById('canalInput');
-  const btn = document.getElementById('canalBtn');
-  const val = inp.value.trim();
-  if (!val) { inp.focus(); return; }
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Conectando…';
+  const input = $('conectarInput');
+  const btn = $('conectarBtn');
+  const val = input.value.trim();
+  if (!val) { input.focus(); return; }
+  btn.disabled = true; btn.textContent = 'Conectando...';
   try {
     const r = await fetch('/api/bluetendencias?action=conectar-canal', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'conectar-canal', token, canal_youtube: val })
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'conectar-canal', token, canal_youtube: val}),
     });
     const d = await r.json();
-    if (!r.ok) { toast(d.error || 'Erro ao conectar'); btn.disabled = false; btn.innerHTML = 'Conectar →'; return; }
-    toast('✅ Canal conectado! Carregando análise...');
-    // Recarrega dashboard
-    setTimeout(() => loadDashboard(), 800);
-  } catch(e) { toast('Erro de conexão'); btn.disabled = false; btn.innerHTML = 'Conectar →'; }
+    if (!r.ok) throw new Error(d.error || 'Erro');
+    $('conectarOverlay').classList.remove('active');
+    btn.disabled = false; btn.textContent = 'Conectar →';
+    setTimeout(() => avancarPraAto2(), 400);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Conectar →';
+    toast('Erro: ' + e.message);
+  }
 }
 
-async function desconectarCanal() {
-  if (!confirm('Desconectar canal? Você pode reconectar depois.')) return;
-  // Usa mesma rota de conectar com handle vazio pra limpar — ou simplesmente recarrega sem canal
-  // Simplificacao: chama conectar com canal vazio -> vai retornar 400. Ao inves disso, apenas deleta via endpoint dedicado (nao existe). Redireciona pra nova conexao.
-  document.getElementById('meuCanal').innerHTML = '';
-  renderMeuCanal(null);
+function pularConexao() {
+  $('conectarOverlay').classList.remove('active');
+  toast('Sem canal conectado, vou analisar seu nicho');
+  avancarPraAto4Generico();
 }
 
-async function loadSugestoes() {
-  const el = document.getElementById('sugestoes');
-  el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);padding:20px"><span class="spinner"></span>Gerando sugestões personalizadas com IA...</div>';
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 3 — Revelacao do padrao
+// ═══════════════════════════════════════════════════════════════════════════
+async function avancarPraAto3() {
+  showAto(3);
+  if (!state.padrao) return avancarPraAto4();
+
+  await sleep(400);
+  $('a3Badge').classList.add('show');
+  await sleep(500);
+  $('a3Nome').textContent = state.padrao.padrao_principal || 'PADRÃO DETECTADO';
+  $('a3Nome').classList.add('show');
+  await sleep(600);
+  $('a3Forca').innerHTML = `Força do padrão: <b>${Math.round((state.padrao.forca || 0.8) * 100)}%</b> · ${state.padrao.quantos_virais_seguem || 4} de 5 virais usam`;
+  $('a3Forca').classList.add('show');
+  await sleep(500);
+
+  // Evidencias
+  const evEl = $('a3Evidencias');
+  const evs = state.padrao.evidencias || [];
+  evEl.innerHTML = `<div style="font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:10px;font-family:var(--mono)">EVIDÊNCIAS</div>${evs.map((e, i) => `<div class="evidencia-item" id="ev${i}">${escapeHtml(e)}</div>`).join('')}`;
+  evEl.classList.add('show');
+  await sleep(400);
+  evs.forEach((_, i) => setTimeout(() => $('ev'+i)?.classList.add('show'), i * 300));
+
+  await sleep(evs.length * 300 + 400);
+  const explicacao = state.padrao.descricao_dramatica || state.padrao.explicacao || 'Isso é raro. E é ouro.';
+  $('a3Explicacao').innerHTML = explicacao;
+  $('a3Explicacao').classList.add('show');
+
+  await sleep(1800);
+  $('a3Continuar').style.display = 'inline-flex';
+  setTimeout(() => $('a3Continuar').classList.add('show'), 100);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 4 — Mercado
+// ═══════════════════════════════════════════════════════════════════════════
+async function avancarPraAto4() {
+  showAto(4);
+  await sleep(300);
+  $('a4Titulo').classList.add('show');
+
   try {
-    const r = await fetch('/api/bluetendencias?action=sugestoes&token=' + encodeURIComponent(token));
+    const r = await fetch(`/api/bluetendencias?action=mostrar-mercado&token=${encodeURIComponent(token)}`);
     const d = await r.json();
-    if (!r.ok || !d.sugestoes?.length) {
-      el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-dim);padding:16px">Sugestões indisponíveis no momento. A IA tenta de novo na próxima carga.</div>';
-      return;
+    state.mercado = d;
+
+    const barsEl = $('a4Bars');
+    const comps = (d.comparacao || []).slice(0, 6);
+    if (!comps.length) {
+      barsEl.innerHTML = '<div style="color:var(--text-dim);padding:30px;text-align:center">Ainda estou coletando dados do mercado.</div>';
+    } else {
+      const maxPerf = Math.max(...comps.map(c => c.performance || 0), 100);
+      barsEl.innerHTML = comps.map((c, i) => `
+        <div class="bar-row ${c.is_usuario ? 'highlight' : ''}" id="bar${i}">
+          <div class="bar-label">${escapeHtml(c.padrao || '—')}</div>
+          <div class="bar-track"><div class="bar-fill" data-pct="${Math.round((c.performance/maxPerf)*100)}"></div></div>
+          <div class="bar-value">${c.performance || 0}%</div>
+        </div>
+      `).join('');
+      // Animate bars in sequence
+      for (let i = 0; i < comps.length; i++) {
+        await sleep(150);
+        const row = $('bar'+i);
+        row.classList.add('show');
+        const fill = row.querySelector('.bar-fill');
+        setTimeout(() => { fill.style.width = fill.dataset.pct + '%'; }, 100);
+      }
     }
-    el.innerHTML = d.sugestoes.map(s => `<div class="sug-card">
-      <div class="sug-formato">${escapeHtml(s.formato || 'Short')}</div>
-      <div class="sug-titulo">${escapeHtml(s.titulo || '')}</div>
-      <div class="sug-hook">"${escapeHtml(s.hook_3s || '')}"</div>
-      <div class="sug-meta">
-        <span class="sug-views">📈 ${escapeHtml(s.potencial_views || '—')}</span>
-        <span class="sug-rpm">💰 ${escapeHtml(s.rpm_estimado || '')}</span>
-      </div>
-      <div class="sug-pq">${escapeHtml(s.por_que_funciona || '')}</div>
-      <button class="sug-cta" onclick="gerarRoteiroTema('${escapeHtml(s.titulo || '').replace(/'/g,"\\'")}')">Gerar roteiro completo →</button>
-    </div>`).join('');
-  } catch(e) { el.innerHTML = '<div style="grid-column:1/-1;color:var(--red);padding:16px">Erro ao carregar sugestões</div>'; }
+
+    await sleep(1200);
+    $('a4Insight').innerHTML = d.insight || 'Você está em uma zona promissora.';
+    $('a4Insight').classList.add('show');
+    await sleep(1500);
+    $('a4Continuar').style.display = 'inline-flex';
+    setTimeout(() => $('a4Continuar').classList.add('show'), 100);
+  } catch(e) {
+    toast('Erro ao carregar mercado');
+  }
 }
 
-async function loadNicho(nicho) {
-  if (!nicho) { document.getElementById('nichoContent').innerHTML = ''; return; }
-  const el = document.getElementById('nichoContent');
-  el.innerHTML = '<div style="padding:24px;color:var(--text-dim)"><span class="spinner"></span>Carregando análise do nicho...</div>';
+async function avancarPraAto4Generico() {
+  // Sem canal conectado — pula direto pra ato5 generico
+  state.mercado = { insight: 'Baseado no banco de virais gerais.' };
+  return avancarPraAto5();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 5 — Oportunidade
+// ═══════════════════════════════════════════════════════════════════════════
+async function avancarPraAto5(pular = false) {
+  showAto(5);
+
+  if (!pular) {
+    const etapas = [
+      'Cruzando dados de milhares de virais...',
+      'Analisando sua audiência...',
+      'Identificando janela de oportunidade...',
+    ];
+    $('a5Loading').classList.add('show');
+    for (const et of etapas) {
+      $('a5Etapa').innerHTML = `<div class="load-spin"></div><span>${et}</span>`;
+      await sleep(1400);
+    }
+  }
+
   try {
-    const r = await fetch('/api/bluetendencias?action=por-nicho&nicho=' + nicho + '&token=' + encodeURIComponent(token));
+    const r = await fetch(`/api/bluetendencias?action=identificar-oportunidade&token=${encodeURIComponent(token)}`);
     const d = await r.json();
-    if (!r.ok) { el.innerHTML = '<div style="color:var(--red);padding:16px">Erro: ' + (d.error || '') + '</div>'; return; }
-    const rpm = d.rpm ? `R$${d.rpm.min}–R$${d.rpm.max}` : '—';
-    const duracao = d.duracao_ideal_segundos || '—';
-    const padroes = d.padroes_titulo;
-    el.innerHTML = `
-      <div class="nicho-info">
-        <div class="stat"><div class="label">Virais na última semana</div><div class="val">${d.total_virais}</div></div>
-        <div class="stat"><div class="label">RPM médio</div><div class="val" style="color:var(--gold)">${rpm}</div></div>
-        <div class="stat"><div class="label">Duração ideal</div><div class="val">${duracao}s</div></div>
-        <div class="stat"><div class="label">Tamanho título</div><div class="val">${padroes?.tamanho_ideal || '—'} chars</div></div>
+    state.oportunidade = d;
+
+    $('a5Loading').classList.add('hide');
+    await sleep(300);
+    $('a5Tema').textContent = d.tema || 'Oportunidade identificada';
+    $('a5PorQue').textContent = d.por_que_agora || '';
+
+    const numeros = [
+      { label: 'Compatibilidade', val: Math.round((d.compatibilidade || 0.7) * 100) + '%', cls: 'gold' },
+      { label: 'Janela', val: (d.janela_dias || 7) + 'd', cls: 'blue' },
+      { label: 'Views min', val: fmNum(d.views_estimadas_min), cls: 'green' },
+      { label: 'Views max', val: fmNum(d.views_estimadas_max), cls: 'green' },
+      { label: 'RPM', val: `R$${d.rpm_min || 2}-${d.rpm_max || 8}`, cls: 'gold' },
+      { label: 'Criadores', val: d.criadores_no_formato || 10, cls: 'blue' },
+    ];
+    $('a5Numeros').innerHTML = numeros.map(n => `
+      <div class="num-card ${n.cls}">
+        <div class="num-label">${n.label}</div>
+        <div class="num-value">${n.val}</div>
       </div>
-      ${padroes?.estrutura_comum ? `<div style="background:var(--card);border:1px solid var(--neon-border);border-radius:12px;padding:14px 18px;margin-bottom:14px;font-size:13px;color:var(--text-sec)"><b style="color:var(--neon)">📝 Padrão dominante:</b> ${escapeHtml(padroes.estrutura_comum)}</div>` : ''}
-      ${padroes?.palavras_mais_usadas?.length ? `<div style="background:var(--card);border:1px solid var(--neon-border);border-radius:12px;padding:14px 18px;margin-bottom:14px">
-        <div style="font-size:11px;color:var(--text-dim);letter-spacing:0.5px;margin-bottom:8px;font-family:var(--mono)">PALAVRAS QUE MAIS APARECEM</div>
-        <div>${padroes.palavras_mais_usadas.slice(0,10).map(p => `<span style="display:inline-block;background:rgba(0,170,255,0.1);color:var(--neon);font-size:12px;padding:4px 10px;border-radius:12px;margin:3px;font-family:var(--mono)">${escapeHtml(p.palavra)} <span style="color:var(--text-dim)">×${p.qtd}</span></span>`).join('')}</div>
-      </div>` : ''}
-      ${padroes?.emojis_que_funcionam?.length ? `<div style="background:var(--card);border:1px solid var(--neon-border);border-radius:12px;padding:14px 18px;margin-bottom:14px">
-        <div style="font-size:11px;color:var(--text-dim);letter-spacing:0.5px;margin-bottom:8px;font-family:var(--mono)">EMOJIS QUE FUNCIONAM</div>
-        <div style="font-size:22px;letter-spacing:6px">${padroes.emojis_que_funcionam.slice(0,8).map(e => e.emoji).join(' ')}</div>
-      </div>` : ''}
-      <div class="sec-head" style="margin-top:18px"><div class="sec-title" style="font-size:16px">🔥 Top 20 virais do nicho</div></div>
-      <div class="grid-videos" id="nichoGrid">${(d.top_virais || []).map(v => videoCard(v, [])).join('')}</div>
-    `;
-  } catch(e) { el.innerHTML = '<div style="color:var(--red);padding:16px">Erro de conexão</div>'; }
+    `).join('');
+
+    $('a5Reveal').classList.add('show');
+  } catch(e) {
+    toast('Erro ao identificar oportunidade');
+  }
 }
 
-// Inicia
-loadDashboard();
-</script>
+// ═══════════════════════════════════════════════════════════════════════════
+// ATO 6 — Acao
+// ═══════════════════════════════════════════════════════════════════════════
+async function avancarPraAto6() {
+  showAto(6);
+  try {
+    const r = await fetch(`/api/bluetendencias?action=gerar-roteiro-personalizado&token=${encodeURIComponent(token)}`);
+    const d = await r.json();
+    state.roteiro = d;
 
+    $('a6Loading').style.display = 'none';
+    $('a6Content').style.display = 'block';
+    $('a6Titulo').textContent = d.titulo_sugerido || '—';
+    $('a6Prob').textContent = `✨ Probabilidade de viralizar: ${Math.round((d.probabilidade_viralizar || 0.6) * 100)}%`;
+    $('a6Hook').textContent = d.hook_3_segundos || '—';
+    $('a6Roteiro').textContent = d.roteiro_completo || '—';
+    $('a6Visuais').textContent = Array.isArray(d.sugestoes_visuais) ? d.sugestoes_visuais.join(' · ') : (d.sugestoes_visuais || '—');
+    $('a6Trilha').textContent = d.trilha_recomendada || '—';
+    $('a6Horario').textContent = d.horario_postagem || '—';
+    $('a6Hashtags').innerHTML = (d.hashtags || []).map(h => `<span>${escapeHtml(h)}</span>`).join('');
+  } catch(e) {
+    toast('Erro ao gerar roteiro');
+  }
+}
+
+function usarRoteiro() {
+  const titulo = state.roteiro?.titulo_sugerido || '';
+  localStorage.setItem('bt_tema_preencher', titulo);
+  salvarStatus('usado');
+  window.location.href = '/roteirizar?tema=' + encodeURIComponent(titulo);
+}
+
+async function salvarRoteiro() {
+  await salvarStatus('salvo');
+  toast('✓ Roteiro salvo!');
+}
+
+async function salvarStatus(status) {
+  if (!state.roteiro) return;
+  try {
+    await fetch(`/api/bluetendencias?action=salvar-roteiro&token=${encodeURIComponent(token)}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'salvar-roteiro', token, roteiro: state.roteiro, status }),
+    });
+  } catch(e) {}
+}
+
+function gerarOutroRoteiro() {
+  $('a6Content').style.display = 'none';
+  $('a6Loading').style.display = 'block';
+  // Limpa oportunidade cacheada e re-identifica
+  avancarPraAto5();
+}
+
+function abrirModoClassico() {
+  window.location.href = '/bluetendencias?modo=classico';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTICLES BACKGROUND
+// ═══════════════════════════════════════════════════════════════════════════
+function initParticles() {
+  const canvas = $('particlesCanvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+  resize();
+  window.addEventListener('resize', resize);
+
+  for (let i = 0; i < 50; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+    });
+  }
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(0, 170, 255, 0.6)';
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+    // Linhas entre particulas proximas
+    ctx.strokeStyle = 'rgba(0, 170, 255, 0.1)';
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 120) {
+          ctx.globalAlpha = 1 - d / 120;
+          ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y); ctx.stroke();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function initMouseGlow() {
+  const glow = $('mouseGlow');
+  document.addEventListener('mousemove', (e) => {
+    glow.style.left = e.clientX + 'px';
+    glow.style.top = e.clientY + 'px';
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+(async () => {
+  initParticles();
+  initMouseGlow();
+
+  // Modo classico (query param) — abre o painel original em outro hash
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('modo') === 'classico') {
+    // Por hora, mostra ATO 6 com link pro painel
+    // (painel antigo pode ser refatorado depois)
+    await checkGate();
+    showAto(6);
+    return;
+  }
+
+  const ok = await checkGate();
+  if (!ok) return;
+
+  iniciarAto1();
+})();
+</script>
 </body>
 </html>
