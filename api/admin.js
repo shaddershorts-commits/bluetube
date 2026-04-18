@@ -476,6 +476,60 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true });
   }
 
+  // ── AUDIT LOG (admin search + stats) ──────────────────────────────────────
+  // GET ?action=audit_log&tabela=X&row_id=Y&acao=UPDATE&desde=2026-01-01&limit=50
+  if (req.method === 'GET' && action === 'audit_log') {
+    try {
+      const { tabela, row_id, usuario_id, acao: auditAcao, desde, limit } = req.query;
+      const body = {
+        p_tabela: tabela || null,
+        p_row_id: row_id || null,
+        p_usuario_id: usuario_id || null,
+        p_acao: auditAcao || null,
+        p_desde: desde || null,
+        p_limit: Math.min(parseInt(limit || 50), 500),
+      };
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/audit_log_search`, {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) return res.status(500).json({ error: 'rpc_error', detalhes: await r.text() });
+      const rows = await r.json();
+
+      // Stats rapidos — total por tabela nos ultimos 7d
+      const diasAtras = new Date(Date.now() - 7 * 86400000).toISOString();
+      const statsR = await fetch(
+        `${SUPABASE_URL}/rest/v1/audit_log?created_at=gte.${diasAtras}&select=tabela,acao`,
+        { headers }
+      );
+      const raw = statsR.ok ? await statsR.json() : [];
+      const stats = {};
+      raw.forEach(r => {
+        stats[r.tabela] = stats[r.tabela] || { total: 0, INSERT: 0, UPDATE: 0, DELETE: 0 };
+        stats[r.tabela].total++;
+        stats[r.tabela][r.acao] = (stats[r.tabela][r.acao] || 0) + 1;
+      });
+
+      return res.status(200).json({ rows, stats, filters: { tabela, row_id, acao: auditAcao, desde, limit } });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── AI CACHE STATS (quanto economizamos) ──────────────────────────────────
+  if (req.method === 'GET' && action === 'ai_cache_stats') {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/ai_cache_stats`, {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const [stats] = r.ok ? await r.json() : [{}];
+      return res.status(200).json({ stats: stats || {} });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── STRIPE WEBHOOKS (stats + lista recente) ──────────────────────────────
   if (req.method === 'GET' && action === 'stripe_webhooks') {
     try {
