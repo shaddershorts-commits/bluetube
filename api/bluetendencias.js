@@ -1049,6 +1049,14 @@ Retorne APENAS JSON valido:
     if (insR.ok) { const [row] = await insR.json(); analiseId = row?.id || null; }
   } catch (e) { console.error('[insert studio_analises]', e.message); }
 
+  // Salva no cache (fire-and-forget) pra proximos usuarios reusarem
+  saveToCache(ctx, ck, 'dissect', video.youtube_id, {
+    abertura_blublu: analise.abertura_blublu,
+    ato_1: analise.ato_1, ato_2: analise.ato_2, ato_3: analise.ato_3,
+    ato_4: analise.ato_4, ato_5: analise.ato_5,
+    quiz: analise.quiz,
+  }, { views: video.views, likes: video.likes, titulo: video.titulo }, custoBRL);
+
   await Promise.all([
     registrarUso(ctx, auth.user.id, auth.user.email),
     atualizarBudgetDiario(ctx, custoBRL),
@@ -1258,17 +1266,46 @@ Retorne APENAS JSON valido:
   "reflexao_final": "Frase motivacional de Blublu pra fechar a analise, adequada ao tier"
 }`;
 
+  // CACHE HIT por youtube_id — mesmo video ja analisado = resposta instantanea
+  const ck = cacheKey(video.youtube_id, 'meu_video', { tier });
+  const cached = await getFromCache(ctx, ck);
+  if (cached?.recomendacoes) {
+    console.log('[analisar-meu-video] CACHE HIT', ck);
+    return {
+      ok: true, cached: true, analise_id: null, tier, nome: auth.nome,
+      video: { id: video.id, youtube_id: video.youtube_id, titulo: video.titulo, thumbnail: video.thumbnail_url, canal: video.canal_nome, views, likes: video.likes, publicado_em: video.publicado_em },
+      performance: { views_primeiro_dia: viewsPrimeiroDia, dias_desde_post: Math.round(diasDesdePost * 10) / 10 },
+      analise: cached,
+      analises_restantes: rl.analises_restantes ?? 999,
+    };
+  }
+
   let out;
   try {
-    out = await callClaudeStudio(prompt, { model: 'claude-sonnet-4-6', maxTokens: 3000 });
+    out = await callClaudeStudio(prompt, { ctx, model: 'claude-sonnet-4-6', maxTokens: 3000 });
   } catch (e) {
-    console.error('[analisar-meu-video]', e.message);
-    return { error: 'Blublu está descansando. Volta em alguns minutos.', status: 503 };
+    console.error('[analisar-meu-video] Sonnet falhou:', e.message);
+    // Template fallback pra nao deixar user na mao
+    const fb = gerarAnaliseMeuVideoFallback(video, tier, auth.nome, viewsPrimeiroDia);
+    return {
+      ok: true, fallback: true, tier, nome: auth.nome,
+      video: { id: video.id, youtube_id: video.youtube_id, titulo: video.titulo, thumbnail: video.thumbnail_url, canal: video.canal_nome, views, likes: video.likes, publicado_em: video.publicado_em },
+      performance: { views_primeiro_dia: viewsPrimeiroDia, dias_desde_post: Math.round(diasDesdePost * 10) / 10 },
+      analise: fb, aviso: 'Blublu tá em manutenção. Te dei uma análise baseada em padrões — volta em uns minutos pra uma análise completa com IA.',
+      analises_restantes: rl.analises_restantes ?? 999,
+    };
   }
 
   const analise = parseJsonSafe(out.text);
   if (!analise?.recomendacoes) {
-    return { error: 'Falha ao processar análise. Tente novamente.', status: 500 };
+    const fb = gerarAnaliseMeuVideoFallback(video, tier, auth.nome, viewsPrimeiroDia);
+    return {
+      ok: true, fallback: true, tier, nome: auth.nome,
+      video: { id: video.id, youtube_id: video.youtube_id, titulo: video.titulo, thumbnail: video.thumbnail_url, canal: video.canal_nome, views, likes: video.likes, publicado_em: video.publicado_em },
+      performance: { views_primeiro_dia: viewsPrimeiroDia, dias_desde_post: Math.round(diasDesdePost * 10) / 10 },
+      analise: fb, aviso: 'Blublu tá num glitch. Análise baseada em padrões.',
+      analises_restantes: rl.analises_restantes ?? 999,
+    };
   }
 
   const custoBRL = parseFloat((
@@ -1303,6 +1340,10 @@ Retorne APENAS JSON valido:
     });
     if (insR.ok) { const [row] = await insR.json(); analiseId = row?.id || null; }
   } catch (e) { console.error('[insert meu_video]', e.message); }
+
+  // Salva no cache (fire-and-forget) pro mesmo video reusar depois
+  saveToCache(ctx, ck, 'meu_video', video.youtube_id, analise,
+    { views, likes: video.likes, titulo: video.titulo, tier }, custoBRL);
 
   await Promise.all([
     registrarUso(ctx, auth.user.id, auth.user.email),

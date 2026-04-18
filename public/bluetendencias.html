@@ -966,10 +966,13 @@ async function dissectarMeuVideo() {
   let bi = 0;
   state.bgInt = setInterval(() => { bi = (bi+1) % bgMsgs.length; const el = $('bgProc'); if (el) el.textContent = bgMsgs[bi]; }, 2500);
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
     const r = await fetch('/api/bluetendencias', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'analisar-meu-video', token, entrada: state.video.youtube_id }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
     const d = await r.json();
     if (state.bgInt) clearInterval(state.bgInt);
     if (!r.ok || !d.analise) {
@@ -977,6 +980,7 @@ async function dissectarMeuVideo() {
       setTimeout(() => irCena('2c'), 1500);
       return;
     }
+    if (d.aviso) toast(d.aviso);
     state.atosData = d.analise;
     state.analiseId = d.analise_id;
     state.restantes = d.analises_restantes ?? state.restantes;
@@ -995,6 +999,7 @@ function renderMeuVideo(d) {
   irCena('11');
   state.mvData = d;
   state.mvEtapa = 0;
+  state.mvFallback = !!d.fallback;
   mostrarEtapaMeuVideo();
 }
 
@@ -1743,13 +1748,17 @@ async function disparaAnaliseAsync() {
       if (state.qIdx >= state.perguntasBlublu.length) { clearInterval(check); resolve(); }
     }, 300);
   });
-  // Agora chama backend
+  // Agora chama backend — timeout generoso de 90s
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
     const r = await fetch('/api/bluetendencias', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'gerar-analise-final', token, video_id: state.video.youtube_id, respostas: state.respostas, sessao_id: state.sessaoId }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
     const d = await r.json();
+    if (d.aviso) toast(d.aviso);
     if (state.bgInt) clearInterval(state.bgInt);
     if (!r.ok || !d.atos) { toast(d.error || 'Blublu não conseguiu gerar.'); setTimeout(() => irCena('4'), 1500); return; }
     state.atosData = { abertura_blublu: d.abertura_blublu, ...d.atos };
