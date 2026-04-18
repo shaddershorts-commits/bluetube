@@ -106,7 +106,7 @@ export default async function handler(req, res) {
     'Authorization': `Bearer ${SUPA_KEY}`
   };
 
-  const action = req.method === 'GET' ? req.query?.action : req.body?.action;
+  const action = req.method === 'GET' ? req.query?.action : (req.body?.action || req.query?.action);
 
   // ── TRACK CLICK ────────────────────────────────────────────────────────────
   // GET /api/affiliate?action=click&ref=CODE&cookie_id=X
