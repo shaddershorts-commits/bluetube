@@ -28,6 +28,7 @@ module.exports = async function handler(req, res) {
       case 'atualizar-metricas': return await atualizarMetricas(res);
       case 'calcular-scores':    return await calcularScores(res);
       case 'backfill-nichos':    return await backfillNichos(res, req);
+      case 'migrar-nicho':       return await migrarNicho(res, req);
       case 'status':             return await statusBanco(res);
       default:                   return res.status(400).json({ error: 'action_invalida' });
     }
@@ -73,20 +74,20 @@ function detectarPais(snippet, regionCode) {
 
 // Mapa: YouTube categoryId -> nicho do nosso sistema
 // Auto-inferencia pra videos coletados em 'trending' (que nao tem nicho explicito)
+// Entertainment, Comedy, Film -> curiosidades (unificado)
 const CATEGORY_TO_NICHO = {
   '20': 'games',            // Gaming
   '28': 'ia',               // Science & Technology
   '15': 'animais',          // Pets & Animals
   '10': 'artistas',         // Music
   '22': 'pessoas_blogs',    // People & Blogs
-  '24': 'entretenimento',   // Entertainment
-  // Outras categorias mapeadas pro "mais proximo":
-  '23': 'entretenimento',   // Comedy -> entretenimento
-  '1':  'entretenimento',   // Film & Animation
-  '17': 'entretenimento',   // Sports (sem nicho esportes novo, cai em entretenimento)
-  '26': 'pessoas_blogs',    // Howto & Style -> pessoas_blogs
+  '24': 'curiosidades',     // Entertainment -> curiosidades
+  '23': 'curiosidades',     // Comedy -> curiosidades
+  '1':  'curiosidades',     // Film & Animation -> curiosidades
+  '17': 'curiosidades',     // Sports -> curiosidades (conteudo viral)
+  '26': 'pessoas_blogs',    // Howto & Style
   '27': 'pessoas_blogs',    // Education
-  '25': 'pessoas_blogs',    // News & Politics -> pessoas_blogs
+  '25': 'pessoas_blogs',    // News & Politics
 };
 
 function inferirNichoPorCategoria(categoryId) {
@@ -283,8 +284,10 @@ async function coletarTrending(res) {
 const NICHOS = [
   {
     nome: 'curiosidades',
-    categoryIds: [],
-    termos: ['curiosidades', 'voce sabia', 'fatos interessantes', 'coisas que voce nao sabia'],
+    // Incorporou Entertainment (24), Film (1), Comedy (23) — tudo que e
+    // conteudo de entretenimento viral/curioso cai aqui.
+    categoryIds: ['24', '1', '23'],
+    termos: ['curiosidades', 'voce sabia', 'fatos interessantes', 'viral brasil'],
   },
   {
     nome: 'games',
@@ -303,18 +306,13 @@ const NICHOS = [
   },
   {
     nome: 'artistas',
-    categoryIds: ['10', '24'], // Music + Entertainment
+    categoryIds: ['10'], // Music
     termos: ['show brasil', 'famoso', 'artista brasileiro', 'ao vivo'],
   },
   {
     nome: 'pessoas_blogs',
     categoryIds: ['22'], // People & Blogs
     termos: ['dia na vida', 'rotina', 'vlog brasil', 'pov'],
-  },
-  {
-    nome: 'entretenimento',
-    categoryIds: ['24'], // Entertainment
-    termos: ['viral brasil', 'engracado brasil', 'trending shorts', 'comedia'],
   },
 ];
 
@@ -455,6 +453,43 @@ async function atualizarMetricas(res) {
   await calcularScoresInterno(200);
   await logColeta('atualizar-metricas', {}, 0, atualizados, 1, Date.now() - inicio);
   return res.status(200).json({ ok: true, atualizados });
+}
+
+// ── ACTION: migrar-nicho ────────────────────────────────────────────────────
+// Renomeia videos de um nicho pra outro em batch.
+// Ex: GET /api/virais-coletor?action=migrar-nicho&de=entretenimento&para=curiosidades
+async function migrarNicho(res, req) {
+  const inicio = Date.now();
+  const de = (req?.query?.de || '').toString().trim();
+  const para = (req?.query?.para || '').toString().trim();
+  if (!de || !para) return res.status(400).json({ error: 'params de + para obrigatorios' });
+  if (de === para) return res.status(400).json({ error: 'de == para, nada pra migrar' });
+
+  // Conta antes
+  const antesR = await fetch(
+    `${SU}/rest/v1/virais_banco?nicho=eq.${encodeURIComponent(de)}&select=id`,
+    { headers: { ...HDR, Prefer: 'count=exact' } }
+  );
+  const antesTotal = parseInt(antesR.headers.get('content-range')?.split('/')[1] || '0', 10);
+
+  // PATCH em massa via filtro
+  const patchR = await fetch(
+    `${SU}/rest/v1/virais_banco?nicho=eq.${encodeURIComponent(de)}`,
+    {
+      method: 'PATCH',
+      headers: { ...HDR, Prefer: 'return=minimal' },
+      body: JSON.stringify({ nicho: para, atualizado_em: new Date().toISOString() }),
+    }
+  );
+
+  await logColeta('migrar-nicho', { de, para, total: antesTotal },
+    0, antesTotal, 0, Date.now() - inicio, patchR.ok ? null : 'patch_failed');
+
+  return res.status(200).json({
+    ok: patchR.ok, action: 'migrar-nicho',
+    de, para, atualizados: antesTotal,
+    duracao_ms: Date.now() - inicio,
+  });
 }
 
 // ── ACTION: backfill-nichos ─────────────────────────────────────────────────
