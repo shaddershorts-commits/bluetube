@@ -183,6 +183,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="FR">🇫🇷 França</option>
       </select>
 
+      <!-- Nicho -->
+      <select class="filter-select" id="nichoSelect" onchange="onNichoChange()">
+        <option value="">🗂️ Todos os nichos</option>
+        <option value="curiosidades">💡 Curiosidades</option>
+        <option value="games">🎮 Games</option>
+        <option value="ia">🤖 Inteligência Artificial</option>
+        <option value="animais">🐶 Animais</option>
+        <option value="artistas">🎤 Artistas, shows e famosos</option>
+        <option value="pessoas_blogs">👤 Pessoas e blogs</option>
+        <option value="entretenimento">🎭 Entretenimento</option>
+      </select>
+
       <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
         <span id="fetchBtnIcon">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -264,6 +276,13 @@ function setPeriod(p, btn) {
   carregarHistorico(1);
   atualizarBadgeBanco();
   fetchVirals();
+}
+
+// Quando muda o nicho — so recarrega do banco (zero cota API), nao dispara
+// busca ativa. Experiencia instantanea + economiza YouTube API.
+function onNichoChange() {
+  carregarHistorico(1);
+  atualizarBadgeBanco();
 }
 
 // Recarrega historico quando muda a regiao (antes do fetchVirals disparar)
@@ -558,6 +577,7 @@ function indexarNoBanco(videos, filtros){
 // disponivel no banco pra essa combinacao, sem precisar clicar Buscar.
 function atualizarBadgeBanco(){
   const region = document.getElementById('regionSelect')?.value || '';
+  const nichoSel = document.getElementById('nichoSelect')?.value || '';
   const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
   const params = new URLSearchParams({
     action: 'historico',
@@ -565,6 +585,7 @@ function atualizarBadgeBanco(){
     pais: region,
     periodo: periodo,
   });
+  if (nichoSel) params.set('nicho', nichoSel);
   fetch(`/api/virais?${params}`).then(r => r.json()).then(d => {
     const el = document.getElementById('banco-stats');
     if (!el) return;
@@ -601,13 +622,15 @@ async function carregarHistorico(pagina){
     }
 
     const region = document.getElementById('regionSelect')?.value || '';
+    const nichoSel = document.getElementById('nichoSelect')?.value || '';
     const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
     const params = new URLSearchParams({
       action: 'historico',
       pagina: String(pagina || 1),
       pais: region || '',
-      periodo: periodo
+      periodo: periodo,
     });
+    if (nichoSel) params.set('nicho', nichoSel);
     const r = await fetch(`/api/virais?${params}`);
     if (!r.ok) return;
     const d = await r.json();

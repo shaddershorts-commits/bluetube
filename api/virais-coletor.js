@@ -248,26 +248,53 @@ async function coletarTrending(res) {
 }
 
 // ── ACTION: coletar-nichos ─────────────────────────────────────────────────
+// Nichos atuais — 7 categorias alinhadas com taxonomia YouTube oficial.
+// categoryIds = IDs oficiais do YouTube (quota barata: chart=mostPopular
+// custa 1 unidade em vez de 100 do search). Se nicho nao tem categoryId
+// nativo (ex: "curiosidades"), cai em search terms.
 const NICHOS = [
-  { nome: 'humor',      termos: ['humor',       'engracado',           'comedia',          'meme brasil'] },
-  { nome: 'culinaria',  termos: ['receita facil','culinaria brasileira','comida caseira',  'sobremesa'] },
-  { nome: 'fitness',    termos: ['treino',      'academia',            'fitness brasil',   'musculacao'] },
-  { nome: 'financas',   termos: ['investimento','renda extra',         'ganhar dinheiro',  'bitcoin'] },
-  { nome: 'educacao',   termos: ['aprender',    'dica',                'como fazer',       'tutorial'] },
-  { nome: 'beleza',     termos: ['maquiagem',   'skincare',            'cabelo',           'beleza'] },
-  { nome: 'games',      termos: ['gameplay',    'free fire',           'minecraft brasil', 'gaming'] },
-  { nome: 'musica',     termos: ['funk brasil', 'sertanejo',           'pagode',           'mpb'] },
-  { nome: 'esportes',   termos: ['futebol',     'gol',                 'fut brasil',       'treino futebol'] },
-  { nome: 'tecnologia', termos: ['celular',     'tech brasil',         'review',           'unboxing'] },
-  { nome: 'viagens',    termos: ['viagem brasil','turismo',            'vlog viagem',      'praia brasil'] },
-  { nome: 'pets',       termos: ['cachorro',    'gato',                'pet brasil',       'animal fofo'] },
+  {
+    nome: 'curiosidades',
+    categoryIds: [],
+    termos: ['curiosidades', 'voce sabia', 'fatos interessantes', 'coisas que voce nao sabia'],
+  },
+  {
+    nome: 'games',
+    categoryIds: ['20'], // Gaming
+    termos: ['gameplay', 'free fire', 'minecraft brasil', 'gaming'],
+  },
+  {
+    nome: 'ia',
+    categoryIds: ['28'], // Science & Technology
+    termos: ['inteligencia artificial', 'chatgpt', 'ai tools', 'ia brasil'],
+  },
+  {
+    nome: 'animais',
+    categoryIds: ['15'], // Pets & Animals
+    termos: ['cachorro', 'gato', 'pet brasil', 'animal fofo'],
+  },
+  {
+    nome: 'artistas',
+    categoryIds: ['10', '24'], // Music + Entertainment
+    termos: ['show brasil', 'famoso', 'artista brasileiro', 'ao vivo'],
+  },
+  {
+    nome: 'pessoas_blogs',
+    categoryIds: ['22'], // People & Blogs
+    termos: ['dia na vida', 'rotina', 'vlog brasil', 'pov'],
+  },
+  {
+    nome: 'entretenimento',
+    categoryIds: ['24'], // Entertainment
+    termos: ['viral brasil', 'engracado brasil', 'trending shorts', 'comedia'],
+  },
 ];
 
 async function coletarPorNichos(res) {
   const inicio = Date.now();
   let totalNovos = 0, totalAtualizados = 0, cota = 0;
 
-  // Busca o ultimo indice processado pra rotacionar
+  // Rotaciona pela lista — 3 nichos por execucao (cobre todos em ~3 execucoes)
   const last = await supaSelect(
     `virais_coletas_log?tipo_busca=eq.nicho&order=created_at.desc&limit=1&select=parametros`
   );
@@ -280,8 +307,36 @@ async function coletarPorNichos(res) {
   ];
 
   for (const nicho of nichosAgora) {
-    // 2 termos por nicho por execucao
-    for (const termo of nicho.termos.slice(0, 2)) {
+    // Estrategia hibrida: categoryIds (barato, 1 unidade) + 1 termo search (backup)
+    const ids = new Set();
+
+    // 1) Chart=mostPopular por categoria (1 unidade cada, ate 50 videos)
+    for (const catId of (nicho.categoryIds || [])) {
+      try {
+        const chartRes = await youtubeRequest('videos', {
+          part: 'snippet,statistics,contentDetails',
+          chart: 'mostPopular',
+          regionCode: 'BR',
+          videoCategoryId: catId,
+          maxResults: 50,
+          hl: 'pt',
+        });
+        cota += 1;
+        const items = chartRes.items || [];
+        const r = await salvarVideos(items, nicho.nome, 'BR');
+        totalNovos += r.novos;
+        totalAtualizados += r.atualizados;
+        items.forEach(v => ids.add(v.id));
+        await new Promise(r => setTimeout(r, 300));
+      } catch (e) {
+        console.error(`[virais-coletor] nicho ${nicho.nome}/cat${catId}:`, e.message);
+      }
+    }
+
+    // 2) Search-based (1 termo) — complementa com videos que chart perdeu
+    //    Usado sempre pra "curiosidades" e como descoberta auxiliar nos demais
+    const termosAlvo = nicho.categoryIds?.length ? nicho.termos.slice(0, 1) : nicho.termos.slice(0, 2);
+    for (const termo of termosAlvo) {
       try {
         const search = await youtubeRequest('search', {
           part: 'snippet',
@@ -296,12 +351,12 @@ async function coletarPorNichos(res) {
         });
         cota += 100;
 
-        const ids = (search.items || []).map(v => v.id?.videoId).filter(Boolean);
-        if (!ids.length) continue;
+        const searchIds = (search.items || []).map(v => v.id?.videoId).filter(Boolean).filter(id => !ids.has(id));
+        if (!searchIds.length) continue;
 
         const detalhes = await youtubeRequest('videos', {
           part: 'snippet,statistics,contentDetails',
-          id: ids.join(','),
+          id: searchIds.join(','),
         });
         cota += 1;
 
