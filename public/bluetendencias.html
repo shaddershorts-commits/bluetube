@@ -1804,6 +1804,15 @@ const FATOS_BLUBLU = [
   { fato: 'O padrão de ouro dos virais: tensão nos 5s, clímax aos 15s, CTA aos 20s.', reacao: 'Simples? É. Ninguém faz direito? Também é.' },
 ];
 
+// Interacoes com criadores brasileiros reais — SO pra tier CAMPEAO (>1M views)
+// (Luiz Stubbe, Luiza Sonza, AndreShorts, Abacate, etc)
+const FATOS_CAMPEAO = [
+  { fato: 'É muita view... parece até um discípulo do Luiz Stubbe!', reacao: 'Fala a verdade, ${nome}: você fez a arte do viral, né?' },
+  { fato: 'Caraca, deixa eu adivinhar... Você mora no sul? Tem um GOLF? E seu nome começa com L?', reacao: 'Sabia!!! Você é a Luiza Sonza.' },
+  { fato: 'Vish, é tanta view que vou precisar chamar o Luiz Stubbe pra analisar isso comigo.', reacao: 'Ele tava batendo perna no centro, tive que chamar o AndreShorts.' },
+  { fato: 'O que é o que é? É um youtuber de Short, tem nome de fruta e um abacate na foto de perfil?', reacao: 'Abacate.' },
+];
+
 // Fatos/reacoes variadas — mistura nerd, didatico e quebra de 4a parede
 // Quanto mais pra user nao enjoar
 const FATOS_MEU_VIDEO = [
@@ -1851,8 +1860,21 @@ const FATOS_MEU_VIDEO = [
   { fato: 'Dica de bastidor: eu fui treinado em 2.3 milhões de Shorts brasileiros.', reacao: 'Então quando eu te elogiar, aceita. Quando eu te criticar, também.' },
 ];
 
+// Pre-estima tier no frontend pra escolher lista certa de fatos (campeao > 1M/dia)
+function estimarTierMeuVideo() {
+  const v = state.video;
+  if (!v || !v.views) return 'medio';
+  const pubEm = v.publicado_em ? new Date(v.publicado_em) : null;
+  const horas = pubEm ? Math.max(0.1, (Date.now() - pubEm.getTime()) / 3600000) : 24;
+  const dias = horas / 24;
+  const viewsDia = dias <= 1 ? v.views : Math.round(v.views / dias);
+  if (viewsDia >= 1_000_000)  return 'campeao';
+  if (viewsDia >= 150_000)    return 'bom';
+  if (viewsDia >= 40_000)     return 'medio';
+  return 'ruim';
+}
+
 async function rotarCuriosidadesMeuVideo() {
-  let idx = 0;
   const mostrar = async (texto, ms) => {
     if (!$('cena6')?.classList.contains('active')) return false;
     if (state.atosData) return false;
@@ -1860,6 +1882,20 @@ async function rotarCuriosidadesMeuVideo() {
     await sleep(ms);
     return true;
   };
+  const tierEstimado = estimarTierMeuVideo();
+  // Primeira rodada: se CAMPEAO, mostra as 4 piadas de creator BR especiais
+  if (tierEstimado === 'campeao') {
+    // Embaralha pra nao mostrar sempre na mesma ordem
+    const piadas = [...FATOS_CAMPEAO].sort(() => Math.random() - 0.5);
+    for (const item of piadas) {
+      const fato = item.fato.replace(/\$\{nome\}/g, state.nome);
+      const reacao = item.reacao.replace(/\$\{nome\}/g, state.nome);
+      if (!await mostrar('🔥 ' + fato, 4200)) return;
+      if (!await mostrar('💭 ' + reacao, 3800)) return;
+    }
+  }
+  // Depois (ou desde o inicio se nao for campeao) — rotaciona lista generica
+  let idx = 0;
   const loop = async () => {
     const item = FATOS_MEU_VIDEO[idx % FATOS_MEU_VIDEO.length];
     idx++;
