@@ -224,26 +224,45 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Fallback extremo: vxreddit / rxddit (mirror services que bypassam blocks)
-      // Sao proxies publicos que servem o conteudo do Reddit em formato simplificado
+      // Fallback EXTREMO: proxy publico pra contornar bloqueio de IP do Reddit.
+      // Reddit bloqueia range de IPs AWS/Vercel. Allorigins serve o conteudo
+      // dum IP diferente (nao-bloqueado). Tambem tenta mirrors estilo vxtwitter.
       if (!post) {
-        const mirrors = [
+        const proxies = [
+          // allorigins.win: proxy HTTP publico gratuito, retorna contents:
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.reddit.com${postPath}.json?raw_json=1`)}`,
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://old.reddit.com${postPath}.json?raw_json=1`)}`,
+          // corsproxy.io: outro publico, as vezes funciona quando allorigins falha
+          `https://corsproxy.io/?${encodeURIComponent(`https://www.reddit.com${postPath}.json?raw_json=1`)}`,
+          // rxddit direto (mirror tipo vxtwitter)
           `https://rxddit.com${postPath}.json`,
-          `https://www.redditmedia.com${postPath}.json?raw_json=1`,
         ];
-        for (const src of mirrors) {
+        for (const src of proxies) {
           try {
-            const r = await fetch(src, { headers: redditHeaders, redirect: 'follow' });
-            if (!r.ok) { lastDebug = `mirror ${src} → ${r.status}`; continue; }
-            const data = await r.json();
+            const r = await fetch(src, { headers: { 'User-Agent': redditHeaders['User-Agent'], 'Accept': 'application/json' }, redirect: 'follow' });
+            if (!r.ok) { lastDebug = `proxy ${src.slice(0,60)}... → ${r.status}`; continue; }
+            const text = await r.text();
+            // allorigins as vezes retorna {contents:"..."} se usar /get ao inves de /raw
+            let data;
+            try {
+              data = JSON.parse(text);
+              // Se for allorigins com /get, desembala
+              if (data.contents && typeof data.contents === 'string') {
+                data = JSON.parse(data.contents);
+              }
+            } catch(e) {
+              lastDebug = `proxy ${src.slice(0,60)} parse fail`;
+              continue;
+            }
             const candidate = Array.isArray(data)
               ? data[0]?.data?.children?.[0]?.data
               : data?.data?.children?.[0]?.data || data?.data || data;
             if (candidate && (candidate.title || candidate.media || candidate.url)) {
               post = candidate;
+              console.log('[reddit] sucesso via proxy:', src.slice(0, 60));
               break;
             }
-          } catch (e) { lastDebug = `mirror ${src} → ${e.message}`; }
+          } catch (e) { lastDebug = `proxy ${src.slice(0,60)} → ${e.message}`; }
         }
       }
 
