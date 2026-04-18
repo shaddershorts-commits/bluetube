@@ -204,6 +204,16 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 .saudacao-opcao-titulo{font-size:16px;font-weight:700}
 .saudacao-opcao-sub{font-size:12px;color:var(--text-dim);font-weight:500;margin-top:2px;font-family:var(--mono)}
 
+/* Botao destaque "Analisar meu video" (piscante azul claro do branding) */
+.saudacao-opcao-highlight{position:relative;background:linear-gradient(135deg,rgba(0,170,255,.18),rgba(59,130,246,.12));border:1px solid var(--neon);animation:highlightPulse 2.4s ease-in-out infinite;box-shadow:0 0 0 rgba(0,170,255,.3)}
+@keyframes highlightPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(0,170,255,.4),0 8px 20px rgba(0,170,255,.15);border-color:var(--neon)}
+  50%{box-shadow:0 0 0 6px rgba(0,170,255,0),0 12px 28px rgba(0,170,255,.3);border-color:#7cd4ff}
+}
+.saudacao-opcao-highlight:hover{background:linear-gradient(135deg,rgba(0,170,255,.3),rgba(59,130,246,.2));transform:translateX(4px) scale(1.02)}
+.pisca-badge{position:absolute;top:-8px;right:12px;background:linear-gradient(135deg,var(--neon),#7cd4ff);color:#020817;font-family:var(--mono);font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:1.5px;box-shadow:0 4px 12px rgba(0,170,255,.5);animation:badgePulse 1.5s ease-in-out infinite}
+@keyframes badgePulse{50%{transform:scale(1.08);filter:brightness(1.2)}}
+
 @keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
 .quota-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:20px;padding:6px 16px;font-family:var(--mono);font-size:11px;color:var(--text-sec);margin-top:24px}
@@ -527,6 +537,14 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
           <div class="saudacao-opcao-sub" id="sQtdRestantes">—</div>
         </div>
       </button>
+      <button class="saudacao-opcao saudacao-opcao-highlight" onclick="irCena('2c')">
+        <div class="saudacao-opcao-icone" style="background:rgba(0,170,255,.18)">🎬</div>
+        <div class="saudacao-opcao-texto">
+          <div class="saudacao-opcao-titulo">Analisar meu vídeo</div>
+          <div class="saudacao-opcao-sub">Cole o link do seu Short · feedback honesto do Blublu</div>
+        </div>
+        <div class="pisca-badge">NOVO</div>
+      </button>
     </div>
     <div class="quota-badge" id="sQuota">carregando...</div>
   </div>
@@ -570,6 +588,51 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 
     <div style="text-align:center;margin-top:30px">
       <button class="final-btn" onclick="irCena('1')">← Voltar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CENA 2C: ANALISAR MEU VÍDEO -->
+<div class="cena" id="cena2c">
+  <div class="nova-wrap">
+    <div class="nova-header">
+      <div style="display:flex;justify-content:center;margin-bottom:20px"><div class="blublu small"></div></div>
+      <h2 class="nova-titulo">Cola o link do seu Short</h2>
+      <p class="nova-blublu" id="mvText">Sem filtro, sem enrolar. Vou te dizer por que explodiu — ou por que não.</p>
+    </div>
+    <div class="nova-link" style="border-color:var(--neon)">
+      <div class="nova-link-titulo" style="color:var(--neon)">🎬 Seu vídeo do YouTube</div>
+      <div class="nova-link-row">
+        <input class="nova-link-input" id="meuVideoInput" type="url" placeholder="https://youtube.com/shorts/..." autocomplete="off">
+        <button class="nova-link-btn" onclick="analisarMeuVideo()" id="meuVideoBtn">🔍 Analisar</button>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:var(--text-dim);font-family:var(--mono);line-height:1.6">
+        <div>💡 <b>Como o Blublu avalia:</b></div>
+        <div style="margin-top:6px">🔥 <span style="color:#10b981">+1M views em 1 dia</span> → modo comediante (você me ensina)</div>
+        <div>✅ <span style="color:var(--neon)">+150k views em 1 dia</span> → análise positiva + próximo nível</div>
+        <div>⚖️ <span style="color:#fbbf24">40-150k em 1 dia</span> → balanceada, o que funcionou e o que não</div>
+        <div>📉 <span style="color:#ef4444">menos de 40k em 1 dia</span> → deep analysis, passo a passo</div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:20px">
+      <button class="final-btn" onclick="irCena('1')">← Voltar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CENA 11: RESULTADO ANÁLISE MEU VÍDEO -->
+<div class="cena" id="cena11">
+  <div class="atos-wrap">
+    <div id="mvTierBadge"></div>
+    <div id="mvAbertura" class="ato-blublu-intro" style="margin-bottom:24px"></div>
+    <div id="mvDiagnostico" style="background:var(--card);border:1px solid var(--border-blublu);border-radius:16px;padding:22px 26px;margin-bottom:22px;text-align:left"></div>
+    <div id="mvPontos" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px"></div>
+    <div id="mvRecomendacoes" style="display:flex;flex-direction:column;gap:12px;margin-bottom:22px"></div>
+    <div id="mvReflexao" class="ato-blublu-outro"></div>
+    <div class="ato-nav" style="display:flex;gap:10px;justify-content:center;margin-top:28px;flex-wrap:wrap">
+      <button class="ato-nav-btn" onclick="salvarAnalise()">💾 Salvar análise</button>
+      <button class="ato-nav-btn secondary" onclick="irCena('2c');$('meuVideoInput').value=''">🎬 Analisar outro</button>
+      <button class="ato-nav-btn secondary" onclick="irCena('1')">🏠 Início</button>
     </div>
   </div>
 </div>
@@ -854,6 +917,85 @@ function irCena(id) {
   if (id === '8') mostrarAto(state.atoIdx);
   if (id === '9') prepararQuiz();
   if (id === '10') prepararFinal();
+  if (id === '2c') { const el = $('mvText'); if (el) el.textContent = `Sem filtro, ${state.nome}. Cole o link e eu te falo a verdade sobre esse vídeo.`; }
+}
+
+// ═══════════ ANALISAR MEU VÍDEO (novo fluxo) ═══════════
+async function analisarMeuVideo() {
+  const url = ($('meuVideoInput')?.value || '').trim();
+  if (!url) { toast('Cola o link do seu Short primeiro'); return; }
+  const btn = $('meuVideoBtn');
+  btn.disabled = true; btn.textContent = '⏳ Analisando...';
+  irCena('3');
+  const msgs = [
+    'Capturando seu vídeo...',
+    'Conferindo a performance...',
+    `Checando se você explodiu mesmo, ${state.nome}...`,
+    'Blublu ajustando os óculos de raio-x...',
+    'Cruzando com padrões de virais...',
+  ];
+  let idx = 0;
+  const intMsg = setInterval(() => { idx = (idx+1) % msgs.length; $('scanMsg').textContent = msgs[idx]; }, 1400);
+  try {
+    const r = await fetch('/api/bluetendencias', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'analisar-meu-video', token, entrada: url }),
+    });
+    const d = await r.json();
+    clearInterval(intMsg);
+    btn.disabled = false; btn.textContent = '🔍 Analisar';
+    if (!r.ok || !d.analise) { toast(d.error || 'Erro ao analisar'); irCena('2c'); return; }
+    state.analiseId = d.analise_id;
+    state.video = d.video;
+    renderMeuVideo(d);
+  } catch (e) {
+    clearInterval(intMsg);
+    btn.disabled = false; btn.textContent = '🔍 Analisar';
+    toast('Erro de conexão'); irCena('2c');
+  }
+}
+
+function renderMeuVideo(d) {
+  irCena('11');
+  const a = d.analise;
+  const tier = d.tier;
+  const tierConfig = {
+    campeao: { emoji: '🔥', label: 'VOCÊ EXPLODIU', cor: '#10b981', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 1M+ em 1 dia equivalente` },
+    bom:     { emoji: '✅', label: 'PERFORMANCE BOA', cor: 'var(--neon)', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 150k-1M em 1 dia` },
+    medio:   { emoji: '⚖️', label: 'MÉDIA',          cor: '#fbbf24',     sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · 40-150k em 1 dia` },
+    ruim:    { emoji: '📉', label: 'ABAIXO DO ESPERADO', cor: '#ef4444', sub: `${(d.performance.views_primeiro_dia || 0).toLocaleString('pt-BR')} views · menos de 40k em 1 dia` },
+  };
+  const tc = tierConfig[tier] || tierConfig.medio;
+  $('mvTierBadge').innerHTML = `
+    <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(59,130,246,.08);border:1px solid ${tc.cor};color:${tc.cor};padding:10px 20px;border-radius:28px;font-family:var(--mono);font-size:12px;font-weight:800;letter-spacing:2px;margin-bottom:20px">
+      <span style="font-size:20px">${tc.emoji}</span>
+      <div style="text-align:left"><div>${tc.label}</div><div style="font-size:10px;font-weight:500;color:var(--text-dim);letter-spacing:.5px;text-transform:none;margin-top:2px">${tc.sub}</div></div>
+    </div>`;
+  $('mvAbertura').textContent = a.abertura_blublu || '';
+  $('mvDiagnostico').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:10px">📊 DIAGNÓSTICO</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:10px">${esc(a.diagnostico?.titulo || '')}</div>
+    <div style="font-size:15px;line-height:1.55;color:var(--text-sec)">${esc(a.diagnostico?.resumo || '')}</div>
+  `;
+  const pontosHtml = (titulo, lista, cor) => `
+    <div style="background:var(--card);border:1px solid ${cor};border-radius:14px;padding:18px 20px;text-align:left">
+      <div style="font-size:13px;font-weight:800;color:${cor};margin-bottom:10px">${titulo}</div>
+      ${(lista || []).map(p => `<div style="font-size:13px;line-height:1.5;margin-bottom:8px;color:var(--text-sec);padding-left:12px;position:relative">
+        <span style="position:absolute;left:0;color:${cor}">›</span>${esc(p)}</div>`).join('')}
+    </div>`;
+  $('mvPontos').innerHTML =
+    pontosHtml('✓ O QUE FUNCIONOU', a.pontos_fortes, '#10b981') +
+    pontosHtml('✗ PONTOS DE ATENÇÃO', a.pontos_fracos, 'rgba(251,191,36,.5)');
+  $('mvRecomendacoes').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:4px;text-align:left">🎯 RECOMENDAÇÕES</div>
+    ${(a.recomendacoes || []).map((r, i) => `
+      <div class="ato-sug" style="animation-delay:${0.3 + i*0.4}s">
+        <div class="ato-sug-titulo">${i+1}. ${esc(r.titulo || '')}</div>
+        <div class="ato-sug-desc">${esc(r.descricao || '')}</div>
+        ${r.exemplo_pratico ? `<div class="ato-sug-ex">💡 ${esc(r.exemplo_pratico)}</div>` : ''}
+      </div>
+    `).join('')}`;
+  $('mvReflexao').textContent = a.reflexao_final || '';
 }
 
 // ═══════════ TYPEWRITER ═══════════

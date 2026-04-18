@@ -50,6 +50,7 @@ module.exports = async function handler(req, res) {
     if (action === 'iniciar-dissecacao')   return res.status(200).json(await iniciarDissecacao(ctx, req));
     if (action === 'gerar-analise-final')  return res.status(200).json(await gerarAnaliseFinal(ctx, req));
     if (action === 'gerar-analise')        return res.status(200).json(await gerarAnaliseFinal(ctx, req)); // backcompat
+    if (action === 'analisar-meu-video')   return res.status(200).json(await analisarMeuVideo(ctx, req));
     if (action === 'salvar-analise')       return res.status(200).json(await salvarAnalise(ctx, req));
     if (action === 'deletar-analise')      return res.status(200).json(await deletarAnalise(ctx, req));
     if (action === 'analises-salvas')      return res.status(200).json(await analisesSalvas(ctx, req));
@@ -846,5 +847,162 @@ async function statusBudget(ctx, req) {
       video_youtube_id: u.video_youtube_id, nicho_usuario: u.video_nicho,
       custo_brl: u.custo_brl, created_at: u.created_at, nome: u.nome_usuario,
     })),
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTION: analisar-meu-video — fluxo novo "meu video" com 4 tiers de analise
+// Usuario cola o video do proprio canal. Blublu avalia pela performance real
+// (views por dia desde publicacao) e gera feedback adaptado ao tier.
+// ═════════════════════════════════════════════════════════════════════════════
+async function analisarMeuVideo(ctx, req) {
+  const { token, entrada: ent } = req.body || {};
+  const inicio = Date.now();
+
+  const auth = await requireMaster(ctx, token);
+  if (!auth.ok) return { error: auth.error, status: auth.status };
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
+  if (!rl.permitido) return rl;
+
+  const ytId = extrairYoutubeId(ent);
+  if (!ytId) return { error: 'URL ou ID invalido. Cole o link completo do seu Short.', status: 400 };
+
+  // Busca video (banco primeiro, YouTube depois)
+  let video = await buscarVideoDb(ctx, ytId);
+  if (!video) video = await buscarVideoYoutube(ytId);
+  if (!video) return { error: 'Nao consegui achar esse video. Verifica o link.', status: 404 };
+
+  // Calcula performance real
+  const views = parseInt(video.views) || 0;
+  const publicadoEm = video.publicado_em ? new Date(video.publicado_em) : null;
+  const horasDesdePost = publicadoEm ? Math.max(0.1, (Date.now() - publicadoEm.getTime()) / 3600000) : 24;
+  const diasDesdePost = horasDesdePost / 24;
+  // Views normalizadas pra primeiro dia (pra comparar com criterio de "1 dia")
+  const viewsPrimeiroDia = diasDesdePost <= 1 ? views : Math.round(views / diasDesdePost);
+
+  // Tier baseado nas views do primeiro dia
+  let tier;
+  if (viewsPrimeiroDia >= 1_000_000)  tier = 'campeao';
+  else if (viewsPrimeiroDia >= 150_000) tier = 'bom';
+  else if (viewsPrimeiroDia >= 40_000)  tier = 'medio';
+  else                                  tier = 'ruim';
+
+  // Prompt adaptativo por tier
+  const promptsPorTier = {
+    campeao: `Voce e Blublu. O criador ${auth.nome} trouxe um video que EXPLODIU: ${viewsPrimeiroDia.toLocaleString('pt-BR')} views em ${Math.round(diasDesdePost*10)/10} dias. Isso e raro. 1M+ em 1 dia equivalente.
+
+MODO COMEDIANTE ATIVADO: ao inves de ensinar ${auth.nome}, brinque que ele superou voce. Peca pra ele te ensinar. Seja engracado, auto-depreciativo mas mantendo personalidade. No final, reflexao motivacional curta pra nao parar de produzir.`,
+
+    bom: `Voce e Blublu. ${auth.nome} trouxe um video que PERFORMOU BEM: ${viewsPrimeiroDia.toLocaleString('pt-BR')} views em ${Math.round(diasDesdePost*10)/10} dias (150k-1M em 1 dia equivalente).
+
+Analise O QUE FUNCIONOU especificamente nesse video. De 2-3 dicas concretas pra ir pra proximo nivel. Tom: satisfeito mas ambicioso, voce ve potencial ainda maior.`,
+
+    medio: `Voce e Blublu. ${auth.nome} trouxe um video com performance MEDIA: ${viewsPrimeiroDia.toLocaleString('pt-BR')} views em ${Math.round(diasDesdePost*10)/10} dias (40k-150k em 1 dia equivalente).
+
+Analise balanceada: 1-2 coisas que funcionaram + 2-3 coisas que poderiam ter sido melhores. Tom: honesto, construtivo. ${auth.nome} ja sabe que da pra melhorar, seja direto.`,
+
+    ruim: `Voce e Blublu. ${auth.nome} trouxe um video que NAO PERFORMOU: ${viewsPrimeiroDia.toLocaleString('pt-BR')} views em ${Math.round(diasDesdePost*10)/10} dias (<40k em 1 dia).
+
+MODO DEEP ANALYSIS: seja honesto mas construtivo. Nao seja cruel — seja o amigo arrogante que quer que ${auth.nome} melhore. Passo a passo do que mudar: hook (primeiros 3s), estrutura narrativa, thumbnail, CTA. De exemplo concreto de reescrita.`,
+  };
+
+  const prompt = `${promptsPorTier[tier]}
+
+VIDEO:
+Titulo: "${video.titulo}"
+Canal: ${video.canal_nome}
+Views: ${views.toLocaleString('pt-BR')}
+Likes: ${(video.likes || 0).toLocaleString('pt-BR')}
+Comentarios: ${(video.comentarios || 0).toLocaleString('pt-BR')}
+Duracao: ${video.duracao_segundos}s
+Publicado ha: ${Math.round(diasDesdePost*10)/10} dias
+Nicho: ${video.nicho || 'nao classificado'}
+
+Retorne APENAS JSON valido:
+{
+  "tier": "${tier}",
+  "abertura_blublu": "Frase de Blublu abrindo a analise, com tom adequado ao tier",
+  "diagnostico": {
+    "titulo": "Titulo curto do diagnostico",
+    "resumo": "2-3 frases explicando o que aconteceu com esse video",
+    "viewsPrimeiroDia": ${viewsPrimeiroDia}
+  },
+  "pontos_fortes": ["bullet 1", "bullet 2", "bullet 3"],
+  "pontos_fracos": ["bullet 1", "bullet 2", "bullet 3"],
+  "recomendacoes": [
+    {"titulo": "...", "descricao": "...", "exemplo_pratico": "..."},
+    {"titulo": "...", "descricao": "...", "exemplo_pratico": "..."},
+    {"titulo": "...", "descricao": "...", "exemplo_pratico": "..."}
+  ],
+  "reflexao_final": "Frase motivacional de Blublu pra fechar a analise, adequada ao tier"
+}`;
+
+  let out;
+  try {
+    out = await callClaudeStudio(prompt, { model: 'claude-sonnet-4-6', maxTokens: 3000 });
+  } catch (e) {
+    console.error('[analisar-meu-video]', e.message);
+    return { error: 'Blublu está descansando. Volta em alguns minutos.', status: 503 };
+  }
+
+  const analise = parseJsonSafe(out.text);
+  if (!analise?.recomendacoes) {
+    return { error: 'Falha ao processar análise. Tente novamente.', status: 500 };
+  }
+
+  const custoBRL = parseFloat((
+    (out.tokens_input / 1_000_000) * COST_INPUT_PER_MTOK_BRL +
+    (out.tokens_output / 1_000_000) * COST_OUTPUT_PER_MTOK_BRL
+  ).toFixed(4));
+
+  // Persiste como tipo especial
+  let analiseId = null;
+  try {
+    const insR = await fetch(`${ctx.SU}/rest/v1/studio_analises`, {
+      method: 'POST', headers: { ...ctx.h, Prefer: 'return=representation' },
+      body: JSON.stringify({
+        user_id: auth.user.id,
+        video_youtube_id: video.youtube_id,
+        video_titulo: video.titulo,
+        video_thumbnail: video.thumbnail_url,
+        video_canal: video.canal_nome,
+        video_views_inicio: video.views,
+        video_likes_inicio: video.likes,
+        video_comentarios_inicio: video.comentarios,
+        video_duracao_segundos: video.duracao_segundos,
+        video_nicho: video.nicho,
+        analise_atos: { tipo: 'meu_video', tier, ...analise, dias_desde_post: diasDesdePost, views_primeiro_dia: viewsPrimeiroDia },
+        nome_usuario: auth.nome,
+        tempo_total_ms: Date.now() - inicio,
+        custo_tokens_input: out.tokens_input,
+        custo_tokens_output: out.tokens_output,
+        custo_brl: custoBRL,
+        modelo_usado: out.model,
+      }),
+    });
+    if (insR.ok) { const [row] = await insR.json(); analiseId = row?.id || null; }
+  } catch (e) { console.error('[insert meu_video]', e.message); }
+
+  await Promise.all([
+    registrarUso(ctx, auth.user.id, auth.user.email),
+    atualizarBudgetDiario(ctx, custoBRL),
+  ]);
+
+  return {
+    ok: true,
+    analise_id: analiseId,
+    tier,
+    nome: auth.nome,
+    video: {
+      id: video.id, youtube_id: video.youtube_id, titulo: video.titulo,
+      thumbnail: video.thumbnail_url, canal: video.canal_nome,
+      views, likes: video.likes, publicado_em: video.publicado_em,
+    },
+    performance: {
+      views_primeiro_dia: viewsPrimeiroDia,
+      dias_desde_post: Math.round(diasDesdePost * 10) / 10,
+    },
+    analise,
+    analises_restantes: rl.analises_restantes ? Math.max(0, rl.analises_restantes - 1) : 999,
   };
 }
