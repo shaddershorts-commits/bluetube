@@ -73,6 +73,7 @@ export default async function handler(req, res) {
       'checkout.session.completed',
       'customer.subscription.deleted',
       'invoice.payment_failed',
+      'charge.refunded',
     ];
     if (eventosCriticos.includes(event.type) || status === 'falha_permanente') {
       await H.notificarAdminWebhookErro(event, err).catch(() => {});
@@ -161,6 +162,100 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         })
       });
     } catch (e) { console.error('Resend error:', e.message); }
+  }
+
+  // ── HELPERS de comissao ──────────────────────────────────────────────────
+  // Salva o intento na fila pra cron reprocessar caso o PATCH direto falhe.
+  async function enqueueCommissionPatch(payload) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/commission_patch_queue`, {
+        method: 'POST',
+        headers: { ...supaHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ ...payload, status: 'pending' })
+      });
+      console.log(`[commission-queue] enfileirado: ${payload.subscriber_email} (${payload.source})`);
+    } catch(e) { console.error('[commission-queue] enqueue falhou:', e.message); }
+  }
+
+  // Aplica a correcao de comissao: PATCH direto + history + total_earnings delta.
+  // Em caso de falha (row nao encontrada, rede, Supabase lento), enfileira retry.
+  async function applyCommissionCorrection({ affiliate, email, plan, rate, paidAmount, couponApplied, couponDiscount, source }) {
+    const correctedAmount = parseFloat((paidAmount * rate).toFixed(2));
+    try {
+      const curRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_rate,plan_amount,commission_history`, { headers: supaHeaders });
+      const [row] = curRes.ok ? await curRes.json() : [];
+      if (!row) {
+        // Linha ainda nao existe (auth.js pode ter demorado) — enfileira retry
+        await enqueueCommissionPatch({
+          affiliate_id: affiliate.id, subscriber_email: email, plan,
+          paid_amount: paidAmount, rate, coupon_applied: !!couponApplied,
+          coupon_discount: couponDiscount || 0, source,
+          last_error: 'commission_row_not_found'
+        });
+        return { ok: false, queued: true };
+      }
+      const prev = parseFloat(row.commission_amount || 0);
+      const delta = parseFloat((correctedAmount - prev).toFixed(2));
+      // Audit trail — append no jsonb
+      const history = Array.isArray(row.commission_history) ? row.commission_history : [];
+      history.push({
+        at: new Date().toISOString(), source,
+        prev_amount: prev, new_amount: correctedAmount,
+        prev_rate: parseFloat(row.commission_rate || 0), new_rate: rate,
+        prev_plan_amount: parseFloat(row.plan_amount || 0), new_plan_amount: paidAmount,
+        coupon_applied: !!couponApplied, coupon_discount: couponDiscount || 0,
+      });
+      const patchBody = {
+        commission_rate: rate,
+        commission_amount: correctedAmount,
+        plan_amount: paidAmount,
+        commission_history: history,
+      };
+      if (couponApplied) patchBody.coupon_applied = true;
+      if (couponDiscount > 0) patchBody.coupon_discount = couponDiscount;
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${row.id}`, {
+        method: 'PATCH', headers: supaHeaders, body: JSON.stringify(patchBody)
+      });
+      if (!patchRes.ok) {
+        const errTxt = await patchRes.text().catch(() => '');
+        await enqueueCommissionPatch({
+          affiliate_id: affiliate.id, subscriber_email: email, plan,
+          paid_amount: paidAmount, rate, coupon_applied: !!couponApplied,
+          coupon_discount: couponDiscount || 0, source,
+          last_error: `patch_failed_${patchRes.status}: ${errTxt.slice(0,200)}`
+        });
+        return { ok: false, queued: true };
+      }
+      // Ajusta total_earnings do afiliado pelo delta
+      if (delta !== 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
+          method: 'PATCH', headers: supaHeaders,
+          body: JSON.stringify({
+            total_earnings: parseFloat(((parseFloat(affiliate.total_earnings) || 0) + delta).toFixed(2)),
+            updated_at: new Date().toISOString()
+          })
+        });
+      }
+      return { ok: true, delta, prev, correctedAmount };
+    } catch (e) {
+      console.error('[applyCommissionCorrection] erro:', e.message);
+      await enqueueCommissionPatch({
+        affiliate_id: affiliate.id, subscriber_email: email, plan,
+        paid_amount: paidAmount, rate, coupon_applied: !!couponApplied,
+        coupon_discount: couponDiscount || 0, source,
+        last_error: `exception: ${e.message.slice(0,200)}`
+      });
+      return { ok: false, queued: true };
+    }
+  }
+
+  // Resolve taxa efetiva do afiliado (override do admin > nivel auto)
+  function effectiveRate(aff) {
+    const LEVEL_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
+    const levelKey = (aff.level || aff.nivel || 'bronze').toLowerCase();
+    return (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
+      ? { rate: aff.comissao_percentual / 100, levelKey, source: 'admin_override' }
+      : { rate: LEVEL_RATES[levelKey] || 0.35, levelKey, source: 'level_default' };
   }
 
   // ── CHECKOUT CONCLUÍDO → Ativa plano ─────────────────────────────────────
@@ -258,45 +353,16 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) return;
-        // Taxa efetiva: override do admin se existir, senao taxa do nivel (bronze/silver/gold)
-        const LEVEL_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
-        const levelKey = (aff.level || aff.nivel || 'bronze').toLowerCase();
-        const rate = (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
-          ? aff.comissao_percentual / 100
-          : (LEVEL_RATES[levelKey] || 0.35);
-        // Comissao = taxa × valor realmente pago (respeita cupom + anual)
-        const correctedAmount = parseFloat((paidAmount * rate).toFixed(2));
-        // Busca a linha pra calcular o delta em total_earnings
-        const curRow = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(email)}&order=created_at.desc&limit=1&select=id,commission_amount`, { headers: supaHeaders });
-        const [row] = curRow.ok ? await curRow.json() : [];
-        if (!row) return;
-        const patchBody = {
-          commission_rate: rate,
-          commission_amount: correctedAmount,
-          plan_amount: paidAmount,
-        };
-        // Se o banco tiver coluna coupon_applied/amount_paid elas passam; sem coluna o PostgREST ignora os campos extras
-        if (couponApplied) patchBody.coupon_applied = true;
-        if (couponDiscount > 0) patchBody.coupon_discount = couponDiscount;
-        await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${row.id}`, {
-          method: 'PATCH',
-          headers: supaHeaders,
-          body: JSON.stringify(patchBody)
+        const { rate, levelKey, source: rateSource } = effectiveRate(aff);
+        const result = await applyCommissionCorrection({
+          affiliate: aff, email, plan, rate, paidAmount,
+          couponApplied, couponDiscount, source: 'checkout'
         });
-        // Corrige total_earnings do afiliado com o delta (valor novo - valor antigo)
-        const prev = parseFloat(row.commission_amount || 0);
-        const delta = parseFloat((correctedAmount - prev).toFixed(2));
-        if (delta !== 0) {
-          await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
-            method: 'PATCH',
-            headers: supaHeaders,
-            body: JSON.stringify({
-              total_earnings: parseFloat(((parseFloat(aff.total_earnings) || 0) + delta).toFixed(2)),
-              updated_at: new Date().toISOString()
-            })
-          });
+        if (result.ok) {
+          console.log(`💰 Commission corrected [${rateSource}]: ${aff.email} ${levelKey} ${(rate*100).toFixed(0)}% × R$${paidAmount}${couponApplied?` (cupom -R$${couponDiscount})`:''} = R$${result.correctedAmount} (antes R$${result.prev}, delta R$${result.delta}) — ${email}`);
+        } else {
+          console.log(`⏳ Commission queued for retry: ${aff.email} ← ${email} (${plan})`);
         }
-        console.log(`💰 Commission corrected: ${aff.email} ${levelKey} ${(rate*100).toFixed(0)}% × R$${paidAmount}${couponApplied?` (cupom -R$${couponDiscount})`:''} = R$${correctedAmount} (antes R$${prev}, delta R$${delta}) — ${email}`);
       } catch(e) { console.error('Commission correction error:', e.message); }
     }).catch(() => {});
 
@@ -406,42 +472,23 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const refData = subRef.ok ? await subRef.json() : [];
         const refCode = refData?.[0]?.affiliate_ref;
         if (!refCode) return;
-        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,total_earnings`, { headers: supaHeaders });
+        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) return;
-        const LEVEL_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
-        const levelKey = (aff.level || aff.nivel || 'bronze').toLowerCase();
-        const rate = (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
-          ? aff.comissao_percentual / 100
-          : (LEVEL_RATES[levelKey] || 0.35);
-        const correctedAmount = parseFloat((renewPaidAmount * rate).toFixed(2));
-        const curRow = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(renewEmail)}&order=created_at.desc&limit=1&select=id,commission_amount`, { headers: supaHeaders });
-        const [row] = curRow.ok ? await curRow.json() : [];
-        if (!row) return;
-        const patchBody = {
-          commission_rate: rate,
-          commission_amount: correctedAmount,
-          plan_amount: renewPaidAmount,
-        };
-        if (renewCouponApplied) patchBody.coupon_applied = true;
-        await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${row.id}`, {
-          method: 'PATCH',
-          headers: supaHeaders,
-          body: JSON.stringify(patchBody)
+        const { rate, levelKey, source: rateSource } = effectiveRate(aff);
+        const renewCouponDiscount = renewDiscount ? parseFloat((renewDiscount / 100).toFixed(2)) : 0;
+        const result = await applyCommissionCorrection({
+          affiliate: aff, email: renewEmail, plan: renewPlan, rate,
+          paidAmount: renewPaidAmount,
+          couponApplied: renewCouponApplied,
+          couponDiscount: renewCouponDiscount,
+          source: 'renewal'
         });
-        const prev = parseFloat(row.commission_amount || 0);
-        const delta = parseFloat((correctedAmount - prev).toFixed(2));
-        if (delta !== 0) {
-          await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
-            method: 'PATCH',
-            headers: supaHeaders,
-            body: JSON.stringify({
-              total_earnings: parseFloat(((parseFloat(aff.total_earnings) || 0) + delta).toFixed(2)),
-              updated_at: new Date().toISOString()
-            })
-          });
+        if (result.ok) {
+          console.log(`🔄 Renewal commission corrected [${rateSource}]: ${levelKey} ${(rate*100).toFixed(0)}% × R$${renewPaidAmount}${renewCouponApplied?' (com cupom)':''} = R$${result.correctedAmount} (delta R$${result.delta})`);
+        } else {
+          console.log(`⏳ Renewal commission queued for retry: ${aff.email} ← ${renewEmail}`);
         }
-        console.log(`🔄 Renewal commission corrected: ${levelKey} ${(rate*100).toFixed(0)}% × R$${renewPaidAmount}${renewCouponApplied?' (com cupom)':''} = R$${correctedAmount} (delta R$${delta})`);
       } catch(e) { console.error('Renewal commission correction error:', e.message); }
     }).catch(() => {});
     return;
@@ -475,6 +522,77 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       });
       console.log(`⬇️ Downgrade por falha de pagamento: ${email}`);
     }
+    return;
+  }
+
+  // ── REEMBOLSO ────────────────────────────────────────────────────────────
+  // Quando o Stripe reembolsa um charge, reverte a comissao mais recente do
+  // afiliado desse assinante. Marca como 'refunded' (nao apaga), subtrai de
+  // total_earnings e anexa no audit trail.
+  if (event.type === 'charge.refunded') {
+    const charge = event.data.object;
+    const customerId = charge.customer;
+    const refundedCents = charge.amount_refunded || 0;
+    if (!customerId || refundedCents <= 0) return;
+
+    try {
+      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan,affiliate_ref`, { headers: supaHeaders });
+      const [sub] = subRes.ok ? await subRes.json() : [];
+      if (!sub?.email || !sub.affiliate_ref) {
+        console.log(`[refund] skip — sem afiliado vinculado a ${customerId}`);
+        return;
+      }
+
+      const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${sub.affiliate_ref}&select=id,email,total_earnings`, { headers: supaHeaders });
+      const [aff] = affRes.ok ? await affRes.json() : [];
+      if (!aff) return;
+
+      // Pega comissao mais recente pending/paid pra esse assinante
+      const cmRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(sub.email)}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_history,status`, { headers: supaHeaders });
+      const [row] = cmRes.ok ? await cmRes.json() : [];
+      if (!row) {
+        console.log(`[refund] nenhuma comissao ativa pra reverter: ${sub.email}`);
+        return;
+      }
+
+      const amount = parseFloat(row.commission_amount || 0);
+      const history = Array.isArray(row.commission_history) ? row.commission_history : [];
+      history.push({
+        at: new Date().toISOString(), source: 'refund',
+        prev_status: row.status, new_status: 'refunded',
+        prev_amount: amount, new_amount: 0,
+        refund_amount_cents: refundedCents,
+        stripe_charge_id: charge.id,
+      });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${row.id}`, {
+        method: 'PATCH', headers: supaHeaders,
+        body: JSON.stringify({
+          status: 'refunded',
+          refunded_at: new Date().toISOString(),
+          commission_history: history,
+        })
+      });
+
+      // Subtrai de total_earnings
+      if (amount > 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
+          method: 'PATCH', headers: supaHeaders,
+          body: JSON.stringify({
+            total_earnings: parseFloat(Math.max(0, (parseFloat(aff.total_earnings) || 0) - amount).toFixed(2)),
+            updated_at: new Date().toISOString()
+          })
+        });
+      }
+
+      console.log(`↩️  Refund: comissao ${row.id} (${aff.email} ← ${sub.email}) marcada refunded, -R$${amount}`);
+      notifyStripe(`↩️ Reembolso processado — comissao revertida`, [
+        ['Cliente', sub.email],
+        ['Afiliado', aff.email],
+        ['Comissao revertida', `R$${amount.toFixed(2)}`],
+        ['Charge', charge.id],
+      ]).catch(() => {});
+    } catch(e) { console.error('[refund handler] erro:', e.message); }
     return;
   }
 

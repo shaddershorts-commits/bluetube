@@ -131,6 +131,14 @@
     {
       "path": "/api/virais-coletor?action=calcular-scores",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/affiliate-robustness?action=process-queue",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/affiliate-robustness?action=reconcile",
+      "schedule": "0 4 * * *"
     }
   ],
   "headers": [
