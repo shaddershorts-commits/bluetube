@@ -326,11 +326,22 @@ async function callClaudeStudio(prompt, opts = {}) {
   throw ultimoErro || new Error('Claude falhou apos retries');
 }
 
-async function callClaudeRaw(prompt, { model = 'claude-sonnet-4-6', maxTokens = 3500, system } = {}) {
+async function callClaudeRaw(prompt, { model = 'claude-sonnet-4-6', maxTokens = 3500, system, cacheSystem = false } = {}) {
   if (!process.env.ANTHROPIC_API_KEY_STUDIO) throw new Error('ANTHROPIC_API_KEY_STUDIO nao configurada');
   // Timeout 55s na chamada — Sonnet com 3500 tokens pode estourar 45s
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 55000);
+
+  // Se cacheSystem=true, envia system como array com cache_control pra habilitar
+  // prompt caching do Anthropic (economia de 90% no input repetido, 5 min TTL).
+  // Min 1024 tokens no system pra valer.
+  let systemField;
+  if (system) {
+    systemField = cacheSystem
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : system;
+  }
+
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -338,12 +349,34 @@ async function callClaudeRaw(prompt, { model = 'claude-sonnet-4-6', maxTokens = 
       'x-api-key': process.env.ANTHROPIC_API_KEY_STUDIO,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system: system || undefined, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, system: systemField, messages: [{ role: 'user', content: prompt }] }),
     signal: controller.signal,
   }).finally(() => clearTimeout(timer));
   if (!r.ok) { const err = await r.text().catch(() => ''); throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`); }
   const data = await r.json();
-  return { text: data.content?.[0]?.text || '', tokens_input: data.usage?.input_tokens || 0, tokens_output: data.usage?.output_tokens || 0, model: data.model || model };
+  return {
+    text: data.content?.[0]?.text || '',
+    tokens_input: data.usage?.input_tokens || 0,
+    tokens_output: data.usage?.output_tokens || 0,
+    tokens_cache_read: data.usage?.cache_read_input_tokens || 0,
+    tokens_cache_created: data.usage?.cache_creation_input_tokens || 0,
+    model: data.model || model,
+  };
+}
+
+// Wrapper com fallback Sonnet -> Haiku por erro.
+// Sonnet e o primario (qualidade). Se falhar por erro real (nao lentidao),
+// Haiku assume pra nao deixar o user na mao. So cai no template se ambos
+// falharem. Essa e a "Estrategia A" do fallback por erro.
+async function callClaudeStudioComFallback(prompt, opts = {}) {
+  try {
+    const out = await callClaudeStudio(prompt, { ...opts, model: 'claude-sonnet-4-6' });
+    return { ...out, modelo_usado: 'sonnet', fallback_usado: false };
+  } catch (e) {
+    console.warn(`[bluetendencias] Sonnet falhou (${e.message.slice(0, 100)}) — tentando Haiku`);
+    const out = await callClaudeStudio(prompt, { ...opts, model: 'claude-haiku-4-5' });
+    return { ...out, modelo_usado: 'haiku', fallback_usado: true };
+  }
 }
 
 function parseJsonSafe(text) {
@@ -945,7 +978,10 @@ async function gerarAnaliseFinal(ctx, req) {
     ? Math.round(statsNicho.reduce((s, v) => s + (v.duracao_segundos || 0), 0) / statsNicho.length)
     : null;
 
-  const prompt = `Voce e Blublu, IA de analise de virais mais avancada do mercado.
+  // System prompt compartilhado — vai no cache ephemeral (5min TTL).
+  // Quando o mesmo user faz 2 analises em sequencia, o cache hit corta
+  // 90% do custo de input e reduz TTFT.
+  const systemPrompt = `Voce e Blublu, IA de analise de virais mais avancada do mercado.
 Voce e confiante, inteligente, com humor afiado. Sabe que e a melhor e nao esconde.
 Fala com ${auth.nome} de forma pessoal, direta, com pitadas de arrogancia engracada.
 NUNCA generico. SEMPRE especifico.
@@ -967,22 +1003,15 @@ Desafio principal: ${respostas?.desafio || 'nao informado'}
 
 DADOS DO NICHO:
 Duracao media dos virais do nicho: ${duracaoMedia ? duracaoMedia + 's' : 'nao disponivel'}
-Virais de referencia analisados: ${statsNicho.length}
+Virais de referencia analisados: ${statsNicho.length}`;
 
-ENTREGA em 5 atos + quiz. Cada ato tem:
+  // PARTE 1 — abertura + atos 1 a 4 (narrativa do video)
+  const promptParte1 = `ENTREGA: abertura + 4 atos (ato_1 ate ato_4). Cada ato tem:
 - titulo (curto, impactante)
 - blublu_intro (frase introduzindo o ato, com personalidade)
 - conteudo_principal (analise objetiva, 2-3 frases MAX)
 - highlights (array de 2-3 bullets curtos e punchy)
 - blublu_outro (frase final com personalidade)
-
-ATO 5 - APLICACAO tem estrutura especial:
-- titulo, blublu_intro
-- sugestoes: array com 3 sugestoes { titulo, descricao, exemplo_pratico }
-- blublu_outro
-
-QUIZ: 3 perguntas (4 opcoes cada) testando se ${auth.nome} absorveu.
-Inclua 1 pegadinha. Comentarios de Blublu pra cada resposta (certo/errado) com personalidade.
 
 Retorne APENAS JSON valido:
 {
@@ -990,7 +1019,22 @@ Retorne APENAS JSON valido:
   "ato_1": {"titulo":"O Hook","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
   "ato_2": {"titulo":"A Estrutura","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
   "ato_3": {"titulo":"O Gatilho Viral","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
-  "ato_4": {"titulo":"O Contexto Cultural","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
+  "ato_4": {"titulo":"O Contexto Cultural","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."}
+}`;
+
+  // PARTE 2 — ato 5 (aplicacao pratica) + quiz
+  const promptParte2 = `ENTREGA: ato_5 (aplicacao pratica pra ${auth.nome}) + quiz de 3 perguntas.
+
+ATO 5 estrutura especial:
+- titulo, blublu_intro
+- sugestoes: array com 3 sugestoes { titulo, descricao, exemplo_pratico } baseadas no video e no contexto do ${auth.nome}
+- blublu_outro
+
+QUIZ: 3 perguntas (4 opcoes cada) testando se ${auth.nome} absorveu conceitos-chave do video.
+Inclua 1 pegadinha. Comentarios de Blublu pra cada resposta (certo/errado) com personalidade.
+
+Retorne APENAS JSON valido:
+{
   "ato_5": {
     "titulo":"Aplicacao pra Voce",
     "blublu_intro":"Agora, ${auth.nome}, a parte que importa...",
@@ -1033,33 +1077,35 @@ Retorne APENAS JSON valido:
     };
   }
 
-  let out;
+  // SPLIT PARALELO + FALLBACK POR ERRO
+  // As 2 chamadas rodam ao mesmo tempo (latencia ≈ max(parte1, parte2) ~ 35s
+  // em vez de ~60-90s serial). Cada uma tenta Sonnet, se falhar por erro
+  // real (nao timeout) cai pra Haiku. Se ambos falharem, cai no template.
+  const baseOpts = { ctx, system: systemPrompt, cacheSystem: true, maxTokens: 2000 };
+  let out1, out2;
   try {
-    out = await callClaudeStudio(prompt, { ctx, model: 'claude-sonnet-4-6', maxTokens: 4000 });
+    [out1, out2] = await Promise.all([
+      callClaudeStudioComFallback(promptParte1, baseOpts),
+      callClaudeStudioComFallback(promptParte2, baseOpts),
+    ]);
   } catch (e) {
-    console.error('[gerar-analise-final] Sonnet falhou:', e.message);
-    // Fallback template: analise heuristica (sem IA) pra nao deixar user na mao
+    console.error('[gerar-analise-final] Sonnet+Haiku falharam:', e.message);
     const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
     return {
       ok: true, fallback: true, nome: auth.nome,
       abertura_blublu: analiseFallback.abertura_blublu,
-      atos: analiseFallback.atos,
-      quiz: analiseFallback.quiz,
-      video: {
-        id: video.id, youtube_id: video.youtube_id, titulo: video.titulo,
-        thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho,
-        views: video.views, likes: video.likes,
-      },
+      atos: analiseFallback.atos, quiz: analiseFallback.quiz,
+      video: { id: video.id, youtube_id: video.youtube_id, titulo: video.titulo, thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho, views: video.views, likes: video.likes },
       tempo_ms: Date.now() - inicio, modelo: 'template_fallback',
       analises_restantes: rl.analises_restantes ?? 999,
       aviso: 'Blublu tá num momento complicado. Te dei uma análise baseada em padrões — volta em uns minutos pra uma análise completa.',
     };
   }
 
-  const analise = parseJsonSafe(out.text);
-  if (!analise?.ato_1) {
-    console.error('[gerar-analise-final] JSON invalido:', out.text.slice(0, 300));
-    // Fallback tambem quando JSON vem torto
+  const parte1 = parseJsonSafe(out1.text);
+  const parte2 = parseJsonSafe(out2.text);
+  if (!parte1?.ato_1 || !parte2?.ato_5) {
+    console.error('[gerar-analise-final] JSON invalido — p1.ato_1:', !!parte1?.ato_1, 'p2.ato_5:', !!parte2?.ato_5);
     const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
     return {
       ok: true, fallback: true, nome: auth.nome,
@@ -1072,10 +1118,36 @@ Retorne APENAS JSON valido:
     };
   }
 
-  const custoBRL = parseFloat((
-    (out.tokens_input / 1_000_000) * COST_INPUT_PER_MTOK_BRL +
-    (out.tokens_output / 1_000_000) * COST_OUTPUT_PER_MTOK_BRL
-  ).toFixed(4));
+  // Merge das duas partes num objeto unico compativel com resto do fluxo
+  const analise = {
+    abertura_blublu: parte1.abertura_blublu,
+    ato_1: parte1.ato_1,
+    ato_2: parte1.ato_2,
+    ato_3: parte1.ato_3,
+    ato_4: parte1.ato_4,
+    ato_5: parte2.ato_5,
+    quiz: parte2.quiz,
+  };
+
+  // Pseudo-out pra compat com resto do codigo (tokens somados)
+  const out = {
+    text: JSON.stringify(analise),
+    tokens_input: (out1.tokens_input || 0) + (out2.tokens_input || 0),
+    tokens_output: (out1.tokens_output || 0) + (out2.tokens_output || 0),
+    tokens_cache_read: (out1.tokens_cache_read || 0) + (out2.tokens_cache_read || 0),
+    tokens_cache_created: (out1.tokens_cache_created || 0) + (out2.tokens_cache_created || 0),
+    model: out1.model || out2.model,
+  };
+  const usouFallback = out1.fallback_usado || out2.fallback_usado;
+  console.log(`[gerar-analise-final] split ok — p1:${out1.modelo_usado} p2:${out2.modelo_usado} | in:${out.tokens_input} out:${out.tokens_output} cache_read:${out.tokens_cache_read}`);
+
+  // Cache read e 10% do custo normal de input
+  const custoInputBRL = (
+    ((out.tokens_input || 0) / 1_000_000) * COST_INPUT_PER_MTOK_BRL +
+    ((out.tokens_cache_read || 0) / 1_000_000) * COST_INPUT_PER_MTOK_BRL * 0.1
+  );
+  const custoOutputBRL = (out.tokens_output / 1_000_000) * COST_OUTPUT_PER_MTOK_BRL;
+  const custoBRL = parseFloat((custoInputBRL + custoOutputBRL).toFixed(4));
 
   // Calcula dashboard pra salvar junto
   const projecoes = calcularProjecoes(video);
@@ -1146,8 +1218,9 @@ Retorne APENAS JSON valido:
       views: video.views, likes: video.likes,
     },
     tempo_ms: Date.now() - inicio,
-    modelo: out.model,
+    modelo: `p1:${out1.modelo_usado}/p2:${out2.modelo_usado}`,
     analises_restantes: Math.max(0, rl.analises_restantes - 1),
+    ...(usouFallback ? { aviso_fallback: true } : {}),
   };
 }
 
