@@ -124,3 +124,63 @@ CREATE TABLE IF NOT EXISTS blue_user_profile_embeddings (
 
 CREATE INDEX IF NOT EXISTS idx_user_embeddings_update
   ON blue_user_profile_embeddings(ultima_atualizacao DESC);
+
+-- 7) RPC functions pra similarity search -------------------------------------
+-- "Videos similares a um video especifico"
+CREATE OR REPLACE FUNCTION blue_videos_similares(
+  query_embedding vector(1536),
+  match_limit INT DEFAULT 10,
+  exclude_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  title TEXT,
+  thumbnail_url TEXT,
+  views BIGINT,
+  likes BIGINT,
+  user_id UUID,
+  similarity FLOAT
+) LANGUAGE sql STABLE AS $$
+  SELECT
+    v.id, v.title, v.thumbnail_url, v.views, v.likes, v.user_id,
+    1 - (v.embedding <=> query_embedding) AS similarity
+  FROM blue_videos v
+  WHERE v.status = 'active'
+    AND v.embedding IS NOT NULL
+    AND (exclude_id IS NULL OR v.id != exclude_id)
+  ORDER BY v.embedding <=> query_embedding
+  LIMIT match_limit;
+$$;
+
+-- "Feed personalizado pra um user" — usa profile embedding
+CREATE OR REPLACE FUNCTION blue_feed_personalizado(
+  query_embedding vector(1536),
+  match_limit INT DEFAULT 20,
+  exclude_user UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  title TEXT,
+  thumbnail_url TEXT,
+  video_url TEXT,
+  views BIGINT,
+  likes BIGINT,
+  user_id UUID,
+  score NUMERIC,
+  similarity FLOAT
+) LANGUAGE sql STABLE AS $$
+  SELECT
+    v.id, v.title, v.thumbnail_url, v.video_url, v.views, v.likes, v.user_id, v.score,
+    1 - (v.embedding <=> query_embedding) AS similarity
+  FROM blue_videos v
+  WHERE v.status = 'active'
+    AND v.video_url IS NOT NULL
+    AND v.embedding IS NOT NULL
+    AND (exclude_user IS NULL OR v.user_id != exclude_user)
+  ORDER BY v.embedding <=> query_embedding
+  LIMIT match_limit;
+$$;
+
+-- Permite que servicos autenticados chamem as RPCs
+GRANT EXECUTE ON FUNCTION blue_videos_similares(vector, int, uuid) TO service_role, anon;
+GRANT EXECUTE ON FUNCTION blue_feed_personalizado(vector, int, uuid) TO service_role, anon;

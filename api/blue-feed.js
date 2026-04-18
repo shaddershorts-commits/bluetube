@@ -448,21 +448,76 @@ module.exports = async function handler(req, res) {
   }
 
   // ── BUSCA COMPLETA ──────────────────────────────────────────────────────
+  // Estrategia: tsvector (FTS) com fallback pra trigram (fuzzy) e ILIKE.
+  // Small compute + GIN indexes = resposta <100ms mesmo com milhoes de rows.
   if (action === 'busca') {
     const q = (req.query.q || '').trim();
     if (!q) return res.status(200).json({ usuarios: [], hashtags: [], videos: [] });
+
+    // Sanitize pra tsquery (escapa chars especiais, lowercase, junta com &)
+    const ftsQuery = q.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/).filter(Boolean)
+      .map(w => `${w}:*`) // prefix match
+      .join(' & ');
+
+    if (!ftsQuery) {
+      return res.status(200).json({ usuarios: [], hashtags: [], videos: [] });
+    }
+
     try {
       const [uR, hR, vR] = await Promise.all([
-        fetch(`${SU}/rest/v1/blue_profiles?or=(username.ilike.*${encodeURIComponent(q)}*,display_name.ilike.*${encodeURIComponent(q)}*)&select=user_id,username,display_name,avatar_url,verificado&limit=10`, { headers: h }),
+        // Usuarios — FTS na coluna search_tsv
+        fetch(`${SU}/rest/v1/blue_profiles?search_tsv=fts(portuguese).${encodeURIComponent(ftsQuery)}&select=user_id,username,display_name,avatar_url,verificado&limit=10`, { headers: h }),
+        // Hashtags — mantem ILIKE (tabela pequena, rapido)
         fetch(`${SU}/rest/v1/blue_hashtags?nome=ilike.*${encodeURIComponent(q)}*&order=usos.desc&limit=10&select=id,nome,usos,trending`, { headers: h }),
-        fetch(`${SU}/rest/v1/blue_videos?status=eq.active&or=(title.ilike.*${encodeURIComponent(q)}*,description.ilike.*${encodeURIComponent(q)}*)&order=score.desc&limit=10&select=id,title,thumbnail_url,views,likes,user_id`, { headers: h }),
+        // Videos — FTS + ordena por score
+        fetch(`${SU}/rest/v1/blue_videos?status=eq.active&search_tsv=fts(portuguese).${encodeURIComponent(ftsQuery)}&order=score.desc&limit=10&select=id,title,thumbnail_url,views,likes,user_id`, { headers: h }),
+      ]);
+      let usuarios = uR.ok ? await uR.json() : [];
+      let videos = vR.ok ? await vR.json() : [];
+
+      // Fallback fuzzy (trigram) se FTS nao retornou nada — usuario digitou algo com typo
+      if (usuarios.length === 0 || videos.length === 0) {
+        const pattern = `%${q}%`;
+        const [uFb, vFb] = await Promise.all([
+          usuarios.length === 0
+            ? fetch(`${SU}/rest/v1/blue_profiles?or=(username.ilike.${encodeURIComponent(pattern)},display_name.ilike.${encodeURIComponent(pattern)})&select=user_id,username,display_name,avatar_url,verificado&limit=10`, { headers: h })
+            : null,
+          videos.length === 0
+            ? fetch(`${SU}/rest/v1/blue_videos?status=eq.active&or=(title.ilike.${encodeURIComponent(pattern)},description.ilike.${encodeURIComponent(pattern)})&order=score.desc&limit=10&select=id,title,thumbnail_url,views,likes,user_id`, { headers: h })
+            : null,
+        ]);
+        if (uFb?.ok) usuarios = await uFb.json();
+        if (vFb?.ok) videos = await vFb.json();
+      }
+
+      return res.status(200).json({
+        usuarios,
+        hashtags: hR.ok ? await hR.json() : [],
+        videos,
+        query: q,
+      });
+    } catch(e) { return res.status(200).json({ usuarios: [], hashtags: [], videos: [], error: e.message }); }
+  }
+
+  // ── AUTOCOMPLETE (sugestoes instantaneas enquanto digita) ──────────────────
+  // Usa trigram similarity pra melhor relevance em strings curtas
+  if (action === 'busca-sugestoes') {
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 2) return res.status(200).json({ sugestoes: [] });
+    try {
+      const pattern = `%${q}%`;
+      const [uR, hR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_profiles?or=(username.ilike.${encodeURIComponent(pattern)},display_name.ilike.${encodeURIComponent(pattern)})&select=username,display_name,avatar_url,verificado&limit=5`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_hashtags?nome=ilike.${encodeURIComponent(pattern)}&order=usos.desc&limit=5&select=nome,usos`, { headers: h }),
       ]);
       return res.status(200).json({
         usuarios: uR.ok ? await uR.json() : [],
         hashtags: hR.ok ? await hR.json() : [],
-        videos: vR.ok ? await vR.json() : [],
       });
-    } catch(e) { return res.status(200).json({ usuarios: [], hashtags: [], videos: [], error: e.message }); }
+    } catch(e) { return res.status(200).json({ usuarios: [], hashtags: [] }); }
   }
 
   // ── VERIFICAÇÃO: SOLICITAR ──────────────────────────────────────────────

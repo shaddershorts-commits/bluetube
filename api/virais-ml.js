@@ -1355,6 +1355,32 @@ async function pipelineDiario(ctx) {
   try { resultados.formatos = await clusterizarFormatos(ctx); } catch (e) { resultados.formatos = { error: e.message }; }
   try { resultados.snapshot = await criarSnapshot(ctx); } catch (e) { resultados.snapshot = { error: e.message }; }
   try { resultados.relatorio = await gerarRelatorioDiario(ctx); } catch (e) { resultados.relatorio = { error: e.message }; }
+  // Embeddings: aciona blue-embeddings internamente (best-effort)
+  try {
+    const embHandler = require('./blue-embeddings.js');
+    const mockReq = { query: { action: 'gerar-batch', limit: '30' }, method: 'GET' };
+    let embResult = null;
+    const mockRes = {
+      setHeader: () => mockRes,
+      status(c) { return { json(d) { embResult = d; return mockRes; }, end() { return mockRes; } }; },
+    };
+    await embHandler(mockReq, mockRes);
+    resultados.embeddings = embResult || { ok: false };
+  } catch (e) { resultados.embeddings = { error: e.message }; }
+  // Perfis de usuario (semanal — roda apenas domingos dentro do pipeline)
+  if (new Date().getUTCDay() === 0) {
+    try {
+      const embHandler = require('./blue-embeddings.js');
+      const mockReq = { query: { action: 'atualizar-perfis' }, method: 'GET' };
+      let perfisResult = null;
+      const mockRes = {
+        setHeader: () => mockRes,
+        status(c) { return { json(d) { perfisResult = d; return mockRes; }, end() { return mockRes; } }; },
+      };
+      await embHandler(mockReq, mockRes);
+      resultados.perfis_embedding = perfisResult;
+    } catch (e) { resultados.perfis_embedding = { error: e.message }; }
+  }
   return { ok: true, action: 'pipeline-diario', resultados };
 }
 
