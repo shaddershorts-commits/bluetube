@@ -27,6 +27,7 @@ module.exports = async function handler(req, res) {
       case 'coletar-nichos':     return await coletarPorNichos(res);
       case 'atualizar-metricas': return await atualizarMetricas(res);
       case 'calcular-scores':    return await calcularScores(res);
+      case 'backfill-nichos':    return await backfillNichos(res, req);
       case 'status':             return await statusBanco(res);
       default:                   return res.status(400).json({ error: 'action_invalida' });
     }
@@ -68,6 +69,29 @@ function detectarPais(snippet, regionCode) {
   if (lang.startsWith('en')) return 'US';
   if (lang.startsWith('es')) return 'ES';
   return 'BR';
+}
+
+// Mapa: YouTube categoryId -> nicho do nosso sistema
+// Auto-inferencia pra videos coletados em 'trending' (que nao tem nicho explicito)
+const CATEGORY_TO_NICHO = {
+  '20': 'games',            // Gaming
+  '28': 'ia',               // Science & Technology
+  '15': 'animais',          // Pets & Animals
+  '10': 'artistas',         // Music
+  '22': 'pessoas_blogs',    // People & Blogs
+  '24': 'entretenimento',   // Entertainment
+  // Outras categorias mapeadas pro "mais proximo":
+  '23': 'entretenimento',   // Comedy -> entretenimento
+  '1':  'entretenimento',   // Film & Animation
+  '17': 'entretenimento',   // Sports (sem nicho esportes novo, cai em entretenimento)
+  '26': 'pessoas_blogs',    // Howto & Style -> pessoas_blogs
+  '27': 'pessoas_blogs',    // Education
+  '25': 'pessoas_blogs',    // News & Politics -> pessoas_blogs
+};
+
+function inferirNichoPorCategoria(categoryId) {
+  if (!categoryId) return null;
+  return CATEGORY_TO_NICHO[String(categoryId)] || null;
 }
 
 async function supaUpsert(table, rows, onConflict) {
@@ -132,6 +156,10 @@ function normalizarVideo(item, nicho, regionCode) {
   const comentarios = Number(stats.commentCount || 0);
   const taxaEngajamento = views > 0 ? +(((likes + comentarios) / views) * 100).toFixed(4) : 0;
 
+  // Nicho: priorizar o explicito (quando veio de coletar-nichos), senao
+  // inferir pelo categoryId do YouTube (funciona pra coletar-trending)
+  const nichoFinal = nicho || inferirNichoPorCategoria(snippet.categoryId);
+
   return {
     youtube_id: youtubeId,
     titulo: (snippet.title || '').slice(0, 500),
@@ -145,7 +173,7 @@ function normalizarVideo(item, nicho, regionCode) {
     views, likes, comentarios,
     duracao_segundos: duracao,
     taxa_engajamento: taxaEngajamento,
-    nicho: nicho || null,
+    nicho: nichoFinal,
     idioma: detectarIdioma(snippet),
     pais: detectarPais(snippet, regionCode),
     hashtags: extrairHashtags((snippet.description || '') + ' ' + (snippet.title || '')),
@@ -389,29 +417,37 @@ async function atualizarMetricas(res) {
   const inicio = Date.now();
   // Pega os top videos das ultimas 48h pra refresh
   const rows = await supaSelect(
-    `virais_banco?coletado_em=gte.${new Date(Date.now() - 48*3600000).toISOString()}&order=views.desc&limit=50&select=id,youtube_id,vezes_atualizado`
+    `virais_banco?coletado_em=gte.${new Date(Date.now() - 48*3600000).toISOString()}&order=views.desc&limit=50&select=id,youtube_id,vezes_atualizado,nicho`
   ) || [];
   if (!rows.length) return res.status(200).json({ ok: true, atualizados: 0 });
 
   const ids = rows.map(r => r.youtube_id).join(',');
-  const detalhes = await youtubeRequest('videos', { part: 'statistics', id: ids });
+  // Inclui snippet pra pegar categoryId e inferir nicho se estiver null
+  const detalhes = await youtubeRequest('videos', { part: 'snippet,statistics', id: ids });
   const byId = {};
-  (detalhes.items || []).forEach(v => { byId[v.id] = v.statistics || {}; });
+  (detalhes.items || []).forEach(v => { byId[v.id] = { stats: v.statistics || {}, snippet: v.snippet || {} }; });
 
   let atualizados = 0;
   for (const row of rows) {
-    const st = byId[row.youtube_id];
-    if (!st) continue;
+    const info = byId[row.youtube_id];
+    if (!info) continue;
+    const st = info.stats;
     const views = Number(st.viewCount || 0);
     const likes = Number(st.likeCount || 0);
     const comentarios = Number(st.commentCount || 0);
     const taxa = views > 0 ? +(((likes + comentarios) / views) * 100).toFixed(4) : 0;
-    await supaPatch(`virais_banco?id=eq.${row.id}`, {
+    const patch = {
       views, likes, comentarios,
       taxa_engajamento: taxa,
       atualizado_em: new Date().toISOString(),
       vezes_atualizado: (row.vezes_atualizado || 0) + 1,
-    });
+    };
+    // Auto-backfill de nicho se estiver null
+    if (!row.nicho) {
+      const nichoInferido = inferirNichoPorCategoria(info.snippet.categoryId);
+      if (nichoInferido) patch.nicho = nichoInferido;
+    }
+    await supaPatch(`virais_banco?id=eq.${row.id}`, patch);
     atualizados++;
   }
 
@@ -419,6 +455,40 @@ async function atualizarMetricas(res) {
   await calcularScoresInterno(200);
   await logColeta('atualizar-metricas', {}, 0, atualizados, 1, Date.now() - inicio);
   return res.status(200).json({ ok: true, atualizados });
+}
+
+// ── ACTION: backfill-nichos ─────────────────────────────────────────────────
+// Pega videos com nicho=null e infere via YouTube API (50 per batch = 1 unit)
+// Chamada manual pelo admin ou trigger pontual. Seguro pra rodar varias vezes.
+async function backfillNichos(res, req) {
+  const inicio = Date.now();
+  const limite = Math.min(parseInt(req?.query?.limit || 50), 50); // max 50 = 1 unit
+
+  const rows = await supaSelect(
+    `virais_banco?nicho=is.null&ativo=eq.true&order=coletado_em.desc&limit=${limite}&select=id,youtube_id`
+  ) || [];
+  if (!rows.length) return res.status(200).json({ ok: true, atualizados: 0, motivo: 'todos_com_nicho' });
+
+  const ids = rows.map(r => r.youtube_id).filter(Boolean).join(',');
+  const detalhes = await youtubeRequest('videos', { part: 'snippet', id: ids });
+  const byId = {};
+  (detalhes.items || []).forEach(v => { byId[v.id] = v.snippet?.categoryId; });
+
+  let atualizados = 0, ignorados = 0;
+  for (const row of rows) {
+    const catId = byId[row.youtube_id];
+    const nichoInferido = inferirNichoPorCategoria(catId);
+    if (!nichoInferido) { ignorados++; continue; }
+    await supaPatch(`virais_banco?id=eq.${row.id}`, { nicho: nichoInferido });
+    atualizados++;
+  }
+
+  await logColeta('backfill-nichos', { limite }, 0, atualizados, 1, Date.now() - inicio);
+  return res.status(200).json({
+    ok: true, action: 'backfill-nichos',
+    processados: rows.length, atualizados, ignorados,
+    duracao_ms: Date.now() - inicio,
+  });
 }
 
 // ── ACTION: calcular-scores ────────────────────────────────────────────────
