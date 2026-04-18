@@ -119,8 +119,14 @@ async function historicoAction(req, res) {
     engajamento: 'taxa_engajamento.desc',
     score: 'viral_score.desc',
     recentes: 'coletado_em.desc',
+    // 'bombando' (default novo): combina score_viralidade do ML +
+    // velocidade_views_24h pra mostrar o que esta crescendo AGORA em vez do
+    // que ja foi coletado. score_viralidade.nullslast garante que videos
+    // ainda nao processados pelo ML caem pro fim (nao polua o topo).
+    bombando: 'score_viralidade.desc.nullslast,velocidade_views_24h.desc.nullslast,coletado_em.desc',
   };
-  const orderBy = orderMap[ordem] || orderMap.recentes;
+  // Default novo = 'bombando' pra re-ranking inteligente
+  const orderBy = orderMap[ordem] || orderMap.bombando;
 
   const select = 'id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,comentarios,duracao_segundos,taxa_engajamento,viral_score,nicho,idioma,pais,publicado_em,coletado_em';
   const qs = `${parts.join('&')}&order=${orderBy}&select=${select}`;

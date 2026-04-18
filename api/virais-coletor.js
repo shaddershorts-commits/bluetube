@@ -413,17 +413,48 @@ async function coletarPorNichos(res) {
 // ── ACTION: atualizar-metricas ─────────────────────────────────────────────
 async function atualizarMetricas(res) {
   const inicio = Date.now();
-  // Pega os top videos das ultimas 48h pra refresh
-  const rows = await supaSelect(
-    `virais_banco?coletado_em=gte.${new Date(Date.now() - 48*3600000).toISOString()}&order=views.desc&limit=50&select=id,youtube_id,vezes_atualizado,nicho`
-  ) || [];
+  // Refresh inteligente — 3 buckets paralelos (maximo 200 videos / 4 unidades YouTube):
+  //   A) Top 100 por velocidade_views_24h (ultima semana) — semi-virais crescendo
+  //   B) Top 50 coletados nas ultimas 48h (padrao antigo — recentes quentes)
+  //   C) Top 50 evergreens >7d com views altas (nao deixa stale)
+  const umaSemana = new Date(Date.now() - 7 * 86400000).toISOString();
+  const doisDias = new Date(Date.now() - 48 * 3600000).toISOString();
+  const seteDias = new Date(Date.now() - 7 * 86400000).toISOString();
+
+  const [bucketA, bucketB, bucketC] = await Promise.all([
+    supaSelect(
+      `virais_banco?ativo=eq.true&coletado_em=gte.${umaSemana}&velocidade_views_24h=gt.0&order=velocidade_views_24h.desc&limit=100&select=id,youtube_id,vezes_atualizado,nicho`
+    ),
+    supaSelect(
+      `virais_banco?ativo=eq.true&coletado_em=gte.${doisDias}&order=views.desc&limit=50&select=id,youtube_id,vezes_atualizado,nicho`
+    ),
+    supaSelect(
+      `virais_banco?ativo=eq.true&coletado_em=lt.${seteDias}&views=gte.50000&order=views.desc&limit=50&select=id,youtube_id,vezes_atualizado,nicho`
+    ),
+  ]);
+
+  // Dedupe por id
+  const seen = new Set();
+  const rows = [];
+  for (const bucket of [bucketA || [], bucketB || [], bucketC || []]) {
+    for (const r of bucket) {
+      if (!seen.has(r.id)) { seen.add(r.id); rows.push(r); }
+    }
+  }
   if (!rows.length) return res.status(200).json({ ok: true, atualizados: 0 });
 
-  const ids = rows.map(r => r.youtube_id).join(',');
-  // Inclui snippet pra pegar categoryId e inferir nicho se estiver null
-  const detalhes = await youtubeRequest('videos', { part: 'snippet,statistics', id: ids });
+  // YouTube videos.list aceita max 50 IDs por request = 1 unidade. Pagina em grupos.
   const byId = {};
-  (detalhes.items || []).forEach(v => { byId[v.id] = { stats: v.statistics || {}, snippet: v.snippet || {} }; });
+  let cotaGasta = 0;
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50);
+    const ids = batch.map(r => r.youtube_id).join(',');
+    try {
+      const detalhes = await youtubeRequest('videos', { part: 'snippet,statistics', id: ids });
+      cotaGasta += 1;
+      (detalhes.items || []).forEach(v => { byId[v.id] = { stats: v.statistics || {}, snippet: v.snippet || {} }; });
+    } catch (e) { console.error('[atualizar-metricas] batch', i, 'erro:', e.message); }
+  }
 
   let atualizados = 0;
   for (const row of rows) {
@@ -449,10 +480,16 @@ async function atualizarMetricas(res) {
     atualizados++;
   }
 
-  // Recalcula score dos atualizados
-  await calcularScoresInterno(200);
-  await logColeta('atualizar-metricas', {}, 0, atualizados, 1, Date.now() - inicio);
-  return res.status(200).json({ ok: true, atualizados });
+  // Recalcula score dos atualizados (ML score_viralidade continua via virais-ml)
+  await calcularScoresInterno(300);
+  await logColeta('atualizar-metricas',
+    { buckets: { velocidade: bucketA?.length || 0, recentes: bucketB?.length || 0, evergreens: bucketC?.length || 0 }, total_refresh: rows.length },
+    0, atualizados, cotaGasta, Date.now() - inicio);
+  return res.status(200).json({
+    ok: true, atualizados, total_refresh: rows.length,
+    buckets: { velocidade: bucketA?.length || 0, recentes: bucketB?.length || 0, evergreens: bucketC?.length || 0 },
+    cota_gasta: cotaGasta,
+  });
 }
 
 // ── ACTION: migrar-nicho ────────────────────────────────────────────────────
