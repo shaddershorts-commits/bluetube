@@ -564,7 +564,18 @@ async function loadDash(){
 }
 
 function renderDash(data){
-  const{affiliate,stats,conversions,monthlyHistory,todayEarnings}=data;
+  const{affiliate,stats,conversions,monthlyHistory,todayEarnings,allCommissions}=data;
+  // Mapa de comissao por assinante+plano (pra cruzar com conversoes e mostrar
+  // valor real pago + se teve cupom). Pega a linha MAIS RECENTE por par
+  // email+plano (webhook patcheia a ultima depois do checkout).
+  const commByKey={};
+  (allCommissions||[]).forEach(c=>{
+    const k=`${c.subscriber_email}|${c.plan}`;
+    const cur=commByKey[k];
+    if(!cur||new Date(c.created_at)>new Date(cur.created_at)) commByKey[k]=c;
+  });
+  // Preco cheio por plano — usado pra detectar cupom
+  const FULL_PRICE={full:29.99,master:89.99};
   // Usa nivel do admin (comissao_percentual real) se disponível, senão fallback pro level auto
   const nivel=affiliate.nivel||'bronze';
   const comissaoReal=affiliate.comissao_percentual||30;
@@ -664,10 +675,29 @@ function renderDash(data){
     return`<div class="hist-row"><div class="hist-month">${fmo(h.month)}</div><div class="hist-bar-wrap"><div class="hist-bar" style="width:${p}%"></div></div><div class="hist-total">${fm(h.total)}</div><div class="hist-status" style="color:${sc}">${st}</div></div>`;}).join('');
     setTimeout(()=>{document.querySelectorAll('.hist-bar').forEach(b=>{b.style.width=b.style.width;});},100);
   }else{mhEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhum ganho registrado ainda.</div>';}
-  // Conversões
+  // Conversões — enriquecidas com valor pago e comissao
   const cvEl=document.getElementById('convEl');
   const tl={signup:'Cadastro',upgrade_full:'⚡ Full',upgrade_master:'👑 Master'};
-  if(conversions?.length){cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Data</th></tr></thead><tbody>${conversions.map(c=>`<tr><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span></td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`).join('')}</tbody></table>`;}
+  if(conversions?.length){
+    const rows=conversions.map(c=>{
+      const comm=commByKey[`${c.converted_email}|${c.plan}`];
+      let pagoCell='—', commCell='—', cupomBadge='';
+      if(comm){
+        const planAmt=parseFloat(comm.plan_amount||0);
+        const commAmt=parseFloat(comm.commission_amount||0);
+        const full=FULL_PRICE[c.plan];
+        // Detecta cupom: coluna explicita OR valor pago < preco cheio (com
+        // margem de 1 centavo pra arredondamento). Pra anual, valor pago fica
+        // ACIMA do preco cheio mensal — nao marca cupom.
+        const teveCupom=comm.coupon_applied===true || (full && planAmt>0 && planAmt<full-0.01);
+        if(planAmt>0) pagoCell=fm(planAmt);
+        if(commAmt>0) commCell=fm(commAmt);
+        if(teveCupom) cupomBadge=` <span style="font-size:9px;background:rgba(251,191,36,.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-weight:600" title="Cupom de desconto aplicado — comissao calculada sobre valor pago">🎟️ cupom</span>`;
+      }
+      return `<tr><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span>${cupomBadge}</td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">${pagoCell}</td><td style="font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600">${commCell}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`;
+    }).join('');
+    cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Pago</th><th>Comissão</th><th>Data</th></tr></thead><tbody>${rows}</tbody></table><div style="font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic">💡 Quando o assinante usa cupom, a comissão é calculada sobre o valor pago (e não sobre o preço cheio).</div>`;
+  }
   else cvEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhuma conversão ainda. Compartilhe seu link!</div>';
   // Saques (secao independente — nao bloqueia render se falhar)
   loadSaques().catch(()=>{});
