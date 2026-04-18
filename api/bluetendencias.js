@@ -73,10 +73,14 @@ async function getUser(ctx, token) {
 }
 
 function primeiroNome(email, metadata) {
-  if (metadata?.full_name) return String(metadata.full_name).split(' ')[0];
-  if (metadata?.nome) return String(metadata.nome).split(' ')[0];
-  const base = String(email || '').split('@')[0].replace(/[._-]+/g, ' ');
-  const palavra = base.split(' ').find(p => !/^\d+$/.test(p)) || base.split(' ')[0] || 'criador';
+  const full = String(metadata?.full_name || '').trim();
+  if (full) return full.split(' ')[0];
+  const n = String(metadata?.nome || '').trim();
+  if (n) return n.split(' ')[0];
+  const base = String(email || '').trim().split('@')[0].replace(/[._-]+/g, ' ').trim();
+  if (!base) return 'criador';
+  const palavra = base.split(' ').find(p => p && !/^\d+$/.test(p)) || base.split(' ')[0] || '';
+  if (!palavra) return 'criador';
   return palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase();
 }
 
@@ -320,15 +324,16 @@ async function galeriaNichos(ctx, req) {
   const auth = await requireMaster(ctx, req.query.token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
 
-  const desde7d = new Date(Date.now() - 7 * 86400000).toISOString();
+  // 30 dias (afrouxado pra galeria nunca ficar vazia se coleta pausou)
+  const desde30d = new Date(Date.now() - 30 * 86400000).toISOString();
 
   const [emAltaR, porNichoR] = await Promise.all([
     fetch(
-      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde7d}&order=viral_score.desc.nullslast,views.desc&limit=12&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,velocidade_views_24h,nicho,duracao_segundos`,
+      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde30d}&order=viral_score.desc.nullslast,views.desc&limit=12&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,velocidade_views_24h,nicho,duracao_segundos`,
       { headers: ctx.h }
     ),
     fetch(
-      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde7d}&nicho=not.is.null&order=viral_score.desc.nullslast&limit=100&select=id,youtube_id,titulo,thumbnail_url,views,canal_nome,nicho,velocidade_views_24h,duracao_segundos`,
+      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde30d}&nicho=not.is.null&order=viral_score.desc.nullslast&limit=150&select=id,youtube_id,titulo,thumbnail_url,views,canal_nome,nicho,velocidade_views_24h,duracao_segundos`,
       { headers: ctx.h }
     ),
   ]);
@@ -347,19 +352,21 @@ async function galeriaNichos(ctx, req) {
 // ACTION: buscar-video — URL ou youtube_id, banco primeiro depois YouTube API
 // ═════════════════════════════════════════════════════════════════════════════
 async function buscarVideo(ctx, req) {
-  const { token, entrada: ent } = req.body || {};
+  const token = req.body?.token || req.query?.token;
+  const ent = req.body?.entrada || req.body?.url || req.body?.url_ou_id;
+  if (!token) return { error: 'Token nao enviado', status: 401 };
   const auth = await requireMaster(ctx, token);
-  if (!auth.ok) return { error: auth.error, status: auth.status };
+  if (!auth.ok) { console.error('[buscar-video] auth falhou:', auth); return { error: auth.error, status: auth.status }; }
 
   const ytId = extrairYoutubeId(ent);
-  if (!ytId) return { error: 'URL ou ID invalido', status: 400 };
+  if (!ytId) return { error: 'URL ou ID invalido. Cole o link completo do Short.', status: 400 };
 
   let video = await buscarVideoDb(ctx, ytId);
   let fonte = 'banco';
   if (!video) {
     video = await buscarVideoYoutube(ytId);
     fonte = 'youtube_api';
-    if (!video) return { error: 'Video nao encontrado', status: 404 };
+    if (!video) return { error: 'Video nao encontrado. Tente outro link.', status: 404 };
   }
   return { video, fonte };
 }
