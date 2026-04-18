@@ -19,14 +19,14 @@ BEGIN
   NEW.search_tsv :=
     setweight(to_tsvector('portuguese', unaccent(coalesce(NEW.title, ''))), 'A') ||
     setweight(to_tsvector('portuguese', unaccent(coalesce(NEW.description, ''))), 'B') ||
-    setweight(to_tsvector('portuguese', unaccent(array_to_string(coalesce(NEW.tags, ARRAY[]::text[]), ' '))), 'C');
+    setweight(to_tsvector('portuguese', unaccent(array_to_string(coalesce(NEW.nichos, ARRAY[]::text[]), ' '))), 'C');
   RETURN NEW;
 END
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS blue_videos_tsv_trigger ON blue_videos;
 CREATE TRIGGER blue_videos_tsv_trigger
-  BEFORE INSERT OR UPDATE OF title, description, tags ON blue_videos
+  BEFORE INSERT OR UPDATE OF title, description, nichos ON blue_videos
   FOR EACH ROW EXECUTE FUNCTION blue_videos_search_tsv_update();
 
 -- Backfill dos existentes
