@@ -41,6 +41,7 @@ module.exports = async function handler(req, res) {
   const ctx = { SU, SK, AK, h };
 
   try {
+    if (action === 'debug-me')             return res.status(200).json(await debugMe(ctx, req));
     if (action === 'entrada')              return res.status(200).json(await entrada(ctx, req));
     if (action === 'galeria-nichos')       return res.status(200).json(await galeriaNichos(ctx, req));
     if (action === 'galeria')              return res.status(200).json(await galeriaNichos(ctx, req)); // backcompat
@@ -291,6 +292,58 @@ async function buscarVideoYoutube(youtubeId) {
       _fonte: 'youtube_api',
     };
   } catch (e) { console.error('[youtube api]', e.message); return null; }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTION: debug-me — diagnostico completo (remover depois que resolver)
+// ═════════════════════════════════════════════════════════════════════════════
+async function debugMe(ctx, req) {
+  const token = req.query.token;
+  const info = { step: 'init', hasToken: !!token };
+  if (!token) return info;
+  // 1) Quem é o user pelo token?
+  try {
+    const r = await fetch(`${ctx.SU}/auth/v1/user`, { headers: { apikey: ctx.AK, Authorization: `Bearer ${token}` } });
+    info.authUserStatus = r.status;
+    info.authUserOk = r.ok;
+    if (r.ok) {
+      const u = await r.json();
+      info.email = u.email;
+      info.userId = u.id;
+      info.emailConfirmed = !!u.email_confirmed_at;
+      info.userMetadata = u.user_metadata || null;
+    } else {
+      info.authUserError = (await r.text()).slice(0, 200);
+      return info;
+    }
+  } catch (e) { info.authError = e.message; return info; }
+  // 2) Select subscribers
+  const email = info.email.toLowerCase().trim();
+  const url = `${ctx.SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=*&limit=5`;
+  info.subsUrl = url.replace(ctx.SU, '[SUPA]');
+  try {
+    const r = await fetch(url, { headers: ctx.h });
+    info.subsStatus = r.status;
+    info.subsOk = r.ok;
+    if (r.ok) {
+      const lista = await r.json();
+      info.subsCount = lista.length;
+      info.subsRows = lista.map(s => ({ email: s.email, plan: s.plan, is_manual: s.is_manual, plan_expires_at: s.plan_expires_at, user_id: s.user_id }));
+    } else {
+      info.subsError = (await r.text()).slice(0, 200);
+    }
+  } catch (e) { info.subsError = e.message; }
+  // 3) Tenta variantes do email (sem/com s, case-insensitive)
+  const variantes = [email, email.replace('shaddershorts', 'shaddershort'), email.replace('shaddershort', 'shaddershorts')];
+  info.variantesTestadas = [];
+  for (const v of new Set(variantes)) {
+    try {
+      const r = await fetch(`${ctx.SU}/rest/v1/subscribers?email=ilike.${encodeURIComponent(v)}&select=email,plan,is_manual&limit=3`, { headers: ctx.h });
+      const lista = r.ok ? await r.json() : [];
+      info.variantesTestadas.push({ v, count: lista.length, rows: lista });
+    } catch (e) {}
+  }
+  return info;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
