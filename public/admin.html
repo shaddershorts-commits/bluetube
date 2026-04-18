@@ -424,8 +424,13 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- AFILIADOS -->
     <div class="section" id="affiliatesSection">
       <div class="section-header">
-        <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— gestão de níveis e comissões</span></div>
+        <div class="section-title">🤝 BlueAfiliados <span class="section-subtitle">— gestão · <span id="affLastUpdate" style="color:var(--dim)">—</span></span></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--dim);cursor:pointer;user-select:none">
+            <input type="checkbox" id="affAutoRefresh" checked onchange="toggleAffAutoRefresh()" style="margin:0">
+            <span>auto 60s</span>
+          </label>
+          <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="loadAffiliates()">↻ Atualizar</button>
           <div id="pendingAffBadge" style="display:none;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow)">⏳ <span id="pendingAffCount">0</span> aguardando</div>
           <div style="display:flex;gap:4px" id="affNivelFilters">
             <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="filterAffs('all')" data-afilter="all">Todos</button>
@@ -2064,8 +2069,19 @@ async function loadAffiliates(){
     if(!Array.isArray(_allAffiliates))_allAffiliates=[];
     renderAffSummary();
     renderAffTable();
+    const el=document.getElementById('affLastUpdate');
+    if(el)el.textContent='atualizado '+new Date().toLocaleTimeString('pt-BR');
   }catch(e){document.getElementById('affiliatesTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
 }
+
+let _affAutoTimer=null;
+function toggleAffAutoRefresh(){
+  const enabled=document.getElementById('affAutoRefresh')?.checked;
+  if(_affAutoTimer){clearInterval(_affAutoTimer);_affAutoTimer=null;}
+  if(enabled){_affAutoTimer=setInterval(loadAffiliates,60000);}
+}
+// Inicia auto-refresh no boot (respeita checkbox default=checked)
+setTimeout(toggleAffAutoRefresh, 2000);
 
 function renderAffSummary(){
   const a=_allAffiliates;
