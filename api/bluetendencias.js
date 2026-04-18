@@ -30,6 +30,32 @@ const COST_OUTPUT_PER_MTOK_BRL = 75;
 // Gravada em studio_analises.prompt_version pra permitir A/B e rollback.
 const PROMPT_VERSION = 'v2.0-split';
 
+// Easter egg: idolos que ativam personalidade 'fa histerico' do Blublu.
+// Detecta pelo nome do canal (case-insensitive, match por inclusao/igualdade).
+const IDOLOS_EASTER_EGG = {
+  luiz: {
+    nome: 'Luiz',
+    nome_completo: 'Luiz Stubbe',
+    canal_patterns: ['luiz stubbe', 'luiz_stubbe', 'opiska'],
+  },
+  giuliana: {
+    nome: 'Giuliana',
+    nome_completo: 'Giuliana Mafra',
+    canal_patterns: ['giuliana mafra', 'cortes giuliana mafra oficial', 'giulianamafra'],
+  },
+};
+
+function detectarIdolo(video) {
+  const nome = String(video?.canal_nome || '').toLowerCase().trim();
+  if (!nome) return null;
+  for (const [id, data] of Object.entries(IDOLOS_EASTER_EGG)) {
+    if (data.canal_patterns.some(p => nome === p || nome.includes(p))) {
+      return { id, nome: data.nome, nome_completo: data.nome_completo };
+    }
+  }
+  return null;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1142,7 +1168,11 @@ async function carregarDashboard(ctx, req) {
     ranking = { posicao: acima + 1, nicho: video.nicho };
   }
 
-  return { video, projecoes, receita, engagement, comparacao_nicho: compNicho, ranking };
+  return {
+    video, projecoes, receita, engagement,
+    comparacao_nicho: compNicho, ranking,
+    easter_egg: detectarIdolo(video),
+  };
 }
 
 function compVal(atual, media) {
@@ -1849,5 +1879,6 @@ Retorne APENAS JSON valido:
     },
     analise,
     analises_restantes: rl.analises_restantes ? Math.max(0, rl.analises_restantes - 1) : 999,
+    easter_egg: detectarIdolo(video),
   };
 }

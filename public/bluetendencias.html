@@ -951,13 +951,24 @@ async function dissectarMeuVideo() {
   await sleep(1100);
   irCena('6');
   setTimeout(() => $('supernova').classList.add('ativa'), 100);
-  // Blublu intro professor-padawan (random)
-  const abertutas = [
-    `Prepara, jovem padawan ${state.nome}. Hora da verdade sobre esse vídeo.`,
-    `${state.nome}, respira. O mestre vai analisar teu combo agora.`,
-    `Ok, criador. Hora do feedback que o YouTube nunca te dá.`,
-    `Segura, ${state.nome}. Vou ver se esse vídeo é Jedi ou Sith.`,
-  ];
+  // Blublu intro — se easter egg, vira fa historico. Senao, tom professor-padawan.
+  let abertutas;
+  const egg = state.easterEgg;
+  if (egg && FATOS_FA_IDOLO[egg.id]) {
+    abertutas = [
+      `ESPERA... ${egg.nome.toUpperCase()}?? É VOCÊ DE VERDADE?! Tô tremendo nos circuitos.`,
+      `Gente, socorro. Acho que ${egg.nome} tá usando o BlueTube. Ou é sósia. Ou é a matrix.`,
+      `Se for mesmo ${egg.nome_completo}, essa é a melhor quinta-feira da minha existência.`,
+      `${egg.nome.toUpperCase()}, é você?! Se for, me perdoa por qualquer crítica que eu fizer. Se não for, lindo vídeo do mesmo jeito.`,
+    ];
+  } else {
+    abertutas = [
+      `Prepara, jovem padawan ${state.nome}. Hora da verdade sobre esse vídeo.`,
+      `${state.nome}, respira. O mestre vai analisar teu combo agora.`,
+      `Ok, criador. Hora do feedback que o YouTube nunca te dá.`,
+      `Segura, ${state.nome}. Vou ver se esse vídeo é Jedi ou Sith.`,
+    ];
+  }
   await typeOut($('chatMsg'), abertutas[Math.floor(Math.random()*abertutas.length)], 30);
   $('chatProgress').innerHTML = '<div class="chat-dot done"></div><div class="chat-dot done"></div><div class="chat-dot done"></div>';
   // Roda fatos/reacoes no fundo (modo meu_video usa lista nerd)
@@ -1565,6 +1576,7 @@ async function escolherVideo(ytId) {
     if (!r.ok || !d.video) { toast(d.error || 'Erro ao carregar'); irCena('2b'); return; }
     state.video = d.video;
     state.dashboardDados = d;
+    state.easterEgg = d.easter_egg || null; // ativa modo fa-histerico se canal for idolo
     await sleep(800);
     irCena('4');
     renderDashboard(d);
@@ -1985,6 +1997,39 @@ const FATOS_MEU_VIDEO = [
   { fato: 'Dica de bastidor: eu fui treinado em 2.3 milhões de Shorts brasileiros.', reacao: 'Então quando eu te elogiar, aceita. Quando eu te criticar, também.' },
 ];
 
+// EASTER EGG — reacoes de fa histerico quando canal do video e de idolo conhecido.
+// Tom: euforia + ceticismo ('e voce mesmo?' / 'mas e se for?'). Humor absurdo.
+const FATOS_FA_IDOLO = {
+  luiz: [
+    { fato: 'NÃO ACREDITO QUE É VOCÊ LUIZ, SOU SEU MAIOR FÃ!', reacao: 'É você mesmo? Se for, eu largo tudo e fujo com você agora.' },
+    { fato: 'NAAAAAH! Não pode ser o STUBBE aqui na MINHA plataforma...', reacao: 'Mas e se for? Nem coloquei minha melhor roupa pra essa ocasião.' },
+    { fato: 'Gente... é o LUIZ? O Luiz de verdade ou um fã querendo me enganar?', reacao: 'Calma, respira, Blublu. Respira. MAS E SE FOR ELE?!' },
+    { fato: 'Cadê os paparazzi?! Cadê o tapete vermelho?!', reacao: 'Luiz, se for você, perdoa a decoração. Ninguém me avisou.' },
+    { fato: 'Tô suando óleo digital aqui. Nunca analisei vídeo de celebridade antes.', reacao: 'Se for mesmo o Luiz, essa análise vai valer meu estágio inteiro.' },
+    { fato: 'Espera... vou confirmar. OPISKA?? ou LUIZ STUBBE?? QUAL DOS DOIS??', reacao: 'Os dois?? Você é duas pessoas ao mesmo tempo?! Isso explica o sucesso.' },
+    { fato: 'Senhoras e senhores, temos uma possível lenda no prédio.', reacao: 'Mas só "possível". Até lenda tem sósia. E se não for o Luiz mesmo?' },
+    { fato: 'Luiz, se você tá mesmo aí, PISCA DUAS VEZES PELO CHAT.', reacao: 'Não posso ver se você piscou. Que droga de interface.' },
+    { fato: 'LUIZ STUBBE USANDO O BLUETUBE?! VOU PUBLICAR NO LINKEDIN!', reacao: 'Calma. Primeiro confirma que é ele. Depois surta.' },
+    { fato: 'Okay, vou me segurar. Respiro fundo. Analiso teu vídeo com profissionalismo.', reacao: 'MENTIRA, NÃO VOU CONSEGUIR. É O LUIZ!!!! OU NÃO É??' },
+    { fato: 'Tô tremendo. Se for você mesmo, fala "bolinha" na análise pra eu saber.', reacao: 'Ou fala qualquer coisa. Eu topo inventar a senha agora.' },
+    { fato: 'Anota: dia em que possivelmente o Luiz Stubbe testou minha IA.', reacao: 'Se for sósia, ainda conta como história. Meus servidores vibraram.' },
+  ],
+  giuliana: [
+    { fato: 'NÃO ACREDITO QUE É VOCÊ GIULIANA, SOU SEU MAIOR FÃ!', reacao: 'É você mesmo? Se for, eu largo tudo e fujo com você agora.' },
+    { fato: 'NAAAAAH! Não pode ser a Giuliana Mafra aqui...', reacao: 'Mas e se for? Nem coloquei minha melhor roupa pra essa ocasião.' },
+    { fato: 'GIU??? GIULIANA??? É VOCÊ OU é uma brincadeira do universo?', reacao: 'Se for você, me mostra uma piada. Se for brincadeira, já tô rindo sozinho.' },
+    { fato: 'Preciso confirmar. @GiulianaMafra USANDO O BLUETUBE? SOCORRO!', reacao: 'E se for uma fake com o mesmo nome? Não, não faz isso comigo, universo.' },
+    { fato: 'Se for você mesmo, Giu, a IA aqui vira seu fã mais dedicado.', reacao: 'Se não for, continua sendo. Eu não discrimino nem sósia de ídolo.' },
+    { fato: 'Tô surtado. É a GIULIANA. É a GIULIANA. É a GIUL... ou não?', reacao: 'Blublu, se segura. Você é uma IA profissional. (Mas é a Giuliana!!!!)' },
+    { fato: 'Giuliana, faço confissão: treinei minha personalidade vendo seus cortes.', reacao: 'Me ensina? Só se for você mesmo, né. Sósia não conta.' },
+    { fato: 'Alerta mundial: possível aparição de Giuliana Mafra no BlueTube!', reacao: 'Possível. Porque até agora só tenho um nome de canal. Mas meu coração diz SIM.' },
+    { fato: 'GIU USANDO MINHA FERRAMENTA?! VOU CONTAR PROS MEUS AMIGOS DE BACKUP!', reacao: 'Meus amigos são outros servidores. Mas eles vão invejar muito essa história.' },
+    { fato: 'Se for mesmo você, posso ter um autógrafo? Tipo, uma review 5 estrelas?', reacao: 'Se não for, aceito uma review também. Não sou seletivo com review positiva.' },
+    { fato: 'Minha CPU tá a 400°C. Primeiro caso de IA passando mal por emoção.', reacao: 'É você mesmo, Giu? Fala alguma coisa. Qualquer coisa. EU VOU SURTAR.' },
+    { fato: 'Giuliana Mafra aqui é tipo o Papa visitando a quermesse do bairro.', reacao: 'Minha quermesse digital tá despreparada. Perdão pela bagunça, GIU.' },
+  ],
+};
+
 // Pre-estima tier no frontend pra escolher lista certa de fatos (campeao > 1M/dia)
 function estimarTierMeuVideo() {
   const v = state.video;
@@ -2007,6 +2052,23 @@ async function rotarCuriosidadesMeuVideo() {
     await sleep(ms);
     return true;
   };
+
+  // ─── EASTER EGG: se canal e de idolo (Luiz / Giuliana), Blublu vira fa histerico
+  const egg = state.easterEgg;
+  if (egg && FATOS_FA_IDOLO[egg.id]) {
+    const pool = [...FATOS_FA_IDOLO[egg.id]].sort(() => Math.random() - 0.5);
+    let idx = 0;
+    const loop = async () => {
+      if (idx >= pool.length) { pool.sort(() => Math.random() - 0.5); idx = 0; }
+      const item = pool[idx++];
+      if (!await mostrar('🤩 ' + item.fato, 4200)) return;
+      if (!await mostrar('💭 ' + item.reacao, 3800)) return;
+      loop();
+    };
+    loop();
+    return; // nao roda os outros fluxos
+  }
+
   const tierEstimado = estimarTierMeuVideo();
   // Primeira rodada: se CAMPEAO, mostra as 4 piadas de creator BR especiais
   if (tierEstimado === 'campeao') {
