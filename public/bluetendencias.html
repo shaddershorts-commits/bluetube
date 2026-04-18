@@ -124,6 +124,30 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
   100%{opacity:0;top:60%;left:110%;transform:rotate(90deg) scale(.85)}
 }
 
+/* CONTRA-ROTACAO DO BALAO:
+   O balao e filho do foguete, entao herda a rotacao e fica cabeca pra
+   baixo nas rotas 2/4/5 (que giram >90°). Essas keyframes rotacionam o
+   balao na direcao inversa pra manter o texto sempre legivel.
+   Rotas 1 e 3 tem inclinacao baixa (~8-45°), texto fica ok sem ajuste. */
+.blu-rocket.rota2 .blu-rocket-balao{animation:balao-contra2 9s linear forwards}
+@keyframes balao-contra2{
+  0%{transform:translateY(-50%) rotate(-195deg)}
+  50%{transform:translateY(-50%) rotate(-200deg)}
+  100%{transform:translateY(-50%) rotate(-210deg)}
+}
+.blu-rocket.rota4 .blu-rocket-balao{animation:balao-contra4 7.5s linear forwards}
+@keyframes balao-contra4{
+  0%,100%{transform:translateY(-50%) rotate(-180deg)}
+}
+.blu-rocket.rota5 .blu-rocket-balao{animation:balao-contra5 11s cubic-bezier(.45,.05,.55,.95) forwards}
+@keyframes balao-contra5{
+  0%{transform:translateY(-50%) rotate(20deg)}
+  30%{transform:translateY(-50%) rotate(0deg)}
+  50%{transform:translateY(-50%) rotate(-30deg)}
+  70%{transform:translateY(-50%) rotate(-60deg)}
+  100%{transform:translateY(-50%) rotate(-90deg)}
+}
+
 @media(max-width:720px){
   .blu-rocket{width:80px;height:80px}
   .blu-rocket-balao{font-size:10px;padding:6px 10px;right:-150px;max-width:140px}
@@ -1291,6 +1315,7 @@ async function renderSaudacao() {
 
 // Foguete passa em LOOP de rotas diferentes se usuario ficar parado
 const FOGUETE_FALAS = [
+  // leve / clássicas
   'Demorou tanto que dei a volta no PlanetaBlue!',
   'Ainda pensando? Eu já abasteci 2 vezes...',
   'Tá dormindo aí? Olha eu aqui de novo!',
@@ -1299,12 +1324,40 @@ const FOGUETE_FALAS = [
   'De volta! Que tal a gente começar?',
   'Oi, eu de novo. Escolhe logo uma opção, vai.',
   'Você sabia que eu posso voar mais rápido que a indecisão?',
-  'Terceira volta no planeta. Nova recorde mundial.',
+  'Terceira volta no planeta. Novo recorde mundial.',
   'Posso ficar aqui o dia todo. Sério, pode testar.',
+  // humor afiado / provocativo
+  'Tá parado aí porque esgotou o uso, né? KKKKKKK',
+  'Algum problema? Ou o cérebro travou igual meu motor em 2021?',
+  'Essa indecisão tá durando mais que relacionamento tóxico.',
+  'Parabéns, você oficialmente ganhou o prêmio "Mais Lento do PlanetaBlue".',
+  'Já fui até Marte e voltei. Você ainda na mesma tela.',
+  'Se eu cobrasse por volta, você já tava falido.',
+  'Você sabe que isso aqui não é museu, né? Clica em algo!',
+  'Tô começando a achar que a tela travou. Ou foi você.',
+  'Amigo, até o algoritmo do YouTube tá esperando você.',
+  'Seus concorrentes viralizaram 3 vezes nesse tempo aí.',
+  // humor dark / absurdo
+  'Vou ali no buraco negro rapidinho, volto antes de você decidir.',
+  'Meu relógio quebrou de tanto te esperar.',
+  'Já viu aquela lenda do foguete que explodiu de tédio? Adivinha.',
+  'A inércia tá forte em você, jovem padawan.',
+  'Se eu fosse um anúncio do YouTube, você já teria pulado.',
+  'Cenário 1: você clica. Cenário 2: eu fico aqui. Chuta aí.',
+  'Tipo... respira. Escolhe. Vamo.',
+  'Vou pedir o estagiário pra me substituir. Pelo menos ele decide rápido.',
+  'Tá me ignorando, né? Tudo bem, vou anotar aqui no log emocional.',
+  'Dica: clicar em "Nova análise" abre uma caixa. Pode clicar, prometo.',
+  'Se eu soubesse que ia ser assim, tinha virado Uber espacial.',
+  'Já pensou em viralizar? Pensa rápido, o YouTube não tá.',
+  'Voltei. E você continua aí. Que tal mudar isso?',
+  'Meu combustível é paciência. E ela tá em reserva.',
+  'Já tentei assovio, dancinha, alerta nuclear... nada funciona em você.',
 ];
 const FOGUETE_ROTAS = ['rota1', 'rota2', 'rota3', 'rota4', 'rota5'];
 let _rocketTimer = null;
 let _rocketCount = 0;
+let _rocketFalaPrev = null;
 function iniciarFogueteIndolente() {
   if (_rocketTimer) clearTimeout(_rocketTimer);
   // Primeiro foguete: 15s. Depois: 8-12s (mais frequente)
@@ -1320,9 +1373,17 @@ function iniciarFogueteIndolente() {
       rota = FOGUETE_ROTAS[(FOGUETE_ROTAS.indexOf(rotaPrev) + 1) % FOGUETE_ROTAS.length];
     }
     r.dataset.rota = rota;
-    // Fala aleatoria no balao
+    // Fala aleatoria no balao (sem repetir a ultima)
     const balao = r.querySelector('.blu-rocket-balao');
-    if (balao) balao.textContent = FOGUETE_FALAS[_rocketCount % FOGUETE_FALAS.length];
+    if (balao) {
+      let fala = FOGUETE_FALAS[Math.floor(Math.random() * FOGUETE_FALAS.length)];
+      if (fala === _rocketFalaPrev && FOGUETE_FALAS.length > 1) {
+        const idx = (FOGUETE_FALAS.indexOf(_rocketFalaPrev) + 1) % FOGUETE_FALAS.length;
+        fala = FOGUETE_FALAS[idx];
+      }
+      _rocketFalaPrev = fala;
+      balao.textContent = fala;
+    }
     // Reset + aplica nova rota
     r.className = 'blu-rocket';
     void r.offsetWidth;
