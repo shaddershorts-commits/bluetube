@@ -154,7 +154,12 @@ section{margin-bottom:48px}
   <div class="tp-badge">✨ EXCLUSIVO MASTER</div>
   <h1 class="tp-title">📊 BlueTendências</h1>
   <p class="tp-sub">Descubra o que está viralizando <em>antes</em> de todo mundo. Análise profunda, oportunidades emergentes e sugestões personalizadas para o seu canal.</p>
+  <!-- Badge discreto de status — so aparece se houver aviso de fonte de dados -->
+  <div id="sourceBadge" style="display:none;margin-top:14px">
+    <span id="sourceBadgeChip" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:12px;font-family:var(--mono);font-weight:600"></span>
+  </div>
 </header>
+<div id="sourceBanner" style="display:none;max-width:900px;margin:0 auto 20px;padding:10px 16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:10px;font-size:12px;color:var(--text-sec);text-align:center"></div>
 
 <!-- GATE: bloqueia Free/Full -->
 <div id="gate" style="display:none">
@@ -300,8 +305,45 @@ function renderDashboard(d) {
   renderTopVirais(d.tendencias_hoje || [], d.rpm_por_nicho || []);
   renderEmergentes(d.emergentes || []);
   renderMeuCanal(d.meu_canal);
+  updateSourceBadge(d);
   loadMLStatus();
   loadMLInsights();
+}
+
+function updateSourceBadge(d) {
+  // Analisa ultima_atualizacao ou fonte global pra mostrar badge discreto
+  const badgeEl = document.getElementById('sourceBadge');
+  const chipEl = document.getElementById('sourceBadgeChip');
+  const bannerEl = document.getElementById('sourceBanner');
+  if (!badgeEl || !chipEl || !bannerEl) return;
+
+  const at = d.ultima_atualizacao ? new Date(d.ultima_atualizacao) : null;
+  const minsAtras = at ? Math.round((Date.now() - at.getTime()) / 60000) : null;
+
+  // Chip verde (recente), amarelo (>30min), azul (fonte != cache_atual)
+  if (minsAtras != null && minsAtras < 30) {
+    chipEl.style.background = 'rgba(78,204,163,.15)';
+    chipEl.style.color = 'var(--green)';
+    chipEl.textContent = `✓ atualizado há ${minsAtras} min`;
+    badgeEl.style.display = 'block';
+    bannerEl.style.display = 'none';
+  } else if (minsAtras != null) {
+    chipEl.style.background = 'rgba(251,191,36,.15)';
+    chipEl.style.color = 'var(--gold)';
+    chipEl.textContent = `⟳ atualizando — ultima ha ${minsAtras} min`;
+    badgeEl.style.display = 'block';
+    bannerEl.style.display = 'none';
+  } else {
+    badgeEl.style.display = 'none';
+  }
+
+  // Se algum campo tem aviso (fonte=cache_expirado/snapshot/estatico), mostra banner
+  const avisos = [];
+  if (d.emergentes_aviso) avisos.push(d.emergentes_aviso);
+  if (avisos.length) {
+    bannerEl.textContent = avisos[0];
+    bannerEl.style.display = 'block';
+  }
 }
 
 async function loadMLStatus() {

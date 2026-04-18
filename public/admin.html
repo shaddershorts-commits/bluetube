@@ -578,6 +578,40 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- BLUETENDENCIAS ML HEALTH -->
+    <div class="section" id="tendenciasMLSection">
+      <div class="section-header">
+        <div class="section-title">📊 BlueTendências ML <span class="section-subtitle">— saúde, clusters e acurácia preditiva</span></div>
+        <button class="action-btn" onclick="loadTendenciasML()">↻ Atualizar</button>
+      </div>
+      <div id="tmlStatusBadge" style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:14px;padding:14px 18px;margin-bottom:14px">
+        <div id="tmlStatusDot" style="width:12px;height:12px;border-radius:50%;background:#666"></div>
+        <div style="flex:1">
+          <div id="tmlStatusLabel" style="font-size:14px;font-weight:700">carregando…</div>
+          <div id="tmlStatusSub" style="font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px">—</div>
+        </div>
+        <div id="tmlAlertasContador" style="font-size:11px;color:var(--red);font-weight:700"></div>
+      </div>
+      <div class="stats-grid" id="tmlCompCards" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:14px"></div>
+      <div id="tmlAlertasLista" style="background:var(--card);border:1px solid rgba(239,68,68,0.25);border-radius:14px;padding:14px 18px;margin-bottom:14px;display:none">
+        <div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:8px;font-family:var(--mono)">⚠️ ALERTAS ATIVOS (24h)</div>
+        <div id="tmlAlertasBody"></div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <div class="stat-card"><div class="stat-label">Vídeos no banco</div><div class="stat-value blue" id="tmlTotalVideos">—</div></div>
+        <div class="stat-card"><div class="stat-label">Clusters ativos</div><div class="stat-value purple" id="tmlClusters">—</div></div>
+        <div class="stat-card"><div class="stat-label">Predições 30d</div><div class="stat-value blue" id="tmlPredicoes">—</div></div>
+        <div class="stat-card"><div class="stat-label">Acurácia atual</div><div class="stat-value green" id="tmlAcuracia">—</div><div class="stat-sub" id="tmlAcuraciaSub">—</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(0,170,255,0.1);border-radius:14px;padding:16px 18px;margin-top:14px">
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-bottom:10px">🕐 ÚLTIMAS EXECUÇÕES POR COMPONENTE</div>
+        <div id="tmlExecTable" style="font-family:var(--mono);font-size:12px"></div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--dim);font-family:var(--mono)">
+        💡 endpoints admin: <code>/api/virais-ml?action=health</code> · <code>?action=historico-modelos</code> · <code>?action=validar-modelo</code>
+      </div>
+    </div>
+
     <!-- STRIPE WEBHOOKS -->
     <div class="section" id="stripeWebhooksSection">
       <div class="section-header">
@@ -1139,6 +1173,7 @@ async function loadData(){
     loadPioneiros();
     loadStripeWebhooks();
     loadML();
+    loadTendenciasML();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1635,6 +1670,67 @@ async function loadML(){
       line(fase3Done,'Fase 3 — ML completo em produção','Meta: 100.000 observações'+(fase3Done?' ✓ atingida':' — faltam '+Math.max(0,100000-total).toLocaleString('pt-BR')));
   }catch(e){console.error('loadML:',e);}
 }
+
+// ── BLUETENDENCIAS ML ─────────────────────────────────────────────────────
+async function loadTendenciasML(){
+  try{
+    const r=await fetch('/api/virais-ml?action=health');
+    if(!r.ok) throw new Error('health '+r.status);
+    const d=await r.json();
+    // Status geral
+    const statusColors={saudavel:'#4ecca3',degradado:'#fbbf24',critico:'#ff6b6b'};
+    const statusLabels={saudavel:'✅ Sistema saudável',degradado:'⚠️ Sistema degradado',critico:'🔴 Sistema crítico'};
+    document.getElementById('tmlStatusDot').style.background=statusColors[d.status_geral]||'#666';
+    document.getElementById('tmlStatusLabel').textContent=statusLabels[d.status_geral]||d.status_geral;
+    document.getElementById('tmlStatusSub').textContent='atualizado em '+new Date(d.atualizado_em).toLocaleString('pt-BR');
+    // Alertas
+    const alertas=d.alertas||[];
+    const contEl=document.getElementById('tmlAlertasContador');
+    contEl.textContent=alertas.length>0?`${alertas.length} alerta(s)`:'';
+    const listaEl=document.getElementById('tmlAlertasLista');
+    if(alertas.length>0){
+      listaEl.style.display='block';
+      document.getElementById('tmlAlertasBody').innerHTML=alertas.map(a=>`<div style="padding:6px 0;border-bottom:1px solid rgba(239,68,68,.1);font-size:12px">• ${escapeHtml(a)}</div>`).join('');
+    } else {
+      listaEl.style.display='none';
+    }
+    // Componentes (cards)
+    const comps=d.componentes||{};
+    const ordem=['coleta_virais','enriquecimento','clustering','embeddings','predicoes','nlp','snapshot'];
+    const labels={coleta_virais:'🎥 Coleta',enriquecimento:'📊 Enriquec.',clustering:'🧩 Clusters',embeddings:'🔢 Embeddings',predicoes:'🎯 Predições',nlp:'📝 NLP',snapshot:'💾 Snapshot'};
+    const statusIcon={ok:'✅',degradado:'⚠️',falha:'🔴',parcial:'🟡',sem_dados:'⚪'};
+    const statusCard={ok:'rgba(78,204,163,.1)',degradado:'rgba(251,191,36,.1)',falha:'rgba(239,68,68,.1)',parcial:'rgba(251,191,36,.08)',sem_dados:'rgba(150,150,150,.08)'};
+    document.getElementById('tmlCompCards').innerHTML=ordem.map(k=>{
+      const c=comps[k]||{status:'sem_dados'};
+      const metrica=c.videos_hoje!=null?`${c.videos_hoje} hoje`:c.pendentes!=null?`${c.pendentes} pendentes`:c.clusters_ativos!=null?`${c.clusters_ativos} ativos`:c.total_cached!=null?`${c.total_cached} cached`:c.total_30d!=null?`${c.total_30d} em 30d`:'';
+      return `<div class="stat-card" style="background:${statusCard[c.status]||statusCard.sem_dados};border:1px solid rgba(0,170,255,.1)">
+        <div class="stat-label">${labels[k]||k}</div>
+        <div style="font-size:18px;font-weight:700">${statusIcon[c.status]||'⚪'} ${c.status}</div>
+        <div class="stat-sub">${metrica}</div>
+      </div>`;
+    }).join('');
+    // Stats grandes
+    document.getElementById('tmlTotalVideos').textContent=(comps.coleta_virais?.videos_hoje!=null?formatNum(comps.coleta_virais.videos_hoje):'—');
+    document.getElementById('tmlClusters').textContent=comps.clustering?.clusters_ativos||0;
+    document.getElementById('tmlPredicoes').textContent=formatNum(comps.predicoes?.total_30d||0);
+    const acc=comps.predicoes?.acuracia_ultima;
+    document.getElementById('tmlAcuracia').textContent=acc!=null?Math.round(acc*100)+'%':'—';
+    document.getElementById('tmlAcuraciaSub').textContent=comps.predicoes?.ultima_validacao?'última: '+new Date(comps.predicoes.ultima_validacao).toLocaleDateString('pt-BR'):'ainda não validado';
+    // Tabela de últimas execuções
+    const rows=ordem.map(k=>{
+      const c=comps[k]||{};
+      const t=c.ultima_execucao?new Date(c.ultima_execucao).toLocaleString('pt-BR'):'nunca';
+      return `<div style="display:grid;grid-template-columns:130px 1fr 90px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(0,170,255,.06)"><div>${labels[k]||k}</div><div style="color:var(--dim)">${t}</div><div style="text-align:right">${statusIcon[c.status]||'⚪'}</div></div>`;
+    }).join('');
+    document.getElementById('tmlExecTable').innerHTML=rows;
+  }catch(e){
+    console.error('loadTendenciasML:',e);
+    document.getElementById('tmlStatusLabel').textContent='❌ Erro ao carregar';
+    document.getElementById('tmlStatusSub').textContent=e.message;
+  }
+}
+function formatNum(n){if(n>=1e6)return (n/1e6).toFixed(1)+'M';if(n>=1e3)return (n/1e3).toFixed(1)+'K';return String(n);}
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 // ── STRIPE WEBHOOKS ───────────────────────────────────────────────────────
 async function loadStripeWebhooks(){
