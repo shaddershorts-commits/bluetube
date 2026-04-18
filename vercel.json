@@ -114,10 +114,6 @@
     },
     {
       "path": "/api/virais-coletor?action=coletar-nichos",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=coletar-nichos",
       "schedule": "0 22 * * *"
     },
     {
@@ -175,6 +171,10 @@
     {
       "path": "/api/virais-ml?action=validar-predicoes",
       "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/virais-ml?action=verificar-alertas",
+      "schedule": "*/15 * * * *"
     }
   ],
   "headers": [

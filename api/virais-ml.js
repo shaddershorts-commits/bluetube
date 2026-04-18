@@ -75,10 +75,16 @@ module.exports = async function handler(req, res) {
     if (action === 'validar-predicoes')      return res.status(200).json(await validarPredicoes(ctx));
     if (action === 'status')                 return res.status(200).json(await statusModelo(ctx));
     if (action === 'pipeline-diario')        return res.status(200).json(await pipelineDiario(ctx));
+    if (action === 'health')                 return res.status(200).json(await healthCheck(ctx));
+    if (action === 'verificar-alertas')      return res.status(200).json(await verificarAlertas(ctx));
+    if (action === 'criar-snapshot')         return res.status(200).json(await criarSnapshot(ctx));
+    if (action === 'relatorio-diario')       return res.status(200).json(await gerarRelatorioDiario(ctx));
     return res.status(400).json({ error: 'action invalida', valid: [
       'enriquecer-velocidades','calcular-scores','analisar-titulos',
       'clusterizar-formatos','clusterizar-temas','detectar-emergentes-ml',
-      'predizer-viralidade','insights-para-usuario','validar-predicoes','status'
+      'predizer-viralidade','insights-para-usuario','validar-predicoes',
+      'status','health','verificar-alertas','criar-snapshot','relatorio-diario',
+      'pipeline-diario'
     ]});
   } catch (e) {
     console.error(`[virais-ml ${action}] erro:`, e.message, e.stack?.slice(0, 300));
@@ -91,17 +97,30 @@ module.exports = async function handler(req, res) {
 // Calcula velocidade_views por intervalo + aceleracao + ratios + dia/hora
 // ═════════════════════════════════════════════════════════════════════════════
 async function enriquecerVelocidades(ctx, req) {
+  const inicio = Date.now();
+  const TIMEOUT_MS = 25000;
   const limit = Math.min(parseInt(req.query.limit || CONFIG.BATCH_SIZE_VELOCIDADES), 2000);
-  // Pega videos com publicado_em recente OU velocidades ainda zeradas
   const r = await fetch(
     `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=coletado_em.desc&limit=${limit}&select=id,views,likes,comentarios,publicado_em,coletado_em,velocidade_views_24h`,
     { headers: ctx.h }
   );
-  if (!r.ok) throw new Error(`read failed: ${r.status}`);
+  if (!r.ok) {
+    await registrarSaudeSafe(ctx, 'enriquecimento', 'falha', { erro: `read ${r.status}` });
+    throw new Error(`read failed: ${r.status}`);
+  }
   const videos = await r.json();
 
-  let atualizados = 0;
+  let atualizados = 0, parou = false;
   for (const v of videos) {
+    if (Date.now() - inicio > TIMEOUT_MS) {
+      parou = true;
+      await registrarSaudeSafe(ctx, 'enriquecimento', 'parcial', {
+        duracao_ms: Date.now() - inicio,
+        registros_processados: atualizados,
+        extras: { total: videos.length, parou_em: atualizados },
+      });
+      break;
+    }
     if (!v.publicado_em) continue;
     const publicado = new Date(v.publicado_em);
     const agora = new Date();
@@ -143,7 +162,20 @@ async function enriquecerVelocidades(ctx, req) {
     atualizados++;
   }
 
-  return { ok: true, action: 'enriquecer-velocidades', processados: videos.length, atualizados };
+  if (!parou) {
+    await registrarSaudeSafe(ctx, 'enriquecimento', 'ok', {
+      duracao_ms: Date.now() - inicio,
+      registros_processados: atualizados,
+    });
+  }
+  return { ok: true, action: 'enriquecer-velocidades', processados: videos.length, atualizados, parou_por_timeout: parou };
+}
+
+async function registrarSaudeSafe(ctx, componente, status, meta) {
+  try {
+    const { registrarSaude } = require('./_helpers/ml-saude.js');
+    await registrarSaude(ctx, componente, status, meta);
+  } catch (e) { /* no-op */ }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -608,6 +640,33 @@ async function predizerViralidade(ctx, req) {
   const hora = parseInt(video.hora_do_dia_post);
   if (hora >= 18 && hora <= 22) { score += 0.05; fatores.push('horario nobre'); }
 
+  // Cold-start: checa se o nicho tem amostra suficiente
+  const nichoVideo = video.nicho || 'geral';
+  const nichosSimilares = {
+    financas: ['educacao', 'investimentos'],
+    tecnologia: ['educacao', 'games'],
+    humor: ['lifestyle', 'musica'],
+    educacao: ['financas', 'tecnologia'],
+    beleza: ['lifestyle', 'saude'],
+    saude: ['lifestyle', 'beleza'],
+  };
+
+  const contagemR = await fetch(
+    `${ctx.SU}/rest/v1/virais_banco?nicho=eq.${nichoVideo}&ativo=eq.true&select=id&limit=1`,
+    { headers: { ...ctx.h, Prefer: 'count=exact' } }
+  ).catch(() => null);
+  const nichoSize = contagemR ? parseInt(contagemR.headers.get('content-range')?.split('/')[1] || 0) : 0;
+
+  let coldStartAviso = null;
+  if (nichoSize < 50) {
+    // Cold-start — expande busca pra nichos similares
+    const similares = nichosSimilares[nichoVideo] || [];
+    coldStartAviso = `Amostra pequena para "${nichoVideo}" (${nichoSize} videos). Usando padroes de nichos proximos: ${similares.join(', ') || 'geral'}`;
+    confianca = Math.min(confianca, 0.55); // rebaixa confianca
+    score = score * 0.7 + 0.15; // aproxima da media
+    fatores.push(coldStartAviso);
+  }
+
   // Se tem cluster identificado, usa taxa historica dele
   let clusterSimilar = null;
   if (video.cluster_tema) {
@@ -666,6 +725,8 @@ async function predizerViralidade(ctx, req) {
     janela_estimada_dias: janelaEstimada,
     cluster_similar: clusterSimilar,
     pct: Math.round(probabilidade * 100),
+    cold_start: !!coldStartAviso,
+    amostra_nicho: nichoSize,
   };
 }
 
@@ -787,6 +848,287 @@ async function validarPredicoes(ctx) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// HEALTH CHECK — status geral do sistema ML (usado pelo admin dashboard)
+// ═════════════════════════════════════════════════════════════════════════════
+async function healthCheck(ctx) {
+  const { obterHealthGeral } = require('./_helpers/ml-saude.js');
+  const saude = await obterHealthGeral(ctx);
+
+  // Metricas ao vivo
+  const horaAtras = new Date(Date.now() - 3600000).toISOString();
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  // Coleta
+  const coletaH = await fetch(`${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${horaAtras}&select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const coletadosUltHora = coletaH ? parseInt(coletaH.headers.get('content-range')?.split('/')[1] || 0) : null;
+
+  const coletaD = await fetch(`${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${hoje.toISOString()}&select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const coletadosHoje = coletaD ? parseInt(coletaD.headers.get('content-range')?.split('/')[1] || 0) : null;
+
+  // Enriquecimento (videos com velocidade_views_24h > 0 nas ultimas 24h)
+  const enriqRes = await fetch(`${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${hoje.toISOString()}&velocidade_views_24h=gt.0&select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const enriquecidosHoje = enriqRes ? parseInt(enriqRes.headers.get('content-range')?.split('/')[1] || 0) : null;
+
+  // Pendentes enriquecimento
+  const pendRes = await fetch(`${ctx.SU}/rest/v1/virais_banco?velocidade_views_24h=eq.0&ativo=eq.true&select=id&limit=1`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const pendentes = pendRes ? parseInt(pendRes.headers.get('content-range')?.split('/')[1] || 0) : null;
+
+  // Clusters ativos
+  const clR = await fetch(`${ctx.SU}/rest/v1/virais_clusters?ativo=eq.true&select=tipo`, { headers: ctx.h }).catch(() => null);
+  const clusters = clR?.ok ? await clR.json() : [];
+  const clustersAtivos = clusters.length;
+
+  // Acuracia mais recente
+  const logR = await fetch(`${ctx.SU}/rest/v1/virais_modelo_log?order=executado_em.desc&limit=1&select=acuracia,executado_em`, { headers: ctx.h }).catch(() => null);
+  const [log] = logR?.ok ? await logR.json() : [];
+
+  // Predicoes ultimos 30d
+  const trintaD = new Date(Date.now() - 30*86400000).toISOString();
+  const predR = await fetch(`${ctx.SU}/rest/v1/virais_predicoes?created_at=gte.${trintaD}&select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const predicoes30d = predR ? parseInt(predR.headers.get('content-range')?.split('/')[1] || 0) : null;
+
+  // Embeddings cache hit rate
+  const embCache = await fetch(`${ctx.SU}/rest/v1/embeddings_cache?select=id&limit=1`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const embCached = embCache ? parseInt(embCache.headers.get('content-range')?.split('/')[1] || 0) : 0;
+
+  // Alertas abertos
+  const alR = await fetch(`${ctx.SU}/rest/v1/eventos_sistema?tipo=in.(alerta_critico,alerta_warning)&created_at=gte.${new Date(Date.now() - 86400000).toISOString()}&select=tipo,mensagem,created_at&order=created_at.desc&limit=10`, { headers: ctx.h }).catch(() => null);
+  const alertas = alR?.ok ? await alR.json() : [];
+
+  // Classifica status geral
+  function statusComp(log, okRule, degradadoRule) {
+    if (!log) return 'sem_dados';
+    if (okRule(log)) return 'ok';
+    if (degradadoRule(log)) return 'degradado';
+    return 'falha';
+  }
+
+  const componentes = {
+    coleta_virais: {
+      status: saude.coleta?.status || (coletadosHoje > 0 ? 'ok' : 'degradado'),
+      videos_hoje: coletadosHoje,
+      videos_ultima_hora: coletadosUltHora,
+      ultima_execucao: saude.coleta?.ultima_execucao,
+    },
+    enriquecimento: {
+      status: pendentes > 1000 ? 'degradado' : (saude.enriquecimento?.status || 'ok'),
+      videos_enriquecidos_hoje: enriquecidosHoje,
+      pendentes,
+      ultima_execucao: saude.enriquecimento?.ultima_execucao,
+    },
+    clustering: {
+      status: clustersAtivos > 0 ? 'ok' : 'degradado',
+      clusters_ativos: clustersAtivos,
+      ultima_execucao: saude.clustering?.ultima_execucao,
+    },
+    embeddings: {
+      status: embCached > 0 ? 'ok' : 'sem_dados',
+      total_cached: embCached,
+      provedor: process.env.OPENAI_API_KEY ? 'openai+pseudo' : 'pseudo-only',
+    },
+    predicoes: {
+      status: (log?.acuracia && parseFloat(log.acuracia) >= 0.7) ? 'ok' : (log ? 'degradado' : 'sem_dados'),
+      acuracia_ultima: log?.acuracia ? parseFloat(log.acuracia) : null,
+      total_30d: predicoes30d,
+      ultima_validacao: log?.executado_em,
+    },
+    nlp: {
+      status: saude.nlp?.status || 'ok',
+      ultima_execucao: saude.nlp?.ultima_execucao,
+    },
+    snapshot: {
+      status: saude.snapshot?.status || 'sem_dados',
+      ultima_execucao: saude.snapshot?.ultima_execucao,
+    },
+  };
+
+  const statusGeral = Object.values(componentes).some(c => c.status === 'falha') ? 'critico'
+    : Object.values(componentes).some(c => c.status === 'degradado') ? 'degradado'
+    : 'saudavel';
+
+  return {
+    status_geral: statusGeral,
+    atualizado_em: new Date().toISOString(),
+    componentes,
+    alertas: alertas.map(a => a.mensagem),
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VERIFICAR ALERTAS — cron */15min detecta anomalias + notifica admin
+// ═════════════════════════════════════════════════════════════════════════════
+async function verificarAlertas(ctx) {
+  const alertas = [];
+  const now = Date.now();
+  const duasHorasAtras = new Date(now - 2*3600000).toISOString();
+
+  // 1) Banco virais_banco parou de crescer ha 2h?
+  const cr = await fetch(`${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${duasHorasAtras}&select=id&limit=1`, { headers: { ...ctx.h, Prefer: 'count=exact' } }).catch(() => null);
+  const coletados2h = cr ? parseInt(cr.headers.get('content-range')?.split('/')[1] || 0) : null;
+  if (coletados2h === 0) {
+    alertas.push({ tipo: 'alerta_warning', componente: 'coleta', mensagem: 'virais_banco nao cresce ha 2h' });
+  }
+
+  // 2) Componente falhou 3x seguidas?
+  const { SU, h } = ctx;
+  const recentesR = await fetch(`${SU}/rest/v1/ml_saude?order=created_at.desc&limit=30&select=componente,status,created_at`, { headers: h }).catch(() => null);
+  const recentes = recentesR?.ok ? await recentesR.json() : [];
+  const porComp = new Map();
+  recentes.forEach(r => {
+    if (!porComp.has(r.componente)) porComp.set(r.componente, []);
+    porComp.get(r.componente).push(r.status);
+  });
+  for (const [comp, statuses] of porComp.entries()) {
+    const ultimos3 = statuses.slice(0, 3);
+    if (ultimos3.length === 3 && ultimos3.every(s => s === 'falha')) {
+      alertas.push({ tipo: 'alerta_critico', componente: comp, mensagem: `${comp} falhou 3x seguidas` });
+    }
+  }
+
+  // 3) Acuracia caiu >10% em 24h?
+  const logsR = await fetch(`${SU}/rest/v1/virais_modelo_log?order=executado_em.desc&limit=2&select=acuracia,executado_em`, { headers: h }).catch(() => null);
+  const logs = logsR?.ok ? await logsR.json() : [];
+  if (logs.length === 2 && logs[0].acuracia != null && logs[1].acuracia != null) {
+    const queda = parseFloat(logs[1].acuracia) - parseFloat(logs[0].acuracia);
+    if (queda > 0.10) {
+      alertas.push({ tipo: 'alerta_critico', componente: 'predicao', mensagem: `acuracia caiu ${Math.round(queda*100)}% em 24h` });
+    }
+  }
+
+  // 4) Cron nao executou no horario esperado — checa se ha saude recente
+  const saudeUltimaHoraR = await fetch(`${SU}/rest/v1/ml_saude?created_at=gte.${new Date(now - 3600000).toISOString()}&select=id&limit=1`, { headers: { ...h, Prefer: 'count=exact' } }).catch(() => null);
+  const execUltHora = saudeUltimaHoraR ? parseInt(saudeUltimaHoraR.headers.get('content-range')?.split('/')[1] || 0) : 0;
+  if (execUltHora === 0 && (recentes[0] && new Date(recentes[0].created_at) < new Date(now - 3*3600000))) {
+    alertas.push({ tipo: 'alerta_warning', componente: 'cron', mensagem: 'nenhuma execucao ML na ultima hora' });
+  }
+
+  // 5) Registra eventos novos (dedup por mensagem+componente ultima 24h)
+  for (const a of alertas) {
+    const jaR = await fetch(`${SU}/rest/v1/eventos_sistema?tipo=eq.${a.tipo}&componente=eq.${a.componente}&mensagem=eq.${encodeURIComponent(a.mensagem)}&created_at=gte.${new Date(now - 86400000).toISOString()}&select=id&limit=1`, { headers: h }).catch(() => null);
+    const ja = jaR?.ok ? await jaR.json() : [];
+    if (ja.length > 0) continue; // ja alertado nas ultimas 24h
+
+    await fetch(`${SU}/rest/v1/eventos_sistema`, {
+      method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({ tipo: a.tipo, componente: a.componente, mensagem: a.mensagem, dados: {} }),
+    }).catch(() => {});
+
+    // Envia email admin (best-effort)
+    if (a.tipo === 'alerta_critico' && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: 'BlueTube <noreply@bluetubeviral.com>',
+          to: [process.env.ADMIN_EMAIL],
+          subject: `[BlueTendencias · ML] ${a.mensagem}`,
+          html: `<p><b>Componente:</b> ${a.componente}</p><p><b>Alerta:</b> ${a.mensagem}</p><p>Ver <a href="https://bluetubeviral.com/admin">painel admin</a></p>`,
+        }),
+      }).catch(() => {});
+    }
+  }
+
+  await registrarSaudeSafe(ctx, 'monitoramento', 'ok', { registros_processados: alertas.length });
+  return { ok: true, action: 'verificar-alertas', novos_alertas: alertas.length, alertas };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CRIAR SNAPSHOT — salva estado atual pra servir em fallback
+// ═════════════════════════════════════════════════════════════════════════════
+async function criarSnapshot(ctx) {
+  const inicio = Date.now();
+  try {
+    // Top virais
+    const tr = await fetch(`${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=score_viralidade.desc&limit=100&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,nicho,score_viralidade`, { headers: ctx.h });
+    const topVirais = tr.ok ? await tr.json() : [];
+    await salvarSnapshot(ctx, 'top_virais', topVirais);
+
+    // Emergentes atuais
+    const emR = await fetch(`${ctx.SU}/rest/v1/tendencias_analise?tipo=eq.emergentes-ml&valido_ate=gte.${new Date().toISOString()}&order=created_at.desc&limit=1&select=dados`, { headers: ctx.h });
+    const [em] = emR.ok ? await emR.json() : [];
+    if (em?.dados) await salvarSnapshot(ctx, 'emergentes', em.dados);
+
+    // Clusters
+    const clR = await fetch(`${ctx.SU}/rest/v1/virais_clusters?ativo=eq.true&select=*`, { headers: ctx.h });
+    const clusters = clR.ok ? await clR.json() : [];
+    await salvarSnapshot(ctx, 'clusters', clusters);
+
+    // Padroes de titulo (agrega todos os caches)
+    const tR = await fetch(`${ctx.SU}/rest/v1/tendencias_analise?tipo=eq.titulos&order=created_at.desc&limit=20&select=nicho,dados`, { headers: ctx.h });
+    const titulos = tR.ok ? await tR.json() : [];
+    await salvarSnapshot(ctx, 'padroes_titulo', titulos);
+
+    // Limpa snapshots antigos (>30 dias)
+    await fetch(`${ctx.SU}/rest/v1/tendencias_snapshots?created_at=lt.${new Date(Date.now() - 30*86400000).toISOString()}`, {
+      method: 'DELETE', headers: ctx.h,
+    }).catch(() => {});
+
+    await registrarSaudeSafe(ctx, 'snapshot', 'ok', { duracao_ms: Date.now() - inicio });
+    return { ok: true, action: 'criar-snapshot', tipos: ['top_virais', 'emergentes', 'clusters', 'padroes_titulo'] };
+  } catch (e) {
+    await registrarSaudeSafe(ctx, 'snapshot', 'falha', { erro: e.message, duracao_ms: Date.now() - inicio });
+    throw e;
+  }
+}
+
+async function salvarSnapshot(ctx, tipo, dados) {
+  return fetch(`${ctx.SU}/rest/v1/tendencias_snapshots`, {
+    method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({ tipo, dados, fonte: 'cron_diario' }),
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RELATORIO DIARIO consolidado
+// ═════════════════════════════════════════════════════════════════════════════
+async function gerarRelatorioDiario(ctx) {
+  const hoje = new Date();
+  const dataStr = hoje.toISOString().slice(0, 10);
+  const inicioHoje = new Date(dataStr).toISOString();
+
+  // Coleta tudo em paralelo
+  const [videosHoje, enriqHoje, clustersAtiv, predHoje, alertasHoje] = await Promise.all([
+    countFrom(ctx, `virais_banco?coletado_em=gte.${inicioHoje}`),
+    countFrom(ctx, `virais_banco?coletado_em=gte.${inicioHoje}&velocidade_views_24h=gt.0`),
+    countFrom(ctx, 'virais_clusters?ativo=eq.true'),
+    countFrom(ctx, `virais_predicoes?created_at=gte.${inicioHoje}`),
+    countFrom(ctx, `eventos_sistema?tipo=in.(alerta_critico,alerta_warning)&created_at=gte.${inicioHoje}`),
+  ]);
+
+  const logR = await fetch(`${ctx.SU}/rest/v1/virais_modelo_log?order=executado_em.desc&limit=1&select=acuracia`, { headers: ctx.h }).catch(() => null);
+  const [log] = logR?.ok ? await logR.json() : [];
+
+  const problemasR = await fetch(`${ctx.SU}/rest/v1/ml_saude?status=neq.ok&created_at=gte.${inicioHoje}&select=componente,status,erro&limit=20`, { headers: ctx.h }).catch(() => null);
+  const problemas = problemasR?.ok ? await problemasR.json() : [];
+
+  const corpo = {
+    data: dataStr,
+    videos_coletados: videosHoje,
+    videos_enriquecidos: enriqHoje,
+    videos_com_nlp: enriqHoje, // aproximacao
+    clusters_ativos: clustersAtiv,
+    predicoes_feitas: predHoje,
+    acuracia_modelo: log?.acuracia ? parseFloat(log.acuracia) : null,
+    alertas_disparados: alertasHoje,
+    problemas_detectados: problemas,
+  };
+
+  await fetch(`${ctx.SU}/rest/v1/tendencias_relatorio_diario`, {
+    method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal,resolution=merge-duplicates' },
+    body: JSON.stringify(corpo),
+  }).catch(() => {});
+
+  return { ok: true, action: 'relatorio-diario', relatorio: corpo };
+}
+
+async function countFrom(ctx, path) {
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/${path}&select=id&limit=1`, { headers: { ...ctx.h, Prefer: 'count=exact' } });
+    return parseInt(r.headers.get('content-range')?.split('/')[1] || 0);
+  } catch (e) { return 0; }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // PIPELINE DIARIO — executa scores + analisar-titulos + clusterizar-formatos
 // em sequencia (consolida 3 crons em 1 pra ficar dentro do limite Vercel)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -795,6 +1137,8 @@ async function pipelineDiario(ctx) {
   try { resultados.scores = await calcularScores(ctx, { query: {} }); } catch (e) { resultados.scores = { error: e.message }; }
   try { resultados.titulos = await analisarTitulos(ctx, { query: {} }); } catch (e) { resultados.titulos = { error: e.message }; }
   try { resultados.formatos = await clusterizarFormatos(ctx); } catch (e) { resultados.formatos = { error: e.message }; }
+  try { resultados.snapshot = await criarSnapshot(ctx); } catch (e) { resultados.snapshot = { error: e.message }; }
+  try { resultados.relatorio = await gerarRelatorioDiario(ctx); } catch (e) { resultados.relatorio = { error: e.message }; }
   return { ok: true, action: 'pipeline-diario', resultados };
 }
 
