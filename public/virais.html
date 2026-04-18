@@ -115,6 +115,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .state-title{font-size:16px;font-weight:700;margin-bottom:8px}
 .state-sub{font-family:var(--mono);font-size:12px;color:var(--text-dim);line-height:1.6}
 
+/* FREE LOCK — desfoca e bloqueia cards pro usuario sem acesso */
+.free-locked-wrap{position:relative}
+.free-locked-wrap .shorts-grid{filter:blur(7px) saturate(.7);pointer-events:none;user-select:none;-webkit-user-select:none;transition:filter .3s ease}
+.free-locked-wrap .filters{opacity:.5;pointer-events:none;user-select:none}
+.free-lock-overlay{position:absolute;inset:0;z-index:20;pointer-events:none;display:flex;justify-content:center}
+.free-lock-card{position:sticky;top:120px;align-self:flex-start;margin-top:40px;pointer-events:auto;background:linear-gradient(135deg,rgba(10,22,40,.97),rgba(5,12,25,.97));border:1px solid rgba(0,170,255,.35);border-radius:20px;padding:36px 42px;max-width:460px;text-align:center;box-shadow:0 24px 80px rgba(0,50,160,.5),0 0 0 1px rgba(0,170,255,.1) inset;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.free-lock-icon{font-size:44px;margin-bottom:14px;animation:pulse 2s ease-in-out infinite}
+.free-lock-title{font-size:20px;font-weight:800;margin-bottom:8px;color:#fff;letter-spacing:-.01em}
+.free-lock-title span{background:linear-gradient(135deg,#00aaff,#60a5fa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.free-lock-sub{font-family:var(--mono);font-size:12px;color:rgba(200,220,240,.7);line-height:1.6;margin-bottom:22px}
+.free-lock-btn{display:inline-block;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;color:#fff;background:linear-gradient(135deg,#00aaff,#3b82f6);border:none;border-radius:10px;padding:12px 28px;cursor:pointer;text-decoration:none;transition:all .2s;box-shadow:0 8px 24px rgba(0,170,255,.35)}
+.free-lock-btn:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,170,255,.5)}
+@media(max-width:768px){
+  .free-lock-overlay{padding-top:40px;padding-left:16px;padding-right:16px}
+  .free-lock-card{padding:28px 24px}
+  .free-lock-title{font-size:17px}
+}
+
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:12px 20px;font-family:var(--mono);font-size:12px;color:var(--neon);pointer-events:none;animation:fadeUp .3s ease;white-space:nowrap}
 
@@ -252,16 +270,39 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 // ── AUTH CHECK ───────────────────────────────────────────────────────────────
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
-if (!token || (plan !== 'full' && plan !== 'master')) {
-  document.getElementById('grid').innerHTML = `
-    <div class="state-box">
-      <div class="state-icon">⚡</div>
-      <div class="state-title">Assine para ver os virais</div>
-      <div class="state-sub">Esta ferramenta está disponível nos planos <b>Full</b> e <b>Master</b>.<br>
-        <a href="/#plans" style="color:var(--neon);text-decoration:none">Ver planos →</a>
-      </div>
+const isFreeUser = !token || (plan !== 'full' && plan !== 'master');
+
+// Abre o popup de upgrade — redireciona pra home com ?upgrade=full,
+// que dispara o modal automaticamente (index.html:1735).
+function abrirPopupAssinar(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  window.location.href = '/?upgrade=full';
+}
+
+if (isFreeUser) {
+  // Ativa modo bloqueado: cards carregam normalmente mas ficam desfocados
+  // e nao-clicaveis, com overlay CTA por cima.
+  const pageEl = document.querySelector('.page');
+  if (pageEl) pageEl.classList.add('free-locked-wrap');
+
+  // Insere overlay com CTA no topo da .page
+  const overlay = document.createElement('div');
+  overlay.className = 'free-lock-overlay';
+  overlay.innerHTML = `
+    <div class="free-lock-card">
+      <div class="free-lock-icon">⚡</div>
+      <div class="free-lock-title">Assine para ver os <span>virais</span></div>
+      <div class="free-lock-sub">Esta ferramenta está disponível nos planos <b>Full</b> e <b>Master</b>.<br>Descubra os Shorts que estão explodindo agora.</div>
+      <a href="/?upgrade=full" class="free-lock-btn" onclick="abrirPopupAssinar(event)">Ver planos →</a>
     </div>`;
-  document.querySelector('.filters').style.display = 'none';
+  if (pageEl) pageEl.appendChild(overlay);
+
+  // Captura qualquer click dentro do grid (mesmo com pointer-events:none
+  // em navegadores que burlam) e redireciona pro popup.
+  document.addEventListener('click', (e) => {
+    const grid = document.getElementById('grid');
+    if (grid && grid.contains(e.target)) { abrirPopupAssinar(e); }
+  }, true);
 }
 
 // ── MOUSE GLOW ───────────────────────────────────────────────────────────────
