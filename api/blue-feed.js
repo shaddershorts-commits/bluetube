@@ -198,6 +198,37 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ hashtags: [] }); }
   }
 
+  // Explorar: top videos por views (cache 5min). Usado pra popular a pagina
+  // Explorar — antes mostrava so hashtags + texto vazio.
+  if (action === 'explorar') {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 30, 50);
+      const data = await cacheGetOrSet(`explorar:top:${limit}`, async () => {
+        const r = await fetch(
+          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=id,title,thumbnail_url,video_url,views,likes,comments,user_id,created_at,duration`,
+          { headers: h }
+        );
+        const vids = r.ok ? await r.json() : [];
+        if (!vids.length) return { videos: [] };
+        const uids = [...new Set(vids.map(v => v.user_id).filter(Boolean))];
+        let profs = {};
+        if (uids.length) {
+          const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uids.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+          if (pR.ok) (await pR.json()).forEach(p => { profs[p.user_id] = p; });
+        }
+        return {
+          videos: vids.map(v => ({
+            ...v,
+            video_url: applyCDN(v.video_url),
+            thumbnail_url: applyCDN(v.thumbnail_url),
+            creator: profs[v.user_id] || { username: 'blue', display_name: 'Blue' },
+          })),
+        };
+      }, 300);
+      return res.status(200).json(data);
+    } catch(e) { return res.status(200).json({ videos: [], error: e.message }); }
+  }
+
   // ── HASHTAG FEED ───────────────────────────────────────────────────────
   if (action === 'hashtag-feed') {
     const hashtag = (req.query.hashtag || '').toLowerCase().replace(/^#/, '');

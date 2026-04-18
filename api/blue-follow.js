@@ -153,21 +153,28 @@ module.exports = async function handler(req, res) {
           headers: { ...h, Prefer: 'return=minimal' },
           body: JSON.stringify({ follower_id: userId, following_id: target_id })
         });
-        // Notifica o alvo do seguidor (fire-and-forget)
+        // Notifica o alvo do seguidor (fire-and-forget) + push mobile
         try {
           const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username,display_name`, { headers: h });
           const [me] = pR.ok ? await pR.json() : [];
           const uname = me?.username || 'alguém';
+          const titulo = 'Novo seguidor';
+          const mensagem = `@${uname} começou a te seguir`;
           fetch(`${SU}/rest/v1/blue_notificacoes`, {
             method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
             body: JSON.stringify({
-              user_id: target_id,
-              tipo: 'follow',
-              titulo: 'Novo seguidor',
-              mensagem: `@${uname} começou a te seguir`,
+              user_id: target_id, tipo: 'follow', titulo, mensagem,
               dados: { from_user_id: userId },
             }),
           }).catch(() => {});
+          // Push mobile via Expo (se app instalado)
+          try {
+            const { sendPushToUser } = require('./_helpers/push.js');
+            sendPushToUser(target_id, {
+              title: titulo, body: mensagem,
+              data: { tipo: 'follow', from_user_id: userId, url: '/blue' },
+            }).catch(() => {});
+          } catch(e) {}
         } catch(e) { /* fail-soft */ }
         return res.status(200).json({ ok: true, following: true });
       } catch(e) { return res.status(200).json({ ok: true, following: true }); }

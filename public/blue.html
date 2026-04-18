@@ -939,7 +939,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 
 <!-- TOP BAR mobile: menu | tabs | busca (demais ícones vão pro bottom-nav) -->
 <div class="topbar">
-  <button class="tbtn icon-only" onclick="openGrupos()" id="gruposBtn" title="Grupos" style="position:relative">☰<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
+  <button class="tbtn icon-only" onclick="openGrupos()" id="gruposBtn" title="Chat" style="position:relative">💬<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
   <div class="topbar-tabs">
     <button id="tabForYou" class="tt-btn active" onclick="switchFeedMode('foryou')">Para Você</button>
     <button id="tabFollowing" class="tt-btn" onclick="switchFeedMode('following')">Seguindo</button>
@@ -958,9 +958,9 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <button class="bn-item" onclick="openUpload()" title="Criar">
     <div class="bn-plus">+</div><div style="margin-top:2px">Criar</div>
   </button>
-  <button class="bn-item" onclick="openInbox()" title="Caixa" style="position:relative">
+  <button class="bn-item" onclick="openInbox()" title="Notificações" style="position:relative">
     <div class="bn-ic" style="position:relative">🔔<span id="inboxBadge" class="bn-badge" style="display:none">0</span></div>
-    <div>Caixa</div>
+    <div>Notif</div>
   </button>
   <button class="bn-item" onclick="openProfile()" title="Perfil">
     <div class="bn-ic" id="hdAv" style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;overflow:hidden">?</div>
@@ -998,7 +998,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <button class="ds-item" onclick="openTrending()"><span class="ds-ic">🧭</span>Explorar</button>
   <button class="ds-item" onclick="switchFeedMode('following')"><span class="ds-ic">👥</span>Seguindo</button>
   <button class="ds-item" onclick="openUpload()"><span class="ds-ic">➕</span>Carregar</button>
-  <button class="ds-item" onclick="openGrupos()" style="position:relative"><span class="ds-ic">💬</span>Grupos<span id="gruposBadgeDesk" class="ds-badge" style="display:none">0</span></button>
+  <button class="ds-item" onclick="openGrupos()" style="position:relative"><span class="ds-ic">💬</span>Chat<span id="gruposBadgeDesk" class="ds-badge" style="display:none">0</span></button>
   <button class="ds-item" onclick="openInbox()" style="position:relative"><span class="ds-ic">🔔</span>Notificações<span id="inboxBadgeDesk" class="ds-badge" style="display:none">0</span></button>
   <button class="ds-item" onclick="openProfile()"><span class="ds-ic">👤</span>Perfil</button>
   <button class="ds-item" onclick="openSearch()"><span class="ds-ic">🔍</span>Buscar</button>
@@ -1530,14 +1530,15 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:90vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">👥 Grupos</span>
+      <span class="bt-modal-title">💬 Chat</span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="bt-modal-header-action" onclick="openCriarGrupo()">+ Criar</button>
+        <button class="bt-modal-header-action" onclick="openCriarGrupo()">+ Grupo</button>
         <button class="bt-modal-close" onclick="closeGrupos()">✕</button>
       </div>
     </div>
     <div class="gp-tabs" style="display:flex;gap:6px;padding:12px 24px 0;border-bottom:1px solid rgba(0,170,255,.08)">
-      <button class="gp-tab on" id="gpTabMeus" onclick="showGpTab('meus',this)">Meus grupos</button>
+      <button class="gp-tab on" id="gpTabMsgs" onclick="showGpTab('mensagens',this)">Mensagens</button>
+      <button class="gp-tab" id="gpTabMeus" onclick="showGpTab('meus',this)">Grupos</button>
       <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)">Descobrir</button>
     </div>
     <div class="bt-modal-body gp-body" id="gpBody"><div class="bt-empty"><div class="bt-empty-icon">👥</div>Carregando…</div></div>
@@ -1772,6 +1773,10 @@ function _syncTabsVisual(){
 })();
 function switchFeedMode(mode){
   if(mode==='following'&&!TOKEN){toast('Faça login pra ver quem você segue');return;}
+  // Fecha overlays antes de trocar feed (evita ficar preso no perfil/video).
+  ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
+  // Se URL eh de perfil/video, volta pra /blue
+  try { if (window.BlueRouter && /^\/blue\/(?:@|v\/|hashtag\/)/.test(window.location.pathname)) BlueRouter.push('/blue', {}, 'Blue'); } catch(e) {}
   if(mode===_feedMode){scrollToFeedTop();return;}
   _feedMode=mode;
   localStorage.setItem('bl_feed_mode',mode);
@@ -2120,19 +2125,33 @@ function haptic(type='light'){
 }
 
 // ── INTERACTIONS ──────────────────────────────────────────────────────────────
-function doLike(id){debounced('like-'+id,()=>{
-  const ic=document.getElementById('li-'+id),lc=document.getElementById('lc-'+id);
-  if(!ic)return;
-  if(liked.has(id)){liked.delete(id);ic.textContent='🤍';ic.classList.remove('red');lc.textContent=fmt(Math.max(0,(parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)-1));ping('unlike',id);}
-  else{liked.add(id);ic.textContent='❤️';ic.classList.add('red');lc.textContent=fmt((parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)+1);ping('like',id);haptic('success');trackSignal(id,{curtiu:true});}
-  localStorage.setItem('bl_liked',JSON.stringify([...liked]));
-});}
-function doSave(id){debounced('save-'+id,()=>{
-  const ic=document.getElementById('si-'+id);if(!ic)return;
-  if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast('Removido');}
-  else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast('💾 Salvo!');trackSignal(id,{salvou:true});}
-  localStorage.setItem('bl_saved',JSON.stringify([...saved]));
-});}
+// Guard: visitante (sem token) cai no modal de auth — nao deixa interacao
+// silenciosa que parece funcionar mas nao persiste no servidor.
+function _requireLogin(){
+  if (TOKEN) return true;
+  if (typeof openAuthOnly === 'function') openAuthOnly();
+  else toast('Faça login pra interagir');
+  return false;
+}
+function doLike(id){
+  if(!_requireLogin())return;
+  debounced('like-'+id,()=>{
+    const ic=document.getElementById('li-'+id),lc=document.getElementById('lc-'+id);
+    if(!ic)return;
+    if(liked.has(id)){liked.delete(id);ic.textContent='🤍';ic.classList.remove('red');lc.textContent=fmt(Math.max(0,(parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)-1));ping('unlike',id);}
+    else{liked.add(id);ic.textContent='❤️';ic.classList.add('red');lc.textContent=fmt((parseInt(lc.textContent.replace(/[^0-9]/g,''))||0)+1);ping('like',id);haptic('success');trackSignal(id,{curtiu:true});}
+    localStorage.setItem('bl_liked',JSON.stringify([...liked]));
+  });
+}
+function doSave(id){
+  if(!_requireLogin())return;
+  debounced('save-'+id,()=>{
+    const ic=document.getElementById('si-'+id);if(!ic)return;
+    if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast('Removido');}
+    else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast('💾 Salvo!');trackSignal(id,{salvou:true});}
+    localStorage.setItem('bl_saved',JSON.stringify([...saved]));
+  });
+}
 async function doShare(url,title){
   const vid=_curVideo?.id;
   const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
@@ -2155,6 +2174,8 @@ async function doShare(url,title){
 // ── COMMENTS ──────────────────────────────────────────────────────────────────
 let _curCmtVid=null;
 function openComments(id,cnt){
+  // Guard: visitante precisa logar pra ver/postar comentarios
+  if(!_requireLogin())return;
   _curCmtVid=id;
   btModalOpen('cpanel');
   document.getElementById('cpCnt').textContent=cnt>0?'('+fmt(cnt)+')':'';
@@ -2697,12 +2718,14 @@ let _myStatus = localStorage.getItem('blue_status') || 'online';
 const EMOJIS = ['😀','😂','🥰','😍','🤔','😎','🥺','😭','🔥','❤️','👍','👏','🎉','✨','💯','🙌','😅','🤣','😊','🫡','💪','🤝','🎬','📹','⚡','🚀','💬','👀','🫶','😏'];
 
 function openInbox() {
-  if (!TOKEN) { btToast('Entre para acessar mensagens','warning'); return; }
+  if (!TOKEN) { if(typeof openAuthOnly==='function')openAuthOnly(); return; }
   const inbox = document.getElementById('inbox');
   if (inbox.classList.contains('active')) { closeInbox(); return; }
   btModalOpen('inbox');
   updateStatusBtns(_myStatus);
-  loadConversations();
+  // Esconde lista de conversas — DMs vivem no Chat (Grupos). Aqui so notificacoes.
+  const cl = document.getElementById('convList');
+  if (cl) cl.style.display = 'none';
   loadNotificacoes();
 }
 
@@ -2718,17 +2741,21 @@ async function loadNotificacoes(){
     let np=document.getElementById('notifPanel');
     if(!np){
       np=document.createElement('div');np.id='notifPanel';
-      np.style.cssText='max-height:200px;overflow-y:auto;border-bottom:1px solid rgba(59,130,246,.1);margin-bottom:8px';
+      np.style.cssText='overflow-y:auto;padding:4px 0';
       const cl=document.getElementById('convList');
       if(cl)cl.parentNode.insertBefore(np,cl);
     }
-    if(!notifs.length){np.innerHTML='';return;}
-    const unread=notifs.filter(n=>!n.lida);
-    if(!unread.length){np.innerHTML='';return;}
-    np.innerHTML=`<div style="padding:8px 14px;font-size:11px;font-weight:700;color:rgba(59,130,246,.7);display:flex;justify-content:space-between;align-items:center">Notificações (${unread.length})<button onclick="marcarNotifsLidas()" style="background:none;border:none;color:rgba(150,190,230,.4);font-size:10px;cursor:pointer">Marcar lidas</button></div>`+
-      unread.slice(0,8).map(n=>{
-        const icon={like:'❤️',comment:'💬',follow:'👥',verificacao:'🏅',milestone:'🎉'}[n.tipo]||'🔔';
-        return`<div style="padding:8px 14px;font-size:12px;color:#c8d6e5;border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:8px;align-items:center"><span style="font-size:16px">${icon}</span><div style="flex:1"><div style="font-weight:600;font-size:12px">${n.titulo}</div>${n.mensagem?'<div style="font-size:11px;color:rgba(150,190,230,.5);margin-top:2px">'+n.mensagem+'</div>':''}</div><div style="font-size:9px;color:rgba(150,190,230,.3)">${ago(n.created_at)}</div></div>`;
+    if(!notifs.length){
+      np.innerHTML='<div style="padding:48px 24px;text-align:center;color:rgba(150,190,230,.4)"><div style="font-size:44px;margin-bottom:10px">🔔</div><div style="font-size:14px;font-weight:600;margin-bottom:4px">Sem notificações ainda</div><div style="font-size:12px;color:rgba(150,190,230,.3)">Quando alguém curtir, comentar, seguir ou compartilhar seu conteúdo, aparece aqui.</div></div>';
+      return;
+    }
+    const unreadCount = notifs.filter(n=>!n.lida).length;
+    np.innerHTML=`<div style="padding:10px 14px;font-size:11px;font-weight:700;color:rgba(59,130,246,.8);display:flex;justify-content:space-between;align-items:center;letter-spacing:.4px;text-transform:uppercase">${unreadCount?unreadCount+' nova'+(unreadCount>1?'s':''):'Notificações'}${unreadCount?'<button onclick="marcarNotifsLidas()" style="background:none;border:none;color:rgba(150,190,230,.6);font-size:10px;cursor:pointer;text-transform:none;letter-spacing:0">Marcar lidas</button>':''}</div>`+
+      notifs.slice(0,30).map(n=>{
+        const icon={like:'❤️',comment:'💬',follow:'👥',save:'🔖',share:'🔗',verificacao:'🏅',milestone:'🎉'}[n.tipo]||'🔔';
+        const opacity = n.lida ? '.6' : '1';
+        const bg = n.lida ? 'transparent' : 'rgba(59,130,246,.04)';
+        return`<div style="padding:10px 14px;font-size:13px;color:#c8d6e5;border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:10px;align-items:center;opacity:${opacity};background:${bg}"><span style="font-size:18px;flex-shrink:0">${icon}</span><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;color:#fff">${esc(n.titulo||'')}</div>${n.mensagem?'<div style="font-size:12px;color:rgba(150,190,230,.65);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(n.mensagem)+'</div>':''}</div><div style="font-size:10px;color:rgba(150,190,230,.4);flex-shrink:0">${ago(n.created_at)}</div></div>`;
       }).join('');
   }catch(e){}
 }
@@ -4638,22 +4665,88 @@ async function openHashtagFeed(tag){
 }
 
 async function openTrending(){
+  // Fecha overlays (perfil, video player, etc)
+  ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
   const feed=document.getElementById('feed');
-  feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13px;color:rgba(150,190,230,.5)">Trending</div></div>';
+  feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13px;color:rgba(150,190,230,.5)">Explorar</div></div>';
   try{
-    const r=await fetch('/api/blue-feed?action=trending-hashtags');
-    const d=await r.json();
-    const tags=d.hashtags||[];
-    feed.innerHTML='';
-    const hdr=document.createElement('div');
-    hdr.style.cssText='padding:60px 16px 16px';
-    let html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><button onclick="voltarParaFeed()" style="background:none;border:none;color:#3b82f6;font-size:18px;cursor:pointer">&#8592;</button><div style="font-size:18px;font-weight:800">Em alta</div></div>';
-    if(!tags.length)html+='<div style="color:rgba(150,190,230,.4);font-size:13px">Nenhuma hashtag em alta ainda.</div>';
-    else tags.forEach((t,i)=>{html+='<div onclick="openHashtagFeed(\''+t.nome+'\')" style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer"><div style="font-size:16px;font-weight:800;color:rgba(150,190,230,.3);width:28px">'+(i+1)+'</div><div><div style="font-weight:700;font-size:15px;color:#e8f4ff">#'+t.nome+(t.trending?' \uD83D\uDD25':'')+'</div><div style="font-size:11px;color:rgba(150,190,230,.4)">'+t.usos+' videos</div></div></div>';});
-    hdr.innerHTML=html;
-    feed.appendChild(hdr);
-  }catch(e){feed.innerHTML='<div style="padding:80px 20px;text-align:center;color:rgba(150,190,230,.4)">Erro ao carregar trending</div>';}
+    const [topR, tagsR] = await Promise.all([
+      fetch('/api/blue-feed?action=explorar&limit=30'),
+      fetch('/api/blue-feed?action=trending-hashtags'),
+    ]);
+    const topD = topR.ok ? await topR.json() : { videos: [] };
+    const tagsD = tagsR.ok ? await tagsR.json() : { hashtags: [] };
+    const topVids = topD.videos || [];
+    const tags = (tagsD.hashtags || []).slice(0, 8);
+
+    feed.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:60px 14px 80px;overflow-y:auto;height:100dvh;-webkit-overflow-scrolling:touch';
+
+    let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:18px"><button onclick="voltarParaFeed()" style="background:none;border:none;color:#3b82f6;font-size:22px;cursor:pointer;padding:0">&#8592;</button><div style="font-size:22px;font-weight:800">Explorar</div></div>';
+
+    // Hashtags em alta (chips horizontais)
+    if (tags.length) {
+      html += '<div style="font-size:11px;color:rgba(150,190,230,.5);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin:14px 0 8px">🔥 Em alta</div>';
+      html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none">';
+      tags.forEach(t => {
+        html += `<button onclick="openHashtagFeed('${esc(t.nome)}')" style="flex-shrink:0;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#60a5fa;font-size:12px;font-weight:700;padding:7px 12px;border-radius:100px;cursor:pointer;font-family:inherit">#${esc(t.nome)} <span style="opacity:.6">${fmt(t.usos||0)}</span></button>`;
+      });
+      html += '</div>';
+    }
+
+    // Grid de top videos por views
+    html += '<div style="font-size:11px;color:rgba(150,190,230,.5);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin:18px 0 10px">🏆 Mais vistos</div>';
+    if (!topVids.length) {
+      html += '<div style="padding:40px 20px;text-align:center;color:rgba(150,190,230,.4);font-size:13px">Nenhum vídeo ainda. Volte depois!</div>';
+    } else {
+      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">';
+      topVids.forEach((v, i) => {
+        const thumb = v.thumbnail_url || '';
+        const views = fmt(v.views || 0);
+        const isTop3 = i < 3;
+        const rankColor = isTop3 ? '#fbbf24' : 'rgba(255,255,255,.85)';
+        html += `
+          <div onclick="abrirVideoExplorar('${esc(v.id)}','${esc(v.user_id||'')}')" style="position:relative;aspect-ratio:9/16;background:#0a0a0a;border-radius:8px;overflow:hidden;cursor:pointer">
+            ${thumb ? `<img src="${esc(thumb)}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.style.display='none'"/>` : ''}
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 50%)"></div>
+            <div style="position:absolute;top:5px;left:5px;background:rgba(0,0,0,.65);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;color:${rankColor}">#${i+1}</div>
+            <div style="position:absolute;bottom:5px;left:6px;font-size:11px;font-weight:700;color:#fff">▶ ${views}</div>
+          </div>`;
+      });
+      html += '</div>';
+    }
+
+    wrap.innerHTML = html;
+    feed.appendChild(wrap);
+  }catch(e){feed.innerHTML='<div style="padding:80px 20px;text-align:center;color:rgba(150,190,230,.4)">Erro ao carregar Explorar</div>';}
 }
+
+// Abre o video clicado no explorar — usa o pf-overlay (mesmo player do perfil)
+async function abrirVideoExplorar(videoId, userId){
+  if (!videoId) return;
+  // Busca o video pra alimentar o player
+  try {
+    const r = await fetch('/api/blue-feed?limit=1&video_id=' + encodeURIComponent(videoId));
+    // Fallback: usa o video_id pra abrir via openProfileFeed com 1 item
+    let vid = null;
+    if (r.ok) {
+      const d = await r.json();
+      vid = (d.videos || []).find(x => x.id === videoId);
+    }
+    if (!vid && userId) {
+      // Busca via perfil
+      const pr = await fetch('/api/blue-profile?action=user-videos&user_id=' + encodeURIComponent(userId));
+      if (pr.ok) {
+        const pd = await pr.json();
+        vid = (pd.videos || []).find(x => x.id === videoId);
+      }
+    }
+    if (!vid) { toast('Vídeo indisponível'); return; }
+    openProfileFeed([vid], vid.id, vid.creator?.username || 'usuario');
+  } catch(e) { toast('Erro ao abrir vídeo'); }
+}
+window.abrirVideoExplorar = abrirVideoExplorar;
 
 // ── POPUPS FOMO ─────────────────────────────────────────────────────────────
 // Persistência: cada popup aparece 1 vez na VIDA do dispositivo (localStorage)
@@ -5243,8 +5336,10 @@ let _gpPolling = null;
 
 function openGrupos(){
   haptic('light');
+  if (!TOKEN) { if(typeof openAuthOnly==='function')openAuthOnly(); return; }
   btModalOpen('gruposPanel');
-  loadGruposMeus();
+  // Default agora eh "Mensagens" (DMs) — antes era Meus Grupos.
+  loadDMsLista();
 }
 function closeGrupos(){
   btModalClose('gruposPanel');
@@ -5253,9 +5348,48 @@ function closeGrupos(){
 function showGpTab(tab,btn){
   document.querySelectorAll('.gp-tab').forEach(t=>t.classList.remove('on'));
   if(btn)btn.classList.add('on');
-  if(tab==='meus') loadGruposMeus();
+  if(tab==='mensagens') loadDMsLista();
+  else if(tab==='meus') loadGruposMeus();
   else loadGruposDesc();
 }
+
+// Carrega lista de DMs (conversas privadas) dentro do gruposPanel
+async function loadDMsLista(){
+  const body=document.getElementById('gpBody');
+  if(!body)return;
+  if(!TOKEN){body.innerHTML='<div class="shop-empty">Entre para ver suas mensagens</div>';return;}
+  body.innerHTML='<div class="shop-empty">Carregando…</div>';
+  try{
+    // Reusa endpoint existente que loadConversations consome
+    const r = await fetch(`/api/blue-chat?action=conversations&token=${encodeURIComponent(TOKEN)}`);
+    if(!r.ok){body.innerHTML='<div class="shop-empty">Erro ao carregar</div>';return;}
+    const d = await r.json();
+    const convs = d.conversations || d.conversas || [];
+    if(!convs.length){
+      body.innerHTML='<div style="padding:48px 20px;text-align:center;color:rgba(150,190,230,.4)"><div style="font-size:44px;margin-bottom:10px">💬</div><div style="font-size:14px;font-weight:600;margin-bottom:4px">Sem mensagens ainda</div><div style="font-size:12px;color:rgba(150,190,230,.3)">Abra o perfil de alguém e clique em 💬 pra começar.</div></div>';
+      return;
+    }
+    body.innerHTML = convs.map(c => {
+      const u = c.other_user || {};
+      const init = (u.display_name || u.username || '?').charAt(0).toUpperCase();
+      const av = u.avatar_url
+        ? `<img src="${esc(u.avatar_url)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover"/>`
+        : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800">${esc(init)}</div>`;
+      const last = c.last_message || c.ultima_mensagem || '';
+      const unread = c.unread || c.nao_lidas || 0;
+      return `
+        <div onclick="closeGrupos();setTimeout(()=>openChatWithUser('${esc(u.user_id)}'),200)" style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background='transparent'">
+          ${av}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.display_name || u.username || '—')}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(last)}</div>
+          </div>
+          ${unread>0 ? `<div style="background:#3b82f6;color:#fff;font-size:11px;font-weight:700;border-radius:50%;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;padding:0 6px">${unread}</div>` : ''}
+        </div>`;
+    }).join('');
+  }catch(e){body.innerHTML='<div class="shop-empty">Erro ao carregar mensagens</div>';}
+}
+window.loadDMsLista = loadDMsLista;
 async function loadGruposMeus(){
   const body=document.getElementById('gpBody');
   if(!body)return;

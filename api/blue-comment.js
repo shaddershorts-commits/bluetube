@@ -105,17 +105,34 @@ module.exports = async function handler(req, res) {
           const vd = await vr.json();
           const ownerId = vd?.[0]?.user_id;
           if (ownerId && ownerId !== userId) {
-            // Get commenter username
             const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
             const username = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
+            const titulo = 'Novo comentário';
+            const mensagem = `@${username} comentou: "${cleanText.slice(0, 60)}${cleanText.length > 60 ? '…' : ''}"`;
+            // Tabela legacy (blue_notifications) — mantida por compatibilidade
             fetch(`${SU}/rest/v1/blue_notifications`, {
               method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
               body: JSON.stringify({
                 user_id: ownerId, type: 'comment', from_user_id: userId, video_id,
-                message: `@${username} comentou: "${cleanText.slice(0, 60)}${cleanText.length > 60 ? '…' : ''}"`,
-                read: false
+                message: mensagem, read: false
               })
             }).catch(() => {});
+            // Tabela ativa do feed da inbox (blue_notificacoes) — usado por blue-interact action=notificacoes
+            fetch(`${SU}/rest/v1/blue_notificacoes`, {
+              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+              body: JSON.stringify({
+                user_id: ownerId, tipo: 'comment', titulo, mensagem,
+                dados: { from_user_id: userId, video_id, comment_id: comment?.id || null },
+              })
+            }).catch(() => {});
+            // Push mobile via Expo (chega no celular)
+            try {
+              const { sendPushToUser } = require('./_helpers/push.js');
+              sendPushToUser(ownerId, {
+                title: titulo, body: mensagem,
+                data: { tipo: 'comment', from_user_id: userId, video_id, url: '/blue' },
+              }).catch(() => {});
+            } catch(e) {}
           }
         }
       } catch(e) {}

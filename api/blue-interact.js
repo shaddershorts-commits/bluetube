@@ -155,44 +155,24 @@ module.exports = async function handler(req, res) {
         : 0;
     } else if (type === 'like') {
       patch.likes = Math.max(0, (v.likes || 0) + 1);
-      // Notify video owner
-      if (user_id && v.user_id && v.user_id !== user_id) {
-        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
-          .then(r => r.ok ? r.json() : []).then(p => {
-            const uname = p?.[0]?.username || 'alguém';
-            fetch(`${SU}/rest/v1/blue_notificacoes`, {
-              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-              body: JSON.stringify({ user_id: v.user_id, tipo: 'like', titulo: 'Nova curtida', mensagem: `@${uname} curtiu seu vídeo`, dados: { from_user_id: user_id, video_id } })
-            }).catch(() => {});
-          }).catch(() => {});
-      }
+      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+        tipo: 'like', titulo: 'Nova curtida',
+        msgFn: (uname) => `@${uname} curtiu seu vídeo`,
+      });
     } else if (type === 'unlike') { patch.likes = Math.max(0, (v.likes || 0) - 1);
     } else if (type === 'save') {
       patch.saves = Math.max(0, (v.saves || 0) + 1);
-      // Notifica o dono do video sobre o save
-      if (user_id && v.user_id && v.user_id !== user_id) {
-        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
-          .then(r => r.ok ? r.json() : []).then(p => {
-            const uname = p?.[0]?.username || 'alguém';
-            fetch(`${SU}/rest/v1/blue_notificacoes`, {
-              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-              body: JSON.stringify({ user_id: v.user_id, tipo: 'save', titulo: 'Vídeo salvo', mensagem: `@${uname} salvou seu vídeo`, dados: { from_user_id: user_id, video_id } })
-            }).catch(() => {});
-          }).catch(() => {});
-      }
+      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+        tipo: 'save', titulo: 'Vídeo salvo',
+        msgFn: (uname) => `@${uname} salvou seu vídeo`,
+      });
     } else if (type === 'unsave') { patch.saves = Math.max(0, (v.saves || 0) - 1);
     } else if (type === 'share') {
-      // Nao tem coluna shares no schema atual — apenas notifica o dono.
-      if (user_id && v.user_id && v.user_id !== user_id) {
-        fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user_id}&select=username`, { headers: h })
-          .then(r => r.ok ? r.json() : []).then(p => {
-            const uname = p?.[0]?.username || 'alguém';
-            fetch(`${SU}/rest/v1/blue_notificacoes`, {
-              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-              body: JSON.stringify({ user_id: v.user_id, tipo: 'share', titulo: 'Vídeo compartilhado', mensagem: `@${uname} compartilhou seu vídeo`, dados: { from_user_id: user_id, video_id } })
-            }).catch(() => {});
-          }).catch(() => {});
-      }
+      // Nao atualiza contador (sem coluna shares) — apenas notifica.
+      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+        tipo: 'share', titulo: 'Vídeo compartilhado',
+        msgFn: (uname) => `@${uname} compartilhou seu vídeo`,
+      });
     }
 
     // Recalcula score (0-100)
@@ -221,3 +201,31 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: false });
   }
 };
+
+// Helper: cria notif no banco + dispara push pro celular do dono do video.
+// Fail-soft em todas as etapas — nunca quebra o flow principal de interacao.
+function _notifyOwner(SU, h, fromUserId, ownerId, videoId, opts) {
+  if (!fromUserId || !ownerId || ownerId === fromUserId) return;
+  const { tipo, titulo, msgFn } = opts || {};
+  fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${fromUserId}&select=username`, { headers: h })
+    .then(r => r.ok ? r.json() : []).then(p => {
+      const uname = p?.[0]?.username || 'alguém';
+      const mensagem = msgFn ? msgFn(uname) : `@${uname} interagiu com seu vídeo`;
+      // 1) Notif persistente no banco (aparece na inbox)
+      fetch(`${SU}/rest/v1/blue_notificacoes`, {
+        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          user_id: ownerId, tipo, titulo, mensagem,
+          dados: { from_user_id: fromUserId, video_id: videoId },
+        }),
+      }).catch(() => {});
+      // 2) Push mobile via Expo (chega no celular)
+      try {
+        const { sendPushToUser } = require('./_helpers/push.js');
+        sendPushToUser(ownerId, {
+          title: titulo, body: mensagem,
+          data: { tipo, from_user_id: fromUserId, video_id: videoId, url: '/blue' },
+        }).catch(() => {});
+      } catch(e) {}
+    }).catch(() => {});
+}
