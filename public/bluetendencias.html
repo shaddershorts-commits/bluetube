@@ -1794,12 +1794,15 @@ async function iniciarDissecacao() {
 }
 
 async function disparaAnaliseAsync() {
+  console.log('[bluetendencias] disparaAnaliseAsync inicio — aguardando 3 perguntas');
   // Espera usuário responder todas as 3 perguntas
   await new Promise(resolve => {
     const check = setInterval(() => {
       if (state.qIdx >= state.perguntasBlublu.length) { clearInterval(check); resolve(); }
     }, 300);
   });
+  console.log('[bluetendencias] 3 perguntas respondidas, chamando gerar-analise-final. video:', state.video.youtube_id, 'sessao:', state.sessaoId);
+  const t0 = Date.now();
   // Agora chama backend — timeout generoso de 90s
   try {
     const controller = new AbortController();
@@ -1809,10 +1812,19 @@ async function disparaAnaliseAsync() {
       body: JSON.stringify({ action: 'gerar-analise-final', token, video_id: state.video.youtube_id, respostas: state.respostas, sessao_id: state.sessaoId }),
       signal: controller.signal,
     }).finally(() => clearTimeout(timer));
+    const latencia = Date.now() - t0;
+    console.log('[bluetendencias] gerar-analise-final HTTP', r.status, 'em', latencia + 'ms');
     const d = await r.json();
+    console.log('[bluetendencias] resposta tem: ok=' + r.ok, 'atos=' + !!d.atos, 'aviso=' + (d.aviso || 'nenhum'), 'error=' + (d.error || 'nenhum'), 'fallback=' + !!d.fallback);
     if (d.aviso) toast(d.aviso);
     if (state.bgInt) clearInterval(state.bgInt);
-    if (!r.ok || !d.atos) { toast(d.error || 'Blublu não conseguiu gerar.'); setTimeout(() => irCena('4'), 1500); return; }
+    if (!r.ok || !d.atos) {
+      const msg = d.error || d.mensagem || 'Blublu não conseguiu gerar.';
+      console.error('[bluetendencias] gerar-analise-final falhou — body:', JSON.stringify(d).slice(0, 500));
+      toast(msg);
+      setTimeout(() => irCena('4'), 2500);
+      return;
+    }
     state.atosData = { abertura_blublu: d.abertura_blublu, ...d.atos };
     state.quizData = d.quiz;
     state.analiseId = d.analise_id;
@@ -1822,7 +1834,14 @@ async function disparaAnaliseAsync() {
     await sleep(1500);
     state.atoIdx = 0;
     irCena('8');
-  } catch (e) { if (state.bgInt) clearInterval(state.bgInt); toast('Erro'); setTimeout(() => irCena('4'), 1500); }
+  } catch (e) {
+    if (state.bgInt) clearInterval(state.bgInt);
+    const latencia = Date.now() - t0;
+    const msg = e.name === 'AbortError' ? `Blublu demorou mais de 90s (timeout). Tenta de novo.` : ('Erro: ' + (e.message || 'conexão'));
+    console.error('[bluetendencias] gerar-analise-final exception apos', latencia + 'ms:', e.name, e.message);
+    toast(msg);
+    setTimeout(() => irCena('4'), 2500);
+  }
 }
 
 async function mostrarPergunta() {
