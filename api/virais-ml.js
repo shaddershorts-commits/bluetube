@@ -7,13 +7,15 @@
 // Claude Haiku eh usado apenas opcionalmente pra nomear clusters.
 
 const CONFIG = {
-  BATCH_SIZE_VELOCIDADES: 500,
+  // Tamanhos conservadores apos outage por saturacao de Disk IO.
+  // Cada cron processa em mini-batches paralelos com sleep entre eles.
+  BATCH_SIZE_VELOCIDADES: 500,   // total processado por invocacao
   BATCH_SIZE_SCORES: 1000,
   BATCH_SIZE_TITULOS: 500,
-  CLUSTER_SAMPLE_SIZE: 1500,       // top N virais pra clusterizar
-  K_FORMATOS: 8,                    // nro de clusters K-means formatos
-  MIN_CLUSTER_SIZE: 5,              // minimo de videos por cluster tema
-  EMERGENTE_CRESCIMENTO_PCT: 200,   // % crescimento pra flagar emergente
+  CLUSTER_SAMPLE_SIZE: 1500,
+  K_FORMATOS: 8,
+  MIN_CLUSTER_SIZE: 5,
+  EMERGENTE_CRESCIMENTO_PCT: 200,
   EMERGENTE_MAX_VIDEOS: 30,
   SATURANDO_MIN_VIDEOS: 100,
   PESOS_DEFAULT: {
@@ -22,7 +24,72 @@ const CONFIG = {
     ratio_comment: 0.20,
     aceleracao: 0.15,
   },
+  // THROTTLING — evita saturar Disk IO do Supabase
+  MINI_BATCH: 25,              // PATCHes em paralelo por "onda"
+  MINI_BATCH_DELAY_MS: 250,    // pausa entre ondas
+  TIMEOUT_PREVENTIVO_MS: 50000, // abaixo dos 60s da Vercel
+  MUTEX_TIMEOUT_MS: 55000,      // tempo maximo de bloqueio
 };
+
+// ─── Mutex leve via ml_saude. Evita duas invocacoes paralelas do mesmo cron
+// saturarem o banco.
+async function acquireLock(ctx, componente) {
+  try {
+    // Ja tem execucao recente em andamento?
+    const recente = new Date(Date.now() - CONFIG.MUTEX_TIMEOUT_MS).toISOString();
+    const r = await fetch(
+      `${ctx.SU}/rest/v1/ml_saude?componente=eq.${componente}&status=eq.em_andamento&created_at=gte.${recente}&select=id&limit=1`,
+      { headers: ctx.h, signal: AbortSignal.timeout(3000) }
+    );
+    if (r.ok) {
+      const rows = await r.json();
+      if (rows.length > 0) return null; // ja ta rodando
+    }
+    // Marca como em_andamento
+    const insR = await fetch(`${ctx.SU}/rest/v1/ml_saude`, {
+      method: 'POST', headers: { ...ctx.h, Prefer: 'return=representation' },
+      body: JSON.stringify({ componente, status: 'em_andamento', ultima_execucao: new Date().toISOString() }),
+    });
+    if (!insR.ok) return null;
+    const [row] = await insR.json();
+    return row?.id || null;
+  } catch (e) { return null; }
+}
+
+async function releaseLock(ctx, lockId, status, meta = {}) {
+  if (!lockId) return;
+  try {
+    await fetch(`${ctx.SU}/rest/v1/ml_saude?id=eq.${lockId}`, {
+      method: 'PATCH', headers: ctx.h,
+      body: JSON.stringify({
+        status: status || 'ok',
+        duracao_ms: meta.duracao_ms || null,
+        registros_processados: meta.registros_processados || null,
+        erro: meta.erro || null,
+      }),
+    });
+  } catch (e) {}
+}
+
+// Processa uma lista em mini-batches paralelos com sleep entre ondas
+async function processarEmOndas(items, fn, onProgress) {
+  const batches = [];
+  for (let i = 0; i < items.length; i += CONFIG.MINI_BATCH) {
+    batches.push(items.slice(i, i + CONFIG.MINI_BATCH));
+  }
+  let processados = 0;
+  const inicio = Date.now();
+  for (const batch of batches) {
+    if (Date.now() - inicio > CONFIG.TIMEOUT_PREVENTIVO_MS) break;
+    await Promise.all(batch.map(fn));
+    processados += batch.length;
+    if (onProgress) onProgress(processados, items.length);
+    if (batches.indexOf(batch) < batches.length - 1) {
+      await new Promise(r => setTimeout(r, CONFIG.MINI_BATCH_DELAY_MS));
+    }
+  }
+  return { processados, parou_por_timeout: processados < items.length };
+}
 
 // Stop words PT-BR + EN
 const STOP_WORDS = new Set([
@@ -101,79 +168,76 @@ module.exports = async function handler(req, res) {
 // Calcula velocidade_views por intervalo + aceleracao + ratios + dia/hora
 // ═════════════════════════════════════════════════════════════════════════════
 async function enriquecerVelocidades(ctx, req) {
-  const inicio = Date.now();
-  const TIMEOUT_MS = 25000;
-  const limit = Math.min(parseInt(req.query.limit || CONFIG.BATCH_SIZE_VELOCIDADES), 2000);
-  const r = await fetch(
-    `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=coletado_em.desc&limit=${limit}&select=id,views,likes,comentarios,publicado_em,coletado_em,velocidade_views_24h`,
-    { headers: ctx.h }
-  );
-  if (!r.ok) {
-    await registrarSaudeSafe(ctx, 'enriquecimento', 'falha', { erro: `read ${r.status}` });
-    throw new Error(`read failed: ${r.status}`);
+  const lockId = await acquireLock(ctx, 'enriquecimento');
+  if (!lockId) {
+    return { ok: true, action: 'enriquecer-velocidades', skipped: 'ja_em_andamento' };
   }
-  const videos = await r.json();
+  const inicio = Date.now();
+  const limit = Math.min(parseInt(req.query.limit || CONFIG.BATCH_SIZE_VELOCIDADES), 2000);
 
-  let atualizados = 0, parou = false;
-  for (const v of videos) {
-    if (Date.now() - inicio > TIMEOUT_MS) {
-      parou = true;
-      await registrarSaudeSafe(ctx, 'enriquecimento', 'parcial', {
-        duracao_ms: Date.now() - inicio,
-        registros_processados: atualizados,
-        extras: { total: videos.length, parou_em: atualizados },
-      });
-      break;
+  let videos = [];
+  try {
+    const r = await fetch(
+      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=coletado_em.desc&limit=${limit}&select=id,views,likes,comentarios,publicado_em,coletado_em,velocidade_views_24h`,
+      { headers: ctx.h, signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) {
+      await releaseLock(ctx, lockId, 'falha', { erro: `read ${r.status}` });
+      throw new Error(`read failed: ${r.status}`);
     }
-    if (!v.publicado_em) continue;
+    videos = await r.json();
+  } catch (e) {
+    await releaseLock(ctx, lockId, 'falha', { erro: e.message });
+    throw e;
+  }
+
+  // Preprocessa (calculos puros em JS — zero IO)
+  const atualizacoes = videos.map(v => {
+    if (!v.publicado_em) return null;
     const publicado = new Date(v.publicado_em);
     const agora = new Date();
     const horasDesdePost = Math.max(1, (agora - publicado) / 3600000);
-
     const views = parseFloat(v.views) || 0;
     const likes = parseFloat(v.likes) || 0;
     const comms = parseFloat(v.comentarios) || 0;
-
-    // Velocidades por janela — proxy: views/hora vezes janela
     const viewsPorHora = views / horasDesdePost;
-    const vel6h  = parseFloat((viewsPorHora * 6).toFixed(2));
-    const vel24h = parseFloat((viewsPorHora * 24).toFixed(2));
-    const vel48h = parseFloat((viewsPorHora * 48).toFixed(2));
+    return {
+      id: v.id,
+      patch: {
+        velocidade_views_6h: parseFloat((viewsPorHora * 6).toFixed(2)),
+        velocidade_views_24h: parseFloat((viewsPorHora * 24).toFixed(2)),
+        velocidade_views_48h: parseFloat((viewsPorHora * 48).toFixed(2)),
+        aceleracao: parseFloat((views / (horasDesdePost * horasDesdePost) / 1000).toFixed(4)),
+        ratio_like_view: views > 0 ? parseFloat((likes / views).toFixed(6)) : 0,
+        ratio_comment_view: views > 0 ? parseFloat((comms / views).toFixed(6)) : 0,
+        dia_da_semana_post: publicado.getUTCDay(),
+        hora_do_dia_post: publicado.getUTCHours(),
+      },
+    };
+  }).filter(Boolean);
 
-    // Aceleracao: quanto mais recente o post, mais peso pro fato de ter crescido rapido
-    // Proxy: views/horas². Normaliza dividindo por 1000 pra escala amigavel.
-    const aceleracao = parseFloat((views / (horasDesdePost * horasDesdePost) / 1000).toFixed(4));
-
-    const ratioLike = views > 0 ? parseFloat((likes / views).toFixed(6)) : 0;
-    const ratioComm = views > 0 ? parseFloat((comms / views).toFixed(6)) : 0;
-
-    const diaSemana = publicado.getUTCDay(); // 0-6
-    const horaDia = publicado.getUTCHours();
-
-    await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${v.id}`, {
-      method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
-      body: JSON.stringify({
-        velocidade_views_6h: vel6h,
-        velocidade_views_24h: vel24h,
-        velocidade_views_48h: vel48h,
-        aceleracao,
-        ratio_like_view: ratioLike,
-        ratio_comment_view: ratioComm,
-        dia_da_semana_post: diaSemana,
-        hora_do_dia_post: horaDia,
-      }),
+  // Usa processarEmOndas — mini-batches paralelos com sleep entre ondas
+  const result = await processarEmOndas(atualizacoes, async (item) => {
+    await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${item.id}`, {
+      method: 'PATCH',
+      headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify(item.patch),
     });
-    atualizados++;
-  }
+  });
 
-  if (!parou) {
-    await registrarSaudeSafe(ctx, 'enriquecimento', 'ok', {
-      duracao_ms: Date.now() - inicio,
-      registros_processados: atualizados,
-    });
-  }
-  return { ok: true, action: 'enriquecer-velocidades', processados: videos.length, atualizados, parou_por_timeout: parou };
+  await releaseLock(ctx, lockId, result.parou_por_timeout ? 'parcial' : 'ok', {
+    duracao_ms: Date.now() - inicio,
+    registros_processados: result.processados,
+  });
+
+  return {
+    ok: true, action: 'enriquecer-velocidades',
+    processados: result.processados, total: atualizacoes.length,
+    parou_por_timeout: result.parou_por_timeout,
+    duracao_ms: Date.now() - inicio,
+  };
 }
+
 
 async function obterPesosAtivos(ctx) {
   try {
@@ -235,27 +299,34 @@ async function calcularScores(ctx, req) {
     const viewsSorted = lista.map(v => parseFloat(v.views) || 0).sort((a, b) => a - b);
     const p90 = viewsSorted[Math.floor(viewsSorted.length * 0.9)] || 0;
 
-    for (const v of lista) {
+    // Preprocessa (puro JS)
+    const updates = lista.map(v => {
       const normVel  = Math.min(1, (parseFloat(v.velocidade_views_24h) || 0) / max.vel);
       const normLike = Math.min(1, (parseFloat(v.ratio_like_view) || 0) / max.like);
       const normComm = Math.min(1, (parseFloat(v.ratio_comment_view) || 0) / max.comm);
       const normAccel= Math.min(1, (parseFloat(v.aceleracao) || 0) / max.accel);
-
       const score = 100 * (
         normVel * pesos.velocidade_24h +
         normLike * pesos.ratio_like +
         normComm * pesos.ratio_comment +
         normAccel * pesos.aceleracao
       );
-      const scoreRounded = parseFloat(score.toFixed(2));
-      const viralizou = (parseFloat(v.views) || 0) >= p90 && p90 > 0;
-
-      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${v.id}`, {
+      return {
+        id: v.id,
+        patch: {
+          score_viralidade: parseFloat(score.toFixed(2)),
+          viralizou: (parseFloat(v.views) || 0) >= p90 && p90 > 0,
+        },
+      };
+    });
+    // Ondas throttladas
+    const result = await processarEmOndas(updates, async (item) => {
+      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${item.id}`, {
         method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
-        body: JSON.stringify({ score_viralidade: scoreRounded, viralizou }),
+        body: JSON.stringify(item.patch),
       });
-      atualizados++;
-    }
+    });
+    atualizados += result.processados;
   }
 
   return { ok: true, action: 'calcular-scores', nichos_processados: porNicho.size, atualizados };
@@ -287,16 +358,14 @@ async function analisarTitulos(ctx, req) {
 }
 
 async function processTitulos(ctx, videos) {
-  let atualizados = 0;
-  for (const v of videos) {
-    const feats = extractTituloFeatures(v.titulo);
-    await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${v.id}`, {
+  const updates = videos.map(v => ({ id: v.id, patch: { titulo_features: extractTituloFeatures(v.titulo) } }));
+  const result = await processarEmOndas(updates, async (item) => {
+    await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${item.id}`, {
       method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
-      body: JSON.stringify({ titulo_features: feats }),
+      body: JSON.stringify(item.patch),
     });
-    atualizados++;
-  }
-  return { ok: true, action: 'analisar-titulos', atualizados };
+  });
+  return { ok: true, action: 'analisar-titulos', atualizados: result.processados, parou_por_timeout: result.parou_por_timeout };
 }
 
 function extractTituloFeatures(titulo) {
@@ -424,13 +493,14 @@ async function clusterizarFormatos(ctx) {
     if (!cluster) continue;
     clustersCriados.push({ id: cluster.id, tamanho: membros.length });
 
-    // Atualiza videos com cluster_formato
-    for (const m of membros) {
-      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${m.id}`, {
+    // Atualiza videos com cluster_formato — throttlado
+    const updates = membros.map(m => ({ id: m.id }));
+    await processarEmOndas(updates, async (item) => {
+      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${item.id}`, {
         method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
         body: JSON.stringify({ cluster_formato: cluster.id }),
       });
-    }
+    });
   }
 
   return { ok: true, action: 'clusterizar-formatos', clusters_criados: clustersCriados.length, detalhes: clustersCriados };
@@ -489,12 +559,13 @@ async function clusterizarTemas(ctx) {
     if (!cluster) continue;
     criados.push({ id: cluster.id, tema, tamanho: membros.length });
 
-    for (const m of membros) {
-      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${m.id}`, {
+    const updates = membros.map(m => ({ id: m.id }));
+    await processarEmOndas(updates, async (item) => {
+      await fetch(`${ctx.SU}/rest/v1/virais_banco?id=eq.${item.id}`, {
         method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
         body: JSON.stringify({ cluster_tema: cluster.id }),
       });
-    }
+    });
   }
 
   return { ok: true, action: 'clusterizar-temas', clusters_criados: criados.length, temas: criados.map(c => c.tema).slice(0, 10) };

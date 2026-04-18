@@ -153,12 +153,28 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/virais-ml?action=enriquecer-velocidades",
+      "schedule": "0 */3 * * *"
+    },
+    {
       "path": "/api/virais-ml?action=pipeline-diario",
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/virais-ml?action=clusterizar-temas",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/virais-ml?action=detectar-emergentes-ml",
+      "schedule": "0 */4 * * *"
+    },
+    {
       "path": "/api/virais-ml?action=validar-predicoes",
       "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/virais-ml?action=verificar-alertas",
+      "schedule": "*/30 * * * *"
     }
   ],
   "headers": [
