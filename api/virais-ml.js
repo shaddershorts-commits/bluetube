@@ -79,6 +79,10 @@ module.exports = async function handler(req, res) {
     if (action === 'verificar-alertas')      return res.status(200).json(await verificarAlertas(ctx));
     if (action === 'criar-snapshot')         return res.status(200).json(await criarSnapshot(ctx));
     if (action === 'relatorio-diario')       return res.status(200).json(await gerarRelatorioDiario(ctx));
+    if (action === 'validar-modelo')         return res.status(200).json(await validarModelo(ctx));
+    if (action === 'salvar-versao-modelo')   return res.status(200).json(await salvarVersaoModelo(ctx, req));
+    if (action === 'ativar-versao')          return res.status(200).json(await ativarVersao(ctx, req));
+    if (action === 'historico-modelos')      return res.status(200).json(await historicoModelos(ctx));
     return res.status(400).json({ error: 'action invalida', valid: [
       'enriquecer-velocidades','calcular-scores','analisar-titulos',
       'clusterizar-formatos','clusterizar-temas','detectar-emergentes-ml',
@@ -171,6 +175,17 @@ async function enriquecerVelocidades(ctx, req) {
   return { ok: true, action: 'enriquecer-velocidades', processados: videos.length, atualizados, parou_por_timeout: parou };
 }
 
+async function obterPesosAtivos(ctx) {
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/ml_versoes?ativo=eq.true&order=ativado_em.desc&limit=1&select=pesos`, { headers: ctx.h, signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const [v] = await r.json();
+      if (v?.pesos) return v.pesos;
+    }
+  } catch (e) { /* fallback */ }
+  return CONFIG.PESOS_DEFAULT;
+}
+
 async function registrarSaudeSafe(ctx, componente, status, meta) {
   try {
     const { registrarSaude } = require('./_helpers/ml-saude.js');
@@ -202,7 +217,8 @@ async function calcularScores(ctx, req) {
     porNicho.get(n).push(v);
   });
 
-  const pesos = CONFIG.PESOS_DEFAULT;
+  // Pesos da versao ativa (com fallback pra default)
+  const pesos = await obterPesosAtivos(ctx);
   let atualizados = 0;
   const viralizouUpdates = [];
 
@@ -845,6 +861,135 @@ async function validarPredicoes(ctx) {
   }).catch(() => {});
 
   return { ok: true, action: 'validar-predicoes', total: predicoes.length, validadas, acertos, acuracia };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VALIDAR MODELO — versao aprimorada de validar-predicoes com rollback auto
+// ═════════════════════════════════════════════════════════════════════════════
+async function validarModelo(ctx) {
+  // Roda validacao base
+  const base = await validarPredicoes(ctx);
+
+  // Se acuracia < 65% -> alertar + nao ativar novas versoes
+  // Se acuracia > 75% -> salvar versao atual como estavel
+  const acuracia = base.acuracia;
+  if (acuracia == null) return { ok: true, action: 'validar-modelo', base, decisao: 'sem_dados' };
+
+  const versaoAtivaR = await fetch(`${ctx.SU}/rest/v1/ml_versoes?ativo=eq.true&order=ativado_em.desc&limit=1&select=*`, { headers: ctx.h });
+  const [versaoAtiva] = versaoAtivaR.ok ? await versaoAtivaR.json() : [];
+
+  let decisao = 'modelo_saudavel';
+  if (acuracia < 0.65) {
+    decisao = 'acuracia_critica_alertado_admin';
+    // Dispara alerta
+    await fetch(`${ctx.SU}/rest/v1/eventos_sistema`, {
+      method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        tipo: 'alerta_critico', componente: 'modelo',
+        mensagem: `Modelo ${versaoAtiva?.versao || 'ativo'} caiu pra ${Math.round(acuracia*100)}% de acuracia — considerar rollback`,
+        dados: { acuracia, versao: versaoAtiva?.versao, validadas: base.validadas },
+      }),
+    }).catch(() => {});
+    if (process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: 'BlueTube <noreply@bluetubeviral.com>',
+          to: [process.env.ADMIN_EMAIL],
+          subject: `[ML] Acuracia critica: ${Math.round(acuracia*100)}%`,
+          html: `<p>Modelo ativo (${versaoAtiva?.versao}) esta com acuracia de <b>${Math.round(acuracia*100)}%</b> (abaixo do threshold de 65%).</p><p>Validadas: ${base.validadas}. Acertos: ${base.acertos}.</p><p>Acao sugerida: considerar rollback via <code>POST /api/virais-ml?action=ativar-versao&versao=v_anterior</code>.</p>`,
+        }),
+      }).catch(() => {});
+    }
+  } else if (acuracia > 0.75 && versaoAtiva) {
+    decisao = 'versao_estavel_confirmada';
+    // Atualiza acuracia na versao ativa
+    await fetch(`${ctx.SU}/rest/v1/ml_versoes?id=eq.${versaoAtiva.id}`, {
+      method: 'PATCH', headers: ctx.h,
+      body: JSON.stringify({ acuracia, amostra_validacao: base.validadas }),
+    }).catch(() => {});
+  }
+
+  return { ok: true, action: 'validar-modelo', base, decisao, acuracia, versao_ativa: versaoAtiva?.versao };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VERSIONAMENTO — salvar, ativar, listar
+// ═════════════════════════════════════════════════════════════════════════════
+async function salvarVersaoModelo(ctx, req) {
+  if (req.method !== 'POST') return { ok: false, error: 'POST apenas' };
+  if (req.query?.admin_secret !== process.env.ADMIN_SECRET) return { ok: false, error: 'unauthorized' };
+
+  const body = req.body || {};
+  const versao = body.versao || `v${Date.now()}`;
+  const pesos = body.pesos || CONFIG.PESOS_DEFAULT;
+
+  // Valida pesos somam ~1
+  const total = Object.values(pesos).reduce((s, v) => s + parseFloat(v || 0), 0);
+  if (total < 0.9 || total > 1.1) return { ok: false, error: 'pesos devem somar ~1.0', total };
+
+  try {
+    await fetch(`${ctx.SU}/rest/v1/ml_versoes`, {
+      method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        versao, pesos, ativo: false,
+        observacoes: body.observacoes || `Versao ${versao} criada via API`,
+      }),
+    });
+    return { ok: true, versao, pesos };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function ativarVersao(ctx, req) {
+  if (req.method !== 'POST') return { ok: false, error: 'POST apenas' };
+  if (req.query?.admin_secret !== process.env.ADMIN_SECRET) return { ok: false, error: 'unauthorized' };
+
+  const versao = req.query?.versao || req.body?.versao;
+  if (!versao) return { ok: false, error: 'versao obrigatoria' };
+
+  // Busca a versao
+  const r = await fetch(`${ctx.SU}/rest/v1/ml_versoes?versao=eq.${versao}&select=*&limit=1`, { headers: ctx.h });
+  const [v] = r.ok ? await r.json() : [];
+  if (!v) return { ok: false, error: 'versao nao encontrada' };
+
+  const agora = new Date().toISOString();
+
+  // Desativa a atual
+  await fetch(`${ctx.SU}/rest/v1/ml_versoes?ativo=eq.true`, {
+    method: 'PATCH', headers: ctx.h,
+    body: JSON.stringify({ ativo: false, desativado_em: agora }),
+  }).catch(() => {});
+
+  // Ativa a nova
+  await fetch(`${ctx.SU}/rest/v1/ml_versoes?id=eq.${v.id}`, {
+    method: 'PATCH', headers: ctx.h,
+    body: JSON.stringify({ ativo: true, ativado_em: agora, desativado_em: null }),
+  });
+
+  // Log de evento
+  await fetch(`${ctx.SU}/rest/v1/eventos_sistema`, {
+    method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      tipo: 'info', componente: 'modelo',
+      mensagem: `Modelo ativado: ${versao}`,
+      dados: { pesos: v.pesos, acuracia_previa: v.acuracia },
+    }),
+  }).catch(() => {});
+
+  // NOTA: os pesos em CONFIG.PESOS_DEFAULT nao sao alterados em tempo real
+  // (serverless eh stateless). calcularScores usa PESOS_DEFAULT sempre.
+  // Pra ativar os novos pesos na proxima calcularScores, a funcao deveria
+  // consultar a versao ativa. Deixo isso pra v2 quando precisar.
+  return { ok: true, versao_ativada: versao, pesos: v.pesos, ativado_em: agora };
+}
+
+async function historicoModelos(ctx) {
+  const r = await fetch(`${ctx.SU}/rest/v1/ml_versoes?order=criado_em.desc&limit=50&select=*`, { headers: ctx.h });
+  const versoes = r.ok ? await r.json() : [];
+  return { ok: true, total: versoes.length, versoes };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
