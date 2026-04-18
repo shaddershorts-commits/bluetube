@@ -175,6 +175,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 
       <!-- Region -->
       <select class="filter-select" id="regionSelect" onchange="fetchVirals()">
+        <option value="">🌐 Todos os países</option>
         <option value="BR" selected>🇧🇷 Brasil</option>
         <option value="US">🇺🇸 EUA</option>
         <option value="ES">🇪🇸 Espanhol</option>
@@ -299,10 +300,21 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchVirals() {
   const btn = document.getElementById('fetchBtn');
   const icon = document.getElementById('fetchBtnIcon');
+  const region = document.getElementById('regionSelect').value;
+  const nichoSel = document.getElementById('nichoSelect')?.value || '';
+
+  // "Todos os paises" OU nicho selecionado = so mostra banco (zero cota YouTube API).
+  // Busca ativa precisa de regionCode especifico pra fazer sentido.
+  if (!region || nichoSel) {
+    lastResults = [];
+    carregarHistorico(1);
+    atualizarBadgeBanco();
+    return;
+  }
+
   btn.disabled = true;
   icon.innerHTML = '<span class="spinner"></span>';
 
-  const region = document.getElementById('regionSelect').value;
   const category = '';
   const q = '';
 
