@@ -80,18 +80,50 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 /* Foguete do Blublu passando ao fundo (inatividade) */
 /* z-index:1 fica acima da galaxia (0) mas ABAIXO do conteudo da cena (2) */
 .blu-rocket{position:fixed;top:12%;left:-220px;width:110px;height:110px;z-index:1;pointer-events:none;opacity:0;filter:drop-shadow(0 0 16px rgba(59,130,246,.55))}
-.blu-rocket.fly{animation:rocketFly 8s linear forwards}
-/* Trajetoria diagonal na area superior da tela — evita sobrepor o texto central */
-@keyframes rocketFly{
-  0%{opacity:0;top:18%;left:-220px;transform:rotate(-8deg) scale(.9)}
-  10%{opacity:.95}
-  50%{top:8%;left:50%;transform:rotate(-12deg) scale(1)}
-  90%{opacity:.95}
-  100%{opacity:0;top:-5%;left:110%;transform:rotate(-18deg) scale(.85)}
-}
 .blu-rocket img{width:100%;height:100%;object-fit:contain}
 .blu-rocket-balao{position:absolute;top:50%;right:-200px;transform:translateY(-50%);background:#fff;color:#0a1628;padding:8px 14px;border-radius:12px;font-family:var(--font);font-size:12px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.4);letter-spacing:.2px;max-width:200px;line-height:1.3}
 .blu-rocket-balao::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);border-top:7px solid transparent;border-bottom:7px solid transparent;border-right:8px solid #fff}
+
+/* Rota 1: superior esq -> superior dir */
+.blu-rocket.rota1{animation:rocket1 8s linear forwards}
+@keyframes rocket1{
+  0%{opacity:0;top:18%;left:-220px;transform:rotate(-8deg) scale(.9)}
+  10%{opacity:.95}50%{top:8%;left:50%;transform:rotate(-12deg) scale(1)}90%{opacity:.95}
+  100%{opacity:0;top:-5%;left:110%;transform:rotate(-18deg) scale(.85)}
+}
+/* Rota 2: inferior dir -> superior esq (espelhada, vai pra tras) */
+.blu-rocket.rota2{animation:rocket2 9s linear forwards}
+@keyframes rocket2{
+  0%{opacity:0;top:78%;left:110%;transform:rotate(195deg) scale(.85)}
+  10%{opacity:.95}50%{top:40%;left:50%;transform:rotate(200deg) scale(1)}90%{opacity:.95}
+  100%{opacity:0;top:10%;left:-15%;transform:rotate(210deg) scale(.9)}
+}
+/* Rota 3: inferior esq -> superior dir (diagonal ascendente) */
+.blu-rocket.rota3{animation:rocket3 10s linear forwards}
+@keyframes rocket3{
+  0%{opacity:0;top:85%;left:-15%;transform:rotate(-35deg) scale(.85)}
+  10%{opacity:.95}50%{top:45%;left:50%;transform:rotate(-40deg) scale(1)}90%{opacity:.95}
+  100%{opacity:0;top:5%;left:110%;transform:rotate(-45deg) scale(.9)}
+}
+/* Rota 4: direita -> esquerda (horizontal baixo) */
+.blu-rocket.rota4{animation:rocket4 7.5s linear forwards}
+@keyframes rocket4{
+  0%{opacity:0;top:70%;left:110%;transform:rotate(180deg) scale(.85)}
+  10%{opacity:.95}50%{top:72%;left:50%;transform:rotate(180deg) scale(1)}90%{opacity:.95}
+  100%{opacity:0;top:68%;left:-20%;transform:rotate(180deg) scale(.9)}
+}
+/* Rota 5: loop com curva (sobe e desce) */
+.blu-rocket.rota5{animation:rocket5 11s cubic-bezier(.45,.05,.55,.95) forwards}
+@keyframes rocket5{
+  0%{opacity:0;top:60%;left:-15%;transform:rotate(-20deg) scale(.8)}
+  10%{opacity:.95}
+  30%{top:20%;left:30%;transform:rotate(0deg) scale(1)}
+  50%{top:10%;left:55%;transform:rotate(30deg) scale(1.05)}
+  70%{top:30%;left:80%;transform:rotate(60deg) scale(1)}
+  90%{opacity:.95}
+  100%{opacity:0;top:60%;left:110%;transform:rotate(90deg) scale(.85)}
+}
+
 @media(max-width:720px){
   .blu-rocket{width:80px;height:80px}
   .blu-rocket-balao{font-size:10px;padding:6px 10px;right:-150px;max-width:140px}
@@ -812,6 +844,8 @@ function irCena(id) {
   const target = $('cena' + id);
   if (target) target.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Se saiu da cena 1, para o loop do foguete
+  if (id !== '1' && typeof pararFoguete === 'function') pararFoguete();
   // Logica especifica por cena
   if (id === '1') renderSaudacao();
   if (id === '2a') renderSalvas();
@@ -901,20 +935,53 @@ async function renderSaudacao() {
   } else qEl.innerHTML = `✨ <b>3</b> dissecações por 24h`;
 }
 
-// Foguete passa se usuario ficar mais de 15s na saudacao sem clicar
+// Foguete passa em LOOP de rotas diferentes se usuario ficar parado
+const FOGUETE_FALAS = [
+  'Demorou tanto que dei a volta no PlanetaBlue!',
+  'Ainda pensando? Eu já abasteci 2 vezes...',
+  'Tá dormindo aí? Olha eu aqui de novo!',
+  'Hora do show, criador. Bora decidir?',
+  'Passando só pra lembrar: o tempo tá passando.',
+  'De volta! Que tal a gente começar?',
+  'Oi, eu de novo. Escolhe logo uma opção, vai.',
+  'Você sabia que eu posso voar mais rápido que a indecisão?',
+  'Terceira volta no planeta. Nova recorde mundial.',
+  'Posso ficar aqui o dia todo. Sério, pode testar.',
+];
+const FOGUETE_ROTAS = ['rota1', 'rota2', 'rota3', 'rota4', 'rota5'];
 let _rocketTimer = null;
+let _rocketCount = 0;
 function iniciarFogueteIndolente() {
   if (_rocketTimer) clearTimeout(_rocketTimer);
+  // Primeiro foguete: 15s. Depois: 8-12s (mais frequente)
+  const delay = _rocketCount === 0 ? 15000 : (8000 + Math.random() * 4000);
   _rocketTimer = setTimeout(() => {
     if (!$('cena1')?.classList.contains('active')) return;
     const r = $('bluRocket');
     if (!r) return;
-    r.classList.remove('fly');
-    void r.offsetWidth; // force reflow
-    r.classList.add('fly');
-    // Re-agenda pra daqui a 25s se ainda estiver parado
-    _rocketTimer = setTimeout(iniciarFogueteIndolente, 25000);
-  }, 15000);
+    // Rota aleatoria (nao repete a anterior se possivel)
+    const rotaPrev = r.dataset.rota || '';
+    let rota = FOGUETE_ROTAS[Math.floor(Math.random() * FOGUETE_ROTAS.length)];
+    if (rota === rotaPrev && FOGUETE_ROTAS.length > 1) {
+      rota = FOGUETE_ROTAS[(FOGUETE_ROTAS.indexOf(rotaPrev) + 1) % FOGUETE_ROTAS.length];
+    }
+    r.dataset.rota = rota;
+    // Fala aleatoria no balao
+    const balao = r.querySelector('.blu-rocket-balao');
+    if (balao) balao.textContent = FOGUETE_FALAS[_rocketCount % FOGUETE_FALAS.length];
+    // Reset + aplica nova rota
+    r.className = 'blu-rocket';
+    void r.offsetWidth;
+    r.classList.add(rota);
+    _rocketCount++;
+    iniciarFogueteIndolente(); // proxima volta
+  }, delay);
+}
+function pararFoguete() {
+  if (_rocketTimer) { clearTimeout(_rocketTimer); _rocketTimer = null; }
+  const r = $('bluRocket');
+  if (r) r.className = 'blu-rocket';
+  _rocketCount = 0;
 }
 
 function showGate(motivo) {
