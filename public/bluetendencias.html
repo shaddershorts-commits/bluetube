@@ -1927,10 +1927,14 @@ async function rotarCuriosidadesMeuVideo() {
       if (!await mostrar('💭 ' + reacao, 3800)) return;
     }
   }
-  // Depois (ou desde o inicio se nao for campeao) — rotaciona lista generica
+  // Depois (ou desde o inicio se nao for campeao) — lista generica embaralhada
+  // Mantem pares fato+reacao juntos, so embaralha a ordem dos pares
+  const pool = [...FATOS_MEU_VIDEO].sort(() => Math.random() - 0.5);
   let idx = 0;
   const loop = async () => {
-    const item = FATOS_MEU_VIDEO[idx % FATOS_MEU_VIDEO.length];
+    // Re-embaralha ao esgotar a lista (sessoes longas veem variedade)
+    if (idx >= pool.length) { pool.sort(() => Math.random() - 0.5); idx = 0; }
+    const item = pool[idx];
     idx++;
     const fato = item.fato.replace(/\$\{nome\}/g, state.nome);
     const reacao = item.reacao.replace(/\$\{nome\}/g, state.nome);
@@ -1942,6 +1946,9 @@ async function rotarCuriosidadesMeuVideo() {
 }
 
 async function rotarCuriosidades() {
+  // Embaralha o array MANTENDO os pares fato+reacao juntos (cada item e um objeto)
+  // Copia pra nao mutar o original
+  const pool = [...FATOS_BLUBLU].sort(() => Math.random() - 0.5);
   let idx = 0;
   const mostrar = async (texto, ms) => {
     if (!$('cena6')?.classList.contains('active')) return false;
@@ -1951,9 +1958,10 @@ async function rotarCuriosidades() {
     return true;
   };
   const loop = async () => {
-    const item = FATOS_BLUBLU[idx % FATOS_BLUBLU.length];
+    // Se esgotar a lista, re-embaralha pra nova rodada
+    if (idx >= pool.length) { pool.sort(() => Math.random() - 0.5); idx = 0; }
+    const item = pool[idx];
     idx++;
-    // Fato primeiro, pausa, depois reacao do Blublu
     if (!await mostrar('📊 ' + item.fato, 3800)) return;
     const reacao = item.reacao.replace(/\$\{nome\}/g, state.nome);
     if (!await mostrar('💭 ' + reacao, 4800)) return;
