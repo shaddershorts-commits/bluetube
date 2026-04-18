@@ -44,6 +44,53 @@ function generateRefCode(email) {
   return base + suffix;
 }
 
+// Notifica afiliado por email quando nova comissao e criada (fire-and-forget)
+async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, commission_amount }) {
+  const RESEND = process.env.RESEND_API_KEY;
+  if (!RESEND || !affiliate?.email) return;
+  const maskEmail = (e) => {
+    if (!e) return '';
+    const [u, d] = String(e).split('@');
+    return (u?.[0] || '') + '***@' + (d || '');
+  };
+  const planLabel = plan === 'master' ? '👑 Master' : '⚡ Full';
+  const valorFmt = 'R$ ' + Number(commission_amount || 0).toFixed(2).replace('.', ',');
+  const nomeAff = (affiliate.name || affiliate.email.split('@')[0]).split(' ')[0];
+  const html = `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;background:#020817;color:#e8f4ff;padding:40px 28px;border-radius:14px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="display:inline-block;background:linear-gradient(135deg,#10b981,#3b82f6);color:#fff;font-weight:800;padding:8px 20px;border-radius:20px;letter-spacing:1px;font-size:11px">💰 NOVA COMISSÃO</div>
+    </div>
+    <h1 style="font-size:24px;font-weight:800;margin:0 0 12px;color:#fff">Boa, ${nomeAff}!</h1>
+    <p style="font-size:15px;line-height:1.5;color:rgba(200,220,240,.8);margin:0 0 24px">Uma nova assinatura entrou pelo seu link de afiliado. A comissão já está no seu saldo pendente.</p>
+    <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:20px;margin:20px 0">
+      <div style="font-size:11px;color:rgba(200,220,240,.6);letter-spacing:2px;margin-bottom:8px;font-family:monospace">COMISSÃO GERADA</div>
+      <div style="font-size:32px;font-weight:800;color:#10b981">${valorFmt}</div>
+    </div>
+    <table style="width:100%;margin:20px 0;border-collapse:collapse">
+      <tr><td style="padding:8px 0;color:rgba(200,220,240,.6);font-size:13px">Assinante:</td><td style="padding:8px 0;color:#fff;text-align:right;font-family:monospace;font-size:13px">${maskEmail(subscriber)}</td></tr>
+      <tr><td style="padding:8px 0;color:rgba(200,220,240,.6);font-size:13px">Plano:</td><td style="padding:8px 0;color:#fff;text-align:right;font-size:13px">${planLabel}</td></tr>
+      <tr><td style="padding:8px 0;color:rgba(200,220,240,.6);font-size:13px">Status:</td><td style="padding:8px 0;text-align:right"><span style="background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">PENDENTE</span></td></tr>
+    </table>
+    <div style="text-align:center;margin:28px 0">
+      <a href="https://www.bluetubeviral.com/afiliado" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#00aaff);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px">Ver painel do afiliado →</a>
+    </div>
+    <p style="font-size:12px;color:rgba(200,220,240,.5);text-align:center;margin:24px 0 0;line-height:1.5">Pagamentos via Pix todo dia 22. Comissões ficam pendentes por 37 dias (garantia de reembolso) antes de liberar pra saque.</p>
+  </div>`;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + RESEND, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'BlueAfiliados <noreply@bluetubeviral.com>',
+        to: [affiliate.email],
+        subject: `💰 Nova comissão: ${valorFmt}`,
+        html,
+      }),
+    });
+  } catch (e) { console.error('[notify-affiliate-email]', e.message); }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -343,6 +390,9 @@ export default async function handler(req, res) {
             });
 
             console.log(`💰 Commission: ${affiliate.email} ← ${email} (${plan}) @ ${(rate*100).toFixed(0)}% = R$${commissionAmount.toFixed(2)}`);
+
+            // Email de notificação pro afiliado (fire-and-forget, nao bloqueia)
+            notificarAfiliadoNovaComissao(affiliate, { subscriber: email, plan, commission_amount: commissionAmount }).catch(()=>{});
           }
         } else if (plan === 'free') {
           // Incrementa total_free
@@ -467,6 +517,43 @@ export default async function handler(req, res) {
       console.error('Cancel commission error:', e.message);
       return res.status(200).json({ ok: false });
     }
+  }
+
+  // ── ADMIN: notifica afiliado por email sobre commission(s) existente(s)
+  // POST { action:'notify-commission-admin', admin_secret, subscriber_emails:[...], touch_dates:true }
+  if (req.method === 'POST' && action === 'notify-commission-admin') {
+    const { admin_secret, subscriber_emails, touch_dates } = req.body || {};
+    if (admin_secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Nao autorizado' });
+    const lista = Array.isArray(subscriber_emails) ? subscriber_emails : [];
+    if (lista.length === 0) return res.status(400).json({ error: 'subscriber_emails obrigatorio' });
+    const resultados = [];
+    for (const se of lista) {
+      try {
+        const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?subscriber_email=eq.${encodeURIComponent(se)}&status=in.(pending,paid)&select=*&order=created_at.desc&limit=1`, { headers: supaH });
+        const [comm] = cr.ok ? await cr.json() : [];
+        if (!comm) { resultados.push({ email: se, ok: false, motivo: 'commission nao encontrada' }); continue; }
+        const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${comm.affiliate_id}&select=*`, { headers: supaH });
+        const [aff] = ar.ok ? await ar.json() : [];
+        if (!aff) { resultados.push({ email: se, ok: false, motivo: 'afiliado nao encontrado' }); continue; }
+        // Opcional: atualiza datas pra parecer recente no painel do afiliado
+        if (touch_dates) {
+          const agora = new Date().toISOString();
+          await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?id=eq.${comm.id}`, {
+            method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' },
+            body: JSON.stringify({ created_at: agora, updated_at: agora }),
+          }).catch(() => {});
+          if (comm.conversion_id) {
+            await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?id=eq.${comm.conversion_id}`, {
+              method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' },
+              body: JSON.stringify({ converted_at: agora }),
+            }).catch(() => {});
+          }
+        }
+        await notificarAfiliadoNovaComissao(aff, { subscriber: se, plan: comm.plan, commission_amount: comm.commission_amount });
+        resultados.push({ email: se, ok: true, afiliado: aff.email, valor: comm.commission_amount });
+      } catch (e) { resultados.push({ email: se, ok: false, motivo: e.message }); }
+    }
+    return res.status(200).json({ ok: true, total: resultados.length, resultados });
   }
 
   return res.status(404).json({ error: 'Action não encontrada' });
