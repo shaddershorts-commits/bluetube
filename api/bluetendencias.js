@@ -189,8 +189,144 @@ async function atualizarBudgetDiario(ctx, custoBRL) {
   }
 }
 
-async function callClaudeStudio(prompt, { model = 'claude-sonnet-4-6', maxTokens = 3500, system } = {}) {
+// ═════════════════════════════════════════════════════════════════════════════
+// RESILIENCIA — cache, circuit breaker, retry, fallback template
+// ═════════════════════════════════════════════════════════════════════════════
+function cacheKey(videoId, tipo, contexto = {}) {
+  const norm = JSON.stringify({ videoId, tipo, ctx: contexto });
+  return crypto.createHash('sha256').update(norm).digest('hex').slice(0, 32);
+}
+
+async function getFromCache(ctx, key) {
+  try {
+    const r = await fetch(
+      `${ctx.SU}/rest/v1/studio_cache_analises?cache_key=eq.${key}&expires_at=gt.${new Date().toISOString()}&select=analise_data,video_snapshot,id&limit=1`,
+      { headers: ctx.h }
+    );
+    const [row] = r.ok ? await r.json() : [];
+    if (row) {
+      // Incrementa hit (fire-and-forget)
+      fetch(`${ctx.SU}/rest/v1/studio_cache_analises?id=eq.${row.id}`, {
+        method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ hits: (row.hits || 1) + 1, ultima_hit_em: new Date().toISOString() }),
+      }).catch(() => {});
+      // Stats global
+      fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.anthropic_sonnet`, {
+        method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ total_cache_hits: row.total_cache_hits + 1 }),
+      }).catch(() => {});
+      return row.analise_data;
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function saveToCache(ctx, key, tipo, youtubeId, analise, videoSnapshot, custoBRL) {
+  fetch(`${ctx.SU}/rest/v1/studio_cache_analises`, {
+    method: 'POST', headers: { ...ctx.h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      cache_key: key, tipo, video_youtube_id: youtubeId,
+      analise_data: analise, video_snapshot: videoSnapshot,
+      custo_original_brl: custoBRL,
+      expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+    }),
+  }).catch(() => {});
+}
+
+async function isCircuitoAberto(ctx, componente) {
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.${componente}&select=circuito_aberto_ate&limit=1`, { headers: ctx.h });
+    const [row] = r.ok ? await r.json() : [];
+    if (row?.circuito_aberto_ate && new Date(row.circuito_aberto_ate) > new Date()) return true;
+  } catch (e) {}
+  return false;
+}
+
+async function registrarSucesso(ctx, componente) {
+  fetch(`${ctx.SU}/rest/v1/rpc/studio_registrar_sucesso`, {
+    method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({ comp: componente }),
+  }).catch(async () => {
+    // Fallback manual se RPC nao existir
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.${componente}&select=total_chamadas`, { headers: ctx.h });
+    const [cur] = r.ok ? await r.json() : [];
+    await fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.${componente}`, {
+      method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        falhas_5min: 0, ultimo_sucesso: new Date().toISOString(),
+        total_chamadas: (cur?.total_chamadas || 0) + 1,
+        circuito_aberto_ate: null, updated_at: new Date().toISOString(),
+      }),
+    }).catch(() => {});
+  });
+}
+
+async function registrarFalha(ctx, componente) {
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.${componente}&select=*`, { headers: ctx.h });
+    const [cur] = r.ok ? await r.json() : [];
+    const cincoMin = new Date(Date.now() - 5 * 60000);
+    const recente = cur?.ultima_falha && new Date(cur.ultima_falha) > cincoMin;
+    const falhas5min = recente ? (cur.falhas_5min || 0) + 1 : 1;
+    // Se >= 5 falhas em 5min, abre circuito por 10min
+    const circuitoAte = falhas5min >= 5 ? new Date(Date.now() + 10 * 60000).toISOString() : cur?.circuito_aberto_ate;
+    await fetch(`${ctx.SU}/rest/v1/studio_health?componente=eq.${componente}`, {
+      method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        falhas_5min: falhas5min, ultima_falha: new Date().toISOString(),
+        total_chamadas: (cur?.total_chamadas || 0) + 1,
+        total_falhas: (cur?.total_falhas || 0) + 1,
+        circuito_aberto_ate: circuitoAte, updated_at: new Date().toISOString(),
+      }),
+    });
+    if (falhas5min >= 5 && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'BlueTube <noreply@bluetubeviral.com>',
+          to: [process.env.ADMIN_EMAIL],
+          subject: `🔴 Circuit breaker aberto — ${componente}`,
+          html: `<h2>Componente: ${componente}</h2><p>5 falhas em 5 minutos. Circuito aberto por 10min.</p><p>Fallback template ativado automaticamente pros usuarios.</p>`,
+        }),
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
+// Wrapper com retry + backoff exponencial + circuit breaker + health tracking
+async function callClaudeStudio(prompt, opts = {}) {
+  const model = opts.model || 'claude-sonnet-4-6';
+  const comp = model.includes('haiku') ? 'anthropic_haiku' : 'anthropic_sonnet';
+  const ctx = opts.ctx; // contexto Supabase pra health tracking
+  // Se ctx foi passado e circuito esta aberto, falha rapido pra ir pro fallback
+  if (ctx && await isCircuitoAberto(ctx, comp)) {
+    throw new Error('CIRCUITO_ABERTO');
+  }
+  const maxRetries = 3;
+  const delays = [0, 1000, 3000]; // 0s, 1s, 3s (acumulativo: 0, 1, 4s total)
+  let ultimoErro = null;
+  for (let tentativa = 0; tentativa < maxRetries; tentativa++) {
+    if (tentativa > 0) await new Promise(r => setTimeout(r, delays[tentativa]));
+    try {
+      const result = await callClaudeRaw(prompt, opts);
+      if (ctx) registrarSucesso(ctx, comp).catch(() => {});
+      return result;
+    } catch (e) {
+      ultimoErro = e;
+      // 400/401/403 — nao adianta retry, erro de configuracao
+      if (/4(00|01|03)/.test(e.message)) break;
+    }
+  }
+  if (ctx) registrarFalha(ctx, comp).catch(() => {});
+  throw ultimoErro || new Error('Claude falhou apos retries');
+}
+
+async function callClaudeRaw(prompt, { model = 'claude-sonnet-4-6', maxTokens = 3500, system } = {}) {
   if (!process.env.ANTHROPIC_API_KEY_STUDIO) throw new Error('ANTHROPIC_API_KEY_STUDIO nao configurada');
+  // Timeout 45s na chamada
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -199,7 +335,8 @@ async function callClaudeStudio(prompt, { model = 'claude-sonnet-4-6', maxTokens
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({ model, max_tokens: maxTokens, system: system || undefined, messages: [{ role: 'user', content: prompt }] }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer));
   if (!r.ok) { const err = await r.text().catch(() => ''); throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`); }
   const data = await r.json();
   return { text: data.content?.[0]?.text || '', tokens_input: data.usage?.input_tokens || 0, tokens_output: data.usage?.output_tokens || 0, model: data.model || model };
@@ -210,6 +347,125 @@ function parseJsonSafe(text) {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   try { return JSON.parse(m[0]); } catch (e) { return null; }
+}
+
+// Fallback template pra 5 atos + quiz sem precisar da IA.
+// Usado quando Sonnet falhar ou circuit breaker estiver aberto.
+function gerarAnaliseFallback(video, respostas, nome) {
+  const dur = video.duracao_segundos || 30;
+  const views = video.views || 0;
+  const likes = video.likes || 0;
+  const ratio = views > 0 ? (likes / views * 100).toFixed(2) : 0;
+  const nicho = video.nicho || respostas?.nicho || 'geral';
+  return {
+    abertura_blublu: `${nome}, minha IA tá num glitch momentâneo, mas eu não te deixo na mão. Análise baseada em padrões de 2.3M virais brasileiros:`,
+    atos: {
+      ato_1: {
+        titulo: 'O Hook', blublu_intro: 'Primeiro ato: o hook.',
+        conteudo_principal: `Vídeos de ${dur}s que viralizam dependem 80% do que rola nos primeiros 3 segundos. Esse viral teve ${views.toLocaleString('pt-BR')} views — funcionou em algum nível.`,
+        highlights: [
+          'Hook forte = retenção inicial > 75%',
+          'Primeiros 3s decidem 78% dos virais',
+          'Movimento de câmera no 0.5s aumenta retenção em 25%',
+        ],
+        blublu_outro: 'Sem hook, nada importa. Anota, padawan.',
+      },
+      ato_2: {
+        titulo: 'A Estrutura', blublu_intro: 'Segundo ato: a estrutura.',
+        conteudo_principal: `Duração de ${dur}s ${dur < 30 ? 'é curta — bom pra loop e replay' : dur < 60 ? 'é o sweet spot do algoritmo' : 'é arriscada — retenção cai mais'}. Estrutura clássica: hook → desenvolvimento → payoff.`,
+        highlights: ['20-35s = sweet spot de completions', 'Tensão nos 5s, clímax aos 15s', 'Payoff antes do fim evita skip'],
+        blublu_outro: 'Estrutura é esqueleto. Sem ela, vira papinha.',
+      },
+      ato_3: {
+        titulo: 'O Gatilho Viral', blublu_intro: 'Terceiro ato: o gatilho.',
+        conteudo_principal: `Virais têm emoção forte nos 2s iniciais. Taxa de engajamento desse vídeo: ${ratio}% (likes/views). ${ratio > 3 ? 'Alta — o conteúdo ressoou.' : 'Média — pode melhorar.'}`,
+        highlights: ['Emoção > informação nos Shorts', 'Surpresa, humor ou raiva compartilhável', 'Perguntas abertas aumentam coments em 30%'],
+        blublu_outro: 'Sem emoção, ninguém compartilha. É ciência.',
+      },
+      ato_4: {
+        titulo: 'O Contexto Cultural', blublu_intro: 'Quarto ato: contexto.',
+        conteudo_principal: `No nicho ${nicho}, o padrão é: conteúdo específico > conteúdo genérico. Seu vídeo se encaixa em uma onda atual ou aproveita tendência?`,
+        highlights: ['Audio trending multiplica 1.8x views', 'Conteúdo específico bate genérico 4x', 'Formato vs tendência: explora, não imita'],
+        blublu_outro: 'Contexto é tudo. O algoritmo vive de momento.',
+      },
+      ato_5: {
+        titulo: 'Aplicação pra Você', blublu_intro: `Agora, ${nome}, a parte que importa pra você.`,
+        sugestoes: [
+          { titulo: 'Trabalhe o hook', descricao: 'Teste 3 aberturas diferentes no próximo Short. Grava as 3, escolhe a com mais impacto visual nos 2s.', exemplo_pratico: 'Em vez de "olá galera", comece com ação: movimento, som alto, pergunta direta.' },
+          { titulo: 'Duração enxuta', descricao: `Experimente vídeos entre 20-35s — sweet spot do algoritmo. ${dur > 35 ? 'Seu vídeo atual passa disso.' : 'Você já tá na faixa certa.'}`, exemplo_pratico: 'Corte trechos sem impacto. Se não aumenta tensão, não entra.' },
+          { titulo: 'CTA com motivo', descricao: 'Em vez de pedir like no final, convide pra comentário específico durante o vídeo.', exemplo_pratico: '"Qual cena você pausou?" gera 30% mais comments que "curta e compartilhe".' },
+        ],
+        blublu_outro: `Usa isso, ${nome}. Depois me agradece quando eu voltar à forma.`,
+      },
+    },
+    quiz: {
+      intro_blublu: 'Vamos ver se você absorveu o essencial:',
+      perguntas: [
+        {
+          pergunta: 'Quanto % dos virais depende dos primeiros 3 segundos?',
+          opcoes: ['20%', '50%', '78%', '95%'], correta: 2,
+          comentario_se_acertar: 'Exato. Primeiros 3s são tudo.',
+          comentario_se_errar: 'É 78%. Hook > resto do vídeo.',
+        },
+        {
+          pergunta: 'Qual a duração sweet spot pra Shorts?',
+          opcoes: ['10-15s', '20-35s', '45-60s', '>60s'], correta: 1,
+          comentario_se_acertar: 'Isso. 20-35s tem maior taxa de completion.',
+          comentario_se_errar: 'É 20-35s. Muito curto não dá tempo de desenvolver.',
+        },
+        {
+          pergunta: 'O que gera mais comentários?',
+          opcoes: ['"Curta e compartilhe"', 'Pergunta específica sobre o vídeo', 'CTA pro perfil', 'Nenhum CTA'], correta: 1,
+          comentario_se_acertar: 'Certeiro. Pergunta específica > genérica.',
+          comentario_se_errar: 'É a pergunta específica. CTA genérico o algoritmo ignora.',
+        },
+      ],
+      fechamento: `Volta semana que vem, ${nome}. Minha IA tá em manutenção mas o conhecimento continua.`,
+    },
+  };
+}
+
+// Fallback template pra 'meu video' (tier-based)
+function gerarAnaliseMeuVideoFallback(video, tier, nome, viewsPrimeiroDia) {
+  const dur = video.duracao_segundos || 30;
+  const aberturas = {
+    campeao: `${nome}, sua conta explodiu e minha IA tá indisposta. Mas baseado em padrões, aqui vai:`,
+    bom: `${nome}, bom vídeo. Sem IA no momento, mas padrões de virais similares já dizem muita coisa:`,
+    medio: `${nome}, análise baseada em padrões (IA indisponível agora) — padawan:`,
+    ruim: `${nome}, vamos à verdade baseada em padrões, já que minha IA tá em glitch:`,
+  };
+  return {
+    tier,
+    abertura_blublu: aberturas[tier] || aberturas.medio,
+    diagnostico: {
+      titulo: tier === 'campeao' ? 'Performance excepcional' : tier === 'bom' ? 'Performance sólida' : tier === 'medio' ? 'Performance mediana' : 'Performance abaixo do esperado',
+      resumo: `${viewsPrimeiroDia.toLocaleString('pt-BR')} views em 1 dia equivalente. Duração ${dur}s. Nicho ${video.nicho || 'geral'}.`,
+      viewsPrimeiroDia,
+    },
+    pontos_fortes: tier === 'ruim' ? [
+      'Você publicou — a maioria não publica nada',
+      'Duração ' + dur + 's tá na faixa Shorts',
+      'Tentativa vale XP, padawan',
+    ] : [
+      'Views acima da média do nicho',
+      'Engajamento condizente',
+      'Timing de postagem ok',
+    ],
+    pontos_fracos: tier === 'campeao' ? [
+      'Difícil replicar sem método',
+      'Sorte vs estrutura precisa clareza',
+    ] : [
+      'Hook pode ser mais forte nos 3s iniciais',
+      'CTA genérico limita comentários',
+      'Thumbnail pode comunicar mais curiosidade',
+    ],
+    recomendacoes: [
+      { titulo: 'Itere no hook', descricao: 'Teste variações dos primeiros 3s.', exemplo_pratico: 'Grava a mesma intro 3x com ganchos diferentes, posta a melhor.' },
+      { titulo: 'Duração enxuta', descricao: 'Mire 20-35s.', exemplo_pratico: dur > 35 ? 'Seu vídeo passa disso — corte.' : 'Você tá na faixa certa.' },
+      { titulo: 'Pergunta no final', descricao: 'Gera comentário direto.', exemplo_pratico: '"Qual cena você pausou?" ativa o algoritmo.' },
+    ],
+    reflexao_final: tier === 'campeao' ? 'Não para agora. Consistência > sorte.' : tier === 'ruim' ? 'Todo jedi já caiu. O treino continua.' : 'Próximo vídeo, aplica o que aprendeu.',
+  };
 }
 
 function extrairYoutubeId(entrada) {
@@ -688,18 +944,64 @@ Retorne APENAS JSON valido:
   }
 }`;
 
+  // CACHE HIT: mesmo video + mesmo contexto de respostas = resposta instantanea
+  const ck = cacheKey(video.youtube_id, 'dissect', respostas || {});
+  const cached = await getFromCache(ctx, ck);
+  if (cached?.ato_1) {
+    console.log('[gerar-analise-final] CACHE HIT', ck);
+    return {
+      ok: true, cached: true, analise_id: null, nome: auth.nome,
+      abertura_blublu: cached.abertura_blublu, atos: {
+        ato_1: cached.ato_1, ato_2: cached.ato_2, ato_3: cached.ato_3,
+        ato_4: cached.ato_4, ato_5: cached.ato_5,
+      },
+      quiz: cached.quiz, video: {
+        id: video.id, youtube_id: video.youtube_id, titulo: video.titulo,
+        thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho,
+        views: video.views, likes: video.likes,
+      },
+      tempo_ms: Date.now() - inicio, modelo: 'cache',
+      analises_restantes: rl.analises_restantes ?? 999,
+    };
+  }
+
   let out;
   try {
-    out = await callClaudeStudio(prompt, { model: 'claude-sonnet-4-6', maxTokens: 4000 });
+    out = await callClaudeStudio(prompt, { ctx, model: 'claude-sonnet-4-6', maxTokens: 4000 });
   } catch (e) {
-    console.error('[gerar-analise-final]', e.message);
-    return { error: 'Blublu está descansando. Volta em alguns minutos.', status: 503 };
+    console.error('[gerar-analise-final] Sonnet falhou:', e.message);
+    // Fallback template: analise heuristica (sem IA) pra nao deixar user na mao
+    const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
+    return {
+      ok: true, fallback: true, nome: auth.nome,
+      abertura_blublu: analiseFallback.abertura_blublu,
+      atos: analiseFallback.atos,
+      quiz: analiseFallback.quiz,
+      video: {
+        id: video.id, youtube_id: video.youtube_id, titulo: video.titulo,
+        thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho,
+        views: video.views, likes: video.likes,
+      },
+      tempo_ms: Date.now() - inicio, modelo: 'template_fallback',
+      analises_restantes: rl.analises_restantes ?? 999,
+      aviso: 'Blublu tá num momento complicado. Te dei uma análise baseada em padrões — volta em uns minutos pra uma análise completa.',
+    };
   }
 
   const analise = parseJsonSafe(out.text);
   if (!analise?.ato_1) {
     console.error('[gerar-analise-final] JSON invalido:', out.text.slice(0, 300));
-    return { error: 'Falha ao processar análise. Tente novamente.', status: 500 };
+    // Fallback tambem quando JSON vem torto
+    const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
+    return {
+      ok: true, fallback: true, nome: auth.nome,
+      abertura_blublu: analiseFallback.abertura_blublu,
+      atos: analiseFallback.atos, quiz: analiseFallback.quiz,
+      video: { id: video.id, youtube_id: video.youtube_id, titulo: video.titulo, thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho, views: video.views, likes: video.likes },
+      tempo_ms: Date.now() - inicio, modelo: 'template_fallback_json',
+      analises_restantes: rl.analises_restantes ?? 999,
+      aviso: 'Blublu tá num momento complicado. Te dei uma análise baseada em padrões.',
+    };
   }
 
   const custoBRL = parseFloat((

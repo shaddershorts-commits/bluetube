@@ -1777,7 +1777,14 @@ async function mostrarPergunta() {
   const pergunta = q.texto || '';
   await typeOut($('chatMsg'), intro + pergunta, 28);
   await sleep(400);
-  const opcoesArr = [...(q.opcoes || []), '__OUTRO__'];
+  // Normaliza opcoes: aceita string OU objeto {texto, label, value, titulo}
+  const txtOpcao = (o) => {
+    if (o == null) return '';
+    if (typeof o === 'string') return o;
+    return String(o.texto || o.label || o.value || o.titulo || o.nome || o.option || '');
+  };
+  const opcoesNorm = (q.opcoes || []).map(txtOpcao).filter(Boolean);
+  const opcoesArr = [...opcoesNorm, '__OUTRO__'];
   $('chatOpcoes').innerHTML = opcoesArr.map(o => {
     if (o === '__OUTRO__') return `<button class="chat-opcao" onclick="pedirOutro()" style="border-style:dashed;color:var(--text-dim)">✏️ Outro (digitar)</button>`;
     return `<button class="chat-opcao" onclick="responderPergunta('${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`;
@@ -2051,12 +2058,15 @@ function comecarQuiz() {
 function mostrarPerguntaQuiz() {
   const q = state.quizData.perguntas[state.quizIdx];
   if (!q) return finalizarQuiz();
+  const txtOpcao = (o) => typeof o === 'string' ? o : String(o?.texto || o?.label || o?.value || o?.titulo || o?.nome || o || '');
   $('quizProgress').textContent = `Pergunta ${state.quizIdx+1} de ${state.quizData.perguntas.length}`;
-  $('quizTexto').textContent = q.pergunta;
+  $('quizTexto').textContent = typeof q.pergunta === 'string' ? q.pergunta : (q.pergunta?.texto || '');
   $('quizFeedback').innerHTML = '';
   $('quizNav').style.display = 'none';
   const letras = ['A','B','C','D'];
-  $('quizOpcoes').innerHTML = (q.opcoes || []).map((o, i) =>
+  const opcoesNorm = (q.opcoes || []).map(txtOpcao);
+  q.opcoes = opcoesNorm; // normaliza pra responderQuiz() pegar certo
+  $('quizOpcoes').innerHTML = opcoesNorm.map((o, i) =>
     `<button class="quiz-opcao" data-letra="${letras[i]}" onclick="responderQuiz(${i})">${esc(o)}</button>`
   ).join('');
 }
