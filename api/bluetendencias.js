@@ -103,7 +103,20 @@ async function requireMaster(ctx, token) {
   return { ok: true, user, plan, nome };
 }
 
-async function checarRateLimitEBudget(ctx, userId) {
+function isUnlimitedEmail(email) {
+  if (!email) return false;
+  const e = String(email).toLowerCase().trim();
+  const lista = (process.env.STUDIO_UNLIMITED_EMAILS || '')
+    .toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  return lista.includes(e);
+}
+
+async function checarRateLimitEBudget(ctx, userId, userEmail) {
+  // Bypass total pra emails na whitelist (owner/testers)
+  if (isUnlimitedEmail(userEmail)) {
+    return { permitido: true, analises_restantes: 999, analises_total_24h: 999, unlimited: true };
+  }
+
   const vinte4h = new Date(Date.now() - 86400000).toISOString();
   const rlR = await fetch(
     `${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${userId}&usado_em=gte.${vinte4h}&select=usado_em&order=usado_em.asc`,
@@ -129,7 +142,9 @@ async function checarRateLimitEBudget(ctx, userId) {
   return { permitido: true, analises_restantes: restantes, analises_total_24h: limite };
 }
 
-async function registrarUso(ctx, userId) {
+async function registrarUso(ctx, userId, userEmail) {
+  // Nao registra pra unlimited (nao poluir tabela de rate limits)
+  if (isUnlimitedEmail(userEmail)) return;
   await fetch(`${ctx.SU}/rest/v1/studio_rate_limits`, {
     method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
     body: JSON.stringify({ user_id: userId }),
@@ -364,7 +379,7 @@ async function entrada(ctx, req) {
   ]);
   const salvas = salvasR.ok ? await salvasR.json() : [];
   const historico = historicoR.ok ? await historicoR.json() : [];
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
 
   return {
     nome: auth.nome,
@@ -501,7 +516,7 @@ async function iniciarDissecacao(ctx, req) {
   const { token, video_id } = req.body || {};
   const auth = await requireMaster(ctx, token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
   if (!rl.permitido) return rl;
 
   const ytId = extrairYoutubeId(video_id) || video_id;
@@ -577,7 +592,7 @@ async function gerarAnaliseFinal(ctx, req) {
 
   const auth = await requireMaster(ctx, token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
   if (!rl.permitido) return rl;
 
   const ytId = extrairYoutubeId(video_id) || video_id;
@@ -723,7 +738,7 @@ Retorne APENAS JSON valido:
   } catch (e) { console.error('[insert studio_analises]', e.message); }
 
   await Promise.all([
-    registrarUso(ctx, auth.user.id),
+    registrarUso(ctx, auth.user.id, auth.user.email),
     atualizarBudgetDiario(ctx, custoBRL),
   ]);
 
@@ -789,7 +804,7 @@ async function analisesSalvas(ctx, req) {
 async function verificarAcesso(ctx, req) {
   const auth = await requireMaster(ctx, req.query.token);
   if (!auth.ok) return { permitido: false, motivo: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
   return { ...rl, plan: auth.plan, nome: auth.nome };
 }
 
