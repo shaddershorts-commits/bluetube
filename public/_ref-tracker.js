@@ -15,7 +15,9 @@
 //   - webhook registra em pioneiros_indicacoes
 (function () {
   var KEY = 'bt_ref';
-  var TTL_DAYS = 30;
+  // TTL de 60 dias — alinhado com Hotmart/ClickBank e com afiliado.html
+  // (rollback: voltar pra 30 se quiser encurtar a janela)
+  var TTL_DAYS = 60;
   var TTL_MS = TTL_DAYS * 24 * 60 * 60 * 1000;
 
   function setCookie(v) {
