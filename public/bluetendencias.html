@@ -603,11 +603,11 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
     <div class="nova-link" style="border-color:var(--neon)">
       <div class="nova-link-titulo" style="color:var(--neon)">🎬 Seu vídeo do YouTube</div>
       <div class="nova-link-row">
-        <input class="nova-link-input" id="meuVideoInput" type="url" placeholder="https://youtube.com/shorts/..." autocomplete="off">
+        <input class="nova-link-input" id="meuVideoInput" type="url" placeholder="https://youtube.com/shorts/..." autocomplete="off" onkeydown="if(event.key==='Enter')analisarMeuVideo()">
         <button class="nova-link-btn" onclick="analisarMeuVideo()" id="meuVideoBtn">🔍 Analisar</button>
       </div>
       <div style="margin-top:14px;font-size:11px;color:var(--text-dim);font-family:var(--mono);line-height:1.6">
-        <div>💡 <b>Como o Blublu avalia:</b></div>
+        <div>📊 <b>Primeiro você vê as métricas.</b> Depois, o Blublu te dá o veredito:</div>
         <div style="margin-top:6px">🔥 <span style="color:#10b981">+1M views em 1 dia</span> → modo comediante (você me ensina)</div>
         <div>✅ <span style="color:var(--neon)">+150k views em 1 dia</span> → análise positiva + próximo nível</div>
         <div>⚖️ <span style="color:#fbbf24">40-150k em 1 dia</span> → balanceada, o que funcionou e o que não</div>
@@ -828,6 +828,7 @@ let state = {
   dashboardDados: null, perguntasBlublu: [], respostas: {}, qIdx: 0,
   atosData: null, atoIdx: 0, quizData: null, quizIdx: 0, quizAcertos: 0,
   analiseId: null, projPeriodo: 'd30', viewsVivo: null,
+  meuVideoMode: false, // true quando fluxo "analisar meu video"
 };
 
 // ═══════════ STARS + PARTICLES ABERTURA ═══════════
@@ -917,41 +918,66 @@ function irCena(id) {
   if (id === '8') mostrarAto(state.atoIdx);
   if (id === '9') prepararQuiz();
   if (id === '10') prepararFinal();
-  if (id === '2c') { const el = $('mvText'); if (el) el.textContent = `Sem filtro, ${state.nome}. Cole o link e eu te falo a verdade sobre esse vídeo.`; }
+  if (id === '2c') {
+    state.meuVideoMode = true;
+    const el = $('mvText'); if (el) el.textContent = `Sem filtro, ${state.nome}. Cole o link e eu vou abrir as métricas — depois o feedback.`;
+  }
+  // Sair dos fluxos de analise reseta o modo meu_video
+  if (id === '1' || id === '2a' || id === '2b') state.meuVideoMode = false;
 }
 
-// ═══════════ ANALISAR MEU VÍDEO (novo fluxo) ═══════════
+// ═══════════ ANALISAR MEU VÍDEO (usa mesmo padrão do dissect) ═══════════
+// Fluxo: link -> dashboard metricas -> DISSECAR -> supernova+fatos -> resultado tier
 async function analisarMeuVideo() {
   const url = ($('meuVideoInput')?.value || '').trim();
   if (!url) { toast('Cola o link do seu Short primeiro'); return; }
   const btn = $('meuVideoBtn');
   btn.disabled = true; btn.textContent = '⏳ Analisando...';
-  irCena('3');
-  const msgs = [
-    'Capturando seu vídeo...',
-    'Conferindo a performance...',
-    `Checando se você explodiu mesmo, ${state.nome}...`,
-    'Blublu ajustando os óculos de raio-x...',
-    'Cruzando com padrões de virais...',
-  ];
-  let idx = 0;
-  const intMsg = setInterval(() => { idx = (idx+1) % msgs.length; $('scanMsg').textContent = msgs[idx]; }, 1400);
+  const ytId = (url.match(/(?:shorts\/|watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/) || [])[1] || url.trim();
+  state.meuVideoMode = true;
+  // Reusa o fluxo do escolherVideo (carrega dashboard e mostra metricas)
+  try { await escolherVideo(ytId); }
+  finally { btn.disabled = false; btn.textContent = '🔍 Analisar'; }
+}
+
+// Dispara analise tier-based quando usuario clica DISSECAR no modo meu_video
+async function dissectarMeuVideo() {
+  // Mesma transicao cinematografica do fluxo normal
+  irCena('5');
+  await sleep(1100);
+  irCena('6');
+  setTimeout(() => $('supernova').classList.add('ativa'), 100);
+  // Blublu intro personalizada
+  await typeOut($('chatMsg'), `Ok, ${state.nome}. Vou pegar seu vídeo e ser honesto. Uma das 4 coisas vai rolar.`, 30);
+  $('chatProgress').innerHTML = '<div class="chat-dot done"></div><div class="chat-dot done"></div><div class="chat-dot done"></div>';
+  // Roda fatos/reacoes no fundo
+  rotarCuriosidades();
+  const bgMsgs = ['contando views reais...', 'comparando com virais do seu nicho...', 'medindo retenção implícita...', 'julgando seu hook...'];
+  let bi = 0;
+  state.bgInt = setInterval(() => { bi = (bi+1) % bgMsgs.length; const el = $('bgProc'); if (el) el.textContent = bgMsgs[bi]; }, 2500);
   try {
     const r = await fetch('/api/bluetendencias', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'analisar-meu-video', token, entrada: url }),
+      body: JSON.stringify({ action: 'analisar-meu-video', token, entrada: state.video.youtube_id }),
     });
     const d = await r.json();
-    clearInterval(intMsg);
-    btn.disabled = false; btn.textContent = '🔍 Analisar';
-    if (!r.ok || !d.analise) { toast(d.error || 'Erro ao analisar'); irCena('2c'); return; }
+    if (state.bgInt) clearInterval(state.bgInt);
+    if (!r.ok || !d.analise) {
+      toast(d.error || 'Blublu não conseguiu gerar.');
+      setTimeout(() => irCena('2c'), 1500);
+      return;
+    }
+    state.atosData = d.analise;
     state.analiseId = d.analise_id;
-    state.video = d.video;
+    state.restantes = d.analises_restantes ?? state.restantes;
+    // Explosão da supernova e vai pra resultado
+    $('supernova').classList.add('explodindo');
+    await sleep(1500);
     renderMeuVideo(d);
   } catch (e) {
-    clearInterval(intMsg);
-    btn.disabled = false; btn.textContent = '🔍 Analisar';
-    toast('Erro de conexão'); irCena('2c');
+    if (state.bgInt) clearInterval(state.bgInt);
+    toast('Erro de conexão');
+    setTimeout(() => irCena('2c'), 1500);
   }
 }
 
@@ -1333,7 +1359,16 @@ function renderDashboard(d) {
     if (i === 4) renderReceita(d.receita);
     if (i === 5) renderEngagement(d);
     if (i === 6) renderCompNicho(d.comparacao_nicho, v);
-    if (i === 7) $('dashDissectBlublu').textContent = `Mas o ouro mesmo, ${state.nome}, vem quando você me pedir pra dissecar de verdade.`;
+    if (i === 7) {
+      const btn = document.querySelector('.dash-dissect-btn span');
+      if (state.meuVideoMode) {
+        if (btn) btn.textContent = '🎬 RECEBER FEEDBACK DO BLUBLU';
+        $('dashDissectBlublu').textContent = `Essas são as métricas, ${state.nome}. Clica aí pra eu te dar o veredito sobre esse vídeo.`;
+      } else {
+        if (btn) btn.textContent = '🔮 DISSECAR COM BLUBLU';
+        $('dashDissectBlublu').textContent = `Mas o ouro mesmo, ${state.nome}, vem quando você me pedir pra dissecar de verdade.`;
+      }
+    }
   }, dly));
 }
 
@@ -1471,6 +1506,8 @@ function renderCompNicho(c, v) {
 // ═══════════ CENA 5+6: IMPLOSÃO + CHAT ═══════════
 async function iniciarDissecacao() {
   if (state.restantes === 0) { toast('Limite de 24h atingido'); return; }
+  // Se modo "meu video", dispara fluxo adaptado (sem chat de perguntas)
+  if (state.meuVideoMode) return dissectarMeuVideo();
   irCena('5');
   await sleep(1100);
   irCena('6');
