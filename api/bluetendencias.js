@@ -381,9 +381,28 @@ async function callClaudeStudioComFallback(prompt, opts = {}) {
 
 function parseJsonSafe(text) {
   if (!text) return null;
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-  try { return JSON.parse(m[0]); } catch (e) { return null; }
+  let t = String(text).trim();
+  // Remove markdown code fences comuns em respostas de LLM
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  // Encontra o primeiro { e fecha no } balanceado (evita pegar lixo posterior)
+  const start = t.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0, end = -1, inStr = false, esc = false;
+  for (let i = start; i < t.length; i++) {
+    const c = t[i];
+    if (esc) { esc = false; continue; }
+    if (c === '\\') { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return null;
+  const raw = t.slice(start, end + 1);
+  try { return JSON.parse(raw); } catch (e) {
+    // Fallback: remove trailing commas (bug comum em saidas de LLM)
+    try { return JSON.parse(raw.replace(/,(\s*[}\]])/g, '$1')); } catch (e2) { return null; }
+  }
 }
 
 // Fallback template pra 5 atos + quiz sem precisar da IA.
@@ -1105,7 +1124,14 @@ Retorne APENAS JSON valido:
   const parte1 = parseJsonSafe(out1.text);
   const parte2 = parseJsonSafe(out2.text);
   if (!parte1?.ato_1 || !parte2?.ato_5) {
-    console.error('[gerar-analise-final] JSON invalido — p1.ato_1:', !!parte1?.ato_1, 'p2.ato_5:', !!parte2?.ato_5);
+    console.error(
+      '[gerar-analise-final] JSON invalido — p1.ato_1:', !!parte1?.ato_1,
+      'p2.ato_5:', !!parte2?.ato_5,
+      '| p1 modelo:', out1.modelo_usado,
+      '| p2 modelo:', out2.modelo_usado
+    );
+    if (!parte1?.ato_1) console.error('[gerar-analise-final] P1 raw (300 chars):', String(out1.text || '').slice(0, 300));
+    if (!parte2?.ato_5) console.error('[gerar-analise-final] P2 raw (300 chars):', String(out2.text || '').slice(0, 300));
     const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
     return {
       ok: true, fallback: true, nome: auth.nome,
