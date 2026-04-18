@@ -183,6 +183,22 @@ audio::-webkit-media-controls-panel{background:rgba(0,170,255,.08);border-radius
 .gw-bar:nth-child(7){animation-delay:.6s;height:90%}
 @keyframes gwave{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
 
+/* FREE LOCK — desfoca e bloqueia UI pro usuario sem Master */
+.free-locked-wrap .cols,
+.free-locked-wrap .credit-bar{filter:blur(7px) saturate(.7);pointer-events:none;user-select:none;-webkit-user-select:none;transition:filter .3s ease}
+.free-lock-overlay{position:absolute;inset:0;z-index:20;pointer-events:none;display:flex;justify-content:center}
+.free-lock-card{position:sticky;top:120px;align-self:flex-start;margin-top:40px;pointer-events:auto;background:linear-gradient(135deg,rgba(10,22,40,.97),rgba(5,12,25,.97));border:1px solid rgba(251,191,36,.45);border-radius:20px;padding:36px 42px;max-width:460px;text-align:center;box-shadow:0 24px 80px rgba(120,70,0,.4),0 0 0 1px rgba(251,191,36,.1) inset;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.free-lock-icon{font-size:44px;margin-bottom:14px;animation:fadeUp 2s ease-in-out infinite alternate}
+.free-lock-title{font-size:20px;font-weight:800;margin-bottom:8px;color:#fff;letter-spacing:-.01em}
+.free-lock-title span{background:linear-gradient(135deg,#fbbf24,#f59e0b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.free-lock-sub{font-family:var(--mono);font-size:12px;color:rgba(200,220,240,.7);line-height:1.6;margin-bottom:22px}
+.free-lock-btn{display:inline-block;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;color:#1a0f00;background:linear-gradient(135deg,#fbbf24,#f59e0b);border:none;border-radius:10px;padding:12px 28px;cursor:pointer;text-decoration:none;transition:all .2s;box-shadow:0 8px 24px rgba(251,191,36,.35)}
+.free-lock-btn:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(251,191,36,.5)}
+@media(max-width:768px){
+  .free-lock-card{top:80px;padding:28px 24px;margin:20px 12px}
+  .free-lock-title{font-size:17px}
+}
+
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;z-index:500;background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.3);border-radius:10px;padding:12px 20px;font-family:var(--mono);font-size:12px;color:var(--neon);pointer-events:none;transition:all .3s;white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
@@ -451,18 +467,42 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
 // ── AUTH CHECK ───────────────────────────────────────────────────────────────
 const token = localStorage.getItem('bt_token');
 const plan = localStorage.getItem('bt_plan');
-// Apenas requer conta (qualquer usuario logado tem acesso ao BlueVoice)
-if (!token) {
-  document.querySelector('.cols').innerHTML = `
-    <div style="text-align:center;padding:60px 20px;grid-column:1/-1">
-      <div style="font-size:48px;margin-bottom:16px">🎙️</div>
-      <div style="font-size:18px;font-weight:700;margin-bottom:8px">Crie sua conta gratuita</div>
-      <div style="font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-bottom:24px">O BlueVoice está disponível gratuitamente para todos os usuários cadastrados.</div>
-      <a href="/" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;text-decoration:none">Criar conta grátis →</a>
+// BlueVoice e exclusivo Master. Free/Full/sem-login veem a UI desfocada
+// com overlay CTA que abre o popup de upgrade na home.
+const isNotMaster = !token || plan !== 'master';
+
+function abrirPopupAssinarMaster(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  window.location.href = '/?upgrade=master';
+}
+
+if (isNotMaster) {
+  const pageEl = document.querySelector('.page');
+  if (pageEl) pageEl.classList.add('free-locked-wrap');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'free-lock-overlay';
+  overlay.innerHTML = `
+    <div class="free-lock-card">
+      <div class="free-lock-icon">🎙️</div>
+      <div class="free-lock-title">Exclusivo do plano <span>Master</span></div>
+      <div class="free-lock-sub">O BlueVoice gera narrações hiper-realistas com ElevenLabs, ilimitado para assinantes <b>Master</b>.<br>Transforme qualquer roteiro em voz profissional.</div>
+      <a href="/?upgrade=master" class="free-lock-btn" onclick="abrirPopupAssinarMaster(event)">Ver planos →</a>
     </div>`;
-  // Aborta o resto do script: os elementos (scriptText, charCount, voices...)
-  // foram removidos pelo innerHTML acima, qualquer addEventListener crasharia.
-  throw new Error('auth_required');
+  if (pageEl) pageEl.appendChild(overlay);
+
+  // Failsafe: intercepta qualquer click dentro de .cols ou .credit-bar
+  document.addEventListener('click', (e) => {
+    const cols = document.querySelector('.cols');
+    const credit = document.querySelector('.credit-bar');
+    if ((cols && cols.contains(e.target)) || (credit && credit.contains(e.target))) {
+      abrirPopupAssinarMaster(e);
+    }
+  }, true);
+
+  // Aborta o resto do script: operacoes de ElevenLabs, creditos etc. nao
+  // devem rodar pra quem nao tem acesso. UI ja esta bloqueada visualmente.
+  throw new Error('master_required');
 }
 
 // ── MOUSE GLOW ───────────────────────────────────────────────────────────────
