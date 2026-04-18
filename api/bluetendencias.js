@@ -42,6 +42,7 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === 'debug-me')             return res.status(200).json(await debugMe(ctx, req));
+    if (action === 'diagnostico')          return res.status(200).json(await diagnosticoStudio(ctx, req));
     if (action === 'entrada')              return res.status(200).json(await entrada(ctx, req));
     if (action === 'galeria-nichos')       return res.status(200).json(await galeriaNichos(ctx, req));
     if (action === 'galeria')              return res.status(200).json(await galeriaNichos(ctx, req)); // backcompat
@@ -629,6 +630,70 @@ async function debugMe(ctx, req) {
       info.variantesTestadas.push({ v, count: lista.length, rows: lista });
     } catch (e) {}
   }
+  return info;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTION: diagnostico — estado do sistema pra debug rapido (precisa master)
+// Retorna: chave configurada, circuit breakers, budget, rate limit, ping Claude
+// ═════════════════════════════════════════════════════════════════════════════
+async function diagnosticoStudio(ctx, req) {
+  const token = req.query.token || req.body?.token;
+  const auth = await requireMaster(ctx, token);
+  if (!auth.ok) return { error: auth.error, status: auth.status };
+
+  const info = {
+    timestamp: new Date().toISOString(),
+    user: { id: auth.user.id, email: auth.user.email, nome: auth.nome },
+    chaves: {
+      anthropic_studio: !!process.env.ANTHROPIC_API_KEY_STUDIO,
+      anthropic_principal: !!process.env.ANTHROPIC_API_KEY,
+      supabase_url: !!process.env.SUPABASE_URL,
+      supabase_key: !!process.env.SUPABASE_SERVICE_KEY,
+    },
+    config: {
+      daily_budget_brl: parseFloat(process.env.STUDIO_DAILY_BUDGET_BRL || '200'),
+      max_per_user_24h: parseInt(process.env.STUDIO_MAX_PER_USER_24H || '0', 10),
+    },
+  };
+
+  // Circuit breakers (sonnet + haiku)
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_health?select=componente,falhas_consecutivas,circuito_aberto_ate,total_chamadas,total_falhas,updated_at`, { headers: ctx.h });
+    const rows = r.ok ? await r.json() : [];
+    info.circuit_breakers = rows.map(r => ({
+      ...r,
+      aberto_agora: r.circuito_aberto_ate ? new Date(r.circuito_aberto_ate) > new Date() : false,
+    }));
+  } catch(e) { info.circuit_breakers = 'erro: ' + e.message; }
+
+  // Budget de hoje
+  try {
+    const hoje = new Date().toISOString().split('T')[0];
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_budget_diario?data=eq.${hoje}&select=*&limit=1`, { headers: ctx.h });
+    const [b] = r.ok ? await r.json() : [];
+    info.budget_hoje = b || { data: hoje, gasto_brl: 0, total_analises: 0, ativo: true };
+  } catch(e) { info.budget_hoje = 'erro: ' + e.message; }
+
+  // Analises do user em 24h
+  try {
+    const desde = new Date(Date.now() - 86400000).toISOString();
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${auth.user.id}&usado_em=gte.${desde}&select=usado_em`, { headers: ctx.h });
+    const rows = r.ok ? await r.json() : [];
+    info.uso_24h_user = { analises: rows.length, primeira: rows[0]?.usado_em || null };
+  } catch(e) { info.uso_24h_user = 'erro: ' + e.message; }
+
+  // Teste real do Claude (latencia + resposta)
+  if (process.env.ANTHROPIC_API_KEY_STUDIO) {
+    const t0 = Date.now();
+    try {
+      const out = await callClaudeRaw('Responda APENAS com a palavra PONG.', { maxTokens: 10, model: 'claude-haiku-4-5' });
+      info.claude_ping = { ok: true, latencia_ms: Date.now() - t0, resposta: out.text.slice(0, 50), tokens: out.tokens_input + out.tokens_output };
+    } catch(e) { info.claude_ping = { ok: false, latencia_ms: Date.now() - t0, erro: e.message }; }
+  } else {
+    info.claude_ping = { ok: false, erro: 'chave ANTHROPIC_API_KEY_STUDIO nao configurada' };
+  }
+
   return info;
 }
 

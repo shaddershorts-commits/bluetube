@@ -983,8 +983,10 @@ async function dissectarMeuVideo() {
     const d = await r.json();
     if (state.bgInt) clearInterval(state.bgInt);
     if (!r.ok || !d.analise) {
-      toast(d.error || 'Blublu não conseguiu gerar.');
-      setTimeout(() => irCena('2c'), 1500);
+      const msg = d.error || d.mensagem || 'Blublu não conseguiu gerar.';
+      console.error('[bluetendencias] dissectarMeuVideo falhou:', { status: r.status, body: d });
+      toast(msg);
+      setTimeout(() => irCena('2c'), 2500);
       return;
     }
     if (d.aviso) toast(d.aviso);
@@ -997,8 +999,10 @@ async function dissectarMeuVideo() {
     renderMeuVideo(d);
   } catch (e) {
     if (state.bgInt) clearInterval(state.bgInt);
-    toast('Erro de conexão');
-    setTimeout(() => irCena('2c'), 1500);
+    const msg = e.name === 'AbortError' ? 'Blublu demorou demais (timeout 90s). Tenta de novo.' : ('Erro: ' + (e.message || 'conexão'));
+    console.error('[bluetendencias] dissectarMeuVideo exception:', e);
+    toast(msg);
+    setTimeout(() => irCena('2c'), 2500);
   }
 }
 
