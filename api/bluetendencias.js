@@ -210,11 +210,11 @@ async function galeria(ctx, req) {
 
   const [emAltaR, emergentesR] = await Promise.all([
     fetch(
-      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&video_url=neq.null&coletado_em=gte.${desde7d}${nichoClause}&order=viral_score.desc.nullslast,views.desc&limit=12&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,canal_thumbnail,views,likes,comentarios,duracao_segundos,viral_score,velocidade_views_24h,nicho,publicado_em`,
+      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde7d}${nichoClause}&order=viral_score.desc.nullslast,views.desc&limit=12&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,canal_thumbnail,views,likes,comentarios,duracao_segundos,viral_score,velocidade_views_24h,nicho,publicado_em`,
       { headers: ctx.h }
     ),
     fetch(
-      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&video_url=neq.null&coletado_em=gte.${desde7d}&velocidade_views_24h=gte.1000${nichoClause}&order=velocidade_views_24h.desc&limit=10&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,duracao_segundos,viral_score,velocidade_views_24h,nicho,publicado_em`,
+      `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde7d}&velocidade_views_24h=gte.1000${nichoClause}&order=velocidade_views_24h.desc&limit=10&select=id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,duracao_segundos,viral_score,velocidade_views_24h,nicho,publicado_em`,
       { headers: ctx.h }
     ),
   ]);
@@ -223,7 +223,7 @@ async function galeria(ctx, req) {
 
   // Top 15 por nicho (pra dropdown)
   const porNichoR = await fetch(
-    `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&video_url=neq.null&coletado_em=gte.${desde7d}&nicho=not.is.null&order=viral_score.desc.nullslast&limit=50&select=id,youtube_id,titulo,thumbnail_url,views,canal_nome,nicho`,
+    `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&coletado_em=gte.${desde7d}&nicho=not.is.null&order=viral_score.desc.nullslast&limit=50&select=id,youtube_id,titulo,thumbnail_url,views,canal_nome,nicho`,
     { headers: ctx.h }
   );
   const porNichoRaw = porNichoR.ok ? await porNichoR.json() : [];
