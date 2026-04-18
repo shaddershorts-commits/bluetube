@@ -561,6 +561,108 @@ export default async function handler(req, res) {
   }
 
   // ── STRIPE WEBHOOKS (stats + lista recente) ──────────────────────────────
+  // ── CHECK_CANCELAMENTO — verifica estado completo de um email ─────────────
+  // Retorna: subscriber, afiliado atribuido, comissoes, webhooks relacionados
+  if (req.method === 'GET' && action === 'check_cancelamento') {
+    try {
+      const emailParam = (email || req.query.email || '').toLowerCase().trim();
+      if (!emailParam) return res.status(400).json({ error: 'email obrigatorio' });
+      const emailEnc = encodeURIComponent(emailParam);
+      const hJson = { ...headers, 'Content-Type': 'application/json' };
+
+      // 1) Subscriber (case-insensitive via ilike)
+      const subR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?email=ilike.${emailEnc}&select=*`,
+        { headers: hJson }
+      );
+      const subs = subR.ok ? await subR.json() : [];
+      const subscriber = subs[0] || null;
+      const customerId = subscriber?.stripe_customer_id || null;
+
+      // 2) Conversions do afiliado
+      const convR = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_conversions?converted_email=ilike.${emailEnc}&select=*`,
+        { headers: hJson }
+      );
+      const conversions = convR.ok ? await convR.json() : [];
+
+      // 3) Commissions + nome do afiliado
+      const comR = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_commissions?subscriber_email=ilike.${emailEnc}&select=*`,
+        { headers: hJson }
+      );
+      const commissions = comR.ok ? await comR.json() : [];
+
+      // Enriquece commissions com email do afiliado
+      const affIds = [...new Set(commissions.map(c => c.affiliate_id).filter(Boolean))];
+      let affMap = {};
+      if (affIds.length > 0) {
+        const aR = await fetch(
+          `${SUPABASE_URL}/rest/v1/affiliates?id=in.(${affIds.join(',')})&select=id,email`,
+          { headers: hJson }
+        );
+        const affs = aR.ok ? await aR.json() : [];
+        affMap = Object.fromEntries(affs.map(a => [a.id, a.email]));
+      }
+      const commissionsEnriched = commissions.map(c => ({ ...c, afiliado_email: affMap[c.affiliate_id] || null }));
+
+      // 4) Stripe webhooks que mencionam o email ou customer_id (ultimos 90d)
+      const desde90d = new Date(Date.now() - 90 * 86400000).toISOString();
+      const searches = [`payload_json=ilike.*${emailEnc}*`];
+      if (customerId) searches.push(`payload_json=ilike.*${encodeURIComponent(customerId)}*`);
+      // Busca por email OU customer_id via OR
+      const orFilter = encodeURIComponent(searches.map(s => s).join(','));
+      let webhooks = [];
+      try {
+        const whR = await fetch(
+          `${SUPABASE_URL}/rest/v1/stripe_webhook_log?or=(${orFilter})&created_at=gte.${desde90d}&select=id,stripe_event_id,tipo,status,tentativas,ultimo_erro,processado_em,created_at&order=created_at.desc&limit=50`,
+          { headers: hJson }
+        );
+        webhooks = whR.ok ? await whR.json() : [];
+      } catch(e) {
+        // Fallback: busca simples so por customer_id se tiver
+        if (customerId) {
+          const whR2 = await fetch(
+            `${SUPABASE_URL}/rest/v1/stripe_webhook_log?created_at=gte.${desde90d}&select=id,stripe_event_id,tipo,status,tentativas,ultimo_erro,processado_em,created_at&order=created_at.desc&limit=200`,
+            { headers: hJson }
+          );
+          webhooks = whR2.ok ? await whR2.json() : [];
+        }
+      }
+
+      // 5) Diagnostico agregado
+      const agora = new Date();
+      const planExpirou = subscriber?.plan_expires_at ? new Date(subscriber.plan_expires_at) < agora : null;
+      const diag = {
+        plano_atual: subscriber?.plan || null,
+        e_pagante: subscriber && ['full','master'].includes(subscriber.plan),
+        cancelamento_agendado: !!subscriber?.plan_expires_at && subscriber?.plan !== 'free',
+        plano_ja_expirou: planExpirou,
+        deveria_estar_free: planExpirou === true && subscriber?.plan !== 'free',
+        tem_afiliado: conversions.length > 0,
+        comissoes_ativas: commissionsEnriched.filter(c => c.status === 'pending' && !c.refunded_at).length,
+        comissoes_pagas: commissionsEnriched.filter(c => c.status === 'paid').length,
+        comissoes_refunded: commissionsEnriched.filter(c => c.refunded_at).length,
+        webhooks_encontrados: webhooks.length,
+        teve_subscription_deleted: webhooks.some(w => w.tipo === 'customer.subscription.deleted'),
+        teve_subscription_updated: webhooks.some(w => w.tipo === 'customer.subscription.updated'),
+        webhooks_com_erro: webhooks.filter(w => w.status === 'erro' || w.status === 'falha_permanente').length,
+      };
+
+      return res.status(200).json({
+        email: emailParam,
+        diagnostico: diag,
+        subscriber,
+        conversions,
+        commissions: commissionsEnriched,
+        webhooks,
+      });
+    } catch (e) {
+      console.error('[admin check_cancelamento]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method === 'GET' && action === 'stripe_webhooks') {
     try {
       const diaAtras = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
