@@ -612,6 +612,43 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- BLUETENDENCIAS STUDIO (Dissecação cinematográfica) -->
+    <div class="section" id="studioSection">
+      <div class="section-header">
+        <div class="section-title">🔮 BlueTendências Studio <span class="section-subtitle">— dissecação cinematográfica · Sonnet 4.6 isolado</span></div>
+        <button class="action-btn" onclick="loadStudio()">↻ Atualizar</button>
+      </div>
+      <div id="studioStatusBadge" style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid rgba(167,139,250,0.2);border-radius:14px;padding:14px 18px;margin-bottom:14px">
+        <div id="studioStatusDot" style="width:12px;height:12px;border-radius:50%;background:#666"></div>
+        <div style="flex:1">
+          <div id="studioStatusLabel" style="font-size:14px;font-weight:700">carregando…</div>
+          <div id="studioStatusSub" style="font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px">—</div>
+        </div>
+        <div id="studioBudgetBar" style="width:200px;height:10px;background:rgba(167,139,250,.1);border-radius:5px;overflow:hidden">
+          <div id="studioBudgetFill" style="height:100%;background:linear-gradient(90deg,#a78bfa,#ec4899);width:0%;transition:width .5s"></div>
+        </div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:14px">
+        <div class="stat-card"><div class="stat-label">Análises hoje</div><div class="stat-value blue" id="studioAnalisesHoje">—</div><div class="stat-sub">gerações completas</div></div>
+        <div class="stat-card"><div class="stat-label">Gasto hoje</div><div class="stat-value" style="color:#a78bfa" id="studioGastoHoje">R$ —</div><div class="stat-sub" id="studioCustoMedio">custo médio: —</div></div>
+        <div class="stat-card"><div class="stat-label">Budget restante</div><div class="stat-value green" id="studioBudgetRestante">—</div><div class="stat-sub" id="studioBudgetLimite">de R$ 200,00</div></div>
+        <div class="stat-card"><div class="stat-label">Usuários 24h</div><div class="stat-value blue" id="studioUsuarios24h">—</div><div class="stat-sub">únicos</div></div>
+        <div class="stat-card"><div class="stat-label">Nicho mais analisado</div><div class="stat-value" style="color:#fbbf24;font-size:16px" id="studioNichoTop">—</div><div class="stat-sub" id="studioNichoTopCount">—</div></div>
+        <div class="stat-card"><div class="stat-label">Última análise</div><div class="stat-value blue" style="font-size:14px" id="studioUltimaData">—</div><div class="stat-sub" id="studioUltimaTitulo">—</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(167,139,250,0.12);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-bottom:12px">📊 GASTO 7 DIAS</div>
+        <div id="studioChart7d" style="display:flex;align-items:flex-end;gap:8px;height:120px"></div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(167,139,250,0.12);border-radius:14px;padding:16px 18px">
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-bottom:10px">📜 ÚLTIMAS 20 ANÁLISES</div>
+        <div id="studioUltimasTable" style="font-family:var(--mono);font-size:12px"></div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--dim);font-family:var(--mono)">
+        💡 endpoint: <code>/api/bluetendencias?action=status-budget&admin_secret=X</code> · tabelas: <code>studio_dissecacoes</code>, <code>studio_rate_limits</code>, <code>studio_budget_diario</code>
+      </div>
+    </div>
+
     <!-- STRIPE WEBHOOKS -->
     <div class="section" id="stripeWebhooksSection">
       <div class="section-header">
@@ -1174,6 +1211,7 @@ async function loadData(){
     loadStripeWebhooks();
     loadML();
     loadTendenciasML();
+    loadStudio();
 
     // 🤝 Afiliados
     loadAffiliates();
@@ -1731,6 +1769,117 @@ async function loadTendenciasML(){
 }
 function formatNum(n){if(n>=1e6)return (n/1e6).toFixed(1)+'M';if(n>=1e3)return (n/1e3).toFixed(1)+'K';return String(n);}
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// ── BLUETENDENCIAS STUDIO (Dissecação) ────────────────────────────────────
+async function loadStudio(){
+  try{
+    const r=await fetch(`/api/bluetendencias?action=status-budget&admin_secret=${encodeURIComponent(adminKey)}`);
+    if(!r.ok){
+      document.getElementById('studioStatusLabel').textContent='❌ Erro '+r.status;
+      document.getElementById('studioStatusSub').textContent='verifique ADMIN_SECRET / chave admin';
+      return;
+    }
+    const d=await r.json();
+    const hoje=d.hoje||{gasto_brl:0,total_analises:0,budget_limite:200,ativo:true};
+    const gasto=Number(hoje.gasto_brl)||0;
+    const limite=Number(hoje.budget_limite)||200;
+    const restante=Math.max(0,limite-gasto);
+    const pct=limite>0?Math.min(100,(gasto/limite)*100):0;
+    // Status badge
+    const ativo=hoje.ativo!==false;
+    const dot=document.getElementById('studioStatusDot');
+    const lbl=document.getElementById('studioStatusLabel');
+    const sub=document.getElementById('studioStatusSub');
+    if(!ativo){
+      dot.style.background='#ff6b6b';
+      lbl.textContent='🔴 Sistema PAUSADO (budget estourado)';
+      sub.textContent='gasto ultrapassou R$ '+limite.toFixed(2)+' hoje';
+    } else if(pct>=80){
+      dot.style.background='#fbbf24';
+      lbl.textContent='⚠️ Budget próximo do limite';
+      sub.textContent=pct.toFixed(1)+'% gasto hoje';
+    } else {
+      dot.style.background='#4ecca3';
+      lbl.textContent='✅ Studio operando normal';
+      sub.textContent='Sonnet 4.6 · chave isolada · budget '+pct.toFixed(1)+'% usado';
+    }
+    document.getElementById('studioBudgetFill').style.width=pct+'%';
+    if(pct>=90) document.getElementById('studioBudgetFill').style.background='#ff6b6b';
+    else if(pct>=70) document.getElementById('studioBudgetFill').style.background='#fbbf24';
+    // Cards
+    document.getElementById('studioAnalisesHoje').textContent=hoje.total_analises||0;
+    document.getElementById('studioGastoHoje').textContent='R$ '+gasto.toFixed(2);
+    const custoMedio=hoje.total_analises>0?(gasto/hoje.total_analises):0;
+    document.getElementById('studioCustoMedio').textContent='custo médio: R$ '+custoMedio.toFixed(3);
+    document.getElementById('studioBudgetRestante').textContent='R$ '+restante.toFixed(2);
+    document.getElementById('studioBudgetLimite').textContent='de R$ '+limite.toFixed(2);
+    document.getElementById('studioUsuarios24h').textContent=d.usuarios_ativos_24h||0;
+    // Nicho top
+    const ultimas=d.ultimas_analises||[];
+    const nichos={};
+    ultimas.forEach(u=>{if(u.nicho_usuario)nichos[u.nicho_usuario]=(nichos[u.nicho_usuario]||0)+1;});
+    const topNicho=Object.entries(nichos).sort((a,b)=>b[1]-a[1])[0];
+    if(topNicho){
+      document.getElementById('studioNichoTop').textContent=topNicho[0];
+      document.getElementById('studioNichoTopCount').textContent=topNicho[1]+' análise(s)';
+    } else {
+      document.getElementById('studioNichoTop').textContent='—';
+      document.getElementById('studioNichoTopCount').textContent='sem dados';
+    }
+    // Última análise
+    if(ultimas[0]){
+      const u=ultimas[0];
+      document.getElementById('studioUltimaData').textContent=new Date(u.created_at).toLocaleString('pt-BR');
+      document.getElementById('studioUltimaTitulo').textContent=(u.video_titulo||'sem título').slice(0,48);
+    }
+    // Chart 7 dias
+    const hist=(d.historico_7d||[]).slice().reverse();
+    const maxG=Math.max(...hist.map(h=>Number(h.gasto_brl)||0),0.1);
+    const chartEl=document.getElementById('studioChart7d');
+    if(hist.length===0){
+      chartEl.innerHTML='<div style="color:var(--dim);font-size:12px;margin:auto">Sem dados ainda.</div>';
+    } else {
+      chartEl.innerHTML=hist.map(h=>{
+        const g=Number(h.gasto_brl)||0;
+        const altPct=maxG>0?(g/maxG)*100:0;
+        const dataF=new Date(h.data+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+        const cor=h.ativo===false?'#ff6b6b':'#a78bfa';
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:40px">
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">R$${g.toFixed(1)}</div>
+          <div style="width:100%;height:${Math.max(altPct,2)}%;background:${cor};border-radius:3px 3px 0 0;min-height:2px"></div>
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">${dataF}</div>
+          <div style="font-size:9px;color:var(--dim)">${h.total_analises||0}</div>
+        </div>`;
+      }).join('');
+    }
+    // Tabela últimas 20
+    const tbl=document.getElementById('studioUltimasTable');
+    if(ultimas.length===0){
+      tbl.innerHTML='<div class="empty-state">Nenhuma análise ainda.</div>';
+    } else {
+      tbl.innerHTML=`<div style="display:grid;grid-template-columns:130px 1fr 130px 80px 90px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.15);font-weight:700;color:var(--dim)">
+        <div>QUANDO</div><div>VÍDEO</div><div>NICHO</div><div>CUSTO</div><div>YT ID</div>
+      </div>`+ultimas.map(u=>{
+        const quando=new Date(u.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const titulo=escapeHtml((u.video_titulo||'').slice(0,60));
+        const nicho=escapeHtml(u.nicho_usuario||'—');
+        const custo='R$ '+(Number(u.custo_brl)||0).toFixed(3);
+        const yt=escapeHtml(u.video_youtube_id||'—');
+        return `<div style="display:grid;grid-template-columns:130px 1fr 130px 80px 90px;gap:10px;padding:6px 0;border-bottom:1px solid rgba(167,139,250,.06)">
+          <div>${quando}</div>
+          <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titulo}">${titulo||'—'}</div>
+          <div style="color:#fbbf24">${nicho}</div>
+          <div style="color:#a78bfa">${custo}</div>
+          <div><a href="https://www.youtube.com/watch?v=${yt}" target="_blank" rel="noopener" style="color:#00aaff">${yt}</a></div>
+        </div>`;
+      }).join('');
+    }
+  }catch(e){
+    console.error('loadStudio:',e);
+    document.getElementById('studioStatusLabel').textContent='❌ Erro ao carregar';
+    document.getElementById('studioStatusSub').textContent=e.message;
+  }
+}
 
 // ── STRIPE WEBHOOKS ───────────────────────────────────────────────────────
 async function loadStripeWebhooks(){
