@@ -1274,36 +1274,69 @@ function showGate(motivo) {
     $('gateCard').innerHTML = `
       <div style="display:flex;justify-content:center;margin-bottom:20px"><div class="blublu"></div></div>
       <div class="gate-badge" style="font-size:11px">🚀 EXCLUSIVO · MASTER</div>
-      <h2 style="font-size:clamp(26px,4vw,36px);margin-bottom:14px;letter-spacing:-1px">Conheça o Studio do Blublu</h2>
-      <p style="font-size:15px;color:var(--text-sec);margin-bottom:26px;line-height:1.55">A IA mais avançada do Brasil analisa qualquer Short em segundos. <b style="color:var(--blublu2)">Você cola o link, ela te diz <i>exatamente</i> por que viralizou — ou por que não.</b></p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:26px;text-align:left">
+      <h2 style="font-size:clamp(26px,4vw,36px);margin-bottom:10px;letter-spacing:-1px">Aprenda a viralizar</h2>
+      <div style="font-size:15px;color:var(--blublu2);font-weight:600;margin-bottom:18px;font-style:italic">de verdade — não adivinhando</div>
+      <p style="font-size:15px;color:var(--text-sec);margin-bottom:26px;line-height:1.55">Não é só análise. É um <b style="color:var(--blublu2)">treinamento interativo</b> que evolui com você. O Blublu <b style="color:#fff">ensina, testa, corrige e adapta</b> cada feedback ao seu nível — virais reais como sala de aula.</p>
+
+      <!-- Como você evolui (3 passos) -->
+      <div style="background:linear-gradient(135deg,rgba(59,130,246,.1),rgba(0,170,255,.05));border:1px solid var(--border-blublu);border-radius:16px;padding:22px 24px;margin-bottom:22px;text-align:left">
+        <div style="font-size:11px;font-weight:800;color:var(--neon);letter-spacing:2px;margin-bottom:14px;font-family:var(--mono)">🎓 COMO VOCÊ EVOLUI</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:22px;height:22px;background:var(--blublu);color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">1</span><div style="font-weight:700;font-size:13px">DISSECA</div></div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.4;padding-left:30px">Blublu quebra o viral em 5 atos. Você vê o <i>porquê</i> de cada decisão</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:22px;height:22px;background:var(--blublu);color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">2</span><div style="font-weight:700;font-size:13px">TESTA</div></div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.4;padding-left:30px">Quiz interativo valida se você absorveu. Com explicação didática.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:22px;height:22px;background:var(--blublu);color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">3</span><div style="font-weight:700;font-size:13px">APLICA</div></div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.4;padding-left:30px">3 recomendações práticas pro <b>seu canal</b>, com exemplos concretos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:22px;text-align:left">
         <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
           <div style="font-size:20px;margin-bottom:6px">🎬</div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Análise cinematográfica</div>
-          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">5 atos + quiz interativo + sugestões acionáveis</div>
-        </div>
-        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
-          <div style="font-size:20px;margin-bottom:6px">📊</div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Dashboard em tempo real</div>
-          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Views ao vivo · projeções · receita estimada</div>
-        </div>
-        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
-          <div style="font-size:20px;margin-bottom:6px">🧠</div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Blublu personalizado</div>
-          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">IA com personalidade · feedback sem filtro</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Dissecação em 5 atos</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Hook, estrutura, gatilho, contexto e aplicação pra você</div>
         </div>
         <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
           <div style="font-size:20px;margin-bottom:6px">🎯</div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Análise do seu vídeo</div>
-          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Deep analysis adaptativa por performance</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Quiz adaptativo</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Testa se você entendeu · explicação em cada resposta</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">📊</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Dashboard ao vivo</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Views em tempo real · projeções · receita estimada</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">🧠</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Feedback adaptativo</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Blublu muda o tom conforme seu nível · do iniciante ao top 1%</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">🎓</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Analisa seu vídeo</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Deep analysis honesta · passo a passo do que mudar</div>
+        </div>
+        <div style="background:rgba(59,130,246,.08);border:1px solid var(--border-blublu);border-radius:12px;padding:14px 16px">
+          <div style="font-size:20px;margin-bottom:6px">💾</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">Histórico de aprendizado</div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.4">Salva análises · revisita padrões · veja sua evolução</div>
         </div>
       </div>
+
       <div style="background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(0,170,255,.06));border:1px solid rgba(251,191,36,.3);border-radius:14px;padding:18px 20px;margin-bottom:24px;text-align:left">
-        <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px;margin-bottom:8px;font-family:var(--mono)">💡 POR QUE VOCÊ PRECISA</div>
-        <div style="font-size:13px;line-height:1.55;color:var(--text-sec)">Criadores que usam análise estruturada crescem em média <b style="color:#fff">4x mais rápido</b> que quem só publica e reza. O Blublu processa 2.3M de virais brasileiros — tudo que ele diz vem de padrão real.</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px;margin-bottom:8px;font-family:var(--mono)">💡 POR QUE ENSINAR VALE MAIS QUE SÓ ANALISAR</div>
+        <div style="font-size:13px;line-height:1.55;color:var(--text-sec)">Criadores que <b style="color:#fff">aprendem</b> os padrões crescem <b style="color:#fff">4x mais rápido</b> que os que só recebem análise e esquecem. O Blublu força você a pensar — quiz, feedback adaptativo, exemplos práticos. Depois de 10 análises, você enxerga viral como ele enxerga.</div>
       </div>
+
       <a class="gate-cta" href="/?upgrade=master" style="display:inline-flex;align-items:center;gap:10px">
-        <span>Quero virar Master →</span>
+        <span>Virar criador viral — Master →</span>
       </a>
       <p style="margin-top:16px;font-size:11px;color:var(--text-dim);font-family:var(--mono)">R$ 89,99/mês · análises ilimitadas + todas as ferramentas Master</p>
       <p style="margin-top:10px;font-size:10px;color:var(--text-dim)">Já é Master? <a href="javascript:location.reload()" style="color:var(--blublu2)">Recarregar</a></p>

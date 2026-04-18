@@ -1732,6 +1732,26 @@ let pendingOTPEmail='';
 function openAuthModal(){document.getElementById('authModal').classList.add('on');}
 // Abre modal auto via ?openLogin=1 (vindo de gates tipo bluetendencias)
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
+// Abre modal de upgrade auto via ?upgrade=master ou ?upgrade=full
+(function(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const plano = p.get('upgrade');
+    if (plano !== 'master' && plano !== 'full') return;
+    setTimeout(() => {
+      const tk = localStorage.getItem('bt_token');
+      if (!tk) {
+        // Sem login — abre modal de cadastro, guarda intencao de upgrade
+        try { pendingUpgradePlan = plano; pendingUpgradeBilling = 'monthly'; } catch(e){}
+        openAuthModal();
+        try { switchAuthTab('signup'); setAuthMsg('Crie sua conta pra assinar o plano ' + plano + ' 👇', 'ok'); } catch(e){}
+      } else {
+        // Logado — abre modal de upgrade com plano selecionado
+        openUpgradeModal('tool_blocked', plano);
+      }
+    }, 500);
+  }catch(e){}
+})();
 function closeAuthModal(){document.getElementById('authModal').classList.remove('on');document.getElementById('authMsg').textContent='';}
 function switchAuthTab(tab){
   document.getElementById('tabLogin').classList.toggle('active',tab==='login');
