@@ -416,7 +416,104 @@ async function processQueue(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function reconcile(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
   try {
-    // Pega todos afiliados
+    // ─── FASE 1: criar commissions FALTANTES
+    // Cobre 2 cenarios:
+    //  (a) Conversion ja marcada como full/master mas sem commission (rede falhou)
+    //  (b) Conversion marcada como signup/free mas usuario upgradou pra pago depois
+    //      e o upgrade nao disparou chamada ao /api/affiliate?action=conversion
+    const PLAN_AMOUNTS = { full: 29.99, master: 89.99 };
+    const desde120d = new Date(Date.now() - 120*86400000).toISOString();
+
+    // Busca TODAS conversions dos ultimos 120 dias (todos os tipos)
+    const convR = await fetch(
+      `${SU}/rest/v1/affiliate_conversions?converted_at=gte.${desde120d}&select=id,affiliate_id,converted_email,plan,converted_at,stripe_customer_id&limit=1000`,
+      { headers: h }
+    );
+    const conversions = convR.ok ? await convR.json() : [];
+
+    // Existing commissions (pra idempotencia)
+    const existR = await fetch(
+      `${SU}/rest/v1/affiliate_commissions?status=in.(pending,paid,flagged)&select=affiliate_id,subscriber_email,plan`,
+      { headers: h }
+    );
+    const existing = existR.ok ? await existR.json() : [];
+    const existingKey = new Set(existing.map(c => `${c.affiliate_id}|${String(c.subscriber_email).toLowerCase()}`));
+
+    // Busca plano ATUAL dos emails (pra pegar upgrades que passaram em branco)
+    const emails = [...new Set(conversions.map(c => c.converted_email).filter(Boolean))];
+    const subMap = new Map();
+    if (emails.length > 0) {
+      // Chunk pra evitar URL gigante (PostgREST limita)
+      for (let i = 0; i < emails.length; i += 50) {
+        const chunk = emails.slice(i, i + 50);
+        const list = chunk.map(e => `"${e}"`).join(',');
+        const subR = await fetch(`${SU}/rest/v1/subscribers?email=in.(${encodeURIComponent(list)})&select=email,plan,is_manual`, { headers: h });
+        const subs = subR.ok ? await subR.json() : [];
+        subs.forEach(s => subMap.set(String(s.email).toLowerCase(), s));
+      }
+    }
+
+    // Pra cada conversion, determina plan REAL (considerando upgrade posterior)
+    const missing = [];
+    for (const c of conversions) {
+      const key = `${c.affiliate_id}|${String(c.converted_email).toLowerCase()}`;
+      if (existingKey.has(key)) continue; // ja tem commission
+      // Plano ATUAL do subscriber
+      const sub = subMap.get(String(c.converted_email).toLowerCase());
+      if (!sub) continue; // cadastro nao existe mais
+      if (sub.is_manual) continue; // manual nao gera commission
+      const planFinal = sub.plan;
+      if (planFinal !== 'full' && planFinal !== 'master') continue; // ainda free
+      missing.push({ ...c, plan_final: planFinal });
+    }
+
+    // Mapa affiliate_id -> affiliate (pra rate + stats)
+    const affIds = [...new Set(missing.map(m => m.affiliate_id))].filter(Boolean);
+    const affMap = new Map();
+    if (affIds.length > 0) {
+      const affsR = await fetch(`${SU}/rest/v1/affiliates?id=in.(${affIds.join(',')})&select=*`, { headers: h });
+      const affs = affsR.ok ? await affsR.json() : [];
+      affs.forEach(a => affMap.set(a.id, a));
+    }
+
+    let criadas = 0;
+    const detalhesCriadas = [];
+    for (const miss of missing) {
+      const aff = affMap.get(miss.affiliate_id);
+      if (!aff) continue;
+      // Anti self-referral basico
+      if (String(aff.email).toLowerCase() === String(miss.converted_email).toLowerCase()) continue;
+      const planReal = miss.plan_final; // 'full' ou 'master' (do subscriber atual)
+      const planAmount = PLAN_AMOUNTS[planReal];
+      if (!planAmount) continue;
+      // Rate atual do afiliado (comissao_percentual ou default nivel)
+      const NIVEL_RATES = { bronze: 0.30, prata: 0.45, ouro: 0.58 };
+      const rate = (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
+        ? aff.comissao_percentual / 100
+        : (NIVEL_RATES[aff.nivel] || 0.30);
+      const commissionAmount = parseFloat((planAmount * rate).toFixed(2));
+      try {
+        await fetch(`${SU}/rest/v1/affiliate_commissions`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            affiliate_id: aff.id,
+            conversion_id: miss.id,
+            subscriber_email: miss.converted_email,
+            plan: planReal,
+            plan_amount: planAmount,
+            commission_rate: rate,
+            commission_amount: commissionAmount,
+            status: 'pending',
+            period_start: new Date().toISOString(),
+            period_end: new Date(Date.now() + 37*86400000).toISOString(),
+          }),
+        });
+        criadas++;
+        detalhesCriadas.push(`${aff.email} ← ${miss.converted_email} (${planReal}) R$${commissionAmount.toFixed(2)}`);
+      } catch (e) { console.error('[reconcile:create-missing]', e.message); }
+    }
+
+    // ─── FASE 2: drift de total_earnings (codigo original)
     const ar = await fetch(`${SU}/rest/v1/affiliates?select=id,email,total_earnings`, { headers: h });
     const affiliates = ar.ok ? await ar.json() : [];
 
@@ -466,17 +563,19 @@ async function reconcile(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
         afiliados_checados: affiliates.length,
         drifts_detectados: drifts.length,
         ajustes_aplicados: ajustados,
-        detalhes: drifts.slice(0, 100),
+        detalhes: { drifts: drifts.slice(0, 100), commissions_criadas: criadas, exemplos: detalhesCriadas.slice(0, 20) },
       }),
     }).catch(() => {});
 
-    // Notifica admin se tiver drift
-    if (drifts.length > 0) {
-      await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `Reconciliacao de afiliados — ${drifts.length} drift(s) corrigido(s)`, [
+    // Notifica admin se tiver drift OU commissions criadas
+    if (drifts.length > 0 || criadas > 0) {
+      const extras = criadas > 0 ? [['⚠️ Commissions faltantes criadas', String(criadas)], ['Exemplos', detalhesCriadas.slice(0, 5).join(' | ')]] : [];
+      await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `Reconciliacao de afiliados — ${drifts.length} drift(s) + ${criadas} commission(s) recuperada(s)`, [
         ['Afiliados checados', String(affiliates.length)],
         ['Drifts detectados', String(drifts.length)],
         ['Ajustes aplicados', String(ajustados)],
-        ['Exemplos', drifts.slice(0, 5).map(d => `${d.email}: guardado R$${d.stored.toFixed(2)} → real R$${d.real.toFixed(2)} (diff ${d.diff >= 0 ? '+' : ''}${d.diff.toFixed(2)})`).join(' | ')],
+        ['Drift exemplos', drifts.slice(0, 5).map(d => `${d.email}: guardado R$${d.stored.toFixed(2)} → real R$${d.real.toFixed(2)}`).join(' | ')],
+        ...extras,
       ]);
     }
 
@@ -485,6 +584,7 @@ async function reconcile(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
       afiliados_checados: affiliates.length,
       drifts_detectados: drifts.length,
       ajustes_aplicados: ajustados,
+      commissions_criadas: criadas,
     });
   } catch (e) {
     console.error('[reconcile] erro geral:', e.message);
