@@ -317,9 +317,9 @@ function tokenizar(s) {
 // 4) CLUSTERIZAR FORMATOS (K-means sobre features numericas)
 // ═════════════════════════════════════════════════════════════════════════════
 async function clusterizarFormatos(ctx) {
-  // Pega top virais com score alto + features preenchidas
+  // Pega top virais por score (limit adaptativo — usa todos se amostra pequena)
   const r = await fetch(
-    `${ctx.SU}/rest/v1/virais_banco?score_viralidade=gte.50&ativo=eq.true&order=score_viralidade.desc&limit=${CONFIG.CLUSTER_SAMPLE_SIZE}&select=id,duracao_segundos,ratio_like_view,ratio_comment_view,hora_do_dia_post,dia_da_semana_post,nicho,titulo`,
+    `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=score_viralidade.desc&limit=${CONFIG.CLUSTER_SAMPLE_SIZE}&select=id,duracao_segundos,ratio_like_view,ratio_comment_view,hora_do_dia_post,dia_da_semana_post,nicho,titulo,score_viralidade`,
     { headers: ctx.h }
   );
   if (!r.ok) throw new Error(`read failed: ${r.status}`);
@@ -393,7 +393,7 @@ async function clusterizarFormatos(ctx) {
 // ═════════════════════════════════════════════════════════════════════════════
 async function clusterizarTemas(ctx) {
   const r = await fetch(
-    `${ctx.SU}/rest/v1/virais_banco?score_viralidade=gte.50&ativo=eq.true&order=score_viralidade.desc&limit=${CONFIG.CLUSTER_SAMPLE_SIZE}&select=id,titulo,nicho,titulo_features`,
+    `${ctx.SU}/rest/v1/virais_banco?ativo=eq.true&order=score_viralidade.desc&limit=${CONFIG.CLUSTER_SAMPLE_SIZE}&select=id,titulo,nicho,titulo_features,score_viralidade`,
     { headers: ctx.h }
   );
   if (!r.ok) throw new Error(`read failed: ${r.status}`);
