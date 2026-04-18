@@ -162,6 +162,33 @@ async function callAI(prompt, systemPrompt = '', maxTokens = 1000, preferred = n
     ? [PROVIDERS.find((p) => p.name === preferred), ...PROVIDERS.filter((p) => p.name !== preferred)].filter(Boolean)
     : PROVIDERS;
 
+  const SUPA_URL = process.env.SUPABASE_URL;
+  const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+  const useCache = !options?.noCache && SUPA_URL && SUPA_KEY;
+
+  // Cache check — se o mesmo prompt foi feito antes, retorna resposta cacheada
+  // Opt-out: passar { noCache: true } em options. Opt-in pro tipo/ttl: { cacheTipo, cacheTtlDays }.
+  if (useCache && ordered.length > 0) {
+    try {
+      const { getCached } = require('./ai-cache.js');
+      const primary = ordered[0];
+      const modelForKey =
+        primary.name === 'claude' ? (options?.claudeModel || 'claude-haiku-4-5')
+        : primary.name === 'openai' ? (options?.openaiModel || 'gpt-4o-mini')
+        : primary.name === 'gemini' ? (options?.geminiModel || 'gemini-2.5-flash')
+        : primary.name;
+      const cached = await getCached({
+        SUPA_URL, SUPA_KEY,
+        provider: primary.name, model: modelForKey,
+        system: systemPrompt, prompt,
+      });
+      if (cached?.response) {
+        console.log(`[ai cache] HIT ${primary.name} (${cached.response.length} chars)`);
+        return { result: cached.response, provider: primary.name, cached: true };
+      }
+    } catch (e) { /* cache falhou — segue pra chamar IA normalmente */ }
+  }
+
   const errors = [];
   for (const p of ordered) {
     if (!p.available()) { errors.push({ provider: p.name, error: 'unavailable' }); continue; }
@@ -171,7 +198,27 @@ async function callAI(prompt, systemPrompt = '', maxTokens = 1000, preferred = n
       if (!result) throw new Error('resposta vazia');
       recordSuccess(p.name);
       console.log(`[ai] ${p.name} ok (${result.length} chars)`);
-      return { result, provider: p.name };
+
+      // Salva no cache (fire-and-forget)
+      if (useCache) {
+        try {
+          const { setCached } = require('./ai-cache.js');
+          const modelForKey =
+            p.name === 'claude' ? (options?.claudeModel || 'claude-haiku-4-5')
+            : p.name === 'openai' ? (options?.openaiModel || 'gpt-4o-mini')
+            : p.name === 'gemini' ? (options?.geminiModel || 'gemini-2.5-flash')
+            : p.name;
+          setCached({
+            SUPA_URL, SUPA_KEY,
+            provider: p.name, model: modelForKey,
+            system: systemPrompt, prompt, response: result,
+            tipo: options?.cacheTipo || null,
+            ttlDays: options?.cacheTtlDays,
+          });
+        } catch (e) { /* cache write falhou — ok */ }
+      }
+
+      return { result, provider: p.name, cached: false };
     } catch (e) {
       console.error(`[ai] ${p.name} falhou: ${e.message}`);
       recordFailure(p.name);
