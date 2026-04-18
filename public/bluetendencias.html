@@ -920,7 +920,13 @@ function irCena(id) {
   if (id === '10') prepararFinal();
   if (id === '2c') {
     state.meuVideoMode = true;
-    const el = $('mvText'); if (el) el.textContent = `Sem filtro, ${state.nome}. Cole o link e eu vou abrir as métricas — depois o feedback.`;
+    const frases = [
+      `Sem filtro, ${state.nome}. Cole o link e eu vou abrir as métricas — depois o feedback.`,
+      `Chega aí, jovem padawan ${state.nome}. Vamos avaliar esse Short sem dó.`,
+      `Traz o link, criador. O mestre vai ver se a força é forte com você.`,
+      `${state.nome}, cola o Short aí. Hora do raid boss: seu próprio vídeo.`,
+    ];
+    const el = $('mvText'); if (el) el.textContent = frases[Math.floor(Math.random()*frases.length)];
   }
   // Sair dos fluxos de analise reseta o modo meu_video
   if (id === '1' || id === '2a' || id === '2b') state.meuVideoMode = false;
@@ -947,12 +953,25 @@ async function dissectarMeuVideo() {
   await sleep(1100);
   irCena('6');
   setTimeout(() => $('supernova').classList.add('ativa'), 100);
-  // Blublu intro personalizada
-  await typeOut($('chatMsg'), `Ok, ${state.nome}. Vou pegar seu vídeo e ser honesto. Uma das 4 coisas vai rolar.`, 30);
+  // Blublu intro professor-padawan (random)
+  const abertutas = [
+    `Prepara, jovem padawan ${state.nome}. Hora da verdade sobre esse vídeo.`,
+    `${state.nome}, respira. O mestre vai analisar teu combo agora.`,
+    `Ok, criador. Hora do feedback que o YouTube nunca te dá.`,
+    `Segura, ${state.nome}. Vou ver se esse vídeo é Jedi ou Sith.`,
+  ];
+  await typeOut($('chatMsg'), abertutas[Math.floor(Math.random()*abertutas.length)], 30);
   $('chatProgress').innerHTML = '<div class="chat-dot done"></div><div class="chat-dot done"></div><div class="chat-dot done"></div>';
-  // Roda fatos/reacoes no fundo
-  rotarCuriosidades();
-  const bgMsgs = ['contando views reais...', 'comparando com virais do seu nicho...', 'medindo retenção implícita...', 'julgando seu hook...'];
+  // Roda fatos/reacoes no fundo (modo meu_video usa lista nerd)
+  rotarCuriosidadesMeuVideo();
+  const bgMsgs = [
+    'carregando skill tree...',
+    'consultando o mestre Yoda...',
+    'comparando com virais S-tier...',
+    'cruzando referências nerds...',
+    'medindo XP de retenção...',
+    'julgando o hook — sem piedade...',
+  ];
   let bi = 0;
   state.bgInt = setInterval(() => { bi = (bi+1) % bgMsgs.length; const el = $('bgProc'); if (el) el.textContent = bgMsgs[bi]; }, 2500);
   try {
@@ -1641,6 +1660,43 @@ const FATOS_BLUBLU = [
   { fato: 'Vídeos com movimento de câmera no primeiro segundo retêm 25% mais.', reacao: 'Movimento = vida. Câmera parada = documentário. Escolhe seu lado.' },
   { fato: 'O padrão de ouro dos virais: tensão nos 5s, clímax aos 15s, CTA aos 20s.', reacao: 'Simples? É. Ninguém faz direito? Também é.' },
 ];
+
+// Fatos/reacoes NERD exclusivos do fluxo "analisar meu video"
+const FATOS_MEU_VIDEO = [
+  { fato: 'Hook de 3s é tipo o hit de Fatality: erra e ninguém lembra.', reacao: 'E o algoritmo não aceita continue. Sem respawn.' },
+  { fato: 'Your scroll é o Infinity Gauntlet do espectador.', reacao: 'Um snap e metade do seu vídeo some do feed. Sem pena.' },
+  { fato: 'Retenção é XP. Sem XP, não sobe de nível no algoritmo.', reacao: 'E sim, ${nome}, tem grind. Aceita a jornada.' },
+  { fato: 'Título genérico = dungeon sem loot.', reacao: 'Ninguém entra num baú vazio duas vezes.' },
+  { fato: 'CTA sem motivo é o Jedi Mind Trick mal feito.', reacao: 'Sem motivo pra clicar, o cérebro simplesmente... ignora.' },
+  { fato: 'Thumbnail é a capa do livro. O algoritmo é o leitor com ADHD.', reacao: '2 segundos pra decidir. Sem capa chamativa, tchau.' },
+  { fato: 'Padrão dos virais: tensão nos 5s, clímax aos 15s, twist aos 25s.', reacao: 'Hans Zimmer também usa. Não é coincidência.' },
+  { fato: 'Cada skip é um dano crítico na sua XP do vídeo.', reacao: 'E tem boss fight pra vencer: a concorrência na aba Shorts.' },
+  { fato: 'Comentários = reações do DLC social do YouTube.', reacao: 'Mais comments, mais algoritmo acha que é interessante. Loop.' },
+  { fato: 'Criadores iniciantes usam 3x mais palavras no hook. Erro fatal.', reacao: 'Menos é mais. Tipo Souls-like: cada ataque conta.' },
+  { fato: 'Vídeos com movimento nos primeiros 0.5s retêm 25% mais.', reacao: 'Câmera parada é documentário da Discovery. Movimento é ação.' },
+  { fato: 'O algoritmo não te deve nada, ${nome}. Você é um NPC até provar o contrário.', reacao: 'Mas todo protagonista já foi NPC um dia. Keep grinding.' },
+];
+
+async function rotarCuriosidadesMeuVideo() {
+  let idx = 0;
+  const mostrar = async (texto, ms) => {
+    if (!$('cena6')?.classList.contains('active')) return false;
+    if (state.atosData) return false;
+    await typeOut($('chatMsg'), texto, 30);
+    await sleep(ms);
+    return true;
+  };
+  const loop = async () => {
+    const item = FATOS_MEU_VIDEO[idx % FATOS_MEU_VIDEO.length];
+    idx++;
+    const fato = item.fato.replace(/\$\{nome\}/g, state.nome);
+    const reacao = item.reacao.replace(/\$\{nome\}/g, state.nome);
+    if (!await mostrar('🎮 ' + fato, 3800)) return;
+    if (!await mostrar('💭 ' + reacao, 4600)) return;
+    loop();
+  };
+  loop();
+}
 
 async function rotarCuriosidades() {
   let idx = 0;
