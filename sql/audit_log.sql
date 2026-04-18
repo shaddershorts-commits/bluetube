@@ -31,12 +31,15 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_acao
 
 -- 2) FUNCTION GENERICA de trigger ---------------------------------------------
 -- Captura automaticamente INSERT/UPDATE/DELETE com diff minimo
-CREATE OR REPLACE FUNCTION audit_log_trigger() RETURNS trigger AS $$
+-- Nota: uso alias 'je' explicito em jsonb_each pra evitar ambiguidade com
+-- variaveis PL/pgSQL (v_new, v_old) que causava erro "relation v_changed"
+CREATE OR REPLACE FUNCTION audit_log_trigger() RETURNS trigger AS $fn$
 DECLARE
   v_old JSONB;
   v_new JSONB;
-  v_changed TEXT[];
+  v_changed TEXT[] := ARRAY[]::TEXT[];
   v_row_id TEXT;
+  rec RECORD;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     v_old := to_jsonb(OLD);
@@ -46,17 +49,18 @@ BEGIN
     v_old := NULL;
     v_new := to_jsonb(NEW);
     v_row_id := COALESCE(v_new->>'id', v_new->>'user_id', v_new->>'email', '');
-  ELSE -- UPDATE
+  ELSE
     v_old := to_jsonb(OLD);
     v_new := to_jsonb(NEW);
     v_row_id := COALESCE(v_new->>'id', v_new->>'user_id', v_new->>'email', '');
-    -- Diff: so colunas que mudaram
-    SELECT array_agg(key) INTO v_changed
-    FROM jsonb_each(v_new)
-    WHERE v_new -> key IS DISTINCT FROM v_old -> key
-      AND key NOT IN ('updated_at', 'atualizado_em'); -- ignora timestamps irrelevantes
-    -- Se nada mudou alem de timestamps, nao loga
-    IF v_changed IS NULL OR array_length(v_changed, 1) IS NULL THEN
+    -- Loop explicito: evita parser ambiguity do SELECT INTO com variaveis
+    FOR rec IN SELECT k FROM jsonb_object_keys(v_new) AS k LOOP
+      IF rec.k NOT IN ('updated_at', 'atualizado_em')
+         AND (v_new -> rec.k) IS DISTINCT FROM (v_old -> rec.k) THEN
+        v_changed := array_append(v_changed, rec.k);
+      END IF;
+    END LOOP;
+    IF array_length(v_changed, 1) IS NULL THEN
       RETURN NEW;
     END IF;
   END IF;
@@ -64,21 +68,15 @@ BEGIN
   INSERT INTO audit_log (
     tabela, row_id, acao, operacao_por, old_data, new_data, campos_alterados, sql_context, ip_address
   ) VALUES (
-    TG_TABLE_NAME,
-    v_row_id,
-    TG_OP,
-    current_user,
-    v_old,
-    v_new,
-    v_changed,
-    LEFT(current_query(), 500),
-    inet_client_addr()
+    TG_TABLE_NAME, v_row_id, TG_OP, current_user, v_old, v_new,
+    CASE WHEN array_length(v_changed, 1) IS NULL THEN NULL ELSE v_changed END,
+    LEFT(current_query(), 500), inet_client_addr()
   );
 
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$fn$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 3) TRIGGERS nas tabelas criticas --------------------------------------------
 -- subscribers — plano, pagamentos, downgrade
@@ -106,21 +104,16 @@ CREATE TRIGGER audit_affiliates
   FOR EACH ROW EXECUTE FUNCTION audit_log_trigger();
 
 -- blue_videos — so audita DELETEs (INSERTs/UPDATEs sao muitos e pouco criticos)
-CREATE OR REPLACE FUNCTION audit_log_trigger_delete_only() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION audit_log_trigger_delete_only() RETURNS trigger AS $fn$
 BEGIN
   INSERT INTO audit_log (tabela, row_id, acao, operacao_por, old_data, sql_context, ip_address)
   VALUES (
-    TG_TABLE_NAME,
-    COALESCE((to_jsonb(OLD))->>'id', ''),
-    'DELETE',
-    current_user,
-    to_jsonb(OLD),
-    LEFT(current_query(), 500),
-    inet_client_addr()
+    TG_TABLE_NAME, COALESCE((to_jsonb(OLD))->>'id', ''), 'DELETE', current_user,
+    to_jsonb(OLD), LEFT(current_query(), 500), inet_client_addr()
   );
   RETURN OLD;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$fn$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS audit_blue_videos_delete ON blue_videos;
 CREATE TRIGGER audit_blue_videos_delete
