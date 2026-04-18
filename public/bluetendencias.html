@@ -209,6 +209,26 @@ section{margin-bottom:48px}
     <div id="sugestoes" class="sug-grid"></div>
   </section>
 
+  <!-- SECAO 6: ML Insights -->
+  <section>
+    <div class="sec-head">
+      <div class="sec-title">🤖 Insights do ML</div>
+      <div class="sec-sub" id="mlSubtitle">carregando modelo…</div>
+    </div>
+    <div id="mlStatus" style="background:linear-gradient(135deg,rgba(167,139,250,0.08),rgba(0,170,255,0.06));border:1px solid rgba(167,139,250,0.3);border-radius:16px;padding:20px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px">
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Vídeos analisados</div><div style="font-size:22px;font-weight:800" id="mlTotalVideos">—</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Clusters tema</div><div style="font-size:22px;font-weight:800" id="mlTemas">—</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Clusters formato</div><div style="font-size:22px;font-weight:800" id="mlFormatos">—</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Predições</div><div style="font-size:22px;font-weight:800" id="mlPredicoes">—</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono)">Acurácia</div><div style="font-size:22px;font-weight:800;color:var(--green)" id="mlAcuracia">—</div></div>
+      </div>
+      <div style="margin-top:12px;height:6px;background:rgba(0,0,0,0.3);border-radius:3px;overflow:hidden"><div id="mlAccBar" style="height:100%;background:linear-gradient(90deg,var(--neon),var(--purple));width:0%;transition:width 1s"></div></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px;font-family:var(--mono)" id="mlLastValidation">—</div>
+    </div>
+    <div id="mlInsights"></div>
+  </section>
+
   <!-- SECAO 5: Explorar por Nicho -->
   <section>
     <div class="sec-head">
@@ -280,6 +300,80 @@ function renderDashboard(d) {
   renderTopVirais(d.tendencias_hoje || [], d.rpm_por_nicho || []);
   renderEmergentes(d.emergentes || []);
   renderMeuCanal(d.meu_canal);
+  loadMLStatus();
+  loadMLInsights();
+}
+
+async function loadMLStatus() {
+  try {
+    const r = await fetch('/api/bluetendencias?action=status-ml&token=' + encodeURIComponent(token));
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('mlTotalVideos').textContent = fm(d.total_videos);
+    document.getElementById('mlTemas').textContent = d.clusters_tema || '0';
+    document.getElementById('mlFormatos').textContent = d.clusters_formato || '0';
+    document.getElementById('mlPredicoes').textContent = fm(d.total_predicoes);
+    if (d.acuracia_atual != null) {
+      const pct = Math.round(d.acuracia_atual * 100);
+      document.getElementById('mlAcuracia').textContent = pct + '%';
+      document.getElementById('mlAccBar').style.width = pct + '%';
+    } else {
+      document.getElementById('mlAcuracia').textContent = 'calibrando';
+    }
+    const lv = d.ultima_validacao ? new Date(d.ultima_validacao).toLocaleDateString('pt-BR') : 'ainda não validado';
+    document.getElementById('mlLastValidation').textContent = 'última validação: ' + lv;
+    document.getElementById('mlSubtitle').textContent = `aprendendo com ${fm(d.total_videos)} vídeos virais`;
+  } catch(e) { console.error('mlStatus error:', e); }
+}
+
+async function loadMLInsights() {
+  const el = document.getElementById('mlInsights');
+  try {
+    const r = await fetch('/api/bluetendencias?action=insights-ml&token=' + encodeURIComponent(token));
+    if (!r.ok) { el.innerHTML = ''; return; }
+    const d = await r.json();
+    if (!d.ok) { el.innerHTML = ''; return; }
+
+    const rec = d.recomendacao_principal;
+    const clusters = d.top_clusters_acionar || [];
+
+    let html = '';
+    if (rec) {
+      html += `<div style="background:linear-gradient(135deg,rgba(251,191,36,0.14),rgba(0,170,255,0.06));border:1px solid rgba(251,191,36,0.3);border-radius:14px;padding:18px;margin-bottom:14px">
+        <div style="font-size:10px;font-weight:800;color:#fbbf24;letter-spacing:1px;margin-bottom:6px">🎯 RECOMENDAÇÃO PRINCIPAL ML</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px;text-transform:capitalize">${escapeHtml(rec.tema)}</div>
+        <div style="color:var(--text-sec);font-size:13px;margin-bottom:8px">${escapeHtml(rec.motivo)}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">janela estimada: ${rec.janela_dias} dias</div>
+      </div>`;
+    }
+
+    if (clusters.length > 0) {
+      html += `<div style="background:var(--card);border:1px solid var(--neon-border);border-radius:14px;padding:18px">
+        <div style="font-size:12px;font-weight:700;color:var(--neon);letter-spacing:0.5px;margin-bottom:12px">📊 CLUSTERS PRA ACIONAR AGORA</div>
+        <div style="display:grid;gap:10px">`;
+      clusters.slice(0, 5).forEach(c => {
+        const sat = parseFloat(c.saturacao_percentual || 0);
+        const tx = parseFloat(c.taxa_viralizacao || 0);
+        const satColor = sat < 30 ? 'var(--green)' : sat < 60 ? 'var(--gold)' : 'var(--red)';
+        html += `<div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px;text-transform:capitalize;margin-bottom:3px">${escapeHtml(c.nome || '—')}</div>
+            <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono)">${c.descricao || ''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:14px;font-weight:800;color:${satColor}">${Math.round(tx)}%</div>
+            <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">viraliza</div>
+          </div>
+        </div>`;
+      });
+      html += '</div></div>';
+    }
+
+    if (!html) {
+      html = '<div style="color:var(--text-dim);font-size:13px;padding:16px;background:var(--card);border:1px dashed var(--neon-border);border-radius:14px;text-align:center">Conecte seu canal pra ver insights ML personalizados.</div>';
+    }
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = ''; }
 }
 
 function rpmFor(rpm_por_nicho, nicho) {

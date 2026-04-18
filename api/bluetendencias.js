@@ -51,6 +51,9 @@ module.exports = async function handler(req, res) {
   if (action === 'alertas')         return actionAlertas(req, res, ctx);
   if (action === 'marcar-alerta-visto') return actionMarcarAlertaVisto(req, res, ctx);
   if (action === 'por-nicho')       return actionPorNicho(req, res, ctx);
+  if (action === 'probabilidade-roteiro') return actionProbabilidadeRoteiro(req, res, ctx);
+  if (action === 'status-ml')       return actionStatusML(req, res, ctx);
+  if (action === 'insights-ml')     return actionInsightsML(req, res, ctx);
 
   return res.status(400).json({ error: 'action invalida' });
 };
@@ -167,11 +170,15 @@ async function actionDashboard(req, res, ctx) {
     );
     const topVirais = tr.ok ? await tr.json() : [];
 
-    // Emergentes (do cache)
-    const emergentes = (await lerCache(ctx, 'emergentes')) || [];
+    // Emergentes — prioriza ML, cai pra heuristica
+    const emergentesML = (await lerCache(ctx, 'emergentes-ml')) || [];
+    const emergentesHeur = (await lerCache(ctx, 'emergentes')) || [];
+    const emergentes = emergentesML.length > 0 ? emergentesML : emergentesHeur;
 
-    // Saturando (do cache)
-    const saturando = (await lerCache(ctx, 'saturando')) || [];
+    // Saturando — prioriza ML
+    const saturandoML = (await lerCache(ctx, 'saturando-ml')) || [];
+    const saturandoHeur = (await lerCache(ctx, 'saturando')) || [];
+    const saturando = saturandoML.length > 0 ? saturandoML : saturandoHeur;
 
     // RPM por nicho
     const rpmRows = await lerRPM(ctx);
@@ -286,10 +293,12 @@ async function actionEmergentes(req, res, ctx) {
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
   const nicho = (req.query.nicho || '').toLowerCase() || null;
 
-  // Le do cache (cron recalcula a cada 2h)
-  const cached = (await lerCache(ctx, 'emergentes')) || [];
-  const tendencias = nicho ? cached.filter(t => t.nicho === nicho) : cached;
-  return res.status(200).json({ tendencias });
+  // Prioriza cache ML (emergentes-ml); cai pra heuristica (emergentes) se vazio
+  const mlCached = (await lerCache(ctx, 'emergentes-ml')) || [];
+  const heurCached = (await lerCache(ctx, 'emergentes')) || [];
+  const combined = mlCached.length > 0 ? mlCached : heurCached;
+  const tendencias = nicho ? combined.filter(t => t.nicho === nicho) : combined;
+  return res.status(200).json({ tendencias, fonte: mlCached.length > 0 ? 'ml' : 'heuristica' });
 }
 
 async function calcularEmergentes(ctx) {
@@ -796,6 +805,115 @@ async function cronNotificarOportunidades(req, res, ctx) {
     return res.status(200).json({ ok: true, notificados: notif, total_canais: canais.length });
   } catch (e) {
     console.error('[cron notificar-oportunidades] erro:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION: probabilidade-roteiro — usado por /roteirizar no momento da geracao
+// Proxy pra virais-ml?action=predizer-viralidade em modo what-if (sem video_id)
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionProbabilidadeRoteiro(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  const titulo = req.query.titulo;
+  const duracao = req.query.duracao_segundos || '30';
+  const nicho = req.query.nicho || '';
+  if (!titulo) return res.status(400).json({ error: 'titulo obrigatorio' });
+
+  // Delega pro virais-ml (dentro da mesma funcao serverless pra nao fazer round-trip)
+  try {
+    const handler = require('./virais-ml.js');
+    // Monta mock req
+    const mockReq = { query: { action: 'predizer-viralidade', titulo, duracao_segundos: duracao, nicho }, method: 'GET' };
+    let resolve, responseData = null, statusCode = 200;
+    const mockRes = {
+      setHeader: () => mockRes,
+      status(c) { statusCode = c; return mockRes; },
+      json(d) { responseData = d; if (resolve) resolve({ statusCode, body: d }); return mockRes; },
+      end() { if (resolve) resolve({ statusCode, body: responseData }); return mockRes; },
+    };
+    const p = new Promise(r => { resolve = r; });
+    await handler(mockReq, mockRes);
+    const out = await p;
+    return res.status(out.statusCode).json(out.body);
+  } catch (e) {
+    console.error('[probabilidade-roteiro] erro:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION: status-ml — dados do modelo pra exibir no painel
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionStatusML(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  try {
+    // Total videos
+    const hR = await fetch(`${ctx.SU}/rest/v1/virais_banco?select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } });
+    const totalVideos = parseInt(hR.headers.get('content-range')?.split('/')[1] || 0);
+
+    // Clusters ativos
+    const cR = await fetch(`${ctx.SU}/rest/v1/virais_clusters?ativo=eq.true&select=tipo,taxa_viralizacao,saturacao_percentual,janela_oportunidade_dias,nicho,nome`, { headers: ctx.h });
+    const clusters = cR.ok ? await cR.json() : [];
+    const formatos = clusters.filter(c => c.tipo === 'formato');
+    const temas = clusters.filter(c => c.tipo === 'tema');
+
+    // Ultima validacao
+    const logR = await fetch(`${ctx.SU}/rest/v1/virais_modelo_log?order=executado_em.desc&limit=1&select=*`, { headers: ctx.h });
+    const [log] = logR.ok ? await logR.json() : [];
+
+    // Predicoes total
+    const pR = await fetch(`${ctx.SU}/rest/v1/virais_predicoes?select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' } });
+    const totalPred = parseInt(pR.headers.get('content-range')?.split('/')[1] || 0);
+
+    // Top 5 clusters tema emergentes (baixa saturacao, alta taxa)
+    const topTemas = temas
+      .filter(c => parseFloat(c.saturacao_percentual || 0) < 40)
+      .sort((a, b) => parseFloat(b.taxa_viralizacao || 0) - parseFloat(a.taxa_viralizacao || 0))
+      .slice(0, 5);
+
+    return res.status(200).json({
+      total_videos: totalVideos,
+      clusters_formato: formatos.length,
+      clusters_tema: temas.length,
+      total_predicoes: totalPred,
+      acuracia_atual: log?.acuracia ? parseFloat(log.acuracia) : null,
+      ultima_validacao: log?.executado_em || null,
+      top_temas_emergentes: topTemas,
+    });
+  } catch (e) {
+    console.error('[status-ml] erro:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION: insights-ml — recomendacoes personalizadas (proxy pro virais-ml)
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionInsightsML(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  try {
+    const handler = require('./virais-ml.js');
+    const mockReq = { query: { action: 'insights-para-usuario', token: req.query.token }, method: 'GET' };
+    let resolve, statusCode = 200;
+    const mockRes = {
+      setHeader: () => mockRes,
+      status(c) { statusCode = c; return mockRes; },
+      json(d) { if (resolve) resolve({ statusCode, body: d }); return mockRes; },
+      end() { if (resolve) resolve({ statusCode, body: null }); return mockRes; },
+    };
+    const p = new Promise(r => { resolve = r; });
+    await handler(mockReq, mockRes);
+    const out = await p;
+    return res.status(out.statusCode).json(out.body);
+  } catch (e) {
+    console.error('[insights-ml] erro:', e.message);
     return res.status(500).json({ error: e.message });
   }
 }
