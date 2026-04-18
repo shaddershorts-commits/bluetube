@@ -519,42 +519,5 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── ADMIN: notifica afiliado por email sobre commission(s) existente(s)
-  // POST { action:'notify-commission-admin', admin_secret, subscriber_emails:[...], touch_dates:true }
-  if (req.method === 'POST' && action === 'notify-commission-admin') {
-    const { admin_secret, subscriber_emails, touch_dates } = req.body || {};
-    if (admin_secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Nao autorizado' });
-    const lista = Array.isArray(subscriber_emails) ? subscriber_emails : [];
-    if (lista.length === 0) return res.status(400).json({ error: 'subscriber_emails obrigatorio' });
-    const resultados = [];
-    for (const se of lista) {
-      try {
-        const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?subscriber_email=eq.${encodeURIComponent(se)}&status=in.(pending,paid)&select=*&order=created_at.desc&limit=1`, { headers: supaH });
-        const [comm] = cr.ok ? await cr.json() : [];
-        if (!comm) { resultados.push({ email: se, ok: false, motivo: 'commission nao encontrada' }); continue; }
-        const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${comm.affiliate_id}&select=*`, { headers: supaH });
-        const [aff] = ar.ok ? await ar.json() : [];
-        if (!aff) { resultados.push({ email: se, ok: false, motivo: 'afiliado nao encontrado' }); continue; }
-        // Opcional: atualiza datas pra parecer recente no painel do afiliado
-        if (touch_dates) {
-          const agora = new Date().toISOString();
-          await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?id=eq.${comm.id}`, {
-            method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' },
-            body: JSON.stringify({ created_at: agora, updated_at: agora }),
-          }).catch(() => {});
-          if (comm.conversion_id) {
-            await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?id=eq.${comm.conversion_id}`, {
-              method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' },
-              body: JSON.stringify({ converted_at: agora }),
-            }).catch(() => {});
-          }
-        }
-        await notificarAfiliadoNovaComissao(aff, { subscriber: se, plan: comm.plan, commission_amount: comm.commission_amount });
-        resultados.push({ email: se, ok: true, afiliado: aff.email, valor: comm.commission_amount });
-      } catch (e) { resultados.push({ email: se, ok: false, motivo: e.message }); }
-    }
-    return res.status(200).json({ ok: true, total: resultados.length, resultados });
-  }
-
   return res.status(404).json({ error: 'Action não encontrada' });
 }
