@@ -206,37 +206,43 @@ function extrairYoutubeId(entrada) {
 }
 
 function calcularProjecoes(video) {
+  // Virais desaceleram rapido apos pico. Curva realista.
   const velocidade = parseFloat(video.velocidade_views_24h) || (video.views / 24);
   const viewsAtual = parseInt(video.views) || 0;
   const cenarios = {
-    conservador: { mult: 0.6, titulo: 'Conservador', cor: '#6b7280' },
-    realista:    { mult: 1.0, titulo: 'Realista',    cor: '#3b82f6' },
-    otimista:    { mult: 1.5, titulo: 'Otimista',    cor: '#10b981' },
+    conservador: { mult: 0.3, titulo: 'Conservador', cor: '#6b7280' },
+    realista:    { mult: 0.55, titulo: 'Realista',    cor: '#3b82f6' },
+    otimista:    { mult: 0.9,  titulo: 'Otimista',    cor: '#10b981' },
   };
   const projecoes = {};
   for (const [nome, cfg] of Object.entries(cenarios)) {
+    // Modelo: velocidade cai exponencialmente apos 24h
+    // 3d: 60% da velocidade atual, 10d: 20%, 30d: 8%
     projecoes[nome] = {
       ...cfg,
-      d3:  Math.floor(viewsAtual + (velocidade * 72 * cfg.mult)),
-      d10: Math.floor(viewsAtual + (velocidade * 240 * cfg.mult * 0.7)),
-      d30: Math.floor(viewsAtual + (velocidade * 720 * cfg.mult * 0.3)),
+      d3:  Math.floor(viewsAtual + (velocidade * 72 * cfg.mult * 0.55)),
+      d10: Math.floor(viewsAtual + (velocidade * 240 * cfg.mult * 0.22)),
+      d30: Math.floor(viewsAtual + (velocidade * 720 * cfg.mult * 0.08)),
     };
   }
   return projecoes;
 }
 
 function calcularReceita(projecoes, nicho) {
+  // RPM REAL de Shorts no Brasil (2024-2026): $0.01-0.30/1000 em USD
+  // Em BRL: ~R$0.05 a R$0.80 por 1000 views (muito menor que longos)
+  // Fonte: estudos pagamento YouTube Shorts 2024-2025
   const rpm = {
-    financas:    { min: 15, medio: 30,  max: 50 },
-    tecnologia:  { min: 8,  medio: 14,  max: 20 },
-    educacao:    { min: 4,  medio: 8,   max: 12 },
-    beleza:      { min: 3,  medio: 5.5, max: 8  },
-    humor:       { min: 1,  medio: 2,   max: 3  },
-    games:       { min: 1.5,medio: 3,   max: 5  },
-    ia:          { min: 6,  medio: 12,  max: 18 },
-    animais:     { min: 1,  medio: 2,   max: 3  },
-    pessoas_blogs:{min: 1.5,medio: 3,   max: 5  },
-    default:     { min: 2,  medio: 4,   max: 6  },
+    financas:     { min: 0.10, medio: 0.22, max: 0.55 },
+    tecnologia:   { min: 0.08, medio: 0.18, max: 0.40 },
+    ia:           { min: 0.08, medio: 0.18, max: 0.40 },
+    educacao:     { min: 0.06, medio: 0.14, max: 0.28 },
+    beleza:       { min: 0.05, medio: 0.10, max: 0.20 },
+    pessoas_blogs:{ min: 0.04, medio: 0.08, max: 0.16 },
+    games:        { min: 0.03, medio: 0.06, max: 0.14 },
+    humor:        { min: 0.03, medio: 0.06, max: 0.12 },
+    animais:      { min: 0.03, medio: 0.06, max: 0.12 },
+    default:      { min: 0.04, medio: 0.09, max: 0.18 },
   };
   const r = rpm[(nicho || '').toLowerCase()] || rpm.default;
   return {

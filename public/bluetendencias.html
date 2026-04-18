@@ -59,6 +59,29 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 .dust{position:absolute;width:1px;height:1px;background:rgba(147,197,253,.4);animation:dustFloat 8s linear infinite}
 @keyframes dustFloat{0%{opacity:0;transform:translateY(0) translateX(0)}20%{opacity:.6}80%{opacity:.6}100%{opacity:0;transform:translateY(-30px) translateX(10px)}}
 
+/* Estrelas cadentes */
+.shooting{position:absolute;width:2px;height:2px;background:linear-gradient(45deg,#fff,#60a5fa,transparent);border-radius:50%;opacity:0;box-shadow:0 0 6px #fff,0 0 12px var(--blublu);animation:shootMove 3.5s cubic-bezier(.4,.1,.7,1) infinite}
+.shooting::after{content:'';position:absolute;right:0;top:50%;width:120px;height:1px;transform:translateY(-50%);background:linear-gradient(to left,#fff,var(--blublu2),transparent);opacity:.85;filter:blur(.5px)}
+@keyframes shootMove{
+  0%{opacity:0;transform:translate(-10vw,-10vh) rotate(25deg)}
+  10%{opacity:1}
+  70%{opacity:1}
+  100%{opacity:0;transform:translate(120vw,120vh) rotate(25deg)}
+}
+
+/* Nebulosa azul pulsante extra (mais luzes) */
+.galaxy-pulse{position:absolute;inset:0;background:
+  radial-gradient(circle 180px at 25% 35%,rgba(59,130,246,.16),transparent 80%),
+  radial-gradient(circle 220px at 75% 70%,rgba(96,165,250,.12),transparent 80%),
+  radial-gradient(circle 150px at 60% 20%,rgba(147,197,253,.1),transparent 80%);
+  filter:blur(15px);animation:pulseBreath 8s ease-in-out infinite}
+@keyframes pulseBreath{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
+
+/* Badge AO VIVO pulsante */
+.ao-vivo{display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.18);border:1px solid var(--red);color:var(--red);padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;margin-left:10px;vertical-align:middle}
+.ao-vivo::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);animation:aoVivoPulse 1.2s infinite}
+@keyframes aoVivoPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.5}}
+
 /* Cenas */
 .cena{display:none;position:relative;z-index:2;min-height:100vh}
 .cena.active{display:block;animation:cenaIn .6s cubic-bezier(.2,.7,.3,1)}
@@ -300,9 +323,10 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
    ═════════════════════════════════════════════════════════════════ */
 #cena6{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;position:relative}
 #cena6.active{display:flex}
-.supernova{position:fixed;top:50%;left:50%;width:100px;height:100px;margin:-50px 0 0 -50px;border-radius:50%;background:radial-gradient(circle,var(--blublu2),var(--blublu) 30%,transparent 70%);box-shadow:0 0 80px rgba(59,130,246,.6),0 0 200px rgba(59,130,246,.3);z-index:0;opacity:0;pointer-events:none;transition:all 8s cubic-bezier(.5,.2,.7,1)}
-.supernova.ativa{opacity:.5;width:400px;height:400px;margin:-200px 0 0 -200px}
-.supernova.explodindo{opacity:1;width:3000px;height:3000px;margin:-1500px 0 0 -1500px;transition:all 1.5s cubic-bezier(.7,0,.3,1);background:radial-gradient(circle,#fff,var(--blublu) 10%,transparent 50%)}
+.supernova{position:fixed;top:50%;left:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:radial-gradient(circle,#fff,var(--blublu2) 25%,var(--blublu) 50%,transparent 75%);box-shadow:0 0 60px rgba(59,130,246,.4),0 0 180px rgba(59,130,246,.2);z-index:0;opacity:0;pointer-events:none;transition:all 16s cubic-bezier(.3,.1,.6,.9)}
+.supernova.ativa{opacity:.65;width:700px;height:700px;margin:-350px 0 0 -350px;animation:supernovaPulse 3s ease-in-out infinite}
+@keyframes supernovaPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+.supernova.explodindo{opacity:1;width:4500px;height:4500px;margin:-2250px 0 0 -2250px;transition:all 2.2s cubic-bezier(.7,0,.3,1);background:radial-gradient(circle,#fff,var(--blublu) 8%,var(--blublu2) 20%,transparent 55%);animation:none}
 
 .chat-wrap{position:relative;z-index:2;max-width:620px;width:100%;text-align:center}
 .chat-blublu{margin-bottom:28px}
@@ -406,8 +430,10 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 <div class="galaxy" aria-hidden="true">
   <div class="galaxy-nebula"></div>
   <div class="galaxy-nebula-2"></div>
+  <div class="galaxy-pulse"></div>
 </div>
 <div class="stars" id="stars"></div>
+<div class="stars" id="shootingStars"></div>
 
 <a class="voltar-btn" href="/" id="btnHome">← voltar ao BlueTube</a>
 
@@ -515,7 +541,7 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 
     <!-- ELEMENTO 3: Views gigante -->
     <div class="dash-views-gigante dash-el" id="dashEl2">
-      <div class="dash-views-label">VIEWS TOTAIS</div>
+      <div class="dash-views-label">VIEWS TOTAIS <span class="ao-vivo">AO VIVO</span></div>
       <div class="dash-views-num" id="dashViews">0</div>
       <div class="dash-views-delta" id="dashDelta">— views/hora</div>
     </div>
@@ -672,14 +698,30 @@ const esc = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const fmNum = (n) => { if (n==null) return '—'; if (n>=1e9) return (n/1e9).toFixed(1)+'B'; if (n>=1e6) return (n/1e6).toFixed(1)+'M'; if (n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); };
 const fmBRL = (n) => 'R$ ' + (n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
+// Tenta nome cacheado do ultimo login (evita "criador" aparecer antes do backend)
+const nomeCached = (()=>{ try{return localStorage.getItem('bt_studio_nome')||'';}catch(e){return '';} })();
+
 let state = {
-  nome: 'criador', restantes: 3, salvas: [], video: null, sessaoId: null,
+  nome: nomeCached || 'criador', restantes: 3, salvas: [], video: null, sessaoId: null,
   dashboardDados: null, perguntasBlublu: [], respostas: {}, qIdx: 0,
   atosData: null, atoIdx: 0, quizData: null, quizIdx: 0, quizAcertos: 0,
-  analiseId: null, projPeriodo: 'd30',
+  analiseId: null, projPeriodo: 'd30', viewsVivo: null,
 };
 
 // ═══════════ STARS + PARTICLES ABERTURA ═══════════
+function spawnShootingStars() {
+  const c = $('shootingStars');
+  if (!c) return;
+  for (let i = 0; i < 5; i++) {
+    const s = document.createElement('div');
+    s.className = 'shooting';
+    s.style.top = (Math.random() * 40) + '%';
+    s.style.animationDelay = (Math.random() * 12 + i * 4) + 's';
+    s.style.animationDuration = (2.5 + Math.random() * 2) + 's';
+    c.appendChild(s);
+  }
+}
+
 function spawnStars() {
   const c = $('stars');
   // Estrelas pequenas (densas)
@@ -734,6 +776,7 @@ function spawnAberturaParticles() {
   }
 }
 spawnStars();
+spawnShootingStars();
 spawnAberturaParticles();
 
 // ═══════════ NAVEGAÇÃO ENTRE CENAS ═══════════
@@ -777,7 +820,8 @@ async function carregarEntrada() {
     const d = await r.json();
     if (r.status === 403 || d.status === 403 || d.error === 'master_required') return showGate('upgrade');
     if (d.sistema_pausado) return showSystemPaused(d.sistema_pausado_msg);
-    state.nome = d.nome || 'criador';
+    state.nome = d.nome || state.nome || 'criador';
+    try { if (d.nome) localStorage.setItem('bt_studio_nome', d.nome); } catch(e){}
     state.restantes = d.restantes ?? 0;
     state.salvas = d.analises_salvas || [];
     state.proximaEm = d.proxima_em;
@@ -1037,15 +1081,23 @@ function animarViews(target, dur) {
 }
 
 function viewsVivo(base) {
-  // "Vivo": incrementa aleatoriamente a cada 4-6s
+  // "Vivo": incrementa aleatoriamente a cada 2-3s (parece tempo real)
+  if (state.viewsVivo) clearInterval(state.viewsVivo);
   const v = state.video;
-  const velPorSeg = (v.velocidade_views_24h || 0) / 3600;
+  const velPorSeg = Math.max(0.1, (v.velocidade_views_24h || 0) / 3600);
   let extra = 0;
-  setInterval(() => {
+  state.viewsVivo = setInterval(() => {
     if (!$('cena4').classList.contains('active')) return;
-    extra += Math.floor(velPorSeg * (3 + Math.random()*3) * (0.7 + Math.random()*0.6));
-    $('dashViews').textContent = fmNum(base + extra);
-  }, 4500);
+    // Incremento menor mas mais frequente pra parecer "vivo"
+    const inc = Math.max(1, Math.floor(velPorSeg * (1.5 + Math.random()*2)));
+    extra += inc;
+    const el = $('dashViews');
+    if (el) {
+      el.textContent = fmNum(base + extra);
+      el.style.textShadow = '0 0 20px rgba(59,130,246,.6)';
+      setTimeout(()=>{ if(el) el.style.textShadow=''; }, 400);
+    }
+  }, 2500);
 }
 
 function animarNum(id, target, dur) {
@@ -1104,13 +1156,16 @@ function renderReceita(r) {
 
 function renderEngagement(d) {
   const e = d.engagement || {};
-  const likePct = e.taxa_like || 0;
-  const commPct = e.taxa_comentario || 0;
-  $('eLikePct').textContent = likePct + '%';
-  $('eCommPct').textContent = commPct + '%';
+  const v = d.video || {};
+  const likePct = parseFloat(e.taxa_like) || 0;
+  const commPct = parseFloat(e.taxa_comentario) || 0;
+  const hasLikes = (v.likes || 0) > 0;
+  const hasComm = (v.comentarios || 0) > 0;
+  $('eLikePct').textContent = hasLikes ? (likePct + '% · ' + fmNum(v.likes) + ' likes') : 'dados não disponíveis';
+  $('eCommPct').textContent = hasComm ? (commPct + '% · ' + fmNum(v.comentarios) + ' coments') : 'dados não disponíveis';
   setTimeout(() => {
-    $('eLikeFill').style.width = Math.min(100, likePct * 10) + '%';
-    $('eCommFill').style.width = Math.min(100, commPct * 20) + '%';
+    $('eLikeFill').style.width = hasLikes ? Math.min(100, likePct * 20) + '%' : '2%';
+    $('eCommFill').style.width = hasComm ? Math.min(100, commPct * 40) + '%' : '2%';
   }, 200);
   const pos = d.ranking ? `Este vídeo está em <b style="color:var(--blublu2)">#${d.ranking.posicao}</b> no nicho <b>${d.ranking.nicho}</b>` : 'Sem ranking disponível';
   $('posicaoInfo').innerHTML = pos;
@@ -1120,16 +1175,18 @@ function renderCompNicho(c, v) {
   const el = $('compList');
   if (!c) { el.innerHTML = '<div style="color:var(--text-dim);padding:12px;font-size:13px">Sem dados de comparação pra este nicho ainda.</div>'; return; }
   const rows = [
-    { label: 'Duração', atual: v.duracao_segundos + 's', media: c.duracao_media + 's', diff: c.duracao_diff_pct },
+    { label: 'Duração', atual: (v.duracao_segundos || 0) > 0 ? v.duracao_segundos + 's' : '—', media: c.duracao_media + 's', diff: c.duracao_diff_pct },
     { label: 'Views', atual: fmNum(v.views), media: fmNum(c.views_media), diff: c.views_diff_pct },
   ];
   el.innerHTML = rows.map(r => {
-    const cls = r.diff > 0 ? 'up' : 'down';
-    const sinal = r.diff > 0 ? '+' : '';
+    const temDiff = r.diff != null && !isNaN(r.diff);
+    const cls = temDiff ? (r.diff > 0 ? 'up' : 'down') : '';
+    const sinal = temDiff && r.diff > 0 ? '+' : '';
+    const diffTxt = temDiff ? (sinal + r.diff + '%') : '—';
     return `<div class="comp-linha">
       <div class="comp-linha-label">${r.label}</div>
       <div><b>${r.atual}</b> <span style="color:var(--text-dim);margin:0 6px">vs</span> ${r.media} <span style="color:var(--text-dim);font-family:var(--mono);font-size:11px">(nicho)</span></div>
-      <div class="comp-diff ${cls}">${sinal}${r.diff}%</div>
+      <div class="comp-diff ${cls}">${diffTxt}</div>
     </div>`;
   }).join('');
 }
@@ -1201,43 +1258,90 @@ async function disparaAnaliseAsync() {
 async function mostrarPergunta() {
   const q = state.perguntasBlublu[state.qIdx];
   if (!q) return;
-  // Progress dots
   const dotsHtml = state.perguntasBlublu.map((_, i) => {
     const cls = i < state.qIdx ? 'done' : (i === state.qIdx ? 'active' : '');
     return `<div class="chat-dot ${cls}"></div>`;
   }).join('');
   $('chatProgress').innerHTML = dotsHtml;
-  // Clear opcoes
   $('chatOpcoes').innerHTML = '';
-  // Type blublu_diz + texto
   const intro = q.blublu_diz ? q.blublu_diz + ' ' : '';
   const pergunta = q.texto || '';
-  const full = intro + pergunta;
-  await typeOut($('chatMsg'), full, 22);
-  // Opcoes
-  $('chatOpcoes').innerHTML = (q.opcoes || []).map(o => `<button class="chat-opcao" onclick="responderPergunta('${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`).join('');
+  await typeOut($('chatMsg'), intro + pergunta, 28);
+  await sleep(400);
+  const opcoesArr = [...(q.opcoes || []), '__OUTRO__'];
+  $('chatOpcoes').innerHTML = opcoesArr.map(o => {
+    if (o === '__OUTRO__') return `<button class="chat-opcao" onclick="pedirOutro()" style="border-style:dashed;color:var(--text-dim)">✏️ Outro (digitar)</button>`;
+    return `<button class="chat-opcao" onclick="responderPergunta('${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`;
+  }).join('');
+}
+
+function pedirOutro() {
+  const q = state.perguntasBlublu[state.qIdx];
+  const label = q.id === 'nicho' ? 'seu nicho' : q.id === 'duracao' ? 'a duração média' : 'o desafio';
+  $('chatOpcoes').innerHTML = `
+    <div style="display:flex;gap:8px;max-width:500px;margin:0 auto">
+      <input id="outroInput" placeholder="Digite ${label}..." style="flex:1;background:rgba(3,0,20,.6);border:1px solid var(--border-blublu);color:var(--text);padding:14px 18px;border-radius:12px;font-family:var(--font);font-size:15px;outline:none" onkeydown="if(event.key==='Enter')enviarOutro()">
+      <button class="chat-opcao" style="width:auto;flex:0 0 auto" onclick="enviarOutro()">Enviar →</button>
+    </div>`;
+  setTimeout(()=>$('outroInput')?.focus(), 100);
+}
+
+function enviarOutro() {
+  const v = ($('outroInput')?.value || '').trim();
+  if (!v) return;
+  responderPergunta(v);
 }
 
 async function responderPergunta(opcao) {
   const q = state.perguntasBlublu[state.qIdx];
   state.respostas[q.id] = opcao;
   state.qIdx++;
-  // Reação com personalidade
   const reacoes = [
-    `Interessante. Anotado, ${state.nome}.`,
-    `Hmm. Isso já me diz muita coisa sobre você.`,
-    `Clássico. Todo mundo acha que é isso. Vamos ver.`,
+    `Interessante, ${state.nome}. Anotado no meu processador neural.`,
+    `Hmm. Isso já me diz muita coisa sobre você, ${state.nome}.`,
+    `Clássico. 68% dos criadores acham que é isso. Vamos ver se você é exceção.`,
   ];
   $('chatOpcoes').innerHTML = '';
-  $('chatMsg').innerHTML = `<span style="color:var(--blublu2);font-style:italic">${esc(reacoes[Math.min(state.qIdx-1, reacoes.length-1)])}</span>`;
-  await sleep(1100);
+  await typeOut($('chatMsg'), reacoes[Math.min(state.qIdx-1, reacoes.length-1)], 28);
+  await sleep(1800);
   if (state.qIdx < state.perguntasBlublu.length) {
     mostrarPergunta();
   } else {
-    // Fim das perguntas — mostra processing message
-    $('chatMsg').textContent = 'Blublu agora conecta os pontos...';
     $('chatProgress').innerHTML = state.perguntasBlublu.map(() => '<div class="chat-dot done"></div>').join('');
+    rotarCuriosidades();
   }
+}
+
+// Curiosidades + dicas que giram enquanto Blublu processa (cena 6)
+const CURIOSIDADES = [
+  nome => `Você sabia, ${nome}? Shorts com legendas retêm 40% mais que sem.`,
+  () => `Dica rápida: os primeiros 3 segundos decidem 78% dos virais.`,
+  () => `Curiosidade: o YouTube testa seu Short em 200 pessoas antes de escalar.`,
+  () => `Canais que postam 1x/dia crescem 4x mais rápido que 3x/semana.`,
+  () => `Shorts com final abrupto têm mais rewatch. Silêncio no final = morte.`,
+  () => `Analisei 124.567 virais. Sabe o que todos têm em comum? Emoção forte nos 2s iniciais.`,
+  nome => `${nome}, um truque: mexa a câmera no hook. Movimento prende atenção.`,
+  () => `Fato: vídeos que fazem pergunta no início têm 30% mais comentários.`,
+  () => `Shorts de "como fazer" performam 2x melhor que "o que é".`,
+  nome => `Paciência é virtude, ${nome}. Estou cruzando 9.3 milhões de data points.`,
+  () => `Você escolheu bem. Esse viral tem padrões interessantes...`,
+  () => `Hook visual > hook verbal. Primeiros 0.5s precisam ser impactantes.`,
+  nome => `Confesso, ${nome}: alguns creators me irritam. Mas você parece promissor.`,
+  () => `Dica avançada: CTA na descrição converte 3x mais que no fim do vídeo.`,
+];
+async function rotarCuriosidades() {
+  let idx = 0;
+  const rotar = async () => {
+    if (!$('cena6')?.classList.contains('active')) return;
+    if (state.atosData) return; // analise chegou
+    const fn = CURIOSIDADES[idx % CURIOSIDADES.length];
+    idx++;
+    const frase = typeof fn === 'function' ? fn(state.nome) : fn;
+    await typeOut($('chatMsg'), frase, 32);
+    await sleep(4800);
+    rotar();
+  };
+  rotar();
 }
 
 // ═══════════ CENA 8: ATOS ═══════════
@@ -1286,9 +1390,9 @@ async function mostrarAto(idx) {
 
   $('atoBlubluOutro').textContent = ato.blublu_outro || '';
 
-  // Navegação
+  // Navegação — mais tempo pra ler (antes passava rapido)
   const nav = $('atoNav');
-  const delay = atos[idx] === 'ato_5' ? 2400 : 2800;
+  const delay = atos[idx] === 'ato_5' ? 3800 : 4200;
   setTimeout(() => {
     const ehUltimo = idx >= atos.length - 1;
     nav.innerHTML = `
@@ -1336,36 +1440,78 @@ function responderQuiz(idx) {
   const correta = q.correta;
   const btns = document.querySelectorAll('.quiz-opcao');
   btns.forEach(b => b.style.pointerEvents = 'none');
+  const didaticaExplicacao = q.explicacao_didatica || q.comentario_se_errar || '';
   if (idx === correta) {
     state.quizAcertos++;
     btns[idx].classList.add('certa');
-    $('quizFeedback').innerHTML = `<div class="quiz-feedback certo">✓ ${esc(q.comentario_se_acertar || 'Acertou!')}</div>`;
+    $('quizFeedback').innerHTML = `
+      <div class="quiz-feedback certo">✓ ${esc(q.comentario_se_acertar || 'Acertou!')}</div>
+      ${didaticaExplicacao ? `<div style="margin-top:10px;padding:14px 18px;background:rgba(59,130,246,.08);border-left:3px solid var(--blublu);border-radius:0 10px 10px 0;text-align:left;font-size:13px;line-height:1.55;color:var(--text-sec)"><b style="color:var(--blublu2)">💡 Entenda:</b> ${esc(didaticaExplicacao)}</div>` : ''}
+    `;
   } else {
     btns[idx].classList.add('errada');
     btns[correta].classList.add('revela-certa');
-    $('quizFeedback').innerHTML = `<div class="quiz-feedback errado">✗ ${esc(q.comentario_se_errar || 'Errou!')}</div>`;
+    $('quizFeedback').innerHTML = `
+      <div class="quiz-feedback errado">✗ ${esc(q.comentario_se_errar || 'Errou!')}</div>
+      <div style="margin-top:10px;padding:14px 18px;background:rgba(251,191,36,.08);border-left:3px solid var(--gold);border-radius:0 10px 10px 0;text-align:left;font-size:13px;line-height:1.55;color:var(--text-sec)"><b style="color:var(--gold)">📚 Aprendizado:</b> A resposta certa era "<b>${esc(q.opcoes[correta])}</b>". ${didaticaExplicacao ? esc(didaticaExplicacao) : 'Guarda isso pra próxima.'}</div>
+    `;
   }
-  setTimeout(() => { $('quizNav').style.display = 'block'; }, 600);
+  setTimeout(() => { $('quizNav').style.display = 'block'; }, 1000);
 }
 
 function proximaPerguntaQuiz() {
   state.quizIdx++;
   if (state.quizIdx >= state.quizData.perguntas.length) finalizarQuiz();
-  else mostrarPerguntaQuiz();
+  else {
+    // Fala Blublu entre perguntas (piadas + manter engajamento)
+    const entreFalas = [
+      `Próxima, ${state.nome}. Essa é capciosa.`,
+      `Ok, continuando. Eu já tô me divertindo.`,
+      `Respira fundo, ${state.nome}. Vai ficar melhor.`,
+      `Gosto quando as pessoas erram aqui. Aprende mais.`,
+      `Próxima rodada. Não me decepciona agora.`,
+      `Paciência, ${state.nome}. Minha é menor que a sua.`,
+    ];
+    const fala = entreFalas[state.quizIdx % entreFalas.length];
+    $('quizFeedback').innerHTML = `<div style="margin:14px 0;font-style:italic;color:var(--blublu2);font-size:14px">${esc(fala)}</div>`;
+    $('quizNav').style.display = 'none';
+    setTimeout(mostrarPerguntaQuiz, 1400);
+  }
 }
 
 function finalizarQuiz() {
   $('quizPergunta').style.display = 'none';
   $('quizFinal').style.display = 'block';
   const total = state.quizData.perguntas.length;
+  const pct = Math.round((state.quizAcertos / total) * 100);
   $('quizScoreNum').textContent = `${state.quizAcertos}/${total}`;
-  const subs = {
-    3: `Acertou tudo, ${state.nome}. Confesso que fiquei impressionado.`,
-    2: `Bom, ${state.nome}. Mas "bom" nunca foi "excelente".`,
-    1: `Só uma, ${state.nome}. Dá pra melhorar bastante.`,
-    0: `Zero, ${state.nome}. Vamos reler os atos?`,
-  };
-  $('quizScoreSub').textContent = subs[state.quizAcertos] || '';
+
+  // Mensagem motivacional por acertos + nota
+  let nota, cor, comentBlublu, motiva;
+  if (state.quizAcertos === total) {
+    nota = 'A+'; cor = '#10b981';
+    comentBlublu = `Perfeito, ${state.nome}. Confesso que fiquei impressionado. Você não só assistiu — entendeu.`;
+    motiva = '🚀 Você tem olho de criador. Agora falta só executar. Começa hoje.';
+  } else if (state.quizAcertos === 2) {
+    nota = 'B+'; cor = '#3b82f6';
+    comentBlublu = `Bom, ${state.nome}. Mas "bom" nunca foi "excelente". Reler o Ato ${state.quizIdx} pode mudar isso.`;
+    motiva = '💪 Você tá quase lá. Acerta os detalhes e seu próximo viral vai aparecer.';
+  } else if (state.quizAcertos === 1) {
+    nota = 'C'; cor = '#fbbf24';
+    comentBlublu = `Só uma, ${state.nome}. Dá pra melhorar muito — o que é ótima notícia: tem margem pra crescer.`;
+    motiva = '📚 A maioria dos criadores que viram pro crescimento começa exatamente daqui. Continua.';
+  } else {
+    nota = 'F'; cor = '#ef4444';
+    comentBlublu = `Zero, ${state.nome}. Tudo bem. Relê os atos sem pressa — desta vez com intenção.`;
+    motiva = '🔄 Todo grande criador começou errando. O que importa é a segunda tentativa. E a terceira.';
+  }
+
+  $('quizScoreSub').innerHTML = `
+    <div style="font-size:48px;font-weight:800;color:${cor};margin-bottom:10px;letter-spacing:-2px">${nota}</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin-bottom:20px">${pct}% de aproveitamento</div>
+    <div style="font-style:italic;color:var(--blublu2);font-size:16px;line-height:1.5;margin-bottom:20px">${esc(comentBlublu)}</div>
+    <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:14px;padding:16px 20px;font-size:14px;line-height:1.5;color:var(--text)">${motiva}</div>
+  `;
   $('quizFechamento').textContent = state.quizData.fechamento || '';
 }
 
