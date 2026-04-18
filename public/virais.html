@@ -611,19 +611,23 @@ async function carregarHistorico(pagina){
     const grid = document.getElementById('grid');
     if (!grid) return;
 
-    // Pagina 1 = reset: limpa qualquer banco anterior e recomeca a partir
-    // dos cards da busca ativa atual (lastResults).
-    if (pagina === 1) {
-      paginaHistorico = 0;
-      // Recompoe o grid so com a busca ativa antes de adicionar o banco
-      if (lastResults && lastResults.length) {
-        renderVideos(lastResults);
-      }
-    }
-
     const region = document.getElementById('regionSelect')?.value || '';
     const nichoSel = document.getElementById('nichoSelect')?.value || '';
     const periodo = (typeof currentPeriod !== 'undefined') ? currentPeriod : 'todos';
+
+    // Pagina 1 = reset. Quando HA filtro de nicho, NAO renderiza lastResults
+    // (busca ativa do YouTube nao tem metadata de nicho, contaminaria o filtro).
+    // Sem filtro de nicho, comportamento antigo: busca ativa + banco.
+    if (pagina === 1) {
+      paginaHistorico = 0;
+      if (nichoSel) {
+        // Filtro ativo — limpa grid pra mostrar SO o banco filtrado
+        grid.innerHTML = '';
+      } else if (lastResults && lastResults.length) {
+        // Sem filtro — mantem comportamento original
+        renderVideos(lastResults);
+      }
+    }
     const params = new URLSearchParams({
       action: 'historico',
       pagina: String(pagina || 1),
@@ -637,14 +641,22 @@ async function carregarHistorico(pagina){
     if (!d.videos || !d.videos.length){
       const pag = document.getElementById('historico-paginacao');
       if (pag) pag.style.display = 'none';
+      // Se filtro ativo e grid vazio: mostra mensagem amigavel
+      if (nichoSel && pagina === 1 && !grid.children.length) {
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-dim)">
+          <div style="font-size:40px;margin-bottom:12px;opacity:.5">🗂️</div>
+          <div style="font-size:14px;margin-bottom:4px">Nenhum vídeo no nicho <b style="color:var(--neon)">${escHtml(nichoSel)}</b> ainda</div>
+          <div style="font-size:12px">Aguarde a próxima coleta automática (a cada 2h)</div>
+        </div>`;
+      }
       return;
     }
 
     // Dedupe: ignora videos cujo youtube_id ja esta no grid
     const idsExistentes = new Set();
     grid.querySelectorAll('a.short-card[data-vid]').forEach(a => idsExistentes.add(a.dataset.vid));
-    // Tambem dedupe contra a busca ativa (lastResults usa v.id)
-    if (lastResults && lastResults.length) {
+    // Dedupe contra lastResults SO quando nao ha filtro de nicho
+    if (!nichoSel && lastResults && lastResults.length) {
       lastResults.forEach(v => v.id && idsExistentes.add(v.id));
     }
     const novos = d.videos.filter(v => v.youtube_id && !idsExistentes.has(v.youtube_id));
