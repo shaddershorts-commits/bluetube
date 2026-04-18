@@ -455,8 +455,18 @@ async function startDownload(){
       if (lbl) lbl.textContent = 'Baixando e juntando 1080p HD (pode levar 10-30s)...';
     }
 
-    const r = await fetch(endpoint);
-    const data = await r.json();
+    let r = await fetch(endpoint);
+    let data = await r.json();
+
+    // AUTO-FALLBACK: se YouTube HQ falhar (502 — Railway down/cold), tenta
+    // automaticamente em modo Auto. Usuario nao precisa clicar de novo.
+    if (qParam && (r.status === 502 || (data && data.provider === 'hq-failed'))) {
+      const lbl = document.querySelector('.progress-label');
+      if (lbl) lbl.textContent = 'HD indisponível agora — baixando em qualidade Auto...';
+      const fallbackEndpoint = `/api/auth?action=download&url=${encodeURIComponent(url)}`;
+      r = await fetch(fallbackEndpoint);
+      data = await r.json();
+    }
 
     finishProgress(r.ok && data.url);
 
