@@ -77,6 +77,20 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
   filter:blur(15px);animation:pulseBreath 8s ease-in-out infinite}
 @keyframes pulseBreath{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
 
+/* Foguete do Blublu passando ao fundo (inatividade) */
+.blu-rocket{position:fixed;bottom:-120px;left:-200px;width:140px;height:140px;z-index:6;pointer-events:none;opacity:0;filter:drop-shadow(0 0 20px rgba(59,130,246,.6))}
+.blu-rocket.fly{animation:rocketFly 7s linear forwards}
+@keyframes rocketFly{
+  0%{opacity:0;bottom:5%;left:-220px;transform:rotate(-12deg)}
+  8%{opacity:1}
+  50%{bottom:55%;left:50%;transform:rotate(-15deg) scale(1.05)}
+  92%{opacity:1}
+  100%{opacity:0;bottom:105%;left:110%;transform:rotate(-20deg) scale(.9)}
+}
+.blu-rocket img{width:100%;height:100%;object-fit:contain}
+.blu-rocket-balao{position:absolute;top:-14px;right:-180px;background:#fff;color:#0a1628;padding:10px 16px;border-radius:14px;font-family:var(--font);font-size:13px;font-weight:700;white-space:nowrap;box-shadow:0 8px 22px rgba(0,0,0,.4);letter-spacing:.2px;max-width:240px;white-space:normal;line-height:1.3}
+.blu-rocket-balao::before{content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);border-top:8px solid transparent;border-bottom:8px solid transparent;border-right:10px solid #fff}
+
 /* Badge AO VIVO pulsante */
 .ao-vivo{display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.18);border:1px solid var(--red);color:var(--red);padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;margin-left:10px;vertical-align:middle}
 .ao-vivo::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);animation:aoVivoPulse 1.2s infinite}
@@ -436,6 +450,13 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 <div class="stars" id="shootingStars"></div>
 
 <a class="voltar-btn" href="/" id="btnHome">← voltar ao BlueTube</a>
+
+<!-- Foguete do Blublu (inatividade na cena 1) -->
+<div class="blu-rocket" id="bluRocket" aria-hidden="true">
+  <img src="/FOGUETE.png" alt="" onerror="this.style.display='none';this.parentElement.querySelector('.rocket-fallback').style.display='block'">
+  <div class="rocket-fallback" style="display:none;font-size:110px;line-height:1">🚀</div>
+  <div class="blu-rocket-balao">Demorou tanto que dei a volta no <b>PlanetaBlue</b>!</div>
+</div>
 
 <!-- CENA 0: ABERTURA -->
 <div class="cena active" id="cena0">
@@ -829,22 +850,38 @@ async function carregarEntrada() {
   } catch (e) { console.error(e); showGate('erro'); }
 }
 
+// 9 variacoes de saudacao (humor, motivacional, provocador, etc)
+const FRASES_SAUDACAO = [
+  nome => `Olá, ${nome}. Bom te ver aqui no meu laboratório. O que vamos fazer hoje?`,
+  nome => `${nome} voltou. Eu senti falta — ou não. O que você trouxe pra mim hoje?`,
+  nome => `Ah, ${nome}! Pronto pra descobrir por que seus vídeos não viralizam?`,
+  nome => `${nome}, respira. Hoje a gente vai transformar teoria em Short viral.`,
+  nome => `Opa, ${nome}. Enquanto você dormia, 847 virais rolaram no YouTube. Bora trabalhar?`,
+  nome => `${nome}, olha quem apareceu. A IA mais arrogante do Brasil te espera.`,
+  nome => `Voltou, ${nome}? Ótimo. Eu tava entediado analisando dancinha.`,
+  nome => `${nome}! Hoje é o dia que você para de adivinhar e começa a executar.`,
+  nome => `Confessa, ${nome}: você tá aqui porque sabe que eu sou bom mesmo. Vamos?`,
+];
+
 async function renderSaudacao() {
   const nome = state.nome;
-  const msg = `Olá, ${nome}. Bom te ver aqui no meu laboratório. O que vamos fazer hoje?`;
-  // Renderiza com nome destacado via HTML
+  // Rotaciona entre as 9 frases usando localStorage
+  let idx = 0;
+  try { idx = parseInt(localStorage.getItem('bt_studio_saud_idx') || '0', 10) % FRASES_SAUDACAO.length; } catch(e){}
+  const msg = FRASES_SAUDACAO[idx](nome);
+  try { localStorage.setItem('bt_studio_saud_idx', String((idx + 1) % FRASES_SAUDACAO.length)); } catch(e){}
   const el = $('sTexto');
   el.innerHTML = '';
   el.classList.add('cursor');
-  const chars = msg.split('');
-  for (let i = 0; i < chars.length; i++) {
-    el.textContent += chars[i];
+  for (let i = 0; i < msg.length; i++) {
+    el.textContent += msg[i];
     await sleep(22);
   }
-  // Colore o nome
   el.innerHTML = esc(msg).replace(nome, `<span class="nome">${esc(nome)}</span>`);
   el.classList.remove('cursor');
   $('sOpcoes').classList.add('show');
+  // Inicia timer do foguete: se usuario demorar, passa ao fundo com balao
+  iniciarFogueteIndolente();
   $('sQtdSalvas').textContent = state.salvas.length + ' análise(s) guardada(s)';
   const ilimitado = (state.restantes || 0) >= 100;
   $('sQtdRestantes').textContent = ilimitado ? 'análises ilimitadas ✨' : state.restantes + '/3 restantes nas próximas 24h';
@@ -856,6 +893,22 @@ async function renderSaudacao() {
     const mins = Math.max(0, Math.round((new Date(state.proximaEm) - Date.now()) / 60000));
     qEl.innerHTML = `⏳ próxima em ${Math.floor(mins/60)}h ${mins%60}m`;
   } else qEl.innerHTML = `✨ <b>3</b> dissecações por 24h`;
+}
+
+// Foguete passa se usuario ficar mais de 15s na saudacao sem clicar
+let _rocketTimer = null;
+function iniciarFogueteIndolente() {
+  if (_rocketTimer) clearTimeout(_rocketTimer);
+  _rocketTimer = setTimeout(() => {
+    if (!$('cena1')?.classList.contains('active')) return;
+    const r = $('bluRocket');
+    if (!r) return;
+    r.classList.remove('fly');
+    void r.offsetWidth; // force reflow
+    r.classList.add('fly');
+    // Re-agenda pra daqui a 25s se ainda estiver parado
+    _rocketTimer = setTimeout(iniciarFogueteIndolente, 25000);
+  }, 15000);
 }
 
 function showGate(motivo) {
@@ -1069,37 +1122,44 @@ function renderDashboard(d) {
   }, dly));
 }
 
+// Formata numero inteiro com separadores pt-BR (2.047.521)
+const fmInt = (n) => Number(Math.max(0, Math.floor(n || 0))).toLocaleString('pt-BR');
+
 function animarViews(target, dur) {
   const el = $('dashViews');
   const start = Date.now();
   const step = () => {
     const t = Math.min(1, (Date.now() - start) / dur);
     const eased = 1 - Math.pow(1 - t, 3);
-    el.textContent = fmNum(Math.floor(target * eased));
+    el.textContent = fmInt(Math.floor(target * eased));
     if (t < 1) requestAnimationFrame(step);
-    else { el.textContent = fmNum(target); viewsVivo(target); }
+    else { el.textContent = fmInt(target); viewsVivo(target); }
   };
   step();
 }
 
 function viewsVivo(base) {
-  // "Vivo": incrementa aleatoriamente a cada 2-3s (parece tempo real)
+  // "Vivo": incrementa com frequencia pra parecer contador em tempo real
   if (state.viewsVivo) clearInterval(state.viewsVivo);
   const v = state.video;
-  const velPorSeg = Math.max(0.1, (v.velocidade_views_24h || 0) / 3600);
+  // Velocidade real por segundo do video (ou fallback baseado em views totais)
+  const velPorSeg = Math.max(0.5, (v.velocidade_views_24h || v.views/86400 || 0) / 3600);
   let extra = 0;
+  // Intervalo curto (900ms-1.4s) com incrementos realistas pra parecer vivo
   state.viewsVivo = setInterval(() => {
     if (!$('cena4').classList.contains('active')) return;
-    // Incremento menor mas mais frequente pra parecer "vivo"
-    const inc = Math.max(1, Math.floor(velPorSeg * (1.5 + Math.random()*2)));
+    // Incremento com jitter (parece mais organico)
+    const inc = Math.max(1, Math.floor(velPorSeg * (0.8 + Math.random()*2.4)));
     extra += inc;
     const el = $('dashViews');
     if (el) {
-      el.textContent = fmNum(base + extra);
-      el.style.textShadow = '0 0 20px rgba(59,130,246,.6)';
-      setTimeout(()=>{ if(el) el.style.textShadow=''; }, 400);
+      el.textContent = fmInt(base + extra);
+      // Pulso sutil a cada update
+      el.style.transition = 'text-shadow .2s';
+      el.style.textShadow = '0 0 18px rgba(59,130,246,.55)';
+      setTimeout(()=>{ if(el) el.style.textShadow=''; }, 300);
     }
-  }, 2500);
+  }, 900 + Math.random() * 500);
 }
 
 function animarNum(id, target, dur) {
@@ -1314,36 +1374,41 @@ async function responderPergunta(opcao) {
   }
 }
 
-// Curiosidades + dicas que giram enquanto Blublu processa (cena 6)
-const CURIOSIDADES = [
-  nome => `Você sabia, ${nome}? Shorts com legendas retêm 40% mais que sem.`,
-  () => `Dica rápida: os primeiros 3 segundos decidem 78% dos virais.`,
-  () => `Curiosidade: o YouTube testa seu Short em 200 pessoas antes de escalar.`,
-  () => `Canais que postam 1x/dia crescem 4x mais rápido que 3x/semana.`,
-  () => `Shorts com final abrupto têm mais rewatch. Silêncio no final = morte.`,
-  () => `Analisei 124.567 virais. Sabe o que todos têm em comum? Emoção forte nos 2s iniciais.`,
-  nome => `${nome}, um truque: mexa a câmera no hook. Movimento prende atenção.`,
-  () => `Fato: vídeos que fazem pergunta no início têm 30% mais comentários.`,
-  () => `Shorts de "como fazer" performam 2x melhor que "o que é".`,
-  nome => `Paciência é virtude, ${nome}. Estou cruzando 9.3 milhões de data points.`,
-  () => `Você escolheu bem. Esse viral tem padrões interessantes...`,
-  () => `Hook visual > hook verbal. Primeiros 0.5s precisam ser impactantes.`,
-  nome => `Confesso, ${nome}: alguns creators me irritam. Mas você parece promissor.`,
-  () => `Dica avançada: CTA na descrição converte 3x mais que no fim do vídeo.`,
+// Pares fato + reacao Blublu (alterna enquanto a IA processa)
+const FATOS_BLUBLU = [
+  { fato: 'Shorts com legendas retêm 40% mais que sem.', reacao: 'Ou seja: se você não legenda seus vídeos, tá deixando dinheiro na mesa. Literalmente.' },
+  { fato: 'Os primeiros 3 segundos decidem 78% dos virais.', reacao: 'E alguns criadores ainda acham que o "problema" é a thumbnail. Não é. Nunca foi.' },
+  { fato: 'O YouTube testa seu Short em 200 pessoas antes de escalar.', reacao: 'Se essas 200 não terminarem o vídeo, tchau algoritmo. É por isso que eu insisto no hook.' },
+  { fato: 'Canais que postam 1x/dia crescem 4x mais rápido que 3x/semana.', reacao: 'Consistência é o superpoder mais subestimado. E o mais chato.' },
+  { fato: 'Shorts com final abrupto têm mais rewatch.', reacao: 'Silêncio no final = morte. Termina com impacto ou não termina.' },
+  { fato: 'Analisei 124.567 virais este mês.', reacao: 'E sabe o que todos têm em comum? Emoção forte nos 2 primeiros segundos. NADA mais.' },
+  { fato: 'Vídeos que fazem pergunta no início têm 30% mais comentários.', reacao: 'Comentário alimenta o algoritmo. Pergunta gera comentário. Conta comigo.' },
+  { fato: 'Shorts de "como fazer" performam 2x melhor que "o que é".', reacao: 'Ninguém quer ouvir teoria. Quer receita pronta. Eu também, confesso.' },
+  { fato: 'Hook visual bate hook verbal. Sempre.', reacao: 'Se seu vídeo abre com voz narrando, você já perdeu 30% da audiência. Comprovado.' },
+  { fato: 'CTA na descrição converte 3x mais que no fim do vídeo.', reacao: 'Porque ninguém assiste até o fim. Aceita isso, ${nome}.' },
+  { fato: 'Vídeos com movimento de câmera no primeiro segundo retêm 25% mais.', reacao: 'Movimento = vida. Câmera parada = documentário. Escolhe seu lado.' },
+  { fato: 'O padrão de ouro dos virais: tensão nos 5s, clímax aos 15s, CTA aos 20s.', reacao: 'Simples? É. Ninguém faz direito? Também é.' },
 ];
+
 async function rotarCuriosidades() {
   let idx = 0;
-  const rotar = async () => {
-    if (!$('cena6')?.classList.contains('active')) return;
-    if (state.atosData) return; // analise chegou
-    const fn = CURIOSIDADES[idx % CURIOSIDADES.length];
-    idx++;
-    const frase = typeof fn === 'function' ? fn(state.nome) : fn;
-    await typeOut($('chatMsg'), frase, 32);
-    await sleep(4800);
-    rotar();
+  const mostrar = async (texto, ms) => {
+    if (!$('cena6')?.classList.contains('active')) return false;
+    if (state.atosData) return false;
+    await typeOut($('chatMsg'), texto, 30);
+    await sleep(ms);
+    return true;
   };
-  rotar();
+  const loop = async () => {
+    const item = FATOS_BLUBLU[idx % FATOS_BLUBLU.length];
+    idx++;
+    // Fato primeiro, pausa, depois reacao do Blublu
+    if (!await mostrar('📊 ' + item.fato, 3800)) return;
+    const reacao = item.reacao.replace(/\$\{nome\}/g, state.nome);
+    if (!await mostrar('💭 ' + reacao, 4800)) return;
+    loop();
+  };
+  loop();
 }
 
 // ═══════════ CENA 8: ATOS ═══════════
