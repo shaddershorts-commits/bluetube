@@ -820,6 +820,7 @@ let state = {
   atosData: null, atoIdx: 0, quizData: null, quizIdx: 0, quizAcertos: 0,
   analiseId: null, projPeriodo: 'd30', viewsVivo: null,
   meuVideoMode: false, // true quando fluxo "analisar meu video"
+  isMaster: false,     // SO true apos confirmacao do backend (entrada OK)
 };
 
 // ═══════════ STARS + PARTICLES ABERTURA ═══════════
@@ -895,6 +896,12 @@ spawnAberturaParticles();
 
 // ═══════════ NAVEGAÇÃO ENTRE CENAS ═══════════
 function irCena(id) {
+  // SEGURANCA: cenas que tocam a IA so sao acessiveis se o backend confirmou master
+  const cenasMaster = ['1','2a','2b','2c','3','4','5','6','8','9','10','11'];
+  if (cenasMaster.includes(String(id)) && !state.isMaster && id !== 'Gate') {
+    showGate('upgrade');
+    return;
+  }
   document.querySelectorAll('.cena').forEach(el => el.classList.remove('active'));
   const target = $('cena' + id);
   if (target) target.classList.add('active');
@@ -1161,32 +1168,27 @@ async function init() {
   if (!token) { setTimeout(() => showGate('login'), 2000); return; }
   // Captura ?rx=VIDEOID (deep link vindo da pagina Virais "Raio-X completo")
   let rxVideoId = null;
-  try {
-    const p = new URLSearchParams(location.search);
-    rxVideoId = p.get('rx');
-  } catch (e) {}
+  try { rxVideoId = new URLSearchParams(location.search).get('rx'); } catch (e) {}
   // Cena 0: 4s de abertura com particles+scan+logo reveal+status
-  setTimeout(() => {
+  setTimeout(async () => {
+    // SEMPRE valida Master via backend antes de qualquer coisa
+    await carregarEntrada();
+    // Se nao e master (backend confirmou), carregarEntrada ja mostrou gate
+    if (!state.isMaster) return;
+    // Se veio com ?rx= E e master, pula direto pra cena 2c com input preenchido
     if (rxVideoId) {
-      // Se usuario master e veio do Virais, pula direto pra cena 2c com input preenchido
-      carregarEntrada().then(() => {
-        if (state.nome && state.nome !== 'criador') {
-          // Autenticado como master — abre 2c ja preenchido
-          irCena('2c');
-          setTimeout(() => {
-            const inp = $('meuVideoInput');
-            if (inp) {
-              inp.value = `https://www.youtube.com/shorts/${rxVideoId}`;
-              inp.focus();
-            }
-            const nb = $('nbText');
-            if (nb) nb.textContent = `Achei o vídeo, ${state.nome}. Clica "Analisar" pra eu colocar os óculos de raio-x.`;
-          }, 200);
+      irCena('2c');
+      setTimeout(() => {
+        const inp = $('meuVideoInput');
+        if (inp) {
+          inp.value = `https://www.youtube.com/shorts/${rxVideoId}`;
+          inp.focus();
         }
-      });
+        const nb = $('nbText');
+        if (nb) nb.textContent = `Achei o vídeo, ${state.nome}. Clica "Analisar" pra eu colocar os óculos de raio-x.`;
+      }, 200);
     } else {
       irCena('1');
-      carregarEntrada();
     }
   }, 4000);
 }
@@ -1195,9 +1197,18 @@ async function carregarEntrada() {
   try {
     const r = await fetch(`/api/bluetendencias?action=entrada&token=${encodeURIComponent(token)}`);
     const d = await r.json();
-    if (r.status === 403 || d.status === 403 || d.error === 'master_required') return showGate('upgrade');
-    if (d.sistema_pausado) return showSystemPaused(d.sistema_pausado_msg);
-    state.nome = d.nome || state.nome || 'criador';
+    if (r.status === 403 || d.status === 403 || d.error === 'master_required') {
+      // NAO e master — limpa cache de nome pra nao mostrar nome de outra conta
+      try { localStorage.removeItem('bt_studio_nome'); } catch(e){}
+      state.nome = 'criador';
+      state.isMaster = false;
+      showGate('upgrade');
+      return;
+    }
+    if (d.sistema_pausado) { state.isMaster = true; return showSystemPaused(d.sistema_pausado_msg); }
+    // Master confirmado pelo backend
+    state.isMaster = true;
+    state.nome = d.nome || 'criador';
     try { if (d.nome) localStorage.setItem('bt_studio_nome', d.nome); } catch(e){}
     state.restantes = d.restantes ?? 0;
     state.salvas = d.analises_salvas || [];
