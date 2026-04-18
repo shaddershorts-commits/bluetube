@@ -846,10 +846,12 @@ async function renderSaudacao() {
   el.classList.remove('cursor');
   $('sOpcoes').classList.add('show');
   $('sQtdSalvas').textContent = state.salvas.length + ' análise(s) guardada(s)';
-  $('sQtdRestantes').textContent = state.restantes + '/3 restantes nas próximas 24h';
+  const ilimitado = (state.restantes || 0) >= 100;
+  $('sQtdRestantes').textContent = ilimitado ? 'análises ilimitadas ✨' : state.restantes + '/3 restantes nas próximas 24h';
   // Quota
   const qEl = $('sQuota');
-  if (state.restantes > 0) qEl.innerHTML = `✨ <b>${state.restantes}</b> dissecações restantes`;
+  if (ilimitado) qEl.innerHTML = `✨ <b>análises ilimitadas</b> nesta sessão`;
+  else if (state.restantes > 0) qEl.innerHTML = `✨ <b>${state.restantes}</b> dissecações restantes`;
   else if (state.proximaEm) {
     const mins = Math.max(0, Math.round((new Date(state.proximaEm) - Date.now()) / 60000));
     qEl.innerHTML = `⏳ próxima em ${Math.floor(mins/60)}h ${mins%60}m`;

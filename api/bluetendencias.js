@@ -117,21 +117,26 @@ async function checarRateLimitEBudget(ctx, userId, userEmail) {
     return { permitido: true, analises_restantes: 999, analises_total_24h: 999, unlimited: true };
   }
 
-  const vinte4h = new Date(Date.now() - 86400000).toISOString();
-  const rlR = await fetch(
-    `${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${userId}&usado_em=gte.${vinte4h}&select=usado_em&order=usado_em.asc`,
-    { headers: ctx.h }
-  );
-  const usos = rlR.ok ? await rlR.json() : [];
-  const limite = parseInt(process.env.STUDIO_MAX_PER_USER_24H || '3', 10);
-  const restantes = Math.max(0, limite - usos.length);
-
-  if (restantes === 0) {
-    const antiga = usos[0];
-    const proximaEm = antiga ? new Date(new Date(antiga.usado_em).getTime() + 86400000) : null;
-    return { permitido: false, motivo: 'limite_24h', usadas_24h: usos.length, proxima_analise_em: proximaEm?.toISOString() };
+  // Limite individual removido — budget global e a unica protecao.
+  // Pra reativar: defina STUDIO_MAX_PER_USER_24H no Vercel (ex: 3).
+  const limitePorUser = parseInt(process.env.STUDIO_MAX_PER_USER_24H || '0', 10);
+  let restantes = 999;
+  if (limitePorUser > 0) {
+    const vinte4h = new Date(Date.now() - 86400000).toISOString();
+    const rlR = await fetch(
+      `${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${userId}&usado_em=gte.${vinte4h}&select=usado_em&order=usado_em.asc`,
+      { headers: ctx.h }
+    );
+    const usos = rlR.ok ? await rlR.json() : [];
+    restantes = Math.max(0, limitePorUser - usos.length);
+    if (restantes === 0) {
+      const antiga = usos[0];
+      const proximaEm = antiga ? new Date(new Date(antiga.usado_em).getTime() + 86400000) : null;
+      return { permitido: false, motivo: 'limite_24h', usadas_24h: usos.length, proxima_analise_em: proximaEm?.toISOString() };
+    }
   }
 
+  // Budget global ainda protege contra abuso massivo
   const hoje = new Date().toISOString().split('T')[0];
   const bR = await fetch(`${ctx.SU}/rest/v1/studio_budget_diario?data=eq.${hoje}&select=*&limit=1`, { headers: ctx.h });
   const [budget] = bR.ok ? await bR.json() : [];
@@ -139,7 +144,7 @@ async function checarRateLimitEBudget(ctx, userId, userEmail) {
     return { permitido: false, motivo: 'sistema_pausado', mensagem: 'Blublu está descansando. Volta em algumas horas.' };
   }
 
-  return { permitido: true, analises_restantes: restantes, analises_total_24h: limite };
+  return { permitido: true, analises_restantes: restantes, analises_total_24h: limitePorUser || 999 };
 }
 
 async function registrarUso(ctx, userId, userEmail) {
