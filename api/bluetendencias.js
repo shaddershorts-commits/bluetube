@@ -298,7 +298,7 @@ async function buscarVideoYoutube(youtubeId) {
 // ═════════════════════════════════════════════════════════════════════════════
 async function entrada(ctx, req) {
   const auth = await requireMaster(ctx, req.query.token);
-  if (!auth.ok) return { error: auth.error, status: auth.status, plan: auth.plan };
+  if (!auth.ok) return { error: auth.error, status: auth.status, plan: auth.plan, debug: auth.debug };
 
   const [salvasR, historicoR] = await Promise.all([
     fetch(`${ctx.SU}/rest/v1/studio_analises?user_id=eq.${auth.user.id}&salva=eq.true&order=created_at.desc&limit=20&select=id,video_youtube_id,video_titulo,video_thumbnail,video_canal,created_at`, { headers: ctx.h }),
