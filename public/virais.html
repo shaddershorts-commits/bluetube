@@ -96,6 +96,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .card-date{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
 .card-use-btn{margin-top:10px;width:100%;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.18);border-radius:8px;padding:7px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--neon);cursor:pointer;transition:all .2s;text-align:center}
 .card-use-btn:hover{background:rgba(0,170,255,.16);border-color:rgba(0,170,255,.35)}
+.card-rx-btn{margin-top:6px;width:100%;background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.08));border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:7px;font-family:var(--mono);font-size:10px;font-weight:700;color:#fbbf24;cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.5px;position:relative;overflow:hidden}
+.card-rx-btn:hover{background:linear-gradient(135deg,rgba(251,191,36,.28),rgba(255,140,0,.15));border-color:#fbbf24;transform:translateY(-1px);box-shadow:0 4px 12px rgba(251,191,36,.25)}
+.card-rx-btn::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);transition:left .6s}
+.card-rx-btn:hover::before{left:100%}
 
 /* SKELETON */
 .skeleton{background:linear-gradient(90deg,rgba(0,170,255,.06) 25%,rgba(0,170,255,.1) 50%,rgba(0,170,255,.06) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
@@ -462,6 +466,9 @@ function renderVideos(videos) {
         <div class="card-use-btn" onclick="useShort(event,'${v.id}','${escHtml(v.url)}')">
           ↗ Usar no BlueTube
         </div>
+        <div class="card-rx-btn" onclick="raioX(event,'${v.id}')">
+          🔬 Raio-X completo
+        </div>
       </div>
     </a>`;
   }).join('');
@@ -474,6 +481,15 @@ function useShort(e, videoId, url) {
   const shortUrl = `https://www.youtube.com/shorts/${videoId}`;
   localStorage.setItem('bt_prefill_url', shortUrl);
   window.location.href = '/';
+}
+
+function raioX(e, videoId) {
+  e.preventDefault();
+  e.stopPropagation();
+  // Redireciona pra BlueTendencias com o video pre-selecionado.
+  // - Master: auto-abre cena 2c com input preenchido (so clicar analisar)
+  // - Free/Full: ve animacao + landing page com upgrade
+  window.location.href = `/bluetendencias?rx=${encodeURIComponent(videoId)}`;
 }
 
 function showError(msg) {
@@ -705,6 +721,7 @@ async function carregarHistorico(pagina){
               <span class="card-date">${ago}</span>
             </div>
             <div class="card-use-btn" onclick="useShort(event,'${v.youtube_id}','${escHtml(url)}')">↗ Usar no BlueTube</div>
+            <div class="card-rx-btn" onclick="raioX(event,'${v.youtube_id}')">🔬 Raio-X completo</div>
           </div>
         </a>`;
       }).join('');

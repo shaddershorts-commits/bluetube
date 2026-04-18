@@ -1159,8 +1159,36 @@ async function typeOut(el, texto, speed = 24) {
 // ═══════════ INIT ═══════════
 async function init() {
   if (!token) { setTimeout(() => showGate('login'), 2000); return; }
+  // Captura ?rx=VIDEOID (deep link vindo da pagina Virais "Raio-X completo")
+  let rxVideoId = null;
+  try {
+    const p = new URLSearchParams(location.search);
+    rxVideoId = p.get('rx');
+  } catch (e) {}
   // Cena 0: 4s de abertura com particles+scan+logo reveal+status
-  setTimeout(() => { irCena('1'); carregarEntrada(); }, 4000);
+  setTimeout(() => {
+    if (rxVideoId) {
+      // Se usuario master e veio do Virais, pula direto pra cena 2c com input preenchido
+      carregarEntrada().then(() => {
+        if (state.nome && state.nome !== 'criador') {
+          // Autenticado como master — abre 2c ja preenchido
+          irCena('2c');
+          setTimeout(() => {
+            const inp = $('meuVideoInput');
+            if (inp) {
+              inp.value = `https://www.youtube.com/shorts/${rxVideoId}`;
+              inp.focus();
+            }
+            const nb = $('nbText');
+            if (nb) nb.textContent = `Achei o vídeo, ${state.nome}. Clica "Analisar" pra eu colocar os óculos de raio-x.`;
+          }, 200);
+        }
+      });
+    } else {
+      irCena('1');
+      carregarEntrada();
+    }
+  }, 4000);
 }
 
 async function carregarEntrada() {
