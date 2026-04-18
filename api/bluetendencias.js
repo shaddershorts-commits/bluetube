@@ -293,12 +293,24 @@ async function actionEmergentes(req, res, ctx) {
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
   const nicho = (req.query.nicho || '').toLowerCase() || null;
 
-  // Prioriza cache ML (emergentes-ml); cai pra heuristica (emergentes) se vazio
-  const mlCached = (await lerCache(ctx, 'emergentes-ml')) || [];
-  const heurCached = (await lerCache(ctx, 'emergentes')) || [];
-  const combined = mlCached.length > 0 ? mlCached : heurCached;
-  const tendencias = nicho ? combined.filter(t => t.nicho === nicho) : combined;
-  return res.status(200).json({ tendencias, fonte: mlCached.length > 0 ? 'ml' : 'heuristica' });
+  // Cascade: ML -> heuristica -> snapshot -> estatico (via helper)
+  const { obterTendenciasComFallback } = require('./_helpers/tendencias-fallback.js');
+
+  // Tenta ML primeiro, cai pra heuristica
+  const mlRes = await obterTendenciasComFallback(ctx, 'emergentes-ml', null);
+  let tendencias = Array.isArray(mlRes.dados) ? mlRes.dados : [];
+  let fonte = mlRes.fonte === 'cache_atual' ? 'ml' : mlRes.fonte;
+  let aviso = mlRes.aviso;
+
+  if (tendencias.length === 0) {
+    const heurRes = await obterTendenciasComFallback(ctx, 'emergentes', null);
+    tendencias = Array.isArray(heurRes.dados) ? heurRes.dados : [];
+    fonte = heurRes.fonte === 'cache_atual' ? 'heuristica' : heurRes.fonte;
+    aviso = heurRes.aviso || aviso;
+  }
+
+  if (nicho) tendencias = tendencias.filter(t => t.nicho === nicho);
+  return res.status(200).json({ tendencias, fonte, aviso: aviso || null });
 }
 
 async function calcularEmergentes(ctx) {
