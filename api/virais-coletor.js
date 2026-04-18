@@ -29,6 +29,7 @@ module.exports = async function handler(req, res) {
       case 'calcular-scores':    return await calcularScores(res);
       case 'backfill-nichos':    return await backfillNichos(res, req);
       case 'migrar-nicho':       return await migrarNicho(res, req);
+      case 'expandir-canais':    return await expandirCanais(res, req);
       case 'status':             return await statusBanco(res);
       default:                   return res.status(400).json({ error: 'action_invalida' });
     }
@@ -263,6 +264,20 @@ async function coletarTrending(res) {
     const todos = [...(trending.items || []), ...(shortsDetalhes.items || [])];
     const r = await salvarVideos(todos, null, pais.code);
     novos = r.novos; atualizados = r.atualizados;
+
+    // Expansao automatica: se a coleta trouxe virais bombados de um canal
+    // que ainda nao expandimos, roda 1 expansion inline (so pra BR pra nao
+    // encher banco com conteudo LatAm dificil de replicar).
+    if (pais.code === 'BR' && novos > 0) {
+      try {
+        const expR = await expandirCanaisInterno(1);
+        if (expR?.canais_processados > 0) {
+          novos += expR.novos || 0;
+          atualizados += expR.atualizados || 0;
+          cota += expR.cota_gasta || 0;
+        }
+      } catch (e) { console.error('[trending -> expandir]:', e.message); }
+    }
 
     await logColeta('trending',
       { pais: pais.code, pais_idx: idx },
@@ -527,6 +542,107 @@ async function migrarNicho(res, req) {
     de, para, atualizados: antesTotal,
     duracao_ms: Date.now() - inicio,
   });
+}
+
+// ── ACTION: expandir-canais (#2 Related + #3 Channel expansion) ────────────
+// Quando achamos um viral bombado, o canal dele geralmente tem OUTROS
+// Shorts bons. Em vez de depender so de trending, expandimos pra canal.
+//
+// Cada execucao:
+// 1. Busca top 3 canais com virais novos (score > 70, ultimas 24h)
+// 2. Filtra canais ja expandidos nos ultimos 7 dias (evita duplicar)
+// 3. Pra cada canal: search?channelId=X&type=video&order=viewCount&maxResults=50
+// 4. Salva videos novos (dedupe por youtube_id)
+//
+// Custo: 100 unidades por canal = 300 unidades por execucao (3 canais).
+// Hit-rate: ~30-50% de videos novos por canal (criadores virais tem +conteudo).
+async function expandirCanais(res, req) {
+  const maxCanais = Math.min(parseInt(req?.query?.limit || 3), 5);
+  const result = await expandirCanaisInterno(maxCanais);
+  return res.status(200).json({ ok: true, action: 'expandir-canais', ...result });
+}
+
+async function expandirCanaisInterno(maxCanais = 3) {
+  const inicio = Date.now();
+
+  // 1) Top canais com virais novos
+  const desde24h = new Date(Date.now() - 24 * 3600000).toISOString();
+  const candidatos = await supaSelect(
+    `virais_banco?ativo=eq.true&coletado_em=gte.${desde24h}&viral_score=gte.50&canal_id=not.is.null&order=viral_score.desc&limit=20&select=canal_id,canal_nome,viral_score`
+  ) || [];
+
+  // Agrega por canal (pega o maior score de cada)
+  const canais = new Map();
+  candidatos.forEach(v => {
+    if (!v.canal_id) return;
+    if (!canais.has(v.canal_id) || canais.get(v.canal_id).score < v.viral_score) {
+      canais.set(v.canal_id, { canal_id: v.canal_id, canal_nome: v.canal_nome, score: v.viral_score });
+    }
+  });
+
+  // 2) Filtra canais ja expandidos nos ultimos 7d
+  const seteDiasAtras = new Date(Date.now() - 7 * 86400000).toISOString();
+  const logsR = await supaSelect(
+    `virais_coletas_log?tipo_busca=eq.canal-expansion&created_at=gte.${seteDiasAtras}&select=parametros&limit=50`
+  ) || [];
+  const jaExpandidos = new Set(logsR.map(l => l.parametros?.canal_id).filter(Boolean));
+  const paraExpandir = [...canais.values()]
+    .filter(c => !jaExpandidos.has(c.canal_id))
+    .slice(0, maxCanais);
+
+  if (!paraExpandir.length) {
+    return { motivo: 'sem_canais_novos', canais_processados: 0, novos: 0, atualizados: 0, cota_gasta: 0 };
+  }
+
+  let totalNovos = 0, totalAtualizados = 0, cota = 0, canaisOK = 0;
+  for (const canal of paraExpandir) {
+    try {
+      const search = await youtubeRequest('search', {
+        part: 'snippet',
+        channelId: canal.canal_id,
+        type: 'video',
+        videoDuration: 'short',
+        order: 'viewCount',
+        maxResults: 50,
+      });
+      cota += 100;
+
+      const ids = (search.items || []).map(v => v.id?.videoId).filter(Boolean);
+      if (!ids.length) continue;
+
+      // 50 IDs de uma vez = 1 unidade
+      const detalhes = await youtubeRequest('videos', {
+        part: 'snippet,statistics,contentDetails',
+        id: ids.join(','),
+      });
+      cota += 1;
+
+      const r = await salvarVideos(detalhes.items || [], null, 'BR');
+      totalNovos += r.novos;
+      totalAtualizados += r.atualizados;
+      canaisOK++;
+
+      // Log individual pra evitar re-expandir mesmo canal
+      await logColeta('canal-expansion', { canal_id: canal.canal_id, canal_nome: canal.canal_nome, encontrados: ids.length },
+        r.novos, r.atualizados, 101, 0);
+
+      await new Promise(r => setTimeout(r, 400));
+    } catch (e) {
+      console.error(`[expandir-canais] ${canal.canal_nome}:`, e.message);
+    }
+  }
+
+  await logColeta('expandir-canais-resumo',
+    { canais_processados: canaisOK, canais_alvo: paraExpandir.length },
+    totalNovos, totalAtualizados, cota, Date.now() - inicio);
+
+  return {
+    canais_processados: canaisOK,
+    canais_alvo: paraExpandir.length,
+    novos: totalNovos, atualizados: totalAtualizados,
+    cota_gasta: cota,
+    duracao_ms: Date.now() - inicio,
+  };
 }
 
 // ── ACTION: backfill-nichos ─────────────────────────────────────────────────
