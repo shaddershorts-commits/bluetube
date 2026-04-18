@@ -138,6 +138,12 @@ export default async function handler(req, res) {
 
     console.log(`[cancel] ${email} — Stripe sub ${sub.stripe_subscription_id} agendado pra cancelar em ${periodEnd?.toISOString()}`);
 
+    // Email de confirmacao pro usuario — evita chargeback/estorno quando o
+    // cliente fecha a tela rapido sem ler a mensagem de sucesso. Fire-and-forget.
+    import('./_helpers/cancellationEmail.js')
+      .then((m) => m.sendCancellationEmail(email, sub.plan, periodEnd?.toISOString()))
+      .catch((e) => console.error('[cancel-subscription] cancellationEmail:', e.message));
+
     return res.status(200).json({
       success: true,
       email,

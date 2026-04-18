@@ -561,6 +561,33 @@ export default async function handler(req, res) {
   }
 
   // ── STRIPE WEBHOOKS (stats + lista recente) ──────────────────────────────
+  // ── SEND_CANCELLATION_CONFIRMATION — envia email manual pro cliente ───────
+  // Usado quando um cliente cancelou antes da feature de email automatico
+  // existir, pra evitar chargeback/estorno. Busca plan_expires_at do banco.
+  if (req.method === 'POST' && action === 'send_cancellation_confirmation') {
+    try {
+      const alvoEmail = (email || req.body?.email || '').toLowerCase().trim();
+      if (!alvoEmail) return res.status(400).json({ error: 'email obrigatorio' });
+
+      const subR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?email=ilike.${encodeURIComponent(alvoEmail)}&select=email,plan,plan_expires_at&limit=1`,
+        { headers }
+      );
+      const subs = subR.ok ? await subR.json() : [];
+      const sub = subs[0];
+      if (!sub) return res.status(404).json({ error: 'subscriber nao encontrado' });
+      if (!sub.plan_expires_at) return res.status(400).json({ error: 'usuario nao tem cancelamento agendado (sem plan_expires_at)' });
+      if (!['full','master'].includes(sub.plan)) return res.status(400).json({ error: `plano atual e ${sub.plan}, email so faz sentido pra full/master` });
+
+      const { sendCancellationEmail } = require('./_helpers/cancellationEmail.js');
+      const result = await sendCancellationEmail(sub.email, sub.plan, sub.plan_expires_at);
+      return res.status(200).json({ ok: result.sent, ...result, email_alvo: sub.email, plan: sub.plan, plan_expires_at: sub.plan_expires_at });
+    } catch (e) {
+      console.error('[admin send_cancellation_confirmation]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── CHECK_CANCELAMENTO — verifica estado completo de um email ─────────────
   // Retorna: subscriber, afiliado atribuido, comissoes, webhooks relacionados
   if (req.method === 'GET' && action === 'check_cancelamento') {
