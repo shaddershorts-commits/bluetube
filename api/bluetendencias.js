@@ -304,8 +304,11 @@ async function callClaudeStudio(prompt, opts = {}) {
   if (ctx && await isCircuitoAberto(ctx, comp)) {
     throw new Error('CIRCUITO_ABERTO');
   }
-  const maxRetries = 3;
-  const delays = [0, 1000, 3000]; // 0s, 1s, 3s (acumulativo: 0, 1, 4s total)
+  // 2 tentativas (1 + 1 retry). Antes eram 3, mas 3x55s=165s estoura os
+  // 120s do maxDuration da Vercel. Se a 1a demorar os 55s do timeout + 1s
+  // de backoff + 55s da 2a = 111s, cabe.
+  const maxRetries = 2;
+  const delays = [0, 1000];
   let ultimoErro = null;
   for (let tentativa = 0; tentativa < maxRetries; tentativa++) {
     if (tentativa > 0) await new Promise(r => setTimeout(r, delays[tentativa]));
@@ -325,9 +328,9 @@ async function callClaudeStudio(prompt, opts = {}) {
 
 async function callClaudeRaw(prompt, { model = 'claude-sonnet-4-6', maxTokens = 3500, system } = {}) {
   if (!process.env.ANTHROPIC_API_KEY_STUDIO) throw new Error('ANTHROPIC_API_KEY_STUDIO nao configurada');
-  // Timeout 45s na chamada
+  // Timeout 55s na chamada — Sonnet com 3500 tokens pode estourar 45s
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
+  const timer = setTimeout(() => controller.abort(), 55000);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {

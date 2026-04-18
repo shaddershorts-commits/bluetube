@@ -974,7 +974,7 @@ async function dissectarMeuVideo() {
   state.bgInt = setInterval(() => { bi = (bi+1) % bgMsgs.length; const el = $('bgProc'); if (el) el.textContent = bgMsgs[bi]; }, 2500);
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
+    const timer = setTimeout(() => controller.abort(), 120000);
     const r = await fetch('/api/bluetendencias', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'analisar-meu-video', token, entrada: state.video.youtube_id }),
@@ -999,7 +999,7 @@ async function dissectarMeuVideo() {
     renderMeuVideo(d);
   } catch (e) {
     if (state.bgInt) clearInterval(state.bgInt);
-    const msg = e.name === 'AbortError' ? 'Blublu demorou demais (timeout 90s). Tenta de novo.' : ('Erro: ' + (e.message || 'conexão'));
+    const msg = e.name === 'AbortError' ? 'Blublu demorou mais de 2 min (timeout). Tenta de novo.' : ('Erro: ' + (e.message || 'conexão'));
     console.error('[bluetendencias] dissectarMeuVideo exception:', e);
     toast(msg);
     setTimeout(() => irCena('2c'), 2500);
@@ -1803,10 +1803,10 @@ async function disparaAnaliseAsync() {
   });
   console.log('[bluetendencias] 3 perguntas respondidas, chamando gerar-analise-final. video:', state.video.youtube_id, 'sessao:', state.sessaoId);
   const t0 = Date.now();
-  // Agora chama backend — timeout generoso de 90s
+  // Agora chama backend — timeout 120s (alinhado com maxDuration da Vercel)
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
+    const timer = setTimeout(() => controller.abort(), 120000);
     const r = await fetch('/api/bluetendencias', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'gerar-analise-final', token, video_id: state.video.youtube_id, respostas: state.respostas, sessao_id: state.sessaoId }),
@@ -1837,7 +1837,7 @@ async function disparaAnaliseAsync() {
   } catch (e) {
     if (state.bgInt) clearInterval(state.bgInt);
     const latencia = Date.now() - t0;
-    const msg = e.name === 'AbortError' ? `Blublu demorou mais de 90s (timeout). Tenta de novo.` : ('Erro: ' + (e.message || 'conexão'));
+    const msg = e.name === 'AbortError' ? `Blublu demorou mais de 2 min (timeout). Tenta de novo.` : ('Erro: ' + (e.message || 'conexão'));
     console.error('[bluetendencias] gerar-analise-final exception apos', latencia + 'ms:', e.name, e.message);
     toast(msg);
     setTimeout(() => irCena('4'), 2500);
