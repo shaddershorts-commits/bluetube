@@ -13,7 +13,8 @@
     "api/monitor.js": { "maxDuration": 60 },
     "api/blue-editor.js": { "maxDuration": 60 },
     "api/generate-from-zero.js": { "maxDuration": 60 },
-    "api/rewrite.js": { "maxDuration": 60 }
+    "api/rewrite.js": { "maxDuration": 60 },
+    "api/bluetendencias.js": { "maxDuration": 90 }
   },
   "crons": [
     {
