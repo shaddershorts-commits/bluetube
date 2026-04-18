@@ -146,41 +146,46 @@ async function dispararCampanha(req, res, ctx, src) {
     if (insR.ok) { const [row] = await insR.json(); campanhaId = row?.id || null; }
   } catch (e) { console.error('[email-campanha] insert falhou:', e.message); }
 
-  // 3) Envia em lotes de 50 por plano, pausa 1s entre lotes
-  const TAMANHO_LOTE = 50;
-  const resultados = { enviados: 0, falhas: 0, por_plano: { free: 0, full: 0, master: 0 } };
-  const emailsEnviados = []; // pra atualizar email_marketing depois
+  // 3) Envia SEQUENCIAL com throttle de 150ms (~6-7 emails/s, abaixo do
+  // limite de 10/s do Resend free tier). Antes era Promise.all(50) = 50/s
+  // e 429 destruia ~85% dos envios.
+  const THROTTLE_MS = 150;
+  const resultados = { enviados: 0, falhas: 0, falhas_por_status: {}, por_plano: { free: 0, full: 0, master: 0 } };
+  const emailsEnviados = [];
 
   for (const [plano, lista] of Object.entries(por_plano)) {
-    for (let i = 0; i < lista.length; i += TAMANHO_LOTE) {
-      const lote = lista.slice(i, i + TAMANHO_LOTE);
-      await Promise.all(lote.map(async (user) => {
-        try {
-          const email = gerarEmail(plano, user);
-          const r = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${ctx.RESEND_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              from: 'BlueTube Blublu <noreply@bluetubeviral.com>',
-              to: [user.email],
-              subject: email.assunto,
-              html: email.html,
-            }),
-          });
-          if (r.ok) {
-            resultados.enviados++;
-            resultados.por_plano[plano]++;
-            emailsEnviados.push(user.email);
-          } else {
-            resultados.falhas++;
-          }
-        } catch (e) {
+    for (const user of lista) {
+      try {
+        const email = gerarEmail(plano, user);
+        const r = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${ctx.RESEND_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'BlueTube Blublu <noreply@bluetubeviral.com>',
+            to: [user.email],
+            subject: email.assunto,
+            html: email.html,
+          }),
+        });
+        if (r.ok) {
+          resultados.enviados++;
+          resultados.por_plano[plano]++;
+          emailsEnviados.push(user.email);
+        } else {
           resultados.falhas++;
-          console.error(`[email-campanha] falha ${user.email}:`, e.message);
+          resultados.falhas_por_status[r.status] = (resultados.falhas_por_status[r.status] || 0) + 1;
+          // Se for 429 (rate limit), espera mais antes da proxima
+          if (r.status === 429) {
+            console.warn('[email-campanha] 429 rate limit — aguardando 2s extra');
+            await new Promise(x => setTimeout(x, 2000));
+          }
         }
-      }));
-      // pausa entre lotes
-      if (i + TAMANHO_LOTE < lista.length) await new Promise(r => setTimeout(r, 1000));
+      } catch (e) {
+        resultados.falhas++;
+        resultados.falhas_por_status['exception'] = (resultados.falhas_por_status['exception'] || 0) + 1;
+        console.error(`[email-campanha] falha ${user.email}:`, e.message);
+      }
+      await new Promise(r => setTimeout(r, THROTTLE_MS));
     }
   }
 
