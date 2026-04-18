@@ -78,18 +78,24 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
 @keyframes pulseBreath{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
 
 /* Foguete do Blublu passando ao fundo (inatividade) */
-.blu-rocket{position:fixed;bottom:-120px;left:-200px;width:140px;height:140px;z-index:6;pointer-events:none;opacity:0;filter:drop-shadow(0 0 20px rgba(59,130,246,.6))}
-.blu-rocket.fly{animation:rocketFly 7s linear forwards}
+/* z-index:1 fica acima da galaxia (0) mas ABAIXO do conteudo da cena (2) */
+.blu-rocket{position:fixed;top:12%;left:-220px;width:110px;height:110px;z-index:1;pointer-events:none;opacity:0;filter:drop-shadow(0 0 16px rgba(59,130,246,.55))}
+.blu-rocket.fly{animation:rocketFly 8s linear forwards}
+/* Trajetoria diagonal na area superior da tela — evita sobrepor o texto central */
 @keyframes rocketFly{
-  0%{opacity:0;bottom:5%;left:-220px;transform:rotate(-12deg)}
-  8%{opacity:1}
-  50%{bottom:55%;left:50%;transform:rotate(-15deg) scale(1.05)}
-  92%{opacity:1}
-  100%{opacity:0;bottom:105%;left:110%;transform:rotate(-20deg) scale(.9)}
+  0%{opacity:0;top:18%;left:-220px;transform:rotate(-8deg) scale(.9)}
+  10%{opacity:.95}
+  50%{top:8%;left:50%;transform:rotate(-12deg) scale(1)}
+  90%{opacity:.95}
+  100%{opacity:0;top:-5%;left:110%;transform:rotate(-18deg) scale(.85)}
 }
 .blu-rocket img{width:100%;height:100%;object-fit:contain}
-.blu-rocket-balao{position:absolute;top:-14px;right:-180px;background:#fff;color:#0a1628;padding:10px 16px;border-radius:14px;font-family:var(--font);font-size:13px;font-weight:700;white-space:nowrap;box-shadow:0 8px 22px rgba(0,0,0,.4);letter-spacing:.2px;max-width:240px;white-space:normal;line-height:1.3}
-.blu-rocket-balao::before{content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);border-top:8px solid transparent;border-bottom:8px solid transparent;border-right:10px solid #fff}
+.blu-rocket-balao{position:absolute;top:50%;right:-200px;transform:translateY(-50%);background:#fff;color:#0a1628;padding:8px 14px;border-radius:12px;font-family:var(--font);font-size:12px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.4);letter-spacing:.2px;max-width:200px;line-height:1.3}
+.blu-rocket-balao::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);border-top:7px solid transparent;border-bottom:7px solid transparent;border-right:8px solid #fff}
+@media(max-width:720px){
+  .blu-rocket{width:80px;height:80px}
+  .blu-rocket-balao{font-size:10px;padding:6px 10px;right:-150px;max-width:140px}
+}
 
 /* Badge AO VIVO pulsante */
 .ao-vivo{display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.18);border:1px solid var(--red);color:var(--red);padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;margin-left:10px;vertical-align:middle}
