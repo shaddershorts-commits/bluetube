@@ -236,6 +236,13 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       .catch((e) => console.error('upgradeEmail (webhook):', e.message));
 
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+    // Valor REALMENTE pago ao Stripe (ja com desconto de cupom e ajuste anual).
+    // amount_total vem em centavos — divide por 100 pra ter reais/dolares.
+    const paidAmount = typeof session.amount_total === 'number'
+      ? parseFloat((session.amount_total / 100).toFixed(2))
+      : (plan === 'master' ? 89.99 : 29.99);
+    const couponApplied = session.total_details?.amount_discount > 0;
+
     fetch(`${SITE_URL}/api/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -250,14 +257,14 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff?.comissao_percentual) return;
         const rate = aff.comissao_percentual / 100;
-        const planAmount = plan === 'master' ? 89.99 : 29.99;
-        const correctedAmount = parseFloat((planAmount * rate).toFixed(2));
+        // Comissao = taxa do afiliado × valor realmente pago (respeita cupom + anual)
+        const correctedAmount = parseFloat((paidAmount * rate).toFixed(2));
         await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(email)}&order=created_at.desc&limit=1`, {
           method: 'PATCH',
           headers: supaHeaders,
-          body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount })
+          body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount, plan_amount: paidAmount })
         });
-        console.log(`💰 Commission corrected: ${aff.email} nivel=${aff.nivel} ${(rate*100).toFixed(0)}% = R$${correctedAmount} (${email})`);
+        console.log(`💰 Commission corrected: ${aff.email} nivel=${aff.nivel} ${(rate*100).toFixed(0)}% × R$${paidAmount}${couponApplied?' (com cupom)':''} = R$${correctedAmount} (${email})`);
       } catch(e) { console.error('Commission correction error:', e.message); }
     }).catch(() => {});
 
@@ -349,6 +356,12 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const SITE_URL_R = process.env.SITE_URL || 'https://bluetubeviral.com';
     const renewEmail = subs[0].email;
     const renewPlan = subs[0].plan;
+    // Valor REALMENTE pago nesta renovacao (ja com cupom/desconto aplicado, e
+    // valor correto pra anual — invoice.amount_paid vem em centavos).
+    const renewPaidAmount = typeof invoice.amount_paid === 'number' && invoice.amount_paid > 0
+      ? parseFloat((invoice.amount_paid / 100).toFixed(2))
+      : (renewPlan === 'master' ? 89.99 : 29.99);
+
     fetch(`${SITE_URL_R}/api/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -363,14 +376,13 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff?.comissao_percentual) return;
         const rate = aff.comissao_percentual / 100;
-        const planAmount = renewPlan === 'master' ? 89.99 : 29.99;
-        const correctedAmount = parseFloat((planAmount * rate).toFixed(2));
+        const correctedAmount = parseFloat((renewPaidAmount * rate).toFixed(2));
         await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(renewEmail)}&order=created_at.desc&limit=1`, {
           method: 'PATCH',
           headers: supaHeaders,
-          body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount })
+          body: JSON.stringify({ commission_rate: rate, commission_amount: correctedAmount, plan_amount: renewPaidAmount })
         });
-        console.log(`🔄 Renewal commission corrected: nivel=${aff.nivel} ${(rate*100).toFixed(0)}% = R$${correctedAmount}`);
+        console.log(`🔄 Renewal commission corrected: nivel=${aff.nivel} ${(rate*100).toFixed(0)}% × R$${renewPaidAmount} = R$${correctedAmount}`);
       } catch(e) { console.error('Renewal commission correction error:', e.message); }
     }).catch(() => {});
     return;
