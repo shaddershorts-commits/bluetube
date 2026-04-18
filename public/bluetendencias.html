@@ -1227,7 +1227,8 @@ async function carregarEntrada() {
     state.restantes = d.restantes ?? 0;
     state.salvas = d.analises_salvas || [];
     state.proximaEm = d.proxima_em;
-    renderSaudacao();
+    // renderSaudacao e chamado por irCena('1') no init — nao chamar aqui
+    // tambem pra evitar chamada dupla (causava digitacao intercalada).
   } catch (e) { console.error(e); showGate('erro'); }
 }
 
@@ -1252,14 +1253,15 @@ async function renderSaudacao() {
   const msg = FRASES_SAUDACAO[idx](nome);
   try { localStorage.setItem('bt_studio_saud_idx', String((idx + 1) % FRASES_SAUDACAO.length)); } catch(e){}
   const el = $('sTexto');
-  el.innerHTML = '';
-  el.classList.add('cursor');
-  for (let i = 0; i < msg.length; i++) {
-    el.textContent += msg[i];
-    await sleep(22);
-  }
+  if (!el) return;
+  // Usa typeOut (que tem protecao de token contra chamadas paralelas).
+  // renderSaudacao pode ser chamada 2x em sequencia (init + carregarEntrada),
+  // antes tinha digitador custom sem token e caracteres se intercalavam.
+  await typeOut(el, msg, 22);
+  // So aplica o HTML final se essa chamada ainda e a ativa (comparacao do
+  // textContent garante que nao vamos sobrescrever outra chamada concorrente).
+  if (el.textContent !== msg) return;
   el.innerHTML = esc(msg).replace(nome, `<span class="nome">${esc(nome)}</span>`);
-  el.classList.remove('cursor');
   $('sOpcoes').classList.add('show');
   // Inicia timer do foguete: se usuario demorar, passa ao fundo com balao
   iniciarFogueteIndolente();
