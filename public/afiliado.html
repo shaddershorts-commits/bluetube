@@ -527,6 +527,91 @@ async function regAffiliate(_isRetry){
 const show=(id)=>{['landingSection','pendingSection','dashboardSection'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.display=s===id?'block':'none';});};
 function showPending(){show('pendingSection');}
 
+// ═══════════════════ POPUP DE LANCAMENTO — unico por afiliado ════════════════
+async function checarPopupLancamento() {
+  try {
+    const r = await fetch(`/api/affiliate?action=check-popup-lancamento&token=${encodeURIComponent(token)}`);
+    const d = await r.json();
+    if (!d.mostrar) return;
+    setTimeout(() => mostrarPopupLancamento(d.nome || 'parceiro'), 1200);
+  } catch (e) { /* silencioso — popup nao bloqueia nada */ }
+}
+
+function mostrarPopupLancamento(nome) {
+  // Evita double-render se DOM ja tem
+  if (document.getElementById('popupLancamentoAfiliado')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'popupLancamentoAfiliado';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,8,23,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:popupFadeIn .4s ease';
+
+  overlay.innerHTML = `
+    <style>
+      @keyframes popupFadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes popupScaleIn { from{opacity:0;transform:scale(.92) translateY(20px)} to{opacity:1;transform:scale(1) translateY(0)} }
+      @keyframes popupShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      @keyframes popupGlow { 0%,100%{box-shadow:0 0 40px rgba(0,170,255,.25),0 0 80px rgba(107,78,230,.15)} 50%{box-shadow:0 0 60px rgba(0,170,255,.4),0 0 120px rgba(107,78,230,.25)} }
+      #popLancBox { animation: popupScaleIn .5s cubic-bezier(.16,1,.3,1) both, popupGlow 4s ease-in-out infinite; }
+      #popLancBox .shimmer-title { background:linear-gradient(90deg,#e8f4ff 0%,#00aaff 25%,#a855f7 50%,#00aaff 75%,#e8f4ff 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:popupShimmer 6s linear infinite; }
+      #popLancBox .btn-cta:hover { transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,170,255,.5) !important; }
+      #popLancBox .btn-ghost:hover { color:#fff !important; border-color:rgba(255,255,255,.3) !important; }
+    </style>
+    <div id="popLancBox" style="max-width:540px;width:100%;background:linear-gradient(135deg,rgba(10,22,40,.98),rgba(5,12,25,.98));border:1px solid rgba(0,170,255,.3);border-radius:24px;padding:44px 40px;text-align:center;color:#e8f4ff;position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#00aaff,#6b4ee6,#00aaff)"></div>
+      <div style="font-size:56px;margin-bottom:12px;line-height:1">💙</div>
+      <div style="font-family:monospace;font-size:10px;letter-spacing:.3em;color:#00aaff;text-transform:uppercase;margin-bottom:14px">Mensagem pra você</div>
+      <h2 class="shimmer-title" style="font-size:28px;font-weight:900;line-height:1.2;margin:0 0 20px;letter-spacing:-.02em">
+        Obrigado por estar aqui, ${escapeHtml(nome)}.
+      </h2>
+      <p style="font-size:15px;line-height:1.7;color:rgba(200,225,255,.82);margin:0 0 16px">
+        Enquanto a maioria ainda está descobrindo o BlueTube, <b style="color:#fff">você já faz parte do núcleo que constrói essa história</b>.
+      </p>
+      <p style="font-size:15px;line-height:1.7;color:rgba(200,225,255,.82);margin:0 0 16px">
+        Cada indicação sua não é só uma comissão — é um creator brasileiro que teve acesso a uma ferramenta diferente. E isso importa mais do que números.
+      </p>
+      <p style="font-size:15px;line-height:1.7;color:rgba(200,225,255,.82);margin:0 0 24px">
+        Estamos só começando. Vem coisa grande por aí — novas ferramentas, um programa de parceiros mais forte, e um ecossistema que vai transformar como criadores crescem no Brasil.
+      </p>
+      <div style="background:linear-gradient(135deg,rgba(0,170,255,.08),rgba(107,78,230,.08));border:1px solid rgba(0,170,255,.2);border-radius:14px;padding:18px 22px;margin:0 0 28px">
+        <div style="font-family:monospace;font-size:10px;color:#00aaff;letter-spacing:.2em;margin-bottom:6px">🚀 O FUTURO</div>
+        <p style="font-size:14px;line-height:1.6;color:rgba(255,255,255,.9);margin:0;font-weight:500">
+          Você tá na linha de frente, ${escapeHtml(nome)}. Quando a gente olhar pra trás daqui 2 anos, vai lembrar que foi junto com parceiros como você que tudo isso nasceu.
+        </p>
+      </div>
+      <button class="btn-cta" onclick="fecharPopupLancamento()" style="width:100%;padding:16px;font-size:15px;font-weight:800;font-family:inherit;letter-spacing:.02em;color:#fff;background:linear-gradient(135deg,#00aaff,#6b4ee6);border:none;border-radius:12px;cursor:pointer;transition:all .25s;box-shadow:0 8px 24px rgba(0,170,255,.35)">
+        Bora pro próximo capítulo →
+      </button>
+      <button class="btn-ghost" onclick="fecharPopupLancamento()" style="display:block;width:100%;margin-top:12px;padding:10px;background:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;color:rgba(200,225,255,.5);font-family:monospace;font-size:11px;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;transition:all .2s">
+        fechar
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  // Fecha com ESC também
+  document.addEventListener('keydown', _popLancEsc);
+}
+
+function _popLancEsc(e) { if (e.key === 'Escape') fecharPopupLancamento(); }
+
+function fecharPopupLancamento() {
+  const el = document.getElementById('popupLancamentoAfiliado');
+  if (!el) return;
+  el.style.animation = 'popupFadeIn .3s ease reverse';
+  setTimeout(() => el.remove(), 280);
+  document.removeEventListener('keydown', _popLancEsc);
+  // Marca no banco pra nunca mais aparecer pra esse afiliado
+  try {
+    fetch('/api/affiliate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'marcar-popup-lancamento', token }),
+    }).catch(() => {});
+  } catch(e) {}
+}
+
+function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
 async function init(_isRetry){
   if(!token){show('landingSection');return;}
   try{
@@ -557,6 +642,8 @@ async function init(_isRetry){
           body:JSON.stringify({token,cookie_id:cid})
         }).catch(()=>{});
       }catch(e){}
+      // Popup de lancamento BlueTendencias — aparece 1x, persiste no banco
+      try { checarPopupLancamento(); } catch(e) {}
     }else{
       console.log('Dashboard response:', r.status, d.error);
       show('landingSection');

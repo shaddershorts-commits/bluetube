@@ -162,6 +162,48 @@ export default async function handler(req, res) {
 
   // ── REGISTER AFFILIATE ─────────────────────────────────────────────────────
   // POST { action: 'register', token, name }
+  // ── POPUP DE LANCAMENTO — unico por afiliado, persistido no banco ──────────
+  // GET ?action=check-popup-lancamento&token=X
+  // Retorna { mostrar: boolean, nome: string } pra frontend decidir
+  if (req.method === 'GET' && action === 'check-popup-lancamento') {
+    const { token } = req.query;
+    if (!token) return res.status(401).json({ error: 'Token obrigatório' });
+    try {
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } });
+      if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
+      const user = await ur.json();
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=id,name,popup_lancamento_visto&limit=1`, { headers: supaH });
+      const [aff] = ar.ok ? await ar.json() : [];
+      if (!aff) return res.status(200).json({ mostrar: false });
+      const primeiroNome = (aff.name || user.email.split('@')[0]).split(' ')[0];
+      return res.status(200).json({
+        mostrar: !aff.popup_lancamento_visto,
+        nome: primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1).toLowerCase(),
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // POST {action:'marcar-popup-lancamento', token} — marca como visto
+  if (req.method === 'POST' && action === 'marcar-popup-lancamento') {
+    const { token } = req.body;
+    if (!token) return res.status(401).json({ error: 'Token obrigatório' });
+    try {
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } });
+      if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
+      const user = await ur.json();
+      await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({ popup_lancamento_visto: true, updated_at: new Date().toISOString() }),
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method === 'POST' && action === 'register') {
     const { token, name } = req.body;
     if (!token) return res.status(401).json({ error: 'Token obrigatório' });
