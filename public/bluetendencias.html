@@ -617,7 +617,17 @@ async function conectarCanal() {
 function pularConexao() {
   $('conectarOverlay').classList.remove('active');
   toast('Sem canal conectado, vou analisar seu nicho');
-  avancarPraAto4Generico();
+  // Popula padrao generico pra funcionar o fluxo completo
+  state.padrao = {
+    padrao_principal: 'CURIOSIDADE',
+    forca: 0.65,
+    quantos_virais_seguem: 0,
+    evidencias: ['Padrao identificado em criadores do seu nicho'],
+    descricao_dramatica: 'Os virais do seu nicho tem uma coisa em comum — vou te mostrar.',
+    explicacao: 'Sem canal conectado, vou usar os padroes dominantes do seu nicho.',
+    raridade_percentual: 50,
+  };
+  avancarPraAto3();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
