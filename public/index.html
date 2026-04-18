@@ -1754,12 +1754,11 @@ function _btLoadCred() {
     catch(e2) { console.warn('[auth] cred corrompida, removendo'); localStorage.removeItem('bt_saved_cred'); return null; }
   }
 }
-// Pre-preenche campos de login com a cred salva (se "Lembrar de mim" ativo).
-// Chamado em openAuthModal E em switchAuthTab pra cobrir caso o user
-// abra o modal ja na aba signup e mude pra login depois.
+// Pre-preenche campos de login com a cred salva.
+// Nao depende do flag bt_remember_me — se o user tem cred salva no PC,
+// preenche SEMPRE (mesmo apos logout). O flag remember_me so controla
+// se o auto-relogin silencioso acontece no load da pagina.
 function _btPrefillLogin(force){
-  const rem = localStorage.getItem('bt_remember_me');
-  if (rem === '0') { console.log('[auth] prefill: remember=0, skip'); return; }
   const cred = _btLoadCred();
   if (!cred || !cred.e || !cred.p) { console.log('[auth] prefill: sem cred valida (saved:', !!localStorage.getItem('bt_saved_cred'), ')'); return; }
   const emailEl = document.getElementById('loginEmail');
@@ -1768,7 +1767,7 @@ function _btPrefillLogin(force){
   if (!emailEl || !pwdEl) { console.warn('[auth] prefill: campos nao encontrados'); return; }
   if (force || !emailEl.value) emailEl.value = cred.e;
   if (force || !pwdEl.value) pwdEl.value = cred.p;
-  if (remEl) remEl.checked = true;
+  if (remEl) remEl.checked = localStorage.getItem('bt_remember_me') !== '0';
   console.log('[auth] prefill ok — email:', cred.e, 'senha len:', cred.p.length);
 }
 
@@ -3167,7 +3166,11 @@ function doLogout(){
   localStorage.removeItem('bt_token');
   localStorage.removeItem('bt_refresh_token');
   localStorage.removeItem('bt_plan');
-  localStorage.removeItem('bt_saved_cred');
+  // Mantem bt_saved_cred pra pre-preencher o modal no proximo login.
+  // Desliga o auto-relogin silencioso: usuario saiu de proposito, entao
+  // no proximo F5 nao entra sozinho — mas quando clicar "Entrar" ja
+  // vem preenchido.
+  localStorage.setItem('bt_remember_me', '0');
   location.reload();
 }
 
