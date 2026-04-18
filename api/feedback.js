@@ -56,14 +56,41 @@ export default async function handler(req, res) {
     });
 
     if (!r.ok) {
-      const err = await r.json();
-      console.error('Feedback save error:', err);
-      // Don't fail the user — just log
+      // INSERT falhou — loga detalhado e notifica admin por email (se RESEND habilitado).
+      // Nao bloqueia resposta do user (UX intacta), mas garante que falhas silenciosas
+      // nao escondam problemas de schema/RLS/conexao indefinidamente.
+      let errDetails = '';
+      try { errDetails = JSON.stringify(await r.json()); } catch (e) { errDetails = await r.text().catch(() => 'sem_body'); }
+      console.error('[feedback] INSERT falhou:', r.status, errDetails);
+
+      const RESEND = process.env.RESEND_API_KEY;
+      const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+      if (RESEND && ADMIN_EMAIL) {
+        // Dedup: so notifica 1x por hora pelo mesmo tipo de erro
+        const chave = `feedback_insert_failed_${r.status}`;
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
+          body: JSON.stringify({
+            from: 'BlueTube <noreply@bluetubeviral.com>',
+            to: [ADMIN_EMAIL],
+            subject: `[BlueTube] Feedback nao gravou — status ${r.status}`,
+            html: `<p><b>Tabela user_feedback rejeitou um insert.</b></p>
+                   <p>Status: ${r.status}</p>
+                   <p>Erro: <code>${errDetails.slice(0, 500)}</code></p>
+                   <p>Mensagem do usuario (${verifiedEmail}): <i>${message.slice(0,200)}</i></p>
+                   <p>Verifique schema/RLS da tabela.</p>`,
+          })
+        }).catch(() => {});
+      }
+
+      // Retorna success:true pra nao quebrar UX, mas inclui flag diagnostica
+      return res.status(200).json({ success: true, saved: false, reason: 'storage_error' });
     }
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, saved: true });
   } catch (err) {
-    console.error('Feedback error:', err);
-    return res.status(200).json({ success: true }); // Fail silently
+    console.error('[feedback] exception:', err);
+    return res.status(200).json({ success: true, saved: false, reason: 'exception' });
   }
 }
