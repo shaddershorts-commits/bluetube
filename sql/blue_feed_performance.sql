@@ -31,8 +31,7 @@ CREATE MATERIALIZED VIEW blue_feed_quente AS
   SELECT
     id, user_id, title, description, thumbnail_url, video_url,
     duration, views, likes, comments, saves,
-    avg_watch_percent, score, nichos, hashtags,
-    views_24h, created_at
+    avg_watch_percent, score, nichos, views_24h, created_at
   FROM blue_videos
   WHERE status = 'active'
     AND video_url IS NOT NULL
