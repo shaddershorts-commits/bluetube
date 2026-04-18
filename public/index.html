@@ -1918,6 +1918,11 @@ async function handleEmailSignup(){
     if(d.session?.access_token){
       localStorage.setItem('bt_token', d.session.access_token);
       if(d.session.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
+      // Fallback de atribuicao via fingerprint 72h (cookie sempre vence)
+      fetch('/api/affiliate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'attribute-signup-fingerprint', token: d.session.access_token }),
+      }).catch(()=>{});
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
       sendWelcomeEmail(email);
       setTimeout(()=>showOnboarding(),2500);

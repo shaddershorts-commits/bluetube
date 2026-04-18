@@ -519,5 +519,96 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── ATRIBUI via fingerprint 72h (fallback quando cookie falhou) ──────────
+  // POST { action: 'attribute-signup-fingerprint', token }
+  // Chamado pelo frontend logo apos signup. Cookie sempre vence; fingerprint
+  // so atua se subscribers.affiliate_ref esta vazio. Atualiza subscribers +
+  // dispara conversion + registra em affiliate_attribution_log.
+  if (req.method === 'POST' && action === 'attribute-signup-fingerprint') {
+    const { token } = req.body || {};
+    if (!token) return res.status(401).json({ error: 'token obrigatorio' });
+    try {
+      // Pega email do usuario logado
+      const uR = await fetch(`${SUPA_URL}/auth/v1/user`, {
+        headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + token },
+      });
+      if (!uR.ok) return res.status(401).json({ error: 'token invalido' });
+      const user = await uR.json();
+      if (!user?.email) return res.status(401).json({ error: 'sem email' });
+      const email = user.email.toLowerCase();
+
+      // Verifica se subscriber ja tem affiliate_ref (cookie venceu)
+      const sR = await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref,plan,is_manual`, { headers: supaH });
+      const [sub] = sR.ok ? await sR.json() : [];
+      if (!sub) return res.status(200).json({ ok: true, skipped: 'subscriber_nao_existe' });
+      // Regra: cookie sempre vence. Se ja tem affiliate_ref, nao mexe.
+      if (sub.affiliate_ref) {
+        fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ email, ref_code: sub.affiliate_ref, source: 'cookie_signup', decisao: 'already_attributed', detalhes: { context: 'signup_post' } }),
+        }).catch(() => {});
+        return res.status(200).json({ ok: true, skipped: 'cookie_venceu', ref_code: sub.affiliate_ref });
+      }
+      if (sub.is_manual) return res.status(200).json({ ok: true, skipped: 'manual' });
+
+      // Fingerprint do request atual
+      const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+      const ua = req.headers['user-agent'] || '';
+      const lang = req.headers['accept-language'] || '';
+      if (!ip && !ua) return res.status(200).json({ ok: true, skipped: 'sem_headers' });
+      const ipHash = crypto.createHash('sha256').update(ip + (process.env.ADMIN_SECRET || '')).digest('hex').slice(0, 16);
+      const fingerprint = crypto.createHash('sha256').update(ua + lang).digest('hex').slice(0, 16);
+      const cutoff72h = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+
+      // Busca clique mais recente com match de IP ou fingerprint nos ultimos 72h
+      const ckR = await fetch(
+        `${SUPA_URL}/rest/v1/affiliate_clicks`
+        + `?or=(ip_hash.eq.${ipHash},visitor_fingerprint.eq.${fingerprint})`
+        + `&landed_at=gte.${cutoff72h}`
+        + `&order=landed_at.desc&limit=1&select=affiliate_id,ref_code,ip_hash,visitor_fingerprint,landed_at`,
+        { headers: supaH }
+      );
+      const ck = ckR.ok ? (await ckR.json())?.[0] : null;
+      if (!ck?.ref_code || !ck?.affiliate_id) {
+        fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ email, source: 'fingerprint_72h', decisao: 'no_match', detalhes: { context: 'signup_post' } }),
+        }).catch(() => {});
+        return res.status(200).json({ ok: true, skipped: 'no_match' });
+      }
+
+      // Self-referral: afiliado nao pode ser o proprio usuario
+      const affR = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${ck.affiliate_id}&select=id,email,status`, { headers: supaH });
+      const [aff] = affR.ok ? await affR.json() : [];
+      if (!aff || aff.status === 'suspended' || String(aff.email).toLowerCase() === email) {
+        fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'skipped_self_ref', detalhes: { context: 'signup_post' } }),
+        }).catch(() => {});
+        return res.status(200).json({ ok: true, skipped: 'self_or_suspended' });
+      }
+
+      // Atribui: UPDATE subscribers.affiliate_ref + log + dispara conversion
+      await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+        method: 'PATCH', headers: { ...supaH, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ affiliate_ref: ck.ref_code, updated_at: new Date().toISOString() }),
+      });
+      fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+        method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'attributed', detalhes: { context: 'signup_post', landed_at: ck.landed_at } }),
+      }).catch(() => {});
+      // Dispara conversion (reusa fluxo existente)
+      fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'conversion', email, plan: sub.plan || 'free', conversion_type: 'signup' }),
+      }).catch(() => {});
+
+      return res.status(200).json({ ok: true, attributed: true, ref_code: ck.ref_code, affiliate_email: aff.email });
+    } catch (e) {
+      console.error('[attribute-signup-fingerprint]', e.message);
+      return res.status(200).json({ ok: false, error: e.message });
+    }
+  }
+
   return res.status(404).json({ error: 'Action não encontrada' });
 }
