@@ -137,19 +137,19 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/bluetendencias?action=atualizar-tendencias",
+      "path": "/api/bluetendencias-old?action=atualizar-tendencias",
       "schedule": "0 */4 * * *"
     },
     {
-      "path": "/api/bluetendencias?action=detectar-emergentes",
+      "path": "/api/bluetendencias-old?action=detectar-emergentes",
       "schedule": "0 */2 * * *"
     },
     {
-      "path": "/api/bluetendencias?action=analisar-titulos",
+      "path": "/api/bluetendencias-old?action=analisar-titulos",
       "schedule": "0 5 * * *"
     },
     {
-      "path": "/api/bluetendencias?action=notificar-oportunidades",
+      "path": "/api/bluetendencias-old?action=notificar-oportunidades",
       "schedule": "0 9 * * *"
     },
     {
