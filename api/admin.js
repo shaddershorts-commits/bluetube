@@ -98,12 +98,18 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET' && action === 'list_affiliates') {
     try {
-      const [affRes, commRes] = await Promise.all([
+      const sete = new Date(Date.now() - 7 * 86400000).toISOString();
+      const [affRes, commRes, clksRes, clks7dRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?select=affiliate_id,commission_amount,status&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?select=affiliate_id,cookie_id&limit=50000`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?landed_at=gte.${sete}&select=affiliate_id&limit=50000`, { headers }),
       ]);
       const affiliates = affRes.ok ? await affRes.json() : [];
       const commissions = commRes.ok ? await commRes.json() : [];
+      const clicks = clksRes.ok ? await clksRes.json() : [];
+      const clicks7d = clks7dRes.ok ? await clks7dRes.json() : [];
+
       // Agrupa comissões por afiliado
       const commMap = {};
       (Array.isArray(commissions) ? commissions : []).forEach(c => {
@@ -113,14 +119,38 @@ export default async function handler(req, res) {
         if (c.status === 'pending') commMap[c.affiliate_id].pending += amt;
         if (c.status === 'paid') commMap[c.affiliate_id].paid += amt;
       });
-      const enriched = (Array.isArray(affiliates) ? affiliates : []).map(a => ({
-        ...a,
-        nivel: a.nivel || 'bronze',
-        comissao_percentual: a.comissao_percentual || 30,
-        commissions_pending: parseFloat((commMap[a.id]?.pending || 0).toFixed(2)),
-        commissions_paid: parseFloat((commMap[a.id]?.paid || 0).toFixed(2)),
-        commissions_total: parseFloat((commMap[a.id]?.total || 0).toFixed(2)),
-      }));
+
+      // Agrupa clicks (total + visitantes unicos por cookie_id) por afiliado
+      const clickMap = {};
+      const uniqSets = {};
+      (Array.isArray(clicks) ? clicks : []).forEach(c => {
+        if (!clickMap[c.affiliate_id]) { clickMap[c.affiliate_id] = 0; uniqSets[c.affiliate_id] = new Set(); }
+        clickMap[c.affiliate_id]++;
+        if (c.cookie_id) uniqSets[c.affiliate_id].add(c.cookie_id);
+      });
+      const click7dMap = {};
+      (Array.isArray(clicks7d) ? clicks7d : []).forEach(c => {
+        click7dMap[c.affiliate_id] = (click7dMap[c.affiliate_id] || 0) + 1;
+      });
+
+      const enriched = (Array.isArray(affiliates) ? affiliates : []).map(a => {
+        const cliques = clickMap[a.id] || 0;
+        const visUnicos = uniqSets[a.id]?.size || 0;
+        const pagantes = (a.total_full || 0) + (a.total_master || 0);
+        const conv = cliques > 0 ? parseFloat(((pagantes / cliques) * 100).toFixed(2)) : 0;
+        return {
+          ...a,
+          nivel: a.nivel || 'bronze',
+          comissao_percentual: a.comissao_percentual || 30,
+          commissions_pending: parseFloat((commMap[a.id]?.pending || 0).toFixed(2)),
+          commissions_paid: parseFloat((commMap[a.id]?.paid || 0).toFixed(2)),
+          commissions_total: parseFloat((commMap[a.id]?.total || 0).toFixed(2)),
+          cliques_total: cliques,
+          cliques_7d: click7dMap[a.id] || 0,
+          visitantes_unicos: visUnicos,
+          taxa_conversao: conv,
+        };
+      });
       return res.status(200).json(enriched);
     } catch(e) { return res.status(200).json([]); }
   }

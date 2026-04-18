@@ -436,10 +436,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </div>
       </div>
       <!-- Resumo -->
-      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:12px">
         <div class="stat-card"><div class="stat-label">Total afiliados</div><div class="stat-value blue" id="affTotal">—</div></div>
         <div class="stat-card"><div class="stat-label">🥇 Ouro</div><div class="stat-value" style="color:#fbbf24" id="affOuro">—</div></div>
         <div class="stat-card"><div class="stat-label">🥈 Prata</div><div class="stat-value" style="color:#c0c0c0" id="affPrata">—</div></div>
+        <div class="stat-card"><div class="stat-label">👁️ Cliques totais</div><div class="stat-value blue" id="affCliques">—</div><div class="stat-sub" id="affCliques7d">— últimos 7d</div></div>
+        <div class="stat-card"><div class="stat-label">🔥 Visitantes únicos</div><div class="stat-value" style="color:#a78bfa" id="affUnicos">—</div><div class="stat-sub" id="affTaxaConv">conversão: —</div></div>
         <div class="stat-card"><div class="stat-label">💰 Total pago</div><div class="stat-value green" id="affPaid">—</div></div>
         <div class="stat-card"><div class="stat-label">⏳ Pendente</div><div class="stat-value yellow" id="affPending">—</div></div>
       </div>
@@ -2072,6 +2074,16 @@ function renderAffSummary(){
   document.getElementById('affPrata').textContent=a.filter(x=>x.nivel==='prata').length;
   document.getElementById('affPaid').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_paid||0),0).toFixed(2);
   document.getElementById('affPending').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_pending||0),0).toFixed(2);
+  const totalClicks=a.reduce((s,x)=>s+(x.cliques_total||0),0);
+  const total7d=a.reduce((s,x)=>s+(x.cliques_7d||0),0);
+  const totalUniq=a.reduce((s,x)=>s+(x.visitantes_unicos||0),0);
+  const totalPagantes=a.reduce((s,x)=>s+((x.total_full||0)+(x.total_master||0)),0);
+  const taxa=totalClicks>0?((totalPagantes/totalClicks)*100).toFixed(2):0;
+  const el=(id)=>document.getElementById(id);
+  if(el('affCliques'))el('affCliques').textContent=totalClicks.toLocaleString('pt-BR');
+  if(el('affCliques7d'))el('affCliques7d').textContent=total7d+' últimos 7d';
+  if(el('affUnicos'))el('affUnicos').textContent=totalUniq.toLocaleString('pt-BR');
+  if(el('affTaxaConv'))el('affTaxaConv').textContent='conversão: '+taxa+'%';
   const pendingCount=a.filter(x=>x.status==='pending').length;
   const badge=document.getElementById('pendingAffBadge');
   if(badge)badge.style.display=pendingCount>0?'block':'none';
@@ -2105,19 +2117,25 @@ function renderAffTable(){
     if(a.status!=='active')btns+=`<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅</button> `;
     if(a.status!=='suspended')btns+=`<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫</button>`;
 
+    const cliques=a.cliques_total||0;
+    const cliques7d=a.cliques_7d||0;
+    const unicos=a.visitantes_unicos||0;
+    const taxaConv=a.taxa_conversao||0;
+    const corTaxa=taxaConv>=5?'var(--green)':taxaConv>=2?'var(--yellow)':'var(--dim)';
     return `<tr>
       <td style="color:var(--text)">${a.name||a.email?.split('@')[0]||'—'}</td>
       <td style="color:var(--dim);font-size:11px">${a.email}</td>
       <td><span style="${badgeStyle}">${emoji} ${nv.charAt(0).toUpperCase()+nv.slice(1)}</span></td>
       <td style="font-weight:700;color:${color}">${comissao}%</td>
-      <td style="color:var(--text)">${paying}</td>
+      <td style="color:var(--neon);font-weight:600" title="visitantes únicos: ${unicos}">${cliques.toLocaleString('pt-BR')}<br><span style="font-family:var(--mono);font-size:10px;color:var(--dim)">+${cliques7d} 7d · ${unicos} uniq</span></td>
+      <td style="color:var(--text)">${paying}<br><span style="font-family:var(--mono);font-size:10px;color:${corTaxa}">${taxaConv}% conv</span></td>
       <td style="color:var(--green);font-weight:600">R$${(a.commissions_total||0).toFixed(2)}</td>
       <td><span style="font-family:var(--mono);font-size:11px;color:${sc[a.status]||'var(--dim)'}">${sl[a.status]||a.status}</span></td>
       <td><div style="display:flex;gap:4px">${btns}</div></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function openNivelModal(id,email,currentNivel){
