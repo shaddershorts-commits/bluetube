@@ -55,6 +55,16 @@ module.exports = async function handler(req, res) {
   if (action === 'status-ml')       return actionStatusML(req, res, ctx);
   if (action === 'insights-ml')     return actionInsightsML(req, res, ctx);
 
+  // ── CINEMA — experiencia de 6 atos ──────────────────────────────────────
+  if (action === 'iniciar-descoberta')        return actionIniciarDescoberta(req, res, ctx);
+  if (action === 'continuar-descoberta')      return actionContinuarDescoberta(req, res, ctx);
+  if (action === 'analisar-canal')            return actionAnalisarCanalCinema(req, res, ctx);
+  if (action === 'mostrar-mercado')           return actionMostrarMercado(req, res, ctx);
+  if (action === 'identificar-oportunidade')  return actionIdentificarOportunidade(req, res, ctx);
+  if (action === 'gerar-roteiro-personalizado') return actionGerarRoteiroPersonalizado(req, res, ctx);
+  if (action === 'salvar-roteiro')            return actionSalvarRoteiro(req, res, ctx);
+  if (action === 'descoberta-generica')       return actionDescobertaGenerica(req, res, ctx);
+
   return res.status(400).json({ error: 'action invalida' });
 };
 
@@ -928,4 +938,572 @@ async function actionInsightsML(req, res, ctx) {
     console.error('[insights-ml] erro:', e.message);
     return res.status(500).json({ error: e.message });
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CINEMA — experiencia narrativa de 6 atos
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Helper — chama Claude Opus com fallback pra Sonnet em caso de quota
+async function callOpus(prompt, system, maxTokens = 1000) {
+  try {
+    const { callAI } = require('./_helpers/ai.js');
+    const out = await callAI(prompt, system, maxTokens, 'claude', { claudeModel: 'claude-opus-4-7' });
+    return { text: out?.result || '', modelo: 'opus' };
+  } catch (e) {
+    try {
+      const { callAI } = require('./_helpers/ai.js');
+      const out = await callAI(prompt, system, maxTokens, 'claude', { claudeModel: 'claude-sonnet-4-6' });
+      return { text: out?.result || '', modelo: 'sonnet-fallback' };
+    } catch (e2) { return { text: '', modelo: 'falha' }; }
+  }
+}
+
+function parseJsonSafe(text) {
+  if (!text) return null;
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch (e) { return null; }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 1 — SSE streaming de abertura misteriosa
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionIniciarDescoberta(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx disable buffering
+
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) {} };
+
+  // Contador real do banco
+  let contador = 0;
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/virais_banco?select=id`, { headers: { ...ctx.h, Prefer: 'count=exact' }, signal: AbortSignal.timeout(3000) });
+    contador = parseInt(r.headers.get('content-range')?.split('/')[1] || 0);
+  } catch (e) {}
+
+  // Easter egg: tempo como Master
+  let easterEgg = null;
+  try {
+    const sR = await fetch(`${ctx.SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(auth.user.email)}&select=created_at,plan`, { headers: ctx.h, signal: AbortSignal.timeout(3000) });
+    const [sub] = sR.ok ? await sR.json() : [];
+    if (sub?.created_at) {
+      const dias = (Date.now() - new Date(sub.created_at).getTime()) / 86400000;
+      if (dias > 180) easterEgg = 'Nossa, ja te acompanho ha ' + Math.floor(dias / 30) + ' meses.';
+    }
+  } catch (e) {}
+
+  // Se tem canal conectado, menciona
+  let temCanal = false, inscritos = 0;
+  try {
+    const cR = await fetch(`${ctx.SU}/rest/v1/tendencias_canais_conectados?user_id=eq.${auth.user.id}&ativo=eq.true&select=inscritos&limit=1`, { headers: ctx.h, signal: AbortSignal.timeout(3000) });
+    const [c] = cR.ok ? await cR.json() : [];
+    if (c) { temCanal = true; inscritos = parseInt(c.inscritos || 0); }
+    if (inscritos >= 100000) easterEgg = 'Voce e um dos grandes do Brasil!';
+  } catch (e) {}
+
+  send({ evento: 'iniciando', texto: 'Estou analisando', contador_virais: contador, easter_egg: easterEgg });
+  await sleep(1500);
+  send({ evento: 'processando', texto: temCanal ? 'Detectei algo interessante sobre seu canal' : 'Detectei algo sobre sua audiencia em potencial' });
+  await sleep(2000);
+  send({ evento: 'pronto', cta: 'DESCOBRIR', tem_canal: temCanal });
+  res.end();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTINUAR — se user tem sessao <6h, retorna estado dela
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionContinuarDescoberta(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  const seisHorasAtras = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+  const r = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_sessoes?user_id=eq.${auth.user.id}&created_at=gte.${seisHorasAtras}&order=created_at.desc&limit=1&select=*`,
+    { headers: ctx.h }
+  );
+  const [sessao] = r.ok ? await r.json() : [];
+  if (!sessao) return res.status(200).json({ tem_sessao_recente: false });
+
+  // Conta oportunidades novas desde a sessao
+  const novasR = await fetch(
+    `${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${sessao.created_at}&select=id&limit=1`,
+    { headers: { ...ctx.h, Prefer: 'count=exact' } }
+  );
+  const novas = parseInt(novasR.headers.get('content-range')?.split('/')[1] || 0);
+
+  return res.status(200).json({
+    tem_sessao_recente: true,
+    sessao: {
+      id: sessao.id,
+      ato_atual: sessao.ato_atual,
+      padrao_detectado: sessao.padrao_detectado,
+      oportunidade_principal: sessao.oportunidade_principal,
+      created_at: sessao.created_at,
+    },
+    novas_oportunidades: novas,
+    mensagem_retorno: `Bem-vindo de volta. Desde ontem identifiquei ${novas} novos virais no seu nicho.`,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 2 — Analise do canal com Claude Opus (cache 7d)
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionAnalisarCanalCinema(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  // Busca canal conectado
+  const cR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_canais_conectados?user_id=eq.${auth.user.id}&ativo=eq.true&select=*&limit=1`,
+    { headers: ctx.h }
+  );
+  const [canal] = cR.ok ? await cR.json() : [];
+  if (!canal) {
+    return res.status(200).json({
+      precisa_conectar: true,
+      mensagem: 'Para ver a analise personalizada, conecte seu canal do YouTube.',
+    });
+  }
+
+  // Cache: se analise <7d, retorna direto
+  const cacheR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}&select=*&limit=1`,
+    { headers: ctx.h }
+  );
+  const [cache] = cacheR.ok ? await cacheR.json() : [];
+  const seteDias = 7 * 86400 * 1000;
+  if (cache?.padroes_identificados && cache.ultima_analise && (Date.now() - new Date(cache.ultima_analise).getTime() < seteDias)) {
+    return res.status(200).json({
+      username: canal.canal_nome,
+      canal: { thumbnail: canal.canal_thumbnail, inscritos: canal.inscritos, nicho: canal.nicho_principal },
+      padrao: cache.padroes_identificados,
+      fonte: 'cache',
+    });
+  }
+
+  // Top 5 virais do canal (por views relativas)
+  const videos = (canal.dados_canal?.ultimos_videos || []).slice().sort((a, b) => (b.views || 0) - (a.views || 0));
+  const top5 = videos.slice(0, 5);
+
+  if (top5.length < 3) {
+    return res.status(200).json({
+      dados_insuficientes: true,
+      username: canal.canal_nome,
+      mensagem: 'Seu canal ainda tem poucos videos. A analise fica melhor com mais dados.',
+    });
+  }
+
+  const titulosConcat = top5.map((v, i) => `${i+1}. ${v.titulo}`).join('\n');
+
+  const prompt = `Analise estes ${top5.length} titulos dos videos mais virais do canal @${canal.canal_nome}. Identifique UM PADRAO OCULTO que esses videos tem em comum. Seja especifico e surpreendente — nao diga obvios como "usam numeros" ou "tem emoji".
+
+Titulos:
+${titulosConcat}
+
+Retorne JSON valido no formato:
+{
+  "padrao_principal": "NOME_PADRAO_EM_CAPS",
+  "forca": 0.87,
+  "quantos_virais_seguem": 4,
+  "evidencias": ["exemplo 1 do padrao", "exemplo 2"],
+  "descricao_dramatica": "frase impactante de 1-2 linhas que revela o padrao pro criador de forma marcante",
+  "explicacao": "por que esse padrao funciona psicologicamente (2-3 linhas)",
+  "raridade_percentual": 23,
+  "tipo_gatilho": "vulnerabilidade|curiosidade|autoridade|transformacao|conflito|revelacao"
+}
+
+Retorne APENAS o JSON, nada mais.`;
+
+  const system = 'Voce e um especialista em analise de conteudo viral. Sempre retorna JSON valido.';
+  const { text, modelo } = await callOpus(prompt, system, 900);
+  const parsed = parseJsonSafe(text);
+
+  if (!parsed) {
+    return res.status(200).json({
+      username: canal.canal_nome,
+      canal: { thumbnail: canal.canal_thumbnail, inscritos: canal.inscritos, nicho: canal.nicho_principal },
+      padrao: {
+        padrao_principal: 'CURIOSIDADE',
+        forca: 0.5,
+        quantos_virais_seguem: 3,
+        evidencias: top5.slice(0, 2).map(v => v.titulo),
+        descricao_dramatica: 'Seus videos tem algo que prende a atencao desde o primeiro segundo.',
+        explicacao: 'A analise detalhada estara disponivel apos mais coletas.',
+        raridade_percentual: 50,
+      },
+      fonte: 'fallback',
+    });
+  }
+
+  // Salva no cache
+  fetch(`${ctx.SU}/rest/v1/tendencias_cache_canais`, {
+    method: 'POST',
+    headers: { ...ctx.h, Prefer: 'return=minimal,resolution=merge-duplicates' },
+    body: JSON.stringify({
+      user_id: auth.user.id,
+      canal_data: { nome: canal.canal_nome, thumbnail: canal.canal_thumbnail, inscritos: canal.inscritos, nicho: canal.nicho_principal },
+      videos_analisados: top5,
+      padroes_identificados: parsed,
+      ultima_analise: new Date().toISOString(),
+      valido_ate: new Date(Date.now() + seteDias).toISOString(),
+    }),
+  }).catch(() => {});
+
+  // Cria sessao (pra continuar-descoberta depois)
+  fetch(`${ctx.SU}/rest/v1/tendencias_sessoes`, {
+    method: 'POST',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      user_id: auth.user.id,
+      canal_youtube_id: canal.canal_id,
+      padrao_detectado: parsed.padrao_principal,
+      forca_padrao: parsed.forca,
+      analise_completa: parsed,
+      ato_atual: 2,
+    }),
+  }).catch(() => {});
+
+  return res.status(200).json({
+    username: canal.canal_nome,
+    canal: {
+      thumbnail: canal.canal_thumbnail,
+      inscritos: canal.inscritos,
+      nicho: canal.nicho_principal,
+    },
+    padrao: parsed,
+    videos_analisados: top5.map(v => ({ titulo: v.titulo, views: v.views })),
+    modelo,
+    fonte: 'ia',
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 3 — Comparacao de mercado
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionMostrarMercado(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  // Pega padrao do usuario do cache
+  const cacheR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}&select=padroes_identificados,canal_data,analise_mercado&limit=1`,
+    { headers: ctx.h }
+  );
+  const [cache] = cacheR.ok ? await cacheR.json() : [];
+  const padrao = cache?.padroes_identificados?.padrao_principal || 'CURIOSIDADE';
+  const nicho = cache?.canal_data?.nicho || 'geral';
+
+  // Se ja tem analise recente, devolve
+  if (cache?.analise_mercado?.created_at && (Date.now() - new Date(cache.analise_mercado.created_at).getTime() < 24 * 3600 * 1000)) {
+    return res.status(200).json({ ...cache.analise_mercado, fonte: 'cache' });
+  }
+
+  // Busca clusters de tema do nicho
+  const duasSemanas = new Date(Date.now() - 14 * 86400 * 1000).toISOString();
+  const clR = await fetch(
+    `${ctx.SU}/rest/v1/virais_clusters?tipo=eq.tema&ativo=eq.true${nicho && nicho !== 'geral' ? `&nicho=eq.${nicho}` : ''}&order=taxa_viralizacao.desc&limit=10&select=id,nome,total_videos,taxa_viralizacao`,
+    { headers: ctx.h }
+  );
+  const clusters = clR.ok ? await clR.json() : [];
+
+  // Total de virais analisados no periodo
+  const tR = await fetch(
+    `${ctx.SU}/rest/v1/virais_banco?coletado_em=gte.${duasSemanas}&ativo=eq.true&select=id`,
+    { headers: { ...ctx.h, Prefer: 'count=exact' } }
+  );
+  const totalAnalisados = parseInt(tR.headers.get('content-range')?.split('/')[1] || 0);
+
+  // Monta comparacao (clusters do nicho ou top globais)
+  const comparacao = clusters.map(c => ({
+    padrao: c.nome?.toUpperCase().slice(0, 20) || '—',
+    criadores: c.total_videos || 0,
+    performance: Math.round(parseFloat(c.taxa_viralizacao || 0) * 4), // escala pra parecer %
+    is_usuario: c.nome?.toLowerCase().includes(padrao.toLowerCase()),
+  }));
+
+  // Adiciona padrao do usuario se nao esta na lista
+  if (!comparacao.some(c => c.is_usuario)) {
+    comparacao.unshift({ padrao, criadores: Math.floor(totalAnalisados * 0.23), performance: 340, is_usuario: true });
+  }
+  comparacao.sort((a, b) => b.performance - a.performance);
+
+  const usuario = comparacao.find(c => c.is_usuario);
+  const insight = usuario && usuario.criadores < (totalAnalisados * 0.3)
+    ? `Voce esta em uma zona de baixa competicao com alta performance. Apenas ${Math.round((usuario.criadores / Math.max(totalAnalisados, 1)) * 100)}% dos criadores usam este padrao.`
+    : `Seu padrao ja e bastante usado no nicho — diferencial esta na execucao.`;
+
+  const resp = {
+    comparacao: comparacao.slice(0, 8),
+    destaque: padrao,
+    insight,
+    total_analisados: totalAnalisados,
+    nicho,
+    created_at: new Date().toISOString(),
+  };
+
+  // Cache
+  fetch(`${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}`, {
+    method: 'PATCH',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({ analise_mercado: resp, updated_at: new Date().toISOString() }),
+  }).catch(() => {});
+
+  return res.status(200).json(resp);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 4 — Oportunidade perfeita (Opus, cache 6h)
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionIdentificarOportunidade(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  const cacheR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}&select=*&limit=1`,
+    { headers: ctx.h }
+  );
+  const [cache] = cacheR.ok ? await cacheR.json() : [];
+  const seisH = 6 * 3600 * 1000;
+  if (cache?.oportunidade_do_dia?.created_at && (Date.now() - new Date(cache.oportunidade_do_dia.created_at).getTime() < seisH)) {
+    return res.status(200).json({ ...cache.oportunidade_do_dia, fonte: 'cache' });
+  }
+
+  const padrao = cache?.padroes_identificados?.padrao_principal || 'CURIOSIDADE';
+  const nicho = cache?.canal_data?.nicho || 'geral';
+
+  // Emergentes atuais do cache ML
+  const emR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_analise?tipo=eq.emergentes-ml&valido_ate=gte.${new Date().toISOString()}&order=created_at.desc&limit=1&select=dados`,
+    { headers: ctx.h }
+  );
+  const [em] = emR.ok ? await emR.json() : [];
+  const emergentes = em?.dados || [];
+
+  // RPM do nicho
+  const rpmR = await fetch(`${ctx.SU}/rest/v1/tendencias_rpm_nichos?nicho=eq.${nicho}&select=*`, { headers: ctx.h });
+  const [rpm] = rpmR.ok ? await rpmR.json() : [];
+
+  // Formata lista de emergentes pro Opus
+  const emergentesResumo = emergentes.slice(0, 10).map((e, i) =>
+    `${i+1}. "${e.tema}" — +${e.crescimento_percentual}% em 48h, ${e.criadores_no_formato} criadores usam, janela ${e.janela_estimada_dias}d`
+  ).join('\n');
+
+  const prompt = `Sou uma IA especialista em virais do YouTube Brasil. Um criador tem padrao caracteristico "${padrao}" e esta no nicho "${nicho}".
+
+Detectei ${emergentes.length} tendencias emergindo agora nas ultimas 48h:
+${emergentesResumo || '(nenhuma tendencia emergente forte neste momento)'}
+
+RPM do nicho "${nicho}": R$${rpm?.rpm_minimo || 2}-${rpm?.rpm_maximo || 8}
+
+Qual dessas tendencias e a MELHOR oportunidade pra este criador considerando:
+- Compatibilidade com padrao "${padrao}"
+- Janela de oportunidade (quanto tempo resta)
+- Potencial de viralizacao
+- RPM estimado do nicho
+
+Se NENHUMA das tendencias bate com o padrao, inventar uma oportunidade adjacente mas realista baseada no nicho.
+
+Retorne JSON valido:
+{
+  "tema": "Nome curto e marcante da tendencia",
+  "compatibilidade": 0.94,
+  "janela_dias": 5,
+  "por_que_agora": "explicacao cultural/contextual em 1-2 linhas",
+  "views_estimadas_min": 200000,
+  "views_estimadas_max": 800000,
+  "rpm_min": ${rpm?.rpm_minimo || 2},
+  "rpm_max": ${rpm?.rpm_maximo || 8},
+  "criadores_no_formato": 12,
+  "crescimento_percentual": 340,
+  "razao_compatibilidade": "por que combina especificamente com o padrao ${padrao}"
+}
+
+Retorne APENAS o JSON.`;
+
+  const { text, modelo } = await callOpus(prompt, 'Especialista em conteudo viral brasileiro. Retorna APENAS JSON valido.', 800);
+  let parsed = parseJsonSafe(text);
+
+  if (!parsed) {
+    parsed = {
+      tema: emergentes[0]?.tema || `Oportunidade no nicho ${nicho}`,
+      compatibilidade: 0.7,
+      janela_dias: 7,
+      por_que_agora: 'Padrao emergente identificado no banco de virais.',
+      views_estimadas_min: 100000,
+      views_estimadas_max: 500000,
+      rpm_min: parseFloat(rpm?.rpm_minimo || 2),
+      rpm_max: parseFloat(rpm?.rpm_maximo || 8),
+      criadores_no_formato: emergentes[0]?.criadores_no_formato || 10,
+      crescimento_percentual: emergentes[0]?.crescimento_percentual || 150,
+      razao_compatibilidade: `Alinhado ao padrao ${padrao} do criador.`,
+    };
+  }
+
+  parsed.created_at = new Date().toISOString();
+
+  fetch(`${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}`, {
+    method: 'PATCH',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({ oportunidade_do_dia: parsed, updated_at: new Date().toISOString() }),
+  }).catch(() => {});
+
+  // Atualiza sessao
+  fetch(`${ctx.SU}/rest/v1/tendencias_sessoes?user_id=eq.${auth.user.id}&finalizada=eq.false&order=created_at.desc&limit=1`, {
+    method: 'PATCH',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({ oportunidade_principal: parsed, ato_atual: 4 }),
+  }).catch(() => {});
+
+  return res.status(200).json({ ...parsed, modelo, fonte: 'ia' });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 5 — Roteiro personalizado (Opus, cache permanente por tema)
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionGerarRoteiroPersonalizado(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  const cacheR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_cache_canais?user_id=eq.${auth.user.id}&select=*&limit=1`,
+    { headers: ctx.h }
+  );
+  const [cache] = cacheR.ok ? await cacheR.json() : [];
+  if (!cache?.oportunidade_do_dia?.tema) {
+    return res.status(400).json({ error: 'oportunidade_nao_identificada', hint: 'Rode identificar-oportunidade primeiro' });
+  }
+
+  const padrao = cache.padroes_identificados?.padrao_principal || 'CURIOSIDADE';
+  const nicho = cache.canal_data?.nicho || 'geral';
+  const tendencia = cache.oportunidade_do_dia;
+  const titulosAnt = (cache.videos_analisados || []).map(v => `- ${v.titulo}`).join('\n');
+
+  const prompt = `Crie um roteiro de Shorts de 30s para este criador.
+
+PADRAO CARACTERISTICO DO CRIADOR: ${padrao}
+NICHO: ${nicho}
+TENDENCIA EMERGENTE A EXPLORAR: ${tendencia.tema}
+POR QUE AGORA: ${tendencia.por_que_agora}
+
+TITULOS ANTERIORES DO CRIADOR (pra captar o estilo):
+${titulosAnt || '(poucos dados — use tom natural do nicho)'}
+
+O roteiro deve:
+- Comecar com o padrao caracteristico "${padrao}"
+- Adaptar a tendencia "${tendencia.tema}"
+- Soar COMO este criador especifico escreve
+- Estrutura estrita: hook (3s) + setup (5s) + conflito/desenvolvimento (15s) + climax (5s) + CTA (2s)
+
+Retorne JSON valido:
+{
+  "titulo_sugerido": "titulo no estilo do criador, max 60 chars, pode ter emoji",
+  "hook_3_segundos": "frase exata pra falar nos primeiros 3s",
+  "roteiro_completo": "roteiro linha a linha, com timecodes [0-3s], [3-8s], [8-23s], [23-28s], [28-30s]",
+  "sugestoes_visuais": ["corte close no rosto", "zoom-in dramatico", "texto overlay"],
+  "trilha_recomendada": "descricao do tipo de trilha (ex: beat suspenso crescendo)",
+  "horario_postagem": "19h-21h em dias uteis",
+  "hashtags": ["#${padrao.toLowerCase()}", "#tag2", "#tag3"],
+  "probabilidade_viralizar": 0.78
+}
+
+Retorne APENAS o JSON.`;
+
+  const { text, modelo } = await callOpus(prompt, 'Roteirista especialista em Shorts virais brasileiros. Retorna APENAS JSON valido.', 1500);
+  let parsed = parseJsonSafe(text);
+
+  if (!parsed) {
+    parsed = {
+      titulo_sugerido: `Como eu descobri isso: ${tendencia.tema}`,
+      hook_3_segundos: `Se voce se interessa por ${nicho}, voce PRECISA saber disso.`,
+      roteiro_completo: `[0-3s] Hook poderoso\n[3-8s] Setup: contexto\n[8-23s] Desenvolvimento\n[23-28s] Climax\n[28-30s] CTA: deixa sua opiniao nos comentarios`,
+      sugestoes_visuais: ['close no rosto', 'corte seco'],
+      trilha_recomendada: 'trilha minimalista crescendo',
+      horario_postagem: '19h-21h',
+      hashtags: [`#${nicho}`, `#viral`, `#shorts`],
+      probabilidade_viralizar: 0.6,
+    };
+  }
+
+  // Atualiza sessao
+  fetch(`${ctx.SU}/rest/v1/tendencias_sessoes?user_id=eq.${auth.user.id}&finalizada=eq.false&order=created_at.desc&limit=1`, {
+    method: 'PATCH',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      roteiro_gerado: parsed,
+      ato_atual: 5,
+      finalizada: true,
+      finalizada_em: new Date().toISOString(),
+    }),
+  }).catch(() => {});
+
+  return res.status(200).json({ ...parsed, modelo, fonte: 'ia' });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATO 6 — Salvar roteiro
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionSalvarRoteiro(req, res, ctx) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST apenas' });
+  const token = req.body?.token || req.query.token;
+  const auth = await requireMaster(ctx, token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
+  const roteiro = req.body?.roteiro;
+  if (!roteiro?.titulo_sugerido) return res.status(400).json({ error: 'roteiro invalido' });
+
+  await fetch(`${ctx.SU}/rest/v1/tendencias_roteiros_salvos`, {
+    method: 'POST',
+    headers: { ...ctx.h, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      user_id: auth.user.id,
+      sessao_id: req.body?.sessao_id || null,
+      titulo_sugerido: roteiro.titulo_sugerido,
+      roteiro,
+      status: req.body?.status || 'salvo',
+    }),
+  });
+  return res.status(200).json({ ok: true });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FALLBACK — descoberta generica pra quem nao tem canal conectado
+// ─────────────────────────────────────────────────────────────────────────────
+async function actionDescobertaGenerica(req, res, ctx) {
+  const auth = await requireMaster(ctx, req.query.token);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error, plan: auth.plan });
+
+  const nicho = (req.query.nicho || 'geral').toLowerCase();
+
+  // Total de criadores deste nicho
+  const tR = await fetch(
+    `${ctx.SU}/rest/v1/virais_banco?nicho=eq.${nicho}&ativo=eq.true&select=canal_id`,
+    { headers: ctx.h, signal: AbortSignal.timeout(5000) }
+  );
+  const vs = tR.ok ? await tR.json() : [];
+  const criadores = new Set(vs.map(v => v.canal_id).filter(Boolean)).size;
+
+  // Top 3 emergentes do nicho
+  const emR = await fetch(
+    `${ctx.SU}/rest/v1/tendencias_analise?tipo=eq.emergentes-ml&valido_ate=gte.${new Date().toISOString()}&order=created_at.desc&limit=1&select=dados`,
+    { headers: ctx.h }
+  );
+  const [em] = emR.ok ? await emR.json() : [];
+  const todos = em?.dados || [];
+  const doNicho = todos.filter(e => e.nicho === nicho).slice(0, 3);
+  const oportunidades = doNicho.length > 0 ? doNicho : todos.slice(0, 3);
+
+  return res.status(200).json({
+    nicho,
+    criadores_analisados: criadores,
+    oportunidades,
+    mensagem: `Baseado em ${criadores || 'milhares de'} criadores do nicho ${nicho}, aqui estao 3 oportunidades unicas pra comecar a dominar.`,
+  });
 }
