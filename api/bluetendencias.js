@@ -20,10 +20,15 @@
 // NUNCA modifica api/auth.js.
 
 const crypto = require('crypto');
+const { sentryCapture } = require('./_helpers/sentry.js');
 
 // Sonnet 4.6: $3/MTok input, $15/MTok output (taxa ~R$5)
 const COST_INPUT_PER_MTOK_BRL  = 15;
 const COST_OUTPUT_PER_MTOK_BRL = 75;
+
+// Versao do prompt — incremente quando mudar o formato da analise.
+// Gravada em studio_analises.prompt_version pra permitir A/B e rollback.
+const PROMPT_VERSION = 'v2.0-split';
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -43,6 +48,7 @@ module.exports = async function handler(req, res) {
   try {
     if (action === 'debug-me')             return res.status(200).json(await debugMe(ctx, req));
     if (action === 'diagnostico')          return res.status(200).json(await diagnosticoStudio(ctx, req));
+    if (action === 'smoke-test')           return res.status(200).json(await smokeTest(ctx, req));
     if (action === 'entrada')              return res.status(200).json(await entrada(ctx, req));
     if (action === 'galeria-nichos')       return res.status(200).json(await galeriaNichos(ctx, req));
     if (action === 'galeria')              return res.status(200).json(await galeriaNichos(ctx, req)); // backcompat
@@ -60,6 +66,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'action_invalida' });
   } catch (e) {
     console.error(`[bluetendencias ${action}]`, e.message);
+    sentryCapture(e, { tags: { action, handler: 'dispatcher' }, extra: { method: req.method } });
     return res.status(500).json({ error: e.message });
   }
 };
@@ -158,13 +165,54 @@ async function registrarUso(ctx, userId, userEmail) {
   }).catch(() => {});
 }
 
+// Thresholds de alerta progressivo no budget (50%, 75%, 90%, 100%).
+// Cada nivel dispara 1x por dia (controlado via coluna alertas_enviados jsonb).
+const BUDGET_ALERTAS = [
+  { pct: 0.5,  key: 't50',  subject: '💙 Blublu em 50% do budget diario',   tom: 'Sistema saudavel, crescendo.',         urgencia: '' },
+  { pct: 0.75, key: 't75',  subject: '💛 Blublu em 75% do budget diario',   tom: 'Atencao: considere aumentar o cap.',   urgencia: 'margem apertada' },
+  { pct: 0.9,  key: 't90',  subject: '🔴 Blublu em 90% do budget diario',   tom: 'Critico: vai pausar em breve.',        urgencia: 'acao recomendada' },
+  { pct: 1.0,  key: 't100', subject: '⚠️ Budget diario Blublu atingido',   tom: 'Sistema pausado ate meia-noite UTC.',  urgencia: 'pausado' },
+];
+
+async function enviarAlertaBudget(threshold, gasto, limite) {
+  if (!process.env.RESEND_API_KEY || !process.env.ADMIN_EMAIL) return;
+  const pct = Math.round((gasto / limite) * 100);
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'BlueTube <noreply@bluetubeviral.com>',
+      to: [process.env.ADMIN_EMAIL],
+      subject: threshold.subject,
+      html: `<div style="font-family:-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#020817">${threshold.subject}</h2>
+        <p style="font-size:14px;color:#333">Gasto hoje: <b>R$${gasto.toFixed(2)}</b> de R$${limite.toFixed(2)} (${pct}%)</p>
+        <p style="font-size:14px;color:#333">${threshold.tom}</p>
+        ${threshold.urgencia ? `<p style="font-size:13px;color:#aa0000"><b>Urgencia:</b> ${threshold.urgencia}</p>` : ''}
+        ${threshold.pct >= 0.75 ? `<p style="font-size:12px;color:#666">Pra aumentar o cap, edite STUDIO_DAILY_BUDGET_BRL no Vercel.</p>` : ''}
+      </div>`,
+    }),
+  }).catch(() => {});
+}
+
 async function atualizarBudgetDiario(ctx, custoBRL) {
   const hoje = new Date().toISOString().split('T')[0];
   const r = await fetch(`${ctx.SU}/rest/v1/studio_budget_diario?data=eq.${hoje}&select=*&limit=1`, { headers: ctx.h });
   const [atual] = r.ok ? await r.json() : [];
-  const novoGasto = parseFloat(((atual?.gasto_brl || 0) + custoBRL).toFixed(4));
+  const gastoAntigo = atual?.gasto_brl || 0;
+  const novoGasto = parseFloat((gastoAntigo + custoBRL).toFixed(4));
   const limite = parseFloat(process.env.STUDIO_DAILY_BUDGET_BRL || '200');
   const ativo = novoGasto < limite;
+
+  // Detecta cruzamento de threshold (antigo < pct <= novo)
+  const alertasJa = Array.isArray(atual?.alertas_enviados) ? atual.alertas_enviados : [];
+  const novosAlertas = [];
+  for (const t of BUDGET_ALERTAS) {
+    const cruzou = (gastoAntigo / limite < t.pct) && (novoGasto / limite >= t.pct);
+    if (cruzou && !alertasJa.includes(t.key)) {
+      novosAlertas.push(t);
+    }
+  }
 
   await fetch(`${ctx.SU}/rest/v1/studio_budget_diario`, {
     method: 'POST',
@@ -173,10 +221,15 @@ async function atualizarBudgetDiario(ctx, custoBRL) {
       data: hoje, gasto_brl: novoGasto,
       total_analises: (atual?.total_analises || 0) + 1,
       budget_limite: limite, ativo, atualizado_em: new Date().toISOString(),
+      alertas_enviados: [...alertasJa, ...novosAlertas.map(a => a.key)],
     }),
   }).catch(() => {});
 
-  if (!ativo && atual?.ativo && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+  // Dispara emails dos thresholds recem cruzados (fire-and-forget)
+  for (const t of novosAlertas) { enviarAlertaBudget(t, novoGasto, limite); }
+
+  // Mantem o email legacy de "atingido" por compat visual, ja coberto pelo t100 acima.
+  if (false && !ativo && atual?.ativo && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
     fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
@@ -295,31 +348,75 @@ async function registrarFalha(ctx, componente) {
   } catch (e) {}
 }
 
-// Wrapper com retry + backoff exponencial + circuit breaker + health tracking
+// Classifica erros pra decidir estrategia de retry.
+//  - FATAL_CONFIG: chave invalida, auth. Alerta admin imediato, nao retenta.
+//  - OVERLOADED: 429/529. Backoff maior e retenta no mesmo modelo.
+//  - TRANSIENT: 5xx genericos. Retenta no mesmo modelo.
+//  - TIMEOUT: Abort local. Nao adianta retry — fallback direto.
+//  - OTHER: tratado como TRANSIENT.
+function classificarErroClaude(e) {
+  const msg = String(e?.message || e || '');
+  if (e?.name === 'AbortError' || /aborted|timeout/i.test(msg)) return 'TIMEOUT';
+  if (/Claude\s*(401|403)/.test(msg)) return 'FATAL_CONFIG';
+  if (/Claude\s*400/.test(msg)) return 'FATAL_CONFIG'; // input malformado — nao adianta retry
+  if (/Claude\s*(429|529)/.test(msg)) return 'OVERLOADED';
+  if (/Claude\s*5\d{2}/.test(msg)) return 'TRANSIENT';
+  return 'TRANSIENT';
+}
+
+async function alertarChaveInvalida(componente, erroMsg) {
+  if (!process.env.RESEND_API_KEY || !process.env.ADMIN_EMAIL) return;
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'BlueTube <noreply@bluetubeviral.com>',
+      to: [process.env.ADMIN_EMAIL],
+      subject: `🔴 URGENTE: chave ${componente} invalida/expirada`,
+      html: `<h2>Chave API ${componente} rejeitada pela Anthropic</h2>
+        <p style="color:#333">Resposta: <code>${erroMsg.slice(0, 200)}</code></p>
+        <p><b>Acao:</b> gerar nova chave em <a href="https://console.anthropic.com">console.anthropic.com</a> e atualizar ANTHROPIC_API_KEY_STUDIO no Vercel.</p>
+        <p style="color:#aa0000">Enquanto isso, Blublu esta usando fallback template.</p>`,
+    }),
+  }).catch(() => {});
+}
+
+// Wrapper com retry inteligente por tipo de erro + circuit breaker + health tracking
 async function callClaudeStudio(prompt, opts = {}) {
   const model = opts.model || 'claude-sonnet-4-6';
   const comp = model.includes('haiku') ? 'anthropic_haiku' : 'anthropic_sonnet';
-  const ctx = opts.ctx; // contexto Supabase pra health tracking
-  // Se ctx foi passado e circuito esta aberto, falha rapido pra ir pro fallback
-  if (ctx && await isCircuitoAberto(ctx, comp)) {
-    throw new Error('CIRCUITO_ABERTO');
-  }
-  // 2 tentativas (1 + 1 retry). Antes eram 3, mas 3x55s=165s estoura os
-  // 120s do maxDuration da Vercel. Se a 1a demorar os 55s do timeout + 1s
-  // de backoff + 55s da 2a = 111s, cabe.
+  const ctx = opts.ctx;
+  if (ctx && await isCircuitoAberto(ctx, comp)) throw new Error('CIRCUITO_ABERTO');
+
   const maxRetries = 2;
-  const delays = [0, 1000];
   let ultimoErro = null;
   for (let tentativa = 0; tentativa < maxRetries; tentativa++) {
-    if (tentativa > 0) await new Promise(r => setTimeout(r, delays[tentativa]));
     try {
       const result = await callClaudeRaw(prompt, opts);
       if (ctx) registrarSucesso(ctx, comp).catch(() => {});
       return result;
     } catch (e) {
       ultimoErro = e;
-      // 400/401/403 — nao adianta retry, erro de configuracao
-      if (/4(00|01|03)/.test(e.message)) break;
+      const tipo = classificarErroClaude(e);
+      // FATAL_CONFIG: alerta admin e sai imediato — retry nao resolve
+      if (tipo === 'FATAL_CONFIG') {
+        console.error(`[callClaudeStudio] FATAL_CONFIG (${e.message}) — alertando admin e abortando`);
+        alertarChaveInvalida(comp, e.message).catch(() => {});
+        sentryCapture(e, { level: 'fatal', tags: { component: comp, tipo: 'FATAL_CONFIG' } });
+        break; // nao retenta
+      }
+      // TIMEOUT: nao adianta re-tentar mesma chamada — cai rapido pro fallback externo
+      if (tipo === 'TIMEOUT') {
+        console.warn(`[callClaudeStudio] TIMEOUT em ${comp} — pulando retry, indo pro fallback externo`);
+        break;
+      }
+      // OVERLOADED: backoff maior (3s) antes de tentar de novo
+      // TRANSIENT: backoff menor (1s)
+      if (tentativa < maxRetries - 1) {
+        const delay = tipo === 'OVERLOADED' ? 3000 : 1000;
+        console.warn(`[callClaudeStudio] ${tipo} em ${comp} (tentativa ${tentativa + 1}), retry em ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
   }
   if (ctx) registrarFalha(ctx, comp).catch(() => {});
@@ -377,6 +474,59 @@ async function callClaudeStudioComFallback(prompt, opts = {}) {
     const out = await callClaudeStudio(prompt, { ...opts, model: 'claude-haiku-4-5' });
     return { ...out, modelo_usado: 'haiku', fallback_usado: true };
   }
+}
+
+// Self-critique: depois que a analise foi entregue ao user, chama Haiku pra
+// avaliar qualidade (especificidade, personalidade, acionabilidade) e grava
+// score no studio_analises. Fire-and-forget — nao bloqueia UX. Admin consulta
+// `SELECT * FROM studio_analises WHERE quality_score < 5` pra ver flagadas.
+async function autoAvaliarQualidade(ctx, analiseId, analise, video, nome) {
+  try {
+    const resumo = {
+      abertura: String(analise.abertura_blublu || '').slice(0, 300),
+      ato_1_conteudo: String(analise.ato_1?.conteudo_principal || '').slice(0, 300),
+      ato_3_conteudo: String(analise.ato_3?.conteudo_principal || '').slice(0, 300),
+      ato_5_sugestao_1: String(analise.ato_5?.sugestoes?.[0]?.exemplo_pratico || '').slice(0, 300),
+    };
+    const prompt = `Avalie essa analise de video viral gerada pra ${nome}. Video: "${video.titulo}" (${video.views} views).
+
+Trechos da analise:
+Abertura: ${resumo.abertura}
+Ato 1 (Hook): ${resumo.ato_1_conteudo}
+Ato 3 (Gatilho Viral): ${resumo.ato_3_conteudo}
+Ato 5 sugestao pratica: ${resumo.ato_5_sugestao_1}
+
+Avalie em 3 eixos (1-10 cada):
+1. ESPECIFICIDADE: cita numeros/detalhes do video ou e generica?
+2. ACIONABILIDADE: sugestao pratica executavel ou vaga?
+3. PERSONALIDADE: tom arrogante/divertido do Blublu ou neutra?
+
+Retorne APENAS JSON:
+{"especificidade": N, "acionabilidade": N, "personalidade": N, "score_geral": N, "problemas": ["bullet1", "bullet2"]}
+
+Se tudo >=7, "problemas" fica array vazio. Se score_geral <5, seja especifico nos problemas.`;
+
+    const out = await callClaudeRaw(prompt, { model: 'claude-haiku-4-5', maxTokens: 400 });
+    const avaliacao = parseJsonSafe(out.text);
+    if (!avaliacao || typeof avaliacao.score_geral !== 'number') return;
+
+    await fetch(`${ctx.SU}/rest/v1/studio_analises?id=eq.${analiseId}`, {
+      method: 'PATCH', headers: { ...ctx.h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        quality_score: avaliacao.score_geral,
+        quality_details: avaliacao,
+      }),
+    }).catch(() => {});
+
+    if (avaliacao.score_geral < 5) {
+      console.warn(`[auto-avaliar] analise ${analiseId} score baixo:`, avaliacao.score_geral, avaliacao.problemas);
+      sentryCapture(new Error(`Analise qualidade baixa: score ${avaliacao.score_geral}`), {
+        level: 'warning',
+        tags: { action: 'quality_check', low_score: 'true' },
+        extra: { analise_id: analiseId, video: video.youtube_id, avaliacao },
+      });
+    }
+  } catch (e) { /* silencioso — nao queremos falhas do critic afetando nada */ }
 }
 
 function parseJsonSafe(text) {
@@ -753,6 +903,111 @@ async function diagnosticoStudio(ctx, req) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ACTION: smoke-test — teste automatico diario (cron)
+// Faz 1 chamada minima ao Claude pra validar que tudo esta respondendo.
+// Se falhar, alerta admin. Nao gera analise real (nao polui studio_analises).
+// Uso: vercel cron chama GET /api/bluetendencias?action=smoke-test
+// ═════════════════════════════════════════════════════════════════════════════
+async function smokeTest(ctx, req) {
+  const inicio = Date.now();
+  const resultado = {
+    timestamp: new Date().toISOString(),
+    testes: {},
+    saudavel: true,
+    erros: [],
+  };
+
+  // Teste 1: chave Studio configurada
+  resultado.testes.chave_studio_presente = !!process.env.ANTHROPIC_API_KEY_STUDIO;
+  if (!resultado.testes.chave_studio_presente) {
+    resultado.saudavel = false;
+    resultado.erros.push('ANTHROPIC_API_KEY_STUDIO ausente no ambiente');
+  }
+
+  // Teste 2: Supabase responsivo
+  try {
+    const r = await fetch(`${ctx.SU}/rest/v1/studio_health?select=componente&limit=1`, { headers: ctx.h });
+    resultado.testes.supabase_ok = r.ok;
+    if (!r.ok) {
+      resultado.saudavel = false;
+      resultado.erros.push(`Supabase respondeu ${r.status}`);
+    }
+  } catch (e) {
+    resultado.testes.supabase_ok = false;
+    resultado.saudavel = false;
+    resultado.erros.push('Supabase inacessivel: ' + e.message);
+  }
+
+  // Teste 3: Haiku ping (rapido)
+  if (resultado.testes.chave_studio_presente) {
+    const t0 = Date.now();
+    try {
+      const out = await callClaudeRaw('Responda APENAS com PONG.', { model: 'claude-haiku-4-5', maxTokens: 10 });
+      resultado.testes.haiku_ping = { ok: true, latencia_ms: Date.now() - t0, tokens: (out.tokens_input || 0) + (out.tokens_output || 0) };
+    } catch (e) {
+      resultado.testes.haiku_ping = { ok: false, erro: e.message };
+      resultado.saudavel = false;
+      resultado.erros.push('Haiku ping falhou: ' + e.message);
+    }
+  }
+
+  // Teste 4: Sonnet ping
+  if (resultado.testes.chave_studio_presente && resultado.saudavel) {
+    const t0 = Date.now();
+    try {
+      const out = await callClaudeRaw('Responda APENAS com PONG.', { model: 'claude-sonnet-4-6', maxTokens: 10 });
+      resultado.testes.sonnet_ping = { ok: true, latencia_ms: Date.now() - t0, tokens: (out.tokens_input || 0) + (out.tokens_output || 0) };
+    } catch (e) {
+      resultado.testes.sonnet_ping = { ok: false, erro: e.message };
+      resultado.saudavel = false;
+      resultado.erros.push('Sonnet ping falhou: ' + e.message);
+    }
+  }
+
+  // Teste 5: budget hoje nao esta pausado
+  try {
+    const hoje = new Date().toISOString().split('T')[0];
+    const bR = await fetch(`${ctx.SU}/rest/v1/studio_budget_diario?data=eq.${hoje}&select=*&limit=1`, { headers: ctx.h });
+    const [b] = bR.ok ? await bR.json() : [];
+    const ativo = b ? b.ativo !== false : true;
+    resultado.testes.budget_ativo = ativo;
+    if (!ativo) {
+      // Nao e falha critica — mas vale avisar
+      resultado.erros.push('Budget do dia atingido — sistema pausado ate meia-noite UTC');
+    }
+  } catch (e) { /* nao bloqueia teste */ }
+
+  resultado.tempo_total_ms = Date.now() - inicio;
+
+  // Se algo falhou, alerta admin
+  if (!resultado.saudavel && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'BlueTube <noreply@bluetubeviral.com>',
+          to: [process.env.ADMIN_EMAIL],
+          subject: '🔴 Smoke test Blublu falhou',
+          html: `<div style="font-family:-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto">
+            <h2 style="color:#aa0000">Smoke test BlueTendencias detectou problema</h2>
+            <p><b>Erros:</b></p>
+            <ul>${resultado.erros.map(e => `<li style="color:#333">${e}</li>`).join('')}</ul>
+            <p style="font-size:12px;color:#666;margin-top:20px">Timestamp: ${resultado.timestamp}</p>
+            <p style="font-size:12px;color:#666">Rode <code>/api/bluetendencias?action=diagnostico&token=SEU_TOKEN</code> pra detalhes completos.</p>
+          </div>`,
+        }),
+      });
+    } catch (e) {}
+    sentryCapture(new Error('Smoke test falhou: ' + resultado.erros.join(' | ')), {
+      level: 'error', tags: { action: 'smoke-test' }, extra: resultado,
+    });
+  }
+
+  return resultado;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ACTION: entrada — saudacao Blublu + analises salvas + restantes
 // ═════════════════════════════════════════════════════════════════════════════
 async function entrada(ctx, req) {
@@ -1024,25 +1279,29 @@ DADOS DO NICHO:
 Duracao media dos virais do nicho: ${duracaoMedia ? duracaoMedia + 's' : 'nao disponivel'}
 Virais de referencia analisados: ${statsNicho.length}`;
 
-  // PARTE 1 — abertura + atos 1 a 4 (narrativa do video)
-  const promptParte1 = `ENTREGA: abertura + 4 atos (ato_1 ate ato_4). Cada ato tem:
+  // PARTE 1 — narrativa tecnica do video (atos 1-4).
+  // NAO cita nome do user → cache compartilhavel entre todos os Masters
+  // que analisarem o mesmo video.
+  const promptParte1 = `ENTREGA: atos 1-4 (narrativa tecnica do video). Cada ato tem:
 - titulo (curto, impactante)
-- blublu_intro (frase introduzindo o ato, com personalidade)
+- blublu_intro (frase introduzindo o ato, com personalidade, SEM citar nome de pessoa)
 - conteudo_principal (analise objetiva, 2-3 frases MAX)
 - highlights (array de 2-3 bullets curtos e punchy)
-- blublu_outro (frase final com personalidade)
+- blublu_outro (frase final com personalidade, SEM citar nome de pessoa)
+
+REGRA: os atos 1-4 analisam O VIDEO. NAO use "${auth.nome}" nem nome algum de pessoa.
+Referencias pessoais ficam pra parte 2 (aplicacao + quiz).
 
 Retorne APENAS JSON valido:
 {
-  "abertura_blublu": "Frase abrindo a analise pra ${auth.nome}, com personalidade arrogante/divertida",
   "ato_1": {"titulo":"O Hook","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
   "ato_2": {"titulo":"A Estrutura","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
   "ato_3": {"titulo":"O Gatilho Viral","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."},
   "ato_4": {"titulo":"O Contexto Cultural","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."}
 }`;
 
-  // PARTE 2 — ato 5 (aplicacao pratica) + quiz
-  const promptParte2 = `ENTREGA: ato_5 (aplicacao pratica pra ${auth.nome}) + quiz de 3 perguntas.
+  // PARTE 2 — abertura + ato 5 + quiz (depende do user, nao cacheavel cross-user)
+  const promptParte2 = `ENTREGA: abertura_blublu + ato_5 (aplicacao pratica pra ${auth.nome}) + quiz de 3 perguntas.
 
 ATO 5 estrutura especial:
 - titulo, blublu_intro
@@ -1054,6 +1313,7 @@ Inclua 1 pegadinha. Comentarios de Blublu pra cada resposta (certo/errado) com p
 
 Retorne APENAS JSON valido:
 {
+  "abertura_blublu": "Frase abrindo a analise pra ${auth.nome}, com personalidade arrogante/divertida",
   "ato_5": {
     "titulo":"Aplicacao pra Voce",
     "blublu_intro":"Agora, ${auth.nome}, a parte que importa...",
@@ -1075,40 +1335,64 @@ Retorne APENAS JSON valido:
   }
 }`;
 
-  // CACHE HIT: mesmo video + mesmo contexto de respostas = resposta instantanea
-  const ck = cacheKey(video.youtube_id, 'dissect', respostas || {});
-  const cached = await getFromCache(ctx, ck);
-  if (cached?.ato_1) {
-    console.log('[gerar-analise-final] CACHE HIT', ck);
+  // CACHE SEGREGADO:
+  //  - 'narrativa': atos 1-4 por video_id (compartilhado entre Masters)
+  //  - 'aplicacao': abertura + ato 5 + quiz por video + respostas (por user)
+  // Beneficio: se Master B analisar video que Master A ja analisou (ou user A
+  // repetir analise com respostas diferentes), a narrativa ja esta pronta.
+  const ckNarrativa = cacheKey(video.youtube_id, 'narrativa', {});
+  const ckAplicacao = cacheKey(video.youtube_id, 'aplicacao', respostas || {});
+  const [cachedNarrativa, cachedAplicacao] = await Promise.all([
+    getFromCache(ctx, ckNarrativa),
+    getFromCache(ctx, ckAplicacao),
+  ]);
+
+  // Full hit: as duas partes ja existem → retorna montado sem chamar IA
+  if (cachedNarrativa?.ato_1 && cachedAplicacao?.ato_5) {
+    console.log('[gerar-analise-final] CACHE HIT FULL (narrativa+aplicacao)');
     return {
       ok: true, cached: true, analise_id: null, nome: auth.nome,
-      abertura_blublu: cached.abertura_blublu, atos: {
-        ato_1: cached.ato_1, ato_2: cached.ato_2, ato_3: cached.ato_3,
-        ato_4: cached.ato_4, ato_5: cached.ato_5,
+      abertura_blublu: cachedAplicacao.abertura_blublu,
+      atos: {
+        ato_1: cachedNarrativa.ato_1, ato_2: cachedNarrativa.ato_2,
+        ato_3: cachedNarrativa.ato_3, ato_4: cachedNarrativa.ato_4,
+        ato_5: cachedAplicacao.ato_5,
       },
-      quiz: cached.quiz, video: {
+      quiz: cachedAplicacao.quiz,
+      video: {
         id: video.id, youtube_id: video.youtube_id, titulo: video.titulo,
         thumbnail: video.thumbnail_url, canal: video.canal_nome, nicho: video.nicho,
         views: video.views, likes: video.likes,
       },
-      tempo_ms: Date.now() - inicio, modelo: 'cache',
+      tempo_ms: Date.now() - inicio, modelo: 'cache_full',
       analises_restantes: rl.analises_restantes ?? 999,
     };
   }
 
-  // SPLIT PARALELO + FALLBACK POR ERRO
-  // As 2 chamadas rodam ao mesmo tempo (latencia ≈ max(parte1, parte2) ~ 35s
-  // em vez de ~60-90s serial). Cada uma tenta Sonnet, se falhar por erro
-  // real (nao timeout) cai pra Haiku. Se ambos falharem, cai no template.
+  // SPLIT PARALELO + CACHE PARCIAL + FALLBACK POR ERRO
+  // Se uma das partes ja esta em cache, nao chama IA pra ela — so pra parte
+  // faltante. Reduz 50-100% dos tokens dependendo do hit.
   const baseOpts = { ctx, system: systemPrompt, cacheSystem: true, maxTokens: 2000 };
   let out1, out2;
+  const naoPrecisaP1 = !!cachedNarrativa?.ato_1;
+  const naoPrecisaP2 = !!cachedAplicacao?.ato_5;
+  console.log(`[gerar-analise-final] cache — narrativa:${naoPrecisaP1 ? 'HIT' : 'miss'} aplicacao:${naoPrecisaP2 ? 'HIT' : 'miss'}`);
+
   try {
-    [out1, out2] = await Promise.all([
-      callClaudeStudioComFallback(promptParte1, baseOpts),
-      callClaudeStudioComFallback(promptParte2, baseOpts),
-    ]);
+    const promessaP1 = naoPrecisaP1
+      ? Promise.resolve({ text: JSON.stringify(cachedNarrativa), tokens_input: 0, tokens_output: 0, modelo_usado: 'cache', fallback_usado: false, model: 'cache' })
+      : callClaudeStudioComFallback(promptParte1, baseOpts);
+    const promessaP2 = naoPrecisaP2
+      ? Promise.resolve({ text: JSON.stringify(cachedAplicacao), tokens_input: 0, tokens_output: 0, modelo_usado: 'cache', fallback_usado: false, model: 'cache' })
+      : callClaudeStudioComFallback(promptParte2, baseOpts);
+    [out1, out2] = await Promise.all([promessaP1, promessaP2]);
   } catch (e) {
     console.error('[gerar-analise-final] Sonnet+Haiku falharam:', e.message);
+    sentryCapture(e, {
+      tags: { action: 'gerar-analise-final', failure_mode: 'ambos_modelos_falharam' },
+      extra: { video_id: video.youtube_id, nome: auth.nome },
+      user: { id: auth.user.id, email: auth.user.email },
+    });
     const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
     return {
       ok: true, fallback: true, nome: auth.nome,
@@ -1132,6 +1416,19 @@ Retorne APENAS JSON valido:
     );
     if (!parte1?.ato_1) console.error('[gerar-analise-final] P1 raw (300 chars):', String(out1.text || '').slice(0, 300));
     if (!parte2?.ato_5) console.error('[gerar-analise-final] P2 raw (300 chars):', String(out2.text || '').slice(0, 300));
+    sentryCapture(new Error('JSON invalido apos split'), {
+      level: 'warning',
+      tags: { action: 'gerar-analise-final', failure_mode: 'json_invalido' },
+      extra: {
+        video_id: video.youtube_id,
+        p1_modelo: out1.modelo_usado,
+        p2_modelo: out2.modelo_usado,
+        p1_ok: !!parte1?.ato_1,
+        p2_ok: !!parte2?.ato_5,
+        p1_raw: String(out1.text || '').slice(0, 500),
+        p2_raw: String(out2.text || '').slice(0, 500),
+      },
+    });
     const analiseFallback = gerarAnaliseFallback(video, respostas, auth.nome);
     return {
       ok: true, fallback: true, nome: auth.nome,
@@ -1210,18 +1507,36 @@ Retorne APENAS JSON valido:
         custo_tokens_output: out.tokens_output,
         custo_brl: custoBRL,
         modelo_usado: out.model,
+        prompt_version: PROMPT_VERSION,
       }),
     });
     if (insR.ok) { const [row] = await insR.json(); analiseId = row?.id || null; }
   } catch (e) { console.error('[insert studio_analises]', e.message); }
 
-  // Salva no cache (fire-and-forget) pra proximos usuarios reusarem
-  saveToCache(ctx, ck, 'dissect', video.youtube_id, {
-    abertura_blublu: analise.abertura_blublu,
-    ato_1: analise.ato_1, ato_2: analise.ato_2, ato_3: analise.ato_3,
-    ato_4: analise.ato_4, ato_5: analise.ato_5,
-    quiz: analise.quiz,
-  }, { views: video.views, likes: video.likes, titulo: video.titulo }, custoBRL);
+  // Salva nos 2 caches separados (fire-and-forget).
+  // Narrativa (video_id) — reusavel por qualquer Master que analisar o mesmo video.
+  // Aplicacao (video_id + respostas) — reusavel pelo mesmo contexto/respostas.
+  // So salva as partes NOVAS (evita overwrite de cache existente).
+  if (!naoPrecisaP1) {
+    saveToCache(ctx, ckNarrativa, 'narrativa', video.youtube_id, {
+      ato_1: analise.ato_1, ato_2: analise.ato_2,
+      ato_3: analise.ato_3, ato_4: analise.ato_4,
+    }, { views: video.views, likes: video.likes, titulo: video.titulo }, custoBRL / 2);
+  }
+  if (!naoPrecisaP2) {
+    saveToCache(ctx, ckAplicacao, 'aplicacao', video.youtube_id, {
+      abertura_blublu: analise.abertura_blublu,
+      ato_5: analise.ato_5,
+      quiz: analise.quiz,
+    }, { respostas }, custoBRL / 2);
+  }
+
+  // Self-critique Haiku — rodar em paralelo (fire-and-forget) pra logar
+  // qualidade de analises. Nao bloqueia resposta ao user. Grava score
+  // no studio_analises pra admin poder revisar depois.
+  if (analiseId) {
+    autoAvaliarQualidade(ctx, analiseId, analise, video, auth.nome).catch(() => {});
+  }
 
   await Promise.all([
     registrarUso(ctx, auth.user.id, auth.user.email),
@@ -1503,6 +1818,7 @@ Retorne APENAS JSON valido:
         custo_tokens_output: out.tokens_output,
         custo_brl: custoBRL,
         modelo_usado: out.model,
+        prompt_version: PROMPT_VERSION,
       }),
     });
     if (insR.ok) { const [row] = await insR.json(); analiseId = row?.id || null; }

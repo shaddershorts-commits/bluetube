@@ -138,6 +138,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/bluetendencias?action=smoke-test",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/bluetendencias-old?action=atualizar-tendencias",
       "schedule": "0 */4 * * *"
     },
