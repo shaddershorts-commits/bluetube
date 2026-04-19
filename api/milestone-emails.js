@@ -89,7 +89,7 @@ function m50(total, days, perWeek) {
         <div><div style="font-size:24px;font-weight:800;color:#22c55e">~${weeksContent} semanas</div><div style="font-size:11px;color:#888">de conteúdo diário</div></div>
       </div>
     </div>
-    <p>Que tal usar o <a href="https://bluetubeviral.com/blueEditor" style="color:#00aaff">BlueEditor</a> para produzir Shorts completos ainda mais rápido?</p>`;
+    <p>Quer ver o <a href="https://bluetubeviral.com/blueEditor" style="color:#00aaff">BlueEditor</a>? Está em desenvolvimento — Masters ativos travam o preço atual quando lançar.</p>`;
 }
 
 function m100(total, days, perWeek) {

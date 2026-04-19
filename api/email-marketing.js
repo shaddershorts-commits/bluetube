@@ -181,13 +181,13 @@ const TEMPLATES = [
     url: 'https://bluetubeviral.com/blueLens'
   },
   {
-    subject: '✨ 1 Short novo em 1 clique. Não é clickbait.',
-    hero: 'Cole o link. Escolha a voz. Clique em editar. Short pronto.',
-    stat: 'Criadores que remixam conteúdo publicam todo dia',
-    body: `<p>O <strong>BlueEditor</strong> pega qualquer Short e transforma:</p>
-      <p>✦ Remove a voz original<br>✦ Adiciona sua narração IA<br>✦ Legendas sincronizadas automáticas<br>✦ Música de fundo</p>
-      <p style="color:#fbbf24;font-weight:700">Um Short profissional em menos de 1 minuto.</p>`,
-    cta: 'Criar meu Short agora →',
+    subject: '✨ O editor nativo do BlueTube está a caminho',
+    hero: 'Timeline, Blublu editora, score de viralidade. Tudo sem sair daqui.',
+    stat: 'Criador não deveria usar 6 apps pra publicar 1 Short',
+    body: `<p>O <strong>BlueEditor</strong> está em desenvolvimento — e vem com algo que nenhum editor tem:</p>
+      <p>✦ Timeline profissional inspirada no CapCut<br>✦ Blublu sugerindo onde cortar<br>✦ Score de viralidade em tempo real<br>✦ Legenda automática com Whisper<br>✦ Export 9:16 otimizado para Shorts</p>
+      <p style="color:#fbbf24;font-weight:700">Masters que entram antes do lançamento travam o preço atual — para sempre.</p>`,
+    cta: 'Ver o teaser e entrar na lista →',
     url: 'https://bluetubeviral.com/blueEditor'
   },
   {
