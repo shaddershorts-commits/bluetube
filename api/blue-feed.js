@@ -840,7 +840,7 @@ module.exports = async function handler(req, res) {
       try {
         const fbExclude = userPrefs?.uid ? `&user_id=neq.${userPrefs.uid}` : '';
         const fbR = await fetchDb(
-          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${fbExclude}&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=*`,
+          `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${fbExclude}&order=views.desc.nullslast,created_at.desc&limit=${limit}&select=${FEED_FIELDS}`,
           { headers: h }
         );
         if (fbR.ok) {
