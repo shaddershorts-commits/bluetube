@@ -1804,7 +1804,14 @@ function scrollToFeedTop(){
   if(f)f.scrollTo({top:0,behavior:'smooth'});
 }
 
+// Guard contra race condition: no boot loadFeed eh chamado multiplas vezes
+// (init, router, initAuth, onboarding check). Se uma chamada antiga resolver
+// DEPOIS duma nova, ela sobrescrevia o feed com dados stale/vazio.
+// Token monotonico: so a ultima chamada vence — antigas descartam resultado.
+let _feedLoadToken=0;
+
 async function loadFeed(){
+  const myToken=++_feedLoadToken;
   const feed=document.getElementById('feed');
   // Remove view Explorar (caso esteja vindo de openTrending) pra voltar pro
   // layout TikTok de coluna centralizada.
@@ -1818,8 +1825,10 @@ async function loadFeed(){
     const tkParam=TOKEN?'&token='+encodeURIComponent(TOKEN):'';
     const actionParam=(_feedMode==='following'&&TOKEN)?'action=feed-seguindo&':'';
     const r=await fetch('/api/blue-feed?'+actionParam+'limit=8&session='+SID+tkParam);
+    if(myToken!==_feedLoadToken){console.log('[loadFeed #'+myToken+'] descartado (stale, atual='+_feedLoadToken+')');return;}
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
+    if(myToken!==_feedLoadToken){console.log('[loadFeed #'+myToken+'] descartado (stale, atual='+_feedLoadToken+')');return;}
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
@@ -1830,13 +1839,15 @@ async function loadFeed(){
         return bf-af;
       });
     }
-    console.log('Feed:',videos.length,'vídeos, seguindo:',_followingIds.length,'hasMore:',_feedHasMore);
+    console.log('[loadFeed #'+myToken+']',videos.length,'videos, modo='+_feedMode,'seguindo='+_followingIds.length,'hasMore='+_feedHasMore);
   }catch(e){
+    if(myToken!==_feedLoadToken)return;
     document.getElementById('dbg').textContent='Erro: '+e.message;
     document.getElementById('empty').classList.add('on');
     feed.innerHTML='';
     return;
   }
+  if(myToken!==_feedLoadToken)return;
   feed.innerHTML='';
   if(!videos.length){document.getElementById('empty').classList.add('on');return;}
   document.getElementById('empty').classList.remove('on');
