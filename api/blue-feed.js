@@ -717,7 +717,10 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ videos: [], has_more: false });
     }
 
-    const rawSql = (await r.json()).filter(v => v.video_url && v.status === 'active');
+    // SQL ja filtrou por status=eq.active. Nao re-checar v.status no JS porque
+    // FEED_FIELDS nao inclui 'status' no SELECT — undefined === 'active' = false
+    // zerava o feed inteiro. So mantem o guard de video_url defensivamente.
+    const rawSql = (await r.json()).filter(v => v.video_url);
     // Cursor advances through SQL ordering (score,created_at,id DESC) — use the LAST
     // SQL row BEFORE client-side filters/re-rank so pagination never skips rows.
     const lastSql = rawSql[rawSql.length - 1];
@@ -844,7 +847,7 @@ module.exports = async function handler(req, res) {
           { headers: h }
         );
         if (fbR.ok) {
-          let fb = (await fbR.json()).filter(v => v.video_url && v.status === 'active');
+          let fb = (await fbR.json()).filter(v => v.video_url);
           if (blockedIds.length) fb = fb.filter(v => !blockedIds.includes(v.user_id));
           videos = fb;
         }

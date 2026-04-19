@@ -4723,6 +4723,10 @@ async function openHashtagFeed(tag){
 async function openTrending(){
   // Fecha overlays (perfil, video player, etc)
   ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
+  // Esconde mensagem "Nenhum video ainda" caso o feed estivesse vazio antes —
+  // senao ela vaza visualmente sobre o grid do Explorar.
+  const _empty=document.getElementById('empty');
+  if(_empty) _empty.classList.remove('on');
   const feed=document.getElementById('feed');
   // Expande #feed pra caber grid 3-col (caso contrario fica espremido
   // na coluna 412px desenhada pra feed vertical tipo TikTok).
