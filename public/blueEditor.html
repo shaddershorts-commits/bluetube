@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BlueEditor — O Que Esta Vindo · BlueTube</title>
+<meta name="description" content="O editor de videos nativo do BlueTube. Crie, edite e publique sem nunca sair. Lock-in Master R$89,99 para quem entra antes."/>
+<meta property="og:title" content="BlueEditor — O editor nativo do BlueTube"/>
+<meta property="og:description" content="Crie. Edite. Publique. Sem nunca sair do BlueTube. Segundo semestre de 2026."/>
+<meta property="og:type" content="website"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2300AAFF'/><path d='M10 9l13 7-13 7V9z' fill='white'/></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/editor-teaser/teaser.css"/>
+</head>
+<body>
+
+<!-- Cursor custom -->
+<div class="cursor-dot"></div>
+<div class="cursor-ring"></div>
+
+<!-- Canvas de particulas -->
+<canvas id="particles"></canvas>
+
+<!-- Nav -->
+<nav class="teaser-nav">
+  <a class="logo" href="/">
+    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z"/></svg></div>
+    <div>Blue<span class="accent">Tube</span></div>
+  </a>
+  <div class="nav-right">
+    <span class="nav-btn" style="pointer-events:none">✨ Editor · Em Construcao</span>
+    <a href="/" class="nav-btn back">← Voltar</a>
+  </div>
+</nav>
+
+<!-- ═══════ CENA 1 ─ Abertura misteriosa ═══════ -->
+<section class="scene" id="scene-1">
+  <div class="scene-inner">
+    <div class="opening-line" id="line-1"></div>
+    <div class="opening-line line-2" id="line-2"></div>
+  </div>
+</section>
+
+<!-- ═══════ CENA 2 ─ O revelar ═══════ -->
+<section class="scene" id="scene-2">
+  <div class="scene-inner">
+    <h1 class="mega-logo" id="mega-logo">Blue<span class="blue-accent">Editor</span></h1>
+    <div class="tagline-main" id="tagline-main"></div>
+    <p class="tagline-sub">O editor de videos nativo mais integrado do Brasil.</p>
+  </div>
+</section>
+
+<!-- ═══════ CENA 3 ─ O produto ═══════ -->
+<section class="scene" id="scene-3">
+  <div class="scene-inner">
+    <div class="scene-label">Produto · Prototipo em desenvolvimento</div>
+    <h2 class="scene-headline">Um editor que entende o que voce esta criando.</h2>
+
+    <div class="mockup-stage">
+      <div class="editor-mockup" id="mockup">
+        <div class="mockup-top">
+          <div class="mockup-dots"><span></span><span></span><span></span></div>
+          <div class="mockup-title">blueeditor · projeto_viral.btp</div>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-side">
+            <div class="ico active">🎬</div>
+            <div class="ico">🔊</div>
+            <div class="ico">🅣</div>
+            <div class="ico">✨</div>
+            <div class="ico">🎨</div>
+            <div class="ico">🤖</div>
+          </div>
+          <div class="mockup-preview">
+            <div class="mockup-preview-frame">
+              <div class="mockup-caption" id="mockup-caption">Vou te contar um segredo</div>
+            </div>
+          </div>
+          <div class="mockup-tools">
+            <div class="mt-row"><span>Duracao</span><strong style="color:#fff">00:28</strong></div>
+            <div class="mt-row"><span>Cortes</span><strong style="color:#fff">7</strong></div>
+            <div class="mt-row"><span>Legenda</span><strong style="color:#10B981">Auto ✓</strong></div>
+            <div class="mt-score">
+              <div class="mt-score-label">Score Viralidade</div>
+              <div class="mt-score-val" id="score-val">67%</div>
+              <div class="mt-score-bar"><div class="mt-score-fill" id="score-fill" style="width:67%"></div></div>
+            </div>
+          </div>
+          <div class="mockup-timeline-area">
+            <div class="tl-ruler"><span>00</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span></div>
+            <div class="tl-track">
+              <div class="tl-clip video" style="left:4%;width:32%">clip_abertura</div>
+              <div class="tl-clip video" style="left:38%;width:28%">clip_meio</div>
+              <div class="tl-clip video" style="left:68%;width:28%">clip_final</div>
+            </div>
+            <div class="tl-track">
+              <div class="tl-clip audio" style="left:4%;width:92%">≈≈ narracao.mp3 ≈≈</div>
+            </div>
+            <div class="tl-playhead" id="tl-playhead" style="left:6%"></div>
+            <div class="tl-blublu" id="tl-blublu"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="features-grid">
+      <div class="feat"><span class="feat-icon">🎬</span><div class="feat-title">Timeline profissional</div><div class="feat-desc">Inspirada no CapCut. Feita para Shorts.</div></div>
+      <div class="feat"><span class="feat-icon">🤖</span><div class="feat-title">Blublu editora</div><div class="feat-desc">A IA que sabe onde cortar. E diz por que.</div></div>
+      <div class="feat"><span class="feat-icon">📊</span><div class="feat-title">Score em tempo real</div><div class="feat-desc">Seu video te avisa antes de postar.</div></div>
+      <div class="feat"><span class="feat-icon">⚡</span><div class="feat-title">Legenda automatica</div><div class="feat-desc">Whisper + estilo viral. Voce so aperta OK.</div></div>
+      <div class="feat"><span class="feat-icon">🎨</span><div class="feat-title">Integracao total</div><div class="feat-desc">Roteiro → Edicao → Publicacao. Sem pulos.</div></div>
+      <div class="feat"><span class="feat-icon">🚀</span><div class="feat-title">Export para Shorts</div><div class="feat-desc">9:16, 1080p, YouTube-ready. Automatico.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ CENA 4 ─ Comparacao ═══════ -->
+<section class="scene" id="scene-4">
+  <div class="scene-inner">
+    <div class="scene-label">O contraste real</div>
+    <h2 class="scene-headline">Voce nao precisa de mais 5 apps.<br/><span style="color:var(--blue)">Voce precisa do BlueEditor.</span></h2>
+
+    <div class="split-compare">
+      <div class="split-side before">
+        <div class="split-label">Criador hoje</div>
+        <div class="apps-chaos">
+          <span class="chip">CapCut</span>
+          <span class="chip">YouTube Studio</span>
+          <span class="chip">Canva</span>
+          <span class="chip">Spotify</span>
+          <span class="chip">Google Docs</span>
+          <span class="chip">Photoshop</span>
+        </div>
+        <div class="split-stat">6 apps abertos.<br/>3 horas perdidas.</div>
+      </div>
+      <div class="split-side after">
+        <div class="split-label">Criador com BlueEditor</div>
+        <div class="one-logo">Blue<span class="accent">Tube</span></div>
+        <div class="split-stat">1 lugar.<br/>20 minutos.</div>
+      </div>
+    </div>
+
+    <div class="impact-line">
+      Toda etapa do Short — <strong>roteiro, edicao, score, legenda, export</strong> —
+      acontece dentro do mesmo fluxo.
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ CENA 5 ─ Privilegio + roadmap + email ═══════ -->
+<section class="scene" id="scene-5">
+  <div class="scene-inner">
+    <div class="scene-label">E entre nos...</div>
+
+    <div id="master-greet" class="master-greet hidden"></div>
+
+    <div class="blublu-speech" id="blublu-speech"></div>
+
+    <div class="privilege-card">
+      <div class="privilege-icon">🔒</div>
+      <div class="privilege-title">Lock-in Master</div>
+      <div class="privilege-price">R$ 89,99 <span style="font-size:14px;color:var(--text-3);font-weight:600">/mes, para sempre</span></div>
+      <ul class="privilege-list">
+        <li>Vale para todo Master ativo antes do lancamento</li>
+        <li>Mesmo com o novo BlueEditor chegando</li>
+        <li>Mesmo com o aumento oficial do plano</li>
+        <li>Mesmo com novas features exclusivas</li>
+      </ul>
+      <div class="privilege-foot">Voce dentro = voce protegido.</div>
+    </div>
+
+    <div class="roadmap">
+      <div class="roadmap-head">Status de desenvolvimento</div>
+      <div class="roadmap-title">BlueEditor · Construindo</div>
+      <div class="progress-row">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+        <div class="progress-pct">43%</div>
+      </div>
+      <ul class="milestone-list">
+        <li class="done"><span class="m-icon">✅</span> Arquitetura definida</li>
+        <li class="done"><span class="m-icon">✅</span> Design system pronto</li>
+        <li class="done"><span class="m-icon">✅</span> Infraestrutura de export</li>
+        <li class="doing"><span class="m-icon">⏳</span> Timeline visual (em progresso)</li>
+        <li class="doing"><span class="m-icon">⏳</span> Player de preview (proximo)</li>
+        <li class="locked"><span class="m-icon">🔒</span> Integracao Blublu</li>
+        <li class="locked"><span class="m-icon">🔒</span> Beta privado para Masters</li>
+        <li class="locked"><span class="m-icon">🔒</span> Lancamento publico</li>
+      </ul>
+      <div class="launch-date">Lancamento estimado · Segundo semestre de 2026</div>
+    </div>
+
+    <div class="email-section" id="email-section">
+      <div class="email-hint" id="email-hint">
+        Quer acompanhar o desenvolvimento?<br/>Blublu te avisa quando tiver novidade.
+      </div>
+      <form class="email-form" id="email-form" autocomplete="off">
+        <input type="email" placeholder="Seu melhor email" required maxlength="140"/>
+        <button type="submit">Avise-me</button>
+      </form>
+      <div class="email-mini-note">Sem spam. So novidades importantes do editor.</div>
+      <div class="email-feedback" id="email-feedback"></div>
+    </div>
+
+    <div class="final-whisper">
+      Fica ai. Explora o resto do BlueTube enquanto isso.<br/>
+      Tem muita coisa nova alem de mim tambem.
+      <span class="src">— Blublu</span>
+    </div>
+  </div>
+</section>
+
+<button class="replay-btn" id="replay-btn" title="Assistir de novo">↻</button>
+
+<!-- Scripts -->
+<script src="/editor-teaser/particles.js" defer></script>
+<script src="/editor-teaser/typewriter.js" defer></script>
+<script src="/editor-teaser/mockup.js" defer></script>
+<script src="/editor-teaser/animations.js" defer></script>
+</body>
+</html>
