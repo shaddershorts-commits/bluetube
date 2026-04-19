@@ -381,17 +381,25 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 #pfFeed{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
 #pfFeed::-webkit-scrollbar{display:none}
 
-/* DESKTOP: pf-overlay — slides como cards 9:16 centralizados (margin auto,
-   SEM transform no container — evita conflito com transform animado de
-   entrada da .pf-overlay que causava "video indo pra lateral").
+/* DESKTOP: pf-overlay — slides como cards 9:16 centralizados.
+   Centralizacao via flex (margin auto era instavel quando combinado com
+   transform de entrada da .pf-overlay — slide ficava colado na direita).
    min-width 320px protege casos onde 92dvh*9/16 daria valor irrealmente
-   pequeno (janela achatada / zoom alto) — slide ficava ~80px na lateral. */
+   pequeno (janela achatada / zoom alto). */
 @media (min-width:1024px){
   .pf-overlay{ left:240px; right:0 }
-  #pfFeed{ height:100%; overflow-y:scroll; padding:4dvh 0 }
+  #pfFeed{
+    height:100%;
+    overflow-y:scroll;
+    padding:4dvh 0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
   #pfFeed .slide{
     height:92dvh;
-    margin:0 auto 12px;
+    flex-shrink:0;
+    margin-bottom:12px;
     width:min(560px, max(320px, calc(92dvh * 9 / 16)));
     min-width:320px;
     max-width:560px;
