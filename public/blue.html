@@ -111,6 +111,17 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
   overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:none;
   -webkit-overflow-scrolling:touch}
 #feed::-webkit-scrollbar{display:none}
+/* Explorar usa grid 3-col — #feed precisa expandir (desktop) e desativar
+   scroll-snap vertical (senao o grid fica apertado na coluna do TikTok feed) */
+#feed.explore-view{
+  max-width:min(880px,calc(100vw - 80px));
+  scroll-snap-type:none;
+  height:100dvh;top:0;bottom:0;
+  border-radius:0;box-shadow:none
+}
+@media(max-width:1023px){
+  #feed.explore-view{max-width:100%;left:0;transform:none}
+}
 body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
 
 /* ── SLIDE ───────────────────────────────────────────────────────────────── */
@@ -1795,6 +1806,9 @@ function scrollToFeedTop(){
 
 async function loadFeed(){
   const feed=document.getElementById('feed');
+  // Remove view Explorar (caso esteja vindo de openTrending) pra voltar pro
+  // layout TikTok de coluna centralizada.
+  feed.classList.remove('explore-view');
   // Se usuario nao tem token e escolheu following antes, volta pra foryou
   if(_feedMode==='following'&&!TOKEN){_feedMode='foryou';}
   _syncTabsVisual();
@@ -4699,6 +4713,9 @@ async function openTrending(){
   // Fecha overlays (perfil, video player, etc)
   ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
   const feed=document.getElementById('feed');
+  // Expande #feed pra caber grid 3-col (caso contrario fica espremido
+  // na coluna 412px desenhada pra feed vertical tipo TikTok).
+  feed.classList.add('explore-view');
   feed.innerHTML='<div style="height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px"><div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13px;color:rgba(150,190,230,.5)">Explorar</div></div>';
   try{
     const [topR, tagsR] = await Promise.all([
