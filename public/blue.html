@@ -2054,6 +2054,22 @@ function onTU(vid,id){
   if(!vid.duration)return;
   const el=document.getElementById('pf-'+id);
   if(el)el.style.width=(vid.currentTime/vid.duration*100)+'%';
+  // Aos 50% do vídeo atual, promove o 2º próximo de 'metadata' pra 'auto'
+  // pra absorver swipes duplos sem buffering (estilo Reels/TikTok). Respeita
+  // save-data e 2G — se conexão fraca, mantém o preload econômico original.
+  if(vid._preloadBoosted) return;
+  if(vid.currentTime/vid.duration < 0.5) return;
+  vid._preloadBoosted=true;
+  const _c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  if(_c&&(_c.effectiveType==='2g'||_c.effectiveType==='slow-2g'||_c.saveData))return;
+  const sl=vid.closest('.slide'); if(!sl) return;
+  const idx=parseInt(sl.dataset.i)||0;
+  const nxt2=videos[idx+2];
+  if(!nxt2) return;
+  const ns=document.getElementById('s-'+nxt2.id); if(!ns) return;
+  const nv=ns.querySelector('video'); if(!nv) return;
+  if(!nv.src&&nv.dataset.src) nv.src=nv.dataset.src;
+  nv.preload='auto';
 }
 
 function setupObs(){
