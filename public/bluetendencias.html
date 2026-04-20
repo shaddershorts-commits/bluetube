@@ -977,7 +977,12 @@ function irCena(id) {
     if (typeof pararExercitoTimer === 'function') pararExercitoTimer();
   }
   // Logica especifica por cena
-  if (id === '1') renderSaudacao();
+  if (id === '1') {
+    // Dispara ANTES do renderSaudacao pra nao depender do typewriter terminar
+    // (se o typeOut conflitar com outra chamada, o timer original nao rodava).
+    if (typeof iniciarExercitoTimer === 'function') iniciarExercitoTimer();
+    renderSaudacao();
+  }
   if (id === '2a') renderSalvas();
   if (id === '2b') renderNovaAnalise();
   if (id === '6') mostrarPergunta();
@@ -1457,13 +1462,15 @@ const EXERCITO_DELAY = 4 * 60 * 1000; // 4 minutos
 function iniciarExercitoTimer() {
   if (_exercitoTimer) clearTimeout(_exercitoTimer);
   _exercitoTimer = setTimeout(dispararExercito, EXERCITO_DELAY);
+  console.log('[exercito] timer iniciado — dispara em', EXERCITO_DELAY / 1000, 's se ninguem clicar/digitar');
 }
 function pararExercitoTimer() {
-  if (_exercitoTimer) { clearTimeout(_exercitoTimer); _exercitoTimer = null; }
+  if (_exercitoTimer) { clearTimeout(_exercitoTimer); _exercitoTimer = null; console.log('[exercito] timer parado'); }
 }
 function dispararExercito() {
+  console.log('[exercito] timer EXPIROU — tentando disparar');
   // So dispara se ainda estamos na cena 1 (saudacao inicial)
-  if (!$('cena1')?.classList.contains('active')) return;
+  if (!$('cena1')?.classList.contains('active')) { console.log('[exercito] cena 1 nao esta ativa, abortando'); return; }
   pararFoguete(); // para o foguete indolente pra nao conflitar
   const ov = $('exercitoOverlay');
   const container = $('exercitoRockets');
