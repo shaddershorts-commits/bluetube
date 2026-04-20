@@ -600,13 +600,18 @@ export default async function handler(req, res) {
       if (!ip && !ua) return res.status(200).json({ ok: true, skipped: 'sem_headers' });
       const ipHash = crypto.createHash('sha256').update(ip + (process.env.ADMIN_SECRET || '')).digest('hex').slice(0, 16);
       const fingerprint = crypto.createHash('sha256').update(ua + lang).digest('hex').slice(0, 16);
-      const cutoff72h = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+      // Janela de atribuicao por fingerprint: 14 dias.
+      // (Antes: 72h — subimos em 2026-04-20 pra cobrir users que clicam no
+      // link e esperam alguns dias pra assinar. 14d captura ~90% dos casos
+      // validos sem aumentar muito o risco de falso match. Source do log
+      // mantido como 'fingerprint_72h' pra retrocompat com queries/admin.)
+      const cutoffFingerprint = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
 
-      // Busca clique mais recente com match de IP ou fingerprint nos ultimos 72h
+      // Busca clique mais recente com match de IP ou fingerprint dentro da janela
       const ckR = await fetch(
         `${SUPA_URL}/rest/v1/affiliate_clicks`
         + `?or=(ip_hash.eq.${ipHash},visitor_fingerprint.eq.${fingerprint})`
-        + `&landed_at=gte.${cutoff72h}`
+        + `&landed_at=gte.${cutoffFingerprint}`
         + `&order=landed_at.desc&limit=1&select=affiliate_id,ref_code,ip_hash,visitor_fingerprint,landed_at`,
         { headers: supaH }
       );
