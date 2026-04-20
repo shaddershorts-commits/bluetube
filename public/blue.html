@@ -1941,7 +1941,11 @@ function applyVideoFit(vid){
   const w=vid.videoWidth, h=vid.videoHeight;
   if(!w||!h)return;
   const aspect=w/h;
-  if(aspect<0.85){
+  // Threshold 1.15: portrait + square + 4:5 ficam cover (preenchem o slide 9:16
+  // estilo TikTok/Reels). So landscape puro (16:9, 4:3) vira contain pra nao
+  // cortar demais. Antes era 0.85, que deixava quadrados letterboxed — usuario
+  // via como "achatado no meio".
+  if(aspect<1.15){
     vid.style.objectFit='cover';
     vid.style.background='';
   }else{
@@ -1966,7 +1970,9 @@ function mkSlide(v,i){
   // Se metadata faltar no banco, assume portrait (estatisticamente o mais comum).
   // applyVideoFit() recalcula quando o browser le as dimensoes reais no onloadedmetadata.
   const initAspect = (v.width && v.height) ? (v.width / v.height) : 0.5625;
-  const vidStyle = initAspect < 0.85
+  // Threshold igual ao applyVideoFit (1.15) pra evitar flicker quando metadata
+  // carrega: se o valor inicial bater com o real, nao ha mudanca visual.
+  const vidStyle = initAspect < 1.15
     ? 'object-fit:cover'
     : 'object-fit:contain;background:#000';
   // Lazy loading otimizado — detecta conexão lenta para economizar dados em redes móveis
@@ -1975,7 +1981,9 @@ function mkSlide(v,i){
   const eagerCount = isSlow ? 1 : 2;
   const vidSrc = i < eagerCount ? v.video_url : '';
   const vidDataSrc = i >= eagerCount ? v.video_url : '';
-  const preloadMode = i === 0 ? 'auto' : (i < eagerCount ? 'metadata' : 'none');
+  // Primeiros 2 slides com preload=auto pra play instantaneo no swipe — ajuda
+  // especialmente em mobile onde o primeiro swipe era mais lento.
+  const preloadMode = i < eagerCount ? 'auto' : 'none';
   el.innerHTML=
     '<video '+(vidSrc?'src="'+vidSrc+'"':'data-src="'+vidDataSrc+'"')+' preload="'+preloadMode+'" loop playsinline muted crossorigin="anonymous" poster="'+(v.thumbnail_url||'')+'" style="position:absolute;inset:0;width:100%;height:100%;'+vidStyle+'" ontimeupdate="onTU(this,\''+v.id+'\')" onerror="vidErr(this)">'+(v.legendas_url?'<track kind="subtitles" src="'+v.legendas_url+'" srclang="pt" label="Português" default>':'')+'</video>'+
     (v.legendas_url?'<button class="cc-toggle'+(_ccEnabled?' on':'')+'" onclick="event.stopPropagation();toggleCC(\''+v.id+'\')">CC</button>':'')+
