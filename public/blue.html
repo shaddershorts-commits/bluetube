@@ -2993,9 +2993,10 @@ function updateStatusBtns(status) {
 
 // Open chat from profile page (for other users)
 let _chatTargetUser = null;
-async function openChatWithUser() {
+async function openChatWithUser(userId) {
   const tk = localStorage.getItem('bt_token');
   if (!tk) { toast('Entre para enviar mensagens'); return; }
+  if (userId) _chatTargetUser = userId;
   if (!_chatTargetUser) return;
   try {
     const r = await fetch('/api/blue-chat', {

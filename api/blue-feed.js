@@ -692,7 +692,7 @@ module.exports = async function handler(req, res) {
     // Select seletivo — apenas campos usados pelo rerank + frontend.
     // Omite embedding (1536 floats = 12KB por video!), description (pesado),
     // e outros campos nao necessarios. Reduz payload em ~80% por video.
-    const FEED_FIELDS = 'id,user_id,title,description,hashtags,thumbnail_url,video_url,duration,views,likes,comments,saves,avg_watch_percent,score,nichos,views_24h,created_at';
+    const FEED_FIELDS = 'id,user_id,title,thumbnail_url,video_url,duration,views,likes,comments,saves,avg_watch_percent,score,nichos,views_24h,created_at';
     let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
     const cur = decodeCursor(cursor);
     if (cur) {
