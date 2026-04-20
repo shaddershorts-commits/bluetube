@@ -1,0 +1,358 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  BLOG POST TEMPLATE — BlueTube
+  ═══════════════════════════════════════════════════════════════════════
+  Como usar:
+  1. Copia este arquivo pra public/blog/posts/SLUG-DO-ARTIGO.html
+  2. Substitui TODOS os placeholders marcados com {{MAIUSCULAS}}
+  3. Adiciona o card correspondente em public/blog/index.html
+  4. Adiciona a URL nova em public/sitemap.xml
+  5. Commita e dá push
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+
+<!-- ═══ SEO CORE (sempre preencher) ══════════════════════════════ -->
+<title>{{TITLE_50_60_CHARS}} — BlueTube</title>
+<meta name="description" content="{{DESCRIPTION_150_160_CHARS}}"/>
+<meta name="robots" content="index,follow,max-image-preview:large"/>
+<meta name="author" content="BlueTube"/>
+<meta name="theme-color" content="#020817"/>
+<meta name="keywords" content="{{KEYWORD_1}}, {{KEYWORD_2}}, {{KEYWORD_3}}"/>
+
+<link rel="canonical" href="https://bluetubeviral.com/blog/posts/{{SLUG}}.html"/>
+
+<!-- ═══ OPEN GRAPH ═══════════════════════════════════════════════ -->
+<meta property="og:type" content="article"/>
+<meta property="og:site_name" content="BlueTube"/>
+<meta property="og:title" content="{{TITLE_50_60_CHARS}}"/>
+<meta property="og:description" content="{{DESCRIPTION_150_160_CHARS}}"/>
+<meta property="og:url" content="https://bluetubeviral.com/blog/posts/{{SLUG}}.html"/>
+<meta property="og:image" content="https://bluetubeviral.com/blog/assets/covers/{{SLUG}}-og.jpg"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="{{COVER_ALT}}"/>
+<meta property="og:locale" content="pt_BR"/>
+<meta property="article:published_time" content="{{DATE_PUBLISHED_ISO}}"/>
+<meta property="article:modified_time" content="{{DATE_MODIFIED_ISO}}"/>
+<meta property="article:author" content="BlueTube"/>
+<meta property="article:section" content="{{CATEGORY}}"/>
+<meta property="article:tag" content="{{TAG_1}}"/>
+<meta property="article:tag" content="{{TAG_2}}"/>
+
+<!-- ═══ TWITTER CARDS ════════════════════════════════════════════ -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:site" content="@bluetubeviral"/>
+<meta name="twitter:title" content="{{TITLE_50_60_CHARS}}"/>
+<meta name="twitter:description" content="{{DESCRIPTION_150_160_CHARS}}"/>
+<meta name="twitter:image" content="https://bluetubeviral.com/blog/assets/covers/{{SLUG}}-og.jpg"/>
+<meta name="twitter:image:alt" content="{{COVER_ALT}}"/>
+
+<!-- ═══ FAVICON / PERFORMANCE ═══════════════════════════════════ -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="preload" as="image" href="/blog/assets/covers/{{SLUG}}-cover.jpg" fetchpriority="high"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700;800&display=swap" rel="stylesheet"/>
+
+<link rel="stylesheet" href="/blog/assets/blog.css"/>
+
+<!-- ═══ SCHEMA.ORG — Article (rich results no Google) ═══════════ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "{{TITLE_50_60_CHARS}}",
+  "description": "{{DESCRIPTION_150_160_CHARS}}",
+  "image": {
+    "@type": "ImageObject",
+    "url": "https://bluetubeviral.com/blog/assets/covers/{{SLUG}}-og.jpg",
+    "width": 1200,
+    "height": 630
+  },
+  "datePublished": "{{DATE_PUBLISHED_ISO}}",
+  "dateModified": "{{DATE_MODIFIED_ISO}}",
+  "author": {
+    "@type": "Organization",
+    "name": "BlueTube",
+    "url": "https://bluetubeviral.com"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "BlueTube",
+    "url": "https://bluetubeviral.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://bluetubeviral.com/blog/assets/logo.png",
+      "width": 512,
+      "height": 512
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://bluetubeviral.com/blog/posts/{{SLUG}}.html"
+  },
+  "articleSection": "{{CATEGORY}}",
+  "inLanguage": "pt-BR",
+  "isAccessibleForFree": true
+}
+</script>
+
+<!-- ═══ SCHEMA.ORG — Breadcrumb ═════════════════════════════════ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type":"ListItem","position":1,"name":"Home","item":"https://bluetubeviral.com/"},
+    {"@type":"ListItem","position":2,"name":"Blog","item":"https://bluetubeviral.com/blog/"},
+    {"@type":"ListItem","position":3,"name":"{{CATEGORY}}","item":"https://bluetubeviral.com/blog/#{{CATEGORY_SLUG}}"},
+    {"@type":"ListItem","position":4,"name":"{{TITLE_50_60_CHARS}}"}
+  ]
+}
+</script>
+
+<style>
+/* Critical CSS — first paint (LCP < 2s) */
+:root{
+  --bg-primary:#020817;--bg-secondary:#0A0F1C;--bg-card:rgba(10,15,28,0.72);
+  --text-primary:#FFFFFF;--text-secondary:rgba(255,255,255,0.7);--text-muted:rgba(255,255,255,0.5);
+  --accent-blue:#00AAFF;--accent-blue-dim:#1a6bff;--accent-purple:#6B4EE6;--accent-gold:#FBBF24;
+  --border:rgba(0,170,255,0.12);--border-hover:rgba(0,170,255,0.3);
+  --font-body:'Inter',system-ui,-apple-system,sans-serif;
+  --font-display:'Inter Tight','Inter',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg-primary);color:var(--text-primary);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;height:auto;display:block}
+</style>
+</head>
+<body>
+
+<!-- BG -->
+<div class="bg-fixed" aria-hidden="true">
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+</div>
+
+<!-- NAV -->
+<nav class="blog-nav">
+  <a href="/" class="blog-logo" aria-label="Voltar para BlueTube">
+    <span class="blog-logo-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z" fill="#fff"/></svg>
+    </span>
+    <span class="blog-logo-text">Blue<span>Tube</span> <em>/ blog</em></span>
+  </a>
+  <div class="blog-nav-right">
+    <a href="/blog/" class="blog-nav-link">← Todos os artigos</a>
+  </div>
+</nav>
+
+<!-- BREADCRUMB -->
+<nav class="blog-breadcrumb" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="/">Home</a></li>
+    <li><span aria-hidden="true">›</span></li>
+    <li><a href="/blog/">Blog</a></li>
+    <li><span aria-hidden="true">›</span></li>
+    <li><a href="/blog/#{{CATEGORY_SLUG}}">{{CATEGORY}}</a></li>
+    <li><span aria-hidden="true">›</span></li>
+    <li aria-current="page">{{TITLE_CURTO_BREADCRUMB}}</li>
+  </ol>
+</nav>
+
+<!-- ARTIGO -->
+<article class="blog-post" itemscope itemtype="https://schema.org/Article">
+  <header class="blog-post-head">
+    <span class="blog-post-category" itemprop="articleSection">{{CATEGORY}}</span>
+    <h1 class="blog-post-title" itemprop="headline">{{TITLE_50_60_CHARS}}</h1>
+    <p class="blog-post-lead">{{LEAD_UMA_FRASE_FORTE_QUE_RESUME}}</p>
+    <div class="blog-post-meta">
+      <time datetime="{{DATE_PUBLISHED_ISO}}" itemprop="datePublished">{{DATE_PUBLISHED_BR}}</time>
+      <span aria-hidden="true">·</span>
+      <span>{{READ_TIME}} min de leitura</span>
+      <span aria-hidden="true">·</span>
+      <span>por <span itemprop="author">BlueTube</span></span>
+    </div>
+  </header>
+
+  <figure class="blog-post-cover">
+    <img
+      src="/blog/assets/covers/{{SLUG}}-cover.jpg"
+      alt="{{COVER_ALT}}"
+      width="1200" height="630"
+      fetchpriority="high"
+      itemprop="image"/>
+    <figcaption>{{COVER_LEGENDA_OPCIONAL}}</figcaption>
+  </figure>
+
+  <!-- ═══ SUMÁRIO (Table of Contents) ═══════════════════════════ -->
+  <aside class="blog-toc" aria-label="Sumário do artigo">
+    <h2 class="blog-toc-title">📑 Neste artigo</h2>
+    <ol class="blog-toc-list">
+      <li><a href="#secao-1">{{TITULO_SECAO_1}}</a></li>
+      <li><a href="#secao-2">{{TITULO_SECAO_2}}</a></li>
+      <li><a href="#secao-3">{{TITULO_SECAO_3}}</a></li>
+      <!-- Adicione mais <li> conforme necessário -->
+    </ol>
+  </aside>
+
+  <!-- ═══ CORPO DO ARTIGO ═══════════════════════════════════════ -->
+  <div class="blog-post-body" itemprop="articleBody">
+
+    <!--
+      SEÇÕES COM H2. Cada <section> começa com id= pra ancorar TOC.
+      Use H3 pra subseções. Evite pular nível (H2 → H4 é erro SEO).
+    -->
+
+    <section id="secao-1">
+      <h2>{{TITULO_SECAO_1}}</h2>
+      <p>{{PARAGRAFO_ABERTURA_DA_SECAO_1}}</p>
+      <p>{{PARAGRAFO_2}}</p>
+
+      <h3>{{SUBSECAO_OPCIONAL}}</h3>
+      <p>{{CONTEUDO}}</p>
+
+      <ul>
+        <li>{{BULLET_1}}</li>
+        <li>{{BULLET_2}}</li>
+        <li>{{BULLET_3}}</li>
+      </ul>
+    </section>
+
+    <section id="secao-2">
+      <h2>{{TITULO_SECAO_2}}</h2>
+      <p>{{CONTEUDO}}</p>
+
+      <!-- Destaque/quote -->
+      <blockquote>
+        <p>{{CITACAO_OU_DESTAQUE}}</p>
+        <cite>— {{AUTOR_OU_FONTE}}</cite>
+      </blockquote>
+
+      <!-- Imagem inline com legenda -->
+      <figure>
+        <img src="/blog/assets/covers/{{SLUG}}-img-1.jpg" alt="{{ALT_DA_IMAGEM}}" loading="lazy" width="800" height="450"/>
+        <figcaption>{{LEGENDA_DA_IMAGEM}}</figcaption>
+      </figure>
+    </section>
+
+    <section id="secao-3">
+      <h2>{{TITULO_SECAO_3}}</h2>
+      <p>{{CONTEUDO}}</p>
+
+      <!-- Code block (se for artigo técnico) -->
+      <pre><code>// exemplo de código
+function exemplo() {
+  return "oi";
+}</code></pre>
+
+      <!-- Link interno pra outro artigo do blog (SEO interno) -->
+      <p>Se quiser se aprofundar, leia também: <a href="/blog/posts/{{OUTRO_SLUG}}.html">{{OUTRO_TITULO}}</a>.</p>
+    </section>
+
+    <!-- ═══ CTA CONTEXTUAL (não invasivo) ═══════════════════════ -->
+    <aside class="blog-cta">
+      <div class="blog-cta-body">
+        <p class="blog-cta-eye">Dica BlueTube</p>
+        <h3 class="blog-cta-title">{{CTA_TITLE}}</h3>
+        <p class="blog-cta-text">{{CTA_DESCRIPTION}}</p>
+      </div>
+      <a href="{{CTA_URL}}" class="blog-cta-btn">{{CTA_LABEL}} →</a>
+    </aside>
+
+    <section id="conclusao">
+      <h2>Conclusão</h2>
+      <p>{{CONCLUSAO_PARAGRAFO_1}}</p>
+      <p>{{CONCLUSAO_CHAMADA_PRA_ACAO}}</p>
+    </section>
+
+  </div>
+
+  <!-- ═══ COMPARTILHAR ═══════════════════════════════════════════ -->
+  <aside class="blog-share" aria-label="Compartilhe este artigo">
+    <span class="blog-share-label">Compartilhe:</span>
+    <a class="blog-share-btn wa"
+       href="https://wa.me/?text={{TITLE_URLENCODED}}%20https%3A%2F%2Fbluetubeviral.com%2Fblog%2Fposts%2F{{SLUG}}.html"
+       target="_blank" rel="noopener" aria-label="Compartilhar no WhatsApp">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.94 11.94 0 0 0 12.04 0C5.46 0 .12 5.34.12 11.92c0 2.1.55 4.14 1.6 5.95L0 24l6.31-1.66a11.9 11.9 0 0 0 5.73 1.46h.01c6.58 0 11.92-5.34 11.92-11.92 0-3.18-1.24-6.17-3.45-8.4zM12.05 21.8h-.01c-1.77 0-3.5-.47-5.02-1.38l-.36-.21-3.74.98 1-3.65-.23-.37a9.88 9.88 0 0 1-1.52-5.26c0-5.47 4.45-9.92 9.93-9.92 2.65 0 5.14 1.03 7.01 2.91a9.84 9.84 0 0 1 2.9 7.02c0 5.47-4.45 9.88-9.96 9.88z"/></svg>
+      WhatsApp
+    </a>
+    <a class="blog-share-btn tw"
+       href="https://twitter.com/intent/tweet?text={{TITLE_URLENCODED}}&url=https%3A%2F%2Fbluetubeviral.com%2Fblog%2Fposts%2F{{SLUG}}.html"
+       target="_blank" rel="noopener" aria-label="Compartilhar no Twitter/X">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2H21l-6.52 7.457L22 22h-6.94l-4.79-6.286L4.56 22H1.8l7.04-8.047L1.5 2h7.09l4.32 5.73L18.244 2zM17.16 20h1.67L6.93 3.95H5.12L17.16 20z"/></svg>
+      Twitter
+    </a>
+    <a class="blog-share-btn li"
+       href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fbluetubeviral.com%2Fblog%2Fposts%2F{{SLUG}}.html"
+       target="_blank" rel="noopener" aria-label="Compartilhar no LinkedIn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.268 2.37 4.268 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.063 2.063 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      LinkedIn
+    </a>
+    <button class="blog-share-btn copy" onclick="copyPostLink(this)" aria-label="Copiar link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copiar
+    </button>
+  </aside>
+
+  <!-- ═══ ARTIGOS RELACIONADOS (preencher manualmente) ═══════════ -->
+  <aside class="blog-related" aria-label="Artigos relacionados">
+    <h2 class="blog-related-title">Continue lendo</h2>
+    <div class="blog-related-grid">
+
+      <!--
+      <a href="/blog/posts/OUTRO-SLUG.html" class="blog-related-card">
+        <img src="/blog/assets/covers/OUTRO-SLUG-cover.jpg" alt="" loading="lazy" width="400" height="225"/>
+        <h3>TÍTULO DO ARTIGO RELACIONADO</h3>
+        <span class="blog-related-meta">CATEGORIA · 6 min</span>
+      </a>
+      -->
+
+      <p class="blog-related-empty">Mais artigos em breve.</p>
+    </div>
+  </aside>
+
+  <!-- ═══ CTA FINAL ══════════════════════════════════════════════ -->
+  <aside class="blog-final-cta">
+    <h2 class="blog-final-cta-title">Pronto pra colocar em prática?</h2>
+    <p class="blog-final-cta-text">O BlueTube tem tudo que você precisa pra criar Shorts virais: transcrição IA, roteiros, editor nativo e análise algorítmica. Grátis pra começar.</p>
+    <a href="/" class="blog-final-cta-btn">Experimentar o BlueTube →</a>
+  </aside>
+</article>
+
+<!-- FOOTER -->
+<footer class="blog-footer">
+  <div class="blog-footer-inner">
+    <div class="blog-footer-brand">
+      <a href="/" class="blog-logo" aria-label="BlueTube">
+        <span class="blog-logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 8l11 4-11 4V8z" fill="#fff"/></svg>
+        </span>
+        <span class="blog-logo-text">Blue<span>Tube</span></span>
+      </a>
+      <p class="blog-footer-tag">O Studio do Criador.</p>
+    </div>
+    <nav class="blog-footer-nav" aria-label="Links">
+      <a href="/">Home</a>
+      <a href="/blog/">Blog</a>
+      <a href="/afiliado">Afiliados</a>
+      <a href="/termos">Termos</a>
+      <a href="/privacidade">Privacidade</a>
+    </nav>
+    <p class="blog-footer-copy">© <span id="year"></span> BlueTube · Feito pra quem quer crescer sem enrolação.</p>
+  </div>
+</footer>
+
+<script src="/blog/assets/blog.js" defer></script>
+<script>document.getElementById('year').textContent=new Date().getFullYear();</script>
+
+</body>
+</html>

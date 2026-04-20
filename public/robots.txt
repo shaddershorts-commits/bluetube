@@ -4,5 +4,6 @@ Allow: /blog/
 Allow: /blog/assets/
 Disallow: /api/
 Disallow: /admin
+Disallow: /blog/_template.html
 
 Sitemap: https://bluetubeviral.com/sitemap.xml
