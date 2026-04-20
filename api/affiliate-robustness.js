@@ -556,25 +556,89 @@ async function reconcile(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
       } catch (e) { console.error('[reconcile] patch falhou', d.email, e.message); }
     }
 
-    // Log
+    // ─── FASE 3: drift de total_full / total_master
+    // Causa conhecida: api/affiliate.js:427 faz incremento otimista (lê stale +1)
+    // que pode perder eventos em race ou quando o reconcile cria commission
+    // sem incrementar counter. Source of truth = COUNT das commissions ativas.
+    const cr2 = await fetch(
+      `${SU}/rest/v1/affiliate_commissions?status=in.(pending,paid)&flagged=is.false&select=affiliate_id,plan`,
+      { headers: h }
+    );
+    const commList = cr2.ok ? await cr2.json() : [];
+    const countsByAff = new Map(); // id -> { full, master }
+    commList.forEach(c => {
+      if (c.plan !== 'full' && c.plan !== 'master') return;
+      const prev = countsByAff.get(c.affiliate_id) || { full: 0, master: 0 };
+      prev[c.plan]++;
+      countsByAff.set(c.affiliate_id, prev);
+    });
+
+    const counterR = await fetch(`${SU}/rest/v1/affiliates?select=id,email,total_full,total_master`, { headers: h });
+    const affCounters = counterR.ok ? await counterR.json() : [];
+    const counterDrifts = [];
+    for (const aff of affCounters) {
+      const real = countsByAff.get(aff.id) || { full: 0, master: 0 };
+      const fullStored = parseInt(aff.total_full || 0, 10);
+      const masterStored = parseInt(aff.total_master || 0, 10);
+      if (real.full !== fullStored || real.master !== masterStored) {
+        counterDrifts.push({
+          affiliate_id: aff.id, email: aff.email,
+          full_stored: fullStored, full_real: real.full,
+          master_stored: masterStored, master_real: real.master,
+        });
+      }
+    }
+
+    let countersFixed = 0;
+    for (const d of counterDrifts) {
+      try {
+        await fetch(`${SU}/rest/v1/affiliates?id=eq.${d.affiliate_id}`, {
+          method: 'PATCH', headers: h,
+          body: JSON.stringify({
+            total_full: d.full_real,
+            total_master: d.master_real,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        countersFixed++;
+      } catch (e) { console.error('[reconcile] counter patch falhou', d.email, e.message); }
+    }
+
+    // Log (inclui counter drifts)
     await fetch(`${SU}/rest/v1/affiliate_reconcile_log`, {
       method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
       body: JSON.stringify({
         afiliados_checados: affiliates.length,
-        drifts_detectados: drifts.length,
-        ajustes_aplicados: ajustados,
-        detalhes: { drifts: drifts.slice(0, 100), commissions_criadas: criadas, exemplos: detalhesCriadas.slice(0, 20) },
+        drifts_detectados: drifts.length + counterDrifts.length,
+        ajustes_aplicados: ajustados + countersFixed,
+        detalhes: {
+          drifts_earnings: drifts.slice(0, 100),
+          drifts_counters: counterDrifts.slice(0, 100),
+          commissions_criadas: criadas,
+          exemplos: detalhesCriadas.slice(0, 20),
+        },
       }),
     }).catch(() => {});
 
-    // Notifica admin se tiver drift OU commissions criadas
-    if (drifts.length > 0 || criadas > 0) {
-      const extras = criadas > 0 ? [['⚠️ Commissions faltantes criadas', String(criadas)], ['Exemplos', detalhesCriadas.slice(0, 5).join(' | ')]] : [];
-      await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `Reconciliacao de afiliados — ${drifts.length} drift(s) + ${criadas} commission(s) recuperada(s)`, [
+    // Notifica admin se tiver qualquer drift OU commissions criadas
+    if (drifts.length > 0 || counterDrifts.length > 0 || criadas > 0) {
+      const extras = [];
+      if (criadas > 0) {
+        extras.push(['⚠️ Commissions faltantes criadas', String(criadas)]);
+        extras.push(['Exemplos', detalhesCriadas.slice(0, 5).join(' | ')]);
+      }
+      if (counterDrifts.length > 0) {
+        extras.push(['⚠️ Drifts de counter (total_full/master)', String(counterDrifts.length)]);
+        extras.push(['Counter exemplos', counterDrifts.slice(0, 5).map(d =>
+          `${d.email}: full ${d.full_stored}→${d.full_real}, master ${d.master_stored}→${d.master_real}`
+        ).join(' | ')]);
+      }
+      await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `Reconciliacao de afiliados — ${drifts.length + counterDrifts.length} drift(s) + ${criadas} commission(s) recuperada(s)`, [
         ['Afiliados checados', String(affiliates.length)],
-        ['Drifts detectados', String(drifts.length)],
-        ['Ajustes aplicados', String(ajustados)],
-        ['Drift exemplos', drifts.slice(0, 5).map(d => `${d.email}: guardado R$${d.stored.toFixed(2)} → real R$${d.real.toFixed(2)}`).join(' | ')],
+        ['Drifts earnings', String(drifts.length)],
+        ['Drifts counters', String(counterDrifts.length)],
+        ['Ajustes aplicados', String(ajustados + countersFixed)],
+        ['Drift earnings exemplos', drifts.slice(0, 5).map(d => `${d.email}: guardado R$${d.stored.toFixed(2)} → real R$${d.real.toFixed(2)}`).join(' | ')],
         ...extras,
       ]);
     }
@@ -582,8 +646,9 @@ async function reconcile(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
     return res.status(200).json({
       ok: true,
       afiliados_checados: affiliates.length,
-      drifts_detectados: drifts.length,
-      ajustes_aplicados: ajustados,
+      drifts_earnings: drifts.length,
+      drifts_counters: counterDrifts.length,
+      ajustes_aplicados: ajustados + countersFixed,
       commissions_criadas: criadas,
     });
   } catch (e) {
