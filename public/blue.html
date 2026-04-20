@@ -401,15 +401,19 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
     align-items:center;
   }
   #pfFeed .slide{
-    height:92dvh;
-    flex-shrink:0;
-    margin-bottom:12px;
-    width:min(560px, max(320px, calc(92dvh * 9 / 16)));
-    min-width:320px;
-    max-width:min(100%, 560px);
-    border-radius:18px;
-    overflow:hidden;
-    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    /* Width totalmente baseada em viewport units (estavel, nao recalcula
+       durante layout changes do pai). min() pega o menor de:
+       - 560px: cap estetico
+       - calc(92dvh * 9/16): aspect 9:16 respeitando altura
+       - calc(100vw - 280px): cabe na area util (sidebar 240 + margem 40)
+       Sem min-width ou max-width adicionais pra nao criar instabilidade. */
+    height: 92dvh;
+    flex-shrink: 0;
+    margin-bottom: 12px;
+    width: min(560px, calc(92dvh * 9 / 16), calc(100vw - 280px));
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
   }
   #pfFeed .slide:last-child{ margin-bottom:4dvh }
   .pf-topbar{ padding-top:28px }
