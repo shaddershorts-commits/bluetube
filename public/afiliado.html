@@ -644,6 +644,8 @@ async function init(_isRetry){
       }catch(e){}
       // Popup de lancamento BlueTendencias — aparece 1x, persiste no banco
       try { checarPopupLancamento(); } catch(e) {}
+      // Milestone popup (10/25/50/100/250/500 indicacoes pagas) — 1x por marco
+      try { checarMilestone(); } catch(e) {}
     }else{
       console.log('Dashboard response:', r.status, d.error);
       show('landingSection');
@@ -992,6 +994,400 @@ setInterval(async()=>{
   try{const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'refresh',refresh_token:refresh})});
   if(r.ok){const d=await r.json();const t=d.session?.access_token||d.access_token;const rf=d.session?.refresh_token;if(t){localStorage.setItem('bt_token',t);token=t;}if(rf)localStorage.setItem('bt_refresh_token',rf);}}catch(e){}
 },45*60*1000);
+
+// ═══════════════════════════════════════════════════════════════════════
+// MILESTONE POPUP — reconhecimento cinematografico por marco de indicacoes
+// (10/25/50/100/250/500). Aparece 1x por marco. Marcacao no fechamento.
+// ═══════════════════════════════════════════════════════════════════════
+const MILESTONE_CONTENT = {
+  10: {
+    badge: '⭐ 10 Indicações',
+    trophy: '🏆',
+    titulo: (nome) => `<span class="nome">${nome}</span>, você acabou de entrar<br>no Hall dos nossos Top Afiliados`,
+    subtitulo: 'Isso não é pouco. É <strong>marco</strong>.',
+  },
+  // 25/50/100/250/500 serao adicionados quando o primeiro afiliado se aproximar
+};
+
+async function checarMilestone() {
+  if (!token) return;
+  try {
+    const r = await fetch(`/api/affiliate?action=verificar-milestone&token=${encodeURIComponent(token)}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.mostrar && d.milestone && MILESTONE_CONTENT[d.milestone]) {
+      mostrarMilestonePopup(d.milestone, d.nome || 'Criador', d.indicacoes || 0);
+    }
+  } catch (e) { console.log('[milestone]', e.message); }
+}
+
+function mostrarMilestonePopup(milestone, nome, indicacoes) {
+  const c = MILESTONE_CONTENT[milestone];
+  if (!c) return;
+  const pop = document.getElementById('milestonePopup');
+  const content = document.getElementById('milestonePopupContent');
+  content.innerHTML = `
+    <div class="mpop-hero">
+      <div class="mpop-hero-badge">${c.badge}</div>
+      <div class="mpop-hero-trophy">${c.trophy}</div>
+      <div class="mpop-hero-title">${c.titulo(nome)}</div>
+      <div class="mpop-hero-sub">${c.subtitulo}</div>
+    </div>
+    <div class="mpop-section">
+      <div class="mpop-heading">Por que você está no lugar certo</div>
+      <div class="mpop-body-text">Você confiou no BlueTube quando muitos ainda nem nos conheciam. Por isso, queremos que saiba:</div>
+      <ul class="mpop-check-list">
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Cookie de 60 dias</strong><span class="mpop-check-sub">Mercado padrão: 30. Dobramos pra você.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Rastreamento cross-device</strong><span class="mpop-check-sub">Stripe metadata + cookie + fingerprint de 14 dias.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Atribuição retroativa</strong><span class="mpop-check-sub">Dashboard admin recupera vendas perdidas manualmente.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Auditoria completa</strong><span class="mpop-check-sub">Você vê cada decisão no log de atribuições.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Reembolso reverte automático</strong><span class="mpop-check-sub">Zero conflito de saldo em chargebacks.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Pix automático dia 22</strong><span class="mpop-check-sub">Integração Asaas nativa. Sem esperar liberação.</span></div></li>
+        <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text"><strong>Suporte direto com o fundador</strong><span class="mpop-check-sub">Sem call center. Sem burocracia.</span></div></li>
+      </ul>
+    </div>
+    <div class="mpop-section">
+      <div class="mpop-heading">Comparação com o mercado</div>
+      <div class="mpop-compare-row"><div class="mpop-compare-name">Hotmart</div><div class="mpop-compare-bar"><div class="mpop-compare-fill" style="--score:0.85"></div></div><div class="mpop-compare-score">8.5/10</div></div>
+      <div class="mpop-compare-row"><div class="mpop-compare-name">Kiwify</div><div class="mpop-compare-bar"><div class="mpop-compare-fill" style="--score:0.80"></div></div><div class="mpop-compare-score">8.0/10</div></div>
+      <div class="mpop-compare-row"><div class="mpop-compare-name">Eduzz</div><div class="mpop-compare-bar"><div class="mpop-compare-fill" style="--score:0.70"></div></div><div class="mpop-compare-score">7.0/10</div></div>
+      <div class="mpop-compare-row"><div class="mpop-compare-name">Monetizze</div><div class="mpop-compare-bar"><div class="mpop-compare-fill" style="--score:0.60"></div></div><div class="mpop-compare-score">6.0/10</div></div>
+      <div class="mpop-compare-row highlight"><div class="mpop-compare-name">⭐ BlueTube</div><div class="mpop-compare-bar"><div class="mpop-compare-fill" style="--score:0.97"></div></div><div class="mpop-compare-score">9.7/10</div></div>
+      <div class="mpop-body-text" style="margin-top:14px">Você está no programa mais robusto de afiliados de SaaS do Brasil.</div>
+    </div>
+    <div class="mpop-section">
+      <div class="mpop-heading">O que vem pela frente</div>
+      <div class="mpop-body-text">Próximos marcos:</div>
+      <ul class="mpop-future-list">
+        <li><span class="ic">🏆</span><span class="txt"><strong style="color:#fff">Bronze</strong></span><span class="qty">25 indicações</span></li>
+        <li><span class="ic">🥈</span><span class="txt"><strong style="color:#fff">Prata</strong></span><span class="qty">50 indicações</span></li>
+        <li><span class="ic">🥇</span><span class="txt"><strong style="color:#fff">Ouro</strong></span><span class="qty">100 indicações</span></li>
+        <li><span class="ic">💎</span><span class="txt"><strong style="color:#fff">Diamante</strong></span><span class="qty">250 indicações</span></li>
+      </ul>
+      <div class="mpop-body-text" style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.45)">Cada marco traz benefícios novos (em desenvolvimento).</div>
+    </div>
+    <div class="mpop-section">
+      <div class="mpop-heading">Promessa pessoal</div>
+      <div class="mpop-promise">
+        <div class="mpop-body-text" style="margin:0 0 12px">Eu, Felipe, fundador do BlueTube, me comprometo:</div>
+        <ul class="mpop-check-list">
+          <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text">Você sempre receberá o que ganhou</div></li>
+          <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text">Cada disputa será resolvida com transparência total</div></li>
+          <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text">Comissões nunca serão reduzidas para quem já é afiliado ativo</div></li>
+          <li><div class="mpop-check-icon">✓</div><div class="mpop-check-text">Você tem prioridade no suporte</div></li>
+        </ul>
+        <div class="mpop-body-text" style="margin:12px 0 0">Continue divulgando. A gente cresce junto.</div>
+        <div class="signature">— Felipe</div>
+      </div>
+      <div class="mpop-cta-row">
+        <button class="mpop-cta-primary" onclick="fecharMilestonePopup()">Continuar divulgando →</button>
+      </div>
+    </div>
+  `;
+  const particles = document.getElementById('milestonePopupParticles');
+  particles.innerHTML = '';
+  const N = window.innerWidth < 640 ? 14 : 28;
+  for (let i = 0; i < N; i++) {
+    const s = document.createElement('span');
+    const isGold = Math.random() > 0.5;
+    s.style.left = (Math.random() * 100) + '%';
+    s.style.top = (Math.random() * 100) + '%';
+    s.style.background = isGold ? '#FBBF24' : '#00AAFF';
+    s.style.boxShadow = `0 0 10px ${isGold ? '#FBBF24' : '#00AAFF'}`;
+    s.style.animationDelay = (Math.random() * 6) + 's';
+    s.style.animationDuration = (4 + Math.random() * 4) + 's';
+    particles.appendChild(s);
+  }
+  pop.style.display = 'block';
+  requestAnimationFrame(() => pop.classList.add('show'));
+  document.body.style.overflow = 'hidden';
+  pop.dataset.milestone = milestone;
+  document.addEventListener('keydown', _milestoneEsc);
+}
+
+function _milestoneEsc(e) {
+  if (e.key === 'Escape') fecharMilestonePopup();
+}
+
+async function fecharMilestonePopup() {
+  const pop = document.getElementById('milestonePopup');
+  if (!pop || pop.style.display === 'none') return;
+  const milestone = parseInt(pop.dataset.milestone, 10);
+  pop.classList.remove('show');
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', _milestoneEsc);
+  setTimeout(() => { pop.style.display = 'none'; }, 500);
+  if (milestone && token) {
+    try {
+      await fetch('/api/affiliate?action=marcar-milestone-visto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, milestone }),
+      });
+    } catch (e) { console.log('[milestone-marcar]', e.message); }
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'milestonePopupOverlay') {
+    fecharMilestonePopup();
+  }
+});
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MILESTONE POPUP — estilos + markup (vazio, JS preenche content)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<style>
+#milestonePopup {
+  position: fixed; inset: 0; z-index: 9999;
+  display: none;
+  opacity: 0;
+  transition: opacity .5s ease-out;
+}
+#milestonePopup.show { opacity: 1; }
+#milestonePopupOverlay {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+#milestonePopupCard {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.92);
+  width: min(720px, 92vw);
+  max-height: 90vh;
+  background: linear-gradient(160deg, #0A0F1C 0%, #020817 100%);
+  border-radius: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: transform .5s cubic-bezier(.22,1.2,.36,1);
+  box-shadow: 0 40px 120px rgba(251, 191, 36, .15), 0 20px 60px rgba(0, 170, 255, .08);
+  padding: 0;
+}
+#milestonePopupCard::before {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, #FBBF24, #00AAFF, #FBBF24);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+#milestonePopup.show #milestonePopupCard { transform: translate(-50%, -50%) scale(1); }
+#milestonePopupClose {
+  position: sticky; top: 14px; float: right;
+  margin: 14px 14px 0 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 10;
+  transition: background .15s;
+}
+#milestonePopupClose:hover { background: rgba(239, 68, 68, 0.4); }
+#milestonePopupParticles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 24px; }
+#milestonePopupParticles span {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  animation: mpop-float 6s infinite ease-in-out;
+  opacity: 0.6;
+}
+@keyframes mpop-float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.4; }
+  50%      { transform: translateY(-30px) scale(1.3); opacity: 0.9; }
+}
+.mpop-section {
+  padding: 28px 40px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  position: relative;
+}
+.mpop-section:last-child { border-bottom: none; }
+.mpop-hero {
+  text-align: center;
+  padding: 48px 40px 36px;
+  background: radial-gradient(ellipse at top, rgba(251,191,36,.12), transparent 60%);
+  position: relative;
+}
+.mpop-hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, rgba(251,191,36,.18), rgba(0,170,255,.12));
+  border: 1px solid rgba(251,191,36,.4);
+  border-radius: 100px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #FBBF24;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.mpop-hero-trophy {
+  font-size: 80px;
+  margin: 12px 0 16px;
+  animation: mpop-trophy-pulse 2.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 24px rgba(251,191,36,.5));
+}
+@keyframes mpop-trophy-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 24px rgba(251,191,36,.5)); }
+  50%      { transform: scale(1.08); filter: drop-shadow(0 0 40px rgba(251,191,36,.8)); }
+}
+.mpop-hero-title {
+  font-size: 26px; font-weight: 900;
+  color: #fff; line-height: 1.25; margin-bottom: 12px;
+}
+.mpop-hero-title .nome { color: #FBBF24; }
+.mpop-hero-sub {
+  font-size: 15px;
+  color: rgba(255,255,255,.75);
+  line-height: 1.55;
+}
+.mpop-hero-sub strong { color: #fff; font-weight: 700; }
+.mpop-heading {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: rgba(0,170,255,.9);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.mpop-body-text {
+  color: rgba(255,255,255,.8);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.mpop-check-list { list-style: none; padding: 0; margin: 0; }
+.mpop-check-list li {
+  display: flex; gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px dashed rgba(255,255,255,.05);
+}
+.mpop-check-list li:last-child { border-bottom: none; }
+.mpop-check-icon {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(16,185,129,.15);
+  color: #10B981;
+  font-size: 12px;
+  font-weight: 900;
+  margin-top: 1px;
+}
+.mpop-check-text {
+  font-size: 14px;
+  color: rgba(255,255,255,.88);
+  line-height: 1.45;
+  flex: 1;
+}
+.mpop-check-text strong { color: #fff; font-weight: 700; }
+.mpop-check-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255,255,255,.45);
+}
+.mpop-compare-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+.mpop-compare-name { flex: 0 0 120px; color: rgba(255,255,255,.7); }
+.mpop-compare-bar {
+  flex: 1; height: 8px;
+  background: rgba(255,255,255,.05);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mpop-compare-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #64748b, #94a3b8);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 1.1s .35s cubic-bezier(.22,.8,.36,1);
+  border-radius: 4px;
+  width: 100%;
+}
+#milestonePopup.show .mpop-compare-fill { transform: scaleX(var(--score, 1)); }
+.mpop-compare-score { flex: 0 0 54px; text-align: right; color: rgba(255,255,255,.6); }
+.mpop-compare-row.highlight .mpop-compare-name { color: #FBBF24; font-weight: 700; }
+.mpop-compare-row.highlight .mpop-compare-fill {
+  background: linear-gradient(90deg, #FBBF24, #00AAFF);
+  box-shadow: 0 0 18px rgba(251,191,36,.4);
+}
+.mpop-compare-row.highlight .mpop-compare-score { color: #FBBF24; font-weight: 700; }
+.mpop-future-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.mpop-future-list li {
+  display: flex; gap: 12px; align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(255,255,255,.75);
+}
+.mpop-future-list .ic { font-size: 20px; }
+.mpop-future-list .txt { flex: 1; }
+.mpop-future-list .qty { font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,.5); font-size: 11px; }
+.mpop-promise {
+  background: linear-gradient(180deg, rgba(0,170,255,.06), rgba(251,191,36,.04));
+  border: 1px solid rgba(0,170,255,.18);
+  border-radius: 14px;
+  padding: 22px;
+  margin-top: 10px;
+}
+.mpop-promise .signature {
+  font-style: italic;
+  color: rgba(255,255,255,.6);
+  font-size: 13px;
+  margin-top: 12px;
+}
+.mpop-cta-row { display: grid; gap: 10px; margin-top: 20px; }
+.mpop-cta-row button {
+  padding: 14px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: transform .1s, box-shadow .3s;
+}
+.mpop-cta-primary {
+  background: linear-gradient(135deg, #00AAFF, #6B4EE6);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0,170,255,.3);
+}
+.mpop-cta-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,170,255,.5); }
+@media (max-width: 640px) {
+  #milestonePopupCard {
+    width: 100vw; height: 100vh; max-height: 100vh;
+    border-radius: 0; top: 0; left: 0;
+    transform: scale(0.96);
+  }
+  #milestonePopup.show #milestonePopupCard { transform: scale(1); }
+  .mpop-hero { padding: 40px 22px 28px; }
+  .mpop-hero-title { font-size: 22px; }
+  .mpop-section { padding: 22px 22px; }
+  .mpop-compare-name { flex: 0 0 92px; font-size: 11px; }
+  .mpop-compare-score { flex: 0 0 48px; font-size: 11px; }
+  .mpop-hero-trophy { font-size: 64px; }
+}
+</style>
+
+<div id="milestonePopup" aria-hidden="true">
+  <div id="milestonePopupOverlay"></div>
+  <div id="milestonePopupCard">
+    <button id="milestonePopupClose" onclick="fecharMilestonePopup()" aria-label="Fechar">✕</button>
+    <div id="milestonePopupParticles"></div>
+    <div id="milestonePopupContent"></div>
+  </div>
+</div>
 </body>
 </html>
