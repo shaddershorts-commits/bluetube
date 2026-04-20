@@ -205,10 +205,21 @@ async function salvarVideos(items, nicho, regionCode) {
 // Rotaciona entre paises pra diversificar o banco. Cada execucao processa
 // 1 pais (rota via ultimo_pais salvo no log). Com crons a cada 2h, cada
 // pais pega uma coleta a cada 6h aprox.
+// Rotacao ponderada: cada entrada = ~9% das execucoes da trending.
+// Distribuicao: BR=1 (~9%), US=2 (~18%), outros paises=1 cada (~9%).
+// Internacional total ~91%. India (IN) propositalmente ausente.
 const PAISES_TRENDING = [
   { code: 'BR', lang: 'pt-BR', relevance: 'pt' },
   { code: 'US', lang: 'en',    relevance: 'en' },
+  { code: 'US', lang: 'en',    relevance: 'en' },
   { code: 'MX', lang: 'es',    relevance: 'es' },
+  { code: 'AR', lang: 'es',    relevance: 'es' },
+  { code: 'ES', lang: 'es',    relevance: 'es' },
+  { code: 'GB', lang: 'en',    relevance: 'en' },
+  { code: 'DE', lang: 'de',    relevance: 'de' },
+  { code: 'FR', lang: 'fr',    relevance: 'fr' },
+  { code: 'JP', lang: 'ja',    relevance: 'ja' },
+  { code: 'KR', lang: 'ko',    relevance: 'ko' },
 ];
 
 async function coletarTrending(res) {
