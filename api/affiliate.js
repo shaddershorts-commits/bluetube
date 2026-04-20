@@ -661,5 +661,98 @@ export default async function handler(req, res) {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // MILESTONES — pop-up cinematografico quando atinge 10/25/50/100/250/500
+  // indicacoes pagas (full/master). Aparece 1x na vida do afiliado por marco.
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET ?action=verificar-milestone&token=X
+  // Retorna { mostrar: true, milestone: N, nome: 'Fulano' } se ha milestone
+  // atingido + nao visto. Se nada a mostrar: { mostrar: false }.
+  // Sempre retorna o MENOR milestone nao visto (protecao contra mostrar
+  // varios simultaneos — ex: se passou de 0 pra 30 de uma vez, mostra o
+  // de 10 primeiro e os outros ficam pra proximas visitas).
+  if (req.method === 'GET' && action === 'verificar-milestone') {
+    const { token } = req.query;
+    if (!token) return res.status(401).json({ error: 'Token obrigatório' });
+    try {
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } });
+      if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
+      const user = await ur.json();
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=id,name,ref_code,status&limit=1`, { headers: supaH });
+      const [aff] = ar.ok ? await ar.json() : [];
+      if (!aff || aff.status === 'suspended') return res.status(200).json({ mostrar: false });
+
+      // Conta indicacoes pagas ativas (full/master, nao-manual)
+      const subR = await fetch(
+        `${SUPA_URL}/rest/v1/subscribers?affiliate_ref=eq.${encodeURIComponent(aff.ref_code)}&plan=in.(full,master)&is_manual=eq.false&select=id`,
+        { headers: { ...supaH, Prefer: 'count=exact' } }
+      );
+      const subs = subR.ok ? await subR.json() : [];
+      const indicacoes = subs.length;
+
+      if (indicacoes < 10) return res.status(200).json({ mostrar: false, indicacoes });
+
+      // Busca milestones ja vistos desse afiliado
+      const vistosR = await fetch(
+        `${SUPA_URL}/rest/v1/affiliate_milestones_vistos?affiliate_id=eq.${aff.id}&select=milestone`,
+        { headers: supaH }
+      );
+      const vistos = vistosR.ok ? await vistosR.json() : [];
+      const vistosSet = new Set(vistos.map(v => v.milestone));
+
+      const MILESTONES = [10, 25, 50, 100, 250, 500];
+      for (const m of MILESTONES) {
+        if (indicacoes >= m && !vistosSet.has(`milestone_${m}`)) {
+          const primeiroNome = (aff.name || user.email.split('@')[0]).split(' ')[0];
+          const nomeFmt = primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1).toLowerCase();
+          return res.status(200).json({
+            mostrar: true,
+            milestone: m,
+            nome: nomeFmt,
+            indicacoes,
+          });
+        }
+      }
+      return res.status(200).json({ mostrar: false, indicacoes });
+    } catch (e) {
+      console.error('[verificar-milestone]', e.message);
+      // NAO bloqueia UI em caso de erro — frontend continua normal
+      return res.status(200).json({ mostrar: false, error: e.message });
+    }
+  }
+
+  // POST {action:'marcar-milestone-visto', token, milestone}
+  // Grava que o afiliado viu o pop-up deste milestone. Idempotente via
+  // UNIQUE(affiliate_id, milestone) + Prefer:resolution=ignore-duplicates.
+  if (req.method === 'POST' && action === 'marcar-milestone-visto') {
+    const { token, milestone } = req.body || {};
+    if (!token) return res.status(401).json({ error: 'Token obrigatório' });
+    const milestoneNum = parseInt(milestone, 10);
+    if (!milestoneNum || ![10, 25, 50, 100, 250, 500].includes(milestoneNum)) {
+      return res.status(400).json({ error: 'milestone inválido (deve ser 10/25/50/100/250/500)' });
+    }
+    try {
+      const ur = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } });
+      if (!ur.ok) return res.status(401).json({ error: 'Token inválido' });
+      const user = await ur.json();
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(user.email)}&select=id&limit=1`, { headers: supaH });
+      const [aff] = ar.ok ? await ar.json() : [];
+      if (!aff) return res.status(404).json({ error: 'afiliado não encontrado' });
+
+      await fetch(`${SUPA_URL}/rest/v1/affiliate_milestones_vistos`, {
+        method: 'POST',
+        headers: { ...supaH, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        body: JSON.stringify({
+          affiliate_id: aff.id,
+          milestone: `milestone_${milestoneNum}`,
+        }),
+      });
+      return res.status(200).json({ ok: true, milestone: milestoneNum });
+    } catch (e) {
+      console.error('[marcar-milestone-visto]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   return res.status(404).json({ error: 'Action não encontrada' });
 }
