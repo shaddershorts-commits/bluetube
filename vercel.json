@@ -107,7 +107,6 @@
       "schedule": "0 9 21 * *"
     },
     {
-      "_comment": "Alerta admin de orfaos (pagos sem affiliate_ref) - 11h UTC = 8h BR",
       "path": "/api/affiliate-robustness?action=daily-orphans-alert",
       "schedule": "0 11 * * *"
     },
