@@ -413,15 +413,6 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   }
   #pfFeed .slide:last-child{ margin-bottom:4dvh }
   .pf-topbar{ padding-top:28px }
-  /* Slide unico (Explorar abrindo 1 video) — ocupa tudo sem card look.
-     Elimina o calc() de width que podia vazar quando a sidebar + devtools
-     deixam pouco espaco horizontal. */
-  #pfFeed.single{ display:block; padding:0 }
-  #pfFeed.single .slide{
-    width:100%; min-width:0; max-width:100%;
-    height:100dvh; margin:0;
-    border-radius:0; box-shadow:none;
-  }
 }
 
 /* ── CHAT SYSTEM ─────────────────────────────────────────────────────────── */
@@ -2740,10 +2731,6 @@ function openProfileFeed(vids, startId, username) {
   document.getElementById('pfTitle').textContent = '@' + (username || 'usuário');
   const feed = document.getElementById('pfFeed');
   feed.innerHTML = '';
-  // Marca "single" quando abre um unico video (ex: Explorar) — CSS elimina
-  // o centering/calc de width que pode causar vasamento lateral no desktop.
-  if (pfVids.length === 1) feed.classList.add('single');
-  else feed.classList.remove('single');
   pfVids.forEach((v, i) => {
     const s = mkSlide(v, i);
     if (s) {
