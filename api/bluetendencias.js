@@ -146,29 +146,34 @@ function isUnlimitedEmail(email) {
   return lista.includes(e);
 }
 
-async function checarRateLimitEBudget(ctx, userId, userEmail) {
+// Limites por feature — janela rolante de 15h (sliding window).
+// iniciar-analise e analisar-video sao caminhos de entrada; dissecar
+// eh o caminho completo (gerarAnaliseFinal) que consome mais tokens.
+const RATE_JANELA_MS = 15 * 60 * 60 * 1000; // 15 horas
+const RATE_LIMITES = {
+  'iniciar-analise': 2,
+  'analisar-video': 2,
+  'dissecar': 4,
+};
+
+async function checarRateLimitEBudget(ctx, userId, userEmail, feature = 'dissecar') {
   // Bypass total pra emails na whitelist (owner/testers)
   if (isUnlimitedEmail(userEmail)) {
-    return { permitido: true, analises_restantes: 999, analises_total_24h: 999, unlimited: true };
+    return { permitido: true, analises_restantes: 999, analises_total: 999, feature, unlimited: true };
   }
 
-  // Limite individual removido — budget global e a unica protecao.
-  // Pra reativar: defina STUDIO_MAX_PER_USER_24H no Vercel (ex: 3).
-  const limitePorUser = parseInt(process.env.STUDIO_MAX_PER_USER_24H || '0', 10);
-  let restantes = 999;
-  if (limitePorUser > 0) {
-    const vinte4h = new Date(Date.now() - 86400000).toISOString();
-    const rlR = await fetch(
-      `${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${userId}&usado_em=gte.${vinte4h}&select=usado_em&order=usado_em.asc`,
-      { headers: ctx.h }
-    );
-    const usos = rlR.ok ? await rlR.json() : [];
-    restantes = Math.max(0, limitePorUser - usos.length);
-    if (restantes === 0) {
-      const antiga = usos[0];
-      const proximaEm = antiga ? new Date(new Date(antiga.usado_em).getTime() + 86400000) : null;
-      return { permitido: false, motivo: 'limite_24h', usadas_24h: usos.length, proxima_analise_em: proximaEm?.toISOString() };
-    }
+  const limite = RATE_LIMITES[feature] ?? 4;
+  const janelaISO = new Date(Date.now() - RATE_JANELA_MS).toISOString();
+  const rlR = await fetch(
+    `${ctx.SU}/rest/v1/studio_rate_limits?user_id=eq.${userId}&feature=eq.${feature}&usado_em=gte.${janelaISO}&select=usado_em&order=usado_em.asc`,
+    { headers: ctx.h }
+  );
+  const usos = rlR.ok ? await rlR.json() : [];
+  const restantes = Math.max(0, limite - usos.length);
+  if (restantes === 0) {
+    const antiga = usos[0];
+    const proximaEm = antiga ? new Date(new Date(antiga.usado_em).getTime() + RATE_JANELA_MS) : null;
+    return { permitido: false, motivo: 'limite_atingido', feature, usadas: usos.length, limite, proxima_em: proximaEm?.toISOString() };
   }
 
   // Budget global ainda protege contra abuso massivo
@@ -179,15 +184,15 @@ async function checarRateLimitEBudget(ctx, userId, userEmail) {
     return { permitido: false, motivo: 'sistema_pausado', mensagem: 'Blublu está descansando. Volta em algumas horas.' };
   }
 
-  return { permitido: true, analises_restantes: restantes, analises_total_24h: limitePorUser || 999 };
+  return { permitido: true, analises_restantes: restantes, analises_total: limite, feature };
 }
 
-async function registrarUso(ctx, userId, userEmail) {
+async function registrarUso(ctx, userId, userEmail, feature = 'dissecar') {
   // Nao registra pra unlimited (nao poluir tabela de rate limits)
   if (isUnlimitedEmail(userEmail)) return;
   await fetch(`${ctx.SU}/rest/v1/studio_rate_limits`, {
     method: 'POST', headers: { ...ctx.h, Prefer: 'return=minimal' },
-    body: JSON.stringify({ user_id: userId }),
+    body: JSON.stringify({ user_id: userId, feature }),
   }).catch(() => {});
 }
 
@@ -1046,13 +1051,15 @@ async function entrada(ctx, req) {
   ]);
   const salvas = salvasR.ok ? await salvasR.json() : [];
   const historico = historicoR.ok ? await historicoR.json() : [];
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
+  // Usa feature 'dissecar' (4/15h) como a principal exibida na tela de entrada.
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email, 'dissecar');
 
   return {
     nome: auth.nome,
     email: auth.user.email,
     restantes: rl.analises_restantes ?? 0,
-    proxima_em: rl.proxima_analise_em || null,
+    analises_total: rl.analises_total ?? 4,
+    proxima_em: rl.proxima_em || null,
     sistema_pausado: rl.motivo === 'sistema_pausado',
     sistema_pausado_msg: rl.mensagem || null,
     analises_salvas: salvas,
@@ -1187,8 +1194,11 @@ async function iniciarDissecacao(ctx, req) {
   const { token, video_id } = req.body || {};
   const auth = await requireMaster(ctx, token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email, 'iniciar-analise');
   if (!rl.permitido) return rl;
+  // Registra uso da feature 'iniciar-analise' (2/15h) — enforca o limite
+  // independentemente do user ir ate o final ou cancelar depois.
+  registrarUso(ctx, auth.user.id, auth.user.email, 'iniciar-analise').catch(() => {});
 
   const ytId = extrairYoutubeId(video_id) || video_id;
   let video = await buscarVideoDb(ctx, ytId);
@@ -1263,7 +1273,7 @@ async function gerarAnaliseFinal(ctx, req) {
 
   const auth = await requireMaster(ctx, token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email, 'dissecar');
   if (!rl.permitido) return rl;
 
   const ytId = extrairYoutubeId(video_id) || video_id;
@@ -1569,7 +1579,7 @@ Retorne APENAS JSON valido:
   }
 
   await Promise.all([
-    registrarUso(ctx, auth.user.id, auth.user.email),
+    registrarUso(ctx, auth.user.id, auth.user.email, 'dissecar'),
     atualizarBudgetDiario(ctx, custoBRL),
   ]);
 
@@ -1591,6 +1601,7 @@ Retorne APENAS JSON valido:
     tempo_ms: Date.now() - inicio,
     modelo: `p1:${out1.modelo_usado}/p2:${out2.modelo_usado}`,
     analises_restantes: Math.max(0, rl.analises_restantes - 1),
+    analises_total: rl.analises_total ?? 4,
     ...(usouFallback ? { aviso_fallback: true } : {}),
   };
 }
@@ -1687,7 +1698,7 @@ async function analisarMeuVideo(ctx, req) {
 
   const auth = await requireMaster(ctx, token);
   if (!auth.ok) return { error: auth.error, status: auth.status };
-  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email);
+  const rl = await checarRateLimitEBudget(ctx, auth.user.id, auth.user.email, 'analisar-video');
   if (!rl.permitido) return rl;
 
   const ytId = extrairYoutubeId(ent);
@@ -1859,7 +1870,7 @@ Retorne APENAS JSON valido:
     { views, likes: video.likes, titulo: video.titulo, tier }, custoBRL);
 
   await Promise.all([
-    registrarUso(ctx, auth.user.id, auth.user.email),
+    registrarUso(ctx, auth.user.id, auth.user.email, 'analisar-video'),
     atualizarBudgetDiario(ctx, custoBRL),
   ]);
 
@@ -1879,6 +1890,7 @@ Retorne APENAS JSON valido:
     },
     analise,
     analises_restantes: rl.analises_restantes ? Math.max(0, rl.analises_restantes - 1) : 999,
+    analises_total: rl.analises_total ?? 2,
     easter_egg: detectarIdolo(video),
   };
 }

@@ -839,7 +839,7 @@ const fmBRL = (n) => 'R$ ' + (n || 0).toLocaleString('pt-BR', { maximumFractionD
 const nomeCached = (()=>{ try{return localStorage.getItem('bt_studio_nome')||'';}catch(e){return '';} })();
 
 let state = {
-  nome: nomeCached || 'criador', restantes: 3, salvas: [], video: null, sessaoId: null,
+  nome: nomeCached || 'criador', restantes: 4, total: 4, salvas: [], video: null, sessaoId: null,
   dashboardDados: null, perguntasBlublu: [], respostas: {}, qIdx: 0,
   atosData: null, atoIdx: 0, quizData: null, quizIdx: 0, quizAcertos: 0,
   analiseId: null, projPeriodo: 'd30', viewsVivo: null,
@@ -1029,6 +1029,7 @@ async function dissectarMeuVideo() {
     state.atosData = d.analise;
     state.analiseId = d.analise_id;
     state.restantes = d.analises_restantes ?? state.restantes;
+    state.total = d.analises_total ?? state.total;
     // Explosão da supernova e vai pra resultado
     $('supernova').classList.add('explodindo');
     await sleep(1500);
@@ -1302,7 +1303,8 @@ async function renderSaudacao() {
   iniciarFogueteIndolente();
   $('sQtdSalvas').textContent = state.salvas.length + ' análise(s) guardada(s)';
   const ilimitado = (state.restantes || 0) >= 100;
-  $('sQtdRestantes').textContent = ilimitado ? 'análises ilimitadas ✨' : state.restantes + '/3 restantes nas próximas 24h';
+  const total = state.total || 4;
+  $('sQtdRestantes').textContent = ilimitado ? 'análises ilimitadas ✨' : `${state.restantes}/${total} restantes nas próximas 15h`;
   // Quota
   const qEl = $('sQuota');
   if (ilimitado) qEl.innerHTML = `✨ <b>análises ilimitadas</b> nesta sessão`;
@@ -1310,7 +1312,7 @@ async function renderSaudacao() {
   else if (state.proximaEm) {
     const mins = Math.max(0, Math.round((new Date(state.proximaEm) - Date.now()) / 60000));
     qEl.innerHTML = `⏳ próxima em ${Math.floor(mins/60)}h ${mins%60}m`;
-  } else qEl.innerHTML = `✨ <b>3</b> dissecações por 24h`;
+  } else qEl.innerHTML = `✨ <b>${total}</b> dissecações por 15h`;
 }
 
 // Foguete passa em LOOP de rotas diferentes se usuario ficar parado
@@ -1833,7 +1835,7 @@ function renderCompNicho(c, v) {
 
 // ═══════════ CENA 5+6: IMPLOSÃO + CHAT ═══════════
 async function iniciarDissecacao() {
-  if (state.restantes === 0) { toast('Limite de 24h atingido'); return; }
+  if (state.restantes === 0) { toast('Limite de 15h atingido'); return; }
   // Se modo "meu video", dispara fluxo adaptado (sem chat de perguntas)
   if (state.meuVideoMode) return dissectarMeuVideo();
   irCena('5');
@@ -1907,6 +1909,7 @@ async function disparaAnaliseAsync() {
     state.quizData = d.quiz;
     state.analiseId = d.analise_id;
     state.restantes = d.analises_restantes ?? state.restantes;
+    state.total = d.analises_total ?? state.total;
     // Supernova explode
     $('supernova').classList.add('explodindo');
     await sleep(1500);
@@ -2361,7 +2364,7 @@ function finalizarQuiz() {
 
 // ═══════════ CENA 10: AÇÕES FINAIS ═══════════
 function prepararFinal() {
-  $('finalSub').textContent = `Restam ${state.restantes} dissecações nas próximas 24h, ${state.nome}.`;
+  $('finalSub').textContent = `Restam ${state.restantes} dissecações nas próximas 15h, ${state.nome}.`;
 }
 
 async function salvarAnalise() {
