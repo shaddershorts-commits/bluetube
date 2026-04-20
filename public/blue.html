@@ -2137,11 +2137,16 @@ function setupObs(){
 
         vid.preload='auto';
         vid.muted=!_interacted;
-        // iOS/mobile: espera metadata antes de .play() pra nao rejeitar silenciosamente.
-        // Retry com muted=true tem delay pequeno pra evitar race no catch handler.
-        const _tryPlay=()=>{vid.play().catch(()=>{vid.muted=true;setTimeout(()=>vid.play().catch(()=>{}),60);});};
-        if(vid.readyState>=2)_tryPlay();
-        else vid.addEventListener('canplay',_tryPlay,{once:true});
+        // Tenta play imediato (funciona se browser ja aceita).
+        // Se falhar, forca muted e tenta de novo.
+        // Se ainda falhar, escuta canplay como ultimo fallback — cobre caso
+        // mobile onde o src acabou de ser setado e readyState ainda eh 0.
+        vid.play().catch(()=>{
+          vid.muted=true;
+          vid.play().catch(()=>{
+            vid.addEventListener('canplay',()=>vid.play().catch(()=>{}),{once:true});
+          });
+        });
         const el=document.getElementById('vc-'+sl.dataset.id);
         if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
         ping('view',sl.dataset.id);

@@ -684,6 +684,32 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    // Short-circuit: busca 1 video por id. Usado pelo Explorar pra abrir
+    // um video especifico rapido, sem passar pela logica de rerank+paginacao.
+    const vidParam = req.query.video_id;
+    if (vidParam) {
+      const vR = await fetchDb(
+        `${SU}/rest/v1/blue_videos?id=eq.${encodeURIComponent(vidParam)}&select=id,user_id,title,thumbnail_url,video_url,duration,views,likes,comments,saves,avg_watch_percent,score,nichos,views_24h,created_at,status`,
+        { headers: h }
+      );
+      if (vR.ok) {
+        const vs = await vR.json();
+        if (vs.length) {
+          const v = vs[0];
+          const pR = await fetchDb(
+            `${SU}/rest/v1/blue_profiles?user_id=eq.${v.user_id}&select=user_id,username,display_name,avatar_url,verificado`,
+            { headers: h }
+          );
+          const profs = pR.ok ? await pR.json() : [];
+          return res.status(200).json({
+            videos: [{ ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator: profs[0] || null }],
+            has_more: false,
+          });
+        }
+      }
+      return res.status(200).json({ videos: [], has_more: false });
+    }
+
     // ORDER matches cursor dimensions so pagination can't skip rows.
     // Score is applied post-hoc in JS re-rank; keeping score in SQL ORDER would
     // break the (created_at,id) cursor and silently hide newly-posted videos.
