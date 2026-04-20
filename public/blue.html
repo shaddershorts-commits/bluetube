@@ -970,32 +970,32 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 
 <!-- TOP BAR mobile: menu | tabs | busca (demais ícones vão pro bottom-nav) -->
 <div class="topbar">
-  <button class="tbtn icon-only" onclick="openGrupos()" id="gruposBtn" title="Chat" style="position:relative">💬<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
+  <button class="tbtn icon-only" onclick="openGrupos()" id="gruposBtn" title="Chat" data-i18n-title="nav_chat" style="position:relative">💬<span id="gruposBadge" class="inbox-badge" style="display:none">0</span></button>
   <div class="topbar-tabs">
-    <button id="tabForYou" class="tt-btn active" onclick="switchFeedMode('foryou')">Para Você</button>
-    <button id="tabFollowing" class="tt-btn" onclick="switchFeedMode('following')">Seguindo</button>
+    <button id="tabForYou" class="tt-btn active" onclick="switchFeedMode('foryou')" data-i18n="nav_for_you">Para Você</button>
+    <button id="tabFollowing" class="tt-btn" onclick="switchFeedMode('following')" data-i18n="nav_following">Seguindo</button>
   </div>
-  <button class="tbtn icon-only" onclick="openSearch()" title="Buscar">🔍</button>
+  <button class="tbtn icon-only" onclick="openSearch()" title="Buscar" data-i18n-title="nav_search">🔍</button>
 </div>
 
 <!-- BOTTOM NAV mobile: Início · Descobrir · Criar · Caixa · Perfil -->
 <nav class="bottom-nav">
-  <button class="bn-item active" id="bnHome" onclick="scrollToFeedTop()" title="Início">
-    <div class="bn-ic">🏠</div><div>Início</div>
+  <button class="bn-item active" id="bnHome" onclick="scrollToFeedTop()" title="Início" data-i18n-title="nav_home">
+    <div class="bn-ic">🏠</div><div data-i18n="nav_home">Início</div>
   </button>
-  <button class="bn-item" onclick="openTrending()" title="Descobrir">
-    <div class="bn-ic">🧭</div><div>Descobrir</div>
+  <button class="bn-item" onclick="openTrending()" title="Descobrir" data-i18n-title="nav_discover">
+    <div class="bn-ic">🧭</div><div data-i18n="nav_discover">Descobrir</div>
   </button>
-  <button class="bn-item" onclick="openUpload()" title="Criar">
-    <div class="bn-plus">+</div><div style="margin-top:2px">Criar</div>
+  <button class="bn-item" onclick="openUpload()" title="Criar" data-i18n-title="nav_create">
+    <div class="bn-plus">+</div><div style="margin-top:2px" data-i18n="nav_create">Criar</div>
   </button>
-  <button class="bn-item" onclick="openInbox()" title="Notificações" style="position:relative">
+  <button class="bn-item" onclick="openInbox()" title="Notificações" data-i18n-title="nav_notifications" style="position:relative">
     <div class="bn-ic" style="position:relative">🔔<span id="inboxBadge" class="bn-badge" style="display:none">0</span></div>
-    <div>Notif</div>
+    <div data-i18n="nav_notifications_short">Notif</div>
   </button>
-  <button class="bn-item" onclick="openProfile()" title="Perfil">
+  <button class="bn-item" onclick="openProfile()" title="Perfil" data-i18n-title="nav_profile">
     <div class="bn-ic" id="hdAv" style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;overflow:hidden">?</div>
-    <div>Perfil</div>
+    <div data-i18n="nav_profile">Perfil</div>
   </button>
 </nav>
 
@@ -1025,14 +1025,14 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <text x="53" y="45" font-family="'Syne','Arial Black',sans-serif" font-size="18" font-weight="900" fill="url(#bt-tube)" letter-spacing="-.5">Tube</text>
     </svg>
   </a>
-  <button class="ds-item active" onclick="switchFeedMode('foryou');scrollToFeedTop()"><span class="ds-ic">🏠</span>Para você</button>
-  <button class="ds-item" onclick="openTrending()"><span class="ds-ic">🧭</span>Explorar</button>
-  <button class="ds-item" onclick="switchFeedMode('following')"><span class="ds-ic">👥</span>Seguindo</button>
-  <button class="ds-item" onclick="openUpload()"><span class="ds-ic">➕</span>Carregar</button>
-  <button class="ds-item" onclick="openGrupos()" style="position:relative"><span class="ds-ic">💬</span>Chat<span id="gruposBadgeDesk" class="ds-badge" style="display:none">0</span></button>
-  <button class="ds-item" onclick="openInbox()" style="position:relative"><span class="ds-ic">🔔</span>Notificações<span id="inboxBadgeDesk" class="ds-badge" style="display:none">0</span></button>
-  <button class="ds-item" onclick="openProfile()"><span class="ds-ic">👤</span>Perfil</button>
-  <button class="ds-item" onclick="openSearch()"><span class="ds-ic">🔍</span>Buscar</button>
+  <button class="ds-item active" onclick="switchFeedMode('foryou');scrollToFeedTop()"><span class="ds-ic">🏠</span><span data-i18n="nav_for_you">Para você</span></button>
+  <button class="ds-item" onclick="openTrending()"><span class="ds-ic">🧭</span><span data-i18n="nav_explore">Explorar</span></button>
+  <button class="ds-item" onclick="switchFeedMode('following')"><span class="ds-ic">👥</span><span data-i18n="nav_following">Seguindo</span></button>
+  <button class="ds-item" onclick="openUpload()"><span class="ds-ic">➕</span><span data-i18n="nav_upload">Carregar</span></button>
+  <button class="ds-item" onclick="openGrupos()" style="position:relative"><span class="ds-ic">💬</span><span data-i18n="nav_chat">Chat</span><span id="gruposBadgeDesk" class="ds-badge" style="display:none">0</span></button>
+  <button class="ds-item" onclick="openInbox()" style="position:relative"><span class="ds-ic">🔔</span><span data-i18n="nav_notifications">Notificações</span><span id="inboxBadgeDesk" class="ds-badge" style="display:none">0</span></button>
+  <button class="ds-item" onclick="openProfile()"><span class="ds-ic">👤</span><span data-i18n="nav_profile">Perfil</span></button>
+  <button class="ds-item" onclick="openSearch()"><span class="ds-ic">🔍</span><span data-i18n="nav_search">Buscar</span></button>
 </nav>
 
 <!-- Search panel -->
@@ -1248,39 +1248,39 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     <div class="bt-modal-body" style="padding:8px 24px 16px">
       <button class="bt-menu-item" onclick="shareMyProfile()">
         <div class="bt-menu-icon">🔗</div>
-        <div class="bt-menu-text"><div class="title">Compartilhar perfil</div><div class="subtitle">Copia o link do seu perfil</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_share_profile">Compartilhar perfil</div><div class="subtitle" data-i18n="menu_share_profile_sub">Copia o link do seu perfil</div></div>
       </button>
       <a class="bt-menu-item" href="/blue-analytics" style="text-decoration:none">
         <div class="bt-menu-icon">📊</div>
-        <div class="bt-menu-text"><div class="title">Analytics</div><div class="subtitle">Views, curtidas e retenção</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_analytics">Analytics</div><div class="subtitle" data-i18n="menu_analytics_sub">Views, curtidas e retenção</div></div>
       </a>
       <a class="bt-menu-item" href="/bluetendencias" id="menuBlueTendencias" style="text-decoration:none;display:none">
         <div class="bt-menu-icon" style="background:linear-gradient(135deg,rgba(251,191,36,.18),rgba(0,170,255,.12))">📈</div>
-        <div class="bt-menu-text"><div class="title" style="display:flex;align-items:center;gap:6px">BlueTendências <span style="font-size:9px;background:#fbbf24;color:#0a0a0a;padding:1px 6px;border-radius:5px;font-weight:800">MASTER</span></div><div class="subtitle">Descubra tendências antes de todo mundo</div></div>
+        <div class="bt-menu-text"><div class="title" style="display:flex;align-items:center;gap:6px"><span data-i18n="menu_tendencias">BlueTendências</span> <span style="font-size:9px;background:#fbbf24;color:#0a0a0a;padding:1px 6px;border-radius:5px;font-weight:800">MASTER</span></div><div class="subtitle" data-i18n="menu_tendencias_sub">Descubra tendências antes de todo mundo</div></div>
       </a>
       <a class="bt-menu-item" href="/blue-monetizacao" style="text-decoration:none">
         <div class="bt-menu-icon">💰</div>
-        <div class="bt-menu-text"><div class="title">Monetização</div><div class="subtitle">Saldo e pagamentos</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_monetizacao">Monetização</div><div class="subtitle" data-i18n="menu_monetizacao_sub">Saldo e pagamentos</div></div>
       </a>
       <a class="bt-menu-item" href="/pioneiros" style="text-decoration:none">
         <div class="bt-menu-icon">🏆</div>
-        <div class="bt-menu-text"><div class="title">Programa Pioneiros</div><div class="subtitle">R$ 1.000 por indicações</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_pioneiros">Programa Pioneiros</div><div class="subtitle" data-i18n="menu_pioneiros_sub">R$ 1.000 por indicações</div></div>
       </a>
       <a class="bt-menu-item" href="/" style="text-decoration:none">
         <div class="bt-menu-icon">⚙️</div>
-        <div class="bt-menu-text"><div class="title">Configurações da conta</div><div class="subtitle">Planos, assinatura e privacidade</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_settings">Configurações da conta</div><div class="subtitle" data-i18n="menu_settings_sub">Planos, assinatura e privacidade</div></div>
       </a>
       <button class="bt-menu-item" onclick="closeProfMenu();setTimeout(openLangSelector,200)">
         <div class="bt-menu-icon">🌐</div>
-        <div class="bt-menu-text"><div class="title" id="profMenuLangTitle">Idioma</div><div class="subtitle" id="profMenuLangSub">Escolha o idioma da interface</div></div>
+        <div class="bt-menu-text"><div class="title" id="profMenuLangTitle" data-i18n="menu_language">Idioma</div><div class="subtitle" id="profMenuLangSub" data-i18n="menu_language_sub">Escolha o idioma da interface</div></div>
       </button>
       <button class="bt-menu-item danger" onclick="doLogoutBlue()">
         <div class="bt-menu-icon danger">🚪</div>
-        <div class="bt-menu-text"><div class="title">Sair da conta</div><div class="subtitle">Desconectar deste dispositivo</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="menu_logout">Sair da conta</div><div class="subtitle" data-i18n="menu_logout_sub">Desconectar deste dispositivo</div></div>
       </button>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" id="profMenuCancel" onclick="closeProfMenu()">Cancelar</button>
+      <button class="bt-btn-secondary" id="profMenuCancel" onclick="closeProfMenu()" data-i18n="menu_cancel">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1294,7 +1294,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     </div>
     <div class="bt-modal-body" id="langModalList" style="padding:8px 12px 16px;max-height:60vh;overflow-y:auto"></div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" id="langModalCancel" onclick="closeLangSelector()">Cancelar</button>
+      <button class="bt-btn-secondary" id="langModalCancel" onclick="closeLangSelector()" data-i18n="menu_cancel">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1738,20 +1738,44 @@ Badge VIP" rows="3"></textarea>
 <div class="toast" id="toast"></div>
 
 <script>
-// ── I18N BOOT ─────────────────────────────────────────────────────────────────
-// Chama initI18n() assim que possivel pra popular window.siteLang,
-// window.siteTranslations e window.t(). Erro silencioso (nao quebra o app).
-// No Commit C do bloco 1 vai entrar applyI18n() que aplica data-i18n no DOM.
-if (typeof window.initI18n === 'function') {
-  window.initI18n().catch(e => console.warn('[i18n boot]', e && e.message));
-} else {
-  // i18n.js ainda nao carregou (defer) — tenta no DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', () => {
-    if (typeof window.initI18n === 'function') {
-      window.initI18n().catch(e => console.warn('[i18n boot]', e && e.message));
-    }
+// ── I18N BOOT + APPLY ─────────────────────────────────────────────────────────
+// 1. Chama initI18n() ASAP pra popular siteLang/siteTranslations/t().
+// 2. Quando a promise resolve E o DOM esta pronto, chama applyI18n() que
+//    varre [data-i18n] e [data-i18n-title] aplicando as traducoes.
+// 3. Idioma nao-PT so substitui o texto — PT continua sendo o "HTML estatico"
+//    de fallback caso initI18n falhe, entao nada quebra visualmente.
+function applyI18n() {
+  if (typeof window.t !== 'function') return;
+  // Substitui textContent de [data-i18n]
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (!key) return;
+    const fallback = el.textContent;  // PT ja no HTML
+    const translated = window.t(key, fallback);
+    if (translated && translated !== el.textContent) el.textContent = translated;
+  });
+  // Substitui atributo title de [data-i18n-title]
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.getAttribute('data-i18n-title');
+    if (!key) return;
+    const fallback = el.getAttribute('title') || '';
+    const translated = window.t(key, fallback);
+    if (translated && translated !== fallback) el.setAttribute('title', translated);
   });
 }
+
+(function bootI18n() {
+  const apply = () => { try { applyI18n(); } catch (e) { console.warn('[i18n apply]', e); } };
+  const init = () => {
+    if (typeof window.initI18n !== 'function') return;
+    window.initI18n().then(apply).catch(e => console.warn('[i18n init]', e && e.message));
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let TOKEN = localStorage.getItem('bt_token');
