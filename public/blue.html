@@ -1175,12 +1175,12 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:80vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Comentários <span id="cpCnt" style="color:rgba(232,244,255,.4);font-weight:400;margin-left:4px"></span></span>
+      <span class="bt-modal-title"><span data-i18n="modal_comments_title">Comentários</span> <span id="cpCnt" style="color:rgba(232,244,255,.4);font-weight:400;margin-left:4px"></span></span>
       <button class="bt-modal-close" onclick="closeComments()">✕</button>
     </div>
-    <div class="bt-modal-body cp-list" id="cpList"><div class="bt-empty"><div class="bt-empty-icon">💬</div>Carregando…</div></div>
+    <div class="bt-modal-body cp-list" id="cpList"><div class="bt-empty"><div class="bt-empty-icon">💬</div><span data-i18n="modal_loading">Carregando…</span></div></div>
     <div class="bt-modal-footer cp-inp-row" style="align-items:flex-end">
-      <textarea class="bt-input bt-textarea cp-inp" id="cpInp" placeholder="Adicione um comentário…" rows="1"
+      <textarea class="bt-input bt-textarea cp-inp" id="cpInp" placeholder="Adicione um comentário…" data-i18n-placeholder="modal_comment_placeholder" rows="1"
         style="min-height:44px;max-height:120px;flex:1"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment();}"
         oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
@@ -1193,9 +1193,9 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="prof-page" id="profPage">
   <div class="prof-nav">
     <button class="prof-back" onclick="closeProfile()">←</button>
-    <div class="prof-nav-name" id="pNavName">Perfil</div>
-    <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()">Editar</button>
-    <button class="prof-nav-menu" id="pNavMenu" style="display:none" onclick="openProfMenu()" title="Mais opções" aria-label="Menu">⋮</button>
+    <div class="prof-nav-name" id="pNavName" data-i18n="profile_default_title">Perfil</div>
+    <button class="prof-nav-edit" id="pNavEdit" style="display:none" onclick="openEditProfile()" data-i18n="profile_edit_btn">Editar</button>
+    <button class="prof-nav-menu" id="pNavMenu" style="display:none" onclick="openProfMenu()" title="Mais opções" data-i18n-title="profile_more_options" aria-label="Menu" data-i18n-aria-label="profile_menu_aria">⋮</button>
   </div>
   <div class="prof-hd">
     <div class="prof-av" id="profAv">?
@@ -1349,23 +1349,23 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="bt-modal-overlay center" id="reportMenu" style="display:none">
   <div class="bt-modal">
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Denunciar conteúdo</span>
+      <span class="bt-modal-title" data-i18n="modal_report_title">Denunciar conteúdo</span>
       <button class="bt-modal-close" onclick="closeReportMenu()">✕</button>
     </div>
     <div class="bt-modal-body">
-      <div style="color:rgba(232,244,255,.5);font-size:13px;margin-bottom:16px">Por que você está denunciando?</div>
+      <div style="color:rgba(232,244,255,.5);font-size:13px;margin-bottom:16px" data-i18n="modal_report_question">Por que você está denunciando?</div>
       <div class="bt-radio-group" id="reportOptions">
-        <label class="bt-radio" onclick="selectReportReason(this,'spam')"><span class="bt-radio-circle"></span><span class="bt-radio-label">📢 Spam ou conteúdo enganoso</span></label>
-        <label class="bt-radio" onclick="selectReportReason(this,'nudez')"><span class="bt-radio-circle"></span><span class="bt-radio-label">🚫 Nudez ou conteúdo sexual</span></label>
-        <label class="bt-radio" onclick="selectReportReason(this,'violencia')"><span class="bt-radio-circle"></span><span class="bt-radio-label">⚠️ Violência ou conteúdo chocante</span></label>
-        <label class="bt-radio" onclick="selectReportReason(this,'assedio')"><span class="bt-radio-circle"></span><span class="bt-radio-label">🔕 Assédio ou bullying</span></label>
-        <label class="bt-radio" onclick="selectReportReason(this,'fake')"><span class="bt-radio-circle"></span><span class="bt-radio-label">❌ Informação falsa</span></label>
-        <label class="bt-radio" onclick="selectReportReason(this,'outro')"><span class="bt-radio-circle"></span><span class="bt-radio-label">📝 Outro motivo</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'spam')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_spam">📢 Spam ou conteúdo enganoso</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'nudez')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_nudity">🚫 Nudez ou conteúdo sexual</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'violencia')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_violence">⚠️ Violência ou conteúdo chocante</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'assedio')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_harass">🔕 Assédio ou bullying</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'fake')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_fake">❌ Informação falsa</span></label>
+        <label class="bt-radio" onclick="selectReportReason(this,'outro')"><span class="bt-radio-circle"></span><span class="bt-radio-label" data-i18n="modal_report_other">📝 Outro motivo</span></label>
       </div>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="closeReportMenu()">Cancelar</button>
-      <button class="bt-btn-danger" id="reportSubmitBtn" disabled onclick="submitReport(_reportReason)">Enviar denúncia</button>
+      <button class="bt-btn-secondary" onclick="closeReportMenu()" data-i18n="menu_cancel">Cancelar</button>
+      <button class="bt-btn-danger" id="reportSubmitBtn" disabled onclick="submitReport(_reportReason)" data-i18n="modal_report_submit">Enviar denúncia</button>
     </div>
   </div>
 </div>
@@ -1374,16 +1374,16 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="bt-modal-overlay center" id="blockConfirmOv" style="display:none">
   <div class="bt-modal">
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Bloquear <span id="blockUserName">usuário</span>?</span>
+      <span class="bt-modal-title" id="blockModalTitle">Bloquear <span id="blockUserName">usuário</span>?</span>
       <button class="bt-modal-close" onclick="btModalClose('blockConfirmOv')">✕</button>
     </div>
     <div class="bt-modal-body">
       <div style="text-align:center;font-size:48px;margin-bottom:16px">🔕</div>
-      <div style="color:rgba(232,244,255,.75);font-size:14px;line-height:1.55;text-align:center">Esta pessoa não vai mais aparecer no seu feed, comentários ou busca. Você pode desfazer a qualquer momento nas configurações.</div>
+      <div style="color:rgba(232,244,255,.75);font-size:14px;line-height:1.55;text-align:center" data-i18n="modal_block_description">Esta pessoa não vai mais aparecer no seu feed, comentários ou busca. Você pode desfazer a qualquer momento nas configurações.</div>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="btModalClose('blockConfirmOv')">Cancelar</button>
-      <button class="bt-btn-danger" onclick="confirmBlockUser()">Bloquear</button>
+      <button class="bt-btn-secondary" onclick="btModalClose('blockConfirmOv')" data-i18n="menu_cancel">Cancelar</button>
+      <button class="bt-btn-danger" onclick="confirmBlockUser()" data-i18n="modal_block_confirm">Bloquear</button>
     </div>
   </div>
 </div>
@@ -1393,7 +1393,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Editar perfil</span>
+      <span class="bt-modal-title" data-i18n="modal_edit_profile_title">Editar perfil</span>
       <button class="bt-modal-close" onclick="btModalClose('editProfileOv')">✕</button>
     </div>
     <div class="bt-modal-body">
@@ -1404,23 +1404,23 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
         </label>
       </div>
       <div class="bt-input-group">
-        <label class="bt-input-label">Nome</label>
-        <input class="bt-input" id="eName" type="text" maxlength="50" placeholder="Seu nome"/>
+        <label class="bt-input-label" data-i18n="label_name">Nome</label>
+        <input class="bt-input" id="eName" type="text" maxlength="50" placeholder="Seu nome" data-i18n-placeholder="placeholder_name"/>
       </div>
       <div class="bt-input-group">
-        <label class="bt-input-label">Username</label>
-        <input class="bt-input" id="eUser" type="text" maxlength="30" placeholder="@username"/>
+        <label class="bt-input-label" data-i18n="label_username">Username</label>
+        <input class="bt-input" id="eUser" type="text" maxlength="30" placeholder="@username" data-i18n-placeholder="placeholder_username"/>
       </div>
       <div class="bt-input-group">
-        <label class="bt-input-label">Bio</label>
-        <textarea class="bt-input bt-textarea" id="eBio" rows="3" maxlength="150" placeholder="Fale sobre você…"
+        <label class="bt-input-label" data-i18n="label_bio">Bio</label>
+        <textarea class="bt-input bt-textarea" id="eBio" rows="3" maxlength="150" placeholder="Fale sobre você…" data-i18n-placeholder="placeholder_bio"
           oninput="document.getElementById('eBioChar').textContent=this.value.length+'/150'"></textarea>
         <div class="bt-counter" id="eBioChar">0/150</div>
       </div>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="btModalClose('editProfileOv')">Cancelar</button>
-      <button class="bt-btn-primary" id="editSaveBtn" onclick="saveProfile()">Salvar</button>
+      <button class="bt-btn-secondary" onclick="btModalClose('editProfileOv')" data-i18n="menu_cancel">Cancelar</button>
+      <button class="bt-btn-primary" id="editSaveBtn" onclick="saveProfile()" data-i18n="btn_save">Salvar</button>
     </div>
   </div>
 </div>
@@ -1430,22 +1430,22 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Editar vídeo</span>
+      <span class="bt-modal-title" data-i18n="modal_edit_video_title">Editar vídeo</span>
       <button class="bt-modal-close" onclick="btModalClose('editVideoOv')">✕</button>
     </div>
     <div class="bt-modal-body">
       <div class="bt-input-group">
-        <label class="bt-input-label">Título</label>
+        <label class="bt-input-label" data-i18n="label_title">Título</label>
         <input class="bt-input" id="evTitle" type="text" maxlength="100"/>
       </div>
       <div class="bt-input-group">
-        <label class="bt-input-label">Descrição</label>
+        <label class="bt-input-label" data-i18n="label_description">Descrição</label>
         <textarea class="bt-input bt-textarea" id="evDesc" rows="3" maxlength="500"></textarea>
       </div>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="btModalClose('editVideoOv')">Cancelar</button>
-      <button class="bt-btn-primary" onclick="saveVideoEdit()">Salvar</button>
+      <button class="bt-btn-secondary" onclick="btModalClose('editVideoOv')" data-i18n="menu_cancel">Cancelar</button>
+      <button class="bt-btn-primary" onclick="saveVideoEdit()" data-i18n="btn_save">Salvar</button>
     </div>
   </div>
 </div>
@@ -1455,7 +1455,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">📹 Publicar vídeo</span>
+      <span class="bt-modal-title" data-i18n="modal_upload_title">📹 Publicar vídeo</span>
       <button class="bt-modal-close" onclick="closeUpload()">✕</button>
     </div>
     <div class="bt-modal-body">
@@ -1463,22 +1463,22 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <div id="authWall" style="display:none">
         <div style="text-align:center;margin-bottom:16px">
           <div style="font-size:40px;margin-bottom:10px">🎬</div>
-          <div style="font-size:17px;font-weight:700;margin-bottom:4px;color:#e8f4ff">Entre para publicar</div>
-          <div style="font-size:13px;color:rgba(232,244,255,.5)">Use a mesma conta do BlueTube</div>
+          <div style="font-size:17px;font-weight:700;margin-bottom:4px;color:#e8f4ff" data-i18n="upload_auth_title">Entre para publicar</div>
+          <div style="font-size:13px;color:rgba(232,244,255,.5)" data-i18n="upload_auth_sub">Use a mesma conta do BlueTube</div>
         </div>
         <div class="aw-tabs">
-          <button class="aw-tab on" id="awT1" onclick="awTab('signin')">Entrar</button>
-          <button class="aw-tab off" id="awT2" onclick="awTab('signup')">Criar conta</button>
+          <button class="aw-tab on" id="awT1" onclick="awTab('signin')" data-i18n="upload_tab_signin">Entrar</button>
+          <button class="aw-tab off" id="awT2" onclick="awTab('signup')" data-i18n="upload_tab_signup">Criar conta</button>
         </div>
         <form onsubmit="doAuth();return false;" autocomplete="on">
           <div class="bt-input-group">
-            <input class="bt-input" id="awEmail" type="email" placeholder="Email" autocomplete="email" name="email"/>
+            <input class="bt-input" id="awEmail" type="email" placeholder="Email" data-i18n-placeholder="placeholder_email" autocomplete="email" name="email"/>
           </div>
           <div class="bt-input-group" style="position:relative">
-            <input class="bt-input" id="awPass" type="password" placeholder="Senha" autocomplete="current-password" name="password" style="padding-right:44px"/>
+            <input class="bt-input" id="awPass" type="password" placeholder="Senha" data-i18n-placeholder="placeholder_password" autocomplete="current-password" name="password" style="padding-right:44px"/>
             <button type="button" id="awEye" onclick="(function(){var i=document.getElementById('awPass');i.type=i.type==='password'?'text':'password';document.getElementById('awEye').textContent=i.type==='password'?'👁':'🙈';})()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1">👁</button>
           </div>
-          <button type="submit" class="bt-btn-primary" id="awBtn" style="width:100%">Entrar →</button>
+          <button type="submit" class="bt-btn-primary" id="awBtn" style="width:100%" data-i18n="btn_signin_arrow">Entrar →</button>
         </form>
         <div class="aw-msg" id="awMsg" style="margin-top:12px;font-size:13px;text-align:center"></div>
       </div>
@@ -1491,7 +1491,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
           ondrop="onDrop(event)">
           <input type="file" id="upFile" accept="video/*" onchange="pickFile(this.files[0])"/>
           <div class="drop-icon" id="dropIcon">🎬</div>
-          <div class="drop-lbl" id="dropLbl">Toque para selecionar</div>
+          <div class="drop-lbl" id="dropLbl" data-i18n="upload_drop_label">Toque para selecionar</div>
           <div class="drop-sub">MP4, MOV, WebM</div>
         </div>
         <div class="prev-row" id="prevRow">
@@ -1509,18 +1509,18 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
           <div class="filter-chip" onclick="applyFilter('contrast(1.5) brightness(0.9)',this)">Drama</div>
         </div>
         <div class="bt-input-group" style="margin-top:12px">
-          <input class="bt-input" id="upTitle" type="text" placeholder="Título (obrigatório)" maxlength="100"/>
+          <input class="bt-input" id="upTitle" type="text" placeholder="Título (obrigatório)" data-i18n-placeholder="placeholder_upload_title" maxlength="100"/>
         </div>
         <div class="bt-input-group">
-          <textarea class="bt-input bt-textarea" id="upDesc" rows="2" placeholder="Descrição (opcional)" maxlength="300"></textarea>
+          <textarea class="bt-input bt-textarea" id="upDesc" rows="2" placeholder="Descrição (opcional)" data-i18n-placeholder="placeholder_upload_desc" maxlength="300"></textarea>
         </div>
         <div class="up-prog" id="upProg"><div class="up-prog-fill" id="upFill"></div></div>
         <div class="up-msg" id="upMsg"></div>
       </div>
     </div>
     <div class="bt-modal-footer" id="upFooter">
-      <button class="bt-btn-secondary" onclick="closeUpload()">Cancelar</button>
-      <button class="bt-btn-primary" id="upBtn" disabled onclick="doUpload()">Selecione um vídeo</button>
+      <button class="bt-btn-secondary" onclick="closeUpload()" data-i18n="menu_cancel">Cancelar</button>
+      <button class="bt-btn-primary" id="upBtn" disabled onclick="doUpload()" data-i18n="btn_select_video">Selecione um vídeo</button>
     </div>
   </div>
 </div>
@@ -1754,13 +1754,20 @@ function applyI18n() {
     const translated = window.t(key, fallback);
     if (translated && translated !== el.textContent) el.textContent = translated;
   });
-  // Substitui atributo title de [data-i18n-title]
-  document.querySelectorAll('[data-i18n-title]').forEach(el => {
-    const key = el.getAttribute('data-i18n-title');
-    if (!key) return;
-    const fallback = el.getAttribute('title') || '';
-    const translated = window.t(key, fallback);
-    if (translated && translated !== fallback) el.setAttribute('title', translated);
+  // Substitui atributos title/placeholder/aria-label
+  const attrMap = [
+    ['data-i18n-title',      'title'],
+    ['data-i18n-placeholder','placeholder'],
+    ['data-i18n-aria-label', 'aria-label'],
+  ];
+  attrMap.forEach(([dataAttr, targetAttr]) => {
+    document.querySelectorAll('[' + dataAttr + ']').forEach(el => {
+      const key = el.getAttribute(dataAttr);
+      if (!key) return;
+      const fallback = el.getAttribute(targetAttr) || '';
+      const translated = window.t(key, fallback);
+      if (translated && translated !== fallback) el.setAttribute(targetAttr, translated);
+    });
   });
 }
 
@@ -3564,7 +3571,13 @@ function doBlockUser(){
   if(!tk){btToast('Entre para bloquear','warning');return;}
   const vid=videos.find(v=>v.id===_dotsVid.id);
   const uname=vid?.creator?.username||'este usuário';
-  document.getElementById('blockUserName').textContent='@'+uname;
+  // Substitui o titulo inteiro usando o format traduzido com {name}
+  const titleEl=document.getElementById('blockModalTitle');
+  if(titleEl){
+    const tFn=(typeof t==='function')?t:(k,f)=>f;
+    const fmt=tFn('modal_block_title_format','Bloquear {name}?');
+    titleEl.textContent=fmt.replace('{name}','@'+uname);
+  }
   setTimeout(()=>btModalOpen('blockConfirmOv'),320);
 }
 async function confirmBlockUser(){
@@ -3669,7 +3682,11 @@ function awTab(mode){
   _awMode=mode;
   document.getElementById('awT1').className='aw-tab '+(mode==='signin'?'on':'off');
   document.getElementById('awT2').className='aw-tab '+(mode==='signup'?'on':'off');
-  document.getElementById('awBtn').textContent=mode==='signin'?'Entrar →':'Criar conta →';
+  const tFn=(typeof t==='function')?t:(k,f)=>f;
+  const label=mode==='signin'
+    ? tFn('upload_tab_signin','Entrar')+' →'
+    : tFn('upload_tab_signup','Criar conta')+' →';
+  document.getElementById('awBtn').textContent=label;
   document.getElementById('awMsg').textContent='';
 }
 async function doAuth(){
