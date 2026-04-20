@@ -27,12 +27,19 @@
   // Playhead que anda ao longo da timeline
   const playhead = document.getElementById('tl-playhead');
   const blublu = document.getElementById('tl-blublu');
-  const blubluMsgs = [
-    'Corte aqui. Confia.',
-    'Muito longo. Corta 3s.',
-    'Esse gancho é ouro.',
-    'Vira viral fácil.',
-  ];
+  // Textos traduzidos via i18n.js. Leitura tardia (em getBlubluMsgs/getCaps)
+  // garante que se o user trocar idioma, novos textos aparecem no proximo
+  // ciclo de rotacao sem precisar recarregar o mockup.
+  const _tFn = () => (typeof window.t === 'function') ? window.t : (k, f) => f;
+  function getBlubluMsgs() {
+    const t = _tFn();
+    return [
+      t('editor_mockup_msg1', 'Corte aqui. Confia.'),
+      t('editor_mockup_msg2', 'Muito longo. Corta 3s.'),
+      t('editor_mockup_msg3', 'Esse gancho é ouro.'),
+      t('editor_mockup_msg4', 'Vira viral fácil.'),
+    ];
+  }
   let phPct = 6;
   let phSpeed = 0.12;
   const blubluPoints = [28, 52, 78];
@@ -63,7 +70,8 @@
       if (Math.abs(phPct - pt) < 0.4 && !shown.has(pt)){
         shown.add(pt);
         if (blublu){
-          blublu.textContent = blubluMsgs[shown.size % blubluMsgs.length];
+          const msgs = getBlubluMsgs();
+          blublu.textContent = msgs[shown.size % msgs.length];
           blublu.style.left = phPct + '%';
           blublu.classList.add('on');
           setTimeout(() => blublu.classList.remove('on'), 2200);
@@ -76,17 +84,21 @@
 
   // Caption que alterna (simula legenda sync)
   const caption = document.getElementById('mockup-caption');
-  const caps = [
-    'Vou te contar um segredo',
-    'Ninguém fala isso',
-    'Olha esse número',
-    'E agora vem o plot',
-  ];
+  function getCaps() {
+    const t = _tFn();
+    return [
+      t('editor_mockup_cap1', 'Vou te contar um segredo'),
+      t('editor_mockup_cap2', 'Ninguém fala isso'),
+      t('editor_mockup_cap3', 'Olha esse número'),
+      t('editor_mockup_cap4', 'E agora vem o plot'),
+    ];
+  }
   let cIdx = 0;
   function rotCap(){
     if (caption){
       caption.style.opacity = '0';
       setTimeout(() => {
+        const caps = getCaps();
         caption.textContent = caps[cIdx % caps.length];
         caption.style.opacity = '1';
         cIdx++;
