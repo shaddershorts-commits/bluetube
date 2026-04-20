@@ -28,15 +28,19 @@ module.exports = async function handler(req, res) {
   const action = req.query?.action || req.body?.action;
   const ctx = { SU, AK, h, RESEND_KEY, ADMIN_EMAIL, ADMIN_SECRET };
 
-  if (action === 'process-queue')     return processQueue(req, res, ctx);
-  if (action === 'reconcile')         return reconcile(req, res, ctx);
-  if (action === 'track-fingerprint') return trackFingerprint(req, res, ctx);
-  if (action === 'list-flagged')      return listFlagged(req, res, ctx);
-  if (action === 'review-flagged')    return reviewFlagged(req, res, ctx);
-  if (action === 'retro-scan')        return retroScan(req, res, ctx);
+  if (action === 'process-queue')       return processQueue(req, res, ctx);
+  if (action === 'reconcile')           return reconcile(req, res, ctx);
+  if (action === 'track-fingerprint')   return trackFingerprint(req, res, ctx);
+  if (action === 'list-flagged')        return listFlagged(req, res, ctx);
+  if (action === 'review-flagged')      return reviewFlagged(req, res, ctx);
+  if (action === 'retro-scan')          return retroScan(req, res, ctx);
+  if (action === 'list-orphaned-paid')  return listOrphanedPaid(req, res, ctx);
+  if (action === 'manual-attribute')    return manualAttribute(req, res, ctx);
+  if (action === 'daily-orphans-alert') return dailyOrphansAlert(req, res, ctx);
 
   return res.status(400).json({ error: 'action invalida',
-    valid: ['process-queue', 'reconcile', 'track-fingerprint', 'list-flagged', 'review-flagged', 'retro-scan'] });
+    valid: ['process-queue', 'reconcile', 'track-fingerprint', 'list-flagged', 'review-flagged', 'retro-scan',
+            'list-orphaned-paid', 'manual-attribute', 'daily-orphans-alert'] });
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -682,4 +686,334 @@ async function notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, subject, rows) {
       }),
     });
   } catch (e) { console.error('[notifyAdmin] erro:', e.message); }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TIER 2D — DASHBOARD DE ÓRFÃOS (atribuição manual com review admin)
+//
+// Fluxo:
+//   1. list-orphaned-paid    → GET admin lista subscribers pagos sem affiliate_ref
+//      (últimos 14d). Retorna candidatos de afiliados baseado em cliques da janela.
+//   2. manual-attribute      → POST admin atribui ao afiliado OU marca como direto.
+//      Cria commission com flagged=true (precisa aprovação via review-flagged
+//      antes de virar paid).
+//   3. daily-orphans-alert   → GET cron diário 8h BR. Envia email se órfãos > 0.
+//
+// Segurança: todos exigem ?admin_secret=X (env ADMIN_SECRET).
+// Antifraude: valida email_match, auto-indicação, IP match com afiliado antes
+// de atribuir. Flags vão no antifraude_flags do admin_attributions_log.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const RATES = { bronze: 0.30, prata: 0.45, ouro: 0.58 };
+const PLAN_AMOUNTS = { full: 29.99, master: 89.99 };
+const JANELA_ORFAO_DIAS = 14;
+
+async function listOrphanedPaid(req, res, { SU, h, ADMIN_SECRET }) {
+  if (req.query.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const cutoff = new Date(Date.now() - JANELA_ORFAO_DIAS * 86400000).toISOString();
+
+    // 1. Subscribers paid (full/master) sem affiliate_ref, dentro da janela
+    const orphansR = await fetch(
+      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&created_at=gte.${cutoff}&is_manual=eq.false&select=email,plan,stripe_customer_id,created_at&order=created_at.desc&limit=200`,
+      { headers: h }
+    );
+    const orphans = orphansR.ok ? await orphansR.json() : [];
+    if (orphans.length === 0) return res.status(200).json({ orphans: [], total: 0, janela_dias: JANELA_ORFAO_DIAS });
+
+    const orphanEmails = orphans.map(o => o.email);
+
+    // 2. Logs de attribution pra esses emails (pra entender se tentou atribuir)
+    const emailList = orphanEmails.map(e => `"${e}"`).join(',');
+    const logsR = await fetch(
+      `${SU}/rest/v1/affiliate_attribution_log?email=in.(${encodeURIComponent(emailList)})&select=email,source,decisao,created_at&order=created_at.desc`,
+      { headers: h }
+    );
+    const allLogs = logsR.ok ? await logsR.json() : [];
+    const logsByEmail = new Map();
+    allLogs.forEach(l => {
+      if (!logsByEmail.has(l.email)) logsByEmail.set(l.email, []);
+      logsByEmail.get(l.email).push(l);
+    });
+
+    // 3. Candidatos: afiliados que tiveram cliques na janela (contexto pro admin)
+    const cliquesR = await fetch(
+      `${SU}/rest/v1/affiliate_clicks?landed_at=gte.${cutoff}&select=affiliate_id,ref_code,landed_at`,
+      { headers: h }
+    );
+    const allClicks = cliquesR.ok ? await cliquesR.json() : [];
+    const clickStats = new Map(); // affiliate_id → { count, last_click, ref_code }
+    allClicks.forEach(c => {
+      const prev = clickStats.get(c.affiliate_id) || { count: 0, last_click: null, ref_code: c.ref_code };
+      prev.count++;
+      if (!prev.last_click || c.landed_at > prev.last_click) prev.last_click = c.landed_at;
+      clickStats.set(c.affiliate_id, prev);
+    });
+
+    // Enriquece candidatos com email do afiliado
+    const affIds = [...clickStats.keys()];
+    let candidatosGlobal = [];
+    if (affIds.length > 0) {
+      const affsR = await fetch(
+        `${SU}/rest/v1/affiliates?id=in.(${affIds.join(',')})&status=eq.active&select=id,email,ref_code,nivel`,
+        { headers: h }
+      );
+      const affs = affsR.ok ? await affsR.json() : [];
+      candidatosGlobal = affs.map(a => ({
+        affiliate_id: a.id,
+        affiliate_email: a.email,
+        ref_code: a.ref_code,
+        nivel: a.nivel,
+        cliques_janela: clickStats.get(a.id)?.count || 0,
+        ultimo_clique: clickStats.get(a.id)?.last_click || null,
+      })).sort((x, y) => y.cliques_janela - x.cliques_janela);
+    }
+
+    // 4. Monta payload final
+    const enriched = orphans.map(o => ({
+      email: o.email,
+      plan: o.plan,
+      created_at: o.created_at,
+      stripe_customer_id: o.stripe_customer_id,
+      dias_atras: Math.max(0, Math.floor((Date.now() - new Date(o.created_at)) / 86400000)),
+      logs: logsByEmail.get(o.email) || [],
+      log_count: (logsByEmail.get(o.email) || []).length,
+    }));
+
+    return res.status(200).json({
+      orphans: enriched,
+      total: enriched.length,
+      janela_dias: JANELA_ORFAO_DIAS,
+      candidatos_global: candidatosGlobal,
+    });
+  } catch (e) {
+    console.error('[list-orphaned-paid]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function manualAttribute(req, res, { SU, h, ADMIN_SECRET, RESEND_KEY, ADMIN_EMAIL }) {
+  if (req.query.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST apenas' });
+  try {
+    const { subscriber_email, affiliate_id, mark_as_direct, motivo, admin_user_id, admin_email } = req.body || {};
+    if (!subscriber_email) return res.status(400).json({ error: 'subscriber_email obrigatorio' });
+    if (!mark_as_direct && !affiliate_id) return res.status(400).json({ error: 'affiliate_id ou mark_as_direct obrigatorio' });
+
+    // Busca subscriber
+    const subR = await fetch(
+      `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(subscriber_email)}&select=email,plan,affiliate_ref,attribution_source,stripe_customer_id,created_at&limit=1`,
+      { headers: h }
+    );
+    const [subscriber] = subR.ok ? await subR.json() : [];
+    if (!subscriber) return res.status(404).json({ error: 'subscriber nao encontrado' });
+    if (subscriber.affiliate_ref) {
+      return res.status(409).json({
+        error: 'subscriber ja tem affiliate_ref',
+        existing_ref: subscriber.affiliate_ref,
+        existing_source: subscriber.attribution_source,
+      });
+    }
+
+    // CAMINHO 1: marca como direto (sem afiliado)
+    if (mark_as_direct) {
+      await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(subscriber_email)}`, {
+        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ attribution_source: 'direct', updated_at: new Date().toISOString() }),
+      });
+      await fetch(`${SU}/rest/v1/admin_attributions_log`, {
+        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          admin_user_id: admin_user_id || null,
+          admin_email: admin_email || null,
+          action: 'marked_direct',
+          subscriber_email, subscriber_plan: subscriber.plan,
+          stripe_customer_id: subscriber.stripe_customer_id,
+          motivo: motivo || null,
+        }),
+      });
+      return res.status(200).json({ ok: true, action: 'marked_direct' });
+    }
+
+    // CAMINHO 2: atribuir ao afiliado
+    // Busca afiliado
+    const affR = await fetch(
+      `${SU}/rest/v1/affiliates?id=eq.${affiliate_id}&select=id,email,ref_code,nivel,comissao_percentual,total_full,total_master,total_earnings,status&limit=1`,
+      { headers: h }
+    );
+    const [aff] = affR.ok ? await affR.json() : [];
+    if (!aff) return res.status(404).json({ error: 'afiliado nao encontrado' });
+    if (aff.status === 'suspended') return res.status(400).json({ error: 'afiliado suspenso, nao atribui' });
+
+    // ── ANTIFRAUDE ────────────────────────────────────────────────────────
+    const antifraudeFlags = { checks_run: [], alerts: [] };
+
+    // Check 1: email match (afiliado === subscriber = self-referral obvio)
+    antifraudeFlags.checks_run.push('email_match');
+    if (String(aff.email).toLowerCase() === String(subscriber_email).toLowerCase()) {
+      antifraudeFlags.email_match = true;
+      antifraudeFlags.alerts.push('email_match_bloqueado');
+      return res.status(400).json({
+        error: 'BLOQUEADO: self-referral (afiliado e subscriber tem mesmo email)',
+        antifraude_flags: antifraudeFlags,
+      });
+    }
+
+    // Check 2: afiliado tem fingerprint registrado que bate com o subscriber?
+    // (indica que o proprio afiliado acessou/pagou via conta secundaria)
+    antifraudeFlags.checks_run.push('affiliate_fingerprint_overlap');
+    if (subscriber.stripe_customer_id) {
+      const fpR = await fetch(
+        `${SU}/rest/v1/affiliate_fingerprints?affiliate_id=eq.${aff.id}&select=ip_hash,visitor_fingerprint,seen_count&limit=1`,
+        { headers: h }
+      );
+      const [afFp] = fpR.ok ? await fpR.json() : [];
+      if (afFp && afFp.seen_count > 5) {
+        antifraudeFlags.affiliate_has_tracked_fingerprint = true;
+      }
+    }
+
+    // Check 3: subscriber_email ja tem commission flaggada desse mesmo afiliado?
+    antifraudeFlags.checks_run.push('prior_flagged_commission');
+    const priorR = await fetch(
+      `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(subscriber_email)}&select=id,status,flagged&limit=1`,
+      { headers: h }
+    );
+    const [prior] = priorR.ok ? await priorR.json() : [];
+    if (prior) {
+      antifraudeFlags.commission_ja_existe = true;
+      antifraudeFlags.alerts.push('commission_duplicada_bloqueada');
+      return res.status(409).json({
+        error: 'BLOQUEADO: ja existe commission pra esse par afiliado+subscriber',
+        existing_commission_id: prior.id,
+        existing_status: prior.status,
+      });
+    }
+
+    // ── CRIA COMMISSION ───────────────────────────────────────────────────
+    const plan = subscriber.plan;
+    const planAmount = PLAN_AMOUNTS[plan];
+    if (!planAmount) return res.status(400).json({ error: 'subscriber sem plan pagante' });
+    const rate = (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
+      ? aff.comissao_percentual / 100
+      : (RATES[aff.nivel] || 0.30);
+    const commissionAmount = parseFloat((planAmount * rate).toFixed(2));
+
+    const commRes = await fetch(`${SU}/rest/v1/affiliate_commissions`, {
+      method: 'POST', headers: { ...h, Prefer: 'return=representation' },
+      body: JSON.stringify({
+        affiliate_id: aff.id,
+        subscriber_email,
+        plan, plan_amount: planAmount,
+        commission_rate: rate,
+        commission_amount: commissionAmount,
+        status: 'pending',
+        flagged: true,
+        flagged_reason: 'manual_retroactive',
+        period_start: new Date().toISOString(),
+        period_end: new Date(Date.now() + 37 * 86400000).toISOString(),
+      }),
+    });
+    if (!commRes.ok) return res.status(500).json({ error: 'falha ao criar commission', details: await commRes.text() });
+    const [commission] = await commRes.json();
+
+    // ── ATRIBUI subscriber ────────────────────────────────────────────────
+    await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(subscriber_email)}`, {
+      method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        affiliate_ref: aff.ref_code,
+        attribution_source: 'retroactive',
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    // ── INCREMENTA stats do afiliado ──────────────────────────────────────
+    const field = plan === 'full' ? 'total_full' : 'total_master';
+    await fetch(`${SU}/rest/v1/affiliates?id=eq.${aff.id}`, {
+      method: 'PATCH', headers: h,
+      body: JSON.stringify({
+        [field]: (aff[field] || 0) + 1,
+        total_earnings: parseFloat(((parseFloat(aff.total_earnings || 0) + commissionAmount)).toFixed(2)),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    // ── LOGS (2 tabelas: admin + padrão do sistema) ───────────────────────
+    await fetch(`${SU}/rest/v1/admin_attributions_log`, {
+      method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        admin_user_id: admin_user_id || null,
+        admin_email: admin_email || null,
+        action: 'attributed',
+        subscriber_email, subscriber_plan: plan,
+        stripe_customer_id: subscriber.stripe_customer_id,
+        affiliate_id: aff.id, affiliate_ref_code: aff.ref_code,
+        motivo: motivo || null,
+        antifraude_flags: antifraudeFlags,
+        commission_id: commission.id,
+      }),
+    }).catch(() => {});
+    fetch(`${SU}/rest/v1/affiliate_attribution_log`, {
+      method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        email: subscriber_email, ref_code: aff.ref_code,
+        affiliate_id: aff.id, source: 'retroactive', decisao: 'attributed',
+        detalhes: { context: 'manual_admin', motivo, commission_id: commission.id },
+      }),
+    }).catch(() => {});
+
+    // ── NOTIFICA AFILIADO (fire-and-forget) ───────────────────────────────
+    if (RESEND_KEY && aff.email) {
+      notifyAdmin({ RESEND_KEY, ADMIN_EMAIL: aff.email },
+        `BlueTube — Nova comissão retroativa de R$${commissionAmount.toFixed(2)} (em revisão)`,
+        [
+          ['Assinante', subscriber_email],
+          ['Plano', plan.toUpperCase()],
+          ['Comissão', `R$${commissionAmount.toFixed(2)} (${(rate*100).toFixed(0)}%)`],
+          ['Status', 'Pendente — em revisão manual pelo admin'],
+          ['Motivo', motivo || '(não informado)'],
+          ['Observação', 'Esta comissão foi atribuída retroativamente. O pagamento liberará após aprovação final.'],
+        ]
+      ).catch(() => {});
+    }
+
+    return res.status(200).json({
+      ok: true,
+      action: 'attributed',
+      commission_id: commission.id,
+      commission_amount: commissionAmount,
+      flagged: true,
+      antifraude_flags: antifraudeFlags,
+    });
+  } catch (e) {
+    console.error('[manual-attribute]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function dailyOrphansAlert(req, res, { SU, h, RESEND_KEY, ADMIN_EMAIL }) {
+  try {
+    const cutoff = new Date(Date.now() - JANELA_ORFAO_DIAS * 86400000).toISOString();
+    const r = await fetch(
+      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&created_at=gte.${cutoff}&is_manual=eq.false&attribution_source=is.null&select=email,plan,created_at`,
+      { headers: { ...h, Prefer: 'count=exact' } }
+    );
+    const orphans = r.ok ? await r.json() : [];
+    const total = orphans.length;
+    if (total === 0) {
+      return res.status(200).json({ ok: true, total: 0, sent: false, motivo: 'sem_orfaos' });
+    }
+
+    const lista = orphans.slice(0, 10).map(o => `${o.email} (${o.plan}) — ${new Date(o.created_at).toLocaleDateString('pt-BR')}`).join(' | ');
+    await notifyAdmin({ RESEND_KEY, ADMIN_EMAIL }, `📋 ${total} assinante(s) pago(s) sem afiliado — review no dashboard`, [
+      ['Total de órfãos', String(total)],
+      ['Janela', `${JANELA_ORFAO_DIAS} dias`],
+      ['Primeiros 10', lista],
+      ['Ação necessária', 'Acesse o admin e decida: atribuir ao afiliado ou marcar como direto.'],
+    ]);
+    return res.status(200).json({ ok: true, total, sent: true });
+  } catch (e) {
+    console.error('[daily-orphans-alert]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
 }

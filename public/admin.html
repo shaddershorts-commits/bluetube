@@ -488,6 +488,43 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- ÓRFÃOS PAGOS (Tier 2D - atribuição manual de assinantes sem afiliado) -->
+    <div class="section" id="orphansSection">
+      <div class="section-header">
+        <div class="section-title">🔍 Órfãos pagos <span class="section-subtitle">— assinantes Full/Master sem afiliado (≤14d) · review manual</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div id="orphansCountBadge" style="background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow);display:none">⏳ <span id="orphansCountNum">0</span> pendente(s)</div>
+          <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="loadOrphans()">↻ Carregar</button>
+        </div>
+      </div>
+      <div id="orphansBody"><div class="loading-txt" style="padding:14px">Clique em "Carregar" pra listar órfãos pendentes</div></div>
+    </div>
+
+    <!-- MODAL ATRIBUIÇÃO MANUAL -->
+    <div id="orphanAttrModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+      <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.25);border-radius:20px;padding:28px;width:100%;max-width:520px;position:relative">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(0,170,255,0.5),transparent);border-radius:20px 20px 0 0"></div>
+        <button onclick="closeOrphanAttrModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer">✕</button>
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">🔗 Atribuir assinante a afiliado</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:4px" id="orphanAttrEmail">—</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:18px" id="orphanAttrMeta">—</div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px">Afiliado</label>
+          <select id="orphanAttrAffSelect" class="plan-input" style="width:100%"></select>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px">Motivo (opcional)</label>
+          <input id="orphanAttrMotivo" class="plan-input" placeholder="Ex: cookie perdeu entre click e signup" style="width:100%"/>
+        </div>
+        <div id="orphanAttrMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:14px;min-height:16px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <button onclick="confirmOrphanAttr()" style="background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">✓ Atribuir</button>
+          <button onclick="markOrphanDirect()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px;font-family:var(--display);font-size:13px;font-weight:700;color:var(--text);cursor:pointer">Marcar direto</button>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;text-align:center">⚠️ Atribuir cria commission FLAGGED — não paga automaticamente</div>
+      </div>
+    </div>
+
     <!-- ÚLTIMOS CADASTROS -->
     <div class="section">
       <div class="section-header">
@@ -2391,6 +2428,158 @@ async function marcarSaquePago(saqueId){
     if(r.ok){toast('✅ Saque marcado como pago');loadSaquesAdminPanel();}
     else alert(d.error||'Erro');
   }catch(e){alert('Erro de conexão');}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ÓRFÃOS PAGOS (Tier 2D) — lista assinantes sem afiliado e permite
+// atribuição manual pelo admin. Commission criada fica FLAGGED.
+// ═══════════════════════════════════════════════════════════════════════
+let orphansData = null;
+let currentOrphan = null;
+
+async function loadOrphans(){
+  const body = document.getElementById('orphansBody');
+  body.innerHTML = '<div class="loading-txt" style="padding:14px">Carregando...</div>';
+  try{
+    const r = await fetch(`/api/affiliate-robustness?action=list-orphaned-paid&admin_secret=${encodeURIComponent(adminKey)}`);
+    if(!r.ok){
+      body.innerHTML = '<div style="color:#f87171;padding:14px">Erro — verifique ADMIN_SECRET e deploy</div>';
+      return;
+    }
+    const d = await r.json();
+    orphansData = d;
+    const badge = document.getElementById('orphansCountBadge');
+    const num = document.getElementById('orphansCountNum');
+    if(d.total > 0){
+      badge.style.display = 'inline-block';
+      num.textContent = d.total;
+    } else {
+      badge.style.display = 'none';
+    }
+    if(d.total === 0){
+      body.innerHTML = `<div style="padding:30px;text-align:center;color:var(--dim)">✅ Nenhum assinante pago sem afiliado nos últimos ${d.janela_dias} dias</div>`;
+      return;
+    }
+    const rows = d.orphans.map(o => {
+      const planBadge = o.plan === 'master'
+        ? '<span style="background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px">MASTER</span>'
+        : '<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px">FULL</span>';
+      const logsInfo = o.log_count > 0
+        ? `<span style="color:var(--dim);font-size:10px">${o.log_count} log(s)</span>`
+        : `<span style="color:var(--yellow);font-size:10px">sem log</span>`;
+      const emailSafe = o.email.replace(/'/g,"\\'");
+      return `<tr>
+        <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06)">
+          <div style="font-family:var(--mono);font-size:11px">${o.email}</div>
+          ${logsInfo}
+        </td>
+        <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center">${planBadge}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center;font-family:var(--mono);font-size:11px">${o.dias_atras}d atrás</td>
+        <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center">
+          <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="openOrphanAttr('${emailSafe}','${o.plan}',${o.dias_atras})">Decidir →</button>
+        </td>
+      </tr>`;
+    }).join('');
+    const candHint = (d.candidatos_global && d.candidatos_global.length > 0)
+      ? `<div style="padding:10px 14px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:var(--dim)">💡 Afiliados com cliques nos últimos ${d.janela_dias}d: ${d.candidatos_global.slice(0,5).map(c => `<strong style="color:#fbbf24">${c.affiliate_email}</strong> (${c.cliques_janela} cliques)`).join(' · ')}</div>`
+      : '';
+    body.innerHTML = candHint +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      + '<thead><tr style="border-bottom:2px solid rgba(0,170,255,.2);text-align:left;color:var(--dim);font-family:var(--mono);font-size:11px">'
+      + '<th style="padding:10px 8px">Subscriber</th>'
+      + '<th style="padding:10px 8px;text-align:center">Plano</th>'
+      + '<th style="padding:10px 8px;text-align:center">Signup</th>'
+      + '<th style="padding:10px 8px;text-align:center">Ação</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>';
+  } catch(e){
+    body.innerHTML = `<div style="color:#f87171;padding:14px">Erro: ${e.message}</div>`;
+  }
+}
+
+function openOrphanAttr(email, plan, diasAtras){
+  currentOrphan = { email, plan, diasAtras };
+  document.getElementById('orphanAttrEmail').textContent = email;
+  document.getElementById('orphanAttrMeta').textContent = `${plan.toUpperCase()} · ${diasAtras} dias atrás`;
+  document.getElementById('orphanAttrMotivo').value = '';
+  document.getElementById('orphanAttrMsg').textContent = '';
+  const sel = document.getElementById('orphanAttrAffSelect');
+  const cands = (orphansData && orphansData.candidatos_global) || [];
+  sel.innerHTML = '<option value="">— Selecione um afiliado —</option>' + cands.map(c =>
+    `<option value="${c.affiliate_id}">${c.affiliate_email} (${c.cliques_janela} cliques · ${c.nivel})</option>`
+  ).join('');
+  document.getElementById('orphanAttrModal').style.display = 'flex';
+}
+
+function closeOrphanAttrModal(){
+  document.getElementById('orphanAttrModal').style.display = 'none';
+}
+
+async function confirmOrphanAttr(){
+  const sel = document.getElementById('orphanAttrAffSelect');
+  const affId = sel.value;
+  const motivo = document.getElementById('orphanAttrMotivo').value.trim();
+  const msgEl = document.getElementById('orphanAttrMsg');
+  if(!affId){
+    msgEl.textContent = '⚠️ Selecione um afiliado';
+    msgEl.style.color = '#fbbf24';
+    return;
+  }
+  if(!confirm(`Atribuir ${currentOrphan.email} ao afiliado selecionado?\n\nUma commission será criada com status FLAGGED (não paga automaticamente — precisa aprovação final).`)) return;
+  msgEl.textContent = 'Atribuindo...';
+  msgEl.style.color = 'var(--dim)';
+  try{
+    const r = await fetch(`/api/affiliate-robustness?action=manual-attribute&admin_secret=${encodeURIComponent(adminKey)}`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        subscriber_email: currentOrphan.email,
+        affiliate_id: affId,
+        motivo: motivo || null,
+        admin_email: 'admin_dashboard',
+      })
+    });
+    const d = await r.json();
+    if(r.ok && d.ok){
+      msgEl.textContent = `✅ Atribuído · commission R$${d.commission_amount} (flagged=${d.flagged})`;
+      msgEl.style.color = '#10b981';
+      setTimeout(()=>{ closeOrphanAttrModal(); loadOrphans(); }, 1800);
+    } else {
+      msgEl.textContent = `❌ ${d.error || 'falha'}`;
+      msgEl.style.color = '#f87171';
+    }
+  } catch(e){
+    msgEl.textContent = `❌ ${e.message}`;
+    msgEl.style.color = '#f87171';
+  }
+}
+
+async function markOrphanDirect(){
+  if(!confirm(`Marcar ${currentOrphan.email} como signup direto (sem afiliado)?\n\nNão cria commission.`)) return;
+  const msgEl = document.getElementById('orphanAttrMsg');
+  msgEl.textContent = 'Marcando...';
+  msgEl.style.color = 'var(--dim)';
+  try{
+    const r = await fetch(`/api/affiliate-robustness?action=manual-attribute&admin_secret=${encodeURIComponent(adminKey)}`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        subscriber_email: currentOrphan.email,
+        mark_as_direct: true,
+        motivo: document.getElementById('orphanAttrMotivo').value.trim() || null,
+        admin_email: 'admin_dashboard',
+      })
+    });
+    const d = await r.json();
+    if(r.ok && d.ok){
+      msgEl.textContent = '✅ Marcado como direto';
+      msgEl.style.color = '#10b981';
+      setTimeout(()=>{ closeOrphanAttrModal(); loadOrphans(); }, 1500);
+    } else {
+      msgEl.textContent = `❌ ${d.error || 'falha'}`;
+      msgEl.style.color = '#f87171';
+    }
+  } catch(e){
+    msgEl.textContent = `❌ ${e.message}`;
+    msgEl.style.color = '#f87171';
+  }
 }
 
 </script>
