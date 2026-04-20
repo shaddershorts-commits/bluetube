@@ -242,21 +242,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     ⚠ A API do YouTube ignorou o filtro de data nessa busca — os resultados podem incluir vídeos mais antigos.
   </div>
 
-  <!-- GRID -->
-  <div class="shorts-grid" id="grid">
-    <!-- Skeleton loading state -->
-    <div id="skeletonWrap" style="display:contents">
-      ${Array(12).fill(0).map(()=>`
-      <div class="skel-card">
-        <div class="skel-thumb skeleton"></div>
-        <div class="skel-info">
-          <div class="skel-line skeleton" style="width:90%"></div>
-          <div class="skel-line skeleton" style="width:60%"></div>
-          <div class="skel-line skeleton" style="width:40%"></div>
-        </div>
-      </div>`).join('')}
-    </div>
-  </div>
+  <!-- GRID — skeleton loading state gerado via showSkeletons() no boot -->
+  <div class="shorts-grid" id="grid"></div>
 
   <!-- BOTAO "carregar mais" — adiciona videos do banco ao mesmo grid acima -->
   <div id="historico-paginacao" style="display:none;justify-content:center;align-items:center;gap:8px;margin-top:24px">
@@ -557,6 +544,10 @@ function escHtml(s) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 if (plan === 'master') {
+  // Mostra skeletons enquanto fetchVirals/carregarHistorico carrega — evita
+  // grid vazio visivel no load (especialmente no default 'Todos paises' que
+  // cai direto no carregarHistorico sem passar pelo showSkeletons do fetchVirals).
+  try { showSkeletons(); } catch(e) {}
   fetchVirals();
   // Auto-refresh a cada 14 horas (cache de 14h no servidor economiza quota)
   setInterval(() => {
