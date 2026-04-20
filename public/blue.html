@@ -964,6 +964,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 
 </style>
 <script src="/_ref-tracker.js" defer></script>
+<script src="/i18n.js" defer></script>
 </head>>
 <body>
 
@@ -1269,13 +1270,31 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
         <div class="bt-menu-icon">⚙️</div>
         <div class="bt-menu-text"><div class="title">Configurações da conta</div><div class="subtitle">Planos, assinatura e privacidade</div></div>
       </a>
+      <button class="bt-menu-item" onclick="closeProfMenu();setTimeout(openLangSelector,200)">
+        <div class="bt-menu-icon">🌐</div>
+        <div class="bt-menu-text"><div class="title" id="profMenuLangTitle">Idioma</div><div class="subtitle" id="profMenuLangSub">Escolha o idioma da interface</div></div>
+      </button>
       <button class="bt-menu-item danger" onclick="doLogoutBlue()">
         <div class="bt-menu-icon danger">🚪</div>
         <div class="bt-menu-text"><div class="title">Sair da conta</div><div class="subtitle">Desconectar deste dispositivo</div></div>
       </button>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="closeProfMenu()">Cancelar</button>
+      <button class="bt-btn-secondary" id="profMenuCancel" onclick="closeProfMenu()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SELETOR DE IDIOMA (i18n) — bottom sheet mobile / modal desktop -->
+<div class="bt-modal-overlay" id="langSelectorModal" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-header">
+      <span class="bt-modal-title" id="langModalTitle">Escolha o idioma</span>
+    </div>
+    <div class="bt-modal-body" id="langModalList" style="padding:8px 12px 16px;max-height:60vh;overflow-y:auto"></div>
+    <div class="bt-modal-footer">
+      <button class="bt-btn-secondary" id="langModalCancel" onclick="closeLangSelector()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1719,6 +1738,21 @@ Badge VIP" rows="3"></textarea>
 <div class="toast" id="toast"></div>
 
 <script>
+// ── I18N BOOT ─────────────────────────────────────────────────────────────────
+// Chama initI18n() assim que possivel pra popular window.siteLang,
+// window.siteTranslations e window.t(). Erro silencioso (nao quebra o app).
+// No Commit C do bloco 1 vai entrar applyI18n() que aplica data-i18n no DOM.
+if (typeof window.initI18n === 'function') {
+  window.initI18n().catch(e => console.warn('[i18n boot]', e && e.message));
+} else {
+  // i18n.js ainda nao carregou (defer) — tenta no DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof window.initI18n === 'function') {
+      window.initI18n().catch(e => console.warn('[i18n boot]', e && e.message));
+    }
+  });
+}
+
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let TOKEN = localStorage.getItem('bt_token');
 const SID = localStorage.getItem('bl_s') || (()=>{const s='s'+Date.now().toString(36);localStorage.setItem('bl_s',s);return s;})();
@@ -2433,6 +2467,126 @@ function closeProfile(){
 // ── PROFILE MENU (⋮ do proprio perfil) ───────────────────────────────────────
 function openProfMenu(){ btModalOpen('profMenu'); }
 function closeProfMenu(){ btModalClose('profMenu'); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELETOR DE IDIOMA (i18n) — Fase 2 bloco 1
+// Lista os 16 idiomas com gate por plano:
+//   - Idioma liberado: clique salva + reload
+//   - Idioma bloqueado: toast convidativo com CTA pra ver planos
+// ═══════════════════════════════════════════════════════════════════════════
+let _userPlan = null; // cache do plano
+async function _getUserPlan() {
+  if (_userPlan) return _userPlan;
+  try {
+    const tk = localStorage.getItem('bt_token');
+    if (!tk) return 'free';
+    const r = await fetch('/api/get-plan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: tk })
+    });
+    if (!r.ok) return 'free';
+    const d = await r.json();
+    _userPlan = (d.plan || 'free').toLowerCase();
+    return _userPlan;
+  } catch (e) { return 'free'; }
+}
+
+async function openLangSelector() {
+  const plan = await _getUserPlan();
+  const list = document.getElementById('langModalList');
+  const titleEl = document.getElementById('langModalTitle');
+  const cancelEl = document.getElementById('langModalCancel');
+  if (!list) return;
+
+  // Traduz cabecalho + botao (com fallback PT se i18n ainda nao carregou)
+  const tFn = (typeof t === 'function') ? t : (k, f) => f;
+  titleEl.textContent = tFn('lang_title', 'Escolha o idioma');
+  if (cancelEl) cancelEl.textContent = tFn('menu_cancel', 'Cancelar');
+
+  const current = (typeof getUserLang === 'function' ? getUserLang() : null) || window.siteLang || 'pt';
+  const allowed = (typeof allowedLangs === 'function') ? allowedLangs(plan) : ['pt', 'en'];
+  const names = window.LANG_NAMES || { pt: 'Português', en: 'English' };
+  const codes = Object.keys(names);
+
+  list.innerHTML = codes.map(code => {
+    const nome = names[code] || code;
+    const liberado = allowed.includes(code);
+    const atual = code === current;
+    const lock = liberado ? '' : '<span style="color:rgba(255,255,255,.35);font-size:14px;margin-left:auto">🔒</span>';
+    const check = atual ? '<span style="color:#00aaff;font-weight:700;margin-left:auto">✓</span>' : '';
+    const iconBg = atual ? 'background:rgba(0,170,255,.2)' : 'background:rgba(255,255,255,.06)';
+    const opacity = liberado ? '' : 'opacity:.55';
+    return `
+      <button class="bt-menu-item" onclick="_handleLangClick('${code}')" style="${opacity}">
+        <div class="bt-menu-icon" style="${iconBg};font-size:14px;font-weight:700">${code.toUpperCase()}</div>
+        <div class="bt-menu-text"><div class="title">${nome}</div></div>
+        ${check || lock}
+      </button>
+    `;
+  }).join('');
+
+  btModalOpen('langSelectorModal');
+}
+
+function closeLangSelector() {
+  btModalClose('langSelectorModal');
+}
+
+async function _handleLangClick(lang) {
+  const plan = await _getUserPlan();
+  const tFn = (typeof t === 'function') ? t : (k, f) => f;
+
+  if (typeof langAllowedForPlan === 'function' && !langAllowedForPlan(lang, plan)) {
+    // Gate: descobre se precisa de Full ou Master
+    const fullLangs = ['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh', 'ar'];
+    const precisaMaster = !fullLangs.includes(lang);
+    const msg = precisaMaster
+      ? tFn('lang_upsell_master', 'Idioma disponível no plano Master. Quer ver os benefícios?')
+      : tFn('lang_upsell_full', 'Idioma disponível no plano Full. Quer ver os benefícios?');
+    const btnText = tFn('lang_upsell_btn', 'Ver planos');
+    closeLangSelector();
+    _showLangUpsell(msg, btnText);
+    return;
+  }
+
+  if (typeof setUserLang === 'function' && setUserLang(lang, plan)) {
+    const saved = tFn('lang_saved', 'Idioma salvo. Recarregando...');
+    if (typeof toast === 'function') toast(saved);
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+function _showLangUpsell(msg, btnText) {
+  const existing = document.getElementById('langUpsellToast');
+  if (existing) existing.remove();
+  const tw = document.createElement('div');
+  tw.id = 'langUpsellToast';
+  tw.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);' +
+    'background:rgba(10,22,40,.97);border:1px solid rgba(0,170,255,.35);border-radius:14px;' +
+    'padding:14px 18px;display:flex;flex-direction:column;gap:10px;font-size:14px;' +
+    'color:#e8f4ff;z-index:99999;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.5);' +
+    'opacity:0;transition:opacity .2s,transform .2s';
+  tw.innerHTML = '<div style="line-height:1.45">' + msg + '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">' +
+    '<button onclick="document.getElementById(\'langUpsellToast\').remove()" ' +
+    'style="background:none;border:none;color:rgba(255,255,255,.5);font-size:13px;padding:6px 10px;cursor:pointer">' +
+    'Agora não</button>' +
+    '<button onclick="location.href=\'/#planos\'" ' +
+    'style="background:#00aaff;color:#001020;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">' +
+    btnText + '</button>' +
+    '</div>';
+  document.body.appendChild(tw);
+  requestAnimationFrame(() => {
+    tw.style.opacity = '1';
+    tw.style.transform = 'translateX(-50%) translateY(0)';
+  });
+  setTimeout(() => tw.remove(), 10000);
+}
+
+// Exporta pra poder chamar via onclick inline
+window.openLangSelector = openLangSelector;
+window.closeLangSelector = closeLangSelector;
+window._handleLangClick = _handleLangClick;
 
 function shareMyProfile(){
   closeProfMenu();
