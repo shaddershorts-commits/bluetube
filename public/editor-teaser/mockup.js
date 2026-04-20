@@ -30,8 +30,8 @@
   const blubluMsgs = [
     'Corte aqui. Confia.',
     'Muito longo. Corta 3s.',
-    'Esse gancho e ouro.',
-    'Vira viral facil.',
+    'Esse gancho é ouro.',
+    'Vira viral fácil.',
   ];
   let phPct = 6;
   let phSpeed = 0.12;
@@ -78,8 +78,8 @@
   const caption = document.getElementById('mockup-caption');
   const caps = [
     'Vou te contar um segredo',
-    'Ninguem fala isso',
-    'Olha esse numero',
+    'Ninguém fala isso',
+    'Olha esse número',
     'E agora vem o plot',
   ];
   let cIdx = 0;

@@ -58,7 +58,7 @@
     if (plano === 'master'){
       const greet = document.getElementById('master-greet');
       if (greet){
-        greet.textContent = nome ? `✨ Voce esta protegido, ${nome}` : '✨ Voce esta protegido, Master';
+        greet.textContent = nome ? `✨ Você está protegido, ${nome}` : '✨ Você está protegido, Master';
         greet.classList.remove('hidden');
       }
       // Esconde form de email (ja tem conta)
@@ -67,7 +67,7 @@
     } else if (plano === 'full'){
       // Full: mostra email, mensagem sutil
       const hint = document.getElementById('email-hint');
-      if (hint) hint.innerHTML = 'Upgrade antes do lancamento trava o preco.<br>Blublu te avisa quando der.';
+      if (hint) hint.innerHTML = 'Upgrade antes do lançamento trava o preço.<br>Blublu te avisa quando der.';
     } else if (plano === 'free'){
       const hint = document.getElementById('email-hint');
       if (hint) hint.innerHTML = 'Quer acompanhar o desenvolvimento?<br>Blublu te avisa quando tiver novidade.';
@@ -78,11 +78,11 @@
     if (speech && window.teaserType){
       let texto;
       if (plano === 'master'){
-        texto = `Entre nos, ${nome || 'criador'}...|Voce ja pagou a entrada. Voce ja viu o que e ser tratado como alguem que acredita cedo.|Quando o BlueEditor chegar, o plano Master vai refletir o novo valor.|Mas voce, que entrou agora, continua no mesmo preco. Para sempre.|Nao e marketing. E promessa.`;
+        texto = `Entre nós, ${nome || 'criador'}...|Você já pagou a entrada. Você já viu o que é ser tratado como alguém que acredita cedo.|Quando o BlueEditor chegar, o plano Master vai refletir o novo valor.|Mas você, que entrou agora, continua no mesmo preço. Para sempre.|Não é marketing. É promessa.`;
       } else if (plano === 'full'){
-        texto = `Ja que voce esta quase la...|O plano Full ja me da muito sobre voce. Criador serio.|Quando o BlueEditor lancar, o Master vai refletir o novo valor real.|Quem ja e Master agora, continua no mesmo preco. Para sempre.|Upgrade antes do lancamento = voce entra nessa lista.`;
+        texto = `Já que você está quase lá...|O plano Full já me dá muito sobre você. Criador sério.|Quando o BlueEditor lançar, o Master vai refletir o novo valor real.|Quem já é Master agora, continua no mesmo preço. Para sempre.|Upgrade antes do lançamento = você entra nessa lista.`;
       } else {
-        texto = `Entre nos, criador...|Quando o BlueEditor lancar, o plano Master vai refletir o seu novo valor real.|Mas quem ja e Master agora, continua no mesmo preco. Para sempre.|E minha forma de agradecer a quem acreditou primeiro.`;
+        texto = `Entre nós, criador...|Quando o BlueEditor lançar, o plano Master vai refletir o seu novo valor real.|Mas quem já é Master agora, continua no mesmo preço. Para sempre.|É minha forma de agradecer a quem acreditou primeiro.`;
       }
       // Espera um tempo pra não conflitar com o typewriter da cena 1
       setTimeout(() => { if (speech.dataset.typed !== '1'){ speech.dataset.typed = '1'; window.teaserType(speech, texto, { speed: 28, jitter: 20, pausa: 1000 }); } }, 1200);
@@ -99,7 +99,7 @@
       const fb = document.getElementById('email-feedback');
       const email = (input.value || '').trim().toLowerCase();
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
-        fb.textContent = 'Email invalido';
+        fb.textContent = 'Email inválido';
         fb.className = 'email-feedback err';
         return;
       }
@@ -116,7 +116,7 @@
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok){
-          fb.textContent = '✓ Voce esta na lista. Blublu te avisa.';
+          fb.textContent = '✓ Você está na lista. Blublu te avisa.';
           fb.className = 'email-feedback ok';
           input.value = '';
           btn.textContent = 'Enviado';
@@ -128,7 +128,7 @@
           btn.textContent = 'Avise-me';
         }
       } catch(err){
-        fb.textContent = 'Sem conexao. Tenta de novo?';
+        fb.textContent = 'Sem conexão. Tenta de novo?';
         fb.className = 'email-feedback err';
         btn.disabled = false;
         btn.textContent = 'Avise-me';
@@ -150,7 +150,7 @@
     const l1 = document.getElementById('line-1');
     const l2 = document.getElementById('line-2');
     if (!l1 || !window.teaserType) return;
-    window.teaserType(l1, 'Enquanto voce dorme...', { speed: 55, jitter: 30 })
+    window.teaserType(l1, 'Enquanto você dorme...', { speed: 55, jitter: 30 })
       .then(() => new Promise(r => setTimeout(r, 900)))
       .then(() => window.teaserType(l2, '...o BlueTube evolui.', { speed: 55, jitter: 30 }))
       .then(() => new Promise(r => setTimeout(r, 1100)))
