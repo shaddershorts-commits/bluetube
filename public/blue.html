@@ -1205,11 +1205,11 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <div class="prof-name" id="profName">—</div>
       <div class="prof-uname" id="profUname">@—</div>
       <div class="prof-stats">
-        <div class="pstat"><span class="pstat-n" id="pVids">0</span><span class="pstat-l">Vídeos</span></div>
-        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguidores')" title="Ver seguidores"><span class="pstat-n" id="pFollowers">0</span><span class="pstat-l">Seguidores</span></div>
-        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguindo')" title="Ver quem segue"><span class="pstat-n" id="pSeguindo">0</span><span class="pstat-l">Seguindo</span></div>
-        <div class="pstat"><span class="pstat-n" id="pViews">0</span><span class="pstat-l">Views</span></div>
-        <div class="pstat"><span class="pstat-n" id="pLikes">0</span><span class="pstat-l">Curtidas</span></div>
+        <div class="pstat"><span class="pstat-n" id="pVids">0</span><span class="pstat-l" data-i18n="pstat_videos">Vídeos</span></div>
+        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguidores')" title="Ver seguidores" data-i18n-title="pstat_view_followers"><span class="pstat-n" id="pFollowers">0</span><span class="pstat-l" data-i18n="pstat_followers">Seguidores</span></div>
+        <div class="pstat" style="cursor:pointer" onclick="abrirSeguidores('seguindo')" title="Ver quem segue" data-i18n-title="pstat_view_following"><span class="pstat-n" id="pSeguindo">0</span><span class="pstat-l" data-i18n="pstat_following">Seguindo</span></div>
+        <div class="pstat"><span class="pstat-n" id="pViews">0</span><span class="pstat-l" data-i18n="pstat_views">Views</span></div>
+        <div class="pstat"><span class="pstat-n" id="pLikes">0</span><span class="pstat-l" data-i18n="pstat_likes">Curtidas</span></div>
       </div>
     </div>
   </div>
@@ -1236,7 +1236,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     <button class="prof-sort-btn" data-sort="popular" onclick="applyProfSort('popular')">Populares</button>
     <button class="prof-sort-btn" data-sort="oldest" onclick="applyProfSort('oldest')">Antigos</button>
   </div>
-  <div class="prof-grid" id="profGrid"><div class="pg-empty">Carregando…</div></div>
+  <div class="prof-grid" id="profGrid"><div class="pg-empty" data-i18n="modal_loading">Carregando…</div></div>
   <div id="analyticsPanel" style="display:none;padding:12px 0"></div>
   <div id="shopPanel" style="display:none"></div>
 </div>
@@ -1304,12 +1304,12 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:80vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header" style="display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.06)">
-      <button id="sgTabSeguidores" onclick="trocarSgTab('seguidores')" style="flex:1;background:none;border:none;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid #3b82f6">Seguidores <span id="sgCntSeguidores" style="opacity:.5;font-weight:500"></span></button>
-      <button id="sgTabSeguindo" onclick="trocarSgTab('seguindo')" style="flex:1;background:none;border:none;padding:14px;color:rgba(255,255,255,.5);font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent">Seguindo <span id="sgCntSeguindo" style="opacity:.5;font-weight:500"></span></button>
+      <button id="sgTabSeguidores" onclick="trocarSgTab('seguidores')" style="flex:1;background:none;border:none;padding:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid #3b82f6"><span data-i18n="pstat_followers">Seguidores</span> <span id="sgCntSeguidores" style="opacity:.5;font-weight:500"></span></button>
+      <button id="sgTabSeguindo" onclick="trocarSgTab('seguindo')" style="flex:1;background:none;border:none;padding:14px;color:rgba(255,255,255,.5);font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent"><span data-i18n="pstat_following">Seguindo</span> <span id="sgCntSeguindo" style="opacity:.5;font-weight:500"></span></button>
       <button class="bt-modal-close" onclick="btModalClose('seguidoresModal')" style="margin-right:8px">✕</button>
     </div>
     <div class="bt-modal-body" id="sgListaBody" style="padding:8px 12px 16px;max-height:60vh;overflow-y:auto">
-      <div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px">Carregando…</div>
+      <div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px" data-i18n="modal_loading">Carregando…</div>
     </div>
   </div>
 </div>
@@ -1321,27 +1321,27 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
     <div class="bt-modal-body" style="padding:8px 24px 16px">
       <button class="bt-menu-item" id="dmEdit" onclick="startEditVideo()">
         <div class="bt-menu-icon">✏️</div>
-        <div class="bt-menu-text"><div class="title">Editar vídeo</div><div class="subtitle">Título e descrição</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="modal_edit_video_title">Editar vídeo</div><div class="subtitle" data-i18n="dots_edit_video_sub">Título e descrição</div></div>
       </button>
       <button class="bt-menu-item" onclick="copyVideoLink()">
         <div class="bt-menu-icon">🔗</div>
-        <div class="bt-menu-text"><div class="title">Copiar link</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="dots_copy_link">Copiar link</div></div>
       </button>
       <button class="bt-menu-item" onclick="openReportMenu()">
         <div class="bt-menu-icon danger">🚫</div>
-        <div class="bt-menu-text"><div class="title">Denunciar</div><div class="subtitle">Sinalizar conteúdo inapropriado</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="dots_report">Denunciar</div><div class="subtitle" data-i18n="dots_report_sub">Sinalizar conteúdo inapropriado</div></div>
       </button>
       <button class="bt-menu-item danger" id="dmBlock" onclick="doBlockUser()" style="display:none">
         <div class="bt-menu-icon danger">🔕</div>
-        <div class="bt-menu-text"><div class="title">Bloquear usuário</div><div class="subtitle">Você não verá mais vídeos dele</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="dots_block_user">Bloquear usuário</div><div class="subtitle" data-i18n="dots_block_user_sub">Você não verá mais vídeos dele</div></div>
       </button>
       <button class="bt-menu-item danger" id="dmDelete" onclick="startDeleteVideo()">
         <div class="bt-menu-icon danger">🗑️</div>
-        <div class="bt-menu-text"><div class="title">Excluir vídeo</div><div class="subtitle">Remover permanentemente</div></div>
+        <div class="bt-menu-text"><div class="title" data-i18n="dots_delete_video">Excluir vídeo</div><div class="subtitle" data-i18n="dots_delete_video_sub">Remover permanentemente</div></div>
       </button>
     </div>
     <div class="bt-modal-footer">
-      <button class="bt-btn-secondary" onclick="closeDotsMenu()">Cancelar</button>
+      <button class="bt-btn-secondary" onclick="closeDotsMenu()" data-i18n="menu_cancel">Cancelar</button>
     </div>
   </div>
 </div>
@@ -2482,7 +2482,7 @@ function openProfile(){
   if(!TOKEN){
     document.getElementById('profName').textContent='Visitante';
     document.getElementById('profUname').textContent='Entre para ver seu perfil';
-    document.getElementById('profGrid').innerHTML='<div class="pg-empty">Entre para ver seu perfil<br><br><button onclick="openAuthOnly()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Fazer login →</button></div>';
+    document.getElementById('profGrid').innerHTML='<div class="pg-empty">'+t('empty_login_for_profile','Entre para ver seu perfil')+'<br><br><button onclick="openAuthOnly()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">'+t('empty_login_btn','Fazer login →')+'</button></div>';
     return;
   }
   loadMyProfile();
@@ -3459,7 +3459,7 @@ function renderGrid(vids,isOwn){
   document.getElementById('pViews').textContent=fmt(totalViews);
   document.getElementById('pLikes').textContent=fmt(totalLikes);
   if(!vids.length){
-    grid.innerHTML='<div class="pg-empty">'+(isOwn?'Nenhum vídeo ainda.<br><br><button onclick="openUpload();closeProfile()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">+ Postar primeiro vídeo</button>':'Sem vídeos ainda.')+'</div>';
+    grid.innerHTML='<div class="pg-empty">'+(isOwn?(t('empty_no_videos_own','Nenhum vídeo ainda.')+'<br><br><button onclick="openUpload();closeProfile()" style="background:#3b82f6;border:none;border-radius:10px;padding:10px 20px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">'+t('empty_post_first_btn','+ Postar primeiro vídeo')+'</button>'):t('empty_no_videos_other','Sem vídeos ainda.'))+'</div>';
     return;
   }
   sorted.forEach(v=>{
