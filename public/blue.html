@@ -1040,13 +1040,13 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:85vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Buscar</span>
+      <span class="bt-modal-title" data-i18n="nav_search">Buscar</span>
       <button class="bt-modal-close" onclick="closeSearch()">✕</button>
     </div>
     <div class="bt-modal-body">
       <div style="position:relative;margin-bottom:16px">
         <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;opacity:.5">🔍</span>
-        <input class="bt-input" id="searchInp" type="text" placeholder="Buscar vídeos e pessoas..." oninput="onSearchInput()" style="padding-left:42px"/>
+        <input class="bt-input" id="searchInp" type="text" placeholder="Buscar vídeos e pessoas..." data-i18n-placeholder="overlay_search_placeholder" oninput="onSearchInput()" style="padding-left:42px"/>
       </div>
       <div id="searchResults" style="font-size:13px"></div>
     </div>
@@ -1529,7 +1529,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="pf-overlay" id="pfOverlay">
   <div class="pf-topbar">
     <button class="pf-back" onclick="closePfOverlay()">←</button>
-    <div class="pf-title" id="pfTitle">Vídeos</div>
+    <div class="pf-title" id="pfTitle" data-i18n="overlay_player_title">Vídeos</div>
   </div>
   <div id="pfFeed"></div>
 </div>
@@ -1539,17 +1539,17 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:90vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">💬 Mensagens</span>
+      <span class="bt-modal-title" data-i18n="overlay_inbox_title">💬 Mensagens</span>
       <button class="bt-modal-close" onclick="closeInbox()">✕</button>
     </div>
     <div class="bt-modal-body" style="padding:0">
       <div class="status-row" style="padding:16px 24px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(0,170,255,.06)">
-        <button class="st-btn online" onclick="setMyStatus('online')">● Online</button>
-        <button class="st-btn away" onclick="setMyStatus('away')">● Ausente</button>
-        <button class="st-btn busy" onclick="setMyStatus('busy')">● Ocupado</button>
-        <button class="st-btn offline" onclick="setMyStatus('offline')">● Offline</button>
+        <button class="st-btn online" onclick="setMyStatus('online')" data-i18n="overlay_status_online">● Online</button>
+        <button class="st-btn away" onclick="setMyStatus('away')" data-i18n="overlay_status_away">● Ausente</button>
+        <button class="st-btn busy" onclick="setMyStatus('busy')" data-i18n="overlay_status_busy">● Ocupado</button>
+        <button class="st-btn offline" onclick="setMyStatus('offline')" data-i18n="overlay_status_offline">● Offline</button>
       </div>
-      <div class="conv-list" id="convList" style="padding:8px 0"><div class="bt-empty"><div class="bt-empty-icon">💬</div>Nenhuma conversa ainda.<br>Envie uma mensagem para alguém!</div></div>
+      <div class="conv-list" id="convList" style="padding:8px 0"><div class="bt-empty"><div class="bt-empty-icon">💬</div><span data-i18n="overlay_no_conversations">Nenhuma conversa ainda.</span><br><span data-i18n="overlay_no_conv_sub">Envie uma mensagem para alguém!</span></div></div>
     </div>
   </div>
 </div>
@@ -1562,14 +1562,14 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <div class="chat-hd-av" id="chatHdAv" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a6bff,#00aaff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px">?</div>
       <div style="flex:1;min-width:0">
         <div class="chat-hd-name" id="chatHdName" style="color:#e8f4ff;font-weight:700;font-size:15px">—</div>
-        <div class="chat-hd-status offline" id="chatHdStatus" style="color:rgba(232,244,255,.4);font-size:11px">offline</div>
+        <div class="chat-hd-status offline" id="chatHdStatus" style="color:rgba(232,244,255,.4);font-size:11px" data-i18n="overlay_chat_status_offline">offline</div>
       </div>
     </div>
     <div class="bt-modal-body chat-msgs" id="chatMsgs" style="padding:16px 20px"></div>
     <div class="bt-modal-footer chat-inp-wrap" style="align-items:flex-end;gap:8px">
       <div class="emoji-picker-wrap" id="emojiPicker"></div>
       <button class="emoji-btn" onclick="toggleEmojiPicker()" style="background:rgba(255,255,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:12px;width:44px;height:44px;cursor:pointer;font-size:20px;flex-shrink:0">😊</button>
-      <textarea class="bt-input bt-textarea chat-inp" id="chatInp" placeholder="Mensagem…" rows="1" style="min-height:44px;max-height:120px;flex:1"
+      <textarea class="bt-input bt-textarea chat-inp" id="chatInp" placeholder="Mensagem…" data-i18n-placeholder="overlay_chat_placeholder" rows="1" style="min-height:44px;max-height:120px;flex:1"
         oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
       <button class="bt-btn-primary chat-send" id="chatSendBtn" onclick="sendMsg()" style="flex:0 0 auto;padding:12px 18px">↑</button>
@@ -1583,18 +1583,18 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:90vh">
     <div class="bt-modal-handle"></div>
     <div class="bt-modal-header">
-      <span class="bt-modal-title">💬 Chat</span>
+      <span class="bt-modal-title" data-i18n="overlay_groups_title">💬 Chat</span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="bt-modal-header-action" onclick="openCriarGrupo()">+ Grupo</button>
+        <button class="bt-modal-header-action" onclick="openCriarGrupo()" data-i18n="overlay_group_add">+ Grupo</button>
         <button class="bt-modal-close" onclick="closeGrupos()">✕</button>
       </div>
     </div>
     <div class="gp-tabs" style="display:flex;gap:6px;padding:12px 24px 0;border-bottom:1px solid rgba(0,170,255,.08)">
-      <button class="gp-tab on" id="gpTabMsgs" onclick="showGpTab('mensagens',this)">Mensagens</button>
-      <button class="gp-tab" id="gpTabMeus" onclick="showGpTab('meus',this)">Grupos</button>
-      <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)">Descobrir</button>
+      <button class="gp-tab on" id="gpTabMsgs" onclick="showGpTab('mensagens',this)" data-i18n="overlay_tab_messages">Mensagens</button>
+      <button class="gp-tab" id="gpTabMeus" onclick="showGpTab('meus',this)" data-i18n="overlay_tab_groups">Grupos</button>
+      <button class="gp-tab" id="gpTabDesc" onclick="showGpTab('descobrir',this)" data-i18n="overlay_tab_discover">Descobrir</button>
     </div>
-    <div class="bt-modal-body gp-body" id="gpBody"><div class="bt-empty"><div class="bt-empty-icon">👥</div>Carregando…</div></div>
+    <div class="bt-modal-body gp-body" id="gpBody"><div class="bt-empty"><div class="bt-empty-icon">👥</div><span data-i18n="modal_loading">Carregando…</span></div></div>
   </div>
 </div>
 
@@ -1603,12 +1603,12 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div class="bt-modal" style="max-height:92vh">
     <div class="bt-modal-header">
       <button class="bt-modal-close" onclick="closeGpChat()" style="width:36px;height:36px">←</button>
-      <span class="bt-modal-title" id="gpChatName">Grupo</span>
+      <span class="bt-modal-title" id="gpChatName" data-i18n="overlay_group_default_title">Grupo</span>
       <span style="width:32px"></span>
     </div>
-    <div class="bt-modal-body gp-chat-msgs" id="gpChatMsgs"><div class="bt-empty">Carregando…</div></div>
+    <div class="bt-modal-body gp-chat-msgs" id="gpChatMsgs"><div class="bt-empty"><span data-i18n="modal_loading">Carregando…</span></div></div>
     <div class="bt-modal-footer gp-chat-inp" style="align-items:center;gap:8px">
-      <input class="bt-input" id="gpMsgInp" placeholder="Mensagem…" style="flex:1" onkeydown="if(event.key==='Enter')sendGpMsg()"/>
+      <input class="bt-input" id="gpMsgInp" placeholder="Mensagem…" data-i18n-placeholder="overlay_chat_placeholder" style="flex:1" onkeydown="if(event.key==='Enter')sendGpMsg()"/>
       <button class="bt-btn-primary gp-chat-send" onclick="sendGpMsg()" style="flex:0 0 auto;padding:12px 18px">↑</button>
     </div>
   </div>
@@ -1618,7 +1618,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
 <div class="bt-modal-overlay center" id="criarGrupoModal" style="display:none">
   <div class="bt-modal">
     <div class="bt-modal-header">
-      <span class="bt-modal-title">Criar grupo</span>
+      <span class="bt-modal-title" data-i18n="overlay_create_group_title">Criar grupo</span>
       <button class="bt-modal-close" onclick="closeCriarGrupo()">✕</button>
     </div>
     <div class="bt-modal-body">
