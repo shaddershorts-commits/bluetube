@@ -1864,7 +1864,7 @@ function _syncTabsVisual(){
   else init();
 })();
 function switchFeedMode(mode){
-  if(mode==='following'&&!TOKEN){toast('Faça login pra ver quem você segue');return;}
+  if(mode==='following'&&!TOKEN){toast(t('toast_login_required_following','Faça login pra ver quem você segue'));return;}
   // Fecha overlays antes de trocar feed (evita ficar preso no perfil/video).
   ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
   // Se URL eh de perfil/video, volta pra /blue
@@ -2275,7 +2275,7 @@ function haptic(type='light'){
 function _requireLogin(){
   if (TOKEN) return true;
   if (typeof openAuthOnly === 'function') openAuthOnly();
-  else toast('Faça login pra interagir');
+  else toast(t('toast_login_required_like','Faça login pra interagir'));
   return false;
 }
 function doLike(id){
@@ -2292,8 +2292,8 @@ function doSave(id){
   if(!_requireLogin())return;
   debounced('save-'+id,()=>{
     const ic=document.getElementById('si-'+id);if(!ic)return;
-    if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast('Removido');}
-    else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast('💾 Salvo!');trackSignal(id,{salvou:true});}
+    if(saved.has(id)){saved.delete(id);ic.textContent='💾';ping('unsave',id);toast(t('toast_removed','Removido'));}
+    else{saved.add(id);ic.textContent='🔖';ping('save',id);haptic('light');toast(t('toast_saved','💾 Salvo!'));trackSignal(id,{salvou:true});}
     localStorage.setItem('bl_saved',JSON.stringify([...saved]));
   });
 }
@@ -2301,7 +2301,7 @@ async function doShare(url,title){
   const vid=_curVideo?.id;
   const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
   if(navigator.share){try{await navigator.share({title:title||'Blue',url:shareUrl});}catch(e){}}
-  else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast('🔗 Link copiado!');}
+  else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast(t('toast_link_copied','🔗 Link copiado!'));}
   if(vid){
     trackSignal(vid,{compartilhou:true});
     // Notifica o dono via blue-interact (cria notificacao 'share')
@@ -2359,7 +2359,7 @@ async function sendComment(){debounced('comment',async()=>{
   const text=inp.value.trim();
   if(!text||!_curCmtVid)return;
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para comentar');return;}
+  if(!tk){toast(t('toast_login_required_comment','Entre para comentar'));return;}
   const btn=document.getElementById('cpSend');btn.disabled=true;
   try{
     const r=await fetch('/api/blue-comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tk,video_id:_curCmtVid,text})});
@@ -2379,7 +2379,7 @@ async function sendComment(){debounced('comment',async()=>{
     const cc=document.getElementById('cc-'+_curCmtVid);if(cc)cc.textContent=fmt((parseInt(cc.textContent.replace(/[^0-9]/g,''))||0)+1);
     const cnt=document.getElementById('cpCnt');if(cnt)cnt.textContent='('+(parseInt((cnt.textContent.match(/\d+/)||['0'])[0])+1)+')';
     haptic('success');
-  }catch(e){toast('Erro: '+e.message);haptic('error');}
+  }catch(e){toast(t('toast_error_prefix','Erro: ')+e.message);haptic('error');}
   btn.disabled=false;
 },1000);}
 
@@ -2615,7 +2615,7 @@ window._handleLangClick = _handleLangClick;
 function shareMyProfile(){
   closeProfMenu();
   const uname = myProfile && myProfile.username;
-  if (!uname) { toast('Carregando perfil…'); return; }
+  if (!uname) { toast(t('toast_loading_profile','Carregando perfil…')); return; }
   const url = 'https://bluetubeviral.com/@' + uname;
   if (navigator.share) {
     navigator.share({ title: 'Meu perfil no Blue', text: '@' + uname + ' no Blue', url }).catch(()=>{});
@@ -2623,7 +2623,7 @@ function shareMyProfile(){
   }
   try {
     navigator.clipboard.writeText(url);
-    toast('Link copiado: ' + url);
+    toast(t('toast_link_copied_prefix','Link copiado: ') + url);
   } catch(e) { toast(url); }
 }
 
@@ -2649,7 +2649,7 @@ function abrirSeguidores(tab){
                document.getElementById('pNavName')?.textContent === myProfile.username)
     ? myProfile.user_id
     : (_chatTargetUser || myProfile?.user_id);
-  if (!uid) { toast('Carregando perfil…'); return; }
+  if (!uid) { toast(t('toast_loading_profile','Carregando perfil…')); return; }
   _sgUserId = uid;
   _sgTab = tab || 'seguidores';
   trocarSgTab(_sgTab, true);
@@ -2904,7 +2904,7 @@ let pfObs = null, pfVids = [], pfUserId = null;
 
 function openProfileFeed(vids, startId, username) {
   pfVids = vids.filter(v => v && v.video_url);
-  if (!pfVids.length) { toast('Sem vídeos disponíveis'); return; }
+  if (!pfVids.length) { toast(t('toast_no_videos','Sem vídeos disponíveis')); return; }
   pfUserId = pfVids[0]?.user_id || null;
   // Atualiza URL pra /blue/v/:videoId (permite compartilhar link direto do video)
   if (startId) try { BlueRouter.push('/blue/v/' + encodeURIComponent(startId), { videoId: startId, fromProfile: username }, 'Video'); } catch(e){}
@@ -3042,7 +3042,7 @@ async function marcarNotifsLidas(){
   if(badge){badge.textContent='0';badge.style.display='none';}
   const np=document.getElementById('notifPanel');
   if(np)np.innerHTML='';
-  toast('✅ Notificações lidas');
+  toast(t('toast_notifications_read','✅ Notificações lidas'));
 }
 
 // Poll notifications every 30s
@@ -3118,7 +3118,7 @@ async function loadMessages() {
     if (!r.ok) return;
     const d = await r.json();
     renderMessages(d.messages || []);
-    if(_chatErrors>0){_chatErrors=0;toast('🟢 Chat reconectado');}
+    if(_chatErrors>0){_chatErrors=0;toast(t('toast_chat_reconnected','🟢 Chat reconectado'));}
   } catch(e) {
     _chatErrors++;
     if(_chatErrors>=3){
@@ -3160,8 +3160,8 @@ async function sendMsg() {
       body: JSON.stringify({ action: 'send', token: TOKEN, to_user_id: _chatOtherUser.user_id, text })
     });
     if (r.ok) await loadMessages();
-    else { const d=await r.json(); toast('Erro: '+(d.error||'falha')); inp.value=text; }
-  } catch(e) { toast('Erro: '+e.message); inp.value=text; }
+    else { const d=await r.json(); toast(t('toast_error_prefix','Erro: ')+(d.error||'falha')); inp.value=text; }
+  } catch(e) { toast(t('toast_error_prefix','Erro: ')+e.message); inp.value=text; }
   btn.disabled = false; inp.focus();
 }
 
@@ -3194,7 +3194,7 @@ function updateStatusBtns(status) {
 let _chatTargetUser = null;
 async function openChatWithUser(userId) {
   const tk = localStorage.getItem('bt_token');
-  if (!tk) { toast('Entre para enviar mensagens'); return; }
+  if (!tk) { toast(t('toast_login_required_dm','Entre para enviar mensagens')); return; }
   if (userId) _chatTargetUser = userId;
   if (!_chatTargetUser) return;
   try {
@@ -3211,7 +3211,7 @@ async function openChatWithUser(userId) {
     const otherProfile = pVid?.creator || { user_id: otherId, username: 'usuário', display_name: 'Usuário' };
     if (d.other?.username) Object.assign(otherProfile, d.other);
     openChatWin(d.conv_id, otherProfile);
-  } catch(e) { toast('Erro: '+e.message); }
+  } catch(e) { toast(t('toast_error_prefix','Erro: ')+e.message); }
 }
 
 // ── FOLLOW SYSTEM ────────────────────────────────────────────────────────────
@@ -3257,7 +3257,7 @@ function updateFollowBtn(){
 
 async function toggleFollow(){
   const tk=localStorage.getItem('bt_token');
-  if(!tk){ toast('Entre para seguir'); return; }
+  if(!tk){ toast(t('toast_login_required_follow','Entre para seguir')); return; }
   if(!_chatTargetUser)return;
   const btn=document.getElementById('profFollowBtn'); if(btn) btn.disabled=true;
   try{
@@ -3273,7 +3273,7 @@ async function toggleFollow(){
       else _followingIds=_followingIds.filter(id=>id!==_chatTargetUser);
       toast(_isFollowing?'✓ Seguindo!':'Deixou de seguir');
     }
-  }catch(e){ toast('Erro: '+e.message); }
+  }catch(e){ toast(t('toast_error_prefix','Erro: ')+e.message); }
   if(btn) btn.disabled=false;
 }
 
@@ -3599,16 +3599,16 @@ function startDeleteVideo(){
   if(!_dotsVid||!confirm('Excluir este vídeo?'))return;
   const tk=localStorage.getItem('bt_token');
   fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete-video',token:tk,video_id:_dotsVid.id})})
-    .then(r=>r.ok?toast('🗑️ Excluído'):(toast('Erro ao excluir')))
+    .then(r=>r.ok?toast(t('toast_deleted','🗑️ Excluído')):(toast(t('toast_error_delete','Erro ao excluir'))))
     .then(()=>{videos=videos.filter(v=>v.id!==_dotsVid.id);renderFeed();loadMyVideos();})
-    .catch(()=>toast('Erro'));
+    .catch(()=>toast(t('toast_error','Erro')));
 }
 async function saveVideoEdit(){
   if(!_dotsVid)return;
   const tk=localStorage.getItem('bt_token');
   const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-video',token:tk,video_id:_dotsVid.id,title:document.getElementById('evTitle').value,description:document.getElementById('evDesc').value})});
-  if(r.ok){toast('✅ Atualizado');btModalClose('editVideoOv');loadMyVideos();}
-  else toast('Erro ao salvar');
+  if(r.ok){toast(t('toast_updated','✅ Atualizado'));btModalClose('editVideoOv');loadMyVideos();}
+  else toast(t('toast_error_save','Erro ao salvar'));
 }
 
 // ── EDIT PROFILE ──────────────────────────────────────────────────────────────
@@ -3642,9 +3642,9 @@ async function saveProfile(){
   try{
     const tk=localStorage.getItem('bt_token');
     const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',token:tk,display_name:document.getElementById('eName').value.trim(),username:document.getElementById('eUser').value.trim(),bio:document.getElementById('eBio').value.trim(),avatar_data:_editAvB64})});
-    if(r.ok){toast('✅ Perfil atualizado');btModalClose('editProfileOv');loadMyProfile();updateHdAvatar();}
-    else{const d=await r.json();toast('Erro: '+(d.error||'falha'));}
-  }catch(e){toast('Erro: '+e.message);}
+    if(r.ok){toast(t('toast_profile_updated','✅ Perfil atualizado'));btModalClose('editProfileOv');loadMyProfile();updateHdAvatar();}
+    else{const d=await r.json();toast(t('toast_error_prefix','Erro: ')+(d.error||'falha'));}
+  }catch(e){toast(t('toast_error_prefix','Erro: ')+e.message);}
   btn.disabled=false;btn.textContent='Salvar';
 }
 function updateHdAvatar(){
@@ -3724,20 +3724,20 @@ function pickFile(file){
   if(!file)return;
   const mb=file.size/1024/1024;
   // P1: Size validation (500MB max)
-  if(mb>500){toast('❌ Vídeo muito grande. Máximo 500MB.');return;}
+  if(mb>500){toast(t('toast_upload_too_large','❌ Vídeo muito grande. Máximo 500MB.'));return;}
   // P1: Format validation
   const validTypes=['video/mp4','video/quicktime','video/webm','video/x-msvideo','video/avi'];
   if(file.type&&!validTypes.some(t=>file.type.includes(t.split('/')[1]))){
-    toast('❌ Formato não suportado. Use MP4, MOV ou WebM.');return;
+    toast(t('toast_upload_wrong_format','❌ Formato não suportado. Use MP4, MOV ou WebM.'));return;
   }
   // P1: Verify it's actually a playable video
   const testUrl=URL.createObjectURL(file);
   const testVid=document.createElement('video');testVid.src=testUrl;
-  testVid.onerror=()=>{URL.revokeObjectURL(testUrl);toast('❌ Arquivo não é um vídeo válido.');};
+  testVid.onerror=()=>{URL.revokeObjectURL(testUrl);toast(t('toast_upload_invalid_file','❌ Arquivo não é um vídeo válido.'));};
   testVid.onloadedmetadata=()=>{
     vDur=testVid.duration;vW=testVid.videoWidth;vH=testVid.videoHeight;
-    if(!vW||!vH){URL.revokeObjectURL(testUrl);toast('❌ Vídeo inválido.');return;}
-    if(vDur>180){URL.revokeObjectURL(testUrl);toast('❌ Vídeo muito longo. Máximo 3 minutos para o feed.');return;}
+    if(!vW||!vH){URL.revokeObjectURL(testUrl);toast(t('toast_upload_invalid','❌ Vídeo inválido.'));return;}
+    if(vDur>180){URL.revokeObjectURL(testUrl);toast(t('toast_upload_too_long','❌ Vídeo muito longo. Máximo 3 minutos para o feed.'));return;}
     selFile=file;
     // P3: Reliable thumbnail — try multiple timestamps
     let thumbAttempt=0;
@@ -3778,9 +3778,9 @@ function pickFile(file){
 let _isUploading=false;
 async function doUpload(){
   if(!selFile)return;
-  if(_isUploading){toast('Upload em andamento...');return;}
+  if(_isUploading){toast(t('toast_upload_in_progress','Upload em andamento...'));return;}
   const title=document.getElementById('upTitle').value.trim();
-  if(!title){toast('Adicione um título');return;}
+  if(!title){toast(t('toast_upload_missing_title','Adicione um título'));return;}
   _isUploading=true;
   const desc=document.getElementById('upDesc').value.trim();
   const btn=document.getElementById('upBtn'),msg=document.getElementById('upMsg');
@@ -3788,7 +3788,7 @@ async function doUpload(){
   btn.disabled=true;btn.textContent='Verificando…';
   msg.className='up-msg ok';msg.textContent='';prog.style.display='block';fill.style.width='3%';
   const vt=await getValidToken();
-  if(!vt){_isUploading=false;closeUpload();toast('Sessão expirada');setTimeout(openUpload,500);return;}
+  if(!vt){_isUploading=false;closeUpload();toast(t('toast_session_expired','Sessão expirada'));setTimeout(openUpload,500);return;}
   btn.textContent='Publicando…';fill.style.width='10%';msg.textContent='Preparando…';
   try{
     const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:vt,title,description:desc,duration:vDur,width:vW,height:vH,file_name:selFile.name,content_type:selFile.type,file_size:selFile.size,thumbnail_data:thumbB64})});
@@ -3823,7 +3823,7 @@ async function doUpload(){
       xhr.setRequestHeader('x-upsert','true');
       xhr.send(selFile);
     });
-    fill.style.width='100%';msg.textContent='✅ Publicado!';btn.textContent='✅ Pronto!';toast('🎬 Publicado!');haptic('success');
+    fill.style.width='100%';msg.textContent='✅ Publicado!';btn.textContent='✅ Pronto!';toast(t('toast_upload_published','🎬 Publicado!'));haptic('success');
     if(d1.video){d1.video.creator=myProfile||{};videos.unshift(d1.video);renderFeed();}
     setTimeout(()=>{closeUpload();prog.style.display='none';fill.style.width='0%';msg.textContent='';btn.textContent='Publicar →';btn.disabled=true;selFile=null;thumbB64=null;document.getElementById('dropIcon').textContent='🎬';document.getElementById('dropLbl').textContent='Toque para selecionar';document.getElementById('prevRow').style.display='none';document.getElementById('prevThumb').innerHTML='🎬';document.getElementById('upTitle').value='';document.getElementById('upDesc').value='';},1800);
   }catch(err){msg.className='up-msg err';msg.textContent=err.message;btn.disabled=false;btn.textContent='Tentar novamente';fill.style.width='0%';prog.style.display='none';haptic('error');}
@@ -4264,7 +4264,7 @@ async function sendStoryReply(){
     });
     if(r.ok){ inp.value=''; toast('Resposta enviada'); }
     else { const d=await r.json(); toast(d.error||'Erro ao enviar'); }
-  }catch(e){ toast('Erro: '+e.message); }
+  }catch(e){ toast(t('toast_error_prefix','Erro: ')+e.message); }
   if(btn) btn.disabled = false;
 }
 
@@ -4281,7 +4281,7 @@ async function deleteMyStory(){
     });
     if(r.ok){ toast('Story apagado'); _stNext(); loadStories(); }
     else { const d=await r.json(); toast(d.error||'Erro'); }
-  }catch(e){ toast('Erro: '+e.message); }
+  }catch(e){ toast(t('toast_error_prefix','Erro: ')+e.message); }
 }
 
 function openStCreator(){
@@ -4521,7 +4521,7 @@ window.addEventListener('offline',()=>{
 });
 window.addEventListener('online',()=>{
   document.getElementById('offlineBanner').style.display='none';
-  toast('✅ Conexão restaurada');
+  toast(t('toast_connection_restored','✅ Conexão restaurada'));
   if(!videos.length) loadFeed();
 });
 
@@ -4546,7 +4546,7 @@ async function doSessionRelogin(){
     if(t){localStorage.setItem('bt_token',t);TOKEN=t;if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
     document.getElementById('sessionModal').style.display='none';
     document.getElementById('sessEmail').value='';document.getElementById('sessPwd').value='';err.textContent='';
-    toast('✅ Sessão restaurada');
+    toast(t('toast_session_restored','✅ Sessão restaurada'));
     if(_pendingAction){_pendingAction();_pendingAction=null;}
   }catch(e){err.textContent=e.message;}
 }
@@ -4585,8 +4585,8 @@ setTimeout(()=>{
 
 // ── P7: SESSION SYNC ACROSS TABS ────────────────────────────────────────────
 window.addEventListener('storage',e=>{
-  if(e.key==='bt_token'&&e.newValue&&!TOKEN){TOKEN=e.newValue;initAuth();toast('✅ Login detectado');}
-  if(e.key==='bt_token'&&!e.newValue&&TOKEN){TOKEN=null;myProfile=null;updateHdAvatar();toast('Sessão encerrada em outra aba');}
+  if(e.key==='bt_token'&&e.newValue&&!TOKEN){TOKEN=e.newValue;initAuth();toast(t('toast_login_detected','✅ Login detectado'));}
+  if(e.key==='bt_token'&&!e.newValue&&TOKEN){TOKEN=null;myProfile=null;updateHdAvatar();toast(t('toast_session_ended_other_tab','Sessão encerrada em outra aba'));}
 });
 
 // ── P8: SKELETON LOADING ─────────────────────────────────────────────────────
@@ -5029,9 +5029,9 @@ async function abrirVideoExplorar(videoId, userId){
         vid = (pd.videos || []).find(x => x.id === videoId);
       }
     }
-    if (!vid) { toast('Vídeo indisponível'); return; }
+    if (!vid) { toast(t('toast_video_unavailable','Vídeo indisponível')); return; }
     openProfileFeed([vid], vid.id, vid.creator?.username || 'usuario');
-  } catch(e) { toast('Erro ao abrir vídeo'); }
+  } catch(e) { toast(t('toast_error','Erro ao abrir vídeo')); }
 }
 window.abrirVideoExplorar = abrirVideoExplorar;
 
@@ -5172,8 +5172,8 @@ async function _obFinish(){
     const username=document.getElementById('ob-username').value.trim();
     const bio=document.getElementById('ob-bio').value.trim();
     const r=await fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',token:tk,display_name:name,username:username,bio:bio,avatar_data:_obAvB64})});
-    if(!r.ok){const d=await r.json();toast('Erro: '+(d.error||'falha'));btn.disabled=false;btn.textContent='Concluir e postar →';return;}
-    toast('✅ Perfil configurado!');
+    if(!r.ok){const d=await r.json();toast(t('toast_error_prefix','Erro: ')+(d.error||'falha'));btn.disabled=false;btn.textContent='Concluir e postar →';return;}
+    toast(t('toast_profile_configured','✅ Perfil configurado!'));
     await loadMyProfile();
     updateHdAvatar();
     _bpSaveConversion(); // registra conversão com user_id real após onboarding
@@ -5181,7 +5181,7 @@ async function _obFinish(){
     const el=document.getElementById('bp-onboarding');
     el.classList.remove('bp-on');el.classList.add('bp-out');
     setTimeout(()=>{el.style.display='none';el.classList.remove('bp-out');openUpload();},400);
-  }catch(e){toast('Erro: '+e.message);}
+  }catch(e){toast(t('toast_error_prefix','Erro: ')+e.message);}
   btn.disabled=false;btn.textContent='Concluir e postar →';
 }
 
@@ -5526,7 +5526,7 @@ async function saveInteresses() {
     await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'interesses',token:tk,interesses:_obInteresses})});
     renderOnboardStep(2);
-  } catch(e) { toast('Erro'); }
+  } catch(e) { toast(t('toast_error','Erro')); }
 }
 
 async function loadOnboardCreators() {
@@ -5553,7 +5553,7 @@ async function loadOnboardCreators() {
         <button class="ob-creator-btn">${_obFollowing.has(s.user_id)?'✓ Seguindo':'+ Seguir'}</button>
       </div>`;
     }).join('');
-  } catch(e) { toast('Erro'); }
+  } catch(e) { toast(t('toast_error','Erro')); }
 }
 
 function toggleFollowCreator(uid) {
@@ -5571,7 +5571,7 @@ async function confirmFollows() {
     await fetch('/api/blue-onboarding', {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'seguir-sugeridos',token:tk,user_ids:[..._obFollowing]})});
     renderOnboardStep(3);
-  } catch(e) { toast('Erro'); }
+  } catch(e) { toast(t('toast_error','Erro')); }
 }
 
 async function askNotifications() {
@@ -5588,7 +5588,7 @@ async function finishOnboarding() {
       body:JSON.stringify({action:'completar',token:tk})});
     document.getElementById('onboardOv').classList.remove('on');
     loadFeed();
-  } catch(e) { toast('Erro'); }
+  } catch(e) { toast(t('toast_error','Erro')); }
 }
 
 // Check onboarding after login (when TOKEN is available)
@@ -5719,7 +5719,7 @@ async function loadGruposDesc(){
 }
 async function entrarGrupo(id,nome){
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para participar de grupos');return;}
+  if(!tk){toast(t('toast_login_required_group','Entre para participar de grupos'));return;}
   try{
     await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'entrar',grupo_id:id,token:tk})});
     openGrupoChat(id,nome);
@@ -5774,7 +5774,7 @@ async function sendGpMsg(){
   const txt=(inp?.value||'').trim();
   if(!txt||!_currentGrupoId)return;
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para enviar mensagens');return;}
+  if(!tk){toast(t('toast_login_required_dm','Entre para enviar mensagens'));return;}
   inp.value='';
   try{
     await fetch('/api/blue-grupos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'mensagem',grupo_id:_currentGrupoId,mensagem:txt,token:tk})});
@@ -5929,7 +5929,7 @@ async function openAssinaturaModal(){
 function closeAssinaturaModal(){btModalClose('assinaturaModal');}
 async function assinarPlano(planoId){
   const tk=localStorage.getItem('bt_token');
-  if(!tk){toast('Entre para assinar');return;}
+  if(!tk){toast(t('toast_login_required_subscribe','Entre para assinar'));return;}
   const btn=event.target;
   if(btn)btn.textContent='Processando&';
   try{
