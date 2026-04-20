@@ -52,13 +52,48 @@
   // Por enquanto, apenas uma chave de smoke test pra validar o pipeline.
   // ═══════════════════════════════════════════════════════════════════════
   const TRANSLATIONS_EXT = {
-    pt: { _i18n_ok: 'sistema de traducao ativo (pt)' },
-    en: { _i18n_ok: 'translation system active (en)' },
-    es: { _i18n_ok: 'sistema de traducción activo (es)' },
-    fr: { _i18n_ok: 'système de traduction actif (fr)' },
-    de: { _i18n_ok: 'Übersetzungssystem aktiv (de)' },
-    it: { _i18n_ok: 'sistema di traduzione attivo (it)' },
-    ja: { _i18n_ok: '翻訳システムが有効 (ja)' },
+    pt: {
+      _i18n_ok: 'sistema de traducao ativo (pt)',
+      test_hello:   'Olá, mundo!',
+      test_welcome: 'Bem-vindo ao BlueTube',
+      test_cta:     'Começar agora',
+    },
+    en: {
+      _i18n_ok: 'translation system active (en)',
+      test_hello:   'Hello, world!',
+      test_welcome: 'Welcome to BlueTube',
+      test_cta:     'Get started',
+    },
+    es: {
+      _i18n_ok: 'sistema de traducción activo (es)',
+      test_hello:   '¡Hola, mundo!',
+      test_welcome: 'Bienvenido a BlueTube',
+      test_cta:     'Empezar ahora',
+    },
+    fr: {
+      _i18n_ok: 'système de traduction actif (fr)',
+      test_hello:   'Salut, tout le monde !',
+      test_welcome: 'Bienvenue sur BlueTube',
+      test_cta:     'Commencer',
+    },
+    de: {
+      _i18n_ok: 'Übersetzungssystem aktiv (de)',
+      test_hello:   'Hallo, Welt!',
+      test_welcome: 'Willkommen bei BlueTube',
+      test_cta:     'Jetzt starten',
+    },
+    it: {
+      _i18n_ok: 'sistema di traduzione attivo (it)',
+      test_hello:   'Ciao, mondo!',
+      test_welcome: 'Benvenuto su BlueTube',
+      test_cta:     'Inizia ora',
+    },
+    ja: {
+      _i18n_ok: '翻訳システムが有効 (ja)',
+      test_hello:   'こんにちは、世界！',
+      test_welcome: 'BlueTubeへようこそ',
+      test_cta:     '今すぐ始める',
+    },
     zh: { _i18n_ok: '翻译系统已激活 (zh)' },
     ar: { _i18n_ok: 'نظام الترجمة نشط (ar)' },
     tr: { _i18n_ok: 'çeviri sistemi aktif (tr)' },
