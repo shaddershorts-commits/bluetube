@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/editor-teaser/teaser.css"/>
+<script src="/i18n.js" defer></script>
 </head>
 <body>
 
@@ -30,8 +31,8 @@
     <div>Blue<span class="accent">Tube</span></div>
   </a>
   <div class="nav-right">
-    <span class="nav-btn" style="pointer-events:none">✨ Editor · Em Construção</span>
-    <a href="/" class="nav-btn back">← Voltar</a>
+    <span class="nav-btn" style="pointer-events:none" data-i18n="editor_nav_badge">✨ Editor · Em Construção</span>
+    <a href="/" class="nav-btn back" data-i18n="editor_nav_back">← Voltar</a>
   </div>
 </nav>
 
@@ -48,15 +49,15 @@
   <div class="scene-inner">
     <h1 class="mega-logo" id="mega-logo">Blue<span class="blue-accent">Editor</span></h1>
     <div class="tagline-main" id="tagline-main"></div>
-    <p class="tagline-sub">O editor de vídeos nativo mais integrado do Brasil.</p>
+    <p class="tagline-sub" data-i18n="editor_scene2_tagline_sub">O editor de vídeos nativo mais integrado do Brasil.</p>
   </div>
 </section>
 
 <!-- ═══════ CENA 3 ─ O produto ═══════ -->
 <section class="scene" id="scene-3">
   <div class="scene-inner">
-    <div class="scene-label">Produto · Protótipo em desenvolvimento</div>
-    <h2 class="scene-headline">Um editor que entende o que você está criando.</h2>
+    <div class="scene-label" data-i18n="editor_scene3_label">Produto · Protótipo em desenvolvimento</div>
+    <h2 class="scene-headline" data-i18n="editor_scene3_headline">Um editor que entende o que você está criando.</h2>
 
     <div class="mockup-stage">
       <div class="editor-mockup" id="mockup">
@@ -79,11 +80,11 @@
             </div>
           </div>
           <div class="mockup-tools">
-            <div class="mt-row"><span>Duração</span><strong style="color:#fff">00:28</strong></div>
-            <div class="mt-row"><span>Cortes</span><strong style="color:#fff">7</strong></div>
-            <div class="mt-row"><span>Legenda</span><strong style="color:#10B981">Auto ✓</strong></div>
+            <div class="mt-row"><span data-i18n="editor_mockup_duration">Duração</span><strong style="color:#fff">00:28</strong></div>
+            <div class="mt-row"><span data-i18n="editor_mockup_cuts">Cortes</span><strong style="color:#fff">7</strong></div>
+            <div class="mt-row"><span data-i18n="editor_mockup_caption">Legenda</span><strong style="color:#10B981" data-i18n="editor_mockup_auto">Auto ✓</strong></div>
             <div class="mt-score">
-              <div class="mt-score-label">Score Viralidade</div>
+              <div class="mt-score-label" data-i18n="editor_mockup_score">Score Viralidade</div>
               <div class="mt-score-val" id="score-val">67%</div>
               <div class="mt-score-bar"><div class="mt-score-fill" id="score-fill" style="width:67%"></div></div>
             </div>
@@ -106,12 +107,12 @@
     </div>
 
     <div class="features-grid">
-      <div class="feat"><span class="feat-icon">🎬</span><div class="feat-title">Timeline profissional</div><div class="feat-desc">Inspirada no CapCut. Feita para Shorts.</div></div>
-      <div class="feat"><span class="feat-icon">🤖</span><div class="feat-title">Blublu editora</div><div class="feat-desc">A IA que sabe onde cortar. E diz por que.</div></div>
-      <div class="feat"><span class="feat-icon">📊</span><div class="feat-title">Score em tempo real</div><div class="feat-desc">Seu vídeo te avisa antes de postar.</div></div>
-      <div class="feat"><span class="feat-icon">⚡</span><div class="feat-title">Legenda automática</div><div class="feat-desc">Whisper + estilo viral. Você só aperta OK.</div></div>
-      <div class="feat"><span class="feat-icon">🎨</span><div class="feat-title">Integração total</div><div class="feat-desc">Roteiro → Edição → Publicação. Sem pulos.</div></div>
-      <div class="feat"><span class="feat-icon">🚀</span><div class="feat-title">Export para Shorts</div><div class="feat-desc">9:16, 1080p, YouTube-ready. Automático.</div></div>
+      <div class="feat"><span class="feat-icon">🎬</span><div class="feat-title" data-i18n="editor_feat1_title">Timeline profissional</div><div class="feat-desc" data-i18n="editor_feat1_desc">Inspirada no CapCut. Feita para Shorts.</div></div>
+      <div class="feat"><span class="feat-icon">🤖</span><div class="feat-title" data-i18n="editor_feat2_title">Blublu editora</div><div class="feat-desc" data-i18n="editor_feat2_desc">A IA que sabe onde cortar. E diz por que.</div></div>
+      <div class="feat"><span class="feat-icon">📊</span><div class="feat-title" data-i18n="editor_feat3_title">Score em tempo real</div><div class="feat-desc" data-i18n="editor_feat3_desc">Seu vídeo te avisa antes de postar.</div></div>
+      <div class="feat"><span class="feat-icon">⚡</span><div class="feat-title" data-i18n="editor_feat4_title">Legenda automática</div><div class="feat-desc" data-i18n="editor_feat4_desc">Whisper + estilo viral. Você só aperta OK.</div></div>
+      <div class="feat"><span class="feat-icon">🎨</span><div class="feat-title" data-i18n="editor_feat5_title">Integração total</div><div class="feat-desc" data-i18n="editor_feat5_desc">Roteiro → Edição → Publicação. Sem pulos.</div></div>
+      <div class="feat"><span class="feat-icon">🚀</span><div class="feat-title" data-i18n="editor_feat6_title">Export para Shorts</div><div class="feat-desc" data-i18n="editor_feat6_desc">9:16, 1080p, YouTube-ready. Automático.</div></div>
     </div>
   </div>
 </section>
@@ -119,12 +120,12 @@
 <!-- ═══════ CENA 4 ─ Comparacao ═══════ -->
 <section class="scene" id="scene-4">
   <div class="scene-inner">
-    <div class="scene-label">O contraste real</div>
-    <h2 class="scene-headline">Você não precisa de mais 5 apps.<br/><span style="color:var(--blue)">Você precisa do BlueEditor.</span></h2>
+    <div class="scene-label" data-i18n="editor_scene4_label">O contraste real</div>
+    <h2 class="scene-headline"><span data-i18n="editor_scene4_headline_a">Você não precisa de mais 5 apps.</span><br/><span style="color:var(--blue)" data-i18n="editor_scene4_headline_b">Você precisa do BlueEditor.</span></h2>
 
     <div class="split-compare">
       <div class="split-side before">
-        <div class="split-label">Criador hoje</div>
+        <div class="split-label" data-i18n="editor_compare_today">Criador hoje</div>
         <div class="apps-chaos">
           <span class="chip">CapCut</span>
           <span class="chip">YouTube Studio</span>
@@ -133,16 +134,16 @@
           <span class="chip">Google Docs</span>
           <span class="chip">Photoshop</span>
         </div>
-        <div class="split-stat">6 apps abertos.<br/>3 horas perdidas.</div>
+        <div class="split-stat"><span data-i18n="editor_compare_today_stat_a">6 apps abertos.</span><br/><span data-i18n="editor_compare_today_stat_b">3 horas perdidas.</span></div>
       </div>
       <div class="split-side after">
-        <div class="split-label">Criador com BlueEditor</div>
+        <div class="split-label" data-i18n="editor_compare_new">Criador com BlueEditor</div>
         <div class="one-logo">Blue<span class="accent">Tube</span></div>
-        <div class="split-stat">1 lugar.<br/>20 minutos.</div>
+        <div class="split-stat"><span data-i18n="editor_compare_new_stat_a">1 lugar.</span><br/><span data-i18n="editor_compare_new_stat_b">20 minutos.</span></div>
       </div>
     </div>
 
-    <div class="impact-line">
+    <div class="impact-line" data-i18n-html="editor_compare_impact_html">
       Toda etapa do Short — <strong>roteiro, edição, score, legenda, export</strong> —
       acontece dentro do mesmo fluxo.
     </div>
@@ -152,7 +153,7 @@
 <!-- ═══════ CENA 5 ─ Privilegio + roadmap + email ═══════ -->
 <section class="scene" id="scene-5">
   <div class="scene-inner">
-    <div class="scene-label">E entre nós...</div>
+    <div class="scene-label" data-i18n="editor_scene5_label">E entre nós...</div>
 
     <div id="master-greet" class="master-greet hidden"></div>
 
@@ -160,63 +161,79 @@
 
     <div class="privilege-card">
       <div class="privilege-icon">🔒</div>
-      <div class="privilege-title">Lock-in Master</div>
-      <div class="privilege-price">R$ 89,99 <span style="font-size:14px;color:var(--text-3);font-weight:600">/mês, para sempre</span></div>
+      <div class="privilege-title" data-i18n="editor_privilege_title">Lock-in Master</div>
+      <div class="privilege-price">R$ 89,99 <span style="font-size:14px;color:var(--text-3);font-weight:600" data-i18n="editor_privilege_price_month">/mês, para sempre</span></div>
       <ul class="privilege-list">
-        <li>Vale para todo Master ativo antes do lançamento</li>
-        <li>Mesmo com o novo BlueEditor chegando</li>
-        <li>Mesmo com o aumento oficial do plano</li>
-        <li>Mesmo com novas features exclusivas</li>
+        <li data-i18n="editor_privilege_item1">Vale para todo Master ativo antes do lançamento</li>
+        <li data-i18n="editor_privilege_item2">Mesmo com o novo BlueEditor chegando</li>
+        <li data-i18n="editor_privilege_item3">Mesmo com o aumento oficial do plano</li>
+        <li data-i18n="editor_privilege_item4">Mesmo com novas features exclusivas</li>
       </ul>
-      <div class="privilege-foot">Você dentro = você protegido.</div>
+      <div class="privilege-foot" data-i18n="editor_privilege_foot">Você dentro = você protegido.</div>
     </div>
 
     <div class="roadmap">
-      <div class="roadmap-head">Status de desenvolvimento</div>
-      <div class="roadmap-title">BlueEditor · Construindo</div>
+      <div class="roadmap-head" data-i18n="editor_roadmap_head">Status de desenvolvimento</div>
+      <div class="roadmap-title" data-i18n="editor_roadmap_title">BlueEditor · Construindo</div>
       <div class="progress-row">
         <div class="progress-bar"><div class="progress-fill"></div></div>
         <div class="progress-pct">43%</div>
       </div>
       <ul class="milestone-list">
-        <li class="done"><span class="m-icon">✅</span> Arquitetura definida</li>
-        <li class="done"><span class="m-icon">✅</span> Design system pronto</li>
-        <li class="done"><span class="m-icon">✅</span> Infraestrutura de export</li>
-        <li class="doing"><span class="m-icon">⏳</span> Timeline visual (em progresso)</li>
-        <li class="doing"><span class="m-icon">⏳</span> Player de preview (próximo)</li>
-        <li class="locked"><span class="m-icon">🔒</span> Integração Blublu</li>
-        <li class="locked"><span class="m-icon">🔒</span> Beta privado para Masters</li>
-        <li class="locked"><span class="m-icon">🔒</span> Lançamento público</li>
+        <li class="done"><span class="m-icon">✅</span> <span data-i18n="editor_roadmap_m1">Arquitetura definida</span></li>
+        <li class="done"><span class="m-icon">✅</span> <span data-i18n="editor_roadmap_m2">Design system pronto</span></li>
+        <li class="done"><span class="m-icon">✅</span> <span data-i18n="editor_roadmap_m3">Infraestrutura de export</span></li>
+        <li class="doing"><span class="m-icon">⏳</span> <span data-i18n="editor_roadmap_m4">Timeline visual (em progresso)</span></li>
+        <li class="doing"><span class="m-icon">⏳</span> <span data-i18n="editor_roadmap_m5">Player de preview (próximo)</span></li>
+        <li class="locked"><span class="m-icon">🔒</span> <span data-i18n="editor_roadmap_m6">Integração Blublu</span></li>
+        <li class="locked"><span class="m-icon">🔒</span> <span data-i18n="editor_roadmap_m7">Beta privado para Masters</span></li>
+        <li class="locked"><span class="m-icon">🔒</span> <span data-i18n="editor_roadmap_m8">Lançamento público</span></li>
       </ul>
-      <div class="launch-date">Lançamento estimado · Segundo semestre de 2026</div>
+      <div class="launch-date" data-i18n="editor_launch_date">Lançamento estimado · Segundo semestre de 2026</div>
     </div>
 
     <div class="email-section" id="email-section">
-      <div class="email-hint" id="email-hint">
+      <div class="email-hint" id="email-hint" data-i18n-html="editor_email_hint_guest_html">
         Quer acompanhar o desenvolvimento?<br/>Blublu te avisa quando tiver novidade.
       </div>
       <form class="email-form" id="email-form" autocomplete="off">
-        <input type="email" placeholder="Seu melhor email" required maxlength="140"/>
-        <button type="submit">Avise-me</button>
+        <input type="email" placeholder="Seu melhor email" data-i18n-placeholder="editor_email_placeholder" required maxlength="140"/>
+        <button type="submit" data-i18n="editor_email_submit">Avise-me</button>
       </form>
-      <div class="email-mini-note">Sem spam. Só novidades importantes do editor.</div>
+      <div class="email-mini-note" data-i18n="editor_email_mini_note">Sem spam. Só novidades importantes do editor.</div>
       <div class="email-feedback" id="email-feedback"></div>
     </div>
 
     <div class="final-whisper">
-      Fica aí. Explora o resto do BlueTube enquanto isso.<br/>
-      Tem muita coisa nova além de mim também.
-      <span class="src">— Blublu</span>
+      <span data-i18n-html="editor_whisper_html">Fica aí. Explora o resto do BlueTube enquanto isso.<br/>Tem muita coisa nova além de mim também.</span>
+      <span class="src" data-i18n="editor_whisper_src">— Blublu</span>
     </div>
   </div>
 </section>
 
-<button class="replay-btn" id="replay-btn" title="Assistir de novo">↻</button>
+<button class="replay-btn" id="replay-btn" title="Assistir de novo" data-i18n-title="editor_replay_title">↻</button>
 
 <!-- Scripts -->
 <script src="/editor-teaser/particles.js" defer></script>
 <script src="/editor-teaser/typewriter.js" defer></script>
 <script src="/editor-teaser/mockup.js" defer></script>
 <script src="/editor-teaser/animations.js" defer></script>
+<script>
+// i18n boot — carrega traducao e aplica data-i18n no DOM.
+// Promise resolvida eh exposta em window.__i18nReady pro animations.js
+// aguardar antes de disparar o typewriter (que usa t() das chaves dinamicas).
+(function(){
+  const apply = () => { try { window.applyI18n && window.applyI18n(); } catch(e){ console.warn('[i18n apply]', e); } };
+  const doInit = () => {
+    if (!window.initI18n) { window.__i18nReady = Promise.resolve(); return; }
+    window.__i18nReady = window.initI18n().then(() => { apply(); }).catch(e => { console.warn('[i18n init]', e && e.message); });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', doInit);
+  } else {
+    doInit();
+  }
+})();
+</script>
 </body>
 </html>
