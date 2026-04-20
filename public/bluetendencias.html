@@ -1345,7 +1345,7 @@ async function renderSaudacao() {
   $('sOpcoes').classList.add('show');
   // Inicia timer do foguete: se usuario demorar, passa ao fundo com balao
   iniciarFogueteIndolente();
-  // Inicia timer do easter egg do exercito (6min de inatividade total)
+  // Inicia timer do easter egg do exercito (4min de inatividade total)
   iniciarExercitoTimer();
   $('sQtdSalvas').textContent = state.salvas.length + ' análise(s) guardada(s)';
   const ilimitado = (state.restantes || 0) >= 100;
@@ -1448,12 +1448,12 @@ function pararFoguete() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// EASTER EGG: EXERCITO DO BLUBLU (6min de inatividade na cena 1)
+// EASTER EGG: EXERCITO DO BLUBLU (4min de inatividade na cena 1)
 // Timer reseta em qualquer click/touch/keydown. Se expirar com a cena
 // 1 ainda ativa, dispara a animacao e redireciona pra / apos 5.5s.
 // ═══════════════════════════════════════════════════════════════════
 let _exercitoTimer = null;
-const EXERCITO_DELAY = 6 * 60 * 1000; // 6 minutos
+const EXERCITO_DELAY = 4 * 60 * 1000; // 4 minutos
 function iniciarExercitoTimer() {
   if (_exercitoTimer) clearTimeout(_exercitoTimer);
   _exercitoTimer = setTimeout(dispararExercito, EXERCITO_DELAY);
