@@ -188,17 +188,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
     <div class="filters">
       <!-- Period -->
       <div class="filter-group">
-        <button class="filter-btn active" data-period="24h" onclick="setPeriod('24h',this)">24h</button>
+        <button class="filter-btn" data-period="24h" onclick="setPeriod('24h',this)">24h</button>
         <div class="filter-divider"></div>
-        <button class="filter-btn" data-period="7d" onclick="setPeriod('7d',this)">7 dias</button>
+        <button class="filter-btn active" data-period="7d" onclick="setPeriod('7d',this)">7 dias</button>
         <div class="filter-divider"></div>
         <button class="filter-btn" data-period="30d" onclick="setPeriod('30d',this)">30 dias</button>
       </div>
 
       <!-- Region -->
       <select class="filter-select" id="regionSelect" onchange="fetchVirals()">
-        <option value="">🌐 Todos os países</option>
-        <option value="BR" selected>🇧🇷 Brasil</option>
+        <option value="" selected>🌐 Todos os países</option>
+        <option value="BR">🇧🇷 Brasil</option>
         <option value="US">🇺🇸 EUA</option>
         <option value="ES">🇪🇸 Espanhol</option>
         <option value="JP">🇯🇵 Japão</option>
@@ -310,7 +310,7 @@ const glow = document.getElementById('glow');
 document.addEventListener('mousemove', e => { glow.style.left=e.clientX+'px'; glow.style.top=e.clientY+'px'; });
 
 // ── STATE ────────────────────────────────────────────────────────────────────
-let currentPeriod = '24h';
+let currentPeriod = '7d';
 let lastResults = [];
 
 function setPeriod(p, btn) {
