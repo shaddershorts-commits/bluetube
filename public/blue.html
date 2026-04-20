@@ -385,12 +385,16 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
    Centralizacao via flex (margin auto era instavel quando combinado com
    transform de entrada da .pf-overlay — slide ficava colado na direita).
    min-width 320px protege casos onde 92dvh*9/16 daria valor irrealmente
-   pequeno (janela achatada / zoom alto). */
+   pequeno (janela achatada / zoom alto).
+   overflow-x:hidden evita vaso lateral do slide calc() em viewports
+   estreitos (ex: devtools aberto). max-width:100% no slide garante
+   que nunca exceda o container. */
 @media (min-width:1024px){
   .pf-overlay{ left:240px; right:0 }
   #pfFeed{
     height:100%;
     overflow-y:scroll;
+    overflow-x:hidden;
     padding:4dvh 0;
     display:flex;
     flex-direction:column;
@@ -402,13 +406,22 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
     margin-bottom:12px;
     width:min(560px, max(320px, calc(92dvh * 9 / 16)));
     min-width:320px;
-    max-width:560px;
+    max-width:min(100%, 560px);
     border-radius:18px;
     overflow:hidden;
     box-shadow:0 20px 60px rgba(0,0,0,.5);
   }
   #pfFeed .slide:last-child{ margin-bottom:4dvh }
   .pf-topbar{ padding-top:28px }
+  /* Slide unico (Explorar abrindo 1 video) — ocupa tudo sem card look.
+     Elimina o calc() de width que podia vazar quando a sidebar + devtools
+     deixam pouco espaco horizontal. */
+  #pfFeed.single{ display:block; padding:0 }
+  #pfFeed.single .slide{
+    width:100%; min-width:0; max-width:100%;
+    height:100dvh; margin:0;
+    border-radius:0; box-shadow:none;
+  }
 }
 
 /* ── CHAT SYSTEM ─────────────────────────────────────────────────────────── */
@@ -2727,6 +2740,10 @@ function openProfileFeed(vids, startId, username) {
   document.getElementById('pfTitle').textContent = '@' + (username || 'usuário');
   const feed = document.getElementById('pfFeed');
   feed.innerHTML = '';
+  // Marca "single" quando abre um unico video (ex: Explorar) — CSS elimina
+  // o centering/calc de width que pode causar vasamento lateral no desktop.
+  if (pfVids.length === 1) feed.classList.add('single');
+  else feed.classList.remove('single');
   pfVids.forEach((v, i) => {
     const s = mkSlide(v, i);
     if (s) {
