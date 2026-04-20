@@ -271,6 +271,30 @@
 
 .blog-post-body hr{border:none;height:1px;background:var(--border);margin:48px 0}
 
+/* Tabelas dentro do artigo */
+.blog-post-body table{
+  width:100%;border-collapse:collapse;margin:24px 0 32px;
+  font-size:15px;background:var(--bg-card);
+  border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  backdrop-filter:blur(10px);
+}
+.blog-post-body thead{background:rgba(0,170,255,0.06)}
+.blog-post-body th{
+  text-align:left;padding:14px 18px;font-family:var(--font-display);
+  font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--accent-blue);border-bottom:1px solid var(--border);
+}
+.blog-post-body td{
+  padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.04);
+  color:var(--text-primary);vertical-align:top;
+}
+.blog-post-body tbody tr:last-child td{border-bottom:none}
+.blog-post-body tbody tr:hover td{background:rgba(0,170,255,0.03)}
+@media(max-width:640px){
+  .blog-post-body table{font-size:13px;display:block;overflow-x:auto;white-space:nowrap}
+  .blog-post-body th,.blog-post-body td{padding:10px 12px}
+}
+
 /* CTA contextual inline */
 .blog-cta{
   display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;
