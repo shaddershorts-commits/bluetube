@@ -635,10 +635,14 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, skipped: 'self_or_suspended' });
       }
 
-      // Atribui: UPDATE subscribers.affiliate_ref + log + dispara conversion
+      // Atribui: UPDATE subscribers.affiliate_ref + attribution_source + log + dispara conversion
       await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
         method: 'PATCH', headers: { ...supaH, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ affiliate_ref: ck.ref_code, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          affiliate_ref: ck.ref_code,
+          attribution_source: 'fingerprint_window',
+          updated_at: new Date().toISOString(),
+        }),
       });
       fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
         method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },

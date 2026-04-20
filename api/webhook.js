@@ -486,6 +486,17 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           }).catch(() => {});
           return;
         }
+        // Denormaliza attribution_source no subscribers pra facilitar diagnostico
+        // (1 query no suporte, sem JOIN com affiliate_attribution_log). Se veio por
+        // stripe_metadata e ainda nao havia ref salvo, tambem grava o affiliate_ref.
+        fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+          method: 'PATCH', headers: { ...supaHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify(
+            attribSource === 'stripe_metadata'
+              ? { attribution_source: attribSource, affiliate_ref: refCode, updated_at: new Date().toISOString() }
+              : { attribution_source: attribSource, updated_at: new Date().toISOString() }
+          ),
+        }).catch(() => {});
         // Log decisao de atribuicao
         fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
           method: 'POST', headers: { ...supaHeaders, Prefer: 'return=minimal' },
