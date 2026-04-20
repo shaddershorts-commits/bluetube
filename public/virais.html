@@ -679,6 +679,9 @@ async function carregarHistorico(pagina){
     // Sem filtro de nicho, comportamento antigo: busca ativa + banco.
     if (pagina === 1) {
       paginaHistorico = 0;
+      // Remove skeletons do boot (showSkeletons() do init) — caso contrario
+      // ficariam travados acima dos cards reais (insertAdjacentHTML beforeend).
+      grid.querySelectorAll('.skel-card').forEach(el => el.remove());
       if (nichoSel) {
         // Filtro ativo — limpa grid pra mostrar SO o banco filtrado
         grid.innerHTML = '';
