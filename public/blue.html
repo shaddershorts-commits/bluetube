@@ -2095,9 +2095,13 @@ function onTU(vid,id){
   // save-data e 2G — se conexão fraca, mantém o preload econômico original.
   if(vid._preloadBoosted) return;
   if(vid.currentTime/vid.duration < 0.5) return;
-  vid._preloadBoosted=true;
   const _c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
   if(_c&&(_c.effectiveType==='2g'||_c.effectiveType==='slow-2g'||_c.saveData))return;
+  // Só boosta se o vídeo atual já está 70%+ bufferizado — evita competir
+  // por banda em 3G/4G mobile, que estava travando o vídeo em reprodução.
+  const _be=vid.buffered.length?vid.buffered.end(vid.buffered.length-1):0;
+  if(!vid.duration||_be/vid.duration<0.7) return;
+  vid._preloadBoosted=true;
   const sl=vid.closest('.slide'); if(!sl) return;
   const idx=parseInt(sl.dataset.i)||0;
   const nxt2=videos[idx+2];
@@ -2116,7 +2120,7 @@ function setupObs(){
       if(!vid)return;
       const idx=parseInt(sl.dataset.i)||0;
 
-      if(e.isIntersecting&&e.intersectionRatio>.6){
+      if(e.isIntersecting&&e.intersectionRatio>.5){
         // Stories bar so visivel no primeiro slide — esconde nos demais
         // pra nao cobrir o video (igual TikTok/Instagram).
         const sb=document.getElementById('storiesBar');
@@ -2133,7 +2137,11 @@ function setupObs(){
 
         vid.preload='auto';
         vid.muted=!_interacted;
-        vid.play().catch(()=>{vid.muted=true;vid.play().catch(()=>{});});
+        // iOS/mobile: espera metadata antes de .play() pra nao rejeitar silenciosamente.
+        // Retry com muted=true tem delay pequeno pra evitar race no catch handler.
+        const _tryPlay=()=>{vid.play().catch(()=>{vid.muted=true;setTimeout(()=>vid.play().catch(()=>{}),60);});};
+        if(vid.readyState>=2)_tryPlay();
+        else vid.addEventListener('canplay',_tryPlay,{once:true});
         const el=document.getElementById('vc-'+sl.dataset.id);
         if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
         ping('view',sl.dataset.id);
@@ -2162,7 +2170,9 @@ function setupObs(){
         }
       }
     });
-  },{threshold:.6});
+  // Dual threshold: dispara tanto em .25 quanto .5 — pega swipes lentos em mobile
+  // onde slide pode estacionar em ratio 30-50% sem bater o antigo .6.
+  },{threshold:[.25,.5,.75]});
   document.querySelectorAll('.slide').forEach(s=>obs.observe(s));
 }
 
@@ -4560,7 +4570,7 @@ const _feedEl=document.getElementById('feed');
 if(_feedEl){
   const deepObs=new IntersectionObserver(entries=>{
     entries.forEach(e=>{
-      if(e.isIntersecting&&e.intersectionRatio>.6){
+      if(e.isIntersecting&&e.intersectionRatio>.5){
         const id=e.target.dataset?.id;
         if(id){
           _curVideo=videos.find(v=>v.id===id)||_curVideo;
@@ -4568,8 +4578,11 @@ if(_feedEl){
         }
       }
     });
-  },{threshold:.6});
+  },{threshold:[.25,.5,.75]});
+  // Reconecta em cada mudança de feed — desconectar antes evita acumular
+  // referências de slides removidos (slides órfãos somem, mas limpa memória).
   new MutationObserver(()=>{
+    deepObs.disconnect();
     document.querySelectorAll('#feed .slide').forEach(s=>deepObs.observe(s));
   }).observe(_feedEl,{childList:true});
 }
