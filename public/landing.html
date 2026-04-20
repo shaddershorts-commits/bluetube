@@ -73,6 +73,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
   padding:10px 22px;font-family:var(--display);font-size:13px;font-weight:700;color:#fff;
   cursor:pointer;text-decoration:none;transition:all .2s;box-shadow:0 0 20px rgba(0,170,255,.3)}
 .nav-cta:hover{transform:translateY(-1px);box-shadow:0 0 32px rgba(0,170,255,.5)}
+.nav-right-group{display:flex;align-items:center;gap:14px}
+.nav-link-blog{font-size:13px;font-weight:500;color:rgba(255,255,255,.65);text-decoration:none;transition:color .2s}
+.nav-link-blog:hover{color:var(--neon)}
+@media(max-width:540px){.nav-link-blog{display:none}}
 
 /* ── HERO ── */
 .hero{position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;
@@ -340,7 +344,10 @@ footer{position:relative;z-index:10;border-top:1px solid rgba(0,170,255,.08);pad
     </div>
     <span class="logo-text">Blue<span>Tube</span></span>
   </a>
-  <a href="#" onclick="openSignupModal('free');return false;" class="nav-cta">🚀 Criar conta — é grátis</a>
+  <div class="nav-right-group">
+    <a href="/blog/" class="nav-link-blog">Blog</a>
+    <a href="#" onclick="openSignupModal('free');return false;" class="nav-cta">🚀 Criar conta — é grátis</a>
+  </div>
 </nav>
 
 <!-- HERO -->

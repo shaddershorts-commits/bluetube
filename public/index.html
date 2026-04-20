@@ -305,6 +305,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 /* Community button - restored */
 .nav-community-btn{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:#fbbf24;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
 .nav-community-btn:hover{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.5);transform:translateY(-1px)}
+.nav-blog-btn{font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.06em;color:var(--text-secondary);background:rgba(0,170,255,0.05);border:1px solid rgba(0,170,255,0.18);border-radius:8px;padding:7px 12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;text-decoration:none}
+.nav-blog-btn:hover{color:var(--neon);border-color:rgba(0,170,255,0.45);background:rgba(0,170,255,0.08);transform:translateY(-1px)}
 
 /* Scroll-reveal animations */
 .reveal{opacity:0;transform:translateY(40px);transition:opacity .8s ease,transform .8s ease}
@@ -412,6 +414,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   .nav-user-email{display:none}
   .mobile-tools-btn{display:flex}
   .nav-community-label{display:none}
+  .nav-blog-label{display:none}
   .nav-login-btn{font-size:11px;padding:6px 10px}
   .nav-upgrade-btn{font-size:11px;padding:6px 10px}
 }
@@ -668,6 +671,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
       </div>
     </div>
 
+    <a href="/blog/" class="nav-blog-btn" aria-label="Blog do BlueTube">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span class="nav-blog-label">Blog</span>
+    </a>
     <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <span class="nav-community-label">Comunidade</span>
@@ -3160,6 +3167,10 @@ function setLoggedIn(email, plan){
   navRight.innerHTML = `
     ${toolsHTML}
     ${mobileHTML}
+    <a href="/blog/" class="nav-blog-btn" aria-label="Blog do BlueTube">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span class="nav-blog-label">Blog</span>
+    </a>
     <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
