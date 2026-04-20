@@ -153,6 +153,40 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
   .blu-rocket-balao{font-size:10px;padding:6px 10px;right:-150px;max-width:140px}
 }
 
+/* ═════════════════════════════════════════════════════════════════
+   EASTER EGG: EXERCITO DO BLUBLU (6min de inatividade na cena 1)
+   Exercito de foguetes converge das bordas pro centro com scale
+   crescente (aproximacao), tela pisca, grito "TIREM ELE DAQUI!",
+   e 5.5s depois redireciona pra tela inicial do site.
+   ═════════════════════════════════════════════════════════════════ */
+.exercito-overlay{position:fixed;inset:0;z-index:9999;display:none;pointer-events:none;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 10%,rgba(120,0,0,.3) 80%)}
+.exercito-overlay.on{display:block;animation:exercito-shake .18s linear infinite}
+@keyframes exercito-shake{
+  0%,100%{transform:translate(0,0)}
+  25%{transform:translate(-6px,3px)}
+  50%{transform:translate(4px,-4px)}
+  75%{transform:translate(-3px,-2px)}
+}
+
+.exercito-flash{position:absolute;inset:0;background:#fff;opacity:0;mix-blend-mode:screen;animation:exercito-flash .36s steps(2,end) infinite}
+@keyframes exercito-flash{0%,60%,100%{opacity:0}30%{opacity:.45}}
+
+.exercito-grito{position:absolute;top:38%;left:50%;font-family:var(--mono,monospace);font-size:clamp(38px,7vw,96px);font-weight:900;color:#ff2b2b;text-shadow:0 0 20px rgba(255,0,0,.75),0 0 60px rgba(255,0,0,.45),0 4px 0 #000,0 8px 24px rgba(0,0,0,.8);letter-spacing:.04em;text-align:center;white-space:nowrap;animation:exercito-grito 420ms ease-in-out infinite;transform:translate(-50%,-50%) scale(1) rotate(-2deg);pointer-events:none;user-select:none}
+@keyframes exercito-grito{
+  0%,100%{transform:translate(-50%,-50%) scale(1) rotate(-2deg)}
+  50%{transform:translate(-50%,-50%) scale(1.08) rotate(2deg)}
+}
+
+.exercito-rockets{position:absolute;inset:0}
+.exercito-rocket{position:absolute;left:50%;top:50%;width:110px;height:110px;pointer-events:none;filter:drop-shadow(0 0 16px rgba(59,130,246,.7));opacity:0;transform:translate(-50%,-50%) translate(var(--from-x,0),var(--from-y,0)) scale(.15);animation:exercito-avanca 5s cubic-bezier(.45,.05,.55,.95) forwards}
+.exercito-rocket img{width:100%;height:100%;object-fit:contain}
+.exercito-rocket .rocket-fallback{font-size:110px;line-height:1}
+@keyframes exercito-avanca{
+  0%{opacity:0;transform:translate(-50%,-50%) translate(var(--from-x,0),var(--from-y,0)) scale(.15)}
+  10%{opacity:1}
+  100%{opacity:1;transform:translate(-50%,-50%) scale(var(--end-scale,5))}
+}
+
 /* Badge AO VIVO pulsante */
 .ao-vivo{display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.18);border:1px solid var(--red);color:var(--red);padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;margin-left:10px;vertical-align:middle}
 .ao-vivo::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);animation:aoVivoPulse 1.2s infinite}
@@ -528,6 +562,13 @@ body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:
   <img src="/foguete.png" alt="" onerror="this.style.display='none';this.parentElement.querySelector('.rocket-fallback').style.display='block'">
   <div class="rocket-fallback" style="display:none;font-size:110px;line-height:1">🚀</div>
   <div class="blu-rocket-balao">Demorou tanto que dei a volta no <b>PlanetaBlue</b>!</div>
+</div>
+
+<!-- Easter egg: exercito do Blublu (6min de inatividade na cena 1) -->
+<div class="exercito-overlay" id="exercitoOverlay" aria-hidden="true">
+  <div class="exercito-flash"></div>
+  <div class="exercito-rockets" id="exercitoRockets"></div>
+  <div class="exercito-grito">TIREM ELE DAQUI!</div>
 </div>
 
 <!-- CENA 0: ABERTURA -->
@@ -930,8 +971,11 @@ function irCena(id) {
   const target = $('cena' + id);
   if (target) target.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  // Se saiu da cena 1, para o loop do foguete
-  if (id !== '1' && typeof pararFoguete === 'function') pararFoguete();
+  // Se saiu da cena 1, para o loop do foguete + timer do exercito
+  if (id !== '1') {
+    if (typeof pararFoguete === 'function') pararFoguete();
+    if (typeof pararExercitoTimer === 'function') pararExercitoTimer();
+  }
   // Logica especifica por cena
   if (id === '1') renderSaudacao();
   if (id === '2a') renderSalvas();
@@ -1301,6 +1345,8 @@ async function renderSaudacao() {
   $('sOpcoes').classList.add('show');
   // Inicia timer do foguete: se usuario demorar, passa ao fundo com balao
   iniciarFogueteIndolente();
+  // Inicia timer do easter egg do exercito (6min de inatividade total)
+  iniciarExercitoTimer();
   $('sQtdSalvas').textContent = state.salvas.length + ' análise(s) guardada(s)';
   const ilimitado = (state.restantes || 0) >= 100;
   const total = state.total || 4;
@@ -1400,6 +1446,53 @@ function pararFoguete() {
   if (r) r.className = 'blu-rocket';
   _rocketCount = 0;
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EASTER EGG: EXERCITO DO BLUBLU (6min de inatividade na cena 1)
+// Timer reseta em qualquer click/touch/keydown. Se expirar com a cena
+// 1 ainda ativa, dispara a animacao e redireciona pra / apos 5.5s.
+// ═══════════════════════════════════════════════════════════════════
+let _exercitoTimer = null;
+const EXERCITO_DELAY = 6 * 60 * 1000; // 6 minutos
+function iniciarExercitoTimer() {
+  if (_exercitoTimer) clearTimeout(_exercitoTimer);
+  _exercitoTimer = setTimeout(dispararExercito, EXERCITO_DELAY);
+}
+function pararExercitoTimer() {
+  if (_exercitoTimer) { clearTimeout(_exercitoTimer); _exercitoTimer = null; }
+}
+function dispararExercito() {
+  // So dispara se ainda estamos na cena 1 (saudacao inicial)
+  if (!$('cena1')?.classList.contains('active')) return;
+  pararFoguete(); // para o foguete indolente pra nao conflitar
+  const ov = $('exercitoOverlay');
+  const container = $('exercitoRockets');
+  if (!ov || !container) return;
+  container.innerHTML = '';
+  // Gera 12 foguetes convergindo de posicoes aleatorias ao redor
+  const N = 12;
+  for (let i = 0; i < N; i++) {
+    const r = document.createElement('div');
+    r.className = 'exercito-rocket';
+    const angle = (i / N) * Math.PI * 2 + Math.random() * 0.4;
+    const radius = 650 + Math.random() * 250;
+    r.style.setProperty('--from-x', Math.cos(angle) * radius + 'px');
+    r.style.setProperty('--from-y', Math.sin(angle) * radius + 'px');
+    r.style.setProperty('--end-scale', (3 + Math.random() * 4).toFixed(2));
+    r.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+    r.innerHTML = '<img src="/foguete.png" alt="" onerror="this.style.display=\'none\';this.parentElement.querySelector(\'.rocket-fallback\').style.display=\'block\'"><div class="rocket-fallback" style="display:none">🚀</div>';
+    container.appendChild(r);
+  }
+  ov.classList.add('on');
+  // Redireciona pra tela inicial depois da animacao completa
+  setTimeout(() => { window.location.href = '/'; }, 5500);
+}
+// Reseta o timer em qualquer interacao do user — so enquanto cena 1 ativa
+['click', 'touchstart', 'keydown'].forEach(ev => {
+  document.addEventListener(ev, () => {
+    if ($('cena1')?.classList.contains('active')) iniciarExercitoTimer();
+  }, { passive: true, capture: true });
+});
 
 function showGate(motivo) {
   irCena('Gate');
