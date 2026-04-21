@@ -311,6 +311,22 @@ async function solicitarSaque(res, { SU, h, afiliado }) {
         });
       }
 
+      // Email de confirmacao pro afiliado (fire-and-forget)
+      const chaveMasc = mascararChave(afiliado.chave_pix, afiliado.tipo_chave_pix);
+      const html = emailTemplate({
+        titulo: 'Pix enviado!',
+        subtitulo: 'O saque foi processado e já está a caminho da sua conta.',
+        valor: valorSaque,
+        chaveMascarada: chaveMasc,
+        corpo: `
+          <p>Transferência via Pix confirmada pela Asaas. Dependendo do seu banco, pode cair em segundos ou até alguns minutos.</p>
+          <p style="color:rgba(232,244,255,0.55);font-size:13px;margin-top:14px">Não recebeu em até 1 hora? Responde esse email que a gente verifica.</p>`,
+        ctaLabel: 'Ver histórico',
+        ctaUrl: 'https://bluetubeviral.com/afiliado',
+        bannerEmoji: '✅',
+      });
+      enviarEmailAfiliado(afiliado.email, 'Pix enviado! — BlueTube Afiliados', html).catch(() => {});
+
       return res.status(200).json({ ok: true, mensagem: '✅ Pix enviado!', valor: valorSaque, saque_id: saque.id });
     } catch (e) {
       // Marca como falhou e notifica admin
