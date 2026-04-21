@@ -93,6 +93,11 @@ module.exports = async function handler(req, res) {
     return lembreteDia22(res, { SU, h });
   }
 
+  // ── CRON: avisa afiliados que o saque esta disponivel (roda dia 22 manha)
+  if (action === 'avisar-afiliados-dia22') {
+    return avisarAfiliadosDia22(res, { SU, h });
+  }
+
   // ── Demais actions precisam de token ─────────────────────────────────────
   const token = req.query.token || req.body?.token;
   if (!token) return res.status(401).json({ error: 'token_obrigatorio' });
@@ -401,4 +406,165 @@ async function alertarAdmin(titulo, rows) {
       html,
     }),
   }).catch(() => {});
+}
+
+// ── Email genérico pro afiliado (via Resend) ───────────────────────────────
+async function enviarEmailAfiliado(to, subject, html) {
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY || !to) return;
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'BlueTube <saques@bluetubeviral.com>',
+      to,
+      subject,
+      html,
+    }),
+  }).catch(() => {});
+}
+
+// Template HTML base (dark mode alinhado com a identidade BlueTube).
+// bannerEmoji: ex '💰' | '✅'. cor destaca o valor em verde neon.
+function emailTemplate({ titulo, subtitulo, valor, chaveMascarada, ctaLabel, ctaUrl, corpo, bannerEmoji = '💰' }) {
+  const valorBloco = valor != null ? `
+    <div style="text-align:center;margin:28px 0 8px">
+      <div style="font-family:'Inter',Arial,sans-serif;font-size:12px;color:#7590ab;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Valor</div>
+      <div style="font-family:'Inter',Arial,sans-serif;font-size:44px;font-weight:800;color:#22c55e;line-height:1.1;margin-top:4px">R$ ${Number(valor).toFixed(2).replace('.', ',')}</div>
+    </div>` : '';
+  const chaveBloco = chaveMascarada ? `
+    <div style="text-align:center;margin-bottom:16px">
+      <span style="font-family:'Inter',Arial,sans-serif;font-size:12px;color:#7590ab">Chave Pix: </span>
+      <span style="font-family:'DM Mono',Menlo,monospace;font-size:13px;color:#e8f4ff;font-weight:600">${chaveMascarada}</span>
+    </div>` : '';
+  const ctaBloco = ctaUrl ? `
+    <div style="text-align:center;margin:28px 0 16px">
+      <a href="${ctaUrl}" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;font-family:'Inter',Arial,sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;box-shadow:0 0 22px rgba(0,170,255,0.3)">${ctaLabel || 'Acessar painel'} →</a>
+    </div>` : '';
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${titulo}</title></head>
+<body style="margin:0;padding:0;background:#020817;font-family:'Inter',Arial,sans-serif;color:#e8f4ff">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#020817;padding:36px 16px">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0a1628;border:1px solid rgba(0,170,255,0.15);border-radius:16px;overflow:hidden">
+        <tr><td style="padding:28px 32px 12px;text-align:center">
+          <div style="display:inline-block;font-family:'Inter Tight','Inter',Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.5px;color:#fff">
+            Blue<span style="color:#00aaff">Tube</span>
+          </div>
+        </td></tr>
+        <tr><td style="padding:12px 32px 0;text-align:center">
+          <div style="font-size:48px;line-height:1">${bannerEmoji}</div>
+        </td></tr>
+        <tr><td style="padding:14px 32px 6px;text-align:center">
+          <div style="font-family:'Inter Tight','Inter',Arial,sans-serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.3px;line-height:1.25">${titulo}</div>
+        </td></tr>
+        ${subtitulo ? `<tr><td style="padding:8px 32px 0;text-align:center">
+          <div style="font-size:14px;color:rgba(232,244,255,0.7);line-height:1.55">${subtitulo}</div>
+        </td></tr>` : ''}
+        <tr><td style="padding:8px 32px 0">${valorBloco}${chaveBloco}</td></tr>
+        ${corpo ? `<tr><td style="padding:0 32px;font-size:14px;color:rgba(232,244,255,0.75);line-height:1.65">${corpo}</td></tr>` : ''}
+        <tr><td style="padding:0 32px">${ctaBloco}</td></tr>
+        <tr><td style="padding:24px 32px 28px;border-top:1px solid rgba(0,170,255,0.08);text-align:center">
+          <div style="font-size:11px;color:rgba(150,190,230,0.4);line-height:1.5">
+            Esse email foi enviado pra você porque tem conta de afiliado no BlueTube.<br>
+            <a href="https://bluetubeviral.com/afiliado" style="color:#00aaff;text-decoration:none">Painel de afiliado</a>
+            &nbsp;·&nbsp;
+            <a href="https://bluetubeviral.com/privacidade" style="color:#00aaff;text-decoration:none">Privacidade</a>
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// Roda dia 22 via cron. Varre afiliados elegiveis e manda email lembrete.
+async function avisarAfiliadosDia22(res, { SU, h }) {
+  try {
+    // Mesma logica do lembreteDia22 pra descobrir quem tem saldo >= minimo
+    const cR = await fetch(
+      `${SU}/rest/v1/affiliate_commissions?status=eq.pending&flagged=eq.false&select=affiliate_id,commission_amount`,
+      { headers: h }
+    );
+    const rows = cR.ok ? await cR.json() : [];
+    const porAfiliado = new Map();
+    for (const r of rows) {
+      porAfiliado.set(r.affiliate_id, (porAfiliado.get(r.affiliate_id) || 0) + parseFloat(r.commission_amount || 0));
+    }
+    const elegiveisIds = Array.from(porAfiliado.entries())
+      .filter(([, v]) => v >= VALOR_MINIMO)
+      .map(([id]) => id);
+
+    if (!elegiveisIds.length) {
+      return res.status(200).json({ ok: true, enviados: 0, motivo: 'nenhum_elegivel' });
+    }
+
+    // Busca email, chave, ultimo_saque dos elegiveis em 1 query
+    const aR = await fetch(
+      `${SU}/rest/v1/affiliates?id=in.(${elegiveisIds.join(',')})&select=id,email,chave_pix,tipo_chave_pix,ultimo_saque_em`,
+      { headers: h }
+    );
+    const afiliados = aR.ok ? await aR.json() : [];
+
+    const hoje = new Date();
+    let enviados = 0, pulados_ja_sacou = 0, pulados_sem_chave = 0, erros = 0;
+
+    for (const af of afiliados) {
+      // Pula se ja sacou esse mes (caso o cron rode tarde ou afiliado sacou de madrugada)
+      if (af.ultimo_saque_em && mesmoMes(af.ultimo_saque_em, hoje)) {
+        pulados_ja_sacou++;
+        continue;
+      }
+      const temChave = !!(af.chave_pix && af.tipo_chave_pix);
+      const valor = porAfiliado.get(af.id) || 0;
+      const chaveMascarada = temChave ? mascararChave(af.chave_pix, af.tipo_chave_pix) : null;
+
+      try {
+        let titulo, subtitulo, corpo, ctaLabel;
+        if (temChave) {
+          titulo = 'Seu saque está disponível';
+          subtitulo = `Hoje é dia 22 — e você tem R$ ${valor.toFixed(2).replace('.', ',')} pra receber via Pix.`;
+          corpo = `
+            <p>Pode acessar o painel e clicar em <b>Sacar</b> — o Pix cai em segundos na chave que você cadastrou.</p>
+            <p style="color:rgba(232,244,255,0.55);font-size:13px;margin-top:14px">⚠️ Saques só ficam disponíveis no dia 22 de cada mês. Se não sacar hoje, o próximo dia de saque é 22 do próximo mês.</p>`;
+          ctaLabel = 'Sacar agora';
+        } else {
+          titulo = 'Seu saque tá esperando — falta cadastrar chave Pix';
+          subtitulo = `Você tem R$ ${valor.toFixed(2).replace('.', ',')} pra receber, mas ainda não cadastrou sua chave Pix.`;
+          corpo = `
+            <p>Pra receber hoje, acessa o painel e cadastra a chave (CPF, telefone, email ou aleatória). Leva 1 minuto.</p>
+            <p style="color:rgba(232,244,255,0.55);font-size:13px;margin-top:14px">⚠️ Saque só tá disponível hoje (dia 22). Se não cadastrar e sacar até o fim do dia, próximo dia de saque é mês que vem.</p>`;
+          ctaLabel = 'Cadastrar chave Pix';
+        }
+
+        const html = emailTemplate({
+          titulo,
+          subtitulo,
+          valor,
+          chaveMascarada,
+          corpo,
+          ctaLabel,
+          ctaUrl: 'https://bluetubeviral.com/afiliado',
+          bannerEmoji: '💰',
+        });
+
+        await enviarEmailAfiliado(af.email, titulo, html);
+        enviados++;
+      } catch (e) {
+        console.error('[avisarAfiliados]', af.email, e.message);
+        erros++;
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      elegiveis: afiliados.length,
+      enviados,
+      pulados_ja_sacou,
+      pulados_sem_chave,
+      erros,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 }

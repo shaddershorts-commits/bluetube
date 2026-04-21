@@ -107,6 +107,10 @@
       "schedule": "0 9 21 * *"
     },
     {
+      "path": "/api/affiliate-saques?action=avisar-afiliados-dia22",
+      "schedule": "0 11 22 * *"
+    },
+    {
       "path": "/api/affiliate-robustness?action=daily-orphans-alert",
       "schedule": "0 11 * * *"
     },
