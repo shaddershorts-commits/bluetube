@@ -129,9 +129,10 @@ export default async function handler(req, res) {
       const clicks = clksRes.ok ? await clksRes.json() : [];
       const clicks7d = clks7dRes.ok ? await clks7dRes.json() : [];
 
-      // Agrupa comissões por afiliado
+      // Agrupa comissões por afiliado — IGNORA cancelled/refunded
       const commMap = {};
       (Array.isArray(commissions) ? commissions : []).forEach(c => {
+        if (c.status !== 'pending' && c.status !== 'paid') return; // skip cancelled, refunded, etc
         if (!commMap[c.affiliate_id]) commMap[c.affiliate_id] = { pending: 0, paid: 0, total: 0 };
         const amt = parseFloat(c.commission_amount || 0);
         commMap[c.affiliate_id].total += amt;
