@@ -82,6 +82,14 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, email, plan });
   }
 
+  // ── RECUPERAR PAGAMENTO: busca no Stripe por email e ativa plano ─────────
+  // Usado quando webhook falhou e pagamento > 15min ficou fora do payment-monitor.
+  // Diferente do set_plan (is_manual:true), esse verifica que PAGOU no Stripe mesmo.
+  if (req.method === 'POST' && action === 'recuperar-pagamento') {
+    if (!email) return res.status(400).json({ error: 'email obrigatorio' });
+    return recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email });
+  }
+
   // ── AFFILIATE MANAGEMENT ─────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_affiliate_status') {
     const { email, status } = req.body; // status: active | pending | suspended
@@ -1131,6 +1139,140 @@ async function marcarSaquePagoAction(req, res, { SUPABASE_URL, headers }) {
 
     return res.status(200).json({ ok: true });
   } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── RECUPERAR PAGAMENTO NAO ATIVADO ────────────────────────────────────────
+// Busca na API Stripe POR EMAIL sem limite temporal, ativa o plano se achar
+// session paid. Usado quando webhook falhou e o cron payment-monitor (que so
+// cobre 15min) deixou o user ficar preso em free.
+//
+// Fluxo:
+//   1. stripe.customers.list({ email }) — pega todos os customer_id desse email
+//   2. Pra cada customer, stripe.checkout.sessions.list({ customer })
+//   3. Filtra sessions com payment_status='paid' + metadata.plan != free
+//   4. Pega a sessao mais recente, ativa no DB igual ao webhook faz
+//   5. Dispara upgradeEmail (fire-and-forget)
+async function recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email }) {
+  const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+  if (!STRIPE_SECRET) return res.status(500).json({ error: 'STRIPE_SECRET_KEY nao configurado' });
+
+  try {
+    // 1. Procura customers com esse email no Stripe
+    const custR = await fetch(
+      `https://api.stripe.com/v1/customers?email=${encodeURIComponent(email)}&limit=10`,
+      { headers: { Authorization: `Bearer ${STRIPE_SECRET}` } }
+    );
+    if (!custR.ok) {
+      const t = await custR.text();
+      return res.status(502).json({ error: 'stripe_customers_fail', detail: t.slice(0, 200) });
+    }
+    const custData = await custR.json();
+    const customers = custData.data || [];
+    if (!customers.length) {
+      return res.status(404).json({ error: 'sem_customer_stripe', mensagem: 'Nao existe customer com esse email no Stripe.' });
+    }
+
+    // 2. Pra cada customer, busca sessions completadas
+    const allSessions = [];
+    for (const cust of customers) {
+      const sR = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions?customer=${cust.id}&limit=20`,
+        { headers: { Authorization: `Bearer ${STRIPE_SECRET}` } }
+      );
+      if (!sR.ok) continue;
+      const sData = await sR.json();
+      (sData.data || []).forEach((s) => allSessions.push({ ...s, _customer: cust }));
+    }
+
+    // 3. Filtra sessions pagas com plano valido
+    const paidSessions = allSessions
+      .filter((s) => s.payment_status === 'paid' && s.status === 'complete')
+      .filter((s) => {
+        const p = s.metadata?.plan;
+        return p && p !== 'free';
+      })
+      .sort((a, b) => (b.created || 0) - (a.created || 0));
+
+    if (!paidSessions.length) {
+      return res.status(404).json({
+        error: 'sem_session_paga',
+        mensagem: 'Customers existem no Stripe mas nenhum tem session paga com plano nao-free.',
+        customers_encontrados: customers.length,
+        sessions_totais: allSessions.length,
+      });
+    }
+
+    // 4. Pega a mais recente e ativa
+    const session = paidSessions[0];
+    const plan = session.metadata.plan;
+    const billing = session.metadata.billing || 'monthly';
+    const expiresAt = billing === 'annual'
+      ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
+      : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
+
+    const payload = {
+      plan,
+      is_manual: false, // NAO eh manual — foi pago de verdade
+      stripe_customer_id: session.customer,
+      stripe_subscription_id: session.subscription || null,
+      plan_expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Tenta PATCH (existe) -> fallback POST (nao existe)
+    const patchR = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
+      { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify(payload) }
+    );
+    const patchData = await patchR.json();
+    let criado = false;
+    if (Array.isArray(patchData) && patchData.length === 0) {
+      await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ email, ...payload, created_at: new Date().toISOString() }),
+      });
+      criado = true;
+    }
+
+    // 5. Dispara upgrade email (fire-and-forget)
+    try {
+      const { sendUpgradeEmail } = require('./_helpers/upgradeEmail.js');
+      sendUpgradeEmail(email, plan, billing).catch((e) => console.error('upgradeEmail (recuperar):', e.message));
+    } catch (e) { console.error('upgradeEmail import (recuperar):', e.message); }
+
+    // Log da recuperacao pra auditoria
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/payment_logs`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          stripe_session_id: session.id,
+          user_email: email,
+          plan,
+          amount: session.amount_total ? (session.amount_total / 100).toFixed(2) : null,
+          status: 'recuperado_manual',
+          note: `Recuperado via admin. Session paga em ${new Date(session.created * 1000).toISOString()}. Delay: ${Math.round((Date.now() - session.created * 1000) / 3600000)}h`,
+          created_at: new Date().toISOString(),
+        }),
+      });
+    } catch (e) {}
+
+    return res.status(200).json({
+      ok: true,
+      email,
+      plan,
+      billing,
+      criado_novo_registro: criado,
+      session_id: session.id,
+      session_paga_em: new Date(session.created * 1000).toISOString(),
+      delay_horas: Math.round((Date.now() - session.created * 1000) / 3600000),
+      plan_expires_at: expiresAt,
+    });
+  } catch (e) {
+    console.error('[recuperar-pagamento]', e);
     return res.status(500).json({ error: e.message });
   }
 }
