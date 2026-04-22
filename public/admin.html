@@ -712,6 +712,25 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div class="table-wrap" id="stripeWebhooksTable"><div class="loading-txt">Carregando…</div></div>
     </div>
 
+    <!-- RECUPERAR PAGAMENTO (fallback pra user preso em free apos webhook falhar) -->
+    <div class="section" id="recuperarPagamentoSection">
+      <div class="section-header">
+        <div class="section-title">🔧 Recuperar Pagamento <span class="section-subtitle">— user pagou Stripe mas ficou em free</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <input id="rpEmailInput" type="email" placeholder="email@do.usuario.com"
+          style="flex:1;min-width:240px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:#0a1628;color:var(--text);font-size:13px;font-family:var(--mono)"/>
+        <button class="action-btn" id="rpBtn" onclick="recuperarPagamento()" style="background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;font-weight:700">
+          🔍 Buscar Stripe + ativar
+        </button>
+      </div>
+      <div id="rpResult" style="font-family:var(--mono);font-size:12px;padding:14px;background:rgba(0,170,255,0.04);border:1px solid var(--border);border-radius:8px;min-height:20px;color:var(--dim);white-space:pre-wrap;word-break:break-word"></div>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5">
+        Busca todas as sessions Stripe do email (sem limite de tempo) e ativa o plano do subscriber se achar pagamento confirmado.
+        Dispara email de upgrade automaticamente. Loga em <code>payment_logs</code>.
+      </div>
+    </div>
+
     <!-- VERIFICAÇÃO DE CONTAS -->
     <div class="section" id="verificacaoSection">
       <div class="section-header">
@@ -1987,6 +2006,62 @@ async function reprocessarWebhooks(){
       toast('Erro: '+(d.error||'falha'));
     }
   }catch(e){toast('Erro: '+e.message);}
+}
+
+// ── RECUPERAR PAGAMENTO (fallback pra webhook falhado) ────────────────────
+async function recuperarPagamento(){
+  const input=document.getElementById('rpEmailInput');
+  const result=document.getElementById('rpResult');
+  const btn=document.getElementById('rpBtn');
+  const email=(input.value||'').trim().toLowerCase();
+  if(!email||!email.includes('@')){
+    result.textContent='⚠️ Coloca um email válido';
+    result.style.color='var(--yellow)';
+    return;
+  }
+  if(!confirm(`Buscar pagamentos no Stripe pro email:\n${email}\n\nSe encontrar pagamento confirmado, vai ativar o plano e mandar email de upgrade. OK?`))return;
+
+  btn.disabled=true; btn.textContent='⏳ Buscando no Stripe…';
+  result.textContent='Consultando Stripe customers + sessions…';
+  result.style.color='var(--dim)';
+
+  try{
+    const r=await fetch('/api/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'recuperar-pagamento',email})
+    });
+    const d=await r.json();
+
+    if(d.ok){
+      result.style.color='var(--green)';
+      result.textContent=
+        `✅ Plano ativado!\n\n`+
+        `email: ${d.email}\n`+
+        `plano: ${d.plan} (${d.billing})\n`+
+        `session paga em: ${d.session_paga_em}\n`+
+        `delay até detectar: ${d.delay_horas}h\n`+
+        `plano expira em: ${d.plan_expires_at}\n`+
+        `session Stripe: ${d.session_id}\n`+
+        `registro novo? ${d.criado_novo_registro?'SIM (criou)':'NAO (atualizou existente)'}\n\n`+
+        `📧 Email de upgrade disparado. Usuário deve fazer logout+login pra renovar token.`;
+      toast('✅ Pagamento recuperado · '+d.plan.toUpperCase());
+      input.value='';
+    }else{
+      result.style.color='var(--red)';
+      const msg={
+        'sem_customer_stripe':'❌ Email não tem customer no Stripe. Pode ter pago por outro meio (Asaas? Manual?) ou typo no email.',
+        'sem_session_paga':'❌ Tem customer no Stripe mas nenhuma session completada/paga. Pagamento pode ter falhado no checkout.',
+        'Unauthorized':'❌ adminKey invalida — recarrega a página e loga de novo.',
+      }[d.error]||`❌ ${d.error||'erro desconhecido'}`;
+      result.textContent=`${msg}\n\nDetalhes: ${JSON.stringify(d,null,2)}`;
+    }
+  }catch(e){
+    result.style.color='var(--red)';
+    result.textContent='❌ Falha de rede: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='🔍 Buscar Stripe + ativar';
+  }
 }
 
 // ── PROGRAMA PIONEIROS ────────────────────────────────────────────────────
