@@ -30,17 +30,23 @@ module.exports = async function handler(req, res) {
     'Authorization': `Bearer ${SUPABASE_KEY}`
   };
 
-  const results = { reconciled: 0, abandoned: 0, webhook_errors: 0, notifications: 0 };
+  const results = { reconciled: 0, abandoned: 0, webhook_errors: 0, notifications: 0, deep_scan_reconciled: 0 };
+
+  // Dois modos:
+  //   - normal (a cada 10min): janela 15min, rapido, baixo custo API
+  //   - deep-scan (1x/dia): janela 7 dias, pega sessions que escaparam do cron 15min
+  const deepScan = req.query?.action === 'deep-scan';
+  const windowSeconds = deepScan ? 7 * 24 * 60 * 60 : 15 * 60;
 
   try {
     // ═══════════════════════════════════════════════════════════════════════════
     // 1. RECONCILE: Pagamentos aprovados no Stripe vs plano no Supabase
     // ═══════════════════════════════════════════════════════════════════════════
-    const fifteenMinAgo = Math.floor((Date.now() - 15 * 60 * 1000) / 1000);
+    const fifteenMinAgo = Math.floor((Date.now() - windowSeconds * 1000) / 1000);
     const params = new URLSearchParams({
       'status': 'complete',
       'created[gte]': String(fifteenMinAgo),
-      'limit': '50',
+      'limit': deepScan ? '100' : '50',
       'expand[]': 'data.customer_details'
     });
 
@@ -105,7 +111,8 @@ module.exports = async function handler(req, res) {
           }
 
           results.reconciled++;
-          console.log(`[payment-monitor] ✅ Reconciled: ${email} → ${plan}`);
+          if (deepScan) results.deep_scan_reconciled++;
+          console.log(`[payment-monitor${deepScan ? ':deep' : ''}] ✅ Reconciled: ${email} → ${plan}`);
 
           // Log transaction
           await logTransaction(supaHeaders, {
@@ -113,8 +120,8 @@ module.exports = async function handler(req, res) {
             user_email: email,
             plan,
             amount: session.amount_total ? (session.amount_total / 100).toFixed(2) : plan === 'master' ? '89.99' : '29.99',
-            status: 'reconciled',
-            note: `Auto-reconciled after ${Math.round(sessionAge / 60000)}min delay`
+            status: deepScan ? 'deep_scan_reconciled' : 'reconciled',
+            note: `Auto-reconciled after ${Math.round(sessionAge / 60000)}min delay${deepScan ? ' (deep-scan)' : ''}`
           });
 
           // Notify if took more than 5 minutes
