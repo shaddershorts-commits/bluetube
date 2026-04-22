@@ -89,13 +89,21 @@ async function reprocessarEventosComErro(req, res) {
   const H = helperMod.default || helperMod;
 
   try {
+    // Busca DOIS conjuntos de eventos pra reprocessar:
+    //   1) status=erro                             — tentou, falhou, pode retentar
+    //   2) status=processando E created_at < 10min — zumbi (funcao morreu no meio)
+    //
+    // Causa do bug victorprocesso@gmail.com: webhook ficou 'processando' 4 dias
+    // porque o cron so pegava 'erro'. Agora tambem pega zumbis >10min.
+    const cutoffZumbi = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const rows = await H.supaFetch(
-      `/stripe_webhook_log?status=eq.erro&tentativas=lt.5&select=id,stripe_event_id,tipo,payload,tentativas&order=created_at.asc&limit=50`
+      `/stripe_webhook_log?or=(status.eq.erro,and(status.eq.processando,created_at.lt.${cutoffZumbi}))&tentativas=lt.5&select=id,stripe_event_id,tipo,payload,tentativas,status,created_at&order=created_at.asc&limit=50`
     );
 
-    let reprocessados = 0, sucesso = 0, falhou = 0;
+    let reprocessados = 0, sucesso = 0, falhou = 0, zumbis = 0;
     for (const row of rows) {
       reprocessados++;
+      if (row.status === 'processando') zumbis++;
       const event = row.payload;
       const tentativa = (row.tentativas || 0) + 1;
       try {
@@ -116,7 +124,7 @@ async function reprocessarEventosComErro(req, res) {
       }
     }
 
-    return res.status(200).json({ ok: true, reprocessados, sucesso, falhou });
+    return res.status(200).json({ ok: true, reprocessados, sucesso, falhou, zumbis });
   } catch (err) {
     console.error('[webhook reproc] erro geral:', err.message);
     return res.status(500).json({ error: err.message });
