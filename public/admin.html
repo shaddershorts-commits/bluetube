@@ -731,6 +731,21 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- AUDITORIA COMMISSIONS DUPLICADAS -->
+    <div class="section" id="dupCommissionsSection">
+      <div class="section-header">
+        <div class="section-title">🔍 Auditoria de Commissions <span class="section-subtitle">— detecta duplicatas por afiliado+subscriber+plano+mês</span></div>
+        <button class="action-btn" onclick="detectarCommissionsDuplicadas()">🔎 Detectar agora</button>
+      </div>
+      <div id="dupCommResult" style="font-family:var(--mono);font-size:12px;color:var(--dim);min-height:20px">
+        Clica em "Detectar agora" pra varrer a tabela.
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:10px;line-height:1.5">
+        <strong>Contexto:</strong> a partir de 22/abr/2026 o banco tem <code>UNIQUE INDEX ix_commissions_uniq_per_month</code> que impede duplicatas novas.
+        Esse detector serve pra auditar histórico e validar que não escapou nada. Commissions com status <code>cancelled</code> ou <code>refunded</code> são ignoradas.
+      </div>
+    </div>
+
     <!-- VERIFICAÇÃO DE CONTAS -->
     <div class="section" id="verificacaoSection">
       <div class="section-header">
@@ -2007,6 +2022,87 @@ async function reprocessarWebhooks(){
     }
   }catch(e){toast('Erro: '+e.message);}
 }
+
+// ── AUDITORIA COMMISSIONS DUPLICADAS ──────────────────────────────────────
+async function detectarCommissionsDuplicadas(){
+  const out=document.getElementById('dupCommResult');
+  out.innerHTML='<span style="color:var(--blue)">⏳ Varrendo commissions pending/paid…</span>';
+  try{
+    const r=await fetch('/api/admin?action=detectar-commissions-duplicadas',{
+      headers:{'Authorization':`Bearer ${adminKey}`}
+    });
+    const d=await r.json();
+    if(!r.ok||!d.ok){
+      out.innerHTML='<span style="color:var(--red)">❌ '+(d.error||'erro')+'</span>';
+      return;
+    }
+    if(d.total_grupos_duplicados===0){
+      out.innerHTML='<span style="color:var(--green)">✅ Nenhuma duplicata detectada. '+
+        'Constraint UNIQUE tá protegendo bem.</span>';
+      return;
+    }
+    // Render tabela de duplicatas
+    let html='<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#fca5a5;font-size:12px">'+
+      '⚠️ <b>'+d.total_grupos_duplicados+' grupo(s) de duplicatas</b> &middot; '+
+      d.total_commissions_excedentes+' commission(s) excedente(s)</div>';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html+='<tr style="border-bottom:1px solid var(--border);color:var(--dim);text-align:left">'+
+      '<th style="padding:8px 10px">Afiliado</th>'+
+      '<th style="padding:8px 10px">Subscriber</th>'+
+      '<th style="padding:8px 10px">Plano</th>'+
+      '<th style="padding:8px 10px">Mês</th>'+
+      '<th style="padding:8px 10px">Commissions</th>'+
+      '<th style="padding:8px 10px">Total R$</th>'+
+      '</tr>';
+    d.duplicados.forEach((g,gi)=>{
+      html+='<tr style="border-bottom:1px solid rgba(255,255,255,0.05);vertical-align:top">'+
+        '<td style="padding:10px;color:var(--text)">'+esc(g.afiliado_email||g.affiliate_id)+'</td>'+
+        '<td style="padding:10px;font-family:var(--mono)">'+esc(g.subscriber_email)+'</td>'+
+        '<td style="padding:10px">'+esc(g.plan)+'</td>'+
+        '<td style="padding:10px;font-family:var(--mono)">'+esc(g.mes)+'</td>'+
+        '<td style="padding:10px">';
+      g.commissions.forEach((c,ci)=>{
+        const isOldest=ci===g.commissions.length-1;
+        const color=c.status==='paid'?'#22c55e':c.status==='pending'?'#fbbf24':'var(--dim)';
+        html+='<div style="padding:4px 0;border-bottom:'+(ci<g.commissions.length-1?'1px solid rgba(255,255,255,0.04)':'none')+'">'+
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--dim)">'+c.id.slice(0,8)+'…</span> '+
+          '<span style="color:'+color+';font-size:10px;font-weight:700;text-transform:uppercase">'+esc(c.status)+'</span> '+
+          '<span style="color:var(--dim);font-size:10px">R$'+Number(c.commission_amount).toFixed(2)+'</span>'+
+          (isOldest?' <span style="color:var(--blue);font-size:10px">← mais antiga (manter)</span>':
+            ' <button onclick="cancelarCommission(\''+c.id+'\')" style="background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:2px 8px;font-size:10px;font-family:var(--mono);cursor:pointer;margin-left:4px">Cancelar</button>')+
+          '</div>';
+      });
+      html+='</td>'+
+        '<td style="padding:10px;font-family:var(--mono);color:var(--yellow)">R$'+Number(g.total_valor).toFixed(2)+'</td>'+
+        '</tr>';
+    });
+    html+='</table>';
+    out.innerHTML=html;
+  }catch(e){
+    out.innerHTML='<span style="color:var(--red)">❌ '+e.message+'</span>';
+  }
+}
+
+async function cancelarCommission(commission_id){
+  if(!confirm('Cancelar commission '+commission_id.slice(0,8)+'…?\n\nIsso vai:\n- Marcar como status=cancelled\n- Subtrair o valor do total_earnings do afiliado\n- Adicionar entry no commission_history\n\nAção reversível via SQL direto.'))return;
+  const motivo=prompt('Motivo (opcional):','Duplicata detectada — limpeza manual')||'Duplicata detectada';
+  try{
+    const r=await fetch('/api/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'cancelar-commission',commission_id,motivo})
+    });
+    const d=await r.json();
+    if(d.ok){
+      toast('✅ Commission cancelada'+(d.valor_subtraido>0?' · -R$'+d.valor_subtraido.toFixed(2)+' do earnings':''));
+      detectarCommissionsDuplicadas();  // re-refresh
+    }else{
+      alert('❌ Erro: '+(d.error||'falha'));
+    }
+  }catch(e){alert('Erro de rede: '+e.message);}
+}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ── RECUPERAR PAGAMENTO (fallback pra webhook falhado) ────────────────────
 async function recuperarPagamento(){

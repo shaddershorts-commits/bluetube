@@ -90,6 +90,17 @@ export default async function handler(req, res) {
     return recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email });
   }
 
+  // ── COMMISSIONS DUPLICADAS: detector + cancelador manual ─────────────────
+  // A constraint UNIQUE no banco (ix_commissions_uniq_per_month) ja impede
+  // novas duplicatas. Isso aqui e pra auditar historico e limpar casos
+  // anteriores a existencia da constraint.
+  if (req.method === 'GET' && action === 'detectar-commissions-duplicadas') {
+    return detectarCommissionsDuplicadasAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'cancelar-commission') {
+    return cancelarCommissionAction(req, res, { SUPABASE_URL, headers });
+  }
+
   // ── AFFILIATE MANAGEMENT ─────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_affiliate_status') {
     const { email, status } = req.body; // status: active | pending | suspended
@@ -1138,6 +1149,152 @@ async function marcarSaquePagoAction(req, res, { SUPABASE_URL, headers }) {
     }
 
     return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── DETECTAR COMMISSIONS DUPLICADAS ─────────────────────────────────────────
+// Retorna grupos de commissions pending|paid que violam a regra:
+// "1 commission por afiliado+subscriber+plan+mes".
+// A constraint UNIQUE do banco agora impede novas duplicatas, mas esse
+// endpoint serve pra auditar historico (pre-constraint) e confirmar saneamento.
+async function detectarCommissionsDuplicadasAction(req, res, { SUPABASE_URL, headers }) {
+  try {
+    // Puxa todas as commissions pending/paid com info do afiliado
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?status=in.(pending,paid)&select=id,affiliate_id,subscriber_email,plan,commission_amount,status,period_start,created_at&order=created_at.desc&limit=5000`,
+      { headers }
+    );
+    if (!r.ok) return res.status(502).json({ error: 'erro_query_commissions' });
+    const rows = await r.json();
+
+    // Agrupa por (affiliate_id, subscriber_email, plan, ano-mes do period_start)
+    const grupos = new Map();
+    for (const c of rows) {
+      const d = new Date(c.period_start);
+      const mesKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const key = `${c.affiliate_id}|${(c.subscriber_email || '').toLowerCase()}|${c.plan}|${mesKey}`;
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key).push(c);
+    }
+
+    // Mantem so grupos com 2+ entries
+    const duplicados = [];
+    for (const [key, items] of grupos.entries()) {
+      if (items.length < 2) continue;
+      const [affiliate_id, subscriber_email, plan, mes] = key.split('|');
+      duplicados.push({
+        affiliate_id, subscriber_email, plan, mes,
+        qtd: items.length,
+        total_valor: +items.reduce((s, i) => s + parseFloat(i.commission_amount || 0), 0).toFixed(2),
+        commissions: items.map(i => ({
+          id: i.id, status: i.status, commission_amount: parseFloat(i.commission_amount),
+          created_at: i.created_at,
+        })),
+      });
+    }
+
+    // Enriquece com email do afiliado
+    const affIds = [...new Set(duplicados.map(d => d.affiliate_id))];
+    if (affIds.length) {
+      const ar = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliates?id=in.(${affIds.join(',')})&select=id,email`,
+        { headers }
+      );
+      if (ar.ok) {
+        const byId = Object.fromEntries((await ar.json()).map(a => [a.id, a.email]));
+        duplicados.forEach(d => { d.afiliado_email = byId[d.affiliate_id] || '(desconhecido)'; });
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      total_grupos_duplicados: duplicados.length,
+      total_commissions_excedentes: duplicados.reduce((s, d) => s + (d.qtd - 1), 0),
+      duplicados: duplicados.sort((a, b) => b.qtd - a.qtd || b.total_valor - a.total_valor),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── CANCELAR COMMISSION (uso manual pra limpar duplicatas detectadas) ──────
+async function cancelarCommissionAction(req, res, { SUPABASE_URL, headers }) {
+  const { commission_id, motivo } = req.body || {};
+  if (!commission_id) return res.status(400).json({ error: 'commission_id obrigatorio' });
+
+  try {
+    // Pega commission atual
+    const cr = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${commission_id}&select=*`,
+      { headers }
+    );
+    if (!cr.ok) return res.status(502).json({ error: 'erro_buscar_commission' });
+    const [commission] = await cr.json();
+    if (!commission) return res.status(404).json({ error: 'commission_nao_encontrada' });
+
+    if (commission.status === 'cancelled') {
+      return res.status(200).json({ ok: true, ja_cancelada: true, commission_id });
+    }
+
+    const prevStatus = commission.status;
+    const valor = parseFloat(commission.commission_amount || 0);
+
+    // Append no history
+    const history = Array.isArray(commission.commission_history) ? commission.commission_history : [];
+    history.push({
+      at: new Date().toISOString(),
+      source: 'admin_cancel',
+      prev_status: prevStatus,
+      motivo: motivo || 'cancelamento manual pelo admin',
+    });
+
+    // PATCH commission -> cancelled
+    const patchR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${commission_id}`,
+      {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'cancelled',
+          commission_history: history,
+        }),
+      }
+    );
+    if (!patchR.ok) return res.status(502).json({ error: 'erro_cancelar' });
+
+    // Se estava em pending/paid, decrementa total_earnings do afiliado
+    if (prevStatus === 'pending' || prevStatus === 'paid') {
+      const ar = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliates?id=eq.${commission.affiliate_id}&select=total_earnings`,
+        { headers }
+      );
+      if (ar.ok) {
+        const [af] = await ar.json();
+        if (af) {
+          const novoEarnings = Math.max(0, parseFloat(af.total_earnings || 0) - valor);
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/affiliates?id=eq.${commission.affiliate_id}`,
+            {
+              method: 'PATCH',
+              headers: { ...headers, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                total_earnings: parseFloat(novoEarnings.toFixed(2)),
+                updated_at: new Date().toISOString(),
+              }),
+            }
+          );
+        }
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      commission_id,
+      prev_status: prevStatus,
+      valor_subtraido: prevStatus === 'pending' || prevStatus === 'paid' ? valor : 0,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
