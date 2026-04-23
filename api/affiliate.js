@@ -513,51 +513,164 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── CANCEL COMMISSION ──────────────────────────────────────────────────────
-  // POST { action: 'cancel', email } — chamado pelo webhook.js no cancelamento
+  // ╔════════════════════════════════════════════════════════════════════════╗
+  // ║ ⚠️  LIVE CODE — ACAO VIVA DE CANCELAMENTO  ⚠️                          ║
+  // ║ Chamada pelo webhook.js quando Stripe cancela subscription.             ║
+  // ║ ATENCAO: auth.js:2252 tem codigo legado identico mas NAO e mais chamado.║
+  // ║ Toda logica de cancelamento afiliado mora AQUI.                         ║
+  // ║                                                                         ║
+  // ║ Corrige Bug 2 (commission paga nunca revertida):                        ║
+  // ║  - pending → cancelled                                                  ║
+  // ║  - paid    → cancelled_after_payout (+ alerta admin)                    ║
+  // ║  - decrementa total_earnings do afiliado (soma dos amounts revertidos)  ║
+  // ║  - idempotente: chamada duplicada retorna skipped: 'already_cancelled'  ║
+  // ║  - log em affiliate_attribution_log (auditoria, sem schema change)      ║
+  // ╚════════════════════════════════════════════════════════════════════════╝
+  // POST { action: 'cancel', email }
   if (req.method === 'POST' && action === 'cancel') {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'email obrigatório' });
+    if (!email) return res.status(400).json({ error: 'email obrigatorio' });
 
     try {
-      // Busca conversão
+      // 1. Busca conversion pra identificar afiliado
       const cr = await fetch(`${SUPA_URL}/rest/v1/affiliate_conversions?converted_email=eq.${encodeURIComponent(email)}&select=affiliate_id,plan`, { headers: supaH });
       const convs = await cr.json();
       if (!convs?.length) return res.status(200).json({ ok: true, skipped: 'no_conversion' });
-
       const { affiliate_id, plan } = convs[0];
 
-      // Cancela comissões pendentes futuras
-      await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&subscriber_email=eq.${encodeURIComponent(email)}&status=eq.pending`, {
-        method: 'PATCH',
-        headers: supaH,
-        body: JSON.stringify({ status: 'cancelled' })
-      });
+      // 2. IDEMPOTENCIA: Stripe faz retry — chamada duplicada nao deve re-decrementar.
+      //    Busca TODAS commissions do par, checa se alguma ainda esta ativa (pending/paid).
+      const cmR = await fetch(
+        `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}`
+        + `&subscriber_email=eq.${encodeURIComponent(email)}`
+        + `&select=id,status,commission_amount,paid_at,flagged&order=created_at.desc`,
+        { headers: supaH }
+      );
+      const all = cmR.ok ? await cmR.json() : [];
+      const active = all.filter(c => c.status === 'pending' || c.status === 'paid');
+      if (active.length === 0) {
+        console.log(`[cancel] ${email} ja processado (0 commissions ativas, ${all.length} historicas)`);
+        return res.status(200).json({ ok: true, skipped: 'already_cancelled', historicas: all.length });
+      }
 
-      // Decrementa contador do afiliado
+      // 3. Separa por status (trata igual independente de flagged)
+      const pendings = active.filter(c => c.status === 'pending');
+      const paids    = active.filter(c => c.status === 'paid');
+
+      // 4. Cancela pending → cancelled
+      if (pendings.length > 0) {
+        await fetch(
+          `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}`
+          + `&subscriber_email=eq.${encodeURIComponent(email)}&status=eq.pending`,
+          { method: 'PATCH', headers: supaH, body: JSON.stringify({ status: 'cancelled' }) }
+        );
+      }
+
+      // 5. Reverte paid → cancelled_after_payout (Bug 2 fix)
+      if (paids.length > 0) {
+        await fetch(
+          `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}`
+          + `&subscriber_email=eq.${encodeURIComponent(email)}&status=eq.paid`,
+          { method: 'PATCH', headers: supaH, body: JSON.stringify({ status: 'cancelled_after_payout' }) }
+        );
+      }
+
+      // 6. Atualiza afiliado: decrementa contador + level + total_earnings
+      const totalReverted = active.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
       const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*`, { headers: supaH });
-      const affiliates = await ar.json();
-      const affiliate = affiliates?.[0];
-      if (affiliate) {
+      const [aff] = (await ar.json()) || [];
+      if (aff) {
         const field = plan === 'full' ? 'total_full' : 'total_master';
-        const newCount = Math.max(0, (affiliate[field] || 0) - 1);
-        const totalPaying = Math.max(0, (affiliate.total_full||0) + (affiliate.total_master||0) - 1);
+        const newCount = Math.max(0, (aff[field] || 0) - 1);
+        const totalPaying = Math.max(0, (aff.total_full || 0) + (aff.total_master || 0) - 1);
+        const newEarnings = Math.max(0, parseFloat(((aff.total_earnings || 0) - totalReverted).toFixed(2)));
         await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}`, {
-          method: 'PATCH',
-          headers: supaH,
+          method: 'PATCH', headers: supaH,
           body: JSON.stringify({
             [field]: newCount,
             level: getLevel(totalPaying),
-            updated_at: new Date().toISOString()
-          })
+            total_earnings: newEarnings,
+            updated_at: new Date().toISOString(),
+          }),
         });
       }
 
-      console.log(`❌ Commission cancelled for: ${email}`);
-      return res.status(200).json({ ok: true });
-    } catch(e) {
-      console.error('Cancel commission error:', e.message);
-      return res.status(200).json({ ok: false });
+      // 7. Log em affiliate_attribution_log (ajuste 2 — sem inflar schema)
+      const logs = [
+        ...pendings.map(c => ({
+          email, affiliate_id, source: 'stripe_cancel', decisao: 'cancelled',
+          detalhes: { commission_id: c.id, amount: c.commission_amount, flagged: c.flagged, context: 'subscription_cancelled' },
+        })),
+        ...paids.map(c => ({
+          email, affiliate_id, source: 'stripe_cancel', decisao: 'cancelled_after_payout',
+          detalhes: { commission_id: c.id, amount: c.commission_amount, paid_at: c.paid_at, flagged: c.flagged, context: 'subscription_cancelled_post_payout' },
+        })),
+      ];
+      for (const l of logs) {
+        fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify(l),
+        }).catch(() => {});
+      }
+
+      // 8. Alerta admin SE houve reversao de paid (alto impacto)
+      if (paids.length > 0 && aff && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+        (async () => {
+          try {
+            const totalPaidRev = paids.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
+            const subR = await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=created_at&limit=1`, { headers: supaH });
+            const [sub] = subR.ok ? await subR.json() : [];
+            const signupDate = sub?.created_at ? new Date(sub.created_at).toLocaleDateString('pt-BR') : 'desconhecido';
+            const earliestPaid = paids.reduce((m, c) => (!m || (c.paid_at && c.paid_at < m)) ? c.paid_at : m, null);
+            const saqueDate = earliestPaid ? new Date(earliestPaid).toLocaleDateString('pt-BR') : 'desconhecido';
+            const lista = paids.map(c => `<li><code>${String(c.id).slice(0,8)}</code> — R$ ${Number(c.commission_amount).toFixed(2).replace('.',',')} — pago em ${c.paid_at || '?'}</li>`).join('');
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: 'BlueTube Alerts <noreply@bluetubeviral.com>',
+                to: [process.env.ADMIN_EMAIL],
+                subject: '🚨 Commission paga revertida — decisão manual',
+                html: `<div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:28px;background:#0a1628;color:#e8f4ff;border-radius:14px">
+                  <h2 style="color:#ff6b6b;margin:0 0 16px">🚨 Commission paga revertida</h2>
+                  <p>Subscriber cancelou e a commission dele <b>ja tinha sido paga</b> ao afiliado. Precisa decisao manual.</p>
+                  <table style="width:100%;border-collapse:collapse;margin:20px 0">
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Subscriber:</td><td style="padding:8px 0;text-align:right;font-family:monospace;font-size:13px">${email}</td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Signup subscriber:</td><td style="padding:8px 0;text-align:right;font-size:13px">${signupDate}</td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Afiliado:</td><td style="padding:8px 0;text-align:right;font-family:monospace;font-size:13px">${aff.email}</td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Plano:</td><td style="padding:8px 0;text-align:right;font-size:13px">${plan}</td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Valor revertido:</td><td style="padding:8px 0;text-align:right"><span style="color:#ffb020;font-weight:800;font-size:18px">R$ ${totalPaidRev.toFixed(2).replace('.',',')}</span></td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Data saque original:</td><td style="padding:8px 0;text-align:right;font-size:13px">${saqueDate}</td></tr>
+                    <tr><td style="padding:8px 0;color:#9bb;font-size:13px">Novo status:</td><td style="padding:8px 0;text-align:right"><span style="background:rgba(255,107,107,.15);color:#ff6b6b;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:700">cancelled_after_payout</span></td></tr>
+                  </table>
+                  <h4 style="margin:20px 0 8px">Commissions revertidas:</h4>
+                  <ul style="font-size:13px;color:#bcd">${lista}</ul>
+                  <h4 style="margin:20px 0 8px">Opcoes de decisao:</h4>
+                  <ol style="font-size:13px;color:#bcd;line-height:1.8">
+                    <li><b>Cobrar</b>: solicitar reembolso do afiliado.</li>
+                    <li><b>Absorver</b>: BlueTube banca o prejuizo.</li>
+                    <li><b>Negociar</b>: descontar do proximo saque do afiliado.</li>
+                  </ol>
+                  <div style="text-align:center;margin:24px 0 0">
+                    <a href="https://bluetubeviral.com/admin" style="display:inline-block;background:linear-gradient(135deg,#ff6b6b,#ff9068);color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:14px">Abrir painel admin →</a>
+                  </div>
+                </div>`,
+              }),
+            });
+          } catch (e) { console.error('[cancel-alert]', e.message); }
+        })();
+      }
+
+      console.log(`[cancel] ${email} — pending:${pendings.length}, paid:${paids.length}, reverted:R$${totalReverted.toFixed(2)}`);
+      return res.status(200).json({
+        ok: true,
+        pendings_cancelled: pendings.length,
+        paids_cancelled_after_payout: paids.length,
+        total_reverted: parseFloat(totalReverted.toFixed(2)),
+      });
+    } catch (e) {
+      console.error('[cancel] erro:', e.message);
+      return res.status(500).json({ ok: false, error: e.message });
     }
   }
 

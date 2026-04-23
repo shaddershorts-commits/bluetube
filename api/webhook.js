@@ -810,7 +810,9 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
     if (cancelledEmail && !stillActive) {
       const SITE_URL_C = process.env.SITE_URL || 'https://bluetubeviral.com';
-      fetch(`${SITE_URL_C}/api/auth`, {
+      // Migrado de /api/auth pra /api/affiliate em 2026-04-23 pra destravar Bug 2 fix
+      // (reversao de commission paga). auth.js:2252 virou dead code.
+      fetch(`${SITE_URL_C}/api/affiliate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cancel', email: cancelledEmail })

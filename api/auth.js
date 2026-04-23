@@ -2248,6 +2248,14 @@ Responda APENAS em JSON válido sem markdown:
   }
 
   // ── CANCEL COMMISSION ──────────────────────────────────────────────────────
+  // ╔════════════════════════════════════════════════════════════════════════╗
+  // ║ ⚠️  DEAD CODE ZONE — NAO MODIFICAR  ⚠️                                  ║
+  // ║ Esta action=cancel NAO e mais chamada desde 2026-04-23.                 ║
+  // ║ O codigo VIVO esta em api/affiliate.js:518+ (action=cancel).            ║
+  // ║ webhook.js agora chama /api/affiliate diretamente.                      ║
+  // ║ Mantido aqui apenas pra nao violar a regra de nao-mexer-em-auth.js.     ║
+  // ║ Qualquer mudanca no fluxo de cancelamento vai em affiliate.js, NAO AQUI.║
+  // ╚════════════════════════════════════════════════════════════════════════╝
   // POST { action: 'cancel', email } — chamado pelo webhook.js no cancelamento
   if (req.method === 'POST' && _action === 'cancel') {
     const { email } = req.body;
