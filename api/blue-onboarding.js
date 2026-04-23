@@ -64,15 +64,23 @@ module.exports = async function handler(req, res) {
   }
 
   // ── SUGESTÕES DE CRIADORES ──────────────────────────────────────────────
+  // Filtros aplicados (evita sugerir perfis "parados"):
+  //  1) avatar_url nao-nulo e nao-vazio (tem foto de perfil)
+  //  2) >= 2 videos ativos postados
+  // Query inicial sobe pra 80 pra ter margem depois dos filtros; retorno final
+  // eh top 15 por contagem de followers.
   if (req.method === 'POST' && action === 'sugestoes-seguir') {
     const user = await getUser(req.body.token);
     if (!user) return res.status(401).json({ error: 'Token inválido' });
     try {
-      // Get top creators by follower count
-      const cR = await fetch(`${SU}/rest/v1/blue_profiles?select=user_id,username,display_name,avatar_url,bio&order=created_at.asc&limit=15`, { headers: h });
+      // Filtro 1 (REST): apenas perfis com avatar_url != null
+      const cR = await fetch(`${SU}/rest/v1/blue_profiles?avatar_url=not.is.null&select=user_id,username,display_name,avatar_url,bio&order=created_at.asc&limit=80`, { headers: h });
       const creators = cR.ok ? await cR.json() : [];
-      // Filter out self
-      const filtered = creators.filter(c => c.user_id !== user.id);
+      // Filter out self + avatar_url vazio (REST not.is.null nao pega strings vazias)
+      const filtered = creators.filter(c =>
+        c.user_id !== user.id &&
+        typeof c.avatar_url === 'string' && c.avatar_url.trim() !== ''
+      );
       // Get follower counts
       const uIds = filtered.map(c => c.user_id);
       let followerCounts = {};
@@ -83,21 +91,26 @@ module.exports = async function handler(req, res) {
       }
       // Get video counts
       let videoCounts = {};
+      let thumbs = {};
       if (uIds.length) {
         const vR = await fetch(`${SU}/rest/v1/blue_videos?user_id=in.(${uIds.join(',')})&status=eq.active&select=user_id,thumbnail_url&order=score.desc`, { headers: h });
         const vids = vR.ok ? await vR.json() : [];
-        const thumbs = {};
         vids.forEach(v => {
           videoCounts[v.user_id] = (videoCounts[v.user_id] || 0) + 1;
           if (!thumbs[v.user_id] && v.thumbnail_url) thumbs[v.user_id] = v.thumbnail_url;
         });
-        filtered.forEach(c => { c.preview_thumb = thumbs[c.user_id] || null; });
       }
-      const sugestoes = filtered.map(c => ({
-        ...c,
-        seguidores: followerCounts[c.user_id] || 0,
-        videos: videoCounts[c.user_id] || 0,
-      })).sort((a, b) => b.seguidores - a.seguidores);
+      // Filtro 2 (memoria): apenas perfis com >= 2 videos ativos
+      const sugestoes = filtered
+        .filter(c => (videoCounts[c.user_id] || 0) >= 2)
+        .map(c => ({
+          ...c,
+          preview_thumb: thumbs[c.user_id] || null,
+          seguidores: followerCounts[c.user_id] || 0,
+          videos: videoCounts[c.user_id] || 0,
+        }))
+        .sort((a, b) => b.seguidores - a.seguidores)
+        .slice(0, 15);
 
       return res.status(200).json({ sugestoes });
     } catch(e) { return res.status(200).json({ sugestoes: [] }); }
