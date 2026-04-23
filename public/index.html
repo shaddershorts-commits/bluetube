@@ -1989,6 +1989,16 @@ async function submitOTPCode(){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Código inválido');
     if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
+    // Fallback de atribuicao via fingerprint 14d (cookie sempre vence).
+    // Cobre signup via OTP (caminho que nao passava pelo attribute-signup-fingerprint
+    // como o signup direto ja fazia). Sem isso, users que perdem o cookie no caminho
+    // (in-app browser, troca de device) ficam orfaos mesmo com clique recente registrado.
+    if (d.session?.access_token) {
+      fetch('/api/affiliate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'attribute-signup-fingerprint', token: d.session.access_token }),
+      }).catch(()=>{});
+    }
     // Salva cred se a senha foi capturada no login/signup que originou o OTP
     if (pendingOTPEmail && pendingOTPPassword) {
       _btSaveCred(pendingOTPEmail, pendingOTPPassword);
