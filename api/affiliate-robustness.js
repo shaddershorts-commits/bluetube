@@ -37,10 +37,11 @@ module.exports = async function handler(req, res) {
   if (action === 'list-orphaned-paid')  return listOrphanedPaid(req, res, ctx);
   if (action === 'manual-attribute')    return manualAttribute(req, res, ctx);
   if (action === 'daily-orphans-alert') return dailyOrphansAlert(req, res, ctx);
+  if (action === 'orphan-suggestions')  return orphanSuggestions(req, res, ctx);
 
   return res.status(400).json({ error: 'action invalida',
     valid: ['process-queue', 'reconcile', 'track-fingerprint', 'list-flagged', 'review-flagged', 'retro-scan',
-            'list-orphaned-paid', 'manual-attribute', 'daily-orphans-alert'] });
+            'list-orphaned-paid', 'manual-attribute', 'daily-orphans-alert', 'orphan-suggestions'] });
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -792,11 +793,195 @@ async function listOrphanedPaid(req, res, { SU, h, ADMIN_SECRET }) {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ORPHAN SUGGESTIONS (Parte 2) — calcula score 0-100 pra cada candidato afiliado
+// de cada orfao pago, rankeia top 3. Heuristica v1.1:
+//   - Gap temporal (50%): 0-30min=50 / 30-120=35 / 2-6h=20 / 6-24h=10 / >24h=0
+//   - Exclusividade 1h ANTES do signup (30%): afiliados nessa janela: 1=30 /
+//                              2=18 / 3=12 / 4+=6 (0 se o afiliado nao estava)
+//   - Volume relativo na janela (20%): %cliques/total_candidatos: >=70%=20 /
+//                                      40-70%=15 / 10-40%=10 / <10%=5
+//   - Forward-compat "match identificador" (TODO): quando detalhes.ip_hash
+//     estiver populado em affiliate_attribution_log, adicionar ate +20 pontos.
+//     Score total sempre cap em 100.
+// Ambiguidade: unambiguous=true se top1 - top2 >= 20 OU so 1 candidato.
+// Low confidence: top1.score < 50 OU zero candidatos.
+// Cache: orphan:suggestions:all TTL 5min. Invalidado em manual-attribute.
+// ═════════════════════════════════════════════════════════════════════════════
+async function orphanSuggestions(req, res, { SU, h, ADMIN_SECRET }) {
+  if (req.query.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  const { cacheGet, cacheSet } = require('./_helpers/cache');
+  const CACHE_KEY = 'orphan:suggestions:all';
+
+  try {
+    const cached = await cacheGet(CACHE_KEY);
+    if (cached) return res.status(200).json({ ...cached, cache_hit: true });
+
+    const JANELA_DIAS = 14;
+    const JANELA_1H = 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - JANELA_DIAS * 86400000).toISOString();
+
+    // 1. Orfaos atuais
+    const oR = await fetch(
+      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&is_manual=eq.false`
+      + `&created_at=gte.${cutoff}&order=created_at.desc&limit=200&select=email,plan,created_at,stripe_customer_id`,
+      { headers: h }
+    );
+    const orphans = oR.ok ? await oR.json() : [];
+    if (orphans.length === 0) {
+      const payload = { orphans: [], total: 0, janela_dias: JANELA_DIAS, heuristic_version: '1.0' };
+      await cacheSet(CACHE_KEY, payload, 300);
+      return res.status(200).json(payload);
+    }
+
+    // 2. Clicks + afiliados ativos na janela
+    const cR = await fetch(
+      `${SU}/rest/v1/affiliate_clicks?landed_at=gte.${cutoff}&select=affiliate_id,landed_at&limit=10000`,
+      { headers: h }
+    );
+    const allClicks = cR.ok ? await cR.json() : [];
+    const affIds = [...new Set(allClicks.map(c => c.affiliate_id))].filter(Boolean);
+    let affs = [];
+    if (affIds.length > 0) {
+      const aR = await fetch(
+        `${SU}/rest/v1/affiliates?id=in.(${affIds.join(',')})&status=eq.active&select=id,email,ref_code,nivel`,
+        { headers: h }
+      );
+      affs = aR.ok ? await aR.json() : [];
+    }
+    const affMap = new Map(affs.map(a => [a.id, a]));
+
+    // Precomputa volume por afiliado (todos os clicks na janela)
+    const clicksByAff = new Map();
+    for (const c of allClicks) {
+      clicksByAff.set(c.affiliate_id, (clicksByAff.get(c.affiliate_id) || 0) + 1);
+    }
+
+    // 3. Score pra cada orfao
+    const orphansScored = orphans.map(o => {
+      const signupMs = new Date(o.created_at).getTime();
+
+      // Candidatos: afiliado -> click mais recente ANTES do signup
+      const perAff = new Map();
+      for (const c of allClicks) {
+        const clickMs = new Date(c.landed_at).getTime();
+        if (clickMs > signupMs) continue;
+        const prev = perAff.get(c.affiliate_id);
+        if (!prev || clickMs > prev) perAff.set(c.affiliate_id, clickMs);
+      }
+
+      // Afiliados com click na janela [signup - 1h, signup] (exclusividade).
+      // v1.1 (2026-04-23): UNIDIRECIONAL — só clicks ANTES do signup contam.
+      // Clicks DEPOIS do signup representam atividade de outros visitantes do
+      // afiliado e nao influenciaram a decisao de compra. Na v1.0 usavamos
+      // ABS()/bidirecional, que inflava score de afiliados com alto volume em
+      // casos onde o click mais recente antes do signup era muito antigo (ex:
+      // valentecarlos03 com gap 15h recebia excl=30 porque luiz teve clicks
+      // ALEATORIOS em ±1h, mesmo sem relacao causal com a compra).
+      // NAO reverter pra bidirecional sem antes revalidar com baseline SQL.
+      const affsIn1h = new Set();
+      for (const c of allClicks) {
+        const clickMs = new Date(c.landed_at).getTime();
+        const diffMs = signupMs - clickMs;
+        if (diffMs >= 0 && diffMs <= JANELA_1H) affsIn1h.add(c.affiliate_id);
+      }
+
+      // Volume base pra % relativo: soma dos clicks dos candidatos
+      const totalClicksCands = [...perAff.keys()].reduce((s, id) => s + (clicksByAff.get(id) || 0), 0);
+
+      const cands = [...perAff.entries()].map(([affId, clickMs]) => {
+        const aff = affMap.get(affId);
+        if (!aff || String(aff.email).toLowerCase() === String(o.email).toLowerCase()) return null;
+
+        const gapMs = signupMs - clickMs;
+        const gapMin = Math.round(gapMs / 60000);
+
+        // Peso 1: Gap temporal (50%)
+        let gapScore;
+        if (gapMin <= 30) gapScore = 50;
+        else if (gapMin <= 120) gapScore = 35;
+        else if (gapMin <= 360) gapScore = 20;
+        else if (gapMin <= 1440) gapScore = 10;
+        else gapScore = 0;
+
+        // Peso 2: Exclusividade ±1h (30%)
+        let exclScore = 0;
+        if (affsIn1h.has(affId)) {
+          const n = affsIn1h.size;
+          if (n === 1) exclScore = 30;
+          else if (n === 2) exclScore = 18;
+          else if (n === 3) exclScore = 12;
+          else exclScore = 6;
+        }
+
+        // Peso 3: Volume relativo (20%)
+        const clicksAff = clicksByAff.get(affId) || 0;
+        const pct = totalClicksCands > 0 ? clicksAff / totalClicksCands : 0;
+        let volScore;
+        if (pct >= 0.70) volScore = 20;
+        else if (pct >= 0.40) volScore = 15;
+        else if (pct >= 0.10) volScore = 10;
+        else volScore = 5;
+
+        // Forward-compat: identScore=0 por ora. Quando ip_hash existir em
+        // affiliate_attribution_log.detalhes, somar ate +20. Cap em 100.
+        const identScore = 0;
+
+        const score = Math.min(100, gapScore + exclScore + volScore + identScore);
+
+        return {
+          affiliate_id: affId,
+          affiliate_email: aff.email,
+          ref_code: aff.ref_code,
+          nivel: aff.nivel,
+          score,
+          evidences: {
+            gap_minutes: gapMin,
+            gap_score: gapScore,
+            affiliates_in_1h: affsIn1h.size,
+            in_1h: affsIn1h.has(affId),
+            exclusivity_score: exclScore,
+            click_volume_14d: clicksAff,
+            volume_pct: Math.round(pct * 100),
+            volume_score: volScore,
+          },
+        };
+      }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 3);
+
+      const unambiguous = cands.length < 2 || (cands[0].score - cands[1].score) >= 20;
+      const lowConfidence = cands.length === 0 || cands[0].score < 50;
+
+      return {
+        email: o.email,
+        plan: o.plan,
+        created_at: o.created_at,
+        dias_atras: Math.max(0, Math.floor((Date.now() - new Date(o.created_at)) / 86400000)),
+        stripe_customer_id: o.stripe_customer_id,
+        top_candidates: cands,
+        unambiguous,
+        low_confidence: lowConfidence,
+      };
+    });
+
+    const payload = {
+      orphans: orphansScored,
+      total: orphansScored.length,
+      janela_dias: JANELA_DIAS,
+      heuristic_version: '1.1',
+    };
+    await cacheSet(CACHE_KEY, payload, 300);
+    return res.status(200).json(payload);
+  } catch (e) {
+    console.error('[orphan-suggestions]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
 async function manualAttribute(req, res, { SU, h, ADMIN_SECRET, RESEND_KEY, ADMIN_EMAIL }) {
   if (req.query.admin_secret !== ADMIN_SECRET) return res.status(401).json({ error: 'unauthorized' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST apenas' });
   try {
-    const { subscriber_email, affiliate_id, mark_as_direct, motivo, admin_user_id, admin_email } = req.body || {};
+    const { subscriber_email, affiliate_id, mark_as_direct, motivo, admin_user_id, admin_email, scoring_context } = req.body || {};
     if (!subscriber_email) return res.status(400).json({ error: 'subscriber_email obrigatorio' });
     if (!mark_as_direct && !affiliate_id) return res.status(400).json({ error: 'affiliate_id ou mark_as_direct obrigatorio' });
 
@@ -832,6 +1017,31 @@ async function manualAttribute(req, res, { SU, h, ADMIN_SECRET, RESEND_KEY, ADMI
           motivo: motivo || null,
         }),
       });
+      // Log de decisao admin com scoring_context (auditoria da heuristica)
+      if (scoring_context && typeof scoring_context === 'object') {
+        fetch(`${SU}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            email: subscriber_email,
+            affiliate_id: null,
+            source: 'manual',
+            decisao: 'marcado_direto',
+            detalhes: {
+              score_top1: scoring_context.score_top1 ?? null,
+              score_top2: scoring_context.score_top2 ?? null,
+              score_top3: scoring_context.score_top3 ?? null,
+              gap_minutes_top1: scoring_context.gap_minutes_top1 ?? null,
+              afiliado_escolhido_id: null,
+              afiliado_escolhido_email: null,
+              unambiguous: scoring_context.unambiguous ?? null,
+              low_confidence: scoring_context.low_confidence ?? null,
+              context: 'orphan_panel_decision',
+            },
+          }),
+        }).catch(() => {});
+      }
+      // Invalida cache do painel de sugestoes
+      try { const { cacheDel } = require('./_helpers/cache'); await cacheDel('orphan:suggestions:all'); } catch (_) {}
       return res.status(200).json({ ok: true, action: 'marked_direct' });
     }
 
@@ -976,6 +1186,33 @@ async function manualAttribute(req, res, { SU, h, ADMIN_SECRET, RESEND_KEY, ADMI
         ]
       ).catch(() => {});
     }
+
+    // Log de decisao admin com scoring_context (auditoria da heuristica)
+    if (scoring_context && typeof scoring_context === 'object') {
+      fetch(`${SU}/rest/v1/affiliate_attribution_log`, {
+        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          email: subscriber_email,
+          affiliate_id: aff.id,
+          source: 'manual',
+          decisao: 'atribuido',
+          detalhes: {
+            score_top1: scoring_context.score_top1 ?? null,
+            score_top2: scoring_context.score_top2 ?? null,
+            score_top3: scoring_context.score_top3 ?? null,
+            gap_minutes_top1: scoring_context.gap_minutes_top1 ?? null,
+            afiliado_escolhido_id: aff.id,
+            afiliado_escolhido_email: aff.email,
+            unambiguous: scoring_context.unambiguous ?? null,
+            low_confidence: scoring_context.low_confidence ?? null,
+            commission_id: commission.id,
+            context: 'orphan_panel_decision',
+          },
+        }),
+      }).catch(() => {});
+    }
+    // Invalida cache do painel de sugestoes
+    try { const { cacheDel } = require('./_helpers/cache'); await cacheDel('orphan:suggestions:all'); } catch (_) {}
 
     return res.status(200).json({
       ok: true,

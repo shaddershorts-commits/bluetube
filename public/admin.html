@@ -508,18 +508,17 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div style="font-size:16px;font-weight:700;margin-bottom:4px">🔗 Atribuir assinante a afiliado</div>
         <div style="font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:4px" id="orphanAttrEmail">—</div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:18px" id="orphanAttrMeta">—</div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px">Afiliado</label>
-          <select id="orphanAttrAffSelect" class="plan-input" style="width:100%"></select>
+        <div id="orphanAttrLowConfBanner" style="display:none;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;color:#fbbf24">
+          ⚠️ Nenhum candidato com alta probabilidade (todos &lt;50) — considere marcar como direto
         </div>
+        <div id="orphanAttrCandidates" style="margin-bottom:14px"></div>
         <div style="margin-bottom:14px">
           <label style="display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px">Motivo (opcional)</label>
           <input id="orphanAttrMotivo" class="plan-input" placeholder="Ex: cookie perdeu entre click e signup" style="width:100%"/>
         </div>
         <div id="orphanAttrMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:14px;min-height:16px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <button onclick="confirmOrphanAttr()" style="background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">✓ Atribuir</button>
-          <button onclick="markOrphanDirect()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px;font-family:var(--display);font-size:13px;font-weight:700;color:var(--text);cursor:pointer">Marcar direto</button>
+        <div style="display:flex;justify-content:flex-end">
+          <button onclick="markOrphanDirect()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 18px;font-family:var(--display);font-size:13px;font-weight:700;color:var(--text);cursor:pointer">Marcar direto</button>
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;text-align:center">⚠️ Atribuir cria commission FLAGGED — não paga automaticamente</div>
       </div>
@@ -2612,7 +2611,7 @@ async function loadOrphans(){
   const body = document.getElementById('orphansBody');
   body.innerHTML = '<div class="loading-txt" style="padding:14px">Carregando...</div>';
   try{
-    const r = await fetch(`/api/affiliate-robustness?action=list-orphaned-paid&admin_secret=${encodeURIComponent(adminKey)}`);
+    const r = await fetch(`/api/affiliate-robustness?action=orphan-suggestions&admin_secret=${encodeURIComponent(adminKey)}`);
     if(!r.ok){
       body.innerHTML = '<div style="color:#f87171;padding:14px">Erro — verifique ADMIN_SECRET e deploy</div>';
       return;
@@ -2635,31 +2634,51 @@ async function loadOrphans(){
       const planBadge = o.plan === 'master'
         ? '<span style="background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px">MASTER</span>'
         : '<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:3px 8px;border-radius:6px;font-weight:700;font-size:10px">FULL</span>';
-      const logsInfo = o.log_count > 0
-        ? `<span style="color:var(--dim);font-size:10px">${o.log_count} log(s)</span>`
-        : `<span style="color:var(--yellow);font-size:10px">sem log</span>`;
       const emailSafe = o.email.replace(/'/g,"\\'");
+      // Renderiza coluna "Top sugerido" com base nos estados (verde/amarelo/baixa-conf)
+      let topDisplay;
+      if (o.top_candidates.length === 0 || o.low_confidence) {
+        const t1 = o.top_candidates[0];
+        topDisplay = t1
+          ? `<div style="font-family:var(--mono);font-size:11px"><span style="color:#fbbf24">⚠️ ${t1.affiliate_email.split('@')[0]} ${t1.score}%</span><div style="color:var(--dim);font-size:10px">nenhum &gt; 50</div></div>`
+          : `<span style="color:#fbbf24;font-size:11px">⚠️ sem candidatos</span>`;
+      } else if (!o.unambiguous) {
+        const t1 = o.top_candidates[0];
+        const t2 = o.top_candidates[1];
+        topDisplay = `<div style="font-family:var(--mono);font-size:11px;line-height:1.4">
+          <div style="color:#fbbf24"><strong>${t1.affiliate_email.split('@')[0]}</strong> 🟡 ${t1.score}%</div>
+          <div style="color:#fbbf24"><strong>${t2.affiliate_email.split('@')[0]}</strong> 🟡 ${t2.score}%</div>
+          <div style="color:var(--dim);font-size:10px">AMBIGUO — decida</div>
+        </div>`;
+      } else {
+        const t1 = o.top_candidates[0];
+        topDisplay = `<div style="font-family:var(--mono);font-size:11px;line-height:1.4">
+          <div style="color:#10b981"><strong>${t1.affiliate_email.split('@')[0]}</strong> 🟢 ${t1.score}%</div>
+          <div style="color:var(--dim);font-size:10px">gap ${t1.evidences.gap_minutes}min, excl ${t1.evidences.affiliates_in_1h}</div>
+        </div>`;
+      }
       return `<tr>
         <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06)">
           <div style="font-family:var(--mono);font-size:11px">${o.email}</div>
-          ${logsInfo}
         </td>
         <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center">${planBadge}</td>
         <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center;font-family:var(--mono);font-size:11px">${o.dias_atras}d atrás</td>
+        <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06)">${topDisplay}</td>
         <td style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center">
-          <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="openOrphanAttr('${emailSafe}','${o.plan}',${o.dias_atras})">Decidir →</button>
+          <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="openOrphanAttr('${emailSafe}')">Decidir →</button>
         </td>
       </tr>`;
     }).join('');
-    const candHint = (d.candidatos_global && d.candidatos_global.length > 0)
-      ? `<div style="padding:10px 14px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:var(--dim)">💡 Afiliados com cliques nos últimos ${d.janela_dias}d: ${d.candidatos_global.slice(0,5).map(c => `<strong style="color:#fbbf24">${c.affiliate_email}</strong> (${c.cliques_janela} cliques)`).join(' · ')}</div>`
+    const cacheHint = d.cache_hit
+      ? `<div style="padding:8px 12px;background:rgba(0,170,255,.05);border-radius:6px;margin-bottom:10px;font-family:var(--mono);font-size:10px;color:var(--dim)">⚡ Cache hit (5min TTL) · heuristic v${d.heuristic_version||'?'}</div>`
       : '';
-    body.innerHTML = candHint +
+    body.innerHTML = cacheHint +
       '<table style="width:100%;border-collapse:collapse;font-size:13px">'
       + '<thead><tr style="border-bottom:2px solid rgba(0,170,255,.2);text-align:left;color:var(--dim);font-family:var(--mono);font-size:11px">'
       + '<th style="padding:10px 8px">Subscriber</th>'
       + '<th style="padding:10px 8px;text-align:center">Plano</th>'
       + '<th style="padding:10px 8px;text-align:center">Signup</th>'
+      + '<th style="padding:10px 8px">Top sugerido</th>'
       + '<th style="padding:10px 8px;text-align:center">Ação</th>'
       + '</tr></thead><tbody>' + rows + '</tbody></table>';
   } catch(e){
@@ -2667,17 +2686,55 @@ async function loadOrphans(){
   }
 }
 
-function openOrphanAttr(email, plan, diasAtras){
-  currentOrphan = { email, plan, diasAtras };
+function openOrphanAttr(email){
+  const o = (orphansData && orphansData.orphans || []).find(x => x.email === email);
+  if (!o) return alert('Órfão não encontrado no cache local, clique em Carregar');
+  currentOrphan = o;
   document.getElementById('orphanAttrEmail').textContent = email;
-  document.getElementById('orphanAttrMeta').textContent = `${plan.toUpperCase()} · ${diasAtras} dias atrás`;
+  document.getElementById('orphanAttrMeta').textContent = `${o.plan.toUpperCase()} · ${o.dias_atras} dias atrás`;
   document.getElementById('orphanAttrMotivo').value = '';
   document.getElementById('orphanAttrMsg').textContent = '';
-  const sel = document.getElementById('orphanAttrAffSelect');
-  const cands = (orphansData && orphansData.candidatos_global) || [];
-  sel.innerHTML = '<option value="">— Selecione um afiliado —</option>' + cands.map(c =>
-    `<option value="${c.affiliate_id}">${c.affiliate_email} (${c.cliques_janela} cliques · ${c.nivel})</option>`
-  ).join('');
+  document.getElementById('orphanAttrLowConfBanner').style.display = o.low_confidence ? 'block' : 'none';
+
+  const candBox = document.getElementById('orphanAttrCandidates');
+  if (!o.top_candidates || o.top_candidates.length === 0) {
+    candBox.innerHTML = `<div style="padding:16px;text-align:center;color:var(--dim);font-size:12px;background:rgba(255,255,255,.03);border-radius:10px">Nenhum afiliado teve clique nos ${orphansData.janela_dias} dias antes do signup.<br><strong>Recomendado:</strong> marcar como direto.</div>`;
+  } else {
+    const ctx = {
+      score_top1: o.top_candidates[0]?.score ?? null,
+      score_top2: o.top_candidates[1]?.score ?? null,
+      score_top3: o.top_candidates[2]?.score ?? null,
+      gap_minutes_top1: o.top_candidates[0]?.evidences?.gap_minutes ?? null,
+      unambiguous: o.unambiguous,
+      low_confidence: o.low_confidence,
+    };
+    const ctxJson = JSON.stringify(ctx).replace(/"/g, '&quot;');
+    candBox.innerHTML = o.top_candidates.map((c, i) => {
+      const isTop1 = i === 0;
+      const isAmbig = !o.unambiguous && i <= 1;
+      const borderColor = isAmbig ? '#fbbf24' : (isTop1 && !o.low_confidence ? '#10b981' : 'rgba(255,255,255,.1)');
+      const borderWidth = (isTop1 && !o.low_confidence && o.unambiguous) ? '2px' : '1px';
+      const scoreColor = c.score >= 70 ? '#10b981' : (c.score >= 50 ? '#fbbf24' : '#f87171');
+      const btnHighlight = (isTop1 && !o.low_confidence && o.unambiguous);
+      const btnStyle = btnHighlight
+        ? 'background:linear-gradient(135deg,#10b981,#1a6bff);color:#fff;border:none'
+        : 'background:rgba(255,255,255,.06);color:var(--text);border:1px solid rgba(255,255,255,.1)';
+      return `<div style="border:${borderWidth} solid ${borderColor};border-radius:12px;padding:12px;margin-bottom:10px;background:rgba(255,255,255,.02)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:12px"><span style="color:var(--dim);font-family:var(--mono);font-size:10px">#${i+1}</span> <strong>${c.affiliate_email}</strong> <span style="color:var(--dim);font-size:10px">· ${c.nivel||'—'}</span></div>
+          <div style="font-size:20px;font-weight:800;color:${scoreColor}">${c.score}</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:10px;line-height:1.5">
+          gap ${c.evidences.gap_minutes}min (+${c.evidences.gap_score}) ·
+          excl ${c.evidences.affiliates_in_1h} afs (+${c.evidences.exclusivity_score}) ·
+          vol ${c.evidences.volume_pct}% (+${c.evidences.volume_score})
+        </div>
+        <button data-aff-id="${c.affiliate_id}" data-ctx="${ctxJson}" onclick="confirmOrphanAttrWith(this.dataset.affId, JSON.parse(this.dataset.ctx.replace(/&quot;/g,'\\u0022')))" style="${btnStyle};border-radius:8px;padding:10px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%">
+          ${btnHighlight ? '✅ ' : ''}Atribuir ao ${c.affiliate_email.split('@')[0]}
+        </button>
+      </div>`;
+    }).join('');
+  }
   document.getElementById('orphanAttrModal').style.display = 'flex';
 }
 
@@ -2685,17 +2742,15 @@ function closeOrphanAttrModal(){
   document.getElementById('orphanAttrModal').style.display = 'none';
 }
 
-async function confirmOrphanAttr(){
-  const sel = document.getElementById('orphanAttrAffSelect');
-  const affId = sel.value;
+async function confirmOrphanAttrWith(affId, scoringContext){
   const motivo = document.getElementById('orphanAttrMotivo').value.trim();
   const msgEl = document.getElementById('orphanAttrMsg');
   if(!affId){
-    msgEl.textContent = '⚠️ Selecione um afiliado';
+    msgEl.textContent = '⚠️ affiliate_id vazio';
     msgEl.style.color = '#fbbf24';
     return;
   }
-  if(!confirm(`Atribuir ${currentOrphan.email} ao afiliado selecionado?\n\nUma commission será criada com status FLAGGED (não paga automaticamente — precisa aprovação final).`)) return;
+  if(!confirm(`Atribuir ${currentOrphan.email} ao afiliado selecionado?\n\nCommission criada fica FLAGGED (precisa aprovação final).`)) return;
   msgEl.textContent = 'Atribuindo...';
   msgEl.style.color = 'var(--dim)';
   try{
@@ -2706,6 +2761,7 @@ async function confirmOrphanAttr(){
         affiliate_id: affId,
         motivo: motivo || null,
         admin_email: 'admin_dashboard',
+        scoring_context: scoringContext || null,
       })
     });
     const d = await r.json();
@@ -2736,6 +2792,14 @@ async function markOrphanDirect(){
         mark_as_direct: true,
         motivo: document.getElementById('orphanAttrMotivo').value.trim() || null,
         admin_email: 'admin_dashboard',
+        scoring_context: currentOrphan ? {
+          score_top1: currentOrphan.top_candidates?.[0]?.score ?? null,
+          score_top2: currentOrphan.top_candidates?.[1]?.score ?? null,
+          score_top3: currentOrphan.top_candidates?.[2]?.score ?? null,
+          gap_minutes_top1: currentOrphan.top_candidates?.[0]?.evidences?.gap_minutes ?? null,
+          unambiguous: currentOrphan.unambiguous,
+          low_confidence: currentOrphan.low_confidence,
+        } : null,
       })
     });
     const d = await r.json();
