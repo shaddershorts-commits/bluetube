@@ -543,7 +543,7 @@ export default async function handler(req, res) {
       const cmR = await fetch(
         `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}`
         + `&subscriber_email=eq.${encodeURIComponent(email)}`
-        + `&select=id,status,commission_amount,paid_at,flagged&order=created_at.desc`,
+        + `&select=id,status,commission_amount,stripe_transfer_id,flagged&order=created_at.desc`,
         { headers: supaH }
       );
       const all = cmR.ok ? await cmR.json() : [];
@@ -603,7 +603,7 @@ export default async function handler(req, res) {
         })),
         ...paids.map(c => ({
           email, affiliate_id, source: 'stripe_cancel', decisao: 'cancelled_after_payout',
-          detalhes: { commission_id: c.id, amount: c.commission_amount, paid_at: c.paid_at, flagged: c.flagged, context: 'subscription_cancelled_post_payout' },
+          detalhes: { commission_id: c.id, amount: c.commission_amount, stripe_transfer_id: c.stripe_transfer_id, flagged: c.flagged, context: 'subscription_cancelled_post_payout' },
         })),
       ];
       for (const l of logs) {
@@ -621,9 +621,27 @@ export default async function handler(req, res) {
             const subR = await fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=created_at&limit=1`, { headers: supaH });
             const [sub] = subR.ok ? await subR.json() : [];
             const signupDate = sub?.created_at ? new Date(sub.created_at).toLocaleDateString('pt-BR') : 'desconhecido';
-            const earliestPaid = paids.reduce((m, c) => (!m || (c.paid_at && c.paid_at < m)) ? c.paid_at : m, null);
+            // Data do saque: busca em affiliate_saques via stripe_transfer_id (reusa campo pro asaas_transfer_id)
+            const transferIds = [...new Set(paids.map(c => c.stripe_transfer_id).filter(Boolean))];
+            let saqueMap = {};
+            if (transferIds.length > 0) {
+              const sqR = await fetch(
+                `${SUPA_URL}/rest/v1/affiliate_saques?asaas_transfer_id=in.(${transferIds.map(t => `"${t}"`).join(',')})&select=asaas_transfer_id,pago_em`,
+                { headers: supaH }
+              );
+              const saques = sqR.ok ? await sqR.json() : [];
+              saques.forEach(s => { saqueMap[s.asaas_transfer_id] = s.pago_em; });
+            }
+            const earliestPaid = paids.reduce((m, c) => {
+              const p = saqueMap[c.stripe_transfer_id];
+              if (!p) return m;
+              return (!m || p < m) ? p : m;
+            }, null);
             const saqueDate = earliestPaid ? new Date(earliestPaid).toLocaleDateString('pt-BR') : 'desconhecido';
-            const lista = paids.map(c => `<li><code>${String(c.id).slice(0,8)}</code> — R$ ${Number(c.commission_amount).toFixed(2).replace('.',',')} — pago em ${c.paid_at || '?'}</li>`).join('');
+            const lista = paids.map(c => {
+              const pagoEm = saqueMap[c.stripe_transfer_id] ? new Date(saqueMap[c.stripe_transfer_id]).toLocaleDateString('pt-BR') : '?';
+              return `<li><code>${String(c.id).slice(0,8)}</code> — R$ ${Number(c.commission_amount).toFixed(2).replace('.',',')} — pago em ${pagoEm}</li>`;
+            }).join('');
             await fetch('https://api.resend.com/emails', {
               method: 'POST',
               headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
