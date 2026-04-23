@@ -716,7 +716,7 @@ async function listOrphanedPaid(req, res, { SU, h, ADMIN_SECRET }) {
 
     // 1. Subscribers paid (full/master) sem affiliate_ref, dentro da janela
     const orphansR = await fetch(
-      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&created_at=gte.${cutoff}&is_manual=eq.false&select=email,plan,stripe_customer_id,created_at&order=created_at.desc&limit=200`,
+      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&attribution_source=is.null&created_at=gte.${cutoff}&is_manual=eq.false&select=email,plan,stripe_customer_id,created_at&order=created_at.desc&limit=200`,
       { headers: h }
     );
     const orphans = orphansR.ok ? await orphansR.json() : [];
@@ -823,7 +823,7 @@ async function orphanSuggestions(req, res, { SU, h, ADMIN_SECRET }) {
 
     // 1. Orfaos atuais
     const oR = await fetch(
-      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&is_manual=eq.false`
+      `${SU}/rest/v1/subscribers?plan=in.(full,master)&affiliate_ref=is.null&attribution_source=is.null&is_manual=eq.false`
       + `&created_at=gte.${cutoff}&order=created_at.desc&limit=200&select=email,plan,created_at,stripe_customer_id`,
       { headers: h }
     );
