@@ -600,6 +600,24 @@ export default async function handler(req, res) {
       if (!ip && !ua) return res.status(200).json({ ok: true, skipped: 'sem_headers' });
       const ipHash = crypto.createHash('sha256').update(ip + (process.env.ADMIN_SECRET || '')).digest('hex').slice(0, 16);
       const fingerprint = crypto.createHash('sha256').update(ua + lang).digest('hex').slice(0, 16);
+
+      // Rate limit: max 5 chamadas por IP por hora (anti-fraude + anti-abuso).
+      // Conta qualquer decisao (attributed/no_match/gap_too_large/skipped_self_ref)
+      // vinda do mesmo ipHash pelo endpoint. Grava ip_hash nos detalhes pra viabilizar.
+      const oneHourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
+      try {
+        const rlR = await fetch(
+          `${SUPA_URL}/rest/v1/affiliate_attribution_log`
+          + `?source=eq.fingerprint_72h&detalhes->>ip_hash=eq.${ipHash}`
+          + `&created_at=gte.${encodeURIComponent(oneHourAgo)}&select=id&limit=10`,
+          { headers: supaH }
+        );
+        const rlCount = rlR.ok ? (await rlR.json()).length : 0;
+        if (rlCount >= 5) {
+          return res.status(429).json({ ok: false, error: 'rate_limit_exceeded', window: '1h', limit: 5 });
+        }
+      } catch (_) { /* fail-open: se query falhar, nao bloqueia atribuicao legitima */ }
+
       // Janela de atribuicao por fingerprint: 14 dias.
       // (Antes: 72h — subimos em 2026-04-20 pra cobrir users que clicam no
       // link e esperam alguns dias pra assinar. 14d captura ~90% dos casos
@@ -619,18 +637,37 @@ export default async function handler(req, res) {
       if (!ck?.ref_code || !ck?.affiliate_id) {
         fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
           method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ email, source: 'fingerprint_72h', decisao: 'no_match', detalhes: { context: 'signup_post' } }),
+          body: JSON.stringify({ email, source: 'fingerprint_72h', decisao: 'no_match', detalhes: { context: 'signup_post', ip_hash: ipHash } }),
         }).catch(() => {});
         return res.status(200).json({ ok: true, skipped: 'no_match' });
       }
 
+      // Threshold de proximidade temporal: gap > 2h vira orfao pro admin decidir
+      // no painel "Decidir →". Evita falso positivo de fingerprint match com clique
+      // antigo coincidente (mesmo IP compartilhado em wifi publico, NAT, etc).
+      // Dentro de 2h e indicio forte de que o clique gerou a compra.
+      const GAP_AUTO_ATTRIBUTE_MS = 2 * 60 * 60 * 1000;
+      const gapMs = Date.now() - new Date(ck.landed_at).getTime();
+      const gapMinutes = Math.round(gapMs / 60000);
+      if (gapMs > GAP_AUTO_ATTRIBUTE_MS) {
+        fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
+          method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id,
+            source: 'fingerprint_72h', decisao: 'gap_too_large',
+            detalhes: { context: 'signup_post', ip_hash: ipHash, landed_at: ck.landed_at, gap_minutes: gapMinutes },
+          }),
+        }).catch(() => {});
+        return res.status(200).json({ ok: true, skipped: 'gap_too_large', gap_minutes: gapMinutes });
+      }
+
       // Self-referral: afiliado nao pode ser o proprio usuario
-      const affR = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${ck.affiliate_id}&select=id,email,status`, { headers: supaH });
+      const affR = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${ck.affiliate_id}&select=id,email,ref_code,status`, { headers: supaH });
       const [aff] = affR.ok ? await affR.json() : [];
       if (!aff || aff.status === 'suspended' || String(aff.email).toLowerCase() === email) {
         fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
           method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'skipped_self_ref', detalhes: { context: 'signup_post' } }),
+          body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'skipped_self_ref', detalhes: { context: 'signup_post', ip_hash: ipHash } }),
         }).catch(() => {});
         return res.status(200).json({ ok: true, skipped: 'self_or_suspended' });
       }
@@ -646,7 +683,7 @@ export default async function handler(req, res) {
       });
       fetch(`${SUPA_URL}/rest/v1/affiliate_attribution_log`, {
         method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'attributed', detalhes: { context: 'signup_post', landed_at: ck.landed_at } }),
+        body: JSON.stringify({ email, ref_code: ck.ref_code, affiliate_id: ck.affiliate_id, source: 'fingerprint_72h', decisao: 'attributed', detalhes: { context: 'signup_post', ip_hash: ipHash, landed_at: ck.landed_at, gap_minutes: gapMinutes } }),
       }).catch(() => {});
       // Dispara conversion (reusa fluxo existente)
       fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
@@ -654,7 +691,46 @@ export default async function handler(req, res) {
         body: JSON.stringify({ action: 'conversion', email, plan: sub.plan || 'free', conversion_type: 'signup' }),
       }).catch(() => {});
 
-      return res.status(200).json({ ok: true, attributed: true, ref_code: ck.ref_code, affiliate_email: aff.email });
+      // Alerta admin: se afiliado recebeu >5 atribuicoes automaticas via fingerprint
+      // em 1h, dispara email (fire-and-forget). Pode ser padrao organico legitimo
+      // (viral momentaneo) ou tentativa de fraude (mesma rede/IP burlando sistema).
+      // Admin decide investigar os logs.
+      (async () => {
+        try {
+          const RESEND = process.env.RESEND_API_KEY;
+          const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+          if (!RESEND || !ADMIN_EMAIL) return;
+          const sinceAlert = new Date(Date.now() - 3600 * 1000).toISOString();
+          const ar = await fetch(
+            `${SUPA_URL}/rest/v1/affiliate_attribution_log`
+            + `?affiliate_id=eq.${ck.affiliate_id}&source=eq.fingerprint_72h&decisao=eq.attributed`
+            + `&created_at=gte.${encodeURIComponent(sinceAlert)}&select=email,created_at&order=created_at.desc&limit=20`,
+            { headers: supaH }
+          );
+          const recent = ar.ok ? await ar.json() : [];
+          if (recent.length <= 5) return;
+          const lista = recent.map(r => `<li><code>${r.email}</code> <span style="color:#888">${r.created_at}</span></li>`).join('');
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + RESEND, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'BlueTube Alerts <noreply@bluetubeviral.com>',
+              to: [ADMIN_EMAIL],
+              subject: `[ALERTA AFILIADO] ${aff.email} recebeu ${recent.length} atribuicoes automaticas em 1h`,
+              html: `<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a1628;color:#e8f4ff;border-radius:12px">
+                <h2 style="color:#ffb020;margin:0 0 12px">⚠️ Volume atipico de atribuicoes</h2>
+                <p>Afiliado <b>${aff.email}</b> (ref <code>${aff.ref_code}</code>) recebeu <b>${recent.length}</b> atribuicoes automaticas via <code>fingerprint_window</code> em 1 hora.</p>
+                <p style="color:#9bb">Pode ser padrao organico legitimo (viral momentaneo) ou tentativa de fraude (mesma rede/IP burlando sistema).</p>
+                <h4 style="margin:18px 0 8px">Emails atribuidos recentes:</h4>
+                <ul style="font-size:13px">${lista}</ul>
+                <p style="font-size:12px;color:#778"><b>Acao sugerida:</b> abrir <code>affiliate_attribution_log</code> e cruzar <code>detalhes.ip_hash</code> pra checar se e mesmo IP repetido.</p>
+              </div>`,
+            }),
+          });
+        } catch (e) { console.error('[alert-high-volume]', e.message); }
+      })();
+
+      return res.status(200).json({ ok: true, attributed: true, ref_code: ck.ref_code, affiliate_email: aff.email, gap_minutes: gapMinutes });
     } catch (e) {
       console.error('[attribute-signup-fingerprint]', e.message);
       return res.status(200).json({ ok: false, error: e.message });
