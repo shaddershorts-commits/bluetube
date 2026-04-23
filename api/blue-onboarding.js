@@ -89,27 +89,51 @@ module.exports = async function handler(req, res) {
         const follows = fR.ok ? await fR.json() : [];
         follows.forEach(f => { followerCounts[f.following_id] = (followerCounts[f.following_id] || 0) + 1; });
       }
-      // Get video counts
+      // Contagem + score total + data do ultimo video por criador
       let videoCounts = {};
       let thumbs = {};
+      let scoreTotals = {};
+      let lastVideoAt = {};
       if (uIds.length) {
-        const vR = await fetch(`${SU}/rest/v1/blue_videos?user_id=in.(${uIds.join(',')})&status=eq.active&select=user_id,thumbnail_url&order=score.desc`, { headers: h });
+        const vR = await fetch(`${SU}/rest/v1/blue_videos?user_id=in.(${uIds.join(',')})&status=eq.active&select=user_id,thumbnail_url,score,created_at&order=score.desc`, { headers: h });
         const vids = vR.ok ? await vR.json() : [];
         vids.forEach(v => {
           videoCounts[v.user_id] = (videoCounts[v.user_id] || 0) + 1;
+          scoreTotals[v.user_id] = (scoreTotals[v.user_id] || 0) + Number(v.score || 0);
           if (!thumbs[v.user_id] && v.thumbnail_url) thumbs[v.user_id] = v.thumbnail_url;
+          if (!lastVideoAt[v.user_id] || v.created_at > lastVideoAt[v.user_id]) {
+            lastVideoAt[v.user_id] = v.created_at;
+          }
         });
       }
       // Filtro 2 (memoria): apenas perfis com >= 2 videos ativos
+      // Sort: ativos (ultimo video <= 60d) no topo, ordenados por score total.
+      //       Inativos (> 60d) vao pro fundo, mas NAO sao cortados — continuam
+      //       visiveis se o usuario rolar a lista. Desempate por seguidores.
+      const STALE_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
       const sugestoes = filtered
         .filter(c => (videoCounts[c.user_id] || 0) >= 2)
-        .map(c => ({
-          ...c,
-          preview_thumb: thumbs[c.user_id] || null,
-          seguidores: followerCounts[c.user_id] || 0,
-          videos: videoCounts[c.user_id] || 0,
-        }))
-        .sort((a, b) => b.seguidores - a.seguidores)
+        .map(c => {
+          const last = lastVideoAt[c.user_id] ? new Date(lastVideoAt[c.user_id]).getTime() : 0;
+          const stale = last === 0 || (now - last) > STALE_THRESHOLD_MS;
+          return {
+            ...c,
+            preview_thumb: thumbs[c.user_id] || null,
+            seguidores: followerCounts[c.user_id] || 0,
+            videos: videoCounts[c.user_id] || 0,
+            score_total: Math.round((scoreTotals[c.user_id] || 0) * 100) / 100,
+            ultimo_video_em: lastVideoAt[c.user_id] || null,
+            ativo_recente: !stale,
+          };
+        })
+        .sort((a, b) => {
+          // Ativos recentes sempre acima dos inativos
+          if (a.ativo_recente !== b.ativo_recente) return a.ativo_recente ? -1 : 1;
+          // Dentro do mesmo grupo: score total DESC, depois seguidores DESC
+          if (b.score_total !== a.score_total) return b.score_total - a.score_total;
+          return b.seguidores - a.seguidores;
+        })
         .slice(0, 15);
 
       return res.status(200).json({ sugestoes });
