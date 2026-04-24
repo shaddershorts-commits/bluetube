@@ -662,19 +662,40 @@ module.exports = async function handler(req, res) {
   const cursor = req.query.cursor;
   const feedToken = req.query.token;
 
-  // Cursor format: base64("<created_at>|<id>"). Legacy cursors (plain ISO) fall back to created_at only.
+  // ── CURSOR TIPADO (Lote 7 — Feed infinito) ──────────────────────────────
+  // Formatos aceitos:
+  //   fresh:<base64(ts|id)>     → cursor de blue_videos.created_at (modo padrao)
+  //   recycle:<base64(ts|id)>   → cursor de blue_feed_historico.created_at (LRU reverso)
+  //   recycle:<base64(||)>      → recycle zerado (inicio ou loop)
+  //   <base64(ts|id)>           → LEGACY sem prefixo, tratado como fresh (retrocompat)
+  //   <ts ISO puro>             → LEGACY ainda mais antigo, fresh sem id
+  //   <malformado>              → degrada gracioso pra fresh sem cursor
   function decodeCursor(c) {
-    if (!c) return null;
+    if (!c) return { mode: 'fresh', ts: null, id: null };
     try {
+      // Prefixos novos
+      if (c.startsWith('recycle:')) {
+        const decoded = Buffer.from(c.slice(8), 'base64').toString('utf8');
+        const [ts, id] = decoded.split('|');
+        return { mode: 'recycle', ts: ts || null, id: id || null };
+      }
+      if (c.startsWith('fresh:')) {
+        const decoded = Buffer.from(c.slice(6), 'base64').toString('utf8');
+        const [ts, id] = decoded.split('|');
+        if (ts && id) return { mode: 'fresh', ts, id };
+      }
+      // Legacy: base64 puro
       const decoded = Buffer.from(c, 'base64').toString('utf8');
       const [ts, id] = decoded.split('|');
-      if (ts && id && ts.includes('T')) return { ts, id };
+      if (ts && id && ts.includes('T')) return { mode: 'fresh', ts, id };
+      // Legacy ainda mais antigo: ts ISO puro
+      if (c.includes('T')) return { mode: 'fresh', ts: c, id: null };
     } catch(e) {}
-    if (c.includes('T')) return { ts: c, id: null };
-    return null;
+    return { mode: 'fresh', ts: null, id: null }; // fallback gracioso
   }
-  function encodeCursor(ts, id) {
-    return Buffer.from(`${ts}|${id}`, 'utf8').toString('base64');
+  function encodeCursor(mode, ts, id) {
+    const payload = Buffer.from(`${ts || ''}|${id || ''}`, 'utf8').toString('base64');
+    return `${mode}:${payload}`;
   }
 
   // Load user preferences if logged in
@@ -743,9 +764,93 @@ module.exports = async function handler(req, res) {
     // Omite embedding (1536 floats = 12KB por video!), description (pesado),
     // e outros campos nao necessarios. Reduz payload em ~80% por video.
     const FEED_FIELDS = 'id,user_id,title,thumbnail_url,video_url,duration,views,likes,comments,saves,avg_watch_percent,score,nichos,views_24h,created_at';
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
     const cur = decodeCursor(cursor);
-    if (cur) {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BRANCH RECYCLE (Lote 7 — feed infinito)
+    // Quando cursor.mode === 'recycle' e user esta logado, serve videos do
+    // historico em ordem LRU reverso (mais antigos primeiro). Loop infinito
+    // — quando esgota, cursor zera e volta pro topo do historico. Mantem
+    // o feed sempre rolando como TikTok/Instagram.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (cur.mode === 'recycle' && userPrefs?.uid) {
+      let recyUrl = `${SU}/rest/v1/blue_feed_historico?user_id=eq.${userPrefs.uid}&select=id,video_id,created_at&order=created_at.asc,id.asc&limit=${limit + 1}`;
+      if (cur.ts && cur.id) {
+        recyUrl += `&or=(created_at.gt.${cur.ts},and(created_at.eq.${cur.ts},id.gt.${cur.id}))`;
+      }
+      let recyR;
+      try {
+        recyR = await fetchDb(recyUrl, { headers: h });
+      } catch (e) {
+        console.error('[blue-feed:recycle] retry esgotado:', e.message);
+        return res.status(200).json({ videos: [], has_more: false, feed_mode: 'seen_recycle' });
+      }
+      const histRows = recyR.ok ? await recyR.json() : [];
+
+      // Esgotou esta pagina do recycle — sinaliza loop pra proxima chamada
+      // (cursor zerado = recomeca pelo mais antigo do historico).
+      if (histRows.length === 0) {
+        return res.status(200).json({
+          videos: [],
+          has_more: true, // ainda infinito
+          next_cursor: encodeCursor('recycle', '', ''),
+          feed_mode: 'seen_recycle',
+        });
+      }
+
+      const hasMoreRecy = histRows.length > limit;
+      const histPage = hasMoreRecy ? histRows.slice(0, limit) : histRows;
+      const lastHist = histPage[histPage.length - 1];
+
+      // Busca metadados completos dos videos referenciados
+      const vidIds = histPage.map(r => r.video_id);
+      let recyVideos = [];
+      if (vidIds.length > 0) {
+        const vR = await fetchDb(
+          `${SU}/rest/v1/blue_videos?id=in.(${vidIds.join(',')})&status=eq.active&video_url=neq.null&select=${FEED_FIELDS}`,
+          { headers: h }
+        );
+        const vidsRaw = vR.ok ? await vR.json() : [];
+        // Reordena pela ordem do hist (alguns podem ter sido deletados/inativados — filtra)
+        const vMap = new Map(vidsRaw.map(v => [v.id, v]));
+        recyVideos = vidIds.map(id => vMap.get(id)).filter(Boolean);
+        if (blockedIds.length) recyVideos = recyVideos.filter(v => !blockedIds.includes(v.user_id));
+      }
+
+      // Cursor proximo: se ainda tem mais hist, avanca; senao loop ao topo
+      const nextCursor = hasMoreRecy && lastHist
+        ? encodeCursor('recycle', lastHist.created_at, lastHist.id)
+        : encodeCursor('recycle', '', '');
+
+      // Enrich profiles
+      const userIds = [...new Set(recyVideos.map(v => v.user_id).filter(Boolean))];
+      let profiles = {};
+      if (userIds.length > 0) {
+        try {
+          const pR = await fetchDb(`${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+          if (pR.ok) (await pR.json()).forEach(p => { profiles[p.user_id] = p; });
+        } catch (e) { /* fail-soft */ }
+      }
+      const enrichedRecy = recyVideos.map(v => ({
+        ...v,
+        video_url: applyCDN(v.video_url),
+        thumbnail_url: applyCDN(v.thumbnail_url),
+        creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' },
+      }));
+
+      return res.status(200).json({
+        videos: enrichedRecy,
+        has_more: true, // recycle loops infinitamente
+        next_cursor: nextCursor,
+        feed_mode: 'seen_recycle',
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BRANCH FRESH (caminho padrao — comportamento existente)
+    // ═══════════════════════════════════════════════════════════════════════
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
+    if (cur.ts) {
       if (cur.id) {
         // Compound predicate: (created_at < ts) OR (created_at = ts AND id < id)
         url += `&or=(created_at.lt.${cur.ts},and(created_at.eq.${cur.ts},id.lt.${cur.id}))`;
@@ -883,8 +988,25 @@ module.exports = async function handler(req, res) {
     }
 
     let videos = raw.slice(0, limit);
-    const has_more = rawSql.length >= limit * 3;
-    const next_cursor = has_more && lastSql ? encodeCursor(lastSql.created_at, lastSql.id) : null;
+    // Lote 7 — feed infinito: pra user logado, cursor SEMPRE existe.
+    // Se fresh esgotou (rawSql < limit*3), proximo cursor vira recycle:|| (zerado),
+    // que dispara branch recycle no proximo request. has_more=true sempre em modo logado.
+    // Anonimo mantem comportamento antigo (has_more depende de rawSql.length).
+    const freshHasMore = rawSql.length >= limit * 3;
+    let has_more, next_cursor;
+    if (userPrefs?.uid) {
+      has_more = true; // logado: sempre infinito (recycle cobre o fim)
+      if (freshHasMore && lastSql) {
+        next_cursor = encodeCursor('fresh', lastSql.created_at, lastSql.id);
+      } else {
+        // Fresh esgotou — transiciona pra recycle no proximo cursor
+        next_cursor = encodeCursor('recycle', '', '');
+      }
+    } else {
+      // Anonimo: comportamento antigo (sem recycle, sem token = sem historico)
+      has_more = freshHasMore;
+      next_cursor = freshHasMore && lastSql ? encodeCursor('fresh', lastSql.created_at, lastSql.id) : null;
+    }
 
     // FALLBACK FINAL: se mesmo apos tudo o feed ficou vazio (ex: usuario novo
     // sem cursor + filtros muito restritivos retornaram 0), busca top videos
@@ -926,7 +1048,7 @@ module.exports = async function handler(req, res) {
       creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' }
     }));
 
-    return res.status(200).json({ videos: enriched, has_more, next_cursor });
+    return res.status(200).json({ videos: enriched, has_more, next_cursor, feed_mode: 'fresh' });
   } catch(err) {
     console.error('blue-feed fatal:', err.message);
     return res.status(500).json({ error: err.message, videos: [], has_more: false });
