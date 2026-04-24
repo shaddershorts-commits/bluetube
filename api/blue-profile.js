@@ -71,21 +71,26 @@ module.exports = async function handler(req, res) {
   }
 
   // GET profile — by token, username, or public user_id
+  // Anexa contadores derivados (seguidores/seguindo de blue_follows) que NAO
+  // existem como colunas em blue_profiles. Frontend lia profile.seguidores
+  // direto e ficava sempre 0.
   if (req.method === 'GET' && (!action || action === 'profile')) {
     const username = req.query.username;
     const queryUserId = req.query.user_id;
     try {
       let profile;
+      let targetId = null;
       if (username) {
         const r = await fetch(`${SU}/rest/v1/blue_profiles?username=eq.${encodeURIComponent(username)}&select=*`, { headers: h });
         const d = r.ok ? await r.json() : [];
         profile = d[0];
+        targetId = profile?.user_id || null;
       } else if (queryUserId) {
         // Busca pública por user_id (sem auth necessária)
         const r = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${encodeURIComponent(queryUserId)}&select=*`, { headers: h });
         const d = r.ok ? await r.json() : [];
         profile = d[0];
-        return res.status(200).json({ profile: profile || null });
+        targetId = queryUserId;
       } else if (userId) {
         const r = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=*`, { headers: h });
         const d = r.ok ? await r.json() : [];
@@ -98,6 +103,24 @@ module.exports = async function handler(req, res) {
             body: JSON.stringify({ user_id: userId, email: userEmail||'', username: uname, display_name: uname })
           });
           profile = (await nR.json())[0];
+        }
+        targetId = userId;
+      }
+      // Anexa contadores derivados (count=exact via Prefer header)
+      if (profile && targetId) {
+        try {
+          const [segR, sguR] = await Promise.all([
+            fetch(`${SU}/rest/v1/blue_follows?following_id=eq.${targetId}&select=follower_id`, { headers: { ...h, Prefer: 'count=exact' } }),
+            fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${targetId}&select=following_id`, { headers: { ...h, Prefer: 'count=exact' } }),
+          ]);
+          const segCount = parseInt((segR.headers?.get('content-range') || '0/0').split('/')[1] || '0', 10);
+          const sguCount = parseInt((sguR.headers?.get('content-range') || '0/0').split('/')[1] || '0', 10);
+          profile.seguidores = isNaN(segCount) ? 0 : segCount;
+          profile.seguindo   = isNaN(sguCount) ? 0 : sguCount;
+        } catch (e) {
+          console.warn('[blue-profile] count follows falhou:', e?.message);
+          profile.seguidores = profile.seguidores || 0;
+          profile.seguindo   = profile.seguindo || 0;
         }
       }
       return res.status(200).json({ profile: profile || null });
