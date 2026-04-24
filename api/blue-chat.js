@@ -24,6 +24,46 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário' });
 
+  // ── HELPER: assertParticipant (fix B1) ──────────────────────────────────
+  // Verifica que o userId logado eh participante da conversa antes de qualquer
+  // operacao sensivel. Antes deste fix, GET messages?conv_id=X aceitava conv_id
+  // arbitrario — qualquer user logado podia ler DMs de outros.
+  // Loga tentativa bloqueada via console.error pra aparecer em Vercel Logs com
+  // [SECURITY-BLOCK][blue-chat] — facil de filtrar/alertar depois.
+  // Fail-closed: erro de query => return false (nao deixa passar).
+  async function assertParticipant(convId, type) {
+    try {
+      const cR = await fetch(
+        `${SU}/rest/v1/blue_conversations?id=eq.${convId}&select=id,user1_id,user2_id`,
+        { headers: h }
+      );
+      const arr = cR.ok ? await cR.json() : [];
+      if (arr.length === 0) {
+        console.error('[SECURITY-BLOCK][blue-chat]', JSON.stringify({
+          type, requester_id: userId, attempted_conv_id: convId,
+          conv_participants: null, reason: 'conv_not_found',
+          ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown',
+          timestamp: new Date().toISOString(),
+        }));
+        return false;
+      }
+      const conv = arr[0];
+      const ok = conv.user1_id === userId || conv.user2_id === userId;
+      if (!ok) {
+        console.error('[SECURITY-BLOCK][blue-chat]', JSON.stringify({
+          type, requester_id: userId, attempted_conv_id: convId,
+          conv_participants: [conv.user1_id, conv.user2_id], reason: 'not_participant',
+          ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown',
+          timestamp: new Date().toISOString(),
+        }));
+      }
+      return ok;
+    } catch (e) {
+      console.error('[blue-chat][assertParticipant] erro:', e.message);
+      return false; // fail-closed por seguranca
+    }
+  }
+
   // ── GET unread count (para badge de notificação) ──────────────────────────
   if (req.method === 'GET' && action === 'unread-count') {
     try {
@@ -79,6 +119,10 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET' && action === 'messages') {
     const { conv_id } = req.query;
     if (!conv_id) return res.status(400).json({ error: 'conv_id obrigatório' });
+    // FIX B1: valida que userId eh participante antes de retornar mensagens.
+    // Sem isso, qualquer user logado podia ler DMs de outros via conv_id arbitrario.
+    const ok = await assertParticipant(conv_id, 'messages_read');
+    if (!ok) return res.status(403).json({ error: 'forbidden' });
     try {
       // Mark messages as read
       fetch(`${SU}/rest/v1/blue_messages?conversation_id=eq.${conv_id}&receiver_id=eq.${userId}&read=eq.false`, {
