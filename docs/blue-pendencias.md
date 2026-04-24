@@ -8,6 +8,46 @@ Cada item tem **status, prioridade, contexto, proposta técnica, gatilhos de ret
 
 ## Feed infinito com fallback em cascata
 
+- **Status:** ✅ **Para Você concluído em 2026-04-24** | ⏸️ cross_feed (Seguindo) ainda pausado
+- **Prioridade original:** Média
+- **Retomado por:** decisão consciente — feed acabando = retenção quebrada, vaza tudo que entra (independente de aquisição)
+
+### O que foi feito (Para Você)
+
+3 commits push:
+
+| Commit | Repo | O que mudou |
+|--------|------|-------------|
+| [9fae402](https://github.com/shaddershorts-commits/bluetube/commit/9fae402) | `bluetube` | Backend: cursor tipado (`fresh:` / `recycle:`) + branch novo `seen_recycle` (LRU reverso em `blue_feed_historico`) + transição `fresh→recycle` quando esgota + `has_more: true` sempre em modo logado + payload com `feed_mode` |
+| [604ccdb](https://github.com/shaddershorts-commits/bluetube/commit/604ccdb) | `bluetube` | Web: `_backendFeedMode` tracker + `showFeedModeBanner` helper (glassmorphism, fade 3s, pointer-events:none) na transição |
+| [29bcabf](https://github.com/shaddershorts-commits/bluetube-app/commit/29bcabf) | `bluetube-app` | App: `feedMode` no store + dedupe defensivo (3 rounds vazios pausam, evita loop sem matar feed) + banner Animated tipo pill no topo |
+
+**Performance:** EXPLAIN ANALYZE confirmou Index Scan Backward em `idx_feed_hist_user_created` em **0.148ms**. Cursor `(created_at, id)` em vez de OFFSET — escala pra 100k+ rows.
+
+### Decisões tomadas (e mantidas)
+
+- Cursor tipado prefixado com fallback retrocompat (legacy sem prefixo = fresh)
+- Loop infinito quando recycle esgota (cursor zera, volta ao topo) — TikTok faz igual
+- Re-rerank em recycle: NÃO. Vai na ordem temporal natural
+- Anônimo (sem token): comportamento INALTERADO. Sem histórico, sem recycle.
+- Banner sutil 3s só na transição (não a cada page load)
+
+### O que continua PAUSADO (cross_feed em Seguindo)
+
+Quando feed Seguindo esgota, NÃO delega pra Para Você. Mantém comportamento "acabou os vídeos de quem você segue, fim". Justificativa do user:
+
+> "Seguindo parar quando acabar é semanticamente correto. Adiar até virar problema real."
+
+### Gatilhos pra retomar cross_feed
+
+- Reclamação explícita de user sobre "feed Seguindo acabou"
+- OU métrica mostrando >30% das sessões em Seguindo chegam ao fim do feed
+- OU base de seguidores médios passar de ~50/user (faz sentido oferecer mais conteúdo)
+
+---
+
+## (HISTÓRICO — pendência original antes da conclusão)
+
 - **Status:** ⏸️ Pausado em 2026-04-23
 - **Prioridade:** Média
 - **Pausado por:** foco em aquisição — Blue ainda em validação de base, otimizar feed sem massa crítica é sobre-engenharia
