@@ -92,9 +92,60 @@ Caso queira uma V1 reduzida quando retomar:
 
 ## Auditoria de autorização em todos endpoints `/api/blue-*`
 
-- **Status:** ⏸️ Pendente
-- **Prioridade:** 🔴 ALTA
+- **Status:** ✅ **CONCLUÍDA em 2026-04-24** (sessão única)
+- **Prioridade original:** 🔴 ALTA
 - **Originada em:** sessão de fix do chat (2026-04-24)
+
+### Resumo executivo
+
+Audit feito por Explore agent + validação manual (1 falso positivo detectado, 4 verdadeiros positivos confirmados). 30+ endpoints / 120+ actions auditadas. **5 vulnerabilidades reais corrigidas** no total (B1 já tinha sido fixada no chat antes da auditoria + 4 novas).
+
+### Vulnerabilidades corrigidas
+
+| # | Severidade | Endpoint | Action | Bug | Fix | Commit |
+|---|-----------|----------|--------|-----|-----|--------|
+| B1 | 🔴 CRÍTICA | `blue-chat` | `messages` (GET) | Aceitava `conv_id` arbitrário sem validar participação | Helper `assertParticipant` + log `[SECURITY-BLOCK]` | [5a47064](https://github.com/shaddershorts-commits/bluetube/commit/5a47064) |
+| 1 | 🔴 CRÍTICA | `blue-coins` | `confirmar` (POST) | Sem auth — qualquer um creditava saldo arbitrário | **Removida** (era dead code) | [55c3339](https://github.com/shaddershorts-commits/bluetube/commit/55c3339) |
+| 2 | 🔴 CRÍTICA | `blue-shop` | `confirmar-compra` (POST) | Sem auth — qualquer um marcava pedido como `pago` | **Removida** (era dead code) | [55c3339](https://github.com/shaddershorts-commits/bluetube/commit/55c3339) |
+| 3 | 🟡 MÉDIA | `blue-feed` | `update-trending` (cron) | Sem proteção — qualquer um disparava | `x-vercel-cron` OR `admin_secret` | [9e3e876](https://github.com/shaddershorts-commits/bluetube/commit/9e3e876) |
+| 4 | 🟡 MÉDIA | `blue-feed` | `limpar-rate-limits` (cron) | Idem | Mesma proteção | [9e3e876](https://github.com/shaddershorts-commits/bluetube/commit/9e3e876) |
+
+### Falsos positivos do agent (validados manualmente)
+
+| Finding agent | Real? | Razão |
+|---------------|-------|-------|
+| `blue-profile:edit-video` ownership | ❌ Falso | [Linha 190](../api/blue-profile.js#L190) já tem `&user_id=eq.${userId}` |
+| `blue-assinatura:planos-do-canal` info leak | ❌ Falso | Planos de assinatura são públicos por design (igual Patreon) |
+| `blue-stories:feed` retorna stories de bloqueados | ❌ Falso | Só lê de `targetIds = [userId, ...followedIds]` — bloqueio = unfollow implícito |
+
+### Helpers criados / sugeridos
+
+- ✅ **`assertParticipant(convId, type)`** — em [`api/blue-chat.js`](../api/blue-chat.js). Reutilizável pra outros endpoints com modelo de "par participantes".
+- 🔵 **`assertOwns(userId, resourceType, resourceId)`** — sugerido pra futuro. Centralizar em `api/_helpers/auth.js`. Validaria `resource.user_id === userId` antes de PATCH/DELETE. Reduziria boilerplate em editVideo, deleteVideo, editComment, deleteComment, etc. Não criado nesta sessão porque os endpoints existentes já validam manualmente.
+
+### Patterns estabelecidos
+
+- **"Autenticado != autorizado"** — token válido NUNCA implica permissão sobre recurso. Sempre validar ownership/participação.
+- **Cron Vercel** — usar `req.headers['x-vercel-cron']` pra autenticar (header automático, não falsificável). Padrão já em [`payment-monitor.js:15`](../api/payment-monitor.js#L15).
+- **Logs de tentativa bloqueada** — sempre `console.error('[SECURITY-BLOCK][<endpoint>]', JSON.stringify({...}))`. Aparece em Vercel Logs, fácil de filtrar/alertar.
+- **Dead code vulnerável** — preferir REMOVER em vez de tampar. Quando precisar, reimplementar com auth correta (ex: HMAC do Stripe webhook).
+
+### Outros crons sem `x-vercel-cron` check (pendência futura — prioridade baixa)
+
+A sessão fixou só os 2 do `blue-feed`. Outros crons admin não têm proteção mas têm baixo blast radius (idempotentes ou apenas leitura). Lista pra revisar quando der:
+
+- `/api/blue-maintenance` (a cada 6h)
+- `/api/blue-stories?action=limpar`
+- `/api/blue-lives?action=limpar-lives-antigas`
+- `/api/blue-legendas?action=processar-fila`
+- `/api/blue-backup?action=executar`
+- `/api/blue-monetizacao?action=distribuir-fundo`
+- `/api/blue-ml?action=calcular-features`
+- `/api/blue-feed?action=update-metrics`
+
+Aplicar mesmo pattern (`x-vercel-cron` OR `admin_secret`) quando fizer revisão preventiva.
+
+### Pendência ORIGINAL (mantida abaixo pra histórico)
 
 ### Contexto
 
