@@ -1839,6 +1839,9 @@ async function getValidToken(){
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
+// Lote 7 — feed infinito: rastreia modo do backend (fresh|seen_recycle).
+// Quando muda de fresh→seen_recycle, dispara banner sutil "🔄 Reprises".
+let _backendFeedMode='fresh';
 let _ccEnabled = localStorage.getItem('legendas_ativas') !== 'false';
 let _feedOrigem='feed'; // tracks where user came from for analytics
 let _feedMode=localStorage.getItem('bl_feed_mode')||'foryou'; // 'foryou' | 'following'
@@ -1916,6 +1919,7 @@ async function loadFeed(){
     videos=(d.videos||[]).filter(v=>v&&v.video_url);
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
+    _backendFeedMode=d.feed_mode||'fresh'; // Lote 7 — reset do tracker no load inicial
     if(_followingIds.length>0){
       videos.sort((a,b)=>{
         const af=_followingIds.includes(a.user_id)?1:0;
@@ -3901,6 +3905,12 @@ async function loadMoreFeed(){
     const newVids=(d.videos||[]).filter(v=>v&&v.video_url&&!seen.has(v.id));
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
+    // Lote 7 — detecta transicao fresh → seen_recycle e dispara banner sutil
+    const newMode=d.feed_mode||'fresh';
+    if(newMode!==_backendFeedMode){
+      _backendFeedMode=newMode;
+      if(newMode==='seen_recycle') showFeedModeBanner('🔄 Reprises dos virais — você viu tudo de novo!');
+    }
     if(!newVids.length) return;
     const feed=document.getElementById('feed');
     const startIdx=videos.length;
@@ -3910,9 +3920,29 @@ async function loadMoreFeed(){
       if(s) feed.appendChild(s);
     });
     setupObs();
-    console.log('Loaded more:',newVids.length,'total:',videos.length,'hasMore:',_feedHasMore);
+    console.log('Loaded more:',newVids.length,'total:',videos.length,'hasMore:',_feedHasMore,'mode:',_backendFeedMode);
   }catch(e){console.error('loadMore error:',e);}
   finally{_feedLoading=false;}
+}
+
+// Lote 7 — banner sutil que aparece 3s quando feed_mode muda no backend
+let _feedBannerEl=null,_feedBannerTimer=null;
+function showFeedModeBanner(text){
+  try{
+    if(_feedBannerTimer){clearTimeout(_feedBannerTimer);_feedBannerTimer=null;}
+    if(!_feedBannerEl){
+      _feedBannerEl=document.createElement('div');
+      _feedBannerEl.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-20px);z-index:9999;background:rgba(2,8,23,0.92);backdrop-filter:blur(14px);border:1px solid rgba(0,170,255,0.35);color:#fff;padding:11px 22px;border-radius:100px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none;letter-spacing:.2px;';
+      document.body.appendChild(_feedBannerEl);
+    }
+    _feedBannerEl.textContent=text;
+    requestAnimationFrame(()=>{_feedBannerEl.style.opacity='1';_feedBannerEl.style.transform='translateX(-50%) translateY(0)';});
+    _feedBannerTimer=setTimeout(()=>{
+      _feedBannerEl.style.opacity='0';
+      _feedBannerEl.style.transform='translateX(-50%) translateY(-20px)';
+      _feedBannerTimer=null;
+    },3000);
+  }catch(e){console.warn('[feed-banner] erro:',e?.message||e);}
 }
 
 let _scrollObs=null;
