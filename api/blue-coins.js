@@ -79,28 +79,13 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ── CONFIRMAR COMPRA (chamado por webhook ou manualmente) ───────────────
-  if (req.method === 'POST' && action === 'confirmar') {
-    const { user_id, coins, pacote } = req.body;
-    if (!user_id || !coins) return res.status(400).json({ error: 'user_id e coins obrigatórios' });
-    try {
-      const bR = await fetch(`${SU}/rest/v1/blue_bluecoins?user_id=eq.${user_id}&select=saldo,total_comprado`, { headers: h });
-      const rows = bR.ok ? await bR.json() : [];
-      if (rows.length) {
-        await fetch(`${SU}/rest/v1/blue_bluecoins?user_id=eq.${user_id}`, { method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ saldo: (rows[0].saldo || 0) + parseInt(coins), total_comprado: (rows[0].total_comprado || 0) + parseInt(coins), updated_at: new Date().toISOString() })
-        });
-      } else {
-        await fetch(`${SU}/rest/v1/blue_bluecoins`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ user_id, saldo: parseInt(coins), total_comprado: parseInt(coins) })
-        });
-      }
-      await fetch(`${SU}/rest/v1/blue_bluecoins_transacoes`, { method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ user_id, tipo: 'compra', quantidade: parseInt(coins), descricao: `Compra: ${pacote || coins + ' coins'}` })
-      });
-      return res.status(200).json({ ok: true });
-    } catch(e) { return res.status(500).json({ error: e.message }); }
-  }
+  // ── (REMOVIDO 2026-04-24) action='confirmar' era dead code vulneravel: ─────
+  // aceitava { user_id, coins } no body sem nenhuma autenticacao — qualquer
+  // pessoa podia creditar saldo arbitrario a qualquer user. Grep no repo todo
+  // confirmou que ninguem chamava (nem webhook, nem frontend). Removida.
+  // Pra reimplementar quando precisar: use Stripe webhook + HMAC signature
+  // (igual padrao em api/webhook.js). NUNCA aceitar user_id direto do body.
+  // Ver docs/blue-pendencias.md secao "Auditoria de autorizacao concluida".
 
   // ── HISTÓRICO ───────────────────────────────────────────────────────────
   if (action === 'historico') {

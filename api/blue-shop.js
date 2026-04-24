@@ -127,24 +127,15 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ── CONFIRMAR COMPRA (chamado por webhook) ──────────────────────────────
-  if (req.method === 'POST' && action === 'confirmar-compra') {
-    const { payment_id, produto_id } = req.body;
-    if (!payment_id) return res.status(400).json({ error: 'payment_id obrigatório' });
-    try {
-      await fetch(`${SU}/rest/v1/blue_pedidos?stripe_payment_id=eq.${payment_id}`, {
-        method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ status: 'pago' })
-      });
-      if (produto_id) {
-        const pR = await fetch(`${SU}/rest/v1/blue_produtos?id=eq.${produto_id}&select=vendas`, { headers: h });
-        const p = pR.ok ? (await pR.json())[0] : null;
-        if (p) fetch(`${SU}/rest/v1/blue_produtos?id=eq.${produto_id}`, { method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ vendas: (p.vendas || 0) + 1 }) }).catch(() => {});
-      }
-      return res.status(200).json({ ok: true });
-    } catch(e) { return res.status(200).json({ ok: false }); }
-  }
+  // ── (REMOVIDO 2026-04-24) action='confirmar-compra' era dead code ──────────
+  // vulneravel: aceitava { payment_id } no body sem nenhuma autenticacao —
+  // qualquer pessoa podia marcar pedido alheio como 'pago' e inflar contador
+  // de vendas. Grep no repo todo confirmou que ninguem chamava (comentario
+  // dizia "chamado por webhook" mas webhook.js nao chama). Removida.
+  // Pra reimplementar quando precisar: use Stripe webhook + HMAC signature
+  // (igual padrao em api/webhook.js). NUNCA aceitar payment_id direto do body
+  // sem validar via Stripe API que aquele payment_id pertence a este pedido.
+  // Ver docs/blue-pendencias.md secao "Auditoria de autorizacao concluida".
 
   // ── MEUS PRODUTOS (criador) ─────────────────────────────────────────────
   if (action === 'meus-produtos') {
