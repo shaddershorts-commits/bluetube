@@ -88,6 +88,108 @@ Caso queira uma V1 reduzida quando retomar:
 
 ---
 
+---
+
+## Auditoria de autorização em todos endpoints `/api/blue-*`
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** 🔴 ALTA
+- **Originada em:** sessão de fix do chat (2026-04-24)
+
+### Contexto
+
+A vulnerabilidade B1 do chat (`/api/blue-chat?action=messages` aceitava `conv_id` arbitrário sem validar que o requester era participante) foi descoberta em diagnóstico técnico. **Padrão similar pode existir em outros endpoints** — backend assume que "autenticado" = "autorizado pra qualquer recurso", o que é falso.
+
+### O que auditar
+
+Pra cada endpoint em `api/blue-*.js` que aceita IDs de recurso vindos do request (query string OU body), verificar se faz autorização real (não só auth):
+
+| Endpoint | Pergunta a fazer |
+|----------|------------------|
+| [`api/blue-profile.js`](../api/blue-profile.js) | Action `update` valida que userId == profile.user_id? Action `edit-video` / `delete-video` valida ownership? |
+| [`api/blue-follow.js`](../api/blue-follow.js) | follow/unfollow checa que follower_id é o requester? |
+| [`api/blue-interact.js`](../api/blue-interact.js) | like/save/comment validam que user_id é do token, não do body? Já corrigido bug de like múltiplo (commit c14c9d9) — mas tem mais ações. |
+| [`api/blue-comment.js`](../api/blue-comment.js) | delete/edit comment valida ownership? |
+| [`api/blue-stories.js`](../api/blue-stories.js) | view/react/reply em story alheia checa qualquer permissão? |
+| [`api/blue-feed.js`](../api/blue-feed.js) | actions admin (`update-metrics`, `limpar-rate-limits`) checam admin_secret? |
+| [`api/blue-app.js`](../api/blue-app.js) | revisar todas actions |
+| Resto (`blue-assinatura`, `blue-monetizacao`, `blue-coins`, `blue-onboarding`, `blue-report`, `blue-voices`, `blue-maintenance`, `blue-embeddings`) | Idem |
+
+### Approach sugerido pra retomar
+
+1. Listar TODAS as actions de cada endpoint (já temos um mapa parcial via Explore agent)
+2. Pra cada action que muta/lê dados de um recurso identificado por ID no payload:
+   - Se é resource owned by user (perfil, video, comment): validar ownership
+   - Se é resource compartilhado (chat conversation, etc): validar participação
+   - Se é admin-only (cron, manutenção): validar admin_secret OU IP da Vercel
+3. Padronizar com helper compartilhado tipo o `assertParticipant` que criamos no `blue-chat.js` (linha ~27)
+4. Adicionar logs `[SECURITY-BLOCK][endpoint]` em todas tentativas bloqueadas
+
+### Gatilhos pra retomar
+
+- Reclamação de user que viu dado de outra pessoa
+- OU sessão de hardening de segurança planejada
+- OU detecção de tráfego anômalo nos logs Vercel (filtro `[SECURITY-BLOCK]`)
+
+---
+
+## Chat: rate limiting (50 msg/min/user)
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Média
+- **Identificada em:** diagnóstico chat 2026-04-24
+
+`api/blue-chat.js` action `send` não tem rate limit. Spam fácil. `blue_rate_limits` table já existe (usada pelo blue-feed). Aplicar mesmo padrão: 50 msg/min/user, retornar 429 acima.
+
+---
+
+## Chat: read receipts visíveis
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Baixa (UX)
+
+Backend marca `blue_messages.read=true` quando destinatário abre conversa, mas não retorna esse campo no payload de `messages`. Frontend não consegue mostrar "✓ lido" igual WhatsApp.
+
+Fix: adicionar `read` ao SELECT em `messages` action e renderizar na bubble.
+
+---
+
+## Chat: WebSocket em vez de polling
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Baixa (escalabilidade)
+
+Hoje app polla a cada 5s, web a cada 3s. Quando passar de ~50 usuários ativos no chat simultâneos, vai bater em rate limit Vercel. Migrar pra Supabase Realtime (que já está no stack) — `supabase.channel('messages').on('postgres_changes', ...)`.
+
+---
+
+## Chat: push notifications
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Média (engajamento)
+
+Quando mensagem chega, usuário não recebe nada se não estiver com app aberto. Nem badge no ícone do tab "Chat" funciona em background. Implementar via Expo Notifications + cron periódico no backend que verifica `read=false` recentes e dispara push.
+
+---
+
+## Chat: soft-delete de mensagens
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Baixa
+
+Sem coluna `deleted_at` em `blue_messages`. Hoje delete seria hard delete. Pra "Apagar mensagem só pra mim" (quem mandou) precisa soft-delete + filtro no GET.
+
+---
+
+## Chat: RLS habilitado em `blue_messages` (defesa em profundidade)
+
+- **Status:** ⏸️ Pendente
+- **Prioridade:** Baixa (já mitigado)
+
+Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: se backend voltar a ter bug, RLS bloqueia direto no banco. Policy: `USING (auth.uid() IN (SELECT user1_id FROM blue_conversations WHERE id = conversation_id UNION SELECT user2_id FROM blue_conversations WHERE id = conversation_id))`.
+
+---
+
 <!-- 
   Pra adicionar novas pendências, duplicar o bloco acima mantendo o padrão:
   título curto, status, prioridade, pausado por, causa raiz, arquitetura,
