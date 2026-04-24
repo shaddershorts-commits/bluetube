@@ -154,12 +154,37 @@ module.exports = async function handler(req, res) {
         ? ((v.skip_rate || 0) * (totalViews - 1) + (skipped ? 100 : 0)) / totalViews
         : 0;
     } else if (type === 'like') {
+      // IDEMPOTENCIA via UNIQUE(user_id, video_id) em blue_likes.
+      // Tenta INSERT — se ja existir, ignore-duplicates retorna corpo vazio.
+      // Apenas incrementa o contador + notifica se foi 1a curtida desse user.
+      if (!user_id) return res.status(200).json({ ok: true, skipped: 'anonymous_like' });
+      const insR = await fetch(`${SU}/rest/v1/blue_likes`, {
+        method: 'POST',
+        headers: { ...h, Prefer: 'return=representation,resolution=ignore-duplicates' },
+        body: JSON.stringify({ user_id, video_id }),
+      });
+      const insBody = await insR.json().catch(() => []);
+      const insertedNew = Array.isArray(insBody) && insBody.length > 0;
+      if (!insertedNew) {
+        // Usuario ja tinha curtido — nao incrementa, retorna idempotente
+        return res.status(200).json({ ok: true, skipped: 'already_liked' });
+      }
       patch.likes = Math.max(0, (v.likes || 0) + 1);
       _notifyOwner(SU, h, user_id, v.user_id, video_id, {
         tipo: 'like', titulo: 'Nova curtida',
         msgFn: (uname) => `@${uname} curtiu seu vídeo`,
       });
-    } else if (type === 'unlike') { patch.likes = Math.max(0, (v.likes || 0) - 1);
+    } else if (type === 'unlike') {
+      // Espelho: deleta de blue_likes; so decrementa se realmente removeu uma row
+      if (!user_id) return res.status(200).json({ ok: true, skipped: 'anonymous_unlike' });
+      const delR = await fetch(
+        `${SU}/rest/v1/blue_likes?user_id=eq.${user_id}&video_id=eq.${video_id}`,
+        { method: 'DELETE', headers: { ...h, Prefer: 'return=representation' } }
+      );
+      const delBody = await delR.json().catch(() => []);
+      const wasDeleted = Array.isArray(delBody) && delBody.length > 0;
+      if (!wasDeleted) return res.status(200).json({ ok: true, skipped: 'not_liked_yet' });
+      patch.likes = Math.max(0, (v.likes || 0) - 1);
     } else if (type === 'save') {
       patch.saves = Math.max(0, (v.saves || 0) + 1);
       _notifyOwner(SU, h, user_id, v.user_id, video_id, {
