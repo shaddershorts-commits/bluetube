@@ -3118,19 +3118,43 @@ function closeChatWin() {
 }
 
 let _chatErrors=0;
+const CHAT_POLL_BASE_MS = 3000;
+function _chatReschedulePoll(intervalMs) {
+  // Helper: reagenda o poll com novo intervalo. Usado pra backoff (W2).
+  if (_chatPoll) { clearInterval(_chatPoll); _chatPoll = null; }
+  if (intervalMs > 0) _chatPoll = setInterval(loadMessages, intervalMs);
+}
 async function loadMessages() {
   if (!_chatConvId) return;
   try {
     const r = await fetch('/api/blue-chat?action=messages&token=' + encodeURIComponent(TOKEN) + '&conv_id=' + _chatConvId);
-    if (!r.ok) return;
+    if (!r.ok) {
+      // 4xx/5xx tambem conta como erro pra backoff (antes era ignorado silenciosamente)
+      _chatErrors++;
+      console.warn('[chat] loadMessages HTTP', r.status, '— erros:', _chatErrors);
+      if (_chatErrors >= 3) {
+        const delay = Math.min(60, 3 * Math.pow(2, _chatErrors - 3));
+        console.warn('[chat] backoff: re-poll em', delay + 's');
+        _chatReschedulePoll(delay * 1000);
+      }
+      return;
+    }
     const d = await r.json();
     renderMessages(d.messages || []);
-    if(_chatErrors>0){_chatErrors=0;toast(t('toast_chat_reconnected','🟢 Chat reconectado'));}
+    if (_chatErrors > 0) {
+      // W2: reset do contador + restaura intervalo normal apos sucesso
+      _chatErrors = 0;
+      _chatReschedulePoll(CHAT_POLL_BASE_MS);
+      toast(t('toast_chat_reconnected', '🟢 Chat reconectado'));
+    }
   } catch(e) {
     _chatErrors++;
-    if(_chatErrors>=3){
-      const delay=Math.min(60,3*Math.pow(2,_chatErrors-3));
-      console.log('[chat] Reconnecting in',delay+'s');
+    console.error('[chat] loadMessages erro:', e?.message || e, '— erros:', _chatErrors);
+    if (_chatErrors >= 3) {
+      // W2: backoff exponencial real (antes apenas logava sem aplicar)
+      const delay = Math.min(60, 3 * Math.pow(2, _chatErrors - 3));
+      console.warn('[chat] backoff: re-poll em', delay + 's');
+      _chatReschedulePoll(delay * 1000);
     }
   }
 }
@@ -3158,6 +3182,14 @@ async function sendMsg() {
   const inp = document.getElementById('chatInp');
   const text = inp.value.trim();
   if (!text || !_chatOtherUser) return;
+  // W1: guard de auth — se o token nao existir ou expirou, abre login antes
+  // de tentar enviar. Antes mandava request sem token e o backend retornava
+  // 401 silenciosamente (request perdido na visao do user).
+  if (!TOKEN) {
+    toast(t('toast_login_required', 'Faça login para enviar mensagens'));
+    if (typeof openAuthOnly === 'function') openAuthOnly();
+    return;
+  }
   const btn = document.getElementById('chatSendBtn'); btn.disabled = true;
   inp.value = ''; inp.style.height = 'auto';
   document.getElementById('emojiPicker').classList.remove('show');
