@@ -5736,7 +5736,10 @@ async function loadDMsLista(){
       return;
     }
     body.innerHTML = convs.map(c => {
-      const u = c.other_user || {};
+      // Backend retorna `other`; frontend antigo lia `other_user` (inexistente)
+      // → nome vazio (—), avatar fallback (?), click sem user_id (chat fechava).
+      // Aceita ambos pra retrocompat caso payload mude no futuro.
+      const u = c.other || c.other_user || {};
       const init = (u.display_name || u.username || '?').charAt(0).toUpperCase();
       const av = u.avatar_url
         ? `<img src="${esc(u.avatar_url)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover"/>`
