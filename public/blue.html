@@ -3059,8 +3059,11 @@ async function marcarNotifsLidas(){
 // Poll notifications every 30s
 setInterval(()=>{if(TOKEN)loadNotificacoes();},30000);
 function closeInbox() {
+  // Fecha SO o inbox. Antes fechava chatWin tambem, mas isso causava race
+  // condition em openChatWithUser: o setTimeout do btModalClose (300ms) rodava
+  // DEPOIS que chatWin tinha sido aberto — fechava o que tinha acabado de abrir.
+  // Quem quer fechar os dois faz manualmente (so o handler de click-outside).
   btModalClose('inbox');
-  btModalClose('chatWin');
 }
 
 async function loadConversations() {
@@ -4590,7 +4593,9 @@ document.addEventListener('click', e => {
   const chatWin = document.getElementById('chatWin');
   const inboxBtn = document.getElementById('inboxBtn');
   if(inbox.classList.contains('open') && !inbox.contains(e.target) && !chatWin.contains(e.target) && e.target !== inboxBtn && !inboxBtn.contains(e.target)){
+    // Click fora dos dois → fecha ambos (preserva comportamento anterior do closeInbox)
     closeInbox();
+    btModalClose('chatWin');
   }
 });
 // ── P2: OFFLINE DETECTION ─────────────────────────────────────────────────────
