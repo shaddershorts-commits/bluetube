@@ -262,6 +262,19 @@ module.exports = async function handler(req, res) {
 
   // ── UPDATE TRENDING (cron) ─────────────────────────────────────────────
   if (action === 'update-trending') {
+    // Auditoria 2026-04-24: action era publica. Agora exige x-vercel-cron
+    // (header automatico em chamadas de cron, nao falsificavel externamente)
+    // OU admin_secret (debug manual). Padrao ja usado em payment-monitor.js:15.
+    const isCron = !!req.headers['x-vercel-cron'];
+    const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
+    if (!isCron && !isAdmin) {
+      console.error('[SECURITY-BLOCK][blue-feed]', JSON.stringify({
+        type: 'admin_action_unauth', action: 'update-trending',
+        ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown',
+        timestamp: new Date().toISOString(),
+      }));
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     try {
       // Reset all trending
       await fetch(`${SU}/rest/v1/blue_hashtags?trending=eq.true`, { method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' }, body: JSON.stringify({ trending: false }) });
@@ -540,6 +553,17 @@ module.exports = async function handler(req, res) {
 
   // ── LIMPAR RATE LIMITS (cron diário) ────────────────────────────────────
   if (action === 'limpar-rate-limits') {
+    // Auditoria 2026-04-24: mesma protecao do update-trending acima.
+    const isCron = !!req.headers['x-vercel-cron'];
+    const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
+    if (!isCron && !isAdmin) {
+      console.error('[SECURITY-BLOCK][blue-feed]', JSON.stringify({
+        type: 'admin_action_unauth', action: 'limpar-rate-limits',
+        ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown',
+        timestamp: new Date().toISOString(),
+      }));
+      return res.status(401).json({ error: 'unauthorized' });
+    }
     try {
       const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
       await fetch(`${SU}/rest/v1/blue_rate_limits?janela_inicio=lt.${oneDayAgo}`, { method: 'DELETE', headers: h });
