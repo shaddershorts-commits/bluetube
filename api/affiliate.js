@@ -543,7 +543,7 @@ export default async function handler(req, res) {
       const cmR = await fetch(
         `${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}`
         + `&subscriber_email=eq.${encodeURIComponent(email)}`
-        + `&select=id,status,commission_amount,stripe_transfer_id,flagged&order=created_at.desc`,
+        + `&select=id,status,commission_amount,stripe_transfer_id,flagged,currency&order=created_at.desc`,
         { headers: supaH }
       );
       const all = cmR.ok ? await cmR.json() : [];
@@ -576,20 +576,36 @@ export default async function handler(req, res) {
       }
 
       // 6. Atualiza afiliado: decrementa contador + level + total_earnings
-      const totalReverted = active.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
+      // Sprint 1.5 multi-currency: agrupa amount revertido por moeda original.
+      const revertedByCurrency = active.reduce((acc, c) => {
+        const cur = String(c.currency || 'BRL').toUpperCase();
+        acc[cur] = (acc[cur] || 0) + parseFloat(c.commission_amount || 0);
+        return acc;
+      }, {});
+      const totalReverted = Object.values(revertedByCurrency).reduce((s, v) => s + v, 0);
+      const brlReverted = revertedByCurrency.BRL || 0;
       const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*`, { headers: supaH });
       const [aff] = (await ar.json()) || [];
       if (aff) {
         const field = plan === 'full' ? 'total_full' : 'total_master';
         const newCount = Math.max(0, (aff[field] || 0) - 1);
         const totalPaying = Math.max(0, (aff.total_full || 0) + (aff.total_master || 0) - 1);
-        const newEarnings = Math.max(0, parseFloat(((aff.total_earnings || 0) - totalReverted).toFixed(2)));
+        // total_earnings (numeric BRL): decrementa SOMENTE pelo BRL revertido (compat)
+        const newEarnings = Math.max(0, parseFloat(((aff.total_earnings || 0) - brlReverted).toFixed(2)));
+        // total_earnings_by_currency: decrementa cada moeda no seu bucket
+        const currentTeBC = (aff.total_earnings_by_currency && typeof aff.total_earnings_by_currency === 'object')
+          ? aff.total_earnings_by_currency : { BRL: 0 };
+        const newTeBC = { ...currentTeBC };
+        for (const [c, amt] of Object.entries(revertedByCurrency)) {
+          newTeBC[c] = Math.max(0, parseFloat(((parseFloat(newTeBC[c] || 0) - amt)).toFixed(2)));
+        }
         await fetch(`${SUPA_URL}/rest/v1/affiliates?id=eq.${affiliate_id}`, {
           method: 'PATCH', headers: supaH,
           body: JSON.stringify({
             [field]: newCount,
             level: getLevel(totalPaying),
             total_earnings: newEarnings,
+            total_earnings_by_currency: newTeBC,
             updated_at: new Date().toISOString(),
           }),
         });

@@ -187,8 +187,11 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
   // Aplica a correcao de comissao: PATCH direto + history + total_earnings delta.
   // Em caso de falha (row nao encontrada, rede, Supabase lento), enfileira retry.
-  async function applyCommissionCorrection({ affiliate, email, plan, rate, paidAmount, couponApplied, couponDiscount, source, stripeCustomerId }) {
+  async function applyCommissionCorrection({ affiliate, email, plan, rate, paidAmount, couponApplied, couponDiscount, source, stripeCustomerId, currency }) {
     const correctedAmount = parseFloat((paidAmount * rate).toFixed(2));
+    // Sprint 1.5 multi-currency: normaliza moeda em uppercase pra usar como
+    // chave em total_earnings_by_currency e column affiliate_commissions.currency.
+    const cur = String(currency || 'BRL').toUpperCase();
     try {
       const curRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_rate,plan_amount,commission_history,flagged`, { headers: supaHeaders });
       const [row] = curRes.ok ? await curRes.json() : [];
@@ -224,6 +227,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         commission_amount: correctedAmount,
         plan_amount: paidAmount,
         commission_history: history,
+        currency: cur,
       };
       if (couponApplied) patchBody.coupon_applied = true;
       if (couponDiscount > 0) patchBody.coupon_discount = couponDiscount;
@@ -255,12 +259,23 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       // saldo ate admin aprovar).
       const earningsDelta = fraudFlag?.flagged ? -prev : delta;
       if (earningsDelta !== 0) {
+        // Sprint 1.5 multi-currency: incrementa bucket da moeda real em
+        // total_earnings_by_currency. total_earnings (numeric BRL) so e atualizado
+        // quando cur==='BRL' pra preservar compat com codigo legado que ainda le.
+        const currentTeBC = (affiliate.total_earnings_by_currency && typeof affiliate.total_earnings_by_currency === 'object')
+          ? affiliate.total_earnings_by_currency : { BRL: 0 };
+        const newTeBC = { ...currentTeBC };
+        newTeBC[cur] = parseFloat(((parseFloat(newTeBC[cur] || 0) + earningsDelta)).toFixed(2));
+        const patchAffBody = {
+          total_earnings_by_currency: newTeBC,
+          updated_at: new Date().toISOString(),
+        };
+        if (cur === 'BRL') {
+          patchAffBody.total_earnings = parseFloat(((parseFloat(affiliate.total_earnings) || 0) + earningsDelta).toFixed(2));
+        }
         await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate.id}`, {
           method: 'PATCH', headers: supaHeaders,
-          body: JSON.stringify({
-            total_earnings: parseFloat(((parseFloat(affiliate.total_earnings) || 0) + earningsDelta).toFixed(2)),
-            updated_at: new Date().toISOString()
-          })
+          body: JSON.stringify(patchAffBody)
         });
       }
 
@@ -485,7 +500,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           }).catch(() => {});
           return;
         }
-        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings`, { headers: supaHeaders });
+        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) {
           fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
@@ -519,6 +534,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           affiliate: aff, email, plan, rate, paidAmount,
           couponApplied, couponDiscount, source: 'checkout',
           stripeCustomerId: customerId,
+          currency: session.metadata?.currency,
         });
         if (result.ok) {
           const flagTag = result.flagged ? ' 🚨 FLAGGED' : '';
@@ -635,7 +651,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const refData = subRef.ok ? await subRef.json() : [];
         const refCode = refData?.[0]?.affiliate_ref;
         if (!refCode) return;
-        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings`, { headers: supaHeaders });
+        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) return;
         const { rate, levelKey, source: rateSource } = effectiveRate(aff);
@@ -647,6 +663,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           couponDiscount: renewCouponDiscount,
           source: 'renewal',
           stripeCustomerId: customerId,
+          currency: invoice.currency,
         });
         if (result.ok) {
           const flagTag = result.flagged ? ' 🚨 FLAGGED' : '';
@@ -708,12 +725,12 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         return;
       }
 
-      const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${sub.affiliate_ref}&select=id,email,total_earnings`, { headers: supaHeaders });
+      const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${sub.affiliate_ref}&select=id,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
       const [aff] = affRes.ok ? await affRes.json() : [];
       if (!aff) return;
 
       // Pega comissao mais recente pending/paid pra esse assinante
-      const cmRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(sub.email)}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_history,status`, { headers: supaHeaders });
+      const cmRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&subscriber_email=eq.${encodeURIComponent(sub.email)}&status=in.(pending,paid)&order=created_at.desc&limit=1&select=id,commission_amount,commission_history,status,currency`, { headers: supaHeaders });
       const [row] = cmRes.ok ? await cmRes.json() : [];
       if (!row) {
         console.log(`[refund] nenhuma comissao ativa pra reverter: ${sub.email}`);
@@ -739,14 +756,25 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         })
       });
 
-      // Subtrai de total_earnings
+      // Sprint 1.5 multi-currency: decrementa bucket da moeda real em
+      // total_earnings_by_currency. total_earnings (numeric BRL) so e atualizado
+      // quando refundCur==='BRL' pra preservar compat com codigo legado.
       if (amount > 0) {
+        const refundCur = String(row.currency || 'BRL').toUpperCase();
+        const currentTeBC = (aff.total_earnings_by_currency && typeof aff.total_earnings_by_currency === 'object')
+          ? aff.total_earnings_by_currency : { BRL: 0 };
+        const newTeBC = { ...currentTeBC };
+        newTeBC[refundCur] = Math.max(0, parseFloat(((parseFloat(newTeBC[refundCur] || 0) - amount)).toFixed(2)));
+        const patchAffBody = {
+          total_earnings_by_currency: newTeBC,
+          updated_at: new Date().toISOString()
+        };
+        if (refundCur === 'BRL') {
+          patchAffBody.total_earnings = parseFloat(Math.max(0, (parseFloat(aff.total_earnings) || 0) - amount).toFixed(2));
+        }
         await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
           method: 'PATCH', headers: supaHeaders,
-          body: JSON.stringify({
-            total_earnings: parseFloat(Math.max(0, (parseFloat(aff.total_earnings) || 0) - amount).toFixed(2)),
-            updated_at: new Date().toISOString()
-          })
+          body: JSON.stringify(patchAffBody)
         });
       }
 
