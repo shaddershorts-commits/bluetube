@@ -61,6 +61,20 @@ const PRICE_IDS_LIVE = {
 
 const ALLOWED_CURRENCIES = ['brl', 'usd', 'eur', 'gbp', 'cad', 'aud'];
 
+// Fallback retrocompat — usa price_data inline com BRL hardcoded quando o
+// priceId nao existe em PRICE_IDS_<MODE>. Cobre o gap entre o deploy do refator
+// e o preenchimento de PRICE_IDS_LIVE com o output do setup-stripe-multicurrency.js
+// rodado em LIVE. Apos PRICE_IDS_LIVE preenchido, este fallback nunca dispara
+// pra plan=full|master + currency=brl.
+const FALLBACK_BRL_AMOUNTS = {
+  full:   { monthly: 2999,  annual: 26988 },  // R$29,99 / R$269,88
+  master: { monthly: 8999,  annual: 80988 },  // R$89,99 / R$809,88
+};
+const FALLBACK_PRODUCT_INFO = {
+  full:   { name: 'BlueTube Full',   description: '9 roteiros/dia · Todos os idiomas · Comunidade exclusiva' },
+  master: { name: 'BlueTube Master', description: 'Roteiros ilimitados · Voz IA · Download HD · Buscador viral' },
+};
+
 function getPriceIds() {
   const isLive = String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_');
   return isLive ? PRICE_IDS_LIVE : PRICE_IDS_TEST;
@@ -91,12 +105,20 @@ export default async function handler(req, res) {
     ? String(rawCurrency).toLowerCase()
     : 'brl';
 
-  const PRICE_IDS = getPriceIds();
-  const planMap  = PRICE_IDS && PRICE_IDS[plan];
-  if (!planMap) return res.status(400).json({ error: t('invalid_plan', lang) });
+  // Valida plan na whitelist antes de qualquer lookup
+  if (!FALLBACK_PRODUCT_INFO[plan]) {
+    return res.status(400).json({ error: t('invalid_plan', lang) });
+  }
 
-  const priceId = planMap[billingKey] && planMap[billingKey][currency];
-  if (!priceId) return res.status(400).json({ error: t('invalid_plan_currency', lang) });
+  const PRICE_IDS = getPriceIds();
+  const priceId = PRICE_IDS && PRICE_IDS[plan] && PRICE_IDS[plan][billingKey] && PRICE_IDS[plan][billingKey][currency];
+
+  // Se priceId nao existe E currency=brl: usa fallback inline (preserva BR durante
+  // gap entre deploy e PRICE_IDS_LIVE preenchido). Outras currencies sem priceId: 400.
+  const useFallback = !priceId && currency === 'brl';
+  if (!priceId && !useFallback) {
+    return res.status(400).json({ error: t('invalid_plan_currency', lang) });
+  }
 
   // Busca email do usuario (token Supabase opcional)
   let customerEmail = null;
@@ -113,7 +135,6 @@ export default async function handler(req, res) {
     const params = new URLSearchParams({
       'mode': 'subscription',
       'payment_method_types[]': 'card',
-      'line_items[0][price]': priceId,
       'line_items[0][quantity]': '1',
       'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
       'cancel_url':  `${SITE_URL}?payment=cancelled`,
@@ -122,6 +143,19 @@ export default async function handler(req, res) {
       'metadata[billing]': billing || 'monthly',
       'metadata[currency]': currency,
     });
+    if (useFallback) {
+      // Fallback BRL: price_data inline (compat lógica antiga)
+      const amount = FALLBACK_BRL_AMOUNTS[plan][billingKey];
+      const info = FALLBACK_PRODUCT_INFO[plan];
+      const label = billingKey === 'annual' ? `${info.name} — Anual` : info.name;
+      params.set('line_items[0][price_data][currency]', 'brl');
+      params.set('line_items[0][price_data][product_data][name]', label);
+      params.set('line_items[0][price_data][product_data][description]', info.description);
+      params.set('line_items[0][price_data][recurring][interval]', billingKey === 'annual' ? 'year' : 'month');
+      params.set('line_items[0][price_data][unit_amount]', String(amount));
+    } else {
+      params.set('line_items[0][price]', priceId);
+    }
     // Programa Pioneiros: propaga ref do criador indicador pro webhook
     if (ref && /^[a-z0-9_-]{4,32}$/i.test(ref)) {
       params.set('metadata[ref]', ref);
