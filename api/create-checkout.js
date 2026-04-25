@@ -53,10 +53,45 @@ const PRICE_IDS_TEST = {
   },
 };
 
-// PriceIds — LIVE mode (sk_live_) — preencher apos rodar setup-stripe-multicurrency.js em LIVE
+// PriceIds — LIVE mode (sk_live_)
+// Gerados em 2026-04-25 via _scripts/setup-stripe-multicurrency.js
 const PRICE_IDS_LIVE = {
-  full:   { monthly: {}, annual: {} },
-  master: { monthly: {}, annual: {} },
+  full: {
+    monthly: {
+      brl: 'price_1TQ8HRLe4wOQftBwC775TGZX',
+      usd: 'price_1TQ8HRLe4wOQftBwEIG9LZOo',
+      eur: 'price_1TQ8HSLe4wOQftBwJLCQe0hP',
+      gbp: 'price_1TQ8HTLe4wOQftBwwsE8sHeV',
+      cad: 'price_1TQ8HTLe4wOQftBwdXiTH3H7',
+      aud: 'price_1TQ8HULe4wOQftBwECCzYuo0',
+    },
+    annual: {
+      brl: 'price_1TQ8HULe4wOQftBwOf1Xlrrg',
+      usd: 'price_1TQ8HVLe4wOQftBwsTjhdCnq',
+      eur: 'price_1TQ8HWLe4wOQftBw1VLRTNx9',
+      gbp: 'price_1TQ8HWLe4wOQftBw1UGgnvbM',
+      cad: 'price_1TQ8HXLe4wOQftBw8dZaqmqk',
+      aud: 'price_1TQ8HYLe4wOQftBwNLRV2toD',
+    },
+  },
+  master: {
+    monthly: {
+      brl: 'price_1TQ8HZLe4wOQftBwOPI8RSLS',
+      usd: 'price_1TQ8HZLe4wOQftBwIMPTzni5',
+      eur: 'price_1TQ8HaLe4wOQftBwrBXbZr1x',
+      gbp: 'price_1TQ8HbLe4wOQftBweOgJWSwc',
+      cad: 'price_1TQ8HbLe4wOQftBwPfVFEGhg',
+      aud: 'price_1TQ8HcLe4wOQftBwoW0xIRsn',
+    },
+    annual: {
+      brl: 'price_1TQ8HcLe4wOQftBwyhcpym8Y',
+      usd: 'price_1TQ8HdLe4wOQftBwB3IIj7oA',
+      eur: 'price_1TQ8HeLe4wOQftBw9u8EcAzf',
+      gbp: 'price_1TQ8HeLe4wOQftBw3MBudrwY',
+      cad: 'price_1TQ8HfLe4wOQftBwWOlKWfYP',
+      aud: 'price_1TQ8HgLe4wOQftBw8qlaX49b',
+    },
+  },
 };
 
 const ALLOWED_CURRENCIES = ['brl', 'usd', 'eur', 'gbp', 'cad', 'aud'];
