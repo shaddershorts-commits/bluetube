@@ -281,6 +281,37 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## Privacy v2.0 + Termos v2.0 — pendencias residuais (publicacao 2026-04-25)
+
+- **Status:** ⏸️ Documentado em 2026-04-25 durante publicacao docs v2.0
+- **Prioridade:** variada
+
+### 1. Aviso prévio aos usuários sobre v2.0 — MEDIA
+
+Privacy Policy v2.0 publicada SEM aviso prévio aos usuários. LGPD Art. 8 §6º recomenda aviso de 30 dias para alterações materiais. Decisao Felipe: publicar direto, dado que mudancas v2.0 sao melhorias (mais transparencia, novos endpoints LGPD-compliant, melhor seguranca declarada) e nao restringem direitos.
+
+Risco baixo MAS se algum usuario reclamar:
+- Disparar email blast retroativo informando "Atualizamos nossa Politica de Privacidade. Principais mudancas: [lista]. Voce pode revisar em /privacidade. Continuar usando o servico apos 30 dias = aceite."
+- Documentar email enviado pra defesa em caso de questionamento ANPD
+
+### 2. Atualizar nome fantasia BlueTube na Receita Federal — BAIXA
+
+Apos aprovacao do nome fantasia BlueTube oficial no CNPJ 65.260.227/0001-11 (atualmente "em processo de adicao"), atualizar referencias em ambos docs (privacidade.html + termos.html) removendo a nota "(em processo de adiçao junto à Receita Federal)".
+
+### 3. Migrar email pra dominio proprio — MEDIA
+
+Quando criar email contato@bluetubeviral.com (atualmente nao existe), atualizar references em ambos docs trocando bluetubeoficial@gmail.com pelo email oficial. Mesma logica que ja documentei para Fix 4 (unsubscribe).
+
+### 4. Encoding mojibake na publicacao v2.0 — RESOLVIDO
+
+Conteudo dos 2 HTMLs chegou com mojibake (UTF-8 duplo-decodificado: `Política`, `Última atualização`, `Â·`, `â`, `Â©`). Corrigido em 2026-04-25 via tabela targetada de replacements (10 patterns lowercase + 3 uppercase + 3 special chars + em-dash). Backups dos arquivos pre-conversao em _backups/privacidade.html.bak-20260425 e termos.html.bak-20260425.
+
+### 5. Restore real funcional — JA DOCUMENTADO em Fix 7
+
+Privacy Policy v2.0 menciona "exclusao em ate 15 dias com cascata em todas as tabelas". Restore funcional do backup nao foi implementado (Fix 7 pendencia 4). Se algum incidente exigir restore real, sera trabalho sob demanda.
+
+---
+
 ## Fix 7 — pendencias residuais
 
 - **Status:** ⏸️ Documentado em 2026-04-25 durante Fix 7
