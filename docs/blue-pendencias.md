@@ -281,6 +281,35 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## Fix 7 — pendencias residuais
+
+- **Status:** ⏸️ Documentado em 2026-04-25 durante Fix 7
+- **Prioridade:** variada
+
+### 1. Rotacionar `ENCRYPTION_KEY_BACKUPS` em 12 meses (~abril 2027) — BAIXA
+Mesma cadencia da `ENCRYPTION_KEY_AFFILIATES`. Procedimento: gerar nova chave, adicionar como `ENCRYPTION_KEY_BACKUPS_NEW`, decrypt-com-velha + encrypt-com-nova num script novo, trocar var, remover ref velha.
+
+### 2. Migrar pra Supabase Pro (snapshots nativos encrypted) — MEDIA
+Snapshots Supabase Pro sao automatic encrypted at-rest pelo proprio provider. Quando volume justificar (50+ assinantes pagos), migrar e remover blue-backup.js custom. Mantem nosso backup como redundancia.
+
+### 3. Storage off-platform (S3/R2) pra backup-de-backup — BAIXA
+Defesa em profundidade contra falha catastrofica do Supabase. Cron mensal copia ultimo backup encrypted pra bucket externo. Custos: ~$0.02/mes pra ~150MB.
+
+### 4. Implementar restore real funcional — MEDIA
+Atual `restaurar` so retorna JSON descriptografado, NAO escreve no DB. Pra recovery real, precisa: parse JSON + UPSERT em cada tabela na ordem certa (FK dependencies) + truncate-e-restore opcional. Trabalho considerável — fazer quando primeira necessidade real aparecer.
+
+### 5. AUDITAR todos os buckets do projeto — ALTA
+Fix 7 descobriu que `blue-videos` era publico (esperado pra videos) MAS recebia backups (nao deveria). Verificar TODOS buckets:
+```sql
+SELECT id, name, public, file_size_limit FROM storage.buckets;
+```
+Pra cada `public=true`, justificar publicamente OR mover dados sensiveis pra bucket privado. Bucket `blue-videos` deve continuar publico (videos sao publicos) mas NUNCA mais receber dados nao-publicos.
+
+### 6. Considerar criar bucket `blue-creator-uploads` privado — BAIXA
+Pra contas Stripe Connect ou docs de verificacao de identidade que possam aparecer no futuro. Hoje nao usado, mas aparecera junto de KYC se BlueTube crescer.
+
+---
+
 ## Fix 6 — pendencias residuais
 
 - **Status:** ⏸️ Documentado em 2026-04-25 durante Fix 6
