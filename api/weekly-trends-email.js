@@ -1,6 +1,8 @@
 // api/weekly-trends-email.js — Cron: 0 8 * * 1 (Monday 8am)
 // Generates weekly trends via AI and emails all active users
 
+const { signToken } = require('./_helpers/unsub-token');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -84,7 +86,7 @@ Responda APENAS com JSON array: [{"nicho":"...","motivo":"...","tipo_conteudo":"
 
     for (const u of users) {
       if (!u.email) continue;
-      const unsubToken = Buffer.from(u.email).toString('base64url');
+      const unsubToken = signToken(u.email);
 
       try {
         await fetch('https://api.resend.com/emails', {
@@ -112,7 +114,7 @@ Responda APENAS com JSON array: [{"nicho":"...","motivo":"...","tipo_conteudo":"
                 </div>
               </div>
               <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center;font-size:11px;color:rgba(150,190,230,.3)">
-                <a href="https://bluetubeviral.com/api/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
+                <a href="https://bluetubeviral.com/api/v1/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
               </div>
             </div>`
           })

@@ -1,6 +1,8 @@
 // api/milestone-emails.js — Cron: 0 9 * * * (daily 9am)
 // Sends milestone emails at 10, 50, 100 roteiros
 
+const { signToken } = require('./_helpers/unsub-token');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -11,9 +13,14 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK || !RESEND) return res.status(200).json({ ok: false, error: 'Missing env' });
 
   const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
-  const results = { sent_10: 0, sent_50: 0, sent_100: 0 };
+  const results = { sent_10: 0, sent_50: 0, sent_100: 0, skipped_unsubscribed: 0 };
 
   try {
+    // Fix 4 (Gap 6): pull unsubscribed set ANTES do loop pra honrar opt-out.
+    // Sem isso era violacao CAN-SPAM/LGPD/GDPR — milestones iam pra quem ja unsub.
+    const unsubR = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.true&select=email&limit=10000`, { headers: H });
+    const unsubSet = new Set((unsubR.ok ? await unsubR.json() : []).map(r => r.email));
+
     const milestones = [
       { threshold: 10, field: 'milestone_10_sent', subject: '🎯 10 roteiros gerados — você está no caminho certo!', body: m10 },
       { threshold: 50, field: 'milestone_50_sent', subject: '🚀 50 roteiros! Você é um criador de verdade', body: m50 },
@@ -30,9 +37,10 @@ module.exports = async function handler(req, res) {
 
       for (const u of users) {
         if (!u.email) continue;
+        if (unsubSet.has(u.email)) { results.skipped_unsubscribed++; continue; }
         const daysSince = Math.round((Date.now() - new Date(u.created_at)) / 86400000);
         const perWeek = daysSince > 0 ? ((u.total_roteiros / daysSince) * 7).toFixed(1) : u.total_roteiros;
-        const unsubToken = Buffer.from(u.email).toString('base64url');
+        const unsubToken = signToken(u.email);
 
         try {
           await fetch('https://api.resend.com/emails', {
@@ -117,7 +125,7 @@ function emailWrap(body, unsubToken) {
       <a href="https://bluetubeviral.com" style="display:block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:14px;border-radius:12px;text-align:center;font-size:15px;font-weight:700;margin:24px 0">Continuar criando →</a>
     </div>
     <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center;font-size:11px;color:rgba(150,190,230,.3)">
-      <a href="https://bluetubeviral.com/api/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
+      <a href="https://bluetubeviral.com/api/v1/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
     </div>
   </div>`;
 }

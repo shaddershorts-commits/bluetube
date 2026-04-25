@@ -1,6 +1,8 @@
 // api/email-marketing.js — Automated email marketing with sequence rotation
 // Cron: 0 10 * * 2,5 (Tuesday & Friday 10am)
 
+const { signToken } = require('./_helpers/unsub-token');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -82,8 +84,8 @@ module.exports = async function handler(req, res) {
     for (const user of eligible) {
       const pos = user.sequence_position || 0;
       const template = TEMPLATES[pos % TEMPLATES.length];
-      const unsubToken = Buffer.from(user.email).toString('base64url');
-      const unsubUrl = `https://bluetubeviral.com/api/unsubscribe?token=${unsubToken}`;
+      const unsubToken = signToken(user.email);
+      const unsubUrl = `https://bluetubeviral.com/api/v1/unsubscribe?token=${unsubToken}`;
 
       const html = buildEmail(template, user.email, unsubUrl, stats);
 

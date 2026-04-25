@@ -281,6 +281,96 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## `/api/unsubscribe` proxy + tokens legacy — remover apos 2026-05-25
+
+- **Status:** ⏸️ Aguardando deadline (deploy Fix 4 em 2026-04-25 + 30 dias)
+- **Prioridade:** Baixa (limpeza pos-migracao)
+- **Pausado por:** retrocompat obrigatorio enquanto emails antigos com tokens base64-puros estiverem nas inboxes dos users.
+
+### Contexto
+
+Fix 4 (Gap 6) introduziu HMAC-signed tokens em `/api/v1/unsubscribe`. Mantivemos:
+- [api/unsubscribe.js](../api/unsubscribe.js) como proxy que delega pro v1
+- `verifyToken` em [_helpers/unsub-token.js](../api/_helpers/unsub-token.js) aceita tokens legacy (sem ponto/HMAC) ate `LEGACY_DEADLINE = 2026-05-25T00:00:00Z`
+
+### O que remover apos 2026-05-25
+
+1. Deletar [api/unsubscribe.js](../api/unsubscribe.js) por completo
+2. Em [_helpers/unsub-token.js](../api/_helpers/unsub-token.js): remover branch `if (parts.length === 1)` e a constante `LEGACY_DEADLINE`
+3. Documentar a remocao em commit message
+
+### Gatilho
+
+- Data >= 2026-05-25
+- Verificar Vercel logs por `[unsubscribe] legacy_path` — se ainda houver hits significativos, estender prazo +15 dias (improvavel: usuarios dificilmente abrem emails de 30 dias depois)
+
+---
+
+## Consolidar `email_marketing` + `subscribers` em modelo unico de preferencias
+
+- **Status:** ⏸️ Pausado em 2026-04-25 (decisão pragmática durante Fix 4)
+- **Prioridade:** Baixa
+- **Pausado por:** funcional hoje. Refator sem ROI claro ate base passar de ~100 ativos.
+
+### Contexto
+
+Hoje as preferencias de comunicacao do user vivem em 2 tabelas:
+- `email_marketing.unsubscribed` (boolean) — gateia 4 dos 7 senders
+- `subscribers.milestone_X_sent` (3 colunas) — controle de milestone-emails
+- Nao existe coluna unificada `subscribers.communication_prefs jsonb` ou similar
+
+### Proposta
+
+Tabela `user_communication_preferences`:
+```sql
+CREATE TABLE user_communication_preferences (
+  email TEXT PRIMARY KEY,
+  marketing BOOLEAN DEFAULT TRUE,
+  milestones BOOLEAN DEFAULT TRUE,
+  reactivation BOOLEAN DEFAULT TRUE,
+  weekly_newsletter BOOLEAN DEFAULT TRUE,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+Endpoint `/api/v1/preferences` (GET para mostrar UI, POST para atualizar). Substitui o opt-out binario por granularidade.
+
+### Gatilho
+
+- Reclamacao de user pedindo "desligar so newsletter mas manter milestones"
+- OU base passar de ~100 usuarios ativos (granularidade vira diferencial)
+
+---
+
+## `reactivation-emails.js` — adicionar filtro `unsubscribed`
+
+- **Status:** ⏸️ Pausado em 2026-04-25 (decisão pragmática durante Fix 4)
+- **Prioridade:** Media (compliance borderline)
+- **Pausado por:** reactivation-emails so dispara pra usuarios que CANCELARAM assinatura — defensivel como follow-up de transacao. Mas tecnicamente borderline marketing.
+
+### Contexto
+
+[api/reactivation-emails.js](../api/reactivation-emails.js) envia "vem voltar, sua assinatura cancelou". Nao checa `email_marketing.unsubscribed`. Hoje cobertvel como "transacional" (post-cancelamento), mas se user marcar `unsubscribed=true` esperando bloquear TUDO, vai receber mesmo assim.
+
+`/api/v1/unsubscribe?scope=all` ja existe e mostra mensagem ampla pro user, mas a acao concreta no DB hoje e a mesma de scope=marketing. Quando esse fix entrar, scope=all bloqueia reactivation tambem.
+
+### Proposta
+
+Em reactivation-emails.js, antes do loop:
+```js
+const unsubR = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.true&select=email`, { headers: H });
+const unsubSet = new Set((unsubR.ok ? await unsubR.json() : []).map(r => r.email));
+// no loop: if (unsubSet.has(u.email)) { skipped++; continue; }
+```
+
+### Gatilho
+
+- Base passar de ~100 cancelamentos/mes (volume real onde reactivation vira ruido)
+- OU primeiro pedido formal de "desliga TUDO" via suporte
+- OU reclamacao LGPD/ANPD
+
+---
+
 ## `/api/v1/user-export` — migrar audit log de exports pra tabela dedicada
 
 - **Status:** ⏸️ Pausado em 2026-04-24 (decisão pragmática durante Fix 3)

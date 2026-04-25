@@ -1,5 +1,8 @@
 // api/send-blast.js — One-time email blast to all subscribers
 // Protected by ADMIN_SECRET
+
+const { signToken } = require('./_helpers/unsub-token');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -21,10 +24,10 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK || !RESEND) return res.status(500).json({ error: 'Missing env' });
 
   const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
-  let sent = 0, errors = 0;
+  let sent = 0, errors = 0, skippedUnsubscribed = 0;
 
   try {
-    // Test mode: send only to one email
+    // Test mode: send only to one email (test_email ja avaliado acima — re-leitura redundante OK)
     const testEmail = req.body?.test_email;
     let users;
     if (testEmail) {
@@ -35,9 +38,19 @@ module.exports = async function handler(req, res) {
       users = ur.ok ? await ur.json() : [];
     }
 
+    // Fix 4 (Gap 6): pull unsubscribed set ANTES do loop pra honrar opt-out.
+    // Sem isso era violacao CAN-SPAM/LGPD/GDPR — blasts iam pra quem ja unsub.
+    // Modo test_email NAO checa unsub (intencional — admin testando template).
+    let unsubSet = new Set();
+    if (!testEmail) {
+      const unsubR = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.true&select=email&limit=10000`, { headers: H });
+      unsubSet = new Set((unsubR.ok ? await unsubR.json() : []).map(r => r.email));
+    }
+
     for (const u of users) {
       if (!u.email) continue;
-      const unsubToken = Buffer.from(u.email).toString('base64url');
+      if (unsubSet.has(u.email)) { skippedUnsubscribed++; continue; }
+      const unsubToken = signToken(u.email);
 
       try {
         await fetch('https://api.resend.com/emails', {
@@ -86,7 +99,7 @@ module.exports = async function handler(req, res) {
                 <a href="https://bluetubeviral.com" style="display:block;text-align:center;color:#00aaff;font-size:13px;text-decoration:none;margin-top:12px">Ver todas as novidades →</a>
               </div>
               <div style="padding:16px 28px;border-top:1px solid rgba(0,170,255,.08);text-align:center;font-size:11px;color:rgba(150,190,230,.3)">
-                <a href="https://bluetubeviral.com/api/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
+                <a href="https://bluetubeviral.com/api/v1/unsubscribe?token=${unsubToken}" style="color:rgba(150,190,230,.4)">Descadastrar</a> · © BlueTube
               </div>
             </div>`
           })
@@ -97,8 +110,8 @@ module.exports = async function handler(req, res) {
       await new Promise(r => setTimeout(r, 100)); // Rate limit
     }
 
-    return res.status(200).json({ ok: true, sent, errors, total: users.length });
+    return res.status(200).json({ ok: true, sent, errors, skipped_unsubscribed: skippedUnsubscribed, total: users.length });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message, sent, errors });
+    return res.status(500).json({ ok: false, error: e.message, sent, errors, skipped_unsubscribed: skippedUnsubscribed });
   }
 };
