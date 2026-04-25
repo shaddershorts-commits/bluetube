@@ -1499,6 +1499,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
   <button onclick="acceptCookies()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:8px;padding:8px 20px;color:#fff;font-family:var(--font-display);font-size:12px;font-weight:700;cursor:pointer">Aceitar</button>
 </div>
 
+<!-- EN-overrides (Sprint 2): carrega ANTES do mega-script pra garantir window.EN_OVERRIDES existe no applyTranslations() -->
+<script src="/translations-en-overrides.js"></script>
 <script>
 // ── CAPTURA TOKEN DO HASH (landing → site, funciona cross-subdomain) ─────
 (function(){
@@ -3456,6 +3458,11 @@ function t(key){
 }
 
 function applyTranslations(){
+  // Sprint 2: quando lang==='en', mescla translations-en-overrides.js (EN nativo)
+  // por cima do TRANSLATIONS.en de auth.js. Override vence em colisao com auth.js.
+  if (siteLang === 'en' && typeof window !== 'undefined' && window.EN_OVERRIDES) {
+    siteTranslations = { ...siteTranslations, ...window.EN_OVERRIDES };
+  }
   const s = siteTranslations;
   if(!s || Object.keys(s).length === 0) return;
 

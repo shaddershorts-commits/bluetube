@@ -18,13 +18,13 @@ window.EN_OVERRIDES = {
   hero_1: 'Your next million-view Short',
   hero_2: 'starts here.',
   hero_3: 'Try it free.',
-  hero_sub: 'Paste any YouTube Short. Get the transcript + 2 viral scripts ready to record. No signup needed.',
+  hero_sub: 'Paste any YouTube Short. Get the transcript + 2 viral scripts ready to record. Free to try.',
   btn_go: 'Get My Scripts ↗',
 
   // ── TABS / RESULTS ──────────────────────────────────────────────────────────
   tab_appeal: '🔥 Punchy',
   new_short: 'Try Another',
-  generating: 'Cooking your next hit…',
+  generating: 'Cooking up your next hit…',
   err_empty: 'Drop a YouTube Short link to begin.',
   err_invalid: "That's not a Short link. Use: youtube.com/shorts/...",
 
@@ -54,7 +54,7 @@ window.EN_OVERRIDES = {
   plan_annual_label: 'billed yearly',
   plan_full_btn: 'Get Full →',
   plan_master_btn: 'Get Master →',
-  price_increase: 'Price goes up next month: +$10 Full / +$20 Master. Lock yours in.',
+  price_increase: "Prices increase next month: +$10 Full, +$20 Master. Lock in today's rate.",
 
   // Full features
   f5: 'Creator community',
@@ -85,7 +85,7 @@ window.EN_OVERRIDES = {
   cancel_r3: "I don't need it anymore",
   cancel_confirm: 'Confirm cancel',
   cancel_offer_title: 'Wait — quick offer for you',
-  cancel_offer_sub: 'Stay with us: $3 off your next bill.',
+  cancel_offer_sub: 'Stick around: $3 off your next month.',
   cancel_accept: 'Take the offer 💙',
   cancel_bye_sub: 'Subscription cancelled. You keep premium until the end of your paid period.',
 
@@ -105,7 +105,7 @@ window.EN_OVERRIDES = {
   plans_title: 'Pick your plan.',
 
   // ── FOOTER ──────────────────────────────────────────────────────────────────
-  footer_copy: '© 2025 BlueTube · For creators',
+  footer_copy: '© 2026 BlueTube · For creators',
 
   // ── RESET PASSWORD ──────────────────────────────────────────────────────────
   new_pwd: 'Set a new password',
