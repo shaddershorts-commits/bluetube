@@ -192,8 +192,12 @@ module.exports = async function handler(req, res) {
     ]);
 
     // SECAO I — Programa de Afiliados (sequencial: precisa do affiliate.id)
+    // Fix 3.1 (2026-04-25): lookup por EMAIL, nao user_id. Tabela affiliates usa
+    // email como chave (user_id e null pra todos hoje). order=created_at.desc
+    // como defensivo caso aparecam duplicatas no futuro (atualmente impossivel
+    // por check em api/affiliate.js:222 antes de INSERT).
     let affiliateData = { profile: null, clicks: [], commissions: [], conversions: [], saques: [], milestones: [], nivel_historico: [], attribution_log: [] };
-    const affiliate = await qOne(`affiliates?user_id=eq.${uidEnc}&select=*&limit=1`);
+    const affiliate = await qOne(`affiliates?email=eq.${emailEnc}&select=*&order=created_at.desc&limit=1`);
     if (affiliate) {
       const aidEnc = encodeURIComponent(affiliate.id);
       const [clicks, commissions, conversions, saques, milestones, nivelHist, attribLog] = await Promise.all([

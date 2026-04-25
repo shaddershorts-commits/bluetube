@@ -281,6 +281,46 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## Backfill `affiliates.user_id` pra robustez long-term
+
+- **Status:** ⏸️ Pausado em 2026-04-25 (decisão pragmática durante Fix 3.1)
+- **Prioridade:** Baixa (sistema funciona com email hoje)
+- **Pausado por:** afiliados sao identificados por email no codigo todo. user_id existe na tabela mas e null pra todos. Refator pra user_id exige migration + update em 4+ arquivos.
+
+### Contexto
+
+[api/affiliate-saques.js:123](../api/affiliate-saques.js#L123), [api/affiliate.js:175 e outros](../api/affiliate.js#L175), [api/v1/user-export.js:200](../api/v1/user-export.js#L200) — todos lookup affiliates por email. Funciona enquanto BlueTube nao expoe UI de troca de email pro user.
+
+### Risco hoje
+
+Zero — Supabase auth permite via API mas nao temos endpoint que troca email do user. Se um dia alguem chamar `/auth/v1/user` direto pra trocar email, dados de afiliacao ficam orfaos.
+
+### Proposta
+
+```sql
+-- 1. Backfill user_id matching email
+UPDATE affiliates a
+SET user_id = u.id
+FROM auth.users u
+WHERE a.email = u.email AND a.user_id IS NULL;
+
+-- 2. Adicionar NOT NULL constraint depois de validar 100% backfill
+-- ALTER TABLE affiliates ALTER COLUMN user_id SET NOT NULL;
+```
+
+Atualizar todos lookups pra preferir user_id quando disponivel:
+```js
+// affiliates?or=(user_id.eq.${uid},email.eq.${email})&select=*&limit=1
+```
+
+### Gatilho
+
+- Implementacao de UI de troca de email
+- OU refator de schema de affiliates por outro motivo
+- OU primeira reclamacao de "perdi meus dados de afiliado depois de trocar email" (improvavel)
+
+---
+
 ## Rotacionar `ENCRYPTION_KEY_AFFILIATES` em 12 meses (~2027-04)
 
 - **Status:** ⏸️ Aguardando deadline (deploy Fix 5 em 2026-04-25 + 365 dias)
