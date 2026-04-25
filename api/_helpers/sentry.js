@@ -2,6 +2,8 @@
 // Usa a store API via HTTP, evita adicionar dep. pesada ao bundle.
 // Safe pra ser chamado de qualquer contexto — silencioso se DSN ausente ou falha.
 
+const { scrubString, scrubDeep, scrubEvent } = require('./scrub');
+
 let lastDsnParse = null;
 
 function parseDsn(dsn) {
@@ -25,7 +27,7 @@ async function sentryCapture(err, context = {}) {
   const p = parseDsn(process.env.SENTRY_DSN);
   if (!p) return;
   const isErr = err && typeof err === 'object' && err.message;
-  const message = isErr ? err.message : String(err);
+  const rawMessage = isErr ? err.message : String(err);
   const name = isErr ? (err.name || 'Error') : 'Error';
   const stackStr = isErr && err.stack ? String(err.stack) : '';
 
@@ -34,6 +36,15 @@ async function sentryCapture(err, context = {}) {
     const m = line.match(/at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)/);
     return m ? { function: m[1] || '<anonymous>', filename: m[2], lineno: parseInt(m[3]), colno: parseInt(m[4]) } : null;
   }).filter(Boolean).reverse(); // Sentry espera ordem cronologica (caller primeiro)
+
+  // Fix 2 PII (auditoria 2026-04-24): scrub de email/JWT/CPF/Bearer/etc
+  // ALEM de chaves sensiveis pelo nome (password, token, etc).
+  // Tags sao definidas em codigo (nao scrub). User vai filtrado: so id.
+  const message = scrubString(rawMessage);
+  const cleanExtra = scrubDeep(context.extra || {});
+  const cleanUser = context.user
+    ? { id: context.user.id || context.user.user_id || undefined } // so id, sem email/etc
+    : undefined;
 
   const body = {
     event_id: Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2),
@@ -45,8 +56,8 @@ async function sentryCapture(err, context = {}) {
     message: { formatted: message },
     exception: { values: [{ type: name, value: message, stacktrace: frames.length ? { frames } : undefined }] },
     tags: { feature: 'bluetendencias', ...(context.tags || {}) },
-    extra: context.extra || {},
-    user: context.user || undefined,
+    extra: cleanExtra,
+    user: cleanUser,
   };
 
   try {
