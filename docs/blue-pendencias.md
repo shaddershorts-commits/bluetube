@@ -281,6 +281,34 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## Fix 6 — pendencias residuais
+
+- **Status:** ⏸️ Documentado em 2026-04-25 durante Fix 6
+- **Prioridade:** Media (algumas), Baixa (outras)
+
+### 1. Evoluir Op A → Op B (birth_date real) — BAIXA
+Caso precisar segmentacao demografica ou compliance especifica (publishers de app de criancas, parceiros B2B). Requer migration adicional + UI date picker + recalculo de idade no Postgres.
+
+### 2. Gate `age_confirmed=true` em endpoints sensiveis — MEDIA
+Atualmente persistencia e silenciosa. Ideal: bloquear `/api/affiliate-saques?action=solicitar-saque` e `/api/cancel-subscription` se age_confirmed=false. Quando: volume passar de ~50 signups/mes (sinal de adocao real, possivel risco de fraude por menores).
+
+### 3. Modal pos-OAuth Google pra confirmacao de idade — BAIXA
+Hoje 0 usuarios via Google. Se Felipe habilitar OAuth Google como metodo principal: bloqueador. Implementar tela "antes de continuar, confirme idade" no callback OAuth.
+
+### 4. Auditoria periodica — MEDIA
+Query SQL semanal: `SELECT COUNT(*) FROM subscribers WHERE age_confirmed=false`. Se > 5% dos novos signups dos ultimos 30 dias estao FALSE → investigar (curl direto, bug no fluxo, etc). Pode virar cron alert.
+
+### 5. Resync background no app launch — BAIXA
+Atualmente: signup chama confirm-age (3 retries fail-soft) + cada login chama confirm-age (silent). Faltante: chamada periodica em useAuthStore.init pra cobrir users que nem fizeram login no app desde o deploy. Improvavel necessario com a estrategia atual.
+
+### 6. Auditoria sistematica de TODOS os action names — ALTA
+Bugs `verify-otp`/`verify_otp`, `forgot-password`/`reset_password`, `resend-otp`/`send_otp` foram corrigidos no Fix 6. Mas o padrao "hand-rolled fetch chama auth.js sem espelhar contrato" pode ter mais ocorrencias em outros endpoints (blue-*, affiliate*, etc). Auditoria completa: cada `fetch(..., body: { action: ... })` no app vs handler `if (action === '...')` no backend.
+
+### 7. `blueAPI.refresh` dead code — BAIXA
+[bluetube-app/src/api/index.js:63](../bluetube-app/src/api/index.js#L63) define `blueAPI.refresh` que chama auth.js com `action: 'refresh'` (nao existe). Comentario inline marca como dead code. Refresh real e via `refreshSession()` standalone (Fix 1, ec680c3). Remover quando confirmado que nenhum codigo futuro tentou usar.
+
+---
+
 ## Backfill `affiliates.user_id` pra robustez long-term
 
 - **Status:** ⏸️ Pausado em 2026-04-25 (decisão pragmática durante Fix 3.1)

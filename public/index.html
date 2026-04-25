@@ -817,6 +817,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
         <input class="auth-input" id="signupConfirm" type="password" placeholder="Confirmar senha" style="margin-bottom:0;width:100%;padding-right:44px" autocomplete="new-password" name="confirm"/>
         <button type="button" onclick="togglePwd('signupConfirm',this)" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:16px;padding:4px">👁</button>
       </div>
+      <!-- Fix 6 (Gap 5): age 16+ check obrigatorio -->
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--text-secondary);cursor:pointer">
+        <input type="checkbox" id="signupAge16" style="width:16px;height:16px;cursor:pointer;accent-color:var(--neon)"/>
+        <span>Tenho 16 anos ou mais</span>
+      </label>
       <button type="submit" class="auth-submit">Criar conta →</button>
       </form>
     </div>
@@ -1998,6 +2003,12 @@ async function submitOTPCode(){
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'attribute-signup-fingerprint', token: d.session.access_token }),
       }).catch(()=>{});
+      // Fix 6 (Gap 5): fire-and-forget confirm-age. Idempotente. Caminho D fail-soft:
+      // se falhar, login nao bloqueia — proximo login regulariza.
+      fetch('/api/v1/confirm-age', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
+      }).catch(()=>{});
     }
     // Salva cred se a senha foi capturada no login/signup que originou o OTP
     if (pendingOTPEmail && pendingOTPPassword) {
@@ -2037,6 +2048,12 @@ async function handleEmailLogin(){
       localStorage.setItem('bt_token',d.session.access_token);
       if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
       console.log('[auth] login ok — token salvo, refresh:', !!d.session?.refresh_token);
+      // Fix 6 (Gap 5): fire-and-forget confirm-age idempotente. Regulariza users
+      // que falharam confirm-age no signup (Caminho D fail-soft).
+      fetch('/api/v1/confirm-age', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
+      }).catch(()=>{});
     } else {
       console.warn('[auth] login sem session.access_token?', d);
     }
@@ -2071,6 +2088,9 @@ async function handleEmailSignup(){
   if(!email||!password||!confirm){setAuthMsg('Preencha todos os campos.','');return;}
   if(password.length<6){setAuthMsg('Senha mínima de 6 caracteres.','');return;}
   if(password!==confirm){setAuthMsg('As senhas não coincidem.','');return;}
+  // Fix 6 (Gap 5): age 16+ obrigatorio
+  const _age16 = document.getElementById('signupAge16');
+  if(!_age16 || !_age16.checked){setAuthMsg('Você precisa ter 16 anos ou mais para criar conta.','');return;}
   setAuthMsg('Criando conta…','ok');
   try{
     const _refSignup = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
@@ -2088,6 +2108,11 @@ async function handleEmailSignup(){
       fetch('/api/affiliate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'attribute-signup-fingerprint', token: d.session.access_token }),
+      }).catch(()=>{});
+      // Fix 6 (Gap 5): fire-and-forget confirm-age. Idempotente. Fail-soft.
+      fetch('/api/v1/confirm-age', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
       }).catch(()=>{});
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
       sendWelcomeEmail(email);
