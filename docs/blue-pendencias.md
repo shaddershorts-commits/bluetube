@@ -6,6 +6,42 @@ Cada item tem **status, prioridade, contexto, proposta técnica, gatilhos de ret
 
 ---
 
+## Sprint 1 + 1.5 (Stripe Multi-currency) — pendências residuais
+
+- **Status:** ⏸️ Documentado em 2026-04-25 durante Sprint 1.5
+- **Prioridade:** variada
+- **Contexto:** Sprint 1 introduziu multi-currency no checkout (BRL/USD/EUR/GBP/CAD/AUD). Sprint 1.5 fixou Bug B (commission em moeda original em `affiliate_commissions.currency` + `affiliates.total_earnings_by_currency` JSONB). Ítens abaixo são gaps conhecidos não fixados nesta janela.
+
+### 1. Smoke test real do webhook multi-currency — ALTA (pré-ads)
+
+Webhook `applyCommissionCorrection` foi modificado pra ler `metadata.currency` (checkout) e `invoice.currency` (renewal). Validação por `node --check` + grep, mas zero teste com evento real. **Antes de ligar Meta Ads:** Felipe envia test event via [Stripe Dashboard](https://dashboard.stripe.com/webhooks) → endpoint `bluetubeviral.com/api/webhook` → "Send test event" `checkout.session.completed` com `metadata.currency='usd'` + `amount_total=1499`. Confirma via Vercel Logs e SELECT em `affiliate_commissions WHERE currency='USD'`.
+
+### 2. Bug A — pioneiros_indicacoes.valor_mensal hardcoded BRL — BAIXA
+
+[webhook.js:549](../api/webhook.js#L549) grava `valor_mensal: plan === 'master' ? 89.99 : 29.99` (BRL fixo). Pioneiro indicando user USD vai distorcer relatório de Pioneiros. Hoje programa Pioneiros é BR-only (todos pioneiros são afiliados BR), risco baixo. Fixar quando volume internacional indicar — usar `paidAmount` que já vem em moeda original do `session.amount_total / 100`.
+
+### 3. Bug C — admin email "R$" em qualquer currency — BAIXA (cosmético)
+
+[webhook.js:273](../api/webhook.js#L273) e [#441](../api/webhook.js#L441) — `notifyStripe` mostra `R$${valor}` sem checar moeda. Email só pra Felipe ver, não chega em user. Fix trivial: map `currencySymbols` por código + concatenar. Adiar até incomodar visualmente.
+
+### 4. affiliate.js handlers órfãos — MÉDIA
+
+[affiliate.js:390-456](../api/affiliate.js#L390) (`?action=conversion`) e [affiliate.js:459-514](../api/affiliate.js#L459) (`?action=renewal`) gravam `total_earnings` (numeric BRL) sem multi-currency. Hoje **zero callers** no código atual (`webhook.js` chama `/api/auth?action=conversion`, não affiliate.js). Se voltar a ser usado (ex: `affiliate-robustness.js` reconcile), precisa mesma adaptação que `applyCommissionCorrection`. Verificar antes de ligar callers.
+
+### 5. affiliate-robustness.js reconcile — MÉDIA
+
+[affiliate-robustness.js:429](../api/affiliate-robustness.js#L429) tem `PLAN_AMOUNTS = { full: 29.99, master: 89.99 }` hardcoded BRL. Reconciliação de comissão perdida (rede falhou no webhook → cron repara depois) vai gravar valor errado se assinatura original era em USD/EUR/etc. Fix: ler `paidAmount` e `currency` do Stripe via `subscription.latest_invoice` em vez de assumir BRL. Fixar antes de programa expandir geograficamente OU se primeiro caso real aparecer.
+
+### 6. Saque internacional pra afiliados — BAIXA
+
+Hoje saque é Pix BR via Asaas ([affiliate-saques.js](../api/affiliate-saques.js)). Comissões em USD/EUR/GBP/CAD/AUD acumulam em `total_earnings_by_currency` mas **não saem** como saque até implementarmos opção internacional. Painel afiliado mostra moedas separadas com label "Saque internacional em breve" pras estrangeiras. Implementar via Wise (custo baixo, mas onboard friction) ou Stripe Connect (caro mas integrado) quando >10 afiliados estrangeiros OU pedido formal de saque chegar.
+
+### Gatilho geral pra retomar
+
+Cada item tem gatilho próprio. Em geral: monitorar Vercel Logs após primeiros checkouts USD/EUR + auditoria mensal de `affiliate_commissions` agrupado por currency.
+
+---
+
 ## Feed infinito com fallback em cascata
 
 - **Status:** ✅ **Para Você concluído em 2026-04-24** | ⏸️ cross_feed (Seguindo) ainda pausado
