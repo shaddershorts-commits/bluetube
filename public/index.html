@@ -1,6 +1,25 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KQCR82N3');</script>
+<!-- End Google Tag Manager -->
+
+<!-- Google tag (gtag.js) - GA4 + Google Ads -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ND2LVQQ40N"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-ND2LVQQ40N');
+  gtag('config', 'AW-16524939504');
+</script>
+<!-- End Google tag -->
+
 <meta charset="UTF-8"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
@@ -551,6 +570,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 <script src="/_ref-tracker.js" defer></script>
 </head>
 <body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KQCR82N3"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
 
 <div class="bg-fixed">
   <div class="bg-grid"></div>
@@ -1801,6 +1824,36 @@ async function goToCheckout(plan, billing){
     || (typeof siteLang === 'string' && siteLang)
     || ((navigator.language || '').toLowerCase().split('-')[0])
     || 'pt';
+
+  // ── TRACKING UNIFICADO — InitiateCheckout ───────────────
+  try {
+    const trackValues = { full: 59.90, master: 179.90 };
+    const planValue = trackValues[plan] || 0;
+    if (typeof gtag !== 'undefined') {
+      gtag('event', 'conversion', {
+        'send_to': 'AW-16524939504/Ce7bCJ75x6IcEPCh2sc9',
+        'value': planValue,
+        'currency': 'BRL',
+        'event_callback': function(){}
+      });
+    }
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event: 'begin_checkout',
+      ecommerce: {
+        currency: 'BRL',
+        value: planValue,
+        items: [{
+          item_id: plan,
+          item_name: 'BlueTube ' + plan,
+          item_category: billing,
+          price: planValue,
+          quantity: 1
+        }]
+      }
+    });
+  } catch(e) { console.warn('[tracking initiate_checkout]', e && e.message); }
+
   try{
     // Usa _ref-tracker.js (janela.getRefAfiliado) que le LS/cookie/sessionStorage
     const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
@@ -2126,6 +2179,23 @@ async function handleEmailSignup(){
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
       }).catch(()=>{});
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
+      // ── TRACKING UNIFICADO — Lead (signup por email) ──────────
+      try {
+        const userEmailLower = (document.getElementById('signupEmail')?.value || '').trim().toLowerCase();
+        if (typeof gtag !== 'undefined') {
+          gtag('set', 'user_data', { email: userEmailLower });
+          gtag('event', 'conversion', {
+            'send_to': 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9',
+            'event_callback': function(){}
+          });
+        }
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'sign_up',
+          method: 'email',
+          user_email: userEmailLower
+        });
+      } catch(e) { console.warn('[tracking signup email]', e && e.message); }
       sendWelcomeEmail(email);
       setTimeout(()=>showOnboarding(),2500);
       setTimeout(async()=>{
@@ -3072,6 +3142,43 @@ async function checkSession(_isRetry){
       const planData=await planRes.json();
       userPlan=planData.plan||'free';
       localStorage.setItem('bt_plan',userPlan);
+      // ── TRACKING UNIFICADO — Purchase (upgrade free → pago) ──
+      try {
+        const prevPlan = localStorage.getItem('bt_last_known_plan') || 'free';
+        if ((userPlan==='full'||userPlan==='master') && prevPlan==='free' && !localStorage.getItem('bt_purchase_tracked')) {
+          const purchaseValues = { full: 59.90, master: 179.90 };
+          const pVal = purchaseValues[userPlan] || 0;
+          const userEmailLower = (currentUserEmail || planData.email || '').trim().toLowerCase();
+          const transactionId = 'bt_' + Date.now();
+          if (typeof gtag !== 'undefined') {
+            gtag('set', 'user_data', { email: userEmailLower });
+            gtag('event', 'conversion', {
+              'send_to': 'AW-16524939504/LVmYCLGUs6IcEPCh2sc9',
+              'value': pVal,
+              'currency': 'BRL',
+              'transaction_id': transactionId,
+              'event_callback': function(){}
+            });
+          }
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({
+            event: 'purchase',
+            ecommerce: {
+              transaction_id: transactionId,
+              currency: 'BRL',
+              value: pVal,
+              items: [{
+                item_id: userPlan,
+                item_name: 'BlueTube ' + userPlan,
+                price: pVal,
+                quantity: 1
+              }]
+            }
+          });
+          localStorage.setItem('bt_purchase_tracked', '1');
+        }
+        localStorage.setItem('bt_last_known_plan', userPlan);
+      } catch(e) { console.warn('[tracking purchase]', e && e.message); }
       currentUserEmail=planData.email||d.user.email;
       if(!localStorage.getItem('bt_since'))localStorage.setItem('bt_since',Date.now().toString());
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
@@ -3322,6 +3429,23 @@ async function handleOAuthCallback(){
 
       // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
       localStorage.setItem('bt_token', accessToken);
+      // ── TRACKING UNIFICADO — Lead (signup OAuth Google) ────────
+      if (!localStorage.getItem('bt_oauth_tracked')) {
+        try {
+          if (typeof gtag !== 'undefined') {
+            gtag('event', 'conversion', {
+              'send_to': 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9',
+              'event_callback': function(){}
+            });
+          }
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({
+            event: 'sign_up',
+            method: 'google'
+          });
+          localStorage.setItem('bt_oauth_tracked', '1');
+        } catch(e) { console.warn('[tracking signup oauth]', e && e.message); }
+      }
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
