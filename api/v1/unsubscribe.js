@@ -12,7 +12,7 @@
 //            Quando reactivation-emails for adicionado ao filtro (ver pendencias), scope=all
 //            cobrira tambem.
 
-const { verifyToken } = require('../_helpers/unsub-token');
+const { verifyToken, secretFingerprint } = require('../_helpers/unsub-token');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -38,7 +38,10 @@ module.exports = async function handler(req, res) {
   }
   const { email, valid, format } = parsed;
   if (!valid) {
-    console.log(`[v1/unsubscribe] invalid_token ip=${ip} token_len=${token?.length || 0}`);
+    // DIAGNOSTIC TEMPORARIO (Fix 4 troubleshoot): inclui secret_fingerprint
+    // pra diagnosticar se prod tem o secret correto. REMOVER quando concluido.
+    const fp = secretFingerprint();
+    console.log(`[v1/unsubscribe] invalid_token ip=${ip} token_len=${token?.length || 0} secret_fp=${JSON.stringify(fp)}`);
     return res.status(400).send(page('Erro', 'Link invalido ou expirado. Se o problema persistir, escreva pra bluetubeoficial@gmail.com.'));
   }
 

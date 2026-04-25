@@ -13,9 +13,24 @@ const crypto = require('crypto');
 const LEGACY_DEADLINE = new Date('2026-05-25T00:00:00Z').getTime();
 
 function getSecret() {
-  const s = process.env.UNSUBSCRIBE_HMAC_SECRET;
-  if (!s) throw new Error('UNSUBSCRIBE_HMAC_SECRET nao configurado');
+  const raw = process.env.UNSUBSCRIBE_HMAC_SECRET;
+  if (!raw) throw new Error('UNSUBSCRIBE_HMAC_SECRET nao configurado');
+  // .trim() defensivo: paste no Vercel pode pegar whitespace/newline acidental
+  const s = raw.trim();
+  if (!s) throw new Error('UNSUBSCRIBE_HMAC_SECRET vazio apos trim');
   return s;
+}
+
+// DIAGNOSTIC TEMPORARIO (Fix 4 troubleshoot 2026-04-25): retorna fingerprint
+// reversivel-zero do secret pra comparar local vs prod sem expor o valor.
+// REMOVER apos diagnostico concluir + secret confirmado em producao.
+function secretFingerprint() {
+  try {
+    const raw = process.env.UNSUBSCRIBE_HMAC_SECRET || '';
+    const trimmed = raw.trim();
+    const sha = crypto.createHash('sha256').update(trimmed).digest('hex').slice(0, 12);
+    return { len_raw: raw.length, len_trim: trimmed.length, sha12: sha };
+  } catch (e) { return { error: e.message }; }
 }
 
 function b64urlEncode(str) {
@@ -84,4 +99,4 @@ function verifyToken(token) {
   return { email: null, valid: false };
 }
 
-module.exports = { signToken, verifyToken, LEGACY_DEADLINE };
+module.exports = { signToken, verifyToken, LEGACY_DEADLINE, secretFingerprint };
