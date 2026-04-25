@@ -1792,18 +1792,27 @@ async function handleUpgradeClick(plan){
 
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
+  // Currency: lowercase do siteCurrency.code (default BRL). Backend valida whitelist.
+  const currency = (siteCurrency && siteCurrency.code ? String(siteCurrency.code) : 'BRL').toLowerCase();
+  // Lang: preferencia explicita do user > detect IP > navigator > pt
+  const lang = localStorage.getItem('bt_user_lang')
+    || (typeof siteLang === 'string' && siteLang)
+    || ((navigator.language || '').toLowerCase().split('-')[0])
+    || 'pt';
   try{
     // Usa _ref-tracker.js (janela.getRefAfiliado) que le LS/cookie/sessionStorage
     const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
     const r=await fetch('/api/create-checkout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({plan, billing, token, ref})
+      body:JSON.stringify({plan, billing, token, ref, currency, lang})
     });
     const d=await r.json();
     if(d.url) window.location.href=d.url;
-    else alert('Erro ao iniciar checkout. Tente novamente.');
-  }catch(e){alert('Erro ao conectar com Stripe. Tente novamente.');}
+    else alert(d.error || (lang==='en' ? 'Failed to start checkout. Try again.' : 'Erro ao iniciar checkout. Tente novamente.'));
+  }catch(e){
+    alert(lang==='en' ? 'Connection error with Stripe. Try again.' : 'Erro ao conectar com Stripe. Tente novamente.');
+  }
 }
 
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
