@@ -295,7 +295,18 @@ Atualmente persistencia e silenciosa. Ideal: bloquear `/api/affiliate-saques?act
 ### 3. Modal pos-OAuth Google pra confirmacao de idade — BAIXA
 Hoje 0 usuarios via Google. Se Felipe habilitar OAuth Google como metodo principal: bloqueador. Implementar tela "antes de continuar, confirme idade" no callback OAuth.
 
-### 4. Auditoria periodica — MEDIA
+### 4a. Reconfirmar idade pra base pre-backfill — MEDIA
+
+Backfill silencioso do Fix 6 (2026-04-25) cobriu **172 subscribers** — bem mais que os ~16 estimados. A justificativa "early adopters todos conhecidos" nao escala 100%. Risco real avaliado como baixo (publico criador de Shorts skew 18+, aquisicao Meta/Google default 18+), mas:
+
+Pra robustez extra, implementar prompt no proximo login pra subscribers com `age_confirmed_at < '2026-04-25'`:
+- Modal "Confirme: voce tem 16 anos ou mais?"
+- Se nao, soft-block + opcao "Tenho menos, deletar conta"
+- Apos confirmar, atualiza age_confirmed_at = NOW
+
+Quando: se aparecer reclamacao real OU campanha de compliance especifica (parceria B2B, app stores).
+
+### 4b. Auditoria periodica — MEDIA
 Query SQL semanal: `SELECT COUNT(*) FROM subscribers WHERE age_confirmed=false`. Se > 5% dos novos signups dos ultimos 30 dias estao FALSE → investigar (curl direto, bug no fluxo, etc). Pode virar cron alert.
 
 ### 5. Resync background no app launch — BAIXA
