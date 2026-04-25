@@ -281,6 +281,77 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## Rotacionar `ENCRYPTION_KEY_AFFILIATES` em 12 meses (~2027-04)
+
+- **Status:** ⏸️ Aguardando deadline (deploy Fix 5 em 2026-04-25 + 365 dias)
+- **Prioridade:** Baixa (rotina security best-practice)
+- **Pausado por:** chave gerada hoje, sem incidente, rotacao preventiva.
+
+### Procedimento de rotacao
+
+1. Gerar nova chave: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+2. Adicionar ao Vercel como `ENCRYPTION_KEY_AFFILIATES_NEW` (sensitive, P+P)
+3. Adaptar [_helpers/crypto.js](../api/_helpers/crypto.js) pra suportar 2 chaves: NEW pra escrita, OLD pra leitura legacy
+4. Rodar migration que decifra com OLD + cifra com NEW
+5. Verificar zero rows com prefix legacy
+6. Trocar `ENCRYPTION_KEY_AFFILIATES = NEW`, remover `_NEW` e referencia OLD do codigo
+7. Backup pessoal da nova chave (regra do Fix 5)
+
+### Gatilho
+
+- Data >= 2027-04-25
+- OU suspeita de comprometimento da chave atual
+- OU mudanca de algoritmo (ex: pos-quantum)
+
+---
+
+## Considerar criptografar `tipo_chave_pix` em affiliates
+
+- **Status:** ⏸️ Pausado em 2026-04-25 (decisão pragmática durante Fix 5)
+- **Prioridade:** Muito baixa
+- **Pausado por:** `tipo_chave_pix` e metadata (cpf|telefone|email|aleatoria), baixo valor pra atacante isoladamente.
+
+### Justificativa pra adiar
+
+Sem o valor da chave, saber so o TIPO nao expoe dado pessoal — e statistica agregada de plataforma (X% dos afiliados usam CPF, Y% telefone). Encriptar adiciona complexidade (decrypt em todo lugar que mostra "Tipo: CPF"). Custo > beneficio hoje.
+
+### Gatilho pra retomar
+
+- Defesa em profundidade exigida por compliance especifica (auditoria SOC2, cliente enterprise)
+- Vazamento de tabela onde `tipo_chave_pix` ajude a perfilar usuarios
+
+---
+
+## DROP `affiliates_backup_pre_encrypt` + `affiliate_saques_backup_pre_encrypt` apos 30 dias
+
+- **Status:** ⏸️ Aguardando deadline (Fix 5 deploy em 2026-04-25 + 30 dias)
+- **Prioridade:** Baixa (limpeza de tabelas backup com plaintext)
+
+### Contexto
+
+Felipe rodou backup SQL antes da migration Fix 5:
+
+```sql
+CREATE TABLE affiliates_backup_pre_encrypt AS SELECT * FROM affiliates;
+CREATE TABLE affiliate_saques_backup_pre_encrypt AS SELECT * FROM affiliate_saques;
+```
+
+Essas tabelas contem `chave_pix` em **plaintext** — exatamente o que Fix 5 queria eliminar. Manter por 30 dias garante rollback de emergencia, depois sao risco de seguranca.
+
+### Acao
+
+```sql
+DROP TABLE IF EXISTS affiliates_backup_pre_encrypt;
+DROP TABLE IF EXISTS affiliate_saques_backup_pre_encrypt;
+```
+
+### Gatilho
+
+- Data >= 2026-05-25 E migration validada estavel sem necessidade de rollback
+- Confirmar 1x via endpoint `/api/v1/migrate-encrypt-affiliate?action=status` que zero rows tem chave_pix legacy plaintext
+
+---
+
 ## `/api/unsubscribe` proxy + tokens legacy — remover apos 2026-05-25
 
 - **Status:** ⏸️ Aguardando deadline (deploy Fix 4 em 2026-04-25 + 30 dias)

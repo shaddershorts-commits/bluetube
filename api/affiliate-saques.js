@@ -5,6 +5,12 @@
 //
 // NUNCA modificar api/auth.js — este arquivo resolve user via endpoint auth
 // do Supabase diretamente (/auth/v1/user).
+//
+// Fix 5 (Gap 3): chave_pix em affiliates + affiliate_saques sao encrypted
+// at-rest (AES-256-GCM). encryptValue() na escrita; decryptSafe() em todo
+// read antes de mascarar/exibir/enviar pra ASAAS. Helper em _helpers/crypto.js.
+
+const { encryptValue, decryptSafe } = require('./_helpers/crypto');
 
 const DIA_SAQUE = 22;
 const VALOR_MINIMO = 50;
@@ -120,6 +126,11 @@ module.exports = async function handler(req, res) {
   const afiliado = Array.isArray(affRows) ? affRows[0] : null;
   if (!afiliado) return res.status(404).json({ error: 'afiliado_nao_cadastrado', mensagem: 'Entre no programa de afiliados primeiro.' });
 
+  // Fix 5: chave_pix vem encrypted do DB. Decrypt UMA vez aqui pra todos os
+  // downstream (mask, ASAAS API, email, snapshot insert) trabalharem com plaintext.
+  // decryptSafe nao quebra se valor estiver legacy plaintext (compat retroativa).
+  if (afiliado.chave_pix) afiliado.chave_pix = decryptSafe(afiliado.chave_pix);
+
   // ── STATUS ────────────────────────────────────────────────────────────────
   if (req.method === 'GET' && (!action || action === 'status')) {
     return statusAction(res, { h, SU, afiliado });
@@ -136,7 +147,7 @@ module.exports = async function handler(req, res) {
     }
     const u = await fetch(`${SU}/rest/v1/affiliates?id=eq.${afiliado.id}`, {
       method: 'PATCH', headers: h,
-      body: JSON.stringify({ chave_pix: chave_pix.trim(), tipo_chave_pix, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ chave_pix: encryptValue(chave_pix.trim()), tipo_chave_pix, updated_at: new Date().toISOString() }),
     });
     if (!u.ok) return res.status(502).json({ error: 'erro_salvar' });
     return res.status(200).json({ ok: true, mensagem: '✅ Chave Pix cadastrada!' });
@@ -156,7 +167,8 @@ module.exports = async function handler(req, res) {
     const rows = r.ok ? await r.json() : [];
     const masked = rows.map(s => ({
       id: s.id, valor: s.valor, status: s.status,
-      chave_mascarada: mascararChave(s.chave_pix, s.tipo_chave_pix),
+      // Fix 5: cada s.chave_pix vem encrypted do DB; decrypt antes de mascarar
+      chave_mascarada: mascararChave(decryptSafe(s.chave_pix), s.tipo_chave_pix),
       solicitado_em: s.solicitado_em, pago_em: s.pago_em,
       erro: s.erro_mensagem,
     }));
@@ -240,7 +252,9 @@ async function solicitarSaque(res, { SU, h, afiliado }) {
     body: JSON.stringify({
       affiliate_id: afiliado.id,
       valor: valorSaque,
-      chave_pix: afiliado.chave_pix,
+      // Fix 5: afiliado.chave_pix esta plaintext (decrypted no load). Re-encrypt
+      // antes de salvar no snapshot (afiliado_saques tambem fica at-rest encrypted).
+      chave_pix: encryptValue(afiliado.chave_pix),
       tipo_chave_pix: afiliado.tipo_chave_pix,
       status: statusInicial,
     }),
@@ -533,7 +547,8 @@ async function avisarAfiliadosDia22(res, { SU, h }) {
       }
       const temChave = !!(af.chave_pix && af.tipo_chave_pix);
       const valor = porAfiliado.get(af.id) || 0;
-      const chaveMascarada = temChave ? mascararChave(af.chave_pix, af.tipo_chave_pix) : null;
+      // Fix 5: af.chave_pix vem encrypted do DB; decrypt pra mascarar
+      const chaveMascarada = temChave ? mascararChave(decryptSafe(af.chave_pix), af.tipo_chave_pix) : null;
 
       try {
         let titulo, subtitulo, corpo, ctaLabel;

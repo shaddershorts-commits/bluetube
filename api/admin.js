@@ -1028,6 +1028,9 @@ export default async function handler(req, res) {
 
 // ── SAQUES: painel admin + marcar pago manualmente ─────────────────────────
 async function saquesPanelAction(req, res, { SUPABASE_URL, headers }) {
+  // Fix 5 (Gap 3): chaves Pix em affiliate_saques sao encrypted at-rest.
+  // Inline require pra seguir padrao existente em admin.js (linhas 77, 602, 1400).
+  const { decryptSafe } = require('./_helpers/crypto.js');
   try {
     const VALOR_MINIMO = 50;
     const now = new Date();
@@ -1099,7 +1102,9 @@ async function saquesPanelAction(req, res, { SUPABASE_URL, headers }) {
         afiliado_email: affByid[s.affiliate_id]?.email || null,
         afiliado_nivel: affByid[s.affiliate_id]?.nivel || null,
         tipo_chave: s.tipo_chave_pix,
-        chave: s.chave_pix, // admin ve completa pra processar manual
+        // Fix 5: decrypt antes de retornar pro frontend admin (admin precisa
+        // ver plaintext pra processar manualmente fora-de-banda quando ASAAS falha)
+        chave: decryptSafe(s.chave_pix),
       })),
     });
   } catch (e) {

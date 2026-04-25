@@ -11,6 +11,12 @@
 //
 // Auditoria: console.log no Vercel (retencao 30 dias). Migrar pra tabela
 // dedicada quando volume > 50/mes (ver docs/blue-pendencias.md).
+//
+// Fix 5 (Gap 3): chave_pix em affiliates + affiliate_saques esta encrypted
+// at-rest. Decrypt aqui antes de retornar — LGPD garante acesso legivel
+// aos proprios dados do dono.
+
+const { decryptSafe } = require('../_helpers/crypto');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -199,7 +205,12 @@ module.exports = async function handler(req, res) {
         q(`affiliate_nivel_historico?affiliate_id=eq.${aidEnc}&select=*&order=created_at.desc&limit=1000`),
         q(`affiliate_attribution_log?affiliate_id=eq.${aidEnc}&select=*&limit=10000`),
       ]);
-      affiliateData = { profile: affiliate, clicks, commissions, conversions, saques, milestones, nivel_historico: nivelHist, attribution_log: attribLog };
+      // Fix 5 (Gap 3): chave_pix vem encrypted do DB. Decrypt antes de retornar
+      // pro dono — LGPD garante acesso legivel aos proprios dados.
+      const profileDec = { ...affiliate };
+      if (profileDec.chave_pix) profileDec.chave_pix = decryptSafe(profileDec.chave_pix);
+      const saquesDec = saques.map(s => s.chave_pix ? { ...s, chave_pix: decryptSafe(s.chave_pix) } : s);
+      affiliateData = { profile: profileDec, clicks, commissions, conversions, saques: saquesDec, milestones, nivel_historico: nivelHist, attribution_log: attribLog };
     }
 
     // SECAO J — Email & Push
