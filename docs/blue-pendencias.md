@@ -281,6 +281,69 @@ Backend B1 fix (commit 5a47064) já cobre, mas RLS no Supabase é cinto extra: s
 
 ---
 
+## `/api/v1/user-export` — migrar audit log de exports pra tabela dedicada
+
+- **Status:** ⏸️ Pausado em 2026-04-24 (decisão pragmática durante Fix 3)
+- **Prioridade:** Baixa
+- **Pausado por:** volume atual baixo (~16 assinantes). Vercel Logs (30 dias) cobre auditoria reativa por enquanto.
+
+### Contexto
+
+Endpoint `/api/v1/user-export` (LGPD Art. 18 / GDPR Art. 20) loga cada export via `console.log` — formato `[user-export] user_id=X ip=Y status=200 bytes=N ms=M`. Aparece em Vercel Logs com retenção de 30 dias.
+
+### Proposta técnica
+
+Criar tabela `user_data_exports`:
+
+```sql
+CREATE TABLE user_data_exports (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID NOT NULL,
+  email TEXT NOT NULL,
+  ip TEXT,
+  exported_at TIMESTAMPTZ DEFAULT NOW(),
+  bytes_returned BIGINT,
+  duration_ms INTEGER,
+  status_code SMALLINT
+);
+CREATE INDEX idx_user_exports_user_at ON user_data_exports(user_id, exported_at DESC);
+```
+
+Substituir `console.log` no [api/v1/user-export.js](../api/v1/user-export.js) por INSERT na tabela (fire-and-forget). Manter `console.log` em paralelo até validar a tabela.
+
+### Gatilhos pra retomar
+
+- Volume de exports > 50/mês (sinal de uso real, fora de testes)
+- OU primeira solicitação real de auditoria histórica (DPO de empresa cliente, processo trabalhista, etc)
+- OU reclamação LGPD/ANPD que peça evidência > 30 dias
+
+---
+
+## `/api/v1/user-export` — fallback assíncrono (job + email) se queries estourarem timeout Vercel
+
+- **Status:** ⏸️ Pausado em 2026-04-24 (decisão pragmática durante Fix 3)
+- **Prioridade:** Baixa
+- **Pausado por:** export síncrono (51 queries paralelas em ~10 seções) deve resolver em 5-15s pra user típico — bem dentro do limite Vercel (10s Hobby / 60s Pro).
+
+### Contexto
+
+Power users com muito histórico (10k+ vídeos vistos, 100k+ feed_seen) podem se aproximar do timeout. Limites em `blue_feed_historico` (5k) e `blue_feed_seen` (10k) já mitigam, mas não cobrem caso onde MUITAS seções têm volume alto simultaneamente.
+
+### Proposta técnica
+
+Quando export demorar > 8s (ou volume estimado > 5MB):
+1. Endpoint retorna `202 Accepted` + `{ job_id }`
+2. Worker assíncrono (Vercel cron ou Inngest) processa em background, monta JSON, sobe pra Supabase Storage com URL temporária (signed, 24h)
+3. Email Resend pro user com link de download
+
+### Gatilhos pra retomar
+
+- Primeiro timeout real reportado em Vercel Logs com `[user-export] ... ms=>9000`
+- OU base passar de ~1000 usuários ativos
+- OU reclamação de export que "não termina"
+
+---
+
 <!-- 
   Pra adicionar novas pendências, duplicar o bloco acima mantendo o padrão:
   título curto, status, prioridade, pausado por, causa raiz, arquitetura,
