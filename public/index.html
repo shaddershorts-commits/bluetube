@@ -1397,6 +1397,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div style="font-size:15px;font-weight:700" id="profileEmail">—</div>
       <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:4px" id="profilePlanBadge">—</div>
     </div>
+    <div id="cancelScheduledBanner" style="display:none;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#fbbf24;letter-spacing:.06em;margin-bottom:6px">⚠ CANCELAMENTO AGENDADO</div>
+      <div style="font-size:13px;color:var(--text-primary);line-height:1.5;margin-bottom:8px">Sua assinatura <span id="cancelBannerPlan" style="font-weight:700">—</span> encerra em <span id="cancelBannerDate" style="color:#fbbf24;font-weight:700">—</span>.</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);line-height:1.5">Voce mantem acesso completo ate la. Nao havera mais cobrancas.</div>
+    </div>
     <div style="background:rgba(2,8,23,0.5);border-radius:12px;padding:16px;margin-bottom:16px">
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">Informações da conta</div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Membro desde</span><span style="font-family:var(--font-mono);font-size:12px" id="profileSince">—</span></div>
@@ -1413,6 +1418,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(0,170,255,0.07);display:flex;justify-content:space-between;align-items:center">
       <button onclick="closeProfileModal();doLogout()" style="font-family:var(--font-mono);font-size:12px;color:var(--red,#ff7a5a);background:none;border:none;cursor:pointer">↪ Sair</button>
       <button id="cancelSubBtn" onclick="openCancelModal()" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline;display:none">Cancelar assinatura</button>
+      <button id="reactivateSubBtn" onclick="reactivateSubscription()" style="font-family:var(--font-mono);font-size:11px;color:var(--neon);background:none;border:none;cursor:pointer;text-decoration:underline;display:none">Reativar assinatura</button>
     </div>
     <div style="margin-top:12px;text-align:center">
       <button onclick="deleteMyAccount()" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;text-decoration:underline;opacity:.5">Deletar minha conta</button>
@@ -3184,6 +3190,8 @@ async function checkSession(_isRetry){
       if(userPlan!=='free'&&!localStorage.getItem('bt_plan_start'))localStorage.setItem('bt_plan_start',Date.now().toString());
       // Store plan expiry for profile display
       if(planData.plan_expires_at)localStorage.setItem('bt_plan_expiry',new Date(planData.plan_expires_at).getTime().toString());
+      // Cancelamento agendado — frontend usa pra mostrar banner pos-cancel + esconder botao cancelar
+      localStorage.setItem('bt_cancel_scheduled', planData.cancel_at_period_end === true ? '1' : '0');
       setLoggedIn(currentUserEmail,userPlan);
       updateLangOptions();
       // Check if user was redirected here after signup to complete a purchase
@@ -3457,6 +3465,7 @@ async function handleOAuthCallback(){
         localStorage.setItem('bt_plan', userPlan);
         currentUserEmail = planData.email;
         if(planData.plan_expires_at) localStorage.setItem('bt_plan_expiry', new Date(planData.plan_expires_at).getTime().toString());
+        localStorage.setItem('bt_cancel_scheduled', planData.cancel_at_period_end === true ? '1' : '0');
         setLoggedIn(planData.email, userPlan);
         updateLangOptions();
       }catch(e){ await checkSession(); }
@@ -3813,8 +3822,29 @@ function openProfileModal(){
   const since=localStorage.getItem('bt_since');
   if(since)document.getElementById('profileSince').textContent=new Date(parseInt(since)).toLocaleDateString('pt-BR');
 
-  // Cancel button — only for paid
-  document.getElementById('cancelSubBtn').style.display=isPaid?'block':'none';
+  // Estado pos-cancel: lê flag salvo em LS por checkSession/handleOAuthCallback
+  // Quando TRUE: mostra banner com data de expiracao, esconde botao "Cancelar",
+  // mostra botao "Reativar". Cobre o caso ferques45 (cancelar 2x sem feedback).
+  const cancelScheduled = localStorage.getItem('bt_cancel_scheduled') === '1';
+
+  const banner = document.getElementById('cancelScheduledBanner');
+  if(banner){
+    if(isPaid && cancelScheduled && planExpiry){
+      const expDate = new Date(parseInt(planExpiry));
+      document.getElementById('cancelBannerPlan').textContent = p === 'master' ? '👑 Master' : '⚡ Full';
+      document.getElementById('cancelBannerDate').textContent = expDate.toLocaleDateString('pt-BR');
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // Cancel button — apenas paid SEM cancelamento agendado
+  document.getElementById('cancelSubBtn').style.display = (isPaid && !cancelScheduled) ? 'block' : 'none';
+
+  // Reactivate button — apenas paid COM cancelamento agendado
+  const reactivateBtn = document.getElementById('reactivateSubBtn');
+  if(reactivateBtn) reactivateBtn.style.display = (isPaid && cancelScheduled) ? 'block' : 'none';
 
   // Upgrade button
   const upgradeBtn=document.getElementById('profileUpgradeBtn');
@@ -3826,6 +3856,40 @@ function openProfileModal(){
 }
 function closeProfileModal(){document.getElementById('profileModal').classList.remove('on');}
 function openProfileUpgrade(){closeProfileModal();openUpgradeModal();}
+async function reactivateSubscription(){
+  const token = localStorage.getItem('bt_token');
+  if(!token){ alert('Faca login primeiro.'); return; }
+  const btn = document.getElementById('reactivateSubBtn');
+  if(btn){ btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Reativando…'; }
+  try{
+    const r = await fetch('/api/reactivate-subscription',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token})
+    });
+    const d = await r.json();
+    if(!r.ok || !d.success){
+      if(d.subscription_missing){
+        alert('Sua assinatura ja foi encerrada. Use "Mudar de plano" pra assinar de novo.');
+      } else if(d.already_active){
+        alert('Sua assinatura ja esta ativa — nada pra reativar.');
+      } else {
+        alert(d.error || 'Erro ao reativar. Tente novamente.');
+      }
+      if(btn){ btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Reativar assinatura'; }
+      return;
+    }
+    // Sucesso: atualiza LS, fecha modal e re-renderiza
+    localStorage.setItem('bt_cancel_scheduled', '0');
+    alert('Assinatura reativada! 💙 Voce volta a ser cobrado normalmente no proximo ciclo.');
+    closeProfileModal();
+    setLoggedIn(currentUserEmail, userPlan);
+  }catch(e){
+    console.error('reactivate error:', e);
+    alert('Erro de conexao. Tente novamente.');
+    if(btn){ btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Reativar assinatura'; }
+  }
+}
 async function sendPasswordReset(){
   const email=currentUserEmail;
   if(!email){alert('Email não encontrado. Faça login novamente.');return;}
@@ -3905,6 +3969,9 @@ async function finalCancel(){
     if(msgEl) msgEl.innerHTML='Cancelamento agendado. Voce continua com acesso <strong style="color:var(--neon)">'+(result.plan||'').toUpperCase()+'</strong> ate <strong>'+dataFmt+'</strong>. Depois disso o plano volta automaticamente pra Free e nenhuma cobranca sera feita.';
     // Mantem plano local ate a data — webhook customer.subscription.deleted fara o downgrade final
     localStorage.setItem('bt_plan_expiry',result.plan_expires_at);
+    // Marca estado pos-cancel pra profile modal mostrar banner + esconder botao "Cancelar"
+    localStorage.setItem('bt_cancel_scheduled', '1');
+    try { setLoggedIn(currentUserEmail || result.email, userPlan); } catch(e) {}
     setTimeout(()=>closeCancelModal(),8000);
   }else{
     // Plano manual / ja free / sem assinatura Stripe — rebaixa imediato

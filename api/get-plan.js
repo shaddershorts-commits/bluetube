@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     // 2. Busca plano na tabela subscribers
     const subRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual`,
+      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual,cancel_at_period_end`,
       { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     );
 
@@ -67,7 +67,8 @@ export default async function handler(req, res) {
       plan,
       email: user.email,
       plan_expires_at: sub?.plan_expires_at || null,
-      is_manual: sub?.is_manual || false
+      is_manual: sub?.is_manual || false,
+      cancel_at_period_end: sub?.cancel_at_period_end === true
     });
 
   } catch (err) {

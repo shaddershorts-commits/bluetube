@@ -417,6 +417,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         stripe_customer_id: customerId,
         stripe_subscription_id: subscriptionId,
         plan_expires_at: expiresAt,
+        cancel_at_period_end: false,
         updated_at: new Date().toISOString()
       })
     });
@@ -437,6 +438,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           plan_expires_at: expiresAt,
+          cancel_at_period_end: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -815,6 +817,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       body: JSON.stringify({
         plan: stillActive ? currentPlan : 'free',
         plan_expires_at: stillActive ? expiresAt.toISOString() : null,
+        cancel_at_period_end: false,
         updated_at: now.toISOString()
       })
     });
@@ -873,6 +876,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
             headers: supaHeaders,
             body: JSON.stringify({
               plan_expires_at: periodEnd.toISOString(),
+              cancel_at_period_end: true,
               updated_at: new Date().toISOString()
             })
           });

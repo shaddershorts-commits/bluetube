@@ -57,6 +57,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             plan: 'free',
             plan_expires_at: null,
+            cancel_at_period_end: false,
             updated_at: new Date().toISOString()
           })
         }
@@ -98,6 +99,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               plan: 'free',
               plan_expires_at: null,
+              cancel_at_period_end: false,
               updated_at: new Date().toISOString()
             })
           }
@@ -130,6 +132,7 @@ export default async function handler(req, res) {
           headers: { ...supaHeaders, 'Prefer': 'return=minimal' },
           body: JSON.stringify({
             plan_expires_at: periodEnd.toISOString(),
+            cancel_at_period_end: true,
             updated_at: new Date().toISOString()
           })
         }
