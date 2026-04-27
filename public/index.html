@@ -566,6 +566,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .zpill.on{background:rgba(251,191,36,.18);border-color:#fbbf24;color:#fbbf24;font-weight:700}
 .mode-btn.active-adapt .mode-badge{background:rgba(0,170,255,.15);color:var(--neon);border:1px solid rgba(0,170,255,.2)}
 .mode-lock-overlay{position:absolute;inset:0;border-radius:9px;backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(2,8,23,.3)}
+.adapt-hint{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fbbf24;background:rgba(2,8,23,.95);padding:2px 8px;border-radius:100px;border:1px solid rgba(251,191,36,.35);white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;pointer-events:none;animation:adaptHintBlink 1.6s ease-in-out infinite;box-shadow:0 0 12px rgba(251,191,36,.25)}
+@keyframes adaptHintBlink{0%,100%{opacity:1;box-shadow:0 0 14px rgba(251,191,36,.35)}50%{opacity:.45;box-shadow:0 0 4px rgba(251,191,36,.1)}}
 </style>
 <script src="/_ref-tracker.js" defer></script>
 </head>
@@ -925,7 +927,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div class="main-card">
     <!-- Modo de geração -->
     <div style="display:flex;gap:0;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:4px;margin-bottom:14px">
-      <button id="btnModeAdapt" class="mode-btn active-adapt" onclick="setMode('adapt')">
+      <button id="btnModeAdapt" class="mode-btn active-adapt" onclick="setMode('adapt')" style="position:relative">
+        <span class="adapt-hint" id="adaptHint">⚠ O Short precisa ter narração</span>
         📝 Adaptar roteiro <span class="mode-badge">GRÁTIS</span>
       </button>
       <button id="btnModeZero" class="mode-btn" onclick="setMode('zero')">
@@ -3780,6 +3783,25 @@ function applyTranslations(){
   if(s.fomo_censored) window.FOMO_SUB_CENSORED = s.fomo_censored;
   if(s.fomo_protected) window.FOMO_SUB_PROTECTED = s.fomo_protected;
   if(s.fomo_anon) window.FOMO_SUB_ANON = s.fomo_anon;
+
+  // Aviso "Short precisa ter narração" no botão Adaptar — fallback PT no HTML
+  const _adaptHints = {
+    pt: '⚠ O Short precisa ter narração',
+    en: '⚠ Short must have narration',
+    es: '⚠ El Short necesita narración',
+    fr: '⚠ Le Short doit avoir une narration',
+    de: '⚠ Der Short braucht Sprachausgabe',
+    it: '⚠ Lo Short deve avere narrazione',
+    ja: '⚠ ナレーションが必要',
+    zh: '⚠ Short 需要旁白',
+    ar: '⚠ يجب أن يحتوي الـShort على سرد',
+    hi: '⚠ Short में नैरेशन ज़रूरी है',
+    tr: '⚠ Short anlatım içermeli',
+    ko: '⚠ Short에 내레이션 필요',
+    ru: '⚠ Short нуждается в озвучке',
+  };
+  const _adaptHintEl = document.getElementById('adaptHint');
+  if(_adaptHintEl && _adaptHints[siteLang]) _adaptHintEl.textContent = _adaptHints[siteLang];
 
   console.log(`🌍 Site fully translated to: ${siteLang} (${Object.keys(s).length} strings)`);
 }
