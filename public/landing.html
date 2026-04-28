@@ -346,6 +346,41 @@ section{padding:80px 24px;position:relative}
 .feature-badge.new{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}
 .feature-badge.master-only{background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(251,191,36,.15));color:var(--gold);border:1px solid rgba(251,191,36,.3)}
 
+/* ── COMING SOON — BLUEEDITOR ────────────────────────────────────────────── */
+.coming-wrap{
+  max-width:980px;margin:0 auto;
+  position:relative;border-radius:24px;overflow:hidden;
+  background:linear-gradient(135deg,rgba(124,58,237,.12) 0%,rgba(251,191,36,.06) 50%,rgba(0,170,255,.08) 100%);
+  border:1px solid rgba(167,139,250,.3);
+  padding:48px 36px;
+  box-shadow:0 24px 60px rgba(124,58,237,.18);
+}
+.coming-wrap::before{content:'';position:absolute;top:-50%;right:-30%;width:160%;height:200%;background:radial-gradient(ellipse at 70% 30%,rgba(167,139,250,.15),transparent 55%);pointer-events:none}
+.coming-wrap::after{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:linear-gradient(135deg,rgba(167,139,250,.4),rgba(251,191,36,.3),rgba(0,170,255,.4));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;opacity:.6}
+.coming-grid{display:grid;grid-template-columns:1fr;gap:28px;position:relative;z-index:1;align-items:center}
+@media(min-width:780px){.coming-grid{grid-template-columns:auto 1fr}}
+.coming-mark{
+  width:96px;height:96px;border-radius:24px;
+  background:var(--grad-master);
+  display:flex;align-items:center;justify-content:center;
+  font-size:48px;
+  box-shadow:0 16px 40px rgba(124,58,237,.4);
+  flex-shrink:0;margin:0 auto;
+}
+@media(min-width:780px){.coming-mark{margin:0}}
+.coming-content{text-align:center}
+@media(min-width:780px){.coming-content{text-align:left}}
+.coming-tag{display:inline-block;padding:6px 14px;border-radius:100px;background:linear-gradient(135deg,rgba(167,139,250,.2),rgba(251,191,36,.15));border:1px solid rgba(167,139,250,.4);font-family:var(--font-mono);font-size:11px;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;font-weight:800;margin-bottom:14px}
+.coming-content h3{font-family:var(--font-display);font-size:clamp(24px,3.5vw,32px);font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
+.coming-content h3 .gold-gradient{background:var(--grad-master);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.coming-content p{color:var(--text-2);font-size:15px;line-height:1.6;margin-bottom:18px;max-width:560px}
+@media(min-width:780px){.coming-content p{margin-left:0;margin-right:0}}
+.coming-perks{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:22px}
+@media(min-width:780px){.coming-perks{justify-content:flex-start}}
+.coming-perks span{font-family:var(--font-mono);font-size:12px;color:var(--text);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:6px 12px;border-radius:100px;display:inline-flex;align-items:center;gap:6px}
+.coming-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:100px;background:rgba(255,255,255,.08);border:1px solid rgba(167,139,250,.4);color:var(--text);text-decoration:none;font-family:var(--font-display);font-weight:700;font-size:13px;transition:background .2s,transform .2s}
+.coming-cta:hover{background:rgba(167,139,250,.15);transform:translateY(-1px)}
+
 /* ── COMO FUNCIONA — TIMELINE ────────────────────────────────────────────── */
 .timeline{display:grid;grid-template-columns:1fr;gap:24px;max-width:1100px;margin:0 auto;position:relative}
 @media(min-width:880px){.timeline{grid-template-columns:repeat(4,1fr);gap:18px}}
@@ -512,7 +547,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <a href="#faq">FAQ</a>
   </div>
   <div class="nav-actions">
-    <a href="https://bluetubeviral.com/" class="nav-login">Entrar</a>
+    <a href="https://bluetubeviral.com/?openLogin=1" class="nav-login" data-cta="nav_login">Entrar</a>
     <a href="https://bluetubeviral.com/" class="nav-cta" data-cta="nav_try_free">Testar grátis →</a>
   </div>
 </nav>
@@ -535,7 +570,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <a href="https://bluetubeviral.com/" class="cta-primary" data-cta="hero_try_free_no_signup">
         Testar agora — sem cadastro →
       </a>
-      <a href="#pricing" class="cta-secondary">Ver planos a partir de R$29,99/mês ↓</a>
+      <a href="#pricing" class="cta-secondary">Ver o que destrava no Full e Master ↓</a>
     </div>
     <div class="hero-trust">
       <span>⚡ Resposta em &lt;30s</span>
@@ -637,7 +672,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     <article class="feature-card reveal">
       <div class="feature-icon">🔥</div>
-      <h3>Buscador de Virais</h3>
+      <h3>BlueTendências</h3>
       <p>12 países monitorados. Veja o que está bombando nas últimas 24h e poste antes da concorrência.</p>
       <span class="feature-tag">Full + Master</span>
     </article>
@@ -664,6 +699,32 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <span class="feature-tag">Free + Full + Master</span>
     </article>
 
+  </div>
+</section>
+
+<!-- EM BREVE — BLUEEDITOR -->
+<section>
+  <div class="container section-head reveal">
+    <div class="eyebrow">Em desenvolvimento</div>
+    <h2 class="section-h">A <span class="accent">7ª ferramenta</span> está chegando.</h2>
+  </div>
+  <div class="coming-wrap reveal">
+    <div class="coming-grid">
+      <div class="coming-mark">✨</div>
+      <div class="coming-content">
+        <span class="coming-tag">🔒 Acesso antecipado · Master</span>
+        <h3><span class="gold-gradient">BlueEditor</span> — o editor nativo do BlueTube.</h3>
+        <p>Crie. Edite. Publique. Sem nunca sair do BlueTube. Timeline visual + IA que sabe onde cortar + auto-captions virais + score em tempo real. Tudo em um só lugar.</p>
+        <div class="coming-perks">
+          <span>🎬 Timeline pro</span>
+          <span>🤖 IA Blublu cortando</span>
+          <span>📊 Score ao vivo</span>
+          <span>📝 Auto-captions</span>
+          <span>📤 Export 1080p</span>
+        </div>
+        <a href="/blueEditor.html" class="coming-cta" data-cta="bluefooter_editor_teaser">Ver o que vem por aí →</a>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -852,7 +913,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
   <div class="pricing-foot">
     💳 Cancele a qualquer momento · Sem fidelidade · 7 dias de garantia
-    <div class="pricing-urgency">⚡ Preços de lançamento — sobem em breve</div>
+    <div class="pricing-urgency">⚡ Preços promocionais — sobem ao atingirmos 5.000 assinantes (faltam 2.153)</div>
   </div>
 </section>
 
