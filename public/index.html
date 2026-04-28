@@ -2393,18 +2393,9 @@ async function startTranscription(e){
   if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
   currentVideoId=videoId;
 
-  // Gate anônimo (decisão de produto 2026-04-27): força signup no 1º uso da
-  // ferramenta. Após criar conta/login, _maybeAutoDispatchPendingTranscription()
-  // re-dispara o fluxo com o link/idioma originais.
-  if(!localStorage.getItem('bt_token')){
-    localStorage.setItem('bt_pending_transcription_url', raw);
-    localStorage.setItem('bt_pending_transcription_lang', lang);
-    openAuthModal();
-    try { switchAuthTab('signup'); } catch(err) {}
-    return;
-  }
-
   // Check IP limit before transcribing
+  // Anônimo testa free (rate limit IP), bate limite → openUpgradeModal abre.
+  // Gate de signup imediato foi removido em 2026-04-28 (matava conversão de ads frios).
   const allowed=await checkAndIncrementLimit();
   if(!allowed)return;
 
