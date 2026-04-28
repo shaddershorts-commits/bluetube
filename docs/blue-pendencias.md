@@ -6,40 +6,25 @@ Cada item tem **status, prioridade, contexto, proposta técnica, gatilhos de ret
 
 ---
 
-## BlueTendências v3 — calibração de limites do quality gate
+## BlueTendências v3 — limites de extensão para modo 'aplicação'
 
-- **Status:** ⏸️ Documentado em 2026-04-28 durante Commit 2 da refatoração v3
-- **Prioridade:** Média (afeta qualidade de output mas não bloqueia)
+- **Status:** ⏸️ Documentado em 2026-04-28 durante Commit 2/3 da refatoração v3
+- **Prioridade:** Baixa (validação estrutural cobre o essencial)
 
 ### Contexto
 
-Commit 2 introduziu `QUALITY_CRITERIA.limites_narrativa` em [api/_helpers/blublu-personality.js](../api/_helpers/blublu-personality.js) com valores adotados do manifesto v3 do Opus:
+`QUALITY_CRITERIA.limites_narrativa` em [api/_helpers/blublu-personality.js](../api/_helpers/blublu-personality.js) define limites de extensão pros campos dos atos 1-4 (`blublu_intro`, `conteudo_principal`, `blublu_outro`). Highlights agora têm validação **semântica adaptativa** (`validateHighlight` + `HIGHLIGHT_QUALITY` no Commit 3) — basta substância (número, comando, termo técnico, comparação ou palavra ≥5 chars) — sem piso/teto de chars.
 
-```js
-blublu_intro:        { min: 10,  max: 200 }
-conteudo_principal:  { min: 80,  max: 800 }
-blublu_outro:        { min: 20,  max: 250 }
-highlights:          { min_items: 2, max_items: 4 }
-highlight_each:      { min: 15,  max: 150 }
-```
+Modo 'aplicação' (ato_5 + sugestões + quiz) tem schema diferente e ficou sem limites de extensão pra evitar piorar UX com calibração mal-feita.
 
-Limites aplicados **só em modo 'narrativa'** (atos 1-4). Modo 'aplicação' (ato_5 + sugestões + quiz) tem schema diferente e ficou sem limites de extensão pra evitar piorar UX com calibração mal-feita.
+### Pendência concreta
 
-### Tensão conhecida — `highlight_each.min: 15` vs estilo "dados curtos punchy"
-
-O próprio manifesto v3 prescreve a técnica `revelacao_sequencia_dados` com exemplo `"Hook: 1.8s. Setup: 4s. Payoff: 7s."` — strings de 9-10 chars que **batem no piso de 15** e seriam rejeitadas pelo quality gate. Smoke test do Commit 2 confirmou: highlights estilo `"Hook: 1.8s"` (10 chars) → falha. Highlights descritivos (`"Hook entrega tensão em 1.8s"`, 32 chars) → passa.
-
-Conviver: re-roll granular (P3 do plano original) cobre, e o segundo round geralmente vem mais descritivo. Não é bloqueador.
-
-### Pendências concretas
-
-1. **Calibrar `highlight_each.min`** — coletar 30 outputs reais nos primeiros dias após v3 ativa em prod. Se >20% rejeitam por highlight curto E o conteúdo está bom, baixar `min` pra 8 ou 5.
-2. **Adicionar limites para modo 'aplicação'** — depois de coletar amostras reais, calibrar `blublu_intro/outro/sugestoes.descricao/exemplo_pratico` pro ato_5 + quiz. Hoje só validação estrutural (campos presentes), sem extensão.
+**Adicionar limites para modo 'aplicação'** — depois de coletar amostras reais, calibrar `blublu_intro/outro` do ato_5 + `sugestoes.descricao/exemplo_pratico` + `quiz.perguntas[].pergunta/comentario_*`. Hoje só validação estrutural (campos presentes), sem extensão.
 
 ### Gatilhos pra retomar
 
 - 30+ análises v3 geradas em prod com logs de quality gate disponíveis
-- OU primeiro relato de "análise saiu meia-boca" / outputs com tom inconsistente
+- OU primeiro relato de "ato 5 saiu vago" / "quiz superficial demais"
 - OU dia 30 após ativação v3 (revisão de calibração de rotina)
 
 ---

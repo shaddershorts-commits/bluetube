@@ -622,14 +622,51 @@ const QUALITY_CRITERIA = {
   },
   // Limites de extensao por campo (modo 'narrativa' apenas).
   // Numeros calibrados pelo manifesto v3.
+  // Highlights tem validacao SEMANTICA via validateHighlight (sem min/max
+  // de chars) — manifesto prescreve dados curtos punchy ("Hook: 1.8s").
   limites_narrativa: {
     blublu_intro: { min: 10, max: 200 },
     conteudo_principal: { min: 80, max: 800 },
     blublu_outro: { min: 20, max: 250 },
     highlights: { min_items: 2, max_items: 4 },
-    highlight_each: { min: 15, max: 150 },
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.1 HIGHLIGHT QUALITY — validacao semantica adaptativa
+// ─────────────────────────────────────────────────────────────────────────────
+// Trade-off: highlight pode ser curto ("Hook: 1.8s") OU longo ("Hook entrega
+// tensao em 1.8s"). Min de chars rejeita injustamente o estilo punchy do
+// manifesto. Aqui validamos SUBSTANCIA: numero, comando, termo tecnico,
+// comparacao OU palavra de 5+ chars. Reje so vazio/emoji/palavra-isolada.
+const HIGHLIGHT_QUALITY = {
+  // Palavras vazias que sozinhas invalidam highlight
+  palavras_vazias_isoladas: [
+    'ok', 'bom', 'legal', 'massa', 'top', 'sim', 'não',
+    'certo', 'beleza', 'show', 'maneiro', 'daora',
+  ],
+  // Padroes que indicam highlight com substancia (basta 1 bater)
+  padroes_validos: [
+    /\d/,                                                           // qualquer numero
+    /\b(repete|para|faz|usa|evita|posta|grava|edita|corta)\b/i,     // comando
+    /\b(hook|setup|payoff|cta|edição|pacing|áudio|corte|fala)\b/i,  // termo tecnico
+    /\b(igual|vs|comparado|tipo|estilo|padrão)\b/i,                 // comparacao
+    /[a-z]{5,}/,                                                    // palavra >=5 chars
+  ],
+};
+
+function validateHighlight(highlight) {
+  if (typeof highlight !== 'string') return false;
+  const trimmed = highlight.trim().toLowerCase();
+  // Vazio ou muito curto sem substancia
+  if (trimmed.length < 3) return false;
+  // So palavra vazia
+  if (HIGHLIGHT_QUALITY.palavras_vazias_isoladas.includes(trimmed)) return false;
+  // So emoji ou pontuacao (sem letras latinas)
+  if (!/[a-zA-ZÀ-ſ]/.test(trimmed)) return false;
+  // Tem pelo menos 1 padrao valido
+  return HIGHLIGHT_QUALITY.padroes_validos.some(p => p.test(trimmed));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. VALIDACAO DE CONFIGURACAO (executa na carga do modulo)
@@ -871,12 +908,10 @@ function validateOutputQuality(output, modo) {
         if (a.highlights.length < lim.highlights.min_items || a.highlights.length > lim.highlights.max_items) {
           issues.push(`${k}.highlights: ${a.highlights.length} itens fora de [${lim.highlights.min_items}-${lim.highlights.max_items}]`);
         }
+        // Validacao SEMANTICA por item (substituiu min/max chars):
         a.highlights.forEach((h, i) => {
-          if (typeof h === 'string') {
-            const len = h.length;
-            if (len < lim.highlight_each.min || len > lim.highlight_each.max) {
-              issues.push(`${k}.highlights[${i}]: ${len} chars fora de [${lim.highlight_each.min}-${lim.highlight_each.max}]`);
-            }
+          if (!validateHighlight(h)) {
+            issues.push(`${k}.highlights[${i}]: sem substancia (vazio/emoji/palavra-isolada/sem padrao valido)`);
           }
         });
       }
@@ -950,7 +985,9 @@ module.exports = {
   BLUBLU_MANIFESTO_V3,
   TECNICAS_BLUBLU,
   QUALITY_CRITERIA,
+  HIGHLIGHT_QUALITY,
   isV3Active,
   buildBlubluPrompt,
   validateOutputQuality,
+  validateHighlight,
 };
