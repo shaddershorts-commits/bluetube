@@ -877,12 +877,12 @@ export default async function handler(req, res) {
 
     const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, weeklyRaw, bluescoreRaw, recentSubs] = await Promise.all([
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers })),
-      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*&limit=10000`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers })),
-      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address&limit=10000`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers })),
-      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=gte.${sevenDaysAgo}&select=ip_address,visit_date&order=visit_date.asc&limit=10000`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/bluescore_analyses?select=channel_name,score,classification,avg_views,analyzed_at&order=analyzed_at.desc&limit=20`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=email,plan,created_at&order=created_at.desc&limit=10`, { headers })),
     ]);
