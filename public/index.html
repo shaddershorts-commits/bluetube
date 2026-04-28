@@ -1960,11 +1960,12 @@ function openAuthModal(){
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('openLogin')==='1'){setTimeout(()=>openAuthModal(),400);}}catch(e){}})();
 // Abre modal de signup auto via ?signup=1 (vindo dos CTAs da landing.html)
 (function(){try{const p=new URLSearchParams(location.search);if(p.get('signup')==='1'){setTimeout(()=>{openAuthModal();try{switchAuthTab('signup');}catch(e){}},400);}}catch(e){}})();
-// Abre modal de upgrade auto via ?upgrade=master ou ?upgrade=full
+// Abre modal de upgrade auto via ?upgrade=master|full OU ?plan=master|full
+// (?plan= e usado pelos CTAs "Assinar Full/Master" da landing.html)
 (function(){
   try{
     const p = new URLSearchParams(location.search);
-    const plano = p.get('upgrade');
+    const plano = p.get('upgrade') || p.get('plan');
     if (plano !== 'master' && plano !== 'full') return;
     setTimeout(() => {
       const tk = localStorage.getItem('bt_token');
