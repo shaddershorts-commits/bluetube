@@ -21,14 +21,18 @@
 
 const crypto = require('crypto');
 const { sentryCapture } = require('./_helpers/sentry.js');
+const blubluPersonality = require('./_helpers/blublu-personality.js');
 
 // Sonnet 4.6: $3/MTok input, $15/MTok output (taxa ~R$5)
 const COST_INPUT_PER_MTOK_BRL  = 15;
 const COST_OUTPUT_PER_MTOK_BRL = 75;
 
-// Versao do prompt — incremente quando mudar o formato da analise.
+// Versao do prompt — controla v2 (prompts inline antigos) vs v3 (helper).
 // Gravada em studio_analises.prompt_version pra permitir A/B e rollback.
-const PROMPT_VERSION = 'v2.0-split';
+// Feature flag via env BLUBLU_VERSION (default v3.0-blublu-realista).
+// Rollback sem deploy: setar BLUBLU_VERSION='v2.0-split' no Vercel.
+const PROMPT_VERSION = process.env.BLUBLU_VERSION || 'v3.0-blublu-realista';
+const USAR_V3 = blubluPersonality.isV3Active(PROMPT_VERSION);
 
 // Easter egg: idolos que ativam personalidade 'fa histerico' do Blublu.
 // Detecta pelo nome do canal (case-insensitive, match por inclusao/igualdade).
@@ -277,8 +281,12 @@ async function atualizarBudgetDiario(ctx, custoBRL) {
 // ═════════════════════════════════════════════════════════════════════════════
 // RESILIENCIA — cache, circuit breaker, retry, fallback template
 // ═════════════════════════════════════════════════════════════════════════════
-function cacheKey(videoId, tipo, contexto = {}) {
-  const norm = JSON.stringify({ videoId, tipo, ctx: contexto });
+// 4o param 'version' opcional: passe pra invalidar cache em mudancas de prompt.
+// Usado em 'narrativa' e 'aplicacao' (atos 1-5). NAO usar em 'meu_video'
+// (schema diferente, escopo separado, cache existente preservado).
+function cacheKey(videoId, tipo, contexto = {}, version = null) {
+  const payload = version ? { videoId, tipo, ctx: contexto, v: version } : { videoId, tipo, ctx: contexto };
+  const norm = JSON.stringify(payload);
   return crypto.createHash('sha256').update(norm).digest('hex').slice(0, 32);
 }
 
@@ -1292,10 +1300,29 @@ async function gerarAnaliseFinal(ctx, req) {
     ? Math.round(statsNicho.reduce((s, v) => s + (v.duracao_segundos || 0), 0) / statsNicho.length)
     : null;
 
-  // System prompt compartilhado — vai no cache ephemeral (5min TTL).
-  // Quando o mesmo user faz 2 analises em sequencia, o cache hit corta
-  // 90% do custo de input e reduz TTFT.
-  const systemPrompt = `Voce e Blublu, IA de analise de virais mais avancada do mercado.
+  // ───── SELECAO DE PROMPTS POR VERSAO ─────
+  // v2.0-split: prompts inline antigos (preservados 100%, regressao zero).
+  // v3+: helper blublu-personality.js gera prompts a partir do manifesto.
+  let systemPrompt, promptParte1, promptParte2;
+
+  if (USAR_V3) {
+    // v3: helper injeta manifesto + tecnicas + dados do video no user prompt.
+    // System fica vazio (sem cache ephemeral por enquanto — pode ser otimizado
+    // num commit futuro separando manifesto pra system, dados pra user).
+    systemPrompt = null;
+    const promptCtx = {
+      nome: auth.nome,
+      video,
+      respostas,
+      duracaoMedia,
+      statsNichoLen: statsNicho.length,
+      easterEgg: detectarIdolo(video),
+    };
+    promptParte1 = blubluPersonality.buildBlubluPrompt('narrativa', promptCtx);
+    promptParte2 = blubluPersonality.buildBlubluPrompt('aplicacao', promptCtx);
+  } else {
+    // v2: prompts inline antigos. Mantidos identicos pra rollback fiel.
+    systemPrompt = `Voce e Blublu, IA de analise de virais mais avancada do mercado.
 Voce e confiante, inteligente, com humor afiado. Sabe que e a melhor e nao esconde.
 Fala com ${auth.nome} de forma pessoal, direta, com pitadas de arrogancia engracada.
 NUNCA generico. SEMPRE especifico.
@@ -1319,10 +1346,7 @@ DADOS DO NICHO:
 Duracao media dos virais do nicho: ${duracaoMedia ? duracaoMedia + 's' : 'nao disponivel'}
 Virais de referencia analisados: ${statsNicho.length}`;
 
-  // PARTE 1 — narrativa tecnica do video (atos 1-4).
-  // NAO cita nome do user → cache compartilhavel entre todos os Masters
-  // que analisarem o mesmo video.
-  const promptParte1 = `ENTREGA: atos 1-4 (narrativa tecnica do video). Cada ato tem:
+    promptParte1 = `ENTREGA: atos 1-4 (narrativa tecnica do video). Cada ato tem:
 - titulo (curto, impactante)
 - blublu_intro (frase introduzindo o ato, com personalidade, SEM citar nome de pessoa)
 - conteudo_principal (analise objetiva, 2-3 frases MAX)
@@ -1340,8 +1364,7 @@ Retorne APENAS JSON valido:
   "ato_4": {"titulo":"O Contexto Cultural","blublu_intro":"...","conteudo_principal":"...","highlights":["...","...","..."],"blublu_outro":"..."}
 }`;
 
-  // PARTE 2 — abertura + ato 5 + quiz (depende do user, nao cacheavel cross-user)
-  const promptParte2 = `ENTREGA: abertura_blublu + ato_5 (aplicacao pratica pra ${auth.nome}) + quiz de 3 perguntas.
+    promptParte2 = `ENTREGA: abertura_blublu + ato_5 (aplicacao pratica pra ${auth.nome}) + quiz de 3 perguntas.
 
 ATO 5 estrutura especial:
 - titulo, blublu_intro
@@ -1374,14 +1397,19 @@ Retorne APENAS JSON valido:
     "fechamento":"Frase final de Blublu fechando tudo"
   }
 }`;
+  }
 
   // CACHE SEGREGADO:
   //  - 'narrativa': atos 1-4 por video_id (compartilhado entre Masters)
   //  - 'aplicacao': abertura + ato 5 + quiz por video + respostas (por user)
   // Beneficio: se Master B analisar video que Master A ja analisou (ou user A
   // repetir analise com respostas diferentes), a narrativa ja esta pronta.
-  const ckNarrativa = cacheKey(video.youtube_id, 'narrativa', {});
-  const ckAplicacao = cacheKey(video.youtube_id, 'aplicacao', respostas || {});
+  // PROMPT_VERSION compoe a key SO em v3+ — mudanca v2→v3 invalida cache.
+  // v2 mantem backward compat (cacheKey sem versao = formato antigo).
+  // Garante que rollback BLUBLU_VERSION='v2.0-split' reencontra cache pre-v3.
+  const versaoCache = USAR_V3 ? PROMPT_VERSION : null;
+  const ckNarrativa = cacheKey(video.youtube_id, 'narrativa', {}, versaoCache);
+  const ckAplicacao = cacheKey(video.youtube_id, 'aplicacao', respostas || {}, versaoCache);
   const [cachedNarrativa, cachedAplicacao] = await Promise.all([
     getFromCache(ctx, ckNarrativa),
     getFromCache(ctx, ckAplicacao),
@@ -1445,8 +1473,8 @@ Retorne APENAS JSON valido:
     };
   }
 
-  const parte1 = parseJsonSafe(out1.text);
-  const parte2 = parseJsonSafe(out2.text);
+  let parte1 = parseJsonSafe(out1.text);
+  let parte2 = parseJsonSafe(out2.text);
   if (!parte1?.ato_1 || !parte2?.ato_5) {
     console.error(
       '[gerar-analise-final] JSON invalido — p1.ato_1:', !!parte1?.ato_1,
@@ -1479,6 +1507,69 @@ Retorne APENAS JSON valido:
       analises_restantes: rl.analises_restantes ?? 999,
       aviso: 'Blublu tá num momento complicado. Te dei uma análise baseada em padrões.',
     };
+  }
+
+  // ───── QUALITY GATE V3 (re-roll granular 1x se output generico) ─────
+  // So roda em v3+. Cache hits NAO sao re-rolados — ja vieram de v3 valido.
+  // Se 1a tentativa falha quality: re-rolla SOMENTE a parte que falhou.
+  // 2a tentativa: usa o output mesmo que ainda imperfeito (sem 3a tentativa).
+  // Se re-roll lancar excecao ou retornar JSON invalido, mantem output original.
+  if (USAR_V3 && (!naoPrecisaP1 || !naoPrecisaP2)) {
+    const valP1 = !naoPrecisaP1 ? blubluPersonality.validateOutputQuality(parte1, 'narrativa') : { passed: true, issues: [] };
+    const valP2 = !naoPrecisaP2 ? blubluPersonality.validateOutputQuality(parte2, 'aplicacao') : { passed: true, issues: [] };
+    const reRollP1 = !valP1.passed && !naoPrecisaP1;
+    const reRollP2 = !valP2.passed && !naoPrecisaP2;
+
+    if (reRollP1 || reRollP2) {
+      console.warn(
+        `[quality-gate v3] re-roll — p1:${reRollP1 ? 'YES (' + valP1.issues.slice(0,3).join('; ') + ')' : 'no'} ` +
+        `p2:${reRollP2 ? 'YES (' + valP2.issues.slice(0,3).join('; ') + ')' : 'no'}`
+      );
+      sentryCapture(new Error('quality_gate falhou 1a tentativa'), {
+        level: 'warning',
+        tags: { action: 'gerar-analise-final', failure_mode: 'quality_gate_failed', prompt_version: PROMPT_VERSION },
+        extra: {
+          video_id: video.youtube_id,
+          p1_issues: valP1.issues, p2_issues: valP2.issues,
+          p1_passed: valP1.passed, p2_passed: valP2.passed,
+          rerolled_p1: reRollP1, rerolled_p2: reRollP2,
+        },
+      });
+
+      try {
+        const sufP1 = reRollP1
+          ? '\n\nIMPORTANTE: tentativa anterior teve problemas: ' + valP1.issues.slice(0, 5).join('; ') + '. Corrija e siga as regras de qualidade rigorosamente.'
+          : '';
+        const sufP2 = reRollP2
+          ? '\n\nIMPORTANTE: tentativa anterior teve problemas: ' + valP2.issues.slice(0, 5).join('; ') + '. Corrija e siga as regras de qualidade rigorosamente.'
+          : '';
+        const [reroll1, reroll2] = await Promise.all([
+          reRollP1 ? callClaudeStudioComFallback(promptParte1 + sufP1, baseOpts) : Promise.resolve(out1),
+          reRollP2 ? callClaudeStudioComFallback(promptParte2 + sufP2, baseOpts) : Promise.resolve(out2),
+        ]);
+
+        if (reRollP1) {
+          const novoP1 = parseJsonSafe(reroll1.text);
+          if (novoP1?.ato_1) {
+            parte1 = novoP1;
+            out1 = reroll1;
+          } else {
+            console.warn('[quality-gate v3] re-roll p1 retornou JSON invalido, mantendo original');
+          }
+        }
+        if (reRollP2) {
+          const novoP2 = parseJsonSafe(reroll2.text);
+          if (novoP2?.ato_5) {
+            parte2 = novoP2;
+            out2 = reroll2;
+          } else {
+            console.warn('[quality-gate v3] re-roll p2 retornou JSON invalido, mantendo original');
+          }
+        }
+      } catch (e) {
+        console.warn('[quality-gate v3] re-roll lancou excecao, mantendo output original:', e.message);
+      }
+    }
   }
 
   // Merge das duas partes num objeto unico compativel com resto do fluxo
