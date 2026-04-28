@@ -1134,6 +1134,20 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   // Year footer
   const y = document.getElementById('year');
   if (y) y.textContent = new Date().getFullYear();
+
+  // ── VISIT TRACKING (admin painel — separado de home) ────────────────────
+  function pingVisitLanding(){
+    fetch('/api/check-limit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'visit', page: 'landing' })
+    }).catch(()=>{});
+  }
+  pingVisitLanding();
+  setInterval(pingVisitLanding, 90 * 1000);
+  window.addEventListener('beforeunload', () => {
+    try { navigator.sendBeacon('/api/check-limit', JSON.stringify({ action: 'offline', page: 'landing' })); } catch(e){}
+  });
 })();
 </script>
 

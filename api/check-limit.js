@@ -15,11 +15,16 @@ export default async function handler(req, res) {
   const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
     .split(',')[0].trim();
 
-  const { action, token } = req.body;
+  const { action, token, page: rawPage } = req.body;
   const today = new Date().toISOString().split('T')[0];
+  // Whitelist de paginas trackadas. Default 'home' garante retrocompat.
+  const page = (rawPage === 'landing') ? 'landing' : 'home';
 
   // ── OFFLINE SIGNAL ─────────────────────────────────────────────────────────
   if (action === 'offline') {
+    // Deleta todas as rows de ip_online pra esse IP (independe de page) — user
+    // pode ter abas abertas em home + landing; offline limpa tudo. Proximo
+    // ping recria com page correta.
     fetch(`${SUPABASE_URL}/rest/v1/ip_online?ip_address=eq.${encodeURIComponent(ip)}`, {
       method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
     }).catch(() => {});
@@ -49,24 +54,26 @@ export default async function handler(req, res) {
       if (isBot) return res.status(200).json({ ok: false, reason: 'bot' });
 
       const now = new Date().toISOString();
+      // ip_online: delete por (ip, page) e re-cria — permite IP estar online
+      // simultaneamente em home E landing (aba dupla) sem se sobrescreverem.
       await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/ip_online?ip_address=eq.${encodeURIComponent(ip)}`, {
+        fetch(`${SUPABASE_URL}/rest/v1/ip_online?ip_address=eq.${encodeURIComponent(ip)}&page=eq.${page}`, {
           method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         }).then(() => fetch(`${SUPABASE_URL}/rest/v1/ip_online`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ ip_address: ip, pinged_at: now })
+          body: JSON.stringify({ ip_address: ip, pinged_at: now, page })
         })),
         fetch(`${SUPABASE_URL}/rest/v1/ip_visits`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-          body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: now })
+          body: JSON.stringify({ ip_address: ip, visit_date: today, visited_at: now, page })
         }),
         fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=lt.${new Date(Date.now()-3*60*1000).toISOString()}`, {
           method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         })
       ]);
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, page });
     } catch(e) { return res.status(200).json({ ok: false }); }
   }
 

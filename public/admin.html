@@ -369,12 +369,33 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
-    <!-- Weekly Visitors Chart -->
+    <!-- Weekly Visitors Charts (Home + Landing lado a lado) -->
     <div class="section">
       <div class="section-header">
-        <div class="section-title">📈 Visitantes únicos — últimos 7 dias</div>
+        <div class="section-title">📈 Visitantes únicos — últimos 7 dias <span class="section-subtitle">— Home vs Landing</span></div>
       </div>
-      <div id="weeklyChart" style="padding:16px 0"></div>
+      <div style="display:grid;gap:28px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));padding:14px 0">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding:0 8px;flex-wrap:wrap;gap:8px">
+            <span style="color:var(--text);font-weight:700">🏠 Home <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">· bluetubeviral.com/</span></span>
+            <span style="color:var(--dim);font-size:10px">
+              <span id="homeOnlineMini" style="color:var(--green);font-weight:700">—</span> online ·
+              <span id="homeTodayMini" style="color:var(--blue);font-weight:700">—</span> hoje
+            </span>
+          </div>
+          <div id="weeklyChart"></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding:0 8px;flex-wrap:wrap;gap:8px">
+            <span style="color:var(--text);font-weight:700">📍 Landing <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">· /landing.html</span></span>
+            <span style="color:var(--dim);font-size:10px">
+              <span id="landingOnlineMini" style="color:var(--green);font-weight:700">—</span> online ·
+              <span id="landingTodayMini" style="color:#fbbf24;font-weight:700">—</span> hoje
+            </span>
+          </div>
+          <div id="weeklyLandingChart"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Monthly History -->
@@ -1170,9 +1191,11 @@ async function loadData(){
     document.getElementById('onlineCount').textContent=d.visits?.online_now||0;
     document.getElementById('visitsTodayCount').textContent=d.visits?.today_unique||0;
 
-    // Weekly visitors chart
-    if(d.visits?.weekly?.length){
-      const weekly=d.visits.weekly;
+    // Weekly visitors charts — Home + Landing lado a lado
+    function _renderWeeklyChart(targetId, weekly, accentColor){
+      if(!weekly?.length) return;
+      const el=document.getElementById(targetId);
+      if(!el) return;
       const maxCount=Math.max(...weekly.map(w=>w.count),1);
       const days=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
       const bars=weekly.map(w=>{
@@ -1181,8 +1204,8 @@ async function loadData(){
         const dateLabel=String(date.getDate()).padStart(2,'0')+'/'+String(date.getMonth()+1).padStart(2,'0');
         const isToday=w.date===today;
         const pct=Math.max((w.count/maxCount)*100,4);
-        const color=isToday?'var(--blue)':'rgba(0,170,255,0.3)';
-        const textColor=isToday?'var(--blue)':'var(--dim)';
+        const color=isToday?accentColor:'rgba(255,255,255,0.18)';
+        const textColor=isToday?accentColor:'var(--dim)';
         const fw=isToday?'700':'400';
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">'+
           '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">'+w.count+'</div>'+
@@ -1191,9 +1214,17 @@ async function loadData(){
           '<div style="font-family:var(--mono);font-size:9px;color:var(--dim)">'+dateLabel+'</div>'+
           '</div>';
       }).join('');
-      document.getElementById('weeklyChart').innerHTML=
-        '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">'+bars+'</div>';
+      el.innerHTML='<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">'+bars+'</div>';
     }
+    _renderWeeklyChart('weeklyChart', d.visits?.weekly, 'var(--blue)');
+    _renderWeeklyChart('weeklyLandingChart', d.landing?.weekly, '#fbbf24');
+
+    // Mini-stats nos headers dos 2 graficos
+    const _miniSet=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=(v??0).toLocaleString('pt-BR');};
+    _miniSet('homeOnlineMini', d.visits?.online_now);
+    _miniSet('homeTodayMini', d.visits?.today_unique);
+    _miniSet('landingOnlineMini', d.landing?.online_now);
+    _miniSet('landingTodayMini', d.landing?.today_unique);
     document.getElementById('statFree').textContent=d.subscribers.free;
     document.getElementById('statFull').textContent=`${d.subscribers.full} (${d.subscribers.paying_full||0} pagos, ${d.subscribers.manual_full||0} manuais)`;
     document.getElementById('statMaster').textContent=`${d.subscribers.master} (${d.subscribers.paying_master||0} pagos, ${d.subscribers.manual_master||0} manuais)`;

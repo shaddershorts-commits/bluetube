@@ -876,34 +876,41 @@ export default async function handler(req, res) {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     // weeklyRaw saiu daqui — PostgREST cap server-side trunca em 1000 rows
-    // ignorando &limit=10000. Substituido por 7 queries paralelas com
-    // count=exact (Content-Range header), sem trazer rows. Bloco abaixo.
-    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, bluescoreRaw, recentSubs] = await Promise.all([
+    // ignorando &limit=10000. Substituido por queries count=exact abaixo.
+    // Visits/online agora filtram por page='home' — coluna 'page' adicionada
+    // em 2026-04-28 pra separar tracking de home vs landing.
+    const [subscribers, todayUsage, topVirals, feedbackRaw, visitsToday, onlineNow, bluescoreRaw, recentSubs, landingVisitsToday, landingOnlineNow] = await Promise.all([
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=*&order=created_at.desc`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_usage?usage_date=eq.${today}&select=*&limit=10000`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/viral_shorts?select=video_id,copy_count,lang,processed_at&order=copy_count.desc&limit=10`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/user_feedback?select=*&order=created_at.desc&limit=50`, { headers })),
-      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&select=ip_address&limit=10000`, { headers })),
-      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&select=ip_address`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&page=eq.home&select=ip_address&limit=10000`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&page=eq.home&select=ip_address`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/bluescore_analyses?select=channel_name,score,classification,avg_views,analyzed_at&order=analyzed_at.desc&limit=20`, { headers })),
       safeJson(fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=email,plan,created_at&order=created_at.desc&limit=10`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${today}&page=eq.landing&select=ip_address&limit=10000`, { headers })),
+      safeJson(fetch(`${SUPABASE_URL}/rest/v1/ip_online?pinged_at=gte.${twoMinAgo}&page=eq.landing&select=ip_address`, { headers })),
     ]);
 
-    // Weekly visits — 7 queries paralelas count=exact (a prova de PostgREST cap)
+    // Weekly visits — 7 queries paralelas count=exact por page (home + landing)
     const _days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       _days.push(d.toISOString().split('T')[0]);
     }
     const _countHeaders = { ...headers, 'Prefer': 'count=exact', 'Range': '0-0' };
-    const weeklyVisits = await Promise.all(_days.map(async (date) => {
+    const _weeklyByPage = async (pg) => Promise.all(_days.map(async (date) => {
       try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${date}&select=ip_address`, { headers: _countHeaders });
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/ip_visits?visit_date=eq.${date}&page=eq.${pg}&select=ip_address`, { headers: _countHeaders });
         const range = r.headers.get('content-range') || '';
         const total = parseInt(range.split('/')[1] || '0', 10);
         return { date, count: isNaN(total) ? 0 : total };
       } catch (e) { return { date, count: 0 }; }
     }));
+    const [weeklyVisits, weeklyLanding] = await Promise.all([
+      _weeklyByPage('home'),
+      _weeklyByPage('landing'),
+    ]);
 
     // Sort feedback
     const feedback = feedbackRaw.sort((a,b)=>{
@@ -1008,6 +1015,11 @@ export default async function handler(req, res) {
         today_unique: visitsToday.length,
         online_now: onlineNow.length,
         weekly: weeklyVisits,
+      },
+      landing: {
+        today_unique: landingVisitsToday.length,
+        online_now: landingOnlineNow.length,
+        weekly: weeklyLanding,
       },
       latest_subscriber: subscribers.filter(s => s.plan !== 'free' && !s.is_manual)[0] || null,
       latest_cancellation: (() => {
