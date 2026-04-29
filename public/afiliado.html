@@ -727,8 +727,17 @@ function renderDash(data){
   document.getElementById('levelMotivation').innerHTML=mot;
   const nx=stats.nextLevel;
   const pct=nx?.needed>0?Math.min(100,Math.round(((nx.total-nx.needed)/nx.total)*100)):100;
-  document.getElementById('progLeft').textContent=`${stats.totalPaying} pagantes`;
-  document.getElementById('progRight').textContent=lv!=='ouro'&&nup.next?`Rumo ao ${nup.label}`:'Nível máximo';
+  // Meta visível: "X / Y pagantes" (Y = threshold do próximo nível) + "Faltam N pra Prata".
+  // Fallback pro texto antigo se backend não mandar nextLevel (ex: nível Ouro).
+  const temMeta=lv!=='ouro' && nup.next && nx && typeof nx.total==='number' && nx.total>0;
+  document.getElementById('progLeft').textContent=temMeta
+    ? `${stats.totalPaying} / ${nx.total} pagantes`
+    : `${stats.totalPaying} pagantes`;
+  document.getElementById('progRight').textContent= lv==='ouro' || !nup.next
+    ? 'Nível máximo'
+    : (nx && typeof nx.needed==='number' && nx.needed>0
+        ? `Faltam ${nx.needed} pra ${nup.label}`
+        : `Rumo ao ${nup.label}`);
   setTimeout(()=>{const pf=document.getElementById('progFill');pf.style.width=pct+'%';pf.style.background=lc;},200);
   if(lv==='ouro')document.getElementById('progressWrap').style.display='none';
   else document.getElementById('progressWrap').style.display='';
