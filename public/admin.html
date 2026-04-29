@@ -241,6 +241,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
           <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">cron a cada 2h</div>
           <button onclick="coletarAgora('coletar-trending')" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">↻ Coletar trending</button>
           <button onclick="coletarAgora('coletar-nichos')" style="background:#1a6bff;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">+ Coletar nichos</button>
+          <button onclick="openBancoMgmt()" style="background:rgba(255,100,100,.12);color:#ff8a8a;border:1px solid rgba(255,100,100,.35);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">🛠️ Gerenciar banco</button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
@@ -265,6 +266,64 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
       <div id="vbNichos" style="margin-top:14px"></div>
       <div id="vbColetas" style="margin-top:14px"></div>
+    </div>
+
+    <!-- BANCO DE VIRAIS — MODAL DE GERENCIAMENTO -->
+    <div id="bancoMgmtModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+      <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(255,100,100,0.25);border-radius:20px;padding:24px;width:100%;max-width:1100px;max-height:90vh;display:flex;flex-direction:column;position:relative">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(255,100,100,0.5),transparent);border-radius:20px 20px 0 0"></div>
+        <button onclick="closeBancoMgmt()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer">✕</button>
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px;color:#ff6464">🛠️ Gerenciar Banco de Virais</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:14px">Soft-delete via <code>ativo=false</code> — preserva histórico ML. Reversível.</div>
+
+        <!-- Filtros -->
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:rgba(255,255,255,.02);border-radius:10px">
+          <select id="bmStatus" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 10px;font-size:12px;color:#fff">
+            <option value="ativos">Ativos</option>
+            <option value="inativos">Inativos</option>
+            <option value="todos">Todos</option>
+          </select>
+          <select id="bmNicho" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 10px;font-size:12px;color:#fff">
+            <option value="">Todos os nichos</option>
+            <option value="curiosidades">Curiosidades</option>
+            <option value="games">Games</option>
+            <option value="ia">IA</option>
+            <option value="animais">Animais</option>
+            <option value="artistas">Artistas</option>
+            <option value="pessoas_blogs">Pessoas/Blogs</option>
+            <option value="culinaria">Culinária</option>
+          </select>
+          <select id="bmPeriodo" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 10px;font-size:12px;color:#fff">
+            <option value="todos">Sempre</option>
+            <option value="24h">Últimas 24h</option>
+            <option value="7d">Últimos 7d</option>
+            <option value="30d">Últimos 30d</option>
+          </select>
+          <input id="bmBusca" placeholder="Buscar título ou canal…" style="flex:1;min-width:180px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 10px;font-size:12px;color:#fff"/>
+          <button onclick="loadBancoMgmt(1)" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Aplicar</button>
+        </div>
+
+        <!-- Tabela -->
+        <div id="bmTableWrap" style="overflow:auto;flex:1;min-height:300px;border:1px solid rgba(255,255,255,.06);border-radius:10px">
+          <div style="padding:30px;text-align:center;color:var(--dim);font-size:12px">Aplique filtros e clique em "Aplicar" pra carregar.</div>
+        </div>
+
+        <!-- Footer com paginação + ações -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="bancoMgmtPage(-1)" id="bmPrev" disabled style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;font-size:12px;color:#fff;cursor:pointer">◀ Anterior</button>
+            <span id="bmPageInfo" style="font-family:var(--mono);font-size:11px;color:var(--dim)">—</span>
+            <button onclick="bancoMgmtPage(1)" id="bmNext" disabled style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;font-size:12px;color:#fff;cursor:pointer">Próxima ▶</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="bmSelCount" style="font-family:var(--mono);font-size:11px;color:var(--dim)">0 selecionados</span>
+            <button onclick="bancoMgmtSelectAll()" id="bmSelAll" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;font-size:12px;color:#fff;cursor:pointer">Selecionar página</button>
+            <button onclick="bancoMgmtAction('inativar')" id="bmInativar" style="display:none;background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.4);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">🚫 Inativar selecionados</button>
+            <button onclick="bancoMgmtAction('reativar')" id="bmReativar" style="display:none;background:rgba(34,197,94,.18);color:#86efac;border:1px solid rgba(34,197,94,.4);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">✓ Reativar selecionados</button>
+          </div>
+        </div>
+        <div id="bmMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;min-height:14px"></div>
+      </div>
     </div>
 
     <!-- SAQUES DE AFILIADOS (dia 22) -->
@@ -2618,6 +2677,161 @@ async function coletarAgora(action){
     else alert(d.error || 'Erro');
     loadViraisAdminPanel();
   }catch(e){ alert('Erro de conexão'); }
+}
+
+// ── BANCO DE VIRAIS — GERENCIAMENTO (modal) ────────────────────────────────
+let bmState = { page: 1, total: 0, perPage: 50, items: [], filtros: {} };
+
+function openBancoMgmt(){
+  if (!adminKey){ alert('Faça login admin primeiro'); return; }
+  document.getElementById('bancoMgmtModal').style.display = 'flex';
+  bmState = { page: 1, total: 0, perPage: 50, items: [], filtros: {} };
+  loadBancoMgmt(1);
+}
+
+function closeBancoMgmt(){
+  document.getElementById('bancoMgmtModal').style.display = 'none';
+}
+
+async function loadBancoMgmt(page){
+  bmState.page = Math.max(1, page || 1);
+  const status = document.getElementById('bmStatus').value;
+  const nicho = document.getElementById('bmNicho').value;
+  const periodo = document.getElementById('bmPeriodo').value;
+  const busca = document.getElementById('bmBusca').value.trim();
+  const params = new URLSearchParams({ action: 'listar', status, page: String(bmState.page) });
+  if (nicho) params.set('nicho', nicho);
+  if (periodo && periodo !== 'todos') params.set('periodo', periodo);
+  if (busca) params.set('q', busca);
+
+  document.getElementById('bmTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:var(--dim);font-size:12px">Carregando…</div>';
+  document.getElementById('bmMsg').textContent = '';
+  try{
+    const r = await fetch('/api/virais-coletor?' + params.toString(), {
+      headers: { 'Authorization': `Bearer ${adminKey}` }
+    });
+    if (!r.ok){
+      const e = await r.json().catch(()=>({}));
+      document.getElementById('bmTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:#ff8a8a;font-size:12px">Erro: ' + (e.error || r.status) + '</div>';
+      return;
+    }
+    const d = await r.json();
+    bmState.items = d.items || [];
+    bmState.total = d.total || 0;
+    bmState.perPage = d.per_page || 50;
+    bmState.filtros = d.filtros || {};
+    renderBancoMgmtTable();
+  }catch(e){
+    document.getElementById('bmTableWrap').innerHTML = '<div style="padding:30px;text-align:center;color:#ff8a8a;font-size:12px">Erro de conexão</div>';
+  }
+}
+
+function renderBancoMgmtTable(){
+  const items = bmState.items || [];
+  const wrap = document.getElementById('bmTableWrap');
+  if (!items.length){
+    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--dim);font-size:12px">Nenhum vídeo encontrado com esses filtros.</div>';
+  } else {
+    const fmt = n => (n||0).toLocaleString('pt-BR');
+    const rows = items.map(v => {
+      const data = v.coletado_em ? new Date(v.coletado_em).toLocaleDateString('pt-BR') : '—';
+      const score = v.viral_score != null ? Number(v.viral_score).toFixed(1) : '—';
+      const dur = v.duracao_segundos ? v.duracao_segundos + 's' : '—';
+      const tit = (v.titulo||'').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+      const can = (v.canal_nome||'—').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+      const ativoBadge = v.ativo
+        ? '<span style="background:rgba(34,197,94,.15);color:#86efac;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">ATIVO</span>'
+        : '<span style="background:rgba(239,68,68,.15);color:#fca5a5;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">INATIVO</span>';
+      const thumb = v.thumbnail_url
+        ? `<img src="${v.thumbnail_url}" alt="" style="width:60px;height:34px;object-fit:cover;border-radius:4px"/>`
+        : '<div style="width:60px;height:34px;background:rgba(255,255,255,.05);border-radius:4px"></div>';
+      return `<tr style="border-top:1px solid rgba(255,255,255,.04)">
+        <td style="padding:8px"><input type="checkbox" class="bm-row-check" data-id="${v.id}" data-ativo="${v.ativo?1:0}" onchange="updateBmSelCount()"/></td>
+        <td style="padding:8px">${thumb}</td>
+        <td style="padding:8px;max-width:340px"><a href="${v.url}" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;font-size:12px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tit}</a><div style="font-size:10px;color:var(--dim);margin-top:2px">${can} · ${dur}</div></td>
+        <td style="padding:8px;font-family:var(--mono);font-size:11px;color:#fff">${fmt(v.views)}</td>
+        <td style="padding:8px;font-family:var(--mono);font-size:11px;color:#fff">${score}</td>
+        <td style="padding:8px;font-size:11px;color:var(--dim)">${v.nicho||'—'}</td>
+        <td style="padding:8px;font-size:11px;color:var(--dim)">${data}</td>
+        <td style="padding:8px;text-align:center">${ativoBadge}</td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead style="background:rgba(255,255,255,.03);position:sticky;top:0">
+        <tr>
+          <th style="padding:8px;text-align:left;width:24px"></th>
+          <th style="padding:8px;text-align:left;width:64px"></th>
+          <th style="padding:8px;text-align:left;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Título</th>
+          <th style="padding:8px;text-align:left;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Views</th>
+          <th style="padding:8px;text-align:left;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Score</th>
+          <th style="padding:8px;text-align:left;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Nicho</th>
+          <th style="padding:8px;text-align:left;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Coleta</th>
+          <th style="padding:8px;text-align:center;color:var(--dim);font-weight:700;text-transform:uppercase;font-size:10px">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+  // Paginação
+  const totalPages = Math.max(1, Math.ceil(bmState.total / bmState.perPage));
+  document.getElementById('bmPageInfo').textContent = `Pág ${bmState.page} de ${totalPages} · ${bmState.total} resultados`;
+  document.getElementById('bmPrev').disabled = bmState.page <= 1;
+  document.getElementById('bmNext').disabled = bmState.page >= totalPages;
+  // Reset selecionados
+  updateBmSelCount();
+}
+
+function bancoMgmtPage(delta){
+  loadBancoMgmt(bmState.page + delta);
+}
+
+function bancoMgmtSelectAll(){
+  const checks = document.querySelectorAll('.bm-row-check');
+  const todosMarcados = Array.from(checks).every(c => c.checked);
+  checks.forEach(c => { c.checked = !todosMarcados; });
+  updateBmSelCount();
+}
+
+function updateBmSelCount(){
+  const checks = document.querySelectorAll('.bm-row-check');
+  const marcados = Array.from(checks).filter(c => c.checked);
+  const n = marcados.length;
+  document.getElementById('bmSelCount').textContent = n + ' selecionado' + (n===1?'':'s');
+  // Mostra botão Inativar se algum selecionado é ativo, Reativar se algum é inativo
+  const algumAtivo = marcados.some(c => c.dataset.ativo === '1');
+  const algumInativo = marcados.some(c => c.dataset.ativo === '0');
+  document.getElementById('bmInativar').style.display = (n > 0 && algumAtivo) ? '' : 'none';
+  document.getElementById('bmReativar').style.display = (n > 0 && algumInativo) ? '' : 'none';
+}
+
+async function bancoMgmtAction(action){
+  const checks = document.querySelectorAll('.bm-row-check');
+  const filtroAtivo = action === 'inativar' ? '1' : '0';
+  const ids = Array.from(checks)
+    .filter(c => c.checked && c.dataset.ativo === filtroAtivo)
+    .map(c => c.dataset.id);
+  if (!ids.length){ alert('Nenhum vídeo elegível selecionado.'); return; }
+  const verbo = action === 'inativar' ? 'inativar' : 'reativar';
+  if (!confirm(`${verbo.charAt(0).toUpperCase()+verbo.slice(1)} ${ids.length} vídeo${ids.length===1?'':'s'}? ${action==='inativar'?'Some das listas públicas (preserva histórico ML).':'Volta a aparecer nas listas públicas.'}`)) return;
+  document.getElementById('bmMsg').textContent = '⏳ Atualizando…';
+  try{
+    const r = await fetch('/api/virais-coletor?action=' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminKey}` },
+      body: JSON.stringify({ ids }),
+    });
+    const d = await r.json();
+    if (r.ok){
+      document.getElementById('bmMsg').innerHTML = `<span style="color:#86efac">✓ ${d.atualizados} vídeo${d.atualizados===1?'':'s'} ${verbo === 'inativar' ? 'inativado' : 'reativado'}${d.atualizados===1?'':'s'}.</span>`;
+      toast(`✅ ${d.atualizados} ${verbo === 'inativar' ? 'inativado' : 'reativado'}${d.atualizados===1?'':'s'}`);
+      loadBancoMgmt(bmState.page); // refresh lista
+      loadViraisAdminPanel();      // refresh stats do card
+    } else {
+      document.getElementById('bmMsg').innerHTML = '<span style="color:#fca5a5">Erro: ' + (d.error || r.status) + '</span>';
+    }
+  }catch(e){
+    document.getElementById('bmMsg').innerHTML = '<span style="color:#fca5a5">Erro de conexão</span>';
+  }
 }
 
 async function marcarSaquePago(saqueId){

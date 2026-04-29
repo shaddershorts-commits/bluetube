@@ -9,6 +9,11 @@
 //   GET ?action=calcular-scores      — recalcula viral_score
 //   GET ?action=status               — metricas do banco (pra admin)
 //
+// Actions admin (exigem Authorization: Bearer ${ADMIN_SECRET}):
+//   GET  ?action=listar              — lista paginada com filtros (status/nicho/q/periodo)
+//   POST ?action=inativar            — body { ids:[uuid,...] } seta ativo=false
+//   POST ?action=reativar            — body { ids:[uuid,...] } seta ativo=true
+//
 // Usa fetch REST do Supabase (nao depende de @supabase/supabase-js).
 // NUNCA modifica api/auth.js.
 
@@ -31,6 +36,9 @@ module.exports = async function handler(req, res) {
       case 'migrar-nicho':       return await migrarNicho(res, req);
       case 'expandir-canais':    return await expandirCanais(res, req);
       case 'status':             return await statusBanco(res);
+      case 'listar':             return await listarBanco(res, req);
+      case 'inativar':           return await togglarAtivo(res, req, false);
+      case 'reativar':           return await togglarAtivo(res, req, true);
       default:                   return res.status(400).json({ error: 'action_invalida' });
     }
   } catch (e) {
@@ -753,5 +761,120 @@ async function statusBanco(res) {
     adicionados_hoje: adicionadosHoje,
     por_nicho: nichoCount,
     ultimas_coletas: coletas,
+  });
+}
+
+// ── ADMIN: LISTAR / INATIVAR / REATIVAR ────────────────────────────────────
+// Exigem Authorization: Bearer ${ADMIN_SECRET}.
+// Soft-delete via coluna `ativo` (existe no schema). Hard-delete intencionalmente
+// nao implementado — preserva histórico ML em virais_predicoes/clusters e
+// referencias em studio_analises.
+
+function assertAdmin(req) {
+  const auth = (req.headers && req.headers.authorization) || '';
+  const secret = process.env.ADMIN_SECRET || '';
+  if (!secret) return false;
+  return auth === `Bearer ${secret}`;
+}
+
+async function readJsonBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  let raw = '';
+  try {
+    for await (const chunk of req) raw += chunk;
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function listarBanco(res, req) {
+  if (!assertAdmin(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const q = req.query || {};
+  const status = ['ativos', 'inativos', 'todos'].includes(q.status) ? q.status : 'ativos';
+  const nicho = (q.nicho || '').trim();
+  const busca = (q.q || '').trim();
+  const periodo = ['24h', '7d', '30d', 'todos'].includes(q.periodo) ? q.periodo : 'todos';
+  const page = Math.max(1, parseInt(q.page, 10) || 1);
+  const perPage = 50;
+  const offset = (page - 1) * perPage;
+
+  const filtros = [];
+  if (status === 'ativos') filtros.push('ativo=eq.true');
+  else if (status === 'inativos') filtros.push('ativo=eq.false');
+  if (nicho && /^[a-z_]+$/.test(nicho)) filtros.push(`nicho=eq.${encodeURIComponent(nicho)}`);
+  if (periodo !== 'todos') {
+    const days = periodo === '24h' ? 1 : periodo === '7d' ? 7 : 30;
+    const desde = new Date(Date.now() - days * 86400000).toISOString();
+    filtros.push(`coletado_em=gte.${desde}`);
+  }
+  if (busca) {
+    // Sanitiza wildcard PostgREST: remove vírgulas, parênteses, asteriscos, %
+    const safe = busca.replace(/[%(),*]/g, '').slice(0, 100);
+    if (safe) {
+      const enc = encodeURIComponent(safe);
+      filtros.push(`or=(titulo.ilike.*${enc}*,canal_nome.ilike.*${enc}*)`);
+    }
+  }
+
+  const select = 'id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,viral_score,nicho,duracao_segundos,publicado_em,coletado_em,ativo';
+  const baseQs = filtros.join('&');
+  const url = `${SU}/rest/v1/virais_banco?${baseQs}&order=coletado_em.desc&select=${select}`;
+
+  const r = await fetch(url, {
+    headers: {
+      ...HDR,
+      Prefer: 'count=exact',
+      Range: `${offset}-${offset + perPage - 1}`,
+      'Range-Unit': 'items',
+    },
+  });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    return res.status(500).json({ error: 'fetch_failed', status: r.status, detail: txt.slice(0, 200) });
+  }
+
+  const items = await r.json();
+  const cr = r.headers.get('content-range') || '';
+  const m = cr.match(/\/(\d+)$/);
+  const total = m ? parseInt(m[1], 10) : items.length;
+
+  return res.status(200).json({
+    items,
+    total,
+    page,
+    per_page: perPage,
+    has_more: offset + items.length < total,
+    filtros: { status, nicho, busca, periodo },
+  });
+}
+
+async function togglarAtivo(res, req, novoEstado) {
+  if (!assertAdmin(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const body = await readJsonBody(req);
+  const idsRaw = Array.isArray(body && body.ids) ? body.ids : [];
+  if (!idsRaw.length) return res.status(400).json({ error: 'ids_required' });
+  if (idsRaw.length > 200) return res.status(400).json({ error: 'too_many_ids', max: 200 });
+
+  // Sanitize: aceita só UUIDs válidos
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validIds = idsRaw.filter(id => typeof id === 'string' && uuidRe.test(id));
+  if (!validIds.length) return res.status(400).json({ error: 'no_valid_ids' });
+
+  const r = await supaPatch(
+    `virais_banco?id=in.(${validIds.join(',')})`,
+    { ativo: novoEstado, atualizado_em: new Date().toISOString() }
+  );
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    return res.status(500).json({ error: 'update_failed', status: r.status, detail: txt.slice(0, 200) });
+  }
+
+  return res.status(200).json({
+    atualizados: validIds.length,
+    novo_estado: novoEstado,
+    ids: validIds,
   });
 }
