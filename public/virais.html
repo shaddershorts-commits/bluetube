@@ -733,6 +733,9 @@ function atualizarBadgeBanco(){
     periodo: periodo,
   });
   if (nichoSel) params.set('nicho', nichoSel);
+  // Token p/ filtro 5h Master-only (ignorado nas outras janelas)
+  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  if (tk) params.set('token', tk);
   fetch(`/api/virais?${params}`).then(r => r.json()).then(d => {
     const el = document.getElementById('banco-stats');
     if (!el) return;
@@ -780,8 +783,18 @@ async function carregarHistorico(pagina){
       periodo: periodo,
     });
     if (nichoSel) params.set('nicho', nichoSel);
+    // Token Supabase eh obrigatorio pra periodo=5h (filtro Master-only).
+    // Pra outras janelas, token eh ignorado pelo backend — sempre envia.
+    const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+    if (tk) params.set('token', tk);
+
     const r = await fetch(`/api/virais?${params}`);
-    if (!r.ok) return;
+    if (!r.ok) {
+      // Limpa paginacao residual de filtro anterior
+      const pag = document.getElementById('historico-paginacao');
+      if (pag) pag.style.display = 'none';
+      return;
+    }
     const d = await r.json();
     if (!d.videos || !d.videos.length){
       const pag = document.getElementById('historico-paginacao');
