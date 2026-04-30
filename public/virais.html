@@ -56,6 +56,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .filter-btn{font-family:var(--mono);font-size:11px;font-weight:600;padding:8px 16px;cursor:pointer;border:none;background:transparent;color:var(--text-sec);transition:all .2s;white-space:nowrap}
 .filter-btn.active{background:rgba(0,170,255,.15);color:var(--neon)}
 .filter-btn:hover:not(.active){background:rgba(0,170,255,.06);color:var(--text)}
+.filter-btn-master{color:#fbbf24;font-weight:700;background:rgba(251,191,36,.06)}
+.filter-btn-master:hover:not(.active){background:rgba(251,191,36,.14);color:#fcd34d}
+.filter-btn-master.active{background:linear-gradient(135deg,rgba(251,191,36,.25),rgba(245,158,11,.25));color:#fcd34d;box-shadow:inset 0 0 0 1px rgba(251,191,36,.4)}
 .filter-divider{width:1px;background:var(--blue-border);align-self:stretch}
 .filter-select{font-family:var(--mono);font-size:11px;background:rgba(2,8,23,.7);border:1px solid var(--blue-border);border-radius:10px;padding:8px 14px;color:var(--text-sec);cursor:pointer;outline:none;transition:all .2s}
 .filter-select:focus{border-color:rgba(0,170,255,.4)}
@@ -186,8 +189,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 
     <!-- FILTERS -->
     <div class="filters">
-      <!-- Period -->
+      <!-- Period (5h = exclusivo Master, dourado) -->
       <div class="filter-group">
+        <button class="filter-btn filter-btn-master" data-period="5h" onclick="setPeriod5h(this)" title="Exclusivo Master — virais explodindo nas últimas 5 horas (≥100k views)">⚡ 5h</button>
+        <div class="filter-divider"></div>
         <button class="filter-btn" data-period="24h" onclick="setPeriod('24h',this)">24h</button>
         <div class="filter-divider"></div>
         <button class="filter-btn active" data-period="7d" onclick="setPeriod('7d',this)">7 dias</button>
@@ -227,6 +232,32 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <span id="btnDailyAlertIcon">🔔</span>
         <span id="btnDailyAlertLabel">Notificar diariamente</span>
       </button>
+    </div>
+  </div>
+
+  <!-- MODAL UPGRADE — Filtro 5h exclusivo Master -->
+  <div id="filter5hUpgradeModal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+    <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(251,191,36,0.35);border-radius:18px;padding:28px;width:100%;max-width:480px;position:relative">
+      <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(251,191,36,.6),transparent);border-radius:18px 18px 0 0"></div>
+      <button onclick="close5hUpgradeModal()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#7d92b8;font-size:18px;cursor:pointer">✕</button>
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:42px;margin-bottom:8px">⚡</div>
+        <div style="font-size:19px;font-weight:800;color:#fff;letter-spacing:-0.3px">Filtro 5 horas</div>
+        <div style="font-size:11px;color:#fbbf24;font-family:monospace;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px">Exclusivo Master</div>
+      </div>
+      <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:13px;color:#cbd5e1;line-height:1.6">
+        Vê os Shorts que <strong style="color:#fff">explodiram NAS ÚLTIMAS 5 HORAS</strong> com mais de <strong style="color:#fff">100 mil views</strong>. Janela apertada onde a onda ainda não saturou — vantagem real de quem age primeiro.
+      </div>
+      <div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:8px">🎯 Por que vale upgrade:</div>
+      <ul style="margin:0 0 18px 0;padding-left:20px;font-size:12.5px;color:#cbd5e1;line-height:1.7">
+        <li>⚡ <strong style="color:#22c55e">Pega viral antes</strong> da maioria dos creators saber que existe</li>
+        <li>🎯 Threshold de 100k em 5h = <strong style="color:#22c55e">vídeo explodindo agora</strong> (≈480k/dia ritmo)</li>
+        <li>🔒 Free e Full não enxergam — janela exclusiva sua</li>
+      </ul>
+      <div style="text-align:center">
+        <a href="/?upgrade=master" style="display:inline-block;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;padding:14px 32px;border-radius:10px;font-weight:800;text-decoration:none;font-size:14px;box-shadow:0 4px 12px rgba(251,191,36,.3)">🚀 Fazer upgrade pro Master</a>
+        <div style="font-size:11px;color:#7d92b8;font-family:monospace;margin-top:8px">Acesso a essa e outras ferramentas premium</div>
+      </div>
     </div>
   </div>
 
@@ -346,6 +377,24 @@ function setPeriod(p, btn) {
   // Modo curado: so banco, sem busca ativa YouTube. Coletor cron a cada 2h.
   carregarHistorico(1);
   atualizarBadgeBanco();
+}
+
+// Filtro 5h — EXCLUSIVO MASTER. Master ativa direto; Free/Full abre modal upgrade.
+function setPeriod5h(btn) {
+  // Resolve plano sincrono via localStorage (mesma logica do botao notificar)
+  const planLocal = (typeof plan !== 'undefined' && plan) ? plan : (localStorage.getItem('bt_plan') || 'free');
+  if (planLocal !== 'master') {
+    open5hUpgradeModal();
+    return;
+  }
+  setPeriod('5h', btn);
+}
+
+function open5hUpgradeModal() {
+  document.getElementById('filter5hUpgradeModal').style.display = 'flex';
+}
+function close5hUpgradeModal() {
+  document.getElementById('filter5hUpgradeModal').style.display = 'none';
 }
 
 // Quando muda o nicho — so recarrega do banco (zero cota API), nao dispara

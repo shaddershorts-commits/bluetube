@@ -91,10 +91,47 @@ async function historicoAction(req, res) {
   const idioma = (req.query.idioma || '').toString().trim();
   const pais   = (req.query.pais   || '').toString().trim();
   const ordem  = (req.query.ordem  || 'recentes').toLowerCase();
-  const periodo = (req.query.periodo || 'todos').toString().toLowerCase(); // 24h | 7d | 30d | todos
+  const periodo = (req.query.periodo || 'todos').toString().toLowerCase(); // 5h | 24h | 7d | 30d | todos
   const pagina = Math.max(1, parseInt(req.query.pagina || '1', 10) || 1);
   const limite = 20;
   const offset = (pagina - 1) * limite;
+
+  // ── FILTRO 5h: EXCLUSIVO MASTER (anti-bypass via curl/console) ─────────
+  // Front bloqueia o botao Master-only, mas se alguem chamar a URL direto
+  // sem ser master, retorna 403. Token Supabase e obrigatorio aqui.
+  if (periodo === '5h') {
+    const token = req.query.token || '';
+    if (!token) {
+      return res.status(401).json({ error: 'token_obrigatorio_filtro_5h' });
+    }
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, {
+        headers: { apikey: process.env.SUPABASE_ANON_KEY || SK, Authorization: `Bearer ${token}` }
+      });
+      if (!uR.ok) return res.status(401).json({ error: 'token_invalido' });
+      const user = await uR.json();
+      if (!user?.email) return res.status(401).json({ error: 'sem_email' });
+      // Resolve plano usando MESMA logica de get-plan (is_manual + plan_expires_at)
+      const subR = await fetch(
+        `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual&limit=1`,
+        { headers: HDR }
+      );
+      const sub = subR.ok ? (await subR.json())?.[0] : null;
+      const isManual = sub?.is_manual === true;
+      const notExpired = !sub?.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
+      const planoEfetivo = (sub?.plan && sub.plan !== 'free' && (isManual || notExpired)) ? sub.plan : 'free';
+      if (planoEfetivo !== 'master') {
+        return res.status(403).json({
+          error: 'master_only',
+          message: 'Filtro 5h exclusivo do plano Master',
+          current_plan: planoEfetivo,
+        });
+      }
+    } catch (e) {
+      console.error('[virais] validacao master 5h falhou:', e.message);
+      return res.status(500).json({ error: 'auth_check_failed' });
+    }
+  }
 
   // Filtro de idioma agrupado: en cobre US/GB/AU, pt cobre BR/PT, es cobre ES/MX
   // (Felipe pediu UI com 1 opcao por idioma, sem variantes regionais).
@@ -122,25 +159,30 @@ async function historicoAction(req, res) {
     parts.push(`pais=eq.${encodeURIComponent(pais.toUpperCase())}`);
   }
 
-  // Filtro por periodo de publicacao — rotacao automatica 24h -> 7d -> 30d.
-  // Mesmo em "todos" aplicamos teto de 30 dias: video >30d sai da pagina.
-  // Um video passa naturalmente de bucket conforme envelhece (sem cron).
+  // Filtro por periodo de publicacao — janelas: 5h, 24h, 7d, 30d, todos.
+  // 5h eh filtro MASTER-only (validado acima). Captura virais explodindo
+  // em quase real-time. Demais janelas: comportamento original.
+  const MS_HOUR = 3600000;
   const MS_24H = 86400000;
   const agora = Date.now();
-  let limiteDias = 30;
-  if (periodo === '24h') limiteDias = 1;
-  else if (periodo === '7d') limiteDias = 7;
-  else if (periodo === '30d') limiteDias = 30;
-  // 'todos' fica com 30 (requisito: videos somem do banco apos 30 dias).
-  const desde = new Date(agora - limiteDias * MS_24H).toISOString();
+  let desdeMs;
+  if (periodo === '5h')         desdeMs = 5 * MS_HOUR;
+  else if (periodo === '24h')   desdeMs = 1 * MS_24H;
+  else if (periodo === '7d')    desdeMs = 7 * MS_24H;
+  else                          desdeMs = 30 * MS_24H; // 30d | todos
+  const desde = new Date(agora - desdeMs).toISOString();
   parts.push(`publicado_em=gte.${desde}`);
 
-  // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE (P2 do Felipe).
+  // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE.
   // "Respeitar filtro": cada janela exige views minimas REAIS de viral.
-  // 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M
+  //   5h  ≥ 100k (master only — viral confirmado em janela apertada)
+  //   24h ≥ 300k
+  //   7d  ≥ 2M
+  //   30d ≥ 8M
   // Banco legacy abaixo desses thresholds nao aparece — comportamento
   // intencional, ferramenta vira "virais de verdade".
-  if (periodo === '24h')      parts.push('views=gte.300000');
+  if (periodo === '5h')       parts.push('views=gte.100000');
+  else if (periodo === '24h') parts.push('views=gte.300000');
   else if (periodo === '7d')  parts.push('views=gte.2000000');
   else if (periodo === '30d') parts.push('views=gte.8000000');
 
