@@ -195,16 +195,23 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <button class="filter-btn" data-period="30d" onclick="setPeriod('30d',this)">30 dias</button>
       </div>
 
-      <!-- Region -->
+      <!-- Region (unificado com idiomas do admin — granular) -->
       <select class="filter-select" id="regionSelect" onchange="carregarHistorico(1); atualizarBadgeBanco();">
-        <option value="" selected>🌐 Todos os países</option>
-        <option value="BR">🇧🇷 Brasil</option>
-        <option value="US">🇺🇸 EUA</option>
-        <option value="ES">🇪🇸 Espanhol</option>
-        <option value="JP">🇯🇵 Japão</option>
-        <option value="DE">🇩🇪 Alemanha</option>
-        <option value="FR">🇫🇷 França</option>
-        <option value="RU">🇷🇺 Rússia</option>
+        <option value="" selected>🌐 Todos os idiomas</option>
+        <option value="BR">🇧🇷 Português (Brasil)</option>
+        <option value="PT">🇵🇹 Português (Portugal)</option>
+        <option value="US">🇺🇸 English (US)</option>
+        <option value="GB">🇬🇧 English (UK)</option>
+        <option value="AU">🇦🇺 English (AU)</option>
+        <option value="ES">🇪🇸 Español (España)</option>
+        <option value="MX">🇲🇽 Español (México)</option>
+        <option value="FR">🇫🇷 Français</option>
+        <option value="DE">🇩🇪 Deutsch</option>
+        <option value="IT">🇮🇹 Italiano</option>
+        <option value="JP">🇯🇵 日本語</option>
+        <option value="KR">🇰🇷 한국어</option>
+        <option value="CN">🇨🇳 中文</option>
+        <option value="RU">🇷🇺 Русский (Russo)</option>
       </select>
 
       <!-- Nicho -->
