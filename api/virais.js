@@ -114,6 +114,24 @@ async function historicoAction(req, res) {
   const desde = new Date(agora - limiteDias * MS_24H).toISOString();
   parts.push(`publicado_em=gte.${desde}`);
 
+  // ── MODO CURADO (default true): so mostra videos coletados de canais
+  // monitorados pelo Felipe. Resolve hindi/IN/ID/longos/aleatorios numa
+  // tacada porque escopo eh estreito por design.
+  const apenasCurados = (req.query.apenas_curados || 'true').toString() !== 'false';
+  if (apenasCurados) parts.push('fonte=eq.canal_curado');
+
+  // ── THRESHOLDS DE VIEWS POR JANELA (P2 do Felipe)
+  // 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M
+  // So aplicado em modo curado pra nao quebrar legacy.
+  if (apenasCurados) {
+    if (periodo === '24h')      parts.push('views=gte.300000');
+    else if (periodo === '7d')  parts.push('views=gte.2000000');
+    else if (periodo === '30d') parts.push('views=gte.8000000');
+  }
+
+  // Hard limit de duracao (so Shorts ≤90s)
+  if (apenasCurados) parts.push('duracao_segundos=lte.90');
+
   const orderMap = {
     views: 'views.desc',
     engajamento: 'taxa_engajamento.desc',

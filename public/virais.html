@@ -196,7 +196,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       </div>
 
       <!-- Region -->
-      <select class="filter-select" id="regionSelect" onchange="fetchVirals()">
+      <select class="filter-select" id="regionSelect" onchange="carregarHistorico(1); atualizarBadgeBanco();">
         <option value="" selected>🌐 Todos os países</option>
         <option value="BR">🇧🇷 Brasil</option>
         <option value="US">🇺🇸 EUA</option>
@@ -217,12 +217,26 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="pessoas_blogs">👤 Pessoas e blogs</option>
       </select>
 
-      <button class="btn-fetch" id="fetchBtn" onclick="fetchVirals()">
-        <span id="fetchBtnIcon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        </span>
-        Buscar
+      <!-- Botão Notificar diário (Master toggle / Free+Full modal upgrade) -->
+      <button id="btnDailyAlert" onclick="toggleDailyAlert()" title="Receba diariamente os 5 shorts virais mais quentes" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);border-radius:8px;padding:8px 12px;font-family:var(--font);font-size:12px;font-weight:700;color:#fbbf24;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        <span id="btnDailyAlertIcon">🔔</span>
+        <span id="btnDailyAlertLabel">Notificar diariamente</span>
       </button>
+    </div>
+  </div>
+
+  <!-- MODAL UPGRADE (Free + Full) -->
+  <div id="dailyAlertUpgradeModal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+    <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(251,191,36,0.35);border-radius:18px;padding:28px;width:100%;max-width:440px;position:relative;text-align:center">
+      <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(251,191,36,.6),transparent);border-radius:18px 18px 0 0"></div>
+      <button onclick="closeDailyAlertUpgrade()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#7d92b8;font-size:18px;cursor:pointer">✕</button>
+      <div style="font-size:42px;margin-bottom:12px">🔔</div>
+      <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:8px">Recurso exclusivo Master</div>
+      <div style="font-size:13px;color:#cbd5e1;line-height:1.6;margin-bottom:18px">
+        Toda manhã às 7:30 você recebe um e-mail com <strong style="color:#fbbf24">5 Shorts virais</strong> que passaram de <strong style="color:#fbbf24">1 milhão de views</strong> nas últimas 24 horas — selecionados pessoalmente do banco curado.
+      </div>
+      <a href="/?upgrade=master" style="display:inline-block;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;padding:12px 28px;border-radius:10px;font-weight:800;text-decoration:none;font-size:14px">Fazer upgrade pro Master</a>
+      <div style="font-size:11px;color:#7d92b8;margin-top:12px;font-family:monospace">Acesso a essa e outras ferramentas premium</div>
     </div>
   </div>
 
@@ -304,10 +318,9 @@ function setPeriod(p, btn) {
   currentPeriod = p;
   document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  // Atualiza o historico imediatamente (zero cota) — nao espera o fetchVirals
+  // Modo curado: so banco, sem busca ativa YouTube. Coletor cron a cada 2h.
   carregarHistorico(1);
   atualizarBadgeBanco();
-  fetchVirals();
 }
 
 // Quando muda o nicho — so recarrega do banco (zero cota API), nao dispara
@@ -544,16 +557,17 @@ function escHtml(s) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 if (plan === 'master') {
-  // Mostra skeletons enquanto fetchVirals/carregarHistorico carrega — evita
-  // grid vazio visivel no load (especialmente no default 'Todos paises' que
-  // cai direto no carregarHistorico sem passar pelo showSkeletons do fetchVirals).
+  // Modo CURADO: zero busca ativa YouTube. Cron coletar-curados popula o banco
+  // a cada 2h. Frontend so le do banco com filtros + thresholds (300k/2M/8M).
   try { showSkeletons(); } catch(e) {}
-  fetchVirals();
-  // Auto-refresh a cada 14 horas (cache de 14h no servidor economiza quota)
+  carregarHistorico(1);
+  atualizarBadgeBanco();
+  // Auto-refresh: recarrega banco a cada 2 minutos (zero cota YouTube,
+  // pega videos novos coletados pelo cron entre execucoes)
   setInterval(() => {
-    console.log('[Virais] Auto-refresh...');
-    fetchVirals();
-  }, 14 * 60 * 60 * 1000);
+    carregarHistorico(1);
+    atualizarBadgeBanco();
+  }, 2 * 60 * 1000);
 }
 
 // Also handle prefill on main page
@@ -794,6 +808,91 @@ if (typeof token !== 'undefined' && token){
   // Carrega historico imediato com filtros atuais
   setTimeout(() => carregarHistorico(1), 200);
 }
+
+// ── DAILY ALERT (Master) ─────────────────────────────────────────────────
+let _alertCurrentState = false;
+
+async function syncDailyAlertState(){
+  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  if (!tk) return; // user nao logado → botao mostra estado padrao (clique abre modal upgrade)
+  try{
+    const r = await fetch('/api/virais-canais?action=alert-status&token=' + encodeURIComponent(tk));
+    if (!r.ok) return;
+    const d = await r.json();
+    _alertCurrentState = !!d.virais_daily_alert;
+    _alertUserPlan = d.plan || 'free';
+    updateDailyAlertButton();
+  }catch(e){ /* silent */ }
+}
+
+let _alertUserPlan = 'free';
+
+function updateDailyAlertButton(){
+  const btn = document.getElementById('btnDailyAlert');
+  const icon = document.getElementById('btnDailyAlertIcon');
+  const label = document.getElementById('btnDailyAlertLabel');
+  if (!btn) return;
+  if (_alertCurrentState && _alertUserPlan === 'master'){
+    btn.style.background = 'rgba(34,197,94,.15)';
+    btn.style.borderColor = 'rgba(34,197,94,.45)';
+    btn.style.color = '#86efac';
+    icon.textContent = '✓';
+    label.textContent = 'Notificações ativas';
+  } else {
+    btn.style.background = 'rgba(251,191,36,.12)';
+    btn.style.borderColor = 'rgba(251,191,36,.35)';
+    btn.style.color = '#fbbf24';
+    icon.textContent = '🔔';
+    label.textContent = 'Notificar diariamente';
+  }
+}
+
+async function toggleDailyAlert(){
+  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  if (!tk){
+    // Sem login → modal upgrade
+    document.getElementById('dailyAlertUpgradeModal').style.display = 'flex';
+    return;
+  }
+  // Tenta alternar — backend retorna 403 se nao for master, frontend abre modal
+  try{
+    const r = await fetch('/api/virais-canais?action=toggle-daily-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: tk, enable: !_alertCurrentState }),
+    });
+    const d = await r.json().catch(()=>({}));
+    if (r.status === 403 && d.error === 'plano_master_necessario'){
+      // Free / Full → modal upgrade
+      document.getElementById('dailyAlertUpgradeModal').style.display = 'flex';
+      return;
+    }
+    if (r.ok && d.ok){
+      _alertCurrentState = !!d.virais_daily_alert;
+      _alertUserPlan = 'master'; // se chegou aqui foi sucesso, eh master
+      updateDailyAlertButton();
+      if (typeof toast === 'function'){
+        toast(_alertCurrentState ? '✅ Notificações diárias ativadas! Email todo dia 7:30' : '🔕 Notificações desativadas');
+      } else {
+        alert(_alertCurrentState ? 'Notificações ativadas! Você recebe email todo dia 7:30 BRT.' : 'Notificações desativadas.');
+      }
+      return;
+    }
+    // Erro generico
+    alert('Erro: ' + (d.error || r.status));
+  }catch(e){
+    alert('Erro de conexão');
+  }
+}
+
+function closeDailyAlertUpgrade(){
+  document.getElementById('dailyAlertUpgradeModal').style.display = 'none';
+}
+
+// Sync inicial do estado do botao
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(syncDailyAlertState, 500);
+});
 
 </script>
 <script src="/toolbar.js" defer></script>
