@@ -114,10 +114,12 @@ async function historicoAction(req, res) {
   const desde = new Date(agora - limiteDias * MS_24H).toISOString();
   parts.push(`publicado_em=gte.${desde}`);
 
-  // ── MODO CURADO (default true): so mostra videos coletados de canais
-  // monitorados pelo Felipe. Resolve hindi/IN/ID/longos/aleatorios numa
-  // tacada porque escopo eh estreito por design.
-  const apenasCurados = (req.query.apenas_curados || 'true').toString() !== 'false';
+  // ── MODO CURADO (opt-in): so mostra videos de canais monitorados.
+  // Default FALSE pra preservar banco legacy (4388 videos coletados antes
+  // da refatoracao) — eles saem naturalmente pelo filtro de 30 dias.
+  // Quando Felipe quiser usar so curado, frontend manda apenas_curados=true
+  // (futuro: toggle UI). Por agora, ambos coexistem.
+  const apenasCurados = (req.query.apenas_curados || 'false').toString() === 'true';
   if (apenasCurados) parts.push('fonte=eq.canal_curado');
 
   // ── THRESHOLDS DE VIEWS POR JANELA (P2 do Felipe)
@@ -129,7 +131,7 @@ async function historicoAction(req, res) {
     else if (periodo === '30d') parts.push('views=gte.8000000');
   }
 
-  // Hard limit de duracao (so Shorts ≤90s)
+  // Hard limit de duracao (so Shorts ≤90s) — so em modo curado
   if (apenasCurados) parts.push('duracao_segundos=lte.90');
 
   const orderMap = {

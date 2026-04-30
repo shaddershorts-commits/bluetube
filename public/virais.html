@@ -668,7 +668,7 @@ function atualizarBadgeBanco(){
       if (d.total > 0) {
         el.textContent = `📦 ${d.total.toLocaleString('pt-BR')} vídeos no banco · ${regionLabel} · ${periodoLabel}`;
       } else {
-        el.textContent = `📦 Banco vazio pra esta combinação (${regionLabel} · ${periodoLabel}) — clique em Buscar`;
+        el.textContent = `📦 Sem vídeos novos pra esta combinação (${regionLabel} · ${periodoLabel}). Atualiza automaticamente a cada 2 min.`;
       }
     }
   }).catch(() => {});
