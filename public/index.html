@@ -39,6 +39,9 @@ src="https://www.facebook.com/tr?id=1445793886789248&ev=PageView&noscript=1"/>
 </noscript>
 <!-- End Meta Pixel Code -->
 
+<!-- UTM/fbclid/gclid tracker — carrega DEPOIS do Pixel pra nao quebrar (IIFE try/catch) -->
+<script src="/_utm-tracker.js" defer></script>
+
 <meta charset="UTF-8"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
@@ -2221,6 +2224,22 @@ async function handleEmailSignup(){
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
       }).catch(()=>{});
+      // Fire-and-forget: grava UTM/fbclid/gclid em subscribers (atribuicao Meta/Google Ads).
+      // Falha silenciosa pra nao bloquear UX. Ler bt_attribution do localStorage via _utm-tracker.js.
+      try {
+        const _attribution = (typeof window.getMarketingAttribution === 'function') ? window.getMarketingAttribution() : null;
+        if (_attribution) {
+          fetch('/api/marketing-attribution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: d.session.access_token,
+              email: (document.getElementById('signupEmail')?.value || '').trim().toLowerCase(),
+              attribution: _attribution,
+            }),
+          }).catch(()=>{});
+        }
+      } catch(e) { /* silent fail */ }
       setAuthMsg('Conta criada com sucesso! 🎉','ok');
       // ── TRACKING UNIFICADO — Lead (signup por email) ──────────
       try {
@@ -3551,6 +3570,26 @@ async function handleOAuthCallback(){
         currentUserEmail = planData.email;
         if(planData.plan_expires_at) localStorage.setItem('bt_plan_expiry', new Date(planData.plan_expires_at).getTime().toString());
         localStorage.setItem('bt_cancel_scheduled', planData.cancel_at_period_end === true ? '1' : '0');
+        // Fire-and-forget: grava UTM/fbclid em subscribers via OAuth Google.
+        // OAuth callback roda em todo login — usa flag pra disparar so na 1a vez.
+        // Falha silenciosa.
+        if (!localStorage.getItem('bt_oauth_attribution_sent') && planData.email) {
+          try {
+            const _attribution = (typeof window.getMarketingAttribution === 'function') ? window.getMarketingAttribution() : null;
+            if (_attribution) {
+              fetch('/api/marketing-attribution', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  token: accessToken,
+                  email: String(planData.email).trim().toLowerCase(),
+                  attribution: _attribution,
+                }),
+              }).catch(()=>{});
+            }
+            localStorage.setItem('bt_oauth_attribution_sent', '1');
+          } catch(e) { /* silent fail */ }
+        }
         setLoggedIn(planData.email, userPlan);
         updateLangOptions();
         _maybeAutoDispatchPendingTranscription();
