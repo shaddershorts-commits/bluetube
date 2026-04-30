@@ -717,16 +717,11 @@ async function carregarHistorico(pagina){
     // Sem filtro de nicho, comportamento antigo: busca ativa + banco.
     if (pagina === 1) {
       paginaHistorico = 0;
-      // Remove skeletons do boot (showSkeletons() do init) — caso contrario
-      // ficariam travados acima dos cards reais (insertAdjacentHTML beforeend).
-      grid.querySelectorAll('.skel-card').forEach(el => el.remove());
-      if (nichoSel) {
-        // Filtro ativo — limpa grid pra mostrar SO o banco filtrado
-        grid.innerHTML = '';
-      } else if (lastResults && lastResults.length) {
-        // Sem filtro — mantem comportamento original
-        renderVideos(lastResults);
-      }
+      // Modo curado: SEMPRE limpa grid em pagina=1 (sem residual de busca
+      // ativa antiga). lastResults ficou como dead code apos remocao do
+      // botao "Buscar" — nao deve ser usado pra renderizar mais.
+      lastResults = [];
+      grid.innerHTML = '';
     }
     const params = new URLSearchParams({
       action: 'historico',
@@ -755,10 +750,6 @@ async function carregarHistorico(pagina){
     // Dedupe: ignora videos cujo youtube_id ja esta no grid
     const idsExistentes = new Set();
     grid.querySelectorAll('a.short-card[data-vid]').forEach(a => idsExistentes.add(a.dataset.vid));
-    // Dedupe contra lastResults SO quando nao ha filtro de nicho
-    if (!nichoSel && lastResults && lastResults.length) {
-      lastResults.forEach(v => v.id && idsExistentes.add(v.id));
-    }
     const novos = d.videos.filter(v => v.youtube_id && !idsExistentes.has(v.youtube_id));
 
     // Renderiza e ANEXA ao grid (insertAdjacentHTML beforeend)

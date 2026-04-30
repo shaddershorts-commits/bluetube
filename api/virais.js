@@ -189,7 +189,7 @@ async function historicoAction(req, res) {
   const total = m ? parseInt(m[1], 10) : videos.length;
   const total_paginas = Math.max(1, Math.ceil(total / limite));
 
-  res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+  res.setHeader('Cache-Control', 'public, s-maxage=10, stale-while-revalidate=30');
   return res.status(200).json({
     videos: videos || [],
     total,
