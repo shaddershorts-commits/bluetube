@@ -112,19 +112,14 @@ async function historicoAction(req, res) {
   if (nicho  && nicho  !== 'todos' && nicho  !== '') parts.push(`nicho=eq.${encodeURIComponent(nicho)}`);
   if (idioma && idioma !== 'todos' && idioma !== '') parts.push(`idioma=eq.${encodeURIComponent(idioma)}`);
 
-  // Resolucao: lang novo > pais legacy.
-  // EXCECAO: nicho=esportes (Futebol Edits) transcende idioma — geralmente
-  // eh musica sem fala, faz sentido aparecer em qualquer filtro de idioma.
-  // PostgREST `or=` aplica disjuncao: pais X OU nicho=esportes.
+  // Resolucao: lang novo > pais legacy
   if (lang && lang !== 'todos' && LANG_AGRUPADO[lang]) {
     const paises = LANG_AGRUPADO[lang];
-    const paisFilter = paises.length === 1
-      ? `pais.eq.${paises[0]}`
-      : `pais.in.(${paises.join(',')})`;
-    parts.push(`or=(${paisFilter},nicho.eq.esportes)`);
+    if (paises.length === 1) parts.push(`pais=eq.${paises[0]}`);
+    else parts.push(`pais=in.(${paises.join(',')})`);
   } else if (pais && pais !== 'todos' && pais !== '') {
     // Compat: frontend antigo ou legacy ainda passa `pais=XX`
-    parts.push(`or=(pais.eq.${encodeURIComponent(pais.toUpperCase())},nicho.eq.esportes)`);
+    parts.push(`pais=eq.${encodeURIComponent(pais.toUpperCase())}`);
   }
 
   // Filtro por periodo de publicacao — rotacao automatica 24h -> 7d -> 30d.
