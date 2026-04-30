@@ -274,13 +274,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div style="font-family:var(--font);font-weight:800;font-size:16px;color:#22c55e">🎯 Canais Monitorados</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="cmCount" style="font-size:11px;color:var(--dim);font-family:var(--mono)">— ativos</span>
+          <button onclick="coletarAgoraCanais()" id="cmColetarBtn" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border:none;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">🔍 Coletar agora</button>
           <button onclick="openAddCanalModal()" style="background:linear-gradient(135deg,#22c55e,#10b981);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">+ Adicionar canal</button>
           <button onclick="loadCanaisCurados()" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;font-size:11px;color:#fff;cursor:pointer">↻</button>
         </div>
       </div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:8px;line-height:1.5">
         A IA monitora os canais abaixo a cada 2h e coleta automaticamente os Shorts. Filtros do site aplicam thresholds: 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M views.
       </div>
+      <div id="cmColetarMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);min-height:14px;margin-bottom:8px"></div>
       <div id="cmTableWrap" style="overflow:auto;border:1px solid rgba(255,255,255,.06);border-radius:10px">
         <div style="padding:24px;text-align:center;color:var(--dim);font-size:12px">Clique ↻ pra carregar.</div>
       </div>
@@ -3017,6 +3019,41 @@ async function removerCanal(channelId, name){
       alert('Erro: ' + (d.error || r.status));
     }
   }catch(e){ alert('Erro de conexão'); }
+}
+
+// ── Coletar agora (dispatch manual com profundidade=60) ────────────────────
+async function coletarAgoraCanais(){
+  const btn = document.getElementById('cmColetarBtn');
+  const msg = document.getElementById('cmColetarMsg');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const labelOriginal = btn.textContent;
+  btn.textContent = '⏳ Coletando…';
+  btn.style.opacity = '0.7';
+  msg.style.color = 'var(--dim)';
+  msg.textContent = '⏳ Buscando últimos 60 vídeos de cada canal + atualizando views… (pode demorar até 60s)';
+  try{
+    const t0 = Date.now();
+    const r = await fetch('/api/virais-canais?action=coletar-curados&profundidade=60', { method: 'GET' });
+    const d = await r.json().catch(()=>({}));
+    const ms = Date.now() - t0;
+    if (r.ok && d.ok){
+      msg.style.color = 'var(--green)';
+      msg.innerHTML = `✓ Diagnóstico OK em ${(ms/1000).toFixed(1)}s — <strong>${d.canais_processados||0}</strong> canais processados, <strong>${d.videos_novos||0}</strong> Shorts coletados/atualizados${d.erros ? ` · <span style="color:#fca5a5">${d.erros} erro(s)</span>` : ''}.`;
+      toast(`✅ ${d.videos_novos||0} Shorts atualizados em ${d.canais_processados||0} canais`);
+      loadCanaisCurados();
+    } else {
+      msg.style.color = '#fca5a5';
+      msg.textContent = '✗ Erro: ' + (d.error || r.status);
+    }
+  }catch(e){
+    msg.style.color = '#fca5a5';
+    msg.textContent = '✗ Erro de conexão';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = labelOriginal;
+    btn.style.opacity = '1';
+  }
 }
 
 async function marcarSaquePago(saqueId){

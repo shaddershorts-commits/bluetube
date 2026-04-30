@@ -279,13 +279,20 @@ async function listarCanais(req, res) {
   return res.status(200).json({ ok: true, total: items.length, canais: items });
 }
 
-// ── ACTION: coletar-curados (cron) ──────────────────────────────────────────
-// Pra cada canal ativo: pega ultimos 20 vídeos da playlist de uploads,
-// filtra Shorts ≤90s, salva em virais_banco com fonte='canal_curado'.
+// ── ACTION: coletar-curados (cron + dispatch manual) ────────────────────────
+// Pra cada canal ativo: pega ultimos N videos da playlist de uploads, filtra
+// Shorts ≤90s, salva em virais_banco com fonte='canal_curado'. Upsert
+// idempotente atualiza views/likes dos videos ja salvos (diagnostico).
+//
+// Query param `profundidade` (default 20):
+//   - cron automatico: 20 (cobre videos novos das ultimas 2h, leve)
+//   - dispatch manual via botao "Coletar agora": 60 (revisita historico
+//     mais fundo pra atualizar views de videos antigos do mesmo canal)
 async function coletarCurados(req, res) {
   // Sem auth obrigatoria (chamada pelo Vercel cron). Pode rodar manual com Bearer.
   const startTs = Date.now();
-  const log = { canais_processados: 0, videos_novos: 0, videos_atualizados: 0, erros: 0 };
+  const profundidade = Math.min(50, Math.max(5, parseInt(req.query?.profundidade, 10) || 20));
+  const log = { canais_processados: 0, videos_novos: 0, videos_atualizados: 0, erros: 0, profundidade };
 
   try {
     const r = await fetch(
@@ -301,11 +308,11 @@ async function coletarCurados(req, res) {
         // 1. Uploads playlist ID = channel_id com prefixo UU em vez de UC
         const uploadsId = canal.channel_id.replace(/^UC/, 'UU');
 
-        // 2. Pega últimos 20 itens da playlist
+        // 2. Pega últimos N itens da playlist (profundidade configuravel)
         const plR = await youtubeRequest('playlistItems', {
           part: 'contentDetails',
           playlistId: uploadsId,
-          maxResults: 20,
+          maxResults: profundidade,
         });
         const ids = (plR?.items || []).map(it => it.contentDetails?.videoId).filter(Boolean);
         if (!ids.length) continue;

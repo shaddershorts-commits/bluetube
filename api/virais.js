@@ -114,25 +114,23 @@ async function historicoAction(req, res) {
   const desde = new Date(agora - limiteDias * MS_24H).toISOString();
   parts.push(`publicado_em=gte.${desde}`);
 
-  // ── MODO CURADO (opt-in): so mostra videos de canais monitorados.
-  // Default FALSE pra preservar banco legacy (4388 videos coletados antes
-  // da refatoracao) — eles saem naturalmente pelo filtro de 30 dias.
-  // Quando Felipe quiser usar so curado, frontend manda apenas_curados=true
-  // (futuro: toggle UI). Por agora, ambos coexistem.
+  // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE (P2 do Felipe).
+  // "Respeitar filtro": cada janela exige views minimas REAIS de viral.
+  // 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M
+  // Banco legacy abaixo desses thresholds nao aparece — comportamento
+  // intencional, ferramenta vira "virais de verdade".
+  if (periodo === '24h')      parts.push('views=gte.300000');
+  else if (periodo === '7d')  parts.push('views=gte.2000000');
+  else if (periodo === '30d') parts.push('views=gte.8000000');
+
+  // Hard limit de duracao: so Shorts ≤90s (sempre)
+  parts.push('duracao_segundos=lte.90');
+
+  // ── MODO CURADO (opt-in extra): so canais monitorados pelo Felipe.
+  // Filtro adicional EM CIMA dos thresholds. Default false (mostra
+  // legacy + curados se ambos baterem threshold).
   const apenasCurados = (req.query.apenas_curados || 'false').toString() === 'true';
   if (apenasCurados) parts.push('fonte=eq.canal_curado');
-
-  // ── THRESHOLDS DE VIEWS POR JANELA (P2 do Felipe)
-  // 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M
-  // So aplicado em modo curado pra nao quebrar legacy.
-  if (apenasCurados) {
-    if (periodo === '24h')      parts.push('views=gte.300000');
-    else if (periodo === '7d')  parts.push('views=gte.2000000');
-    else if (periodo === '30d') parts.push('views=gte.8000000');
-  }
-
-  // Hard limit de duracao (so Shorts ≤90s) — so em modo curado
-  if (apenasCurados) parts.push('duracao_segundos=lte.90');
 
   const orderMap = {
     views: 'views.desc',
