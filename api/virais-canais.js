@@ -102,28 +102,47 @@ async function supaPatch(path, body) {
 }
 
 // ── PARSER DE URL DO CANAL ──────────────────────────────────────────────────
-// Aceita:
+// Aceita (latin OU unicode — ja vem URL-encoded ou decoded):
 //   https://www.youtube.com/@Bubbletm/shorts
 //   https://www.youtube.com/@Bubbletm
+//   https://www.youtube.com/@%E3%81%BE%E3%81%A8%E3%82%81%E3%81%AE%E9%81%94%E4%BA%BA  (japones)
+//   https://www.youtube.com/@まとめの達人  (japones decoded)
+//   https://www.youtube.com/@Русский  (russo)
 //   https://youtube.com/channel/UCxxx
 //   https://youtube.com/c/Nome
 //   @Bubbletm
 //   Bubbletm
 function parseChannelUrl(input) {
   if (!input || typeof input !== 'string') return null;
-  const s = input.trim();
-  if (!s) return null;
-  // channel_id direto
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Tenta decodificar URL primeiro — handles em japones/russo/arabe/etc
+  // chegam URL-encoded (%E3%81%BE...) quando user cola da barra do browser.
+  let s = trimmed;
+  try {
+    const decoded = decodeURIComponent(trimmed);
+    if (decoded && decoded !== trimmed) s = decoded;
+  } catch {
+    // URI malformed — segue com original
+  }
+
+  // channel_id direto (sempre ASCII)
   let m = s.match(/(?:youtube\.com\/channel\/|^)(UC[A-Za-z0-9_-]{20,30})\b/i);
   if (m) return { type: 'id', value: m[1] };
-  // @handle (com ou sem URL)
-  m = s.match(/@([A-Za-z0-9_.-]+)/);
+
+  // @handle aceita ASCII + unicode (latin extended, japones, russo, arabe, chines, etc)
+  // À-￿ cobre acentuacao latina + CJK + cirilico + arabe + grego + emoji
+  m = s.match(/@([\wÀ-￿.-]+)/);
   if (m) return { type: 'handle', value: '@' + m[1] };
-  // /c/Nome ou /user/Nome
-  m = s.match(/youtube\.com\/(?:c|user)\/([A-Za-z0-9_.-]+)/i);
+
+  // /c/Nome ou /user/Nome (legacy — geralmente ASCII)
+  m = s.match(/youtube\.com\/(?:c|user)\/([\wÀ-￿.-]+)/i);
   if (m) return { type: 'legacy', value: m[1] };
-  // Se vier so o nome (ex: "Bubbletm") trata como handle
-  if (/^[A-Za-z0-9_.-]+$/.test(s)) return { type: 'handle', value: '@' + s };
+
+  // Vier so o nome (ex: "Bubbletm" ou "まとめ") — trata como handle
+  if (/^[\wÀ-￿.-]+$/.test(s)) return { type: 'handle', value: '@' + s };
+
   return null;
 }
 
