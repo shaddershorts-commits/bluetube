@@ -716,9 +716,13 @@ async function addCustomVoice() {
   const voiceId = document.getElementById('customVoiceId')?.value?.trim();
   const name = document.getElementById('customVoiceName')?.value?.trim() || 'Voz personalizada';
   const userXiKey = document.getElementById('customApiKey')?.value?.trim();
+  const langOverride = document.getElementById('customVoiceLang')?.value || ''; // Camada 4
+  const langSelect = document.getElementById('customVoiceLang');
   const msg = document.getElementById('addVoiceMsg');
   if (!voiceId) { if(msg) msg.textContent = 'Cole o Voice ID do ElevenLabs'; return; }
   if(msg) { msg.style.color='var(--neon)'; msg.textContent = 'Verificando voz…'; }
+  // Reset visual do dropdown (limpa highlight de tentativa anterior)
+  if (langSelect) langSelect.style.borderColor = 'rgba(0,170,255,.15)';
 
   // Salva API key do usuário localmente para futuras chamadas
   if (userXiKey) localStorage.setItem('bt_xi_key', userXiKey);
@@ -729,10 +733,28 @@ async function addCustomVoice() {
   try {
     const r = await fetch('/api/blue-voices', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, voice_id: voiceId, name, user_xi_key: userXiKey })
+      body: JSON.stringify({
+        token, voice_id: voiceId, name, user_xi_key: userXiKey,
+        lang_override: langOverride || undefined,
+      })
     });
     const d = await r.json();
-    if (!r.ok) {
+    // Camada 5: backend nao conseguiu detectar idioma — forca escolha manual
+    if (d && d.needs_manual_language) {
+      if (msg) {
+        msg.style.color = '#fbbf24';
+        msg.textContent = '⚠ Escolha o idioma e tente de novo';
+      }
+      if (langSelect) {
+        langSelect.style.borderColor = '#fbbf24';
+        langSelect.style.boxShadow = '0 0 0 2px rgba(251,191,36,.3)';
+        langSelect.focus();
+        // Remove highlight após 2.5s mas mantém borderColor amarelo até user mexer
+        setTimeout(() => { if (langSelect) langSelect.style.boxShadow = 'none'; }, 2500);
+      }
+      return;
+    }
+    if (!r.ok || !d.ok) {
       if(msg) { msg.style.color='#ff7a5a'; msg.textContent = d.error || 'Erro ao salvar.'; }
       return;
     }
@@ -846,6 +868,9 @@ function renderVoices() {
     const multiBadge = v.multilingual ? '<div class="vi-badge" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);color:#c9b6ff">🌍 Multilingual</div>' : '';
     const mineBadge = v.custom && !v.community ? '<div class="vi-badge" style="background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.3);color:#00aaff">⭐ Minha voz</div>' : '';
     const warnIcon = isIncompat ? `<span title="Essa voz tem sotaque ${v.langLabel || v.langCode}. Pode soar estranha narrando ${currentScriptLang}." style="color:#fbbf24;margin-left:4px">⚠</span>` : '';
+    // Botao "editar idioma" Camada 6: apenas em Minhas vozes (nao premade/community)
+    const canEditLang = v.custom && !v.community;
+    const editLangBtn = canEditLang ? `<button onclick="openEditLang('${v.id}', event)" title="Editar idioma desta voz" style="background:none;border:none;color:var(--text-dim);font-size:11px;padding:0 4px;cursor:pointer;line-height:1" aria-label="Editar idioma">✎</button>` : '';
     return `
     <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}${isIncompat ? ' voice-incompat' : ''}" onclick="selectVoice('${v.id}')">
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
@@ -854,7 +879,7 @@ function renderVoices() {
       <div class="vi-flag">${v.flag}</div>
       <div class="vi-info">
         <div class="vi-name">${v.name}${warnIcon}</div>
-        <div class="vi-meta">${v.langLabel || 'Idioma não detectado'} · ${v.desc || ''}</div>
+        <div class="vi-meta">${v.langLabel || 'Idioma não detectado'}${editLangBtn} · ${v.desc || ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
@@ -1007,6 +1032,29 @@ function showAddVoicePanel() {
     <div style="font-family:var(--mono);font-size:10px;color:var(--neon);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">Importar voz do ElevenLabs</div>
     <input id="customVoiceId" type="text" placeholder="Cole o Voice ID do ElevenLabs" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
     <input id="customVoiceName" type="text" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
+    <select id="customVoiceLang" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px">
+      <option value="">🤖 Auto-detectar idioma</option>
+      <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+      <option value="pt-PT">🇵🇹 Português (Portugal)</option>
+      <option value="en-US">🇺🇸 English (US)</option>
+      <option value="en-GB">🇬🇧 English (UK)</option>
+      <option value="en-AU">🇦🇺 English (AU)</option>
+      <option value="es-ES">🇪🇸 Español (España)</option>
+      <option value="es-MX">🇲🇽 Español (México)</option>
+      <option value="fr-FR">🇫🇷 Français</option>
+      <option value="de-DE">🇩🇪 Deutsch</option>
+      <option value="it-IT">🇮🇹 Italiano</option>
+      <option value="ja-JP">🇯🇵 日本語</option>
+      <option value="ko-KR">🇰🇷 한국어</option>
+      <option value="zh-CN">🇨🇳 中文</option>
+      <option value="ar">🇸🇦 العربية</option>
+      <option value="hi">🇮🇳 हिन्दी</option>
+      <option value="tr">🇹🇷 Türkçe</option>
+      <option value="id">🇮🇩 Bahasa Indonesia</option>
+      <option value="nl-NL">🇳🇱 Nederlands</option>
+      <option value="ru-RU">🇷🇺 Русский</option>
+      <option value="pl-PL">🇵🇱 Polski</option>
+    </select>
     <input id="customApiKey" type="password" placeholder="Sua API Key do ElevenLabs (obrigatório para vozes clonadas)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px" value="${localStorage.getItem('bt_xi_key')||''}"/>
     <div style="display:flex;gap:8px;align-items:center">
       <button onclick="addCustomVoice()" style="background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:8px;padding:9px 18px;font-family:var(--font);font-size:12px;font-weight:700;color:#fff;cursor:pointer">Importar</button>
@@ -1015,7 +1063,8 @@ function showAddVoicePanel() {
     </div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:10px;line-height:1.6">
       Para vozes clonadas, insira sua API Key do ElevenLabs.<br>
-      Encontre em elevenlabs.io → Profile → API Key
+      Deixe "Auto-detectar" se não souber o idioma — sistema tenta inferir.<br>
+      Encontre a API Key em elevenlabs.io → Profile → API Key
     </div>
   `;
 
@@ -1426,5 +1475,113 @@ if (prefillLang) {
 })();
 </script>
 <script src="/toolbar.js" defer></script>
+
+<!-- Camada 6: modal pra editar idioma de voz ja salva (Minhas vozes) -->
+<div id="editLangModal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.25);border-radius:18px;padding:24px;width:100%;max-width:420px;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(0,170,255,0.5),transparent);border-radius:18px 18px 0 0"></div>
+    <button onclick="closeEditLang()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#7d92b8;font-size:18px;cursor:pointer">✕</button>
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:#fff">🌐 Editar idioma da voz</div>
+    <div id="editLangVoiceName" style="font-family:monospace;font-size:11px;color:#7d92b8;margin-bottom:14px">—</div>
+    <select id="editLangSelect" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:13px;color:#fff;outline:none;margin-bottom:12px">
+      <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+      <option value="pt-PT">🇵🇹 Português (Portugal)</option>
+      <option value="en-US">🇺🇸 English (US)</option>
+      <option value="en-GB">🇬🇧 English (UK)</option>
+      <option value="en-AU">🇦🇺 English (AU)</option>
+      <option value="es-ES">🇪🇸 Español (España)</option>
+      <option value="es-MX">🇲🇽 Español (México)</option>
+      <option value="fr-FR">🇫🇷 Français</option>
+      <option value="de-DE">🇩🇪 Deutsch</option>
+      <option value="it-IT">🇮🇹 Italiano</option>
+      <option value="ja-JP">🇯🇵 日本語</option>
+      <option value="ko-KR">🇰🇷 한국어</option>
+      <option value="zh-CN">🇨🇳 中文</option>
+      <option value="ar">🇸🇦 العربية</option>
+      <option value="hi">🇮🇳 हिन्दी</option>
+      <option value="tr">🇹🇷 Türkçe</option>
+      <option value="id">🇮🇩 Bahasa Indonesia</option>
+      <option value="nl-NL">🇳🇱 Nederlands</option>
+      <option value="ru-RU">🇷🇺 Русский</option>
+      <option value="pl-PL">🇵🇱 Polski</option>
+    </select>
+    <div id="editLangMsg" style="font-family:monospace;font-size:11px;color:#7d92b8;margin-bottom:12px;min-height:14px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeEditLang()" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;font-family:monospace;font-size:12px;color:#fff;cursor:pointer">Cancelar</button>
+      <button onclick="saveEditLang()" id="editLangSaveBtn" style="background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Camada 6: editar idioma de voz ja salva (Minhas vozes)
+let _editingVoiceId = null;
+
+function openEditLang(voiceId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  const v = (typeof VOICES !== 'undefined') ? VOICES.find(x => x.id === voiceId) : null;
+  if (!v) return;
+  _editingVoiceId = voiceId;
+  document.getElementById('editLangVoiceName').textContent = v.name + ' (atual: ' + (v.langLabel || 'não detectado') + ')';
+  // Pre-seleciona idioma atual se houver
+  const sel = document.getElementById('editLangSelect');
+  if (v.langCode) {
+    const opt = Array.from(sel.options).find(o => o.value === v.langCode);
+    if (opt) sel.value = v.langCode;
+  } else {
+    sel.value = 'pt-BR'; // default razoavel
+  }
+  document.getElementById('editLangMsg').textContent = '';
+  document.getElementById('editLangModal').style.display = 'flex';
+}
+
+function closeEditLang() {
+  document.getElementById('editLangModal').style.display = 'none';
+  _editingVoiceId = null;
+}
+
+async function saveEditLang() {
+  if (!_editingVoiceId) return;
+  const newCode = document.getElementById('editLangSelect').value;
+  const msg = document.getElementById('editLangMsg');
+  const btn = document.getElementById('editLangSaveBtn');
+  const token = localStorage.getItem('bt_token');
+  if (!token) { msg.style.color = '#ff7a5a'; msg.textContent = 'Faça login.'; return; }
+  msg.style.color = '#7d92b8';
+  msg.textContent = 'Salvando…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/blue-voices?action=update-lang', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, voice_id: _editingVoiceId, lang_code: newCode }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      // Atualiza VOICES localmente sem recarregar tudo
+      const v = (typeof VOICES !== 'undefined') ? VOICES.find(x => x.id === _editingVoiceId) : null;
+      if (v) {
+        v.langCode = d.lang_code;
+        v.lang = (d.lang_code || 'pt-BR').split('-')[0];
+        v.langLabel = d.idioma_real;
+        const flagMap = { 'pt-BR':'🇧🇷','pt-PT':'🇵🇹','en-US':'🇺🇸','en-GB':'🇬🇧','en-AU':'🇦🇺','es-ES':'🇪🇸','es-MX':'🇲🇽','fr-FR':'🇫🇷','de-DE':'🇩🇪','it-IT':'🇮🇹','ja-JP':'🇯🇵','ko-KR':'🇰🇷','zh-CN':'🇨🇳','ar':'🇸🇦','hi':'🇮🇳','tr':'🇹🇷','id':'🇮🇩','nl-NL':'🇳🇱','ru-RU':'🇷🇺','pl-PL':'🇵🇱' };
+        v.flag = flagMap[d.lang_code] || '🌐';
+      }
+      msg.style.color = 'var(--green)';
+      msg.textContent = '✓ Idioma atualizado!';
+      if (typeof renderVoices === 'function') renderVoices();
+      setTimeout(closeEditLang, 800);
+    } else {
+      msg.style.color = '#ff7a5a';
+      msg.textContent = d.error || 'Erro ao salvar.';
+    }
+  } catch (e) {
+    msg.style.color = '#ff7a5a';
+    msg.textContent = 'Erro de conexão.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
 </body>
 </html>
