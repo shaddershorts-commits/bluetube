@@ -29,7 +29,7 @@ const HDR = SK ? { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'a
 
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const LIMITE_CANAIS = 1000;
-const NICHO_LIST = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria', 'esportes', 'futebol_edits', 'educacao'];
+const NICHO_LIST = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria', 'esportes', 'educacao'];
 
 // IDIOMAS AGRUPADOS (UI mostra 1 opcao por lingua — sem variantes regionais).
 // Pra cada idioma, salva 1 pais default no DB. Filtro do site agrupa USA/UK/AU
