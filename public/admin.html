@@ -3015,7 +3015,7 @@ async function removerCanal(channelId, name){
   }catch(e){ alert('Erro de conexão'); }
 }
 
-// ── Coletar agora (dispatch manual com profundidade=60) ────────────────────
+// ── Coletar agora (dispatch manual com profundidade=50, max do batch) ──────
 async function coletarAgoraCanais(){
   const btn = document.getElementById('cmColetarBtn');
   const msg = document.getElementById('cmColetarMsg');
@@ -3025,10 +3025,10 @@ async function coletarAgoraCanais(){
   btn.textContent = '⏳ Coletando…';
   btn.style.opacity = '0.7';
   msg.style.color = 'var(--dim)';
-  msg.textContent = '⏳ Buscando últimos 60 vídeos de cada canal + atualizando views… (pode demorar até 60s)';
+  msg.textContent = '⏳ Buscando últimos 50 vídeos de cada canal + atualizando views… (pode demorar até 60s)';
   try{
     const t0 = Date.now();
-    const r = await fetch('/api/virais-canais?action=coletar-curados&profundidade=60', { method: 'GET' });
+    const r = await fetch('/api/virais-canais?action=coletar-curados&profundidade=50', { method: 'GET' });
     const d = await r.json().catch(()=>({}));
     const ms = Date.now() - t0;
     if (r.ok && d.ok){

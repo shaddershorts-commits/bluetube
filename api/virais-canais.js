@@ -342,14 +342,16 @@ async function listarCanais(req, res) {
 // Shorts ≤90s, salva em virais_banco com fonte='canal_curado'. Upsert
 // idempotente atualiza views/likes dos videos ja salvos (diagnostico).
 //
-// Query param `profundidade` (default 20):
-//   - cron automatico: 20 (cobre videos novos das ultimas 2h, leve)
-//   - dispatch manual via botao "Coletar agora": 60 (revisita historico
-//     mais fundo pra atualizar views de videos antigos do mesmo canal)
+// Query param `profundidade` (default 50, cap 50):
+//   - cron automatico: 50 (custo IGUAL a 20 que era antes — batch stats
+//     aceita ate 50 IDs por chamada, mesma 1 unit. 2.5x mais videos por
+//     canal sem custo extra de quota YouTube)
+//   - dispatch manual mantem cap 50 pra robustez (sem paginacao
+//     complicar o codigo). 50 ja eh 2.5x do default antigo (20).
 async function coletarCurados(req, res) {
   // Sem auth obrigatoria (chamada pelo Vercel cron). Pode rodar manual com Bearer.
   const startTs = Date.now();
-  const profundidade = Math.min(50, Math.max(5, parseInt(req.query?.profundidade, 10) || 20));
+  const profundidade = Math.min(50, Math.max(5, parseInt(req.query?.profundidade, 10) || 50));
   const log = { canais_processados: 0, videos_novos: 0, videos_atualizados: 0, erros: 0, profundidade };
 
   try {

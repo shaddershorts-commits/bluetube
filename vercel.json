@@ -120,7 +120,7 @@
     },
     {
       "path": "/api/virais-canais?action=coletar-curados",
-      "schedule": "0 */2 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/virais-canais?action=daily-alert-master",
@@ -128,7 +128,15 @@
     },
     {
       "path": "/api/virais-coletor?action=atualizar-metricas",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=atualizar-metricas",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/virais-coletor?action=atualizar-metricas",
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/virais-coletor?action=atualizar-metricas",
