@@ -31,26 +31,46 @@ const HDR = SK ? { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'a
 const LIMITE_CANAIS = 1000;
 const NICHO_LIST = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria', 'esportes', 'educacao'];
 
-// 20 idiomas suportados (alinhado com BlueVoice)
+// IDIOMAS AGRUPADOS (UI mostra 1 opcao por lingua — sem variantes regionais).
+// Pra cada idioma, salva 1 pais default no DB. Filtro do site agrupa USA/UK/AU
+// como "English" via api/virais.js LANG_AGRUPADO.
+//
+// COMPAT: chaves antigas (pt-BR, en-US, en-GB, en-AU, es-ES, es-MX, etc.)
+// continuam aceitas pra nao quebrar canais ja cadastrados pelo Felipe.
 const LANG_BY_CODE = {
-  'pt-BR': { flag: '🇧🇷', label: 'Português (Brasil)', pais: 'BR', idioma: 'pt' },
-  'pt-PT': { flag: '🇵🇹', label: 'Português (Portugal)', pais: 'PT', idioma: 'pt' },
-  'en-US': { flag: '🇺🇸', label: 'English (US)', pais: 'US', idioma: 'en' },
-  'en-GB': { flag: '🇬🇧', label: 'English (UK)', pais: 'GB', idioma: 'en' },
-  'en-AU': { flag: '🇦🇺', label: 'English (AU)', pais: 'AU', idioma: 'en' },
-  'es-ES': { flag: '🇪🇸', label: 'Español (España)', pais: 'ES', idioma: 'es' },
-  'es-MX': { flag: '🇲🇽', label: 'Español (México)', pais: 'MX', idioma: 'es' },
-  'fr-FR': { flag: '🇫🇷', label: 'Français', pais: 'FR', idioma: 'other' },
-  'de-DE': { flag: '🇩🇪', label: 'Deutsch', pais: 'DE', idioma: 'other' },
-  'it-IT': { flag: '🇮🇹', label: 'Italiano', pais: 'IT', idioma: 'other' },
-  'ja-JP': { flag: '🇯🇵', label: '日本語', pais: 'JP', idioma: 'other' },
-  'ko-KR': { flag: '🇰🇷', label: '한국어', pais: 'KR', idioma: 'other' },
-  'zh-CN': { flag: '🇨🇳', label: '中文', pais: 'CN', idioma: 'other' },
-  'ar':    { flag: '🇸🇦', label: 'العربية', pais: 'SA', idioma: 'other' },
-  'tr':    { flag: '🇹🇷', label: 'Türkçe', pais: 'TR', idioma: 'other' },
+  // Codes AGRUPADOS — novos cadastros usam estes
+  pt: { flag: '🇧🇷', label: 'Português', pais: 'BR', idioma: 'pt' },
+  en: { flag: '🇺🇸', label: 'English',   pais: 'US', idioma: 'en' },
+  es: { flag: '🇪🇸', label: 'Español',   pais: 'ES', idioma: 'es' },
+  fr: { flag: '🇫🇷', label: 'Français',  pais: 'FR', idioma: 'other' },
+  de: { flag: '🇩🇪', label: 'Deutsch',   pais: 'DE', idioma: 'other' },
+  it: { flag: '🇮🇹', label: 'Italiano',  pais: 'IT', idioma: 'other' },
+  ja: { flag: '🇯🇵', label: '日本語',    pais: 'JP', idioma: 'other' },
+  ko: { flag: '🇰🇷', label: '한국어',    pais: 'KR', idioma: 'other' },
+  zh: { flag: '🇨🇳', label: '中文',      pais: 'CN', idioma: 'other' },
+  ru: { flag: '🇷🇺', label: 'Русский',   pais: 'RU', idioma: 'other' },
+  ar: { flag: '🇸🇦', label: 'العربية',  pais: 'SA', idioma: 'other' },
+  tr: { flag: '🇹🇷', label: 'Türkçe',    pais: 'TR', idioma: 'other' },
+  nl: { flag: '🇳🇱', label: 'Nederlands', pais: 'NL', idioma: 'other' },
+  pl: { flag: '🇵🇱', label: 'Polski',    pais: 'PL', idioma: 'other' },
+  hi: { flag: '🇮🇳', label: 'हिन्दी',    pais: 'IN', idioma: 'other' },
+  // ── COMPAT: codes legacy (canais ja cadastrados continuam funcionando) ─
+  'pt-BR': { flag: '🇧🇷', label: 'Português', pais: 'BR', idioma: 'pt' },
+  'pt-PT': { flag: '🇵🇹', label: 'Português', pais: 'PT', idioma: 'pt' },
+  'en-US': { flag: '🇺🇸', label: 'English',   pais: 'US', idioma: 'en' },
+  'en-GB': { flag: '🇬🇧', label: 'English',   pais: 'GB', idioma: 'en' },
+  'en-AU': { flag: '🇦🇺', label: 'English',   pais: 'AU', idioma: 'en' },
+  'es-ES': { flag: '🇪🇸', label: 'Español',   pais: 'ES', idioma: 'es' },
+  'es-MX': { flag: '🇲🇽', label: 'Español',   pais: 'MX', idioma: 'es' },
+  'fr-FR': { flag: '🇫🇷', label: 'Français',  pais: 'FR', idioma: 'other' },
+  'de-DE': { flag: '🇩🇪', label: 'Deutsch',   pais: 'DE', idioma: 'other' },
+  'it-IT': { flag: '🇮🇹', label: 'Italiano',  pais: 'IT', idioma: 'other' },
+  'ja-JP': { flag: '🇯🇵', label: '日本語',    pais: 'JP', idioma: 'other' },
+  'ko-KR': { flag: '🇰🇷', label: '한국어',    pais: 'KR', idioma: 'other' },
+  'zh-CN': { flag: '🇨🇳', label: '中文',      pais: 'CN', idioma: 'other' },
   'nl-NL': { flag: '🇳🇱', label: 'Nederlands', pais: 'NL', idioma: 'other' },
-  'ru-RU': { flag: '🇷🇺', label: 'Русский', pais: 'RU', idioma: 'other' },
-  'pl-PL': { flag: '🇵🇱', label: 'Polski', pais: 'PL', idioma: 'other' },
+  'ru-RU': { flag: '🇷🇺', label: 'Русский',   pais: 'RU', idioma: 'other' },
+  'pl-PL': { flag: '🇵🇱', label: 'Polski',    pais: 'PL', idioma: 'other' },
 };
 
 // ── HELPERS DE AUTH ─────────────────────────────────────────────────────────

@@ -195,23 +195,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <button class="filter-btn" data-period="30d" onclick="setPeriod('30d',this)">30 dias</button>
       </div>
 
-      <!-- Region (unificado com idiomas do admin — granular) -->
+      <!-- Idioma agrupado: 1 opcao por lingua. Backend agrega US/GB/AU em "English" etc. -->
       <select class="filter-select" id="regionSelect" onchange="carregarHistorico(1); atualizarBadgeBanco();">
         <option value="" selected>🌐 Todos os idiomas</option>
-        <option value="BR">🇧🇷 Português (Brasil)</option>
-        <option value="PT">🇵🇹 Português (Portugal)</option>
-        <option value="US">🇺🇸 English (US)</option>
-        <option value="GB">🇬🇧 English (UK)</option>
-        <option value="AU">🇦🇺 English (AU)</option>
-        <option value="ES">🇪🇸 Español (España)</option>
-        <option value="MX">🇲🇽 Español (México)</option>
-        <option value="FR">🇫🇷 Français</option>
-        <option value="DE">🇩🇪 Deutsch</option>
-        <option value="IT">🇮🇹 Italiano</option>
-        <option value="JP">🇯🇵 日本語</option>
-        <option value="KR">🇰🇷 한국어</option>
-        <option value="CN">🇨🇳 中文</option>
-        <option value="RU">🇷🇺 Русский (Russo)</option>
+        <option value="pt">🇧🇷 Português</option>
+        <option value="en">🇺🇸 English</option>
+        <option value="es">🇪🇸 Español</option>
+        <option value="fr">🇫🇷 Français</option>
+        <option value="de">🇩🇪 Deutsch</option>
+        <option value="it">🇮🇹 Italiano</option>
+        <option value="ja">🇯🇵 日本語</option>
+        <option value="ko">🇰🇷 한국어</option>
+        <option value="zh">🇨🇳 中文</option>
+        <option value="ru">🇷🇺 Русский</option>
       </select>
 
       <!-- Nicho -->
@@ -683,7 +679,7 @@ function atualizarBadgeBanco(){
   const params = new URLSearchParams({
     action: 'historico',
     pagina: '1',
-    pais: region,
+    lang: region,
     periodo: periodo,
   });
   if (nichoSel) params.set('nicho', nichoSel);
@@ -691,7 +687,7 @@ function atualizarBadgeBanco(){
     const el = document.getElementById('banco-stats');
     if (!el) return;
     if (d && typeof d.total === 'number'){
-      const regionLabel = { BR:'🇧🇷 Brasil', US:'🇺🇸 EUA', ES:'🇪🇸 Espanha', JP:'🇯🇵 Japão', DE:'🇩🇪 Alemanha', FR:'🇫🇷 França' }[region] || region || 'Todos';
+      const regionLabel = { pt:'🇧🇷 Português', en:'🇺🇸 English', es:'🇪🇸 Español', fr:'🇫🇷 Français', de:'🇩🇪 Deutsch', it:'🇮🇹 Italiano', ja:'🇯🇵 日本語', ko:'🇰🇷 한국어', zh:'🇨🇳 中文', ru:'🇷🇺 Русский' }[region] || region || 'Todos os idiomas';
       const periodoLabel = { '24h':'24h', '7d':'7 dias', '30d':'30 dias', 'todos':'30 dias' }[periodo] || periodo;
       if (d.total > 0) {
         el.textContent = `📦 ${d.total.toLocaleString('pt-BR')} vídeos no banco · ${regionLabel} · ${periodoLabel}`;
@@ -735,7 +731,7 @@ async function carregarHistorico(pagina){
     const params = new URLSearchParams({
       action: 'historico',
       pagina: String(pagina || 1),
-      pais: region || '',
+      lang: region || '', // codigo agrupado (pt|en|es|fr|de|...) — backend traduz em pais
       periodo: periodo,
     });
     if (nichoSel) params.set('nicho', nichoSel);

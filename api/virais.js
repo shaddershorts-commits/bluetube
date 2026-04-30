@@ -96,10 +96,31 @@ async function historicoAction(req, res) {
   const limite = 20;
   const offset = (pagina - 1) * limite;
 
+  // Filtro de idioma agrupado: en cobre US/GB/AU, pt cobre BR/PT, es cobre ES/MX
+  // (Felipe pediu UI com 1 opcao por idioma, sem variantes regionais).
+  // Aceita tambem `pais` legacy (compat) — converte pra mesmo formato.
+  const lang = (req.query.lang || '').toString().trim().toLowerCase();
+  const LANG_AGRUPADO = {
+    pt: ['BR', 'PT'],
+    en: ['US', 'GB', 'AU'],
+    es: ['ES', 'MX'],
+    fr: ['FR'], de: ['DE'], it: ['IT'],
+    ja: ['JP'], ko: ['KR'], zh: ['CN'], ru: ['RU'],
+  };
+
   const parts = ['ativo=eq.true'];
   if (nicho  && nicho  !== 'todos' && nicho  !== '') parts.push(`nicho=eq.${encodeURIComponent(nicho)}`);
   if (idioma && idioma !== 'todos' && idioma !== '') parts.push(`idioma=eq.${encodeURIComponent(idioma)}`);
-  if (pais   && pais   !== 'todos' && pais   !== '') parts.push(`pais=eq.${encodeURIComponent(pais.toUpperCase())}`);
+
+  // Resolucao: lang novo > pais legacy
+  if (lang && lang !== 'todos' && LANG_AGRUPADO[lang]) {
+    const paises = LANG_AGRUPADO[lang];
+    if (paises.length === 1) parts.push(`pais=eq.${paises[0]}`);
+    else parts.push(`pais=in.(${paises.join(',')})`);
+  } else if (pais && pais !== 'todos' && pais !== '') {
+    // Compat: frontend antigo ou legacy ainda passa `pais=XX`
+    parts.push(`pais=eq.${encodeURIComponent(pais.toUpperCase())}`);
+  }
 
   // Filtro por periodo de publicacao — rotacao automatica 24h -> 7d -> 30d.
   // Mesmo em "todos" aplicamos teto de 30 dias: video >30d sai da pagina.

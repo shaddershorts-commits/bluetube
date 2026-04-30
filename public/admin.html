@@ -309,20 +309,16 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </select>
         <select id="cmIdioma" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:14px">
           <option value="">— Escolha o idioma —</option>
-          <option value="pt-BR">🇧🇷 Português (Brasil)</option>
-          <option value="pt-PT">🇵🇹 Português (Portugal)</option>
-          <option value="en-US">🇺🇸 English (US)</option>
-          <option value="en-GB">🇬🇧 English (UK)</option>
-          <option value="en-AU">🇦🇺 English (AU)</option>
-          <option value="es-ES">🇪🇸 Español (España)</option>
-          <option value="es-MX">🇲🇽 Español (México)</option>
-          <option value="fr-FR">🇫🇷 Français</option>
-          <option value="de-DE">🇩🇪 Deutsch</option>
-          <option value="it-IT">🇮🇹 Italiano</option>
-          <option value="ja-JP">🇯🇵 日本語</option>
-          <option value="ko-KR">🇰🇷 한국어</option>
-          <option value="zh-CN">🇨🇳 中文</option>
-          <option value="ru-RU">🇷🇺 Русский (Russo)</option>
+          <option value="pt">🇧🇷 Português</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="it">🇮🇹 Italiano</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="ko">🇰🇷 한국어</option>
+          <option value="zh">🇨🇳 中文</option>
+          <option value="ru">🇷🇺 Русский</option>
         </select>
         <div id="cmMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px;min-height:14px"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px">
@@ -2932,7 +2928,7 @@ async function loadCanaisCurados(){
         <td style="padding:8px;max-width:240px"><div style="color:#fff;font-size:12px;font-weight:700">${safeText(c.channel_name)}</div><div style="font-size:11px;color:var(--dim);font-family:var(--mono)">${safeText(handle)}</div></td>
         <td style="padding:8px;font-family:var(--mono);font-size:11px;color:#fff">${fmt(c.total_inscritos)}</td>
         <td style="padding:8px;font-size:11px;color:var(--dim)">${safeText(c.nicho_manual)}</td>
-        <td style="padding:8px;font-size:11px;color:var(--dim)">${safeText(c.idioma_manual)}</td>
+        <td style="padding:8px;font-size:11px;color:var(--dim)">${(()=>{const labels={'pt':'🇧🇷 Português','en':'🇺🇸 English','es':'🇪🇸 Español','fr':'🇫🇷 Français','de':'🇩🇪 Deutsch','it':'🇮🇹 Italiano','ja':'🇯🇵 日本語','ko':'🇰🇷 한국어','zh':'🇨🇳 中文','ru':'🇷🇺 Русский','ar':'🇸🇦 العربية','tr':'🇹🇷 Türkçe','nl':'🇳🇱 Nederlands','pl':'🇵🇱 Polski','hi':'🇮🇳 हिन्दी'};const k=String(c.idioma_manual||'').split('-')[0].toLowerCase();return labels[k]||safeText(c.idioma_manual||'—')})()}</td>
         <td style="padding:8px;font-family:var(--mono);font-size:11px;color:#fff">${c.videos_coletados||0}</td>
         <td style="padding:8px;font-size:10px;color:var(--dim)">${ult}</td>
         <td style="padding:8px;text-align:center"><button onclick="removerCanal('${c.channel_id}', '${safeText(c.channel_name).replace(/'/g, '&apos;')}')" style="background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.4);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer">Remover</button></td>
