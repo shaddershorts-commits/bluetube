@@ -94,12 +94,20 @@ async function getSubscriberByEmail(email) {
   if (!email) return null;
   try {
     // MESMOS campos que get-plan le, pra garantir paridade total na resolucao
-    // do plano (is_manual + plan_expires_at influenciam plano efetivo).
-    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,plan_expires_at,is_manual,virais_daily_alert,name&limit=1`, { headers: HDR });
-    if (!r.ok) return null;
+    // do plano. NAO inclui `name` (coluna pode nao existir em subscribers,
+    // PostgREST retorna 400 e zera resposta inteira — bug encontrado em prod).
+    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,plan_expires_at,is_manual,virais_daily_alert&limit=1`, { headers: HDR });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      console.error('[virais-canais] subscribers SELECT falhou:', r.status, errText.slice(0, 200));
+      return null;
+    }
     const arr = await r.json();
     return arr[0] || null;
-  } catch { return null; }
+  } catch (e) {
+    console.error('[virais-canais] subscribers SELECT exception:', e.message);
+    return null;
+  }
 }
 
 // Resolve plano EFETIVO igual ao get-plan: considera is_manual e
@@ -525,9 +533,10 @@ async function dailyAlertMaster(req, res) {
     return res.status(200).json({ ok: true, skipped: 'sem_shorts_qualificados', totals: { shorts: 0, masters: 0, enviados: 0 } });
   }
 
-  // 2. Lista Masters opt-in
+  // 2. Lista Masters opt-in (sem `name` — coluna pode nao existir; usa email
+  // como fallback no template do email).
   const mR = await fetch(
-    `${SU}/rest/v1/subscribers?plan=eq.master&virais_daily_alert=eq.true&select=email,name`,
+    `${SU}/rest/v1/subscribers?plan=eq.master&virais_daily_alert=eq.true&select=email`,
     { headers: HDR }
   );
   const masters = mR.ok ? await mR.json() : [];
@@ -537,7 +546,9 @@ async function dailyAlertMaster(req, res) {
   let falhas = 0;
   for (const m of masters) {
     try {
-      const html = renderEmailHtml(m.name || 'criador', shorts);
+      // Usa email como nome (parte antes do @ se possivel)
+      const nome = (m.email && m.email.includes('@')) ? m.email.split('@')[0] : 'criador';
+      const html = renderEmailHtml(nome, shorts);
       const subject = '🔥 5 Shorts explodindo agora (24h)';
       const r = await fetch('https://api.resend.com/emails', {
         method: 'POST',
