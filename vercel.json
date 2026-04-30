@@ -15,7 +15,8 @@
     "api/generate-from-zero.js": { "maxDuration": 60 },
     "api/rewrite.js": { "maxDuration": 60 },
     "api/bluetendencias.js": { "maxDuration": 120 },
-    "api/email-campanha.js": { "maxDuration": 60 }
+    "api/email-campanha.js": { "maxDuration": 60 },
+    "api/virais-canais.js": { "maxDuration": 300 }
   },
   "crons": [
     {
