@@ -93,11 +93,22 @@ async function getUserFromToken(token) {
 async function getSubscriberByEmail(email) {
   if (!email) return null;
   try {
-    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,virais_daily_alert,name&limit=1`, { headers: HDR });
+    // MESMOS campos que get-plan le, pra garantir paridade total na resolucao
+    // do plano (is_manual + plan_expires_at influenciam plano efetivo).
+    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,plan_expires_at,is_manual,virais_daily_alert,name&limit=1`, { headers: HDR });
     if (!r.ok) return null;
     const arr = await r.json();
     return arr[0] || null;
   } catch { return null; }
+}
+
+// Resolve plano EFETIVO igual ao get-plan: considera is_manual e
+// plan_expires_at. Plano so eh 'master'/'full' se nao expirado OU manual.
+function resolverPlanoEfetivo(sub) {
+  if (!sub || !sub.plan || sub.plan === 'free') return 'free';
+  const isManual = sub.is_manual === true;
+  const notExpired = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
+  return (isManual || notExpired) ? sub.plan : 'free';
 }
 
 // ── HELPERS SUPABASE ────────────────────────────────────────────────────────
@@ -469,17 +480,31 @@ async function toggleDailyAlert(req, res) {
 }
 
 // ── ACTION: alert-status (qualquer user logado, pra UI saber estado) ────────
+// PARIDADE com /api/get-plan: usa is_manual + plan_expires_at pra resolver
+// plano efetivo. Antes retornava sub.plan|'free' direto, divergindo do
+// badge Master da UI quando algum desses campos influenciava.
 async function alertStatus(req, res) {
   const token = req.query?.token;
   if (!token) return res.status(401).json({ error: 'token_obrigatorio' });
   const user = await getUserFromToken(token);
   if (!user || !user.email) return res.status(401).json({ error: 'token_invalido' });
   const sub = await getSubscriberByEmail(user.email);
-  if (!sub) return res.status(200).json({ ok: true, plan: 'free', virais_daily_alert: false });
+  if (!sub) {
+    return res.status(200).json({
+      ok: true, plan: 'free', virais_daily_alert: false,
+      _debug: { reason: 'sub_not_found', email: user.email },
+    });
+  }
   return res.status(200).json({
     ok: true,
-    plan: sub.plan || 'free',
+    plan: resolverPlanoEfetivo(sub),
     virais_daily_alert: !!sub.virais_daily_alert,
+    _debug: {
+      raw_plan: sub.plan,
+      is_manual: sub.is_manual,
+      plan_expires_at: sub.plan_expires_at,
+      email: user.email,
+    },
   });
 }
 
