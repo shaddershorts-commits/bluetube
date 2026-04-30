@@ -175,13 +175,13 @@ async function historicoAction(req, res) {
 
   // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE.
   // "Respeitar filtro": cada janela exige views minimas REAIS de viral.
-  //   5h  ≥ 100k (master only — viral confirmado em janela apertada)
+  //   5h  ≥ 60k  (master only — calibrado pra 147 canais, ~240k/dia ritmo)
   //   24h ≥ 300k
   //   7d  ≥ 2M
   //   30d ≥ 8M
   // Banco legacy abaixo desses thresholds nao aparece — comportamento
   // intencional, ferramenta vira "virais de verdade".
-  if (periodo === '5h')       parts.push('views=gte.100000');
+  if (periodo === '5h')       parts.push('views=gte.60000');
   else if (periodo === '24h') parts.push('views=gte.300000');
   else if (periodo === '7d')  parts.push('views=gte.2000000');
   else if (periodo === '30d') parts.push('views=gte.8000000');
@@ -206,8 +206,11 @@ async function historicoAction(req, res) {
     // ainda nao processados pelo ML caem pro fim (nao polua o topo).
     bombando: 'score_viralidade.desc.nullslast,velocidade_views_24h.desc.nullslast,coletado_em.desc',
   };
-  // Default novo = 'bombando' pra re-ranking inteligente
-  const orderBy = orderMap[ordem] || orderMap.bombando;
+  // Default = 'bombando' pra re-ranking inteligente. EXCECAO: filtro 5h
+  // forca sort por views.desc — janela apertada, user quer ver MAIORES
+  // primeiro (vídeo com 800k aparece antes do com 70k).
+  const ordemEfetiva = (periodo === '5h' && !req.query.ordem) ? 'views' : ordem;
+  const orderBy = orderMap[ordemEfetiva] || orderMap.bombando;
 
   const select = 'id,youtube_id,titulo,thumbnail_url,url,canal_nome,views,likes,comentarios,duracao_segundos,taxa_engajamento,viral_score,nicho,idioma,pais,publicado_em,coletado_em';
   const qs = `${parts.join('&')}&order=${orderBy}&select=${select}`;
