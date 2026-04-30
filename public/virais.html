@@ -835,6 +835,10 @@ if (typeof token !== 'undefined' && token){
 
 // ── DAILY ALERT (Master) ─────────────────────────────────────────────────
 let _alertCurrentState = false;
+// Inicializa plano lendo localStorage SINCRONO (sync com /api só refina depois).
+// Evita modal abrir como "free" enquanto sync async ainda nao rodou.
+let _alertUserPlan = (typeof plan !== 'undefined' && plan) ? plan : (localStorage.getItem('bt_plan') || 'free');
+let _alertModalOpen = false;
 
 async function syncDailyAlertState(){
   const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
@@ -844,12 +848,12 @@ async function syncDailyAlertState(){
     if (!r.ok) return;
     const d = await r.json();
     _alertCurrentState = !!d.virais_daily_alert;
-    _alertUserPlan = d.plan || 'free';
+    _alertUserPlan = d.plan || _alertUserPlan || 'free';
     updateDailyAlertButton();
+    // Se modal estiver aberto, re-renderiza acao (caso plan/estado mudou)
+    if (_alertModalOpen && typeof renderDailyAlertAction === 'function') renderDailyAlertAction();
   }catch(e){ /* silent */ }
 }
-
-let _alertUserPlan = 'free';
 
 function updateDailyAlertButton(){
   const btn = document.getElementById('btnDailyAlert');
@@ -877,10 +881,9 @@ function toggleDailyAlert(){
   openDailyAlertModal();
 }
 
-function openDailyAlertModal(){
+function renderDailyAlertAction(){
   const wrap = document.getElementById('damActionWrap');
-  const status = document.getElementById('damStatus');
-  status.textContent = '';
+  if (!wrap) return;
 
   if (_alertUserPlan === 'master'){
     if (_alertCurrentState){
@@ -905,11 +908,28 @@ function openDailyAlertModal(){
       <div style="font-size:11px;color:#7d92b8;font-family:monospace;margin-top:8px">Acesso a essa e outras ferramentas premium</div>
     `;
   }
+}
+
+function openDailyAlertModal(){
+  const status = document.getElementById('damStatus');
+  if (status) status.textContent = '';
+  // Antes de abrir, garante que _alertUserPlan reflete localStorage (caso
+  // sync inicial nao tenha rodado ainda — UX evita "Free" piscando)
+  if (_alertUserPlan === 'free'){
+    const stored = (typeof plan !== 'undefined' && plan) ? plan : localStorage.getItem('bt_plan');
+    if (stored && stored !== 'free') _alertUserPlan = stored;
+  }
+  renderDailyAlertAction();
   document.getElementById('dailyAlertModal').style.display = 'flex';
+  _alertModalOpen = true;
+  // Dispara sync em paralelo pra refinar estado (currentState do alerta) —
+  // se mudar, renderDailyAlertAction re-roda automaticamente via callback.
+  syncDailyAlertState();
 }
 
 function closeDailyAlertModal(){
   document.getElementById('dailyAlertModal').style.display = 'none';
+  _alertModalOpen = false;
 }
 
 async function confirmDailyAlert(enable){
