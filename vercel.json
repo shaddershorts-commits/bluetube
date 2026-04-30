@@ -119,16 +119,12 @@
       "schedule": "0 11 * * *"
     },
     {
-      "path": "/api/virais-coletor?action=coletar-trending",
+      "path": "/api/virais-canais?action=coletar-curados",
       "schedule": "0 */2 * * *"
     },
     {
-      "path": "/api/virais-coletor?action=coletar-nichos",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=coletar-nichos",
-      "schedule": "0 22 * * *"
+      "path": "/api/virais-canais?action=daily-alert-master",
+      "schedule": "30 10 * * *"
     },
     {
       "path": "/api/virais-coletor?action=atualizar-metricas",
@@ -137,10 +133,6 @@
     {
       "path": "/api/virais-coletor?action=atualizar-metricas",
       "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=coletar-trending",
-      "schedule": "0 19,21 * * *"
     },
     {
       "path": "/api/affiliate-robustness?action=process-queue",
