@@ -239,6 +239,6 @@ async function historicoAction(req, res) {
     total_paginas,
     tem_mais: offset + limite < total,
     periodo_aplicado: periodo,
-    limite_dias: limiteDias,
+    limite_horas: Math.round(desdeMs / 3600000),
   });
 }
