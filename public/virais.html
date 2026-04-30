@@ -833,17 +833,27 @@ let _alertModalOpen = false;
 
 async function syncDailyAlertState(){
   const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
-  if (!tk) return; // user nao logado → botao mostra estado padrao (clique abre modal upgrade)
+  if (!tk) {
+    console.warn('[daily-alert] sem token — usando localStorage fallback');
+    return;
+  }
   try{
     const r = await fetch('/api/virais-canais?action=alert-status&token=' + encodeURIComponent(tk));
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.warn('[daily-alert] alert-status retornou', r.status);
+      return;
+    }
     const d = await r.json();
+    console.log('[daily-alert] backend retornou:', d);
     _alertCurrentState = !!d.virais_daily_alert;
-    _alertUserPlan = d.plan || _alertUserPlan || 'free';
+    // Plano vem do BACKEND (fonte de verdade) — sobrescreve qualquer fallback
+    if (d.plan) _alertUserPlan = d.plan;
     updateDailyAlertButton();
     // Se modal estiver aberto, re-renderiza acao (caso plan/estado mudou)
     if (_alertModalOpen && typeof renderDailyAlertAction === 'function') renderDailyAlertAction();
-  }catch(e){ /* silent */ }
+  }catch(e){
+    console.warn('[daily-alert] erro de rede:', e.message);
+  }
 }
 
 function updateDailyAlertButton(){
@@ -868,8 +878,21 @@ function updateDailyAlertButton(){
 
 // Sempre abre modal explicativo antes de qualquer acao.
 // Modal mostra botao dinamico conforme plano + estado atual.
-function toggleDailyAlert(){
-  openDailyAlertModal();
+// IMPORTANTE: faz fetch ao backend ANTES de renderizar acao pra evitar
+// localStorage stale (plan='free' quando user na verdade eh master).
+async function toggleDailyAlert(){
+  // Abre modal imediato com loading state
+  const wrap = document.getElementById('damActionWrap');
+  if (wrap) wrap.innerHTML = '<div style="color:#7d92b8;font-family:monospace;font-size:12px;padding:14px 0">⏳ Verificando seu plano…</div>';
+  document.getElementById('dailyAlertModal').style.display = 'flex';
+  _alertModalOpen = true;
+  // Sync sincrono — backend eh fonte de verdade do plano
+  await syncDailyAlertState();
+  // Atualiza localStorage (caso bt_plan estivesse stale)
+  if (_alertUserPlan === 'master') {
+    try { localStorage.setItem('bt_plan', 'master'); } catch(e) {}
+  }
+  if (_alertModalOpen) renderDailyAlertAction();
 }
 
 function renderDailyAlertAction(){
