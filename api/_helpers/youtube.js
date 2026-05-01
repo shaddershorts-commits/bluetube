@@ -78,8 +78,15 @@ function markFailed(key, reason, pool = 'virais') {
 }
 
 async function youtubeRequest(endpoint, params = {}, opts = {}) {
-  const pool = opts.pool || 'virais';
-  const allKeys = listKeysForPool(pool);
+  let pool = opts.pool || 'virais';
+  let allKeys = listKeysForPool(pool);
+  // Fallback automatico: se pool 'secretos' nao tem chaves configuradas
+  // ainda, cai pra 'virais' pra nao quebrar feature em desenvolvimento.
+  if (!allKeys.length && pool === 'secretos') {
+    console.warn(`[youtube] pool 'secretos' vazio — fallback pra 'virais'. Configure YOUTUBE_API_KEY_SECRETOS_1..3 pra isolamento.`);
+    pool = 'virais';
+    allKeys = listKeysForPool(pool);
+  }
   if (!allKeys.length) {
     throw new Error(`YouTube: nenhuma chave configurada no pool '${pool}'`);
   }
