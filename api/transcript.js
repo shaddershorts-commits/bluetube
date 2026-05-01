@@ -48,32 +48,56 @@ export default async function handler(req, res) {
     } catch(e){}
   }
 
-  const SUPADATA_KEY = process.env.SUPADATA_API_KEY;
-  if (!SUPADATA_KEY) {
+  // Chaves Supadata em ordem (primária → fallback). Fallback so dispara se
+  // primaria der 401/403/429 ou erro de rede. Demais respostas (200/202/404
+  // /etc) sao consideradas validas e NAO mudam de chave.
+  const SUPADATA_KEYS = [process.env.SUPADATA_API_KEY, process.env.SUPADATA_API_KEY_FALLBACK].filter(Boolean);
+  if (!SUPADATA_KEYS.length) {
     return res.status(500).json({ error: 'Serviço temporariamente indisponível.' });
   }
 
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
-    const supaRes = await fetch(
-      `https://api.supadata.ai/v1/transcript?url=${encodeURIComponent(ytUrl)}`,
-      { headers: { 'x-api-key': SUPADATA_KEY }, signal: controller.signal }
-    );
-    clearTimeout(timer);
+    let supaRes = null;
+    let data = null;
+    let usedKey = null;
 
-    const data = await supaRes.json();
+    for (let i = 0; i < SUPADATA_KEYS.length; i++) {
+      const key = SUPADATA_KEYS[i];
+      const isLast = i === SUPADATA_KEYS.length - 1;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        const r = await fetch(
+          `https://api.supadata.ai/v1/transcript?url=${encodeURIComponent(ytUrl)}`,
+          { headers: { 'x-api-key': key }, signal: controller.signal }
+        );
+        clearTimeout(timer);
+
+        // 401/403/429 = problema da chave (auth/credits/rate). Tenta proxima.
+        if ([401, 403, 429].includes(r.status) && !isLast) {
+          console.warn(`[transcript] chave #${i+1} retornou ${r.status}, tentando fallback`);
+          continue;
+        }
+        supaRes = r;
+        data = await r.json();
+        usedKey = key;
+        break;
+      } catch (err) {
+        if (isLast) throw err;
+        console.warn(`[transcript] chave #${i+1} falhou (${err.message}), tentando fallback`);
+      }
+    }
 
     // 202 = async job for long videos
     if (supaRes.status === 202 && data.jobId) {
-      // Poll up to 15x with 3s interval (45s max)
+      // Poll up to 15x with 3s interval (45s max) — usa a chave que originou o job
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 3000));
         const pollRes = await fetch(
           `https://api.supadata.ai/v1/transcript/${data.jobId}`,
-          { headers: { 'x-api-key': SUPADATA_KEY } }
+          { headers: { 'x-api-key': usedKey } }
         );
         const pollData = await pollRes.json();
         if (pollData.content || pollData.status === 'completed') {
@@ -100,11 +124,11 @@ export default async function handler(req, res) {
       return res.status(supaRes.status).json({ error: data.message || 'Erro na transcrição. Tente novamente.' });
     }
 
-    // Cache successful response for 24h
+    // Cache successful response for 30 days (transcricao de Short nao muda)
     if (SU && SK) {
       fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${ck}`, { method:'DELETE', headers:{'apikey':SK,'Authorization':`Bearer ${SK}`} }).catch(()=>{});
       fetch(`${SU}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':SK,'Authorization':`Bearer ${SK}`,'Prefer':'return=minimal'},
-        body:JSON.stringify({cache_key:ck,value:data,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+24*3600*1000).toISOString()})
+        body:JSON.stringify({cache_key:ck,value:data,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+30*24*3600*1000).toISOString()})
       }).catch(()=>{});
     }
 
