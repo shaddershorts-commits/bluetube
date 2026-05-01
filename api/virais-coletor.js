@@ -31,6 +31,7 @@ module.exports = async function handler(req, res) {
       case 'coletar-trending':   return await coletarTrending(res);
       case 'coletar-nichos':     return await coletarPorNichos(res);
       case 'atualizar-metricas': return await atualizarMetricas(res);
+      case 'atualizar-metricas-recentes': return await atualizarMetricasRecentes(res);
       case 'calcular-scores':    return await calcularScores(res);
       case 'backfill-nichos':    return await backfillNichos(res, req);
       case 'migrar-nicho':       return await migrarNicho(res, req);
@@ -523,6 +524,71 @@ async function atualizarMetricas(res) {
     ok: true, atualizados, total_refresh: rows.length,
     buckets: { velocidade: bucketA?.length || 0, recentes: bucketB?.length || 0, evergreens: bucketC?.length || 0 },
     cota_gasta: cotaGasta,
+  });
+}
+
+// ── ACTION: atualizar-metricas-recentes ─────────────────────────────────────
+// Refresh AGRESSIVO de views dos videos publicados nas ULTIMAS 24h.
+// Roda a cada 15min via cron — pra filtros 5h e 24h verem viralizacao
+// em quase real-time (vídeo postado às 14h, viralizando às 16h, DB
+// atualiza views por volta das 16h15 — em vez de esperar 6h).
+//
+// Foco: top 200 videos publicados nas ultimas 24h por views.desc
+// (prioriza os que ja estao crescendo). Custo: 4 units por execucao
+// (4 batches × 50 ids). Total/dia: 96 execs × 4 = ~400 units. Trivial.
+async function atualizarMetricasRecentes(res) {
+  const inicio = Date.now();
+  const desde24h = new Date(Date.now() - 24 * 3600000).toISOString();
+
+  // Pega top 200 videos publicados nas ultimas 24h ordenados por views (mais
+  // engajados primeiro — quem tem 100k recente eh mais provavel de continuar
+  // crescendo do que quem tem 10 views)
+  const rows = await supaSelect(
+    `virais_banco?ativo=eq.true&fonte=eq.canal_curado&publicado_em=gte.${desde24h}&duracao_segundos=lte.90&order=views.desc&limit=200&select=id,youtube_id,vezes_atualizado`
+  ) || [];
+
+  if (!rows.length) {
+    return res.status(200).json({ ok: true, atualizados: 0, motivo: 'sem_videos_nas_ultimas_24h' });
+  }
+
+  // Batch fetch (até 50 IDs por chamada YouTube videos.list)
+  const byId = {};
+  let cotaGasta = 0;
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50);
+    const ids = batch.map(r => r.youtube_id).join(',');
+    try {
+      const detalhes = await youtubeRequest('videos', { part: 'statistics', id: ids });
+      cotaGasta += 1;
+      (detalhes.items || []).forEach(v => { byId[v.id] = v.statistics || {}; });
+    } catch (e) {
+      console.error('[atualizar-metricas-recentes] batch', i, 'erro:', e.message);
+    }
+  }
+
+  let atualizados = 0;
+  for (const row of rows) {
+    const st = byId[row.youtube_id];
+    if (!st) continue;
+    const views = Number(st.viewCount || 0);
+    const likes = Number(st.likeCount || 0);
+    const comentarios = Number(st.commentCount || 0);
+    const taxa = views > 0 ? +(((likes + comentarios) / views) * 100).toFixed(4) : 0;
+    await supaPatch(`virais_banco?id=eq.${row.id}`, {
+      views, likes, comentarios,
+      taxa_engajamento: taxa,
+      atualizado_em: new Date().toISOString(),
+      vezes_atualizado: (row.vezes_atualizado || 0) + 1,
+    });
+    atualizados++;
+  }
+
+  return res.status(200).json({
+    ok: true,
+    atualizados,
+    total_candidatos: rows.length,
+    cota_gasta: cotaGasta,
+    duracao_ms: Date.now() - inicio,
   });
 }
 
