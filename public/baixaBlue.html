@@ -509,6 +509,19 @@ async function startDownload(){
         showComingSoon({ platform: detectSource(url).name, host: new URL(url).hostname });
         return;
       }
+      // UX defensiva — quando providers de YouTube todos falham (raro), mostra
+      // mensagem amigavel em vez do erro tecnico bruto. Outros casos (link
+      // privado, vídeo region-locked, etc) seguem mostrando o erro original.
+      const detail = String(data.detail || data.error || '').toLowerCase();
+      const todosProviderFalharam = isYoutube && (
+        detail.includes('cobalt status') &&
+        (detail.includes('ytstream') || detail.includes('schema desconhecido')) &&
+        detail.includes('youtube-media-downloader')
+      );
+      if (todosProviderFalharam) {
+        showError('YouTube está com proteção temporária ativa. Tente em alguns minutos, ou abra o vídeo direto no YouTube. Já fomos notificados — vamos resolver rapidinho.');
+        return;
+      }
       showError(data.error || 'Não foi possível extrair o vídeo. Verifique se o link é público.');
       return;
     }
