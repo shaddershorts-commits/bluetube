@@ -332,13 +332,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div style="font-family:var(--font);font-weight:800;font-size:16px;color:#fbbf24">🔮 Nichos Secretos · Canais Exclusivos</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="nsCount" style="font-size:11px;color:var(--dim);font-family:var(--mono)">— ativos</span>
-          <button onclick="openAddNichoSecretoModal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border:none;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">+ Adicionar canal secreto</button>
+          <button onclick="coletarAgoraNichosSecretos()" id="nsColetarBtn" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border:none;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer">🔍 Coletar agora</button>
+          <button onclick="openAddNichoSecretoModal()" style="background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">+ Adicionar canal secreto</button>
           <button onclick="loadNichosSecretos()" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;font-size:11px;color:#fff;cursor:pointer">↻</button>
         </div>
       </div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">
-        Sistema TOTALMENTE isolado da ferramenta Virais. Coletor a cada 8h (3×/dia, profundidade 100). Filtro Master-only: views ≥ <strong style="color:#fbbf24">10M</strong>, últimos <strong style="color:#fbbf24">45 dias</strong>. Limite: 100 canais.
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:8px;line-height:1.5">
+        Sistema TOTALMENTE isolado da ferramenta Virais. Coletor automatico a cada 8h (3×/dia, profundidade 100). Filtro Master-only: views ≥ <strong style="color:#fbbf24">10M</strong>, últimos <strong style="color:#fbbf24">45 dias</strong>. Limite: 100 canais.
       </div>
+      <div id="nsColetarMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);min-height:14px;margin-bottom:8px"></div>
       <div id="nsTableWrap" style="overflow:auto;border:1px solid rgba(255,255,255,.06);border-radius:10px">
         <div style="padding:24px;text-align:center;color:var(--dim);font-size:12px">Clique ↻ pra carregar.</div>
       </div>
@@ -3202,6 +3204,41 @@ async function removerNichoSecreto(channelId, name){
       alert('Erro: ' + (d.error || r.status));
     }
   }catch(e){ alert('Erro de conexão'); }
+}
+
+// Dispatch manual da coleta de Nichos Secretos (igual Coletar agora dos Canais Monitorados)
+async function coletarAgoraNichosSecretos(){
+  const btn = document.getElementById('nsColetarBtn');
+  const msg = document.getElementById('nsColetarMsg');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const labelOriginal = btn.textContent;
+  btn.textContent = '⏳ Coletando…';
+  btn.style.opacity = '0.7';
+  msg.style.color = 'var(--dim)';
+  msg.textContent = '⏳ Buscando últimos 100 vídeos de cada canal secreto + atualizando views… (pode demorar até 5 minutos)';
+  try{
+    const t0 = Date.now();
+    const r = await fetch('/api/nichos-secretos?action=coletar', { method: 'GET' });
+    const d = await r.json().catch(()=>({}));
+    const ms = Date.now() - t0;
+    if (r.ok && d.ok){
+      msg.style.color = 'var(--green)';
+      msg.innerHTML = `✓ Diagnóstico OK em ${(ms/1000).toFixed(1)}s — <strong>${d.canais_processados||0}</strong> canais processados, <strong>${d.videos_processados||0}</strong> Shorts coletados/atualizados${d.erros ? ` · <span style="color:#fca5a5">${d.erros} erro(s)</span>` : ''} · pool: <strong>${d.pool||'?'}</strong>`;
+      toast(`✅ ${d.videos_processados||0} Shorts em ${d.canais_processados||0} canais secretos`);
+      loadNichosSecretos();
+    } else {
+      msg.style.color = '#fca5a5';
+      msg.textContent = '✗ Erro: ' + (d.error || r.status);
+    }
+  }catch(e){
+    msg.style.color = '#fca5a5';
+    msg.textContent = '✗ Erro de conexão';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = labelOriginal;
+    btn.style.opacity = '1';
+  }
 }
 
 async function marcarSaquePago(saqueId){

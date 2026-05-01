@@ -1236,14 +1236,26 @@ async function carregarNichosSecretos(pagina){
 
   try{
     const r = await fetch(`/api/nichos-secretos?action=historico&pagina=${pagina}&token=${encodeURIComponent(tk)}`);
+    const d = await r.json().catch(()=>({}));
+    loading.style.display = 'none';
     if (!r.ok){
-      loading.style.display = 'none';
-      // 403 = Master perdeu plano (raro). 5xx = erro temporario. Mostra erro generico.
+      console.warn('[nichos-secretos] erro:', r.status, d);
+      // Mostra erro especifico baseado no que veio
       errorEl.style.display = 'block';
+      const titulo = errorEl.querySelector('.ns-empty-title');
+      const sub = errorEl.querySelector('.ns-empty-sub');
+      if (r.status === 401){
+        titulo.textContent = 'Sessão expirada';
+        sub.textContent = 'Faça login novamente.';
+      } else if (r.status === 403){
+        titulo.textContent = 'Plano Master necessário';
+        sub.textContent = `Plano detectado: ${d.current_plan || 'free'} (motivo: ${d.reason || 'desconhecido'})`;
+      } else {
+        titulo.textContent = 'Erro temporário';
+        sub.textContent = `Status ${r.status}. ${d.error || 'Tente em alguns minutos.'}`;
+      }
       return;
     }
-    const d = await r.json();
-    loading.style.display = 'none';
 
     if (!d.videos || !d.videos.length){
       if (pagina === 1) empty.style.display = 'block';
