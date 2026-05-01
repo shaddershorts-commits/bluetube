@@ -275,7 +275,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .auth-msg.ok{color:#4ecca3}.auth-msg.err{color:#ff7070}
 
 /* ── FEATURES ────────────────────────────────────────────────────────────── */
-.features{position:relative;z-index:10;padding:100px 24px}
+.features{position:relative;z-index:10;padding:100px 24px;content-visibility:auto;contain-intrinsic-size:auto 1400px}
 .features-inner{max-width:1020px;margin:0 auto}
 .sec-eye{font-family:var(--font-mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--neon);text-align:center;margin-bottom:14px}
 .sec-title{font-size:clamp(30px,4vw,48px);font-weight:800;letter-spacing:-1.5px;line-height:1.1;color:var(--text-primary);text-align:center;margin-bottom:60px}
@@ -289,7 +289,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .feat-desc{font-family:var(--font-mono);font-size:12px;font-weight:300;line-height:1.7;color:var(--text-secondary)}
 
 /* ── PLANS SECTION ───────────────────────────────────────────────────────── */
-.plans-section{position:relative;z-index:10;padding:80px 24px}
+.plans-section{position:relative;z-index:10;padding:80px 24px;content-visibility:auto;contain-intrinsic-size:auto 1100px}
 .plans-inner{max-width:900px;margin:0 auto}
 .plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:50px}
 .plan-box{background:rgba(10,22,40,0.7);border:1px solid rgba(0,170,255,0.12);border-radius:20px;padding:28px;position:relative;transition:all .28s}
@@ -427,10 +427,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .tool-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,8,23,0.9);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
 .tool-overlay.on{display:flex;animation:fadeIn .3s ease}
 /* FAQ */
-.faq-section{position:relative;z-index:10;padding:80px 24px}
+.faq-section{position:relative;z-index:10;padding:80px 24px;content-visibility:auto;contain-intrinsic-size:auto 1200px}
 
 /* ── INSTAGRAM FEED — liquid glass + carrossel auto-scroll lento ──────── */
-.ig-feed-section{position:relative;z-index:10;padding:60px 24px;overflow:hidden}
+/* content-visibility: auto pula renderizacao enquanto section ta offscreen
+   — reduz initial paint em mobile sem quebrar nada. */
+.ig-feed-section{position:relative;z-index:10;padding:60px 24px;overflow:hidden;content-visibility:auto;contain-intrinsic-size:auto 800px}
 .ig-feed-orbs{position:absolute;inset:0;pointer-events:none;z-index:0}
 .ig-orb{position:absolute;border-radius:50%;filter:blur(120px);opacity:.45}
 .ig-orb-1{width:520px;height:520px;top:-120px;right:-120px;background:radial-gradient(circle,rgba(0,170,255,.35),transparent 70%)}
@@ -1634,7 +1636,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </div>
 
 <!-- EN-overrides (Sprint 2): carrega ANTES do mega-script pra garantir window.EN_OVERRIDES existe no applyTranslations() -->
-<script src="/translations-en-overrides.js"></script>
+<script src="/translations-en-overrides.js" defer></script>
 <script>
 // ── CAPTURA TOKEN DO HASH (landing → site, funciona cross-subdomain) ─────
 (function(){
@@ -4460,7 +4462,7 @@ async function loadInstagramFeed(){
     const av = document.getElementById('igAvatar');
     if(av && photoSrc){
       const img = new Image();
-      img.onload = () => { av.innerHTML = `<img src="${photoSrc}" alt="${d.profile?.display_name || 'BlueTube Virais'}" referrerpolicy="no-referrer"/>`; };
+      img.onload = () => { av.innerHTML = `<img src="${photoSrc}" width="64" height="64" decoding="async" alt="${d.profile?.display_name || 'BlueTube Virais'}" referrerpolicy="no-referrer"/>`; };
       img.onerror = () => { /* mantem SVG inline original */ };
       img.src = photoSrc;
     }
