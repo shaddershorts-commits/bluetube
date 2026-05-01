@@ -68,25 +68,20 @@ module.exports = async function handler(req, res) {
     ].filter(Boolean);
 
     const OPENAI_KEY = process.env.OPENAI_API_KEY;
-    const SUPADATA_KEY = process.env.SUPADATA_API_KEY;
     const safeLang = lang || 'Portugues (Brasil)';
 
-    // ── 1. Supadata transcript (mais confiavel) ───────────────────────────────
+    // ── 1. Supadata transcript via helper (cache compartilhado + fallback) ───
+    // Helper checa cache 30d, tenta SUPADATA_API_KEY, se falhar tenta
+    // SUPADATA_API_KEY_FALLBACK. Cache compartilhado com /api/transcript.
     let transcriptText = '';
-    if (SUPADATA_KEY) {
-      try {
-        const sR = await fetch('https://api.supadata.ai/v1/transcript?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + videoId), {
-          headers: { 'x-api-key': SUPADATA_KEY }
-        });
-        if (sR.ok) {
-          const sd = await sR.json();
-          if (sd.content) {
-            const t = Array.isArray(sd.content) ? sd.content.map(s => s.text || '').join(' ') : String(sd.content);
-            if (t.trim().length > 20) transcriptText = t.trim().slice(0, 800);
-          }
-        }
-      } catch(e) {}
-    }
+    try {
+      const { getTranscript, extractText } = require('./_helpers/supadata.js');
+      const result = await getTranscript(videoId, { SUPABASE_URL: SU, SUPABASE_KEY: SK });
+      if (result.ok) {
+        const t = extractText(result.data, 800);
+        if (t.length > 20) transcriptText = t;
+      }
+    } catch(e) {}
 
     // ── 2. YouTube timedtext (fallback transcript) ────────────────────────────
     if (!transcriptText) {
