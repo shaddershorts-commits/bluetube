@@ -371,6 +371,7 @@ const PROXY_ALLOWED_HOSTS = [
   'supabase.co', 'supabase.in',
   'googlevideo.com', // tentativa; normalmente falha por IP-bind
   'ytimg.com',
+  'up.railway.app', // Cobalt self-hosted (cobalt-production-*.up.railway.app)
 ];
 function isHostAllowed(host) {
   return PROXY_ALLOWED_HOSTS.some(h => host.endsWith(h) || host.includes(h));
