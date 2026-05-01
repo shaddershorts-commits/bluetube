@@ -60,6 +60,57 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .filter-btn-master:hover:not(.active){background:rgba(251,191,36,.14);color:#fcd34d}
 .filter-btn-master.active{background:linear-gradient(135deg,rgba(251,191,36,.25),rgba(245,158,11,.25));color:#fcd34d;box-shadow:inset 0 0 0 1px rgba(251,191,36,.4)}
 .filter-divider{width:1px;background:var(--blue-border);align-self:stretch}
+
+/* Botão Nichos Secretos — DOURADO BRILHANDO */
+.btn-nichos-secretos{
+  background:linear-gradient(135deg,#fbbf24,#f59e0b,#fbbf24);
+  background-size:200% 200%;
+  border:1px solid rgba(251,191,36,.6);
+  border-radius:8px;
+  padding:8px 14px;
+  font-family:var(--font);
+  font-size:12px;
+  font-weight:800;
+  color:#000;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  box-shadow:0 0 12px rgba(251,191,36,.4),0 0 24px rgba(251,191,36,.2);
+  animation:nsShine 3s ease-in-out infinite, nsPulse 2.5s ease-in-out infinite;
+  transition:all .2s;
+}
+.btn-nichos-secretos:hover{
+  transform:scale(1.04);
+  box-shadow:0 0 18px rgba(251,191,36,.6),0 0 32px rgba(251,191,36,.3);
+}
+@keyframes nsShine{
+  0%,100%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+}
+@keyframes nsPulse{
+  0%,100%{box-shadow:0 0 12px rgba(251,191,36,.4),0 0 24px rgba(251,191,36,.2)}
+  50%{box-shadow:0 0 16px rgba(251,191,36,.55),0 0 30px rgba(251,191,36,.3)}
+}
+
+/* Modal full-screen Nichos Secretos */
+#nichosSecretosModal{
+  display:none;position:fixed;inset:0;z-index:700;
+  background:linear-gradient(135deg,rgba(2,8,23,0.97),rgba(15,8,3,0.97));
+  backdrop-filter:blur(16px);
+  overflow-y:auto;
+}
+#nichosSecretosModal .ns-content{
+  max-width:1400px;margin:0 auto;padding:30px 24px;
+}
+.ns-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid rgba(251,191,36,.2)}
+.ns-title{font-family:var(--display,sans-serif);font-size:32px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#fbbf24,#fcd34d,#fbbf24);background-clip:text;-webkit-background-clip:text;color:transparent;background-size:200% 200%;animation:nsShine 3s ease-in-out infinite}
+.ns-subtitle{font-family:var(--mono);font-size:11px;color:#fbbf24;text-transform:uppercase;letter-spacing:0.15em;margin-top:4px}
+.ns-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.ns-empty{text-align:center;padding:80px 20px;color:#7d92b8}
+.ns-empty-emoji{font-size:64px;margin-bottom:14px;animation:nsShine 3s ease-in-out infinite;background:linear-gradient(135deg,#fbbf24,#fcd34d);background-clip:text;-webkit-background-clip:text;color:transparent;background-size:200% 200%}
+.ns-empty-title{font-size:22px;font-weight:800;color:#fff;margin-bottom:6px}
+.ns-empty-sub{font-size:13px;color:#7d92b8}
 .filter-select{font-family:var(--mono);font-size:11px;background:rgba(2,8,23,.7);border:1px solid var(--blue-border);border-radius:10px;padding:8px 14px;color:var(--text-sec);cursor:pointer;outline:none;transition:all .2s}
 .filter-select:focus{border-color:rgba(0,170,255,.4)}
 .search-input{font-family:var(--mono);font-size:12px;background:rgba(2,8,23,.7);border:1px solid var(--blue-border);border-radius:10px;padding:8px 16px;color:var(--text);outline:none;width:200px;transition:all .2s}
@@ -232,6 +283,80 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <span id="btnDailyAlertIcon">🔔</span>
         <span id="btnDailyAlertLabel">Notificar diariamente</span>
       </button>
+
+      <!-- Botão Nichos Secretos (DOURADO BRILHANDO — Master only) -->
+      <button id="btnNichosSecretos" onclick="abrirNichosSecretos()" title="Nichos Secretos — pasta exclusiva Master com vídeos ≥10M views dos últimos 45d" class="btn-nichos-secretos">
+        <span style="font-size:14px">🔮</span>
+        <span>Nichos Secretos</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL FULL-SCREEN — Nichos Secretos (Master only) -->
+  <div id="nichosSecretosModal">
+    <div class="ns-content">
+      <div class="ns-header">
+        <div>
+          <div class="ns-title">🔮 Nichos Secretos</div>
+          <div class="ns-subtitle">Exclusivo Master · Vídeos ≥10M views · Últimos 45 dias</div>
+        </div>
+        <button onclick="fecharNichosSecretos()" style="background:none;border:1px solid rgba(251,191,36,.4);border-radius:10px;padding:10px 18px;font-family:var(--mono);font-size:12px;font-weight:700;color:#fbbf24;cursor:pointer">✕ Fechar</button>
+      </div>
+      <div id="nsGrid" class="ns-grid"></div>
+      <div id="nsEmpty" class="ns-empty" style="display:none">
+        <div class="ns-empty-emoji">🔮</div>
+        <div class="ns-empty-title">Em breve</div>
+        <div class="ns-empty-sub">Coletando vídeos virais mundiais ≥10M views.<br>Aguarde a próxima coleta automática (3×/dia).</div>
+      </div>
+      <div id="nsLoading" class="ns-empty">
+        <div class="ns-empty-emoji">⏳</div>
+        <div class="ns-empty-title">Abrindo cofre…</div>
+      </div>
+      <div id="nsError" class="ns-empty" style="display:none">
+        <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+        <div class="ns-empty-title" style="color:#fca5a5">Erro temporário</div>
+        <div class="ns-empty-sub">Tente em alguns minutos.</div>
+      </div>
+      <div id="nsPaginacao" style="text-align:center;margin-top:24px;display:none">
+        <button id="nsBtnMais" onclick="nsMudarPagina(1)" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border:none;border-radius:10px;padding:12px 28px;font-weight:800;font-size:13px;cursor:pointer">Carregar mais ▼</button>
+        <div id="nsPaginaInfo" style="font-family:var(--mono);font-size:11px;color:#7d92b8;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL FOMO — Upgrade pro Master (Free/Full clica no botão Nichos Secretos) -->
+  <div id="nichosSecretosFomoModal" style="display:none;position:fixed;inset:0;z-index:710;background:rgba(2,8,23,0.95);backdrop-filter:blur(16px);align-items:center;justify-content:center;padding:20px">
+    <div style="background:linear-gradient(135deg,rgba(15,8,3,0.98),rgba(10,22,40,0.98));border:1px solid rgba(251,191,36,0.5);border-radius:20px;padding:32px;width:100%;max-width:540px;position:relative;box-shadow:0 0 40px rgba(251,191,36,.3)">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#fbbf24,transparent);border-radius:20px 20px 0 0;animation:nsShine 3s ease-in-out infinite"></div>
+      <button onclick="fecharNichosSecretosFomo()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#7d92b8;font-size:20px;cursor:pointer">✕</button>
+
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:56px;margin-bottom:8px">🔮</div>
+        <div style="font-size:24px;font-weight:900;background:linear-gradient(135deg,#fbbf24,#fcd34d);background-clip:text;-webkit-background-clip:text;color:transparent">Nichos Secretos</div>
+        <div style="font-size:11px;color:#fbbf24;font-family:monospace;text-transform:uppercase;letter-spacing:0.15em;margin-top:4px">Pasta Insana — Exclusivo Master</div>
+      </div>
+
+      <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:14px;padding:16px;margin-bottom:18px;font-size:13.5px;color:#cbd5e1;line-height:1.6">
+        Imagina ter acesso a uma <strong style="color:#fbbf24">pasta secreta</strong> com Shorts que <strong style="color:#fff">explodiram acima de 10 milhões de views</strong> nas últimas semanas — vindos de canais que NINGUÉM tá monitorando ainda.
+      </div>
+
+      <div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:10px">⚡ O que você desbloqueia:</div>
+      <ul style="margin:0 0 18px 0;padding-left:22px;font-size:13px;color:#cbd5e1;line-height:1.8">
+        <li>🌍 Vídeos com <strong style="color:#fbbf24">10M+ views</strong> de canais virais mundiais</li>
+        <li>🔓 <strong style="color:#fbbf24">Nichos novos</strong> que você ainda não descobriu</li>
+        <li>📅 Janela de <strong style="color:#fbbf24">45 dias</strong> de vídeos acumulados — descoberta consistente</li>
+        <li>🚫 Free e Full <strong style="color:#fca5a5">não enxergam</strong> esta pasta</li>
+        <li>⏰ Atualizado <strong style="color:#fbbf24">3 vezes ao dia</strong> com novos achados</li>
+      </ul>
+
+      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px;margin-bottom:18px;font-size:12px;color:#fca5a5;line-height:1.5;text-align:center">
+        ⚠️ Enquanto você lê isso, criadores Master já estão <strong>adaptando esses virais</strong> pros canais deles.
+      </div>
+
+      <div style="text-align:center">
+        <a href="/?upgrade=master" style="display:inline-block;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;padding:16px 36px;border-radius:12px;font-weight:900;text-decoration:none;font-size:15px;box-shadow:0 0 20px rgba(251,191,36,.4),0 4px 16px rgba(0,0,0,.4);animation:nsPulse 2s ease-in-out infinite">🚀 Desbloquear Nichos Secretos</a>
+        <div style="font-size:11px;color:#7d92b8;font-family:monospace;margin-top:10px">Acesso instantâneo a essa e outras ferramentas premium</div>
+      </div>
     </div>
   </div>
 
@@ -1060,6 +1185,120 @@ async function confirmDailyAlert(enable){
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(syncDailyAlertState, 500);
 });
+
+// ── NICHOS SECRETOS (Master only — modal full-screen) ─────────────────────
+let nsPaginaAtual = 1;
+let nsTotalPaginas = 1;
+
+function abrirNichosSecretos(){
+  // Resolve plano sincrono via localStorage (mesma logica dos outros botoes premium)
+  const planLocal = (typeof plan !== 'undefined' && plan) ? plan : (localStorage.getItem('bt_plan') || 'free');
+  if (planLocal !== 'master') {
+    document.getElementById('nichosSecretosFomoModal').style.display = 'flex';
+    return;
+  }
+  // Master → abre modal full-screen e carrega
+  document.getElementById('nichosSecretosModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  nsPaginaAtual = 1;
+  carregarNichosSecretos(1);
+}
+function fecharNichosSecretos(){
+  document.getElementById('nichosSecretosModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+function fecharNichosSecretosFomo(){
+  document.getElementById('nichosSecretosFomoModal').style.display = 'none';
+}
+
+async function carregarNichosSecretos(pagina){
+  const grid = document.getElementById('nsGrid');
+  const empty = document.getElementById('nsEmpty');
+  const loading = document.getElementById('nsLoading');
+  const errorEl = document.getElementById('nsError');
+  const pag = document.getElementById('nsPaginacao');
+  const info = document.getElementById('nsPaginaInfo');
+
+  if (pagina === 1){
+    grid.innerHTML = '';
+    empty.style.display = 'none';
+    errorEl.style.display = 'none';
+    loading.style.display = 'block';
+    pag.style.display = 'none';
+  }
+
+  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  if (!tk){
+    loading.style.display = 'none';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try{
+    const r = await fetch(`/api/nichos-secretos?action=historico&pagina=${pagina}&token=${encodeURIComponent(tk)}`);
+    if (!r.ok){
+      loading.style.display = 'none';
+      // 403 = Master perdeu plano (raro). 5xx = erro temporario. Mostra erro generico.
+      errorEl.style.display = 'block';
+      return;
+    }
+    const d = await r.json();
+    loading.style.display = 'none';
+
+    if (!d.videos || !d.videos.length){
+      if (pagina === 1) empty.style.display = 'block';
+      pag.style.display = 'none';
+      return;
+    }
+
+    // Renderiza cards (estilo dourado premium)
+    const fmt = n => {
+      if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+      if (n >= 1000) return Math.round(n/1000) + 'K';
+      return String(n);
+    };
+    const safeText = s => String(s||'').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+    const html = d.videos.map((v, i) => {
+      const rank = (pagina - 1) * 20 + i + 1;
+      const horas = v.publicado_em ? Math.round((Date.now() - new Date(v.publicado_em).getTime()) / 3600000) : 0;
+      const tempoLabel = horas < 24 ? `${horas}h atrás` : `${Math.round(horas/24)}d atrás`;
+      return `<a href="${v.url}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div style="background:linear-gradient(180deg,rgba(15,8,3,0.7),rgba(10,22,40,0.7));border:1px solid rgba(251,191,36,.3);border-radius:14px;overflow:hidden;transition:all .2s;cursor:pointer" onmouseover="this.style.borderColor='rgba(251,191,36,.7)';this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 20px rgba(251,191,36,.15)'" onmouseout="this.style.borderColor='rgba(251,191,36,.3)';this.style.transform='';this.style.boxShadow=''">
+          <div style="position:relative;aspect-ratio:9/16;overflow:hidden">
+            <img src="${v.thumbnail_url || ''}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy"/>
+            <div style="position:absolute;top:8px;left:8px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border-radius:6px;padding:3px 8px;font-family:monospace;font-size:11px;font-weight:800">#${rank}</div>
+            <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.85));padding:24px 10px 8px"><div style="font-family:monospace;font-size:14px;font-weight:800;color:#fbbf24">🔥 ${fmt(v.views)} views</div></div>
+          </div>
+          <div style="padding:10px 12px">
+            <div style="font-size:12px;font-weight:700;color:#fff;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px">${safeText(v.titulo)}</div>
+            <div style="font-size:11px;color:#7d92b8;display:flex;justify-content:space-between"><span>${safeText(v.canal_nome)}</span><span>${tempoLabel}</span></div>
+          </div>
+        </div>
+      </a>`;
+    }).join('');
+
+    if (pagina === 1) grid.innerHTML = html;
+    else grid.insertAdjacentHTML('beforeend', html);
+
+    nsTotalPaginas = d.total_paginas || 1;
+    nsPaginaAtual = d.pagina || pagina;
+    if (nsPaginaAtual < nsTotalPaginas){
+      pag.style.display = 'block';
+      info.textContent = `página ${nsPaginaAtual} de ${nsTotalPaginas} · ${d.total} vídeos no cofre`;
+    } else {
+      pag.style.display = 'block';
+      document.getElementById('nsBtnMais').style.display = 'none';
+      info.textContent = `${d.total} vídeos no total`;
+    }
+  }catch(e){
+    loading.style.display = 'none';
+    errorEl.style.display = 'block';
+  }
+}
+
+function nsMudarPagina(direcao){
+  carregarNichosSecretos(nsPaginaAtual + direcao);
+}
 
 </script>
 <script src="/toolbar.js" defer></script>
