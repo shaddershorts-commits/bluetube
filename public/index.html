@@ -1576,7 +1576,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   } catch(e) {}
 })();
 // ── STATE ──────────────────────────────────────────────────────────────────
-let transcript='', segments=[], currentVideoId='';
+let transcript='', segments=[], currentVideoId='', currentVideoUrl='', currentPlatform='youtube';
 
 // ── PERSISTÊNCIA DE ESTADO (24h) ──────────────────────────────────────────────
 const _TTL = 24*60*60*1000;
@@ -2472,13 +2472,17 @@ async function startTranscription(e){
   const raw=document.getElementById('urlInput').value.trim();
   const lang=document.getElementById('langSelect').value;
 
-  if(!raw){setError('Cole um link de YouTube Shorts antes de continuar.');return;}
+  if(!raw){setError('Cole um link de YouTube Shorts, TikTok ou Instagram Reels antes de continuar.');return;}
   const isPaid = userPlan === 'full' || userPlan === 'master';
   if(!FREE_LANGS.includes(lang) && !isPaid){openLangLockModal();return;}
 
-  const videoId=extractId(raw);
-  if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
-  currentVideoId=videoId;
+  // extractVideoInfo aceita YouTube + TikTok + Instagram. Se YouTube, retorna
+  // tambem id curto pra compat com fluxos downstream (zeroFlow, etc).
+  const info=extractVideoInfo(raw);
+  if(!info){setError('Link inválido. Use: YouTube Shorts, TikTok ou Instagram Reels.');return;}
+  currentVideoId = info.platform === 'youtube' ? info.id : '';
+  currentVideoUrl = info.url;
+  currentPlatform = info.platform;
 
   // Check IP limit before transcribing
   // Anônimo testa free (rate limit IP), bate limite → openUpgradeModal abre.
@@ -2494,7 +2498,12 @@ async function startTranscription(e){
   const piv=setInterval(()=>{prog=Math.min(prog+Math.random()*7,80);document.getElementById('progressFill').style.width=prog+'%';},500);
 
   try{
-    const res=await fetch(`/api/transcript?videoId=${encodeURIComponent(videoId)}`);
+    // YouTube usa ?videoId= (compat estrito + cache key compartilhada);
+    // outras plataformas usam ?url=URL_COMPLETA (Supadata aceita TikTok/Instagram/X)
+    const transcriptEndpoint = info.platform === 'youtube'
+      ? `/api/transcript?videoId=${encodeURIComponent(info.id)}`
+      : `/api/transcript?url=${encodeURIComponent(info.url)}`;
+    const res=await fetch(transcriptEndpoint);
     const data=await res.json();
     if(!res.ok)throw new Error(data.error||`Erro ${res.status}`);
 
