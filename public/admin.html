@@ -1106,13 +1106,64 @@ async function loadSubsPage(page){
           <td style="color:var(--dim);font-size:11px">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
           <td style="${isExp?'color:var(--red)':'color:var(--dim)'};font-size:11px">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR')+(isExp?' ⚠':''):'—'}</td>
           <td><div style="display:flex;gap:4px">
-            <button onclick="quickEditPlan('${s.email}','${s.plan}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--neon)">✏️</button>
-            <button onclick="deleteUser('${s.email}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--red)">🗑️</button>
+            <button onclick="quickEditPlan('${s.email}','${s.plan}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--neon)" title="Editar plano">✏️</button>
+            <button onclick="refundAndCancelUser('${s.email}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--yellow)" title="Refund + Cancel sub Stripe (atomic)">💸</button>
+            <button onclick="deleteUser('${s.email}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--red)" title="Excluir conta">🗑️</button>
           </div></td>
         </tr>`;}).join('')}</tbody></table>
       ${renderPagination(d.total,d.page,d.pages,'subs','subs')}`;
   }catch(e){document.getElementById('subsTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
 }
+async function refundAndCancelUser(email){
+  // Step 1: dry_run pra mostrar preview
+  let preview;
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'refund-and-cancel',email,dry_run:true})});
+    preview=await r.json();
+    if(!r.ok){toast('Erro dry_run: '+(preview.error||'falha'));return;}
+  }catch(e){toast('Erro dry_run: '+e.message);return;}
+
+  const f=preview.faria||{};
+  const ch=preview.charge_a_refund;
+  const linhas=[
+    `ALVO: ${email}`,
+    `─────────────────────`,
+    `Plan DB: ${preview.plan_db}`,
+    `Status sub Stripe: ${preview.stripe_sub_status||'—'}`,
+    `Charge refundável: ${ch?'R$'+ch.amount+' ('+ch.id.slice(0,12)+'...)':'nenhum'}`,
+    ``,
+    `VAI FAZER:`,
+    `- Cancelar sub Stripe: ${f.cancel_sub?'✓ SIM':'⏭ skip (já cancelada)'}`,
+    `- Refund último charge: ${f.refund_charge?'✓ SIM':'⏭ skip (sem charge)'}`,
+    `- Zerar plan no DB: ${f.update_db?'✓ SIM':'⏭ skip'}`,
+    `- Email pro user: ${f.email_user?'✓ SIM':'⏭ skip'}`,
+  ].join('\n');
+
+  if(!confirm('💸 REFUND + CANCEL ATOMIC\n\n'+linhas+'\n\nConfirmar execução real?'))return;
+
+  // Step 2: pergunta sobre email
+  const enviarEmail=confirm('📧 Enviar email pro user?\n\n[OK] = Sim, mandar email automático\n[Cancelar] = Não (eu já avisei manualmente)');
+
+  // Step 3: executa real
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'refund-and-cancel',email,dry_run:false,skip_email:!enviarEmail})});
+    const d=await r.json();
+    if(!r.ok){toast('❌ Erro: '+(d.error||'falha'));return;}
+    const houveRefund=(d.acoes||[]).some(a=>a.acao==='refund'&&a.ok);
+    const houveCancel=(d.acoes||[]).some(a=>a.acao==='cancel_sub'&&a.ok);
+    const partes=[];
+    if(houveCancel)partes.push('cancel sub');
+    if(houveRefund)partes.push('refund');
+    partes.push('DB zerado');
+    if(enviarEmail)partes.push('email enviado');
+    toast(`✅ ${email} — ${partes.join(' + ')}`);
+    loadSubsPage(_subsPage);
+    loadData();
+  }catch(e){toast('❌ Erro: '+e.message);}
+}
+
 async function deleteUser(email){
   if(!confirm('⚠️ Excluir conta de '+email+'? Todos os dados serão removidos permanentemente.'))return;
   if(!confirm('ÚLTIMA CHANCE: Isso é irreversível. Continuar?'))return;
