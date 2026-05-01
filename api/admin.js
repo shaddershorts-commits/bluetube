@@ -101,6 +101,22 @@ export default async function handler(req, res) {
     return refundAndCancelAction(req, res, { SUPABASE_URL, headers, email: targetEmail, dryRun: !!dry_run, skipEmail: !!skip_email });
   }
 
+  // ── INSTAGRAM POSTS: carrossel da home ────────────────────────────────────
+  // Felipe cola URLs de posts do Instagram aqui; frontend renderiza com
+  // embed.js oficial. Sem API externa, zero dependencia.
+  if (req.method === 'GET' && action === 'list-instagram-posts') {
+    return listInstagramPostsAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'add-instagram-post') {
+    return addInstagramPostAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'remove-instagram-post') {
+    return removeInstagramPostAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'reorder-instagram-posts') {
+    return reorderInstagramPostsAction(req, res, { SUPABASE_URL, headers });
+  }
+
   // ── COMMISSIONS DUPLICADAS: detector + cancelador manual ─────────────────
   // A constraint UNIQUE no banco (ix_commissions_uniq_per_month) ja impede
   // novas duplicatas. Isso aqui e pra auditar historico e limpar casos
@@ -1624,4 +1640,72 @@ async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, d
     console.error('[refund-and-cancel]', e);
     return res.status(500).json({ error: e.message });
   }
+}
+
+// ─── INSTAGRAM POSTS: 4 actions ───────────────────────────────────────────
+async function listInstagramPostsAction(req, res, { SUPABASE_URL, headers }) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/instagram_posts?select=*&order=sort_order.asc,added_at.desc`, { headers });
+    if (!r.ok) return res.status(500).json({ error: 'Supabase ' + r.status });
+    const posts = await r.json();
+    return res.status(200).json({ posts });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+async function addInstagramPostAction(req, res, { SUPABASE_URL, headers }) {
+  const { url, caption } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url obrigatorio' });
+  if (!/^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels)\/[a-zA-Z0-9_-]+/i.test(url)) {
+    return res.status(400).json({ error: 'URL deve ser do formato instagram.com/p/CODE/ ou /reel/CODE/' });
+  }
+  try {
+    // Pega maior sort_order atual e adiciona +1 (novo post vai pro fim)
+    const maxR = await fetch(`${SUPABASE_URL}/rest/v1/instagram_posts?select=sort_order&order=sort_order.desc&limit=1`, { headers });
+    const maxRows = maxR.ok ? await maxR.json() : [];
+    const nextOrder = (maxRows[0]?.sort_order || 0) + 10;
+    const insertR = await fetch(`${SUPABASE_URL}/rest/v1/instagram_posts`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ url, caption: caption || null, sort_order: nextOrder, active: true }),
+    });
+    if (!insertR.ok) {
+      const errText = await insertR.text().catch(() => '');
+      // 409 = unique violation (URL ja existe)
+      if (insertR.status === 409 || errText.includes('duplicate')) {
+        return res.status(409).json({ error: 'URL ja cadastrada' });
+      }
+      return res.status(insertR.status).json({ error: 'Falha ao salvar: ' + errText.slice(0, 200) });
+    }
+    const inserted = await insertR.json();
+    return res.status(200).json({ ok: true, post: inserted[0] });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+async function removeInstagramPostAction(req, res, { SUPABASE_URL, headers }) {
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'id obrigatorio' });
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/instagram_posts?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE', headers,
+    });
+    if (!r.ok) return res.status(r.status).json({ error: 'Supabase ' + r.status });
+    return res.status(200).json({ ok: true });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+async function reorderInstagramPostsAction(req, res, { SUPABASE_URL, headers }) {
+  const { ordered_ids } = req.body || {};
+  if (!Array.isArray(ordered_ids)) return res.status(400).json({ error: 'ordered_ids deve ser array' });
+  try {
+    // Atualiza sort_order de cada um (10, 20, 30...)
+    const updates = ordered_ids.map((id, idx) =>
+      fetch(`${SUPABASE_URL}/rest/v1/instagram_posts?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: (idx + 1) * 10 }),
+      })
+    );
+    await Promise.all(updates);
+    return res.status(200).json({ ok: true, count: ordered_ids.length });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
 }
