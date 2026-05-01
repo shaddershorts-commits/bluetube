@@ -509,9 +509,10 @@ async function startDownload(){
         showComingSoon({ platform: detectSource(url).name, host: new URL(url).hostname });
         return;
       }
-      // UX defensiva — quando providers de YouTube todos falham (raro), mostra
-      // mensagem amigavel em vez do erro tecnico bruto. Outros casos (link
-      // privado, vídeo region-locked, etc) seguem mostrando o erro original.
+
+      // AUTO-FALLBACK 2 (Camada 5): se todos providers principais do YouTube
+      // caíram, tenta Invidious (provider de natureza diferente — costuma
+      // funcionar quando os scrapers tradicionais quebram simultaneamente).
       const detail = String(data.detail || data.error || '').toLowerCase();
       const todosProviderFalharam = isYoutube && (
         detail.includes('cobalt status') &&
@@ -519,11 +520,27 @@ async function startDownload(){
         detail.includes('youtube-media-downloader')
       );
       if (todosProviderFalharam) {
-        showError('YouTube está com proteção temporária ativa. Tente em alguns minutos, ou abra o vídeo direto no YouTube. Já fomos notificados — vamos resolver rapidinho.');
+        const lbl = document.querySelector('.progress-label');
+        if (lbl) lbl.textContent = 'Tentando provider alternativo...';
+        try {
+          const invR = await fetch('/api/baixa-invidious?url=' + encodeURIComponent(url));
+          const invD = await invR.json();
+          if (invR.ok && invD.url) {
+            r = invR; data = invD;
+            // Continua fluxo normal — cai no bloco de showResult abaixo
+          } else {
+            // UX defensiva — Invidious tambem caiu, mensagem amigavel
+            showError('YouTube está com proteção temporária ativa. Tente em alguns minutos, ou abra o vídeo direto no YouTube. Já fomos notificados — vamos resolver rapidinho.');
+            return;
+          }
+        } catch(invE) {
+          showError('YouTube está com proteção temporária ativa. Tente em alguns minutos, ou abra o vídeo direto no YouTube. Já fomos notificados — vamos resolver rapidinho.');
+          return;
+        }
+      } else {
+        showError(data.error || 'Não foi possível extrair o vídeo. Verifique se o link é público.');
         return;
       }
-      showError(data.error || 'Não foi possível extrair o vídeo. Verifique se o link é público.');
-      return;
     }
 
     const source = detectSource(url);
