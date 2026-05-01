@@ -2591,7 +2591,7 @@ function setMode(mode){
     if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
     if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='Iniciar ↗'; }
     const inp=document.getElementById('urlInput');
-    if(inp) inp.placeholder='Cole link YouTube, TikTok ou Instagram Reels';
+    if(inp) inp.placeholder='Cole qualquer Short — com ou sem narração';
     // Hide adapt results, show zero flow if has saved results
     if(resultsArea) resultsArea.classList.remove('on');
     const savedZero = localStorage.getItem('bt_state_zero_casual');
@@ -2618,8 +2618,6 @@ function handleMainBtn(e){
 
 // ── ROTEIRIZAR DO ZERO — Fluxo guiado de 3 perguntas ─────────────────────
 let _zeroVideoId = '';
-let _zeroVideoUrl = '';
-let _zeroPlatform = 'youtube';
 let _zeroSentiments = [];
 let _zeroNiche = '';
 let _zeroLang = 'Português (Brasil)';
@@ -2701,20 +2699,15 @@ function zeroGoStep(step){
 
 async function startFromZero(e){
   const raw=document.getElementById('urlInput').value.trim();
-  if(!raw){setError('Cole um link de YouTube Shorts, TikTok ou Instagram Reels antes de continuar.');return;}
-  // extractVideoInfo aceita YouTube + TikTok + Instagram pra fluxo "Gerar do Zero"
-  const info=extractVideoInfo(raw);
-  if(!info){setError('Link inválido. Aceito: YouTube Shorts, TikTok ou Instagram Reels.');return;}
+  if(!raw){setError('Cole um link de YouTube Shorts antes de continuar.');return;}
+  const videoId=extractId(raw);
+  if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
 
   const isPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
   if(!isPaid){ openUpgradeModal('limit_full'); return; }
 
   setError('');
-  // Compat: _zeroVideoId mantem id YouTube quando aplicavel; _zeroVideoUrl tem URL completa
-  // de qualquer plataforma (usado pelo backend pra detectar plataforma).
-  _zeroVideoId = info.id;
-  _zeroVideoUrl = info.url;
-  _zeroPlatform = info.platform;
+  _zeroVideoId=videoId;
   _zeroSentiments=[];
   _zeroNiche='';
   _zeroLang='Português (Brasil)';
@@ -2768,9 +2761,7 @@ async function zeroGenerate(){
     const token=localStorage.getItem('bt_token');
     const r=await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        // _zeroVideoUrl ja vem completa do extractVideoInfo (YouTube/TikTok/Instagram).
-        // Fallback pra montar URL YouTube se _zeroVideoUrl vazio (compat fluxos antigos).
-        videoUrl: _zeroVideoUrl || ('https://www.youtube.com/shorts/'+_zeroVideoId),
+        videoUrl:'https://www.youtube.com/shorts/'+_zeroVideoId,
         lang, token,
         userSummary: summary,
         sentiments: sentimentLabels,
