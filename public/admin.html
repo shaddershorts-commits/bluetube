@@ -3170,7 +3170,14 @@ async function saveAddNichoSecreto(){
       setTimeout(()=>{ closeAddNichoSecretoModal(); loadNichosSecretos(); }, 800);
     } else {
       msg.style.color = '#fca5a5';
-      msg.textContent = 'Erro: ' + (d.error || r.status) + (d.hint ? ' — ' + d.hint : '');
+      const errParts = [d.error || r.status];
+      if (d.hint) errParts.push(d.hint);
+      if (d.detail) errParts.push(d.detail.slice(0, 120));
+      msg.textContent = 'Erro: ' + errParts.join(' — ');
+      // Hint extra: insert_failed quase sempre = migration nao rodada
+      if (d.error === 'insert_failed') {
+        msg.innerHTML += '<br><span style="color:#fbbf24">💡 Provavelmente a migration sql/migrations/add_nichos_secretos.sql ainda não foi rodada no Supabase.</span>';
+      }
     }
   }catch(e){
     msg.style.color = '#fca5a5';
