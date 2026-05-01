@@ -1006,6 +1006,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </div>
       </div>
       <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Foto de perfil (URL pública)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <img id="igProfilePreview" src="" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--blue-border);background:rgba(0,170,255,.06);display:none"/>
+          <input id="igProfilePhotoUrl" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://... (pode ser link do Imgur, Supabase Storage, ou cdninstagram)"/>
+          <button class="action-btn" style="background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;font-weight:700;border:none" onclick="saveIgProfilePhoto()">💾 Salvar foto</button>
+        </div>
+        <div id="igPhotoMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+      </div>
+      <div style="margin-bottom:14px;padding-top:12px;border-top:1px solid var(--blue-border)">
         <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Adicionar novo post</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input id="igNewUrl" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://www.instagram.com/p/CODIGO/  ou /reel/CODIGO/"/>
@@ -1560,6 +1569,7 @@ async function loadData(){
     loadAppHealth();
     loadBaixaBlueHealth();
     loadInstagramAdminPosts();
+    loadInstagramProfilePhoto();
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
@@ -1891,6 +1901,39 @@ async function runBlueMaintenance(){
 
 // Load last maintenance result from cache
 // ── INSTAGRAM FEED — admin gerenciamento ─────────────────────────────────
+async function loadInstagramProfilePhoto(){
+  try{
+    const r = await fetch('/api/admin?action=get-site-kv',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(!r.ok) return;
+    const d = await r.json();
+    const photo = (d.kv||[]).find(x => x.key === 'instagram_profile_photo_url');
+    if(photo?.value){
+      const inp = document.getElementById('igProfilePhotoUrl');
+      const prev = document.getElementById('igProfilePreview');
+      if(inp) inp.value = photo.value;
+      if(prev){ prev.src = photo.value; prev.style.display = 'block'; }
+    }
+  }catch(e){}
+}
+
+async function saveIgProfilePhoto(){
+  const inp = document.getElementById('igProfilePhotoUrl');
+  const msg = document.getElementById('igPhotoMsg');
+  const prev = document.getElementById('igProfilePreview');
+  const value = (inp.value || '').trim();
+  msg.style.color='var(--dim)'; msg.textContent='Salvando…';
+  try{
+    const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'set-site-kv',key:'instagram_profile_photo_url',value})});
+    const d = await r.json();
+    if(!r.ok){ msg.style.color='var(--red)'; msg.textContent='❌ '+(d.error||'falha'); return; }
+    msg.style.color='var(--green)'; msg.textContent='✓ Foto salva — pode levar até 5min pra refletir na home (cache)';
+    if(value && prev){ prev.src = value; prev.style.display = 'block'; }
+    if(!value && prev){ prev.style.display = 'none'; }
+    setTimeout(()=>{msg.textContent='';},5000);
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='Erro: '+e.message; }
+}
+
 async function loadInstagramAdminPosts(){
   const tableEl = document.getElementById('igPostsTable');
   if(!tableEl) return;

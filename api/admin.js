@@ -117,6 +117,14 @@ export default async function handler(req, res) {
     return reorderInstagramPostsAction(req, res, { SUPABASE_URL, headers });
   }
 
+  // ── SITE KV: configs key-value simples (foto perfil IG, etc) ──────────────
+  if (req.method === 'GET' && action === 'get-site-kv') {
+    return getSiteKvAction(req, res, { SUPABASE_URL, headers });
+  }
+  if (req.method === 'POST' && action === 'set-site-kv') {
+    return setSiteKvAction(req, res, { SUPABASE_URL, headers });
+  }
+
   // ── COMMISSIONS DUPLICADAS: detector + cancelador manual ─────────────────
   // A constraint UNIQUE no banco (ix_commissions_uniq_per_month) ja impede
   // novas duplicatas. Isso aqui e pra auditar historico e limpar casos
@@ -1707,5 +1715,34 @@ async function reorderInstagramPostsAction(req, res, { SUPABASE_URL, headers }) 
     );
     await Promise.all(updates);
     return res.status(200).json({ ok: true, count: ordered_ids.length });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+// ─── SITE KV: 2 actions (get/set) ─────────────────────────────────────────
+async function getSiteKvAction(req, res, { SUPABASE_URL, headers }) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/site_kv?select=key,value,is_public,updated_at&order=key.asc`, { headers });
+    if (!r.ok) return res.status(500).json({ error: 'Supabase ' + r.status });
+    const rows = await r.json();
+    return res.status(200).json({ kv: rows });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+}
+
+async function setSiteKvAction(req, res, { SUPABASE_URL, headers }) {
+  const { key, value } = req.body || {};
+  if (!key || typeof key !== 'string') return res.status(400).json({ error: 'key obrigatorio' });
+  // Permite null/empty pra apagar valor
+  try {
+    // Upsert
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/site_kv?on_conflict=key`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify({ key, value: value || null, updated_at: new Date().toISOString() }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      return res.status(r.status).json({ error: 'Falha: ' + txt.slice(0, 200) });
+    }
+    return res.status(200).json({ ok: true, key, value });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 }

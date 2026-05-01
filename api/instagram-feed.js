@@ -31,12 +31,22 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/instagram_posts?active=eq.true&select=id,url,caption&order=sort_order.asc,added_at.desc`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } }
-    );
-    if (!r.ok) return res.status(500).json({ error: 'Supabase ' + r.status });
-    const posts = await r.json();
+    const supaHeaders = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY };
+    // Busca posts + foto de perfil em paralelo (foto vem da tabela site_kv)
+    const [postsR, kvR] = await Promise.all([
+      fetch(
+        `${SUPABASE_URL}/rest/v1/instagram_posts?active=eq.true&select=id,url,caption&order=sort_order.asc,added_at.desc`,
+        { headers: supaHeaders }
+      ),
+      fetch(
+        `${SUPABASE_URL}/rest/v1/site_kv?key=eq.instagram_profile_photo_url&select=value`,
+        { headers: supaHeaders }
+      ).catch(() => null),
+    ]);
+    if (!postsR.ok) return res.status(500).json({ error: 'Supabase ' + postsR.status });
+    const posts = await postsR.json();
+    const kvRows = kvR && kvR.ok ? await kvR.json().catch(() => []) : [];
+    const photoUrl = kvRows[0]?.value || null;
     const payload = {
       ok: true,
       count: posts.length,
@@ -44,6 +54,7 @@ module.exports = async function handler(req, res) {
         username: 'bluetubevirais',
         url: 'https://www.instagram.com/bluetubevirais/',
         display_name: 'BlueTube Virais',
+        photo_url: photoUrl,
       },
       posts: posts.map(p => ({ id: p.id, url: p.url, caption: p.caption })),
     };

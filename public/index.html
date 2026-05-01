@@ -438,6 +438,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .ig-feed-glass{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 28px;background:rgba(10,22,40,.4);border:1px solid rgba(0,170,255,.14);border-radius:32px;backdrop-filter:blur(40px) saturate(140%);-webkit-backdrop-filter:blur(40px) saturate(140%);box-shadow:0 8px 48px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.06)}
 .ig-feed-header{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:32px;flex-wrap:wrap}
 .ig-avatar{display:block;width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.15);box-shadow:0 0 24px rgba(0,170,255,.3),0 0 48px rgba(251,191,36,.15);transition:transform .25s,box-shadow .25s;text-decoration:none}
+.ig-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .ig-avatar:hover{transform:scale(1.05);box-shadow:0 0 32px rgba(0,170,255,.5),0 0 64px rgba(251,191,36,.25)}
 .ig-name{text-align:left}
 .ig-display-name{font-family:var(--font);font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.01em;line-height:1.1}
@@ -447,9 +448,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .ig-carousel-track{display:flex;gap:18px;width:max-content;animation:ig-scroll 75s linear infinite;align-items:flex-start}
 .ig-carousel-track:hover{animation-play-state:paused}
 @keyframes ig-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.ig-card{flex-shrink:0;width:340px;cursor:pointer;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(10,22,40,.55);transition:transform .3s,box-shadow .3s,border-color .3s}
+/* Card com altura fixa que acomoda Reel 9:16 (width 340 → height ~604) sem cortar */
+.ig-card{flex-shrink:0;width:340px;height:600px;cursor:pointer;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(10,22,40,.55);transition:transform .3s,box-shadow .3s,border-color .3s;position:relative}
 .ig-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,170,255,.25);border-color:rgba(0,170,255,.3)}
-.ig-card .instagram-media{margin:0!important;border-radius:18px!important;min-width:auto!important;max-width:100%!important;width:100%!important;border:none!important;box-shadow:none!important;background:transparent!important}
+.ig-card .instagram-media{margin:0!important;border-radius:18px!important;min-width:auto!important;max-width:100%!important;width:100%!important;height:100%!important;border:none!important;box-shadow:none!important;background:transparent!important}
+/* Embed do Instagram cria iframe interno — forca preencher card todo */
+.ig-card iframe{width:100%!important;min-height:600px!important;border-radius:18px!important}
 .ig-cta-btn{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;padding:14px 36px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1628;font-family:var(--font);font-size:15px;font-weight:800;letter-spacing:.02em;border:none;border-radius:100px;cursor:pointer;text-decoration:none;transition:all .25s;width:fit-content;box-shadow:0 0 32px rgba(251,191,36,.35)}
 .ig-cta-btn:hover{transform:translateY(-2px);box-shadow:0 0 48px rgba(251,191,36,.5)}
 .ig-cta-btn span{display:inline-block;transition:transform .2s}
@@ -458,7 +462,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 @media (max-width:768px){
   .ig-feed-section{padding:48px 16px}
   .ig-feed-glass{padding:24px 16px;border-radius:24px}
-  .ig-card{width:280px}
+  .ig-card{width:280px;height:498px}
+  .ig-card iframe{min-height:498px!important}
   .ig-display-name{font-size:16px}
   .ig-cta-btn{font-size:14px;padding:12px 28px}
 }
@@ -1381,7 +1386,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
   <div class="ig-feed-glass">
     <div class="ig-feed-header">
-      <a class="ig-avatar" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener" aria-label="Abrir Instagram">
+      <a class="ig-avatar" id="igAvatar" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener" aria-label="Abrir Instagram">
+        <!-- SVG fallback (substituido por <img> via JS quando profile.photo_url existe) -->
         <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
           <defs>
             <linearGradient id="igAvGrad" x1="0" y1="0" x2="1" y2="1">
@@ -4446,7 +4452,15 @@ async function loadInstagramFeed(){
       track.innerHTML = '<div class="ig-empty">Em breve — primeiros posts chegando…</div>';
       return;
     }
-    const renderPost = (p) => `<div class="ig-card" onclick="window.open('${p.url}','_blank','noopener')"><blockquote class="instagram-media" data-instgrm-captioned data-instgrm-permalink="${p.url}" data-instgrm-version="14"></blockquote></div>`;
+    // Substitui SVG fallback por foto de perfil real se admin setou
+    if(d.profile?.photo_url){
+      const av = document.getElementById('igAvatar');
+      if(av){
+        av.innerHTML = `<img src="${d.profile.photo_url}" alt="${d.profile.display_name || 'BlueTube Virais'}" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML=this.parentElement.dataset.fallback||''"/>`;
+      }
+    }
+    // Sem data-instgrm-captioned = nao mostra legenda, so a midia (imagem/video)
+    const renderPost = (p) => `<div class="ig-card" onclick="window.open('${p.url}','_blank','noopener')"><blockquote class="instagram-media" data-instgrm-permalink="${p.url}" data-instgrm-version="14"></blockquote></div>`;
     // Duplica posts pra ilusao de loop infinito (CSS animation translateX -50%)
     track.innerHTML = d.posts.map(renderPost).join('') + d.posts.map(renderPost).join('');
     // Carrega embed.js do Instagram (renderiza cards bonitos)
