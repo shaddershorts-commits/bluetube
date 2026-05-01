@@ -130,9 +130,24 @@ async function testYoutubeMedia() {
 }
 
 async function testInvidious() {
-  // Camada 5 (futuro) — quando Invidious for adicionado como provider,
-  // expandir esta funcao pra pingar a instancia configurada.
-  return { provider: 'invidious', status: 'skip', error: 'nao implementado ainda', duration_ms: 0 };
+  // Camada 5 — testa endpoint /api/baixa-invidious (que internamente
+  // tenta Invidious dinamico + Piped). Se algum responder com URL valida,
+  // ok. Note que esse endpoint pode demorar (5+ instancias x timeout).
+  const t0 = Date.now();
+  const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+  try {
+    const r = await fetch(`${SITE_URL}/api/baixa-invidious?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + TEST_VIDEO_ID)}`, {
+      signal: AbortSignal.timeout(45000),
+    });
+    const duration_ms = Date.now() - t0;
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok && d.url) {
+      return { provider: 'invidious', status: 'ok', duration_ms, source: d.provider, instance: d.instance };
+    }
+    return { provider: 'invidious', status: 'fail', error: (d.error || `HTTP ${r.status}`).slice(0, 200), duration_ms };
+  } catch (e) {
+    return { provider: 'invidious', status: 'fail', error: e.message, duration_ms: Date.now() - t0 };
+  }
 }
 
 async function logResult(r) {
