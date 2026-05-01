@@ -90,6 +90,17 @@ export default async function handler(req, res) {
     return recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email });
   }
 
+  // ── REFUND-AND-CANCEL ATÔMICO ────────────────────────────────────────────
+  // Cancela subscription Stripe + refund do último charge + zera plan no DB.
+  // Criado pra prevenir caso joao21xx.7@gmail.com (refund manual sem cancel
+  // sub → Stripe rebillou → user cobrado e ficou free). Use dry_run pra ver
+  // o que seria feito sem executar.
+  if (req.method === 'POST' && action === 'refund-and-cancel') {
+    const { email: targetEmail, dry_run } = req.body || {};
+    if (!targetEmail) return res.status(400).json({ error: 'email obrigatorio' });
+    return refundAndCancelAction(req, res, { SUPABASE_URL, headers, email: targetEmail, dryRun: !!dry_run });
+  }
+
   // ── COMMISSIONS DUPLICADAS: detector + cancelador manual ─────────────────
   // A constraint UNIQUE no banco (ix_commissions_uniq_per_month) ja impede
   // novas duplicatas. Isso aqui e pra auditar historico e limpar casos
@@ -1457,6 +1468,153 @@ async function recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email
     });
   } catch (e) {
     console.error('[recuperar-pagamento]', e);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── REFUND-AND-CANCEL ATÔMICO ──────────────────────────────────────────────
+// Cancela subscription no Stripe + refund do último charge pago + zera plan
+// no DB. dry_run=true retorna preview do que faria sem executar nada.
+async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, dryRun }) {
+  const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+  if (!STRIPE_SECRET) return res.status(500).json({ error: 'STRIPE_SECRET_KEY nao configurado' });
+
+  try {
+    // 1. Lookup subscriber no DB
+    const subR = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,is_manual,stripe_customer_id,stripe_subscription_id,plan_expires_at,updated_at`,
+      { headers }
+    );
+    const subs = subR.ok ? await subR.json() : [];
+    const sub = subs[0];
+    if (!sub) return res.status(404).json({ error: 'subscriber_nao_encontrado', email });
+    if (!sub.stripe_customer_id) return res.status(400).json({ error: 'sem_stripe_customer_id', email });
+
+    const stripeAuth = { Authorization: `Bearer ${STRIPE_SECRET}` };
+    const summary = {
+      email,
+      plan_db: sub.plan,
+      is_manual: sub.is_manual,
+      stripe_customer_id: sub.stripe_customer_id,
+      stripe_subscription_id: sub.stripe_subscription_id,
+      acoes: [],
+    };
+
+    // 2. Pega ultimos charges do customer pra achar um refundavel
+    const chR = await fetch(
+      `https://api.stripe.com/v1/charges?customer=${sub.stripe_customer_id}&limit=10`,
+      { headers: stripeAuth }
+    );
+    const chData = chR.ok ? await chR.json() : { data: [] };
+    const refundavel = (chData.data || []).find((c) =>
+      c.paid && c.status === 'succeeded' && (c.amount_refunded || 0) < c.amount && !c.refunded
+    );
+    summary.charge_a_refund = refundavel ? {
+      id: refundavel.id,
+      amount: (refundavel.amount / 100).toFixed(2),
+      currency: refundavel.currency,
+      created: new Date(refundavel.created * 1000).toISOString(),
+    } : null;
+
+    // 3. Status atual da subscription no Stripe
+    let stripeSubStatus = null;
+    if (sub.stripe_subscription_id) {
+      const sR = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, { headers: stripeAuth });
+      if (sR.ok) {
+        const sData = await sR.json();
+        stripeSubStatus = sData.status;
+      } else {
+        stripeSubStatus = `error_${sR.status}`;
+      }
+    }
+    summary.stripe_sub_status = stripeSubStatus;
+
+    // 4. Dry run: retorna preview e sai
+    if (dryRun) {
+      summary.dry_run = true;
+      summary.faria = {
+        cancel_sub: !!(stripeSubStatus && !['canceled', 'incomplete_expired'].includes(stripeSubStatus)),
+        refund_charge: !!refundavel,
+        update_db: true,
+        email_user: !!process.env.RESEND_API_KEY,
+      };
+      return res.status(200).json(summary);
+    }
+
+    // 5. Cancel sub se ainda ativa
+    if (sub.stripe_subscription_id && stripeSubStatus && !['canceled', 'incomplete_expired'].includes(stripeSubStatus) && !stripeSubStatus.startsWith('error_')) {
+      const cR = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, {
+        method: 'DELETE',
+        headers: stripeAuth,
+      });
+      summary.acoes.push({ acao: 'cancel_sub', ok: cR.ok, status: cR.status });
+    } else {
+      summary.acoes.push({ acao: 'cancel_sub', skipped: true, motivo: stripeSubStatus || 'sem_sub_id' });
+    }
+
+    // 6. Refund se houver charge refundavel
+    if (refundavel) {
+      const rR = await fetch('https://api.stripe.com/v1/refunds', {
+        method: 'POST',
+        headers: { ...stripeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ charge: refundavel.id, reason: 'requested_by_customer' }).toString(),
+      });
+      const rData = rR.ok ? await rR.json() : null;
+      summary.acoes.push({ acao: 'refund', ok: rR.ok, refund_id: rData?.id || null, amount: rData?.amount || null });
+    } else {
+      summary.acoes.push({ acao: 'refund', skipped: true, motivo: 'sem_charge_refundavel' });
+    }
+
+    // 7. Update DB defensivo (webhook customer.subscription.deleted vai mexer
+    //    tambem, mas garantia caso webhook nao chegue ou demore).
+    await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan: 'free',
+        is_manual: false,
+        stripe_subscription_id: null,
+        plan_expires_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+    }).catch(() => {});
+    summary.acoes.push({ acao: 'update_db', ok: true });
+
+    // 8. Log em admin_actions (auditoria)
+    await fetch(`${SUPABASE_URL}/rest/v1/admin_actions`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        admin_email: 'admin',
+        action: 'refund-and-cancel',
+        target_email: email,
+        details: summary,
+      }),
+    }).catch(() => {});
+
+    // 9. Email pro user (fire-and-forget)
+    const RESEND = process.env.RESEND_API_KEY;
+    if (RESEND) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'BlueTube <bluetubeoficial@bluetubeviral.com>',
+          to: email,
+          subject: 'Sua assinatura BlueTube foi cancelada e reembolsada',
+          html: `<div style="font-family:Arial,sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px;max-width:560px;margin:0 auto">
+            <h2 style="color:#fbbf24;margin:0 0 12px;font-size:18px">Assinatura cancelada e reembolsada</h2>
+            <p>Olá,</p>
+            <p>Confirmamos o cancelamento da sua assinatura BlueTube e o reembolso do último valor cobrado. O valor pode levar até 5 dias úteis pra refletir no seu cartão.</p>
+            <p style="font-size:13px;color:#7d92b8;margin-top:24px">Se houve engano ou se precisar de ajuda, é só responder esse email.</p>
+          </div>`,
+        }),
+      }).catch(() => {});
+    }
+
+    return res.status(200).json({ ok: true, ...summary });
+  } catch (e) {
+    console.error('[refund-and-cancel]', e);
     return res.status(500).json({ error: e.message });
   }
 }
