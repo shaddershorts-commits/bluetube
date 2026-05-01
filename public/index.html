@@ -945,13 +945,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <span class="title-gradient" style="font-size:clamp(52px,8vw,110px);letter-spacing:-4px;line-height:.95">milhões de views</span>
     <span class="title-plain" style="font-size:clamp(28px,4vw,52px);letter-spacing:-1px;opacity:.9">começa agora.</span>
   </h1>
-  <p class="hero-sub">Cole qualquer link de YouTube Shorts, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
+  <p class="hero-sub">Cole qualquer link de <span style="color:#fbbf24;font-weight:700">Shorts</span>, <span style="color:#fbbf24;font-weight:700">Instagram</span> ou <span style="color:#fbbf24;font-weight:700">TikTok</span>, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
 
   <div class="main-card">
     <!-- Modo de geração -->
     <div style="display:flex;gap:0;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.15);border-radius:12px;padding:4px;margin-bottom:14px">
       <button id="btnModeAdapt" class="mode-btn active-adapt" onclick="setMode('adapt')" style="position:relative">
-        <span class="adapt-hint" id="adaptHint">⚠ O Short precisa ter narração</span>
+        <span class="adapt-hint" id="adaptHint">⚠ O vídeo curto precisa ter narração</span>
         📝 Adaptar roteiro <span class="mode-badge">GRÁTIS</span>
       </button>
       <button id="btnModeZero" class="mode-btn" onclick="setMode('zero')">
@@ -3905,21 +3905,22 @@ function applyTranslations(){
   if(s.fomo_protected) window.FOMO_SUB_PROTECTED = s.fomo_protected;
   if(s.fomo_anon) window.FOMO_SUB_ANON = s.fomo_anon;
 
-  // Aviso "Short precisa ter narração" no botão Adaptar — fallback PT no HTML
+  // Aviso "vídeo curto precisa ter narração" no botão Adaptar — agora cobre
+  // YouTube Shorts + TikTok + Instagram Reels (todos sao "videos curtos")
   const _adaptHints = {
-    pt: '⚠ O Short precisa ter narração',
-    en: '⚠ Short must have narration',
-    es: '⚠ El Short necesita narración',
-    fr: '⚠ Le Short doit avoir une narration',
-    de: '⚠ Der Short braucht Sprachausgabe',
-    it: '⚠ Lo Short deve avere narrazione',
-    ja: '⚠ ナレーションが必要',
-    zh: '⚠ Short 需要旁白',
-    ar: '⚠ يجب أن يحتوي الـShort على سرد',
-    hi: '⚠ Short में नैरेशन ज़रूरी है',
-    tr: '⚠ Short anlatım içermeli',
-    ko: '⚠ Short에 내레이션 필요',
-    ru: '⚠ Short нуждается в озвучке',
+    pt: '⚠ O vídeo curto precisa ter narração',
+    en: '⚠ Short video must have narration',
+    es: '⚠ El video corto necesita narración',
+    fr: '⚠ La vidéo courte doit avoir une narration',
+    de: '⚠ Das kurze Video braucht Sprachausgabe',
+    it: '⚠ Il video breve deve avere narrazione',
+    ja: '⚠ ショート動画にナレーションが必要',
+    zh: '⚠ 短视频需要旁白',
+    ar: '⚠ يجب أن يحتوي الفيديو القصير على سرد',
+    hi: '⚠ छोटे वीडियो में नैरेशन ज़रूरी है',
+    tr: '⚠ Kısa video anlatım içermeli',
+    ko: '⚠ 짧은 영상에 내레이션 필요',
+    ru: '⚠ Короткое видео нуждается в озвучке',
   };
   const _adaptHintEl = document.getElementById('adaptHint');
   if(_adaptHintEl && _adaptHints[siteLang]) _adaptHintEl.textContent = _adaptHints[siteLang];
