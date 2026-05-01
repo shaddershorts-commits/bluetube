@@ -43,6 +43,13 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'config_missing' });
   }
 
+  // Fase C2 — auto_fix=1 (query) ou {auto_fix:true} (body) chama
+  // refund-and-cancel pra cada zumbi pagante detectado. Guardrails:
+  //   - max 5 zumbis por execucao (se mais, algo MUITO errado, nao auto-fix)
+  //   - skip_email=true (admin recebe email do cron, decide manualmente)
+  //   - exige ADMIN_SECRET env var (mesmo do endpoint admin)
+  const auto_fix = req.query?.auto_fix === '1' || req.query?.auto_fix === 'true' || (req.body && req.body.auto_fix === true);
+
   const startTs = Date.now();
   const zumbis_pagantes = []; // free no DB MAS active no Stripe — CRITICO
   const zumbis_orfaos = [];   // paid no DB MAS deleted no Stripe — bug menor
@@ -96,17 +103,53 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Fase C2 — auto-fix dos zumbis pagantes (com guardrails)
+    let auto_fix_status = null;
+    let auto_fix_results = [];
+    if (auto_fix) {
+      const ADMIN_SECRET = process.env.ADMIN_SECRET;
+      const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+      if (!ADMIN_SECRET) {
+        auto_fix_status = 'skipped_sem_admin_secret';
+      } else if (zumbis_pagantes.length === 0) {
+        auto_fix_status = 'skipped_sem_zumbis';
+      } else if (zumbis_pagantes.length > 5) {
+        auto_fix_status = `skipped_demais_zumbis_${zumbis_pagantes.length}_acima_de_5`;
+      } else {
+        auto_fix_status = `executado_${zumbis_pagantes.length}_zumbi(s)`;
+        for (const z of zumbis_pagantes) {
+          try {
+            const r = await fetch(`${SITE_URL}/api/admin`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_SECRET}` },
+              body: JSON.stringify({
+                action: 'refund-and-cancel',
+                email: z.email,
+                dry_run: false,
+                skip_email: true,
+              }),
+            });
+            const body = await r.json().catch(() => null);
+            auto_fix_results.push({ email: z.email, http: r.status, ok: r.ok, acoes: body?.acoes });
+          } catch (e) {
+            auto_fix_results.push({ email: z.email, error: e.message });
+          }
+        }
+      }
+    }
+
     // Email pro admin SE houver problemas
     const tem_problema = zumbis_pagantes.length > 0 || zumbis_orfaos.length > 0;
     if (tem_problema && RESEND_KEY && ADMIN_EMAIL) {
-      const html = renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors });
+      const html = renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors, auto_fix_status, auto_fix_results });
+      const subjectExtra = auto_fix && auto_fix_status?.startsWith('executado') ? ' (AUTO-FIX rodou)' : '';
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: FROM_EMAIL,
           to: ADMIN_EMAIL,
-          subject: `🚨 Audit Stripe — ${zumbis_pagantes.length} zumbi(s) pagante(s), ${zumbis_orfaos.length} orfao(s)`,
+          subject: `🚨 Audit Stripe — ${zumbis_pagantes.length} zumbi(s) pagante(s), ${zumbis_orfaos.length} orfao(s)${subjectExtra}`,
           html,
         }),
       }).catch((e) => console.error('[audit-stripe-zumbis] email falhou:', e.message));
@@ -121,6 +164,8 @@ module.exports = async function handler(req, res) {
       zumbis_orfaos_count: zumbis_orfaos.length,
       zumbis_pagantes,
       zumbis_orfaos,
+      auto_fix_status,
+      auto_fix_results,
     });
   } catch (e) {
     console.error('[audit-stripe-zumbis] erro fatal:', e.message);
@@ -128,7 +173,7 @@ module.exports = async function handler(req, res) {
   }
 };
 
-function renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors }) {
+function renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors, auto_fix_status, auto_fix_results }) {
   const tabela = (arr, titulo, cor) => {
     if (!arr.length) return '';
     return `
@@ -156,9 +201,15 @@ function renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, strip
       ${tabela(zumbis_pagantes, '🔴 ZUMBIS PAGANTES — cobrando mas plan=free (CRITICO)', '#fca5a5')}
       ${tabela(zumbis_orfaos, '🟡 ÓRFÃOS — plan=paid mas Stripe canceled', '#fbbf24')}
 
+      ${auto_fix_status ? `
+      <div style="margin-top:24px;padding:14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:10px;font-size:12px;color:#86efac;line-height:1.5">
+        <strong>🤖 Auto-fix:</strong> ${escHtml(auto_fix_status)}
+        ${(auto_fix_results || []).length ? '<ul style="margin:8px 0 0 16px;padding:0">' + auto_fix_results.map(r => `<li>${escHtml(r.email)} — ${r.ok ? '✓ ok (HTTP ' + r.http + ')' : '✗ falhou' + (r.error ? ': ' + escHtml(r.error) : ' (HTTP ' + r.http + ')')}</li>`).join('') + '</ul>' : ''}
+      </div>` : ''}
+
       <div style="margin-top:24px;padding:14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;font-size:12px;color:#fca5a5;line-height:1.5">
-        <strong>Ação recomendada pra zumbis pagantes</strong>: cancelar subscription Stripe IMEDIATO + refund do ultimo charge.
-        Use POST /api/admin {action:'refund-and-cancel', email} ou Stripe Dashboard manual.
+        <strong>Ação recomendada pra zumbis pagantes</strong>: clicar no botão 💸 da linha do user no painel admin (faz refund + cancel atomic). Ou via API: POST /api/admin {action:'refund-and-cancel', email}.
+        ${auto_fix_status ? '' : 'Pra ativar auto-fix automatico: chamar com <code>?auto_fix=1</code>.'}
       </div>
     </div></body></html>`;
 }
