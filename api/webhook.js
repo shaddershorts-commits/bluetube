@@ -601,6 +601,60 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const subs = await subRes.json();
     if (!subs?.length) return;
 
+    // ── Fase B2 — Recovery anti-zumbi ────────────────────────────────────
+    // Se subscriber.plan='free' MAS chegou pagamento real (amount_paid>0), o
+    // user esta pagando sem ter acesso (zumbi pagante). Auto-corrige:
+    // cancela sub + refund do charge atual + alerta admin. Sistema autocura.
+    if (subs[0].plan === 'free' && (invoice.amount_paid || 0) > 0) {
+      console.warn(`🚨 [B2] ZUMBI PAGANTE: ${subs[0].email} pagou R$${(invoice.amount_paid/100).toFixed(2)} mas plan=free. Auto-corrigindo.`);
+      const STRIPE_SECRET_B2 = process.env.STRIPE_SECRET_KEY;
+      try {
+        if (STRIPE_SECRET_B2 && subscriptionId) {
+          await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${STRIPE_SECRET_B2}` }
+          });
+        }
+        const chargeId = invoice.charge;
+        if (STRIPE_SECRET_B2 && chargeId) {
+          await fetch('https://api.stripe.com/v1/refunds', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${STRIPE_SECRET_B2}`,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({ charge: chargeId, reason: 'requested_by_customer' }).toString()
+          });
+        }
+        await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+          method: 'PATCH', headers: supaHeaders,
+          body: JSON.stringify({
+            plan: 'free',
+            stripe_subscription_id: null,
+            plan_expires_at: null,
+            updated_at: new Date().toISOString()
+          })
+        });
+        notifyStripe(`🚨 [B2] ZUMBI PAGANTE auto-corrigido — ${subs[0].email}`, [
+          ['Cliente', subs[0].email],
+          ['Valor refundado', `R$${(invoice.amount_paid/100).toFixed(2)}`],
+          ['Charge', chargeId || 'sem_charge_id'],
+          ['Sub cancelada', subscriptionId],
+          ['Motivo', 'invoice.payment_succeeded com plan=free no DB (auto-blindagem)'],
+        ]).catch(() => {});
+        console.log(`✅ [B2] Auto-corrigido: ${subs[0].email}`);
+        return; // Skip resto (renewal expires + comissao) — nao faz sentido renovar zumbi
+      } catch (e) {
+        console.error(`[B2] Falha ao auto-corrigir ${subs[0].email}:`, e.message);
+        notifyStripe(`🚨 [B2] FALHA ao corrigir zumbi — ${subs[0].email}`, [
+          ['Cliente', subs[0].email],
+          ['Erro', e.message],
+          ['Acao manual', 'Use POST /api/admin {action:"refund-and-cancel"}'],
+        ]).catch(() => {});
+        // Nao return — deixa fluxo normal seguir pra nao quebrar webhook
+      }
+    }
+
     const billing = invoice.lines?.data?.[0]?.plan?.interval === 'year' ? 'annual' : 'monthly';
     const expiresAt = billing === 'annual'
       ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
@@ -710,9 +764,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
   }
 
   // ── REEMBOLSO ────────────────────────────────────────────────────────────
-  // Quando o Stripe reembolsa um charge, reverte a comissao mais recente do
-  // afiliado desse assinante. Marca como 'refunded' (nao apaga), subtrai de
-  // total_earnings e anexa no audit trail.
+  // Quando o Stripe reembolsa um charge:
+  //   1. (Fase B1) Cancela a sub Stripe se ainda active — previne "refund antes
+  //      de cancelar" virar zumbi pagante (caso joao21xx 2026-04-30).
+  //   2. Reverte a comissao mais recente do afiliado desse assinante.
   if (event.type === 'charge.refunded') {
     const charge = event.data.object;
     const customerId = charge.customer;
@@ -720,10 +775,47 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     if (!customerId || refundedCents <= 0) return;
 
     try {
-      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan,affiliate_ref`, { headers: supaHeaders });
+      const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan,affiliate_ref,stripe_subscription_id`, { headers: supaHeaders });
       const [sub] = subRes.ok ? await subRes.json() : [];
+
+      // ── Fase B1 — Auto-cancel sub Stripe apos refund ──────────────────────
+      // Independe de afiliado. Roda mesmo pra subs sem ref_code.
+      const STRIPE_SECRET_B1 = process.env.STRIPE_SECRET_KEY;
+      if (sub?.stripe_subscription_id && STRIPE_SECRET_B1) {
+        try {
+          const ssR = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, {
+            headers: { Authorization: `Bearer ${STRIPE_SECRET_B1}` }
+          });
+          if (ssR.ok) {
+            const ssData = await ssR.json();
+            if (['active', 'trialing', 'past_due'].includes(ssData.status)) {
+              await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${STRIPE_SECRET_B1}` }
+              });
+              await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+                method: 'PATCH', headers: supaHeaders,
+                body: JSON.stringify({
+                  plan: 'free',
+                  stripe_subscription_id: null,
+                  plan_expires_at: null,
+                  updated_at: new Date().toISOString()
+                })
+              });
+              console.log(`🛡️ [B1] Sub ${sub.stripe_subscription_id} cancelada apos refund (${sub.email})`);
+              notifyStripe(`🛡️ Auto-cancel apos refund — ${sub.email}`, [
+                ['Cliente', sub.email],
+                ['Sub cancelada', sub.stripe_subscription_id],
+                ['Charge', charge.id],
+                ['Motivo', 'charge.refunded com sub ainda active (auto-blindagem)'],
+              ]).catch(() => {});
+            }
+          }
+        } catch (e) { console.error('[B1 auto-cancel] erro:', e.message); }
+      }
+
       if (!sub?.email || !sub.affiliate_ref) {
-        console.log(`[refund] skip — sem afiliado vinculado a ${customerId}`);
+        console.log(`[refund] skip comissao — sem afiliado vinculado a ${customerId}`);
         return;
       }
 
