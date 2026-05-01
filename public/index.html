@@ -4452,12 +4452,17 @@ async function loadInstagramFeed(){
       track.innerHTML = '<div class="ig-empty">Em breve — primeiros posts chegando…</div>';
       return;
     }
-    // Substitui SVG fallback por foto de perfil real se admin setou
-    if(d.profile?.photo_url){
-      const av = document.getElementById('igAvatar');
-      if(av){
-        av.innerHTML = `<img src="${d.profile.photo_url}" alt="${d.profile.display_name || 'BlueTube Virais'}" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML=this.parentElement.dataset.fallback||''"/>`;
-      }
+    // Foto de perfil: prioridade
+    //   1. URL configurada via admin (profile.photo_url)
+    //   2. Arquivo estatico /assets/bluetubevirais-avatar.jpg (fallback rapido)
+    //   3. SVG inline (ja renderizado no HTML)
+    const photoSrc = d.profile?.photo_url || '/assets/bluetubevirais-avatar.jpg';
+    const av = document.getElementById('igAvatar');
+    if(av && photoSrc){
+      const img = new Image();
+      img.onload = () => { av.innerHTML = `<img src="${photoSrc}" alt="${d.profile?.display_name || 'BlueTube Virais'}" referrerpolicy="no-referrer"/>`; };
+      img.onerror = () => { /* mantem SVG inline original */ };
+      img.src = photoSrc;
     }
     // Sem data-instgrm-captioned = nao mostra legenda, so a midia (imagem/video)
     const renderPost = (p) => `<div class="ig-card" onclick="window.open('${p.url}','_blank','noopener')"><blockquote class="instagram-media" data-instgrm-permalink="${p.url}" data-instgrm-version="14"></blockquote></div>`;
