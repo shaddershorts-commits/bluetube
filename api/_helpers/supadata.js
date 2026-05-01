@@ -13,14 +13,66 @@ const TRANSCRIPT_BASE = 'https://api.supadata.ai/v1/transcript';
 const TTL_MS = 30 * 24 * 3600 * 1000; // 30 dias
 const TIMEOUT_MS = 25000;
 
-function makeCacheKey(videoId) {
-  return crypto.createHash('md5').update('transcript|' + videoId).digest('hex');
+// Detecta plataforma e retorna URL canonica + cache key estavel.
+// YouTube mantem formato antigo (md5('transcript|' + videoId)) pra
+// nao invalidar cache existente. TikTok/Instagram usam URL canonica.
+function buildCacheInputs(videoIdOrUrl) {
+  const input = String(videoIdOrUrl || '').trim();
+  if (!input) return null;
+  const isUrl = /^https?:\/\//i.test(input);
+  if (!isUrl) {
+    // Compat: input curto = videoId YouTube (pre-multiplatform)
+    return {
+      url: 'https://www.youtube.com/watch?v=' + input,
+      cacheKey: crypto.createHash('md5').update('transcript|' + input).digest('hex'),
+      platform: 'youtube',
+    };
+  }
+  // URL completa — detecta plataforma e canonicaliza
+  let platform = 'unknown';
+  let canonical = input;
+  try {
+    const u = new URL(input);
+    const host = u.hostname.replace(/^www\./, '');
+    if (/youtube\.com|youtu\.be/i.test(host)) {
+      platform = 'youtube';
+      // YouTube: extrai videoId pra manter compat de cache
+      const m = input.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+      if (m) {
+        return {
+          url: 'https://www.youtube.com/watch?v=' + m[1],
+          cacheKey: crypto.createHash('md5').update('transcript|' + m[1]).digest('hex'),
+          platform: 'youtube',
+        };
+      }
+    } else if (/tiktok\.com/i.test(host)) {
+      platform = 'tiktok';
+    } else if (/instagram\.com/i.test(host)) {
+      platform = 'instagram';
+    } else if (/twitter\.com|x\.com/i.test(host)) {
+      platform = 'x';
+    }
+    // Canonicaliza: remove query params irrelevantes (utm_*, si=, t=, etc)
+    const keep = ['v', 'list']; // YouTube params relevantes
+    const newParams = new URLSearchParams();
+    for (const [k, val] of u.searchParams) {
+      if (keep.includes(k)) newParams.set(k, val);
+    }
+    u.search = newParams.toString();
+    u.hash = '';
+    canonical = u.toString();
+  } catch (_) {}
+  return {
+    url: canonical,
+    cacheKey: crypto.createHash('md5').update('transcript|url|' + canonical).digest('hex'),
+    platform,
+  };
 }
 
-async function lerCache(videoId, { SUPABASE_URL, SUPABASE_KEY }) {
+async function lerCache(cacheKey, { SUPABASE_URL, SUPABASE_KEY }) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   try {
-    const ck = makeCacheKey(videoId);
+    const ck = cacheKey;
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/api_cache?cache_key=eq.${ck}&expires_at=gt.${new Date().toISOString()}&select=value&limit=1`,
       { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, signal: AbortSignal.timeout(3000) }
@@ -31,10 +83,10 @@ async function lerCache(videoId, { SUPABASE_URL, SUPABASE_KEY }) {
   } catch (e) { return null; }
 }
 
-async function escreverCache(videoId, value, { SUPABASE_URL, SUPABASE_KEY }) {
+async function escreverCache(cacheKey, value, { SUPABASE_URL, SUPABASE_KEY }) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return;
   try {
-    const ck = makeCacheKey(videoId);
+    const ck = cacheKey;
     // Delete antigo + insert novo (mesma estrategia que transcript.js usa)
     await fetch(`${SUPABASE_URL}/rest/v1/api_cache?cache_key=eq.${ck}`, {
       method: 'DELETE',
@@ -58,8 +110,8 @@ async function escreverCache(videoId, value, { SUPABASE_URL, SUPABASE_KEY }) {
   } catch (e) {}
 }
 
-async function chamarSupadata(videoId, key) {
-  const url = `${TRANSCRIPT_BASE}?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}`;
+async function chamarSupadata(targetUrl, key) {
+  const url = `${TRANSCRIPT_BASE}?url=${encodeURIComponent(targetUrl)}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
@@ -74,19 +126,23 @@ async function chamarSupadata(videoId, key) {
 }
 
 /**
- * Retorna { ok: true, source: 'cache'|'supadata_primary'|'supadata_fallback', data }
+ * Retorna { ok: true, source: 'cache'|'supadata_primary'|'supadata_fallback', data, platform }
  * ou { ok: false, error }
  *
- * @param {string} videoId — id do video YouTube
+ * @param {string} videoIdOrUrl — id YouTube curto OU URL completa de qualquer plataforma
+ *                                (YouTube, TikTok, Instagram, X/Twitter — Supadata aceita)
  * @param {object} opts — { SUPABASE_URL, SUPABASE_KEY } (default: env vars)
  */
-async function getTranscript(videoId, opts = {}) {
+async function getTranscript(videoIdOrUrl, opts = {}) {
   const SUPABASE_URL = opts.SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_KEY = opts.SUPABASE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-  // 1. Cache check (mesma key que transcript.js — compartilhado)
-  const cached = await lerCache(videoId, { SUPABASE_URL, SUPABASE_KEY });
-  if (cached) return { ok: true, source: 'cache', data: cached };
+  const inputs = buildCacheInputs(videoIdOrUrl);
+  if (!inputs) return { ok: false, error: 'input_invalido' };
+
+  // 1. Cache check (key estavel — compartilhado com transcript.js pra YouTube)
+  const cached = await lerCache(inputs.cacheKey, { SUPABASE_URL, SUPABASE_KEY });
+  if (cached) return { ok: true, source: 'cache', data: cached, platform: inputs.platform };
 
   // 2. Tenta chaves Supadata em sequencia (primaria → fallback)
   const keys = [
@@ -97,20 +153,21 @@ async function getTranscript(videoId, opts = {}) {
   if (!keys.length) return { ok: false, error: 'no_supadata_keys' };
 
   for (let i = 0; i < keys.length; i++) {
-    const result = await chamarSupadata(videoId, keys[i]);
+    const result = await chamarSupadata(inputs.url, keys[i]);
     if (result.ok) {
       // Cache write fire-and-forget (nao bloqueia retorno)
-      escreverCache(videoId, result.data, { SUPABASE_URL, SUPABASE_KEY }).catch(() => {});
+      escreverCache(inputs.cacheKey, result.data, { SUPABASE_URL, SUPABASE_KEY }).catch(() => {});
       return {
         ok: true,
         source: i === 0 ? 'supadata_primary' : 'supadata_fallback',
         data: result.data,
+        platform: inputs.platform,
       };
     }
     // Erro: tenta proxima chave (fallback)
   }
 
-  return { ok: false, error: 'all_keys_failed' };
+  return { ok: false, error: 'all_keys_failed', platform: inputs.platform };
 }
 
 /**
