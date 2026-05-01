@@ -15,9 +15,14 @@ RUN apk add --no-cache \
   py3-websockets \
   && rm -rf /var/cache/apk/*
 
-# yt-dlp binary standalone (Python script auto-contido)
-RUN curl -fsSL -o /usr/local/bin/yt-dlp \
-  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+# yt-dlp binary standalone (Python script auto-contido).
+# YTDLP_BUILD_DATE invalida o cache da camada Docker quando precisar forcar
+# re-download (YouTube atualiza anti-bot e yt-dlp libera fix em horas).
+# Pra forcar update: incremente a data abaixo + commit.
+ARG YTDLP_BUILD_DATE=2026-05-01
+RUN echo "yt-dlp build date: ${YTDLP_BUILD_DATE}" \
+  && curl -fsSL -o /usr/local/bin/yt-dlp \
+    https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
   && chmod +x /usr/local/bin/yt-dlp \
   && yt-dlp --version
 
