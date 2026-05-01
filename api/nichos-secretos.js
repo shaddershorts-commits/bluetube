@@ -40,30 +40,43 @@ function assertAdmin(req) {
 }
 
 async function getUserFromToken(token) {
-  if (!token) return null;
+  if (!token) return { user: null, debug: { reason: 'token_vazio' } };
   try {
     const r = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.warn('[nichos-secretos] auth/v1/user retornou', r.status, txt.slice(0, 100));
+      return { user: null, debug: { reason: 'auth_http_' + r.status, body: txt.slice(0, 100), AK_set: !!AK, SU_set: !!SU } };
+    }
+    const user = await r.json();
+    return { user, debug: { auth_ok: true } };
+  } catch (e) {
+    console.error('[nichos-secretos] auth/v1/user exception:', e.message);
+    return { user: null, debug: { reason: 'auth_exception', error: e.message } };
+  }
 }
 
 async function isMaster(token) {
-  const user = await getUserFromToken(token);
-  if (!user || !user.email) return { ok: false, reason: 'invalid_token' };
+  const { user, debug: authDebug } = await getUserFromToken(token);
+  if (!user || !user.email) return { ok: false, reason: 'invalid_token', _debug: authDebug };
   try {
     const r = await fetch(
       `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual&limit=1`,
       { headers: HDR }
     );
-    if (!r.ok) return { ok: false, reason: 'sub_query_failed' };
+    if (!r.ok) return { ok: false, reason: 'sub_query_failed', _debug: { sub_status: r.status, email: user.email } };
     const sub = (await r.json())?.[0];
-    if (!sub) return { ok: false, reason: 'sub_not_found', plan: 'free' };
+    if (!sub) return { ok: false, reason: 'sub_not_found', plan: 'free', _debug: { email: user.email } };
     const isManual = sub.is_manual === true;
     const notExpired = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
     const planoEfetivo = (sub.plan && sub.plan !== 'free' && (isManual || notExpired)) ? sub.plan : 'free';
-    return { ok: planoEfetivo === 'master', plan: planoEfetivo, email: user.email };
-  } catch { return { ok: false, reason: 'auth_check_failed' }; }
+    return {
+      ok: planoEfetivo === 'master',
+      plan: planoEfetivo,
+      email: user.email,
+      _debug: { raw_plan: sub.plan, is_manual: sub.is_manual, plan_expires_at: sub.plan_expires_at }
+    };
+  } catch (e) { return { ok: false, reason: 'auth_check_failed', _debug: { error: e.message } }; }
 }
 
 // ── HELPERS SUPABASE ────────────────────────────────────────────────────────
@@ -355,6 +368,7 @@ async function historicoSecretos(req, res) {
       message: 'Nichos Secretos exclusivo Master',
       current_plan: auth.plan || 'free',
       reason: auth.reason,
+      _debug: auth._debug,
     });
   }
 
