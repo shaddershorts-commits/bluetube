@@ -1627,12 +1627,42 @@ const MSGS=['Buscando Short…','Analisando áudio…','Processando fala…','Ge
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
 function extractId(raw){
+  // Compat: retorna videoId YouTube (so YouTube). Mantido pra fluxos antigos
+  // que ainda dependem desse formato (transcrever, etc).
   try{
     const u=new URL(raw.trim());
     if(u.pathname.includes('/shorts/'))return u.pathname.split('/shorts/')[1].split('/')[0].split('?')[0];
     if(u.hostname==='youtu.be')return u.pathname.slice(1).split('?')[0];
     const v=u.searchParams.get('v');if(v)return v;
   }catch{}return null;
+}
+
+// extractVideoInfo: detecta plataforma e retorna { platform, id, url } pra
+// fluxos multiplataforma (Gerar do Zero — startFromZero). YouTube tambem
+// retorna id curto pra compat. TikTok/Instagram retornam URL canonica.
+function extractVideoInfo(raw){
+  if(!raw) return null;
+  const trimmed = raw.trim();
+  try{
+    const u = new URL(trimmed);
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    // YouTube
+    if(/youtube\.com$|youtu\.be$/.test(host) || host.endsWith('.youtube.com')){
+      const id = extractId(trimmed);
+      if(!id) return null;
+      return { platform:'youtube', id, url:'https://www.youtube.com/shorts/'+id };
+    }
+    // TikTok — qualquer URL tiktok.com (vm.tiktok.com, www.tiktok.com/@user/video/123, etc)
+    if(host==='tiktok.com' || host.endsWith('.tiktok.com')){
+      return { platform:'tiktok', id:trimmed, url:trimmed };
+    }
+    // Instagram Reels/Posts
+    if(host==='instagram.com' || host.endsWith('.instagram.com')){
+      // Aceita /reel/, /reels/, /p/ (post com video)
+      if(/\/(reel|reels|p)\//.test(u.pathname)) return { platform:'instagram', id:trimmed, url:trimmed };
+    }
+  }catch{}
+  return null;
 }
 function fmtTime(ms){const s=Math.floor(ms/1000),m=Math.floor(s/60);return`[${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}]`}
 function srtTime(ms){const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000),s=Math.floor((ms%60000)/1000),ml=ms%1000;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ml).padStart(3,'0')}`}
@@ -2561,7 +2591,7 @@ function setMode(mode){
     if(card){ card.style.borderColor='rgba(251,191,36,.35)'; card.style.boxShadow='0 0 0 1px rgba(251,191,36,.08),0 8px 60px rgba(251,100,0,.15),inset 0 1px 0 rgba(255,255,255,.04)'; }
     if(btnGo){ btnGo.style.background='linear-gradient(135deg,#92400e,#fbbf24)'; btnGo.style.boxShadow='0 0 28px rgba(251,191,36,.4)'; btnGo.textContent='Iniciar ↗'; }
     const inp=document.getElementById('urlInput');
-    if(inp) inp.placeholder='Cole qualquer Short — com ou sem narração';
+    if(inp) inp.placeholder='Cole link YouTube, TikTok ou Instagram Reels';
     // Hide adapt results, show zero flow if has saved results
     if(resultsArea) resultsArea.classList.remove('on');
     const savedZero = localStorage.getItem('bt_state_zero_casual');
@@ -2588,6 +2618,8 @@ function handleMainBtn(e){
 
 // ── ROTEIRIZAR DO ZERO — Fluxo guiado de 3 perguntas ─────────────────────
 let _zeroVideoId = '';
+let _zeroVideoUrl = '';
+let _zeroPlatform = 'youtube';
 let _zeroSentiments = [];
 let _zeroNiche = '';
 let _zeroLang = 'Português (Brasil)';
@@ -2669,15 +2701,20 @@ function zeroGoStep(step){
 
 async function startFromZero(e){
   const raw=document.getElementById('urlInput').value.trim();
-  if(!raw){setError('Cole um link de YouTube Shorts antes de continuar.');return;}
-  const videoId=extractId(raw);
-  if(!videoId){setError('Link inválido. Use: youtube.com/shorts/...');return;}
+  if(!raw){setError('Cole um link de YouTube Shorts, TikTok ou Instagram Reels antes de continuar.');return;}
+  // extractVideoInfo aceita YouTube + TikTok + Instagram pra fluxo "Gerar do Zero"
+  const info=extractVideoInfo(raw);
+  if(!info){setError('Link inválido. Aceito: YouTube Shorts, TikTok ou Instagram Reels.');return;}
 
   const isPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
   if(!isPaid){ openUpgradeModal('limit_full'); return; }
 
   setError('');
-  _zeroVideoId=videoId;
+  // Compat: _zeroVideoId mantem id YouTube quando aplicavel; _zeroVideoUrl tem URL completa
+  // de qualquer plataforma (usado pelo backend pra detectar plataforma).
+  _zeroVideoId = info.id;
+  _zeroVideoUrl = info.url;
+  _zeroPlatform = info.platform;
   _zeroSentiments=[];
   _zeroNiche='';
   _zeroLang='Português (Brasil)';
@@ -2731,7 +2768,9 @@ async function zeroGenerate(){
     const token=localStorage.getItem('bt_token');
     const r=await fetch('/api/generate-from-zero',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        videoUrl:'https://www.youtube.com/shorts/'+_zeroVideoId,
+        // _zeroVideoUrl ja vem completa do extractVideoInfo (YouTube/TikTok/Instagram).
+        // Fallback pra montar URL YouTube se _zeroVideoUrl vazio (compat fluxos antigos).
+        videoUrl: _zeroVideoUrl || ('https://www.youtube.com/shorts/'+_zeroVideoId),
         lang, token,
         userSummary: summary,
         sentiments: sentimentLabels,
