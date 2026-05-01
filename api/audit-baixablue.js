@@ -177,6 +177,40 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'config_missing' });
   }
 
+  // ?action=summary — le ultimo resultado de cada provider sem rodar teste
+  // (rapido, usado pelo painel admin pra mostrar status sem custo)
+  if (req.query?.action === 'summary') {
+    try {
+      const providers = ['cobalt', 'railway_ytdlp', 'ytstream', 'youtube_media', 'invidious'];
+      const results = [];
+      let latestChecked = null;
+      for (const p of providers) {
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/download_health_log?provider=eq.${p}&order=checked_at.desc&limit=1&select=provider,status,duration_ms,error,checked_at`,
+          { headers: supaH }
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          if (rows[0]) {
+            results.push(rows[0]);
+            if (!latestChecked || rows[0].checked_at > latestChecked) latestChecked = rows[0].checked_at;
+          }
+        }
+      }
+      return res.status(200).json({
+        ok: true,
+        action: 'summary',
+        results,
+        checked_at: latestChecked,
+        test_video_id: TEST_VIDEO_ID,
+        healthy_providers: results.filter(r => r.status === 'ok').length,
+        failed_providers: results.filter(r => r.status === 'fail').length,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   const startTs = Date.now();
   const results = await Promise.all([
     testCobalt(),

@@ -977,6 +977,25 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div id="ahIssuesList" style="font-family:var(--mono);font-size:11px;color:var(--dim)"></div>
     </div>
 
+    <!-- BAIXABLUE HEALTH (providers de download YouTube) -->
+    <div class="section" id="baixaBlueHealthSection">
+      <div class="section-header">
+        <div class="section-title">📥 BaixaBlue Health <span class="section-subtitle">— status dos providers YouTube</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="action-btn" onclick="loadBaixaBlueHealth()">↻ Atualizar</button>
+          <button class="action-btn" style="color:var(--neon)" onclick="testBaixaBlueAgora()">▶ Testar agora</button>
+        </div>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px" id="bbhProvidersGrid">
+        <div class="stat-card"><div class="stat-label">Cobalt</div><div class="stat-value" id="bbhCobalt">—</div><div class="stat-sub" id="bbhCobaltSub">—</div></div>
+        <div class="stat-card"><div class="stat-label">Railway yt-dlp</div><div class="stat-value" id="bbhRailway">—</div><div class="stat-sub" id="bbhRailwaySub">—</div></div>
+        <div class="stat-card"><div class="stat-label">ytstream</div><div class="stat-value" id="bbhYtstream">—</div><div class="stat-sub" id="bbhYtstreamSub">—</div></div>
+        <div class="stat-card"><div class="stat-label">youtube-media</div><div class="stat-value" id="bbhYoutubeMedia">—</div><div class="stat-sub" id="bbhYoutubeMediaSub">—</div></div>
+        <div class="stat-card"><div class="stat-label">Invidious</div><div class="stat-value" id="bbhInvidious">—</div><div class="stat-sub" id="bbhInvidiousSub">—</div></div>
+      </div>
+      <div id="bbhSummary" style="font-family:var(--mono);font-size:11px;color:var(--dim);padding:8px 0"></div>
+    </div>
+
     <!-- EMAIL MARKETING -->
     <div class="section" id="emailMarketingSection">
       <div class="section-header">
@@ -1516,6 +1535,7 @@ async function loadData(){
     loadEmailMarketing();
     loadBlueHealth();
     loadAppHealth();
+    loadBaixaBlueHealth();
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
@@ -1846,6 +1866,65 @@ async function runBlueMaintenance(){
 }
 
 // Load last maintenance result from cache
+async function loadBaixaBlueHealth(){
+  // Busca ultimo run do audit-baixablue (lendo download_health_log).
+  // Endpoint /api/audit-baixablue tambem aceita ?action=summary pra resumo.
+  try{
+    const r=await fetch('/api/audit-baixablue?action=summary',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(!r.ok){
+      // Se endpoint summary nao existe ainda, faz GET normal (executa run completo)
+      return;
+    }
+    const d=await r.json();
+    renderBaixaBlueHealth(d);
+  }catch(e){console.warn('baixaBlue health:',e);}
+}
+
+function renderBaixaBlueHealth(d){
+  const $=(id)=>document.getElementById(id);
+  const map={
+    cobalt:{val:'bbhCobalt',sub:'bbhCobaltSub'},
+    railway_ytdlp:{val:'bbhRailway',sub:'bbhRailwaySub'},
+    ytstream:{val:'bbhYtstream',sub:'bbhYtstreamSub'},
+    youtube_media:{val:'bbhYoutubeMedia',sub:'bbhYoutubeMediaSub'},
+    invidious:{val:'bbhInvidious',sub:'bbhInvidiousSub'},
+  };
+  const colors={ok:'var(--green)',fail:'var(--red)',skip:'var(--dim)'};
+  const icons={ok:'✓',fail:'✗',skip:'⏭'};
+  const results=d.results||[];
+  for(const k of Object.keys(map)){
+    const r=results.find(x=>x.provider===k);
+    const ids=map[k];
+    if(!r){
+      $(ids.val).textContent='—';
+      $(ids.val).style.color='var(--dim)';
+      $(ids.sub).textContent='sem dados';
+      continue;
+    }
+    $(ids.val).textContent=icons[r.status]+' '+r.status.toUpperCase();
+    $(ids.val).style.color=colors[r.status]||'var(--dim)';
+    const subTxt=r.status==='ok'?(r.duration_ms+'ms'):(r.error||'—').slice(0,30);
+    $(ids.sub).textContent=subTxt;
+  }
+  const ok=results.filter(r=>r.status==='ok').length;
+  const fail=results.filter(r=>r.status==='fail').length;
+  const skip=results.filter(r=>r.status==='skip').length;
+  const ts=d.checked_at?new Date(d.checked_at).toLocaleString('pt-BR'):'—';
+  $('bbhSummary').textContent=`${ok} ok · ${fail} falha · ${skip} skip · último check: ${ts} · vídeo teste: ${d.test_video_id||'dQw4w9WgXcQ'}`;
+}
+
+async function testBaixaBlueAgora(){
+  const summary=document.getElementById('bbhSummary');
+  summary.textContent='⏳ Rodando teste em todos providers (~30s)...';
+  try{
+    const r=await fetch('/api/audit-baixablue',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    if(!r.ok){toast('Erro: '+(d.error||'falha'));return;}
+    renderBaixaBlueHealth(d);
+    toast(`✅ ${d.healthy_providers}/${(d.results||[]).length} providers OK`);
+  }catch(e){toast('Erro: '+e.message);summary.textContent='❌ '+e.message;}
+}
+
 async function loadAppHealth(){
   try{
     const r=await fetch('/api/app-health');
