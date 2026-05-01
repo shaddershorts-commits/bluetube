@@ -13,7 +13,8 @@
 // Resposta tem mesmo formato que /api/auth?action=download:
 //   { url, title, thumbnail, platform: 'youtube', provider: 'invidious' }
 
-const INVIDIOUS_INSTANCES = [
+// Fallback list — usada se fetch da lista oficial falhar
+const INVIDIOUS_INSTANCES_FALLBACK = [
   'https://yewtu.be',
   'https://inv.nadeko.net',
   'https://invidious.nerdvpn.de',
@@ -22,6 +23,44 @@ const INVIDIOUS_INSTANCES = [
 ];
 
 const TIMEOUT_MS = 15000;
+const INSTANCES_LIST_URL = 'https://api.invidious.io/instances.json';
+
+// Cache em memoria das instancias ativas (TTL 1h — funcao do Vercel pode
+// reciclar antes mas e melhor que nada)
+let _instancesCache = null;
+let _instancesCacheAt = 0;
+
+async function getActiveInstances() {
+  // Cache 1h
+  if (_instancesCache && (Date.now() - _instancesCacheAt) < 3600000) {
+    return _instancesCache;
+  }
+  try {
+    const r = await fetch(INSTANCES_LIST_URL + '?sort_by=health,users&pretty=0', {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!r.ok) throw new Error('list HTTP ' + r.status);
+    const data = await r.json();
+    // data e array de [name, info] tuplas. Filtra: HTTPS + API enabled + healthy
+    const active = data
+      .filter(([_, info]) => info && info.api === true && info.type === 'https')
+      .filter(([_, info]) => {
+        const sc = info.monitor?.statusClass;
+        return !sc || sc === 'success' || sc === 'monitor-success';
+      })
+      .slice(0, 8)
+      .map(([name]) => 'https://' + name);
+    if (active.length > 0) {
+      _instancesCache = active;
+      _instancesCacheAt = Date.now();
+      return active;
+    }
+  } catch (e) {
+    console.warn('[invidious] lista oficial falhou:', e.message);
+  }
+  return INVIDIOUS_INSTANCES_FALLBACK;
+}
 
 async function tryInstance(instance, videoId) {
   try {
@@ -83,8 +122,9 @@ module.exports = async function handler(req, res) {
   if (!match) return res.status(400).json({ error: 'URL YouTube invalida' });
   const videoId = match[1];
 
+  const instances = await getActiveInstances();
   const failures = [];
-  for (const instance of INVIDIOUS_INSTANCES) {
+  for (const instance of instances) {
     const host = (() => { try { return new URL(instance).hostname; } catch { return instance; } })();
     const result = await tryInstance(instance, videoId);
     if (result.ok) {
@@ -105,6 +145,6 @@ module.exports = async function handler(req, res) {
   return res.status(502).json({
     error: 'Todas instancias Invidious falharam',
     detail: failures.join(' | '),
-    instancias_tentadas: INVIDIOUS_INSTANCES.length,
+    instancias_tentadas: instances.length,
   });
 };
