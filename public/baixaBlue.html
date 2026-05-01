@@ -374,6 +374,25 @@ function detectSource(url){
   return {name:'Vídeo',emoji:'🎬'};
 }
 
+// Pre-preenche o input via query string ?url=YYYY (vindo de Nichos Secretos
+// ou outras ferramentas que querem mandar URL pra baixar). Dispara 'input'
+// pra ativar badge + auto-detect de source. Limpa parametro da URL apos
+// preencher (evita F5 re-disparar fetch acidental).
+(function preencherViaQuery(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get('url');
+    if (url) {
+      const inp = document.getElementById('videoUrl');
+      inp.value = url;
+      inp.dispatchEvent(new Event('input'));
+      // Limpa ?url= da URL sem recarregar
+      const novaUrl = window.location.pathname + (window.location.hash || '');
+      window.history.replaceState({}, document.title, novaUrl);
+    }
+  } catch(e) { /* silent */ }
+})();
+
 // Show platform badge when URL is pasted
 document.getElementById('videoUrl').addEventListener('input', function(){
   const badge = document.getElementById('platformBadge');

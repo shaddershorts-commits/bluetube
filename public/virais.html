@@ -300,7 +300,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
           <div class="ns-title">🔮 Nichos Secretos</div>
           <div class="ns-subtitle">Exclusivo Master · Vídeos ≥10M views · Últimos 45 dias</div>
         </div>
-        <button onclick="fecharNichosSecretos()" style="background:none;border:1px solid rgba(251,191,36,.4);border-radius:10px;padding:10px 18px;font-family:var(--mono);font-size:12px;font-weight:700;color:#fbbf24;cursor:pointer">✕ Fechar</button>
+        <button onclick="fecharNichosSecretos()" style="background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.4);border-radius:10px;padding:10px 18px;font-family:var(--mono);font-size:12px;font-weight:700;color:#00aaff;cursor:pointer;display:inline-flex;align-items:center;gap:6px">← Voltar pra Virais</button>
       </div>
       <div id="nsGrid" class="ns-grid"></div>
       <div id="nsEmpty" class="ns-empty" style="display:none">
@@ -1274,19 +1274,25 @@ async function carregarNichosSecretos(pagina){
       const rank = (pagina - 1) * 20 + i + 1;
       const horas = v.publicado_em ? Math.round((Date.now() - new Date(v.publicado_em).getTime()) / 3600000) : 0;
       const tempoLabel = horas < 24 ? `${horas}h atrás` : `${Math.round(horas/24)}d atrás`;
-      return `<a href="${v.url}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-        <div style="background:linear-gradient(180deg,rgba(15,8,3,0.7),rgba(10,22,40,0.7));border:1px solid rgba(251,191,36,.3);border-radius:14px;overflow:hidden;transition:all .2s;cursor:pointer" onmouseover="this.style.borderColor='rgba(251,191,36,.7)';this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 20px rgba(251,191,36,.15)'" onmouseout="this.style.borderColor='rgba(251,191,36,.3)';this.style.transform='';this.style.boxShadow=''">
+      const safeUrl = (v.url || '').replace(/'/g, '%27').replace(/"/g, '%22');
+      const yid = v.youtube_id || '';
+      return `<div style="background:linear-gradient(180deg,rgba(15,8,3,0.7),rgba(10,22,40,0.7));border:1px solid rgba(251,191,36,.3);border-radius:14px;overflow:hidden;transition:border-color .2s">
+        <a href="${v.url}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:block">
           <div style="position:relative;aspect-ratio:9/16;overflow:hidden">
             <img src="${v.thumbnail_url || ''}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy"/>
             <div style="position:absolute;top:8px;left:8px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border-radius:6px;padding:3px 8px;font-family:monospace;font-size:11px;font-weight:800">#${rank}</div>
             <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.85));padding:24px 10px 8px"><div style="font-family:monospace;font-size:14px;font-weight:800;color:#fbbf24">🔥 ${fmt(v.views)} views</div></div>
           </div>
-          <div style="padding:10px 12px">
+          <div style="padding:10px 12px 4px">
             <div style="font-size:12px;font-weight:700;color:#fff;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px">${safeText(v.titulo)}</div>
-            <div style="font-size:11px;color:#7d92b8;display:flex;justify-content:space-between"><span>${safeText(v.canal_nome)}</span><span>${tempoLabel}</span></div>
+            <div style="font-size:11px;color:#7d92b8;display:flex;justify-content:space-between;margin-bottom:8px"><span>${safeText(v.canal_nome)}</span><span>${tempoLabel}</span></div>
           </div>
+        </a>
+        <div style="padding:0 10px 10px;display:flex;flex-direction:column;gap:6px">
+          <button onclick="nsBaixar(event,'${safeUrl}')" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.35);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:#00aaff;cursor:pointer;text-align:center" onmouseover="this.style.background='rgba(0,170,255,.18)'" onmouseout="this.style.background='rgba(0,170,255,.1)'">⬇️ Baixar (BaixaBlue)</button>
+          <button onclick="nsRaioX(event,'${yid}')" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:#fbbf24;cursor:pointer;text-align:center" onmouseover="this.style.background='rgba(251,191,36,.2)'" onmouseout="this.style.background='rgba(251,191,36,.12)'">🔬 Raio-X completo</button>
         </div>
-      </a>`;
+      </div>`;
     }).join('');
 
     if (pagina === 1) grid.innerHTML = html;
@@ -1310,6 +1316,18 @@ async function carregarNichosSecretos(pagina){
 
 function nsMudarPagina(direcao){
   carregarNichosSecretos(nsPaginaAtual + direcao);
+}
+
+// Botões dos cards de Nichos Secretos
+function nsBaixar(e, videoUrl){
+  e.preventDefault(); e.stopPropagation();
+  // Abre BaixaBlue com URL pre-preenchida
+  window.location.href = '/baixaBlue?url=' + encodeURIComponent(videoUrl);
+}
+function nsRaioX(e, youtubeId){
+  e.preventDefault(); e.stopPropagation();
+  if (!youtubeId) return;
+  window.location.href = '/bluetendencias?rx=' + encodeURIComponent(youtubeId);
 }
 
 </script>
