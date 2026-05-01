@@ -96,9 +96,9 @@ export default async function handler(req, res) {
   // sub → Stripe rebillou → user cobrado e ficou free). Use dry_run pra ver
   // o que seria feito sem executar.
   if (req.method === 'POST' && action === 'refund-and-cancel') {
-    const { email: targetEmail, dry_run } = req.body || {};
+    const { email: targetEmail, dry_run, skip_email } = req.body || {};
     if (!targetEmail) return res.status(400).json({ error: 'email obrigatorio' });
-    return refundAndCancelAction(req, res, { SUPABASE_URL, headers, email: targetEmail, dryRun: !!dry_run });
+    return refundAndCancelAction(req, res, { SUPABASE_URL, headers, email: targetEmail, dryRun: !!dry_run, skipEmail: !!skip_email });
   }
 
   // ── COMMISSIONS DUPLICADAS: detector + cancelador manual ─────────────────
@@ -1475,7 +1475,7 @@ async function recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email
 // ── REFUND-AND-CANCEL ATÔMICO ──────────────────────────────────────────────
 // Cancela subscription no Stripe + refund do último charge pago + zera plan
 // no DB. dry_run=true retorna preview do que faria sem executar nada.
-async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, dryRun }) {
+async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, dryRun, skipEmail }) {
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
   if (!STRIPE_SECRET) return res.status(500).json({ error: 'STRIPE_SECRET_KEY nao configurado' });
 
@@ -1536,7 +1536,7 @@ async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, d
         cancel_sub: !!(stripeSubStatus && !['canceled', 'incomplete_expired'].includes(stripeSubStatus)),
         refund_charge: !!refundavel,
         update_db: true,
-        email_user: !!process.env.RESEND_API_KEY,
+        email_user: !!process.env.RESEND_API_KEY && !skipEmail,
       };
       return res.status(200).json(summary);
     }
@@ -1592,20 +1592,27 @@ async function refundAndCancelAction(req, res, { SUPABASE_URL, headers, email, d
       }),
     }).catch(() => {});
 
-    // 9. Email pro user (fire-and-forget)
+    // 9. Email pro user (fire-and-forget) — texto condicional, skip se solicitado
     const RESEND = process.env.RESEND_API_KEY;
-    if (RESEND) {
+    const refundFeito = summary.acoes.some(a => a.acao === 'refund' && a.ok);
+    if (RESEND && !skipEmail) {
+      const subject = refundFeito
+        ? 'Sua assinatura BlueTube foi cancelada e reembolsada'
+        : 'Sua assinatura BlueTube foi cancelada';
+      const corpoMeio = refundFeito
+        ? '<p>Confirmamos o cancelamento da sua assinatura BlueTube e o reembolso do último valor cobrado. O valor pode levar até 5 dias úteis pra refletir no seu cartão.</p>'
+        : '<p>Confirmamos o cancelamento da sua assinatura BlueTube. Você não será cobrado novamente nos próximos ciclos.</p>';
       fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND}` },
         body: JSON.stringify({
           from: process.env.RESEND_FROM_EMAIL || 'BlueTube <bluetubeoficial@bluetubeviral.com>',
           to: email,
-          subject: 'Sua assinatura BlueTube foi cancelada e reembolsada',
+          subject,
           html: `<div style="font-family:Arial,sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px;max-width:560px;margin:0 auto">
-            <h2 style="color:#fbbf24;margin:0 0 12px;font-size:18px">Assinatura cancelada e reembolsada</h2>
+            <h2 style="color:#fbbf24;margin:0 0 12px;font-size:18px">${subject}</h2>
             <p>Olá,</p>
-            <p>Confirmamos o cancelamento da sua assinatura BlueTube e o reembolso do último valor cobrado. O valor pode levar até 5 dias úteis pra refletir no seu cartão.</p>
+            ${corpoMeio}
             <p style="font-size:13px;color:#7d92b8;margin-top:24px">Se houve engano ou se precisar de ajuda, é só responder esse email.</p>
           </div>`,
         }),
