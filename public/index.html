@@ -428,6 +428,40 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:fl
 .tool-overlay.on{display:flex;animation:fadeIn .3s ease}
 /* FAQ */
 .faq-section{position:relative;z-index:10;padding:80px 24px}
+
+/* ── INSTAGRAM FEED — liquid glass + carrossel auto-scroll lento ──────── */
+.ig-feed-section{position:relative;z-index:10;padding:60px 24px;overflow:hidden}
+.ig-feed-orbs{position:absolute;inset:0;pointer-events:none;z-index:0}
+.ig-orb{position:absolute;border-radius:50%;filter:blur(120px);opacity:.45}
+.ig-orb-1{width:520px;height:520px;top:-120px;right:-120px;background:radial-gradient(circle,rgba(0,170,255,.35),transparent 70%)}
+.ig-orb-2{width:420px;height:420px;bottom:-120px;left:-120px;background:radial-gradient(circle,rgba(251,191,36,.25),transparent 70%)}
+.ig-feed-glass{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 28px;background:rgba(10,22,40,.4);border:1px solid rgba(0,170,255,.14);border-radius:32px;backdrop-filter:blur(40px) saturate(140%);-webkit-backdrop-filter:blur(40px) saturate(140%);box-shadow:0 8px 48px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.06)}
+.ig-feed-header{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:32px;flex-wrap:wrap}
+.ig-avatar{display:block;width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.15);box-shadow:0 0 24px rgba(0,170,255,.3),0 0 48px rgba(251,191,36,.15);transition:transform .25s,box-shadow .25s;text-decoration:none}
+.ig-avatar:hover{transform:scale(1.05);box-shadow:0 0 32px rgba(0,170,255,.5),0 0 64px rgba(251,191,36,.25)}
+.ig-name{text-align:left}
+.ig-display-name{font-family:var(--font);font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.01em;line-height:1.1}
+.ig-username{display:inline-block;margin-top:3px;font-family:var(--font-mono);font-size:12px;color:rgba(150,190,230,.7);letter-spacing:.04em;text-decoration:none;transition:color .2s}
+.ig-username:hover{color:var(--neon)}
+.ig-carousel-wrap{position:relative;overflow:hidden;margin-bottom:32px;mask-image:linear-gradient(90deg,transparent 0%,#000 6%,#000 94%,transparent 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 6%,#000 94%,transparent 100%)}
+.ig-carousel-track{display:flex;gap:18px;width:max-content;animation:ig-scroll 75s linear infinite;align-items:flex-start}
+.ig-carousel-track:hover{animation-play-state:paused}
+@keyframes ig-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.ig-card{flex-shrink:0;width:340px;cursor:pointer;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(10,22,40,.55);transition:transform .3s,box-shadow .3s,border-color .3s}
+.ig-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,170,255,.25);border-color:rgba(0,170,255,.3)}
+.ig-card .instagram-media{margin:0!important;border-radius:18px!important;min-width:auto!important;max-width:100%!important;width:100%!important;border:none!important;box-shadow:none!important;background:transparent!important}
+.ig-cta-btn{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;padding:14px 36px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1628;font-family:var(--font);font-size:15px;font-weight:800;letter-spacing:.02em;border:none;border-radius:100px;cursor:pointer;text-decoration:none;transition:all .25s;width:fit-content;box-shadow:0 0 32px rgba(251,191,36,.35)}
+.ig-cta-btn:hover{transform:translateY(-2px);box-shadow:0 0 48px rgba(251,191,36,.5)}
+.ig-cta-btn span{display:inline-block;transition:transform .2s}
+.ig-cta-btn:hover span{transform:translateX(4px)}
+.ig-empty{text-align:center;color:rgba(150,190,230,.5);font-family:var(--font-mono);font-size:13px;padding:48px 24px;width:100%}
+@media (max-width:768px){
+  .ig-feed-section{padding:48px 16px}
+  .ig-feed-glass{padding:24px 16px;border-radius:24px}
+  .ig-card{width:280px}
+  .ig-display-name{font-size:16px}
+  .ig-cta-btn{font-size:14px;padding:12px 28px}
+}
 .faq-inner{max-width:720px;margin:0 auto}
 .faq-item{border-bottom:1px solid rgba(0,170,255,0.08);cursor:pointer}
 .faq-q{display:flex;align-items:center;justify-content:space-between;padding:20px 0;font-size:15px;font-weight:600;color:var(--text-primary);transition:color .2s}
@@ -1336,6 +1370,45 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <button class="plan-btn" onclick="selectPlan('master')" style="width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(251,191,36,0.3)">Assinar Master →</button>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ── INSTAGRAM FEED ──────────────────────────────────────────────────────── -->
+<section class="ig-feed-section" id="igFeedSection">
+  <div class="ig-feed-orbs">
+    <div class="ig-orb ig-orb-1"></div>
+    <div class="ig-orb ig-orb-2"></div>
+  </div>
+  <div class="ig-feed-glass">
+    <div class="ig-feed-header">
+      <a class="ig-avatar" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener" aria-label="Abrir Instagram">
+        <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+          <defs>
+            <linearGradient id="igAvGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#1a6bff"/>
+              <stop offset="50%" stop-color="#00aaff"/>
+              <stop offset="100%" stop-color="#fbbf24"/>
+            </linearGradient>
+          </defs>
+          <rect width="64" height="64" fill="url(#igAvGrad)"/>
+          <path d="M22 16h20a6 6 0 0 1 6 6v20a6 6 0 0 1-6 6H22a6 6 0 0 1-6-6V22a6 6 0 0 1 6-6Zm10 7a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 3a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm10-4.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="#fff" opacity=".95"/>
+        </svg>
+      </a>
+      <div class="ig-name">
+        <div class="ig-display-name">BlueTube Virais</div>
+        <a class="ig-username" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener">@bluetubevirais</a>
+      </div>
+    </div>
+
+    <div class="ig-carousel-wrap" id="igCarouselWrap">
+      <div class="ig-carousel-track" id="igCarouselTrack">
+        <div class="ig-empty">Carregando feed…</div>
+      </div>
+    </div>
+
+    <a class="ig-cta-btn" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener">
+      Siga no Instagram <span aria-hidden="true">→</span>
+    </a>
   </div>
 </section>
 
@@ -4361,6 +4434,46 @@ setInterval(pingVisit, 90 * 1000);
 window.addEventListener('beforeunload', ()=>{
   navigator.sendBeacon('/api/check-limit', JSON.stringify({action: 'offline'}));
 });
+
+// ── INSTAGRAM FEED — carrossel auto-scroll lento (lazy-loaded) ─────────────
+async function loadInstagramFeed(){
+  const track = document.getElementById('igCarouselTrack');
+  if(!track) return;
+  try{
+    const r = await fetch('/api/instagram-feed');
+    const d = await r.json();
+    if(!r.ok || !d.posts || d.posts.length === 0){
+      track.innerHTML = '<div class="ig-empty">Em breve — primeiros posts chegando…</div>';
+      return;
+    }
+    const renderPost = (p) => `<div class="ig-card" onclick="window.open('${p.url}','_blank','noopener')"><blockquote class="instagram-media" data-instgrm-captioned data-instgrm-permalink="${p.url}" data-instgrm-version="14"></blockquote></div>`;
+    // Duplica posts pra ilusao de loop infinito (CSS animation translateX -50%)
+    track.innerHTML = d.posts.map(renderPost).join('') + d.posts.map(renderPost).join('');
+    // Carrega embed.js do Instagram (renderiza cards bonitos)
+    if(window.instgrm && window.instgrm.Embeds){
+      window.instgrm.Embeds.process();
+    } else {
+      const s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.instagram.com/embed.js';
+      s.onload = () => { if(window.instgrm && window.instgrm.Embeds) window.instgrm.Embeds.process(); };
+      document.head.appendChild(s);
+    }
+  }catch(e){
+    track.innerHTML = '<div class="ig-empty">Não consegui carregar o feed agora. Volte em instantes.</div>';
+    console.warn('[ig-feed]', e);
+  }
+}
+function _initIgFeedOnScroll(){
+  const section = document.getElementById('igFeedSection');
+  if(!section) return;
+  if(!('IntersectionObserver' in window)){ loadInstagramFeed(); return; }
+  const obs = new IntersectionObserver((entries) => {
+    if(entries.some(e => e.isIntersecting)){ loadInstagramFeed(); obs.disconnect(); }
+  }, { rootMargin: '300px' });
+  obs.observe(section);
+}
+_initIgFeedOnScroll();
 
 // ── MOUSE GLOW ─────────────────────────────────────────────────────────────
 const mouseGlow = document.getElementById('mouseGlow');
