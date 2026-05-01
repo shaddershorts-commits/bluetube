@@ -600,7 +600,9 @@ function wrapProxyIfNeeded(rawUrl, platform, filename) {
   // Se já é o nosso proxy ou o Railway proxy, nao re-envelopa
   if (rawUrl.includes('/api/auth?action=proxy-download')) return rawUrl;
   if (rawUrl.includes('/proxy-download?')) return rawUrl;
-  const ipBound = /googlevideo\.com|redirector\.google|v\.redd\.it\/DASH|rpan\.reddit\.com/i.test(rawUrl);
+  // Hosts que sao IP-bound OU sem CORS aberto — precisam passar por proxy
+  // do Railway pra browser conseguir fazer fetch+blob download
+  const ipBound = /googlevideo\.com|redirector\.google|v\.redd\.it\/DASH|rpan\.reddit\.com|piped\.video|piped\.kavin\.rocks|piped\.adminforge\.de|piped\.private\.coffee|piped\.leptons\.xyz|invidious|yewtu\.be/i.test(rawUrl);
   if (!ipBound) return rawUrl;
   return `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(rawUrl)}&filename=${encodeURIComponent(filename)}`;
 }

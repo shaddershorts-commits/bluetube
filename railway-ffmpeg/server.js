@@ -372,6 +372,9 @@ const PROXY_ALLOWED_HOSTS = [
   'googlevideo.com', // tentativa; normalmente falha por IP-bind
   'ytimg.com',
   'up.railway.app', // Cobalt self-hosted (cobalt-production-*.up.railway.app)
+  // Camada 5: Piped + Invidious (fallback YouTube quando providers principais caem)
+  'piped.video', 'kavin.rocks', 'adminforge.de', 'private.coffee', 'leptons.xyz',
+  'invidious.io', 'yewtu.be', 'nadeko.net', 'nerdvpn.de', 'privacyredirect.com', 'melmac.space',
 ];
 function isHostAllowed(host) {
   return PROXY_ALLOWED_HOSTS.some(h => host.endsWith(h) || host.includes(h));
