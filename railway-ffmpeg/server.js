@@ -6,7 +6,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const axios = require('axios');
 
 const app = express();
@@ -749,6 +749,37 @@ app.post('/download-youtube', async (req, res) => {
   }
 });
 
+// Auto-update do yt-dlp no startup (Camada 1.2 da blindagem baixaBlue).
+// Roda apos o listen pra nao bloquear health check do Railway.
+// Resolve o problema do Docker layer cache prendendo yt-dlp em versao
+// antiga: a cada restart/deploy, yt-dlp -U sincroniza com upstream.
+function autoUpdateYtdlp() {
+  console.log('[startup] yt-dlp auto-update iniciando...');
+  exec('yt-dlp --version', (e1, before) => {
+    if (e1) { console.warn('[startup] yt-dlp version check falhou:', e1.message); return; }
+    const versionBefore = String(before || '').trim();
+    console.log('[startup] yt-dlp atual:', versionBefore);
+
+    exec('yt-dlp -U', { timeout: 90000 }, (e2, stdout) => {
+      if (e2) { console.warn('[startup] yt-dlp -U falhou (nao-fatal):', e2.message); return; }
+      const lastLines = String(stdout || '').trim().split('\n').slice(-2).join(' | ');
+      console.log('[startup] yt-dlp -U:', lastLines);
+
+      exec('yt-dlp --version', (e3, after) => {
+        if (e3) return;
+        const versionAfter = String(after || '').trim();
+        if (versionAfter && versionAfter !== versionBefore) {
+          console.log(`[startup] yt-dlp ATUALIZADO: ${versionBefore} -> ${versionAfter}`);
+        } else {
+          console.log('[startup] yt-dlp ja estava atualizado');
+        }
+      });
+    });
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`[bluetube-ffmpeg] listening on :${PORT}`);
+  // Roda em background pra nao atrasar health check do Railway
+  setTimeout(autoUpdateYtdlp, 2000);
 });
