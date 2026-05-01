@@ -20,10 +20,30 @@ module.exports = async function handler(req, res) {
     const combined = sanitizeInput([userSummary, niche, videoUrl].filter(Boolean).join(' '));
     if (detectInjection(combined)) return res.status(400).json({ error: 'Conteúdo não permitido detectado.' });
 
+    // Detecta plataforma da URL — YouTube/TikTok/Instagram suportadas via Supadata.
+    // YouTube tambem extrai videoId pra usar em fluxos especificos (Vision/timedtext).
     let videoId = '';
-    const match = videoUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
-    if (match) videoId = match[1];
-    if (!videoId) return res.status(400).json({ error: 'Link inválido. Use um link de YouTube Shorts.' });
+    let platform = 'unknown';
+    try {
+      const u = new URL(String(videoUrl));
+      const host = u.hostname.replace(/^www\./, '');
+      if (/youtube\.com|youtu\.be/i.test(host)) {
+        platform = 'youtube';
+        const m = videoUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+        if (m) videoId = m[1];
+      } else if (/tiktok\.com/i.test(host)) {
+        platform = 'tiktok';
+      } else if (/instagram\.com/i.test(host)) {
+        platform = 'instagram';
+      }
+    } catch (_) {}
+
+    if (platform === 'unknown') {
+      return res.status(400).json({ error: 'Link inválido. Use YouTube Shorts, TikTok ou Instagram Reels.' });
+    }
+    if (platform === 'youtube' && !videoId) {
+      return res.status(400).json({ error: 'Link YouTube inválido. Use: youtube.com/shorts/...' });
+    }
 
     const SU = process.env.SUPABASE_URL;
     const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -71,20 +91,20 @@ module.exports = async function handler(req, res) {
     const safeLang = lang || 'Portugues (Brasil)';
 
     // ── 1. Supadata transcript via helper (cache compartilhado + fallback) ───
-    // Helper checa cache 30d, tenta SUPADATA_API_KEY, se falhar tenta
-    // SUPADATA_API_KEY_FALLBACK. Cache compartilhado com /api/transcript.
+    // Helper aceita URL completa de qualquer plataforma (YouTube/TikTok/Instagram).
+    // Checa cache 30d, tenta SUPADATA_API_KEY, fallback SUPADATA_API_KEY_FALLBACK.
     let transcriptText = '';
     try {
       const { getTranscript, extractText } = require('./_helpers/supadata.js');
-      const result = await getTranscript(videoId, { SUPABASE_URL: SU, SUPABASE_KEY: SK });
+      const result = await getTranscript(videoUrl, { SUPABASE_URL: SU, SUPABASE_KEY: SK });
       if (result.ok) {
         const t = extractText(result.data, 800);
         if (t.length > 20) transcriptText = t;
       }
     } catch(e) {}
 
-    // ── 2. YouTube timedtext (fallback transcript) ────────────────────────────
-    if (!transcriptText) {
+    // ── 2. YouTube timedtext (fallback transcript — SO YouTube) ──────────────
+    if (!transcriptText && platform === 'youtube') {
       try {
         const pR = await fetch('https://www.youtube.com/watch?v=' + videoId, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' }
@@ -108,30 +128,34 @@ module.exports = async function handler(req, res) {
       } catch(e) {}
     }
 
-    // ── 3. YouTube API — metadados (sempre tenta) ─────────────────────────────
+    // ── 3. YouTube API — metadados (SO YouTube — TikTok/Instagram nao tem) ────
     let ytTitle = '', ytDesc = '', ytChannel = '';
-    for (const key of YTK) {
-      try {
-        const yR = await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet&id=' + videoId + '&key=' + key);
-        if (!yR.ok) continue;
-        const yd = await yR.json();
-        const item = yd.items && yd.items[0];
-        if (!item) continue;
-        ytTitle = item.snippet.title || '';
-        ytDesc = (item.snippet.description || '').slice(0, 300);
-        ytChannel = item.snippet.channelTitle || '';
-        break;
-      } catch(e) { continue; }
+    if (platform === 'youtube') {
+      for (const key of YTK) {
+        try {
+          const yR = await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet&id=' + videoId + '&key=' + key);
+          if (!yR.ok) continue;
+          const yd = await yR.json();
+          const item = yd.items && yd.items[0];
+          if (!item) continue;
+          ytTitle = item.snippet.title || '';
+          ytDesc = (item.snippet.description || '').slice(0, 300);
+          ytChannel = item.snippet.channelTitle || '';
+          break;
+        } catch(e) { continue; }
+      }
     }
 
-    // ── 4. Claude Vision (PRIMARY) — analisa frames com URLs diretas ─────────
+    // ── 4. Claude Vision — frames (SO YouTube por enquanto) ──────────────────
+    // Pra TikTok/Instagram nao temos thumbs YouTube-style. Pulamos Vision
+    // e geramos roteiro so com transcricao (Supadata fornece bem).
     let visualDescription = '';
     let detectedNiche = '';
     let visualHighlight = '';
     let visionProvider = null;
     const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
-    if (ANTHROPIC_KEY) {
+    if (ANTHROPIC_KEY && platform === 'youtube') {
       try {
         // 4 frames cobrindo ~25%, 50% (HD), 50%, 75% do vídeo
         const frameUrls = [
@@ -206,8 +230,8 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // ── 4b. Gemini Vision — fallback se Claude falhou ────────────────────────
-    if (!visualDescription && GK.length > 0) {
+    // ── 4b. Gemini Vision — fallback se Claude falhou (SO YouTube) ───────────
+    if (!visualDescription && GK.length > 0 && platform === 'youtube') {
       try {
         const frameUrls = [
           'https://img.youtube.com/vi/' + videoId + '/1.jpg',
@@ -263,7 +287,7 @@ module.exports = async function handler(req, res) {
     if (sentiments && sentiments.length) contextParts.push('SENTIMENTO DESEJADO: ' + sentiments.join(', '));
     if (niche) contextParts.push('NICHO DO CANAL: ' + niche);
 
-    console.log('generate-from-zero:', videoId, '| transcript:', transcriptText.length, '| visual:', visualDescription.length, '| ytTitle:', ytTitle.length, '| ctx:', contextParts.length);
+    console.log('generate-from-zero:', platform, videoId || videoUrl.slice(-30), '| transcript:', transcriptText.length, '| visual:', visualDescription.length, '| ytTitle:', ytTitle.length, '| ctx:', contextParts.length);
 
     if (contextParts.length === 0) {
       return res.status(503).json({ error: 'Nao foi possivel obter informacoes do video. Verifique se o link e publico.' });
