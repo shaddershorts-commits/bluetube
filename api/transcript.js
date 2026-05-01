@@ -25,19 +25,67 @@ export default async function handler(req, res) {
     }
   }
 
-  const { videoId } = req.query;
+  // Aceita ?videoId=YT_ID (compat YouTube antigo) OU ?url=URL_COMPLETA
+  // (multiplatforma — TikTok/Instagram/X/YouTube). Supadata aceita URL direta.
+  const { videoId: queryVideoId, url: queryUrl } = req.query;
 
-  if (!videoId || typeof videoId !== 'string') {
+  let videoId = '';
+  let targetUrl = '';
+  let cacheKeyInput = '';
+  let platform = 'youtube';
+
+  if (queryUrl && typeof queryUrl === 'string') {
+    // Modo URL — valida + detecta plataforma + canonicaliza
+    try {
+      const u = new URL(queryUrl);
+      const host = u.hostname.replace(/^www\./, '').toLowerCase();
+      if (/youtube\.com|youtu\.be/i.test(host) || host.endsWith('.youtube.com')) {
+        platform = 'youtube';
+        const m = queryUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/);
+        if (m) {
+          videoId = m[1];
+          targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          cacheKeyInput = 'transcript|' + videoId; // compat key
+        }
+      } else if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+        platform = 'tiktok';
+      } else if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
+        platform = 'instagram';
+      } else if (/twitter\.com|x\.com/i.test(host)) {
+        platform = 'x';
+      } else {
+        return res.status(400).json({ error: 'URL não suportada. Use YouTube, TikTok, Instagram ou X (Twitter).' });
+      }
+      if (platform !== 'youtube') {
+        // Canonicaliza URL pra cache key estavel (remove query params irrelevantes)
+        const keep = ['v', 'list'];
+        const newParams = new URLSearchParams();
+        for (const [k, v] of u.searchParams) if (keep.includes(k)) newParams.set(k, v);
+        u.search = newParams.toString();
+        u.hash = '';
+        targetUrl = u.toString();
+        cacheKeyInput = 'transcript|url|' + targetUrl;
+      }
+    } catch (_) {
+      return res.status(400).json({ error: 'URL inválida.' });
+    }
+    if (!targetUrl) return res.status(400).json({ error: 'URL inválida ou plataforma não detectada.' });
+  } else if (queryVideoId && typeof queryVideoId === 'string') {
+    // Modo videoId (compat) — assume YouTube
+    if (!/^[a-zA-Z0-9_-]{6,20}$/.test(queryVideoId)) {
+      return res.status(400).json({ error: 'Link inválido. Use um link de YouTube Shorts.' });
+    }
+    videoId = queryVideoId;
+    targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    cacheKeyInput = 'transcript|' + videoId; // compat key
+    platform = 'youtube';
+  } else {
     return res.status(400).json({ error: 'Link do vídeo é obrigatório.' });
-  }
-
-  if (!/^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) {
-    return res.status(400).json({ error: 'Link inválido. Use um link de YouTube Shorts.' });
   }
 
   // Check cache
   const crypto = await import('crypto');
-  const ck = crypto.createHash('md5').update('transcript|'+videoId).digest('hex');
+  const ck = crypto.createHash('md5').update(cacheKeyInput).digest('hex');
   const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
   if (SU && SK) {
     try {
@@ -56,7 +104,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Serviço temporariamente indisponível.' });
   }
 
-  const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  // ytUrl = mantido o nome por historia, mas pode ser URL de qualquer plataforma agora
+  const ytUrl = targetUrl;
 
   try {
     let supaRes = null;
