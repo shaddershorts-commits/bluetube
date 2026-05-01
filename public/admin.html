@@ -996,6 +996,29 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div id="bbhSummary" style="font-family:var(--mono);font-size:11px;color:var(--dim);padding:8px 0"></div>
     </div>
 
+    <!-- INSTAGRAM FEED — gerenciamento do carrossel da home -->
+    <div class="section" id="instagramFeedSection">
+      <div class="section-header">
+        <div class="section-title">📸 Feed Instagram <span class="section-subtitle">— carrossel da home (entre planos e FAQ)</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="action-btn" onclick="loadInstagramAdminPosts()">↻ Atualizar</button>
+          <a class="action-btn" href="https://www.instagram.com/bluetubevirais/" target="_blank" rel="noopener" style="color:var(--gold)">📷 Abrir Instagram</a>
+        </div>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Adicionar novo post</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="igNewUrl" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://www.instagram.com/p/CODIGO/  ou /reel/CODIGO/"/>
+          <button class="action-btn" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1628;font-weight:700;border:none" onclick="addInstagramPost()">+ Adicionar</button>
+        </div>
+        <div id="igAddMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+      </div>
+      <div class="table-wrap" id="igPostsTable"><div class="loading-txt">Carregando…</div></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;line-height:1.5">
+        💡 Os posts aparecem no carrossel da home na ordem listada (1º = primeiro a aparecer). Cache do feed publico é 5min — pode levar até esse tempo pra mudanças refletirem.
+      </div>
+    </div>
+
     <!-- EMAIL MARKETING -->
     <div class="section" id="emailMarketingSection">
       <div class="section-header">
@@ -1536,6 +1559,7 @@ async function loadData(){
     loadBlueHealth();
     loadAppHealth();
     loadBaixaBlueHealth();
+    loadInstagramAdminPosts();
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
@@ -1866,6 +1890,83 @@ async function runBlueMaintenance(){
 }
 
 // Load last maintenance result from cache
+// ── INSTAGRAM FEED — admin gerenciamento ─────────────────────────────────
+async function loadInstagramAdminPosts(){
+  const tableEl = document.getElementById('igPostsTable');
+  if(!tableEl) return;
+  try{
+    const r = await fetch('/api/admin?action=list-instagram-posts',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    if(!r.ok){ tableEl.innerHTML = '<div class="empty-state">Erro ao carregar.</div>'; return; }
+    const d = await r.json();
+    const posts = d.posts || [];
+    if(posts.length === 0){
+      tableEl.innerHTML = '<div class="empty-state">Nenhum post ainda. Cole uma URL do Instagram acima pra começar.</div>';
+      return;
+    }
+    tableEl.innerHTML = `<table>
+      <thead><tr><th style="width:40px">#</th><th>URL</th><th style="width:160px">Adicionado</th><th style="width:120px">Ações</th></tr></thead>
+      <tbody>${posts.map((p,i)=>`<tr>
+        <td style="font-family:var(--mono);color:var(--dim)">${i+1}</td>
+        <td style="font-family:var(--mono);font-size:11px;word-break:break-all"><a href="${p.url}" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">${p.url.replace('https://www.instagram.com/','').slice(0,60)}${p.url.length>80?'...':''}</a></td>
+        <td style="font-size:11px;color:var(--dim)">${new Date(p.added_at).toLocaleDateString('pt-BR')} ${new Date(p.added_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td><div style="display:flex;gap:4px">
+          ${i>0?`<button onclick="moveIgPost('${p.id}','up')" class="action-btn" style="font-size:10px;padding:3px 6px" title="Subir">↑</button>`:''}
+          ${i<posts.length-1?`<button onclick="moveIgPost('${p.id}','down')" class="action-btn" style="font-size:10px;padding:3px 6px" title="Descer">↓</button>`:''}
+          <button onclick="removeIgPost('${p.id}')" class="action-btn" style="font-size:10px;padding:3px 6px;color:var(--red)" title="Remover">🗑</button>
+        </div></td>
+      </tr>`).join('')}</tbody></table>`;
+    window._igAdminPosts = posts;
+  }catch(e){ tableEl.innerHTML = '<div class="empty-state">Erro: '+e.message+'</div>'; }
+}
+
+async function addInstagramPost(){
+  const inp = document.getElementById('igNewUrl');
+  const msg = document.getElementById('igAddMsg');
+  const url = (inp.value || '').trim();
+  if(!url){ msg.style.color='var(--red)'; msg.textContent='Cole uma URL do Instagram primeiro.'; return; }
+  msg.style.color='var(--dim)'; msg.textContent='Adicionando…';
+  try{
+    const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'add-instagram-post',url})});
+    const d = await r.json();
+    if(!r.ok){ msg.style.color='var(--red)'; msg.textContent='❌ '+(d.error||'falha'); return; }
+    msg.style.color='var(--green)'; msg.textContent='✓ Post adicionado';
+    inp.value='';
+    setTimeout(()=>{msg.textContent='';},3000);
+    loadInstagramAdminPosts();
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='Erro: '+e.message; }
+}
+
+async function removeIgPost(id){
+  if(!confirm('Remover esse post do carrossel?')) return;
+  try{
+    const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'remove-instagram-post',id})});
+    const d = await r.json();
+    if(!r.ok){ toast('Erro: '+(d.error||'falha')); return; }
+    toast('🗑 Post removido');
+    loadInstagramAdminPosts();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function moveIgPost(id, direction){
+  const posts = window._igAdminPosts || [];
+  const idx = posts.findIndex(p => String(p.id) === String(id));
+  if(idx < 0) return;
+  const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if(newIdx < 0 || newIdx >= posts.length) return;
+  // Swap
+  const reordered = [...posts];
+  [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+  const ordered_ids = reordered.map(p => p.id);
+  try{
+    const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+      body:JSON.stringify({action:'reorder-instagram-posts',ordered_ids})});
+    if(!r.ok){ toast('Erro ao reordenar'); return; }
+    loadInstagramAdminPosts();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
 async function loadBaixaBlueHealth(){
   // Busca ultimo run do audit-baixablue (lendo download_health_log).
   // Endpoint /api/audit-baixablue tambem aceita ?action=summary pra resumo.
