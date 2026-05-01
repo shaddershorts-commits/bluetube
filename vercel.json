@@ -18,7 +18,8 @@
     "api/email-campanha.js": { "maxDuration": 60 },
     "api/virais-canais.js": { "maxDuration": 300 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
-    "api/audit-stripe-zumbis.js": { "maxDuration": 60 }
+    "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
+    "api/audit-baixablue.js": { "maxDuration": 60 }
   },
   "crons": [
     {
@@ -207,6 +208,10 @@
     },
     {
       "path": "/api/audit-stripe-zumbis",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/audit-baixablue",
       "schedule": "0 9 * * *"
     }
   ],
