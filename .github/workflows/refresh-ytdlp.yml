@@ -1,0 +1,55 @@
+name: Refresh yt-dlp cache buster (mensal)
+
+# Camada 1.1 da blindagem baixaBlue. Roda dia 1 de cada mes, incrementa
+# YTDLP_BUILD_DATE no Dockerfile pra invalidar Docker layer cache, e commita.
+# Push triggera redeploy do Railway (auto-deploy do repo), que entao baixa
+# yt-dlp latest no build e roda yt-dlp -U no startup (Camada 1.2).
+#
+# Tres camadas redundantes garantem yt-dlp sempre fresco:
+#   1.0 :latest no Dockerfile (download fresh em rebuild)
+#   1.1 cache buster mensal (este workflow — forca rebuild)
+#   1.2 yt-dlp -U no startup (atualiza in-place a cada boot)
+
+on:
+  schedule:
+    # Dia 1 de cada mes, 4h UTC (1h BRT)
+    - cron: '0 4 1 * *'
+  workflow_dispatch: {} # permite rodar manualmente em emergencias
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update YTDLP_BUILD_DATE
+        id: update
+        run: |
+          NEW_DATE=$(date -u +%Y-%m-%d)
+          OLD_LINE=$(grep -E '^ARG YTDLP_BUILD_DATE=' railway-ffmpeg/Dockerfile || true)
+          echo "Old: $OLD_LINE"
+          sed -i -E "s|^ARG YTDLP_BUILD_DATE=.*|ARG YTDLP_BUILD_DATE=$NEW_DATE|" railway-ffmpeg/Dockerfile
+          NEW_LINE=$(grep -E '^ARG YTDLP_BUILD_DATE=' railway-ffmpeg/Dockerfile || true)
+          echo "New: $NEW_LINE"
+          if git diff --quiet railway-ffmpeg/Dockerfile; then
+            echo "no_change=true" >> $GITHUB_OUTPUT
+            echo "Sem mudancas — Dockerfile ja com data atual"
+          else
+            echo "no_change=false" >> $GITHUB_OUTPUT
+            echo "new_date=$NEW_DATE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit & push
+        if: steps.update.outputs.no_change == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add railway-ffmpeg/Dockerfile
+          git commit -m "chore(ytdlp): monthly cache buster refresh (${{ steps.update.outputs.new_date }})
+
+Auto-update via .github/workflows/refresh-ytdlp.yml.
+Forca Docker rebuild pra capturar yt-dlp latest do upstream."
+          git push
