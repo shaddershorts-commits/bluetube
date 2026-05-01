@@ -13,13 +13,25 @@
 // Resposta tem mesmo formato que /api/auth?action=download:
 //   { url, title, thumbnail, platform: 'youtube', provider: 'invidious' }
 
-// Fallback list — usada se fetch da lista oficial falhar
+// Fallback list — usada se fetch da lista oficial falhar.
+// Importante: muitas instancias publicas Invidious fecharam API por abuso
+// de bots ao longo de 2025-2026. Piped (fork mais ativo) e adicionado como
+// segunda linha de fallback.
 const INVIDIOUS_INSTANCES_FALLBACK = [
   'https://yewtu.be',
   'https://inv.nadeko.net',
   'https://invidious.nerdvpn.de',
   'https://invidious.privacyredirect.com',
   'https://iv.melmac.space',
+];
+
+// Piped instances — formato API ligeiramente diferente do Invidious.
+// /api/v1/streams/VIDEO_ID retorna { videoStreams: [...], audioStreams: [...] }
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+  'https://pipedapi.leptons.xyz',
+  'https://api.piped.private.coffee',
 ];
 
 const TIMEOUT_MS = 15000;
@@ -122,29 +134,68 @@ module.exports = async function handler(req, res) {
   if (!match) return res.status(400).json({ error: 'URL YouTube invalida' });
   const videoId = match[1];
 
-  const instances = await getActiveInstances();
+  // 1. Tenta Invidious dinamicamente
+  const invidiousList = await getActiveInstances();
   const failures = [];
-  for (const instance of instances) {
+  for (const instance of invidiousList) {
     const host = (() => { try { return new URL(instance).hostname; } catch { return instance; } })();
     const result = await tryInstance(instance, videoId);
     if (result.ok) {
       return res.status(200).json({
-        ok: true,
-        url: result.url,
-        title: result.title,
-        thumbnail: result.thumbnail,
-        quality: result.quality,
-        platform: 'youtube',
-        provider: 'invidious',
-        instance: host,
+        ok: true, url: result.url, title: result.title, thumbnail: result.thumbnail,
+        quality: result.quality, platform: 'youtube', provider: 'invidious', instance: host,
       });
     }
-    failures.push(`${host}: ${result.error || 'HTTP ' + result.status}`);
+    failures.push(`invidious/${host}: ${result.error || 'HTTP ' + result.status}`);
+  }
+
+  // 2. Fallback: tenta Piped (fork ativo do Invidious)
+  for (const instance of PIPED_INSTANCES) {
+    const host = (() => { try { return new URL(instance).hostname; } catch { return instance; } })();
+    const result = await tryPiped(instance, videoId);
+    if (result.ok) {
+      return res.status(200).json({
+        ok: true, url: result.url, title: result.title, thumbnail: result.thumbnail,
+        quality: result.quality, platform: 'youtube', provider: 'piped', instance: host,
+      });
+    }
+    failures.push(`piped/${host}: ${result.error || 'HTTP ' + result.status}`);
   }
 
   return res.status(502).json({
-    error: 'Todas instancias Invidious falharam',
+    error: 'Todas instancias alternativas (Invidious + Piped) falharam',
     detail: failures.join(' | '),
-    instancias_tentadas: instances.length,
+    invidious_tentadas: invidiousList.length,
+    piped_tentadas: PIPED_INSTANCES.length,
   });
 };
+
+async function tryPiped(instance, videoId) {
+  try {
+    const r = await fetch(`${instance}/streams/${videoId}`, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    });
+    if (!r.ok) return { ok: false, status: r.status };
+    const d = await r.json();
+    // videoStreams = formato combinado (preferido)
+    const vs = (d.videoStreams || []).find(s => s.format === 'MPEG_4' && s.videoOnly === false);
+    if (vs?.url) {
+      return {
+        ok: true, url: vs.url, title: d.title || 'YouTube Short',
+        thumbnail: d.thumbnailUrl, quality: vs.quality || 'auto',
+      };
+    }
+    // Fallback: pega melhor mp4 video-only (sem audio, mas user pode salvar)
+    const vs2 = (d.videoStreams || []).find(s => s.format === 'MPEG_4');
+    if (vs2?.url) {
+      return {
+        ok: true, url: vs2.url, title: d.title || 'YouTube Short',
+        thumbnail: d.thumbnailUrl, quality: vs2.quality || 'auto',
+      };
+    }
+    return { ok: false, error: 'sem_video_streams' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
