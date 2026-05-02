@@ -982,11 +982,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
   <div class="hero-badge"><span class="badge-dot"></span>Grátis · 2 roteiros/dia · Sem cadastro</div>
   <h1 class="hero-title">
-    <span class="title-plain" style="font-size:clamp(28px,4vw,52px);letter-spacing:-1px;opacity:.9">Seu novo vídeo com</span>
-    <span class="title-gradient" style="font-size:clamp(52px,8vw,110px);letter-spacing:-4px;line-height:.95">milhões de views</span>
-    <span class="title-plain" style="font-size:clamp(28px,4vw,52px);letter-spacing:-1px;opacity:.9">começa agora.</span>
+    <span class="title-plain" style="font-size:clamp(28px,4vw,52px);letter-spacing:-1px;opacity:.9">Hub de ferramentas integradas para</span>
+    <span class="title-gradient" style="font-size:clamp(52px,8vw,110px);letter-spacing:-4px;line-height:.95">Criadores de Vídeos Curtos</span>
+    <span class="title-plain" style="font-size:clamp(28px,4vw,52px);letter-spacing:-1px;opacity:.9">Com foco em otimização, praticidade e tecnologia.</span>
   </h1>
-  <p class="hero-sub">Cole qualquer link de <span style="color:#fbbf24;font-weight:700">Shorts</span>, <span style="color:#fbbf24;font-weight:700">Instagram</span> ou <span style="color:#fbbf24;font-weight:700">TikTok</span>, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
+  <p class="hero-sub"><span style="color:#fbbf24;font-weight:700">9 Ferramentas indispensáveis</span>, comece usando grátis a <span style="color:#fbbf24;font-weight:700">Adaptar Roteiro</span> colando um link de <span style="color:#fbbf24;font-weight:700">Shorts</span>, <span style="color:#fbbf24;font-weight:700">Instagram</span> ou <span style="color:#fbbf24;font-weight:700">TikTok</span>, escolha o idioma e receba transcrição + 2 roteiros virais prontos para narrar.</p>
 
   <div class="main-card">
     <!-- Modo de geração -->
@@ -4588,17 +4588,18 @@ function showFomoPopup(){
   }, duration);
 }
 
-// Start FOMO after 4 seconds, then random intervals
-setTimeout(()=>{
-  showFomoPopup();
-  // Sometimes show two at once
-  setInterval(()=>{
-    showFomoPopup();
-    if(Math.random() > 0.6){
-      setTimeout(showFomoPopup, 1500 + Math.random()*1000);
-    }
-  }, 8000 + Math.random()*4000);
-}, 4000);
+// FOMO desativado em 2026-05-02 a pedido (popups 'alguem viralizou').
+// Funcao showFomoPopup mantida no codigo caso queiramos reativar no futuro.
+// Pra reativar: descomentar bloco abaixo.
+// setTimeout(()=>{
+//   showFomoPopup();
+//   setInterval(()=>{
+//     showFomoPopup();
+//     if(Math.random() > 0.6){
+//       setTimeout(showFomoPopup, 1500 + Math.random()*1000);
+//     }
+//   }, 8000 + Math.random()*4000);
+// }, 4000);
 
 // ── BLUBLU EXPRESSIONS ─────────────────────────────────────────────────────
 function setBluBluExpression(expr){
