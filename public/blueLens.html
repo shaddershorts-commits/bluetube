@@ -535,9 +535,14 @@ function renderResults(data) {
     document.getElementById('metaDate').textContent = meta.publishedAt ? '📅 ' + fmtDate(meta.publishedAt) : '';
   }
 
-  // Resultados
-  // Filtra resultados com similaridade baixa demais (< 30%) — evita vídeos sem relação
-  const relevantResults = results.filter(r => (r.similarity || 0) >= 30);
+  // Resultados — filtro estrito por certeza absoluta:
+  // Mostra APENAS matches com similarity = 100% (titulo+duracao iguais)
+  // OU match_type = transcript_exact (frase exata da fala = prova logica
+  // de mesmo conteudo, mesmo que % display seja 92).
+  // Casos < 100 e sem transcript_exact → "Tá liberado" (mensagem original).
+  const relevantResults = results.filter(r =>
+    (r.similarity || 0) >= 100 || r.matchType === 'transcript_exact' || r.matchType === 'transcript_exact_via_google'
+  );
 
   if (relevantResults.length > 0) {
     document.getElementById('resultsCard').style.display = 'block';
@@ -575,8 +580,11 @@ async function refineSearch() {
     try { data = await r.json(); } catch(e) { throw new Error('Erro na resposta'); }
     if (!r.ok) throw new Error(data.error||'Erro na busca');
 
-    // Filtra resultados já mostrados
-    const newResults = (data.results||[]).filter(r => !seenVideoIds.has(r.id) && (r.similarity||0) >= 30);
+    // Filtra resultados ja mostrados — mesmo filtro estrito da renderResults
+    const newResults = (data.results||[]).filter(r =>
+      !seenVideoIds.has(r.id) &&
+      ((r.similarity||0) >= 100 || r.matchType === 'transcript_exact' || r.matchType === 'transcript_exact_via_google')
+    );
 
     if (newResults.length === 0) {
       showToast('Nenhum resultado novo encontrado. Tente outro link.');
