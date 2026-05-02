@@ -152,50 +152,54 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 </nav>
 
 <main>
-  <div class="hero">
+  <!-- ── MAINTENANCE STATE — BlueLens em atualização ────────────────────── -->
+  <div class="hero" style="margin-bottom:0">
     <div class="hero-eye">
-      <span class="lens-icon">🔍</span>
-      BlueLens · Detector de Concorrência
+      <span class="lens-icon">🔧</span>
+      BlueLens · Em atualização
     </div>
-    <h1>Quantos criadores já<br><span>publicaram isso?</span></h1>
-    <p class="hero-sub">Cole o link do seu Short ou de um vídeo que quer usar. O BlueLens encontra todos os canais dark que já publicaram o mesmo conteúdo no YouTube — para você saber se o nicho está saturado antes de postar.</p>
-    <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap">
-      <div style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">🎯 Foco: YouTube Shorts</div>
-      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">⚠ Muitas cópias = menos views para você</div>
+    <h1>Estamos deixando<br><span>ainda mais potente</span></h1>
+    <p class="hero-sub">O BlueLens está em manutenção pra entregar uma análise muito mais precisa em breve. Voltamos rapidinho.</p>
+  </div>
+
+  <div class="input-card" style="text-align:center;padding:48px 32px">
+    <!-- Animação de "trabalhando" — engrenagem girando + pulse -->
+    <div style="display:flex;justify-content:center;align-items:center;margin-bottom:24px;position:relative;width:120px;height:120px;margin-left:auto;margin-right:auto">
+      <div style="position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.15),transparent 70%);animation:bllPulse 2s ease-in-out infinite"></div>
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--neon)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="animation:bllSpin 4s linear infinite;filter:drop-shadow(0 0 12px rgba(0,170,255,.4))">
+        <path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.93 19.07 1.41-1.41"/><path d="m17.66 6.34 1.41-1.41"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+
+    <div style="font-family:var(--font);font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:10px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Em breve, melhor que nunca</div>
+    <div style="font-size:14px;color:var(--text-sec);max-width:480px;margin:0 auto 24px;line-height:1.6">
+      Estamos reformulando a engine de detecção pra trazer resultados muito mais precisos.
+      Quando voltar, o BlueLens vai estar mais profundo e abrangente do que qualquer ferramenta similar.
+    </div>
+
+    <div style="display:inline-flex;align-items:center;gap:10px;padding:10px 20px;border-radius:100px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);font-family:var(--mono);font-size:11px;color:var(--gold);font-weight:700;letter-spacing:.04em">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);animation:bllBlink 1.2s ease-in-out infinite"></span>
+      VOLTAMOS EM BREVE
+    </div>
+
+    <div style="margin-top:32px">
+      <a href="/" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:12px;background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;text-decoration:none;font-family:var(--font);font-size:14px;font-weight:700;box-shadow:0 0 24px rgba(0,170,255,.25);transition:transform .2s,box-shadow .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 0 36px rgba(0,170,255,.4)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 24px rgba(0,170,255,.25)'">
+        ← Voltar pra home
+      </a>
     </div>
   </div>
 
-  <!-- INPUT -->
-  <div class="input-card" id="inputSection">
-    <div class="input-label">Link do vídeo para analisar</div>
-    <div class="input-row">
-      <input class="url-input" id="urlInput" type="text"
-        placeholder="youtube.com/shorts/... · tiktok.com/... · instagram.com/reel/..."
-        onkeydown="if(event.key==='Enter')analyze()"/>
-      <button class="btn-analyze" id="btnAnalyze" onclick="analyze()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        Detectar cópias
-      </button>
-    </div>
-    <div class="input-hint">Cole qualquer link do YouTube Shorts · Detecta criadores dark com o mesmo conteúdo · Quanto mais cópias, mais saturado o nicho</div>
+  <style>
+    @keyframes bllSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes bllPulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.15);opacity:1}}
+    @keyframes bllBlink{0%,100%{opacity:1}50%{opacity:.4}}
+  </style>
   </div>
 
-  <!-- LOADING -->
-  <div id="loadingSection">
-    <div class="scan-ring"></div>
-    <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Rastreando origem…</div>
-    <div style="font-size:13px;color:var(--text-sec)">Analisando padrões e buscando correspondências</div>
-    <div class="scan-steps">
-      <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando vídeo</div>
-      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo metadados e thumbnail</div>
-      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando cópias no YouTube</div>
-      <div class="scan-step" id="s4"><div class="step-dot"></div>Analisando elementos visuais</div>
-      <div class="scan-step" id="s5"><div class="step-dot"></div>Calculando saturação do nicho</div>
-    </div>
-  </div>
-
-  <!-- RESULTS -->
-  <div id="resultsSection">
+  <!-- Input/loading/results escondidos durante manutencao -->
+  <div id="inputSection" style="display:none"></div>
+  <div id="loadingSection" style="display:none"></div>
+  <div id="resultsSection" style="display:none">
 
     <!-- VEREDICTO -->
     <div class="verdict-card" id="verdictCard">
