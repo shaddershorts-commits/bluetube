@@ -21,7 +21,8 @@
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
     "api/audit-baixablue.js": { "maxDuration": 60 },
     "api/bluelens-search.js": { "maxDuration": 30 },
-    "api/youtube-quota-status.js": { "maxDuration": 30 }
+    "api/youtube-quota-status.js": { "maxDuration": 30 },
+    "api/bluelens-fingerprint.js": { "maxDuration": 180 }
   },
   "crons": [
     {
