@@ -216,15 +216,15 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div class="scan-radar-line"></div>
       <div class="scan-radar-dot"></div>
     </div>
-    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Rastreando profundamente…</div>
-    <div style="font-size:13px;color:var(--text-sec)">Match por frase exata + análise visual + cruzamento multi-plataforma</div>
+    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Análise visual profunda…</div>
+    <div style="font-size:13px;color:var(--text-sec)">Extraindo frames + multi-hash + comparando contra base</div>
     <div class="scan-steps">
-      <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando vídeo</div>
-      <div class="scan-step" id="s2"><div class="step-dot"></div>Lendo transcrição com IA</div>
-      <div class="scan-step" id="s3"><div class="step-dot"></div>Extraindo frases distintivas</div>
-      <div class="scan-step" id="s4"><div class="step-dot"></div>Buscando match exato em YouTube</div>
-      <div class="scan-step" id="s5"><div class="step-dot"></div>Cruzando com TikTok e Instagram</div>
-      <div class="scan-step" id="s6"><div class="step-dot"></div>Calculando saturação do nicho</div>
+      <div class="scan-step" id="s1"><div class="step-dot"></div>Baixando vídeo</div>
+      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo frames</div>
+      <div class="scan-step" id="s3"><div class="step-dot"></div>Calculando assinatura visual (multi-hash)</div>
+      <div class="scan-step" id="s4"><div class="step-dot"></div>Cruzando com base de vídeos indexados</div>
+      <div class="scan-step" id="s5"><div class="step-dot"></div>Localizando segmentos batendo</div>
+      <div class="scan-step" id="s6"><div class="step-dot"></div>Calculando confiança</div>
     </div>
   </div>
 
@@ -394,66 +394,76 @@ async function analyze() {
 
   try {
     await sleep(300); setStep(2);
-    await sleep(300); setStep(3);
 
-    // FASE 1 (Round 1): chama os 2 endpoints em paralelo
-    //   1. /api/auth?action=bluelens-analyze (atual — busca por titulo+duracao)
-    //   2. /api/bluelens-search (novo — match por frase exata da transcricao,
-    //      busca em YouTube + TikTok + Instagram via Google CSE)
-    const [r1, r2] = await Promise.all([
-      fetch(`/api/auth?action=bluelens-analyze&url=${encodeURIComponent(url)}&token=${encodeURIComponent(token||'')}`, { cache: 'no-store' }),
-      fetch(`/api/bluelens-search?url=${encodeURIComponent(url)}`, { cache: 'no-store' }).catch(()=>null),
-    ]);
+    // BlueLens Ultimate — visual-only fingerprint matching.
+    // Chamada SO ao /api/bluelens-fingerprint (Round 3).
+    // Endpoints legados removidos: bluelens-analyze (titulo) e bluelens-search
+    // (transcricao) — POLUIAM resultados com falsos positivos. So importa
+    // o que o ladrao NAO consegue editar: PIXELS dos frames.
+    const fpReq = fetch(`/api/bluelens-fingerprint?url=${encodeURIComponent(url)}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(180000),
+    });
 
-    setStep(4);
-    await sleep(200); setStep(5);
-    await sleep(200); setStep(6);
-    await sleep(300);
+    // Avanca steps visuais conforme tempo passa (proxy — req real e long-poll)
+    setTimeout(() => setStep(3), 4000);
+    setTimeout(() => setStep(4), 12000);
+    setTimeout(() => setStep(5), 18000);
+    setTimeout(() => setStep(6), 25000);
 
-    let data;
-    try { data = await r1.json(); } catch(e) { throw new Error('Resposta inválida do servidor'); }
-    if (!r1.ok) throw new Error(data.error || 'Erro na análise');
+    const fpRes = await fpReq;
+    let fpData;
+    try { fpData = await fpRes.json(); } catch(e) { throw new Error('Resposta inválida do servidor'); }
+    if (!fpRes.ok || !fpData.ok) throw new Error(fpData.error || 'Erro na análise visual');
 
-    // Mergeia matches do bluelens-search (fingerprint) nos resultados
-    if (r2 && r2.ok) {
-      try {
-        const fp = await r2.json();
-        if (fp.ok && Array.isArray(fp.matches)) {
-          // Adapta matches do fingerprint pro formato esperado por renderResults
-          const fpMatches = fp.matches.map(m => ({
-            id: m.id || m.url,
-            url: m.url,
-            title: m.title || m.snippet || '(sem título)',
-            channel: m.channel || (m.source === 'tiktok' ? 'TikTok' : m.source === 'instagram' ? 'Instagram' : 'YouTube'),
-            thumbnail: m.thumbnail || '',
-            views: 0, viewsFormatted: '—',
-            duration: 0, publishedAt: m.published_at || null,
-            platform: m.source,
-            similarity: Math.round((m.confidence || 0.85) * 100),
-            isLikelyOriginal: false,
-            isColorCaption: false,
-            isRepost: true,
-            matchType: m.match_type, // 'transcript_exact' | 'transcript_exact_via_google'
-            matchedPhrase: m.matched_phrase,
-            fingerprint: true, // flag pra UI marcar diferente
-          }));
-          // Merge (dedupe por URL)
-          const existing = new Set((data.results || []).map(r => r.url));
-          for (const m of fpMatches) {
-            if (!existing.has(m.url)) {
-              data.results = data.results || [];
-              data.results.unshift(m); // prioridade alta — frase exata é match forte
-              existing.add(m.url);
-            }
-          }
-          data._fingerprint = {
-            phrases_used: fp.phrases_used,
-            counts: fp.counts,
-            circuit_breaker: fp.circuit_breaker,
-          };
-        }
-      } catch(e) { console.warn('bluelens-search merge falhou:', e); }
-    }
+    // Adapta matches visuais pro formato render esperado.
+    const visualMatches = (fpData.matches || []).map(m => ({
+      id: m.source_url,
+      url: m.source_url,
+      title: '(análise visual em ' + (m.platform === 'tiktok' ? 'TikTok' : m.platform === 'instagram' ? 'Instagram' : 'YouTube') + ')',
+      channel: m.platform === 'tiktok' ? 'TikTok' : m.platform === 'instagram' ? 'Instagram' : 'YouTube',
+      thumbnail: '',
+      views: 0,
+      duration: 0,
+      publishedAt: null,
+      platform: m.platform,
+      // Score 0-100 mapeado de 0-1
+      similarity: Math.round((m.score || 0) * 100),
+      isLikelyOriginal: false,
+      isColorCaption: false,
+      isRepost: true,
+      matchType: 'visual_fingerprint',
+      matchedFrames: m.matched_frames,
+      totalFrames: m.total_frames,
+      temporalOverlap: m.temporal_overlap,
+      confidenceLabel: m.confidence_label,
+      visual: true,
+    }));
+
+    // Empacota no formato esperado por renderResults
+    const data = {
+      videoMeta: {
+        title: '',
+        thumbnail: '',
+        channel: '',
+        duration: fpData.fingerprint?.duration_seconds || 0,
+      },
+      aiAnalysis: {
+        verdict: visualMatches.length > 0 ? 'repost' : 'original',
+        confidence: visualMatches.length > 0 ? (visualMatches[0].similarity / 100) : 0.95,
+        reasoning: visualMatches.length > 0
+          ? `Análise visual identificou ${visualMatches.length} vídeo(s) com frames similares. Match alta confiança = ladrão usou exatamente seu conteúdo visual.`
+          : 'Nenhum vídeo na nossa base de comparação tem frames similares ao seu. Aparenta ser conteúdo original.',
+        patterns: [],
+      },
+      results: visualMatches,
+      _visual: {
+        my_fingerprint: fpData.fingerprint,
+        counts: fpData.counts,
+        was_cached: fpData.fingerprint?.was_cached,
+        extract_ms: fpData.fingerprint?.extract_ms,
+      },
+    };
 
     renderResults(data);
 
@@ -535,13 +545,11 @@ function renderResults(data) {
     document.getElementById('metaDate').textContent = meta.publishedAt ? '📅 ' + fmtDate(meta.publishedAt) : '';
   }
 
-  // Resultados — filtro estrito por certeza absoluta:
-  // Mostra APENAS matches com similarity = 100% (titulo+duracao iguais)
-  // OU match_type = transcript_exact (frase exata da fala = prova logica
-  // de mesmo conteudo, mesmo que % display seja 92).
-  // Casos < 100 e sem transcript_exact → "Tá liberado" (mensagem original).
+  // Resultados — visual-only fingerprint matching.
+  // Threshold: score >= 70% (multi-hash convergindo = match real).
+  // Score < 70 = inconclusivo → mensagem "Tá liberado" original.
   const relevantResults = results.filter(r =>
-    (r.similarity || 0) >= 100 || r.matchType === 'transcript_exact' || r.matchType === 'transcript_exact_via_google'
+    r.visual && (r.similarity || 0) >= 70
   );
 
   if (relevantResults.length > 0) {
@@ -580,10 +588,9 @@ async function refineSearch() {
     try { data = await r.json(); } catch(e) { throw new Error('Erro na resposta'); }
     if (!r.ok) throw new Error(data.error||'Erro na busca');
 
-    // Filtra resultados ja mostrados — mesmo filtro estrito da renderResults
+    // Filtra resultados ja mostrados — mesmo threshold visual da renderResults
     const newResults = (data.results||[]).filter(r =>
-      !seenVideoIds.has(r.id) &&
-      ((r.similarity||0) >= 100 || r.matchType === 'transcript_exact' || r.matchType === 'transcript_exact_via_google')
+      !seenVideoIds.has(r.id) && r.visual && (r.similarity||0) >= 70
     );
 
     if (newResults.length === 0) {
@@ -617,31 +624,30 @@ async function refineSearch() {
 
 function buildResultItem(r, idx) {
   const isTop = idx === 0;
-  const simColor = r.similarity >= 60 ? 'var(--green)' : r.similarity >= 30 ? 'var(--gold)' : 'var(--text-dim)';
-  // Badge de fonte: fingerprint (frase exata) e mais forte que titulo similar
-  let sourceBadge = '';
-  if (r.fingerprint) {
-    const platformLabel = r.platform === 'tiktok' ? '🎵 TikTok' : r.platform === 'instagram' ? '📷 Instagram' : '▶ YouTube';
-    sourceBadge = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);margin-right:6px">🎯 Frase exata · ${platformLabel}</div>`;
-  } else if (r.platform && r.platform !== 'youtube') {
-    sourceBadge = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-right:6px">${r.platform}</div>`;
-  }
-  return `<div class="result-item ${r.fingerprint?'result-item-fp':''}" onclick="handleResultClick('${r.url}','${r.id}')">
+  const simColor = r.similarity >= 85 ? 'var(--green)' : r.similarity >= 70 ? 'var(--gold)' : 'var(--text-dim)';
+  const platformLabel = r.platform === 'tiktok' ? '🎵 TikTok' : r.platform === 'instagram' ? '📷 Instagram' : '▶ YouTube';
+  const confLabel = r.confidenceLabel || (r.similarity >= 85 ? 'altíssima' : r.similarity >= 70 ? 'alta' : 'média');
+  const confColor = r.similarity >= 85 ? 'rgba(34,197,94,.12)' : r.similarity >= 70 ? 'rgba(251,191,36,.12)' : 'rgba(167,139,250,.12)';
+  const confBorder = r.similarity >= 85 ? 'rgba(34,197,94,.35)' : r.similarity >= 70 ? 'rgba(251,191,36,.35)' : 'rgba(167,139,250,.35)';
+  const confText = r.similarity >= 85 ? 'var(--green)' : r.similarity >= 70 ? 'var(--gold)' : 'var(--purple)';
+  // Temporal overlap: "frames X-Y do seu = frames Z-W desse"
+  const temporal = r.temporalOverlap ? `<div style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--text-dim)">⏱ Trecho ~${r.temporalOverlap.src_start}s-${r.temporalOverlap.src_end}s do seu vídeo bate com ~${r.temporalOverlap.dst_start}s-${r.temporalOverlap.dst_end}s desse</div>` : '';
+  const framesInfo = (r.matchedFrames !== undefined && r.totalFrames !== undefined) ? `<div style="margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--text-dim)">${r.matchedFrames}/${r.totalFrames} frames batendo</div>` : '';
+  return `<div class="result-item result-item-fp" onclick="handleResultClick('${r.url}','${r.id}')">
     <div class="result-rank ${isTop?'top':''}">${isTop?'★':(idx+1)}</div>
-    ${r.thumbnail?`<img class="result-thumb" src="${r.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>`:''}
     <div class="result-info">
-      <div class="result-title">${r.title||'—'}</div>
-      <div class="result-meta">${r.channel||'—'}${r.views?' · '+fmtNum(r.views)+' views':''}${r.publishedAt?' · '+fmtDate(r.publishedAt):''}</div>
-      <div style="margin-top:4px">
-        ${sourceBadge}
-        ${r.isLikelyOriginal?'<span class="origin-badge">✓ Publicado primeiro</span>':''}
+      <div class="result-title">${r.title || platformLabel}</div>
+      <div class="result-meta">${r.url ? r.url.replace(/^https?:\/\/(www\.)?/, '').slice(0,80) : '—'}</div>
+      <div style="margin-top:6px">
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:${confColor};border:1px solid ${confBorder};font-family:var(--mono);font-size:10px;font-weight:700;color:${confText};margin-right:6px">🎯 Match visual · ${platformLabel} · ${confLabel}</div>
       </div>
-      ${r.matchedPhrase?`<div style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--text-dim);font-style:italic">"${r.matchedPhrase.slice(0,80)}${r.matchedPhrase.length>80?'…':''}"</div>`:''}
+      ${framesInfo}
+      ${temporal}
     </div>
     <div class="result-sim">
       <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
       <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">${r.fingerprint?'match':'similar'}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">visual</div>
     </div>
   </div>`;
 }
