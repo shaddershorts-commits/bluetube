@@ -221,10 +221,6 @@
     {
       "path": "/api/youtube-quota-status",
       "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/bluelens-seeder",
-      "schedule": "0 4 * * *"
     }
   ],
   "headers": [
