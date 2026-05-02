@@ -22,7 +22,8 @@
     "api/audit-baixablue.js": { "maxDuration": 60 },
     "api/bluelens-search.js": { "maxDuration": 30 },
     "api/youtube-quota-status.js": { "maxDuration": 30 },
-    "api/bluelens-fingerprint.js": { "maxDuration": 180 }
+    "api/bluelens-fingerprint.js": { "maxDuration": 180 },
+    "api/bluelens-seeder.js": { "maxDuration": 600 }
   },
   "crons": [
     {
@@ -220,6 +221,10 @@
     {
       "path": "/api/youtube-quota-status",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/bluelens-seeder",
+      "schedule": "0 4 * * *"
     }
   ],
   "headers": [
