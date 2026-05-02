@@ -8,6 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, exec } = require('child_process');
 const axios = require('axios');
+const os = require('os');
+let sharp = null;
+try { sharp = require('sharp'); } catch (e) { console.warn('[bluetube-ffmpeg] sharp não disponível — fingerprint desabilitado:', e.message); }
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -780,6 +783,159 @@ function autoUpdateYtdlp() {
     });
   });
 }
+
+// ── BLUELENS ULTIMATE — frame extraction + visual fingerprint ──────────────
+//
+// POST /extract-fingerprint { url, fps?, max_seconds? }
+// Baixa video → extrai N frames por segundo via ffmpeg → calcula multi-hash
+// → retorna JSON pra Vercel salvar em video_visual_fingerprints.
+
+async function computeAHash(framePath) {
+  if (!sharp) return null;
+  try {
+    const buf = await sharp(framePath).resize(8, 8, { fit: 'fill' }).grayscale().raw().toBuffer();
+    let sum = 0;
+    for (let i = 0; i < 64; i++) sum += buf[i];
+    const avg = sum / 64;
+    let hash = 0n;
+    for (let i = 0; i < 64; i++) if (buf[i] > avg) hash |= 1n << BigInt(63 - i);
+    return hash.toString(16).padStart(16, '0');
+  } catch (e) { return null; }
+}
+
+async function computeDHash(framePath) {
+  if (!sharp) return null;
+  try {
+    const buf = await sharp(framePath).resize(9, 8, { fit: 'fill' }).grayscale().raw().toBuffer();
+    let hash = 0n;
+    let bit = 63;
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const left = buf[row * 9 + col];
+        const right = buf[row * 9 + col + 1];
+        if (left > right) hash |= 1n << BigInt(bit);
+        bit--;
+      }
+    }
+    return hash.toString(16).padStart(16, '0');
+  } catch (e) { return null; }
+}
+
+async function computeColorHash(framePath) {
+  if (!sharp) return null;
+  try {
+    const { data, info } = await sharp(framePath).resize(32, 32, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+    const ch = info.channels;
+    const bins = { r: [0,0,0,0], g: [0,0,0,0], b: [0,0,0,0] };
+    for (let i = 0; i < data.length; i += ch) {
+      bins.r[Math.min(3, data[i] >> 6)]++;
+      bins.g[Math.min(3, data[i+1] >> 6)]++;
+      bins.b[Math.min(3, data[i+2] >> 6)]++;
+    }
+    const total = (data.length / ch);
+    const enc = (arr) => arr.map(v => Math.min(255, Math.floor((v / total) * 255)).toString(16).padStart(2,'0')).join('');
+    return (enc(bins.r) + enc(bins.g) + enc(bins.b));
+  } catch (e) { return null; }
+}
+
+app.post('/extract-fingerprint', async (req, res) => {
+  if (!sharp) return res.status(500).json({ error: 'sharp não instalado no Railway' });
+  const { url, fps = 1, max_seconds = 60 } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url obrigatorio' });
+
+  const jobId = uuidv4();
+  const workDir = path.join(os.tmpdir(), 'bluelens-' + jobId);
+  fs.mkdirSync(workDir, { recursive: true });
+  const videoPath = path.join(workDir, 'video.mp4');
+  const framesDir = path.join(workDir, 'frames');
+  fs.mkdirSync(framesDir, { recursive: true });
+
+  const startTs = Date.now();
+
+  try {
+    // 1. yt-dlp baixa video (limita duracao via postprocessor pra ser rapido)
+    await new Promise((resolve, reject) => {
+      const args = [
+        '--no-warnings', '--no-playlist',
+        '-f', 'best[height<=720]/best',
+        '--postprocessor-args', `ffmpeg:-ss 0 -t ${max_seconds}`,
+        '-o', videoPath,
+        url,
+      ];
+      const p = spawn('yt-dlp', args);
+      let stderr = '';
+      p.stderr.on('data', d => { stderr += d.toString(); });
+      p.on('close', code => code === 0 ? resolve() : reject(new Error('yt-dlp falhou: ' + stderr.slice(0, 300))));
+      p.on('error', reject);
+    });
+
+    // 2. ffprobe pra metadata
+    let duration = 0, width = 0, height = 0;
+    try {
+      const probe = await new Promise((resolve, reject) => {
+        const p = spawn('ffprobe', ['-v','error','-select_streams','v:0','-show_entries','stream=width,height,duration','-of','json', videoPath]);
+        let stdout = '';
+        p.stdout.on('data', d => { stdout += d.toString(); });
+        p.on('close', () => { try { resolve(JSON.parse(stdout)); } catch { resolve({}); } });
+        p.on('error', reject);
+      });
+      const stream = probe.streams?.[0] || {};
+      width = stream.width || 0;
+      height = stream.height || 0;
+      duration = parseFloat(stream.duration || 0);
+    } catch (_) {}
+
+    // 3. ffmpeg extrai frames
+    await new Promise((resolve, reject) => {
+      const args = ['-i', videoPath, '-vf', `fps=${fps}`, '-q:v', '4', path.join(framesDir, 'f_%04d.jpg')];
+      const p = spawn('ffmpeg', args);
+      let stderr = '';
+      p.stderr.on('data', d => { stderr += d.toString(); });
+      p.on('close', code => code === 0 ? resolve() : reject(new Error('ffmpeg falhou: ' + stderr.slice(0, 300))));
+      p.on('error', reject);
+    });
+
+    const frameFiles = fs.readdirSync(framesDir).filter(f => f.startsWith('f_') && f.endsWith('.jpg')).sort();
+
+    // 4. Multi-hash em lotes paralelos (8 frames por vez)
+    const BATCH = 8;
+    const p_hashes = [];
+    const d_hashes = [];
+    const color_hashes = [];
+
+    for (let i = 0; i < frameFiles.length; i += BATCH) {
+      const batch = frameFiles.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async f => {
+        const fp = path.join(framesDir, f);
+        const [a, d, c] = await Promise.all([computeAHash(fp), computeDHash(fp), computeColorHash(fp)]);
+        return { a, d, c };
+      }));
+      for (const r of results) {
+        p_hashes.push(r.a || '0000000000000000');
+        d_hashes.push(r.d || '0000000000000000');
+        color_hashes.push(r.c || '000000000000000000000000');
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      job_id: jobId,
+      duration_ms: Date.now() - startTs,
+      duration_seconds: duration,
+      width, height,
+      total_frames_extracted: frameFiles.length,
+      fps_extracted: fps,
+      p_hashes,
+      d_hashes,
+      color_hashes,
+    });
+  } catch (e) {
+    console.error('[extract-fingerprint]', e.message);
+    return res.status(500).json({ error: e.message });
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`[bluetube-ffmpeg] listening on :${PORT}`);
