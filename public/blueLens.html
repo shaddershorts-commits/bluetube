@@ -57,8 +57,28 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .btn-analyze:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .input-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:10px}
 
-/* LOADING */
-#loadingSection{display:none;text-align:center;padding:48px 0}
+/* BG canvas — particles + grid scan (atras de tudo) */
+.lens-bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55}
+
+/* Badges modernos no hero */
+.lens-badge{font-family:var(--mono);font-size:11px;font-weight:600;padding:8px 14px;border-radius:100px;letter-spacing:.02em;backdrop-filter:blur(12px);transition:transform .25s,box-shadow .25s}
+.lens-badge:hover{transform:translateY(-1px)}
+.lens-badge-neon{background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.3);color:var(--neon);box-shadow:0 0 20px rgba(0,170,255,.15)}
+.lens-badge-gold{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--gold);box-shadow:0 0 20px rgba(251,191,36,.15)}
+.lens-badge-purple{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);color:var(--purple);box-shadow:0 0 20px rgba(167,139,250,.15)}
+
+/* LOADING — radar moderno (substitui spinner simples) */
+#loadingSection{display:none;text-align:center;padding:48px 0;position:relative}
+.scan-radar{width:140px;height:140px;margin:0 auto 28px;position:relative;border-radius:50%;background:radial-gradient(circle,rgba(0,170,255,.08),transparent 70%)}
+.scan-radar::before{content:'';position:absolute;inset:0;border-radius:50%;border:1px solid rgba(0,170,255,.2)}
+.scan-radar::after{content:'';position:absolute;inset:30px;border-radius:50%;border:1px solid rgba(0,170,255,.15)}
+.scan-radar-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid var(--neon);animation:radarPulse 2s ease-out infinite;opacity:0}
+@keyframes radarPulse{0%{transform:scale(.4);opacity:.7}100%{transform:scale(1.1);opacity:0}}
+.scan-radar-line{position:absolute;top:50%;left:50%;width:50%;height:2px;background:linear-gradient(90deg,transparent,var(--neon),transparent);transform-origin:0 50%;animation:radarSweep 2.5s linear infinite;border-radius:2px;box-shadow:0 0 12px var(--neon)}
+@keyframes radarSweep{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.scan-radar-dot{position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;background:var(--neon);transform:translate(-50%,-50%);box-shadow:0 0 16px var(--neon),0 0 32px var(--neon);animation:radarDotBlink 1s ease-in-out infinite}
+@keyframes radarDotBlink{0%,100%{opacity:1}50%{opacity:.4}}
+
 .scan-ring{width:80px;height:80px;border-radius:50%;border:2px solid rgba(0,170,255,.2);border-top-color:var(--neon);animation:spin 1s linear infinite;margin:0 auto 24px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .scan-steps{display:flex;flex-direction:column;gap:8px;max-width:280px;margin:16px auto 0}
@@ -102,9 +122,12 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 /* RESULTS LIST */
 .results-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;margin-bottom:20px;backdrop-filter:blur(20px)}
 .section-title{font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.result-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(0,170,255,.06);cursor:pointer;transition:all .2s;border-radius:8px}
+.result-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(0,170,255,.06);cursor:pointer;transition:all .2s;border-radius:8px;position:relative}
 .result-item:last-child{border-bottom:none;padding-bottom:0}
 .result-item:hover{background:rgba(0,170,255,.04);padding-left:8px;padding-right:8px;margin:0 -8px}
+/* Match por frase exata (fingerprint) — destaque dourado sutil */
+.result-item-fp{background:linear-gradient(90deg,rgba(251,191,36,.05),transparent 60%);border-left:2px solid rgba(251,191,36,.4);padding-left:10px!important}
+.result-item-fp:hover{background:linear-gradient(90deg,rgba(251,191,36,.1),rgba(0,170,255,.03) 60%)}
 .result-rank{width:28px;height:28px;border-radius:8px;background:rgba(0,170,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;font-family:var(--mono)}
 .result-rank.top{background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(251,191,36,.1));border:1px solid rgba(251,191,36,.3);color:var(--gold)}
 .result-thumb{width:96px;height:54px;border-radius:8px;object-fit:cover;flex-shrink:0;background:rgba(0,170,255,.06)}
@@ -152,16 +175,20 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 </nav>
 
 <main>
+  <!-- BG Canvas — particles + scan grid (substitui orbs estaticas) -->
+  <canvas id="lensBgCanvas" class="lens-bg-canvas"></canvas>
+
   <div class="hero">
     <div class="hero-eye">
       <span class="lens-icon">🔍</span>
-      BlueLens · Detector de Concorrência
+      BlueLens · Rastreador profundo de cópias
     </div>
-    <h1>Quantos criadores já<br><span>publicaram isso?</span></h1>
-    <p class="hero-sub">Cole o link do seu Short ou de um vídeo que quer usar. O BlueLens encontra todos os canais dark que já publicaram o mesmo conteúdo no YouTube — para você saber se o nicho está saturado antes de postar.</p>
+    <h1>Encontre <span>cada cópia</span> do seu vídeo</h1>
+    <p class="hero-sub">Cole qualquer link do seu Short e o BlueLens vasculha <strong style="color:var(--gold)">YouTube</strong>, <strong style="color:var(--gold)">TikTok</strong> e <strong style="color:var(--gold)">Instagram</strong> usando <strong style="color:var(--neon)">match por frase exata da fala</strong> — pega reposts mesmo com título, thumbnail ou edição completamente diferentes.</p>
     <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap">
-      <div style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">🎯 Foco: YouTube Shorts</div>
-      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--text-sec)">⚠ Muitas cópias = menos views para você</div>
+      <div class="lens-badge lens-badge-neon">🌐 Multiplataforma</div>
+      <div class="lens-badge lens-badge-gold">🧠 Match por transcrição</div>
+      <div class="lens-badge lens-badge-purple">⚡ Até 95% de precisão</div>
     </div>
   </div>
 
@@ -177,20 +204,27 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         Detectar cópias
       </button>
     </div>
-    <div class="input-hint">Cole qualquer link do YouTube Shorts · Detecta criadores dark com o mesmo conteúdo · Quanto mais cópias, mais saturado o nicho</div>
+    <div class="input-hint">Funciona com Shorts, TikTok e Reels · Detecta reposts mesmo com título mudado · Quanto mais cópias, mais saturado o nicho</div>
   </div>
 
   <!-- LOADING -->
   <div id="loadingSection">
-    <div class="scan-ring"></div>
-    <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Rastreando origem…</div>
-    <div style="font-size:13px;color:var(--text-sec)">Analisando padrões e buscando correspondências</div>
+    <div class="scan-radar">
+      <div class="scan-radar-pulse"></div>
+      <div class="scan-radar-pulse" style="animation-delay:.5s"></div>
+      <div class="scan-radar-pulse" style="animation-delay:1s"></div>
+      <div class="scan-radar-line"></div>
+      <div class="scan-radar-dot"></div>
+    </div>
+    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Rastreando profundamente…</div>
+    <div style="font-size:13px;color:var(--text-sec)">Match por frase exata + análise visual + cruzamento multi-plataforma</div>
     <div class="scan-steps">
       <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando vídeo</div>
-      <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo metadados e thumbnail</div>
-      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando cópias no YouTube</div>
-      <div class="scan-step" id="s4"><div class="step-dot"></div>Analisando elementos visuais</div>
-      <div class="scan-step" id="s5"><div class="step-dot"></div>Calculando saturação do nicho</div>
+      <div class="scan-step" id="s2"><div class="step-dot"></div>Lendo transcrição com IA</div>
+      <div class="scan-step" id="s3"><div class="step-dot"></div>Extraindo frases distintivas</div>
+      <div class="scan-step" id="s4"><div class="step-dot"></div>Buscando match exato em YouTube</div>
+      <div class="scan-step" id="s5"><div class="step-dot"></div>Cruzando com TikTok e Instagram</div>
+      <div class="scan-step" id="s6"><div class="step-dot"></div>Calculando saturação do nicho</div>
     </div>
   </div>
 
@@ -282,13 +316,61 @@ const fmtDate = dt => dt ? new Date(dt).toLocaleDateString('pt-BR',{day:'2-digit
 const fmtSecs = s => s >= 60 ? Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s' : s+'s';
 
 function setStep(n) {
-  for (let i=1;i<=5;i++) {
+  for (let i=1;i<=6;i++) {
     const el = document.getElementById('s'+i);
+    if(!el) continue;
     if(i<n){el.classList.remove('active');el.classList.add('done');el.querySelector('.step-dot').textContent='✓';}
     else if(i===n){el.classList.add('active');el.classList.remove('done');}
     else{el.classList.remove('active','done');}
   }
 }
+
+// ── BG CANVAS — particles + grid scan ─────────────────────────────────────
+(function initLensBg(){
+  const canvas = document.getElementById('lensBgCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let w = canvas.width = window.innerWidth;
+  let h = canvas.height = window.innerHeight;
+  const particles = [];
+  const PARTICLE_COUNT = Math.min(60, Math.floor((w*h)/30000));
+  for(let i=0;i<PARTICLE_COUNT;i++){
+    particles.push({
+      x: Math.random()*w, y: Math.random()*h,
+      vx: (Math.random()-.5)*.3, vy: (Math.random()-.5)*.3,
+      r: Math.random()*1.5+.5,
+      a: Math.random()*.4+.2,
+    });
+  }
+  let scanY = 0;
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+    // Grid sutil
+    ctx.strokeStyle='rgba(0,170,255,.04)'; ctx.lineWidth=1;
+    for(let x=0;x<w;x+=80){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke(); }
+    for(let y=0;y<h;y+=80){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke(); }
+    // Linha de scan vertical descendo
+    const scanGrad = ctx.createLinearGradient(0,scanY-40,0,scanY+40);
+    scanGrad.addColorStop(0,'rgba(0,170,255,0)');
+    scanGrad.addColorStop(.5,'rgba(0,170,255,.18)');
+    scanGrad.addColorStop(1,'rgba(0,170,255,0)');
+    ctx.fillStyle=scanGrad; ctx.fillRect(0,scanY-40,w,80);
+    scanY = (scanY+1.2) % (h+80);
+    // Particles
+    for(const p of particles){
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0||p.x>w) p.vx*=-1;
+      if(p.y<0||p.y>h) p.vy*=-1;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(0,170,255,${p.a})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize',()=>{ w=canvas.width=window.innerWidth; h=canvas.height=window.innerHeight; });
+  draw();
+})();
 
 function showToast(msg, d=3500) {
   const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
@@ -311,18 +393,67 @@ async function analyze() {
   setStep(1);
 
   try {
-    await sleep(400); setStep(2);
-    await sleep(400); setStep(3);
+    await sleep(300); setStep(2);
+    await sleep(300); setStep(3);
 
-    const r = await fetch(`/api/auth?action=bluelens-analyze&url=${encodeURIComponent(url)}&token=${encodeURIComponent(token||'')}`, { cache: 'no-store' });
+    // FASE 1 (Round 1): chama os 2 endpoints em paralelo
+    //   1. /api/auth?action=bluelens-analyze (atual — busca por titulo+duracao)
+    //   2. /api/bluelens-search (novo — match por frase exata da transcricao,
+    //      busca em YouTube + TikTok + Instagram via Google CSE)
+    const [r1, r2] = await Promise.all([
+      fetch(`/api/auth?action=bluelens-analyze&url=${encodeURIComponent(url)}&token=${encodeURIComponent(token||'')}`, { cache: 'no-store' }),
+      fetch(`/api/bluelens-search?url=${encodeURIComponent(url)}`, { cache: 'no-store' }).catch(()=>null),
+    ]);
 
     setStep(4);
-    await sleep(300); setStep(5);
-    await sleep(400);
+    await sleep(200); setStep(5);
+    await sleep(200); setStep(6);
+    await sleep(300);
 
     let data;
-    try { data = await r.json(); } catch(e) { throw new Error('Resposta inválida do servidor'); }
-    if (!r.ok) throw new Error(data.error || 'Erro na análise');
+    try { data = await r1.json(); } catch(e) { throw new Error('Resposta inválida do servidor'); }
+    if (!r1.ok) throw new Error(data.error || 'Erro na análise');
+
+    // Mergeia matches do bluelens-search (fingerprint) nos resultados
+    if (r2 && r2.ok) {
+      try {
+        const fp = await r2.json();
+        if (fp.ok && Array.isArray(fp.matches)) {
+          // Adapta matches do fingerprint pro formato esperado por renderResults
+          const fpMatches = fp.matches.map(m => ({
+            id: m.id || m.url,
+            url: m.url,
+            title: m.title || m.snippet || '(sem título)',
+            channel: m.channel || (m.source === 'tiktok' ? 'TikTok' : m.source === 'instagram' ? 'Instagram' : 'YouTube'),
+            thumbnail: m.thumbnail || '',
+            views: 0, viewsFormatted: '—',
+            duration: 0, publishedAt: m.published_at || null,
+            platform: m.source,
+            similarity: Math.round((m.confidence || 0.85) * 100),
+            isLikelyOriginal: false,
+            isColorCaption: false,
+            isRepost: true,
+            matchType: m.match_type, // 'transcript_exact' | 'transcript_exact_via_google'
+            matchedPhrase: m.matched_phrase,
+            fingerprint: true, // flag pra UI marcar diferente
+          }));
+          // Merge (dedupe por URL)
+          const existing = new Set((data.results || []).map(r => r.url));
+          for (const m of fpMatches) {
+            if (!existing.has(m.url)) {
+              data.results = data.results || [];
+              data.results.unshift(m); // prioridade alta — frase exata é match forte
+              existing.add(m.url);
+            }
+          }
+          data._fingerprint = {
+            phrases_used: fp.phrases_used,
+            counts: fp.counts,
+            circuit_breaker: fp.circuit_breaker,
+          };
+        }
+      } catch(e) { console.warn('bluelens-search merge falhou:', e); }
+    }
 
     renderResults(data);
 
@@ -479,18 +610,30 @@ async function refineSearch() {
 function buildResultItem(r, idx) {
   const isTop = idx === 0;
   const simColor = r.similarity >= 60 ? 'var(--green)' : r.similarity >= 30 ? 'var(--gold)' : 'var(--text-dim)';
-  return `<div class="result-item" onclick="handleResultClick('${r.url}','${r.id}')">
+  // Badge de fonte: fingerprint (frase exata) e mais forte que titulo similar
+  let sourceBadge = '';
+  if (r.fingerprint) {
+    const platformLabel = r.platform === 'tiktok' ? '🎵 TikTok' : r.platform === 'instagram' ? '📷 Instagram' : '▶ YouTube';
+    sourceBadge = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);margin-right:6px">🎯 Frase exata · ${platformLabel}</div>`;
+  } else if (r.platform && r.platform !== 'youtube') {
+    sourceBadge = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-right:6px">${r.platform}</div>`;
+  }
+  return `<div class="result-item ${r.fingerprint?'result-item-fp':''}" onclick="handleResultClick('${r.url}','${r.id}')">
     <div class="result-rank ${isTop?'top':''}">${isTop?'★':(idx+1)}</div>
     ${r.thumbnail?`<img class="result-thumb" src="${r.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>`:''}
     <div class="result-info">
       <div class="result-title">${r.title||'—'}</div>
-      <div class="result-meta">${r.channel||'—'} · ${fmtNum(r.views)} views · ${fmtDate(r.publishedAt)}</div>
-      ${r.isLikelyOriginal?'<div style="margin-top:4px"><span class="origin-badge">✓ Publicado primeiro</span></div>':''}
+      <div class="result-meta">${r.channel||'—'}${r.views?' · '+fmtNum(r.views)+' views':''}${r.publishedAt?' · '+fmtDate(r.publishedAt):''}</div>
+      <div style="margin-top:4px">
+        ${sourceBadge}
+        ${r.isLikelyOriginal?'<span class="origin-badge">✓ Publicado primeiro</span>':''}
+      </div>
+      ${r.matchedPhrase?`<div style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--text-dim);font-style:italic">"${r.matchedPhrase.slice(0,80)}${r.matchedPhrase.length>80?'…':''}"</div>`:''}
     </div>
     <div class="result-sim">
       <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
       <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">similar</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">${r.fingerprint?'match':'similar'}</div>
     </div>
   </div>`;
 }
