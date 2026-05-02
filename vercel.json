@@ -19,7 +19,9 @@
     "api/virais-canais.js": { "maxDuration": 300 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
-    "api/audit-baixablue.js": { "maxDuration": 60 }
+    "api/audit-baixablue.js": { "maxDuration": 60 },
+    "api/bluelens-search.js": { "maxDuration": 30 },
+    "api/youtube-quota-status.js": { "maxDuration": 30 }
   },
   "crons": [
     {
@@ -213,6 +215,10 @@
     {
       "path": "/api/audit-baixablue",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/youtube-quota-status",
+      "schedule": "0 23 * * *"
     }
   ],
   "headers": [
