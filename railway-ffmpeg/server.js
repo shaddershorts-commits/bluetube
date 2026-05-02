@@ -853,21 +853,71 @@ app.post('/extract-fingerprint', async (req, res) => {
   const startTs = Date.now();
 
   try {
-    // 1. yt-dlp baixa video (limita duracao via postprocessor pra ser rapido)
-    await new Promise((resolve, reject) => {
-      const args = [
-        '--no-warnings', '--no-playlist',
-        '-f', 'best[height<=720]/best',
-        '--postprocessor-args', `ffmpeg:-ss 0 -t ${max_seconds}`,
-        '-o', videoPath,
-        url,
-      ];
-      const p = spawn('yt-dlp', args);
-      let stderr = '';
-      p.stderr.on('data', d => { stderr += d.toString(); });
-      p.on('close', code => code === 0 ? resolve() : reject(new Error('yt-dlp falhou: ' + stderr.slice(0, 300))));
-      p.on('error', reject);
-    });
+    // 1. Tenta yt-dlp direto. Se falhar (YouTube anti-bot, etc), fallback Cobalt.
+    let downloadOk = false;
+    let ytdlpError = '';
+    try {
+      await new Promise((resolve, reject) => {
+        const args = [
+          '--no-warnings', '--no-playlist',
+          '-f', 'best[height<=720]/best',
+          '--postprocessor-args', `ffmpeg:-ss 0 -t ${max_seconds}`,
+          '-o', videoPath,
+          url,
+        ];
+        const p = spawn('yt-dlp', args);
+        let stderr = '';
+        p.stderr.on('data', d => { stderr += d.toString(); });
+        p.on('close', code => {
+          if (code === 0 && fs.existsSync(videoPath)) resolve();
+          else reject(new Error(stderr.slice(0, 300) || 'exit ' + code));
+        });
+        p.on('error', reject);
+      });
+      downloadOk = true;
+    } catch (e) {
+      ytdlpError = e.message;
+      console.warn('[extract-fingerprint] yt-dlp falhou, tentando Cobalt fallback:', ytdlpError.slice(0, 100));
+    }
+
+    // FALLBACK: Cobalt instance (cobalt-production-*.up.railway.app)
+    // Cobalt baixa via diferentes estrategias (incluindo API oficial),
+    // contorna anti-bot do YouTube com IP da propria instance Cobalt.
+    if (!downloadOk) {
+      const COBALT_URL = process.env.COBALT_API_URL || 'https://cobalt-production-9d27.up.railway.app';
+      try {
+        const cobalt = await axios.post(COBALT_URL, { url, videoQuality: '720' }, {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+        const tunnelUrl = cobalt.data?.url;
+        if (!tunnelUrl) throw new Error('Cobalt sem tunnel URL');
+        // Baixa via tunnel
+        const writer = fs.createWriteStream(videoPath);
+        const dl = await axios.get(tunnelUrl, { responseType: 'stream', timeout: 60000 });
+        await new Promise((res, rej) => {
+          dl.data.pipe(writer);
+          writer.on('finish', res);
+          writer.on('error', rej);
+        });
+        // Limita duracao com ffmpeg pos-download
+        if (max_seconds && fs.statSync(videoPath).size > 0) {
+          const trimPath = videoPath + '.trim.mp4';
+          await new Promise((resolve) => {
+            const p = spawn('ffmpeg', ['-y', '-i', videoPath, '-t', String(max_seconds), '-c', 'copy', trimPath]);
+            p.on('close', () => resolve());
+            p.on('error', () => resolve());
+          });
+          if (fs.existsSync(trimPath) && fs.statSync(trimPath).size > 0) {
+            fs.renameSync(trimPath, videoPath);
+          }
+        }
+        downloadOk = true;
+        console.log('[extract-fingerprint] Cobalt fallback OK');
+      } catch (cobaltErr) {
+        throw new Error(`Ambos providers falharam. yt-dlp: ${ytdlpError.slice(0,150)} | Cobalt: ${cobaltErr.message.slice(0,150)}`);
+      }
+    }
 
     // 2. ffprobe pra metadata
     let duration = 0, width = 0, height = 0;

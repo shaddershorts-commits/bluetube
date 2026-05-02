@@ -19,7 +19,7 @@ RUN apk add --no-cache \
 # YTDLP_BUILD_DATE invalida o cache da camada Docker quando precisar forcar
 # re-download (YouTube atualiza anti-bot e yt-dlp libera fix em horas).
 # Pra forcar update: incremente a data abaixo + commit.
-ARG YTDLP_BUILD_DATE=2026-05-01
+ARG YTDLP_BUILD_DATE=2026-05-02
 RUN echo "yt-dlp build date: ${YTDLP_BUILD_DATE}" \
   && curl -fsSL -o /usr/local/bin/yt-dlp \
     https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
