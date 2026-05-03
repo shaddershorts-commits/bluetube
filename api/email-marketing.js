@@ -65,6 +65,38 @@ module.exports = async function handler(req, res) {
         { headers: H }
       );
       eligible = eligRes.ok ? await eligRes.json() : [];
+
+      // ── FILTRO DE PLANO: marketing SO pra users free, NUNCA pra
+      //    full/master ativos NEM pra quem cancelou (cancel_at_period_end=true).
+      //    Critério: emails de marketing são pra captar/converter free → pago.
+      //    Pagantes ja sao clientes (recebem outras comunicacoes via
+      //    email-campanha) e cancelados nao devem ser ressentidos com promo.
+      if (eligible.length > 0) {
+        const emails = eligible.map(e => e.email).filter(Boolean);
+        const inList = emails.map(encodeURIComponent).join(',');
+        const subR = await fetch(
+          `${SU}/rest/v1/subscribers?email=in.(${inList})&select=email,plan,cancel_at_period_end,plan_expires_at`,
+          { headers: H }
+        );
+        const subscribersData = subR.ok ? await subR.json() : [];
+        const subMap = new Map(subscribersData.map(s => [String(s.email).toLowerCase(), s]));
+
+        const beforeCount = eligible.length;
+        eligible = eligible.filter(user => {
+          const sub = subMap.get(String(user.email).toLowerCase());
+          if (!sub) return true; // sem registro = anonimo/free, libera
+          // Cancelou (mesmo plano ainda ativo): NAO envia
+          if (sub.cancel_at_period_end === true) return false;
+          // Plan free: libera
+          if (!sub.plan || sub.plan === 'free') return true;
+          // Plan pago ATIVO (full/master): NAO envia
+          // Excecao: se plan_expires_at ja passou, considera free
+          if (sub.plan_expires_at && new Date(sub.plan_expires_at) < now) return true;
+          return false;
+        });
+        const filtered = beforeCount - eligible.length;
+        if (filtered > 0) console.log(`[email-marketing] filtro plano excluiu ${filtered} (full/master ativos OU cancelados)`);
+      }
     }
 
     // ── GET PLATFORM STATS for FOMO email ───────────────────────────────

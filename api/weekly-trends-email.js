@@ -80,9 +80,34 @@ Responda APENAS com JSON array: [{"nicho":"...","motivo":"...","tipo_conteudo":"
 
     const dateLabel = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    // ── SEND TO ALL ACTIVE USERS ──────────────────────────────────────────
+    // ── SEND TO ACTIVE FREE USERS ──────────────────────────────────────────
+    // Filtro de plano: weekly trends (marketing) so vai pra free.
+    // Full/master ativos NAO recebem (ja sao clientes, nao precisam ser
+    // captados). Cancelados (cancel_at_period_end=true) tambem nao.
     const usersR = await fetch(`${SU}/rest/v1/email_marketing?unsubscribed=eq.false&select=email&limit=500`, { headers: H });
-    const users = usersR.ok ? await usersR.json() : [];
+    let users = usersR.ok ? await usersR.json() : [];
+
+    if (users.length > 0) {
+      const emails = users.map(u => u.email).filter(Boolean);
+      const inList = emails.map(encodeURIComponent).join(',');
+      const subR = await fetch(
+        `${SU}/rest/v1/subscribers?email=in.(${inList})&select=email,plan,cancel_at_period_end,plan_expires_at`,
+        { headers: H }
+      );
+      const subscribersData = subR.ok ? await subR.json() : [];
+      const subMap = new Map(subscribersData.map(s => [String(s.email).toLowerCase(), s]));
+      const before = users.length;
+      users = users.filter(u => {
+        const sub = subMap.get(String(u.email).toLowerCase());
+        if (!sub) return true;
+        if (sub.cancel_at_period_end === true) return false;
+        if (!sub.plan || sub.plan === 'free') return true;
+        if (sub.plan_expires_at && new Date(sub.plan_expires_at) < now) return true;
+        return false;
+      });
+      const filtered = before - users.length;
+      if (filtered > 0) console.log(`[weekly-trends-email] filtro plano excluiu ${filtered} (full/master ativos OU cancelados)`);
+    }
 
     for (const u of users) {
       if (!u.email) continue;
