@@ -262,7 +262,7 @@ async function statusCampanha(req, res, ctx, src) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function buscarUsuariosElegiveis(ctx, apenasSaudaveis) {
   const [subsR, emR] = await Promise.all([
-    fetch(`${ctx.SU}/rest/v1/subscribers?email=not.is.null&select=email,plan,created_at&limit=5000`, { headers: ctx.h }),
+    fetch(`${ctx.SU}/rest/v1/subscribers?email=not.is.null&select=email,plan,created_at,cancel_at_period_end,plan_expires_at&limit=5000`, { headers: ctx.h }),
     fetch(`${ctx.SU}/rest/v1/email_marketing?select=email,last_sent_at,unsubscribed&limit=5000`, { headers: ctx.h }),
   ]);
   const subs = subsR.ok ? await subsR.json() : [];
@@ -277,6 +277,18 @@ async function buscarUsuariosElegiveis(ctx, apenasSaudaveis) {
     const key = String(u.email).toLowerCase();
     const em = emByEmail.get(key);
     if (em?.unsubscribed) return false;
+
+    // ── FILTRO HIBRIDO DE PLANO (decidido com user — opcao C):
+    //    free + full ATIVOS recebem (free vira target promo,
+    //    full vira target upsell pra master).
+    //    Master ativos NAO recebem (ja sao top tier).
+    //    QUALQUER plano cancelado (cancel_at_period_end=true) NAO recebe.
+    if (u.cancel_at_period_end === true) return false;
+    if (u.plan === 'master') {
+      // Master expirado vira free → libera. Master ativo bloqueia.
+      if (!u.plan_expires_at || new Date(u.plan_expires_at) > new Date(agora)) return false;
+    }
+
     if (!apenasSaudaveis) return true;
     // Filtro saudavel: conta > 3 dias
     const criadoEm = u.created_at ? new Date(u.created_at).getTime() : 0;
