@@ -1515,8 +1515,16 @@ function setDeepStep(n) {
 }
 
 async function analyzeDeep() {
-  const url = document.getElementById('urlInput').value.trim();
-  if (!url) return;
+  const inp = document.getElementById('urlInput');
+  const url = inp.value.trim();
+  if (!url) {
+    // Feedback claro em vez de sair silencioso
+    inp.focus();
+    inp.style.borderColor = '#ef4444';
+    inp.placeholder = '⚠ Cole o link do canal ou vídeo aqui antes de analisar';
+    setTimeout(() => { inp.style.borderColor = ''; }, 2000);
+    return;
+  }
   const parsed = parseYouTubeInput(url);
   if (!parsed) { showError('Link inválido. Cole um link de canal ou vídeo do YouTube.'); return; }
 
