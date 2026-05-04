@@ -1959,8 +1959,10 @@ async function handleUpgradeClick(plan){
 
 async function goToCheckout(plan, billing){
   const token = localStorage.getItem('bt_token');
-  // Currency: lowercase do siteCurrency.code (default BRL). Backend valida whitelist.
-  const currency = (siteCurrency && siteCurrency.code ? String(siteCurrency.code) : 'BRL').toLowerCase();
+  // Currency: alinhado com STRIPE_PRICES/SUPPORTED_CURRENCIES. Moeda nao suportada (MXN, JPY, etc)
+  // → USD (que e o que o user viu na home via localPrice). Garante: ve = paga.
+  const _codeRaw = (siteCurrency && siteCurrency.code ? String(siteCurrency.code) : 'BRL').toLowerCase();
+  const currency = SUPPORTED_CURRENCIES.includes(_codeRaw) ? _codeRaw : 'usd';
   // Lang: preferencia explicita do user > detect IP > navigator > pt
   const lang = localStorage.getItem('bt_user_lang')
     || (typeof siteLang === 'string' && siteLang)
@@ -3768,13 +3770,31 @@ let siteLang = 'pt';
 
 let siteCurrency = { code:'BRL', symbol:'R$', rate:null, isBRL:true };
 
-// Convert BRL price to local currency string: "R$ 29,99 (~$6 USD)"
+// Tabela de precos espelha priceIds Stripe (api/create-checkout.js + _scripts/setup-stripe-multicurrency.js).
+// Lookup deterministico: o que o user ve aqui e EXATAMENTE o que o Stripe cobra.
+// Se mudar valores no Stripe, atualizar AQUI tambem (CRITICO — divergencia gera enganacao).
+const STRIPE_PRICES = {
+  // Mensais
+  29.99:  { brl:'R$29,99', usd:'$14.99 USD', eur:'€13.99 EUR', gbp:'£11.99 GBP', cad:'C$19.99 CAD', aud:'A$22.99 AUD' },
+  89.99:  { brl:'R$89,99', usd:'$34.99 USD', eur:'€32.99 EUR', gbp:'£27.99 GBP', cad:'C$46.99 CAD', aud:'A$52.99 AUD' },
+  // Anuais (cobranca total)
+  269.88: { brl:'R$269,88', usd:'$134.99 USD', eur:'€125.99 EUR', gbp:'£107.99 GBP', cad:'C$179.99 CAD', aud:'A$206.99 AUD' },
+  809.88: { brl:'R$809,88', usd:'$314.99 USD', eur:'€296.99 EUR', gbp:'£251.99 GBP', cad:'C$422.99 CAD', aud:'A$476.99 AUD' },
+  // Mensalizados (anual ÷ 12) — apenas exibicao no modal
+  22.49:  { brl:'R$22,49', usd:'$11.25 USD', eur:'€10.50 EUR', gbp:'£9.00 GBP', cad:'C$15.00 CAD', aud:'A$17.25 AUD' },
+  67.49:  { brl:'R$67,49', usd:'$26.25 USD', eur:'€24.75 EUR', gbp:'£21.00 GBP', cad:'C$35.25 CAD', aud:'A$39.75 AUD' }
+};
+const SUPPORTED_CURRENCIES = ['brl','usd','eur','gbp','cad','aud'];
+
+// localPrice: retorna preco fixo na moeda detectada. Moeda nao suportada cai em USD
+// (que e o que o backend cobra via fallback). Garante: o que ve = o que paga.
 function localPrice(brlValue){
-  const brl = `R$${brlValue.toFixed(2).replace('.',',')}`;
-  if(siteCurrency.isBRL || !siteCurrency.rate) return brl;
-  const converted = (brlValue * siteCurrency.rate);
-  const fmt = converted < 10 ? converted.toFixed(2) : Math.round(converted);
-  return `${brl} <span style="color:var(--text-dim);font-size:0.85em">(~${siteCurrency.symbol}${fmt} ${siteCurrency.code})</span>`;
+  const codeRaw = (siteCurrency && siteCurrency.code) ? String(siteCurrency.code).toLowerCase() : 'brl';
+  const code = SUPPORTED_CURRENCIES.includes(codeRaw) ? codeRaw : 'usd';
+  const lookup = STRIPE_PRICES[brlValue]?.[code];
+  if (lookup) return lookup;
+  // Safety: valor BRL nao mapeado na tabela — fallback BRL puro (nunca undercharge na visualizacao)
+  return `R$${brlValue.toFixed(2).replace('.',',')}`;
 }
 
 async function detectAndTranslate(){
@@ -3808,7 +3828,9 @@ async function detectAndTranslate(){
 }
 
 function applyLocalPrices(){
-  if(siteCurrency.isBRL || !siteCurrency.rate) return;
+  // BR mantem precos hardcoded no HTML; gringo (qualquer outra moeda) sempre roda
+  // o lookup deterministico pra alinhar com Stripe. Nao depende mais de rate.
+  if(siteCurrency.isBRL) return;
   // Plans section prices
   document.querySelectorAll('.plan-amount').forEach(el=>{
     const m = el.textContent.match(/R\$\s*([\d,.]+)/);

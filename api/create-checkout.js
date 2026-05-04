@@ -135,10 +135,12 @@ export default async function handler(req, res) {
 
   const billingKey = billing === 'annual' ? 'annual' : 'monthly';
 
-  // Currency: lowercase + whitelist; invalida/ausente cai em brl silenciosamente
+  // Currency: lowercase + whitelist. Invalida/ausente cai em USD pra alinhar com
+  // o que o frontend mostra (localPrice fallback USD pra moeda nao suportada).
+  // CRITICO: ve = paga. Se mudar default aqui, atualizar SUPPORTED_CURRENCIES no index.html.
   const currency = ALLOWED_CURRENCIES.includes(String(rawCurrency || '').toLowerCase())
     ? String(rawCurrency).toLowerCase()
-    : 'brl';
+    : 'usd';
 
   // Valida plan na whitelist antes de qualquer lookup
   if (!FALLBACK_PRODUCT_INFO[plan]) {
