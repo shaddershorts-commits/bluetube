@@ -401,31 +401,40 @@ module.exports = async function handler(req, res) {
     );
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
-    // ── 5. MATCH algorithm strict — score >= 0.90 ──────────────────────────
+    // ── 5. MATCH algorithm — score >= SCORE_THRESHOLD entra como confirmed ─
     stages.push({ stage: 'match', t: Date.now() });
     const matches = [];
+    const allScored = [];  // pra debug: todos com score (mesmo abaixo do threshold)
     for (const c of candFps) {
-      if (!c.fp_ok || !c.fp.p_hashes?.length) continue;
-      const cmp = compareFingerprints(userFp, c.fp);
-      if (cmp.score >= SCORE_THRESHOLD) {
-        matches.push({
-          url: c.url,
-          video_id: c.id,
-          title: c.title,
-          channel: c.channel,
-          thumbnail: c.thumbnail,
-          published_at: c.published_at,
-          views: c.views,
-          duration: c.duration,
-          score: cmp.score,
-          confidence_pct: Math.round(cmp.score * 100),
-          matched_frames: cmp.matchedFrames,
-          total_frames: cmp.total,
-          temporal_overlap: cmp.temporalOverlap,
+      if (!c.fp_ok || !c.fp.p_hashes?.length) {
+        allScored.push({
+          video_id: c.id, url: c.url, title: c.title || '(sem metadata)',
+          fp_ok: false, fp_error: c.fp_error || 'fingerprint vazio',
+          score: null, confidence_pct: null,
         });
+        continue;
       }
+      const cmp = compareFingerprints(userFp, c.fp);
+      const item = {
+        url: c.url,
+        video_id: c.id,
+        title: c.title,
+        channel: c.channel,
+        thumbnail: c.thumbnail,
+        published_at: c.published_at,
+        views: c.views,
+        duration: c.duration,
+        score: cmp.score,
+        confidence_pct: Math.round(cmp.score * 100),
+        matched_frames: cmp.matchedFrames,
+        total_frames: cmp.total,
+        temporal_overlap: cmp.temporalOverlap,
+      };
+      allScored.push(item);
+      if (cmp.score >= SCORE_THRESHOLD) matches.push(item);
     }
     matches.sort((a, b) => b.score - a.score);
+    allScored.sort((a, b) => (b.score || 0) - (a.score || 0));
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
     return res.status(200).json({
@@ -448,6 +457,8 @@ module.exports = async function handler(req, res) {
       candidates_filtered: filtered.length,
       candidates_extracted: candFps.filter(c => c.fp_ok).length,
       matches,
+      // Debug: TODOS candidates com score (mesmo abaixo do threshold) — ajusta threshold informado
+      top_candidates: allScored.slice(0, 10),
       web_matches: serpResult.other_platforms,
       threshold: SCORE_THRESHOLD,
       timing: { total_ms: Date.now() - startTs, stages },
