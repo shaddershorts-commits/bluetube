@@ -469,6 +469,16 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         url, video_meta: meta,
+        visual_keywords: visualKeywords,
+        web_detection: {
+          total_pages: webMatches.total_pages,
+          level_counts: webMatches.level_counts,
+          youtube_ids_found: webMatches.youtube_ids?.length || 0,
+          youtube_ids_full: webMatches.youtube_ids_full,
+          youtube_ids_partial: webMatches.youtube_ids_partial,
+          youtube_ids_pages: webMatches.youtube_ids_pages,
+          error: webMatches.error,
+        },
         matches: [],
         web_matches: webMatches.other_platforms,
         message: webMatches.other_platforms.length > 0
