@@ -216,6 +216,50 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div id="usageBarFill" style="height:100%;background:var(--neon);border-radius:100px;width:0%;transition:width .4s ease"></div>
     </div>
   </div>
+
+  <!-- BOTÃO DEEP — Master only — piscando pra chamar atenção -->
+  <style>
+    @keyframes deepPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,.5), 0 0 32px rgba(251,191,36,.3); transform: translateY(0); }
+      50%      { box-shadow: 0 0 0 10px rgba(124,58,237,0),   0 0 60px rgba(251,191,36,.55); transform: translateY(-2px); }
+    }
+    .btn-deep {
+      width:100%; margin-top:14px;
+      background:linear-gradient(135deg, #7c3aed, #fbbf24);
+      border:none; border-radius:14px; padding:16px 20px;
+      font-family:var(--font); font-size:14px; font-weight:800;
+      color:#fff; cursor:pointer; transition:transform .2s;
+      display:flex; align-items:center; justify-content:center; gap:10px;
+      letter-spacing:.3px;
+      animation: deepPulse 2.4s ease-in-out infinite;
+    }
+    .btn-deep:hover { transform: translateY(-2px) scale(1.01); }
+    .btn-deep:disabled { opacity:.5; cursor:not-allowed; animation:none; }
+    .btn-deep-locked {
+      width:100%; margin-top:14px;
+      background:rgba(124,58,237,.06); border:1px dashed rgba(124,58,237,.4);
+      border-radius:14px; padding:16px 20px;
+      font-family:var(--font); font-size:13px; font-weight:600;
+      color:rgba(255,255,255,.55); cursor:not-allowed;
+      display:flex; align-items:center; justify-content:center; gap:10px;
+    }
+    .deep-badge {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:2px 8px; border-radius:100px; font-size:9px;
+      background:rgba(255,255,255,.18); color:#fff; font-weight:800;
+      letter-spacing:.06em; text-transform:uppercase;
+    }
+  </style>
+  <button id="btnAnalyzeDeep" class="btn-deep" onclick="analyzeDeep()" style="display:none">
+    🔬 Análise PROFUNDA · Advogado YPP
+    <span class="deep-badge">👑 MASTER</span>
+  </button>
+  <div id="btnAnalyzeDeepLocked" class="btn-deep-locked" style="display:none" onclick="alert('Análise Profunda é exclusiva do plano Master. Faça upgrade pra usar.')">
+    🔒 Análise PROFUNDA <span class="deep-badge">👑 MASTER</span>
+  </div>
+  <div id="btnAnalyzeDeepHint" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;text-align:center">
+    ✦ Transcreve áudio · analisa frames com IA · busca reposts em outras redes · checa diretrizes YPP atualizadas · gera relatório jurídico de risco de desmonetização · 1 análise/dia
+  </div>
   </div>
 
   <!-- LOADING -->
@@ -231,6 +275,23 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div class="loading-step" id="step3"><div class="step-dot"></div>Calculando métricas de performance</div>
       <div class="loading-step" id="step4"><div class="step-dot"></div>Gerando diagnóstico com IA</div>
       <div class="loading-step" id="step5"><div class="step-dot"></div>Construindo BlueScore</div>
+    </div>
+  </div>
+
+  <!-- LOADING DEEP — versão profunda (Master) -->
+  <div id="loadingDeepSection" style="display:none">
+    <div class="loading-orb" style="background:linear-gradient(135deg,rgba(124,58,237,.3),rgba(251,191,36,.2));border-color:rgba(124,58,237,.4)">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    </div>
+    <div style="font-size:18px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,#7c3aed,#fbbf24);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Análise Profunda em curso…</div>
+    <div style="font-size:13px;color:var(--text-sec);margin-bottom:20px">Advogado YPP analisando seu canal sob ótica das diretrizes Shorts atualizadas — leva ~30-60s</div>
+    <div class="loading-steps">
+      <div class="loading-step" id="dstep1"><div class="step-dot"></div>Identificando canal e últimos vídeos</div>
+      <div class="loading-step" id="dstep2"><div class="step-dot"></div>Transcrevendo áudio dos vídeos</div>
+      <div class="loading-step" id="dstep3"><div class="step-dot"></div>Analisando frames com IA visual</div>
+      <div class="loading-step" id="dstep4"><div class="step-dot"></div>Buscando reposts em outras redes</div>
+      <div class="loading-step" id="dstep5"><div class="step-dot"></div>Consultando diretrizes YPP da semana</div>
+      <div class="loading-step" id="dstep6"><div class="step-dot"></div>Gerando relatório jurídico</div>
     </div>
   </div>
 
@@ -368,6 +429,75 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">
         ↩ Analisar outro canal
       </button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- RESULTS DEEP (Análise Profunda — Master) ════════════════════════════ -->
+  <div id="resultsDeepSection" style="display:none">
+
+    <!-- VERDICT HEADER -->
+    <div class="score-card" id="deepVerdictCard">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;justify-content:center">
+        <div id="deepChannelThumb" class="channel-thumb-placeholder">📺</div>
+        <div style="text-align:left">
+          <div class="channel-name" id="deepChannelName">—</div>
+          <div class="channel-meta" id="deepChannelMeta">—</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">
+        <div id="deepVerdictBadge" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:100px;font-weight:800;font-size:15px;letter-spacing:.2px">—</div>
+        <div style="text-align:left">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase">Compliance YPP</div>
+          <div id="deepComplianceScore" style="font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1">—</div>
+        </div>
+        <div style="text-align:left">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase">Nicho</div>
+          <div id="deepNiche" style="font-size:14px;font-weight:700;color:var(--neon)">—</div>
+        </div>
+      </div>
+
+      <div id="deepSummary" style="margin-top:18px;font-size:14px;color:var(--text);line-height:1.6;text-align:center;max-width:600px;margin-left:auto;margin-right:auto"></div>
+    </div>
+
+    <!-- RISK CATEGORIES -->
+    <div class="insights-card" id="deepRiskSection" style="display:none">
+      <div class="section-title">⚠️ Riscos detectados <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="deepRiskCount"></span></div>
+      <div id="deepRiskList"></div>
+    </div>
+
+    <!-- TOP 3 ACTIONS -->
+    <div class="insights-card" id="deepActionsSection" style="display:none">
+      <div class="section-title">⚡ 3 Ações priorizadas</div>
+      <div id="deepActionsList"></div>
+    </div>
+
+    <!-- COMPLIANT SIGNALS -->
+    <div class="insights-card" id="deepCompliantSection" style="display:none">
+      <div class="section-title">✅ Sinais positivos</div>
+      <div id="deepCompliantList"></div>
+    </div>
+
+    <!-- VIDEOS ANALISADOS -->
+    <div class="insights-card" id="deepVideosSection" style="display:none">
+      <div class="section-title">🎬 Vídeos analisados</div>
+      <div id="deepVideosList"></div>
+    </div>
+
+    <!-- BOTÕES -->
+    <div style="text-align:center;margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button id="btnSaveDeep" onclick="saveDeepAnalysis()" style="background:linear-gradient(135deg,#7c3aed,#fbbf24);border:none;border-radius:10px;padding:12px 28px;color:#fff;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:all .2s">💾 Salvar análise</button>
+      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↩ Analisar outro canal</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- PASTA "MINHAS ANÁLISES SALVAS" (Master) ════════════════════════════ -->
+  <div id="savedSection" style="display:none;margin-top:32px">
+    <div class="insights-card" style="border-color:rgba(124,58,237,.2)">
+      <div class="section-title">📁 Minhas análises salvas <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="savedCount"></span></div>
+      <div id="savedList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
 
@@ -1196,6 +1326,9 @@ async function sendBluescoreFeedback(util) {
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 function showError(msg) {
   document.getElementById('loadingSection').style.display = 'none';
+  // Fecha tambem fluxo Deep (Fase 5) — evita relatorio antigo aparecendo junto com erro
+  const lds = document.getElementById('loadingDeepSection'); if (lds) lds.style.display = 'none';
+  const rds = document.getElementById('resultsDeepSection'); if (rds) rds.style.display = 'none';
   document.getElementById('resultsSection').style.display = 'block';
   const eb = document.getElementById('errorBox');
   eb.textContent = '⚠ ' + msg;
@@ -1209,9 +1342,16 @@ function showError(msg) {
 
 function reset() {
   document.getElementById('resultsSection').style.display = 'none';
+  // Fecha tambem fluxo Deep (Fase 5)
+  const lds = document.getElementById('loadingDeepSection'); if (lds) lds.style.display = 'none';
+  const rds = document.getElementById('resultsDeepSection'); if (rds) rds.style.display = 'none';
   document.getElementById('inputSection').style.display = 'block';
   document.getElementById('urlInput').value = '';
   document.getElementById('urlInput').focus();
+  // Reabilita botao Deep (caso ficou disabled de uma run anterior)
+  const bd = document.getElementById('btnAnalyzeDeep'); if (bd) { bd.disabled = false; bd.textContent = '🔬 Análise PROFUNDA · Advogado YPP'; }
+  const bsd = document.getElementById('btnSaveDeep'); if (bsd) { bsd.disabled = false; bsd.textContent = '💾 Salvar análise'; }
+  _currentDeepId = null;
   // Re-show all sections for next run
   ['metricsGrid','pillarsSection','trajectorySection','insightsSection','recsSection','scoreCard'].forEach(id => {
     const el = document.getElementById(id);
@@ -1220,6 +1360,283 @@ function reset() {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── BLUESCORE DEEP (Fase 4 v2) ─────────────────────────────────────────────
+// Análise profunda Master only. Chama /api/bluescore-deep com token.
+// Render reformulado por verdict + risk_categories + compliant_signals + actions.
+// ════════════════════════════════════════════════════════════════════════════
+
+let _currentDeepId = null;
+
+// Mostra ou esconde botão Deep baseado no plano
+(function showDeepButton() {
+  const btnDeep = document.getElementById('btnAnalyzeDeep');
+  const btnDeepLocked = document.getElementById('btnAnalyzeDeepLocked');
+  const btnDeepHint = document.getElementById('btnAnalyzeDeepHint');
+  const savedSec = document.getElementById('savedSection');
+  if (!btnDeep) return;
+  if (plan === 'master') {
+    btnDeep.style.display = 'flex';
+    btnDeepHint.style.display = 'block';
+    if (savedSec) savedSec.style.display = 'block';
+    loadSavedAnalyses();
+  } else if (plan === 'full') {
+    btnDeepLocked.style.display = 'flex';
+    btnDeepHint.style.display = 'block';
+  }
+  // Free: nada (já bloqueado pelo locked-overlay)
+})();
+
+function setDeepStep(n) {
+  for (let i = 1; i <= 6; i++) {
+    const el = document.getElementById('dstep' + i);
+    if (!el) continue;
+    if (i < n) { el.classList.remove('active'); el.classList.add('done'); el.querySelector('.step-dot').textContent = '✓'; }
+    else if (i === n) { el.classList.add('active'); el.classList.remove('done'); }
+    else { el.classList.remove('active','done'); }
+  }
+}
+
+async function analyzeDeep() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+  const parsed = parseYouTubeInput(url);
+  if (!parsed) { showError('Link inválido. Cole um link de canal ou vídeo do YouTube.'); return; }
+
+  // Desabilita botoes pra evitar duplo-clique disparar 2 requests (cada um custa $0.10)
+  const btnDeep = document.getElementById('btnAnalyzeDeep');
+  const btnRapido = document.getElementById('btnAnalyze');
+  if (btnDeep) btnDeep.disabled = true;
+  if (btnRapido) btnRapido.disabled = true;
+
+  // UI: esconder atual, mostrar deep loading
+  document.getElementById('inputSection').style.display = 'none';
+  document.getElementById('loadingSection').style.display = 'none';
+  document.getElementById('loadingDeepSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('resultsDeepSection').style.display = 'none';
+  setDeepStep(1);
+
+  try {
+    // 1. Resolver channelId (reusa endpoint existente)
+    const channelData = await resolveChannel(parsed);
+    if (!channelData?.channelId) throw new Error('Canal não encontrado.');
+    setDeepStep(2);
+
+    // Animação visual dos steps (proxy de progresso real, ~30s)
+    setTimeout(() => setDeepStep(3), 8000);
+    setTimeout(() => setDeepStep(4), 14000);
+    setTimeout(() => setDeepStep(5), 20000);
+    setTimeout(() => setDeepStep(6), 25000);
+
+    // 2. Chama bluescore-deep com token
+    const r = await fetch(`/api/bluescore-deep?channelId=${encodeURIComponent(channelData.channelId)}`, {
+      headers: { 'Authorization': 'Bearer ' + (token || '') },
+      signal: AbortSignal.timeout(295000),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (r.status === 401) throw new Error('Faça login pra usar o BlueScore Deep.');
+      if (r.status === 403) throw new Error(d.message || 'Análise Profunda é exclusiva do plano Master.');
+      if (r.status === 429) throw new Error(d.message || 'Você já usou sua análise Deep hoje. Volte amanhã.');
+      throw new Error(d.error || 'Erro na análise profunda. Tente novamente.');
+    }
+
+    // 3. Render
+    renderDeep(d);
+    // Recarrega lista de salvas pra refletir nova análise (se salvar)
+    if (plan === 'master') loadSavedAnalyses();
+
+  } catch (e) {
+    console.error('BlueScore Deep error:', e);
+    document.getElementById('loadingDeepSection').style.display = 'none';
+    document.getElementById('inputSection').style.display = 'block';
+    showError(e.message || 'Erro inesperado');
+  } finally {
+    // Reabilita botoes (sucesso ou erro)
+    const btnDeep = document.getElementById('btnAnalyzeDeep');
+    const btnRapido = document.getElementById('btnAnalyze');
+    if (btnDeep) btnDeep.disabled = false;
+    if (btnRapido) btnRapido.disabled = false;
+  }
+}
+
+function renderDeep(d) {
+  document.getElementById('loadingDeepSection').style.display = 'none';
+  document.getElementById('resultsDeepSection').style.display = 'block';
+  _currentDeepId = d.analise_id;
+
+  const ch = d.channel || {};
+  const r = d.report || {};
+
+  // Channel info
+  document.getElementById('deepChannelName').textContent = ch.title || '—';
+  document.getElementById('deepChannelMeta').textContent = `${fmtNum(ch.subscribers)} inscritos · ${ch.videoCount || 0} vídeos`;
+
+  // Verdict badge
+  const verdictMap = {
+    compliant: { label: '✅ Conforme YPP', bg: 'rgba(34,197,94,.15)', border: 'rgba(34,197,94,.4)', color: '#22c55e' },
+    warning:   { label: '⚠️ Atenção', bg: 'rgba(251,191,36,.15)', border: 'rgba(251,191,36,.4)', color: 'var(--gold)' },
+    risk:      { label: '🔴 Risco de desmonetização', bg: 'rgba(239,68,68,.15)', border: 'rgba(239,68,68,.4)', color: '#ef4444' },
+  };
+  const vc = verdictMap[r.verdict] || verdictMap.warning;
+  const vbadge = document.getElementById('deepVerdictBadge');
+  vbadge.textContent = vc.label;
+  vbadge.style.background = vc.bg;
+  vbadge.style.border = '1px solid ' + vc.border;
+  vbadge.style.color = vc.color;
+
+  // Compliance score
+  const cscore = document.getElementById('deepComplianceScore');
+  cscore.textContent = (r.compliance_score ?? '—') + '/100';
+  cscore.style.color = vc.color;
+
+  // Niche
+  document.getElementById('deepNiche').textContent = r.niche || '—';
+
+  // Summary
+  document.getElementById('deepSummary').textContent = r.summary || '';
+
+  // Risk categories
+  const risks = r.risk_categories || [];
+  if (risks.length > 0) {
+    document.getElementById('deepRiskSection').style.display = 'block';
+    document.getElementById('deepRiskCount').textContent = ' · ' + risks.length + ' detectado' + (risks.length > 1 ? 's' : '');
+    const sevColors = { high: '#ef4444', medium: 'var(--gold)', low: '#94a3b8' };
+    const sevIcons  = { high: '🚨',     medium: '⚠️',          low: 'ℹ️' };
+    document.getElementById('deepRiskList').innerHTML = risks.map(rc => `
+      <div class="insight-item" style="border-left:3px solid ${sevColors[rc.severity]||'#fbbf24'};padding-left:14px;margin-left:-4px">
+        <div class="insight-icon warn" style="background:${sevColors[rc.severity]}18;border-color:${sevColors[rc.severity]}40">${sevIcons[rc.severity]||'⚠️'}</div>
+        <div class="insight-text">
+          <div class="insight-title" style="color:${sevColors[rc.severity]||'var(--gold)'}">${escapeHtml(rc.category || '').replace(/_/g,' ')} · ${escapeHtml((rc.severity||'').toUpperCase())}</div>
+          <div class="insight-desc"><b>Evidência:</b> ${escapeHtml(rc.evidence || '')}</div>
+          <div class="insight-desc" style="margin-top:6px"><b>Diretriz YPP:</b> ${escapeHtml(rc.ypp_guideline_violated || '')}</div>
+          <div class="insight-desc" style="margin-top:6px;color:var(--neon)"><b>O que fazer:</b> ${escapeHtml(rc.fix || '')}</div>
+        </div>
+      </div>`).join('');
+  } else {
+    document.getElementById('deepRiskSection').style.display = 'none';
+  }
+
+  // Top 3 actions
+  const actions = r.top_3_actions || [];
+  if (actions.length > 0) {
+    document.getElementById('deepActionsSection').style.display = 'block';
+    document.getElementById('deepActionsList').innerHTML = actions.map((a, i) => `
+      <div class="rec-item">
+        <div class="rec-num">${i+1}</div>
+        <div class="rec-text">${escapeHtml(a)}</div>
+      </div>`).join('');
+  } else {
+    document.getElementById('deepActionsSection').style.display = 'none';
+  }
+
+  // Compliant signals
+  const signals = r.compliant_signals || [];
+  if (signals.length > 0) {
+    document.getElementById('deepCompliantSection').style.display = 'block';
+    document.getElementById('deepCompliantList').innerHTML = signals.map(s => `
+      <div class="insight-item">
+        <div class="insight-icon pos">✓</div>
+        <div class="insight-text"><div class="insight-desc">${escapeHtml(s)}</div></div>
+      </div>`).join('');
+  } else {
+    document.getElementById('deepCompliantSection').style.display = 'none';
+  }
+
+  // Vídeos analisados
+  const videos = d.videos_data || [];
+  if (videos.length > 0) {
+    document.getElementById('deepVideosSection').style.display = 'block';
+    document.getElementById('deepVideosList').innerHTML = videos.map((v, i) => {
+      const tSample = v.transcript?.sample ? `"${escapeHtml(v.transcript.sample)}..."` : (v.transcript?.error ? `<i style="color:var(--red)">transcrição falhou: ${escapeHtml(v.transcript.error)}</i>` : '');
+      const vAnalysis = v.visual?.thumbnail_style ? `${escapeHtml(v.visual.thumbnail_style)} · IA: ${escapeHtml(v.visual.ai_voice_likely||'?')}` : '<i>visual indisponível</i>';
+      const matches = v.reverse?.total_matches ?? '?';
+      return `
+        <div style="display:flex;gap:12px;padding:12px;border-bottom:1px solid rgba(0,170,255,.06);align-items:flex-start">
+          <img src="${v.thumbnail||''}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"/>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px">Vídeo ${i+1}: ${escapeHtml((v.title||'').slice(0,60))}${(v.title||'').length>60?'…':''}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:6px">${v.duration}s · ${fmtNum(v.views)} views · ${matches} matches reverse</div>
+            <div style="font-size:11px;color:var(--text-sec);line-height:1.5;margin-bottom:4px"><b>Transcript:</b> ${tSample}</div>
+            <div style="font-size:11px;color:var(--text-sec);line-height:1.5"><b>Visual:</b> ${vAnalysis}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('resultsDeepSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveDeepAnalysis() {
+  if (!_currentDeepId) return alert('Análise não identificada.');
+  const btn = document.getElementById('btnSaveDeep');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/bluescore-actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token||'') },
+      body: JSON.stringify({ action: 'salvar', analise_id: _currentDeepId })
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      if (btn) btn.textContent = '✓ Salva';
+      loadSavedAnalyses();
+    } else {
+      alert(d.error || 'Erro ao salvar.');
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) { alert('Erro de rede.'); if (btn) btn.disabled = false; }
+}
+
+async function deleteDeepAnalysis(id) {
+  if (!confirm('Remover essa análise dos salvos?')) return;
+  try {
+    const r = await fetch('/api/bluescore-actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token||'') },
+      body: JSON.stringify({ action: 'deletar', analise_id: id })
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) loadSavedAnalyses();
+    else alert(d.error || 'Erro ao deletar.');
+  } catch (e) { alert('Erro de rede.'); }
+}
+
+async function loadSavedAnalyses() {
+  if (plan !== 'master' || !token) return;
+  try {
+    const r = await fetch('/api/bluescore-actions?action=salvas', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const d = await r.json();
+    const list = d.analises || [];
+    document.getElementById('savedCount').textContent = ' · ' + list.length;
+    const ul = document.getElementById('savedList');
+    if (!list.length) {
+      ul.innerHTML = '<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:14px">Nenhuma análise salva ainda.</div>';
+      return;
+    }
+    const verdictColor = { compliant: '#22c55e', warning: 'var(--gold)', risk: '#ef4444' };
+    ul.innerHTML = list.map(a => `
+      <div style="display:flex;gap:12px;padding:10px 12px;background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.12);border-radius:10px;align-items:center">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${escapeHtml(a.canal_nome||'')}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
+            ${escapeHtml((a.nicho||'').slice(0,40))} ·
+            <span style="color:${verdictColor[a.verdict]||'var(--text-dim)'};font-weight:700">${escapeHtml(a.verdict||'?')} ${a.compliance_score||'?'}/100</span> ·
+            ${new Date(a.created_at).toLocaleDateString('pt-BR')}
+          </div>
+        </div>
+        <button onclick="deleteDeepAnalysis('${a.id}')" style="background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:4px 10px;color:#ef4444;font-size:10px;cursor:pointer">Remover</button>
+      </div>`).join('');
+  } catch (e) { console.error('loadSavedAnalyses', e); }
+}
+
+function escapeHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 // Salva URL ao digitar
 document.addEventListener('input', function(e){
