@@ -40,6 +40,12 @@ const YT_KEYS = [
 const MAX_VIDEOS = 5;
 const PROMPT_VERSION = 'v2-fase3-deep';
 
+// ⚠️ FLAG TEMPORÁRIA — TROCAR PRA false ANTES DO DEPLOY OFICIAL
+// Quando true: pula limite 1/dia/user pra facilitar testes em preview.
+// Quando false: limite ativo (Master só pode 1 análise/dia).
+// User pediu em 2026-05-04 pra deixar true durante testes.
+const BYPASS_DAILY_LIMIT = true;
+
 const supaH = {
   apikey: SUPA_KEY,
   Authorization: 'Bearer ' + SUPA_KEY,
@@ -459,14 +465,16 @@ module.exports = async function handler(req, res) {
   if (!channelId) return res.status(400).json({ error: 'channelId obrigatorio' });
   if (!YT_KEYS.length) return res.status(500).json({ error: 'YouTube API keys ausentes' });
 
-  // 4. Limite 1/dia/user (validacao backend)
+  // 4. Limite 1/dia/user (validacao backend) — bypass enquanto BYPASS_DAILY_LIMIT=true
   const userId = auth.user?.id;
-  const usedToday = await hasUsedToday(userId);
-  if (usedToday) {
-    return res.status(429).json({
-      error: 'limite_diario_atingido',
-      message: 'Voce ja usou sua analise BlueScore Deep hoje. Volte amanha.',
-    });
+  if (!BYPASS_DAILY_LIMIT) {
+    const usedToday = await hasUsedToday(userId);
+    if (usedToday) {
+      return res.status(429).json({
+        error: 'limite_diario_atingido',
+        message: 'Voce ja usou sua analise BlueScore Deep hoje. Volte amanha.',
+      });
+    }
   }
 
   const startTs = Date.now();
