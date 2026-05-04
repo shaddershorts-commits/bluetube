@@ -153,18 +153,37 @@ function detectPlatform(url) {
   } catch { return 'unknown'; }
 }
 
+// Railway extract com retry pra cobrir flakiness yt-dlp/Cobalt:
+// - 5xx ou timeout: retry 1x apos 2s (yt-dlp/Cobalt podem 503/timeout intermitente)
+// - 4xx: nao retry (URL invalida, video deletado, geo-blocked)
 async function callRailwayExtract(url, fps) {
-  const r = await fetch(`${RAILWAY_URL.replace(/\/$/, '')}/extract-fingerprint`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, fps, max_seconds: MAX_SECONDS }),
-    signal: AbortSignal.timeout(110000),
-  });
-  if (!r.ok) {
-    const txt = await r.text().catch(() => '');
-    throw new Error('Railway HTTP ' + r.status + ': ' + txt.slice(0, 150));
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await fetch(`${RAILWAY_URL.replace(/\/$/, '')}/extract-fingerprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, fps, max_seconds: MAX_SECONDS }),
+        signal: AbortSignal.timeout(110000),
+      });
+      if (r.ok) return await r.json();
+      // 4xx: erro permanente do request, nao retry
+      if (r.status >= 400 && r.status < 500) {
+        const txt = await r.text().catch(() => '');
+        throw new Error('Railway HTTP ' + r.status + ': ' + txt.slice(0, 150));
+      }
+      // 5xx: pode ser flakiness, vai retry
+      const txt = await r.text().catch(() => '');
+      lastError = new Error('Railway HTTP ' + r.status + ' (attempt ' + attempt + '): ' + txt.slice(0, 150));
+    } catch (e) {
+      // 4xx ja jogou no throw acima — aqui sao timeouts/network errors
+      // que podem se beneficiar de retry
+      if (e.message?.includes('Railway HTTP 4')) throw e;
+      lastError = e;
+    }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
   }
-  return await r.json();
+  throw lastError;
 }
 
 async function fetchVideoMeta(videoId) {
