@@ -179,11 +179,13 @@ async function getCachedAnalysis(youtubeId) {
   } catch { return null; }
 }
 
-// Salva analise no cache (UPSERT — cobre race condition de analises simultaneas)
+// Salva analise no cache (UPSERT — cobre race condition de analises simultaneas).
+// Retorna {ok, error?} — em serverless precisa ser AWAITED no handler senao
+// Vercel encerra a function antes do save completar.
 async function saveCachedAnalysis(youtubeId, response) {
-  if (!supaH || !SUPA_URL) return;
+  if (!supaH || !SUPA_URL) return { ok: false, error: 'no supabase' };
   try {
-    await fetch(`${SUPA_URL}/rest/v1/bluelens_cache?on_conflict=youtube_id`, {
+    const r = await fetch(`${SUPA_URL}/rest/v1/bluelens_cache?on_conflict=youtube_id`, {
       method: 'POST',
       headers: {
         ...supaH,
@@ -199,9 +201,16 @@ async function saveCachedAnalysis(youtubeId, response) {
         created_at: new Date().toISOString(),
         last_hit_at: new Date().toISOString(),
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
-  } catch {}
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      return { ok: false, error: `HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e.message || '').slice(0, 200) };
+  }
 }
 
 // Railway extract com retry pra cobrir flakiness yt-dlp/Cobalt:
@@ -559,8 +568,12 @@ module.exports = async function handler(req, res) {
       cached: false,
       timing: { total_ms: Date.now() - startTs, stages },
     };
-    // Salva no cache (non-blocking — proxima analise mesmo video <7d retorna direto)
-    saveCachedAnalysis(youtubeId, finalResponse).catch(() => {});
+    // Salva no cache AWAITED — em serverless Vercel, response.json() encerra
+    // a function imediatamente, cortando promises pendentes. Awaiting garante
+    // que o cache eh persistido. Custo: +1-2s so na primeira analise.
+    const saveResult = await saveCachedAnalysis(youtubeId, finalResponse);
+    finalResponse.cache_saved = saveResult.ok;
+    if (!saveResult.ok) finalResponse.cache_save_error = saveResult.error;
     return res.status(200).json(finalResponse);
   } catch (e) {
     console.error('[bluelens-fingerprint]', e.message);
