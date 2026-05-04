@@ -38,7 +38,7 @@ const supaH = SUPA_KEY ? { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY
 
 const FPS_USER = 15;       // alta densidade pro video do user
 const FPS_CANDIDATE = 5;   // suficiente pra confirmar match
-const MAX_CANDIDATES = 5;  // top filtrados por duration similarity
+const MAX_CANDIDATES = 12; // sobe pra 12 — Web Detection traz muitos sinais reais
 const MAX_SECONDS = 60;    // limita extract a 60s (Shorts <= 60s)
 const SCORE_THRESHOLD = 0.90; // nao mostra abaixo disso
 
@@ -194,12 +194,19 @@ async function getWebDetectionMatches(thumbnailUrl) {
     }
     const wd = d.responses?.[0]?.webDetection || {};
 
+    // 3 niveis de Web Detection (do mais forte ao mais fraco):
+    //   fullMatchingImages — copia exata (forte sinal de repost)
+    //   partialMatchingImages — match parcial (provavel repost editado)
+    //   pagesWithMatchingImages — pagina contem imagem similar (sinal mais fraco)
     const fullPages = (wd.fullMatchingImages || []).map(p => p.url);
     const partialPages = (wd.partialMatchingImages || []).map(p => p.url);
     const matchingPages = (wd.pagesWithMatchingImages || []).map(p => p.url);
-    const allUrls = [...new Set([...fullPages, ...partialPages, ...matchingPages])];
+    // Ordem mantida: full primeiro, partial depois, pages por ultimo
+    const allUrlsOrdered = [...fullPages, ...partialPages, ...matchingPages];
+    const allUrls = [...new Set(allUrlsOrdered)];
 
     const youtubeIds = new Set();
+    const youtubeIdsByLevel = { full: new Set(), partial: new Set(), pages: new Set() };
     const otherPlatforms = [];
     // Padroes de URL irrelevantes (thumbs YouTube, paginas de canal, etc) — descartar
     const isIrrelevant = (url) => {
@@ -212,10 +219,20 @@ async function getWebDetectionMatches(thumbnailUrl) {
         return false;
       } catch { return false; }
     };
+    // Helper: classifica nivel de cada URL pra priorizar full > partial > pages
+    const levelOf = (url) => {
+      if (fullPages.includes(url)) return 'full';
+      if (partialPages.includes(url)) return 'partial';
+      return 'pages';
+    };
     for (const url of allUrls) {
       if (isIrrelevant(url)) continue;
       const ytId = extractYouTubeId(url);
-      if (ytId) { youtubeIds.add(ytId); continue; }
+      if (ytId) {
+        youtubeIds.add(ytId);
+        youtubeIdsByLevel[levelOf(url)].add(ytId);
+        continue;
+      }
       try {
         const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
         let platform = 'web';
@@ -224,13 +241,17 @@ async function getWebDetectionMatches(thumbnailUrl) {
         else if (host === 'twitter.com' || host === 'x.com') platform = 'twitter';
         else if (host.includes('facebook')) platform = 'facebook';
         else if (host.includes('kwai')) platform = 'kwai';
-        otherPlatforms.push({ url, platform, host });
+        otherPlatforms.push({ url, platform, host, level: levelOf(url) });
       } catch {}
     }
     return {
       youtube_ids: [...youtubeIds],
+      youtube_ids_full: [...youtubeIdsByLevel.full],
+      youtube_ids_partial: [...youtubeIdsByLevel.partial],
+      youtube_ids_pages: [...youtubeIdsByLevel.pages],
       other_platforms: otherPlatforms,
       total_pages: allUrls.length,
+      level_counts: { full: fullPages.length, partial: partialPages.length, pages: matchingPages.length },
       error: null,
     };
   } catch (e) { return { ...empty, error: `exception: ${(e.message || '').slice(0, 250)}` }; }
@@ -418,17 +439,30 @@ module.exports = async function handler(req, res) {
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
     stages[stages.length - 1].count = searchCandidates.length;
 
-    // ── 3. Combina fontes: search + Web Detection ──────────────────────────
-    // Web Detection tem alta prioridade (Google ja confirmou que a imagem aparece la).
+    // ── 3. Combina fontes: Web Detection (priorizado por nivel) + search ───
+    // Web Detection tem alta prioridade — Google ja confirmou que a imagem
+    // aparece la. Nivel full > partial > pages.
     const seen = new Set([youtubeId, ...searchCandidates.map(c => c.id)]);
-    const webDetectionCandidates = webMatches.youtube_ids
-      .filter(id => !seen.has(id))
-      .map(id => ({
-        id,
-        url: `https://www.youtube.com/watch?v=${id}`,
-        title: '', channel: '', thumbnail: '', published_at: null,
-        source: 'web_detection',
-      }));
+    const buildWebCandidate = (id, level) => ({
+      id,
+      url: `https://www.youtube.com/watch?v=${id}`,
+      title: '', channel: '', thumbnail: '', published_at: null,
+      source: 'web_detection',
+      web_level: level,
+    });
+    const webDetectionCandidates = [];
+    for (const id of (webMatches.youtube_ids_full || [])) {
+      if (seen.has(id)) continue; seen.add(id);
+      webDetectionCandidates.push(buildWebCandidate(id, 'full'));
+    }
+    for (const id of (webMatches.youtube_ids_partial || [])) {
+      if (seen.has(id)) continue; seen.add(id);
+      webDetectionCandidates.push(buildWebCandidate(id, 'partial'));
+    }
+    for (const id of (webMatches.youtube_ids_pages || [])) {
+      if (seen.has(id)) continue; seen.add(id);
+      webDetectionCandidates.push(buildWebCandidate(id, 'pages'));
+    }
     const candidates = [...webDetectionCandidates, ...searchCandidates];
 
     if (candidates.length === 0) {
@@ -450,16 +484,22 @@ module.exports = async function handler(req, res) {
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
     const userDur = meta.duration || userFp.duration_seconds || 0;
+    // Filtro de duration: BYPASS pra Web Detection (Google ja confirmou imagem
+    // matching, reposts podem ter cortes/loops e ainda ser validos). Aplica
+    // ±20% so pra youtube_search candidates.
     const filtered = enriched
       .filter(c => {
-        if (!userDur || !c.duration) return true; // sem duration, mantem
+        if (c.source === 'web_detection') return true; // bypass
+        if (!userDur || !c.duration) return true;
         const diff = Math.abs(userDur - c.duration) / Math.max(userDur, c.duration);
         return diff <= 0.20;
       })
-      // Web Detection candidates primeiro (sinal mais forte), depois por views
+      // Sort por nivel Web Detection (full > partial > pages > youtube_search), depois views
       .sort((a, b) => {
-        if (a.source === 'web_detection' && b.source !== 'web_detection') return -1;
-        if (b.source === 'web_detection' && a.source !== 'web_detection') return 1;
+        const levelRank = { full: 0, partial: 1, pages: 2 };
+        const aLvl = a.source === 'web_detection' ? levelRank[a.web_level] ?? 3 : 4;
+        const bLvl = b.source === 'web_detection' ? levelRank[b.web_level] ?? 3 : 4;
+        if (aLvl !== bLvl) return aLvl - bLvl;
         return (b.views || 0) - (a.views || 0);
       })
       .slice(0, MAX_CANDIDATES);
@@ -531,8 +571,11 @@ module.exports = async function handler(req, res) {
       visual_keywords: visualKeywords,
       web_detection: {
         total_pages: webMatches.total_pages,
+        level_counts: webMatches.level_counts,  // {full, partial, pages}
         youtube_ids_found: webMatches.youtube_ids.length,
-        youtube_ids: webMatches.youtube_ids,  // debug: lista completa
+        youtube_ids_full: webMatches.youtube_ids_full,    // copia exata (sinal forte)
+        youtube_ids_partial: webMatches.youtube_ids_partial, // match parcial
+        youtube_ids_pages: webMatches.youtube_ids_pages,  // imagem similar
         error: webMatches.error,
       },
       // Candidates pipeline
