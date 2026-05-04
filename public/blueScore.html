@@ -186,14 +186,130 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 </nav>
 
 <main>
-  <!-- HERO -->
+  <!-- ── ANIMAÇÕES & EFEITOS TECH (BlueScore v2) ──────────────────────────── -->
+  <style>
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    @keyframes float-glow {
+      0%, 100% { opacity:.7; transform: translateY(0) scale(1); }
+      50%      { opacity:1;  transform: translateY(-6px) scale(1.04); }
+    }
+    @keyframes scan-line {
+      0%   { transform: translateY(-100%); opacity: 0; }
+      50%  { opacity: .5; }
+      100% { transform: translateY(100%); opacity: 0; }
+    }
+    @keyframes border-flow {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    .v2-eyebrow {
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 16px; border-radius:100px;
+      background:linear-gradient(90deg, rgba(124,58,237,.15), rgba(0,170,255,.15), rgba(251,191,36,.15));
+      background-size:200% 100%;
+      border:1px solid rgba(124,58,237,.4);
+      animation: shimmer 4s ease-in-out infinite;
+      font-family:var(--mono); font-size:11px; font-weight:700;
+      color:#fff; letter-spacing:.12em; text-transform:uppercase;
+    }
+    .v2-h1 {
+      font-size:clamp(36px,6vw,58px); font-weight:800; letter-spacing:-1.5px;
+      line-height:1.05; margin-bottom:14px;
+    }
+    .v2-h1 .glow {
+      background:linear-gradient(135deg,#7c3aed,#00aaff,#fbbf24);
+      background-size:200% 100%;
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      animation: shimmer 5s ease-in-out infinite;
+    }
+    .v2-stack {
+      display:flex; flex-wrap:wrap; gap:8px; justify-content:center;
+      margin-top:18px;
+    }
+    .v2-stack-pill {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 12px; border-radius:100px;
+      background:rgba(0,170,255,.06); border:1px solid rgba(0,170,255,.18);
+      font-family:var(--mono); font-size:10px; font-weight:600;
+      color:var(--text-sec); letter-spacing:.04em;
+    }
+    .v2-stack-pill .dot {
+      width:6px; height:6px; border-radius:50%; background:var(--neon);
+      box-shadow:0 0 10px var(--neon);
+      animation: float-glow 1.8s ease-in-out infinite;
+    }
+    .v2-stack-pill.purple .dot { background:#7c3aed; box-shadow:0 0 10px #7c3aed; }
+    .v2-stack-pill.gold   .dot { background:#fbbf24; box-shadow:0 0 10px #fbbf24; }
+    .v2-stack-pill.green  .dot { background:#22c55e; box-shadow:0 0 10px #22c55e; }
+
+    /* Pipeline cards */
+    .v2-pipeline {
+      display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+      gap:12px; margin:28px 0 0;
+    }
+    .v2-pipe-card {
+      position:relative; overflow:hidden;
+      background:linear-gradient(135deg, rgba(124,58,237,.04), rgba(0,170,255,.04));
+      border:1px solid rgba(0,170,255,.12);
+      border-radius:14px; padding:16px;
+      backdrop-filter: blur(20px);
+      transition:transform .3s, border-color .3s;
+    }
+    .v2-pipe-card::before {
+      content:''; position:absolute; inset:0;
+      background:linear-gradient(180deg, transparent, rgba(0,170,255,.08), transparent);
+      animation: scan-line 6s linear infinite;
+      pointer-events:none;
+    }
+    .v2-pipe-card:hover { transform:translateY(-2px); border-color:rgba(0,170,255,.3); }
+    .v2-pipe-icon { font-size:22px; margin-bottom:8px; }
+    .v2-pipe-title { font-size:12px; font-weight:800; color:var(--text); letter-spacing:-.2px; margin-bottom:4px; }
+    .v2-pipe-desc { font-size:11px; color:var(--text-sec); line-height:1.5; }
+    .v2-pipe-tag { display:inline-block; margin-top:6px; padding:2px 8px; border-radius:100px; font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  </style>
+
+  <!-- HERO v2 -->
   <div class="hero">
-    <div class="hero-eyebrow">
-      <span class="score-icon">B</span>
-      BlueScore Engine · Exclusivo Master
+    <div class="v2-eyebrow">
+      <span style="font-size:13px">⚡</span>
+      BlueScore v2 · Análise Profunda
     </div>
-    <h1>Confiança<br><span>Algorítmica</span></h1>
-    <p class="hero-sub">Estimativa probabilística de como o algoritmo do YouTube enxerga um canal — baseada em dados reais de performance, comportamento e padrões de conteúdo.</p>
+    <h1 class="v2-h1" style="margin-top:14px">Seu canal está em<br><span class="glow">risco de desmonetização?</span></h1>
+    <p class="hero-sub">Nossa IA <strong style="color:#fff">assiste seus vídeos</strong>, lê suas legendas, analisa seus frames e cruza com as <strong style="color:var(--gold)">diretrizes oficiais do YouTube atualizadas semanalmente</strong>. Como se um advogado YPP especialista em Shorts tivesse aberto seu canal e revisado cada detalhe.</p>
+
+    <div class="v2-stack">
+      <span class="v2-stack-pill"><span class="dot"></span>GPT-4 · Advogado YPP</span>
+      <span class="v2-stack-pill purple"><span class="dot"></span>Claude · Visão</span>
+      <span class="v2-stack-pill gold"><span class="dot"></span>Whisper · Áudio</span>
+      <span class="v2-stack-pill green"><span class="dot"></span>Google Lens · Reverse</span>
+    </div>
+
+    <!-- Pipeline visual: 4 cards mostrando o que cada IA faz -->
+    <div class="v2-pipeline">
+      <div class="v2-pipe-card">
+        <div class="v2-pipe-icon">🎙️</div>
+        <div class="v2-pipe-title">Transcreve áudio</div>
+        <div class="v2-pipe-desc">Whisper escuta cada palavra dos seus últimos 5 Shorts. Procura voz IA sem disclosure (penalização YPP 2024+).</div>
+      </div>
+      <div class="v2-pipe-card">
+        <div class="v2-pipe-icon">🖼️</div>
+        <div class="v2-pipe-title">Analisa frames</div>
+        <div class="v2-pipe-desc">Claude Vision lê thumbs e frames. Detecta clickbait, mismatch capa↔conteúdo, voz IA visual.</div>
+      </div>
+      <div class="v2-pipe-card">
+        <div class="v2-pipe-icon">🔍</div>
+        <div class="v2-pipe-title">Caça reposts</div>
+        <div class="v2-pipe-desc">Google Lens busca seus frames em outras redes. Identifica conteúdo reutilizado em massa.</div>
+      </div>
+      <div class="v2-pipe-card">
+        <div class="v2-pipe-icon">⚖️</div>
+        <div class="v2-pipe-title">Advogado YPP</div>
+        <div class="v2-pipe-desc">Cruza tudo com diretrizes oficiais YouTube atualizadas na semana. Veredicto + risco + ações.</div>
+      </div>
+    </div>
   </div>
 
   <!-- INPUT -->
@@ -208,7 +324,7 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         Analisar
       </button>
     </div>
-    <div class="input-hint">Funciona com canais, vídeos e handles (@). Dados analisados: últimos 10 vídeos públicos.</div>
+    <div class="input-hint">Funciona com canais, vídeos e handles (@). <strong style="color:var(--text-sec)">Análise rápida</strong> = últimos 10 vídeos · métricas de performance · diagnóstico IA básico (Full+Master).</div>
   <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
     <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Análises hoje:</div>
     <div id="usageBadge" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--neon)">— / 3</div>
@@ -257,8 +373,8 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
   <div id="btnAnalyzeDeepLocked" class="btn-deep-locked" style="display:none" onclick="alert('Análise Profunda é exclusiva do plano Master. Faça upgrade pra usar.')">
     🔒 Análise PROFUNDA <span class="deep-badge">👑 MASTER</span>
   </div>
-  <div id="btnAnalyzeDeepHint" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;text-align:center">
-    ✦ Transcreve áudio · analisa frames com IA · busca reposts em outras redes · checa diretrizes YPP atualizadas · gera relatório jurídico de risco de desmonetização · 1 análise/dia
+  <div id="btnAnalyzeDeepHint" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.6">
+    ⏱ ~30s · <strong style="color:#fbbf24">4 IAs em paralelo</strong> · diretrizes YPP atualizadas semanalmente · relatório jurídico com evidências por vídeo · 1 análise/dia
   </div>
   </div>
 
