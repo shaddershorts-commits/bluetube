@@ -106,7 +106,7 @@ async function saveAnalysis(userId, channel, channelId, report, videosData) {
         user_id: userId,
         canal_id: channelId,
         canal_nome: channel?.title || '',
-        nicho: report?.summary?.match(/nicho[:\s]+([^.,;]+)/i)?.[1]?.trim() || null,
+        nicho: (report?.niche || '').toString().trim().slice(0, 100) || null,
         eh_shorts: true,
         score: report?.compliance_score ?? null,
         verdict: report?.verdict || null,
@@ -356,6 +356,7 @@ Responda APENAS JSON válido sem markdown:
 {
   "verdict": "compliant|warning|risk",
   "compliance_score": 0-100,
+  "niche": "nicho do canal em 1-3 palavras (ex: 'Receitas fit', 'Comédia daily', 'Tech reviews')",
   "risk_categories": [
     {
       "category": "reused_content|ai_voice_no_disclosure|copyright_music|clickbait|compilation|engagement_artificial|other",
@@ -366,7 +367,7 @@ Responda APENAS JSON válido sem markdown:
     }
   ],
   "compliant_signals": ["sinal positivo 1", ...],
-  "summary": "diagnóstico executivo 2-3 frases focado em risco DESMONETIZAÇÃO Shorts. Mencione nicho.",
+  "summary": "diagnóstico executivo 2-3 frases focado em risco DESMONETIZAÇÃO Shorts.",
   "top_3_actions": ["ação 1", "ação 2", "ação 3"]
 }`;
 
