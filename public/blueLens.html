@@ -184,11 +184,11 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       BlueLens · Detector de cópias no YouTube
     </div>
     <h1>Quantas pessoas postaram <span>o mesmo vídeo?</span></h1>
-    <p class="hero-sub">Cole o link do seu <strong style="color:var(--gold)">Short do YouTube</strong> e o BlueLens descobre <strong style="color:var(--neon)">quantos canais publicaram o MESMO conteúdo visual</strong> — analisa frame por frame, ignora título, áudio e edições. Foco exclusivo no YouTube.</p>
+    <p class="hero-sub">Cole o link do seu <strong style="color:var(--gold)">Short do YouTube</strong> e o BlueLens encontra <strong style="color:var(--neon)">quem postou o MESMO vídeo</strong> — busca visual real (motor do Google Lens), acha reposts em outros idiomas, com títulos diferentes, mesmo editados.</p>
     <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap">
-      <div class="lens-badge lens-badge-neon">▶️ YouTube only</div>
-      <div class="lens-badge lens-badge-gold">🎬 Análise frame-by-frame (15fps)</div>
-      <div class="lens-badge lens-badge-purple">✓ Só matches ≥ 90%</div>
+      <div class="lens-badge lens-badge-neon">🔍 Busca visual (Google Lens)</div>
+      <div class="lens-badge lens-badge-gold">🎬 Validação frame-by-frame</div>
+      <div class="lens-badge lens-badge-purple">🌍 Cross-idioma & cross-canal</div>
     </div>
   </div>
 
@@ -204,7 +204,7 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         Detectar cópias
       </button>
     </div>
-    <div class="input-hint">⏱ Análise leva ~1-2 minutos · Frame-by-frame · Busca global no YouTube · Só matches ≥ 90% (zero falso positivo)</div>
+    <div class="input-hint">⏱ ~30 segundos · Busca visual via Google Lens · Acha reposts mesmo com idioma/título diferentes · Validação frame-by-frame (≥50% de similaridade visual)</div>
   </div>
 
   <!-- LOADING -->
@@ -216,15 +216,15 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       <div class="scan-radar-line"></div>
       <div class="scan-radar-dot"></div>
     </div>
-    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Análise frame-by-frame em curso…</div>
-    <div style="font-size:13px;color:var(--text-sec)">Pode levar 1-2 min — varremos cada frame pra ter certeza absoluta</div>
+    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;background:linear-gradient(135deg,var(--neon),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Caçando reposts visuais…</div>
+    <div style="font-size:13px;color:var(--text-sec)">~30 segundos — busca visual no Google Lens + validação frame-by-frame</div>
     <div class="scan-steps">
       <div class="scan-step" id="s1"><div class="step-dot"></div>Identificando vídeo</div>
       <div class="scan-step" id="s2"><div class="step-dot"></div>Extraindo frames do seu vídeo (15fps)</div>
-      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando candidatos no YouTube global</div>
-      <div class="scan-step" id="s4"><div class="step-dot"></div>Filtrando por duração similar</div>
+      <div class="scan-step" id="s3"><div class="step-dot"></div>Buscando candidatos via Google Lens (visual)</div>
+      <div class="scan-step" id="s4"><div class="step-dot"></div>Validando candidatos relevantes</div>
       <div class="scan-step" id="s5"><div class="step-dot"></div>Comparando frames de cada candidato</div>
-      <div class="scan-step" id="s6"><div class="step-dot"></div>Identificando matches ≥ 90%</div>
+      <div class="scan-step" id="s6"><div class="step-dot"></div>Identificando reposts confirmados</div>
     </div>
   </div>
 
@@ -395,19 +395,20 @@ async function analyze() {
   try {
     await sleep(300); setStep(2);
 
-    // BlueLens YouTube-only profundo: chama SO /api/bluelens-fingerprint
-    // Pipeline: extract user fingerprint (15fps) → YouTube Search global →
-    // top 5 candidatos → extract fingerprints (5fps cada) → match ≥ 90%.
+    // BlueLens v3 (2026-05-04): chama /api/bluelens-fingerprint
+    // Pipeline: extract user fingerprint (15fps) + SerpAPI Google Lens (busca
+    // visual real) → enrich → top 5 candidatos → extract fingerprints (5fps) →
+    // match ≥ 0.50 com validityPenalty.
     const fpReq = fetch(`/api/bluelens-fingerprint?url=${encodeURIComponent(url)}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(295000),
     });
 
-    // Avanca steps visuais conforme tempo passa (proxy de progresso real)
-    setTimeout(() => setStep(3), 25000);
-    setTimeout(() => setStep(4), 45000);
-    setTimeout(() => setStep(5), 65000);
-    setTimeout(() => setStep(6), 95000);
+    // Avanca steps visuais conforme tempo passa (~22s total tipico)
+    setTimeout(() => setStep(3), 5000);
+    setTimeout(() => setStep(4), 10000);
+    setTimeout(() => setStep(5), 13000);
+    setTimeout(() => setStep(6), 18000);
 
     const fpRes = await fpReq;
     let fpData;
@@ -447,8 +448,8 @@ async function analyze() {
         verdict: visualMatches.length > 0 ? 'repost' : 'original',
         confidence: visualMatches.length > 0 ? (visualMatches[0].similarity / 100) : 0.95,
         reasoning: visualMatches.length > 0
-          ? `Encontramos ${visualMatches.length} canal${visualMatches.length>1?'is':''} no YouTube com o MESMO conteúdo visual do seu vídeo. Análise frame-by-frame com confiança ≥ 90%.`
-          : `Vasculhamos ${fpData.candidates_searched || 0} candidatos no YouTube global e nenhum tem ≥ 90% dos frames batendo com o seu. Tá liberado pra fazer 🚀`,
+          ? `Encontramos ${visualMatches.length} canal${visualMatches.length>1?'is':''} no YouTube postando o MESMO vídeo. Validado frame-by-frame após busca visual no Google Lens.`
+          : `Vasculhamos ${fpData.candidates_searched || 0} candidato${(fpData.candidates_searched||0)===1?'':'s'} via Google Lens e nenhum bateu o critério de cópia visual real. Tá liberado pra fazer 🚀`,
         patterns: [],
       },
       results: visualMatches,
@@ -540,9 +541,8 @@ function renderResults(data) {
     document.getElementById('metaDate').textContent = meta.publishedAt ? '📅 ' + fmtDate(meta.publishedAt) : '';
   }
 
-  // Resultados
-  // Filtra resultados com similaridade baixa demais (< 30%) — evita vídeos sem relação
-  const relevantResults = results.filter(r => (r.similarity || 0) >= 90);
+  // Resultados — backend ja filtra com SCORE_THRESHOLD (0.50), frontend so exibe
+  const relevantResults = results;
 
   if (relevantResults.length > 0) {
     document.getElementById('resultsCard').style.display = 'block';
