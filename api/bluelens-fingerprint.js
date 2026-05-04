@@ -1,44 +1,36 @@
 // api/bluelens-fingerprint.js
 //
-// BlueLens deep search: detecta cópias do vídeo do user em YouTube + outras
-// plataformas. Estratégia tripla de descoberta de candidatos + validação
-// rigorosa via fingerprint visual frame-by-frame.
+// BlueLens YouTube-only profundo: detecta quantos canais YouTube postaram
+// o MESMO conteudo visual do video do user. Sem dependencia de base
+// propria — busca candidatos via YouTube Search global e valida com
+// fingerprint visual frame-by-frame.
 //
-// Threshold rigoroso: só mostra matches >= 90% (zero falso positivo).
+// Threshold rigoroso: so mostra matches >= 90% (zero falso positivo).
 //
-// Pipeline (Plano A+B, 2026-05-04):
-//   1. Em paralelo:
-//      a. Pega metadata do video do user (YouTube Data API)
-//      b. Extract fingerprint do user em 15fps (Railway)
-//      c. Claude Vision: extrai keywords visuais da thumbnail (Plano A)
-//      d. Cloud Vision Web Detection: acha onde a imagem aparece na web (Plano B)
-//   2. YouTube Search com title + keywords (Plano A complementa)
-//   3. Combina candidatos: search + IDs YouTube do Web Detection
-//   4. Filtra Top 5 por duration similarity (±20%)
+// Pipeline (versao original 2026-05-03 + extractYouTubeId mais permissivo):
+//   1. Pega metadata do video do user (YouTube Data API)
+//   2. Extract fingerprint do user em 15fps (precisao maxima)
+//   3. YouTube Search global (3 queries paralelas, sem regionCode)
+//   4. Filtra Top 5 candidatos por duration similarity (±20%)
 //   5. Extract fingerprint dos 5 em paralelo (5fps cada)
-//   6. Match algorithm strict — score >= 0.90 entra como confirmed
-//   7. URLs cross-plataforma (TikTok/Instagram/etc) listadas em web_matches
-//      (não verificadas via fingerprint, mas Google detectou imagem matching)
+//   6. Match algorithm strict — score >= 0.90 entra
 //
-// Custos:
-//   - YouTube Data API: ~300 unidades por analise (KEY 5 dedicada)
-//   - Cloud Vision Web Detection: ~$0.0015 por análise (1k/mês free)
-//   - Claude Vision (Haiku): ~$0.001 por análise
+// Custo:
+//   - YouTube Data API: ~600 unidades por analise (KEY 5 dedicada)
 //   - Railway: free (yt-dlp + ffmpeg + sharp local)
+//   - Cobalt fallback se yt-dlp falhar
 //
-// maxDuration Vercel: 300s
+// maxDuration Vercel: 300s (cabe ~2-3 min tipico)
 
 const RAILWAY_URL = process.env.RAILWAY_FFMPEG_URL;
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
 const YT_KEY = process.env.YOUTUBE_API_KEY_5 || process.env.YOUTUBE_API_KEY_1;
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY;
-const VISION_KEY = process.env.GOOGLE_VISION_API_KEY;
 const supaH = SUPA_KEY ? { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } : null;
 
 const FPS_USER = 15;       // alta densidade pro video do user
 const FPS_CANDIDATE = 5;   // suficiente pra confirmar match
-const MAX_CANDIDATES = 12; // sobe pra 12 — Web Detection traz muitos sinais reais
+const MAX_CANDIDATES = 5;  // top filtrados por duration similarity
 const MAX_SECONDS = 60;    // limita extract a 60s (Shorts <= 60s)
 const SCORE_THRESHOLD = 0.90; // nao mostra abaixo disso
 
@@ -76,10 +68,8 @@ function compareFingerprints(fpUser, fpCand) {
   const fC = fpCand.p_hashes?.length || 0;
   if (fU === 0 || fC === 0) return { score: 0, matchedFrames: 0, total: 0 };
 
-  // User fps > Candidate fps. Mapeia user frame i pra candidate frame
-  // proporcional + janela.
-  const ratio = fC / fU; // se user tem 450 e candidate 150, ratio=0.33
-  const T_AHASH = 8;  // strict
+  const ratio = fC / fU;
+  const T_AHASH = 8;
   const T_DHASH = 6;
   const T_COLOR = 0.15;
 
@@ -101,14 +91,14 @@ function compareFingerprints(fpUser, fpCand) {
       const fs = aSim * 0.30 + dSim * 0.40 + cSim * 0.30;
       if (fs > bestScore) { bestScore = fs; bestJ = j; }
     }
-    if (bestScore >= 0.6) {  // frame-level threshold tighter (was 0.5)
+    if (bestScore >= 0.6) {
       matches.push({ src: i, dst: bestJ, score: bestScore });
       if (firstU === -1) { firstU = i; firstC = bestJ; }
       lastU = i; lastC = bestJ;
     }
   }
 
-  const matchRatio = matches.length / fU; // user tem mais frames, denominador deve ser user
+  const matchRatio = matches.length / fU;
   const avgQuality = matches.length > 0 ? matches.reduce((s, m) => s + m.score, 0) / matches.length : 0;
   const score = matchRatio * 0.65 + avgQuality * 0.35;
 
@@ -129,142 +119,11 @@ function compareFingerprints(fpUser, fpCand) {
 
 function extractYouTubeId(url) {
   try {
-    // Inclui i.ytimg.com/vi/<id>/... (URLs de thumbnail que vem em visuallySimilarImages)
+    // Mantida melhoria (sem risco): aceita tambem URLs i.ytimg.com/vi/<id>/...
+    // pra casos edge onde URL vem de thumbnail. Nao afeta pipeline atual.
     const m = url.match(/(?:shorts\/|v=|youtu\.be\/|ytimg\.com\/vi\/)([a-zA-Z0-9_-]{6,20})/);
     return m?.[1] || null;
   } catch { return null; }
-}
-
-// Claude Vision: descreve o conteudo visual e extrai keywords pra busca.
-// Pega reposts dentro do YouTube com titulos completamente diferentes.
-async function getVisualKeywords(thumbnailUrl) {
-  if (!CLAUDE_KEY || !thumbnailUrl) return [];
-  try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 100,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'url', url: thumbnailUrl } },
-            { type: 'text', text: 'Extract 5 visual keywords describing this video for YouTube search (objects, scene, action). Output ONLY comma-separated keywords in English, no explanation, no numbering.' },
-          ],
-        }],
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!r.ok) return [];
-    const d = await r.json();
-    const text = d.content?.[0]?.text || '';
-    return text.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 1 && s.length < 30).slice(0, 6);
-  } catch { return []; }
-}
-
-// Cloud Vision Web Detection: o motor cross-plataforma. Pega 1 frame e busca
-// onde aparece na web inteira. Retorna IDs YouTube + URLs de outras plataformas.
-async function getWebDetectionMatches(thumbnailUrl) {
-  const empty = { youtube_ids: [], other_platforms: [], total_pages: 0, error: null };
-  if (!VISION_KEY) return { ...empty, error: 'GOOGLE_VISION_API_KEY ausente' };
-  if (!thumbnailUrl) return { ...empty, error: 'thumbnail ausente' };
-  try {
-    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{
-          image: { source: { imageUri: thumbnailUrl } },
-          features: [{ type: 'WEB_DETECTION', maxResults: 50 }],
-        }],
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      return { ...empty, error: `HTTP ${r.status}: ${txt.slice(0, 250)}` };
-    }
-    const d = await r.json();
-    if (d.responses?.[0]?.error) {
-      return { ...empty, error: `Vision API: ${JSON.stringify(d.responses[0].error).slice(0, 250)}` };
-    }
-    const wd = d.responses?.[0]?.webDetection || {};
-
-    // 4 niveis de Web Detection (do mais forte ao mais fraco):
-    //   fullMatchingImages — copia exata
-    //   partialMatchingImages — match parcial
-    //   pagesWithMatchingImages — pagina contem imagem similar
-    //   visuallySimilarImages — imagens visualmente similares (Google Lens-style!)
-    //     Esse e o nivel mais util pra detectar reposts com thumbnails customizadas
-    const fullPages = (wd.fullMatchingImages || []).map(p => p.url);
-    const partialPages = (wd.partialMatchingImages || []).map(p => p.url);
-    const matchingPages = (wd.pagesWithMatchingImages || []).map(p => p.url);
-    const similarImages = (wd.visuallySimilarImages || []).map(p => p.url);
-    const allUrlsOrdered = [...fullPages, ...partialPages, ...matchingPages, ...similarImages];
-    const allUrls = [...new Set(allUrlsOrdered)];
-
-    const youtubeIds = new Set();
-    const youtubeIdsByLevel = { full: new Set(), partial: new Set(), pages: new Set(), similar: new Set() };
-    const otherPlatforms = [];
-    // Padroes de URL irrelevantes (thumbs YouTube, paginas de canal, etc) — descartar
-    const isIrrelevant = (url) => {
-      try {
-        const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-        const path = new URL(url).pathname;
-        if (host === 'i.ytimg.com' || host.endsWith('.ytimg.com')) return true; // thumb propria
-        if (host === 'youtube.com' && /^\/(@|c\/|channel\/|user\/|playlist|results)/.test(path)) return true;
-        if (host === 'm.youtube.com' && /^\/(@|c\/|channel\/|user\/|playlist|results)/.test(path)) return true;
-        return false;
-      } catch { return false; }
-    };
-    // Helper: classifica nivel de cada URL pra priorizar full > partial > pages > similar
-    const levelOf = (url) => {
-      if (fullPages.includes(url)) return 'full';
-      if (partialPages.includes(url)) return 'partial';
-      if (matchingPages.includes(url)) return 'pages';
-      return 'similar';
-    };
-    for (const url of allUrls) {
-      if (isIrrelevant(url)) continue;
-      const ytId = extractYouTubeId(url);
-      if (ytId) {
-        youtubeIds.add(ytId);
-        youtubeIdsByLevel[levelOf(url)].add(ytId);
-        continue;
-      }
-      try {
-        const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-        let platform = 'web';
-        if (host.includes('tiktok')) platform = 'tiktok';
-        else if (host.includes('instagram')) platform = 'instagram';
-        else if (host === 'twitter.com' || host === 'x.com') platform = 'twitter';
-        else if (host.includes('facebook')) platform = 'facebook';
-        else if (host.includes('kwai')) platform = 'kwai';
-        otherPlatforms.push({ url, platform, host, level: levelOf(url) });
-      } catch {}
-    }
-    return {
-      youtube_ids: [...youtubeIds],
-      youtube_ids_full: [...youtubeIdsByLevel.full],
-      youtube_ids_partial: [...youtubeIdsByLevel.partial],
-      youtube_ids_pages: [...youtubeIdsByLevel.pages],
-      youtube_ids_similar: [...youtubeIdsByLevel.similar],
-      other_platforms: otherPlatforms,
-      total_pages: allUrls.length,
-      level_counts: {
-        full: fullPages.length,
-        partial: partialPages.length,
-        pages: matchingPages.length,
-        similar: similarImages.length,
-      },
-      error: null,
-    };
-  } catch (e) { return { ...empty, error: `exception: ${(e.message || '').slice(0, 250)}` }; }
 }
 
 async function callRailwayExtract(url, fps) {
@@ -305,29 +164,23 @@ async function fetchVideoMeta(videoId) {
   } catch { return null; }
 }
 
-async function searchYouTubeCandidates(meta, originalVideoId, visualKeywords = []) {
-  if (!YT_KEY) return [];
+async function searchYouTubeCandidates(meta, originalVideoId) {
+  if (!YT_KEY || !meta?.title) return [];
   // Limpa título: remove hashtags, menções, pontuação excessiva
-  const cleanTitle = (meta?.title || '')
+  const cleanTitle = meta.title
     .replace(/#\w+/g, '').replace(/@\w+/g, '')
     .replace(/[|\[\]()【】「」]/g, ' ')
     .replace(/[^\w\sÀ-ÿ]/g, ' ')
     .replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!cleanTitle) return [];
 
+  // 3 queries paralelas SEM regionCode (busca GLOBAL)
   const baseUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=short&safeSearch=none&maxResults=10';
-  const queries = [];
-
-  // Title-based (Plano original)
-  if (cleanTitle) {
-    queries.push(`${baseUrl}&order=viewCount&q=${encodeURIComponent(cleanTitle)}&key=${YT_KEY}`);
-    queries.push(`${baseUrl}&order=relevance&q=${encodeURIComponent(cleanTitle.slice(0, 60))}&key=${YT_KEY}`);
-  }
-  // Keywords visuais do Claude (Plano A) — pega reposts com titulo/idioma diferente
-  if (visualKeywords.length > 0) {
-    const kwQuery = visualKeywords.slice(0, 5).join(' ').slice(0, 80);
-    queries.push(`${baseUrl}&order=viewCount&q=${encodeURIComponent(kwQuery)}&key=${YT_KEY}`);
-  }
-  if (queries.length === 0) return [];
+  const queries = [
+    `${baseUrl}&order=viewCount&q=${encodeURIComponent(cleanTitle)}&key=${YT_KEY}`,
+    `${baseUrl}&order=date&q=${encodeURIComponent(cleanTitle)}&key=${YT_KEY}`,
+    `${baseUrl}&order=relevance&q=${encodeURIComponent(cleanTitle.slice(0, 60))}&key=${YT_KEY}`,
+  ];
 
   try {
     const results = await Promise.all(queries.map(q => fetch(q, { signal: AbortSignal.timeout(15000) }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))));
@@ -345,7 +198,6 @@ async function searchYouTubeCandidates(meta, originalVideoId, visualKeywords = [
           channel: item.snippet?.channelTitle || '',
           thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || '',
           published_at: item.snippet?.publishedAt,
-          source: 'youtube_search',
         });
       }
     }
@@ -353,16 +205,12 @@ async function searchYouTubeCandidates(meta, originalVideoId, visualKeywords = [
   } catch (e) { return []; }
 }
 
-// Enriquece candidates com duration + views + (se faltar) title/channel/thumbnail.
-// Importante pros videoIds vindos do Cloud Vision Web Detection que chegam sem
-// metadata. Uma chamada videos.list cobre os 2 casos.
-async function enrichVideoDetails(candidates) {
+async function enrichDuration(candidates) {
   if (!YT_KEY || !candidates.length) return candidates;
-  const ids = candidates.map(c => c.id).filter(Boolean).join(',');
-  if (!ids) return candidates;
+  const ids = candidates.map(c => c.id).join(',');
   try {
     const r = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${ids}&key=${YT_KEY}`,
+      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${ids}&key=${YT_KEY}`,
       { signal: AbortSignal.timeout(15000) }
     );
     if (!r.ok) return candidates;
@@ -372,32 +220,9 @@ async function enrichVideoDetails(candidates) {
       const dur = item.contentDetails?.duration || '';
       const dm = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
       const seconds = (parseInt(dm?.[1] || 0) * 60) + parseInt(dm?.[2] || 0);
-      map.set(item.id, {
-        duration: seconds,
-        views: parseInt(item.statistics?.viewCount || 0),
-        title: item.snippet?.title || '',
-        channel: item.snippet?.channelTitle || '',
-        thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || '',
-        published_at: item.snippet?.publishedAt,
-      });
+      map.set(item.id, { duration: seconds, views: parseInt(item.statistics?.viewCount || 0) });
     }
-    // Merge: dados existentes do candidate prevalecem, enrich só preenche faltas
-    return candidates
-      .map(c => {
-        const enriched = map.get(c.id);
-        if (!enriched) return c;
-        return {
-          ...c,
-          duration: c.duration ?? enriched.duration,
-          views: c.views ?? enriched.views,
-          title: c.title || enriched.title,
-          channel: c.channel || enriched.channel,
-          thumbnail: c.thumbnail || enriched.thumbnail,
-          published_at: c.published_at || enriched.published_at,
-        };
-      })
-      // Filtra videoIds que nao retornaram (privados/deletados)
-      .filter(c => map.has(c.id) || c.title);
+    return candidates.map(c => ({ ...c, ...(map.get(c.id) || {}) }));
   } catch { return candidates; }
 }
 
@@ -419,23 +244,13 @@ module.exports = async function handler(req, res) {
   const stages = [];
 
   try {
-    // Thumbnail YouTube (sem precisar de metadata) — input pras 2 Vision APIs.
-    // hqdefault funciona pra TODOS Shorts; maxres pode 404 em vídeos antigos.
-    const thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
-
-    // ── 1. METADATA + USER FINGERPRINT + CLAUDE VISION + WEB DETECTION ──────
-    // 4 chamadas em paralelo. A mais lenta (extract Railway ~30s) define o tempo.
-    stages.push({ stage: 'parallel_discovery', t: Date.now() });
-    const [meta, userFp, visualKeywords, webMatches] = await Promise.all([
+    // ── 1. METADATA + 2. EXTRACT USER FINGERPRINT (paralelos) ──────────────
+    stages.push({ stage: 'metadata+extract_user', t: Date.now() });
+    const [meta, userFp] = await Promise.all([
       fetchVideoMeta(youtubeId),
       callRailwayExtract(url, FPS_USER),
-      getVisualKeywords(thumbnailUrl),
-      getWebDetectionMatches(thumbnailUrl),
     ]);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
-    stages[stages.length - 1].keywords = visualKeywords.length;
-    stages[stages.length - 1].web_pages = webMatches.total_pages;
-
     if (!meta || !meta.title) {
       return res.status(404).json({ error: 'Video YouTube nao encontrado ou privado' });
     }
@@ -443,90 +258,34 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: 'Falha ao extrair fingerprint do video' });
     }
 
-    // ── 2. YouTube Search (title + visual keywords) ────────────────────────
-    stages.push({ stage: 'search_combined', t: Date.now() });
-    const searchCandidates = await searchYouTubeCandidates(meta, youtubeId, visualKeywords);
+    // ── 3. YouTube Search GLOBAL ───────────────────────────────────────────
+    stages.push({ stage: 'search_global', t: Date.now() });
+    const candidates = await searchYouTubeCandidates(meta, youtubeId);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
-    stages[stages.length - 1].count = searchCandidates.length;
-
-    // ── 3. Combina fontes: Web Detection (priorizado por nivel) + search ───
-    // Web Detection tem alta prioridade — Google ja confirmou que a imagem
-    // aparece la. Nivel full > partial > pages.
-    const seen = new Set([youtubeId, ...searchCandidates.map(c => c.id)]);
-    const buildWebCandidate = (id, level) => ({
-      id,
-      url: `https://www.youtube.com/watch?v=${id}`,
-      title: '', channel: '', thumbnail: '', published_at: null,
-      source: 'web_detection',
-      web_level: level,
-    });
-    const webDetectionCandidates = [];
-    for (const id of (webMatches.youtube_ids_full || [])) {
-      if (seen.has(id)) continue; seen.add(id);
-      webDetectionCandidates.push(buildWebCandidate(id, 'full'));
-    }
-    for (const id of (webMatches.youtube_ids_partial || [])) {
-      if (seen.has(id)) continue; seen.add(id);
-      webDetectionCandidates.push(buildWebCandidate(id, 'partial'));
-    }
-    for (const id of (webMatches.youtube_ids_pages || [])) {
-      if (seen.has(id)) continue; seen.add(id);
-      webDetectionCandidates.push(buildWebCandidate(id, 'pages'));
-    }
-    for (const id of (webMatches.youtube_ids_similar || [])) {
-      if (seen.has(id)) continue; seen.add(id);
-      webDetectionCandidates.push(buildWebCandidate(id, 'similar'));
-    }
-    const candidates = [...webDetectionCandidates, ...searchCandidates];
 
     if (candidates.length === 0) {
       return res.status(200).json({
         ok: true,
         url, video_meta: meta,
-        visual_keywords: visualKeywords,
-        web_detection: {
-          total_pages: webMatches.total_pages,
-          level_counts: webMatches.level_counts,
-          youtube_ids_found: webMatches.youtube_ids?.length || 0,
-          youtube_ids_full: webMatches.youtube_ids_full,
-          youtube_ids_partial: webMatches.youtube_ids_partial,
-          youtube_ids_pages: webMatches.youtube_ids_pages,
-          youtube_ids_similar: webMatches.youtube_ids_similar,
-          error: webMatches.error,
-        },
         matches: [],
-        web_matches: webMatches.other_platforms,
-        message: webMatches.other_platforms.length > 0
-          ? 'Nenhum candidato YouTube encontrado, mas imagem aparece em outras plataformas.'
-          : 'Nenhum candidato encontrado.',
+        message: 'Nenhum candidato encontrado pelo YouTube Search.',
         timing: { total_ms: Date.now() - startTs, stages },
       });
     }
 
-    // ── 4. Enriquece (snippet + duration + views) e filtra ±20% ────────────
-    stages.push({ stage: 'enrich', t: Date.now() });
-    const enriched = await enrichVideoDetails(candidates);
+    // ── 4. Enriquece com duration + filtra ±20% ────────────────────────────
+    stages.push({ stage: 'enrich_duration', t: Date.now() });
+    const enriched = await enrichDuration(candidates);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
     const userDur = meta.duration || userFp.duration_seconds || 0;
-    // Filtro de duration: BYPASS pra Web Detection (Google ja confirmou imagem
-    // matching, reposts podem ter cortes/loops e ainda ser validos). Aplica
-    // ±20% so pra youtube_search candidates.
     const filtered = enriched
       .filter(c => {
-        if (c.source === 'web_detection') return true; // bypass
-        if (!userDur || !c.duration) return true;
+        if (!userDur || !c.duration) return true; // sem duration, mantem
         const diff = Math.abs(userDur - c.duration) / Math.max(userDur, c.duration);
         return diff <= 0.20;
       })
-      // Sort por nivel Web Detection (full > partial > pages > similar > youtube_search), depois views
-      .sort((a, b) => {
-        const levelRank = { full: 0, partial: 1, pages: 2, similar: 3 };
-        const aLvl = a.source === 'web_detection' ? levelRank[a.web_level] ?? 4 : 5;
-        const bLvl = b.source === 'web_detection' ? levelRank[b.web_level] ?? 4 : 5;
-        if (aLvl !== bLvl) return aLvl - bLvl;
-        return (b.views || 0) - (a.views || 0);
-      })
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
       .slice(0, MAX_CANDIDATES);
 
     if (filtered.length === 0) {
@@ -534,7 +293,6 @@ module.exports = async function handler(req, res) {
         ok: true,
         url, video_meta: meta,
         matches: [],
-        web_matches: webMatches.other_platforms,
         message: 'Nenhum candidato com duracao similar.',
         candidates_searched: candidates.length,
         timing: { total_ms: Date.now() - startTs, stages },
@@ -555,31 +313,28 @@ module.exports = async function handler(req, res) {
     // ── 6. MATCH algorithm strict — score >= 0.90 ──────────────────────────
     stages.push({ stage: 'match', t: Date.now() });
     const matches = [];
-    const allScored = [];  // pra debug: TODOS os candidatos com score
     for (const c of candFps) {
       if (!c.fp_ok || !c.fp.p_hashes?.length) continue;
       const cmp = compareFingerprints(userFp, c.fp);
-      const item = {
-        url: c.url,
-        video_id: c.id,
-        title: c.title,
-        channel: c.channel,
-        thumbnail: c.thumbnail,
-        published_at: c.published_at,
-        views: c.views,
-        duration: c.duration,
-        source: c.source,
-        score: cmp.score,
-        confidence_pct: Math.round(cmp.score * 100),
-        matched_frames: cmp.matchedFrames,
-        total_frames: cmp.total,
-        temporal_overlap: cmp.temporalOverlap,
-      };
-      allScored.push(item);
-      if (cmp.score >= SCORE_THRESHOLD) matches.push(item);
+      if (cmp.score >= SCORE_THRESHOLD) {
+        matches.push({
+          url: c.url,
+          video_id: c.id,
+          title: c.title,
+          channel: c.channel,
+          thumbnail: c.thumbnail,
+          published_at: c.published_at,
+          views: c.views,
+          duration: c.duration,
+          score: cmp.score,
+          confidence_pct: Math.round(cmp.score * 100),
+          matched_frames: cmp.matchedFrames,
+          total_frames: cmp.total,
+          temporal_overlap: cmp.temporalOverlap,
+        });
+      }
     }
     matches.sort((a, b) => b.score - a.score);
-    allScored.sort((a, b) => b.score - a.score);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
     return res.status(200).json({
@@ -592,28 +347,10 @@ module.exports = async function handler(req, res) {
         fps: FPS_USER,
         duration_seconds: userFp.duration_seconds,
       },
-      // Discovery sources
-      visual_keywords: visualKeywords,
-      web_detection: {
-        total_pages: webMatches.total_pages,
-        level_counts: webMatches.level_counts,  // {full, partial, pages}
-        youtube_ids_found: webMatches.youtube_ids.length,
-        youtube_ids_full: webMatches.youtube_ids_full,    // copia exata (sinal forte)
-        youtube_ids_partial: webMatches.youtube_ids_partial, // match parcial
-        youtube_ids_pages: webMatches.youtube_ids_pages,  // imagem similar
-        error: webMatches.error,
-      },
-      // Candidates pipeline
       candidates_searched: candidates.length,
       candidates_filtered: filtered.length,
       candidates_extracted: candFps.filter(c => c.fp_ok).length,
-      // Confirmed matches (>= 90% via fingerprint)
       matches,
-      // Debug: top candidatos com score (mesmo abaixo do threshold) pra ajustar threshold
-      top_candidates: allScored.slice(0, 10),
-      // Cross-platform URLs (TikTok/Instagram/etc) — Google detectou imagem matching
-      // mas nao validamos com fingerprint (Railway so suporta YouTube hoje)
-      web_matches: webMatches.other_platforms,
       threshold: SCORE_THRESHOLD,
       timing: { total_ms: Date.now() - startTs, stages },
     });
