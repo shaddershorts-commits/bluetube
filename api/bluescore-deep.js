@@ -209,7 +209,7 @@ async function transcribeVideo(videoId) {
 }
 
 async function analyzeVisual(thumbnailUrl, frameUrl) {
-  if (!ANTHROPIC_KEY) return { ok: false, error: 'no_anthropic_key' };
+  if (!ANTHROPIC_KEY) return { ok: false, error: 'visual_engine_unavailable' };
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -249,7 +249,7 @@ async function analyzeVisual(thumbnailUrl, frameUrl) {
     });
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
-      return { ok: false, error: `claude HTTP ${r.status}: ${txt.slice(0, 150)}` };
+      return { ok: false, error: `visual_engine HTTP ${r.status}: ${txt.slice(0, 150)}` };
     }
     const d = await r.json();
     const text = d.content?.[0]?.text || '';
@@ -264,7 +264,7 @@ async function analyzeVisual(thumbnailUrl, frameUrl) {
 }
 
 async function reverseSearch(thumbnailUrl) {
-  if (!SERPAPI_KEY) return { ok: false, error: 'no_serpapi_key' };
+  if (!SERPAPI_KEY) return { ok: false, error: 'reverse_engine_unavailable' };
   try {
     const url = `https://serpapi.com/search?engine=google_lens&url=${encodeURIComponent(thumbnailUrl)}&api_key=${SERPAPI_KEY}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
@@ -395,7 +395,7 @@ Responda APENAS JSON válido sem markdown:
       const d = await r.json();
       if (r.ok && d.choices?.[0]?.message?.content) {
         const parsed = extractJson(d.choices[0].message.content);
-        if (parsed) return { ok: true, source: 'openai-gpt-4o-mini', report: parsed };
+        if (parsed) return { ok: true, source: 'bluescore-engine-primary', report: parsed };
       }
     } catch (e) { /* fallback */ }
   }
@@ -419,7 +419,7 @@ Responda APENAS JSON válido sem markdown:
       if (!r.ok) continue;
       const text = d.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || '';
       const parsed = extractJson(text);
-      if (parsed) return { ok: true, source: 'gemini-2.0-flash', report: parsed };
+      if (parsed) return { ok: true, source: 'bluescore-engine-fallback', report: parsed };
     } catch (e) { /* try next */ }
   }
 
@@ -520,10 +520,10 @@ module.exports = async function handler(req, res) {
     stages.push({ stage: 'legal_report', t: Date.now() });
     const reportResult = await generateLegalReport(channel, videoData, guidelines);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
-    stages[stages.length - 1].source = reportResult.source || 'failed';
+    // Source mantido internamente nos logs server-side mas nao exposto no stage
 
     if (!reportResult.ok) {
-      return res.status(502).json({ error: 'all_ia_providers_failed', stages });
+      return res.status(502).json({ error: 'bluescore_engine_unavailable', stages });
     }
 
     // 9. Salva no Supabase com user_id
@@ -552,15 +552,16 @@ module.exports = async function handler(req, res) {
         publishedAt: v.publishedAt,
         thumbnail: v.thumbnailUrl,
         transcript: v.transcript?.ok
-          ? { source: v.transcript.source, length: v.transcript.text.length, sample: v.transcript.text.slice(0, 200) }
-          : { error: v.transcript?.error || 'unknown' },
-        visual: v.visual?.ok ? v.visual.analysis : { error: v.visual?.error || 'unknown' },
+          ? { length: v.transcript.text.length, sample: v.transcript.text.slice(0, 200) }
+          : { error: 'audio_engine_failed' },
+        visual: v.visual?.ok ? v.visual.analysis : { error: 'visual_engine_failed' },
         reverse: v.reverse?.ok
           ? { total_matches: v.reverse.total_matches, top3: v.reverse.external_top8.slice(0, 3) }
-          : { error: v.reverse?.error || 'unknown' },
+          : { error: 'reverse_engine_failed' },
       })),
       report: reportResult.report,
-      report_source: reportResult.source,
+      // report_source mantido internamente nos logs server-side mas nao exposto no response
+      engine_version: 'bluescore-v2',
       timing_ms: Date.now() - startTs,
       stages,
     });
