@@ -37,7 +37,7 @@ const FPS_USER = 15;       // alta densidade pro video do user
 const FPS_CANDIDATE = 5;   // suficiente pra confirmar match
 const MAX_CANDIDATES = 5;  // top filtrados por duration similarity
 const MAX_SECONDS = 60;    // limita extract a 60s (Shorts <= 60s)
-const SCORE_THRESHOLD = 0.50; // nao mostra abaixo disso (calibrado em 2026-05-04 — reposts editados batem 40-55%)
+const SCORE_THRESHOLD = 0.20; // modo amplo — captura cópias + reposts editados + similares (user pediu 2026-05-04 priorizando recall sobre precisao)
 
 // Hamming distance entre 2 hex strings (16 chars = 64 bits)
 function hammingHex(a, b) {

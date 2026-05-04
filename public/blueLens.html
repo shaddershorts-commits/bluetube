@@ -204,7 +204,7 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         Detectar cópias
       </button>
     </div>
-    <div class="input-hint">⏱ ~30 segundos · Busca visual via Google Lens · Acha reposts mesmo com idioma/título diferentes · Validação frame-by-frame (≥50% de similaridade visual)</div>
+    <div class="input-hint">⏱ ~30s · Busca visual via Google Lens · YouTube + cross-plataforma (TikTok/IG/Twitter/etc) · Modo amplo (≥20% similaridade)</div>
   </div>
 
   <!-- LOADING -->
@@ -266,6 +266,16 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="resultsCount"></span>
       </div>
       <div id="resultsList"></div>
+    </div>
+
+    <!-- WEB MATCHES (cross-platform — TikTok/IG/Twitter/Reddit/FB/etc) -->
+    <div class="results-card" id="webMatchesCard" style="display:none;margin-top:16px">
+      <div class="section-title">
+        🌍 Detectado em outras plataformas
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="webMatchesCount"></span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:12px;line-height:1.5">Imagem similar achada pelo Google Lens em outras redes. Não validamos frame-by-frame nessas plataformas — clique pra ver.</div>
+      <div id="webMatchesList"></div>
     </div>
 
     <!-- NOVA ANÁLISE -->
@@ -448,11 +458,12 @@ async function analyze() {
         verdict: visualMatches.length > 0 ? 'repost' : 'original',
         confidence: visualMatches.length > 0 ? (visualMatches[0].similarity / 100) : 0.95,
         reasoning: visualMatches.length > 0
-          ? `Encontramos ${visualMatches.length} canal${visualMatches.length>1?'is':''} no YouTube postando o MESMO vídeo. Validado frame-by-frame após busca visual no Google Lens.`
-          : `Vasculhamos ${fpData.candidates_searched || 0} candidato${(fpData.candidates_searched||0)===1?'':'s'} via Google Lens e nenhum bateu o critério de cópia visual real. Tá liberado pra fazer 🚀`,
+          ? `Encontramos ${visualMatches.length} candidato${visualMatches.length>1?'s':''} no YouTube com similaridade visual. Inclui cópias confirmadas (≥80%), reposts editados (50-79%) e vídeos similares (20-49%). Veja a confiança de cada um na lista.`
+          : `Vasculhamos ${fpData.candidates_searched || 0} candidato${(fpData.candidates_searched||0)===1?'':'s'} via Google Lens e nenhum bateu o mínimo de 20% de similaridade visual. Tá liberado pra fazer 🚀`,
         patterns: [],
       },
       results: visualMatches,
+      _webMatches: fpData.web_matches || [],
       _stats: {
         candidates_searched: fpData.candidates_searched,
         candidates_filtered: fpData.candidates_filtered,
@@ -541,8 +552,18 @@ function renderResults(data) {
     document.getElementById('metaDate').textContent = meta.publishedAt ? '📅 ' + fmtDate(meta.publishedAt) : '';
   }
 
-  // Resultados — backend ja filtra com SCORE_THRESHOLD (0.50), frontend so exibe
+  // Resultados — backend ja filtra com SCORE_THRESHOLD (0.20 modo amplo), frontend so exibe
   const relevantResults = results;
+
+  // Web matches (cross-platform — TikTok/IG/Twitter/etc, sem validacao fingerprint)
+  const webMatches = data._webMatches || [];
+  if (webMatches.length > 0) {
+    document.getElementById('webMatchesCard').style.display = 'block';
+    document.getElementById('webMatchesCount').textContent = webMatches.length + ' encontrado' + (webMatches.length>1?'s':'');
+    document.getElementById('webMatchesList').innerHTML = webMatches.slice(0, 30).map(buildWebMatchItem).join('');
+  } else {
+    document.getElementById('webMatchesCard').style.display = 'none';
+  }
 
   if (relevantResults.length > 0) {
     document.getElementById('resultsCard').style.display = 'block';
@@ -614,8 +635,13 @@ async function refineSearch() {
 
 function buildResultItem(r, idx) {
   const isTop = idx === 0;
-  const simColor = r.similarity >= 95 ? 'var(--green)' : 'var(--gold)';
-  const confLabel = r.similarity >= 95 ? 'cópia certa' : 'altíssima';
+  const sim = r.similarity || 0;
+  // Escala 20-100% — modo amplo
+  let simColor, confLabel, badgeBg, badgeBorder;
+  if (sim >= 80)      { simColor = 'var(--green)';  confLabel = 'cópia confirmada'; badgeBg='rgba(34,197,94,.12)';  badgeBorder='rgba(34,197,94,.35)'; }
+  else if (sim >= 50) { simColor = 'var(--gold)';   confLabel = 'repost editado';   badgeBg='rgba(251,191,36,.12)'; badgeBorder='rgba(251,191,36,.35)'; }
+  else if (sim >= 35) { simColor = '#fb923c';       confLabel = 'muito similar';    badgeBg='rgba(251,146,60,.12)'; badgeBorder='rgba(251,146,60,.35)'; }
+  else                { simColor = '#94a3b8';       confLabel = 'similar';          badgeBg='rgba(148,163,184,.10)';badgeBorder='rgba(148,163,184,.30)'; }
   const framesInfo = (r.matchedFrames !== undefined && r.totalFrames !== undefined)
     ? `<div style="margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--text-dim)">${r.matchedFrames} de ${r.totalFrames} frames batendo</div>`
     : '';
@@ -629,7 +655,7 @@ function buildResultItem(r, idx) {
       <div class="result-title">${r.title||'—'}</div>
       <div class="result-meta">${r.channel||'—'}${r.views?' · '+fmtNum(r.views)+' views':''}${r.publishedAt?' · '+fmtDate(r.publishedAt):''}</div>
       <div style="margin-top:6px">
-        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);font-family:var(--mono);font-size:10px;font-weight:700;color:var(--green)">🎯 Match visual ▶ YouTube · ${confLabel}</div>
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:${badgeBg};border:1px solid ${badgeBorder};font-family:var(--mono);font-size:10px;font-weight:700;color:${simColor}">🎯 Match visual ▶ YouTube · ${confLabel}</div>
       </div>
       ${framesInfo}
       ${temporal}
@@ -638,6 +664,31 @@ function buildResultItem(r, idx) {
       <span class="sim-pct" style="color:${simColor}">${r.similarity}%</span>
       <div class="sim-bar"><div class="sim-fill" style="width:${r.similarity}%;background:${simColor}"></div></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">visual</div>
+    </div>
+  </div>`;
+}
+
+function buildWebMatchItem(m) {
+  const platformIcons = {
+    tiktok: '🎵', instagram: '📷', twitter: '🐦', facebook: '📘',
+    reddit: '🔴', kwai: '⚡', pinterest: '📌', web: '🌐'
+  };
+  const platformColors = {
+    tiktok: '#ec4899', instagram: '#a855f7', twitter: '#3b82f6',
+    facebook: '#3b82f6', reddit: '#fb923c', kwai: '#fbbf24',
+    pinterest: '#ef4444', web: '#94a3b8'
+  };
+  const icon = platformIcons[m.platform] || '🌐';
+  const color = platformColors[m.platform] || '#94a3b8';
+  const safeUrl = (m.url||'').replace(/'/g, "\\'");
+  return `<div class="result-item" onclick="window.open('${safeUrl}','_blank','noopener')" style="cursor:pointer">
+    ${m.thumbnail?`<img class="result-thumb" src="${m.thumbnail}" onerror="this.style.display='none'" loading="lazy"/>`:'<div class="result-thumb" style="display:flex;align-items:center;justify-content:center;background:rgba(148,163,184,.08);font-size:24px">'+icon+'</div>'}
+    <div class="result-info">
+      <div class="result-title">${(m.title||'(sem título)').slice(0,120)}</div>
+      <div class="result-meta">${icon} ${(m.platform||'web').toUpperCase()}${m.source?' · '+m.source:''}</div>
+      <div style="margin-top:6px">
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.25);font-family:var(--mono);font-size:10px;font-weight:700;color:${color}">🌍 Imagem similar · ${(m.platform||'web').toUpperCase()}</div>
+      </div>
     </div>
   </div>`;
 }
@@ -662,6 +713,9 @@ function reset() {
   // Limpa elementos dinâmicos
   const rec = document.querySelector('.verdict-card div[style*="neon"]');
   if (rec) rec.remove();
+  // Esconde web matches da analise anterior
+  const wmc = document.getElementById('webMatchesCard');
+  if (wmc) wmc.style.display = 'none';
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
