@@ -201,7 +201,19 @@ async function getWebDetectionMatches(thumbnailUrl) {
 
     const youtubeIds = new Set();
     const otherPlatforms = [];
+    // Padroes de URL irrelevantes (thumbs YouTube, paginas de canal, etc) — descartar
+    const isIrrelevant = (url) => {
+      try {
+        const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+        const path = new URL(url).pathname;
+        if (host === 'i.ytimg.com' || host.endsWith('.ytimg.com')) return true; // thumb propria
+        if (host === 'youtube.com' && /^\/(@|c\/|channel\/|user\/|playlist|results)/.test(path)) return true;
+        if (host === 'm.youtube.com' && /^\/(@|c\/|channel\/|user\/|playlist|results)/.test(path)) return true;
+        return false;
+      } catch { return false; }
+    };
     for (const url of allUrls) {
+      if (isIrrelevant(url)) continue;
       const ytId = extractYouTubeId(url);
       if (ytId) { youtubeIds.add(ytId); continue; }
       try {
@@ -478,29 +490,31 @@ module.exports = async function handler(req, res) {
     // ── 6. MATCH algorithm strict — score >= 0.90 ──────────────────────────
     stages.push({ stage: 'match', t: Date.now() });
     const matches = [];
+    const allScored = [];  // pra debug: TODOS os candidatos com score
     for (const c of candFps) {
       if (!c.fp_ok || !c.fp.p_hashes?.length) continue;
       const cmp = compareFingerprints(userFp, c.fp);
-      if (cmp.score >= SCORE_THRESHOLD) {
-        matches.push({
-          url: c.url,
-          video_id: c.id,
-          title: c.title,
-          channel: c.channel,
-          thumbnail: c.thumbnail,
-          published_at: c.published_at,
-          views: c.views,
-          duration: c.duration,
-          source: c.source,
-          score: cmp.score,
-          confidence_pct: Math.round(cmp.score * 100),
-          matched_frames: cmp.matchedFrames,
-          total_frames: cmp.total,
-          temporal_overlap: cmp.temporalOverlap,
-        });
-      }
+      const item = {
+        url: c.url,
+        video_id: c.id,
+        title: c.title,
+        channel: c.channel,
+        thumbnail: c.thumbnail,
+        published_at: c.published_at,
+        views: c.views,
+        duration: c.duration,
+        source: c.source,
+        score: cmp.score,
+        confidence_pct: Math.round(cmp.score * 100),
+        matched_frames: cmp.matchedFrames,
+        total_frames: cmp.total,
+        temporal_overlap: cmp.temporalOverlap,
+      };
+      allScored.push(item);
+      if (cmp.score >= SCORE_THRESHOLD) matches.push(item);
     }
     matches.sort((a, b) => b.score - a.score);
+    allScored.sort((a, b) => b.score - a.score);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
     return res.status(200).json({
@@ -518,6 +532,7 @@ module.exports = async function handler(req, res) {
       web_detection: {
         total_pages: webMatches.total_pages,
         youtube_ids_found: webMatches.youtube_ids.length,
+        youtube_ids: webMatches.youtube_ids,  // debug: lista completa
         error: webMatches.error,
       },
       // Candidates pipeline
@@ -526,6 +541,8 @@ module.exports = async function handler(req, res) {
       candidates_extracted: candFps.filter(c => c.fp_ok).length,
       // Confirmed matches (>= 90% via fingerprint)
       matches,
+      // Debug: top candidatos com score (mesmo abaixo do threshold) pra ajustar threshold
+      top_candidates: allScored.slice(0, 10),
       // Cross-platform URLs (TikTok/Instagram/etc) — Google detectou imagem matching
       // mas nao validamos com fingerprint (Railway so suporta YouTube hoje)
       web_matches: webMatches.other_platforms,
