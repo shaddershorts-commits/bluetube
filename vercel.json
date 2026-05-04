@@ -25,7 +25,8 @@
     "api/bluelens-fingerprint.js": { "maxDuration": 300 },
     "api/bluelens-seeder.js": { "maxDuration": 600 },
     "api/bluelens-serpapi-test.js": { "maxDuration": 60 },
-    "api/bluelens-cleanup.js": { "maxDuration": 60 }
+    "api/bluelens-cleanup.js": { "maxDuration": 60 },
+    "api/ypp-guidelines-fetch-test.js": { "maxDuration": 60 }
   },
   "crons": [
     {
