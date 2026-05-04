@@ -169,8 +169,9 @@ async function getVisualKeywords(thumbnailUrl) {
 // Cloud Vision Web Detection: o motor cross-plataforma. Pega 1 frame e busca
 // onde aparece na web inteira. Retorna IDs YouTube + URLs de outras plataformas.
 async function getWebDetectionMatches(thumbnailUrl) {
-  const empty = { youtube_ids: [], other_platforms: [], total_pages: 0 };
-  if (!VISION_KEY || !thumbnailUrl) return empty;
+  const empty = { youtube_ids: [], other_platforms: [], total_pages: 0, error: null };
+  if (!VISION_KEY) return { ...empty, error: 'GOOGLE_VISION_API_KEY ausente' };
+  if (!thumbnailUrl) return { ...empty, error: 'thumbnail ausente' };
   try {
     const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`, {
       method: 'POST',
@@ -183,8 +184,14 @@ async function getWebDetectionMatches(thumbnailUrl) {
       }),
       signal: AbortSignal.timeout(15000),
     });
-    if (!r.ok) return empty;
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      return { ...empty, error: `HTTP ${r.status}: ${txt.slice(0, 250)}` };
+    }
     const d = await r.json();
+    if (d.responses?.[0]?.error) {
+      return { ...empty, error: `Vision API: ${JSON.stringify(d.responses[0].error).slice(0, 250)}` };
+    }
     const wd = d.responses?.[0]?.webDetection || {};
 
     const fullPages = (wd.fullMatchingImages || []).map(p => p.url);
@@ -212,8 +219,9 @@ async function getWebDetectionMatches(thumbnailUrl) {
       youtube_ids: [...youtubeIds],
       other_platforms: otherPlatforms,
       total_pages: allUrls.length,
+      error: null,
     };
-  } catch { return empty; }
+  } catch (e) { return { ...empty, error: `exception: ${(e.message || '').slice(0, 250)}` }; }
 }
 
 async function callRailwayExtract(url, fps) {
@@ -510,6 +518,7 @@ module.exports = async function handler(req, res) {
       web_detection: {
         total_pages: webMatches.total_pages,
         youtube_ids_found: webMatches.youtube_ids.length,
+        error: webMatches.error,
       },
       // Candidates pipeline
       candidates_searched: candidates.length,
