@@ -1,31 +1,36 @@
 // api/bluelens-fingerprint.js
 //
-// BlueLens YouTube-only profundo: detecta quantos canais YouTube postaram
-// o MESMO conteudo visual do video do user. Sem dependencia de base
-// propria — busca candidatos via YouTube Search global e valida com
-// fingerprint visual frame-by-frame.
+// BlueLens — detecta cópias do vídeo do user em YouTube + outras plataformas
+// usando busca POR FRAMES (visual reverse search), não por título.
 //
-// Threshold rigoroso: so mostra matches >= 90% (zero falso positivo).
+// Threshold rigoroso: só mostra matches >= 90% (zero falso positivo).
 //
-// Pipeline (versao original 2026-05-03 + extractYouTubeId mais permissivo):
-//   1. Pega metadata do video do user (YouTube Data API)
-//   2. Extract fingerprint do user em 15fps (precisao maxima)
-//   3. YouTube Search global (3 queries paralelas, sem regionCode)
-//   4. Filtra Top 5 candidatos por duration similarity (±20%)
-//   5. Extract fingerprint dos 5 em paralelo (5fps cada)
-//   6. Match algorithm strict — score >= 0.90 entra
+// Pipeline (2026-05-04 — SerpAPI Google Lens como fonte):
+//   1. Em paralelo:
+//      a. Pega metadata do video do user (YouTube Data API)
+//      b. Extract fingerprint do user em 15fps (Railway)
+//      c. SerpAPI Google Lens com a thumbnail — descobre candidatos visuais
+//         (acha reposts cross-idioma e cross-canal sem depender de título)
+//   2. Enrich candidatos YouTube com snippet+duration+views (videos.list)
+//   3. Filtra ±20% duration similarity
+//   4. Top MAX_CANDIDATES por views
+//   5. Extract fingerprint dos top em paralelo (5fps cada)
+//   6. Match algorithm strict — score >= 0.90 entra como confirmed
+//   7. URLs cross-plataforma (TikTok/Instagram/Twitter/etc) listadas em web_matches
 //
-// Custo:
-//   - YouTube Data API: ~600 unidades por analise (KEY 5 dedicada)
+// Custos:
+//   - SerpAPI Google Lens: 1 busca por análise (free 250/mês non-commercial,
+//     Starter $25/mês = 1000/mês comercial)
+//   - YouTube Data API: ~5 unidades por análise (videos.list enrich)
 //   - Railway: free (yt-dlp + ffmpeg + sharp local)
-//   - Cobalt fallback se yt-dlp falhar
 //
-// maxDuration Vercel: 300s (cabe ~2-3 min tipico)
+// maxDuration Vercel: 300s (cabe ~2-3 min típico)
 
 const RAILWAY_URL = process.env.RAILWAY_FFMPEG_URL;
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
 const YT_KEY = process.env.YOUTUBE_API_KEY_5 || process.env.YOUTUBE_API_KEY_1;
+const SERPAPI_KEY = process.env.SERPAPI_KEY;
 const supaH = SUPA_KEY ? { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } : null;
 
 const FPS_USER = 15;       // alta densidade pro video do user
@@ -119,11 +124,26 @@ function compareFingerprints(fpUser, fpCand) {
 
 function extractYouTubeId(url) {
   try {
-    // Mantida melhoria (sem risco): aceita tambem URLs i.ytimg.com/vi/<id>/...
-    // pra casos edge onde URL vem de thumbnail. Nao afeta pipeline atual.
+    // Aceita também URLs i.ytimg.com/vi/<id>/... (vem em visual_matches da SerpAPI)
     const m = url.match(/(?:shorts\/|v=|youtu\.be\/|ytimg\.com\/vi\/)([a-zA-Z0-9_-]{6,20})/);
     return m?.[1] || null;
   } catch { return null; }
+}
+
+function detectPlatform(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
+    if (host === 'i.ytimg.com' || host.endsWith('.ytimg.com')) return 'youtube_thumb';
+    if (host.includes('tiktok.com')) return 'tiktok';
+    if (host.includes('instagram.com')) return 'instagram';
+    if (host === 'twitter.com' || host === 'x.com') return 'twitter';
+    if (host.includes('facebook.com') || host.includes('fbsbx.com')) return 'facebook';
+    if (host.includes('kwai')) return 'kwai';
+    if (host.includes('reddit.com')) return 'reddit';
+    if (host.includes('pinterest.com') || host.includes('pinimg.com')) return 'pinterest';
+    return 'other';
+  } catch { return 'unknown'; }
 }
 
 async function callRailwayExtract(url, fps) {
@@ -164,53 +184,67 @@ async function fetchVideoMeta(videoId) {
   } catch { return null; }
 }
 
-async function searchYouTubeCandidates(meta, originalVideoId) {
-  if (!YT_KEY || !meta?.title) return [];
-  // Limpa título: remove hashtags, menções, pontuação excessiva
-  const cleanTitle = meta.title
-    .replace(/#\w+/g, '').replace(/@\w+/g, '')
-    .replace(/[|\[\]()【】「」]/g, ' ')
-    .replace(/[^\w\sÀ-ÿ]/g, ' ')
-    .replace(/\s+/g, ' ').trim().slice(0, 80);
-  if (!cleanTitle) return [];
-
-  // 3 queries paralelas SEM regionCode (busca GLOBAL)
-  const baseUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=short&safeSearch=none&maxResults=10';
-  const queries = [
-    `${baseUrl}&order=viewCount&q=${encodeURIComponent(cleanTitle)}&key=${YT_KEY}`,
-    `${baseUrl}&order=date&q=${encodeURIComponent(cleanTitle)}&key=${YT_KEY}`,
-    `${baseUrl}&order=relevance&q=${encodeURIComponent(cleanTitle.slice(0, 60))}&key=${YT_KEY}`,
-  ];
-
+// SerpAPI Google Lens — busca reverse de imagem (motor que Google Lens web usa).
+// Substitui YouTube Search por título — acha reposts cross-idioma e cross-canal.
+async function getSerpAPICandidates(youtubeId, thumbnailUrl) {
+  const empty = { youtube_ids: [], other_platforms: [], total_visual_matches: 0, error: null };
+  if (!SERPAPI_KEY) return { ...empty, error: 'SERPAPI_KEY ausente' };
+  if (!thumbnailUrl) return { ...empty, error: 'thumbnail ausente' };
   try {
-    const results = await Promise.all(queries.map(q => fetch(q, { signal: AbortSignal.timeout(15000) }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))));
-    const seen = new Set([originalVideoId]);
-    const all = [];
-    for (const res of results) {
-      for (const item of (res.items || [])) {
-        const id = item.id?.videoId;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        all.push({
-          id,
-          url: `https://www.youtube.com/watch?v=${id}`,
-          title: item.snippet?.title || '',
-          channel: item.snippet?.channelTitle || '',
-          thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || '',
-          published_at: item.snippet?.publishedAt,
+    const serpUrl = `https://serpapi.com/search?engine=google_lens&url=${encodeURIComponent(thumbnailUrl)}&api_key=${SERPAPI_KEY}`;
+    const r = await fetch(serpUrl, { signal: AbortSignal.timeout(45000) });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      return { ...empty, error: `SerpAPI HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    }
+    const d = await r.json();
+    if (d.error) return { ...empty, error: `SerpAPI: ${String(d.error).slice(0, 200)}` };
+
+    const allMatches = d.visual_matches || [];
+    const youtubeIds = new Set();
+    const otherPlatforms = [];
+
+    for (const m of allMatches) {
+      const link = m.link;
+      if (!link) continue;
+      const ytId = extractYouTubeId(link);
+      if (ytId && ytId !== youtubeId) {
+        youtubeIds.add(ytId);
+        continue;
+      }
+      // Cross-platform (excluindo YouTube e thumbnails)
+      const platform = detectPlatform(link);
+      if (platform !== 'youtube' && platform !== 'youtube_thumb' && platform !== 'other' && platform !== 'unknown') {
+        otherPlatforms.push({
+          url: link,
+          title: m.title || '',
+          thumbnail: m.thumbnail || '',
+          source: m.source || '',
+          platform,
         });
       }
     }
-    return all;
-  } catch (e) { return []; }
+
+    return {
+      youtube_ids: [...youtubeIds],
+      other_platforms: otherPlatforms,
+      total_visual_matches: allMatches.length,
+      error: null,
+    };
+  } catch (e) {
+    return { ...empty, error: `exception: ${(e.message || '').slice(0, 200)}` };
+  }
 }
 
-async function enrichDuration(candidates) {
+// Enriquece candidates com snippet + duration + views.
+// Critico pros videoIds vindos do SerpAPI que chegam sem metadata.
+async function enrichVideoDetails(candidates) {
   if (!YT_KEY || !candidates.length) return candidates;
-  const ids = candidates.map(c => c.id).join(',');
+  const ids = candidates.map(c => c.id).filter(Boolean).join(',');
+  if (!ids) return candidates;
   try {
     const r = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${ids}&key=${YT_KEY}`,
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${ids}&key=${YT_KEY}`,
       { signal: AbortSignal.timeout(15000) }
     );
     if (!r.ok) return candidates;
@@ -220,9 +254,32 @@ async function enrichDuration(candidates) {
       const dur = item.contentDetails?.duration || '';
       const dm = dur.match(/PT(?:(\d+)M)?(?:(\d+)S)?/);
       const seconds = (parseInt(dm?.[1] || 0) * 60) + parseInt(dm?.[2] || 0);
-      map.set(item.id, { duration: seconds, views: parseInt(item.statistics?.viewCount || 0) });
+      map.set(item.id, {
+        duration: seconds,
+        views: parseInt(item.statistics?.viewCount || 0),
+        title: item.snippet?.title || '',
+        channel: item.snippet?.channelTitle || '',
+        thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || '',
+        published_at: item.snippet?.publishedAt,
+      });
     }
-    return candidates.map(c => ({ ...c, ...(map.get(c.id) || {}) }));
+    // Merge: enrich preenche o que faltar
+    return candidates
+      .map(c => {
+        const e = map.get(c.id);
+        if (!e) return c;
+        return {
+          ...c,
+          duration: c.duration ?? e.duration,
+          views: c.views ?? e.views,
+          title: c.title || e.title,
+          channel: c.channel || e.channel,
+          thumbnail: c.thumbnail || e.thumbnail,
+          published_at: c.published_at || e.published_at,
+        };
+      })
+      // Filtra videoIds que YouTube nao retornou (privados/deletados/region-blocked)
+      .filter(c => map.has(c.id));
   } catch { return candidates; }
 }
 
@@ -236,6 +293,7 @@ module.exports = async function handler(req, res) {
   if (!url) return res.status(400).json({ error: 'url obrigatorio' });
   if (!RAILWAY_URL) return res.status(500).json({ error: 'RAILWAY_FFMPEG_URL nao configurada' });
   if (!YT_KEY) return res.status(500).json({ error: 'YOUTUBE_API_KEY_5 nao configurada' });
+  if (!SERPAPI_KEY) return res.status(500).json({ error: 'SERPAPI_KEY nao configurada' });
 
   const youtubeId = extractYouTubeId(url);
   if (!youtubeId) return res.status(400).json({ error: 'URL deve ser de Short YouTube — formato: youtube.com/shorts/CODIGO ou watch?v=CODIGO' });
@@ -244,13 +302,21 @@ module.exports = async function handler(req, res) {
   const stages = [];
 
   try {
-    // ── 1. METADATA + 2. EXTRACT USER FINGERPRINT (paralelos) ──────────────
-    stages.push({ stage: 'metadata+extract_user', t: Date.now() });
-    const [meta, userFp] = await Promise.all([
+    // Thumbnail YouTube — input pra SerpAPI Google Lens
+    const thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+
+    // ── 1. METADATA + USER FINGERPRINT + SERPAPI (3 paralelos) ─────────────
+    stages.push({ stage: 'metadata+extract_user+serpapi', t: Date.now() });
+    const [meta, userFp, serpResult] = await Promise.all([
       fetchVideoMeta(youtubeId),
       callRailwayExtract(url, FPS_USER),
+      getSerpAPICandidates(youtubeId, thumbnailUrl),
     ]);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
+    stages[stages.length - 1].serpapi_total = serpResult.total_visual_matches;
+    stages[stages.length - 1].serpapi_youtube = serpResult.youtube_ids.length;
+    stages[stages.length - 1].serpapi_other = serpResult.other_platforms.length;
+
     if (!meta || !meta.title) {
       return res.status(404).json({ error: 'Video YouTube nao encontrado ou privado' });
     }
@@ -258,25 +324,39 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: 'Falha ao extrair fingerprint do video' });
     }
 
-    // ── 3. YouTube Search GLOBAL ───────────────────────────────────────────
-    stages.push({ stage: 'search_global', t: Date.now() });
-    const candidates = await searchYouTubeCandidates(meta, youtubeId);
-    stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
+    // ── 2. Constroi candidatos a partir dos YouTube IDs do SerpAPI ─────────
+    const candidates = serpResult.youtube_ids.map(id => ({
+      id,
+      url: `https://www.youtube.com/watch?v=${id}`,
+      title: '', channel: '', thumbnail: '', published_at: null,
+      source: 'serpapi_google_lens',
+    }));
 
     if (candidates.length === 0) {
       return res.status(200).json({
         ok: true,
         url, video_meta: meta,
+        serpapi: {
+          total_visual_matches: serpResult.total_visual_matches,
+          youtube_ids_found: 0,
+          error: serpResult.error,
+        },
         matches: [],
-        message: 'Nenhum candidato encontrado pelo YouTube Search.',
+        web_matches: serpResult.other_platforms,
+        message: serpResult.other_platforms.length > 0
+          ? 'Nenhum repost YouTube encontrado, mas imagem aparece em outras plataformas.'
+          : (serpResult.error
+              ? `Nenhum candidato — ${serpResult.error}`
+              : 'Nenhum candidato visual encontrado pelo Google Lens.'),
         timing: { total_ms: Date.now() - startTs, stages },
       });
     }
 
-    // ── 4. Enriquece com duration + filtra ±20% ────────────────────────────
-    stages.push({ stage: 'enrich_duration', t: Date.now() });
-    const enriched = await enrichDuration(candidates);
+    // ── 3. Enriquece (snippet + duration + views) e filtra ±20% ────────────
+    stages.push({ stage: 'enrich', t: Date.now() });
+    const enriched = await enrichVideoDetails(candidates);
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
+    stages[stages.length - 1].alive = enriched.length;
 
     const userDur = meta.duration || userFp.duration_seconds || 0;
     const filtered = enriched
@@ -292,14 +372,21 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         url, video_meta: meta,
+        serpapi: {
+          total_visual_matches: serpResult.total_visual_matches,
+          youtube_ids_found: serpResult.youtube_ids.length,
+          error: serpResult.error,
+        },
         matches: [],
-        message: 'Nenhum candidato com duracao similar.',
+        web_matches: serpResult.other_platforms,
+        message: 'Candidatos encontrados mas nenhum com duracao similar (±20%).',
         candidates_searched: candidates.length,
+        candidates_alive: enriched.length,
         timing: { total_ms: Date.now() - startTs, stages },
       });
     }
 
-    // ── 5. Extract fingerprints dos top 5 em PARALELO ──────────────────────
+    // ── 4. Extract fingerprints dos top em PARALELO ────────────────────────
     stages.push({ stage: 'extract_candidates', t: Date.now(), count: filtered.length });
     const candFps = await Promise.all(
       filtered.map(c =>
@@ -310,7 +397,7 @@ module.exports = async function handler(req, res) {
     );
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
-    // ── 6. MATCH algorithm strict — score >= 0.90 ──────────────────────────
+    // ── 5. MATCH algorithm strict — score >= 0.90 ──────────────────────────
     stages.push({ stage: 'match', t: Date.now() });
     const matches = [];
     for (const c of candFps) {
@@ -347,10 +434,17 @@ module.exports = async function handler(req, res) {
         fps: FPS_USER,
         duration_seconds: userFp.duration_seconds,
       },
+      serpapi: {
+        total_visual_matches: serpResult.total_visual_matches,
+        youtube_ids_found: serpResult.youtube_ids.length,
+        error: serpResult.error,
+      },
       candidates_searched: candidates.length,
+      candidates_alive: enriched.length,
       candidates_filtered: filtered.length,
       candidates_extracted: candFps.filter(c => c.fp_ok).length,
       matches,
+      web_matches: serpResult.other_platforms,
       threshold: SCORE_THRESHOLD,
       timing: { total_ms: Date.now() - startTs, stages },
     });
