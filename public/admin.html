@@ -1143,7 +1143,23 @@ async function loadSubsPage(page){
     const d=await r.json();
     const subs=d.data||[];
     const now=new Date();
-    const planValue={full:'R$29,99',master:'R$89,99',free:'—'};
+    // Fallback hardcoded apenas pra subs antigos (pre-webhook update) sem amount_paid no banco
+    const planValueFallback={full:'R$29,99',master:'R$89,99',free:'—'};
+    const curSym={brl:'R$',usd:'$',eur:'€',gbp:'£',cad:'C$',aud:'A$'};
+    const fmtPaid=s=>{
+      if(s.plan==='free')return'—';
+      // Tem amount_paid gravado: usa valor REAL do Stripe (com cupom incluso)
+      if(s.amount_paid!=null&&s.currency){
+        const cur=s.currency.toLowerCase();
+        const sym=curSym[cur]||(cur.toUpperCase()+' ');
+        const num=cur==='brl'?s.amount_paid.toFixed(2).replace('.',','):s.amount_paid.toFixed(2);
+        const tag=cur==='brl'?'':` ${cur.toUpperCase()}`;
+        const coupon=s.coupon_applied?' 🎟️':'';
+        return `${sym}${num}${tag}${coupon}`;
+      }
+      // Fallback pra subs antigos sem amount_paid (cadastrados antes do fix 2026-05-04)
+      return planValueFallback[s.plan]||'—';
+    };
     if(!subs.length){document.getElementById('subsTable').innerHTML='<div class="empty-state">Nenhum resultado.</div>';return;}
     document.getElementById('subsTable').innerHTML=`
       <table><thead><tr><th>Email</th><th>Plano</th><th>Valor</th><th>Tipo</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
@@ -1152,7 +1168,7 @@ async function loadSubsPage(page){
         return`<tr>
           <td style="color:var(--text)">${s.email}</td>
           <td><span class="badge badge-${s.plan}">${s.plan==='master'?'👑 ':''}${s.plan==='full'?'⚡ ':''}${s.plan.toUpperCase()}</span></td>
-          <td style="color:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};font-weight:600">${planValue[s.plan]||'—'}</td>
+          <td style="color:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};font-weight:600" title="${s.coupon_applied?'Cupom aplicado: -'+s.coupon_discount:''}">${fmtPaid(s)}</td>
           <td style="font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</td>
           <td style="color:var(--dim);font-size:11px">${new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
           <td style="${isExp?'color:var(--red)':'color:var(--dim)'};font-size:11px">${s.plan_expires_at?new Date(s.plan_expires_at).toLocaleDateString('pt-BR')+(isExp?' ⚠':''):'—'}</td>

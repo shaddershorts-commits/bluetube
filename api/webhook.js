@@ -408,6 +408,18 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
       : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
 
+    // Valor REAL pago ao Stripe (com desconto de cupom). amount_total em centavos → /100.
+    // Extraido aqui pra gravar no subscribers (antes era extraido depois e descartado — bug
+    // onde admin painel mostrava valor hardcoded R$29,99/R$89,99 ignorando moeda e cupom).
+    const paidAmount = typeof session.amount_total === 'number'
+      ? parseFloat((session.amount_total / 100).toFixed(2))
+      : (plan === 'master' ? 89.99 : 29.99);
+    const stripeCurrency = (session.currency || 'brl').toLowerCase();
+    const couponApplied = (session.total_details?.amount_discount || 0) > 0;
+    const couponDiscount = session.total_details?.amount_discount
+      ? parseFloat((session.total_details.amount_discount / 100).toFixed(2)) : 0;
+    const billingPeriod = billing === 'annual' ? 'annual' : 'monthly';
+
     const patchR = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
       method: 'PATCH',
       headers: { ...supaHeaders, 'Prefer': 'return=representation' },
@@ -418,6 +430,11 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         stripe_subscription_id: subscriptionId,
         plan_expires_at: expiresAt,
         cancel_at_period_end: false,
+        amount_paid: paidAmount,
+        currency: stripeCurrency,
+        coupon_applied: couponApplied,
+        coupon_discount: couponDiscount,
+        billing_period: billingPeriod,
         updated_at: new Date().toISOString()
       })
     });
@@ -439,6 +456,11 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           stripe_subscription_id: subscriptionId,
           plan_expires_at: expiresAt,
           cancel_at_period_end: false,
+          amount_paid: paidAmount,
+          currency: stripeCurrency,
+          coupon_applied: couponApplied,
+          coupon_discount: couponDiscount,
+          billing_period: billingPeriod,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -452,10 +474,16 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
     console.log(`✅ Plan activated: ${email} → ${plan} (${billing})`);
 
+    // Notificacao Telegram com valor REAL (moeda e cupom inclusos).
+    const _curSym = { brl:'R$', usd:'$', eur:'€', gbp:'£', cad:'C$', aud:'A$' }[stripeCurrency] || stripeCurrency.toUpperCase()+' ';
+    const _valFmt = stripeCurrency === 'brl'
+      ? `${_curSym}${paidAmount.toFixed(2).replace('.',',')}`
+      : `${_curSym}${paidAmount.toFixed(2)} ${stripeCurrency.toUpperCase()}`;
+    const _valWithCoupon = couponApplied ? `${_valFmt} 🎟️ (-${couponDiscount.toFixed(2)})` : _valFmt;
     notifyStripe(`💰 Nova assinatura — ${plan.toUpperCase()} — ${email}`, [
       ['Cliente', email],
       ['Plano', `${plan === 'master' ? '👑' : '⚡'} ${plan.toUpperCase()}`],
-      ['Valor', _prices[plan] || 'N/A'],
+      ['Valor', _valWithCoupon],
       ['Billing', billing === 'annual' ? 'Anual' : 'Mensal'],
       ['Stripe ID', customerId || '—'],
     ]).catch(() => {});
@@ -465,14 +493,6 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       .catch((e) => console.error('upgradeEmail (webhook):', e.message));
 
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
-    // Valor REALMENTE pago ao Stripe (ja com desconto de cupom e ajuste anual).
-    // amount_total vem em centavos — divide por 100 pra ter reais/dolares.
-    const paidAmount = typeof session.amount_total === 'number'
-      ? parseFloat((session.amount_total / 100).toFixed(2))
-      : (plan === 'master' ? 89.99 : 29.99);
-    const couponApplied = session.total_details?.amount_discount > 0;
-    const couponDiscount = session.total_details?.amount_discount
-      ? parseFloat((session.total_details.amount_discount / 100).toFixed(2)) : 0;
 
     fetch(`${SITE_URL}/api/auth`, {
       method: 'POST',
