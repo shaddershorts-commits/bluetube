@@ -37,7 +37,7 @@ const FPS_USER = 15;       // alta densidade pro video do user
 const FPS_CANDIDATE = 5;   // suficiente pra confirmar match
 const MAX_CANDIDATES = 5;  // top filtrados por duration similarity
 const MAX_SECONDS = 60;    // limita extract a 60s (Shorts <= 60s)
-const SCORE_THRESHOLD = 0.90; // nao mostra abaixo disso
+const SCORE_THRESHOLD = 0.70; // nao mostra abaixo disso (baixado de 0.90 pra pegar reposts editados — cortes, overlay, narracao propria abaixam score)
 
 // Hamming distance entre 2 hex strings (16 chars = 64 bits)
 function hammingHex(a, b) {
@@ -359,9 +359,13 @@ module.exports = async function handler(req, res) {
     stages[stages.length - 1].alive = enriched.length;
 
     const userDur = meta.duration || userFp.duration_seconds || 0;
+    // BYPASS duration filter pra candidates SerpAPI — Google Lens ja confirmou
+    // imagem matching, reposts editados podem ter cortes/loops/velocidade alterada
+    // e ainda serem reposts validos. Filtro ±20% so se aplica a outras fontes.
     const filtered = enriched
       .filter(c => {
-        if (!userDur || !c.duration) return true; // sem duration, mantem
+        if (c.source === 'serpapi_google_lens') return true; // bypass
+        if (!userDur || !c.duration) return true;
         const diff = Math.abs(userDur - c.duration) / Math.max(userDur, c.duration);
         return diff <= 0.20;
       })
