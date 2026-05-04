@@ -37,7 +37,7 @@ const FPS_USER = 15;       // alta densidade pro video do user
 const FPS_CANDIDATE = 5;   // suficiente pra confirmar match
 const MAX_CANDIDATES = 5;  // top filtrados por duration similarity
 const MAX_SECONDS = 60;    // limita extract a 60s (Shorts <= 60s)
-const SCORE_THRESHOLD = 0.70; // nao mostra abaixo disso (baixado de 0.90 pra pegar reposts editados — cortes, overlay, narracao propria abaixam score)
+const SCORE_THRESHOLD = 0.50; // nao mostra abaixo disso (calibrado em 2026-05-04 — reposts editados batem 40-55%)
 
 // Hamming distance entre 2 hex strings (16 chars = 64 bits)
 function hammingHex(a, b) {
@@ -105,7 +105,14 @@ function compareFingerprints(fpUser, fpCand) {
 
   const matchRatio = matches.length / fU;
   const avgQuality = matches.length > 0 ? matches.reduce((s, m) => s + m.score, 0) / matches.length : 0;
-  const score = matchRatio * 0.65 + avgQuality * 0.35;
+  // Validity penalty: corrige bug onde 1-2 frames coincidentes (ex: tela preta)
+  // inflavam o score via avgQuality * 0.35. Exige minimo de 5% dos frames OU 5
+  // frames absolutos pra dar score "cheio". Abaixo disso, score e proporcional.
+  const matchCount = matches.length;
+  const minMatchesForValid = Math.max(5, Math.floor(fU * 0.05));
+  const validityPenalty = matchCount >= minMatchesForValid ? 1.0 : (matchCount / minMatchesForValid);
+  const baseScore = matchRatio * 0.65 + avgQuality * 0.35;
+  const score = baseScore * validityPenalty;
 
   return {
     score,
