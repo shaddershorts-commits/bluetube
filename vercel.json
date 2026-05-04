@@ -24,7 +24,8 @@
     "api/youtube-quota-status.js": { "maxDuration": 30 },
     "api/bluelens-fingerprint.js": { "maxDuration": 300 },
     "api/bluelens-seeder.js": { "maxDuration": 600 },
-    "api/bluelens-serpapi-test.js": { "maxDuration": 60 }
+    "api/bluelens-serpapi-test.js": { "maxDuration": 60 },
+    "api/bluelens-cleanup.js": { "maxDuration": 60 }
   },
   "crons": [
     {
@@ -222,6 +223,10 @@
     {
       "path": "/api/youtube-quota-status",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/bluelens-cleanup",
+      "schedule": "0 4 * * 0"
     }
   ],
   "headers": [

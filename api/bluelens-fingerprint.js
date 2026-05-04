@@ -153,6 +153,57 @@ function detectPlatform(url) {
   } catch { return 'unknown'; }
 }
 
+// Cache: busca analise pre-existente do video. TTL 7 dias.
+// Reduz custo SerpAPI/Railway/YouTube API e da resposta instantanea (~200ms).
+async function getCachedAnalysis(youtubeId) {
+  if (!supaH || !SUPA_URL) return null;
+  try {
+    const cutoff = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/bluelens_cache?youtube_id=eq.${encodeURIComponent(youtubeId)}&created_at=gt.${cutoff}&select=response,hits,created_at&limit=1`,
+      { headers: supaH, signal: AbortSignal.timeout(3000) }
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d?.[0]?.response) return null;
+    // Atualiza hits + last_hit_at (non-blocking — nao trava resposta)
+    fetch(`${SUPA_URL}/rest/v1/bluelens_cache?youtube_id=eq.${encodeURIComponent(youtubeId)}`, {
+      method: 'PATCH',
+      headers: { ...supaH, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hits: (d[0].hits || 1) + 1,
+        last_hit_at: new Date().toISOString(),
+      }),
+    }).catch(() => {});
+    return { response: d[0].response, created_at: d[0].created_at };
+  } catch { return null; }
+}
+
+// Salva analise no cache (UPSERT — cobre race condition de analises simultaneas)
+async function saveCachedAnalysis(youtubeId, response) {
+  if (!supaH || !SUPA_URL) return;
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/bluelens_cache?on_conflict=youtube_id`, {
+      method: 'POST',
+      headers: {
+        ...supaH,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        youtube_id: youtubeId,
+        response,
+        matches_count: (response.matches || []).length,
+        web_matches_count: (response.web_matches || []).length,
+        hits: 1,
+        created_at: new Date().toISOString(),
+        last_hit_at: new Date().toISOString(),
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {}
+}
+
 // Railway extract com retry pra cobrir flakiness yt-dlp/Cobalt:
 // - 5xx ou timeout: retry 1x apos 2s (yt-dlp/Cobalt podem 503/timeout intermitente)
 // - 4xx: nao retry (URL invalida, video deletado, geo-blocked)
@@ -327,6 +378,24 @@ module.exports = async function handler(req, res) {
   const startTs = Date.now();
   const stages = [];
 
+  // ── CACHE CHECK ─────────────────────────────────────────────────────────
+  // Se mesmo video foi analisado < 7 dias atras, retorna direto. Economia
+  // total: SerpAPI quota + Railway extracts + YouTube API + ~22s tempo.
+  // ?force=true pula cache (uso interno, nao exposto na UI).
+  const skipCache = req.query?.force === 'true';
+  if (!skipCache) {
+    const cached = await getCachedAnalysis(youtubeId);
+    if (cached?.response) {
+      const cacheAgeDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+      return res.status(200).json({
+        ...cached.response,
+        cached: true,
+        cache_age_days: Math.round(cacheAgeDays * 10) / 10,
+        timing: { total_ms: Date.now() - startTs, source: 'cache' },
+      });
+    }
+  }
+
   try {
     // Thumbnail YouTube — input pra SerpAPI Google Lens
     const thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
@@ -463,7 +532,7 @@ module.exports = async function handler(req, res) {
     allScored.sort((a, b) => (b.score || 0) - (a.score || 0));
     stages[stages.length - 1].duration_ms = Date.now() - stages[stages.length - 1].t;
 
-    return res.status(200).json({
+    const finalResponse = {
       ok: true,
       url,
       youtube_id: youtubeId,
@@ -487,8 +556,12 @@ module.exports = async function handler(req, res) {
       top_candidates: allScored.slice(0, 10),
       web_matches: serpResult.other_platforms,
       threshold: SCORE_THRESHOLD,
+      cached: false,
       timing: { total_ms: Date.now() - startTs, stages },
-    });
+    };
+    // Salva no cache (non-blocking — proxima analise mesmo video <7d retorna direto)
+    saveCachedAnalysis(youtubeId, finalResponse).catch(() => {});
+    return res.status(200).json(finalResponse);
   } catch (e) {
     console.error('[bluelens-fingerprint]', e.message);
     return res.status(500).json({ error: e.message, timing: { total_ms: Date.now() - startTs, stages } });
