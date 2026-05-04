@@ -888,6 +888,42 @@ export default async function handler(req, res) {
       } catch (e) { /* sem exemplos, segue */ }
     }
 
+    // ── Diretrizes YPP ATUAIS do cache adaptativo (Fase 2 BlueScore v2) ─────
+    // Cron weekly /api/ypp-guidelines-cron preenche ypp_guidelines_cache com
+    // snippets oficiais YouTube + imprensa especializada. IA usa como base
+    // de conhecimento atualizada semanalmente. Cache vazio = fallback graceful.
+    let yppGuidelinesBlock = '';
+    if (SUPA_URL && SUPA_KEY) {
+      try {
+        // ISO week atual (mesmo cálculo de ypp-guidelines-cron.js)
+        const _now = new Date();
+        const _t = new Date(_now.valueOf());
+        const _dayNr = (_now.getUTCDay() + 6) % 7;
+        _t.setUTCDate(_t.getUTCDate() - _dayNr + 3);
+        const _firstThu = _t.valueOf();
+        _t.setUTCMonth(0, 1);
+        if (_t.getUTCDay() !== 4) {
+          _t.setUTCMonth(0, 1 + ((4 - _t.getUTCDay()) + 7) % 7);
+        }
+        const _weekNum = 1 + Math.ceil((_firstThu - _t) / 604800000);
+        const _currentWeek = `${_now.getUTCFullYear()}-W${String(_weekNum).padStart(2, '0')}`;
+
+        const gres = await fetch(
+          `${SUPA_URL}/rest/v1/ypp_guidelines_cache?week_iso=eq.${encodeURIComponent(_currentWeek)}&select=query,snippet,source_link,is_official_youtube&order=is_official_youtube.desc,rank_position.asc&limit=24`,
+          { headers: supaH, signal: AbortSignal.timeout(3000) }
+        );
+        if (gres.ok) {
+          const guidelines = await gres.json();
+          if (Array.isArray(guidelines) && guidelines.length > 0) {
+            const officialCount = guidelines.filter(g => g.is_official_youtube).length;
+            yppGuidelinesBlock = `\n\n📋 DIRETRIZES YPP ATUALIZADAS (semana ${_currentWeek}, ${officialCount}/${guidelines.length} fontes oficiais YouTube):\n` +
+              guidelines.map(g => `- [${g.is_official_youtube ? 'YT-OFICIAL' : 'IMPRENSA'}] "${(g.snippet || '').slice(0, 280)}"`).join('\n') +
+              `\n\nUSE estas diretrizes ATUAIS pra fundamentar o diagnóstico. Cite-as quando aplicável. ATENÇÃO: este é canal de SHORTS — se uma diretriz se aplica apenas a vídeos longos, IGNORE.\n`;
+          }
+        }
+      } catch (e) { /* cache vazio ou timeout = fallback graceful, prompt segue sem update */ }
+    }
+
     // ── Bloco Shorts (quando aplicável) ──────────────────────────────────────
     const shortsBlock = isShortsChannel ? `
 ⚠️ IMPORTANTE — Este é um canal de YouTube Shorts. Faixa detectada: ${faixa || 'n/d'}. Use APENAS estes benchmarks:
@@ -917,7 +953,7 @@ DIRETRIZES YPP QUE VOCÊ CONHECE PROFUNDAMENTE:
 5. RETENÇÃO INICIAL: Os primeiros 30 segundos determinam a distribuição. Vídeos com alto abandono inicial recebem menos impressões.
 6. SINAIS DE VOZ SINTÉTICA: Canais dark-face que usam narração IA sem disclosure podem ser penalizados. O YPP exige transparência sobre conteúdo gerado por IA desde 2024.
 7. CTR: Thumbnails e títulos com CTR abaixo de 2% recebem menos impressões orgânicas.
-
+${yppGuidelinesBlock}
 DADOS DO CANAL PARA ANÁLISE:
 - Nome: ${channelData.title}
 - Inscritos: ${channelData.subscribers?.toLocaleString()}
