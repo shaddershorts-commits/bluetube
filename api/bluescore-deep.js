@@ -19,6 +19,7 @@
 // maxDuration Vercel: 300s.
 
 const { getTranscript, extractText } = require('./_helpers/supadata');
+const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality');
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -38,7 +39,7 @@ const YT_KEYS = [
 ].filter(Boolean);
 
 const MAX_VIDEOS = 5;
-const PROMPT_VERSION = 'v2-fase3-deep';
+const PROMPT_VERSION = 'v2-fase6-cinema';
 
 // ⚠️ FLAG TEMPORÁRIA — TROCAR PRA false ANTES DO DEPLOY OFICIAL
 // Quando true: pula limite 1/dia/user pra facilitar testes em preview.
@@ -104,7 +105,15 @@ async function hasUsedToday(userId) {
 async function saveAnalysis(userId, channel, channelId, report, videosData) {
   if (!SUPA_URL || !SUPA_KEY) return null;
   try {
-    const dicas = Array.isArray(report?.top_3_actions) ? report.top_3_actions.slice(0, 10) : [];
+    // Dicas extraidas de scenes que VIOLAM diretrizes — uma frase Blublu por dica.
+    const dicas = Array.isArray(report?.scenes)
+      ? report.scenes
+          .filter((sc) => sc?.verdict_for_scene === 'violates')
+          .slice(0, 5)
+          .map((sc) => (sc.blublu_says || '').slice(0, 240))
+          .filter(Boolean)
+      : [];
+    const diagnostico = (report?.blublu_summary || report?.channel_observation || '').slice(0, 1000);
     const r = await fetch(`${SUPA_URL}/rest/v1/bluescore_analises`, {
       method: 'POST',
       headers: { ...supaH, Prefer: 'return=representation' },
@@ -119,7 +128,7 @@ async function saveAnalysis(userId, channel, channelId, report, videosData) {
         compliance_score: report?.compliance_score ?? null,
         relatorio_v2: { report, videos_data: videosData, channel },
         prompt_version: PROMPT_VERSION,
-        diagnostico: (report?.summary || '').slice(0, 1000),
+        diagnostico,
         dicas,
         feedback_util: null,
         salva: false,
@@ -195,12 +204,15 @@ async function getChannelInfo(channelId) {
   if (!cRes.ok) return { error: 'youtube_api_error', detail: cRes.d?.error?.message };
   const ch = cRes.d.items?.[0];
   if (!ch) return { error: 'channel_not_found' };
+  const thumbs = ch.snippet?.thumbnails || {};
+  const avatar = thumbs.high?.url || thumbs.medium?.url || thumbs.default?.url || '';
   return {
     title: ch.snippet?.title || 'Canal',
     subscribers: parseInt(ch.statistics?.subscriberCount || 0),
     videoCount: parseInt(ch.statistics?.videoCount || 0),
     totalViews: parseInt(ch.statistics?.viewCount || 0),
     country: ch.snippet?.country || '',
+    avatar,
   };
 }
 
@@ -311,101 +323,210 @@ async function getYppGuidelines() {
   } catch { return []; }
 }
 
-async function generateLegalReport(channel, videoData, guidelines) {
+// Quality gate: rejeita relatório genérico/sem evidência específica.
+// Retorna { passed: bool, issues: string[] }
+function validateCinemaReport(report, videoData) {
+  const issues = [];
+  if (!report || typeof report !== 'object') return { passed: false, issues: ['report ausente'] };
+  if (!['compliant', 'warning', 'risk'].includes(report.verdict)) issues.push('verdict invalido');
+  if (typeof report.compliance_score !== 'number') issues.push('compliance_score nao e numero');
+  if (typeof report.niche !== 'string' || report.niche.trim().length < 2) issues.push('niche vazio');
+  if (typeof report.channel_observation !== 'string' || report.channel_observation.trim().length < 30) {
+    issues.push('channel_observation muito curto');
+  }
+  if (typeof report.blublu_summary !== 'string' || report.blublu_summary.trim().length < 50) {
+    issues.push('blublu_summary muito curto');
+  }
+  if (!Array.isArray(report.scenes) || report.scenes.length < Math.min(3, videoData.length)) {
+    issues.push(`scenes precisa ter pelo menos ${Math.min(3, videoData.length)} entradas`);
+  } else {
+    const validIds = new Set(videoData.map((v) => v.id));
+    report.scenes.forEach((sc, i) => {
+      const path = `scenes[${i}]`;
+      if (!sc || typeof sc !== 'object') { issues.push(`${path} vazio`); return; }
+      if (!validIds.has(sc.video_id)) issues.push(`${path}.video_id desconhecido (${sc.video_id})`);
+      ['what_we_saw', 'guideline_reference', 'evidence_quote', 'blublu_says'].forEach((c) => {
+        if (typeof sc[c] !== 'string' || sc[c].trim().length < 25) {
+          issues.push(`${path}.${c} muito curto (<25 chars)`);
+        }
+      });
+      if (!['follows', 'violates', 'neutral'].includes(sc.verdict_for_scene)) {
+        issues.push(`${path}.verdict_for_scene invalido`);
+      }
+      // Bloqueia padrões corporativos / motivacionais (manifesto)
+      const blob = [sc.what_we_saw, sc.evidence_quote, sc.blublu_says].filter(Boolean).join(' ');
+      const proibidos = [
+        /\bdisruptivo\b/i, /\btransformacional\b/i, /\balavancar\b/i, /\bpotencializar\b/i,
+        /vamos\s+juntos/i, /voc[eê]\s+consegue/i, /espero\s+ter\s+ajudado/i,
+        /jornada\s+do\s+criador/i, /amplo\s+conhecimento/i, /insights\s+valiosos/i,
+        /qualidade\s+do\s+conte[uú]do/i, /experi[eê]ncia\s+do\s+usu[aá]rio/i,
+      ];
+      for (const re of proibidos) {
+        if (re.test(blob)) { issues.push(`${path}: padrao proibido "${re.source}"`); break; }
+      }
+    });
+  }
+  return { passed: issues.length === 0, issues };
+}
+
+function buildCinemaPrompt(channel, videoData, guidelines) {
   const guidelinesText =
     guidelines.length > 0
-      ? `📋 DIRETRIZES YPP ATUALIZADAS (semana atual, ${guidelines.length} snippets oficiais YouTube + imprensa):\n` +
-        guidelines.map((g) => `- "${(g.snippet || '').slice(0, 280)}"`).join('\n')
-      : '(cache YPP vazio — usando conhecimento base do modelo)';
+      ? `DIRETRIZES YPP ATUAIS (snippets oficiais da semana, use como base de citacao em 'guideline_reference'):\n` +
+        guidelines.slice(0, 12).map((g, i) => `[G${i + 1}] "${(g.snippet || '').slice(0, 240)}"`).join('\n')
+      : '(cache YPP vazio — use teu conhecimento base do YouTube YPP/Shorts 2024-2026)';
 
   const videosBlock = videoData
     .map(
       (v, i) => `
-<video num="${i + 1}">
+<video index="${i + 1}" video_id="${sanitize(v.id, 30)}">
 <title>${sanitize(v.title, 200)}</title>
-<meta>${v.duration}s, ${v.views.toLocaleString()} views, publicado ${sanitize(v.publishedAt || '', 50)}</meta>
-<transcript>${v.transcript?.ok ? sanitize(v.transcript.text, 1000) : '(falhou: ' + sanitize(v.transcript?.error || 'sem dados', 100) + ')'}</transcript>
-<visual_analysis>${v.visual?.ok ? sanitize(JSON.stringify(v.visual.analysis), 500) : '(falhou: ' + sanitize(v.visual?.error || 'sem dados', 100) + ')'}</visual_analysis>
-<reverse_search>${v.reverse?.ok ? `${v.reverse.total_matches} matches. Top 3: ` + (v.reverse.external_top8 || []).slice(0, 3).map((m) => '"' + sanitize(m.title, 80) + '" (' + sanitize(m.source, 40) + ')').join(' | ') : '(sem matches ou falhou)'}</reverse_search>
+<meta>${v.duration}s · ${v.views.toLocaleString()} views · publicado ${sanitize(v.publishedAt || '', 30)}</meta>
+<transcript>${v.transcript?.ok ? sanitize(v.transcript.text, 900) : '(audio_engine falhou — sem transcricao deste video)'}</transcript>
+<visual>${v.visual?.ok ? sanitize(JSON.stringify(v.visual.analysis), 450) : '(visual_engine falhou)'}</visual>
+<reverse>${v.reverse?.ok ? `${v.reverse.total_matches} matches externos. Top: ` + (v.reverse.external_top8 || []).slice(0, 3).map((m) => '"' + sanitize(m.title, 70) + '" @ ' + sanitize(m.source, 30)).join(' | ') : '(sem reposts detectados ou engine falhou)'}</reverse>
 </video>`
     )
     .join('\n');
 
-  const systemPrompt = `Você é um ADVOGADO ESPECIALISTA em diretrizes do YouTube Partner Program (YPP) com foco EXCLUSIVO em canais de YouTube SHORTS verticais. Sua missão: identificar riscos REAIS de DESMONETIZAÇÃO no canal abaixo, citando evidências CONCRETAS de cada vídeo analisado.
+  const yppContext = `
+─────────────────────────────────────────────────────────────────────────
+CONTEXTO DA TUA ANALISE: ADVOGADO YPP DE SHORTS
+─────────────────────────────────────────────────────────────────────────
 
-⚠️ ESTE É CANAL DE SHORTS VERTICAIS. NUNCA sugira:
-- Vídeos longos / formato episódico
-- Capítulos / cards / end screens
-- Lives / Memberships
-- "Watch time tradicional"
-- Descrições longas com timestamps
+Tu nao tas analisando "se o video viralizou". Tas analisando RISCO DE
+DESMONETIZACAO sob o YouTube Partner Program, EXCLUSIVAMENTE pra Shorts
+verticais. Pensa como advogado defendendo o canal contra desmonetizacao.
 
-FOQUE em risco de DESMONETIZAÇÃO Shorts:
-- Conteúdo reutilizado/republicado de terceiros sem transformação substancial
-- Voz IA sintética sem disclosure adequada (regra YPP 2024+)
-- Música licenciada vs YouTube Audio Library
-- Thumbnail enganosa / clickbait extremo (CTR fake)
-- Compilações sem comentário/identidade
-- Engajamento artificial
+NAO sugira NUNCA:
+- Videos longos / capitulos / end screens / cards
+- Lives / Memberships / Super Chat
+- "Aumentar watch time tradicional"
+- Descricoes longas com timestamps
+- "Responder comentarios" (irrelevante pra YPP Shorts)
+
+FOCO EM RISCO YPP SHORTS:
+- Conteudo reutilizado/repostado sem transformacao substancial
+- Voz IA sintetica sem disclosure (regra 2024+)
+- Musica licenciada vs YouTube Audio Library
+- Thumbnail/titulo enganoso (clickbait extremo)
+- Compilacao sem comentario/identidade do canal
+- Engajamento artificial / spam
+
+─────────────────────────────────────────────────────────────────────────
+COMO TU VAI ENTREGAR (formato CINEMA — uma cena por video)
+─────────────────────────────────────────────────────────────────────────
+
+Pra CADA video da lista (todos, ${videoData.length} cenas), entrega 1 OBJETO em "scenes" com:
+
+1. video_id — copia EXATAMENTE o video_id do <video>
+2. video_index — numero da ordem (1, 2, 3...)
+3. video_title — copia o titulo
+4. what_we_saw — frase OBJETIVA do que as engines viram NESTE video
+   (cita transcript, visual ou reverse — o que tiver dado real).
+   PROIBIDO frase generica que cabia em qualquer video.
+5. guideline_reference — diretriz YPP especifica que se aplica a esta cena.
+   Se houver snippet G1..G12, cita pelo numero. Se nao, cita YPP por nome
+   ("Reuso de Conteudo - YouTube Help 2024", "Voz Sintetica - Disclosure
+   YPP", "Conteudo Original - Politica de Adsense").
+6. verdict_for_scene — "follows" se o video SEGUE essa diretriz,
+   "violates" se VIOLA, "neutral" se nao da pra dizer.
+7. evidence_quote — citacao curta da evidencia (transcript "...",
+   ou descricao visual "thumb com setas vermelhas e zoom no rosto",
+   ou reverse "match com TikTok @username"). Min 25 chars.
+8. blublu_says — fala do Blublu sobre ESTA cena (40-180 chars).
+   Tem que MENCIONAR algo especifico do video (titulo abreviado,
+   detalhe do transcript, do visual ou do reverse). Voz Blublu
+   (autoridade direta, dado primeiro, palavrao moderado se cabe).
+
+Alem das cenas:
+- channel_observation: 1 frase brutal-mas-construtiva do Blublu sobre o
+  canal inteiro (cita nome do canal e padrao observado em pelo menos 2
+  videos). 80-280 chars.
+- blublu_summary: paragrafo final do Blublu (180-450 chars). Diagnostico
+  honesto + qual o maior risco YPP DESTE canal especifico + 1 acao
+  acionavel imediata. Termina com IMPACTO (proibido "espero ter ajudado").
+- niche: 1-3 palavras
+- verdict: "compliant" | "warning" | "risk"
+- compliance_score: 0-100 (sub-indicador YPP — NAO confunde com BlueScore
+  algoritmico que ja existe no canal). Score baixo = risco alto YPP.
+
+REGRAS DE OURO (quality gate):
+✗ NENHUMA frase pode caber em qualquer canal. Cita o canal "${sanitize(channel.title, 80)}".
+✗ NENHUMA cena pode ter blublu_says generico tipo "edicao boa, continua".
+   Sempre cita detalhe especifico do video.
+✗ NENHUMA recomendacao de video longo, capitulo, end screen.
+✗ Vocabulario corporativo proibido (alavancar, potencializar, disruptivo,
+   transformacional, jornada do criador, insights valiosos).
+✗ Frases motivacionais proibidas ("vamos juntos", "voce consegue").
+✓ Pelo menos 2 dados numericos no relatorio (segundos, %, views, matches).
+✓ Tom Blublu em channel_observation, blublu_summary E todos blublu_says.
+`;
+
+  return `${BLUBLU_MANIFESTO_V3}
+
+${yppContext}
 
 ${guidelinesText}
 
-CANAL ANALISADO: <name>${sanitize(channel.title, 80)}</name> (${channel.subscribers?.toLocaleString()} inscritos, ${channel.videoCount} vídeos totais)
+CANAL ANALISADO: <name>${sanitize(channel.title, 80)}</name> (${(channel.subscribers || 0).toLocaleString()} inscritos · ${channel.videoCount} videos totais)
 
-VÍDEOS ANALISADOS:
+VIDEOS DISSECADOS:
 ${videosBlock}
 
-INSTRUÇÃO:
-Como advogado YPP, gere relatório estruturado JURÍDICO. Cite vídeo específico (Vídeo 1, 2, ...) com evidência concreta. Seja específico, NÃO genérico.
-
-Responda APENAS JSON válido sem markdown:
+Retorna APENAS JSON valido (zero markdown, zero explicacao fora do JSON):
 {
   "verdict": "compliant|warning|risk",
   "compliance_score": 0-100,
-  "niche": "nicho do canal em 1-3 palavras (ex: 'Receitas fit', 'Comédia daily', 'Tech reviews')",
-  "risk_categories": [
+  "niche": "...",
+  "channel_observation": "...",
+  "scenes": [
     {
-      "category": "reused_content|ai_voice_no_disclosure|copyright_music|clickbait|compilation|engagement_artificial|other",
-      "severity": "high|medium|low",
-      "evidence": "Vídeo X — citação literal da evidência",
-      "ypp_guideline_violated": "diretriz YPP específica",
-      "fix": "ação específica e mensurável"
+      "video_index": 1,
+      "video_id": "...",
+      "video_title": "...",
+      "what_we_saw": "...",
+      "guideline_reference": "...",
+      "verdict_for_scene": "follows|violates|neutral",
+      "evidence_quote": "...",
+      "blublu_says": "..."
     }
   ],
-  "compliant_signals": ["sinal positivo 1", ...],
-  "summary": "diagnóstico executivo 2-3 frases focado em risco DESMONETIZAÇÃO Shorts.",
-  "top_3_actions": ["ação 1", "ação 2", "ação 3"]
+  "blublu_summary": "..."
 }`;
+}
 
-  const extractJson = (text) => {
-    text = (text || '').split('```json').join('').split('```').join('').trim();
-    const s = text.indexOf('{');
-    const e = text.lastIndexOf('}');
-    if (s === -1 || e === -1) return null;
-    try { return JSON.parse(text.slice(s, e + 1)); } catch (er) { return null; }
-  };
+const extractJson = (text) => {
+  text = (text || '').split('```json').join('').split('```').join('').trim();
+  const s = text.indexOf('{');
+  const e = text.lastIndexOf('}');
+  if (s === -1 || e === -1) return null;
+  try { return JSON.parse(text.slice(s, e + 1)); } catch (er) { return null; }
+};
 
-  if (OPENAI_KEY) {
-    try {
-      const r = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_KEY}` },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: systemPrompt }],
-          max_tokens: 1500,
-          temperature: 0.3,
-        }),
-        signal: AbortSignal.timeout(40000),
-      });
-      const d = await r.json();
-      if (r.ok && d.choices?.[0]?.message?.content) {
-        const parsed = extractJson(d.choices[0].message.content);
-        if (parsed) return { ok: true, source: 'bluescore-engine-primary', report: parsed };
-      }
-    } catch (e) { /* fallback */ }
-  }
+async function callOpenAI(prompt, temperature) {
+  if (!OPENAI_KEY) return null;
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2400,
+        temperature,
+      }),
+      signal: AbortSignal.timeout(50000),
+    });
+    const d = await r.json();
+    if (r.ok && d.choices?.[0]?.message?.content) {
+      return extractJson(d.choices[0].message.content);
+    }
+  } catch (e) {}
+  return null;
+}
 
+async function callGemini(prompt, temperature) {
   for (const key of GEMINI_KEYS.slice(0, 3)) {
     try {
       const r = await fetch(
@@ -414,10 +535,10 @@ Responda APENAS JSON válido sem markdown:
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature, maxOutputTokens: 2400 },
           }),
-          signal: AbortSignal.timeout(40000),
+          signal: AbortSignal.timeout(50000),
         }
       );
       const d = await r.json();
@@ -425,10 +546,43 @@ Responda APENAS JSON válido sem markdown:
       if (!r.ok) continue;
       const text = d.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || '';
       const parsed = extractJson(text);
-      if (parsed) return { ok: true, source: 'bluescore-engine-fallback', report: parsed };
-    } catch (e) { /* try next */ }
+      if (parsed) return parsed;
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function generateLegalReport(channel, videoData, guidelines) {
+  const basePrompt = buildCinemaPrompt(channel, videoData, guidelines);
+
+  // Tentativa 1 — OpenAI temp 0.4 (espaço pra voz Blublu)
+  let parsed = await callOpenAI(basePrompt, 0.4);
+  let source = 'bluescore-engine-primary';
+  let gate = parsed ? validateCinemaReport(parsed, videoData) : { passed: false, issues: ['parsing_failed'] };
+
+  // Retry com prompt reforçado se falhar quality gate
+  if (!gate.passed && parsed) {
+    const retryPrompt =
+      basePrompt +
+      `\n\nQUALITY GATE ANTERIOR FALHOU. Issues:\n- ${gate.issues.slice(0, 8).join('\n- ')}\n\nReescreve. Cita detalhes ESPECIFICOS de cada video. Min 25 chars em what_we_saw/guideline_reference/evidence_quote/blublu_says. Voz Blublu obrigatoria.`;
+    parsed = await callOpenAI(retryPrompt, 0.5);
+    gate = parsed ? validateCinemaReport(parsed, videoData) : { passed: false, issues: ['retry_parsing_failed'] };
   }
 
+  // Fallback Gemini
+  if (!gate.passed) {
+    parsed = await callGemini(basePrompt, 0.4);
+    source = 'bluescore-engine-fallback';
+    gate = parsed ? validateCinemaReport(parsed, videoData) : { passed: false, issues: ['gemini_parsing_failed'] };
+  }
+
+  if (parsed && gate.passed) {
+    return { ok: true, source, report: parsed, quality_issues: [] };
+  }
+  if (parsed) {
+    // Aceita com warning de qualidade — frontend pode flagear
+    return { ok: true, source, report: parsed, quality_issues: gate.issues.slice(0, 10) };
+  }
   return { ok: false, error: 'all_providers_failed' };
 }
 
@@ -545,7 +699,7 @@ module.exports = async function handler(req, res) {
       reverses_ok: videoData.filter((v) => v.reverse?.ok).length,
     };
 
-    return res.status(200).json({
+    const response = {
       ok: true,
       analise_id: analiseId,
       channel,
@@ -568,11 +722,14 @@ module.exports = async function handler(req, res) {
           : { error: 'reverse_engine_failed' },
       })),
       report: reportResult.report,
-      // report_source mantido internamente nos logs server-side mas nao exposto no response
-      engine_version: 'bluescore-v2',
+      engine_version: 'bluescore-v2-cinema',
       timing_ms: Date.now() - startTs,
       stages,
-    });
+    };
+    if (Array.isArray(reportResult.quality_issues) && reportResult.quality_issues.length > 0) {
+      response.quality_warnings = reportResult.quality_issues;
+    }
+    return res.status(200).json(response);
   } catch (e) {
     return res.status(500).json({
       error: (e.message || '').slice(0, 300),
