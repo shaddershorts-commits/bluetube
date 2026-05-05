@@ -340,6 +340,25 @@ function validateCinemaReport(report, videoData) {
   if (!Array.isArray(report.scenes) || report.scenes.length < Math.min(3, videoData.length)) {
     issues.push(`scenes precisa ter pelo menos ${Math.min(3, videoData.length)} entradas`);
   } else {
+    // Detector de viés: se TODAS as cenas têm o mesmo verdict, é provável
+    // overcorrection. Sinaliza pra forçar retry com regra de equilíbrio.
+    const verdicts = report.scenes.map((sc) => sc?.verdict_for_scene).filter(Boolean);
+    if (verdicts.length >= 4) {
+      const unique = [...new Set(verdicts)];
+      if (unique.length === 1 && unique[0] !== 'neutral') {
+        // Detecta sinais positivos disponíveis nos videoData
+        const hasPositiveSignals = videoData.some((v) => {
+          const noAiVoice = v.visual?.ok && (v.visual.analysis?.ai_voice_likely === 'low' || v.visual.analysis?.ai_voice_likely === 'none');
+          const noClickbait = v.visual?.ok && v.visual.analysis?.visual_signals?.looks_clickbait === false;
+          const goodMatch = v.visual?.ok && v.visual.analysis?.thumb_vs_content_match === 'match';
+          const noReposts = v.reverse?.ok && (v.reverse.total_matches || 0) < 5;
+          return noAiVoice || noClickbait || goodMatch || noReposts;
+        });
+        if (hasPositiveSignals) {
+          issues.push(`distribuicao_enviesada: todas cenas "${unique[0]}" mas videoData tem sinais positivos (voz humana / sem matches / thumb match) — releia equilibrio`);
+        }
+      }
+    }
     const validIds = new Set(videoData.map((v) => v.id));
     report.scenes.forEach((sc, i) => {
       const path = `scenes[${i}]`;
@@ -451,6 +470,40 @@ Alem das cenas:
 - compliance_score: 0-100 (sub-indicador YPP — NAO confunde com BlueScore
   algoritmico que ja existe no canal). Score baixo = risco alto YPP.
 
+REGRA DE EQUILIBRIO (CRITICA — nao virar advogado do diabo):
+Tu nao tas tentando "achar problema". Tas avaliando JUSTO. Avaliacao YPP
+desequilibrada = falsa. Aplica este criterio em CADA cena:
+
+→ Marca "follows" quando houver QUALQUER sinal positivo concreto:
+   - transcript com voz humana fluida (entonacao natural, pausas, gírias,
+     respiracao, conteudo coerente — sinal de voz real)
+   - visual.ai_voice_likely = "low" ou "none"
+   - reverse search SEM matches diretos no YouTube/TikTok/Instagram
+     (= conteudo provavelmente original)
+   - edicao com identidade clara do canal (mesmo personagem/cenario/voz
+     em multiplos videos)
+   - thumbnail expressiva mas que ENTREGA o que promete no transcript
+     (sensacionalismo ≠ enganacao se o conteudo cumpre)
+
+→ Marca "neutral" quando incerto (dado insuficiente pra concluir).
+
+→ Marca "violates" SO quando houver evidencia clara de:
+   - reverse_search com match direto em outra plataforma (repost real)
+   - voz IA detectada (ai_voice_likely = "high") sem disclosure no titulo/transcript
+   - thumb_vs_content_match = "mismatch" claro (promete X, entrega Y)
+   - transcript copiado de fonte conhecida
+
+CALIBRACAO ESPERADA:
+Em canal saudavel grande (1M+ inscritos, voz real, edicao propria,
+sem matches no reverse), o normal e ter 3-5 cenas "follows" e 0-2
+"violates". Se TODAS as cenas viram "violates", tu errou — releia os
+sinais positivos. Thumbnail chamativa de canal de curiosidades NAO e
+clickbait automatico — clickbait e quando promete e nao entrega.
+
+Tom Blublu na cena "follows" tambem: elogia com dado, sem virar coach
+("Voz natural com pausas reais aos 0:08, sem cheiro de IA. Tu tas no
+caminho. Continua assim.").
+
 REGRAS DE OURO (quality gate):
 ✗ NENHUMA frase pode caber em qualquer canal. Cita o canal "${sanitize(channel.title, 80)}".
 ✗ NENHUMA cena pode ter blublu_says generico tipo "edicao boa, continua".
@@ -461,6 +514,7 @@ REGRAS DE OURO (quality gate):
 ✗ Frases motivacionais proibidas ("vamos juntos", "voce consegue").
 ✓ Pelo menos 2 dados numericos no relatorio (segundos, %, views, matches).
 ✓ Tom Blublu em channel_observation, blublu_summary E todos blublu_says.
+✓ Distribuicao realista de verdict_for_scene (nao tudo violates, nao tudo follows).
 `;
 
   return `${BLUBLU_MANIFESTO_V3}
