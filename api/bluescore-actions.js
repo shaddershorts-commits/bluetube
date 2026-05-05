@@ -35,18 +35,38 @@ async function getUser(token) {
 }
 
 async function listarSalvas(userId) {
+  // Lista compacta. Aceita prompt_version v2-* (cinema migrou de fase3-deep
+  // pra fase6-cinema, mas user pode ter analises antigas tambem salvas).
   const url =
     `${SUPA_URL}/rest/v1/bluescore_analises` +
     `?user_id=eq.${userId}` +
-    `&prompt_version=eq.${PROMPT_VERSION}` +
+    `&prompt_version=like.v2-*` +
     `&salva=eq.true` +
-    `&select=id,canal_id,canal_nome,nicho,verdict,compliance_score,score,diagnostico,created_at` +
+    `&select=id,canal_id,canal_nome,nicho,verdict,compliance_score,score,diagnostico,created_at,prompt_version` +
     `&order=created_at.desc&limit=50`;
   try {
     const r = await fetch(url, { headers: supaH, signal: AbortSignal.timeout(5000) });
     if (!r.ok) return { ok: false, error: 'fetch_failed' };
     const rows = await r.json();
     return { ok: true, count: rows.length, analises: rows };
+  } catch (e) { return { ok: false, error: (e.message || '').slice(0, 150) }; }
+}
+
+// Retorna relatorio_v2 completo de UMA analise (id) — pra reabrir cinema.
+// Filtra por user_id pra isolamento.
+async function detalhesAnalise(userId, analiseId) {
+  const url =
+    `${SUPA_URL}/rest/v1/bluescore_analises` +
+    `?id=eq.${encodeURIComponent(analiseId)}` +
+    `&user_id=eq.${userId}` +
+    `&select=id,canal_id,canal_nome,nicho,verdict,compliance_score,relatorio_v2,prompt_version,created_at,salva` +
+    `&limit=1`;
+  try {
+    const r = await fetch(url, { headers: supaH, signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return { ok: false, error: 'fetch_failed' };
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return { ok: false, error: 'nao_encontrado' };
+    return { ok: true, analise: rows[0] };
   } catch (e) { return { ok: false, error: (e.message || '').slice(0, 150) }; }
 }
 
@@ -97,15 +117,22 @@ module.exports = async function handler(req, res) {
   if (!user?.id) return res.status(401).json({ error: 'token_invalido' });
   const userId = user.id;
 
-  // GET: listar salvas
+  // GET: listar salvas | detalhes de uma analise (relatorio_v2 completo)
   if (req.method === 'GET') {
     const action = req.query?.action;
-    if (action !== 'salvas') {
-      return res.status(400).json({ error: 'action invalida (use ?action=salvas)' });
+    if (action === 'salvas') {
+      const result = await listarSalvas(userId);
+      if (!result.ok) return res.status(500).json({ error: result.error });
+      return res.status(200).json(result);
     }
-    const result = await listarSalvas(userId);
-    if (!result.ok) return res.status(500).json({ error: result.error });
-    return res.status(200).json(result);
+    if (action === 'detalhes') {
+      const id = req.query?.id;
+      if (!id) return res.status(400).json({ error: 'id obrigatorio' });
+      const result = await detalhesAnalise(userId, id);
+      if (!result.ok) return res.status(result.error === 'nao_encontrado' ? 404 : 500).json({ error: result.error });
+      return res.status(200).json(result);
+    }
+    return res.status(400).json({ error: 'action invalida (use ?action=salvas ou ?action=detalhes&id=X)' });
   }
 
   // POST: salvar/deletar

@@ -333,27 +333,52 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     </div>
   </div>
 
-  <!-- BOTÃO DEEP — Master only — piscando pra chamar atenção -->
+  <!-- BOTÃO DEEP — Master only — efeito raio/elétrico -->
   <style>
-    @keyframes deepPulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,.5), 0 0 32px rgba(251,191,36,.3); transform: translateY(0); }
-      50%      { box-shadow: 0 0 0 10px rgba(124,58,237,0),   0 0 60px rgba(251,191,36,.55); transform: translateY(-2px); }
+    :root {
+      --bolt:#00f0ff; --bolt2:#fde047; --bolt3:#a78bfa;
+    }
+    @keyframes boltPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,240,255,.55), 0 0 28px rgba(253,224,71,.35), inset 0 0 24px rgba(0,240,255,.18); transform: translateY(0); }
+      50%      { box-shadow: 0 0 0 10px rgba(0,240,255,0),   0 0 70px rgba(253,224,71,.65), inset 0 0 36px rgba(167,139,250,.28); transform: translateY(-2px); }
+    }
+    @keyframes boltFlicker {
+      0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--bolt)) drop-shadow(0 0 14px var(--bolt2)); }
+      45%      { opacity: .65; filter: drop-shadow(0 0 2px var(--bolt)); }
+      55%      { opacity: 1;   filter: drop-shadow(0 0 14px var(--bolt2)) drop-shadow(0 0 22px var(--bolt)); }
+    }
+    @keyframes boltScan {
+      0%   { transform: translateX(-110%); }
+      100% { transform: translateX(110%); }
     }
     .btn-deep {
-      width:100%; margin-top:14px;
-      background:linear-gradient(135deg, #7c3aed, #fbbf24);
-      border:none; border-radius:14px; padding:16px 20px;
+      width:100%; margin-top:14px; position:relative; overflow:hidden;
+      background: linear-gradient(135deg, #0a1729 0%, #1a0d3d 50%, #0a1729 100%);
+      border:1.5px solid rgba(0,240,255,.55);
+      border-radius:14px; padding:18px 20px;
       font-family:var(--font); font-size:14px; font-weight:800;
       color:#fff; cursor:pointer; transition:transform .2s;
       display:flex; align-items:center; justify-content:center; gap:10px;
       letter-spacing:.3px;
-      animation: deepPulse 2.4s ease-in-out infinite;
+      animation: boltPulse 2.2s ease-in-out infinite;
     }
-    .btn-deep:hover { transform: translateY(-2px) scale(1.01); }
+    .btn-deep::before {
+      content:""; position:absolute; top:0; left:0; right:0; bottom:0;
+      background: linear-gradient(90deg, transparent 0%, rgba(0,240,255,.18) 50%, transparent 100%);
+      animation: boltScan 3.2s linear infinite;
+      pointer-events:none;
+    }
+    .btn-deep .bolt-svg { width:18px; height:18px; animation: boltFlicker 1.8s ease-in-out infinite; }
+    .btn-deep .btn-deep-label {
+      background: linear-gradient(90deg, var(--bolt), #fff, var(--bolt2));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      filter: drop-shadow(0 0 8px rgba(0,240,255,.4));
+    }
+    .btn-deep:hover { transform: translateY(-2px) scale(1.015); border-color: var(--bolt2); }
     .btn-deep:disabled { opacity:.5; cursor:not-allowed; animation:none; }
     .btn-deep-locked {
       width:100%; margin-top:14px;
-      background:rgba(124,58,237,.06); border:1px dashed rgba(124,58,237,.4);
+      background:rgba(0,240,255,.04); border:1px dashed rgba(0,240,255,.4);
       border-radius:14px; padding:16px 20px;
       font-family:var(--font); font-size:13px; font-weight:600;
       color:rgba(255,255,255,.55); cursor:not-allowed;
@@ -364,17 +389,26 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       padding:2px 8px; border-radius:100px; font-size:9px;
       background:rgba(255,255,255,.18); color:#fff; font-weight:800;
       letter-spacing:.06em; text-transform:uppercase;
+      position:relative; z-index:2;
     }
   </style>
   <button id="btnAnalyzeDeep" class="btn-deep" onclick="analyzeDeep()" style="display:none">
-    🔬 Análise PROFUNDA · Advogado YPP
+    <svg class="bolt-svg" viewBox="0 0 24 24" fill="none">
+      <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="url(#boltGrad)" stroke="#fff" stroke-width="0.5" stroke-linejoin="round"/>
+      <defs>
+        <linearGradient id="boltGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#00f0ff"/><stop offset="50%" stop-color="#fde047"/><stop offset="100%" stop-color="#a78bfa"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <span class="btn-deep-label">ANÁLISE PROFUNDA · Advogado YPP</span>
     <span class="deep-badge">👑 MASTER</span>
   </button>
   <div id="btnAnalyzeDeepLocked" class="btn-deep-locked" style="display:none" onclick="alert('Análise Profunda é exclusiva do plano Master. Faça upgrade pra usar.')">
     🔒 Análise PROFUNDA <span class="deep-badge">👑 MASTER</span>
   </div>
   <div id="btnAnalyzeDeepHint" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.6">
-    ⏱ ~30s · <strong style="color:#fbbf24">4 engines em paralelo</strong> · diretrizes YPP atualizadas semanalmente · relatório jurídico com evidências por vídeo · 1 análise/dia
+    ⏱ ~60s · <strong style="color:var(--bolt2)">4 engines em paralelo</strong> · diretrizes YPP atualizadas semanalmente · análise cena-a-cena com Blublu como advogado
   </div>
   </div>
 
@@ -549,11 +583,11 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
   </div>
 
   <!-- ════════════════════════════════════════════════════════════════════ -->
-  <!-- RESULTS DEEP (Análise Profunda — Master) ════════════════════════════ -->
+  <!-- RESULTS DEEP — versão compacta. Cinema é o show; aqui é só recap. -->
   <div id="resultsDeepSection" style="display:none">
 
-    <!-- VERDICT HEADER -->
-    <div class="score-card" id="deepVerdictCard">
+    <!-- HEADER COMPACTO: foto canal + 2 scores lado a lado (BlueScore + Compliance YPP) -->
+    <div class="score-card" id="deepVerdictCard" style="text-align:center">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;justify-content:center">
         <div id="deepChannelThumb" class="channel-thumb-placeholder">📺</div>
         <div style="text-align:left">
@@ -562,62 +596,515 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">
-        <div id="deepVerdictBadge" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:100px;font-weight:800;font-size:15px;letter-spacing:.2px">—</div>
-        <div style="text-align:left">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase">Compliance YPP</div>
-          <div id="deepComplianceScore" style="font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1">—</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;max-width:540px;margin:0 auto 14px;align-items:end">
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">BlueScore</div>
+          <div id="deepBlueScore" style="font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1;color:var(--neon)">—</div>
+          <div id="deepBlueScoreLabel" style="font-size:11px;color:var(--text-sec);font-weight:600;margin-top:4px">—</div>
         </div>
-        <div style="text-align:left">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase">Nicho</div>
-          <div id="deepNiche" style="font-size:14px;font-weight:700;color:var(--neon)">—</div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Compliance YPP</div>
+          <div id="deepComplianceScore" style="font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1">—</div>
+          <div id="deepVerdictBadge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:100px;font-weight:700;font-size:10px;letter-spacing:.2px;margin-top:4px">—</div>
         </div>
       </div>
 
-      <div id="deepSummary" style="margin-top:18px;font-size:14px;color:var(--text);line-height:1.6;text-align:center;max-width:600px;margin-left:auto;margin-right:auto"></div>
+      <div style="display:inline-flex;gap:8px;align-items:center;margin-bottom:14px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase">Nicho:</span>
+        <span id="deepNiche" style="font-size:13px;font-weight:700;color:var(--bolt)">—</span>
+      </div>
+
+      <div id="deepSummary" style="font-size:13px;color:var(--text);line-height:1.6;max-width:600px;margin:0 auto"></div>
     </div>
 
-    <!-- RISK CATEGORIES -->
-    <div class="insights-card" id="deepRiskSection" style="display:none">
-      <div class="section-title">⚠️ Riscos detectados <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="deepRiskCount"></span></div>
-      <div id="deepRiskList"></div>
-    </div>
-
-    <!-- TOP 3 ACTIONS -->
-    <div class="insights-card" id="deepActionsSection" style="display:none">
-      <div class="section-title">⚡ 3 Ações priorizadas</div>
-      <div id="deepActionsList"></div>
-    </div>
-
-    <!-- COMPLIANT SIGNALS -->
-    <div class="insights-card" id="deepCompliantSection" style="display:none">
-      <div class="section-title">✅ Sinais positivos</div>
-      <div id="deepCompliantList"></div>
-    </div>
-
-    <!-- VIDEOS ANALISADOS -->
-    <div class="insights-card" id="deepVideosSection" style="display:none">
-      <div class="section-title">🎬 Vídeos analisados</div>
-      <div id="deepVideosList"></div>
+    <!-- LISTA DE CENAS (compacta — cinema é onde se vive a experiência) -->
+    <div class="insights-card" id="deepScenesSection" style="display:none">
+      <div class="section-title">🎬 Cenas analisadas <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="deepScenesCount"></span></div>
+      <div id="deepScenesList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
 
     <!-- BOTÕES -->
     <div style="text-align:center;margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-      <button id="btnSaveDeep" onclick="saveDeepAnalysis()" style="background:linear-gradient(135deg,#7c3aed,#fbbf24);border:none;border-radius:10px;padding:12px 28px;color:#fff;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:all .2s">💾 Salvar análise</button>
-      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">↩ Analisar outro canal</button>
+      <button onclick="replayCinema()" style="background:linear-gradient(135deg,#0a1729,#1a0d3d);border:1.5px solid rgba(0,240,255,.55);border-radius:10px;padding:12px 22px;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s">⚡ Rever em cinema</button>
+      <button id="btnSaveDeep" onclick="saveDeepAnalysis()" style="background:linear-gradient(135deg,#00f0ff,#a78bfa);border:none;border-radius:10px;padding:12px 22px;color:#0a1729;font-family:var(--font);font-size:13px;font-weight:800;cursor:pointer;transition:all .2s">💾 Salvar análise</button>
+      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 22px;color:var(--text-sec);font-family:var(--font);font-size:13px;cursor:pointer">↩ Analisar outro canal</button>
     </div>
   </div>
 
   <!-- ════════════════════════════════════════════════════════════════════ -->
   <!-- PASTA "MINHAS ANÁLISES SALVAS" (Master) ════════════════════════════ -->
   <div id="savedSection" style="display:none;margin-top:32px">
-    <div class="insights-card" style="border-color:rgba(124,58,237,.2)">
+    <div class="insights-card" style="border-color:rgba(0,240,255,.2)">
       <div class="section-title">📁 Minhas análises salvas <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="savedCount"></span></div>
       <div id="savedList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
 
 </main>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- CINEMA STAGE — overlay fullscreen estilo elétrico/raio. Master only.       -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<style>
+  /* CINEMA — palette elétrica */
+  #cinemaStage {
+    position:fixed; inset:0; z-index:9000;
+    background: radial-gradient(ellipse at center, #0a1729 0%, #050a14 70%, #000 100%);
+    color:#e8f4ff; overflow:hidden; display:none;
+    font-family:'Outfit',sans-serif;
+  }
+  #cinemaStage.active { display:block; }
+  .cine-bg-grid {
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(0,240,255,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,240,255,.06) 1px, transparent 1px);
+    background-size: 56px 56px;
+    pointer-events:none;
+    animation: cineGridShift 20s linear infinite;
+  }
+  @keyframes cineGridShift { 0%{background-position:0 0} 100%{background-position:56px 56px} }
+
+  /* Bolts SVG flickering background */
+  .cine-bolt-bg {
+    position:absolute; pointer-events:none; opacity:.18;
+    filter: blur(1px) drop-shadow(0 0 12px var(--bolt2));
+  }
+  .cine-bolt-bg.b1 { top:8%; left:6%; width:80px; animation: cineBoltA 4.2s ease-in-out infinite; }
+  .cine-bolt-bg.b2 { top:18%; right:10%; width:60px; animation: cineBoltA 3.6s ease-in-out infinite .8s; }
+  .cine-bolt-bg.b3 { bottom:12%; left:14%; width:90px; animation: cineBoltA 5s ease-in-out infinite 1.4s; }
+  .cine-bolt-bg.b4 { bottom:6%; right:8%; width:70px; animation: cineBoltA 3.8s ease-in-out infinite 2s; }
+  @keyframes cineBoltA {
+    0%, 100% { opacity:.05; transform: scale(.95) rotate(-2deg); }
+    20%      { opacity:.45; transform: scale(1.05) rotate(0deg); }
+    25%      { opacity:.08; }
+    35%      { opacity:.4;  }
+    50%      { opacity:.12; transform: scale(1) rotate(2deg); }
+  }
+
+  /* Scan-line elétrica horizontal varrendo */
+  .cine-scan {
+    position:absolute; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, transparent, rgba(0,240,255,.85), rgba(253,224,71,.6), transparent);
+    box-shadow: 0 0 18px rgba(0,240,255,.5);
+    animation: cineScan 4.6s linear infinite;
+    pointer-events:none;
+  }
+  @keyframes cineScan {
+    0%   { top:-4px; }
+    100% { top:100%; }
+  }
+
+  .cine-content {
+    position:relative; z-index:5; height:100%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:32px 24px;
+  }
+  .cine-counter {
+    position:absolute; top:24px; left:24px;
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.18em;
+    color:var(--bolt); padding:6px 12px;
+    border:1px solid rgba(0,240,255,.4); border-radius:100px;
+    background:rgba(0,240,255,.05);
+    text-transform:uppercase;
+  }
+  .cine-close-btn {
+    position:absolute; top:20px; right:24px;
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.15);
+    color:rgba(255,255,255,.6); width:36px; height:36px; border-radius:50%;
+    cursor:pointer; font-size:18px; line-height:1;
+    transition:all .2s; z-index:10;
+  }
+  .cine-close-btn:hover { color:#fff; border-color:var(--bolt); transform:rotate(90deg); }
+
+  /* INTRO STEP */
+  .cine-intro { text-align:center; max-width:540px; }
+  .cine-avatar-wrap {
+    position:relative; width:140px; height:140px; margin:0 auto 20px;
+    border-radius:50%;
+    animation: cineAvatarPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes cineAvatarPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(0,240,255,.6), 0 0 40px rgba(253,224,71,.4); }
+    50%     { box-shadow: 0 0 0 18px rgba(0,240,255,0), 0 0 80px rgba(253,224,71,.7); }
+  }
+  .cine-avatar {
+    width:100%; height:100%; border-radius:50%;
+    border:3px solid var(--bolt);
+    object-fit:cover;
+    filter: drop-shadow(0 0 18px rgba(0,240,255,.5));
+  }
+  .cine-channel-name {
+    font-size:38px; font-weight:800; letter-spacing:-1.2px;
+    background: linear-gradient(90deg, var(--bolt), #fff, var(--bolt2));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    margin-bottom:6px;
+    animation: cineGlitch 4s steps(2,end) infinite;
+  }
+  @keyframes cineGlitch {
+    0%, 92%, 100% { transform: translateX(0); }
+    93% { transform: translateX(-2px); filter: hue-rotate(20deg); }
+    95% { transform: translateX(3px); filter: hue-rotate(-15deg); }
+    97% { transform: translateX(-1px); filter: hue-rotate(0); }
+  }
+  .cine-channel-meta {
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    color:rgba(232,244,255,.55); letter-spacing:.06em;
+    margin-bottom:24px;
+  }
+  .cine-blublu-intro {
+    font-size:18px; line-height:1.6; color:var(--text);
+    padding:18px 22px;
+    border-left:3px solid var(--bolt2);
+    background:rgba(253,224,71,.04);
+    border-radius:0 12px 12px 0;
+    text-align:left;
+  }
+  .cine-blublu-tag {
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    color:var(--bolt2); margin-bottom:6px;
+    text-transform:uppercase; letter-spacing:.14em;
+  }
+  .cine-blublu-tag::before {
+    content:""; width:6px; height:6px; border-radius:50%;
+    background:var(--bolt2); box-shadow:0 0 10px var(--bolt2);
+    animation: cineDotPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes cineDotPulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%     { opacity:.4; transform:scale(.7); }
+  }
+
+  /* SCENE STEP */
+  .cine-scene { width:100%; max-width:980px; }
+  .cine-scene-header {
+    text-align:center; margin-bottom:18px;
+  }
+  .cine-scene-title {
+    font-size:14px; font-family:'JetBrains Mono',monospace;
+    color:rgba(232,244,255,.55); letter-spacing:.08em;
+    text-transform:uppercase; margin-bottom:6px;
+  }
+  .cine-scene-vidtitle {
+    font-size:22px; font-weight:700; color:#fff;
+    line-height:1.3;
+  }
+  .cine-scene-grid {
+    display:grid; grid-template-columns: minmax(260px,360px) 1fr; gap:24px;
+    align-items:start;
+  }
+  @media (max-width:760px) {
+    .cine-scene-grid { grid-template-columns: 1fr; }
+  }
+  .cine-thumb-wrap {
+    position:relative; width:100%; aspect-ratio:9/16; max-height:420px;
+    border-radius:14px; overflow:hidden;
+    border:2px solid var(--bolt);
+    box-shadow: 0 0 0 4px rgba(0,240,255,.12), 0 0 40px rgba(0,240,255,.25);
+    background:#000;
+    animation: cineThumbEntry .6s cubic-bezier(.2,.9,.2,1) backwards;
+  }
+  @keyframes cineThumbEntry {
+    0%   { opacity:0; transform: translateX(-30px) scale(.95); filter: brightness(2); }
+    50%  { filter: brightness(1.5); }
+    100% { opacity:1; transform: translateX(0) scale(1); filter: brightness(1); }
+  }
+  .cine-thumb-img { width:100%; height:100%; object-fit:cover; }
+  .cine-verdict-pill {
+    position:absolute; top:14px; left:14px;
+    padding:6px 14px; border-radius:100px;
+    font-size:11px; font-weight:800; letter-spacing:.1em;
+    text-transform:uppercase;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 24px currentColor;
+  }
+  .cine-verdict-follows  { background:rgba(34,197,94,.85);  color:#fff; }
+  .cine-verdict-violates { background:rgba(239,68,68,.85);  color:#fff; }
+  .cine-verdict-neutral  { background:rgba(148,163,184,.7); color:#fff; }
+  .cine-thumb-meta {
+    position:absolute; bottom:0; left:0; right:0;
+    padding:14px 14px 12px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.85));
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px; color:rgba(255,255,255,.85);
+  }
+
+  .cine-blublu-bubble {
+    position:relative;
+    padding:22px 24px;
+    background: linear-gradient(135deg, rgba(0,240,255,.04), rgba(167,139,250,.04));
+    border:1px solid rgba(0,240,255,.25);
+    border-radius:16px;
+    animation: cineBubbleEntry .6s cubic-bezier(.2,.9,.2,1) .3s backwards;
+  }
+  @keyframes cineBubbleEntry {
+    0%   { opacity:0; transform: translateX(20px); }
+    100% { opacity:1; transform: translateX(0); }
+  }
+  .cine-saw-block {
+    margin-bottom:14px;
+  }
+  .cine-saw-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    color:var(--bolt); letter-spacing:.18em;
+    text-transform:uppercase; margin-bottom:6px;
+  }
+  .cine-saw-text {
+    font-size:14px; line-height:1.55; color:rgba(232,244,255,.85);
+  }
+  .cine-blublu-says {
+    font-size:17px; line-height:1.55; color:#fff; font-weight:500;
+    padding:14px 0 16px;
+    border-top:1px dashed rgba(0,240,255,.2);
+    border-bottom:1px dashed rgba(0,240,255,.2);
+    margin:14px 0;
+    min-height:60px;
+  }
+  .cine-blublu-says::before {
+    content:"⚡ "; color:var(--bolt2); font-weight:800;
+    filter: drop-shadow(0 0 6px var(--bolt2));
+  }
+  .cine-typing::after {
+    content:"▎"; color:var(--bolt); animation: cineCursor .9s steps(2,start) infinite;
+  }
+  @keyframes cineCursor { 0%,100% {opacity:1} 50% {opacity:0} }
+
+  .cine-evidence {
+    font-size:12px; color:rgba(232,244,255,.6);
+    line-height:1.5; padding:10px 12px;
+    background:rgba(255,255,255,.03);
+    border-left:2px solid rgba(253,224,71,.5);
+    border-radius:0 8px 8px 0;
+    margin-bottom:10px;
+    font-style:italic;
+  }
+  .cine-evidence::before {
+    content:"📎 EVIDÊNCIA · ";
+    font-style:normal; font-family:'JetBrains Mono',monospace;
+    font-size:9px; letter-spacing:.14em; color:var(--bolt2);
+    text-transform:uppercase;
+  }
+  .cine-guideline-pill {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 12px; border-radius:100px;
+    background: rgba(167,139,250,.12);
+    border:1px solid rgba(167,139,250,.35);
+    font-size:11px; font-weight:600; color:var(--bolt3);
+    letter-spacing:.02em;
+  }
+  .cine-guideline-pill::before { content:"§"; font-weight:800; }
+
+  /* REVEAL STEP */
+  .cine-reveal { text-align:center; max-width:680px; }
+  .cine-reveal-title {
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    color:var(--bolt); letter-spacing:.2em; text-transform:uppercase;
+    margin-bottom:16px;
+  }
+  .cine-reveal-grid {
+    display:grid; grid-template-columns: 1fr 1fr; gap:18px;
+    margin-bottom:24px;
+  }
+  @media (max-width:540px) { .cine-reveal-grid { grid-template-columns:1fr; } }
+  .cine-score-box {
+    padding:24px 18px; border-radius:18px;
+    background: linear-gradient(135deg, rgba(0,240,255,.05), rgba(0,0,0,.4));
+    border:1.5px solid rgba(0,240,255,.4);
+    animation: cineScoreReveal .8s cubic-bezier(.2,.9,.2,1) backwards;
+  }
+  .cine-score-box.ypp {
+    background: linear-gradient(135deg, rgba(167,139,250,.05), rgba(0,0,0,.4));
+    border-color: rgba(167,139,250,.4);
+    animation-delay:.3s;
+  }
+  @keyframes cineScoreReveal {
+    0%   { opacity:0; transform: translateY(20px) scale(.92); }
+    50%  { filter: brightness(1.4); }
+    100% { opacity:1; transform: translateY(0) scale(1); filter:brightness(1); }
+  }
+  .cine-score-label {
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    color:rgba(232,244,255,.55); letter-spacing:.16em;
+    text-transform:uppercase; margin-bottom:10px;
+  }
+  .cine-score-num {
+    font-size:64px; font-weight:800; letter-spacing:-2px; line-height:1;
+    background: linear-gradient(135deg, var(--bolt), #fff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    filter: drop-shadow(0 0 12px rgba(0,240,255,.4));
+  }
+  .cine-score-box.ypp .cine-score-num {
+    background: linear-gradient(135deg, var(--bolt3), var(--bolt2));
+    -webkit-background-clip:text; background-clip:text;
+    filter: drop-shadow(0 0 12px rgba(167,139,250,.4));
+  }
+  .cine-score-class {
+    font-size:13px; color:rgba(232,244,255,.85); font-weight:600;
+    margin-top:8px;
+  }
+  .cine-blublu-summary {
+    padding:18px 22px; text-align:left;
+    background: rgba(253,224,71,.04);
+    border-left:3px solid var(--bolt2);
+    border-radius:0 12px 12px 0;
+    font-size:15px; line-height:1.6; color:var(--text);
+    margin-bottom:24px;
+  }
+
+  /* NEXT BUTTON */
+  .cine-next-row { display:flex; gap:12px; justify-content:center; margin-top:28px; flex-wrap:wrap; }
+  .cine-btn {
+    background: linear-gradient(135deg, #0a1729 0%, #1a0d3d 50%, #0a1729 100%);
+    border:1.5px solid rgba(0,240,255,.55);
+    color:#fff; padding:14px 32px; border-radius:12px;
+    font-family:inherit; font-size:14px; font-weight:800; letter-spacing:.06em;
+    cursor:pointer; transition:all .2s;
+    display:inline-flex; align-items:center; gap:10px;
+    text-transform:uppercase;
+    position:relative; overflow:hidden;
+  }
+  .cine-btn::before {
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(90deg, transparent, rgba(0,240,255,.2), transparent);
+    animation: boltScan 2.6s linear infinite;
+  }
+  .cine-btn:hover { border-color:var(--bolt2); transform:translateY(-1px); }
+  .cine-btn-secondary {
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.18);
+    color:rgba(232,244,255,.7);
+  }
+  .cine-btn-secondary:hover { color:#fff; border-color:var(--bolt); }
+  .cine-btn-secondary::before { display:none; }
+
+  /* Step transitions */
+  .cine-step { display:none; animation: cineStepIn .5s cubic-bezier(.2,.9,.2,1) backwards; }
+  .cine-step.cine-step-active { display:block; }
+  @keyframes cineStepIn {
+    0%   { opacity:0; transform: translateY(12px); filter: brightness(1.6); }
+    100% { opacity:1; transform: translateY(0);   filter: brightness(1); }
+  }
+  /* Flash branco breve entre cenas */
+  .cine-flash {
+    position:absolute; inset:0; background:#fff;
+    opacity:0; pointer-events:none; z-index:8;
+    animation: cineFlash .35s ease-out;
+  }
+  @keyframes cineFlash {
+    0%   { opacity:0; }
+    20%  { opacity:.55; }
+    100% { opacity:0; }
+  }
+
+  /* Progress bar elétrica embaixo */
+  .cine-progress {
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; gap:6px; z-index:6;
+  }
+  .cine-dot {
+    width:24px; height:3px; border-radius:2px;
+    background:rgba(255,255,255,.12);
+    transition: all .3s;
+  }
+  .cine-dot.active {
+    background: var(--bolt); box-shadow: 0 0 10px var(--bolt);
+  }
+  .cine-dot.done {
+    background: var(--bolt2); box-shadow: 0 0 8px var(--bolt2);
+  }
+</style>
+
+<div id="cinemaStage">
+  <div class="cine-bg-grid"></div>
+  <div class="cine-scan"></div>
+
+  <!-- Bolts decorativos no fundo -->
+  <svg class="cine-bolt-bg b1" viewBox="0 0 24 32"><path d="M13 0L4 16h7l-1 16 9-20h-7l1-12z" fill="#00f0ff"/></svg>
+  <svg class="cine-bolt-bg b2" viewBox="0 0 24 32"><path d="M13 0L4 16h7l-1 16 9-20h-7l1-12z" fill="#fde047"/></svg>
+  <svg class="cine-bolt-bg b3" viewBox="0 0 24 32"><path d="M13 0L4 16h7l-1 16 9-20h-7l1-12z" fill="#a78bfa"/></svg>
+  <svg class="cine-bolt-bg b4" viewBox="0 0 24 32"><path d="M13 0L4 16h7l-1 16 9-20h-7l1-12z" fill="#00f0ff"/></svg>
+
+  <div class="cine-counter" id="cineCounter">⚡ ANALISANDO</div>
+  <button class="cine-close-btn" onclick="closeCinema(true)" title="Fechar">×</button>
+
+  <div class="cine-content">
+    <!-- INTRO -->
+    <div class="cine-step" id="cineStepIntro">
+      <div class="cine-intro">
+        <div class="cine-avatar-wrap">
+          <img class="cine-avatar" id="cineAvatar" src="" alt=""/>
+        </div>
+        <div class="cine-channel-name" id="cineChannelName">—</div>
+        <div class="cine-channel-meta" id="cineChannelMeta">—</div>
+        <div class="cine-blublu-intro">
+          <div class="cine-blublu-tag">Blublu · Advogado YPP</div>
+          <div id="cineChannelObservation">—</div>
+        </div>
+        <div class="cine-next-row">
+          <button class="cine-btn" onclick="cineNext()">Começar análise <span style="font-size:18px">▸</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE (rendered dinamicamente) -->
+    <div class="cine-step" id="cineStepScene">
+      <div class="cine-scene">
+        <div class="cine-scene-header">
+          <div class="cine-scene-title" id="cineSceneTitle">CENA 1 / 5</div>
+          <div class="cine-scene-vidtitle" id="cineSceneVidTitle">—</div>
+        </div>
+        <div class="cine-scene-grid">
+          <div class="cine-thumb-wrap">
+            <img class="cine-thumb-img" id="cineSceneThumb" src="" alt=""/>
+            <div class="cine-verdict-pill" id="cineSceneVerdict">—</div>
+            <div class="cine-thumb-meta" id="cineSceneThumbMeta">—</div>
+          </div>
+          <div class="cine-blublu-bubble">
+            <div class="cine-saw-block">
+              <div class="cine-saw-label">⚙️ O que as engines viram</div>
+              <div class="cine-saw-text" id="cineSceneWhatWeSaw">—</div>
+            </div>
+            <div class="cine-blublu-says" id="cineSceneBlublu">—</div>
+            <div class="cine-evidence" id="cineSceneEvidence">—</div>
+            <div class="cine-guideline-pill" id="cineSceneGuideline">—</div>
+          </div>
+        </div>
+        <div class="cine-next-row">
+          <button class="cine-btn" id="cineSceneNextBtn" onclick="cineNext()">Próxima cena <span style="font-size:18px">▸</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REVEAL -->
+    <div class="cine-step" id="cineStepReveal">
+      <div class="cine-reveal">
+        <div class="cine-reveal-title">⚡ Diagnóstico final</div>
+        <div class="cine-reveal-grid">
+          <div class="cine-score-box">
+            <div class="cine-score-label">BlueScore Algorítmico</div>
+            <div class="cine-score-num" id="cineRevealBluescore">—</div>
+            <div class="cine-score-class" id="cineRevealBluescoreLabel">—</div>
+          </div>
+          <div class="cine-score-box ypp">
+            <div class="cine-score-label">Compliance YPP</div>
+            <div class="cine-score-num" id="cineRevealYpp">—</div>
+            <div class="cine-score-class" id="cineRevealYppLabel">—</div>
+          </div>
+        </div>
+        <div class="cine-blublu-summary">
+          <div class="cine-blublu-tag">Blublu · veredito final</div>
+          <div id="cineRevealSummary">—</div>
+        </div>
+        <div class="cine-next-row">
+          <button class="cine-btn" onclick="closeCinema(false)">Ver relatório completo <span style="font-size:18px">▸</span></button>
+          <button class="cine-btn cine-btn-secondary" onclick="cineGoToScene(0)">↺ Rever cenas</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cine-progress" id="cineProgress"></div>
+</div>
 
 <script>
 // ── PERSISTÊNCIA DE ESTADO (24h) ──────────────────────────────────────────────
@@ -766,6 +1253,7 @@ async function analyze() {
 
     // 3. Calculate score
     const scoreData = calculateBlueScore(videos, channelData);
+    _currentBlueScore = scoreData; // captura pra exibir no cinema reveal
     setStep(4);
 
     // 4. AI diagnosis
@@ -1548,28 +2036,41 @@ async function analyzeDeep() {
     if (!channelData?.channelId) throw new Error('Canal não encontrado.');
     setDeepStep(2);
 
-    // Animação visual dos steps (proxy de progresso real, ~30s)
-    setTimeout(() => setDeepStep(3), 8000);
-    setTimeout(() => setDeepStep(4), 14000);
-    setTimeout(() => setDeepStep(5), 20000);
-    setTimeout(() => setDeepStep(6), 25000);
+    // Animação visual dos steps (proxy de progresso real, ~60s)
+    setTimeout(() => setDeepStep(3), 12000);
+    setTimeout(() => setDeepStep(4), 24000);
+    setTimeout(() => setDeepStep(5), 38000);
+    setTimeout(() => setDeepStep(6), 48000);
 
-    // 2. Chama bluescore-deep com token
-    const r = await fetch(`/api/bluescore-deep?channelId=${encodeURIComponent(channelData.channelId)}`, {
-      headers: { 'Authorization': 'Bearer ' + (token || '') },
-      signal: AbortSignal.timeout(295000),
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      if (r.status === 401) throw new Error('Faça login pra usar o BlueScore Deep.');
-      if (r.status === 403) throw new Error(d.message || 'Análise Profunda é exclusiva do plano Master.');
-      if (r.status === 429) throw new Error(d.message || 'Você já usou sua análise Deep hoje. Volte amanhã.');
+    // 2. PARALELO: Análise Rápida (BlueScore algorítmico) + Profunda (cenas+Blublu)
+    //    BlueScore tradicional é o que o user treinou. Não substitui — coexiste.
+    const [bsResult, deepRes] = await Promise.all([
+      (async () => {
+        try {
+          const videos = await fetchRecentVideos(channelData.channelId);
+          if (videos && videos.length) {
+            return calculateBlueScore(videos, channelData);
+          }
+        } catch (err) { console.warn('BlueScore tradicional falhou (segue sem):', err); }
+        return null;
+      })(),
+      fetch(`/api/bluescore-deep?channelId=${encodeURIComponent(channelData.channelId)}`, {
+        headers: { 'Authorization': 'Bearer ' + (token || '') },
+        signal: AbortSignal.timeout(295000),
+      }),
+    ]);
+    _currentBlueScore = bsResult; // fica disponível pro reveal
+
+    const d = await deepRes.json();
+    if (!deepRes.ok) {
+      if (deepRes.status === 401) throw new Error('Faça login pra usar o BlueScore Deep.');
+      if (deepRes.status === 403) throw new Error(d.message || 'Análise Profunda é exclusiva do plano Master.');
+      if (deepRes.status === 429) throw new Error(d.message || 'Você já usou sua análise Deep hoje. Volte amanhã.');
       throw new Error(d.error || 'Erro na análise profunda. Tente novamente.');
     }
 
-    // 3. Render
+    // 3. Render → cinema
     renderDeep(d);
-    // Recarrega lista de salvas pra refletir nova análise (se salvar)
     if (plan === 'master') loadSavedAnalyses();
 
   } catch (e) {
@@ -1586,112 +2087,305 @@ async function analyzeDeep() {
   }
 }
 
+// ── DEEP RENDER + CINEMA SEQUENCIADOR ────────────────────────────────────────
+let _currentDeepData = null;     // response da API: { channel, report, videos_data, ... }
+let _currentBlueScore = null;    // resultado do calculateBlueScore (do canal atual)
+let _cineState = { step: 'intro', sceneIdx: 0, scenes: [] };
+
 function renderDeep(d) {
   document.getElementById('loadingDeepSection').style.display = 'none';
-  document.getElementById('resultsDeepSection').style.display = 'block';
   _currentDeepId = d.analise_id;
+  _currentDeepData = d;
+  // Toca cinema; quando user fechar, mostra resultsDeepSection compacto
+  playCinema(d);
+}
 
+// Renderiza a tela compacta pós-cinema (recap)
+function renderDeepRecap(d) {
+  document.getElementById('resultsDeepSection').style.display = 'block';
   const ch = d.channel || {};
   const r = d.report || {};
 
-  // Channel info
+  // Avatar
+  const thumbEl = document.getElementById('deepChannelThumb');
+  if (ch.avatar) {
+    thumbEl.innerHTML = `<img src="${ch.avatar}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid rgba(0,240,255,.4)"/>`;
+  } else {
+    thumbEl.textContent = '📺';
+  }
   document.getElementById('deepChannelName').textContent = ch.title || '—';
   document.getElementById('deepChannelMeta').textContent = `${fmtNum(ch.subscribers)} inscritos · ${ch.videoCount || 0} vídeos`;
 
-  // Verdict badge
+  // BlueScore tradicional (preserva o número que o user treinou)
+  const bs = _currentBlueScore;
+  document.getElementById('deepBlueScore').textContent = bs?.score ?? '—';
+  document.getElementById('deepBlueScoreLabel').textContent = bs?.classLabel || 'BlueScore';
+
+  // Compliance YPP
   const verdictMap = {
-    compliant: { label: '✅ Conforme YPP', bg: 'rgba(34,197,94,.15)', border: 'rgba(34,197,94,.4)', color: '#22c55e' },
-    warning:   { label: '⚠️ Atenção', bg: 'rgba(251,191,36,.15)', border: 'rgba(251,191,36,.4)', color: 'var(--gold)' },
-    risk:      { label: '🔴 Risco de desmonetização', bg: 'rgba(239,68,68,.15)', border: 'rgba(239,68,68,.4)', color: '#ef4444' },
+    compliant: { label: '✅ Conforme', color: '#22c55e' },
+    warning:   { label: '⚠️ Atenção',  color: 'var(--gold)' },
+    risk:      { label: '🔴 Risco',    color: '#ef4444' },
   };
   const vc = verdictMap[r.verdict] || verdictMap.warning;
-  const vbadge = document.getElementById('deepVerdictBadge');
-  vbadge.textContent = vc.label;
-  vbadge.style.background = vc.bg;
-  vbadge.style.border = '1px solid ' + vc.border;
-  vbadge.style.color = vc.color;
-
-  // Compliance score
   const cscore = document.getElementById('deepComplianceScore');
   cscore.textContent = (r.compliance_score ?? '—') + '/100';
   cscore.style.color = vc.color;
+  const vbadge = document.getElementById('deepVerdictBadge');
+  vbadge.textContent = vc.label;
+  vbadge.style.background = vc.color + '22';
+  vbadge.style.border = '1px solid ' + vc.color + '66';
+  vbadge.style.color = vc.color;
 
-  // Niche
   document.getElementById('deepNiche').textContent = r.niche || '—';
+  document.getElementById('deepSummary').textContent = r.blublu_summary || r.channel_observation || '';
 
-  // Summary
-  document.getElementById('deepSummary').textContent = r.summary || '';
-
-  // Risk categories
-  const risks = r.risk_categories || [];
-  if (risks.length > 0) {
-    document.getElementById('deepRiskSection').style.display = 'block';
-    document.getElementById('deepRiskCount').textContent = ' · ' + risks.length + ' detectado' + (risks.length > 1 ? 's' : '');
-    const sevColors = { high: '#ef4444', medium: 'var(--gold)', low: '#94a3b8' };
-    const sevIcons  = { high: '🚨',     medium: '⚠️',          low: 'ℹ️' };
-    document.getElementById('deepRiskList').innerHTML = risks.map(rc => `
-      <div class="insight-item" style="border-left:3px solid ${sevColors[rc.severity]||'#fbbf24'};padding-left:14px;margin-left:-4px">
-        <div class="insight-icon warn" style="background:${sevColors[rc.severity]}18;border-color:${sevColors[rc.severity]}40">${sevIcons[rc.severity]||'⚠️'}</div>
-        <div class="insight-text">
-          <div class="insight-title" style="color:${sevColors[rc.severity]||'var(--gold)'}">${escapeHtml(rc.category || '').replace(/_/g,' ')} · ${escapeHtml((rc.severity||'').toUpperCase())}</div>
-          <div class="insight-desc"><b>Evidência:</b> ${escapeHtml(rc.evidence || '')}</div>
-          <div class="insight-desc" style="margin-top:6px"><b>Diretriz YPP:</b> ${escapeHtml(rc.ypp_guideline_violated || '')}</div>
-          <div class="insight-desc" style="margin-top:6px;color:var(--neon)"><b>O que fazer:</b> ${escapeHtml(rc.fix || '')}</div>
-        </div>
-      </div>`).join('');
-  } else {
-    document.getElementById('deepRiskSection').style.display = 'none';
-  }
-
-  // Top 3 actions
-  const actions = r.top_3_actions || [];
-  if (actions.length > 0) {
-    document.getElementById('deepActionsSection').style.display = 'block';
-    document.getElementById('deepActionsList').innerHTML = actions.map((a, i) => `
-      <div class="rec-item">
-        <div class="rec-num">${i+1}</div>
-        <div class="rec-text">${escapeHtml(a)}</div>
-      </div>`).join('');
-  } else {
-    document.getElementById('deepActionsSection').style.display = 'none';
-  }
-
-  // Compliant signals
-  const signals = r.compliant_signals || [];
-  if (signals.length > 0) {
-    document.getElementById('deepCompliantSection').style.display = 'block';
-    document.getElementById('deepCompliantList').innerHTML = signals.map(s => `
-      <div class="insight-item">
-        <div class="insight-icon pos">✓</div>
-        <div class="insight-text"><div class="insight-desc">${escapeHtml(s)}</div></div>
-      </div>`).join('');
-  } else {
-    document.getElementById('deepCompliantSection').style.display = 'none';
-  }
-
-  // Vídeos analisados
-  const videos = d.videos_data || [];
-  if (videos.length > 0) {
-    document.getElementById('deepVideosSection').style.display = 'block';
-    document.getElementById('deepVideosList').innerHTML = videos.map((v, i) => {
-      const tSample = v.transcript?.sample ? `"${escapeHtml(v.transcript.sample)}..."` : (v.transcript?.error ? `<i style="color:var(--red)">transcrição falhou: ${escapeHtml(v.transcript.error)}</i>` : '');
-      const vAnalysis = v.visual?.thumbnail_style ? `${escapeHtml(v.visual.thumbnail_style)} · IA: ${escapeHtml(v.visual.ai_voice_likely||'?')}` : '<i>visual indisponível</i>';
-      const matches = v.reverse?.total_matches ?? '?';
+  // Cenas em lista compacta
+  const scenes = Array.isArray(r.scenes) ? r.scenes : [];
+  if (scenes.length > 0) {
+    document.getElementById('deepScenesSection').style.display = 'block';
+    document.getElementById('deepScenesCount').textContent = ' · ' + scenes.length;
+    const verdictPills = {
+      follows:  { bg:'rgba(34,197,94,.18)',  fg:'#22c55e', icon:'✓', label:'SEGUE' },
+      violates: { bg:'rgba(239,68,68,.18)',  fg:'#ef4444', icon:'!', label:'VIOLA' },
+      neutral:  { bg:'rgba(148,163,184,.2)', fg:'#94a3b8', icon:'~', label:'NEUTRO' },
+    };
+    const videosById = {};
+    (d.videos_data || []).forEach(v => { videosById[v.id] = v; });
+    document.getElementById('deepScenesList').innerHTML = scenes.map((sc, i) => {
+      const vp = verdictPills[sc.verdict_for_scene] || verdictPills.neutral;
+      const vid = videosById[sc.video_id] || {};
+      const thumb = vid.thumbnail || '';
       return `
-        <div style="display:flex;gap:12px;padding:12px;border-bottom:1px solid rgba(0,170,255,.06);align-items:flex-start">
-          <img src="${v.thumbnail||''}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"/>
+        <div style="display:flex;gap:12px;padding:12px;background:rgba(0,240,255,.03);border:1px solid rgba(0,240,255,.1);border-radius:10px;align-items:flex-start">
+          ${thumb ? `<img src="${thumb}" style="width:54px;height:54px;border-radius:8px;object-fit:cover;flex-shrink:0"/>` : ''}
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600;margin-bottom:4px">Vídeo ${i+1}: ${escapeHtml((v.title||'').slice(0,60))}${(v.title||'').length>60?'…':''}</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:6px">${v.duration}s · ${fmtNum(v.views)} views · ${matches} matches reverse</div>
-            <div style="font-size:11px;color:var(--text-sec);line-height:1.5;margin-bottom:4px"><b>Transcript:</b> ${tSample}</div>
-            <div style="font-size:11px;color:var(--text-sec);line-height:1.5"><b>Visual:</b> ${vAnalysis}</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;background:${vp.bg};color:${vp.fg};font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:.06em">${vp.icon} ${vp.label}</span>
+              <span style="font-size:13px;font-weight:600;color:#fff">${escapeHtml((sc.video_title||'').slice(0,70))}${(sc.video_title||'').length>70?'…':''}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-sec);line-height:1.5;margin-bottom:4px">${escapeHtml(sc.blublu_says||'')}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.5">§ ${escapeHtml((sc.guideline_reference||'').slice(0,80))}</div>
           </div>
         </div>`;
     }).join('');
+  } else {
+    document.getElementById('deepScenesSection').style.display = 'none';
   }
 
-  document.getElementById('resultsDeepSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('resultsDeepSection').scrollIntoView({ behavior:'smooth', block:'start' });
 }
+
+// ── CINEMA STAGE ────────────────────────────────────────────────────────────
+function playCinema(d) {
+  const ch = d.channel || {};
+  const r = d.report || {};
+  const scenes = Array.isArray(r.scenes) ? r.scenes : [];
+  _cineState = { step: 'intro', sceneIdx: 0, scenes };
+
+  // Map video_id → video data (pra pegar thumbnail no scene render)
+  _cineState.videosById = {};
+  (d.videos_data || []).forEach(v => { _cineState.videosById[v.id] = v; });
+  _cineState.report = r;
+  _cineState.channel = ch;
+
+  // INTRO
+  const avatar = document.getElementById('cineAvatar');
+  if (ch.avatar) {
+    avatar.src = ch.avatar;
+    avatar.style.display = 'block';
+  } else {
+    avatar.style.display = 'none';
+  }
+  document.getElementById('cineChannelName').textContent = ch.title || '—';
+  document.getElementById('cineChannelMeta').textContent = `${fmtNum(ch.subscribers)} inscritos · ${ch.videoCount||0} vídeos · ${ch.country||'—'}`;
+  document.getElementById('cineChannelObservation').textContent = r.channel_observation || '';
+
+  // PROGRESS DOTS — 1 intro + N scenes + 1 reveal
+  const progressEl = document.getElementById('cineProgress');
+  const total = scenes.length + 2;
+  progressEl.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'cine-dot';
+    progressEl.appendChild(dot);
+  }
+  cineUpdateProgress();
+
+  // Mostra stage e ativa intro
+  document.getElementById('cinemaStage').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  cineShowStep('intro');
+}
+
+function cineShowStep(step) {
+  ['cineStepIntro','cineStepScene','cineStepReveal'].forEach(id => {
+    document.getElementById(id).classList.remove('cine-step-active');
+  });
+  if (step === 'intro')   document.getElementById('cineStepIntro').classList.add('cine-step-active');
+  if (step === 'scene')   document.getElementById('cineStepScene').classList.add('cine-step-active');
+  if (step === 'reveal')  document.getElementById('cineStepReveal').classList.add('cine-step-active');
+  cineUpdateProgress();
+}
+
+function cineUpdateProgress() {
+  const dots = document.querySelectorAll('#cineProgress .cine-dot');
+  if (!dots.length) return;
+  let active = 0;
+  if (_cineState.step === 'intro') active = 0;
+  else if (_cineState.step === 'scene') active = 1 + _cineState.sceneIdx;
+  else if (_cineState.step === 'reveal') active = dots.length - 1;
+  dots.forEach((d, i) => {
+    d.classList.remove('active','done');
+    if (i < active) d.classList.add('done');
+    else if (i === active) d.classList.add('active');
+  });
+}
+
+function cineFlash() {
+  const stage = document.getElementById('cinemaStage');
+  const old = stage.querySelector('.cine-flash');
+  if (old) old.remove();
+  const f = document.createElement('div');
+  f.className = 'cine-flash';
+  stage.appendChild(f);
+  setTimeout(() => f.remove(), 380);
+}
+
+function cineRenderScene(idx) {
+  const sc = _cineState.scenes[idx];
+  if (!sc) return;
+  const vid = _cineState.videosById[sc.video_id] || {};
+  const total = _cineState.scenes.length;
+  const counter = document.getElementById('cineCounter');
+  counter.textContent = `⚡ CENA ${idx+1} / ${total}`;
+  document.getElementById('cineSceneTitle').textContent = `Cena ${idx+1} de ${total}`;
+  document.getElementById('cineSceneVidTitle').textContent = sc.video_title || '—';
+
+  const thumb = document.getElementById('cineSceneThumb');
+  thumb.src = vid.thumbnail || `https://i.ytimg.com/vi/${sc.video_id}/hqdefault.jpg`;
+
+  document.getElementById('cineSceneThumbMeta').textContent =
+    `${vid.duration ? vid.duration+'s · ' : ''}${vid.views ? fmtNum(vid.views)+' views' : ''}`;
+
+  // Verdict pill
+  const vp = document.getElementById('cineSceneVerdict');
+  const verdictLabel = {
+    follows:  { cls:'cine-verdict-follows',  txt:'✓ SEGUE' },
+    violates: { cls:'cine-verdict-violates', txt:'! VIOLA' },
+    neutral:  { cls:'cine-verdict-neutral',  txt:'~ NEUTRO' },
+  };
+  const vl = verdictLabel[sc.verdict_for_scene] || verdictLabel.neutral;
+  vp.className = 'cine-verdict-pill ' + vl.cls;
+  vp.textContent = vl.txt;
+
+  document.getElementById('cineSceneWhatWeSaw').textContent = sc.what_we_saw || '—';
+  document.getElementById('cineSceneEvidence').textContent = sc.evidence_quote || '—';
+  document.getElementById('cineSceneGuideline').textContent = sc.guideline_reference || '—';
+
+  // Blublu typing
+  const blubluEl = document.getElementById('cineSceneBlublu');
+  cineTypeWriter(blubluEl, sc.blublu_says || '');
+
+  // Reset animations re-entry
+  const grid = document.querySelector('.cine-scene-grid');
+  if (grid) {
+    grid.querySelectorAll('.cine-thumb-wrap, .cine-blublu-bubble').forEach(el => {
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = '';
+    });
+  }
+}
+
+let _typingTimer = null;
+function cineTypeWriter(el, text) {
+  if (_typingTimer) clearInterval(_typingTimer);
+  el.classList.add('cine-typing');
+  el.textContent = '';
+  let i = 0;
+  const speed = Math.max(12, Math.min(28, Math.floor(900 / Math.max(40, text.length))));
+  _typingTimer = setInterval(() => {
+    if (i >= text.length) {
+      clearInterval(_typingTimer);
+      _typingTimer = null;
+      el.classList.remove('cine-typing');
+      return;
+    }
+    el.textContent = text.slice(0, ++i);
+  }, speed);
+}
+
+function cineNext() {
+  if (_cineState.step === 'intro') {
+    cineFlash();
+    _cineState.step = 'scene';
+    _cineState.sceneIdx = 0;
+    cineRenderScene(0);
+    cineShowStep('scene');
+    return;
+  }
+  if (_cineState.step === 'scene') {
+    if (_cineState.sceneIdx < _cineState.scenes.length - 1) {
+      cineFlash();
+      _cineState.sceneIdx++;
+      cineRenderScene(_cineState.sceneIdx);
+      cineShowStep('scene');
+    } else {
+      cineFlash();
+      _cineState.step = 'reveal';
+      cineRenderReveal();
+      cineShowStep('reveal');
+    }
+    return;
+  }
+}
+
+function cineGoToScene(idx) {
+  if (!_cineState.scenes.length) return;
+  cineFlash();
+  _cineState.step = 'scene';
+  _cineState.sceneIdx = Math.max(0, Math.min(idx, _cineState.scenes.length-1));
+  cineRenderScene(_cineState.sceneIdx);
+  cineShowStep('scene');
+}
+
+function cineRenderReveal() {
+  const r = _cineState.report || {};
+  const bs = _currentBlueScore;
+  document.getElementById('cineCounter').textContent = '⚡ DIAGNÓSTICO FINAL';
+  document.getElementById('cineRevealBluescore').textContent = bs?.score ?? '—';
+  document.getElementById('cineRevealBluescoreLabel').textContent = bs?.classLabel || 'BlueScore';
+  document.getElementById('cineRevealYpp').textContent = (r.compliance_score ?? '—');
+  const verdictText = { compliant:'✅ Conforme YPP', warning:'⚠️ Atenção', risk:'🔴 Risco' };
+  document.getElementById('cineRevealYppLabel').textContent = verdictText[r.verdict] || '—';
+  document.getElementById('cineRevealSummary').textContent = r.blublu_summary || '';
+}
+
+function closeCinema(skipRecap) {
+  document.getElementById('cinemaStage').classList.remove('active');
+  document.body.style.overflow = '';
+  if (_typingTimer) { clearInterval(_typingTimer); _typingTimer = null; }
+  if (!skipRecap && _currentDeepData) {
+    renderDeepRecap(_currentDeepData);
+    if (plan === 'master') loadSavedAnalyses();
+  }
+}
+
+function replayCinema() {
+  if (!_currentDeepData) { alert('Sem análise carregada.'); return; }
+  playCinema(_currentDeepData);
+}
+
+// Tecla ESC fecha cinema
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && document.getElementById('cinemaStage')?.classList.contains('active')) {
+    closeCinema(true);
+  }
+  if (ev.key === 'ArrowRight' && document.getElementById('cinemaStage')?.classList.contains('active')) {
+    cineNext();
+  }
+});
 
 async function saveDeepAnalysis() {
   if (!_currentDeepId) return alert('Análise não identificada.');
@@ -1743,19 +2437,58 @@ async function loadSavedAnalyses() {
       return;
     }
     const verdictColor = { compliant: '#22c55e', warning: 'var(--gold)', risk: '#ef4444' };
-    ul.innerHTML = list.map(a => `
-      <div style="display:flex;gap:12px;padding:10px 12px;background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.12);border-radius:10px;align-items:center">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${escapeHtml(a.canal_nome||'')}</div>
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
-            ${escapeHtml((a.nicho||'').slice(0,40))} ·
-            <span style="color:${verdictColor[a.verdict]||'var(--text-dim)'};font-weight:700">${escapeHtml(a.verdict||'?')} ${a.compliance_score||'?'}/100</span> ·
-            ${new Date(a.created_at).toLocaleDateString('pt-BR')}
+    ul.innerHTML = list.map(a => {
+      // Versao cinema (fase6+) tem relatorio_v2.scenes — versao antiga (fase3-deep) nao.
+      const isCinema = (a.prompt_version || '').includes('cinema');
+      const reopenAttr = isCinema
+        ? `onclick="reopenSavedCinema('${a.id}')" style="cursor:pointer"`
+        : `onclick="alert('Análise antiga (formato pré-cinema). Rode uma nova pra ver no cinema.')" style="cursor:pointer;opacity:.7"`;
+      return `
+        <div ${reopenAttr} style="display:flex;gap:12px;padding:10px 12px;background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:10px;align-items:center;transition:all .2s" onmouseover="this.style.borderColor='rgba(0,240,255,.4)';this.style.background='rgba(0,240,255,.07)'" onmouseout="this.style.borderColor='rgba(0,240,255,.15)';this.style.background='rgba(0,240,255,.04)'">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${isCinema?'⚡ ':''}${escapeHtml(a.canal_nome||'')}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
+              ${escapeHtml((a.nicho||'').slice(0,40))} ·
+              <span style="color:${verdictColor[a.verdict]||'var(--text-dim)'};font-weight:700">${escapeHtml(a.verdict||'?')} ${a.compliance_score||'?'}/100</span> ·
+              ${new Date(a.created_at).toLocaleDateString('pt-BR')}
+            </div>
           </div>
-        </div>
-        <button onclick="deleteDeepAnalysis('${a.id}')" style="background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:4px 10px;color:#ef4444;font-size:10px;cursor:pointer">Remover</button>
-      </div>`).join('');
+          <button onclick="event.stopPropagation();deleteDeepAnalysis('${a.id}')" style="background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:4px 10px;color:#ef4444;font-size:10px;cursor:pointer">Remover</button>
+        </div>`;
+    }).join('');
   } catch (e) { console.error('loadSavedAnalyses', e); }
+}
+
+// Reabre análise salva diretamente no cinema.
+async function reopenSavedCinema(analiseId) {
+  if (!analiseId) return;
+  try {
+    const r = await fetch('/api/bluescore-actions?action=detalhes&id=' + encodeURIComponent(analiseId), {
+      headers: { 'Authorization': 'Bearer ' + (token||'') }
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok || !d.analise?.relatorio_v2) {
+      alert(d.error || 'Não foi possível reabrir esta análise.');
+      return;
+    }
+    const stored = d.analise.relatorio_v2; // { report, videos_data, channel }
+    if (!stored.report || !Array.isArray(stored.report.scenes)) {
+      alert('Esta análise está em formato antigo (pré-cinema). Rode uma nova pra ver com cenas.');
+      return;
+    }
+    // Reconstruir o "d" como se viesse da API
+    const fakeD = {
+      analise_id: d.analise.id,
+      channel: stored.channel || {},
+      report: stored.report,
+      videos_data: stored.videos_data || [],
+    };
+    _currentDeepData = fakeD;
+    _currentDeepId = d.analise.id;
+    // BlueScore tradicional — pode não estar salvo. Reseta pro reveal mostrar "—".
+    _currentBlueScore = null;
+    playCinema(fakeD);
+  } catch (e) { console.error('reopenSavedCinema', e); alert('Erro de rede.'); }
 }
 
 function escapeHtml(s) {
