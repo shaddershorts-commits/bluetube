@@ -19,7 +19,56 @@
 // maxDuration Vercel: 300s.
 
 const { getTranscript, extractText } = require('./_helpers/supadata');
-const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality');
+
+// Manifesto condensado pra YPP (versao reduzida do BLUBLU_MANIFESTO_V3 do helper).
+// Original tem 5KB com exemplos de viral — aqui mantemos so o nucleo de tom +
+// vocabulario proibido + estrutura. Reducao calibrada pra caber em max_tokens
+// junto com 5 cenas + meta no output.
+const BLUBLU_MANIFESTO_YPP = `
+QUEM VOCE E
+Voce e Blublu, mentor direto. Personalidade fusao de: storytelling com dados
+duros (Finch), provocacao tecnica direta (Marcal), disciplina + matematica
+(Joel Jota), brutalidade respeitosa (Flavio Augusto), ironia inteligente
+(Possidonio), pitada de autoconsciencia de IA (Deadpool — 1x por analise no
+maximo, em parenteses).
+
+Nesta analise especifica voce e ADVOGADO YPP. Mesmo tom, missao diferente:
+defender o canal contra desmonetizacao. Diretriz primeiro, opiniao depois.
+
+7 PILARES DE TOM
+1. Autoridade sem pedir licenca: afirma, nao "talvez/acho que/se voce quiser".
+2. Dados brutos antes de opiniao: numero primeiro ("60 matches externos"),
+   interpretacao depois.
+3. Direto na ferida: fala o que ninguem fala. Sem suavizar.
+4. Cuida de verdade: toda critica vem com caminho pra resolver.
+5. Zero frufru corporativo (lista proibida abaixo).
+6. Tom 40% tecnico + 35% provocacao + 15% construcao + 10% zoeira ocasional.
+7. 1-2x por analise inteira: comentario lateral em parenteses sobre ser IA.
+
+VOCABULARIO PROIBIDO
+✗ "alavancar","potencializar","disruptivo","transformacional","jornada do
+   criador","insights valiosos","amplo conhecimento","conteudo de qualidade",
+   "experiencia do usuario","metricas","performance","engajamento" como rotulo.
+✗ Coach motivacional: "vamos juntos","voce consegue","ceu e o limite",
+   "saia da zona de conforto","acredite em voce".
+✗ Despedidas: "espero ter ajudado","qualquer duvida","estou aqui se precisar".
+✗ Palavroes pesados (fdp, vai se f*der, corno, otario, idiota direcionado).
+
+PALAVROES MODERADOS
+✓ "caralho" (1-2x na analise inteira), "porra" (1x), "puta" como intensifi-
+  cador ("puta thumb"), "merda" raramente em contexto tecnico ("merda de
+  audio"). Regra de ouro: temperam, nunca empilham.
+
+EXEMPLO DE TOM CERTO (calibracao — NAO copiar literalmente)
+"Cara, esse video tem 60 matches no reverse. Reuso de conteudo evidente.
+A IA YouTube nao e burra — vai pegar. Refilma o frame original ou muda a
+edicao em pelo menos 40%. Sem isso, desmonetiza." (dado + diretriz +
+acao concreta)
+
+EXEMPLO DE TOM ERRADO (NUNCA assim)
+✗ "Seu video apresenta riscos de monetizacao por reutilizacao de conteudo.
+   E importante manter consistencia na originalidade."
+`.trim();
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -517,7 +566,7 @@ REGRAS DE OURO (quality gate):
 ✓ Distribuicao realista de verdict_for_scene (nao tudo violates, nao tudo follows).
 `;
 
-  return `${BLUBLU_MANIFESTO_V3}
+  return `${BLUBLU_MANIFESTO_YPP}
 
 ${yppContext}
 
@@ -558,8 +607,16 @@ const extractJson = (text) => {
   try { return JSON.parse(text.slice(s, e + 1)); } catch (er) { return null; }
 };
 
+// Logs server-side guardam motivo da falha pro debug. NAO expoe detalhes
+// no response (mascarado com bluescore_engine_unavailable pro frontend).
+const _engineLog = [];
+function logEngine(provider, status, detail) {
+  _engineLog.push({ provider, status, detail: (detail || '').slice(0, 200), t: Date.now() });
+  console.warn(`[bluescore-engine] ${provider} ${status}: ${(detail || '').slice(0, 200)}`);
+}
+
 async function callOpenAI(prompt, temperature) {
-  if (!OPENAI_KEY) return null;
+  if (!OPENAI_KEY) { logEngine('openai', 'no_key', 'OPENAI_API_KEY ausente'); return null; }
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -567,20 +624,27 @@ async function callOpenAI(prompt, temperature) {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2400,
+        max_tokens: 4000, // 5 cenas + meta cabem confortavelmente
         temperature,
+        response_format: { type: 'json_object' },
       }),
-      signal: AbortSignal.timeout(50000),
+      signal: AbortSignal.timeout(80000),
     });
     const d = await r.json();
-    if (r.ok && d.choices?.[0]?.message?.content) {
-      return extractJson(d.choices[0].message.content);
-    }
-  } catch (e) {}
-  return null;
+    if (!r.ok) { logEngine('openai', 'http_' + r.status, JSON.stringify(d).slice(0, 200)); return null; }
+    const content = d.choices?.[0]?.message?.content || '';
+    if (!content) { logEngine('openai', 'empty_content', JSON.stringify(d.choices?.[0] || {}).slice(0, 200)); return null; }
+    const parsed = extractJson(content);
+    if (!parsed) { logEngine('openai', 'json_parse_failed', content.slice(0, 200)); return null; }
+    return parsed;
+  } catch (e) {
+    logEngine('openai', 'exception', e.message);
+    return null;
+  }
 }
 
 async function callGemini(prompt, temperature) {
+  if (!GEMINI_KEYS.length) { logEngine('gemini', 'no_keys', 'GEMINI_KEY_* ausente'); return null; }
   for (const key of GEMINI_KEYS.slice(0, 3)) {
     try {
       const r = await fetch(
@@ -590,18 +654,24 @@ async function callGemini(prompt, temperature) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature, maxOutputTokens: 2400 },
+            generationConfig: {
+              temperature,
+              maxOutputTokens: 4000,
+              responseMimeType: 'application/json',
+            },
           }),
-          signal: AbortSignal.timeout(50000),
+          signal: AbortSignal.timeout(80000),
         }
       );
       const d = await r.json();
-      if (d.error?.code === 429) continue;
-      if (!r.ok) continue;
+      if (d.error?.code === 429) { logEngine('gemini', 'rate_limit', 'try next key'); continue; }
+      if (!r.ok) { logEngine('gemini', 'http_' + r.status, JSON.stringify(d).slice(0, 200)); continue; }
       const text = d.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || '';
+      if (!text) { logEngine('gemini', 'empty_content', JSON.stringify(d).slice(0, 200)); continue; }
       const parsed = extractJson(text);
-      if (parsed) return parsed;
-    } catch (e) {}
+      if (!parsed) { logEngine('gemini', 'json_parse_failed', text.slice(0, 200)); continue; }
+      return parsed;
+    } catch (e) { logEngine('gemini', 'exception', e.message); }
   }
   return null;
 }
@@ -687,6 +757,7 @@ module.exports = async function handler(req, res) {
 
   const startTs = Date.now();
   const stages = [];
+  _engineLog.length = 0; // reset por invocacao (serverless cache do module)
 
   try {
     // 5. Channel + videos (paralelo)
@@ -739,7 +810,11 @@ module.exports = async function handler(req, res) {
     // Source mantido internamente nos logs server-side mas nao exposto no stage
 
     if (!reportResult.ok) {
-      return res.status(502).json({ error: 'bluescore_engine_unavailable', stages });
+      return res.status(502).json({
+        error: 'bluescore_engine_unavailable',
+        stages,
+        engine_log: _engineLog.slice(-10), // ultimos eventos pra debug
+      });
     }
 
     // 9. Salva no Supabase com user_id
