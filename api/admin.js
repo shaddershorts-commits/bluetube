@@ -28,6 +28,9 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && action === 'marcar-saque-pago') {
     return marcarSaquePagoAction(req, res, { SUPABASE_URL, headers });
   }
+  if (req.method === 'POST' && action === 'pagar-afiliado-pix') {
+    return pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers });
+  }
 
   // ── SET PLAN MANUALLY ────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_plan') {
@@ -1211,6 +1214,238 @@ async function marcarSaquePagoAction(req, res, { SUPABASE_URL, headers }) {
     }
 
     return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ── PAGAR AFILIADO VIA PIX (admin força transferência ASAAS) ────────────────
+// Cria saque + envia Pix + atualiza saldo/commissions + envia email pro afiliado.
+// Reutiliza fluxo idêntico ao dia 22 mas disparado pelo admin a qualquer momento.
+async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
+  const { encryptValue, decryptSafe } = require('./_helpers/crypto.js');
+  const { affiliate_id } = req.body || {};
+  if (!affiliate_id) return res.status(400).json({ error: 'affiliate_id_obrigatorio' });
+  // Valida UUID pra evitar injection no PostgREST
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(affiliate_id)) {
+    return res.status(400).json({ error: 'affiliate_id_invalido' });
+  }
+
+  const ASAAS_KEY = process.env.ASAAS_API_KEY || '';
+  const ASAAS_URL = (process.env.ASAAS_ENVIRONMENT === 'production')
+    ? 'https://api.asaas.com/v3'
+    : 'https://sandbox.asaas.com/api/v3';
+  const VALOR_MINIMO = 50;
+
+  try {
+    // 0. Guard anti-duplo: se já existe saque 'processando' pra esse afiliado, rejeita
+    const guardR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_saques?affiliate_id=eq.${affiliate_id}&status=eq.processando&select=id&limit=1`,
+      { headers }
+    );
+    if (guardR.ok) {
+      const guardRows = await guardR.json();
+      if (guardRows.length > 0) {
+        return res.status(409).json({ error: 'saque_em_andamento', mensagem: 'Já existe um saque em processamento pra esse afiliado.' });
+      }
+    }
+
+    // 1. Busca afiliado
+    const aR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliates?id=eq.${affiliate_id}&select=*&limit=1`,
+      { headers }
+    );
+    if (!aR.ok) return res.status(502).json({ error: 'erro_banco' });
+    const [afiliado] = await aR.json();
+    if (!afiliado) return res.status(404).json({ error: 'afiliado_nao_encontrado' });
+
+    // Decrypt chave Pix
+    const chavePlain = afiliado.chave_pix ? decryptSafe(afiliado.chave_pix) : null;
+    if (!chavePlain || !afiliado.tipo_chave_pix) {
+      return res.status(400).json({ error: 'sem_chave_pix', mensagem: 'Afiliado não cadastrou chave Pix.' });
+    }
+
+    // 2. Soma commissions pending (não flaggadas)
+    const cR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&status=eq.pending&flagged=eq.false&select=id,commission_amount`,
+      { headers }
+    );
+    const pendings = cR.ok ? await cR.json() : [];
+    const valorSaque = +pendings.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0).toFixed(2);
+    if (valorSaque < VALOR_MINIMO) {
+      return res.status(400).json({ error: 'saldo_insuficiente', mensagem: `Saldo R$${valorSaque.toFixed(2)} abaixo do mínimo R$${VALOR_MINIMO}.` });
+    }
+
+    // 3. Cria registro do saque
+    const statusInicial = ASAAS_KEY ? 'processando' : 'pendente_manual';
+    const insR = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({
+        affiliate_id: afiliado.id,
+        valor: valorSaque,
+        chave_pix: encryptValue(chavePlain),
+        tipo_chave_pix: afiliado.tipo_chave_pix,
+        status: statusInicial,
+      }),
+    });
+    if (!insR.ok) return res.status(502).json({ error: 'erro_criar_saque' });
+    const [saque] = await insR.json();
+
+    // 4. Envia via ASAAS
+    if (!ASAAS_KEY) {
+      return res.status(200).json({ ok: true, mensagem: 'Saque criado como pendente_manual (sem ASAAS key).', saque_id: saque.id, processamento: 'manual' });
+    }
+
+    const asaasHeaders = { access_token: ASAAS_KEY, 'Content-Type': 'application/json', 'User-Agent': 'BlueTube/1.0' };
+
+    // Verifica saldo ASAAS
+    try {
+      const balR = await fetch(ASAAS_URL + '/finance/balance', { headers: { access_token: ASAAS_KEY } });
+      if (balR.ok) {
+        const bal = await balR.json();
+        if (typeof bal.balance === 'number' && bal.balance < valorSaque) {
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques?id=eq.${saque.id}`, {
+            method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'falhou', erro_mensagem: `Saldo ASAAS insuficiente: R$${bal.balance.toFixed(2)}` }),
+          });
+          return res.status(400).json({ error: 'saldo_asaas_insuficiente', mensagem: `Saldo ASAAS R$${bal.balance.toFixed(2)} < R$${valorSaque.toFixed(2)}` });
+        }
+      }
+    } catch (e) { /* segue com transfer */ }
+
+    const tipoMap = { cpf: 'CPF', telefone: 'PHONE', email: 'EMAIL', aleatoria: 'EVP' };
+    const hoje = new Date();
+
+    const transferR = await fetch(ASAAS_URL + '/transfers', {
+      method: 'POST',
+      headers: asaasHeaders,
+      body: JSON.stringify({
+        value: valorSaque,
+        pixAddressKey: chavePlain,
+        pixAddressKeyType: tipoMap[afiliado.tipo_chave_pix],
+        description: `Comissao BlueTube - ${hoje.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} (admin)`,
+      }),
+    });
+    const transferText = await transferR.text();
+    let transfer = null;
+    try { transfer = JSON.parse(transferText); } catch (e) { transfer = { raw: transferText }; }
+
+    if (!transferR.ok) {
+      const errMsg = transfer?.errors?.[0]?.description || transfer?.error || `asaas_${transferR.status}`;
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques?id=eq.${saque.id}`, {
+        method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'falhou', erro_mensagem: String(errMsg).slice(0, 300) }),
+      });
+      return res.status(502).json({ error: 'asaas_erro', mensagem: errMsg });
+    }
+
+    // 5. Sucesso — atualiza tudo (mesmo fluxo do affiliate-saques.js)
+    await fetch(`${SUPABASE_URL}/rest/v1/affiliate_saques?id=eq.${saque.id}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'pago',
+        asaas_transfer_id: transfer.id,
+        asaas_pix_id: transfer.pixTransaction || null,
+        pago_em: new Date().toISOString(),
+      }),
+    });
+
+    await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${afiliado.id}`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ultimo_saque_em: new Date().toISOString(),
+        total_sacado: parseFloat(afiliado.total_sacado || 0) + valorSaque,
+        saldo_disponivel: 0,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    const ids = pendings.map(p => p.id);
+    if (ids.length) {
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=in.(${ids.join(',')})`, {
+        method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paid', stripe_transfer_id: transfer.id }),
+      });
+    }
+
+    // 6. Email de confirmação pro afiliado (fire-and-forget)
+    function mascararChave(chave, tipo) {
+      if (!chave) return '';
+      if (tipo === 'email') { const [u, d] = chave.split('@'); return (u?.[0] || '') + '***@' + (d || ''); }
+      if (tipo === 'cpf') return chave.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.***.$3-**');
+      if (tipo === 'telefone') return chave.replace(/(\+55)(\d{2})\d{5}(\d{4})/, '$1 $2 *****-$3');
+      if (tipo === 'aleatoria') return chave.slice(0, 4) + '…' + chave.slice(-4);
+      return chave.slice(0, 3) + '…' + chave.slice(-3);
+    }
+    const chaveMasc = mascararChave(chavePlain, afiliado.tipo_chave_pix);
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (RESEND_KEY && afiliado.email) {
+      const valorFmt = 'R$ ' + Number(valorSaque).toFixed(2).replace('.', ',');
+      const emailHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Pix enviado!</title></head>
+<body style="margin:0;padding:0;background:#020817;font-family:'Inter',Arial,sans-serif;color:#e8f4ff">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#020817;padding:36px 16px"><tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0a1628;border:1px solid rgba(0,170,255,0.15);border-radius:16px;overflow:hidden">
+      <tr><td style="padding:28px 32px 12px;text-align:center">
+        <div style="display:inline-block;font-size:24px;font-weight:800;letter-spacing:-0.5px;color:#fff">Blue<span style="color:#00aaff">Tube</span></div>
+      </td></tr>
+      <tr><td style="padding:12px 32px 0;text-align:center"><div style="font-size:48px;line-height:1">✅</div></td></tr>
+      <tr><td style="padding:14px 32px 6px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.3px;line-height:1.25">Pix enviado!</div>
+      </td></tr>
+      <tr><td style="padding:8px 32px 0;text-align:center">
+        <div style="font-size:14px;color:rgba(232,244,255,0.7);line-height:1.55">O saque foi processado e já está a caminho da sua conta.</div>
+      </td></tr>
+      <tr><td style="padding:8px 32px 0">
+        <div style="text-align:center;margin:28px 0 8px">
+          <div style="font-size:12px;color:#7590ab;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Valor</div>
+          <div style="font-size:44px;font-weight:800;color:#22c55e;line-height:1.1;margin-top:4px">${valorFmt}</div>
+        </div>
+        <div style="text-align:center;margin-bottom:16px">
+          <span style="font-size:12px;color:#7590ab">Chave Pix: </span>
+          <span style="font-size:13px;color:#e8f4ff;font-weight:600">${chaveMasc}</span>
+        </div>
+      </td></tr>
+      <tr><td style="padding:0 32px;font-size:14px;color:rgba(232,244,255,0.75);line-height:1.65">
+        <p>Transferência via Pix confirmada pela Asaas. Dependendo do seu banco, pode cair em segundos ou até alguns minutos.</p>
+        <p style="color:rgba(232,244,255,0.55);font-size:13px;margin-top:14px">Não recebeu em até 1 hora? Responde esse email que a gente verifica.</p>
+      </td></tr>
+      <tr><td style="padding:0 32px">
+        <div style="text-align:center;margin:28px 0 16px">
+          <a href="https://bluetubeviral.com/afiliado" style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;box-shadow:0 0 22px rgba(0,170,255,0.3)">Ver histórico →</a>
+        </div>
+      </td></tr>
+      <tr><td style="padding:24px 32px 28px;border-top:1px solid rgba(0,170,255,0.08);text-align:center">
+        <div style="font-size:11px;color:rgba(150,190,230,0.4);line-height:1.5">
+          Esse email foi enviado pra você porque tem conta de afiliado no BlueTube.<br>
+          <a href="https://bluetubeviral.com/afiliado" style="color:#00aaff;text-decoration:none">Painel de afiliado</a>
+          &nbsp;·&nbsp;
+          <a href="https://bluetubeviral.com/privacidade" style="color:#00aaff;text-decoration:none">Privacidade</a>
+        </div>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'BlueTube <saques@bluetubeviral.com>',
+          to: afiliado.email,
+          subject: 'Pix enviado! — BlueTube Afiliados',
+          html: emailHtml,
+        }),
+      }).catch(() => {});
+    }
+
+    return res.status(200).json({
+      ok: true,
+      mensagem: `✅ Pix de R$${valorSaque.toFixed(2)} enviado pra ${afiliado.email}`,
+      valor: valorSaque,
+      saque_id: saque.id,
+      transfer_id: transfer.id,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

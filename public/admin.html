@@ -2811,6 +2811,7 @@ function renderAffTable(){
       :`font-family:var(--mono);font-size:11px;font-weight:700;color:${color};background:${color}15;border:1px solid ${color}33;padding:3px 9px;border-radius:100px`;
 
     let btns=`<button onclick="openNivelModal('${a.id}','${a.email}','${nv}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:5px;padding:4px 8px;cursor:pointer">⬆️ Nível</button> `;
+    if(a.status==='active'&&a.chave_pix&&(a.commissions_pending||0)>=50)btns+=`<button onclick="pagarAfiliadoPix('${a.id}','${(a.email||'').replace(/'/g,"\\'")}',${(a.commissions_pending||0).toFixed(2)})" style="font-family:var(--mono);font-size:10px;color:#22c55e;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer" title="Pagar R$${(a.commissions_pending||0).toFixed(2)} via Pix ASAAS">💸 Pix</button> `;
     if(a.status!=='active')btns+=`<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅</button> `;
     if(a.status!=='suspended')btns+=`<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫</button>`;
 
@@ -3540,6 +3541,17 @@ async function marcarSaquePago(saqueId){
     if(r.ok){toast('✅ Saque marcado como pago');loadSaquesAdminPanel();}
     else alert(d.error||'Erro');
   }catch(e){alert('Erro de conexão');}
+}
+
+async function pagarAfiliadoPix(affiliateId,email,valor){
+  if(!confirm(`Confirma enviar Pix de R$${Number(valor).toFixed(2)} pra ${email}?\n\nO dinheiro sai do ASAAS agora e o afiliado recebe email de confirmação.`))return;
+  const btn=event?.target;if(btn){btn.disabled=true;btn.textContent='⏳…';}
+  try{
+    const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'pagar-afiliado-pix',affiliate_id:affiliateId})});
+    const d=await r.json();
+    if(r.ok){toast(d.mensagem||'✅ Pix enviado!');loadAffiliates();loadSaquesAdminPanel();}
+    else{alert(d.mensagem||d.error||'Erro ao pagar');if(btn){btn.disabled=false;btn.textContent='💸 Pix';}}
+  }catch(e){alert('Erro de conexão');if(btn){btn.disabled=false;btn.textContent='💸 Pix';}}
 }
 
 // ═══════════════════════════════════════════════════════════════════════
