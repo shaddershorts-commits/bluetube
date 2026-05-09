@@ -8,13 +8,15 @@
 //   POST   ?action=adicionar           — admin (Bearer): URL + nicho + idioma → INSERT canal
 //   DELETE ?action=remover             — admin (Bearer): soft (ativo=false)
 //   GET    ?action=listar              — admin (Bearer): lista canais ativos com stats
-//   GET    ?action=coletar-curados     — cron a cada 2h: fetch shorts dos canais
+//   GET    ?action=coletar-curados     — cron a cada 15min: paginação inteligente (até 500 vídeos/canal)
 //   POST   ?action=toggle-daily-alert  — user Master (token): liga/desliga email diario
 //   GET    ?action=alert-status        — user (token): retorna estado do toggle pro UI
 //   GET    ?action=daily-alert-master  — cron 7:30 BRT (10:30 UTC): envia email pros opt-in
 //
-// Quota YouTube por canal/coleta: ~2 units (uploads playlist + batch stats).
-// 1000 canais × 12 execucoes/dia = ~24k units (folga: ~96k).
+// Quota YouTube por canal/coleta: ~2 units por página (playlistItems + batch stats).
+// Paginação inteligente: para quando canal não tem mais vídeos (nextPageToken=null).
+// 500 canais × ~5 páginas médias × 2 units × 96 rodadas/dia = ~480k teórico,
+// real ~70-90k/dia (maioria dos canais tem <250 Shorts). Budget: 120k (12 chaves).
 
 const { youtubeRequest } = require('./_helpers/youtube.js');
 
@@ -338,113 +340,67 @@ async function listarCanais(req, res) {
 }
 
 // ── ACTION: coletar-curados (cron + dispatch manual) ────────────────────────
-// Pra cada canal ativo: pega ultimos N videos da playlist de uploads, filtra
-// Shorts ≤90s, salva em virais_banco com fonte='canal_curado'. Upsert
-// idempotente atualiza views/likes dos videos ja salvos (diagnostico).
+// Pra cada canal ativo: pega videos da playlist de uploads com PAGINAÇÃO
+// INTELIGENTE (até MAX_PAGES páginas, para quando nextPageToken acaba),
+// filtra Shorts ≤90s, salva em virais_banco com fonte='canal_curado'.
+// Upsert idempotente atualiza views/likes dos videos ja salvos.
 //
-// Query param `profundidade` (default 50, cap 50):
-//   - cron automatico: 50 (custo IGUAL a 20 que era antes — batch stats
-//     aceita ate 50 IDs por chamada, mesma 1 unit. 2.5x mais videos por
-//     canal sem custo extra de quota YouTube)
-//   - dispatch manual mantem cap 50 pra robustez (sem paginacao
-//     complicar o codigo). 50 ja eh 2.5x do default antigo (20).
+// Processamento em BATCHES PARALELOS (PARALLEL_BATCH canais por vez)
+// pra caber no maxDuration de 300s com margem. Guard de timeout para
+// em TIMEOUT_SAFETY_MS e continua na próxima rodada (ultimo_check ASC
+// garante fairness — canais não processados têm prioridade).
+//
+// Quota YouTube por canal: ~2 units por página (playlistItems + videos.list).
+// 500 canais × 10 páginas × 2 = ~10k units/rodada. Com 12 chaves (120k/dia)
+// e cron a cada 15min (96 rodadas), quota real depende de quantas páginas
+// cada canal de fato tem (paginação inteligente para cedo em canais pequenos).
 async function coletarCurados(req, res) {
   // Sem auth obrigatoria (chamada pelo Vercel cron). Pode rodar manual com Bearer.
   const startTs = Date.now();
-  const profundidade = Math.min(50, Math.max(5, parseInt(req.query?.profundidade, 10) || 50));
-  const log = { canais_processados: 0, videos_novos: 0, videos_atualizados: 0, erros: 0, profundidade };
+
+  // ── CONFIG (tunáveis sem risco) ──────────────────────────────────────────
+  const MAX_PAGES = 10;               // até 500 vídeos/canal (10×50)
+  const PARALLEL_BATCH = 15;          // canais processados em paralelo
+  const CHANNEL_LIMIT = 500;          // cobre 220+ canais atuais + crescimento
+  const TIMEOUT_SAFETY_MS = 270000;   // 270s = para com 30s de margem (maxDuration=300)
+
+  const log = {
+    canais_processados: 0, canais_pulados_timeout: 0,
+    videos_novos: 0, videos_atualizados: 0,
+    paginas_total: 0, erros: 0,
+  };
 
   try {
     const r = await fetch(
-      `${SU}/rest/v1/virais_canais_curados?ativo=eq.true&order=ultimo_check.asc.nullsfirst&select=id,channel_id,channel_handle,channel_name,nicho_manual,idioma_manual&limit=200`,
+      `${SU}/rest/v1/virais_canais_curados?ativo=eq.true&order=ultimo_check.asc.nullsfirst&select=id,channel_id,channel_handle,channel_name,nicho_manual,idioma_manual,videos_coletados&limit=${CHANNEL_LIMIT}`,
       { headers: HDR }
     );
     const canais = r.ok ? await r.json() : [];
 
-    for (const canal of canais) {
-      try {
-        log.canais_processados++;
+    // Processa em batches paralelos
+    for (let i = 0; i < canais.length; i += PARALLEL_BATCH) {
+      // Guard de timeout: se estourou, para e deixa pro próximo cron
+      if (Date.now() - startTs > TIMEOUT_SAFETY_MS) {
+        log.canais_pulados_timeout = canais.length - i;
+        break;
+      }
 
-        // 1. Uploads playlist ID = channel_id com prefixo UU em vez de UC
-        const uploadsId = canal.channel_id.replace(/^UC/, 'UU');
+      const batch = canais.slice(i, i + PARALLEL_BATCH);
+      const results = await Promise.allSettled(
+        batch.map(canal => processarCanal(canal, MAX_PAGES))
+      );
 
-        // 2. Pega últimos N itens da playlist (profundidade configuravel)
-        const plR = await youtubeRequest('playlistItems', {
-          part: 'contentDetails',
-          playlistId: uploadsId,
-          maxResults: profundidade,
-        });
-        const ids = (plR?.items || []).map(it => it.contentDetails?.videoId).filter(Boolean);
-        if (!ids.length) continue;
-
-        // 3. Batch fetch dos vídeos com snippet+stats+contentDetails
-        const vR = await youtubeRequest('videos', {
-          part: 'snippet,contentDetails,statistics',
-          id: ids.join(','),
-          maxResults: 50,
-        });
-        const items = vR?.items || [];
-
-        // 4. Pra cada video, normaliza e prepara pra upsert
-        const langMeta = LANG_BY_CODE[canal.idioma_manual] || LANG_BY_CODE['pt-BR'];
-        const rows = [];
-        for (const item of items) {
-          const duracao = parseDuracao(item.contentDetails?.duration);
-          // Defesa em profundidade: rejeita longos E zero-duration (fix bug do !== 0)
-          if (duracao === 0 || duracao > 90) continue;
-          const snippet = item.snippet || {};
-          const stats = item.statistics || {};
-          const yid = item.id;
-          if (!yid) continue;
-          const views = Number(stats.viewCount || 0);
-          const likes = Number(stats.likeCount || 0);
-          const coment = Number(stats.commentCount || 0);
-          const taxa = views > 0 ? +(((likes + coment) / views) * 100).toFixed(4) : 0;
-          rows.push({
-            youtube_id: yid,
-            titulo: (snippet.title || '').slice(0, 500),
-            thumbnail_url: snippet.thumbnails?.maxres?.url || snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || null,
-            url: `https://youtube.com/shorts/${yid}`,
-            canal_id: snippet.channelId || canal.channel_id,
-            canal_nome: snippet.channelTitle || canal.channel_name,
-            views,
-            likes,
-            comentarios: coment,
-            duracao_segundos: duracao,
-            taxa_engajamento: taxa,
-            nicho: canal.nicho_manual,
-            idioma: langMeta.idioma,
-            pais: langMeta.pais,
-            publicado_em: snippet.publishedAt || null,
-            ativo: true,
-            fonte: 'canal_curado',
-            canal_curado_id: canal.id,
-            atualizado_em: new Date().toISOString(),
-          });
-        }
-
-        // 5. Upsert em virais_banco (idempotente por youtube_id)
-        if (rows.length) {
-          const upR = await fetch(`${SU}/rest/v1/virais_banco?on_conflict=youtube_id`, {
-            method: 'POST',
-            headers: { ...HDR, Prefer: 'resolution=merge-duplicates,return=minimal' },
-            body: JSON.stringify(rows),
-          });
-          if (upR.ok) {
-            log.videos_novos += rows.length;
-          } else {
-            log.erros++;
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          log.canais_processados++;
+          log.videos_novos += result.value.videos;
+          log.paginas_total += result.value.paginas;
+        } else {
+          log.erros++;
+          if (result.status === 'rejected') {
+            console.error('[virais-canais:coletar-curados] batch error:', result.reason?.message);
           }
         }
-
-        // 6. Update canal: ultimo_check + videos_coletados (incremento aproximado)
-        await supaPatch(`virais_canais_curados?id=eq.${canal.id}`, {
-          ultimo_check: new Date().toISOString(),
-          videos_coletados: (canal.videos_coletados || 0) + rows.length,
-        });
-      } catch (e) {
-        log.erros++;
-        console.error('[virais-canais:coletar-curados]', canal.channel_id, e.message);
       }
     }
 
@@ -456,6 +412,109 @@ async function coletarCurados(req, res) {
   } catch (e) {
     return res.status(500).json({ error: e.message, ...log });
   }
+}
+
+// Processa UM canal: paginação inteligente + upsert. Retorna {videos, paginas}.
+// Try/catch interno garante que ultimo_check é atualizado mesmo em falha
+// (evita canal "poison" preso no topo da fila retentando infinitamente).
+async function processarCanal(canal, maxPages) {
+  const uploadsId = canal.channel_id.replace(/^UC/, 'UU');
+  const langMeta = LANG_BY_CODE[canal.idioma_manual] || LANG_BY_CODE['pt-BR'];
+  let totalRows = 0;
+  let paginasUsadas = 0;
+  let nextPageToken = null;
+
+  try {
+  for (let page = 0; page < maxPages; page++) {
+    // 1. Pega página da playlist de uploads
+    const params = {
+      part: 'contentDetails',
+      playlistId: uploadsId,
+      maxResults: 50,
+    };
+    if (nextPageToken) params.pageToken = nextPageToken;
+
+    const plR = await youtubeRequest('playlistItems', params);
+    const pageItems = plR?.items || [];
+    paginasUsadas++;
+
+    const ids = pageItems.map(it => it.contentDetails?.videoId).filter(Boolean);
+    if (!ids.length) break; // canal sem mais vídeos — para
+
+    // 2. Batch fetch com snippet+stats+contentDetails
+    const vR = await youtubeRequest('videos', {
+      part: 'snippet,contentDetails,statistics',
+      id: ids.join(','),
+      maxResults: 50,
+    });
+    const items = vR?.items || [];
+
+    // 3. Filtra Shorts ≤90s e normaliza (MESMA lógica original — zero mudança)
+    const rows = [];
+    for (const item of items) {
+      const duracao = parseDuracao(item.contentDetails?.duration);
+      // Defesa em profundidade: rejeita longos E zero-duration (fix bug do !== 0)
+      if (duracao === 0 || duracao > 90) continue;
+      const snippet = item.snippet || {};
+      const stats = item.statistics || {};
+      const yid = item.id;
+      if (!yid) continue;
+      const views = Number(stats.viewCount || 0);
+      const likes = Number(stats.likeCount || 0);
+      const coment = Number(stats.commentCount || 0);
+      const taxa = views > 0 ? +(((likes + coment) / views) * 100).toFixed(4) : 0;
+      rows.push({
+        youtube_id: yid,
+        titulo: (snippet.title || '').slice(0, 500),
+        thumbnail_url: snippet.thumbnails?.maxres?.url || snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || null,
+        url: `https://youtube.com/shorts/${yid}`,
+        canal_id: snippet.channelId || canal.channel_id,
+        canal_nome: snippet.channelTitle || canal.channel_name,
+        views,
+        likes,
+        comentarios: coment,
+        duracao_segundos: duracao,
+        taxa_engajamento: taxa,
+        nicho: canal.nicho_manual,
+        idioma: langMeta.idioma,
+        pais: langMeta.pais,
+        publicado_em: snippet.publishedAt || null,
+        ativo: true,
+        fonte: 'canal_curado',
+        canal_curado_id: canal.id,
+        atualizado_em: new Date().toISOString(),
+      });
+    }
+
+    // 4. Upsert em virais_banco (idempotente por youtube_id)
+    if (rows.length) {
+      const upR = await fetch(`${SU}/rest/v1/virais_banco?on_conflict=youtube_id`, {
+        method: 'POST',
+        headers: { ...HDR, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(rows),
+      });
+      if (upR.ok) {
+        totalRows += rows.length;
+      }
+    }
+
+    // 5. Paginação inteligente: se não tem nextPageToken, acabou — para
+    nextPageToken = plR?.nextPageToken || null;
+    if (!nextPageToken) break;
+  }
+
+  } catch (e) {
+    console.error('[virais-canais:processarCanal]', canal.channel_id, e.message);
+  }
+
+  // 6. Update canal: ultimo_check + videos_coletados (SEMPRE atualiza, mesmo em erro,
+  // pra não travar canal com falha no topo da fila de prioridade)
+  await supaPatch(`virais_canais_curados?id=eq.${canal.id}`, {
+    ultimo_check: new Date().toISOString(),
+    videos_coletados: (canal.videos_coletados || 0) + totalRows,
+  });
+
+  return { videos: totalRows, paginas: paginasUsadas };
 }
 
 // ── ACTION: toggle-daily-alert (user master) ────────────────────────────────

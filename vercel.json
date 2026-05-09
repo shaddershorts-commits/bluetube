@@ -130,7 +130,7 @@
     },
     {
       "path": "/api/virais-canais?action=coletar-curados",
-      "schedule": "0 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/virais-canais?action=daily-alert-master",
