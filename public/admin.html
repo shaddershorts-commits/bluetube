@@ -238,7 +238,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div style="font-family:var(--font);font-weight:800;font-size:16px;color:#ff6464">🔥 Banco de Virais</div>
         <div style="display:flex;gap:8px;align-items:center">
-          <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">cron a cada 2h</div>
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono)">cron a cada 15min</div>
           <button onclick="coletarAgora('coletar-trending')" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">↻ Coletar trending</button>
           <button onclick="coletarAgora('coletar-nichos')" style="background:#1a6bff;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">+ Coletar nichos</button>
           <button onclick="openBancoMgmt()" style="background:rgba(255,100,100,.12);color:#ff8a8a;border:1px solid rgba(255,100,100,.35);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">🛠️ Gerenciar banco</button>
@@ -280,7 +280,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </div>
       </div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:8px;line-height:1.5">
-        A IA monitora os canais abaixo a cada 2h e coleta automaticamente os Shorts. Filtros do site aplicam thresholds: 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M views.
+        A IA monitora os canais abaixo a cada 15min e coleta até 500 vídeos/canal (paginação inteligente). Filtros do site aplicam thresholds: 24h ≥ 300k · 7d ≥ 2M · 30d ≥ 8M views.
       </div>
       <div id="cmColetarMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);min-height:14px;margin-bottom:8px"></div>
       <div id="cmTableWrap" style="overflow:auto;border:1px solid rgba(255,255,255,.06);border-radius:10px">
@@ -3352,7 +3352,7 @@ async function coletarAgoraCanais(){
   btn.textContent = '⏳ Coletando…';
   btn.style.opacity = '0.7';
   msg.style.color = 'var(--dim)';
-  msg.textContent = '⏳ Buscando últimos 50 vídeos de cada canal + atualizando views… (pode demorar até 60s)';
+  msg.textContent = '⏳ Buscando até 500 vídeos/canal (paginação inteligente) + atualizando views… (pode demorar até 5 min)';
   try{
     const t0 = Date.now();
     const r = await fetch('/api/virais-canais?action=coletar-curados&profundidade=50', { method: 'GET' });
