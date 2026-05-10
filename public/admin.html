@@ -268,6 +268,24 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div id="vbColetas" style="margin-top:14px"></div>
     </div>
 
+    <!-- DESAFIO BLUETUBE -->
+    <div style="background:#0a1220;border:1px solid rgba(251,191,36,.3);border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-family:var(--font);font-weight:800;font-size:16px;color:#fbbf24">🏆 Desafio BlueTube</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="desafioStatus" style="font-family:var(--mono);font-size:10px;color:var(--dim)"></span>
+          <button onclick="coletarDesafio()" id="btnColetarDesafio" style="background:#f59e0b;color:#000;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">↻ Coletar</button>
+          <a href="/desafio" target="_blank" style="font-size:11px;color:#fbbf24;text-decoration:none;border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:5px 10px">Ver página →</a>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input id="desafioUrlInp" placeholder="URL do canal (@handle ou youtube.com/...)" style="flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;font-family:inherit"/>
+        <button onclick="adicionarCanalDesafio()" style="background:#22c55e;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Adicionar</button>
+      </div>
+      <div id="desafioMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);min-height:14px;margin-bottom:8px"></div>
+      <div id="desafioCanais" style="font-size:12px;color:var(--dim)">Clique ↻ pra carregar.</div>
+    </div>
+
     <!-- CANAIS MONITORADOS (modo curado — substitui aleatorio) -->
     <div style="background:#0a1220;border:1px solid rgba(34,197,94,.22);border-radius:14px;padding:18px;margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -3218,6 +3236,71 @@ async function bancoMgmtAction(action){
     document.getElementById('bmMsg').innerHTML = '<span style="color:#fca5a5">Erro de conexão</span>';
   }
 }
+
+// ── DESAFIO BLUETUBE ───────────────────────────────────────────────────────
+async function loadDesafioCanais(){
+  try{
+    const r=await fetch('/api/desafio?action=listar-canais',{headers:{'Authorization':`Bearer ${adminKey}`}});
+    const d=await r.json();
+    const el=document.getElementById('desafioCanais');
+    if(!d.participantes||!d.participantes.length){el.innerHTML='<div style="color:var(--dim)">Nenhum canal inscrito no desafio.</div>';return;}
+    const ativos=d.participantes.filter(c=>c.ativo);
+    const inativos=d.participantes.filter(c=>!c.ativo);
+    el.innerHTML=`<div style="margin-bottom:8px;font-family:var(--mono);font-size:10px;color:var(--dim)">${ativos.length} participantes ativos</div>`+
+      ativos.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.04)">
+        ${c.channel_thumbnail?`<img src="${c.channel_thumbnail}" style="width:28px;height:28px;border-radius:50%"/>`:''}
+        <div style="flex:1"><div style="font-weight:600;color:#fff;font-size:12px">${c.channel_name||c.channel_handle||'—'}</div><div style="font-family:var(--mono);font-size:10px;color:var(--dim)">${c.channel_handle||c.channel_id}</div></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">${c.total_inscritos?Math.round(c.total_inscritos/1000)+'K subs':''}</div>
+        <button onclick="removerCanalDesafio('${c.channel_id}')" style="background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer">✕</button>
+      </div>`).join('');
+    // Config do desafio
+    const cr=await fetch('/api/desafio?action=config');
+    const cfg=await cr.json();
+    const stEl=document.getElementById('desafioStatus');
+    const labels={ativo:'🟢 Ativo',aguardando:'🟡 Em breve',encerrado:'🔴 Encerrado'};
+    stEl.textContent=labels[cfg.status]||cfg.status;
+  }catch(e){console.error('[desafio]',e);}
+}
+
+async function adicionarCanalDesafio(){
+  const url=document.getElementById('desafioUrlInp').value.trim();
+  const msg=document.getElementById('desafioMsg');
+  if(!url){msg.textContent='Cole a URL do canal';return;}
+  msg.textContent='Buscando canal...';
+  try{
+    const r=await fetch('/api/desafio',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'adicionar-canal',url})});
+    const d=await r.json();
+    if(r.ok){msg.style.color='#22c55e';msg.textContent='✅ '+(d.canal?.channel_name||'Canal')+' adicionado!';document.getElementById('desafioUrlInp').value='';loadDesafioCanais();}
+    else{msg.style.color='#f87171';msg.textContent='❌ '+(d.error||'Erro');}
+  }catch(e){msg.style.color='#f87171';msg.textContent='Erro de conexão';}
+  setTimeout(()=>{msg.style.color='var(--dim)';},5000);
+}
+
+async function removerCanalDesafio(channelId){
+  if(!confirm('Remover canal do desafio?'))return;
+  try{
+    await fetch('/api/desafio',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'remover-canal',channel_id:channelId})});
+    loadDesafioCanais();
+  }catch(e){alert('Erro');}
+}
+
+async function coletarDesafio(){
+  const btn=document.getElementById('btnColetarDesafio');
+  const msg=document.getElementById('desafioMsg');
+  btn.disabled=true;btn.textContent='⏳ Coletando...';
+  msg.textContent='Buscando vídeos dos participantes...';
+  try{
+    const r=await fetch('/api/desafio?action=coletar');
+    const d=await r.json();
+    msg.style.color='#22c55e';
+    msg.textContent=`✅ ${d.participantes} canais · ${d.videos_novos} vídeos · ${d.erros} erros`;
+  }catch(e){msg.style.color='#f87171';msg.textContent='Erro: '+e.message;}
+  btn.disabled=false;btn.textContent='↻ Coletar';
+  setTimeout(()=>{msg.style.color='var(--dim)';},8000);
+}
+
+// Carrega seção desafio no boot
+setTimeout(()=>{if(adminKey)loadDesafioCanais();},1500);
 
 // ── CANAIS MONITORADOS (modo curado) ───────────────────────────────────────
 async function loadCanaisCurados(){

@@ -17,6 +17,7 @@
     "api/bluetendencias.js": { "maxDuration": 120 },
     "api/email-campanha.js": { "maxDuration": 60 },
     "api/virais-canais.js": { "maxDuration": 300 },
+    "api/desafio.js": { "maxDuration": 60 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
     "api/audit-baixablue.js": { "maxDuration": 60 },
@@ -135,6 +136,14 @@
     {
       "path": "/api/virais-canais?action=daily-alert-master",
       "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/desafio?action=coletar",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/desafio?action=atualizar-metricas",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/nichos-secretos?action=coletar",
