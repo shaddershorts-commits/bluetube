@@ -1183,8 +1183,9 @@ async function loadSubsPage(page){
       <table><thead><tr><th>Email</th><th>Plano</th><th>Valor</th><th>Tipo</th><th>Cadastro</th><th>Expira</th><th>Ações</th></tr></thead>
       <tbody>${subs.map(s=>{
         const isExp=s.plan!=='free'&&s.plan_expires_at&&new Date(s.plan_expires_at)<now;
+        const origemIcon=s.signup_source==='desafio'?' <span title="Veio do Desafio BlueTube" style="color:#fbbf24;cursor:help">🎮</span>':'';
         return`<tr>
-          <td style="color:var(--text)">${s.email}</td>
+          <td style="color:var(--text)">${s.email}${origemIcon}</td>
           <td><span class="badge badge-${s.plan}">${s.plan==='master'?'👑 ':''}${s.plan==='full'?'⚡ ':''}${s.plan.toUpperCase()}</span></td>
           <td style="color:${s.plan==='master'?'var(--yellow)':s.plan==='full'?'var(--neon)':'var(--dim)'};font-weight:600" title="${s.coupon_applied?'Cupom aplicado: -'+s.coupon_discount:''}">${fmtPaid(s)}</td>
           <td style="font-size:10px;color:${s.is_manual?'var(--yellow)':'var(--green)'}">${s.is_manual?'🎁 Manual':'💳 Pago'}</td>

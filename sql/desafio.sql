@@ -36,3 +36,7 @@ CREATE TABLE IF NOT EXISTS desafio_videos (
 CREATE INDEX IF NOT EXISTS idx_desafio_videos_views ON desafio_videos(views DESC);
 CREATE INDEX IF NOT EXISTS idx_desafio_videos_publicado ON desafio_videos(publicado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_desafio_videos_participante ON desafio_videos(participante_id);
+
+-- Rastreio de origem do cadastro (pra saber quem veio do desafio)
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS signup_source TEXT;
+CREATE INDEX IF NOT EXISTS idx_subscribers_signup_source ON subscribers(signup_source);

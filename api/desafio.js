@@ -18,13 +18,20 @@ const SK = process.env.SUPABASE_SERVICE_KEY;
 const HDR = SK ? { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' } : null;
 
 // ── CONFIG DO DESAFIO (alterar pra cada edição) ────────────────────────────
+// Fases:
+//   inscricao  → até 15/05 23:59 BRT — youtuber repostam stories e admin cadastra canal
+//   aguardando → 16-17/05 — inscrição fechada, esperando começar
+//   ativo      → 18/05 00:00 → 24/05 23:59 BRT (7 dias) — ranking ao vivo
+//   encerrado  → após 24/05 23:59 — anúncio do vencedor
 const DESAFIO_CONFIG = {
   nome: 'Desafio BlueTube #1',
-  descricao: 'O Shorts com mais views em 7 dias leva R$500 no Pix!',
-  premio: 'R$ 500,00',
-  premio_valor: 500,
-  inicio: '2026-05-12T00:00:00-03:00',  // segunda-feira
-  fim: '2026-05-18T23:59:59-03:00',      // domingo
+  descricao: 'O Shorts com mais views em 7 dias leva R$ 850 no Pix!',
+  premio: 'R$ 850,00',
+  premio_valor: 850,
+  inscricao_fim: '2026-05-15T23:59:59-03:00',
+  inicio: '2026-05-18T00:00:00-03:00',
+  fim: '2026-05-24T23:59:59-03:00',
+  resultado_em: '2026-05-24',
   max_ranking: 20,
 };
 
@@ -68,6 +75,7 @@ module.exports = async function handler(req, res) {
       case 'atualizar-metricas': return await atualizarMetricas(req, res);
       case 'ranking':            return await ranking(req, res);
       case 'config':             return await configAction(req, res);
+      case 'marcar-origem':      return await marcarOrigem(req, res);
       default:                   return res.status(400).json({ error: 'action_invalida' });
     }
   } catch (e) {
@@ -79,17 +87,35 @@ module.exports = async function handler(req, res) {
 // ── CONFIG (público) ────────────────────────────────────────────────────────
 async function configAction(req, res) {
   const now = Date.now();
+  const inscricaoFim = new Date(DESAFIO_CONFIG.inscricao_fim).getTime();
   const inicio = new Date(DESAFIO_CONFIG.inicio).getTime();
   const fim = new Date(DESAFIO_CONFIG.fim).getTime();
-  let status = 'aguardando';
-  if (now >= inicio && now <= fim) status = 'ativo';
-  else if (now > fim) status = 'encerrado';
+
+  // Fases: inscricao → aguardando → ativo → encerrado
+  let status = 'inscricao';
+  let proximoMarco = inscricaoFim;
+  let proximoLabel = 'Inscrição encerra em';
+  if (now > inscricaoFim && now < inicio) {
+    status = 'aguardando';
+    proximoMarco = inicio;
+    proximoLabel = 'Desafio começa em';
+  } else if (now >= inicio && now <= fim) {
+    status = 'ativo';
+    proximoMarco = fim;
+    proximoLabel = 'Desafio termina em';
+  } else if (now > fim) {
+    status = 'encerrado';
+    proximoMarco = 0;
+    proximoLabel = 'Encerrado';
+  }
 
   res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
   return res.status(200).json({
     ...DESAFIO_CONFIG,
     status,
-    restante_ms: status === 'ativo' ? fim - now : 0,
+    proximo_marco_ms: proximoMarco,
+    proximo_label: proximoLabel,
+    restante_ms: proximoMarco ? Math.max(0, proximoMarco - now) : 0,
     server_time: new Date().toISOString(),
   });
 }
@@ -359,4 +385,50 @@ async function ranking(req, res) {
     total: ranked.length,
     atualizado_em: new Date().toISOString(),
   });
+}
+
+// ── MARCAR ORIGEM (signup veio do desafio) ──────────────────────────────────
+// Chamado pelo frontend após signup bem-sucedido na página /desafio.
+// PATCH idempotente: só seta signup_source='desafio' se ainda for null
+// (não sobrescreve origem de quem já tinha cadastro de outra fonte).
+async function marcarOrigem(req, res) {
+  const token = (req.body && req.body.token) || req.query?.token;
+  if (!token) return res.status(401).json({ error: 'token_obrigatorio' });
+
+  // Resolve email do user via Supabase auth
+  const AK = process.env.SUPABASE_ANON_KEY || SK;
+  let email = null;
+  try {
+    const uR = await fetch(`${SU}/auth/v1/user`, {
+      headers: { apikey: AK, Authorization: 'Bearer ' + token },
+    });
+    if (!uR.ok) return res.status(401).json({ error: 'token_invalido' });
+    const uD = await uR.json();
+    email = (uD.email || '').toLowerCase();
+  } catch (e) {
+    return res.status(401).json({ error: 'token_invalido' });
+  }
+  if (!email) return res.status(401).json({ error: 'sem_email' });
+
+  // Busca subscriber atual pra ver se signup_source já está setado
+  const sR = await fetch(
+    `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=signup_source&limit=1`,
+    { headers: HDR }
+  );
+  if (!sR.ok) return res.status(502).json({ error: 'erro_banco' });
+  const arr = await sR.json();
+  const sub = arr[0];
+  if (!sub) return res.status(404).json({ error: 'subscriber_nao_encontrado' });
+
+  // Idempotente: só marca se ainda for null
+  if (sub.signup_source) {
+    return res.status(200).json({ ok: true, ja_marcado: true, source: sub.signup_source });
+  }
+
+  await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+    method: 'PATCH', headers: HDR,
+    body: JSON.stringify({ signup_source: 'desafio', updated_at: new Date().toISOString() }),
+  });
+
+  return res.status(200).json({ ok: true, marcado: true });
 }
