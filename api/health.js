@@ -3,6 +3,9 @@
 // Usado pelo status.html e pelo monitor-health cron.
 
 const CRITICAL_SERVICES = ['supabase', 'stripe']; // se qualquer um cair → status=critical
+// Serviços com fallback gracioso — flagam no painel mas NÃO contam pro alerta
+// de "degraded" (não vale acordar ninguém por blip de Redis que tem fallback).
+const NON_ALERTING_SERVICES = ['upstash_redis'];
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -97,14 +100,31 @@ module.exports = async function handler(req, res) {
     }),
 
     check('youtube_api', async (signal) => {
-      const key = process.env.YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY_1;
-      if (!key) throw new Error('não configurado');
-      const r = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?id=dQw4w9WgXcQ&part=id&key=${key}`,
-        { signal }
-      );
-      if (!r.ok) throw new Error(`status ${r.status}`);
-    }),
+      // Sistema usa rotação de ~40 chaves. Não basta testar 1 — uma chave
+      // exausta (403) é normal sob carga, a rotação cobre. Testa até 5 chaves
+      // e passa se QUALQUER uma responder ok. Só falha se TODAS as 5 derem erro
+      // (aí sim é crise real de quota).
+      const keys = [];
+      if (process.env.YOUTUBE_API_KEY) keys.push(process.env.YOUTUBE_API_KEY);
+      for (let i = 1; i <= 39; i++) {
+        if (process.env[`YOUTUBE_API_KEY_${i}`]) keys.push(process.env[`YOUTUBE_API_KEY_${i}`]);
+      }
+      if (!keys.length) throw new Error('não configurado');
+      const toTest = keys.slice(0, 5);
+      let lastStatus = null;
+      for (const key of toTest) {
+        if (signal.aborted) break;
+        try {
+          const r = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?id=dQw4w9WgXcQ&part=id&key=${key}`,
+            { signal }
+          );
+          if (r.ok) return; // achou uma chave funcionando — ok
+          lastStatus = r.status;
+        } catch (e) { lastStatus = e.message; }
+      }
+      throw new Error(`${toTest.length} chaves testadas, todas falharam (última: ${lastStatus})`);
+    }, 8000),
 
     check('resend', async (signal) => {
       if (!process.env.RESEND_API_KEY) throw new Error('não configurado');
@@ -140,10 +160,13 @@ module.exports = async function handler(req, res) {
   const services = Object.values(checks);
   const criticalDown = CRITICAL_SERVICES.filter((s) => checks[s]?.status === 'error');
   const totalDown = services.filter((s) => s.status === 'error').length;
+  // Pra decidir "degraded" só conta serviços que NÃO têm fallback gracioso
+  const alertingDown = Object.entries(checks)
+    .filter(([name, v]) => v.status === 'error' && !NON_ALERTING_SERVICES.includes(name)).length;
 
   const status =
     criticalDown.length > 0 ? 'critical' :
-    totalDown > 2 ? 'degraded' :
+    alertingDown > 2 ? 'degraded' :
     totalDown > 0 ? 'partial' : 'ok';
 
   const response = {
@@ -160,25 +183,66 @@ module.exports = async function handler(req, res) {
     version: '2.0.0',
   };
 
-  // Envia alerta fire-and-forget quando degrada (só critical/degraded pra não spammar)
-  if ((status === 'critical' || status === 'degraded') && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
-    const failed = Object.entries(checks).filter(([, v]) => v.status === 'error')
-      .map(([name, v]) => `<li><b>${name}</b>: ${v.error}</li>`).join('');
-    fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'monitor@bluetubeviral.com',
-        to: process.env.ADMIN_EMAIL,
-        subject: `🚨 BlueTube ${status.toUpperCase()}: ${criticalDown.join(', ') || totalDown + ' serviços com erro'}`,
-        html: `
-          <h2 style="color:#ff4444">Status: ${status.toUpperCase()}</h2>
-          <p>Críticos abaixo: ${criticalDown.length ? '<b>' + criticalDown.join(', ') + '</b>' : 'nenhum'}</p>
-          <ul>${failed}</ul>
-          <p><a href="https://bluetubeviral.com/status">Status page →</a></p>
-        `,
-      }),
-    }).catch(() => {});
+  // ── ALERTA COM DEBOUNCE ────────────────────────────────────────────────────
+  // Regras:
+  //   'critical' (supabase/stripe down) → 1 email no início, depois silêncio até recuperar.
+  //   'degraded' (3+ não-críticos)      → só alerta após 2 checagens seguidas ruins,
+  //                                       e mesmo assim 1 email por episódio (não spam).
+  //   'ok'/'partial'                    → limpa estado (próxima degradação volta a contar do zero).
+  // Estado em api_cache: { status, alerted } com TTL 30min.
+  if (SU && SK && process.env.RESEND_API_KEY && process.env.ADMIN_EMAIL) {
+    const cH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+
+    if (status === 'critical' || status === 'degraded') {
+      let prev = null;
+      try {
+        // Read com timeout 3s — se Supabase tá lento (justo quando isso importa),
+        // não bloqueia: cai pro caminho prev=null (alerta direto, melhor errar pra mais).
+        const rctrl = new AbortController();
+        const rt = setTimeout(() => rctrl.abort(), 3000);
+        const pr = await fetch(`${SU}/rest/v1/api_cache?cache_key=eq.health_last_status&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: cH, signal: rctrl.signal });
+        clearTimeout(rt);
+        if (pr.ok) { const pd = await pr.json(); prev = pd?.[0]?.value || null; }
+      } catch (e) {}
+      const prevBad = prev && (prev.status === 'critical' || prev.status === 'degraded');
+      const prevAlerted = prev && prev.alerted === true;
+      const escalouPraCritical = status === 'critical' && prev && prev.status !== 'critical';
+
+      // critical: alerta na 1ª vez E quando escala de degraded→critical (mesmo se degraded já alertou).
+      // degraded: alerta só na 2ª seguida. Nunca re-alerta no mesmo nível de episódio.
+      const deveAlertar = escalouPraCritical || (!prevAlerted && (status === 'critical' || (status === 'degraded' && prevBad)));
+
+      if (deveAlertar) {
+        const failed = Object.entries(checks).filter(([, v]) => v.status === 'error')
+          .map(([name, v]) => `<li><b>${name}</b>: ${v.error}</li>`).join('');
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'monitor@bluetubeviral.com',
+            to: process.env.ADMIN_EMAIL,
+            subject: `🚨 BlueTube ${status.toUpperCase()}: ${criticalDown.join(', ') || totalDown + ' serviços com erro'}`,
+            html: `
+              <h2 style="color:#ff4444">Status: ${status.toUpperCase()}</h2>
+              <p>Críticos abaixo: ${criticalDown.length ? '<b>' + criticalDown.join(', ') + '</b>' : 'nenhum'}</p>
+              ${status === 'degraded' ? '<p style="font-size:13px;color:#888">Degradação sustentada (2+ checagens) — não é blip transitório.</p>' : ''}
+              <ul>${failed}</ul>
+              <p><a href="https://bluetubeviral.com/status">Status page →</a></p>
+            `,
+          }),
+        }).catch(() => {});
+      }
+      // Salva estado: alerted fica true uma vez que alertamos (não re-alerta no episódio)
+      fetch(`${SU}/rest/v1/api_cache`, {
+        method: 'POST', headers: { ...cH, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ cache_key: 'health_last_status', value: { status, alerted: prevAlerted || deveAlertar, at: new Date().toISOString() }, expires_at: new Date(Date.now() + 30 * 60000).toISOString() }),
+      }).catch(() => {});
+    } else {
+      // ok ou partial → recuperou, limpa estado
+      fetch(`${SU}/rest/v1/api_cache?cache_key=eq.health_last_status`, {
+        method: 'DELETE', headers: cH,
+      }).catch(() => {});
+    }
   }
 
   const statusCode = status === 'critical' ? 500 : status === 'degraded' ? 503 : 200;
