@@ -400,13 +400,19 @@ async function verifyOtp() {
     if (!token) {
       // verify_otp passou mas sem sessão = a conta JÁ EXISTIA com outra senha
       // (o /signup interno falhou "user already registered" e o login com a senha
-      // digitada agora não bateu). Manda pro login com a senha original.
+      // digitada agora não bateu). FALLBACK ROBUSTO:
+      //   1. Auto-envia link de redefinição de senha (cobre "não lembro a senha")
+      //   2. Redireciona pro login com email preenchido (cobre "lembro a senha")
+      //   3. Link "Esqueci minha senha" sempre visível no form de login
       const emailExistente = _pendingSignupEmail;
+      // 1. Auto-reset (fire-and-forget — sempre retorna sent:true por anti-enumeração)
+      fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_password', email: emailExistente }) }).catch(() => {});
+      // 2. Redireciona pro login
       document.getElementById('authOtpForm').style.display = 'none';
       switchTab('login');
       document.getElementById('loginEmail').value = emailExistente;
       document.getElementById('loginErr').style.color = 'var(--gold)';
-      document.getElementById('loginErr').textContent = 'Esse email já tem conta no BlueTube! Entre com sua senha (ou use "Esqueci minha senha").';
+      document.getElementById('loginErr').innerHTML = 'Esse email <b>já tem conta</b> no BlueTube. Enviamos um link de redefinição de senha pro seu email — ou, se você lembra a senha, entre abaixo.';
       document.getElementById('loginPwd').focus();
       return;
     }
