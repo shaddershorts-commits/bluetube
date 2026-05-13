@@ -190,12 +190,24 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:980px;margin:
       <input class="auth-input" id="loginPwd" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()"/>
       <div class="auth-err" id="loginErr"></div>
       <button class="btn-auth" id="btnLogin" onclick="doLogin()">Entrar →</button>
+      <div style="text-align:center;margin-top:12px"><a onclick="esqueciSenha()" style="font-size:12px;color:var(--text-dim);cursor:pointer;text-decoration:underline">Esqueci minha senha</a></div>
     </div>
     <div id="authSignupForm" style="display:none">
       <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com"/>
       <input class="auth-input" id="signupPwd" type="password" placeholder="Senha (mín. 6 caracteres)" onkeydown="if(event.key==='Enter')doSignup()"/>
       <div class="auth-err" id="signupErr"></div>
       <button class="btn-auth" id="btnSignup" onclick="doSignup()">Criar conta →</button>
+    </div>
+    <div id="authOtpForm" style="display:none">
+      <div style="text-align:center;margin-bottom:14px">
+        <div style="font-size:32px;margin-bottom:8px">📧</div>
+        <div style="font-size:14px;color:var(--text)">Enviamos um código de 6 dígitos pra <b id="otpEmailDisplay" style="color:var(--neon)"></b></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:6px">Confira sua caixa de entrada (e spam)</div>
+      </div>
+      <input class="auth-input" id="otpCode" type="text" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:8px;font-size:18px;font-weight:700" onkeydown="if(event.key==='Enter')verifyOtp()"/>
+      <div class="auth-err" id="otpErr"></div>
+      <button class="btn-auth" id="btnOtp" onclick="verifyOtp()">Verificar código →</button>
+      <div style="text-align:center;margin-top:12px"><a onclick="resendOtp()" style="font-size:12px;color:var(--text-dim);cursor:pointer;text-decoration:underline">Reenviar código</a></div>
     </div>
   </div>
 </div>
@@ -400,15 +412,73 @@ function switchTab(tab){
   document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
   document.getElementById('authLoginForm').style.display=tab==='login'?'':'none';
   document.getElementById('authSignupForm').style.display=tab==='signup'?'':'none';
+  const otp=document.getElementById('authOtpForm');if(otp)otp.style.display='none';
 }
 function showAuth(){document.getElementById('authOverlay').style.display='flex';}
 function hideAuth(){document.getElementById('authOverlay').style.display='none';}
+
+let _pendingSignupEmail=null;
+function showOtpStep(email){
+  document.getElementById('authLoginForm').style.display='none';
+  document.getElementById('authSignupForm').style.display='none';
+  document.getElementById('authOtpForm').style.display='';
+  document.getElementById('otpEmailDisplay').textContent=email;
+  document.getElementById('otpCode').focus();
+}
+async function verifyOtp(){
+  const code=document.getElementById('otpCode').value.trim();
+  const err=document.getElementById('otpErr');
+  const btn=document.getElementById('btnOtp');
+  if(code.length!==6){err.textContent='Digite os 6 dígitos';return;}
+  if(!_pendingSignupEmail){err.textContent='Sessão expirada, recarregue a página';return;}
+  btn.disabled=true;btn.textContent='Verificando…';err.textContent='';
+  try{
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_otp',email:_pendingSignupEmail,otp:code})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error||'Código incorreto';btn.disabled=false;btn.textContent='Verificar código →';return;}
+    token=d.session?.access_token;
+    if(!token){
+      // Conta já existe com outra senha — fallback: auto-reset + manda pro login
+      const emailExistente=_pendingSignupEmail;
+      fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:emailExistente})}).catch(()=>{});
+      btn.disabled=false;btn.textContent='Verificar código →';
+      document.getElementById('authOtpForm').style.display='none';
+      switchTab('login');
+      document.getElementById('loginEmail').value=emailExistente;
+      document.getElementById('loginPwd').value='';
+      const le=document.getElementById('loginErr');le.style.color='#fbbf24';
+      le.textContent='Esse email já tem conta no BlueTube! Enviamos um link de redefinição de senha — ou, se você lembra a senha, entre abaixo.';
+      document.getElementById('loginPwd').focus();
+      return;
+    }
+    localStorage.setItem('bt_token',token);
+    if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
+    hideAuth();
+    regAffiliate();
+  }catch(e){err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Verificar código →';}
+}
+async function resendOtp(){
+  if(!_pendingSignupEmail)return;
+  const err=document.getElementById('otpErr');err.style.color='var(--neon)';err.textContent='Enviando…';
+  try{await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send_otp',email:_pendingSignupEmail})});err.textContent='📧 Novo código enviado';}
+  catch(e){err.style.color='var(--red)';err.textContent='Erro ao reenviar';}
+  setTimeout(()=>{err.style.color='var(--red)';err.textContent='';},5000);
+}
+async function esqueciSenha(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const err=document.getElementById('loginErr');
+  if(!email){err.style.color='var(--red)';err.textContent='Digite seu email primeiro';return;}
+  err.style.color='var(--neon)';err.textContent='Enviando link de recuperação…';
+  try{await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email})});err.style.color='#22c55e';err.textContent='📧 Link de redefinição enviado pro seu email!';}
+  catch(e){err.style.color='var(--red)';err.textContent='Erro ao enviar. Tente de novo.';}
+}
 
 async function doLogin(){
   const email=document.getElementById('loginEmail').value.trim();
   const pwd=document.getElementById('loginPwd').value;
   const err=document.getElementById('loginErr');
   const btn=document.getElementById('btnLogin');
+  err.style.color='var(--red)';
   if(!email||!pwd){err.textContent='Preencha email e senha';return;}
   btn.disabled=true;btn.textContent='Entrando…';err.textContent='';
   try{
@@ -439,13 +509,14 @@ async function doSignup(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password:pwd,ref_code:ref})});
     const d=await r.json();
     if(!r.ok){err.textContent=d.error||'Erro ao criar conta';btn.disabled=false;btn.textContent='Criar conta →';return;}
-    // needsConfirmation removido — login direto sem verificação de email
+    // Fluxo padrão BlueTube: signup retorna needsOTP → precisa verificar código por email
+    if(d.needsOTP){_pendingSignupEmail=email;showOtpStep(email);btn.disabled=false;btn.textContent='Criar conta →';return;}
+    // Caso raro: signup direto com sessão (compat futuro)
     token=d.session?.access_token;
     if(!token){err.textContent='Erro ao obter sessão. Tente novamente.';btn.disabled=false;btn.textContent='Criar conta →';return;}
     localStorage.setItem('bt_token',token);
     if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);
     hideAuth();
-    // Novo usuário — vai direto para registro de afiliado
     regAffiliate();
   }catch(e){console.error('Signup error:',e);err.textContent='Erro de conexão';btn.disabled=false;btn.textContent='Criar conta →';}
 }

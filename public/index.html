@@ -2213,6 +2213,23 @@ async function submitOTPCode(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_otp',email:pendingOTPEmail,otp:code})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Código inválido');
+    // FALLBACK conta-já-existe: verify_otp passa mas sem sessão = o email já tinha
+    // conta com outra senha (o /signup interno retorna "user already registered" e
+    // o login com a senha nova digitada não bate). auth.js é intocável — corrige aqui:
+    // 1) auto-envia link de redefinição de senha, 2) volta pra aba de login com email
+    // preenchido, 3) link "Esqueci minha senha" continua visível. NUNCA cria conta dupla
+    // (Supabase + subscribers têm unique no email) — só evita o estado travado.
+    if(!d.session?.access_token){
+      const emailExistente=pendingOTPEmail;
+      pendingOTPPassword=''; // descarta a senha nova (errada) pra não salvar como cred
+      fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:emailExistente})}).catch(()=>{});
+      switchAuthTab('login');
+      const le=document.getElementById('loginEmail');if(le)le.value=emailExistente;
+      const lp=document.getElementById('loginPassword');if(lp)lp.value=''; // limpa senha pré-preenchida (pode ser de outra conta)
+      setAuthMsg('Esse email já tem conta no BlueTube! Enviamos um link de redefinição de senha pro seu email — ou, se você lembra a senha, entre abaixo.','');
+      if(btn)btn.disabled=false;
+      return;
+    }
     if(d.session?.access_token){localStorage.setItem('bt_token',d.session.access_token);if(d.session?.refresh_token)localStorage.setItem('bt_refresh_token',d.session.refresh_token);}
     // Fallback de atribuicao via fingerprint 14d (cookie sempre vence).
     // Cobre signup via OTP (caminho que nao passava pelo attribute-signup-fingerprint
