@@ -173,6 +173,9 @@ main{position:relative;z-index:2;padding:100px 24px 80px;max-width:900px;margin:
       <input class="auth-input" id="loginPwd" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()"/>
       <div class="auth-err" id="loginErr"></div>
       <button class="btn-auth" id="btnLogin" onclick="doLogin()">Entrar →</button>
+      <div style="text-align:center;margin-top:12px">
+        <a onclick="esqueciSenha()" style="font-size:12px;color:var(--text-dim);cursor:pointer;text-decoration:underline">Esqueci minha senha</a>
+      </div>
     </div>
     <div id="authSignupForm" style="display:none">
       <input class="auth-input" id="signupEmail" type="email" placeholder="seu@email.com"/>
@@ -336,6 +339,7 @@ async function doLogin() {
   const pwd = document.getElementById('loginPwd').value;
   const err = document.getElementById('loginErr');
   const btn = document.getElementById('btnLogin');
+  err.style.color = 'var(--red)';
   if (!email || !pwd) { err.textContent = 'Preencha email e senha'; return; }
   btn.disabled = true; btn.textContent = 'Entrando…'; err.textContent = '';
   try {
@@ -393,7 +397,19 @@ async function verifyOtp() {
     const d = await r.json();
     if (!r.ok) { err.textContent = d.error || 'Código incorreto'; btn.disabled = false; btn.textContent = 'Verificar código →'; return; }
     token = d.session?.access_token;
-    if (!token) { err.textContent = 'Conta criada, faça login'; btn.disabled = false; btn.textContent = 'Verificar código →'; return; }
+    if (!token) {
+      // verify_otp passou mas sem sessão = a conta JÁ EXISTIA com outra senha
+      // (o /signup interno falhou "user already registered" e o login com a senha
+      // digitada agora não bateu). Manda pro login com a senha original.
+      const emailExistente = _pendingSignupEmail;
+      document.getElementById('authOtpForm').style.display = 'none';
+      switchTab('login');
+      document.getElementById('loginEmail').value = emailExistente;
+      document.getElementById('loginErr').style.color = 'var(--gold)';
+      document.getElementById('loginErr').textContent = 'Esse email já tem conta no BlueTube! Entre com sua senha (ou use "Esqueci minha senha").';
+      document.getElementById('loginPwd').focus();
+      return;
+    }
     localStorage.setItem('bt_token', token);
     if (d.session?.refresh_token) localStorage.setItem('bt_refresh_token', d.session.refresh_token);
     _userEmail = _pendingSignupEmail;
@@ -401,6 +417,19 @@ async function verifyOtp() {
     marcarOrigemRetry(token);
     afterAuth();
   } catch (e) { err.textContent = 'Erro de conexão'; btn.disabled = false; btn.textContent = 'Verificar código →'; }
+}
+
+async function esqueciSenha() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const err = document.getElementById('loginErr');
+  if (!email) { err.style.color = 'var(--red)'; err.textContent = 'Digite seu email primeiro'; return; }
+  err.style.color = 'var(--neon)';
+  err.textContent = 'Enviando link de recuperação…';
+  try {
+    await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_password', email }) });
+    err.style.color = 'var(--green)';
+    err.textContent = '📧 Link de redefinição enviado pro seu email!';
+  } catch (e) { err.style.color = 'var(--red)'; err.textContent = 'Erro ao enviar. Tente de novo.'; }
 }
 
 async function resendOtp() {
