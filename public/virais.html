@@ -856,6 +856,7 @@ function atualizarBadgeBanco(){
     pagina: '1',
     lang: region,
     periodo: periodo,
+    apenas_curados: 'true', // SÓ canais selecionados pelo admin (regra inviolável)
   });
   if (nichoSel) params.set('nicho', nichoSel);
   // Token p/ filtro 5h Master-only (ignorado nas outras janelas)
@@ -906,6 +907,7 @@ async function carregarHistorico(pagina){
       pagina: String(pagina || 1),
       lang: region || '', // codigo agrupado (pt|en|es|fr|de|...) — backend traduz em pais
       periodo: periodo,
+      apenas_curados: 'true', // SÓ canais selecionados pelo admin (regra inviolável)
     });
     if (nichoSel) params.set('nicho', nichoSel);
     // Token Supabase eh obrigatorio pra periodo=5h (filtro Master-only).

@@ -150,26 +150,6 @@
       "schedule": "0 6,14,22 * * *"
     },
     {
-      "path": "/api/virais-coletor?action=atualizar-metricas-recentes",
-      "schedule": "0 0-3,9-23 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=atualizar-metricas",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=atualizar-metricas",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=atualizar-metricas",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/virais-coletor?action=atualizar-metricas",
-      "schedule": "0 20 * * *"
-    },
-    {
       "path": "/api/affiliate-robustness?action=process-queue",
       "schedule": "*/15 * * * *"
     },
