@@ -16,13 +16,16 @@ RUN apk add --no-cache \
   && rm -rf /var/cache/apk/*
 
 # yt-dlp binary standalone (Python script auto-contido).
+# USA NIGHTLY BUILDS — release diário com fixes mais frescos pra anti-bot
+# do YouTube. Stable (releases/latest) fica meses sem release às vezes
+# (ex: 2026-03-17 → 2026-05-14 = nada novo), mas YouTube muda anti-bot
+# toda semana. Nightly cobre vídeos recém-uploadados que o stable falha.
 # YTDLP_BUILD_DATE invalida o cache da camada Docker quando precisar forcar
-# re-download (YouTube atualiza anti-bot e yt-dlp libera fix em horas).
-# Pra forcar update: incremente a data abaixo + commit.
-ARG YTDLP_BUILD_DATE=2026-05-02
+# re-download. Pra forcar update: incremente a data abaixo + commit.
+ARG YTDLP_BUILD_DATE=2026-05-14
 RUN echo "yt-dlp build date: ${YTDLP_BUILD_DATE}" \
   && curl -fsSL -o /usr/local/bin/yt-dlp \
-    https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+    https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp \
   && chmod +x /usr/local/bin/yt-dlp \
   && yt-dlp --version
 

@@ -493,9 +493,22 @@ app.post('/youtube-hq', async (req, res) => {
   let step = 'init';
 
   // Sempre responde antes do processamento pesado travar — faz o cleanup async
+  // safeStringify: axios errors em modo stream têm responseType:'stream' → response.data
+  // é um ReadableStream com refs circulares (TLSSocket). JSON.stringify quebra. Try/catch.
+  const safeStringify = (v) => {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    try { return JSON.stringify(v); }
+    catch (e) {
+      // Stream / circular → tenta extrair pedaço útil
+      if (v.readable !== undefined) return '[stream]';
+      try { return String(v); } catch { return '[unserializable]'; }
+    }
+  };
   const fail = (stepName, err) => {
     const detail = err.response?.status
-      ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 300)}`
+      ? `HTTP ${err.response.status}: ${safeStringify(err.response.data).slice(0, 300)}`
       : (err.message || String(err));
     console.error('[youtube-hq]', jobId, 'step=' + stepName, 'error:', detail);
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
