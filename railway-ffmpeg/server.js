@@ -489,12 +489,36 @@ app.options('/proxy-download', (req, res) => {
   res.status(204).end();
 });
 
+// Setup de cookies do YouTube (uma vez por boot). Env var YOUTUBE_COOKIES
+// recebe o conteúdo completo de um cookies.txt exportado de browser logado.
+// Sem isso, YouTube bloqueia downloads de IPs datacenter (Railway) com
+// "Sign in to confirm you're not a bot" em 2026.
+const YT_COOKIES_FILE = '/tmp/yt-cookies.txt';
+let _ytCookiesReady = false;
+function setupYtCookies() {
+  if (_ytCookiesReady) return fs.existsSync(YT_COOKIES_FILE);
+  _ytCookiesReady = true;
+  if (!process.env.YOUTUBE_COOKIES) {
+    console.warn('[yt-dlp] YOUTUBE_COOKIES env var ausente — downloads podem dar bot-check em IPs datacenter');
+    return false;
+  }
+  try {
+    fs.writeFileSync(YT_COOKIES_FILE, process.env.YOUTUBE_COOKIES, { mode: 0o600 });
+    console.log('[yt-dlp] cookies escritos em', YT_COOKIES_FILE, '(' + process.env.YOUTUBE_COOKIES.length + ' bytes)');
+    return true;
+  } catch (e) {
+    console.error('[yt-dlp] falha ao escrever cookies:', e.message);
+    return false;
+  }
+}
+
 // Fallback: roda yt-dlp local pra baixar+stream quando a URL signed do
 // Cobalt deu 403 (IP-bound). Extração + download acontecem no MESMO IP
 // (Railway), então a signature emitida agora bate na hora de baixar.
 async function ytdlpFallbackStream(req, res, ytUrl, filename) {
   if (res.headersSent) return;
   console.log('[proxy-download] yt-dlp fallback start:', ytUrl);
+  const hasCookies = setupYtCookies();
   const jobId = uuidv4();
   const dir = path.join('/tmp', jobId);
   fs.mkdirSync(dir, { recursive: true });
@@ -504,6 +528,10 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
 
   try {
+    // Player clients ordenados pelos que MENOS triggam bot-check em IPs datacenter:
+    // tv_embedded (smart TV embed, raro pede auth), android_vr (Meta Quest),
+    // android_testsuite (test client menos restrito), ios (mais agressivo no fim).
+    // REMOVIDOS: web_safari (triggava bot-check), android_creator (precisa auth).
     const ytArgs = [
       '-f', 'bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv+ba/b',
       '--merge-output-format', 'mp4',
@@ -511,10 +539,13 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
       '--no-warnings',
       '--no-check-certificate',
       '--force-ipv4',
-      '--extractor-args', 'youtube:player_client=android_vr,android_creator,web_safari,tv_embedded,ios',
+      '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
       '-o', outputFile,
       ytUrl
     ];
+    if (hasCookies) {
+      ytArgs.splice(ytArgs.length - 2, 0, '--cookies', YT_COOKIES_FILE);
+    }
     await run('yt-dlp', ytArgs);
     if (!fs.existsSync(outputFile)) throw new Error('yt-dlp no output');
 
@@ -781,10 +812,11 @@ app.post('/download-youtube', async (req, res) => {
 
   const outputFile = path.join(dir, 'video.mp4');
 
-  // Player clients recomendados por maintainers yt-dlp (2024-2025) pra bypass
-  // de bot detection em IPs datacenter: android_vr (Meta Quest YouTube, menos
-  // restrito), android_creator (pra creators), web_safari, tv_embedded.
-  const extractorArgs = 'youtube:player_client=android_vr,android_creator,web_safari,tv_embedded,ios';
+  // Player clients ordenados pelos que MENOS triggam bot-check em IPs datacenter
+  // em 2026: tv_embedded, android_vr, android_testsuite, ios.
+  // Removidos web_safari + android_creator (triggam bot-check no Railway).
+  const extractorArgs = 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios';
+  const hasCookies = setupYtCookies();
 
   try {
     const ytArgs = [
@@ -802,6 +834,7 @@ app.post('/download-youtube', async (req, res) => {
       '-o', outputFile,
       youtube_url
     ];
+    if (hasCookies) ytArgs.splice(ytArgs.length - 2, 0, '--cookies', YT_COOKIES_FILE);
     console.log('[yt-dlp] start:', q, youtube_url);
     await run('yt-dlp', ytArgs);
 
