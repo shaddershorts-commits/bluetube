@@ -498,19 +498,58 @@ let _ytCookiesReady = false;
 function setupYtCookies() {
   if (_ytCookiesReady) return fs.existsSync(YT_COOKIES_FILE);
   _ytCookiesReady = true;
-  if (!process.env.YOUTUBE_COOKIES) {
-    console.warn('[yt-dlp] YOUTUBE_COOKIES env var ausente — downloads podem dar bot-check em IPs datacenter');
+  const raw = process.env.YOUTUBE_COOKIES;
+  if (!raw) {
+    console.warn('[yt-dlp] YOUTUBE_COOKIES ausente');
     return false;
   }
   try {
-    fs.writeFileSync(YT_COOKIES_FILE, process.env.YOUTUBE_COOKIES, { mode: 0o600 });
-    console.log('[yt-dlp] cookies escritos em', YT_COOKIES_FILE, '(' + process.env.YOUTUBE_COOKIES.length + ' bytes)');
+    // Normaliza line endings (clipboard Windows = CRLF; Netscape format precisa LF).
+    // Garante header Netscape (yt-dlp rejeita sem ele).
+    let content = raw.replace(/\r\n?/g, '\n');
+    if (!content.startsWith('# Netscape HTTP Cookie File')) {
+      content = '# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n' + content;
+    }
+    if (!content.endsWith('\n')) content += '\n';
+    fs.writeFileSync(YT_COOKIES_FILE, content, { mode: 0o600 });
+    const stat = fs.statSync(YT_COOKIES_FILE);
+    const lines = content.split('\n').filter(l => l && !l.startsWith('#')).length;
+    console.log('[yt-dlp] cookies ok:', stat.size, 'bytes,', lines, 'cookies');
     return true;
   } catch (e) {
-    console.error('[yt-dlp] falha ao escrever cookies:', e.message);
+    console.error('[yt-dlp] falha cookies:', e.message);
     return false;
   }
 }
+
+// DEBUG endpoint pra diagnosticar cookies sem precisar de log do Railway
+app.get('/yt-cookies-status', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const envPresent = !!process.env.YOUTUBE_COOKIES;
+  const envSize = process.env.YOUTUBE_COOKIES?.length || 0;
+  const envStarts = (process.env.YOUTUBE_COOKIES || '').slice(0, 40);
+  setupYtCookies();
+  let fileInfo = { exists: false };
+  if (fs.existsSync(YT_COOKIES_FILE)) {
+    const stat = fs.statSync(YT_COOKIES_FILE);
+    const content = fs.readFileSync(YT_COOKIES_FILE, 'utf8');
+    const lines = content.split('\n');
+    const cookieLines = lines.filter(l => l && !l.startsWith('#'));
+    // Domínios presentes (sanitiza valores)
+    const domains = [...new Set(cookieLines.map(l => l.split('\t')[0]).filter(Boolean))].slice(0, 10);
+    fileInfo = {
+      exists: true,
+      size: stat.size,
+      total_lines: lines.length,
+      cookie_lines: cookieLines.length,
+      starts_with: content.slice(0, 60),
+      has_youtube_domain: domains.some(d => d.includes('youtube')),
+      domains_sample: domains,
+      tab_separated: cookieLines.length > 0 ? cookieLines[0].includes('\t') : null,
+    };
+  }
+  res.json({ env_present: envPresent, env_size: envSize, env_starts: envStarts, file: fileInfo });
+});
 
 // Fallback: roda yt-dlp local pra baixar+stream quando a URL signed do
 // Cobalt deu 403 (IP-bound). Extração + download acontecem no MESMO IP
