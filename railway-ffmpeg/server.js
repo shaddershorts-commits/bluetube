@@ -533,7 +533,11 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
     // android_testsuite (test client menos restrito), ios (mais agressivo no fim).
     // REMOVIDOS: web_safari (triggava bot-check), android_creator (precisa auth).
     const ytArgs = [
-      '-f', 'bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv+ba/b',
+      // Seletor permissivo: tenta MP4 com video+audio combinados primeiro
+      // (single file, sem merge), depois separados (precisa ffmpeg merge),
+      // depois qualquer best disponível. Alguns clients só retornam format 18
+      // (360p mp4 combinado), o seletor velho rejeitava.
+      '-f', 'best[ext=mp4][height<=720]/best[height<=720]/bv*+ba/best',
       '--merge-output-format', 'mp4',
       '--no-playlist',
       '--no-warnings',
