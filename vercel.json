@@ -151,7 +151,7 @@
     },
     {
       "path": "/api/virais-coletor?action=atualizar-metricas-recentes",
-      "schedule": "0 * * * *"
+      "schedule": "0 0-3,9-23 * * *"
     },
     {
       "path": "/api/virais-coletor?action=atualizar-metricas",
