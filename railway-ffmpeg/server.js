@@ -544,7 +544,9 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
       ytUrl
     ];
     if (hasCookies) {
-      ytArgs.splice(ytArgs.length - 2, 0, '--cookies', YT_COOKIES_FILE);
+      // Insere --cookies <file> ANTES do -o (senão yt-dlp lê --cookies como nome de output)
+      const oIdx = ytArgs.indexOf('-o');
+      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
     }
     await run('yt-dlp', ytArgs);
     if (!fs.existsSync(outputFile)) throw new Error('yt-dlp no output');
@@ -834,7 +836,10 @@ app.post('/download-youtube', async (req, res) => {
       '-o', outputFile,
       youtube_url
     ];
-    if (hasCookies) ytArgs.splice(ytArgs.length - 2, 0, '--cookies', YT_COOKIES_FILE);
+    if (hasCookies) {
+      const oIdx = ytArgs.indexOf('-o');
+      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
+    }
     console.log('[yt-dlp] start:', q, youtube_url);
     await run('yt-dlp', ytArgs);
 
