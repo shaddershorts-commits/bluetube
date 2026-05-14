@@ -581,7 +581,7 @@ function showResult(downloadUrl, source, originalUrl, title, thumbnail){
   dlBtn.removeAttribute('download');
   dlBtn.onclick = function(e) {
     e.preventDefault();
-    triggerDownload(downloadUrl, title, source.name);
+    triggerDownload(downloadUrl, title, source.name, originalUrl);
     return false;
   };
   // Esconde a tip de "botão direito" que não é mais necessária
@@ -607,11 +607,16 @@ function wrapProxyIfNeeded(rawUrl, platform, filename) {
   return `/api/auth?action=proxy-download&fileUrl=${encodeURIComponent(rawUrl)}&filename=${encodeURIComponent(filename)}`;
 }
 
-async function triggerDownload(url, title, platform){
+async function triggerDownload(url, title, platform, originalUrl){
   const safeTitle = (title||'video').replace(/[^a-z0-9\s]/gi,'').trim().slice(0,40)||'video';
   const filename = `BaixaBlue_${platform}_${safeTitle}.mp4`;
   // Envelope URLs IP-bound antes do fetch pra evitar 403 no browser
   url = wrapProxyIfNeeded(url, platform, filename);
+  // Anexa yt_url no proxy do Railway pra ele cair em yt-dlp local quando o
+  // googlevideo der 403 (URLs do Cobalt são IP-bound, Railway IP ≠ Cobalt IP).
+  if (originalUrl && /youtube\.com|youtu\.be/i.test(originalUrl) && /\/proxy-download\?/.test(url) && !/[?&]yt_url=/.test(url)) {
+    url += '&yt_url=' + encodeURIComponent(originalUrl);
+  }
 
   const btn = document.getElementById('downloadLink');
   const origContent = btn.innerHTML;

@@ -443,6 +443,17 @@ app.get('/proxy-download', async (req, res) => {
     });
 
     if (upstream.status >= 400) {
+      // FALLBACK yt-dlp local: URLs do googlevideo são IP-bound. Cobalt extrai
+      // numa instância (IP_A), Railway proxy tenta baixar de outra (IP_B) → 403.
+      // Quando o frontend passa &yt_url=<original_youtube_url>, rodamos yt-dlp
+      // local que extrai E baixa no MESMO IP (Railway). Não viola allowlist
+      // porque o URL final é googlevideo de qualquer jeito — só com signature
+      // que casa com nosso IP.
+      const ytUrl = req.query?.yt_url;
+      const isGoogleVideo = parsed.hostname.includes('googlevideo');
+      if (ytUrl && isGoogleVideo && (upstream.status === 403 || upstream.status === 401 || upstream.status === 410)) {
+        return ytdlpFallbackStream(req, res, ytUrl, filename);
+      }
       res.setHeader('Access-Control-Allow-Origin', '*');
       return res.status(502).json({ error: `upstream ${upstream.status}`, host: parsed.hostname });
     }
@@ -477,6 +488,62 @@ app.options('/proxy-download', (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.status(204).end();
 });
+
+// Fallback: roda yt-dlp local pra baixar+stream quando a URL signed do
+// Cobalt deu 403 (IP-bound). Extração + download acontecem no MESMO IP
+// (Railway), então a signature emitida agora bate na hora de baixar.
+async function ytdlpFallbackStream(req, res, ytUrl, filename) {
+  if (res.headersSent) return;
+  console.log('[proxy-download] yt-dlp fallback start:', ytUrl);
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const outputFile = path.join(dir, 'video.mp4');
+
+  // Cleanup helper — sempre roda
+  const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+
+  try {
+    const ytArgs = [
+      '-f', 'bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv+ba/b',
+      '--merge-output-format', 'mp4',
+      '--no-playlist',
+      '--no-warnings',
+      '--no-check-certificate',
+      '--force-ipv4',
+      '--extractor-args', 'youtube:player_client=android_vr,android_creator,web_safari,tv_embedded,ios',
+      '-o', outputFile,
+      ytUrl
+    ];
+    await run('yt-dlp', ytArgs);
+    if (!fs.existsSync(outputFile)) throw new Error('yt-dlp no output');
+
+    const stats = fs.statSync(outputFile);
+    console.log('[proxy-download] yt-dlp fallback ok:', stats.size, 'bytes');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const stream = fs.createReadStream(outputFile);
+    stream.pipe(res);
+    stream.on('close', cleanup);
+    stream.on('error', (err) => {
+      console.error('[proxy-download] yt-dlp stream err:', err.message);
+      cleanup();
+      if (!res.headersSent) res.status(500).end(); else res.end();
+    });
+  } catch (err) {
+    console.error('[proxy-download] yt-dlp fallback failed:', err.message);
+    cleanup();
+    if (!res.headersSent) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(502).json({ error: 'ytdlp_fallback_failed', detail: String(err.message || err).slice(0, 300) });
+    }
+  }
+}
 
 // ── YOUTUBE HQ: end-to-end ytstream + download + mux + upload no mesmo IP ──
 // Resolve o problema de signed URLs IP-bound do YouTube: o IP que chama
