@@ -901,36 +901,102 @@ app.post('/youtube-process', async (req, res) => {
   let currentProc = null;
 
   try {
-    // ── 1. DOWNLOAD MAX QUALITY (cookies + clientes anti-bot-check) ─────
-    log('start download');
-    const ytArgs = [
-      // Seletor PRIORIZANDO ADAPTIVE 1080p — o "best combined" geralmente é
-      // só 720p (format 22). 1080p real só existe como adaptive (vídeo+áudio
-      // separados, merge necessário). Ordem: adaptive 1080p > best combined.
-      '-f', 'bv*[height<=1080]+ba/bv*[height<=1080]+ba[ext=m4a]/best[height<=1080]/bv*+ba/best',
-      '--merge-output-format', 'mp4',
-      '--no-playlist',
-      '--no-warnings',
-      '--no-check-certificate',
-      '--force-ipv4',
-      '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
-      '-o', inFilePattern,
-      youtube_url
-    ];
-    if (jobCookies) {
-      const oIdx = ytArgs.indexOf('-o');
-      ytArgs.splice(oIdx, 0, '--cookies', jobCookies);
-    }
-    await runTracked('yt-dlp', ytArgs, (p) => { currentProc = p; });
-    if (aborted) return;
+    // ── 1. DOWNLOAD — Cobalt primeiro (90% dos casos, sem cookies), yt-dlp fallback ─
+    let inFile = null;
+    let source = null; // 'cobalt' ou 'yt-dlp'
 
-    // [H1] glob por arquivos `in.*` — pode ser .mp4, .mkv, .webm dependendo do source
-    const downloaded = fs.readdirSync(dir).filter(f => f.startsWith('in.'));
-    if (!downloaded.length) throw new Error('download_failed_no_file');
-    const inFile = path.join(dir, downloaded[0]);
+    // ── 1a. TENTA COBALT ─────────────────────────────────────────────────
+    const cobaltUrl = process.env.COBALT_API_URL;
+    const cobaltKey = process.env.COBALT_API_KEY;
+    if (cobaltUrl) {
+      try {
+        log('try cobalt');
+        const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+        if (cobaltKey) cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltKey;
+        const cobaltCtrl = new AbortController();
+        const cobaltTimer = setTimeout(() => cobaltCtrl.abort(), 30000);
+        const cobaltR = await fetch(cobaltUrl, {
+          method: 'POST', headers: cobaltHeaders,
+          body: JSON.stringify({ url: youtube_url, videoQuality: '1080' }),
+          signal: cobaltCtrl.signal,
+        });
+        clearTimeout(cobaltTimer);
+        const cobaltD = await cobaltR.json().catch(() => ({}));
+        let cobaltDlUrl = null;
+        if (cobaltR.ok) {
+          if (cobaltD.status === 'redirect' || cobaltD.status === 'tunnel') cobaltDlUrl = cobaltD.url;
+          else if (cobaltD.status === 'picker') cobaltDlUrl = cobaltD.picker?.[0]?.url;
+          else if (cobaltD.url) cobaltDlUrl = cobaltD.url;
+        }
+        if (cobaltDlUrl) {
+          log('cobalt url: ' + cobaltDlUrl.slice(0, 80) + '...');
+          const candidateFile = path.join(dir, 'in.mp4');
+          // Baixa pro disk com timeout. Se 403 do googlevideo (IP-bound), pula
+          // pro fallback yt-dlp.
+          const dlCtrl = new AbortController();
+          const dlTimer = setTimeout(() => dlCtrl.abort(), 90000);
+          try {
+            const dlR = await fetch(cobaltDlUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                'Referer': 'https://www.youtube.com/',
+                'Accept': '*/*',
+              },
+              signal: dlCtrl.signal,
+            });
+            clearTimeout(dlTimer);
+            if (dlR.ok) {
+              const writer = fs.createWriteStream(candidateFile);
+              const nodeStream = require('stream');
+              await new Promise((resolve, reject) => {
+                nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+              });
+              if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
+                inFile = candidateFile;
+                source = 'cobalt';
+                log('cobalt ok ' + fs.statSync(candidateFile).size + ' bytes');
+              }
+            } else {
+              log('cobalt url fetch ' + dlR.status + ' — fallback yt-dlp');
+            }
+          } catch (e) { clearTimeout(dlTimer); log('cobalt download err: ' + e.message + ' — fallback yt-dlp'); }
+        } else {
+          log('cobalt no url — fallback yt-dlp');
+        }
+      } catch (e) { log('cobalt err: ' + e.message + ' — fallback yt-dlp'); }
+    }
+
+    // ── 1b. FALLBACK YT-DLP (com cookies) ────────────────────────────────
+    if (!inFile) {
+      log('try yt-dlp');
+      const ytArgs = [
+        '-f', 'bv*[height<=1080]+ba/bv*[height<=1080]+ba[ext=m4a]/best[height<=1080]/bv*+ba/best',
+        '--merge-output-format', 'mp4',
+        '--no-playlist',
+        '--no-warnings',
+        '--no-check-certificate',
+        '--force-ipv4',
+        '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+        '-o', inFilePattern,
+        youtube_url
+      ];
+      if (jobCookies) {
+        const oIdx = ytArgs.indexOf('-o');
+        ytArgs.splice(oIdx, 0, '--cookies', jobCookies);
+      }
+      await runTracked('yt-dlp', ytArgs, (p) => { currentProc = p; });
+      if (aborted) return;
+      const downloaded = fs.readdirSync(dir).filter(f => f.startsWith('in.'));
+      if (!downloaded.length) throw new Error('download_failed_no_file');
+      inFile = path.join(dir, downloaded[0]);
+      source = 'yt-dlp';
+    }
+
     const inStat = fs.statSync(inFile);
-    if (inStat.size < 1024) throw new Error('download_failed_empty'); // [L12]
-    log('downloaded ' + inStat.size + ' bytes (' + downloaded[0] + ')');
+    if (inStat.size < 1024) throw new Error('download_failed_empty');
+    log('source=' + source + ' size=' + inStat.size + ' file=' + path.basename(inFile));
 
     // ── 2. PARÂMETROS ALEATÓRIOS (cada chamada → vídeo diferente) ──────
     const rand = (min, max) => Math.random() * (max - min) + min;
