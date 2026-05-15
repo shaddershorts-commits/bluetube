@@ -9,6 +9,7 @@ const path = require('path');
 const { spawn, exec } = require('child_process');
 const axios = require('axios');
 const os = require('os');
+const multer = require('multer');
 let sharp = null;
 try { sharp = require('sharp'); } catch (e) { console.warn('[bluetube-ffmpeg] sharp não disponível — fingerprint desabilitado:', e.message); }
 
@@ -1167,6 +1168,159 @@ app.post('/youtube-process', async (req, res) => {
 });
 
 app.options('/youtube-process', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
+// ── UPLOAD-PROCESS: limpa metadata + BlueMetadata em vídeo do user ─────────
+// User envia vídeo próprio (gravado/editado em CapCut/Premiere/etc).
+// Mesmo pipeline FFmpeg do /youtube-process: strip metadata + zoom random +
+// noise + atempo + CRF re-encode. Saída = vídeo único pra repostar.
+// Aceita até 500MB. Streaming upload via multer (não carrega no RAM).
+const uploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const jobId = uuidv4();
+    const dir = path.join('/tmp', 'upload-' + jobId);
+    fs.mkdirSync(dir, { recursive: true });
+    req._uploadDir = dir;
+    req._uploadJobId = jobId;
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    // Preserva extensão original (mp4, mov, mkv, webm) — FFmpeg detecta automático
+    const ext = path.extname(file.originalname || '.mp4').toLowerCase().slice(0, 6) || '.mp4';
+    cb(null, 'in' + ext);
+  },
+});
+const uploadMw = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB max
+  fileFilter: (req, file, cb) => {
+    const ok = /^video\/(mp4|quicktime|x-matroska|webm|x-msvideo|x-flv|3gpp)$/i.test(file.mimetype) ||
+               /\.(mp4|mov|mkv|webm|avi|flv|3gp|m4v)$/i.test(file.originalname || '');
+    cb(ok ? null : new Error('formato_nao_suportado'), ok);
+  },
+});
+
+// CORS allowlist pra endpoint de upload (evita abuso de origens externas)
+function corsAllowed(origin) {
+  if (!origin) return true; // direct curl/server-to-server permitido
+  return /^https:\/\/(bluetubeviral\.com|.*\.bluetubeviral\.com|.*\.vercel\.app)$/i.test(origin) ||
+         /^http:\/\/localhost(:\d+)?$/i.test(origin);
+}
+
+app.post('/upload-process', (req, res, next) => {
+  // Allowlist origin pra evitar abuso de cost (anyone podia fazer form action pra cá)
+  const origin = req.headers.origin || '';
+  if (!corsAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(403).json({ error: 'origin_nao_permitido' });
+  }
+  uploadMw.single('video')(req, res, (err) => {
+    if (err) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      // Cleanup do dir que foi criado pelo storage destination ANTES da validação falhar
+      if (req._uploadDir) { try { fs.rmSync(req._uploadDir, { recursive: true, force: true }); } catch {} }
+      const code = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      const reason = err.code === 'LIMIT_FILE_SIZE' ? 'arquivo_muito_grande_max_500mb' : (err.message || 'upload_invalido');
+      return res.status(code).json({ error: reason });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const origin = req.headers.origin || '';
+  if (!req.file) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    if (req._uploadDir) { try { fs.rmSync(req._uploadDir, { recursive: true, force: true }); } catch {} }
+    return res.status(400).json({ error: 'nenhum_arquivo' });
+  }
+  const dir = req._uploadDir;
+  const jobId = req._uploadJobId;
+  const inFile = req.file.path;
+  const outFile = path.join(dir, 'out.mp4');
+  const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+  const log = (m) => console.log('[upload-process]', jobId, m);
+
+  // Abort handler: se cliente desconecta (switchMode, close tab), kill ffmpeg + cleanup
+  let aborted = false;
+  let currentProc = null;
+  const onClose = () => {
+    if (res.writableEnded) return;
+    aborted = true;
+    if (currentProc && !currentProc.killed) { try { currentProc.kill('SIGKILL'); } catch {} }
+    cleanup();
+    log('aborted by client');
+  };
+  req.on('close', onClose);
+
+  // Timeout duro: 10 min máximo (FFmpeg em 500MB vídeo de 30min com preset medium = ~7-8min)
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+
+  try {
+    if (req.file.size < 1024) throw new Error('arquivo_vazio');
+    log('uploaded ' + req.file.size + ' bytes (' + path.basename(inFile) + ')');
+
+    // Mesmos params random do /youtube-process
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    const zoom = rand(0.02, 0.05);
+    const noise = Math.floor(rand(1, 4));
+    const brightness = rand(-0.02, 0.02).toFixed(4);
+    const saturation = rand(0.97, 1.03).toFixed(4);
+    const gamma = rand(0.97, 1.03).toFixed(4);
+    const tempo = rand(1.010, 1.025).toFixed(4);
+    const crfVar = rand(17, 19).toFixed(2);
+
+    const vf = `scale=iw*(1+${zoom.toFixed(4)}):-2,crop=iw/(1+${zoom.toFixed(4)}):ih/(1+${zoom.toFixed(4)}),eq=brightness=${brightness}:saturation=${saturation}:gamma=${gamma},noise=alls=${noise}:allf=t`;
+    const af = `atempo=${tempo}`;
+
+    log(`process zoom=${(zoom*100).toFixed(1)}% noise=${noise} tempo=${tempo} crf=${crfVar}`);
+
+    await runTracked('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error',
+      '-i', inFile,
+      '-map_metadata', '-1',
+      '-vf', vf,
+      '-af', af,
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', crfVar,
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart',
+      '-y',
+      outFile,
+    ], (p) => { currentProc = p; });
+    if (aborted) return;
+
+    if (!fs.existsSync(outFile)) throw new Error('process_failed');
+    const stats = fs.statSync(outFile);
+    log('processed ' + stats.size + ' bytes');
+
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', String(stats.size));
+    res.setHeader('Content-Disposition', 'attachment; filename="video_unico.mp4"');
+    res.setHeader('Cache-Control', 'no-store');
+
+    const stream = fs.createReadStream(outFile);
+    stream.pipe(res);
+    stream.on('close', () => { req.removeListener('close', onClose); cleanup(); });
+    stream.on('error', () => { req.removeListener('close', onClose); cleanup(); if (!res.headersSent) res.status(500).end(); else res.end(); });
+  } catch (err) {
+    if (aborted) return;
+    log('failed: ' + err.message);
+    req.removeListener('close', onClose);
+    cleanup();
+    if (!res.headersSent) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.status(500).json({ error: 'upload_process_failed', detail: String(err.message || err).slice(0, 300) });
+    }
+  }
+});
+
+app.options('/upload-process', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

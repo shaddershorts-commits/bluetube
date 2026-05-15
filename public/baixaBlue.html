@@ -208,21 +208,54 @@ footer a{color:var(--neon);text-decoration:none}
 
   <!-- MAIN CARD -->
   <div class="main-card">
-    <div class="input-group">
-      <input
-        id="videoUrl"
-        type="url"
-        class="url-input"
-        placeholder="Cole o link do YouTube, X/Twitter, Reddit ou Facebook…"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button class="btn-fetch" id="fetchBtn" onclick="startDownload()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Baixar
+    <!-- TABS modo URL / modo UPLOAD -->
+    <div style="display:flex;gap:6px;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.12);border-radius:10px;padding:4px;margin-bottom:14px">
+      <button id="tabUrl" onclick="switchMode('url')" style="flex:1;padding:10px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s">
+        🔗 Baixar do YouTube
+      </button>
+      <button id="tabUpload" onclick="switchMode('upload')" style="flex:1;padding:10px 14px;border-radius:7px;border:none;background:transparent;color:rgba(232,244,255,.6);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s">
+        ⬆️ Limpar meu vídeo
       </button>
     </div>
-    <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook</span></div>
+
+    <!-- MODO URL (default) -->
+    <div id="modeUrl">
+      <div class="input-group">
+        <input
+          id="videoUrl"
+          type="url"
+          class="url-input"
+          placeholder="Cole o link do YouTube, X/Twitter, Reddit ou Facebook…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="btn-fetch" id="fetchBtn" onclick="startDownload()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Baixar
+        </button>
+      </div>
+      <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook</span></div>
+    </div>
+
+    <!-- MODO UPLOAD -->
+    <div id="modeUpload" style="display:none">
+      <div id="uploadDrop" style="border:2px dashed rgba(0,170,255,.3);border-radius:14px;padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s;background:rgba(0,170,255,.02)" onclick="document.getElementById('uploadInput').click()">
+        <div style="font-size:42px;margin-bottom:8px">📁</div>
+        <div style="font-family:var(--font);font-weight:700;font-size:15px;color:var(--text);margin-bottom:6px">Arraste seu vídeo aqui ou clique pra escolher</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">MP4, MOV, MKV, WebM · Máx 500 MB</div>
+        <input type="file" id="uploadInput" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/avi,.mp4,.mov,.mkv,.webm,.avi" style="display:none" onchange="handleUploadSelect(event)"/>
+      </div>
+      <div id="uploadFileInfo" style="display:none;margin-top:12px;padding:14px 18px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.25);border-radius:10px;align-items:center;gap:12px">
+        <div style="font-size:24px">🎬</div>
+        <div style="flex:1;min-width:0">
+          <div id="uploadFileName" style="font-family:var(--font);font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div id="uploadFileSize" style="font-family:var(--mono);font-size:11px;color:var(--text-sec);margin-top:2px"></div>
+        </div>
+        <button onclick="processUpload()" id="btnProcessUpload" style="background:linear-gradient(135deg,#1a6bff,var(--neon));color:#fff;border:none;border-radius:8px;padding:10px 18px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">⚡ Limpar agora →</button>
+        <button onclick="clearUpload()" style="background:transparent;color:var(--text-dim);border:none;padding:6px;cursor:pointer;font-size:18px" title="Trocar arquivo">✕</button>
+      </div>
+      <div class="hint" style="margin-top:14px">Aplica as <strong style="color:var(--text)">4 camadas BlueMetadata</strong> no seu vídeo: limpa metadados (CapCut/Premiere/etc), randomiza pixels e áudio, gera hash novo. Ideal pra repostar sem ser flagged.</div>
+    </div>
 
     <div id="platformBadge" style="display:none;margin-top:10px;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(0,170,255,.2);background:rgba(0,170,255,.06);color:var(--neon)"></div>
 
@@ -604,6 +637,203 @@ async function processarYoutube(youtubeUrl) {
   resCard.style.display = 'block';
   const tip = document.getElementById('downloadTip');
   if (tip) tip.style.display = 'none';
+}
+
+// ── UPLOAD MODE — limpa vídeo do user com BlueMetadata ─────────────────────
+let _selectedFile = null;
+let _uploadAbortCtrl = null;
+
+function switchMode(mode) {
+  // Aborta upload em andamento se trocar de modo (evita gastar banda+CPU à toa)
+  if (_uploadAbortCtrl) { try { _uploadAbortCtrl.abort(); } catch {} _uploadAbortCtrl = null; }
+  const isUrl = mode === 'url';
+  document.getElementById('modeUrl').style.display = isUrl ? '' : 'none';
+  document.getElementById('modeUpload').style.display = isUrl ? 'none' : '';
+  const tabUrl = document.getElementById('tabUrl');
+  const tabUpload = document.getElementById('tabUpload');
+  if (isUrl) {
+    tabUrl.style.background = 'linear-gradient(135deg,#1a6bff,var(--neon))';
+    tabUrl.style.color = '#fff';
+    tabUpload.style.background = 'transparent';
+    tabUpload.style.color = 'rgba(232,244,255,.6)';
+  } else {
+    tabUpload.style.background = 'linear-gradient(135deg,#1a6bff,var(--neon))';
+    tabUpload.style.color = '#fff';
+    tabUrl.style.background = 'transparent';
+    tabUrl.style.color = 'rgba(232,244,255,.6)';
+  }
+  document.getElementById('progressWrap').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('resultCard').style.display = 'none';
+}
+
+function handleUploadSelect(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  selectFile(file);
+}
+
+function selectFile(file) {
+  // Validate type/size
+  const validExt = /\.(mp4|mov|mkv|webm|avi|flv|3gp|m4v)$/i.test(file.name);
+  const validType = /^video\//.test(file.type);
+  if (!validExt && !validType) {
+    showError('Formato não suportado. Use MP4, MOV, MKV ou WebM.');
+    return;
+  }
+  if (file.size > 500 * 1024 * 1024) {
+    showError('Arquivo muito grande (máx 500 MB).');
+    return;
+  }
+  _selectedFile = file;
+  document.getElementById('uploadFileName').textContent = file.name;
+  document.getElementById('uploadFileSize').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+  document.getElementById('uploadFileInfo').style.display = 'flex';
+  document.getElementById('uploadDrop').style.display = 'none';
+}
+
+function clearUpload() {
+  if (_uploadAbortCtrl) { try { _uploadAbortCtrl.abort(); } catch {} _uploadAbortCtrl = null; }
+  _selectedFile = null;
+  document.getElementById('uploadInput').value = '';
+  document.getElementById('uploadFileInfo').style.display = 'none';
+  document.getElementById('uploadDrop').style.display = '';
+}
+
+// Drag & drop handlers no boot
+(function setupDragDrop() {
+  const drop = document.getElementById('uploadDrop');
+  if (!drop) return;
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault();
+    drop.style.borderColor = 'var(--neon)';
+    drop.style.background = 'rgba(0,170,255,.08)';
+  }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault();
+    drop.style.borderColor = 'rgba(0,170,255,.3)';
+    drop.style.background = 'rgba(0,170,255,.02)';
+  }));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) selectFile(file);
+  });
+})();
+
+// Mensagens de progresso pro upload (não tem download de YouTube nessa fase)
+const UPLOAD_STEPS = [
+  { pct: 10, msg: '⬆️ Enviando vídeo pro processamento…' },
+  { pct: 35, msg: '🧹 Removendo metadados (EXIF, XMP, CapCut/Adobe/etc)…' },
+  { pct: 55, msg: '🎨 Reconfigurando matriz de pixels (zoom + ruído)…' },
+  { pct: 72, msg: '🔊 Descaracterizando assinatura sonora…' },
+  { pct: 88, msg: '🔐 Gerando hash MD5 único…' },
+  { pct: 95, msg: '📦 Empacotando o seu vídeo…' },
+];
+
+async function processUpload() {
+  if (!_selectedFile) { showError('Escolha um arquivo primeiro'); return; }
+  const btn = document.getElementById('btnProcessUpload');
+  btn.disabled = true; btn.textContent = '⏳ Processando…';
+
+  startProgress();
+  const fill = document.getElementById('progressFill');
+  const label = document.getElementById('progressLabel');
+  if (typeof progressTimer !== 'undefined' && progressTimer) clearInterval(progressTimer);
+
+  // Animação por tempo (proporcional ao tamanho do arquivo)
+  let stepIdx = 0;
+  if (UPLOAD_STEPS[0]) { fill.style.width = UPLOAD_STEPS[0].pct + '%'; label.textContent = UPLOAD_STEPS[0].msg; stepIdx = 1; }
+  // Calcula intervalo baseado no tamanho (file maior = mais tempo por etapa)
+  const sizeMB = _selectedFile.size / 1024 / 1024;
+  const intervalMs = Math.max(3000, Math.min(12000, sizeMB * 200)); // 3-12s por etapa
+  const stepTimer = setInterval(() => {
+    if (stepIdx >= UPLOAD_STEPS.length) { clearInterval(stepTimer); return; }
+    const s = UPLOAD_STEPS[stepIdx++];
+    fill.style.width = s.pct + '%';
+    label.textContent = s.msg;
+  }, intervalMs);
+
+  try {
+    _uploadAbortCtrl = new AbortController();
+    const formData = new FormData();
+    formData.append('video', _selectedFile);
+
+    const r = await fetch('https://bluetube-production.up.railway.app/upload-process', {
+      method: 'POST',
+      body: formData,
+      signal: _uploadAbortCtrl.signal,
+    });
+
+    clearInterval(stepTimer);
+
+    if (!r.ok) {
+      let detail = '';
+      try { const d = await r.json(); detail = d.error || d.detail || ''; } catch {}
+      let friendly;
+      if (/muito_grande/i.test(detail)) friendly = '⚠️ Arquivo muito grande (máximo 500 MB)';
+      else if (/formato_nao_suportado/i.test(detail)) friendly = '⚠️ Formato não suportado. Use MP4, MOV, MKV ou WebM.';
+      else if (/origin_nao_permitido/i.test(detail)) friendly = '⚠️ Origem não autorizada.';
+      else if (/arquivo_vazio/i.test(detail)) friendly = '⚠️ Arquivo vazio ou corrompido.';
+      else friendly = '⚠️ Erro ao processar. Tente outro arquivo ou aguarde alguns minutos.';
+      finishProgress(false);
+      showError(friendly);
+      btn.disabled = false; btn.textContent = '⚡ Limpar agora →';
+      return;
+    }
+
+    fill.style.width = '95%';
+    label.textContent = '⬇️ Recebendo seu vídeo único…';
+
+    const blob = await r.blob();
+
+    // Download trigger — sanitiza nome (browsers já sanitizam Content-Disposition,
+    // mas defesa em profundidade)
+    const safeName = (_selectedFile.name.replace(/\.[^.]+$/, '') || 'video')
+      .replace(/[^\w\-.]+/g, '_').slice(0, 80);
+    const filename = `BaixaBlue_${safeName}_unico.mp4`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 200);
+
+    finishProgress(true);
+
+    // Card de sucesso
+    const resCard = document.getElementById('resultCard');
+    document.getElementById('resultThumb').textContent = '🎬';
+    document.getElementById('resultTitle').textContent = '✅ Vídeo único entregue!';
+    document.getElementById('resultSource').textContent = 'Seu upload · BlueMetadata aplicado';
+    document.getElementById('resultQuality').innerHTML = '🛡️ <strong style="color:var(--green)">Metadados limpos · Pixels reconfigurados · Áudio descaracterizado · Hash único</strong>';
+    const dlBtn = document.getElementById('downloadLink');
+    dlBtn.href = '#';
+    dlBtn.removeAttribute('target');
+    dlBtn.onclick = (e) => { e.preventDefault(); return false; };
+    const qSpan = document.querySelector('.download-info .quality');
+    if (qSpan) qSpan.textContent = 'Pronto! Verifique sua pasta Downloads';
+    resCard.style.display = 'block';
+    const tip = document.getElementById('downloadTip');
+    if (tip) tip.style.display = 'none';
+
+    btn.disabled = false; btn.textContent = '⚡ Limpar agora →';
+    _uploadAbortCtrl = null;
+    clearUpload();
+  } catch (e) {
+    clearInterval(stepTimer);
+    if (e.name === 'AbortError') {
+      // Upload cancelado pelo user (switchMode/clearUpload) — silencioso
+      finishProgress(false);
+      btn.disabled = false; btn.textContent = '⚡ Limpar agora →';
+      _uploadAbortCtrl = null;
+      return;
+    }
+    finishProgress(false);
+    showError('Erro de conexão. Verifique sua internet e tente novamente.');
+    btn.disabled = false; btn.textContent = '⚡ Limpar agora →';
+    _uploadAbortCtrl = null;
+  }
 }
 
 // ── MAIN DOWNLOAD FUNCTION ───────────────────────────────────────────────────
