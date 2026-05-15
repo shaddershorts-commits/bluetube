@@ -947,74 +947,73 @@ app.post('/youtube-process', async (req, res) => {
   let currentProc = null;
 
   try {
-    // ── 1. DOWNLOAD — Cobalt primeiro (90% dos casos, sem cookies), yt-dlp fallback ─
+    // ── 1. DOWNLOAD: usa a CADEIA COMPLETA de fallbacks do /api/auth ────
+    // (Cobalt → ytstream RapidAPI → youtube-media-downloader RapidAPI → Invidious)
+    // — esses serviços pagos têm anti-bot bypass próprio e funcionam sem cookies.
+    // yt-dlp + cookies fica como ÚLTIMO recurso (~5% dos casos quando tudo falha).
     let inFile = null;
-    let source = null; // 'cobalt' ou 'yt-dlp'
+    let source = null;
 
-    // ── 1a. TENTA COBALT ─────────────────────────────────────────────────
-    const cobaltUrl = process.env.COBALT_API_URL;
-    const cobaltKey = process.env.COBALT_API_KEY;
-    if (cobaltUrl) {
-      try {
-        log('try cobalt');
-        const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
-        if (cobaltKey) cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltKey;
-        const cobaltCtrl = new AbortController();
-        const cobaltTimer = setTimeout(() => cobaltCtrl.abort(), 30000);
-        const cobaltR = await fetch(cobaltUrl, {
-          method: 'POST', headers: cobaltHeaders,
-          body: JSON.stringify({ url: youtube_url, videoQuality: '1080' }),
-          signal: cobaltCtrl.signal,
-        });
-        clearTimeout(cobaltTimer);
-        const cobaltD = await cobaltR.json().catch(() => ({}));
-        let cobaltDlUrl = null;
-        if (cobaltR.ok) {
-          if (cobaltD.status === 'redirect' || cobaltD.status === 'tunnel') cobaltDlUrl = cobaltD.url;
-          else if (cobaltD.status === 'picker') cobaltDlUrl = cobaltD.picker?.[0]?.url;
-          else if (cobaltD.url) cobaltDlUrl = cobaltD.url;
-        }
-        if (cobaltDlUrl) {
-          log('cobalt url: ' + cobaltDlUrl.slice(0, 80) + '...');
-          const candidateFile = path.join(dir, 'in.mp4');
-          // Baixa pro disk com timeout. Se 403 do googlevideo (IP-bound), pula
-          // pro fallback yt-dlp.
-          const dlCtrl = new AbortController();
-          const dlTimer = setTimeout(() => dlCtrl.abort(), 90000);
+    // ── 1a. CHAIN COMPLETA via /api/auth?action=download ─────────────────
+    const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+    try {
+      log('try auth chain');
+      const authCtrl = new AbortController();
+      const authTimer = setTimeout(() => authCtrl.abort(), 35000);
+      const authR = await fetch(`${SITE_URL}/api/auth?action=download&url=${encodeURIComponent(youtube_url)}`, {
+        signal: authCtrl.signal,
+      });
+      clearTimeout(authTimer);
+      const authD = await authR.json().catch(() => ({}));
+      let chainUrl = authD?.url || null;
+      if (chainUrl) {
+        log('chain url provider: ' + (authD.provider || 'unknown'));
+        // Se a URL é proxy-wrapped (passa pelo nosso /proxy-download), extrai o
+        // url interno pra evitar round-trip pelo nosso próprio Railway.
+        if (/\/proxy-download\?/.test(chainUrl)) {
           try {
-            const dlR = await fetch(cobaltDlUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                'Referer': 'https://www.youtube.com/',
-                'Accept': '*/*',
-              },
-              signal: dlCtrl.signal,
-            });
-            clearTimeout(dlTimer);
-            if (dlR.ok) {
-              const writer = fs.createWriteStream(candidateFile);
-              const nodeStream = require('stream');
-              await new Promise((resolve, reject) => {
-                nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-              });
-              if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
-                inFile = candidateFile;
-                source = 'cobalt';
-                log('cobalt ok ' + fs.statSync(candidateFile).size + ' bytes');
-              }
-            } else {
-              log('cobalt url fetch ' + dlR.status + ' — fallback yt-dlp');
-            }
-          } catch (e) { clearTimeout(dlTimer); log('cobalt download err: ' + e.message + ' — fallback yt-dlp'); }
-        } else {
-          log('cobalt no url — fallback yt-dlp');
+            const parsed = new URL(chainUrl);
+            const inner = parsed.searchParams.get('url') || parsed.searchParams.get('fileUrl');
+            if (inner) chainUrl = inner;
+          } catch {}
         }
-      } catch (e) { log('cobalt err: ' + e.message + ' — fallback yt-dlp'); }
-    }
+        // Baixa pro disk
+        const candidateFile = path.join(dir, 'in.mp4');
+        const dlCtrl = new AbortController();
+        const dlTimer = setTimeout(() => dlCtrl.abort(), 120000);
+        try {
+          const dlR = await fetch(chainUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+              'Referer': 'https://www.youtube.com/',
+              'Accept': '*/*',
+            },
+            signal: dlCtrl.signal,
+          });
+          clearTimeout(dlTimer);
+          if (dlR.ok) {
+            const writer = fs.createWriteStream(candidateFile);
+            const nodeStream = require('stream');
+            await new Promise((resolve, reject) => {
+              nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+            });
+            if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
+              inFile = candidateFile;
+              source = 'chain:' + (authD.provider || 'cobalt');
+              log('chain ok ' + fs.statSync(candidateFile).size + ' bytes via ' + source);
+            }
+          } else {
+            log('chain url fetch ' + dlR.status + ' — fallback yt-dlp');
+          }
+        } catch (e) { clearTimeout(dlTimer); log('chain download err: ' + e.message + ' — fallback yt-dlp'); }
+      } else {
+        log('chain no url (error: ' + (authD?.error || 'unknown').slice(0, 80) + ') — fallback yt-dlp');
+      }
+    } catch (e) { log('chain call err: ' + e.message + ' — fallback yt-dlp'); }
 
-    // ── 1b. FALLBACK YT-DLP (com cookies) ────────────────────────────────
+    // ── 1b. FALLBACK YT-DLP (com cookies, último recurso) ────────────────
     if (!inFile) {
       log('try yt-dlp');
       const ytArgs = [
