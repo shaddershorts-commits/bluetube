@@ -535,6 +535,52 @@ function writeJobCookies(jobDir) {
   } catch (e) { console.error('[yt-dlp] writeJobCookies falhou:', e.message); return null; }
 }
 
+// Health check leve dos cookies — usado pelo cron monitor em api/baixablue-cookies-monitor.js
+// Roda yt-dlp --skip-download em vídeo conhecido que precisa de auth.
+// Retorna {ok:true} se cookies válidos, {ok:false, reason:'bot_check'} se expirados.
+// Custo: ~3-5s + zero quota YouTube significativa (só fetch metadata).
+app.get('/cookies-health', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const TEST_URL = 'https://www.youtube.com/shorts/BUqlzukB1Mc'; // requer auth
+  const jobDir = path.join('/tmp', 'cookies-health-' + Date.now());
+  fs.mkdirSync(jobDir, { recursive: true });
+  const cleanup = () => { try { fs.rmSync(jobDir, { recursive: true, force: true }); } catch {} };
+  const jobCookies = writeJobCookies(jobDir);
+
+  if (!jobCookies) {
+    cleanup();
+    return res.json({ ok: false, reason: 'no_cookies', message: 'YOUTUBE_COOKIES env var ausente no Railway' });
+  }
+
+  const args = [
+    '--cookies', jobCookies,
+    '--skip-download',
+    '--print', 'id',
+    '--no-playlist',
+    '--no-warnings',
+    '--socket-timeout', '15',
+    '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+    TEST_URL,
+  ];
+
+  try {
+    const r = await run('yt-dlp', args);
+    cleanup();
+    const id = (r.stdout || '').trim();
+    if (id && id.length === 11) return res.json({ ok: true, video_id: id });
+    return res.json({ ok: false, reason: 'no_id', stdout: r.stdout.slice(0, 200), stderr: r.stderr.slice(0, 200) });
+  } catch (err) {
+    cleanup();
+    const msg = String(err.message || err);
+    const isBotCheck = /Sign in to confirm|not a bot|--cookies-from-browser/i.test(msg);
+    return res.json({
+      ok: false,
+      reason: isBotCheck ? 'bot_check' : 'other',
+      detail: msg.slice(0, 400),
+    });
+  }
+});
+
 // DEBUG endpoint pra diagnosticar cookies sem precisar de log do Railway
 app.get('/yt-cookies-status', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

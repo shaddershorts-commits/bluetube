@@ -134,6 +134,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/baixablue-cookies-monitor",
+      "schedule": "0 */4 * * *"
+    },
+    {
       "path": "/api/virais-canais?action=daily-alert-master",
       "schedule": "30 10 * * *"
     },
