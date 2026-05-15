@@ -1004,16 +1004,16 @@ app.post('/youtube-process', async (req, res) => {
       } catch (e) { log('cobalt direct err: ' + e.message); }
     }
 
-    // ── 1b. TENTA HQ 1080p PRIMEIRO (chain ytstream + mux Railway) ──────
-    // /api/auth?action=download&quality=hq aciona /youtube-hq do Railway que
-    // baixa video+audio adaptive 1080p, muxa, sobe pro Supabase, retorna URL.
+    // ── 1b. TENTA CHAIN via /api/auth?action=download ────────────────────
+    // Pra cada qualidade, /api/auth retorna URL (proxy-wrapped pra Railway
+    // ou direta). Se proxy-wrapped, o /proxy-download local lida com 403
+    // automaticamente (tem fallback yt-dlp). Então MANTEMOS o wrapper.
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
     const tryAuthChain = async (qualityParam) => {
       try {
         const qStr = qualityParam ? '&quality=' + qualityParam : '';
         log('try chain' + qStr);
         const authCtrl = new AbortController();
-        // HQ pode levar 30-60s (mux server-side). Auto é rápido (<5s).
         const authTimeout = qualityParam === 'hq' ? 90000 : 35000;
         const authTimer = setTimeout(() => authCtrl.abort(), authTimeout);
         const authR = await fetch(`${SITE_URL}/api/auth?action=download&url=${encodeURIComponent(youtube_url)}${qStr}`, {
@@ -1021,16 +1021,11 @@ app.post('/youtube-process', async (req, res) => {
         });
         clearTimeout(authTimer);
         const authD = await authR.json().catch(() => ({}));
-        // Se HQ falhou, retorna marcador pra cair pro AUTO
         if (!authR.ok || authD?.provider === 'hq-failed' || !authD?.url) return null;
-        let chainUrl = authD.url;
-        if (/\/proxy-download\?/.test(chainUrl)) {
-          try {
-            const parsed = new URL(chainUrl);
-            const inner = parsed.searchParams.get('url') || parsed.searchParams.get('fileUrl');
-            if (inner) chainUrl = inner;
-          } catch {}
-        }
+
+        // KEEP proxy-download URL — ele tem fallback yt-dlp interno pra 403.
+        // Pra URLs diretas (não proxy), também faz fetch direto.
+        const chainUrl = authD.url;
         const candidateFile = path.join(dir, 'in.mp4');
         const dlCtrl = new AbortController();
         const dlTimer = setTimeout(() => dlCtrl.abort(), 120000);
@@ -1038,7 +1033,6 @@ app.post('/youtube-process', async (req, res) => {
           const dlR = await fetch(chainUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-              'Referer': 'https://www.youtube.com/',
               'Accept': '*/*',
             },
             signal: dlCtrl.signal,
@@ -1052,7 +1046,7 @@ app.post('/youtube-process', async (req, res) => {
             writer.on('finish', resolve);
             writer.on('error', reject);
           });
-          if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
+          if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 100000) {
             const sz = fs.statSync(candidateFile).size;
             log('chain ok ' + sz + ' bytes via ' + (qualityParam || 'auto'));
             return { file: candidateFile, source: 'chain:' + (qualityParam || 'auto') };
