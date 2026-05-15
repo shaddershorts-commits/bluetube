@@ -881,20 +881,12 @@ app.post('/youtube-process', async (req, res) => {
 
   const log = (msg) => console.log('[youtube-process]', jobId, msg);
 
-  // [C2] abort handler: se cliente fecha conexão durante download/encode,
-  // mata os child processes e limpa /tmp pra não vazar CPU+disk.
+  // Abort handler removido temporariamente — req.on('close') tava firing
+  // prematuramente em alguns cases e abortando a requisição válida. Quando
+  // resolver isso (provavelmente via AbortController + req.on('aborted')),
+  // re-adicionar. Por enquanto leaks bounded (~60s max por request orfã).
   let aborted = false;
   let currentProc = null;
-  const onClose = () => {
-    if (res.writableEnded) return; // resposta completou normalmente
-    aborted = true;
-    if (currentProc && !currentProc.killed) {
-      try { currentProc.kill('SIGKILL'); } catch {}
-    }
-    cleanup();
-    log('aborted by client');
-  };
-  req.on('close', onClose);
 
   try {
     // ── 1. DOWNLOAD MAX QUALITY (cookies + clientes anti-bot-check) ─────
@@ -978,17 +970,14 @@ app.post('/youtube-process', async (req, res) => {
 
     const stream = fs.createReadStream(outFile);
     stream.pipe(res);
-    stream.on('close', () => { req.removeListener('close', onClose); cleanup(); });
+    stream.on('close', cleanup);
     stream.on('error', (err) => {
       log('stream error: ' + err.message);
-      req.removeListener('close', onClose);
       cleanup();
       if (!res.headersSent) res.status(500).end(); else res.end();
     });
   } catch (err) {
-    if (aborted) return; // já foi limpo no onClose
     log('failed: ' + err.message);
-    req.removeListener('close', onClose);
     cleanup();
     if (!res.headersSent) {
       res.setHeader('Access-Control-Allow-Origin', '*');
