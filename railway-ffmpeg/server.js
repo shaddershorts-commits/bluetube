@@ -493,33 +493,46 @@ app.options('/proxy-download', (req, res) => {
 // recebe o conteúdo completo de um cookies.txt exportado de browser logado.
 // Sem isso, YouTube bloqueia downloads de IPs datacenter (Railway) com
 // "Sign in to confirm you're not a bot" em 2026.
-const YT_COOKIES_FILE = '/tmp/yt-cookies.txt';
-let _ytCookiesReady = false;
-function setupYtCookies() {
-  if (_ytCookiesReady) return fs.existsSync(YT_COOKIES_FILE);
-  _ytCookiesReady = true;
-  const raw = process.env.YOUTUBE_COOKIES;
-  if (!raw) {
-    console.warn('[yt-dlp] YOUTUBE_COOKIES ausente');
-    return false;
+const YT_COOKIES_FILE = '/tmp/yt-cookies.txt'; // arquivo "global" (legacy — health/debug)
+// Conteúdo já normalizado em cache de memória pra evitar re-processar a env var
+let _ytCookiesContent = null;
+function _normalizeCookies(raw) {
+  if (!raw) return null;
+  let content = raw.replace(/\r\n?/g, '\n');
+  if (!content.startsWith('# Netscape HTTP Cookie File')) {
+    content = '# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n' + content;
   }
+  if (!content.endsWith('\n')) content += '\n';
+  return content;
+}
+function setupYtCookies() {
+  // Legacy: escreve o arquivo global pra /yt-cookies-status debug
+  if (_ytCookiesContent !== null) return _ytCookiesContent !== false;
+  const raw = process.env.YOUTUBE_COOKIES;
+  if (!raw) { _ytCookiesContent = false; console.warn('[yt-dlp] YOUTUBE_COOKIES ausente'); return false; }
   try {
-    // Normaliza line endings (clipboard Windows = CRLF; Netscape format precisa LF).
-    // Garante header Netscape (yt-dlp rejeita sem ele).
-    let content = raw.replace(/\r\n?/g, '\n');
-    if (!content.startsWith('# Netscape HTTP Cookie File')) {
-      content = '# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n' + content;
-    }
-    if (!content.endsWith('\n')) content += '\n';
-    fs.writeFileSync(YT_COOKIES_FILE, content, { mode: 0o600 });
-    const stat = fs.statSync(YT_COOKIES_FILE);
-    const lines = content.split('\n').filter(l => l && !l.startsWith('#')).length;
-    console.log('[yt-dlp] cookies ok:', stat.size, 'bytes,', lines, 'cookies');
+    _ytCookiesContent = _normalizeCookies(raw);
+    fs.writeFileSync(YT_COOKIES_FILE, _ytCookiesContent, { mode: 0o600 });
+    const lines = _ytCookiesContent.split('\n').filter(l => l && !l.startsWith('#')).length;
+    console.log('[yt-dlp] cookies cacheados em memória:', _ytCookiesContent.length, 'bytes,', lines, 'cookies');
     return true;
   } catch (e) {
     console.error('[yt-dlp] falha cookies:', e.message);
+    _ytCookiesContent = false;
     return false;
   }
+}
+// Escreve UMA CÓPIA fresca dos cookies pra um job específico. yt-dlp escreve
+// session cookies de volta no arquivo durante o uso — se compartilharmos o
+// mesmo arquivo entre jobs, o segundo lê um estado corrompido/inválido.
+// Retorna o path pro arquivo job-específico, ou null se cookies não disponíveis.
+function writeJobCookies(jobDir) {
+  if (!setupYtCookies() || !_ytCookiesContent) return null;
+  const jobCookiesFile = path.join(jobDir, 'cookies.txt');
+  try {
+    fs.writeFileSync(jobCookiesFile, _ytCookiesContent, { mode: 0o600 });
+    return jobCookiesFile;
+  } catch (e) { console.error('[yt-dlp] writeJobCookies falhou:', e.message); return null; }
 }
 
 // DEBUG endpoint pra diagnosticar cookies sem precisar de log do Railway
@@ -557,11 +570,11 @@ app.get('/yt-cookies-status', (req, res) => {
 async function ytdlpFallbackStream(req, res, ytUrl, filename) {
   if (res.headersSent) return;
   console.log('[proxy-download] yt-dlp fallback start:', ytUrl);
-  const hasCookies = setupYtCookies();
   const jobId = uuidv4();
   const dir = path.join('/tmp', jobId);
   fs.mkdirSync(dir, { recursive: true });
   const outputFile = path.join(dir, 'video.mp4');
+  const jobCookies = writeJobCookies(dir);
 
   // Cleanup helper — sempre roda
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
@@ -586,10 +599,9 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
       '-o', outputFile,
       ytUrl
     ];
-    if (hasCookies) {
-      // Insere --cookies <file> ANTES do -o (senão yt-dlp lê --cookies como nome de output)
+    if (jobCookies) {
       const oIdx = ytArgs.indexOf('-o');
-      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
+      ytArgs.splice(oIdx, 0, '--cookies', jobCookies);
     }
     await run('yt-dlp', ytArgs);
     if (!fs.existsSync(outputFile)) throw new Error('yt-dlp no output');
@@ -871,12 +883,12 @@ app.post('/youtube-process', async (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const hasCookies = setupYtCookies();
   const jobId = uuidv4();
   const dir = path.join('/tmp', jobId);
   fs.mkdirSync(dir, { recursive: true });
   const inFilePattern = path.join(dir, 'in.%(ext)s'); // [H1] yt-dlp pode emitir .mkv etc
   const outFile = path.join(dir, 'out.mp4');
+  const jobCookies = writeJobCookies(dir);
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
 
   const log = (msg) => console.log('[youtube-process]', jobId, msg);
@@ -903,9 +915,9 @@ app.post('/youtube-process', async (req, res) => {
       '-o', inFilePattern,
       youtube_url
     ];
-    if (hasCookies) {
+    if (jobCookies) {
       const oIdx = ytArgs.indexOf('-o');
-      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
+      ytArgs.splice(oIdx, 0, '--cookies', jobCookies);
     }
     await runTracked('yt-dlp', ytArgs, (p) => { currentProc = p; });
     if (aborted) return;
@@ -1025,7 +1037,7 @@ app.post('/download-youtube', async (req, res) => {
   // em 2026: tv_embedded, android_vr, android_testsuite, ios.
   // Removidos web_safari + android_creator (triggam bot-check no Railway).
   const extractorArgs = 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios';
-  const hasCookies = setupYtCookies();
+  const jobCookies = writeJobCookies(dir);
 
   try {
     const ytArgs = [
@@ -1043,9 +1055,9 @@ app.post('/download-youtube', async (req, res) => {
       '-o', outputFile,
       youtube_url
     ];
-    if (hasCookies) {
+    if (jobCookies) {
       const oIdx = ytArgs.indexOf('-o');
-      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
+      ytArgs.splice(oIdx, 0, '--cookies', jobCookies);
     }
     console.log('[yt-dlp] start:', q, youtube_url);
     await run('yt-dlp', ytArgs);
