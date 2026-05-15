@@ -904,8 +904,11 @@ app.post('/youtube-process', async (req, res) => {
     // ── 1. DOWNLOAD MAX QUALITY (cookies + clientes anti-bot-check) ─────
     log('start download');
     const ytArgs = [
-      // Best video + best audio merged. Limite 1080p pra evitar 4K (pesado, OOM mobile).
-      '-f', 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/best',
+      // Seletor PERMISSIVO ≤1080p: prioriza melhor mp4 combinado (single-file,
+      // sem merge), depois melhor combinado qualquer ext, depois adaptive merged,
+      // depois qualquer best disponível. Alguns clients (tv_embedded, android_vr)
+      // só retornam format 18 (360p mp4 combinado) — seletor permissivo aceita.
+      '-f', 'best[ext=mp4][height<=1080]/best[height<=1080]/bv*[height<=1080]+ba/bv*+ba/best',
       '--merge-output-format', 'mp4',
       '--no-playlist',
       '--no-warnings',
