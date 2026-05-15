@@ -529,8 +529,21 @@ async function processarYoutube(youtubeUrl) {
   if (!r.ok) {
     _bmPararProgresso();
     let detail = '';
-    try { const d = await r.json(); detail = d.detail || d.error || ''; } catch {}
-    throw new Error('YouTube indisponível agora (' + r.status + '). ' + (detail ? detail.slice(0, 200) : 'Tente novamente em alguns minutos.'));
+    try { const d = await r.json(); detail = (d.detail || d.error || '').toLowerCase(); } catch {}
+    // Sanitiza mensagens técnicas pra UX amigável — nunca expor erro raw do yt-dlp
+    let friendly;
+    if (/sign in to confirm|not a bot|--cookies/i.test(detail)) {
+      friendly = '⚠️ Esse vídeo está com proteção anti-bot ativada pelo YouTube. Tente baixar outro vídeo (a maioria funciona normalmente) ou aguarde algumas horas.';
+    } else if (/format is not available|requested format/i.test(detail)) {
+      friendly = '⚠️ Não foi possível extrair esse vídeo. Verifique se o link está correto e se o vídeo é público.';
+    } else if (/private|unavailable|removed/i.test(detail)) {
+      friendly = '⚠️ Esse vídeo é privado, foi removido ou está com restrição de idade/região.';
+    } else if (r.status >= 500) {
+      friendly = '⚠️ Servidor temporariamente indisponível. Tente novamente em alguns minutos.';
+    } else {
+      friendly = '⚠️ Não foi possível baixar esse vídeo. Tente outro link.';
+    }
+    throw new Error(friendly);
   }
 
   const fill = document.getElementById('progressFill');
