@@ -954,22 +954,26 @@ app.post('/youtube-process', async (req, res) => {
     let inFile = null;
     let source = null;
 
-    // ── 1a. CHAIN COMPLETA via /api/auth?action=download ─────────────────
+    // ── 1a. TENTA HQ 1080p PRIMEIRO (chain ytstream + mux Railway) ──────
+    // /api/auth?action=download&quality=hq aciona /youtube-hq do Railway que
+    // baixa video+audio adaptive 1080p, muxa, sobe pro Supabase, retorna URL.
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
-    try {
-      log('try auth chain');
-      const authCtrl = new AbortController();
-      const authTimer = setTimeout(() => authCtrl.abort(), 35000);
-      const authR = await fetch(`${SITE_URL}/api/auth?action=download&url=${encodeURIComponent(youtube_url)}`, {
-        signal: authCtrl.signal,
-      });
-      clearTimeout(authTimer);
-      const authD = await authR.json().catch(() => ({}));
-      let chainUrl = authD?.url || null;
-      if (chainUrl) {
-        log('chain url provider: ' + (authD.provider || 'unknown'));
-        // Se a URL é proxy-wrapped (passa pelo nosso /proxy-download), extrai o
-        // url interno pra evitar round-trip pelo nosso próprio Railway.
+    const tryAuthChain = async (qualityParam) => {
+      try {
+        const qStr = qualityParam ? '&quality=' + qualityParam : '';
+        log('try chain' + qStr);
+        const authCtrl = new AbortController();
+        // HQ pode levar 30-60s (mux server-side). Auto é rápido (<5s).
+        const authTimeout = qualityParam === 'hq' ? 90000 : 35000;
+        const authTimer = setTimeout(() => authCtrl.abort(), authTimeout);
+        const authR = await fetch(`${SITE_URL}/api/auth?action=download&url=${encodeURIComponent(youtube_url)}${qStr}`, {
+          signal: authCtrl.signal,
+        });
+        clearTimeout(authTimer);
+        const authD = await authR.json().catch(() => ({}));
+        // Se HQ falhou, retorna marcador pra cair pro AUTO
+        if (!authR.ok || authD?.provider === 'hq-failed' || !authD?.url) return null;
+        let chainUrl = authD.url;
         if (/\/proxy-download\?/.test(chainUrl)) {
           try {
             const parsed = new URL(chainUrl);
@@ -977,7 +981,6 @@ app.post('/youtube-process', async (req, res) => {
             if (inner) chainUrl = inner;
           } catch {}
         }
-        // Baixa pro disk
         const candidateFile = path.join(dir, 'in.mp4');
         const dlCtrl = new AbortController();
         const dlTimer = setTimeout(() => dlCtrl.abort(), 120000);
@@ -991,27 +994,32 @@ app.post('/youtube-process', async (req, res) => {
             signal: dlCtrl.signal,
           });
           clearTimeout(dlTimer);
-          if (dlR.ok) {
-            const writer = fs.createWriteStream(candidateFile);
-            const nodeStream = require('stream');
-            await new Promise((resolve, reject) => {
-              nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
-              writer.on('finish', resolve);
-              writer.on('error', reject);
-            });
-            if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
-              inFile = candidateFile;
-              source = 'chain:' + (authD.provider || 'cobalt');
-              log('chain ok ' + fs.statSync(candidateFile).size + ' bytes via ' + source);
-            }
-          } else {
-            log('chain url fetch ' + dlR.status + ' — fallback yt-dlp');
+          if (!dlR.ok) { log('chain url fetch ' + dlR.status); return null; }
+          const writer = fs.createWriteStream(candidateFile);
+          const nodeStream = require('stream');
+          await new Promise((resolve, reject) => {
+            nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+          if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 1024) {
+            const sz = fs.statSync(candidateFile).size;
+            log('chain ok ' + sz + ' bytes via ' + (qualityParam || 'auto'));
+            return { file: candidateFile, source: 'chain:' + (qualityParam || 'auto') };
           }
-        } catch (e) { clearTimeout(dlTimer); log('chain download err: ' + e.message + ' — fallback yt-dlp'); }
-      } else {
-        log('chain no url (error: ' + (authD?.error || 'unknown').slice(0, 80) + ') — fallback yt-dlp');
-      }
-    } catch (e) { log('chain call err: ' + e.message + ' — fallback yt-dlp'); }
+        } catch (e) { clearTimeout(dlTimer); log('chain dl err: ' + e.message); return null; }
+        return null;
+      } catch (e) { log('chain call err: ' + e.message); return null; }
+    };
+
+    // Tenta HQ (1080p adaptive mux) primeiro
+    let chainResult = await tryAuthChain('hq');
+    // Se HQ falhar (RapidAPI down, vídeo curto sem 1080p, etc), cai pro AUTO
+    if (!chainResult) {
+      log('hq failed — try auto');
+      chainResult = await tryAuthChain(null);
+    }
+    if (chainResult) { inFile = chainResult.file; source = chainResult.source; }
 
     // ── 1b. FALLBACK YT-DLP (com cookies, último recurso) ────────────────
     if (!inFile) {
@@ -1051,7 +1059,7 @@ app.post('/youtube-process', async (req, res) => {
     const saturation = rand(0.97, 1.03).toFixed(4);         // ±3% saturação
     const gamma = rand(0.97, 1.03).toFixed(4);              // ±3% gamma
     const tempo = rand(1.010, 1.025).toFixed(4);            // 1-2.5% mais rápido (algoritmos detectam ≥1%)
-    const crfVar = (rand(18, 21)).toFixed(2);               // CRF 18-21 (qualidade alta, hash random via filtros)
+    const crfVar = (rand(17, 19)).toFixed(2);               // CRF 17-19 (visualmente lossless, source HQ 1080p preserva qualidade)
     // [L1] mirror DESLIGADO por padrão — flipa texto queimado (subtitles, watermarks).
     // Se quiser reativar futuro: criar query param ?allow_mirror=1.
     const mirror = '';
