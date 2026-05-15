@@ -837,18 +837,22 @@ app.post('/mux-streams', async (req, res) => {
 //   3. Descaracterização de áudio: atempo 1-2% (mantém pitch perceptível igual)
 //   4. Hash novo: re-encode com bitrate aleatório + container fresh
 // Cada chamada gera output diferente (parâmetros random) — vídeo nunca repete.
-// runCancellable: spawn com referência ao process pra abort em req.on('close')
-function runCancellable(cmd, args, onSpawn) {
+// runTracked: usa run() pra rodar e registra o process em activeProcs (pra abort).
+// Diferente de run() puro porque expõe o process via callback p/ trackeamento.
+function runTracked(cmd, args, onSpawn) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args);
     if (onSpawn) onSpawn(p);
     let stderr = '';
+    let stdout = '';
+    // CRÍTICO consumir AMBOS pipes — yt-dlp escreve progresso, se não consumir buffer fill = hang
+    p.stdout.on('data', (d) => { stdout += d.toString(); });
     p.stderr.on('data', (d) => { stderr += d.toString(); });
     p.on('error', reject);
     p.on('close', (code, signal) => {
-      if (code === 0) resolve();
-      else if (signal === 'SIGKILL' || signal === 'SIGTERM') reject(new Error('aborted_by_client'));
-      else reject(new Error(`${cmd} failed (exit=${code}): ${stderr.slice(-800)}`));
+      if (code === 0) return resolve({ stdout, stderr });
+      if (signal === 'SIGKILL' || signal === 'SIGTERM') return reject(new Error('aborted_by_client'));
+      reject(new Error(`${cmd} failed (exit=${code}): ${stderr.slice(-800)}`));
     });
   });
 }
@@ -911,7 +915,7 @@ app.post('/youtube-process', async (req, res) => {
       const oIdx = ytArgs.indexOf('-o');
       ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
     }
-    await runCancellable('yt-dlp', ytArgs, (p) => { currentProc = p; });
+    await runTracked('yt-dlp', ytArgs, (p) => { currentProc = p; });
     if (aborted) return;
 
     // [H1] glob por arquivos `in.*` — pode ser .mp4, .mkv, .webm dependendo do source
@@ -958,7 +962,7 @@ app.post('/youtube-process', async (req, res) => {
       '-y',
       outFile
     ];
-    await runCancellable('ffmpeg', ffArgs, (p) => { currentProc = p; });
+    await runTracked('ffmpeg', ffArgs, (p) => { currentProc = p; });
     if (aborted) return;
     if (!fs.existsSync(outFile)) throw new Error('process_failed');
     const outStat = fs.statSync(outFile);
