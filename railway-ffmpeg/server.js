@@ -829,6 +829,177 @@ app.post('/mux-streams', async (req, res) => {
   }
 });
 
+// ── YOUTUBE PROCESS: download max + descaracterização (BlueMetadata) ───────
+// Endpoint exclusivo do BaixaBlue pra YouTube. Sempre baixa melhor qualidade
+// disponível e SEMPRE aplica 4 camadas de unicidade num único pass de FFmpeg:
+//   1. Strip de metadados (-map_metadata -1) — remove EXIF/XMP/software tags
+//   2. Reconfiguração visual: zoom random 2-5%, eq subtle, ruído leve
+//   3. Descaracterização de áudio: atempo 1-2% (mantém pitch perceptível igual)
+//   4. Hash novo: re-encode com bitrate aleatório + container fresh
+// Cada chamada gera output diferente (parâmetros random) — vídeo nunca repete.
+// runCancellable: spawn com referência ao process pra abort em req.on('close')
+function runCancellable(cmd, args, onSpawn) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args);
+    if (onSpawn) onSpawn(p);
+    let stderr = '';
+    p.stderr.on('data', (d) => { stderr += d.toString(); });
+    p.on('error', reject);
+    p.on('close', (code, signal) => {
+      if (code === 0) resolve();
+      else if (signal === 'SIGKILL' || signal === 'SIGTERM') reject(new Error('aborted_by_client'));
+      else reject(new Error(`${cmd} failed (exit=${code}): ${stderr.slice(-800)}`));
+    });
+  });
+}
+
+app.post('/youtube-process', async (req, res) => {
+  const { youtube_url } = req.body || {};
+  if (!youtube_url) return res.status(400).json({ error: 'youtube_url obrigatório' });
+  // [L5] whitelist de host — yt-dlp suporta 1000+ sites, queremos só YouTube
+  if (!/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)/i.test(youtube_url)) {
+    return res.status(400).json({ error: 'apenas_youtube', detail: 'Endpoint exclusivo pra URLs do YouTube' });
+  }
+  // [C3] auth shared-secret — frontend injeta header X-Bluetube-Key.
+  // Se YOUTUBE_PROCESS_KEY não setada, endpoint fica aberto (modo dev). Em prod, setar a env.
+  const requiredKey = process.env.YOUTUBE_PROCESS_KEY;
+  if (requiredKey && req.headers['x-bluetube-key'] !== requiredKey) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const hasCookies = setupYtCookies();
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const inFilePattern = path.join(dir, 'in.%(ext)s'); // [H1] yt-dlp pode emitir .mkv etc
+  const outFile = path.join(dir, 'out.mp4');
+  const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+
+  const log = (msg) => console.log('[youtube-process]', jobId, msg);
+
+  // [C2] abort handler: se cliente fecha conexão durante download/encode,
+  // mata os child processes e limpa /tmp pra não vazar CPU+disk.
+  let aborted = false;
+  let currentProc = null;
+  const onClose = () => {
+    if (res.writableEnded) return; // resposta completou normalmente
+    aborted = true;
+    if (currentProc && !currentProc.killed) {
+      try { currentProc.kill('SIGKILL'); } catch {}
+    }
+    cleanup();
+    log('aborted by client');
+  };
+  req.on('close', onClose);
+
+  try {
+    // ── 1. DOWNLOAD MAX QUALITY (cookies + clientes anti-bot-check) ─────
+    log('start download');
+    const ytArgs = [
+      // Best video + best audio merged. Limite 1080p pra evitar 4K (pesado, OOM mobile).
+      '-f', 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/best',
+      '--merge-output-format', 'mp4',
+      '--no-playlist',
+      '--no-warnings',
+      '--no-check-certificate',
+      '--force-ipv4',
+      '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+      '-o', inFilePattern,
+      youtube_url
+    ];
+    if (hasCookies) {
+      const oIdx = ytArgs.indexOf('-o');
+      ytArgs.splice(oIdx, 0, '--cookies', YT_COOKIES_FILE);
+    }
+    await runCancellable('yt-dlp', ytArgs, (p) => { currentProc = p; });
+    if (aborted) return;
+
+    // [H1] glob por arquivos `in.*` — pode ser .mp4, .mkv, .webm dependendo do source
+    const downloaded = fs.readdirSync(dir).filter(f => f.startsWith('in.'));
+    if (!downloaded.length) throw new Error('download_failed_no_file');
+    const inFile = path.join(dir, downloaded[0]);
+    const inStat = fs.statSync(inFile);
+    if (inStat.size < 1024) throw new Error('download_failed_empty'); // [L12]
+    log('downloaded ' + inStat.size + ' bytes (' + downloaded[0] + ')');
+
+    // ── 2. PARÂMETROS ALEATÓRIOS (cada chamada → vídeo diferente) ──────
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    const zoom = rand(0.02, 0.05);                          // 2-5% zoom
+    const noise = Math.floor(rand(1, 4));                   // ruído 1-3
+    const brightness = rand(-0.02, 0.02).toFixed(4);        // ±2% brilho
+    const saturation = rand(0.97, 1.03).toFixed(4);         // ±3% saturação
+    const gamma = rand(0.97, 1.03).toFixed(4);              // ±3% gamma
+    const tempo = rand(1.010, 1.025).toFixed(4);            // 1-2.5% mais rápido (algoritmos detectam ≥1%)
+    const bitrate = Math.floor(rand(3500, 5500));           // bitrate variável (= hash randomizer)
+    // [L1] mirror DESLIGADO por padrão — flipa texto queimado (subtitles, watermarks).
+    // Se quiser reativar futuro: criar query param ?allow_mirror=1.
+    const mirror = '';
+
+    const vf = `${mirror}scale=iw*(1+${zoom.toFixed(4)}):-2,crop=iw/(1+${zoom.toFixed(4)}):ih/(1+${zoom.toFixed(4)}),eq=brightness=${brightness}:saturation=${saturation}:gamma=${gamma},noise=alls=${noise}:allf=t`;
+    const af = `atempo=${tempo}`;
+    log(`process zoom=${(zoom*100).toFixed(1)}% noise=${noise} tempo=${tempo} bitrate=${bitrate}k`);
+
+    // ── 3. FFMPEG: strip metadata + visual + audio + re-encode ─────────
+    // [H3] removido CRF — usar SÓ bitrate (libx264 honra como target avg).
+    // CRF + bitrate juntos é não-determinístico e parcialmente quebrava
+    // a randomização de hash. Bitrate-only garante hash diferente a cada call.
+    const ffArgs = [
+      '-hide_banner', '-loglevel', 'error',
+      '-i', inFile,
+      '-map_metadata', '-1',
+      '-vf', vf,
+      '-af', af,
+      '-c:v', 'libx264', '-preset', 'fast',
+      '-b:v', `${bitrate}k`,
+      '-maxrate', `${Math.floor(bitrate * 1.5)}k`,
+      '-bufsize', `${bitrate * 2}k`,
+      '-c:a', 'aac', '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-y',
+      outFile
+    ];
+    await runCancellable('ffmpeg', ffArgs, (p) => { currentProc = p; });
+    if (aborted) return;
+    if (!fs.existsSync(outFile)) throw new Error('process_failed');
+    const outStat = fs.statSync(outFile);
+    log('processed ' + outStat.size + ' bytes');
+
+    // ── 4. STREAM RESULTADO ─────────────────────────────────────────────
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', String(outStat.size));
+    res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"');
+    res.setHeader('Cache-Control', 'no-store');
+
+    const stream = fs.createReadStream(outFile);
+    stream.pipe(res);
+    stream.on('close', () => { req.removeListener('close', onClose); cleanup(); });
+    stream.on('error', (err) => {
+      log('stream error: ' + err.message);
+      req.removeListener('close', onClose);
+      cleanup();
+      if (!res.headersSent) res.status(500).end(); else res.end();
+    });
+  } catch (err) {
+    if (aborted) return; // já foi limpo no onClose
+    log('failed: ' + err.message);
+    req.removeListener('close', onClose);
+    cleanup();
+    if (!res.headersSent) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(500).json({ error: 'youtube_process_failed', detail: String(err.message || err).slice(0, 500) });
+    }
+  }
+});
+
+app.options('/youtube-process', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
 // ── YOUTUBE DOWNLOAD via yt-dlp ────────────────────────────────────────────
 // Baixa direto da CDN do YouTube com escolha de qualidade, muxa vídeo+áudio
 // separados quando necessário (adaptive streams), sobe pro Supabase e retorna URL.
