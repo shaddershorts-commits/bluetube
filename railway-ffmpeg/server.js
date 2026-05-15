@@ -904,10 +904,10 @@ app.post('/youtube-process', async (req, res) => {
     // ── 1. DOWNLOAD MAX QUALITY (cookies + clientes anti-bot-check) ─────
     log('start download');
     const ytArgs = [
-      // Seletor MAXIMAMENTE permissivo: aceita qualquer best disponível.
-      // Os filtros [ext=mp4][height<=1080] estavam rejeitando vídeos que vinham
-      // como WebM/VP9 (comum em yt-dlp moderno). `best` sempre retorna SOMETHING.
-      '-f', 'best[height<=1080]/best/bv*+ba',
+      // Seletor PRIORIZANDO ADAPTIVE 1080p — o "best combined" geralmente é
+      // só 720p (format 22). 1080p real só existe como adaptive (vídeo+áudio
+      // separados, merge necessário). Ordem: adaptive 1080p > best combined.
+      '-f', 'bv*[height<=1080]+ba/bv*[height<=1080]+ba[ext=m4a]/best[height<=1080]/bv*+ba/best',
       '--merge-output-format', 'mp4',
       '--no-playlist',
       '--no-warnings',
@@ -940,30 +940,32 @@ app.post('/youtube-process', async (req, res) => {
     const saturation = rand(0.97, 1.03).toFixed(4);         // ±3% saturação
     const gamma = rand(0.97, 1.03).toFixed(4);              // ±3% gamma
     const tempo = rand(1.010, 1.025).toFixed(4);            // 1-2.5% mais rápido (algoritmos detectam ≥1%)
-    const bitrate = Math.floor(rand(3500, 5500));           // bitrate variável (= hash randomizer)
+    const crfVar = (rand(18, 21)).toFixed(2);               // CRF 18-21 (qualidade alta, hash random via filtros)
     // [L1] mirror DESLIGADO por padrão — flipa texto queimado (subtitles, watermarks).
     // Se quiser reativar futuro: criar query param ?allow_mirror=1.
     const mirror = '';
 
     const vf = `${mirror}scale=iw*(1+${zoom.toFixed(4)}):-2,crop=iw/(1+${zoom.toFixed(4)}):ih/(1+${zoom.toFixed(4)}),eq=brightness=${brightness}:saturation=${saturation}:gamma=${gamma},noise=alls=${noise}:allf=t`;
     const af = `atempo=${tempo}`;
-    log(`process zoom=${(zoom*100).toFixed(1)}% noise=${noise} tempo=${tempo} bitrate=${bitrate}k`);
+    log(`process zoom=${(zoom*100).toFixed(1)}% noise=${noise} tempo=${tempo} crf=${crfVar}`);
 
-    // ── 3. FFMPEG: strip metadata + visual + audio + re-encode ─────────
-    // [H3] removido CRF — usar SÓ bitrate (libx264 honra como target avg).
-    // CRF + bitrate juntos é não-determinístico e parcialmente quebrava
-    // a randomização de hash. Bitrate-only garante hash diferente a cada call.
+    // ── 3. FFMPEG: strip metadata + visual + audio + re-encode em ALTA qualidade ─
+    // Trocas pra preservar qualidade do source:
+    //   - preset MEDIUM (era fast): melhor compressão pra mesma qualidade
+    //   - CRF 18-21 random (era bitrate fixo): garante qualidade visual TARGET
+    //     em vez de tentar caber em bitrate cap; libx264 usa o bitrate que
+    //     precisar pra atingir a qualidade. Random params dos filtros (zoom,
+    //     noise, atempo) garantem hash diferente sem depender de bitrate.
+    //   - audio 192k (era 128k): preserva qualidade do source
     const ffArgs = [
       '-hide_banner', '-loglevel', 'error',
       '-i', inFile,
       '-map_metadata', '-1',
       '-vf', vf,
       '-af', af,
-      '-c:v', 'libx264', '-preset', 'fast',
-      '-b:v', `${bitrate}k`,
-      '-maxrate', `${Math.floor(bitrate * 1.5)}k`,
-      '-bufsize', `${bitrate * 2}k`,
-      '-c:a', 'aac', '-b:a', '128k',
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', crfVar,
+      '-pix_fmt', 'yuv420p',                 // compat máxima (sem yuv444)
+      '-c:a', 'aac', '-b:a', '192k',
       '-movflags', '+faststart',
       '-y',
       outFile
