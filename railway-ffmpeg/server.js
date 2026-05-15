@@ -954,7 +954,57 @@ app.post('/youtube-process', async (req, res) => {
     let inFile = null;
     let source = null;
 
-    // ── 1a. TENTA HQ 1080p PRIMEIRO (chain ytstream + mux Railway) ──────
+    // ── 1a. TENTA COBALT TUNNEL 1080p PRIMEIRO ──────────────────────────
+    // Cobalt com videoQuality=1080 escolhe adaptive 1080p que precisa muxing
+    // → Cobalt retorna 'tunnel' status → ele MESMO streama o arquivo
+    // (IP casa com a signature). Quando funciona = qualidade máxima sem
+    // cookies. Quando Cobalt não tem auth pra esse vídeo, falha rápido (~2s).
+    const cobaltUrl = process.env.COBALT_API_URL;
+    if (cobaltUrl) {
+      try {
+        log('try cobalt tunnel 1080p');
+        const cobaltHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+        if (process.env.COBALT_API_KEY) cobaltHeaders['Authorization'] = 'Api-Key ' + process.env.COBALT_API_KEY;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 25000);
+        const cr = await fetch(cobaltUrl, {
+          method: 'POST', headers: cobaltHeaders,
+          body: JSON.stringify({ url: youtube_url, videoQuality: '1080' }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        const cd = await cr.json().catch(() => ({}));
+        // Só aceita TUNNEL (Cobalt streama = IP casa = sem 403). Redirect URL pode dar 403.
+        if (cr.ok && cd.status === 'tunnel' && cd.url) {
+          log('cobalt tunnel ok');
+          const candidateFile = path.join(dir, 'in.mp4');
+          const dlCtrl = new AbortController();
+          const dlTimer = setTimeout(() => dlCtrl.abort(), 120000);
+          try {
+            const dlR = await fetch(cd.url, { signal: dlCtrl.signal });
+            clearTimeout(dlTimer);
+            if (dlR.ok) {
+              const writer = fs.createWriteStream(candidateFile);
+              const nodeStream = require('stream');
+              await new Promise((resolve, reject) => {
+                nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+              });
+              if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 100000) {
+                inFile = candidateFile;
+                source = 'cobalt:tunnel:1080';
+                log('cobalt tunnel download ' + fs.statSync(candidateFile).size + ' bytes');
+              }
+            }
+          } catch (e) { clearTimeout(dlTimer); log('cobalt tunnel dl err: ' + e.message); }
+        } else {
+          log('cobalt no tunnel (status: ' + (cd.status || cr.status) + ') — fallback chain');
+        }
+      } catch (e) { log('cobalt direct err: ' + e.message); }
+    }
+
+    // ── 1b. TENTA HQ 1080p PRIMEIRO (chain ytstream + mux Railway) ──────
     // /api/auth?action=download&quality=hq aciona /youtube-hq do Railway que
     // baixa video+audio adaptive 1080p, muxa, sobe pro Supabase, retorna URL.
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
@@ -1012,14 +1062,15 @@ app.post('/youtube-process', async (req, res) => {
       } catch (e) { log('chain call err: ' + e.message); return null; }
     };
 
-    // Tenta HQ (1080p adaptive mux) primeiro
-    let chainResult = await tryAuthChain('hq');
-    // Se HQ falhar (RapidAPI down, vídeo curto sem 1080p, etc), cai pro AUTO
-    if (!chainResult) {
-      log('hq failed — try auto');
-      chainResult = await tryAuthChain(null);
+    // Só tenta a chain se Cobalt tunnel direto não conseguiu (1a)
+    if (!inFile) {
+      let chainResult = await tryAuthChain('hq');
+      if (!chainResult) {
+        log('hq failed — try auto');
+        chainResult = await tryAuthChain(null);
+      }
+      if (chainResult) { inFile = chainResult.file; source = chainResult.source; }
     }
-    if (chainResult) { inFile = chainResult.file; source = chainResult.source; }
 
     // ── 1b. FALLBACK YT-DLP (com cookies, último recurso) ────────────────
     if (!inFile) {
