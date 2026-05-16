@@ -32,6 +32,7 @@ module.exports = async function handler(req, res) {
       case 'coletar-nichos':     return await coletarPorNichos(res);
       case 'atualizar-metricas': return await atualizarMetricas(res);
       case 'atualizar-metricas-recentes': return await atualizarMetricasRecentes(res);
+      case 'backfill-canais-curados': return await backfillCanaisCurados(res, req);
       case 'calcular-scores':    return await calcularScores(res);
       case 'backfill-nichos':    return await backfillNichos(res, req);
       case 'migrar-nicho':       return await migrarNicho(res, req);
@@ -588,6 +589,204 @@ async function atualizarMetricasRecentes(res) {
     atualizados,
     total_candidatos: rows.length,
     cota_gasta: cotaGasta,
+    duracao_ms: Date.now() - inicio,
+  });
+}
+
+// ── ACTION: backfill-canais-curados ─────────────────────────────────────────
+// Resgate ONE-SHOT de views congeladas em vídeos de canais curados que NUNCA
+// foram atualizados (vezes_atualizado=0) ou que estão stale (>6h sem refresh).
+//
+// Diferente de atualizar-metricas-recentes (que pega top 200 das últimas 24h
+// por views.desc — pra cron permanente), esse endpoint:
+//   - Aceita janela configurável (5h, 24h, 7d, 30d) pra cobrir backlog inteiro
+//   - HARD-CODED fonte=canal_curado (REGRA INVIOLÁVEL — impossível tocar lixo)
+//   - Suporta paginação via offset (cabe no maxDuration Vercel)
+//   - Retorna telemetria detalhada: viraram_acima_threshold (ouro pro user)
+//
+// CATEGORIZAÇÃO PRESERVADA: não toca publicado_em, nicho, duracao_segundos,
+// fonte. Só atualiza métricas (views, likes, comentarios, taxa_engajamento,
+// atualizado_em, vezes_atualizado). Janela de hora e filtros de categoria
+// continuam idênticos.
+//
+// Params (query string):
+//   - janela: '5h' | '24h' | '7d' | '30d' (default '30d')
+//   - limit: 1-500 (default 500). Limite garante caber em ~25s no Vercel.
+//   - offset: pra paginação (default 0). Use proximo_offset da response anterior.
+//   - incluir_stale: 'true' | 'false' (default 'false'). Se inclui vídeos com
+//                    atualizado_em > 6h (não só vezes_atualizado=0). Pra cron permanente.
+//
+// Quota YouTube: 1 unit por batch de 50 IDs (videos.list com part=statistics).
+// 500 vídeos = 10 batches = 10 units. Trivial.
+//
+// AUTH: endpoint exige Bearer ADMIN_SECRET. Sem auth, qualquer um poderia
+// disparar em loop e queimar quota YouTube + saturar Supabase Disk IO.
+async function backfillCanaisCurados(res, req) {
+  // ─ AUTH OBRIGATÓRIA ─
+  if (!assertAdmin(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const inicio = Date.now();
+
+  // ─ Resolve janela ─
+  const janela = (req?.query?.janela || '30d').toLowerCase();
+  const janelaMs = {
+    '5h':  5 * 3600000,
+    '24h': 24 * 3600000,
+    '7d':  7 * 86400000,
+    '30d': 30 * 86400000,
+  }[janela];
+  if (!janelaMs) {
+    return res.status(400).json({ error: 'janela_invalida', valid: ['5h', '24h', '7d', '30d'] });
+  }
+
+  // ─ Threshold de views por janela (MESMOS valores de api/virais.js) ─
+  // Usado APENAS pra telemetria viraram_acima_threshold (não afeta SQL).
+  const threshold = {
+    '5h':  60000,
+    '24h': 300000,
+    '7d':  2000000,
+    '30d': 8000000,
+  }[janela];
+
+  // ─ NaN-safe parsing ─
+  const limitRaw = parseInt(req?.query?.limit, 10);
+  const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 500, 1), 500);
+  const offsetRaw = parseInt(req?.query?.offset, 10);
+  const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0);
+  const incluirStale = (req?.query?.incluir_stale || 'false').toString() === 'true';
+
+  const desdePublicado = new Date(Date.now() - janelaMs).toISOString();
+  const desdeStale = new Date(Date.now() - 6 * 3600000).toISOString();
+
+  // ─ Filtro de elegibilidade ─
+  // Sem incluir_stale: nunca-atualizados (vezes_atualizado=0 OU NULL — PostgREST
+  // eq.0 NÃO captura NULL, então OR explícito).
+  // Com incluir_stale: também inclui atualizados há mais de 6h (pra cron permanente).
+  const filtroStale = incluirStale
+    ? `or=(vezes_atualizado.eq.0,vezes_atualizado.is.null,atualizado_em.lt.${encodeURIComponent(desdeStale)})`
+    : `or=(vezes_atualizado.eq.0,vezes_atualizado.is.null)`;
+
+  // ─ Query Supabase: hard-coded fonte=canal_curado (REGRA INVIOLÁVEL) ─
+  // Ordem: id.asc (cursor-stable) — evita pular/duplicar registros quando
+  // o cron coletar-curados upserta novos vídeos entre páginas. Prioridade
+  // por janela quente vem do PARÂMETRO janela (user roda 5h→24h→7d→30d).
+  const sel = 'id,youtube_id,views,vezes_atualizado,atualizado_em';
+  const qs = [
+    'ativo=eq.true',
+    'fonte=eq.canal_curado',
+    'duracao_segundos=lte.90',
+    `publicado_em=gte.${encodeURIComponent(desdePublicado)}`,
+    filtroStale,
+    'order=id.asc',
+    `select=${sel}`,
+    `limit=${limit}`,
+    `offset=${offset}`,
+  ].join('&');
+
+  const r = await fetch(`${SU}/rest/v1/virais_banco?${qs}`, { headers: HDR });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    return res.status(500).json({ error: 'fetch_failed', status: r.status, detail: txt.slice(0, 200) });
+  }
+  const rows = await r.json();
+
+  if (!rows.length) {
+    return res.status(200).json({
+      ok: true,
+      janela, threshold, limit, offset, incluir_stale: incluirStale,
+      processados: 0,
+      atualizados_com_sucesso: 0,
+      falhas: 0,
+      viraram_acima_threshold: 0,
+      sairam_threshold: 0,
+      quota_youtube_gasta: 0,
+      proximo_offset: null,
+      duracao_ms: Date.now() - inicio,
+      motivo: 'sem_videos_pendentes_na_janela',
+    });
+  }
+
+  // ─ Batch fetch YouTube (max 50 IDs por batch = 1 unit) ─
+  const byId = {};
+  let cotaGasta = 0;
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50);
+    const ids = batch.map(r => r.youtube_id).join(',');
+    try {
+      const detalhes = await youtubeRequest('videos', { part: 'statistics', id: ids });
+      cotaGasta += 1;
+      (detalhes.items || []).forEach(v => { byId[v.id] = v.statistics || {}; });
+    } catch (e) {
+      console.error('[backfill-canais-curados] batch', i, 'erro:', e.message);
+    }
+  }
+
+  // ─ Patch Supabase em ondas paralelas (25 por vez + 200ms sleep) ─
+  // Padrão idêntico ao virais-ml pra não saturar Disk IO do Supabase.
+  let atualizados = 0, falhas = 0;
+  let viraramAcima = 0, sairamThreshold = 0;
+  const PATCH_BATCH = 25;
+  const PATCH_DELAY_MS = 200;
+
+  for (let i = 0; i < rows.length; i += PATCH_BATCH) {
+    const wave = rows.slice(i, i + PATCH_BATCH);
+    await Promise.all(wave.map(async (row) => {
+      const st = byId[row.youtube_id];
+      if (!st) { falhas++; return; }
+
+      const viewsNovo = Number(st.viewCount || 0);
+      const viewsAntes = Number(row.views || 0);
+      const likes = Number(st.likeCount || 0);
+      const comentarios = Number(st.commentCount || 0);
+      const taxa = viewsNovo > 0 ? +(((likes + comentarios) / viewsNovo) * 100).toFixed(4) : 0;
+
+      // Telemetria: transições de threshold (não muda SQL, só conta)
+      if (viewsAntes < threshold && viewsNovo >= threshold) viraramAcima++;
+      if (viewsAntes >= threshold && viewsNovo < threshold) sairamThreshold++;
+
+      try {
+        const patchR = await supaPatch(`virais_banco?id=eq.${row.id}`, {
+          views: viewsNovo,
+          likes,
+          comentarios,
+          taxa_engajamento: taxa,
+          atualizado_em: new Date().toISOString(),
+          vezes_atualizado: (row.vezes_atualizado || 0) + 1,
+        });
+        if (patchR.ok) atualizados++; else falhas++;
+      } catch (e) {
+        falhas++;
+      }
+    }));
+
+    // Sleep entre ondas (exceto última) — evita saturar Supabase
+    if (i + PATCH_BATCH < rows.length) {
+      await new Promise(r => setTimeout(r, PATCH_DELAY_MS));
+    }
+  }
+
+  // ─ Paginação: se trouxe limit exato, pode ter mais ─
+  const proximoOffset = rows.length === limit ? offset + limit : null;
+
+  // ─ Log no virais_coletas_log pra auditoria ─
+  await logColeta('backfill-canais-curados',
+    { janela, limit, offset, threshold, incluir_stale: incluirStale, viraram_acima: viraramAcima },
+    0, atualizados, cotaGasta, Date.now() - inicio);
+
+  return res.status(200).json({
+    ok: true,
+    janela,
+    threshold,
+    limit,
+    offset,
+    incluir_stale: incluirStale,
+    processados: rows.length,
+    atualizados_com_sucesso: atualizados,
+    falhas,
+    viraram_acima_threshold: viraramAcima,
+    sairam_threshold: sairamThreshold,
+    quota_youtube_gasta: cotaGasta,
+    proximo_offset: proximoOffset,
     duracao_ms: Date.now() - inicio,
   });
 }
