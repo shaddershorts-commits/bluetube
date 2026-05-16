@@ -1646,6 +1646,101 @@ app.post('/extract-fingerprint', async (req, res) => {
   }
 });
 
+// ── SNAPCHAT EXTRACT via yt-dlp ────────────────────────────────────────────
+// Cobalt v11 só suporta /spotlight/ do Snapchat. Pra /highlight/, /story/ e
+// outros formatos públicos, yt-dlp tem extractor robusto. Esse endpoint
+// extrai URL CDN (yt-dlp -g) — não baixa o arquivo. Frontend depois chama
+// /proxy-download pra resolver CORS.
+//
+// Auth: se env SNAPCHAT_PROCESS_KEY setada, exige header X-Internal-Token
+// matching (rate-limit indireto via shared secret com baixa-generic.js).
+// Se não setada, livre — compat com primeiro deploy. Felipe pode setar depois.
+//
+// Whitelist hosts MATCHING baixa-generic.js (host === 'snapchat.com' OU
+// endsWith('.snapchat.com')) — evita mismatch onde Vercel aceita mas Railway rejeita.
+app.post('/snapchat-extract', async (req, res) => {
+  // Auth opcional (se env setada)
+  const expectedKey = process.env.SNAPCHAT_PROCESS_KEY;
+  if (expectedKey) {
+    const got = req.headers['x-internal-token'] || '';
+    if (got !== expectedKey) return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const { snapchat_url } = req.body || {};
+  if (!snapchat_url || typeof snapchat_url !== 'string') {
+    return res.status(400).json({ error: 'snapchat_url required' });
+  }
+  // Whitelist alinhada com baixa-generic.js (defesa em profundidade contra SSRF)
+  let hostOk = false;
+  try {
+    const host = new URL(snapchat_url).hostname.replace(/^www\./, '');
+    hostOk = host === 'snapchat.com' || host.endsWith('.snapchat.com');
+  } catch (_) {}
+  if (!hostOk) return res.status(400).json({ error: 'somente_snapchat' });
+
+  try {
+    // -g extrai URL CDN sem baixar. Roda --get-title EM PARALELO via -J (json full)
+    // pra evitar 2 processos sequenciais (timeout cumulativo estourava Vercel).
+    // -J retorna metadata + URL no mesmo call em ~5-8s.
+    const args = [
+      '-J',                       // dump JSON completo (URL + title + extras)
+      '-f', 'best[ext=mp4]/best',
+      '--no-warnings',
+      '--no-playlist',
+      '--no-check-certificate',
+      '--socket-timeout', '15',
+      snapchat_url
+    ];
+    const result = await new Promise((resolve, reject) => {
+      const p = spawn('yt-dlp', args);
+      let stdout = '', stderr = '';
+      const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (_) {} reject(new Error('timeout_18s')); }, 18000);
+      p.stdout.on('data', d => { stdout += d.toString(); });
+      p.stderr.on('data', d => { stderr += d.toString(); });
+      p.on('close', code => {
+        clearTimeout(timer);
+        if (code === 0 && stdout.trim()) {
+          try {
+            const json = JSON.parse(stdout);
+            const url = json.url || (json.formats && json.formats.length ? json.formats[json.formats.length - 1].url : null);
+            if (!url) return reject(new Error('no_url_in_json'));
+            // Detecta HLS — browser pode não baixar m3u8 como arquivo
+            const isHls = /\.m3u8(\?|$)/i.test(url) || (json.protocol || '').includes('m3u8');
+            if (isHls) {
+              console.warn('[snapchat-extract] HLS detectado:', snapchat_url.slice(0, 80));
+            }
+            resolve({
+              url,
+              title: json.title || null,
+              ext: json.ext || 'mp4',
+              is_hls: isHls,
+              extra_formats: (json.formats || []).length,
+            });
+          } catch (e) {
+            reject(new Error('json_parse_failed: ' + e.message.slice(0, 100)));
+          }
+        } else {
+          reject(new Error('yt-dlp_exit_' + code + ': ' + stderr.slice(0, 200)));
+        }
+      });
+      p.on('error', e => { clearTimeout(timer); reject(e); });
+    });
+
+    const safeTitle = result.title ? result.title.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) : 'snapchat';
+    return res.status(200).json({
+      ok: true,
+      url: result.url,
+      title: result.title || 'Snapchat Video',
+      filename: safeTitle + '.' + (result.ext || 'mp4'),
+      is_hls: result.is_hls,
+      extra_formats: result.extra_formats,
+    });
+  } catch (e) {
+    console.error('[snapchat-extract]', e.message);
+    return res.status(500).json({ error: 'extract_failed', detail: e.message.slice(0, 300) });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`[bluetube-ffmpeg] listening on :${PORT}`);
   // Roda em background pra nao atrasar health check do Railway
