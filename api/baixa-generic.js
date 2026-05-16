@@ -55,6 +55,41 @@ async function tryCobalt(targetUrl) {
   } catch (e) { return null; }
 }
 
+// Fallback SNAPCHAT: Cobalt v11 só suporta /spotlight/. Pra /highlight/, /story/
+// e outros formatos públicos, usa yt-dlp no Railway que tem extractor robusto.
+// Só dispara quando platform.host é snapchat — não afeta outras plataformas.
+//
+// Timeout 22s alinhado com Railway (18s yt-dlp + margem). Header X-Internal-Token
+// opcional — só usado se SNAPCHAT_PROCESS_KEY env setada em ambos lados.
+async function trySnapchatYtdlp(targetUrl) {
+  if (!RAILWAY_FFMPEG) return null;
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const internalKey = process.env.SNAPCHAT_PROCESS_KEY;
+    if (internalKey) headers['X-Internal-Token'] = internalKey;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 22000);
+    const r = await fetch(`${RAILWAY_FFMPEG.replace(/\/$/, '')}/snapchat-extract`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ snapchat_url: targetUrl }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.ok || !d.url) return null;
+    // HLS detectado: browser pode não baixar m3u8 como arquivo via proxy-download.
+    // Por enquanto retorna mesmo assim — proxy-download pode lidar (faz stream).
+    // Se vier reclamação, validar e adicionar conversor m3u8→mp4 no Railway.
+    if (d.is_hls) console.warn('[baixa-generic] snapchat HLS — proxy-download pode falhar');
+    return { url: d.url, filename: d.filename || 'snapchat.mp4', title: d.title || null };
+  } catch (e) {
+    console.log('[baixa-generic] snapchat-extract failed:', e.message);
+    return null;
+  }
+}
+
 async function logSolicitacao(url, platform, motivo) {
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -102,6 +137,28 @@ module.exports = async function handler(req, res) {
       platform: platform.name,
       proxied: !!(RAILWAY_FFMPEG && !cobalt.url.includes('supabase.co')),
     });
+  }
+
+  // 1.5) SNAPCHAT FALLBACK: Cobalt v11 só suporta /spotlight/. Pra /highlight/,
+  // /story/ etc, yt-dlp via Railway. Só dispara se platform=snapchat — não
+  // afeta outras URLs (Vimeo/Pinterest/etc continuam só com Cobalt).
+  const isSnapchat = platform.host === 'snapchat.com' || platform.host.endsWith('.snapchat.com');
+  if (isSnapchat) {
+    const snap = await trySnapchatYtdlp(url);
+    if (snap?.url) {
+      const safeName = snap.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+      let finalUrl = snap.url;
+      if (RAILWAY_FFMPEG) {
+        finalUrl = `${RAILWAY_FFMPEG.replace(/\/$/, '')}/proxy-download?url=${encodeURIComponent(snap.url)}&filename=BaixaBlue_snapchat_${safeName}`;
+      }
+      return res.status(200).json({
+        url: finalUrl,
+        title: snap.title || 'Snapchat Video',
+        thumbnail: null,
+        platform: 'snapchat',
+        proxied: !!RAILWAY_FFMPEG,
+      });
+    }
   }
 
   // 2) Cobalt nao deu — registra pra analise e retorna mensagem amigavel

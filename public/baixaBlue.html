@@ -171,7 +171,7 @@ footer a{color:var(--neon);text-decoration:none}
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-badge"><span class="badge-dot"></span>Exclusivo Master · YouTube · TikTok · Instagram · e mais</div>
+  <div class="hero-badge"><span class="badge-dot"></span>Exclusivo Master · YouTube · TikTok · Instagram · Snapchat · e mais</div>
 
   <h1 class="hero-title">
     <span class="small">Você precisa colar que o</span>
@@ -234,7 +234,7 @@ footer a{color:var(--neon);text-decoration:none}
           Baixar
         </button>
       </div>
-      <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook</span></div>
+      <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook · Snapchat</span></div>
     </div>
 
     <!-- MODO UPLOAD -->
@@ -430,6 +430,7 @@ function detectSource(url){
   if(url.includes('reddit.com')||url.includes('redd.it')) return {name:'Reddit',emoji:'👽'};
   if(url.includes('facebook.com')||url.includes('fb.watch')||url.includes('fb.com')) return {name:'Facebook',emoji:'📘'};
   if(url.includes('kwai.com')) return {name:'Kwai',emoji:'🎬'};
+  if(url.includes('snapchat.com')) return {name:'Snapchat',emoji:'👻'};
   return {name:'Vídeo',emoji:'🎬'};
 }
 
