@@ -376,6 +376,7 @@ const PROXY_ALLOWED_HOSTS = [
   'googlevideo.com', // tentativa; normalmente falha por IP-bind
   'ytimg.com',
   'up.railway.app', // Cobalt self-hosted (cobalt-production-*.up.railway.app)
+  'sc-cdn.net', 'snapchat.com', // Snapchat CDN (cf-st.sc-cdn.net e variantes)
   // Camada 5: Piped + Invidious (fallback YouTube quando providers principais caem)
   'piped.video', 'kavin.rocks', 'adminforge.de', 'private.coffee', 'leptons.xyz',
   'invidious.io', 'yewtu.be', 'nadeko.net', 'nerdvpn.de', 'privacyredirect.com', 'melmac.space',
@@ -416,6 +417,7 @@ app.get('/proxy-download', async (req, res) => {
     if (h.includes('cdninstagram') || h.includes('ig')) return 'https://www.instagram.com/';
     if (h.includes('tokcdn') || h.includes('tiktokv') || h.includes('tiktokcdn')) return 'https://www.tiktok.com/';
     if (h.includes('googlevideo') || h.includes('ytimg')) return 'https://www.youtube.com/';
+    if (h.includes('sc-cdn') || h.includes('snapchat')) return 'https://www.snapchat.com/';
     return '';
   };
   const refererUrl = refererFor(parsed.hostname);
