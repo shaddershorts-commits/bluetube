@@ -17,6 +17,7 @@
     "api/bluetendencias.js": { "maxDuration": 120 },
     "api/email-campanha.js": { "maxDuration": 60 },
     "api/virais-canais.js": { "maxDuration": 300 },
+    "api/virais-coletor.js": { "maxDuration": 120 },
     "api/desafio.js": { "maxDuration": 60 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
