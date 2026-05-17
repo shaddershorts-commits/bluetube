@@ -92,13 +92,19 @@ module.exports = async function handler(req, res) {
       if (!cR.ok) return res.status(500).json({ error: 'Erro ao salvar comentário.' });
       const comment = (await cR.json())[0];
 
-      // Increment comment counter on video
-      fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
+      // Increment comment counter on video.
+      // IMPORTANTE: usa AWAIT (era fire-and-forget). Em serverless Vercel,
+      // promises não-awaited antes de res.send são DESCARTADAS quando a
+      // função encerra. Fix 2026-05-17.
+      await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
         method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
         body: JSON.stringify({ comments: 1 })
-      }).catch(() => {});
+      }).catch(() => null);
 
       // ── CREATE NOTIFICATION for video owner ────────────────────────────────
+      // Removida tentativa de INSERT em blue_notifications (tabela LEGACY
+      // que NÃO existe — confirmado PGRST205, dead code silencioso). Mantida
+      // apenas a tabela ativa blue_notificacoes (lida por blue-interact action=notificacoes).
       try {
         const vr = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&select=user_id`, { headers: h });
         if (vr.ok) {
@@ -109,29 +115,21 @@ module.exports = async function handler(req, res) {
             const username = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
             const titulo = 'Novo comentário';
             const mensagem = `@${username} comentou: "${cleanText.slice(0, 60)}${cleanText.length > 60 ? '…' : ''}"`;
-            // Tabela legacy (blue_notifications) — mantida por compatibilidade
-            fetch(`${SU}/rest/v1/blue_notifications`, {
-              method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-              body: JSON.stringify({
-                user_id: ownerId, type: 'comment', from_user_id: userId, video_id,
-                message: mensagem, read: false
-              })
-            }).catch(() => {});
-            // Tabela ativa do feed da inbox (blue_notificacoes) — usado por blue-interact action=notificacoes
-            fetch(`${SU}/rest/v1/blue_notificacoes`, {
+            // Notif persistente na inbox (await — eram fire-and-forget perdidos)
+            await fetch(`${SU}/rest/v1/blue_notificacoes`, {
               method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
               body: JSON.stringify({
                 user_id: ownerId, tipo: 'comment', titulo, mensagem,
                 dados: { from_user_id: userId, video_id, comment_id: comment?.id || null },
               })
-            }).catch(() => {});
-            // Push mobile via Expo (chega no celular)
+            }).catch(() => null);
+            // Push mobile via Expo (await — também era fire-and-forget)
             try {
               const { sendPushToUser } = require('./_helpers/push.js');
-              sendPushToUser(ownerId, {
+              await sendPushToUser(ownerId, {
                 title: titulo, body: mensagem,
                 data: { tipo: 'comment', from_user_id: userId, video_id, url: '/blue' },
-              }).catch(() => {});
+              }).catch(() => null);
             } catch(e) {}
           }
         }

@@ -153,27 +153,31 @@ module.exports = async function handler(req, res) {
           headers: { ...h, Prefer: 'return=minimal' },
           body: JSON.stringify({ follower_id: userId, following_id: target_id })
         });
-        // Notifica o alvo do seguidor (fire-and-forget) + push mobile
+        // Notifica o alvo do seguidor + push mobile.
+        // IMPORTANTE: usa AWAIT (era fire-and-forget). Em serverless Vercel,
+        // promises não-awaited antes de res.send são DESCARTADAS quando a
+        // função encerra — fetch nunca chegava no Supabase. Bug original:
+        // 28 follows em 7 dias → 0 notificações criadas. Fix 2026-05-17.
         try {
           const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username,display_name`, { headers: h });
           const [me] = pR.ok ? await pR.json() : [];
           const uname = me?.username || 'alguém';
           const titulo = 'Novo seguidor';
           const mensagem = `@${uname} começou a te seguir`;
-          fetch(`${SU}/rest/v1/blue_notificacoes`, {
+          await fetch(`${SU}/rest/v1/blue_notificacoes`, {
             method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
             body: JSON.stringify({
               user_id: target_id, tipo: 'follow', titulo, mensagem,
               dados: { from_user_id: userId },
             }),
-          }).catch(() => {});
+          }).catch(() => null);
           // Push mobile via Expo (se app instalado)
           try {
             const { sendPushToUser } = require('./_helpers/push.js');
-            sendPushToUser(target_id, {
+            await sendPushToUser(target_id, {
               title: titulo, body: mensagem,
               data: { tipo: 'follow', from_user_id: userId, url: '/blue' },
-            }).catch(() => {});
+            }).catch(() => null);
           } catch(e) {}
         } catch(e) { /* fail-soft */ }
         return res.status(200).json({ ok: true, following: true });
