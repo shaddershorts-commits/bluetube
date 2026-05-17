@@ -6,7 +6,119 @@ Cada item tem **status, prioridade, contexto, proposta técnica, gatilhos de ret
 
 ---
 
-## BlueTendências v3 — limites de extensão para modo 'aplicação'
+## ✅ Resolvido na sessão 2026-05-17
+
+- **Bug notif fire-and-forget Vercel** (follow/comment não disparavam). Fix: await nos fetches de notif/push em `blue-follow.js` + `blue-comment.js` + remoção de dead code (tabela LEGACY `blue_notifications` inexistente). Validado em prod com smoke real. Commit `c7a0886`.
+- **MV `blue_feed_quente` sem cron de refresh** — criado `refresh-blue-feed-quente` pg_cron a cada 5min via Supabase SQL editor.
+- **Cleanup BlueHorizon** (projeto morto): 5 arquivos removidos (`api/blue-mutation.js`, `api/blue-render.js`, `api/blue-render-webhook.js`, `api/blue-migrate.js`, `public/blueMutation.html`).
+
+---
+
+## Cap em 100ms Lives (mitigação financeira)
+
+- **Status:** ⏸️ Documentado em 2026-05-17 durante diagnóstico Blue
+- **Prioridade:** 🟡 Média (atacar em 30 dias)
+
+### Contexto
+
+100ms tem billing por minuto transmitido. Hoje SEM cap por user/mês — uma live de 24h ou um user mal-intencionado pode gerar conta inesperada.
+
+### Proposta
+
+- Limite mensal de minutos transmitidos por plano: Free X / Full Y / Master Z
+- Email alert quando user atinge 80% do cap
+- Hard-stop em 100% (response API "limite_mensal_atingido")
+- Tabela `blue_lives_minutos_uso` com `user_id, mes_ano, minutos_total`
+
+### Gatilho
+
+- Primeira live longa (>4h) OU bill 100ms inesperada
+- OU base de criadores live passar de 20 ativos
+
+---
+
+## Rate limit em embeddings OpenAI por user
+
+- **Status:** ⏸️ Documentado em 2026-05-17 durante diagnóstico Blue
+- **Prioridade:** 🟡 Média (atacar em 30 dias)
+
+### Contexto
+
+`blue-embeddings.js` gera embeddings de vídeos + perfis via OpenAI. Custos escalam linear com vídeos × users. Sem cap individual, user que faça upload massivo pode estourar quota OpenAI da chave.
+
+### Proposta
+
+- Cota diária de chamadas embeddings por user (ex: 50/dia free, 200 full, 1000 master)
+- Key dedicada OpenAI com budget cap (proteção dura na conta OpenAI)
+- Cache agressivo: vídeo já com embedding nunca recalcula a menos que título/desc mudem
+
+### Gatilho
+
+- Primeira fatura OpenAI acima de $X/mês esperado
+- OU primeiro user com >500 vídeos no Blue
+
+---
+
+## Defesa em profundidade `blue-interact.js _notifyOwner`
+
+- **Status:** ⏸️ Documentado em 2026-05-17 durante fix notif
+- **Prioridade:** 🟢 Baixa (funciona hoje por sorte arquitetural)
+
+### Contexto
+
+Fix da sessão 2026-05-17 corrigiu fire-and-forget Vercel em `blue-follow.js` + `blue-comment.js`. MAS `blue-interact.js _notifyOwner` (linhas 173, 190, 197 — like/save/share) continua fire-and-forget. Hoje funciona porque existe um `await fetch(PATCH blue_videos)` logo após na linha ~219 que mantém função Vercel viva o suficiente.
+
+**Risco latente:** se em refactor futuro alguém remover esse PATCH ou mover ele pra ANTES do `_notifyOwner`, like/save/share quebram silenciosamente (mesmo bug que follow/comment tinham — 28 ações → 0 notif).
+
+### Proposta
+
+Converter `_notifyOwner` pra `async function` retornando Promise. Adicionar `await` nas 3 chamadas (like, save, share). Tradeoff: ~50-100ms extras na response do interact.
+
+### Gatilho
+
+- Próximo refactor de `blue-interact.js` (oportunidade natural)
+- OU detecção de notif perdida em like/save/share (improvável enquanto await PATCH existir)
+
+---
+
+## Trigger Postgres em blue_follows/blue_likes/blue_comments (alternativa ao fix de await)
+
+- **Status:** ⏸️ Documentado em 2026-05-17 (alternativa pro fix do bug notif)
+- **Prioridade:** 🟢 Baixa (fix de await já cobre 100%)
+
+### Contexto
+
+Bug fire-and-forget Vercel foi corrigido via await em `blue-follow.js`/`blue-comment.js`. Funciona, mas depende de cada call site lembrar de awaitar. Solução **definitiva** seria trigger Postgres em INSERT pra criar notif automaticamente — independe do cliente (API web, app nativo, SQL manual).
+
+### Proposta
+
+```sql
+CREATE FUNCTION fn_notif_follow() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.follower_id != NEW.following_id THEN
+    INSERT INTO blue_notificacoes (user_id, tipo, titulo, mensagem, dados)
+    SELECT NEW.following_id, 'follow', 'Novo seguidor',
+           '@' || COALESCE(p.username, 'alguém') || ' começou a te seguir',
+           jsonb_build_object('from_user_id', NEW.follower_id)
+    FROM blue_profiles p WHERE p.user_id = NEW.follower_id;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tr_blue_follows_notif AFTER INSERT ON blue_follows
+  FOR EACH ROW EXECUTE FUNCTION fn_notif_follow();
+```
+
+Análogo pra `blue_likes` e `blue_comments`. Vantagem: garantia transacional + cobertura 100% independente de cliente. Tradeoff: "magia oculta" — documentar bem + push mobile não dispara (trigger DB não chama Expo).
+
+### Gatilho
+
+- Se app nativo começar a fazer follow direto via Supabase client sem passar pela API
+- OU se notif quebrar de novo por outro motivo arquitetural
+
+---
+
+
 
 - **Status:** ⏸️ Documentado em 2026-04-28 durante Commit 2/3 da refatoração v3
 - **Prioridade:** Baixa (validação estrutural cobre o essencial)
