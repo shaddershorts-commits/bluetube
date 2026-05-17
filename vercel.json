@@ -18,6 +18,7 @@
     "api/email-campanha.js": { "maxDuration": 60 },
     "api/virais-canais.js": { "maxDuration": 300 },
     "api/virais-coletor.js": { "maxDuration": 120 },
+    "api/checkout-recovery.js": { "maxDuration": 60 },
     "api/desafio.js": { "maxDuration": 60 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
@@ -205,6 +206,22 @@
     {
       "path": "/api/virais-ml?action=verificar-alertas",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/checkout-recovery?action=sweep",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/checkout-recovery?action=send-1h",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/checkout-recovery?action=send-24h",
+      "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/checkout-recovery?action=send-72h",
+      "schedule": "45 * * * *"
     },
     {
       "path": "/api/audit-stripe-zumbis",
