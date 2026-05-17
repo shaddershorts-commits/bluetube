@@ -32,11 +32,17 @@
 // Se ainda falhar, throw erro (caller decide o que fazer).
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-// Sonnet 4.6: qualidade SEO equivalente a Opus pra traducao, ~10x mais barato
-// (~$3/$15 per MTok in/out vs $15/$75 do Opus). Backfill 6 posts × 2 idiomas + index
-// estimado: ~$30 em vez de ~$275.
-const MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 20000;
+// Modelo: Opus 4.7. Apesar do custo ~5x maior que Sonnet, o cap de rate limit
+// no Tier 1 da conta Felipe é 80k/min Opus vs 8k/min Sonnet — Opus cabe TODOS
+// os posts (max 16k output), Sonnet truncaria os 2 maiores. Custo backfill
+// estimado: ~$7-10 (14 chamadas × ~$0.5-1). Sustentavel.
+//
+// Pra reduzir custo no futuro: upgradar tier Anthropic (https://console.anthropic.com/settings/limits)
+// e trocar pra Sonnet 4.6.
+const MODEL = 'claude-opus-4-7';
+// 32000 = limite output max do Opus 4.7. Posts gigantes (67k chars source)
+// precisam de output ~25-30k tokens. Subindo de 20k pra 32k cobre.
+const MAX_TOKENS = 32000;
 
 const LANG_META = {
   pt: { code: 'pt', locale: 'pt_BR', name: 'Portuguese (Brazil)', html: 'pt-BR' },
@@ -148,7 +154,13 @@ async function translatePostHtml(htmlSource, targetLang, opts = {}) {
   const userMessage = buildUserMessage(htmlSource, targetLang, slug);
 
   let lastErr = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // 4 tentativas com backoff exponencial — cobre rate limit 429 e network blips.
+  // Backoff: 30s, 90s, 180s (total max ~5min de espera entre retries)
+  const backoffs = [0, 30000, 90000, 180000];
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    if (backoffs[attempt - 1] > 0) {
+      await new Promise(r => setTimeout(r, backoffs[attempt - 1]));
+    }
     try {
       const r = await fetch(ANTHROPIC_API, {
         method: 'POST',
@@ -174,7 +186,14 @@ async function translatePostHtml(htmlSource, targetLang, opts = {}) {
 
       if (!r.ok) {
         const errBody = await r.text().catch(() => '');
-        throw new Error(`anthropic_${r.status}: ${errBody.slice(0, 200)}`);
+        const status = r.status;
+        // 429 rate limit → continua tentando (proximo backoff)
+        // 5xx → continua tentando
+        // 4xx (exceto 429) → erro permanente, sai
+        if (status !== 429 && status < 500) {
+          throw new Error(`anthropic_${status}_permanent: ${errBody.slice(0, 200)}`);
+        }
+        throw new Error(`anthropic_${status}: ${errBody.slice(0, 200)}`);
       }
 
       const data = await r.json();
@@ -196,8 +215,9 @@ async function translatePostHtml(htmlSource, targetLang, opts = {}) {
       return html;
     } catch (e) {
       lastErr = e;
-      console.error(`[blog-translate] ${targetLang} ${slug} attempt ${attempt} failed:`, e.message);
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+      console.error(`[blog-translate] ${targetLang} ${slug} attempt ${attempt}/4 failed:`, e.message.slice(0, 200));
+      // Erro permanente — nao retentar
+      if (e.message.includes('_permanent')) break;
     }
   }
   throw lastErr || new Error('translation_failed');
