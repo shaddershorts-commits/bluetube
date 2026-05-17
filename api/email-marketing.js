@@ -97,6 +97,28 @@ module.exports = async function handler(req, res) {
         const filtered = beforeCount - eligible.length;
         if (filtered > 0) console.log(`[email-marketing] filtro plano excluiu ${filtered} (full/master ativos OU cancelados)`);
       }
+
+      // ── FILTRO RECOVERY: users em checkout_recovery pendente NAO recebem
+      //    email-marketing. Evita martelar inbox de quem ja esta numa
+      //    sequencia de recuperacao (1h/24h/72h). Quando recovery terminar
+      //    (recovered/expired/unsubscribed), volta a ser elegivel.
+      //    Comparacao case-insensitive (recovery normaliza pra lowercase no
+      //    sweep, mas subscribers/email_marketing podem ter case original).
+      if (eligible.length > 0) {
+        const emails = eligible.map(e => e.email).filter(Boolean);
+        const inList = emails.map(encodeURIComponent).join(',');
+        const recR = await fetch(
+          `${SU}/rest/v1/checkout_recovery?email=in.(${inList})&status=eq.pending&select=email`,
+          { headers: H }
+        );
+        const pendingSet = new Set(recR.ok ? (await recR.json()).map(r => String(r.email).toLowerCase()) : []);
+        if (pendingSet.size > 0) {
+          const beforeRecovery = eligible.length;
+          eligible = eligible.filter(u => !pendingSet.has(String(u.email).toLowerCase()));
+          const filteredRec = beforeRecovery - eligible.length;
+          if (filteredRec > 0) console.log(`[email-marketing] filtro recovery excluiu ${filteredRec} (em recuperacao de checkout pendente)`);
+        }
+      }
     }
 
     // ── GET PLATFORM STATS for FOMO email ───────────────────────────────

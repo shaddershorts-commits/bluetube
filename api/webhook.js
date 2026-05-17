@@ -607,6 +607,49 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         }
       }
     } catch (e) { console.error('Pioneiros tracking error:', e.message); }
+
+    // ── CHECKOUT RECOVERY: marca status=recovered ────────────────────────
+    // Se essa sessao estava em checkout_recovery aguardando emails de
+    // recuperacao, marca como recovered pra parar a sequencia.
+    try {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/checkout_recovery?stripe_session_id=eq.${encodeURIComponent(session.id)}&status=eq.pending`,
+        {
+          method: 'PATCH',
+          headers: { ...supaHeaders, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            status: 'recovered',
+            recovered_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+    } catch (e) { console.error('checkout_recovery mark recovered error:', e.message); }
+
+    return;
+  }
+
+  // ── CHECKOUT EXPIRADO: marca recovery como expired ───────────────────────
+  // Stripe dispara esse evento ~24h apos session.created sem pagamento.
+  // Se essa sessao estava em checkout_recovery, marca expired pra parar
+  // qualquer envio futuro (defesa em profundidade ao 72h cron que tambem
+  // marca expired).
+  if (event.type === 'checkout.session.expired') {
+    const session = event.data.object;
+    try {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/checkout_recovery?stripe_session_id=eq.${encodeURIComponent(session.id)}&status=eq.pending`,
+        {
+          method: 'PATCH',
+          headers: { ...supaHeaders, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            status: 'expired',
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+      console.log(`[webhook] checkout.session.expired: ${session.id} → recovery=expired`);
+    } catch (e) { console.error('checkout_recovery mark expired error:', e.message); }
     return;
   }
 
