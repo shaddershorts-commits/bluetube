@@ -4,7 +4,8 @@
   "rewrites": [
     { "source": "/@:username", "destination": "/api/og-perfil?u=:username" },
     { "source": "/v/:videoId", "destination": "/api/og-video?v=:videoId" },
-    { "source": "/blue/(.*)", "destination": "/api/blue-app" }
+    { "source": "/blue/(.*)", "destination": "/api/blue-app" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" }
   ],
   "functions": {
     "api/transcript.js": { "maxDuration": 60 },
@@ -19,6 +20,7 @@
     "api/virais-canais.js": { "maxDuration": 300 },
     "api/virais-coletor.js": { "maxDuration": 120 },
     "api/checkout-recovery.js": { "maxDuration": 60 },
+    "api/blog-translate.js": { "maxDuration": 300 },
     "api/desafio.js": { "maxDuration": 60 },
     "api/nichos-secretos.js": { "maxDuration": 600 },
     "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
