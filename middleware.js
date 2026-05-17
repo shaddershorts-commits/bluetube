@@ -15,8 +15,10 @@
 
 // Idiomas com tradução real disponivel
 const SUPPORTED_LANGS = ['pt', 'en', 'es'];
-// Idiomas onde JA temos versao /{lang}/blog/ traduzida e commitada
-const LANGS_WITH_BLOG = ['en', 'es']; // PT eh canonica (sem prefixo)
+// Idiomas onde JA temos versao /{lang}/blog/ traduzida e commitada.
+// IMPORTANTE: comeca vazio pra evitar redirect 404. Apos backfill (FASE 8)
+// commitar /public/en/blog/* e /public/es/blog/*, atualizar pra ['en', 'es'].
+const LANGS_WITH_BLOG = []; // PT eh canonica (sem prefixo)
 
 // Mapeamento country (ISO 3166-1 alpha-2) → idioma
 const COUNTRY_TO_LANG = {
