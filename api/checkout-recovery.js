@@ -114,10 +114,43 @@ async function sweep(ctx, res) {
   const data = await r.json();
   const sessions = data.data || [];
 
-  let upserted = 0, skipped_no_email = 0, errors = 0;
+  // ── DEFESA EM PROFUNDIDADE: pre-filter quem JA E pagante ─────────────────
+  // Race condition real: user abre checkout (session.created), fecha aba, e
+  // depois assina via NOVA session que completa antes desse sweep rodar. A
+  // session antiga continua status=open no Stripe ate ~24h. Sem filtro aqui,
+  // ela entraria como pending e o filtro no send-Xh marcaria recovered
+  // depois — mas durante ~1h a row fica "incorretamente" pending, polui
+  // stats e desabilita email-marketing pro user que ja eh pagante.
+  // Fix: ja entra na tabela com status=recovered.
+  const allEmails = [...new Set(sessions
+    .map(s => (s.customer_details?.email || s.customer_email || '').toLowerCase().trim())
+    .filter(Boolean))];
+  let paidSet = new Set();
+  if (allEmails.length > 0) {
+    const inList = allEmails.map(encodeURIComponent).join(',');
+    const subR = await fetch(
+      `${SU}/rest/v1/subscribers?email=in.(${inList})&select=email,plan,plan_expires_at,is_manual`,
+      { headers: h }
+    );
+    if (subR.ok) {
+      const subArr = await subR.json();
+      const nowDt = new Date();
+      paidSet = new Set(subArr.filter(s => {
+        if (!s.plan || s.plan === 'free') return false;
+        const isManual = s.is_manual === true;
+        const notExpired = !s.plan_expires_at || new Date(s.plan_expires_at) > nowDt;
+        return isManual || notExpired;
+      }).map(s => String(s.email).toLowerCase()));
+    }
+  }
+
+  let upserted = 0, skipped_no_email = 0, errors = 0, marked_recovered = 0;
+  const nowIso = new Date().toISOString();
   for (const session of sessions) {
     const email = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim();
     if (!email) { skipped_no_email++; continue; }
+
+    const isAlreadyPaid = paidSet.has(email);
 
     const payload = {
       email,
@@ -129,9 +162,18 @@ async function sweep(ctx, res) {
       amount_total: session.amount_total || null,
       session_created_at: new Date(session.created * 1000).toISOString(),
       session_expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-      // status: nao seta — UPSERT preserva 'recovered'/'expired' se ja foi marcado por webhook
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
+    // Se ja eh pagante, ja entra como recovered (nao polui pending, nao
+    // ativa filtro de email-marketing). UPSERT preserva 'recovered'/'expired'
+    // ja existentes via merge-duplicates (so sobrescreve colunas presentes
+    // no payload — status='recovered' aqui SO se for novo OU se ja era
+    // pending; recovered/expired pre-existentes ficam recovered/expired).
+    if (isAlreadyPaid) {
+      payload.status = 'recovered';
+      payload.recovered_at = nowIso;
+      marked_recovered++;
+    }
 
     try {
       const upR = await fetch(`${SU}/rest/v1/checkout_recovery?on_conflict=stripe_session_id`, {
@@ -148,6 +190,7 @@ async function sweep(ctx, res) {
     action: 'sweep',
     total_sessions_stripe: sessions.length,
     upserted,
+    marked_recovered_already_paid: marked_recovered,
     skipped_no_email,
     errors,
     window_hours: SWEEP_WINDOW_HOURS,
