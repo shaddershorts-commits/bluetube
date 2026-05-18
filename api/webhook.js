@@ -463,6 +463,72 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     console.log(`✅ Plan ${wasInsert ? 'INSERTED' : 'UPDATED'} via UPSERT: ${emailLower} → ${plan} (${billing})`);
     const r = upsertR; // alias pra codigo legacy abaixo se houver
 
+    // ── AUTO-CANCEL SUBS ANTIGAS DO MESMO EMAIL (sistemico anti-duplicação) ──
+    // Quando user faz NOVO checkout (upgrade, conta nova, novo customer), Stripe
+    // NAO cancela subs anteriores automaticamente. Resultado real visto:
+    // bruno tinha 3 subs ativas (R$149/mes), maurilio 2 (R$120), djully 2 (R$60).
+    // Fix: apos UPSERT, lista TODAS subs ativas desse email no Stripe e cancela
+    // IMEDIATO (DELETE) as que NAO sao a sub recem-criada (subscriptionId).
+    // Cobra zero a mais — user ja tem sub nova ativa.
+    try {
+      const STRIPE_K = process.env.STRIPE_SECRET_KEY;
+      if (STRIPE_K && customerId && subscriptionId && emailLower) {
+        const stripeAuth = { Authorization: `Bearer ${STRIPE_K}` };
+        // Lista TODOS customers desse email no Stripe (multiplos possiveis)
+        const custList = await fetch(
+          `https://api.stripe.com/v1/customers?email=${encodeURIComponent(emailLower)}&limit=50`,
+          { headers: stripeAuth }
+        );
+        const custData = custList.ok ? await custList.json() : { data: [] };
+        const customers = (custData.data || []).filter(c => !c.deleted);
+
+        const ACTIVE_LIKE = ['active', 'trialing', 'past_due'];
+        const stale = [];
+        for (const c of customers) {
+          const sListR = await fetch(
+            `https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=all&limit=20`,
+            { headers: stripeAuth }
+          );
+          if (!sListR.ok) continue;
+          const sList = await sListR.json();
+          for (const s of (sList.data || [])) {
+            if (!ACTIVE_LIKE.includes(s.status)) continue;
+            if (s.id === subscriptionId) continue; // a NOVA — preservar
+            stale.push({ id: s.id, customer: c.id, amount: s.items?.data?.[0]?.price?.unit_amount, currency: s.items?.data?.[0]?.price?.currency });
+          }
+        }
+
+        if (stale.length > 0) {
+          console.warn(`⚠️  ${emailLower}: encontradas ${stale.length} sub(s) antiga(s) ativas. Cancelando IMEDIATO pra evitar cobranca duplicada.`);
+          for (const s of stale) {
+            try {
+              const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
+                method: 'DELETE',
+                headers: stripeAuth,
+              });
+              if (delR.ok) {
+                console.log(`✅ Auto-cancel sub antiga: ${s.id} (cust ${s.customer}, ${(s.amount/100).toFixed(2)} ${s.currency})`);
+                notifyStripe(`🛡️ Auto-cancel sub duplicada — ${emailLower}`, [
+                  ['Cliente', emailLower],
+                  ['Sub antiga cancelada', s.id],
+                  ['Sub nova mantida', subscriptionId],
+                  ['Plano', plan.toUpperCase()],
+                  ['Motivo', 'Novo checkout detectou sub paralela ativa (auto-blindagem)'],
+                ]).catch(() => {});
+              } else {
+                console.error(`❌ Falha auto-cancel ${s.id}: ${delR.status}`);
+              }
+            } catch (e) {
+              console.error(`❌ Auto-cancel error ${s.id}:`, e.message);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[auto-cancel subs antigas] erro:', e.message);
+      // fail-soft: nao quebra o fluxo principal
+    }
+
     // Notificacao Telegram com valor REAL (moeda e cupom inclusos).
     const _curSym = { brl:'R$', usd:'$', eur:'€', gbp:'£', cad:'C$', aud:'A$' }[stripeCurrency] || stripeCurrency.toUpperCase()+' ';
     const _valFmt = stripeCurrency === 'brl'
