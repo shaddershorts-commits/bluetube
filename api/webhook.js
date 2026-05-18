@@ -855,26 +855,71 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const invoice = event.data.object;
     const customerId = invoice.customer;
     const attemptCount = invoice.attempt_count;
+    const invoiceSubId = invoice.subscription || null;
 
-    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`, { headers: supaHeaders });
+    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan,stripe_subscription_id`, { headers: supaHeaders });
     const subs = await subRes.json();
     const email = subs?.[0]?.email || 'desconhecido';
+    const subscriptionId = subs?.[0]?.stripe_subscription_id || invoiceSubId;
 
-    console.log(`⚠️ Payment failed: ${email} — tentativa ${attemptCount}/3`);
+    // Skip one-off invoices (sem subscription) — nao sao recorrencia, nao devem afetar plan.
+    if (!invoiceSubId) {
+      console.log(`[payment_failed] skip one-off invoice ${invoice.id} (cust=${customerId})`);
+      return;
+    }
+
+    // Threshold: downgrade na 2a tentativa (~3 dias do dunning), nao na 3a (~7 dias).
+    // Reduz janela "zumbi pagante" (DB pago + Stripe past_due) sem rebaixar em glitch isolado da 1a falha.
+    const DOWNGRADE_AT = 2;
+    const willDowngrade = attemptCount >= DOWNGRADE_AT;
+
+    console.log(`⚠️ Payment failed: ${email} — tentativa ${attemptCount}, downgrade@${DOWNGRADE_AT}`);
 
     notifyStripe(`⚠️ Pagamento falhou — ${email}`, [
       ['Cliente', email],
       ['Plano', subs?.[0]?.plan?.toUpperCase() || '—'],
-      ['Tentativa', `${attemptCount}/3`],
-      ['Status', attemptCount >= 3 ? '🔴 Downgrade automático' : '🟡 Aguardando retry'],
+      ['Tentativa', `${attemptCount}`],
+      ['Status', willDowngrade ? '🔴 Downgrade + sub cancelada' : '🟡 Aguardando retry'],
       ['Stripe ID', customerId || '—'],
     ]).catch(() => {});
 
-    if (attemptCount >= 3) {
+    if (willDowngrade) {
+      // 1) DELETE sub no Stripe — zera dunning (sem isso o Stripe continua tentando ate ~7d).
+      const STRIPE_SECRET_F = process.env.STRIPE_SECRET_KEY;
+      if (subscriptionId && STRIPE_SECRET_F) {
+        try {
+          const delBody = new URLSearchParams({
+            'cancellation_details[comment]': `auto-downgrade payment_failed attempt=${attemptCount}`,
+          });
+          const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${STRIPE_SECRET_F}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: delBody.toString(),
+          });
+          if (!delR.ok && delR.status !== 404) {
+            console.warn(`[payment_failed] DELETE sub ${subscriptionId} retornou ${delR.status} (esperado 200/404)`);
+          } else {
+            console.log(`🛑 Sub ${subscriptionId} cancelada no Stripe (status ${delR.status}) — ${email}`);
+          }
+        } catch (e) {
+          console.error(`[payment_failed] erro DELETE sub:`, e.message);
+        }
+      }
+
+      // 2) DB → free (escopo: esse customer_id especifico, nao toda a row do email).
       await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
         method: 'PATCH',
         headers: supaHeaders,
-        body: JSON.stringify({ plan: 'free', plan_expires_at: null, updated_at: new Date().toISOString() })
+        body: JSON.stringify({
+          plan: 'free',
+          plan_expires_at: null,
+          stripe_subscription_id: null,
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString()
+        })
       });
       console.log(`⬇️ Downgrade por falha de pagamento: ${email}`);
     }
