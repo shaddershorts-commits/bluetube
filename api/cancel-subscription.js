@@ -1,8 +1,20 @@
 // api/cancel-subscription.js
-// Usuario cancela a propria assinatura. Chamamos a API do Stripe com
-// cancel_at_period_end=true — assinatura para de cobrar no proximo ciclo,
-// mas o usuario mantem acesso ate o fim do periodo pago. O webhook
-// customer.subscription.updated depois atualiza o plan_expires_at final.
+// Usuario cancela a propria assinatura.
+//
+// FIX 2026-05-18: Refator pra cancelar TODAS subs ativas no Stripe pra esse
+// email — nao so a `subscribers.stripe_subscription_id`. Razao: alguns users
+// tem MULTIPLAS subs ativas em customers Stripe diferentes (bug historico de
+// "duplo customer" — primeira sub criada, depois user fez novo checkout com
+// novo customer, mas a 1a sub continuou ativa e renovando). Caso real:
+// bruno tinha 3 subs ativas, ferques 2.
+//
+// Strategy:
+//   1. Lista TODOS customers no Stripe pra esse email
+//   2. Pra CADA customer, lista subs ativas
+//   3. Cancela CADA sub via cancel_at_period_end=true (preserva acesso pago)
+//   4. Update Supabase pra refletir total
+//
+// Garante: nenhuma sub "orfa" fica cobrando depois que user cancela.
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,7 +39,7 @@ export default async function handler(req, res) {
     });
     if (!userRes.ok) return res.status(401).json({ error: 'Invalid token' });
     const user = await userRes.json();
-    const email = user.email;
+    const email = (user.email || '').toLowerCase().trim();
     if (!email) return res.status(401).json({ error: 'Could not identify user' });
 
     const supaHeaders = {
@@ -36,7 +48,7 @@ export default async function handler(req, res) {
       'Authorization': `Bearer ${SUPABASE_KEY}`
     };
 
-    // 2. Busca assinatura do usuario no Supabase
+    // 2. Busca subscriber no Supabase
     const subRes = await fetch(
       `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=stripe_subscription_id,stripe_customer_id,plan,is_manual,plan_expires_at`,
       { headers: supaHeaders }
@@ -45,10 +57,53 @@ export default async function handler(req, res) {
     const subs = await subRes.json();
     const sub = subs?.[0];
 
-    // Plano manual (admin deu de graca), ja free, ou sem subscription Stripe:
-    // so rebaixa no Supabase mesmo — nao ha assinatura na Stripe pra cancelar
-    const noStripeSub = !sub || sub.plan === 'free' || sub.is_manual || !sub.stripe_subscription_id;
-    if (noStripeSub) {
+    // 3. SEMPRE busca TODOS customers no Stripe pra esse email (multiplos possíveis)
+    const stripeAuth = { Authorization: `Bearer ${STRIPE_SECRET}` };
+    const custList = await fetch(
+      `https://api.stripe.com/v1/customers?email=${encodeURIComponent(email)}&limit=100`,
+      { headers: stripeAuth }
+    );
+    const custData = custList.ok ? await custList.json() : { data: [] };
+    const customers = (custData.data || []).filter(c => !c.deleted);
+
+    // Pra cada customer, lista subs ATIVAS (active|trialing|past_due — todas
+    // que ainda podem retentar cobranca). Logar has_more pra diagnostico futuro.
+    if (custData.has_more) {
+      console.warn(`[cancel] ${email}: customers/list has_more=true — pode ter customers truncados`);
+    }
+    const allActiveSubs = [];
+    const ACTIVE_LIKE = ['active', 'trialing', 'past_due'];
+    for (const c of customers) {
+      const sListR = await fetch(
+        `https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=all&limit=100`,
+        { headers: stripeAuth }
+      );
+      if (!sListR.ok) continue;
+      const sList = await sListR.json();
+      for (const s of (sList.data || [])) {
+        if (!ACTIVE_LIKE.includes(s.status)) continue;
+        allActiveSubs.push({ sub_id: s.id, customer: c.id, current_period_end: s.current_period_end });
+      }
+    }
+
+    // ADICIONAL: pega tambem sub do DB se nao caiu no allActiveSubs (defesa em profundidade)
+    if (sub?.stripe_subscription_id && !allActiveSubs.find(s => s.sub_id === sub.stripe_subscription_id)) {
+      try {
+        const r = await fetch(
+          `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(sub.stripe_subscription_id)}`,
+          { headers: stripeAuth }
+        );
+        if (r.ok) {
+          const s = await r.json();
+          if (s.status === 'active' || s.status === 'trialing' || s.status === 'past_due') {
+            allActiveSubs.push({ sub_id: s.id, customer: s.customer, current_period_end: s.current_period_end });
+          }
+        }
+      } catch {}
+    }
+
+    // 4. Se manual OU sem nenhuma sub ativa: so rebaixa DB
+    if (sub?.is_manual || allActiveSubs.length === 0) {
       await fetch(
         `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
         {
@@ -58,6 +113,7 @@ export default async function handler(req, res) {
             plan: 'free',
             plan_expires_at: null,
             cancel_at_period_end: false,
+            stripe_subscription_id: null,
             updated_at: new Date().toISOString()
           })
         }
@@ -67,63 +123,47 @@ export default async function handler(req, res) {
         email,
         plan: 'free',
         stripe_cancelled: false,
-        reason: sub?.is_manual ? 'plano_manual' : 'sem_assinatura_stripe'
+        canceled_subs_count: 0,
+        reason: sub?.is_manual ? 'plano_manual' : 'sem_assinatura_stripe_ativa'
       });
     }
 
-    // 3. Cancela agendado na Stripe — cobranca para no proximo ciclo,
-    //    acesso mantido ate fim do periodo pago
-    const stripeRes = await fetch(
-      `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(sub.stripe_subscription_id)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${STRIPE_SECRET}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: 'cancel_at_period_end=true'
-      }
-    );
-    const stripeData = await stripeRes.json();
-
-    if (!stripeRes.ok) {
-      console.error('[cancel-subscription] Stripe error:', stripeData.error);
-      // Se a subscription nao existe mais na Stripe (ja cancelada/ausente),
-      // rebaixa no Supabase imediatamente — senao ficaria em limbo
-      if (stripeData.error?.code === 'resource_missing') {
-        await fetch(
-          `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
+    // 5. Cancela CADA sub ativa via cancel_at_period_end=true
+    const cancelResults = [];
+    let lastPeriodEnd = null;
+    for (const s of allActiveSubs) {
+      try {
+        const cancelR = await fetch(
+          `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(s.sub_id)}`,
           {
-            method: 'PATCH',
-            headers: { ...supaHeaders, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({
-              plan: 'free',
-              plan_expires_at: null,
-              cancel_at_period_end: false,
-              updated_at: new Date().toISOString()
-            })
+            method: 'POST',
+            headers: {
+              ...stripeAuth,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'cancel_at_period_end=true'
           }
         );
-        return res.status(200).json({
-          success: true,
-          email,
-          plan: 'free',
-          stripe_cancelled: false,
-          reason: 'subscription_missing_on_stripe'
-        });
+        const cancelData = await cancelR.json();
+        if (cancelR.ok) {
+          cancelResults.push({ sub_id: s.sub_id, ok: true, current_period_end: cancelData.current_period_end });
+          if (cancelData.current_period_end && (!lastPeriodEnd || cancelData.current_period_end > lastPeriodEnd)) {
+            lastPeriodEnd = cancelData.current_period_end;
+          }
+        } else {
+          cancelResults.push({ sub_id: s.sub_id, ok: false, error: cancelData.error?.message });
+        }
+      } catch (e) {
+        cancelResults.push({ sub_id: s.sub_id, ok: false, error: e.message });
       }
-      return res.status(502).json({
-        error: 'Falha ao cancelar no Stripe: ' + (stripeData.error?.message || 'unknown')
-      });
     }
 
-    // 4. Stripe confirmou. O webhook customer.subscription.updated vai atualizar
-    //    plan_expires_at depois — mas gravamos agora tambem pra UI nao esperar.
-    //    plan permanece ativo ate periodEnd (get-plan.js respeita plan_expires_at).
-    const periodEnd = stripeData.current_period_end
-      ? new Date(stripeData.current_period_end * 1000)
-      : null;
+    const successCount = cancelResults.filter(r => r.ok).length;
+    const failCount = cancelResults.filter(r => !r.ok).length;
 
+    // 6. Update DB — usa o periodEnd MAIS DISTANTE entre todas as subs canceladas
+    //    (user mantem acesso ate a ultima expirar)
+    const periodEnd = lastPeriodEnd ? new Date(lastPeriodEnd * 1000) : null;
     if (periodEnd) {
       await fetch(
         `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
@@ -139,21 +179,27 @@ export default async function handler(req, res) {
       );
     }
 
-    console.log(`[cancel] ${email} — Stripe sub ${sub.stripe_subscription_id} agendado pra cancelar em ${periodEnd?.toISOString()}`);
+    console.log(`[cancel] ${email} — ${successCount} sub(s) cancelada(s) no Stripe (period end: ${periodEnd?.toISOString() || 'N/A'})`);
+    if (failCount > 0) {
+      console.error(`[cancel] ${email} — ${failCount} sub(s) falharam:`, cancelResults.filter(r => !r.ok));
+    }
 
-    // Email de confirmacao pro usuario — evita chargeback/estorno quando o
-    // cliente fecha a tela rapido sem ler a mensagem de sucesso. Fire-and-forget.
+    // 7. Email de confirmacao (fire-and-forget)
     import('./_helpers/cancellationEmail.js')
-      .then((m) => m.sendCancellationEmail(email, sub.plan, periodEnd?.toISOString()))
+      .then((m) => m.sendCancellationEmail(email, sub?.plan || 'unknown', periodEnd?.toISOString()))
       .catch((e) => console.error('[cancel-subscription] cancellationEmail:', e.message));
 
     return res.status(200).json({
       success: true,
       email,
-      plan: sub.plan, // plano atual mantido ate fim do periodo
+      plan: sub?.plan || 'unknown',
       plan_expires_at: periodEnd?.toISOString() || null,
-      stripe_cancelled: true,
-      message: 'Cancelamento agendado. Voce mantem acesso ate o fim do periodo pago.'
+      stripe_cancelled: successCount > 0,
+      canceled_subs_count: successCount,
+      failed_subs_count: failCount,
+      message: successCount > 1
+        ? `Cancelamos ${successCount} assinaturas no total. Você mantém acesso até o fim do período pago.`
+        : 'Cancelamento agendado. Você mantém acesso até o fim do período pago.',
     });
   } catch (err) {
     console.error('[cancel-subscription] error:', err);

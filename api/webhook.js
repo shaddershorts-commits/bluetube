@@ -420,10 +420,22 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       ? parseFloat((session.total_details.amount_discount / 100).toFixed(2)) : 0;
     const billingPeriod = billing === 'annual' ? 'annual' : 'monthly';
 
-    const patchR = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
-      method: 'PATCH',
-      headers: { ...supaHeaders, 'Prefer': 'return=representation' },
+    // ── UPSERT ATÔMICO via PostgREST on_conflict=email ──────────────────────
+    // FIX 2026-05-18: antes usava PATCH + fallback POST que tinha race condition
+    // silenciosa (await patchR.json() podia falhar em 204/4xx vazios → throw
+    // sem o POST rodar → subscriber órfão). Caso real: pilarskimatheus@gmail.com
+    // pagou em 17/abr mas subscriber NUNCA foi criado, ficou zumbi pagante por
+    // 30 dias até renovação. Agora UPSERT atômico — sem janela de erro.
+    // Email normalizado lowercase pra evitar case-mismatch.
+    const emailLower = String(email).toLowerCase().trim();
+    const upsertR = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?on_conflict=email`, {
+      method: 'POST',
+      headers: {
+        ...supaHeaders,
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
       body: JSON.stringify({
+        email: emailLower,
         plan,
         is_manual: false,
         stripe_customer_id: customerId,
@@ -436,43 +448,20 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         coupon_discount: couponDiscount,
         billing_period: billingPeriod,
         updated_at: new Date().toISOString()
+        // Nota: NAO inclui created_at — preserva o original se subscriber ja existir.
+        // Se for INSERT novo, o DEFAULT NOW() do schema preenche.
       })
     });
-    const patchData = await patchR.json();
 
-    let r;
-    if (Array.isArray(patchData) && patchData.length > 0) {
-      r = patchR;
-      console.log(`✅ Plan updated via PATCH: ${email} → ${plan}`);
-    } else {
-      r = await fetch(`${SUPABASE_URL}/rest/v1/subscribers`, {
-        method: 'POST',
-        headers: { ...supaHeaders, 'Prefer': 'return=representation' },
-        body: JSON.stringify({
-          email,
-          plan,
-          is_manual: false,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          plan_expires_at: expiresAt,
-          cancel_at_period_end: false,
-          amount_paid: paidAmount,
-          currency: stripeCurrency,
-          coupon_applied: couponApplied,
-          coupon_discount: couponDiscount,
-          billing_period: billingPeriod,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-      });
+    if (!upsertR.ok) {
+      const err = await upsertR.text();
+      throw new Error('Supabase UPSERT failed: ' + upsertR.status + ' ' + err.slice(0, 300));
     }
 
-    if (!r.ok) {
-      const err = await r.text();
-      throw new Error('Supabase upsert: ' + err.slice(0, 200));
-    }
-
-    console.log(`✅ Plan activated: ${email} → ${plan} (${billing})`);
+    const upsertData = await upsertR.json().catch(() => []);
+    const wasInsert = Array.isArray(upsertData) && upsertData[0]?.created_at === upsertData[0]?.updated_at;
+    console.log(`✅ Plan ${wasInsert ? 'INSERTED' : 'UPDATED'} via UPSERT: ${emailLower} → ${plan} (${billing})`);
+    const r = upsertR; // alias pra codigo legacy abaixo se houver
 
     // Notificacao Telegram com valor REAL (moeda e cupom inclusos).
     const _curSym = { brl:'R$', usd:'$', eur:'€', gbp:'£', cad:'C$', aud:'A$' }[stripeCurrency] || stripeCurrency.toUpperCase()+' ';
