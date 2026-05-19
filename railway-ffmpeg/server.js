@@ -1028,7 +1028,15 @@ app.post('/youtube-process', async (req, res) => {
 
         // KEEP proxy-download URL — ele tem fallback yt-dlp interno pra 403.
         // Pra URLs diretas (não proxy), também faz fetch direto.
-        const chainUrl = authD.url;
+        // Adiciona &yt_url=<original> em URLs proxy-download — ativa o
+        // fallback yt-dlp interno (linha 457) quando googlevideo dá 403
+        // IP-bound (signed URLs do YouTube sao IP-locked, retornadas por
+        // ytstream/RapidAPI no IP da Vercel, falham se baixadas do Railway).
+        // api/auth.js nao passa yt_url (intocavel); injetamos aqui.
+        let chainUrl = authD.url;
+        if (chainUrl.includes('/proxy-download?') && !chainUrl.includes('yt_url=')) {
+          chainUrl += '&yt_url=' + encodeURIComponent(youtube_url);
+        }
         const candidateFile = path.join(dir, 'in.mp4');
         const dlCtrl = new AbortController();
         const dlTimer = setTimeout(() => dlCtrl.abort(), 120000);
@@ -1072,8 +1080,13 @@ app.post('/youtube-process', async (req, res) => {
     // ── 1b. FALLBACK YT-DLP (com cookies, último recurso) ────────────────
     if (!inFile) {
       log('try yt-dlp');
+      // Seletor PERMISSIVO (sincronizado com ytdlpFallbackStream:641).
+      // Os clients tv_embedded/android_vr frequentemente so retornam format 18
+      // (360p mp4 combinado, sem streams DASH separados). Seletor antigo
+      // pedia DASH (bv*+ba) e dava "Requested format is not available".
+      // Agora: tenta MP4 combinado <=1080 -> DASH <=1080 -> best [2026-05-19]
       const ytArgs = [
-        '-f', 'bv*[height<=1080]+ba/bv*[height<=1080]+ba[ext=m4a]/best[height<=1080]/bv*+ba/best',
+        '-f', 'best[ext=mp4][height<=1080]/best[height<=1080]/bv*[height<=1080]+ba/bv*+ba/best',
         '--merge-output-format', 'mp4',
         '--no-playlist',
         '--no-warnings',
