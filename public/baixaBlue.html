@@ -169,6 +169,17 @@ footer a{color:var(--neon);text-decoration:none}
   </div>
 </nav>
 
+<!-- BANNER ATUALIZAÇÃO -->
+<div id="bbMaintenanceBanner" style="max-width:920px;margin:18px auto 0;padding:20px 24px;border-radius:14px;background:linear-gradient(135deg,rgba(255,170,0,.12),rgba(255,90,0,.08));border:1px solid rgba(255,170,0,.4);box-shadow:0 8px 32px rgba(255,140,0,.15);text-align:center;font-family:var(--font),system-ui,sans-serif">
+  <div style="font-size:32px;margin-bottom:6px">🔧</div>
+  <div style="font-size:17px;font-weight:700;color:#ffb84d;margin-bottom:8px;letter-spacing:.3px">BaixaBlue em atualização</div>
+  <div style="font-size:14px;color:rgba(255,255,255,.78);line-height:1.55;max-width:680px;margin:0 auto">
+    Estamos preparando uma <strong style="color:#ffd089">nova versão</strong> mais robusta e estável.<br>
+    A ferramenta está <strong>temporariamente indisponível</strong> — em breve voltará no ar com melhorias.<br>
+    <span style="font-size:12px;color:rgba(255,255,255,.55);display:inline-block;margin-top:6px">Obrigado pela paciência! 💙</span>
+  </div>
+</div>
+
 <!-- HERO -->
 <section class="hero">
   <div class="hero-badge"><span class="badge-dot"></span>Exclusivo Master · YouTube · TikTok · Instagram · Snapchat · e mais</div>
@@ -1158,6 +1169,43 @@ function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=
   inp.addEventListener('input',()=>_save('bt_baixa',inp.value));
 })();
 </script>
+
+<!-- ─────────────────────────────────────────────────────────
+     BAIXABLUE MAINTENANCE MODE (temporario — remover quando voltar)
+     Desabilita TODAS as interacoes de download/upload.
+     ───────────────────────────────────────────────────────── -->
+<script>
+(function bbMaintenance(){
+  const MSG = '🔧 BaixaBlue está em atualização. Estamos preparando uma nova versão mais robusta. Em breve a ferramenta voltará no ar — obrigado pela paciência!';
+  function disableEl(el, hint){
+    if (!el) return;
+    el.disabled = true;
+    el.style.opacity = '0.4';
+    el.style.cursor = 'not-allowed';
+    if (hint) el.title = hint;
+  }
+  function block(fn){ return function(e){ if(e){e.preventDefault();e.stopPropagation();} alert(MSG); return false; }; }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // Inputs/botoes
+    disableEl(document.getElementById('videoUrl'),    MSG);
+    disableEl(document.getElementById('fetchBtn'),    MSG);
+    disableEl(document.getElementById('uploadInput'), MSG);
+    disableEl(document.getElementById('btnProcessUpload'), MSG);
+
+    // Drop zone
+    const drop = document.getElementById('uploadDrop');
+    if (drop) { drop.style.opacity = '0.4'; drop.style.cursor = 'not-allowed'; drop.onclick = block(); }
+
+    // Override funcoes principais (caso inline onclick continue)
+    if (typeof window.startDownload === 'function')   window.startDownload   = block(window.startDownload);
+    if (typeof window.processUpload === 'function')   window.processUpload   = block(window.processUpload);
+    if (typeof window.handleUploadSelect === 'function') window.handleUploadSelect = block();
+    if (typeof window.processarYoutube === 'function') window.processarYoutube = block();
+  });
+})();
+</script>
+
 <script src="/toolbar.js" defer></script>
 </body>
 </html>
