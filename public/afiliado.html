@@ -882,6 +882,10 @@ function renderDash(data){
           statusBadge=` <span style="font-size:9px;background:rgba(239,68,68,.18);color:#fca5a5;padding:2px 6px;border-radius:4px;font-weight:600" title="Assinante pediu reembolso — comissao revertida">↩ reembolsada</span>`;
           commCell=`<span style="color:#fca5a5;text-decoration:line-through">${commCell}</span>`;
           rowStyle='opacity:.55';
+        } else if(comm.status==='cancelled' || comm.status==='cancelled_after_payout'){
+          statusBadge=` <span style="font-size:9px;background:rgba(249,115,22,.18);color:#fb923c;padding:2px 6px;border-radius:4px;font-weight:600" title="Assinante cancelou ou não renovou — comissão não é mais paga">🚫 cancelou</span>`;
+          commCell=`<span style="color:#fb923c;text-decoration:line-through">${commCell}</span>`;
+          rowStyle='opacity:.55';
         } else if(comm.admin_decision==='rejected'){
           statusBadge=` <span style="font-size:9px;background:rgba(239,68,68,.18);color:#fca5a5;padding:2px 6px;border-radius:4px;font-weight:600">✕ rejeitada</span>`;
           commCell=`<span style="color:#fca5a5;text-decoration:line-through">${commCell}</span>`;
@@ -890,7 +894,15 @@ function renderDash(data){
       }
       return `<tr style="${rowStyle}"><td>${me(c.converted_email)}</td><td><span class="bp bp-${c.plan||'free'}">${(c.plan||'free').toUpperCase()}</span>${cupomBadge}${statusBadge}</td><td style="font-size:11px">${tl[c.conversion_type]||c.conversion_type}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">${pagoCell}</td><td style="font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600">${commCell}</td><td style="font-family:var(--mono);font-size:11px">${fd(c.converted_at)}</td></tr>`;
     }).join('');
-    cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Pago</th><th>Comissão</th><th>Data</th></tr></thead><tbody>${rows}</tbody></table><div style="font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic">💡 Quando o assinante usa cupom, a comissão é calculada sobre o valor pago (e não sobre o preço cheio).</div>`;
+    // Conta assinantes que cancelaram (pra acompanhamento — comissao nao paga)
+    const canceladosCount=conversions.filter(c=>{
+      const cm=commByKey[`${c.converted_email}|${c.plan}`];
+      return cm && (cm.status==='cancelled' || cm.status==='cancelled_after_payout');
+    }).length;
+    const canceladosTip=canceladosCount>0
+      ? `<div style="font-size:11px;color:#fb923c;margin-top:8px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.25);border-radius:8px;padding:8px 12px"><strong>🚫 ${canceladosCount} ${canceladosCount===1?'assinante cancelou':'assinantes cancelaram'}</strong> — essas comissões não entram no seu saldo a receber. Indicações ativas continuam contando normalmente.</div>`
+      : '';
+    cvEl.innerHTML=`<table class="conv-table"><thead><tr><th>Email</th><th>Plano</th><th>Evento</th><th>Pago</th><th>Comissão</th><th>Data</th></tr></thead><tbody>${rows}</tbody></table>${canceladosTip}<div style="font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic">💡 Quando o assinante usa cupom, a comissão é calculada sobre o valor pago (e não sobre o preço cheio).</div>`;
   }
   else cvEl.innerHTML='<div style="color:var(--text-dim);font-size:13px">Nenhuma conversão ainda. Compartilhe seu link!</div>';
   // Saques (secao independente — nao bloqueia render se falhar)

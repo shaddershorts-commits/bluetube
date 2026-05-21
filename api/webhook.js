@@ -922,6 +922,18 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         })
       });
       console.log(`⬇️ Downgrade por falha de pagamento: ${email}`);
+
+      // 3) Cancela comissao de afiliado — renovacao falhou, afiliado nao recebe
+      //    por quem parou de pagar. action=cancel e idempotente (skip se ja
+      //    cancelada), entao o subscription.deleted posterior nao re-processa.
+      if (email && email !== 'desconhecido') {
+        const SITE_URL_F = process.env.SITE_URL || 'https://bluetubeviral.com';
+        fetch(`${SITE_URL_F}/api/affiliate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cancel', email })
+        }).catch(() => {});
+      }
     }
     return;
   }
