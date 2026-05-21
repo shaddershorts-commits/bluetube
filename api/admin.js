@@ -1205,8 +1205,9 @@ async function marcarSaquePagoAction(req, res, { SUPABASE_URL, headers }) {
           updated_at: new Date().toISOString(),
         }),
       });
-      // Marca commissions pending como paid
-      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending`, {
+      // Marca commissions pending como paid — SO as pagaveis (nao-flagged OU
+      // aprovadas). Flagged retidas em analise NAO viram paid (nao saíram no Pix).
+      await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'paid' }),
@@ -1267,7 +1268,7 @@ async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
 
     // 2. Soma commissions pending (não flaggadas)
     const cR = await fetch(
-      `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&status=eq.pending&flagged=eq.false&select=id,commission_amount`,
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=id,commission_amount`,
       { headers }
     );
     const pendings = cR.ok ? await cR.json() : [];
