@@ -13,7 +13,13 @@ set -e
 
 if [ -n "$BGUTIL_POT_BASE_URL" ]; then
   mkdir -p /root/.config/yt-dlp
-  echo "--extractor-args \"youtubepot-bgutilhttp:base_url=$BGUTIL_POT_BASE_URL\"" > /root/.config/yt-dlp/config
+  # --plugin-dirs: o yt-dlp standalone NAO escaneia ~/.config/yt-dlp/plugins
+  # automaticamente (debug mostrava "Plugin directories: none"). Apontar
+  # explicito pro dir que contem o pacote yt_dlp_plugins faz o provider carregar.
+  {
+    echo "--plugin-dirs /root/.config/yt-dlp/plugins"
+    echo "--extractor-args \"youtubepot-bgutilhttp:base_url=$BGUTIL_POT_BASE_URL\""
+  } > /root/.config/yt-dlp/config
   echo "[entrypoint] PO Token provider configurado: $BGUTIL_POT_BASE_URL"
 else
   echo "[entrypoint] BGUTIL_POT_BASE_URL nao definida — yt-dlp sem PO token (comportamento atual)"

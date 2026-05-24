@@ -329,7 +329,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r6-pot-debug',
+      build: 'r7-pot-plugindir',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
