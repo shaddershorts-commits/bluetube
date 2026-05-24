@@ -29,6 +29,21 @@ RUN echo "yt-dlp build date: ${YTDLP_BUILD_DATE}" \
   && chmod +x /usr/local/bin/yt-dlp \
   && yt-dlp --version
 
+# Plugin PO Token (bgutil) pro yt-dlp standalone. Gera proof-of-origin token
+# que derruba o "Sign in to confirm you're not a bot" SEM depender de cookies
+# que expiram. O provider que gera os tokens roda como SERVICO SEPARADO no
+# Railway (imagem oficial brainicism/bgutil-ytdlp-pot-provider) — aqui so
+# instalamos o plugin que fala com ele. URL do provider vem via env
+# BGUTIL_POT_BASE_URL (injetada no config pelo entrypoint.sh).
+# Se o download do plugin falhar, o build falha e o Railway mantem o deploy
+# anterior no ar (sem downtime).
+RUN mkdir -p /root/.config/yt-dlp/plugins \
+  && curl -fsSL -o /tmp/bgutil-plugin.zip \
+    https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip \
+  && unzip -o /tmp/bgutil-plugin.zip -d /root/.config/yt-dlp/plugins/ \
+  && rm /tmp/bgutil-plugin.zip \
+  && (yt-dlp -v 2>&1 | grep -iE "plugin|bgutil|pot" | head -5 || true)
+
 # Baixa fontes reais que o BlueEditor usa nos estilos (Bebas Neue + Oswald + Anton)
 # Google Fonts serve direto sem auth. Instalamos em /usr/share/fonts/truetype/bt/
 RUN mkdir -p /usr/share/fonts/truetype/bt && cd /tmp \
@@ -50,8 +65,11 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY server.js ./
+COPY entrypoint.sh ./
+# Strip CR (caso o arquivo tenha sido salvo com CRLF no Windows) + exec bit
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 ENV PORT=3000
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["sh", "/app/entrypoint.sh"]
