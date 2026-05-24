@@ -40,6 +40,13 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+// PO Token: o yt-dlp standalone NAO aplica --plugin-dirs vindo do config file
+// na busca de plugins (debug: "Plugin directories: none"). Precisa ser arg CLI.
+// Injetamos esses args nas chamadas yt-dlp quando o provider esta configurado.
+const POT_CLI_ARGS = process.env.BGUTIL_POT_BASE_URL
+  ? ['--plugin-dirs', '/root/.config/yt-dlp/plugins']
+  : [];
+
 async function downloadFile(url, dest) {
   const writer = fs.createWriteStream(dest);
   const response = await axios.get(url, { responseType: 'stream', timeout: 60000 });
@@ -329,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r7-pot-plugindir',
+      build: 'r8-pot-cli',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -556,6 +563,7 @@ app.get('/cookies-health', async (req, res) => {
   }
 
   const args = [
+    ...POT_CLI_ARGS,
     '--cookies', jobCookies,
     '--skip-download',
     '--print', 'id',
@@ -636,7 +644,7 @@ app.get('/pot-debug', async (req, res) => {
   } catch (e) { out.plugin_files = 'err:' + e.message; }
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   await new Promise((resolve) => {
-    const p = spawn('yt-dlp', ['-v', '--skip-download', '--print', 'id', '--no-playlist', '--socket-timeout', '15', testUrl]);
+    const p = spawn('yt-dlp', ['-v', ...POT_CLI_ARGS, '--skip-download', '--print', 'id', '--no-playlist', '--socket-timeout', '15', testUrl]);
     let so = '', se = '';
     p.stdout.on('data', d => so += d.toString());
     p.stderr.on('data', d => se += d.toString());
@@ -675,6 +683,7 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
     // android_testsuite (test client menos restrito), ios (mais agressivo no fim).
     // REMOVIDOS: web_safari (triggava bot-check), android_creator (precisa auth).
     const ytArgs = [
+      ...POT_CLI_ARGS,
       // Seletor permissivo: tenta MP4 com video+audio combinados primeiro
       // (single file, sem merge), depois separados (precisa ffmpeg merge),
       // depois qualquer best disponível. Alguns clients só retornam format 18
@@ -1127,6 +1136,7 @@ app.post('/youtube-process', async (req, res) => {
       // pedia DASH (bv*+ba) e dava "Requested format is not available".
       // Agora: tenta MP4 combinado <=1080 -> DASH <=1080 -> best [2026-05-19]
       const ytArgs = [
+        ...POT_CLI_ARGS,
         '-f', 'best[ext=mp4][height<=1080]/best[height<=1080]/bv*[height<=1080]+ba/bv*+ba/best',
         '--merge-output-format', 'mp4',
         '--no-playlist',
