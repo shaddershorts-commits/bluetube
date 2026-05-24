@@ -329,7 +329,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r6-pot-token',
+      build: 'r6-pot-debug',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -611,6 +611,47 @@ app.get('/yt-cookies-status', (req, res) => {
     };
   }
   res.json({ env_present: envPresent, env_size: envSize, env_starts: envStarts, file: fileInfo });
+});
+
+// DEBUG PO Token — diagnostica se o plugin carregou, se o config foi escrito
+// e se o provider esta sendo alcancado. Captura yt-dlp -v COMPLETO.
+app.get('/pot-debug', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const out = {};
+  out.BGUTIL_POT_BASE_URL = process.env.BGUTIL_POT_BASE_URL || null;
+  const cfgPath = '/root/.config/yt-dlp/config';
+  out.config_exists = fs.existsSync(cfgPath);
+  try { out.config_content = out.config_exists ? fs.readFileSync(cfgPath, 'utf8') : null; } catch (e) { out.config_content = 'err:' + e.message; }
+  const pluginDir = '/root/.config/yt-dlp/plugins';
+  try {
+    const walk = (d, depth = 0) => {
+      let r = []; if (depth > 5) return r;
+      for (const f of fs.readdirSync(d)) {
+        const p = path.join(d, f); r.push(p.replace(pluginDir, 'plugins'));
+        try { if (fs.statSync(p).isDirectory()) r = r.concat(walk(p, depth + 1)); } catch {}
+      }
+      return r;
+    };
+    out.plugin_files = fs.existsSync(pluginDir) ? walk(pluginDir).slice(0, 80) : 'NO_PLUGIN_DIR';
+  } catch (e) { out.plugin_files = 'err:' + e.message; }
+  const testUrl = req.query.url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  await new Promise((resolve) => {
+    const p = spawn('yt-dlp', ['-v', '--skip-download', '--print', 'id', '--no-playlist', '--socket-timeout', '15', testUrl]);
+    let so = '', se = '';
+    p.stdout.on('data', d => so += d.toString());
+    p.stderr.on('data', d => se += d.toString());
+    p.on('error', e => { out.spawn_error = e.message; resolve(); });
+    p.on('close', code => {
+      out.exit_code = code;
+      out.stdout = so.slice(0, 300);
+      const lines = se.split('\n');
+      out.plugin_pot_lines = lines.filter(l => /plugin|bgutil|pot|proof|origin|gvs/i.test(l)).slice(0, 40);
+      out.stderr_head = se.slice(0, 1500);
+      out.stderr_tail = se.slice(-1500);
+      resolve();
+    });
+  });
+  res.json(out);
 });
 
 // Fallback: roda yt-dlp local pra baixar+stream quando a URL signed do
