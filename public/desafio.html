@@ -625,8 +625,9 @@ async function init() {
   await loadConfig();
   updateTimer();
   setInterval(updateTimer, 1000);
-  // Re-checa config a cada 60s pra detectar virada de fase em tempo real
-  setInterval(loadConfig, 60000);
+  // Poll de config DESLIGADO 2026-05-27 — desafio encerrado, sem fase pra
+  // detectar (economia Vercel). Religar setInterval(loadConfig,60000) se
+  // lançar um novo desafio.
 }
 
 // Boot: se tem token, mostra direto; senão pede login/signup

@@ -146,14 +146,6 @@
       "schedule": "30 10 * * *"
     },
     {
-      "path": "/api/desafio?action=coletar",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/desafio?action=atualizar-metricas",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/nichos-secretos?action=coletar",
       "schedule": "0 6,14,22 * * *"
     },
