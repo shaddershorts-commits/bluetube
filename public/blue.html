@@ -3056,8 +3056,12 @@ async function marcarNotifsLidas(){
   toast(t('toast_notifications_read','✅ Notificações lidas'));
 }
 
+// Realtime do Blue (chat, notificacoes, presenca/heartbeat, lives) DESLIGADO
+// 2026-05-27: features sem uso e responsaveis pela maior parte do consumo
+// Vercel (polling continuo batendo nas functions). Flipar pra true religa tudo.
+const BLUE_REALTIME_ENABLED = false;
 // Poll notifications every 30s
-setInterval(()=>{if(TOKEN)loadNotificacoes();},30000);
+if (BLUE_REALTIME_ENABLED) setInterval(()=>{if(TOKEN)loadNotificacoes();},30000);
 function closeInbox() {
   // Fecha SO o inbox. Antes fechava chatWin tambem, mas isso causava race
   // condition em openChatWithUser: o setTimeout do btModalClose (300ms) rodava
@@ -3115,7 +3119,7 @@ async function openChatWin(convId, otherUser) {
   setupEmojiPicker();
   await loadMessages();
   if (_chatPoll) clearInterval(_chatPoll);
-  _chatPoll = setInterval(loadMessages, 3000);
+  if (BLUE_REALTIME_ENABLED) _chatPoll = setInterval(loadMessages, 3000);
 }
 
 function closeChatWin() {
@@ -3129,7 +3133,7 @@ const CHAT_POLL_BASE_MS = 3000;
 function _chatReschedulePoll(intervalMs) {
   // Helper: reagenda o poll com novo intervalo. Usado pra backoff (W2).
   if (_chatPoll) { clearInterval(_chatPoll); _chatPoll = null; }
-  if (intervalMs > 0) _chatPoll = setInterval(loadMessages, intervalMs);
+  if (intervalMs > 0 && BLUE_REALTIME_ENABLED) _chatPoll = setInterval(loadMessages, intervalMs);
 }
 async function loadMessages() {
   if (!_chatConvId) return;
@@ -3378,7 +3382,7 @@ function startStatusHeartbeat() {
   setMyStatus(_myStatus);
   pollUnreadCount();
   requestNotificationPermission();
-  setInterval(() => {
+  if (BLUE_REALTIME_ENABLED) setInterval(() => {
     const tk = localStorage.getItem('bt_token');
     if (!tk) return;
     fetch('/api/blue-chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'status', token:tk, status:_myStatus }) }).catch(()=>{});
@@ -5001,9 +5005,14 @@ async function loadLives(){
     }).join('');
   }catch(e){document.getElementById('livesBar').style.display='none';}
 }
-// Load lives on init and every 15s
-setTimeout(loadLives,1500);
-setInterval(loadLives,15000);
+// Load lives on init and every 15s — DESLIGADO (LIVE sem uso, maior custo Vercel)
+if (BLUE_REALTIME_ENABLED) {
+  setTimeout(loadLives,1500);
+  setInterval(loadLives,15000);
+} else {
+  const _lb = document.getElementById('livesBar');
+  if (_lb) _lb.style.display = 'none';
+}
 
 // ── HASHTAG FEED & TRENDING ──────────────────────────────────────────────────
 async function openHashtagFeed(tag){
@@ -5826,7 +5835,7 @@ function closeGpChat(){
 }
 function startGpPolling(id){
   stopGpPolling();
-  _gpPolling=setInterval(()=>loadGrupoMensagens(id),5000);
+  if (BLUE_REALTIME_ENABLED) _gpPolling=setInterval(()=>loadGrupoMensagens(id),5000);
 }
 function stopGpPolling(){
   if(_gpPolling){clearInterval(_gpPolling);_gpPolling=null;}
