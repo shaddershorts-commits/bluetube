@@ -31,7 +31,8 @@
     "api/bluelens-seeder.js": { "maxDuration": 600 },
     "api/bluelens-serpapi-test.js": { "maxDuration": 60 },
     "api/bluelens-cleanup.js": { "maxDuration": 60 },
-    "api/bluelens-cookies-monitor.js": { "maxDuration": 120 }
+    "api/bluelens-cookies-monitor.js": { "maxDuration": 120 },
+    "api/support-chat.js": { "maxDuration": 30 }
   },
   "crons": [
     {
