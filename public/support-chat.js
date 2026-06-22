@@ -441,6 +441,7 @@
     } else {
       btn.classList.remove('bt-has-unread');
     }
+    syncFloatVisibility();
   }
 
   async function toggleModal() {
@@ -452,6 +453,7 @@
     if (!modal) return;
     state.open = true;
     modal.classList.add('bt-open');
+    hideFloatBtn(); // popup aberto não precisa de botão flutuante
     await loadThread();
     ensureRealtime();
     setTimeout(() => {
@@ -464,7 +466,39 @@
     if (!modal) return;
     state.open = false;
     modal.classList.remove('bt-open');
+    syncFloatVisibility(); // se ainda tem unread, reaparece o botão
   }
+
+  // Mostra o botão flutuante. Por default só aparece quando há mensagens não
+  // lidas (notificação visual). User pode forçar via window.btSupportChat.open().
+  function showFloatBtn() {
+    const btn = document.getElementById('bt-support-btn');
+    if (btn) btn.classList.add('bt-open');
+  }
+  function hideFloatBtn() {
+    const btn = document.getElementById('bt-support-btn');
+    if (btn) btn.classList.remove('bt-open');
+  }
+
+  // ── API GLOBAL ──────────────────────────────────────────────────────────
+  // Permite que outras partes do site (ex: modal de perfil "Falar com suporte"
+  // em index.html) abram o chat sem o botão flutuante aparecer.
+  window.btSupportChat = {
+    open() {
+      if (!isLogged()) {
+        alert('Faça login pra falar com o suporte.');
+        return;
+      }
+      // Garante que DOM está montado mesmo se init() ainda não rodou
+      injectStyles();
+      if (!document.getElementById('bt-support-modal')) buildDOM();
+      adjustPositionToAvoidConflict();
+      openModal();
+    },
+    close() { closeModal(); },
+    getUnread() { return state.unread || 0; },
+    isOpen() { return state.open; },
+  };
 
   // ── INIT ────────────────────────────────────────────────────────────────
   async function init() {
@@ -472,12 +506,39 @@
     injectStyles();
     buildDOM();
     adjustPositionToAvoidConflict();
-    document.getElementById('bt-support-btn').classList.add('bt-open');
     // Badge: 1 query no carregamento (sem polling)
     try {
       state.unread = await fetchUnreadCount();
       updateBadge();
+      // Mostra botão flutuante SÓ quando há mensagens não lidas (notificação)
+      if (state.unread > 0) {
+        showFloatBtn();
+        // Inicializa Realtime mesmo sem popup aberto pra capturar próximas msgs
+        // (precisa thread carregado antes — chama once silencioso)
+        loadThreadSilent();
+      }
     } catch (_) {}
+  }
+
+  // Carrega thread sem abrir popup — usado pra subscribe Realtime em background
+  // quando user tem mensagens não lidas no carregamento da página.
+  async function loadThreadSilent() {
+    try {
+      const r = await api('/api/support-chat?action=my-thread');
+      const d = await r.json();
+      if (d.ok && d.thread) {
+        state.thread = d.thread;
+        state.messages = d.messages || [];
+        // NÃO seta unread=0 aqui (user ainda não viu), só pra ter thread_id pro Realtime
+        ensureRealtime();
+      }
+    } catch (_) {}
+  }
+
+  function syncFloatVisibility() {
+    if (state.open) { hideFloatBtn(); return; }
+    if (state.unread > 0) showFloatBtn();
+    else hideFloatBtn();
   }
 
   if (document.readyState === 'loading') {
