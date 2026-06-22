@@ -641,9 +641,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-card"><div class="stat-label">🥈 Prata</div><div class="stat-value" style="color:#c0c0c0" id="affPrata">—</div></div>
         <div class="stat-card"><div class="stat-label">👁️ Cliques totais</div><div class="stat-value blue" id="affCliques">—</div><div class="stat-sub" id="affCliques7d">— últimos 7d</div></div>
         <div class="stat-card"><div class="stat-label">🔥 Visitantes únicos</div><div class="stat-value" style="color:#a78bfa" id="affUnicos">—</div><div class="stat-sub" id="affTaxaConv">conversão: —</div></div>
-        <div class="stat-card"><div class="stat-label">💰 Total pago</div><div class="stat-value green" id="affPaid">—</div></div>
-        <div class="stat-card"><div class="stat-label">⏳ Pendente</div><div class="stat-value yellow" id="affPending">—</div></div>
-        <div class="stat-card" title="Soma das comissões mensais recorrentes de todos afiliados (continua entrando enquanto assinantes não cancelarem)"><div class="stat-label">🔁 MRR Mensal recorrente</div><div class="stat-value" style="color:#00f0ff" id="affMrr">—</div><div class="stat-sub" style="font-family:var(--mono);font-size:9px;color:var(--dim)">/mês enquanto ativos</div></div>
+        <div class="stat-card" title="Soma das comissões mensais recorrentes de todos afiliados (atualiza em tempo real a cada novo ativo ou cancelamento)"><div class="stat-label">🔁 Comissão Mensal Total</div><div class="stat-value" style="color:#00f0ff" id="affMrr">—</div><div class="stat-sub" style="font-family:var(--mono);font-size:9px;color:var(--dim)">/mês — ativos × taxa</div></div>
       </div>
       <input id="affSearchInp" oninput="onAffSearch()" class="plan-input" style="margin-bottom:10px;font-size:11px;padding:9px 12px" placeholder="🔍 Buscar por nome ou email..."/>
       <div class="table-wrap" id="affiliatesTable"><div class="loading-txt">Carregando…</div></div>
@@ -2835,8 +2833,6 @@ function renderAffSummary(){
   document.getElementById('affTotal').textContent=a.length;
   document.getElementById('affOuro').textContent=a.filter(x=>x.nivel==='ouro').length;
   document.getElementById('affPrata').textContent=a.filter(x=>x.nivel==='prata').length;
-  document.getElementById('affPaid').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_paid||0),0).toFixed(2);
-  document.getElementById('affPending').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_pending||0),0).toFixed(2);
   const mrrEl=document.getElementById('affMrr');
   if(mrrEl)mrrEl.textContent='R$'+a.reduce((s,x)=>s+(x.mrr_recorrente||0),0).toFixed(2);
   const totalClicks=a.reduce((s,x)=>s+(x.cliques_total||0),0);
@@ -2879,7 +2875,7 @@ function renderAffTable(){
       :`font-family:var(--mono);font-size:11px;font-weight:700;color:${color};background:${color}15;border:1px solid ${color}33;padding:3px 9px;border-radius:100px`;
 
     let btns=`<button onclick="openNivelModal('${a.id}','${a.email}','${nv}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.2);border-radius:5px;padding:4px 8px;cursor:pointer">⬆️ Nível</button> `;
-    if(a.status==='active'&&a.chave_pix&&(a.commissions_pending||0)>=50)btns+=`<button onclick="pagarAfiliadoPix('${a.id}','${(a.email||'').replace(/'/g,"\\'")}',${(a.commissions_pending||0).toFixed(2)})" style="font-family:var(--mono);font-size:10px;color:#22c55e;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer" title="Pagar R$${(a.commissions_pending||0).toFixed(2)} via Pix ASAAS">💸 Pix</button> `;
+    if(a.status==='active'&&a.chave_pix&&(a.mrr_recorrente||0)>=50)btns+=`<button onclick="pagarAfiliadoPix('${a.id}','${(a.email||'').replace(/'/g,"\\'")}',${(a.mrr_recorrente||0).toFixed(2)})" style="font-family:var(--mono);font-size:10px;color:#22c55e;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer" title="Pagar R$${(a.mrr_recorrente||0).toFixed(2)} via Pix ASAAS (=MRR atual dos ativos)">💸 Pix</button> `;
     if(a.status!=='active')btns+=`<button onclick="setAffiliateStatus('${a.email}','active')" style="font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:5px;padding:4px 8px;cursor:pointer">✅</button> `;
     if(a.status!=='suspended')btns+=`<button onclick="setAffiliateStatus('${a.email}','suspended')" style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:4px 8px;cursor:pointer">🚫</button>`;
 
@@ -2895,8 +2891,7 @@ function renderAffTable(){
       <td style="font-weight:700;color:${color}">${comissao}%</td>
       <td style="color:var(--neon);font-weight:600" title="visitantes únicos: ${unicos}">${cliques.toLocaleString('pt-BR')}<br><span style="font-family:var(--mono);font-size:10px;color:var(--dim)">+${cliques7d} 7d · ${unicos} uniq</span></td>
       <td style="color:var(--text)">${paying}<br><span style="font-family:var(--mono);font-size:10px;color:${corTaxa}">${taxaConv}% conv</span></td>
-      <td style="color:var(--green);font-weight:600" title="Soma histórica das comissões geradas (pending + paid)">R$${(a.commissions_total||0).toFixed(2)}</td>
-      <td style="color:#00f0ff;font-weight:700" title="Comissão recorrente mensal: ${paying} ativos × ${comissao}% (entra todo mês enquanto não cancelarem)">R$${(a.mrr_recorrente||0).toFixed(2)}<br><span style="font-family:var(--mono);font-size:9px;color:var(--dim);font-weight:400">/mês</span></td>
+      <td style="color:#00f0ff;font-weight:700" title="Comissão mensal recorrente: ${paying} ativos × ${comissao}% (acompanha em tempo real novos e cancelamentos)">R$${(a.mrr_recorrente||0).toFixed(2)}<br><span style="font-family:var(--mono);font-size:9px;color:var(--dim);font-weight:400">/mês</span></td>
       ${(()=>{
         const pix=a.chave_pix_plain||'';
         if(!pix)return `<td style="color:var(--dim);font-family:var(--mono);font-size:10px">— não cadastrado</td>`;
@@ -2914,7 +2909,7 @@ function renderAffTable(){
     </tr>`;
   }).join('');
 
-  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>🔁 MRR/mês</th><th>💸 Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Taxa</th><th>👁️ Cliques</th><th>Ativos</th><th>🔁 Comissão Mensal</th><th>💸 Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // Copia chave Pix do afiliado pro clipboard + feedback visual breve.

@@ -1529,9 +1529,11 @@ async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
     ? 'https://api.asaas.com/v3'
     : 'https://sandbox.asaas.com/api/v3';
   const VALOR_MINIMO = 50;
+  // PLAN_AMOUNTS espelha api/affiliate.js — manter sincronizado se mudar preco.
+  const PLAN_AMOUNTS_PIX = { full: 29.99, master: 89.99 };
 
   try {
-    // 0. Guard anti-duplo: se já existe saque 'processando' pra esse afiliado, rejeita
+    // 0a. Guard anti-duplo: se já existe saque 'processando' pra esse afiliado, rejeita
     const guardR = await fetch(
       `${SUPABASE_URL}/rest/v1/affiliate_saques?affiliate_id=eq.${affiliate_id}&status=eq.processando&select=id&limit=1`,
       { headers }
@@ -1540,6 +1542,24 @@ async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
       const guardRows = await guardR.json();
       if (guardRows.length > 0) {
         return res.status(409).json({ error: 'saque_em_andamento', mensagem: 'Já existe um saque em processamento pra esse afiliado.' });
+      }
+    }
+
+    // 0b. Guard ciclo mensal: se ja pagou nos ultimos 25 dias, bloqueia
+    //     (regra do user 2026-06-22: comissao recorrente mensal, dia 22).
+    const cutoff25 = new Date(Date.now() - 25 * 86400 * 1000).toISOString();
+    const recR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliate_saques?affiliate_id=eq.${affiliate_id}&status=eq.pago&pago_em=gte.${encodeURIComponent(cutoff25)}&select=id,pago_em,valor&limit=1`,
+      { headers }
+    );
+    if (recR.ok) {
+      const recentes = await recR.json();
+      if (Array.isArray(recentes) && recentes.length > 0) {
+        const dt = recentes[0].pago_em ? new Date(recentes[0].pago_em).toLocaleDateString('pt-BR') : '—';
+        return res.status(409).json({
+          error: 'saque_recente',
+          mensagem: `Afiliado já recebeu R$${(recentes[0].valor||0).toFixed(2)} em ${dt}. Aguarde 25 dias entre pagamentos.`,
+        });
       }
     }
 
@@ -1558,16 +1578,31 @@ async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
       return res.status(400).json({ error: 'sem_chave_pix', mensagem: 'Afiliado não cadastrou chave Pix.' });
     }
 
-    // 2. Soma commissions pending (não flaggadas)
+    // 2. NOVO MODELO (2026-06-22, regra do user): valor = MRR atual,
+    //    nao soma pending acumulado. Comissao recorrente baseada em
+    //    quem esta ATIVO no momento do pagamento (total_full + total_master
+    //    sao mantidos em tempo real pelo webhook + cron). Pendings ainda
+    //    existem como historico de cada cobranca Stripe, mas o pagamento
+    //    paga UMA mensalidade × rate (snapshot atual), igual o painel mostra.
+    const rate = (typeof afiliado.comissao_percentual === 'number' && afiliado.comissao_percentual > 0)
+      ? afiliado.comissao_percentual / 100
+      : 0.30;
+    const totalFull = afiliado.total_full || 0;
+    const totalMaster = afiliado.total_master || 0;
+    const valorSaque = +(totalFull * PLAN_AMOUNTS_PIX.full * rate + totalMaster * PLAN_AMOUNTS_PIX.master * rate).toFixed(2);
+    if (valorSaque < VALOR_MINIMO) {
+      return res.status(400).json({
+        error: 'saldo_insuficiente',
+        mensagem: `Comissão mensal R$${valorSaque.toFixed(2)} abaixo do mínimo R$${VALOR_MINIMO}. Afiliado precisa de mais assinantes ativos pra atingir o mínimo.`,
+      });
+    }
+
+    // Pega pending rows pra marcar como paid no final (fim do mes contabil)
     const cR = await fetch(
-      `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=id,commission_amount`,
+      `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate_id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=id`,
       { headers }
     );
     const pendings = cR.ok ? await cR.json() : [];
-    const valorSaque = +pendings.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0).toFixed(2);
-    if (valorSaque < VALOR_MINIMO) {
-      return res.status(400).json({ error: 'saldo_insuficiente', mensagem: `Saldo R$${valorSaque.toFixed(2)} abaixo do mínimo R$${VALOR_MINIMO}.` });
-    }
 
     // 3. Cria registro do saque
     const statusInicial = ASAAS_KEY ? 'processando' : 'pendente_manual';
