@@ -2788,10 +2788,10 @@ async function recalcularComissoes(){
   btn.disabled=true;
   btn.innerHTML='⏳ Recalculando…';
   try{
-    const r=await fetch('/api/admin?action=recalcular-comissoes',{
+    const r=await fetch('/api/admin',{
       method:'POST',
       headers:{'Authorization':`Bearer ${adminKey}`,'Content-Type':'application/json'},
-      body:'{}',
+      body:JSON.stringify({action:'recalcular-comissoes'}),
     });
     const d=await r.json();
     if(!r.ok||!d.ok){
