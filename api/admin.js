@@ -139,6 +139,171 @@ export default async function handler(req, res) {
     return cancelarCommissionAction(req, res, { SUPABASE_URL, headers });
   }
 
+  // ── RECALCULAR COMISSOES ─────────────────────────────────────────────────
+  // Auditoria completa: pra cada afiliado, reconta subscribers ativos reais,
+  // sincroniza total_full/total_master (cache pode estar desync se SQL direto
+  // ou cancel sem webhook), sincroniza level←nivel (Bug 3), e recalcula
+  // commission_amount de todas pending rows usando rate atual (Bug 1).
+  // Resultado idempotente: rodar 2x seguidas nao causa side-effect.
+  if (req.method === 'POST' && action === 'recalcular-comissoes') {
+    try {
+      const PLAN_AMOUNTS_R = { full: 29.99, master: 89.99 };
+      const NIVEL_TO_LEVEL = { bronze: 'bronze', prata: 'silver', ouro: 'gold' };
+
+      // 1. Busca todos afiliados
+      const ar = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*`, { headers });
+      const affiliates = ar.ok ? await ar.json() : [];
+      if (!Array.isArray(affiliates) || !affiliates.length) {
+        return res.status(200).json({ ok: true, message: 'Nenhum afiliado.', report: { afiliados_processados: 0 } });
+      }
+
+      // 2. Busca todos subscribers ativos COM affiliate_ref (1 query — eficiente)
+      //    Considera ativo: plan in (full,master) AND (plan_expires_at futuro OR null).
+      const nowIso = new Date().toISOString();
+      const subsR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?affiliate_ref=not.is.null&plan=in.(full,master)&or=(plan_expires_at.gte.${nowIso},plan_expires_at.is.null)&select=email,plan,affiliate_ref`,
+        { headers }
+      );
+      const activeSubs = subsR.ok ? await subsR.json() : [];
+      // Index: ref_code → { full: N, master: N }
+      const subsByRef = {};
+      (Array.isArray(activeSubs) ? activeSubs : []).forEach(s => {
+        const k = s.affiliate_ref;
+        if (!subsByRef[k]) subsByRef[k] = { full: 0, master: 0 };
+        if (s.plan === 'full') subsByRef[k].full++;
+        else if (s.plan === 'master') subsByRef[k].master++;
+      });
+
+      const log = [];
+      let counterUpdates = 0;
+      let levelSyncs = 0;
+      let commissionsAdjusted = 0;
+      let totalDelta = 0;
+
+      // 3. Pra cada afiliado: sincroniza contadores + level + recalcula pending
+      for (const aff of affiliates) {
+        const refCode = aff.ref_code;
+        const realCounts = subsByRef[refCode] || { full: 0, master: 0 };
+        const cachedFull = aff.total_full || 0;
+        const cachedMaster = aff.total_master || 0;
+        const counterDiff = (realCounts.full !== cachedFull) || (realCounts.master !== cachedMaster);
+
+        // Taxa efetiva DO afiliado (admin_override prioritario)
+        const rate = (typeof aff.comissao_percentual === 'number' && aff.comissao_percentual > 0)
+          ? aff.comissao_percentual / 100
+          : 0.30;
+
+        // Level que deveria estar (a partir do nivel pt-BR setado pelo admin)
+        const nivel = (aff.nivel || 'bronze').toLowerCase();
+        const expectedLevel = NIVEL_TO_LEVEL[nivel] || 'bronze';
+        const levelDiff = aff.level !== expectedLevel;
+
+        // 3.1 PATCH afiliado se houver desync (contadores OU level)
+        if (counterDiff || levelDiff) {
+          const patchBody = { updated_at: new Date().toISOString() };
+          if (counterDiff) {
+            patchBody.total_full = realCounts.full;
+            patchBody.total_master = realCounts.master;
+            counterUpdates++;
+            log.push({
+              affiliate: aff.email,
+              type: 'counter_sync',
+              before: { full: cachedFull, master: cachedMaster },
+              after: realCounts,
+            });
+          }
+          if (levelDiff) {
+            patchBody.level = expectedLevel;
+            levelSyncs++;
+            log.push({
+              affiliate: aff.email,
+              type: 'level_sync',
+              before: aff.level,
+              after: expectedLevel,
+            });
+          }
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
+            method: 'PATCH',
+            headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify(patchBody),
+          });
+        }
+
+        // 3.2 Recalcula comissoes pending desse afiliado com rate atual
+        const cmR = await fetch(
+          `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${aff.id}&status=eq.pending&select=id,commission_amount,commission_rate,plan_amount,commission_history,subscriber_email,plan`,
+          { headers }
+        );
+        const pendings = cmR.ok ? await cmR.json() : [];
+        let affDelta = 0;
+        for (const c of (Array.isArray(pendings) ? pendings : [])) {
+          const planAmt = parseFloat(c.plan_amount || 0) || PLAN_AMOUNTS_R[c.plan] || 0;
+          const newAmt = parseFloat((planAmt * rate).toFixed(2));
+          const oldAmt = parseFloat(c.commission_amount || 0);
+          const d = parseFloat((newAmt - oldAmt).toFixed(2));
+          if (Math.abs(d) < 0.01) continue; // sem mudanca
+          const history = Array.isArray(c.commission_history) ? c.commission_history : [];
+          history.push({
+            at: new Date().toISOString(),
+            source: 'admin_recalculation',
+            prev_amount: oldAmt,
+            new_amount: newAmt,
+            prev_rate: parseFloat(c.commission_rate || 0),
+            new_rate: rate,
+            note: 'Recalculo via botao admin (auditoria comissoes desync).',
+          });
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${c.id}`, {
+            method: 'PATCH',
+            headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              commission_amount: newAmt,
+              commission_rate: rate,
+              commission_history: history,
+            }),
+          });
+          commissionsAdjusted++;
+          affDelta += d;
+        }
+
+        // 3.3 Atualiza total_earnings do afiliado com delta acumulado
+        if (Math.abs(affDelta) >= 0.01) {
+          const newEarnings = parseFloat(((parseFloat(aff.total_earnings) || 0) + affDelta).toFixed(2));
+          await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${aff.id}`, {
+            method: 'PATCH',
+            headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              total_earnings: newEarnings,
+              updated_at: new Date().toISOString(),
+            }),
+          });
+          log.push({
+            affiliate: aff.email,
+            type: 'earnings_adjustment',
+            delta: affDelta,
+            new_total: newEarnings,
+            commissions_touched: pendings.length,
+          });
+          totalDelta += affDelta;
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        report: {
+          afiliados_processados: affiliates.length,
+          contadores_sincronizados: counterUpdates,
+          level_sincronizado: levelSyncs,
+          comissoes_ajustadas: commissionsAdjusted,
+          total_delta_brl: parseFloat(totalDelta.toFixed(2)),
+        },
+        log: log.slice(0, 50), // limita pra response nao crescer absurdo
+      });
+    } catch (e) {
+      console.error('recalcular-comissoes error:', e);
+      return res.status(500).json({ error: 'recalcular_falhou', detail: (e.message || '').slice(0, 200) });
+    }
+  }
+
   // ── AFFILIATE MANAGEMENT ─────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'set_affiliate_status') {
     const { email, status } = req.body; // status: active | pending | suspended
@@ -191,11 +356,23 @@ export default async function handler(req, res) {
         click7dMap[c.affiliate_id] = (click7dMap[c.affiliate_id] || 0) + 1;
       });
 
+      // MRR recorrente: comissao que entra TODO MES enquanto assinantes nao
+      // cancelarem. Diferente de commissions_total (cumulativo historico).
+      // PLAN_AMOUNTS espelha api/affiliate.js — manter sincronizado.
+      const PLAN_AMOUNTS_LOCAL = { full: 29.99, master: 89.99 };
       const enriched = (Array.isArray(affiliates) ? affiliates : []).map(a => {
         const cliques = clickMap[a.id] || 0;
         const visUnicos = uniqSets[a.id]?.size || 0;
         const pagantes = (a.total_full || 0) + (a.total_master || 0);
         const conv = cliques > 0 ? parseFloat(((pagantes / cliques) * 100).toFixed(2)) : 0;
+        // Taxa efetiva: admin_override (comissao_percentual) tem prioridade.
+        const rate = (typeof a.comissao_percentual === 'number' && a.comissao_percentual > 0)
+          ? a.comissao_percentual / 100
+          : 0.30;
+        const mrrRecorrente = parseFloat(
+          ((a.total_full || 0) * PLAN_AMOUNTS_LOCAL.full * rate +
+           (a.total_master || 0) * PLAN_AMOUNTS_LOCAL.master * rate).toFixed(2)
+        );
         return {
           ...a,
           nivel: a.nivel || 'bronze',
@@ -203,6 +380,7 @@ export default async function handler(req, res) {
           commissions_pending: parseFloat((commMap[a.id]?.pending || 0).toFixed(2)),
           commissions_paid: parseFloat((commMap[a.id]?.paid || 0).toFixed(2)),
           commissions_total: parseFloat((commMap[a.id]?.total || 0).toFixed(2)),
+          mrr_recorrente: mrrRecorrente,
           cliques_total: cliques,
           cliques_7d: click7dMap[a.id] || 0,
           visitantes_unicos: visUnicos,

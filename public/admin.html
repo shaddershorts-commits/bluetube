@@ -624,6 +624,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
             <span>auto 60s</span>
           </label>
           <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="loadAffiliates()">↻ Atualizar</button>
+          <button id="btnRecalcAff" class="action-btn" style="font-size:10px;padding:5px 10px;color:#00f0ff;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.3)" onclick="recalcularComissoes()" title="Auditoria: reconta assinantes ativos por afiliado, sincroniza contadores/level e corrige commission_amount de pending rows usando o rate atual do afiliado.">⚡ Recalcular agora</button>
           <div id="pendingAffBadge" style="display:none;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:var(--yellow)">⏳ <span id="pendingAffCount">0</span> aguardando</div>
           <div style="display:flex;gap:4px" id="affNivelFilters">
             <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="filterAffs('all')" data-afilter="all">Todos</button>
@@ -642,6 +643,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-card"><div class="stat-label">🔥 Visitantes únicos</div><div class="stat-value" style="color:#a78bfa" id="affUnicos">—</div><div class="stat-sub" id="affTaxaConv">conversão: —</div></div>
         <div class="stat-card"><div class="stat-label">💰 Total pago</div><div class="stat-value green" id="affPaid">—</div></div>
         <div class="stat-card"><div class="stat-label">⏳ Pendente</div><div class="stat-value yellow" id="affPending">—</div></div>
+        <div class="stat-card" title="Soma das comissões mensais recorrentes de todos afiliados (continua entrando enquanto assinantes não cancelarem)"><div class="stat-label">🔁 MRR Mensal recorrente</div><div class="stat-value" style="color:#00f0ff" id="affMrr">—</div><div class="stat-sub" style="font-family:var(--mono);font-size:9px;color:var(--dim)">/mês enquanto ativos</div></div>
       </div>
       <input id="affSearchInp" oninput="onAffSearch()" class="plan-input" style="margin-bottom:10px;font-size:11px;padding:9px 12px" placeholder="🔍 Buscar por nome ou email..."/>
       <div class="table-wrap" id="affiliatesTable"><div class="loading-txt">Carregando…</div></div>
@@ -2775,6 +2777,48 @@ async function loadAffiliates(){
   }catch(e){document.getElementById('affiliatesTable').innerHTML='<div class="empty-state">Erro ao carregar.</div>';}
 }
 
+// Dispara auditoria backend: reconta ativos, sincroniza contadores/level,
+// corrige commission_amount de pending rows usando rate atual. Toast com
+// report. Depois recarrega a lista pra refletir.
+async function recalcularComissoes(){
+  const btn=document.getElementById('btnRecalcAff');
+  if(!btn)return;
+  if(!confirm('Recalcular comissões?\n\nIsso vai:\n• Recontar assinantes ativos por afiliado\n• Sincronizar contadores total_full/total_master se desync\n• Sincronizar level (en) ← nivel (pt)\n• Corrigir commission_amount de PENDING rows usando o rate atual do afiliado\n\nIdempotente — pode rodar quantas vezes quiser.'))return;
+  const originalText=btn.innerHTML;
+  btn.disabled=true;
+  btn.innerHTML='⏳ Recalculando…';
+  try{
+    const r=await fetch('/api/admin?action=recalcular-comissoes',{
+      method:'POST',
+      headers:{'Authorization':`Bearer ${adminKey}`,'Content-Type':'application/json'},
+      body:'{}',
+    });
+    const d=await r.json();
+    if(!r.ok||!d.ok){
+      toast('❌ Falhou: '+(d.error||d.detail||'erro desconhecido'));
+      return;
+    }
+    const rep=d.report||{};
+    const msg=`✅ Recálculo concluído\n`+
+      `• Afiliados processados: ${rep.afiliados_processados||0}\n`+
+      `• Contadores sincronizados: ${rep.contadores_sincronizados||0}\n`+
+      `• Levels sincronizados: ${rep.level_sincronizado||0}\n`+
+      `• Comissões ajustadas: ${rep.comissoes_ajustadas||0}\n`+
+      `• Delta total: R$${(rep.total_delta_brl||0).toFixed(2)}`;
+    toast(msg);
+    // Log detalhado no console pro admin auditar
+    console.log('[recalcular-comissoes] report:', d.report);
+    console.log('[recalcular-comissoes] log:', d.log);
+    await loadAffiliates();
+  }catch(e){
+    toast('❌ Erro de rede ao recalcular.');
+    console.error(e);
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=originalText;
+  }
+}
+
 let _affAutoTimer=null;
 function toggleAffAutoRefresh(){
   const enabled=document.getElementById('affAutoRefresh')?.checked;
@@ -2791,6 +2835,8 @@ function renderAffSummary(){
   document.getElementById('affPrata').textContent=a.filter(x=>x.nivel==='prata').length;
   document.getElementById('affPaid').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_paid||0),0).toFixed(2);
   document.getElementById('affPending').textContent='R$'+a.reduce((s,x)=>s+(x.commissions_pending||0),0).toFixed(2);
+  const mrrEl=document.getElementById('affMrr');
+  if(mrrEl)mrrEl.textContent='R$'+a.reduce((s,x)=>s+(x.mrr_recorrente||0),0).toFixed(2);
   const totalClicks=a.reduce((s,x)=>s+(x.cliques_total||0),0);
   const total7d=a.reduce((s,x)=>s+(x.cliques_7d||0),0);
   const totalUniq=a.reduce((s,x)=>s+(x.visitantes_unicos||0),0);
@@ -2847,13 +2893,14 @@ function renderAffTable(){
       <td style="font-weight:700;color:${color}">${comissao}%</td>
       <td style="color:var(--neon);font-weight:600" title="visitantes únicos: ${unicos}">${cliques.toLocaleString('pt-BR')}<br><span style="font-family:var(--mono);font-size:10px;color:var(--dim)">+${cliques7d} 7d · ${unicos} uniq</span></td>
       <td style="color:var(--text)">${paying}<br><span style="font-family:var(--mono);font-size:10px;color:${corTaxa}">${taxaConv}% conv</span></td>
-      <td style="color:var(--green);font-weight:600">R$${(a.commissions_total||0).toFixed(2)}</td>
+      <td style="color:var(--green);font-weight:600" title="Soma histórica das comissões geradas (pending + paid)">R$${(a.commissions_total||0).toFixed(2)}</td>
+      <td style="color:#00f0ff;font-weight:700" title="Comissão recorrente mensal: ${paying} ativos × ${comissao}% (entra todo mês enquanto não cancelarem)">R$${(a.mrr_recorrente||0).toFixed(2)}<br><span style="font-family:var(--mono);font-size:9px;color:var(--dim);font-weight:400">/mês</span></td>
       <td><span style="font-family:var(--mono);font-size:11px;color:${sc[a.status]||'var(--dim)'}">${sl[a.status]||a.status}</span></td>
       <td><div style="display:flex;gap:4px">${btns}</div></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>🔁 MRR/mês</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function openNivelModal(id,email,currentNivel){
