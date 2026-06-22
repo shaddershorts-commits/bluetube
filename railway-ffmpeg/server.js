@@ -1563,6 +1563,200 @@ async function computeColorHash(framePath) {
   } catch (e) { return null; }
 }
 
+// ── DOWNLOAD CHAIN PRA BLUELENS ────────────────────────────────────────────
+// Replica blindagem do /youtube-process: 3 camadas de fallback resilientes
+// a quebras de YouTube anti-bot, cookies expirados ou quedas de provedor.
+// Retorna { file, source, attempts } ou throw 'all_providers_failed'.
+//
+// Camada A — Cobalt tunnel (~60% dos vídeos, sem cookies necessários)
+// Camada B — chain /api/auth?action=download (RapidAPI + Piped/Invidious)
+// Camada C — yt-dlp local com cookies + POT + player_clients tv_embedded etc
+async function bluelensDownloadChain(youtubeUrl, dir, log) {
+  const attempts = [];
+  let inFile = null;
+  let source = null;
+  const candidateFile = path.join(dir, 'video.mp4');
+
+  // ── A. Cobalt tunnel 720p ──────────────────────────────────────────────
+  const cobaltUrl = process.env.COBALT_API_URL;
+  if (cobaltUrl) {
+    try {
+      log('[chain-A] try cobalt tunnel');
+      const cobaltHeaders = { Accept: 'application/json', 'Content-Type': 'application/json' };
+      if (process.env.COBALT_API_KEY) cobaltHeaders.Authorization = 'Api-Key ' + process.env.COBALT_API_KEY;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25000);
+      const cr = await fetch(cobaltUrl, {
+        method: 'POST', headers: cobaltHeaders,
+        body: JSON.stringify({ url: youtubeUrl, videoQuality: '720' }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const cd = await cr.json().catch(() => ({}));
+      if (cr.ok && cd.status === 'tunnel' && cd.url) {
+        const dlCtrl = new AbortController();
+        const dlTimer = setTimeout(() => dlCtrl.abort(), 90000);
+        try {
+          const dlR = await fetch(cd.url, { signal: dlCtrl.signal });
+          clearTimeout(dlTimer);
+          if (dlR.ok) {
+            const writer = fs.createWriteStream(candidateFile);
+            const nodeStream = require('stream');
+            await new Promise((resolve, reject) => {
+              nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+            });
+            if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 100000) {
+              inFile = candidateFile;
+              source = 'cobalt:tunnel:720';
+              attempts.push({ layer: 'A', ok: true, size: fs.statSync(candidateFile).size });
+              log('[chain-A] cobalt ok ' + fs.statSync(candidateFile).size);
+            } else {
+              attempts.push({ layer: 'A', ok: false, reason: 'small_or_missing' });
+            }
+          } else {
+            attempts.push({ layer: 'A', ok: false, reason: 'dl_http_' + dlR.status });
+          }
+        } catch (e) {
+          clearTimeout(dlTimer);
+          attempts.push({ layer: 'A', ok: false, reason: 'dl_err:' + e.message.slice(0, 80) });
+          log('[chain-A] cobalt dl err: ' + e.message);
+        }
+      } else {
+        attempts.push({ layer: 'A', ok: false, reason: 'no_tunnel:' + (cd.status || cr.status) });
+        log('[chain-A] cobalt no tunnel (status ' + (cd.status || cr.status) + ')');
+      }
+    } catch (e) {
+      attempts.push({ layer: 'A', ok: false, reason: 'err:' + e.message.slice(0, 80) });
+      log('[chain-A] cobalt err: ' + e.message);
+    }
+  } else {
+    attempts.push({ layer: 'A', ok: false, reason: 'COBALT_API_URL_not_set' });
+  }
+
+  // ── B. Chain /api/auth?action=download (RapidAPI + Piped/Invidious) ────
+  if (!inFile) {
+    const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+    try {
+      log('[chain-B] try /api/auth download chain');
+      const authCtrl = new AbortController();
+      const authTimer = setTimeout(() => authCtrl.abort(), 40000);
+      const authR = await fetch(
+        `${SITE_URL}/api/auth?action=download&url=${encodeURIComponent(youtubeUrl)}`,
+        { signal: authCtrl.signal }
+      );
+      clearTimeout(authTimer);
+      const authD = await authR.json().catch(() => ({}));
+      if (authR.ok && authD.url && authD.provider !== 'hq-failed') {
+        let chainUrl = authD.url;
+        if (chainUrl.includes('/proxy-download?') && !chainUrl.includes('yt_url=')) {
+          chainUrl += '&yt_url=' + encodeURIComponent(youtubeUrl);
+        }
+        const dlCtrl = new AbortController();
+        const dlTimer = setTimeout(() => dlCtrl.abort(), 90000);
+        try {
+          const dlR = await fetch(chainUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+              Accept: '*/*',
+            },
+            signal: dlCtrl.signal,
+          });
+          clearTimeout(dlTimer);
+          if (dlR.ok) {
+            const writer = fs.createWriteStream(candidateFile);
+            const nodeStream = require('stream');
+            await new Promise((resolve, reject) => {
+              nodeStream.Readable.fromWeb(dlR.body).pipe(writer);
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+            });
+            if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 100000) {
+              inFile = candidateFile;
+              source = 'chain:auth:' + (authD.provider || 'unknown');
+              attempts.push({ layer: 'B', ok: true, provider: authD.provider, size: fs.statSync(candidateFile).size });
+              log('[chain-B] chain ok ' + fs.statSync(candidateFile).size + ' via ' + authD.provider);
+            } else {
+              attempts.push({ layer: 'B', ok: false, reason: 'small_or_missing' });
+            }
+          } else {
+            attempts.push({ layer: 'B', ok: false, reason: 'dl_http_' + dlR.status });
+            log('[chain-B] chain dl ' + dlR.status);
+          }
+        } catch (e) {
+          clearTimeout(dlTimer);
+          attempts.push({ layer: 'B', ok: false, reason: 'dl_err:' + e.message.slice(0, 80) });
+          log('[chain-B] chain dl err: ' + e.message);
+        }
+      } else {
+        attempts.push({ layer: 'B', ok: false, reason: 'no_url:' + (authD.error || authD.provider || 'unknown') });
+        log('[chain-B] chain no url');
+      }
+    } catch (e) {
+      attempts.push({ layer: 'B', ok: false, reason: 'err:' + e.message.slice(0, 80) });
+      log('[chain-B] chain err: ' + e.message);
+    }
+  }
+
+  // ── C. yt-dlp local com cookies + POT + player_clients alternativos ────
+  // Mesmo padrão do /youtube-process e ytdlpFallbackStream. Cookies do
+  // YOUTUBE_COOKIES env var permitem auth em IP datacenter; player_clients
+  // tv_embedded/android_vr/android_testsuite/ios fugem do bot-check default.
+  if (!inFile) {
+    try {
+      log('[chain-C] try yt-dlp local with cookies');
+      const jobCookies = writeJobCookies(dir);
+      if (!jobCookies) {
+        attempts.push({ layer: 'C', ok: false, reason: 'no_cookies_env' });
+        log('[chain-C] YOUTUBE_COOKIES env ausente — pulando yt-dlp');
+      } else {
+        const ytArgs = [
+          ...POT_CLI_ARGS,
+          '--cookies', jobCookies,
+          '-f', 'best[ext=mp4][height<=720]/best[height<=720]/best',
+          '--merge-output-format', 'mp4',
+          '--no-playlist',
+          '--no-warnings',
+          '--no-check-certificate',
+          '--force-ipv4',
+          '--socket-timeout', '30',
+          '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+          '-o', candidateFile,
+          youtubeUrl,
+        ];
+        try {
+          await run('yt-dlp', ytArgs);
+          if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).size > 100000) {
+            inFile = candidateFile;
+            source = 'yt-dlp:cookies';
+            attempts.push({ layer: 'C', ok: true, size: fs.statSync(candidateFile).size });
+            log('[chain-C] yt-dlp ok ' + fs.statSync(candidateFile).size);
+          } else {
+            attempts.push({ layer: 'C', ok: false, reason: 'small_or_missing' });
+            log('[chain-C] yt-dlp empty output');
+          }
+        } catch (e) {
+          const msg = (e.message || '').slice(0, 200);
+          const isBot = /Sign in to confirm|not a bot|--cookies-from-browser/i.test(msg);
+          attempts.push({ layer: 'C', ok: false, reason: (isBot ? 'bot_check:' : 'err:') + msg.slice(0, 120) });
+          log('[chain-C] yt-dlp err: ' + msg);
+        }
+      }
+    } catch (e) {
+      attempts.push({ layer: 'C', ok: false, reason: 'outer_err:' + e.message.slice(0, 80) });
+    }
+  }
+
+  if (!inFile) {
+    const err = new Error('all_providers_failed');
+    err.attempts = attempts;
+    throw err;
+  }
+
+  return { file: inFile, source, attempts };
+}
+
 app.post('/extract-fingerprint', async (req, res) => {
   if (!sharp) return res.status(500).json({ error: 'sharp não instalado no Railway' });
   const { url, fps = 1, max_seconds = 60 } = req.body || {};
@@ -1576,72 +1770,45 @@ app.post('/extract-fingerprint', async (req, res) => {
   fs.mkdirSync(framesDir, { recursive: true });
 
   const startTs = Date.now();
+  const log = (m) => console.log('[extract-fingerprint]', jobId, m);
+  let downloadAttempts = [];
+  let downloadSource = null;
 
   try {
-    // 1. Tenta yt-dlp direto. Se falhar (YouTube anti-bot, etc), fallback Cobalt.
-    let downloadOk = false;
-    let ytdlpError = '';
+    // 1. Download via chain de 3 camadas (Cobalt → /api/auth chain → yt-dlp+cookies)
     try {
-      await new Promise((resolve, reject) => {
-        const args = [
-          '--no-warnings', '--no-playlist',
-          '-f', 'best[height<=720]/best',
-          '--postprocessor-args', `ffmpeg:-ss 0 -t ${max_seconds}`,
-          '-o', videoPath,
-          url,
-        ];
-        const p = spawn('yt-dlp', args);
-        let stderr = '';
-        p.stderr.on('data', d => { stderr += d.toString(); });
-        p.on('close', code => {
-          if (code === 0 && fs.existsSync(videoPath)) resolve();
-          else reject(new Error(stderr.slice(0, 300) || 'exit ' + code));
-        });
-        p.on('error', reject);
+      const result = await bluelensDownloadChain(url, workDir, log);
+      downloadAttempts = result.attempts;
+      downloadSource = result.source;
+      // chain pode escrever em videoPath OU em outro nome — normaliza
+      if (result.file !== videoPath) {
+        if (fs.existsSync(result.file)) fs.renameSync(result.file, videoPath);
+      }
+    } catch (downloadErr) {
+      console.error('[extract-fingerprint]', jobId, 'all_providers_failed', JSON.stringify(downloadErr.attempts || []));
+      return res.status(500).json({
+        error: 'all_providers_failed',
+        detail: 'Cobalt + /api/auth chain + yt-dlp+cookies todos falharam pra esse vídeo',
+        attempts: downloadErr.attempts || [],
       });
-      downloadOk = true;
-    } catch (e) {
-      ytdlpError = e.message;
-      console.warn('[extract-fingerprint] yt-dlp falhou, tentando Cobalt fallback:', ytdlpError.slice(0, 100));
     }
 
-    // FALLBACK: Cobalt instance (cobalt-production-*.up.railway.app)
-    // Cobalt baixa via diferentes estrategias (incluindo API oficial),
-    // contorna anti-bot do YouTube com IP da propria instance Cobalt.
-    if (!downloadOk) {
-      const COBALT_URL = process.env.COBALT_API_URL || 'https://cobalt-production-9d27.up.railway.app';
+    // Trim post-download (independente da source) — economiza ffmpeg de
+    // baixar 30min de vídeo se algum provider não respeitou max_seconds
+    if (max_seconds && fs.existsSync(videoPath)) {
+      const trimPath = videoPath + '.trim.mp4';
       try {
-        const cobalt = await axios.post(COBALT_URL, { url, videoQuality: '720' }, {
-          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-          timeout: 30000,
+        await new Promise((resolve) => {
+          const p = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-i', videoPath, '-t', String(max_seconds), '-c', 'copy', trimPath]);
+          let stderr = '';
+          p.stderr.on('data', d => { stderr += d.toString(); });
+          p.on('close', code => { if (code === 0) resolve(); else { log('trim non-zero ' + code + ': ' + stderr.slice(0, 120)); resolve(); } });
+          p.on('error', () => resolve());
         });
-        const tunnelUrl = cobalt.data?.url;
-        if (!tunnelUrl) throw new Error('Cobalt sem tunnel URL');
-        // Baixa via tunnel
-        const writer = fs.createWriteStream(videoPath);
-        const dl = await axios.get(tunnelUrl, { responseType: 'stream', timeout: 60000 });
-        await new Promise((res, rej) => {
-          dl.data.pipe(writer);
-          writer.on('finish', res);
-          writer.on('error', rej);
-        });
-        // Limita duracao com ffmpeg pos-download
-        if (max_seconds && fs.statSync(videoPath).size > 0) {
-          const trimPath = videoPath + '.trim.mp4';
-          await new Promise((resolve) => {
-            const p = spawn('ffmpeg', ['-y', '-i', videoPath, '-t', String(max_seconds), '-c', 'copy', trimPath]);
-            p.on('close', () => resolve());
-            p.on('error', () => resolve());
-          });
-          if (fs.existsSync(trimPath) && fs.statSync(trimPath).size > 0) {
-            fs.renameSync(trimPath, videoPath);
-          }
+        if (fs.existsSync(trimPath) && fs.statSync(trimPath).size > 1000) {
+          fs.renameSync(trimPath, videoPath);
         }
-        downloadOk = true;
-        console.log('[extract-fingerprint] Cobalt fallback OK');
-      } catch (cobaltErr) {
-        throw new Error(`Ambos providers falharam. yt-dlp: ${ytdlpError.slice(0,150)} | Cobalt: ${cobaltErr.message.slice(0,150)}`);
-      }
+      } catch (_) {}
     }
 
     // 2. ffprobe pra metadata
@@ -1703,10 +1870,16 @@ app.post('/extract-fingerprint', async (req, res) => {
       p_hashes,
       d_hashes,
       color_hashes,
+      download_source: downloadSource,
+      download_attempts: downloadAttempts,
     });
   } catch (e) {
-    console.error('[extract-fingerprint]', e.message);
-    return res.status(500).json({ error: e.message });
+    console.error('[extract-fingerprint]', jobId, e.message);
+    return res.status(500).json({
+      error: e.message,
+      download_source: downloadSource,
+      download_attempts: downloadAttempts,
+    });
   } finally {
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}
   }
