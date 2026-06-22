@@ -4209,6 +4209,15 @@ async function sendPasswordReset(){
   }catch(e){alert('Erro ao enviar link. Tente novamente.');}
 }
 function openSupportChat(){
+  // Abre o novo popup de chat de suporte (bidirecional, tempo real).
+  // O sistema antigo de feedback unidirecional (textarea+enviar) continua no DOM
+  // como fallback caso support-chat.js não tenha carregado por algum motivo.
+  if(window.btSupportChat&&typeof window.btSupportChat.open==='function'){
+    closeProfileModal();
+    setTimeout(()=>window.btSupportChat.open(),120); // espera fechamento do modal de perfil terminar
+    return;
+  }
+  // Fallback (sistema antigo) — só se support-chat.js falhar em carregar
   const chat=document.getElementById('profileSupportChat');
   chat.style.display=chat.style.display==='none'?'block':'none';
 }
@@ -4800,5 +4809,6 @@ function exportScriptAsImage(scriptId){
 </script>
 
 <script src="/toolbar.js" defer></script>
+<script src="/support-chat.js" defer></script>
 </body>
 </html>
