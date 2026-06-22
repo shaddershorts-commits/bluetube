@@ -686,7 +686,7 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- SUPORTE — Chat 1:1 com usuários (2026-06-22) ═══════════════════════ -->
     <div class="section" id="supportSection">
       <div class="section-header">
-        <div class="section-title">💬 Suporte <span class="section-subtitle">— mensagens dos usuários</span></div>
+        <div class="section-title">💬 Suporte <span class="section-subtitle">— clique no email do usuário pra abrir o chat</span></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <div id="supportUnreadBadge" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);border-radius:8px;padding:5px 12px;font-family:var(--mono);font-size:11px;color:#ef4444;display:none">🔔 <span id="supportUnreadCount">0</span> não lidas</div>
           <button class="action-btn" style="font-size:10px;padding:5px 10px" onclick="loadSupportThreads()">↻ Atualizar</button>
@@ -697,18 +697,25 @@ tr:hover td{background:rgba(0,170,255,0.02)}
           </div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:12px;align-items:start;margin-top:12px">
-        <!-- Lista de threads -->
-        <div style="background:rgba(0,170,255,.03);border:1px solid rgba(0,170,255,.1);border-radius:12px;padding:8px;max-height:560px;overflow-y:auto" id="supportThreadList">
-          <div class="loading-txt" style="text-align:center;padding:20px;color:var(--dim);font-size:12px">Carregando…</div>
-        </div>
-        <!-- Conversa ativa -->
-        <div style="background:rgba(0,170,255,.03);border:1px solid rgba(0,170,255,.1);border-radius:12px;display:flex;flex-direction:column;height:560px" id="supportChatPane">
-          <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px;text-align:center;padding:20px">
-            Selecione uma conversa à esquerda pra abrir
-          </div>
-        </div>
+      <!-- Lista de threads (1 coluna larga) — click no email abre popup chat -->
+      <div style="background:rgba(0,170,255,.03);border:1px solid rgba(0,170,255,.1);border-radius:12px;padding:10px;max-height:560px;overflow-y:auto;margin-top:12px" id="supportThreadList">
+        <div class="loading-txt" style="text-align:center;padding:20px;color:var(--dim);font-size:12px">Carregando…</div>
       </div>
+    </div>
+
+    <!-- ────────────────────────────────────────────────────────────────── -->
+    <!-- POPUP CHAT ADMIN — abre quando admin clica num email da lista ──── -->
+    <div id="adminChatPopup" style="display:none;position:fixed;bottom:24px;right:24px;width:380px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#0a1729;border-radius:16px;border:1px solid rgba(0,170,255,.25);box-shadow:0 24px 60px rgba(0,0,0,.6);z-index:9000;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <div id="adminChatPopupHeader" style="padding:14px 16px;display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(0,170,255,.15),rgba(124,58,237,.08));border-bottom:1px solid rgba(0,170,255,.15)">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#00aaff,#0078ff);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">👤</div>
+        <div style="flex:1;min-width:0">
+          <div id="adminChatPopupUser" style="font-size:14px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+          <div id="adminChatPopupMeta" style="font-size:10px;color:rgba(232,244,255,.55);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+        </div>
+        <button id="adminChatPopupCloseBtn" style="background:none;border:none;color:rgba(232,244,255,.6);cursor:pointer;padding:6px;font-size:18px;line-height:1;border-radius:6px" title="Fechar">✕</button>
+      </div>
+      <div id="adminChatPopupMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;background:#050a14"></div>
+      <div id="adminChatPopupInputArea" style="padding:12px;border-top:1px solid rgba(0,170,255,.1)"></div>
     </div>
 
     <div class="section" id="orphansSection">
@@ -2808,23 +2815,28 @@ function renderSupportThreads(){
     box.innerHTML='<div style="text-align:center;padding:30px 14px;color:var(--dim);font-size:12px">Nenhuma conversa.</div>';
     return;
   }
-  box.innerHTML=_supportThreads.map(t=>{
+  box.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);font-weight:600;border-bottom:1px solid rgba(0,170,255,.1)">Usuário</th><th style="text-align:left;padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);font-weight:600;border-bottom:1px solid rgba(0,170,255,.1)">Última mensagem</th><th style="text-align:left;padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);font-weight:600;border-bottom:1px solid rgba(0,170,255,.1)">Quando</th><th style="text-align:right;padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);font-weight:600;border-bottom:1px solid rgba(0,170,255,.1)">Status</th></tr></thead><tbody>'+_supportThreads.map(t=>{
     const unread=t.unread_admin||0;
-    const active=t.id===_supportActiveThreadId;
     const senderEmoji=t.last_message_sender==='admin'?'↗️':(t.last_message_sender==='user'?'↙️':'');
     const preview=escapeHtml((t.last_message_preview||'(sem mensagens)').slice(0,80));
     const when=t.last_message_at?new Date(t.last_message_at).toLocaleDateString('pt-BR')+' '+new Date(t.last_message_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
     const closed=t.status==='closed';
-    return `<div onclick="openSupportThread('${t.id}')" style="cursor:pointer;padding:10px 12px;border-radius:8px;margin-bottom:4px;background:${active?'rgba(0,170,255,.12)':'transparent'};border:1px solid ${active?'rgba(0,170,255,.3)':'transparent'};transition:all .15s" onmouseover="if(!this.dataset.active)this.style.background='rgba(0,170,255,.05)'" onmouseout="if(!this.dataset.active)this.style.background='transparent'" ${active?'data-active="1"':''}>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        ${unread>0?`<span style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:100px;font-size:9px;font-weight:800;font-family:var(--mono)">${unread>9?'9+':unread}</span>`:''}
-        ${closed?'<span style="color:var(--dim);font-size:10px">🔒</span>':''}
-        <span style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(t.user_name||t.user_email||'?')}</span>
-      </div>
-      <div style="font-size:11px;color:var(--text-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3">${senderEmoji} ${preview}</div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px">${escapeHtml(t.user_email||'')} · ${when}</div>
-    </div>`;
-  }).join('');
+    const emailEsc=(t.user_email||'').replace(/'/g,"\\'");
+    return `<tr style="border-bottom:1px solid rgba(0,170,255,.04)">
+      <td style="padding:10px 10px">
+        <div onclick="openAdminChatPopup('${t.id}')" style="cursor:pointer;display:flex;align-items:center;gap:8px" title="Clique pra abrir o chat">
+          ${unread>0?`<span style="background:#ef4444;color:#fff;padding:2px 7px;border-radius:100px;font-size:9px;font-weight:800;font-family:var(--mono)">${unread>9?'9+':unread}</span>`:''}
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#fff">${escapeHtml(t.user_name||t.user_email||'?')}</div>
+            <a onclick="event.stopPropagation();openAdminChatPopup('${t.id}')" style="font-family:var(--mono);font-size:10px;color:var(--neon);text-decoration:underline;cursor:pointer">${escapeHtml(t.user_email||'')}</a>
+          </div>
+        </div>
+      </td>
+      <td style="padding:10px 10px;color:var(--text-sec);font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${senderEmoji} ${preview}</td>
+      <td style="padding:10px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap">${when}</td>
+      <td style="padding:10px 10px;text-align:right">${closed?'<span style="font-family:var(--mono);font-size:10px;color:var(--dim)">🔒 Fechada</span>':'<span style="font-family:var(--mono);font-size:10px;color:var(--green)">🟢 Aberta</span>'}</td>
+    </tr>`;
+  }).join('')+'</tbody></table>';
 }
 
 function filterSupport(f){
@@ -2833,45 +2845,59 @@ function filterSupport(f){
   loadSupportThreads();
 }
 
-async function openSupportThread(threadId){
+// Abre o popup de chat estilo Messenger (igual ao do user, mas com botão Fechar conversa)
+async function openAdminChatPopup(threadId){
   _supportActiveThreadId=threadId;
-  renderSupportThreads();
-  const pane=document.getElementById('supportChatPane');
-  if(!pane)return;
-  pane.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px">Carregando…</div>';
+  const popup=document.getElementById('adminChatPopup');
+  if(!popup)return;
+  popup.style.display='flex';
+  const msgsBox=document.getElementById('adminChatPopupMessages');
+  msgsBox.innerHTML='<div style="text-align:center;color:var(--dim);font-size:12px;padding:20px">Carregando…</div>';
+  document.getElementById('adminChatPopupUser').textContent='…';
+  document.getElementById('adminChatPopupMeta').textContent='';
+  document.getElementById('adminChatPopupInputArea').innerHTML='';
+  // Wire close button
+  document.getElementById('adminChatPopupCloseBtn').onclick=closeAdminChatPopup;
   try{
     const r=await fetch('/api/support-chat?action=admin-thread&thread_id='+threadId,{headers:{'Authorization':`Bearer ${adminKey}`}});
     const d=await r.json();
-    if(!d.ok){pane.innerHTML='<div style="padding:20px;color:var(--red);font-size:12px">Erro: '+(d.error||'?')+'</div>';return;}
-    renderSupportChat(d.thread,d.messages||[]);
+    if(!d.ok){msgsBox.innerHTML='<div style="padding:20px;color:var(--red);font-size:12px">Erro: '+(d.error||'?')+'</div>';return;}
+    renderAdminChatPopup(d.thread,d.messages||[]);
     subscribeSupportRealtime(threadId);
-    // Recarrega lista pra zerar unread_admin desta thread
     setTimeout(loadSupportThreads,500);
-  }catch(e){console.error(e);pane.innerHTML='<div style="padding:20px;color:var(--red)">Erro de rede</div>';}
+  }catch(e){console.error(e);msgsBox.innerHTML='<div style="padding:20px;color:var(--red)">Erro de rede</div>';}
 }
 
-function renderSupportChat(thread,messages){
-  const pane=document.getElementById('supportChatPane');
-  if(!pane)return;
+function closeAdminChatPopup(){
+  const popup=document.getElementById('adminChatPopup');
+  if(popup)popup.style.display='none';
+  if(_supportRtCh&&_supportSb){try{_supportSb.removeChannel(_supportRtCh);}catch(_){}_supportRtCh=null;}
+  _supportActiveThreadId=null;
+  loadSupportThreads();
+}
+
+function renderAdminChatPopup(thread,messages){
   const closed=thread.status==='closed';
-  pane.innerHTML=`
-    <div style="padding:12px 16px;border-bottom:1px solid rgba(0,170,255,.1);display:flex;align-items:center;gap:10px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(thread.user_name||thread.user_email)}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">${escapeHtml(thread.user_email)} ${thread.user_plan?'· '+escapeHtml(thread.user_plan):''}</div>
+  document.getElementById('adminChatPopupUser').textContent=thread.user_name||thread.user_email||'?';
+  document.getElementById('adminChatPopupMeta').textContent=(thread.user_email||'')+(thread.user_plan?' · '+thread.user_plan:'');
+  const msgsBox=document.getElementById('adminChatPopupMessages');
+  msgsBox.innerHTML=messages.map(m=>renderSupportMsg(m)).join('')||'<div style="text-align:center;color:var(--dim);font-size:12px;margin:auto">Sem mensagens.</div>';
+  msgsBox.scrollTop=msgsBox.scrollHeight;
+  const inputArea=document.getElementById('adminChatPopupInputArea');
+  if(closed){
+    inputArea.innerHTML='<div style="text-align:center;color:var(--dim);font-size:11px;font-family:var(--mono);padding:6px">🔒 Conversa fechada</div>';
+  }else{
+    inputArea.innerHTML=`
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="adminPopupReplyInput" rows="1" placeholder="Resposta…" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:10px 12px;color:#fff;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:100px;outline:none" oninput="this.style.height='auto';this.style.height=Math.min(100,this.scrollHeight)+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSupportReply()}"></textarea>
+        <button onclick="sendSupportReply()" style="width:38px;height:38px;border-radius:50%;border:none;background:linear-gradient(135deg,#00aaff,#0078ff);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Enviar"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
       </div>
-      ${!closed?`<button onclick="closeSupportThread('${thread.id}')" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);color:#22c55e;padding:5px 12px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer">✅ Marcar resolvido</button>`:'<span style="font-size:10px;color:var(--dim);font-family:var(--mono)">🔒 Fechada</span>'}
-    </div>
-    <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px" id="supportMessages">
-      ${messages.map(m=>renderSupportMsg(m)).join('')||'<div style="text-align:center;color:var(--dim);font-size:12px">Sem mensagens.</div>'}
-    </div>
-    ${!closed?`<div style="padding:12px;border-top:1px solid rgba(0,170,255,.1);display:flex;gap:8px;align-items:flex-end">
-      <textarea id="supportReplyInput" rows="1" placeholder="Resposta…" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:10px 12px;color:#fff;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:100px;outline:none" oninput="this.style.height='auto';this.style.height=Math.min(100,this.scrollHeight)+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSupportReply()}"></textarea>
-      <button onclick="sendSupportReply()" style="width:38px;height:38px;border-radius:50%;border:none;background:linear-gradient(135deg,#00aaff,#0078ff);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
-    </div>`:''}
-  `;
-  const box=document.getElementById('supportMessages');
-  if(box)box.scrollTop=box.scrollHeight;
+      <div style="text-align:right;margin-top:6px">
+        <button onclick="closeSupportThread('${thread.id}')" style="background:none;border:none;color:var(--green);font-family:var(--mono);font-size:10px;cursor:pointer;text-decoration:underline">✅ Marcar resolvido</button>
+      </div>
+    `;
+    setTimeout(()=>{const inp=document.getElementById('adminPopupReplyInput');if(inp)inp.focus();},100);
+  }
 }
 
 function renderSupportMsg(m){
@@ -2884,7 +2910,8 @@ function renderSupportMsg(m){
 }
 
 async function sendSupportReply(){
-  const inp=document.getElementById('supportReplyInput');
+  // Procura o input do popup admin (novo) ou fallback do split-view antigo
+  const inp=document.getElementById('adminPopupReplyInput')||document.getElementById('supportReplyInput');
   if(!inp||!_supportActiveThreadId)return;
   const content=inp.value.trim();
   if(!content)return;
@@ -2895,8 +2922,8 @@ async function sendSupportReply(){
     if(!d.ok){alert('Erro: '+(d.error||'?'));return;}
     inp.value='';
     inp.style.height='auto';
-    // Optimistic: adiciona localmente
-    const box=document.getElementById('supportMessages');
+    // Optimistic: adiciona localmente no popup
+    const box=document.getElementById('adminChatPopupMessages')||document.getElementById('supportMessages');
     if(box&&d.message){
       box.insertAdjacentHTML('beforeend',renderSupportMsg(d.message));
       box.scrollTop=box.scrollHeight;
@@ -2912,9 +2939,7 @@ async function closeSupportThread(threadId){
     const d=await r.json();
     if(!d.ok){alert('Erro: '+(d.error||'?'));return;}
     toast('✅ Marcado como resolvido');
-    _supportActiveThreadId=null;
-    document.getElementById('supportChatPane').innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px;text-align:center;padding:20px">Selecione uma conversa à esquerda</div>';
-    loadSupportThreads();
+    closeAdminChatPopup();
   }catch(e){alert('Erro de rede');}
 }
 
@@ -2933,7 +2958,7 @@ async function subscribeSupportRealtime(threadId){
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'support_messages',filter:'thread_id=eq.'+threadId},(payload)=>{
         const m=payload.new;
         if(!m||m.sender!=='user'||threadId!==_supportActiveThreadId)return;
-        const box=document.getElementById('supportMessages');
+        const box=document.getElementById('adminChatPopupMessages')||document.getElementById('supportMessages');
         if(box){box.insertAdjacentHTML('beforeend',renderSupportMsg(m));box.scrollTop=box.scrollHeight;}
       })
       .subscribe();
