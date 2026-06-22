@@ -331,35 +331,38 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         reasons.push('email_normalizado_igual');
       }
 
-      // Busca fingerprints do afiliado
-      const fpRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/affiliate_fingerprints?affiliate_id=eq.${affiliate.id}&select=ip_hash,visitor_fingerprint,cookie_id`,
-        { headers: supaHeaders }
-      );
-      const fingerprints = fpRes.ok ? await fpRes.json() : [];
-      const affCookieIds = new Set(fingerprints.map(f => f.cookie_id).filter(Boolean));
-      const affIpHashes = new Set(fingerprints.map(f => f.ip_hash).filter(Boolean));
-      const affFps = new Set(fingerprints.map(f => f.visitor_fingerprint).filter(Boolean));
-
-      // Busca clicks mais recentes pra esse afiliado (ultimos 30 dias)
-      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const ckRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${cutoff}&select=cookie_id,ip_hash,visitor_fingerprint&order=landed_at.desc&limit=200`,
-        { headers: supaHeaders }
-      );
-      const clicks = ckRes.ok ? await ckRes.json() : [];
-
-      // 2/3) Qualquer click com fingerprint que bata com o proprio afiliado
-      const clickMatch = clicks.find(c =>
-        (c.cookie_id && affCookieIds.has(c.cookie_id)) ||
-        (c.ip_hash && affIpHashes.has(c.ip_hash)) ||
-        (c.visitor_fingerprint && affFps.has(c.visitor_fingerprint))
-      );
-      if (clickMatch) {
-        if (clickMatch.cookie_id && affCookieIds.has(clickMatch.cookie_id)) reasons.push('click_cookie_igual_afiliado');
-        else if (clickMatch.ip_hash && affIpHashes.has(clickMatch.ip_hash)) reasons.push('click_ip_igual_afiliado');
-        else reasons.push('click_fingerprint_igual_afiliado');
-      }
+      // 2/3) DESATIVADAS em 2026-06-22 (decisao do user): match por cookie,
+      // IP ou browser fingerprint causava muito falso positivo (familia/amigos
+      // na mesma rede do afiliado, mesmo PC em casa, etc.). Regra do user:
+      // "se o assinante esta pagando, nao importa se veio da mesma maquina —
+      // o afiliado deve ganhar". Mantemos apenas as 2 regras inequivocas:
+      // email igual (regra 1 acima) e stripe_customer_id igual (regra 4).
+      // Pra reativar, descomentar bloco abaixo.
+      //
+      // const fpRes = await fetch(
+      //   `${SUPABASE_URL}/rest/v1/affiliate_fingerprints?affiliate_id=eq.${affiliate.id}&select=ip_hash,visitor_fingerprint,cookie_id`,
+      //   { headers: supaHeaders }
+      // );
+      // const fingerprints = fpRes.ok ? await fpRes.json() : [];
+      // const affCookieIds = new Set(fingerprints.map(f => f.cookie_id).filter(Boolean));
+      // const affIpHashes = new Set(fingerprints.map(f => f.ip_hash).filter(Boolean));
+      // const affFps = new Set(fingerprints.map(f => f.visitor_fingerprint).filter(Boolean));
+      // const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // const ckRes = await fetch(
+      //   `${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${cutoff}&select=cookie_id,ip_hash,visitor_fingerprint&order=landed_at.desc&limit=200`,
+      //   { headers: supaHeaders }
+      // );
+      // const clicks = ckRes.ok ? await ckRes.json() : [];
+      // const clickMatch = clicks.find(c =>
+      //   (c.cookie_id && affCookieIds.has(c.cookie_id)) ||
+      //   (c.ip_hash && affIpHashes.has(c.ip_hash)) ||
+      //   (c.visitor_fingerprint && affFps.has(c.visitor_fingerprint))
+      // );
+      // if (clickMatch) {
+      //   if (clickMatch.cookie_id && affCookieIds.has(clickMatch.cookie_id)) reasons.push('click_cookie_igual_afiliado');
+      //   else if (clickMatch.ip_hash && affIpHashes.has(clickMatch.ip_hash)) reasons.push('click_ip_igual_afiliado');
+      //   else reasons.push('click_fingerprint_igual_afiliado');
+      // }
 
       // 4) Stripe customer compartilhado — afiliado eh tambem subscriber com
       // mesmo customer_id? (cenario raro mas possivel)
