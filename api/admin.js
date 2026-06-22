@@ -139,6 +139,102 @@ export default async function handler(req, res) {
     return cancelarCommissionAction(req, res, { SUPABASE_URL, headers });
   }
 
+  // ── LISTAR COMISSOES DE UM AFILIADO (admin) ──────────────────────────────
+  // GET ?action=list-affiliate-commissions&affiliate_id=X
+  // Retorna comissoes detalhadas pra entender por que saldo pagavel < pending.
+  // Agrupa em buckets: pagavel (nao-flagged OR aprovada), retida (flagged sem
+  // decision), cancelada, paga. Usado pra explicar erro "saldo abaixo do minimo".
+  if (req.method === 'GET' && action === 'list-affiliate-commissions') {
+    const affId = req.query?.affiliate_id;
+    if (!affId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(affId)) {
+      return res.status(400).json({ error: 'affiliate_id_obrigatorio_ou_invalido' });
+    }
+    try {
+      const cR = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affId}&select=id,subscriber_email,plan,commission_amount,commission_rate,plan_amount,status,flagged,flagged_reason,admin_decision,created_at&order=created_at.desc&limit=200`,
+        { headers }
+      );
+      if (!cR.ok) return res.status(500).json({ error: 'fetch_failed' });
+      const rows = await cR.json();
+      const buckets = { pagavel: [], retida: [], cancelada: [], paga: [], outros: [] };
+      let totalPagavel = 0, totalRetida = 0, totalPaga = 0;
+      (Array.isArray(rows) ? rows : []).forEach(c => {
+        const amt = parseFloat(c.commission_amount || 0);
+        if (c.status === 'paid') { buckets.paga.push(c); totalPaga += amt; return; }
+        if (c.status === 'cancelled' || c.status === 'cancelled_after_payout' || c.status === 'refunded') {
+          buckets.cancelada.push(c); return;
+        }
+        if (c.status === 'pending') {
+          const pagavel = !c.flagged || c.admin_decision === 'approved';
+          if (pagavel) { buckets.pagavel.push(c); totalPagavel += amt; }
+          else { buckets.retida.push(c); totalRetida += amt; }
+          return;
+        }
+        buckets.outros.push(c);
+      });
+      return res.status(200).json({
+        ok: true,
+        totals: {
+          pagavel: parseFloat(totalPagavel.toFixed(2)),
+          retida_flagged: parseFloat(totalRetida.toFixed(2)),
+          paga: parseFloat(totalPaga.toFixed(2)),
+        },
+        counts: {
+          pagavel: buckets.pagavel.length,
+          retida: buckets.retida.length,
+          cancelada: buckets.cancelada.length,
+          paga: buckets.paga.length,
+        },
+        retidas_detalhe: buckets.retida.map(c => ({
+          id: c.id,
+          subscriber: c.subscriber_email,
+          plan: c.plan,
+          amount: parseFloat(c.commission_amount || 0),
+          flagged_reason: c.flagged_reason || 'sem_motivo_registrado',
+          admin_decision: c.admin_decision,
+          created_at: c.created_at,
+        })),
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'exception', detail: (e.message || '').slice(0, 150) });
+    }
+  }
+
+  // ── APROVAR/REJEITAR COMISSAO FLAGGED ────────────────────────────────────
+  // POST { action:'decidir-commission', commission_id, decision } (approved|rejected)
+  if (req.method === 'POST' && action === 'decidir-commission') {
+    const { commission_id, decision } = req.body || {};
+    if (!commission_id || !['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ error: 'commission_id_ou_decision_invalido' });
+    }
+    if (!/^[0-9a-f-]{36}$/i.test(commission_id)) {
+      return res.status(400).json({ error: 'commission_id_invalido' });
+    }
+    try {
+      // rejected = cancela a comissao (afiliado nao recebe)
+      // approved = mantem pending mas marca decision pra entrar no proximo Pix
+      const patch = decision === 'approved'
+        ? { admin_decision: 'approved' }
+        : { admin_decision: 'rejected', status: 'cancelled' };
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_commissions?id=eq.${commission_id}`,
+        {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify(patch),
+        }
+      );
+      if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        return res.status(500).json({ error: 'patch_failed', detail: txt.slice(0, 200) });
+      }
+      const rows = await r.json();
+      return res.status(200).json({ ok: true, decision, commission: rows?.[0] || null });
+    } catch (e) {
+      return res.status(500).json({ error: 'exception', detail: (e.message || '').slice(0, 150) });
+    }
+  }
+
   // ── RECALCULAR COMISSOES ─────────────────────────────────────────────────
   // Auditoria completa: pra cada afiliado, reconta subscribers ativos reais,
   // sincroniza total_full/total_master (cache pode estar desync se SQL direto
