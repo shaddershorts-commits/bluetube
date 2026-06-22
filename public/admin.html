@@ -2795,7 +2795,9 @@ async function recalcularComissoes(){
     });
     const d=await r.json();
     if(!r.ok||!d.ok){
-      toast('❌ Falhou: '+(d.error||d.detail||'erro desconhecido'));
+      const msgFail='❌ Falhou: '+(d.error||'erro')+(d.detail?` — ${d.detail}`:'')+` (HTTP ${r.status})`;
+      toast(msgFail);
+      console.error('[recalcular-comissoes] falhou:', { status: r.status, response: d });
       return;
     }
     const rep=d.report||{};

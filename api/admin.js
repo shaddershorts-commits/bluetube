@@ -157,14 +157,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, message: 'Nenhum afiliado.', report: { afiliados_processados: 0 } });
       }
 
-      // 2. Busca todos subscribers ativos COM affiliate_ref (1 query — eficiente)
-      //    Considera ativo: plan in (full,master) AND (plan_expires_at futuro OR null).
-      const nowIso = new Date().toISOString();
-      const subsR = await fetch(
-        `${SUPABASE_URL}/rest/v1/subscribers?affiliate_ref=not.is.null&plan=in.(full,master)&or=(plan_expires_at.gte.${nowIso},plan_expires_at.is.null)&select=email,plan,affiliate_ref`,
-        { headers }
-      );
-      const activeSubs = subsR.ok ? await subsR.json() : [];
+      // 2. Busca todos subscribers ativos COM affiliate_ref (1 query — eficiente).
+      //    "Ativo" = plan in (full,master). Mesmo criterio usado em
+      //    affiliate.js:910 (recontagem natural). Subscribers que cancelaram
+      //    sao downgraded pra plan=free pelo webhook (ou expirados pela cron
+      //    plan-expiry), entao nao aparecem aqui. Evitamos filtro composto
+      //    or= com timestamp ISO na URL (chars : e . causaram falha em smoke).
+      const subsUrl = `${SUPABASE_URL}/rest/v1/subscribers?affiliate_ref=not.is.null&plan=in.(full,master)&select=email,plan,affiliate_ref&limit=20000`;
+      const subsR = await fetch(subsUrl, { headers });
+      if (!subsR.ok) {
+        const errText = await subsR.text().catch(() => '');
+        console.error('[recalcular-comissoes] subscribers query falhou:', subsR.status, errText.slice(0, 300));
+        return res.status(500).json({
+          error: 'subscribers_query_failed',
+          detail: `HTTP ${subsR.status}: ${errText.slice(0, 200)}`,
+        });
+      }
+      const activeSubs = await subsR.json();
       // Index: ref_code → { full: N, master: N }
       const subsByRef = {};
       (Array.isArray(activeSubs) ? activeSubs : []).forEach(s => {
