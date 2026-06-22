@@ -369,6 +369,10 @@ export default async function handler(req, res) {
       // cancelarem. Diferente de commissions_total (cumulativo historico).
       // PLAN_AMOUNTS espelha api/affiliate.js — manter sincronizado.
       const PLAN_AMOUNTS_LOCAL = { full: 29.99, master: 89.99 };
+      // Helper de decrypt da chave_pix (criptografada AES-256-GCM no DB).
+      // Em chave_pix_plain pra UI mostrar (chave_pix original mantida pra
+      // compat com outros endpoints que ja esperam ciphertext).
+      const { decryptSafe: _decryptPix } = require('./_helpers/crypto.js');
       const enriched = (Array.isArray(affiliates) ? affiliates : []).map(a => {
         const cliques = clickMap[a.id] || 0;
         const visUnicos = uniqSets[a.id]?.size || 0;
@@ -382,6 +386,10 @@ export default async function handler(req, res) {
           ((a.total_full || 0) * PLAN_AMOUNTS_LOCAL.full * rate +
            (a.total_master || 0) * PLAN_AMOUNTS_LOCAL.master * rate).toFixed(2)
         );
+        // Decifra chave_pix se cadastrada (vem AES-256-GCM do DB). Plaintext
+        // vai em chave_pix_plain pra UI; chave_pix original (ciphertext)
+        // mantida pra nao quebrar outros consumidores.
+        const chave_pix_plain = a.chave_pix ? (_decryptPix(a.chave_pix) || null) : null;
         return {
           ...a,
           nivel: a.nivel || 'bronze',
@@ -390,6 +398,7 @@ export default async function handler(req, res) {
           commissions_paid: parseFloat((commMap[a.id]?.paid || 0).toFixed(2)),
           commissions_total: parseFloat((commMap[a.id]?.total || 0).toFixed(2)),
           mrr_recorrente: mrrRecorrente,
+          chave_pix_plain,
           cliques_total: cliques,
           cliques_7d: click7dMap[a.id] || 0,
           visitantes_unicos: visUnicos,

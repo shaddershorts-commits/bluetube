@@ -2897,12 +2897,35 @@ function renderAffTable(){
       <td style="color:var(--text)">${paying}<br><span style="font-family:var(--mono);font-size:10px;color:${corTaxa}">${taxaConv}% conv</span></td>
       <td style="color:var(--green);font-weight:600" title="Soma histórica das comissões geradas (pending + paid)">R$${(a.commissions_total||0).toFixed(2)}</td>
       <td style="color:#00f0ff;font-weight:700" title="Comissão recorrente mensal: ${paying} ativos × ${comissao}% (entra todo mês enquanto não cancelarem)">R$${(a.mrr_recorrente||0).toFixed(2)}<br><span style="font-family:var(--mono);font-size:9px;color:var(--dim);font-weight:400">/mês</span></td>
+      ${(()=>{
+        const pix=a.chave_pix_plain||'';
+        if(!pix)return `<td style="color:var(--dim);font-family:var(--mono);font-size:10px">— não cadastrado</td>`;
+        const tipo=a.tipo_chave_pix||(pix.includes('@')?'email':/^\d{11}$/.test(pix.replace(/\D/g,''))?'CPF':'chave');
+        const display=pix.length>22?pix.slice(0,20)+'…':pix;
+        return `<td style="font-family:var(--mono);font-size:10px" title="Clique pra copiar a chave Pix completa">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span onclick="copyPix(this,'${pix.replace(/'/g,"\\'")}')" style="cursor:pointer;color:#00f0ff;text-decoration:underline dotted" title="${pix}">${display}</span>
+            <span style="font-size:8px;color:var(--dim);background:rgba(0,240,255,.08);padding:1px 5px;border-radius:6px;text-transform:uppercase">${tipo}</span>
+          </div>
+        </td>`;
+      })()}
       <td><span style="font-family:var(--mono);font-size:11px;color:${sc[a.status]||'var(--dim)'}">${sl[a.status]||a.status}</span></td>
       <td><div style="display:flex;gap:4px">${btns}</div></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>🔁 MRR/mês</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('affiliatesTable').innerHTML=`<table><thead><tr><th>Nome</th><th>Email</th><th>Nível</th><th>Comissão</th><th>👁️ Cliques</th><th>Pagantes</th><th>Ganhos</th><th>🔁 MRR/mês</th><th>💸 Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Copia chave Pix do afiliado pro clipboard + feedback visual breve.
+function copyPix(el,pix){
+  if(!pix)return;
+  navigator.clipboard.writeText(pix).then(()=>{
+    const orig=el.textContent;
+    el.textContent='✓ copiado';
+    el.style.color='var(--green)';
+    setTimeout(()=>{el.textContent=orig;el.style.color='#00f0ff';},1400);
+  }).catch(()=>{toast('Erro ao copiar.');});
 }
 
 function openNivelModal(id,email,currentNivel){
