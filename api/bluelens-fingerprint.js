@@ -292,8 +292,20 @@ module.exports = async function handler(req, res) {
       getSerpAPICandidates(youtubeId, thumbnailUrl),
     ]);
 
+    // FALLBACK: meta pode estar null se YouTube Data API tá sem quota.
+    // Não bloqueia o flow — segue com metadata mínima e tenta SerpAPI mesmo assim.
+    // (Cenário visto em 2026-06-23: todas YT_KEYs com quota_exceeded simultaneamente.)
+    const safeMeta = meta && meta.title ? meta : {
+      title: 'Vídeo do YouTube (metadata indisponível)',
+      channel: '—',
+      thumbnail: thumbnailUrl,
+      published_at: null,
+      views: 0,
+      duration: 0,
+      _meta_unavailable: true,
+    };
     if (!meta || !meta.title) {
-      return res.status(404).json({ error: 'Video YouTube nao encontrado ou privado' });
+      console.warn(`[bluelens v4] ${youtubeId}: YouTube Data API falhou — seguindo com meta mínima (quota esgotada?)`);
     }
 
     // FALLBACK: SerpAPI quebrou — retorna resposta mínima com meta only,
@@ -303,7 +315,7 @@ module.exports = async function handler(req, res) {
         ok: true,
         url,
         youtube_id: youtubeId,
-        video_meta: meta,
+        video_meta: safeMeta,
         serpapi: {
           total_visual_matches: 0,
           youtube_ids_found: 0,
@@ -336,7 +348,7 @@ module.exports = async function handler(req, res) {
     // ── Heurística score + ordenação por confidence desc ────────────────────
     const matches = candidates
       .map(c => {
-        const score = computeHeuristicScore(c, meta);
+        const score = computeHeuristicScore(c, safeMeta);
         return {
           url: c.url,
           video_id: c.id,
@@ -358,7 +370,7 @@ module.exports = async function handler(req, res) {
       ok: true,
       url,
       youtube_id: youtubeId,
-      video_meta: meta,
+      video_meta: safeMeta,
       serpapi: {
         total_visual_matches: serpResult.total_visual_matches,
         youtube_ids_found: serpResult.youtube_ids.length,
