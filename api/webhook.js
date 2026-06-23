@@ -470,9 +470,18 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     // Quando user faz NOVO checkout (upgrade, conta nova, novo customer), Stripe
     // NAO cancela subs anteriores automaticamente. Resultado real visto:
     // bruno tinha 3 subs ativas (R$149/mes), maurilio 2 (R$120), djully 2 (R$60).
-    // Fix: apos UPSERT, lista TODAS subs ativas desse email no Stripe e cancela
-    // IMEDIATO (DELETE) as que NAO sao a sub recem-criada (subscriptionId).
-    // Cobra zero a mais — user ja tem sub nova ativa.
+    //
+    // FIX 2026-06-23 (caso anabarbara):
+    //   1. GRACE PERIOD 10min — subs criadas < 10min sao puladas. Razao: webhooks
+    //      Stripe sao assincronos e podem chegar fora de ordem. Quando user faz 2
+    //      checkouts em < 30s, webhook do segundo chega primeiro, cancela o primeiro
+    //      como "antigo" (justo). Depois webhook do primeiro chega delayed, ve o
+    //      segundo como "antigo" e cancela — RACE CONDITION cancela AMBOS.
+    //      Subs antigas reais (Bruno/Maurilio: meses atras) NAO sao afetadas.
+    //   2. cancel_at_period_end=true em vez de DELETE imediato — mesmo se cancelar
+    //      a sub "errada" por engano, user mantem acesso ate o fim do periodo pago.
+    //      Bruno-style: as 3 subs continuam pagando o periodo ja cobrado, paro de
+    //      cobrar a partir do proximo ciclo.
     try {
       const STRIPE_K = process.env.STRIPE_SECRET_KEY;
       if (STRIPE_K && customerId && subscriptionId && emailLower) {
@@ -486,7 +495,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const customers = (custData.data || []).filter(c => !c.deleted);
 
         const ACTIVE_LIKE = ['active', 'trialing', 'past_due'];
+        const GRACE_SECONDS = 600; // 10 minutos
+        const nowSeconds = Math.floor(Date.now() / 1000);
         const stale = [];
+        const skippedRecent = [];
         for (const c of customers) {
           const sListR = await fetch(
             `https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=all&limit=20`,
@@ -497,20 +509,32 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           for (const s of (sList.data || [])) {
             if (!ACTIVE_LIKE.includes(s.status)) continue;
             if (s.id === subscriptionId) continue; // a NOVA — preservar
-            stale.push({ id: s.id, customer: c.id, amount: s.items?.data?.[0]?.price?.unit_amount, currency: s.items?.data?.[0]?.price?.currency });
+            // GRACE PERIOD: subs criadas < 10min atras podem ser race condition
+            // de checkouts simultaneos. Pular.
+            const ageSeconds = typeof s.created === 'number' ? (nowSeconds - s.created) : Infinity;
+            if (ageSeconds < GRACE_SECONDS) {
+              skippedRecent.push({ id: s.id, customer: c.id, age_seconds: ageSeconds });
+              continue;
+            }
+            stale.push({ id: s.id, customer: c.id, amount: s.items?.data?.[0]?.price?.unit_amount, currency: s.items?.data?.[0]?.price?.currency, age_seconds: ageSeconds });
           }
         }
 
+        if (skippedRecent.length > 0) {
+          console.log(`[auto-cancel] ${emailLower}: ${skippedRecent.length} sub(s) PULADAS (grace 10min, possivel race condition):`, skippedRecent.map(s => `${s.id}(${s.age_seconds}s)`).join(', '));
+        }
+
         if (stale.length > 0) {
-          console.warn(`⚠️  ${emailLower}: encontradas ${stale.length} sub(s) antiga(s) ativas. Cancelando IMEDIATO pra evitar cobranca duplicada.`);
+          console.warn(`⚠️  ${emailLower}: encontradas ${stale.length} sub(s) antiga(s) ativas. Cancelando com cancel_at_period_end=true (preserva acesso pago).`);
           for (const s of stale) {
             try {
               const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
-                method: 'DELETE',
-                headers: stripeAuth,
+                method: 'POST',
+                headers: { ...stripeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'cancel_at_period_end=true',
               });
               if (delR.ok) {
-                console.log(`✅ Auto-cancel sub antiga: ${s.id} (cust ${s.customer}, ${(s.amount/100).toFixed(2)} ${s.currency})`);
+                console.log(`✅ Auto-cancel sub antiga (cancel_at_period_end): ${s.id} (cust ${s.customer}, ${(s.amount/100).toFixed(2)} ${s.currency}, age ${Math.floor(s.age_seconds/86400)}d)`);
                 notifyStripe(`🛡️ Auto-cancel sub duplicada — ${emailLower}`, [
                   ['Cliente', emailLower],
                   ['Sub antiga cancelada', s.id],
