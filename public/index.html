@@ -4247,10 +4247,11 @@ function confirmCancelStep2(){
   const reason=document.querySelector('input[name="cancelReason"]:checked');
   if(!reason){alert('Selecione um motivo para continuar.');return;}
   const other=document.getElementById('cancelOtherBox').value;
-  // Send feedback
-  fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({email:currentUserEmail,plan:userPlan,message:reason.value==='other'?other:'Cancelamento: '+reason.value,type:'cancel'})
-  }).catch(()=>{});
+  // Guarda o motivo num escopo acessível pelo finalCancel (evita re-checar).
+  // O backend cancel-subscription registra o cancel em user_feedback (etiqueta
+  // no admin), substituindo o /api/feedback direto que vinha aqui — garantia
+  // que TODO cancel passa por 1 só ponto de registro.
+  window.__cancelReasonText = reason.value==='other' ? other : reason.value;
   const discountPrice=userPlan==='master'?'R$67,49':'R$22,49';
   document.getElementById('discountPrice').textContent=discountPrice;
   document.getElementById('cancelStep1').style.display='none';
@@ -4267,7 +4268,7 @@ async function finalCancel(){
     const r=await fetch('/api/cancel-subscription',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token})
+      body:JSON.stringify({token, reason: window.__cancelReasonText || null})
     });
     result=await r.json();
     console.log('Cancel result:',result);

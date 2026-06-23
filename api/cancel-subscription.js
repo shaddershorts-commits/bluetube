@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { token } = req.body;
+  const { token, reason } = req.body;
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
   const ANON_KEY = process.env.SUPABASE_ANON_KEY || SUPABASE_KEY;
@@ -31,6 +31,35 @@ export default async function handler(req, res) {
 
   if (!token) return res.status(401).json({ error: 'Token required' });
   if (!STRIPE_SECRET) return res.status(500).json({ error: 'Stripe nao configurado' });
+
+  // Helper: garante que cancel apareca na lista "Mensagens dos usuarios" do admin.
+  // Confirma 2026-06-23: ate aqui o type=cancel so vinha do confirmCancelStep2
+  // (frontend index.html:4251). Cancels que pulam aquele step ou vem de outros
+  // canais (webhook auto-cancel, Stripe Portal, etc) nao apareciam no painel.
+  // Registra SEMPRE aqui pra garantia: 1 cancel = 1 entrada user_feedback.
+  async function registerCancelFeedback(email, plan, motivo) {
+    try {
+      const msg = motivo && motivo.length >= 2
+        ? (motivo.startsWith('Cancelamento') ? motivo : 'Cancelamento: ' + motivo)
+        : 'Cancelamento (motivo nao informado)';
+      await fetch(`${SUPABASE_URL}/rest/v1/user_feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({
+          email: email || 'anônimo',
+          plan: plan || 'free',
+          message: msg.slice(0, 500),
+          type: 'cancel',
+          created_at: new Date().toISOString(),
+        }),
+      });
+    } catch (e) { console.error('[cancel-sub] feedback insert err:', e.message); }
+  }
 
   try {
     // 1. Valida usuario
@@ -118,6 +147,8 @@ export default async function handler(req, res) {
           })
         }
       );
+      // Registra cancel no user_feedback (etiqueta no painel admin)
+      await registerCancelFeedback(email, sub?.plan, reason);
       return res.status(200).json({
         success: true,
         email,
@@ -188,6 +219,9 @@ export default async function handler(req, res) {
     import('./_helpers/cancellationEmail.js')
       .then((m) => m.sendCancellationEmail(email, sub?.plan || 'unknown', periodEnd?.toISOString()))
       .catch((e) => console.error('[cancel-subscription] cancellationEmail:', e.message));
+
+    // Registra cancel no user_feedback (etiqueta no painel admin)
+    await registerCancelFeedback(email, sub?.plan, reason);
 
     return res.status(200).json({
       success: true,
