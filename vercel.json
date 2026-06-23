@@ -32,7 +32,10 @@
     "api/bluelens-serpapi-test.js": { "maxDuration": 60 },
     "api/bluelens-cleanup.js": { "maxDuration": 60 },
     "api/bluelens-cookies-monitor.js": { "maxDuration": 120 },
-    "api/support-chat.js": { "maxDuration": 30 }
+    "api/support-chat.js": { "maxDuration": 30 },
+    "api/email-sequence.js": { "maxDuration": 60 },
+    "api/trial-activate.js": { "maxDuration": 30 },
+    "api/trial-expiry-warning.js": { "maxDuration": 60 }
   },
   "crons": [
     {
@@ -56,8 +59,16 @@
       "schedule": "0 10 * * 3"
     },
     {
-      "path": "/api/email-marketing",
-      "schedule": "0 10 * * 2,5"
+      "path": "/api/email-sequence?audience=free",
+      "schedule": "0 10 * * 4"
+    },
+    {
+      "path": "/api/email-sequence?audience=full",
+      "schedule": "0 10 * * 5"
+    },
+    {
+      "path": "/api/trial-expiry-warning",
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/milestone-emails",

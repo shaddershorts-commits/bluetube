@@ -2097,6 +2097,102 @@ function openAuthModal(){
   }catch(e){}
 })();
 function closeAuthModal(){document.getElementById('authModal').classList.remove('on');document.getElementById('authMsg').textContent='';}
+
+// ── TRIAL 30D ACTIVATION (via email link ?trial_activate=<token>) ──────────
+// Fluxo: email link → GET /api/trial-activate (valida token) → redirect
+// pra "/" com ?trial_activate=<token>. Aqui detectamos e:
+//   - sem login: abre modal de login + guarda token pra ativar depois
+//   - logado: chama POST /api/trial-activate + mostra popup de boas-vindas
+(function(){
+  try {
+    const p = new URLSearchParams(location.search);
+    const tk = p.get('trial_activate');
+    const err = p.get('trial_error');
+    if (err) {
+      setTimeout(() => {
+        alert('Não consegui ativar o trial: ' + err + '. O link pode ter expirado. Entre em contato com o suporte se precisar.');
+      }, 800);
+      return;
+    }
+    if (!tk) return;
+    // Guarda em sessionStorage caso precise login primeiro
+    sessionStorage.setItem('bt_pending_trial', tk);
+    setTimeout(() => activateTrialFromUrl(), 600);
+  } catch(e){}
+})();
+
+async function activateTrialFromUrl(){
+  const tk = sessionStorage.getItem('bt_pending_trial');
+  if (!tk) return;
+  const jwt = localStorage.getItem('bt_token');
+  if (!jwt) {
+    // Sem login — abre modal e instrui
+    openAuthModal();
+    try { setAuthMsg('Faça login pra ativar seus 30 dias grátis no Full 👇', 'ok'); } catch(e){}
+    // Tenta de novo após login (hook simples: poll sessionStorage)
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if (tries > 60) { clearInterval(iv); return; }
+      if (localStorage.getItem('bt_token')) {
+        clearInterval(iv);
+        setTimeout(() => activateTrialFromUrl(), 400);
+      }
+    }, 1000);
+    return;
+  }
+  // Logado — chama POST
+  try {
+    const r = await fetch('/api/trial-activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + jwt },
+      body: JSON.stringify({ token: tk }),
+    });
+    const data = await r.json();
+    sessionStorage.removeItem('bt_pending_trial');
+    if (data.ok) {
+      showTrialActivatedPopup(data);
+      // Limpa query string sem reload
+      try { history.replaceState({}, '', location.pathname); } catch(e){}
+    } else {
+      const msg = data.message || data.error || 'erro desconhecido';
+      alert('Não consegui ativar o trial: ' + msg);
+    }
+  } catch(e) {
+    console.error('[trial-activate] erro:', e);
+    alert('Erro de rede ao ativar o trial. Tente recarregar a página.');
+  }
+}
+
+function showTrialActivatedPopup(data){
+  const days = data.days_remaining || 30;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(10,14,26,.85);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;animation:btTrialFade .3s ease;';
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(180deg,#0f172a 0%,#0a0e1a 100%);border:1px solid #3b82f6;border-radius:16px;padding:40px 32px;max-width:480px;width:100%;text-align:center;box-shadow:0 30px 60px rgba(59,130,246,.3);">
+      <div style="font-size:48px;margin-bottom:16px;">🎉</div>
+      <h2 style="margin:0 0 12px;color:#fff;font-size:24px;font-weight:700;">Trial Full ativado!</h2>
+      <p style="margin:0 0 20px;color:#cbd5e1;font-size:16px;line-height:1.5;">
+        Você tem <strong style="color:#3b82f6;">${days} dias</strong> de plano Full grátis.<br>
+        Sem cartão. Sem cobrança automática.
+      </p>
+      <div style="background:#0a0e1a;border:1px solid #1e293b;border-radius:8px;padding:16px;margin-bottom:24px;text-align:left;color:#94a3b8;font-size:14px;line-height:1.6;">
+        ✨ Roteiros IA ilimitados<br>
+        🎙️ BlueVoice 16 idiomas<br>
+        📊 BlueScore análise profunda<br>
+        🔥 Buscador de virais sem limite<br>
+        🎯 Tendências em tempo real
+      </div>
+      <p style="margin:0 0 20px;color:#64748b;font-size:13px;">
+        Daqui a 20 dias mandamos um lembrete avisando que tá acabando.<br>
+        Se não quiser continuar, sua conta volta pra Free naturalmente.
+      </p>
+      <button onclick="this.closest('div[style*=position]').remove();window.location.reload()" style="background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;border:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;width:100%;">Começar a usar Full →</button>
+    </div>
+    <style>@keyframes btTrialFade { from { opacity:0; transform:scale(.96);} to { opacity:1; transform:scale(1);} }</style>
+  `;
+  document.body.appendChild(wrap);
+}
 function switchAuthTab(tab){
   document.getElementById('tabLogin').classList.toggle('active',tab==='login');
   document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
