@@ -1072,23 +1072,44 @@ module.exports = async function handler(req, res) {
 
       raw.sort((a, b) => (b._feedScore || b.score || 0) - (a._feedScore || a.score || 0));
 
-      // 80/20: mistura 80% top-score + 20% exploracao (random do resto)
+      // ── COLD START (2026-06-23) ────────────────────────────────────────────
+      // User novo (< COLD_START_THRESHOLD videos vistos): aumenta exploration
+      // de 20% pra 60%. Algoritmo nao tem dado suficiente do user — precisa
+      // expor variedade de nicho pra descobrir o que ele gosta.
+      // Sai do cold start automaticamente quando seen.length >= threshold.
+      const COLD_START_THRESHOLD = 10;
+      const isColdStart = (userPrefs.seen?.length || 0) < COLD_START_THRESHOLD;
+      const explorationPct = isColdStart ? 0.6 : 0.2;
+
+      // Em cold start, prioriza pool de exploration por avg_watch_percent
+      // (qualidade comprovada — vai entregar variedade mas com retenção alta)
+      if (isColdStart && raw.length > limit) {
+        // Re-sort secundario por qualidade pra pool de exploration ser melhor
+        // (mantem ordem do score primario via ordenacao estavel)
+        const topSection = raw.slice(0, Math.floor(limit * (1 - explorationPct)));
+        const poolSection = raw.slice(Math.floor(limit * (1 - explorationPct)));
+        poolSection.sort((a, b) => (b.avg_watch_percent || 0) - (a.avg_watch_percent || 0));
+        raw = [...topSection, ...poolSection];
+      }
+
+      // 80/20 (ou 40/60 em cold start): mistura top-score + exploracao random
       if (raw.length > limit) {
-        const slice80 = Math.floor(limit * 0.8);
-        const slice20 = limit - slice80;
-        const top = raw.slice(0, slice80);
-        const pool = raw.slice(slice80);
-        // Shuffle pool e pega slice20 — exploracao
+        const sliceTop = Math.floor(limit * (1 - explorationPct));
+        const sliceExp = limit - sliceTop;
+        const top = raw.slice(0, sliceTop);
+        const pool = raw.slice(sliceTop);
+        // Shuffle pool e pega sliceExp — exploracao
         for (let i = pool.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [pool[i], pool[j]] = [pool[j], pool[i]];
         }
-        const exploration = pool.slice(0, slice20);
+        const exploration = pool.slice(0, sliceExp);
         // Interleave pra nao concentrar exploracao no fim
         const merged = [];
         let ti = 0, ei = 0;
-        const every = Math.max(3, Math.floor(slice80 / Math.max(1, slice20)));
-        for (let i = 0; i < limit; i++) {
+        const every = Math.max(2, Math.floor(sliceTop / Math.max(1, sliceExp)));
+        for (let i = 0; i < limit * 2; i++) {
+          if (merged.length >= limit) break;
           if (i > 0 && i % every === 0 && ei < exploration.length) {
             merged.push(exploration[ei++]);
           } else if (ti < top.length) {
@@ -1099,9 +1120,68 @@ module.exports = async function handler(req, res) {
         }
         raw = merged;
       }
+
+      // ── DIVERSITY CAP por criador (2026-06-23) ────────────────────────────
+      // No maximo MAX_PER_CREATOR_PER_FEED videos do mesmo criador na pagina.
+      // Antes o algoritmo podia entregar 3-5 videos do mesmo @user em sequencia
+      // (especialmente se user_id tinha boost por following ou nicho favorito).
+      // TikTok/Reels limitam isso pra forcar exposicao a criadores variados.
+      const MAX_PER_CREATOR_PER_FEED = 2;
+      const creatorCounts = {};
+      raw = raw.filter(v => {
+        const uid = v.user_id;
+        if (!uid) return true; // anonimo passa
+        creatorCounts[uid] = (creatorCounts[uid] || 0) + 1;
+        return creatorCounts[uid] <= MAX_PER_CREATOR_PER_FEED;
+      });
     }
 
     let videos = raw.slice(0, limit);
+
+    // ── EMBEDDINGS A/B (2026-06-23) ─────────────────────────────────────────
+    // ~30% dos users com perfil embedding entram no grupo "tratamento".
+    // Pra esses, INJETA 5 videos similares por embedding do perfil (RPC
+    // blue_feed_personalizado) intercalados a cada 5 posicoes.
+    // Fail-soft: se RPC falhar OU user nao tem perfil, mantem feed normal.
+    //
+    // Como ler resultado: rastreamos via track-batch (origem='feed_embed' nos
+    // videos injetados) pra comparar engagement vs feed regular depois.
+    //
+    // Controle via env var BLUE_FEED_EMBEDDINGS_PCT (default 0.3).
+    if (userPrefs?.uid && videos.length > 0) {
+      try {
+        const EXP_PCT = parseFloat(process.env.BLUE_FEED_EMBEDDINGS_PCT || '0.3');
+        const inExperiment = abExperimentBucket(userPrefs.uid, 'embeddings_feed_v1') < EXP_PCT;
+        if (inExperiment) {
+          const personalized = await fetchPersonalizedFeed(userPrefs.uid, 5, { SU, h });
+          if (personalized && personalized.length > 0) {
+            const inFeedIds = new Set(videos.map(v => v.id));
+            const fresh = personalized.filter(v => v.id && !inFeedIds.has(v.id)).slice(0, 5);
+            if (fresh.length > 0) {
+              // Marca origem pra tracking diferenciado (frontend manda em track-batch)
+              fresh.forEach(v => { v._origem = 'feed_embed'; });
+              // Intercala: insere 1 fresh a cada 5 posicoes do feed regular
+              const merged = [];
+              let pi = 0;
+              for (let i = 0; i < videos.length && merged.length < limit; i++) {
+                merged.push(videos[i]);
+                if ((i + 1) % 5 === 0 && pi < fresh.length && merged.length < limit) {
+                  merged.push(fresh[pi++]);
+                }
+              }
+              // Resto do fresh que nao coube (caso poucos videos no feed regular)
+              while (pi < fresh.length && merged.length < limit) {
+                merged.push(fresh[pi++]);
+              }
+              videos = merged;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[blue-feed:embeddings-ab]', e.message);
+      }
+    }
+
     // Lote 7 — feed infinito: pra user logado, cursor SEMPRE existe.
     // Se fresh esgotou (rawSql < limit*3), proximo cursor vira recycle:|| (zerado),
     // que dispara branch recycle no proximo request. has_more=true sempre em modo logado.
@@ -1394,4 +1474,69 @@ async function atualizarInteressesBatch(userId, sinais, { SU, h }) {
       updated_at: new Date().toISOString(),
     }),
   });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// AB EXPERIMENT BUCKETING (2026-06-23)
+// Deterministico por (user_id, experiment_name). Mesmo user sempre cai no
+// mesmo bucket, mas users diferentes se distribuem uniformemente.
+// Returns float [0, 1) — comparar com pct desejada (ex: < 0.3 = 30%).
+// ──────────────────────────────────────────────────────────────────────────
+function abExperimentBucket(userId, experimentName) {
+  const crypto = require('crypto');
+  const hash = crypto.createHash('md5').update(`${userId}:${experimentName}`).digest('hex');
+  return parseInt(hash.slice(0, 8), 16) / 0xffffffff;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// FETCH PERSONALIZED FEED (2026-06-23)
+// 1. Busca embedding do perfil do user (blue_user_profile_embeddings)
+// 2. Chama RPC blue_feed_personalizado (similarity search pgvector)
+// 3. Enrich faltantes: avg_watch_percent, comments, saves, nichos, etc
+//    (RPC retorna apenas subset; precisamos do resto pro frontend)
+// Fail-soft: retorna [] em qualquer erro.
+// ──────────────────────────────────────────────────────────────────────────
+async function fetchPersonalizedFeed(userId, limit, { SU, h }) {
+  try {
+    const pR = await fetch(
+      `${SU}/rest/v1/blue_user_profile_embeddings?user_id=eq.${userId}&select=embedding,baseado_em&limit=1`,
+      { headers: h, signal: AbortSignal.timeout(3000) }
+    );
+    if (!pR.ok) return [];
+    const [profile] = await pR.json();
+    if (!profile?.embedding) return [];
+
+    const rpcR = await fetch(`${SU}/rest/v1/rpc/blue_feed_personalizado`, {
+      method: 'POST',
+      headers: h,
+      body: JSON.stringify({
+        query_embedding: profile.embedding,
+        match_limit: limit * 2,
+        exclude_user: userId,
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!rpcR.ok) return [];
+    const rows = await rpcR.json();
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    const ids = rows.map(r => r.id).filter(Boolean);
+    if (!ids.length) return [];
+    const enrichR = await fetch(
+      `${SU}/rest/v1/blue_videos?id=in.(${ids.join(',')})&select=id,avg_watch_percent,comments,saves,nichos,created_at,views_24h,duration`,
+      { headers: h, signal: AbortSignal.timeout(3000) }
+    );
+    const enrichMap = new Map();
+    if (enrichR.ok) {
+      (await enrichR.json()).forEach(v => enrichMap.set(v.id, v));
+    }
+
+    return rows.slice(0, limit).map(r => ({
+      ...r,
+      ...(enrichMap.get(r.id) || {}),
+    }));
+  } catch (e) {
+    console.warn('[fetchPersonalizedFeed]', e?.message);
+    return [];
+  }
 }
