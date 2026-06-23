@@ -1,9 +1,10 @@
 // Blue Service Worker — Network first, cache only as offline fallback
-// v4: bump pra forçar reg.update() detectar mudança e disparar reload
-//     automático via updatefound handler no cliente. Continua com a mesma
-//     estrategia de v3 (no-store em HTML, no-cache em JS/CSS).
+// v5: bump pra forçar invalidação após fix do setupInfiniteScroll() ausente
+//     (2026-06-23). Detecta mudança e dispara reload automático via
+//     updatefound handler em blue.html:4891. Mesma estratégia de v4
+//     (no-store em HTML, no-cache em JS/CSS).
 
-const CACHE_NAME = 'blue-v4';
+const CACHE_NAME = 'blue-v5';
 
 self.addEventListener('install', e => {
   self.skipWaiting(); // Activate immediately
