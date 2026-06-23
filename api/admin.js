@@ -93,6 +93,77 @@ export default async function handler(req, res) {
     return recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email });
   }
 
+  // ── INVESTIGAR USER STRIPE (READ-ONLY) ───────────────────────────────────
+  // GET ?action=investigar-stripe&email=X
+  // Retorna customers + subscriptions + charges + commissions do usuario pra
+  // diagnosticar duplo-cobranca, zumbi pagante, etc. NAO MEXE em nada.
+  if (req.method === 'GET' && action === 'investigar-stripe') {
+    const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_SECRET) return res.status(500).json({ error: 'STRIPE_SECRET_KEY nao configurado' });
+    const tgtEmail = req.query?.email;
+    if (!tgtEmail) return res.status(400).json({ error: 'email obrigatorio' });
+    try {
+      const sH = { Authorization: 'Bearer ' + STRIPE_SECRET };
+      const out = { email: tgtEmail, customers: [], all_subscriptions: [], all_charges: [] };
+
+      // 1. Subscriber row do DB
+      const subR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(tgtEmail)}&select=*&limit=5`,
+        { headers }
+      );
+      out.subscribers_db = subR.ok ? await subR.json() : [];
+
+      // 2. Customers no Stripe
+      const cR = await fetch(`https://api.stripe.com/v1/customers?email=${encodeURIComponent(tgtEmail)}&limit=10`, { headers: sH });
+      if (!cR.ok) return res.status(502).json({ error: 'stripe_customers_fail' });
+      out.customers = (await cR.json()).data || [];
+
+      // 3. Pra cada customer: subscriptions + charges (read-only)
+      for (const c of out.customers) {
+        // Subscriptions (all statuses)
+        const subsR = await fetch(`https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=all&limit=20`, { headers: sH });
+        if (subsR.ok) {
+          const ss = (await subsR.json()).data || [];
+          ss.forEach(s => out.all_subscriptions.push({
+            id: s.id, status: s.status, created: new Date(s.created * 1000).toISOString(),
+            current_period_start: s.current_period_start ? new Date(s.current_period_start * 1000).toISOString() : null,
+            current_period_end: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+            cancel_at_period_end: s.cancel_at_period_end,
+            ended_at: s.ended_at ? new Date(s.ended_at * 1000).toISOString() : null,
+            customer: c.id,
+            items_summary: (s.items?.data || []).map(i => ({ price: i.price?.id, amount: i.price?.unit_amount, currency: i.price?.currency, interval: i.price?.recurring?.interval })),
+            metadata: s.metadata,
+          }));
+        }
+        // Charges (últimos 30 dias)
+        const chR = await fetch(`https://api.stripe.com/v1/charges?customer=${c.id}&limit=50`, { headers: sH });
+        if (chR.ok) {
+          const chs = (await chR.json()).data || [];
+          chs.forEach(ch => out.all_charges.push({
+            id: ch.id, amount: ch.amount, currency: ch.currency,
+            status: ch.status, paid: ch.paid, refunded: ch.refunded, amount_refunded: ch.amount_refunded,
+            created: new Date(ch.created * 1000).toISOString(),
+            customer: c.id,
+            invoice: ch.invoice,
+            description: ch.description,
+            failure_message: ch.failure_message,
+          }));
+        }
+      }
+
+      // 4. Affiliate commissions desse subscriber_email
+      const commR = await fetch(
+        `${SUPABASE_URL}/rest/v1/affiliate_commissions?subscriber_email=eq.${encodeURIComponent(tgtEmail)}&select=id,affiliate_id,plan,commission_amount,plan_amount,status,flagged,flagged_reason,created_at&order=created_at.desc&limit=20`,
+        { headers }
+      );
+      out.affiliate_commissions = commR.ok ? await commR.json() : [];
+
+      return res.status(200).json(out);
+    } catch (e) {
+      return res.status(500).json({ error: 'exception', detail: (e.message || '').slice(0, 200) });
+    }
+  }
+
   // ── REFUND-AND-CANCEL ATÔMICO ────────────────────────────────────────────
   // Cancela subscription Stripe + refund do último charge + zera plan no DB.
   // Criado pra prevenir caso joao21xx.7@gmail.com (refund manual sem cancel
