@@ -1949,6 +1949,47 @@ async function loadFeed(){
   setupObs();
 }
 
+// ── VIRTUALIZACAO DOM (2026-06-23) ───────────────────────────────────────────
+// Substitui slides muito distantes do atual por placeholder leve (mesmo height,
+// sem <video>, sem listeners). Libera memoria/CPU sem mudar scroll position.
+// Janela ativa: [current-2, current+4]. Re-hidrata se user faz swipe back.
+const _virtWindow = { back: 2, fwd: 4 };
+function _pruneFarSlides(currentIdx){
+  if (!Number.isFinite(currentIdx) || currentIdx < 0) return;
+  const slides = document.querySelectorAll('#feed .slide');
+  for (const sl of slides) {
+    const i = parseInt(sl.dataset.i);
+    if (!Number.isFinite(i)) continue;
+    const dist = i - currentIdx;
+    const ativo = dist >= -_virtWindow.back && dist <= _virtWindow.fwd;
+    if (!ativo && !sl.dataset.placeholder) {
+      const v = sl.querySelector('video');
+      if (v) {
+        try { v.pause(); } catch(e){}
+        v.removeAttribute('src');
+        try { v.load(); } catch(e){}
+      }
+      sl.dataset.placeholder = '1';
+      sl.innerHTML = '<div style="position:absolute;inset:0;background:#000"></div>';
+      if (obs) try { obs.unobserve(sl); } catch(e){}
+    } else if (ativo && sl.dataset.placeholder) {
+      _rehydrateSlide(sl);
+    }
+  }
+}
+function _rehydrateSlide(sl){
+  const id = sl?.dataset?.id;
+  if (!id) return;
+  const v = videos.find(x => x.id === id);
+  if (!v) return;
+  const i = parseInt(sl.dataset.i) || 0;
+  const fresh = mkSlide(v, i);
+  if (!fresh) return;
+  sl.replaceWith(fresh);
+  delete fresh.dataset.placeholder;
+  if (obs) obs.observe(fresh);
+}
+
 // ── PROFILE CACHE client-side (2026-06-23) ──────────────────────────────────
 // Map<user_id, profile>. Reusa profile entre batches do mesmo criador.
 // Backend ainda retorna profile no enrich, mas cacheamos pra evitar UI re-flicker
@@ -2314,6 +2355,9 @@ function setupObs(newSlides){
           const far=videos[idx+d];
           if(far){const fs=document.getElementById('s-'+far.id);if(fs){const fv=fs.querySelector('video');if(fv&&fv.src){fv.dataset.src=fv.src;fv.removeAttribute('src');fv.load();}}}
         }
+        // Virtualizacao: troca slides muito distantes por placeholder
+        // (janela ativa = idx-2 a idx+4). Se user voltar, re-hidrata.
+        _pruneFarSlides(idx);
       } else {
         if(vid&&!vid.paused)vid.pause();
         // Video saiu da tela — flush do signal final se ainda nao flushou
