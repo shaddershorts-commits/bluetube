@@ -1839,6 +1839,7 @@ async function getValidToken(){
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
+let _feedAbortCtrl=null, _loadMoreAbortCtrl=null;
 // Lote 7 — feed infinito: rastreia modo do backend (fresh|seen_recycle).
 // Quando muda de fresh→seen_recycle, dispara banner sutil "🔄 Reprises".
 let _backendFeedMode='fresh';
@@ -1899,6 +1900,10 @@ let _feedLoadToken=0;
 
 async function loadFeed(){
   const myToken=++_feedLoadToken;
+  // Cancela fetch anterior se ainda em flight (race protection + sem leak)
+  if(_feedAbortCtrl){try{_feedAbortCtrl.abort();}catch(e){}}
+  _feedAbortCtrl=new AbortController();
+  const _myAbortSignal=_feedAbortCtrl.signal;
   const feed=document.getElementById('feed');
   // Remove view Explorar (caso esteja vindo de openTrending) pra voltar pro
   // layout TikTok de coluna centralizada.
@@ -1911,12 +1916,12 @@ async function loadFeed(){
   try{
     const tkParam=TOKEN?'&token='+encodeURIComponent(TOKEN):'';
     const actionParam=(_feedMode==='following'&&TOKEN)?'action=feed-seguindo&':'';
-    const r=await fetch('/api/blue-feed?'+actionParam+'limit=8&session='+SID+tkParam);
+    const r=await fetch('/api/blue-feed?'+actionParam+'limit=8&session='+SID+tkParam,{signal:_myAbortSignal});
     if(myToken!==_feedLoadToken){console.log('[loadFeed #'+myToken+'] descartado (stale, atual='+_feedLoadToken+')');return;}
     if(!r.ok)throw new Error('API '+r.status);
     const d=await r.json();
     if(myToken!==_feedLoadToken){console.log('[loadFeed #'+myToken+'] descartado (stale, atual='+_feedLoadToken+')');return;}
-    videos=(d.videos||[]).filter(v=>v&&v.video_url);
+    videos=_cacheProfileMerge((d.videos||[]).filter(v=>v&&v.video_url));
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
     _backendFeedMode=d.feed_mode||'fresh'; // Lote 7 — reset do tracker no load inicial
@@ -1929,6 +1934,7 @@ async function loadFeed(){
     }
     console.log('[loadFeed #'+myToken+']',videos.length,'videos, modo='+_feedMode,'seguindo='+_followingIds.length,'hasMore='+_feedHasMore);
   }catch(e){
+    if(e&&e.name==='AbortError')return; // navegou pra outra view/recarga — silencia
     if(myToken!==_feedLoadToken)return;
     document.getElementById('dbg').textContent='Erro: '+e.message;
     document.getElementById('empty').classList.add('on');
@@ -1942,6 +1948,61 @@ async function loadFeed(){
   videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
   setupObs();
 }
+
+// ── PROFILE CACHE client-side (2026-06-23) ──────────────────────────────────
+// Map<user_id, profile>. Reusa profile entre batches do mesmo criador.
+// Backend ainda retorna profile no enrich, mas cacheamos pra evitar UI re-flicker
+// e pra agrupar o conhecimento dos criadores que ja vimos nessa sessao.
+const _profileCache=new Map();
+function _cacheProfileMerge(videos){
+  if(!videos||!videos.length)return videos;
+  return videos.map(v=>{
+    if(!v||!v.user_id)return v;
+    if(v.creator&&v.creator.user_id){_profileCache.set(v.user_id,v.creator);return v;}
+    const cached=_profileCache.get(v.user_id);
+    if(cached)return {...v,creator:cached};
+    return v;
+  });
+}
+
+// ── BATCH TRACKING (2026-06-23) ──────────────────────────────────────────────
+// Acumula eventos em memoria e flush via sendBeacon. Reduz fetch invocations
+// de ~11/video (1 a cada 10% + 1 flush = 11) pra ~2/video em media.
+// Flush em: 5 eventos buffered | 5s timer | visibilitychange | pagehide.
+const _trackBuffer=[];
+let _trackTimer=null;
+function _enqueueTrack(payload){
+  if(!payload||!payload.video_id)return;
+  _trackBuffer.push(payload);
+  if(_trackBuffer.length>=5){_flushTrack();return;}
+  if(!_trackTimer)_trackTimer=setTimeout(_flushTrack,5000);
+}
+function _flushTrack(){
+  if(_trackTimer){clearTimeout(_trackTimer);_trackTimer=null;}
+  if(!_trackBuffer.length)return;
+  const events=_trackBuffer.splice(0);
+  const body={events,session_id:SID,token:TOKEN||undefined};
+  const json=JSON.stringify(body);
+  try{
+    // sendBeacon: nao bloqueia, funciona ate em pagehide/visibilitychange
+    if(navigator.sendBeacon){
+      const blob=new Blob([json],{type:'application/json'});
+      const ok=navigator.sendBeacon('/api/blue-feed?action=track-batch',blob);
+      if(ok)return;
+    }
+    // Fallback: fetch+keepalive (Chrome/FF aceitam ate pagehide com keepalive)
+    fetch('/api/blue-feed?action=track-batch',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:json,
+      keepalive:true,
+    }).catch(()=>{});
+  }catch(e){}
+}
+// Flush triggers — captura tudo antes de user sair
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')_flushTrack();});
+window.addEventListener('pagehide',_flushTrack);
+window.addEventListener('beforeunload',_flushTrack);
 
 // ── ALGORITMO: rastreia engajamento por video ────────────────────────────────
 // _videoStates: estado acumulado por video na sessao atual.
@@ -1969,10 +2030,8 @@ function trackSignal(videoId,extra,opts){
   }
   const tempoTotal=Math.floor((Date.now()-st.inicio)/1000);
   const pulou=tempoTotal<2&&st.maxPct<10&&!st.curtiu&&!st.salvou&&!st.abriu_perfil;
-  // 1. Algoritmo de regras (sempre)
-  fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    action:'track-view',
-    token:TOKEN||undefined,
+  // 1. Algoritmo de regras — agora via batch buffer (sendBeacon no flush)
+  _enqueueTrack({
     video_id:videoId,
     percentual:st.maxPct,
     tempo_total_segundos:tempoTotal,
@@ -1984,7 +2043,8 @@ function trackSignal(videoId,extra,opts){
     compartilhou:st.compartilhou,
     abriu_perfil:st.abriu_perfil,
     origem:_feedOrigem||'feed',
-  })}).catch(()=>{});
+    flush:!!(opts&&opts.flush),
+  });
   // 2. Dataset ML (so na flush — 1 linha por impressao consolidada)
   if(opts&&opts.flush&&TOKEN){
     const vidEl=document.getElementById('s-'+videoId)?.querySelector('video');
@@ -2104,10 +2164,10 @@ function mkSlide(v,i){
     const st=_vsGet(_vidId);
     if(pctExact>st.maxPct)st.maxPct=pctExact;
     if(_vid.currentTime<2&&st.maxPct>80)st.replay=true;
-    // Analytics: log a cada 10% (backward-compat com blue_video_analytics)
+    // Analytics: log a cada 10% — agora via batch buffer (sem fetch)
     if(pct>_lastPctLogged&&pct>=10){
       _lastPctLogged=pct;
-      fetch('/api/blue-feed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'track-view',video_id:_vidId,percentual:pct,origem:_feedOrigem||'feed',token:TOKEN})}).catch(()=>{});
+      _enqueueTrack({video_id:_vidId,percentual:pct,origem:_feedOrigem||'feed'});
     }
     // FOMO popup at 50%
     if(typeof _bpWatched!=='undefined'&&!_vid._bpCounted&&_vid.currentTime>=_vid.duration*.5){
@@ -2197,9 +2257,13 @@ function onTU(vid,id){
   nv.preload='auto';
 }
 
-function setupObs(){
-  if(obs)obs.disconnect();
-  obs=new IntersectionObserver(entries=>{
+// setupObs(newSlides?) — cria o observer 1x e observa incrementalmente.
+// Sem argumento: observa todos os .slide existentes (modo loadFeed inicial).
+// Com array de elementos: observa SO esses (modo loadMoreFeed — evita re-observar
+// todos a cada batch, que matava+criava observer toda hora).
+function setupObs(newSlides){
+  if(!obs){
+    obs=new IntersectionObserver(entries=>{
     entries.forEach(e=>{
       const sl=e.target,vid=sl.querySelector('video');
       if(!vid)return;
@@ -2263,7 +2327,12 @@ function setupObs(){
   // Dual threshold: dispara tanto em .25 quanto .5 — pega swipes lentos em mobile
   // onde slide pode estacionar em ratio 30-50% sem bater o antigo .6.
   },{threshold:[.25,.5,.75]});
-  document.querySelectorAll('.slide').forEach(s=>obs.observe(s));
+  }
+  // Observa apenas os novos slides (incremental) ou todos (1a chamada)
+  const targets = (newSlides && newSlides.length)
+    ? newSlides
+    : document.querySelectorAll('.slide');
+  targets.forEach(s=>obs.observe(s));
 }
 
 // ── DEBOUNCE + HAPTIC ────────────────────────────────────────────────────────
@@ -3902,14 +3971,18 @@ function renderFeed(){
 async function loadMoreFeed(){
   if(_feedLoading || !_feedHasMore || !_feedCursor) return;
   _feedLoading=true;
+  // Cancela load-more anterior se ainda em flight
+  if(_loadMoreAbortCtrl){try{_loadMoreAbortCtrl.abort();}catch(e){}}
+  _loadMoreAbortCtrl=new AbortController();
+  const _myMoreSignal=_loadMoreAbortCtrl.signal;
   try{
     const tkParam=TOKEN?`&token=${encodeURIComponent(TOKEN)}`:'';
     const actionParam=(_feedMode==='following'&&TOKEN)?'action=feed-seguindo&':'';
-    const r=await fetch(`/api/blue-feed?${actionParam}limit=8&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}${tkParam}`);
+    const r=await fetch(`/api/blue-feed?${actionParam}limit=8&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}${tkParam}`,{signal:_myMoreSignal});
     if(!r.ok) return;
     const d=await r.json();
     const seen=new Set(videos.map(v=>v.id));
-    const newVids=(d.videos||[]).filter(v=>v&&v.video_url&&!seen.has(v.id));
+    const newVids=_cacheProfileMerge((d.videos||[]).filter(v=>v&&v.video_url&&!seen.has(v.id)));
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
     // Lote 7 — detecta transicao fresh → seen_recycle e dispara banner sutil
@@ -3921,14 +3994,18 @@ async function loadMoreFeed(){
     if(!newVids.length) return;
     const feed=document.getElementById('feed');
     const startIdx=videos.length;
+    const newSlideEls=[];
     newVids.forEach((v,i)=>{
       videos.push(v);
       const s=mkSlide(v,startIdx+i);
-      if(s) feed.appendChild(s);
+      if(s){ feed.appendChild(s); newSlideEls.push(s); }
     });
-    setupObs();
+    setupObs(newSlideEls);
     console.log('Loaded more:',newVids.length,'total:',videos.length,'hasMore:',_feedHasMore,'mode:',_backendFeedMode);
-  }catch(e){console.error('loadMore error:',e);}
+  }catch(e){
+    if(e&&e.name==='AbortError')return; // navegou — silencia
+    console.error('loadMore error:',e);
+  }
   finally{_feedLoading=false;}
 }
 

@@ -385,11 +385,97 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ retention: [], error: e.message }); }
   }
 
-  // ── TRACK VIEW (analytics + algoritmo em tempo real) ────────────────────
+  // ── TRACK BATCH (2026-06-23: substitui track-view, reduz invocations ~90%) ─
+  // POST body: { token, session_id, events: [{ video_id, percentual, origem,
+  //   pulou?, replay?, curtiu?, salvou?, comentou?, compartilhou?, abriu_perfil?,
+  //   tempo_total_segundos?, flush? }, ...] }
+  //
+  // Recebe ate 50 eventos por chamada. Resolve user 1x (compartilha JWT).
+  // analytics: 1 batch insert em blue_video_analytics (1 query Supabase total).
+  // historico+interesses: SO eventos com flush=true (1 vez por video assistido,
+  //   fim de impressao). Reduz chamadas a atualizarInteresses em ~90%.
+  // Frontend chama com sendBeacon (nao bloqueia) ou fetch+keepalive (fallback).
+  if (req.method === 'POST' && action === 'track-batch') {
+    try {
+      const body = req.body || {};
+      const events = Array.isArray(body.events) ? body.events.slice(0, 50) : [];
+      if (!events.length) return res.status(200).json({ ok: true, processed: 0 });
+
+      let uid = null;
+      const token = body.token;
+      if (token) {
+        try {
+          const AK = process.env.SUPABASE_ANON_KEY || SK;
+          const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+          if (uR.ok) uid = (await uR.json()).id;
+        } catch (e) {}
+      }
+
+      // Responde rapido — resto eh fire-and-forget
+      res.status(200).json({ ok: true, processed: events.length });
+
+      // 1. BATCH INSERT em blue_video_analytics (1 query pra todos os eventos)
+      const analyticsRows = events
+        .filter(ev => ev && ev.video_id)
+        .map(ev => ({
+          video_id: ev.video_id,
+          user_id: uid,
+          percentual_assistido: Math.max(0, Math.min(100, parseInt(ev.percentual) || 0)),
+          origem: ev.origem || 'feed',
+        }));
+      if (analyticsRows.length) {
+        fetch(`${SU}/rest/v1/blue_video_analytics`, {
+          method: 'POST',
+          headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify(analyticsRows),
+        }).catch(e => console.error('[track-batch:analytics]', e?.message));
+      }
+
+      // 2. HISTORICO + INTERESSES — SO pra eventos com flush=true
+      // (1 vez por video terminado, nao a cada 10%)
+      if (uid) {
+        const flushEvents = events.filter(ev => ev && ev.flush && ev.video_id);
+        for (const ev of flushEvents) {
+          const pct = Math.max(0, Math.min(100, parseInt(ev.percentual) || 0));
+          const historicoPayload = {
+            user_id: uid,
+            video_id: ev.video_id,
+            percentual_assistido: pct,
+            pulou: !!ev.pulou,
+            replay: !!ev.replay,
+            curtiu: !!ev.curtiu,
+            salvou: !!ev.salvou,
+            comentou: !!ev.comentou,
+            compartilhou: !!ev.compartilhou,
+            abriu_perfil: !!ev.abriu_perfil,
+            tempo_total_segundos: parseInt(ev.tempo_total_segundos) || 0,
+            updated_at: new Date().toISOString(),
+          };
+          try {
+            await fetch(`${SU}/rest/v1/blue_feed_historico?on_conflict=user_id,video_id`, {
+              method: 'POST',
+              headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+              body: JSON.stringify(historicoPayload),
+            });
+            atualizarInteresses(uid, ev.video_id, historicoPayload, { SU, h })
+              .catch(e => console.error('[track-batch:interesses]', e?.message));
+          } catch (e) {
+            console.error('[track-batch:hist]', e?.message);
+          }
+        }
+      }
+      return;
+    } catch (e) {
+      console.error('[track-batch fatal]', e?.message);
+      // Resposta ja saiu — silencia
+      return;
+    }
+  }
+
+  // ── TRACK VIEW (LEGADO — manter 7 dias pra rollback. Apos 2026-06-30
+  //    pode ser removido. Frontend novo usa track-batch.) ─────────────────────
   // POST body: { token, video_id, percentual, origem, pulou, replay, curtiu,
   //              salvou, comentou, compartilhou, abriu_perfil, tempo_total_segundos }
-  // Registra em blue_video_analytics + blue_feed_historico + atualiza
-  // blue_user_interests de forma assincrona (fire-and-forget pros 2 ultimos).
   if (req.method === 'POST' && action === 'track-view') {
     const body = req.body || {};
     const tvId = body.video_id;
