@@ -93,6 +93,97 @@ export default async function handler(req, res) {
     return recuperarPagamentoAction(req, res, { SUPABASE_URL, headers, email });
   }
 
+  // ── AUDITAR CANCELAMENTOS (READ-ONLY) ────────────────────────────────────
+  // GET ?action=auditar-cancels
+  // Pra cada subscriber com cancel_at_period_end=true no DB, verifica se a sub
+  // no Stripe REALMENTE foi cancelada (cancel_at_period_end=true OU status=canceled).
+  // Detecta o bug: "user clicou cancelar no site, mas Stripe ainda cobra".
+  if (req.method === 'GET' && action === 'auditar-cancels') {
+    const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_SECRET) return res.status(500).json({ error: 'STRIPE_SECRET_KEY nao configurado' });
+    try {
+      const sH = { Authorization: 'Bearer ' + STRIPE_SECRET };
+      // 1. Subscribers que cancelaram no DB
+      const subR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?cancel_at_period_end=eq.true&plan=in.(full,master)&is_manual=eq.false&select=email,plan,stripe_customer_id,stripe_subscription_id,plan_expires_at,updated_at&limit=100`,
+        { headers }
+      );
+      const cancelledInDb = subR.ok ? await subR.json() : [];
+
+      const audit = { total_db_cancelled: cancelledInDb.length, ok: [], bug: [], unknown: [] };
+
+      for (const sub of cancelledInDb) {
+        const row = {
+          email: sub.email, plan: sub.plan, plan_expires_at: sub.plan_expires_at,
+          db_updated_at: sub.updated_at,
+          db_stripe_customer_id: sub.stripe_customer_id,
+          db_stripe_subscription_id: sub.stripe_subscription_id,
+          stripe_subs: [],
+        };
+
+        // 2. Lista TODOS customers Stripe desse email
+        let customers = [];
+        const cR = await fetch(`https://api.stripe.com/v1/customers?email=${encodeURIComponent(sub.email)}&limit=10`, { headers: sH });
+        if (cR.ok) customers = (await cR.json()).data || [];
+        if (!customers.length) {
+          row.diagnosis = 'sem_customer_no_stripe';
+          audit.unknown.push(row);
+          continue;
+        }
+
+        // 3. Pra cada customer, lista subs (any status)
+        const allSubs = [];
+        for (const c of customers) {
+          const ssR = await fetch(`https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=all&limit=20`, { headers: sH });
+          if (!ssR.ok) continue;
+          const ss = (await ssR.json()).data || [];
+          ss.forEach(s => allSubs.push(s));
+        }
+        row.stripe_subs = allSubs.map(s => ({
+          id: s.id, status: s.status, cancel_at_period_end: s.cancel_at_period_end,
+          ended_at: s.ended_at ? new Date(s.ended_at * 1000).toISOString() : null,
+          current_period_end: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+        }));
+
+        // 4. Diagnóstico:
+        //    - BUG: tem sub active|trialing|past_due COM cancel_at_period_end=false → vai renovar e cobrar
+        //    - OK: todas subs canceladas OU com cancel_at_period_end=true
+        //    - UNKNOWN: sem subs no Stripe (deve ter sido cancelada e ended há tempos)
+        const subsAtivas = allSubs.filter(s => ['active', 'trialing', 'past_due'].includes(s.status));
+        const subsAtivasNaoCanceladas = subsAtivas.filter(s => !s.cancel_at_period_end);
+
+        if (subsAtivasNaoCanceladas.length > 0) {
+          row.diagnosis = 'BUG_stripe_ainda_vai_cobrar';
+          row.subs_que_vao_cobrar = subsAtivasNaoCanceladas.map(s => s.id);
+          audit.bug.push(row);
+        } else if (subsAtivas.length > 0) {
+          row.diagnosis = 'ok_cancel_at_period_end_true';
+          audit.ok.push(row);
+        } else if (allSubs.length > 0) {
+          row.diagnosis = 'ok_ja_canceladas_no_stripe';
+          audit.ok.push(row);
+        } else {
+          row.diagnosis = 'sem_subs_no_stripe';
+          audit.unknown.push(row);
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        summary: {
+          total_db_cancelled: audit.total_db_cancelled,
+          ok: audit.ok.length,
+          bug: audit.bug.length,
+          unknown: audit.unknown.length,
+        },
+        bug_cases: audit.bug,
+        unknown_cases: audit.unknown.slice(0, 5),
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'exception', detail: (e.message || '').slice(0, 200) });
+    }
+  }
+
   // ── INVESTIGAR USER STRIPE (READ-ONLY) ───────────────────────────────────
   // GET ?action=investigar-stripe&email=X
   // Retorna customers + subscriptions + charges + commissions do usuario pra
