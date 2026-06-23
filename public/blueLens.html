@@ -405,20 +405,19 @@ async function analyze() {
   try {
     await sleep(300); setStep(2);
 
-    // BlueLens v3 (2026-05-04): chama /api/bluelens-fingerprint
-    // Pipeline: extract user fingerprint (15fps) + SerpAPI Google Lens (busca
-    // visual real) → enrich → top 5 candidatos → extract fingerprints (5fps) →
-    // match ≥ 0.50 com validityPenalty.
+    // BlueLens v4 (2026-06-23): SerpAPI Google Lens direto, sem Railway.
+    // Pipeline curto: meta + SerpAPI → enrich → top 10 candidatos com heurística.
+    // Tipicamente 5-8s. Sem dependência de cookies YouTube.
     const fpReq = fetch(`/api/bluelens-fingerprint?url=${encodeURIComponent(url)}`, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(295000),
+      signal: AbortSignal.timeout(60000),
     });
 
-    // Avanca steps visuais conforme tempo passa (~22s total tipico)
-    setTimeout(() => setStep(3), 5000);
-    setTimeout(() => setStep(4), 10000);
-    setTimeout(() => setStep(5), 13000);
-    setTimeout(() => setStep(6), 18000);
+    // Avanca steps visuais conforme tempo passa (~7s tipico)
+    setTimeout(() => setStep(3), 2000);
+    setTimeout(() => setStep(4), 4000);
+    setTimeout(() => setStep(5), 5500);
+    setTimeout(() => setStep(6), 6500);
 
     const fpRes = await fpReq;
     let fpData;
@@ -458,8 +457,8 @@ async function analyze() {
         verdict: visualMatches.length > 0 ? 'repost' : 'original',
         confidence: visualMatches.length > 0 ? (visualMatches[0].similarity / 100) : 0.95,
         reasoning: visualMatches.length > 0
-          ? `Encontramos ${visualMatches.length} candidato${visualMatches.length>1?'s':''} no YouTube com similaridade visual. Inclui cópias confirmadas (≥80%), reposts editados (50-79%) e vídeos similares (20-49%). Veja a confiança de cada um na lista.`
-          : `Vasculhamos ${fpData.candidates_searched || 0} candidato${(fpData.candidates_searched||0)===1?'':'s'} via Google Lens e nenhum bateu o mínimo de 20% de similaridade visual. Tá liberado pra fazer 🚀`,
+          ? `Google Lens encontrou ${visualMatches.length} candidato${visualMatches.length>1?'s':''} visualmente similar${visualMatches.length>1?'es':''}. Ranqueados por duração próxima + ranking Google. Abre cada um pra confirmar se é repost.`
+          : `Google Lens vasculhou ${fpData.serpapi?.total_visual_matches || 0} imagem${(fpData.serpapi?.total_visual_matches||0)===1?'':'ns'} e nenhuma é vídeo YouTube parecido. Tá liberado 🚀`,
         patterns: [],
       },
       results: visualMatches,
@@ -638,10 +637,12 @@ function buildResultItem(r, idx) {
   const sim = r.similarity || 0;
   // Escala 20-100% — modo amplo
   let simColor, confLabel, badgeBg, badgeBorder;
-  if (sim >= 80)      { simColor = 'var(--green)';  confLabel = 'cópia confirmada'; badgeBg='rgba(34,197,94,.12)';  badgeBorder='rgba(34,197,94,.35)'; }
-  else if (sim >= 50) { simColor = 'var(--gold)';   confLabel = 'repost editado';   badgeBg='rgba(251,191,36,.12)'; badgeBorder='rgba(251,191,36,.35)'; }
-  else if (sim >= 35) { simColor = '#fb923c';       confLabel = 'muito similar';    badgeBg='rgba(251,146,60,.12)'; badgeBorder='rgba(251,146,60,.35)'; }
-  else                { simColor = '#94a3b8';       confLabel = 'similar';          badgeBg='rgba(148,163,184,.10)';badgeBorder='rgba(148,163,184,.30)'; }
+  // Heurística v4: duração + ranking SerpAPI + canal diferente. NÃO é match pixel real.
+  // Labels neutros — pedem confirmação manual em vez de afirmar "cópia confirmada".
+  if (sim >= 80)      { simColor = 'var(--green)';  confLabel = 'alta confiança';  badgeBg='rgba(34,197,94,.12)';  badgeBorder='rgba(34,197,94,.35)'; }
+  else if (sim >= 60) { simColor = 'var(--gold)';   confLabel = 'média confiança'; badgeBg='rgba(251,191,36,.12)'; badgeBorder='rgba(251,191,36,.35)'; }
+  else if (sim >= 40) { simColor = '#fb923c';       confLabel = 'baixa confiança'; badgeBg='rgba(251,146,60,.12)'; badgeBorder='rgba(251,146,60,.35)'; }
+  else                { simColor = '#94a3b8';       confLabel = 'só visual';       badgeBg='rgba(148,163,184,.10)';badgeBorder='rgba(148,163,184,.30)'; }
   const framesInfo = (r.matchedFrames !== undefined && r.totalFrames !== undefined)
     ? `<div style="margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--text-dim)">${r.matchedFrames} de ${r.totalFrames} frames batendo</div>`
     : '';
