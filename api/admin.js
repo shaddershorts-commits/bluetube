@@ -36,12 +36,34 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && action === 'set_plan') {
     if (!email || !plan) return res.status(400).json({ error: 'Missing email or plan' });
 
+    // Opcionais no body:
+    //   skip_email: true       → nao dispara sendUpgradeEmail
+    //   expires_days: N        → plan_expires_at = NOW + N dias (default 365)
+    //   reset_stripe: true     → zera stripe_customer_id + stripe_subscription_id
+    //                           (reativacao apos Stripe cancelado — evita webhook
+    //                           futuro tentar processar sub morta)
+    //   is_manual: false       → marca como NAO-manual (default true). Importante
+    //                           pra reativacoes temporarias (caso anabarbara): se
+    //                           is_manual=true, generate-from-zero.js:48 pula o
+    //                           check de expirou e usuario fica master PRA SEMPRE.
+    //                           Setar is_manual=false faz expirar naturalmente
+    //                           via plan_expires_at quando data passar.
+    const { skip_email: skipEmail, expires_days: expiresDays, reset_stripe: resetStripe, is_manual: isManualFlag } = req.body || {};
+    const days = (typeof expiresDays === 'number' && expiresDays > 0) ? expiresDays : 365;
+    const expiry = plan === 'free' ? null : new Date(Date.now() + days * 86400000).toISOString();
+    const isManual = (typeof isManualFlag === 'boolean') ? isManualFlag : true;
+
     const payload = {
       plan,
-      is_manual: true,
-      plan_expires_at: plan === 'free' ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      is_manual: isManual,
+      plan_expires_at: expiry,
+      cancel_at_period_end: false,
       updated_at: new Date().toISOString()
     };
+    if (resetStripe) {
+      payload.stripe_customer_id = null;
+      payload.stripe_subscription_id = null;
+    }
 
     // Try PATCH first (update existing)
     const patch = await fetch(
@@ -74,15 +96,16 @@ export default async function handler(req, res) {
     }
 
     // Email motivacional pro usuário quando admin promove manualmente pra Full ou Master.
-    // Fire-and-forget — não bloqueia resposta do admin.
-    if (plan === 'full' || plan === 'master') {
+    // skip_email=true pra reativacao silenciosa (caso anabarbara 2026-06-23: ja tinha
+    // recebido email de upgrade no checkout original, nao queremos spammar).
+    if (!skipEmail && (plan === 'full' || plan === 'master')) {
       try {
         const { sendUpgradeEmail } = require('./_helpers/upgradeEmail.js');
         sendUpgradeEmail(email, plan, 'monthly').catch((e) => console.error('upgradeEmail (admin):', e.message));
       } catch (e) { console.error('upgradeEmail import (admin):', e.message); }
     }
 
-    return res.status(200).json({ success: true, email, plan });
+    return res.status(200).json({ success: true, email, plan, expires_at: expiry, is_manual: isManual, email_sent: !skipEmail && (plan === 'full' || plan === 'master') });
   }
 
   // ── RECUPERAR PAGAMENTO: busca no Stripe por email e ativa plano ─────────
