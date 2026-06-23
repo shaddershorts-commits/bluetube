@@ -1948,6 +1948,7 @@ async function loadFeed(){
   document.getElementById('empty').classList.remove('on');
   videos.forEach((v,i)=>{const s=mkSlide(v,i);if(s)feed.appendChild(s);});
   setupObs();
+  setupInfiniteScroll(); // Sentinel observer: dispara loadMoreFeed perto do fim
 }
 
 // ── VIRTUALIZACAO DOM (2026-06-23) ───────────────────────────────────────────
@@ -4073,6 +4074,7 @@ async function loadMoreFeed(){
       if(s){ feed.appendChild(s); newSlideEls.push(s); }
     });
     setupObs(newSlideEls);
+    setupInfiniteScroll(); // Re-observe sentinel nos NOVOS últimos 2 slides
     console.log('Loaded more:',newVids.length,'total:',videos.length,'hasMore:',_feedHasMore,'mode:',_backendFeedMode);
   }catch(e){
     if(e&&e.name==='AbortError')return; // navegou — silencia
