@@ -1840,6 +1840,7 @@ async function getValidToken(){
 // ── FEED ──────────────────────────────────────────────────────────────────────
 let _feedCursor=null, _feedHasMore=true, _feedLoading=false;
 let _feedAbortCtrl=null, _loadMoreAbortCtrl=null;
+let _feedEmptyRetries=0; // safety: max 3 retries seguidos vazios antes de dar fim
 // Lote 7 — feed infinito: rastreia modo do backend (fresh|seen_recycle).
 // Quando muda de fresh→seen_recycle, dispara banner sutil "🔄 Reprises".
 let _backendFeedMode='fresh';
@@ -4025,7 +4026,17 @@ async function loadMoreFeed(){
     const r=await fetch(`/api/blue-feed?${actionParam}limit=8&cursor=${encodeURIComponent(_feedCursor)}&session=${SID}${tkParam}`,{signal:_myMoreSignal});
     if(!r.ok) return;
     const d=await r.json();
-    const seen=new Set(videos.map(v=>v.id));
+    // Dedup-aware mode: em recycle/fallback explorat, permite videos repetidos
+    // (sao "reprises" intencionais quando user esgotou fresh). Dedup limitado
+    // aa janela visual (ultimos 10 slides) pra nao mostrar mesmo video em
+    // sequencia. Sem isso, recycle parava silenciosamente pois dedup eliminava
+    // TUDO que ja estava no feed da sessao atual.
+    const _recycleMode = d.feed_mode === 'seen_recycle'
+                       || d.feed_mode === 'explore_fallback'
+                       || d.feed_mode === 'seguindo_explora';
+    const seen = _recycleMode
+      ? new Set(videos.slice(-10).map(v=>v.id))
+      : new Set(videos.map(v=>v.id));
     const newVids=_cacheProfileMerge((d.videos||[]).filter(v=>v&&v.video_url&&!seen.has(v.id)));
     _feedHasMore=d.has_more||false;
     _feedCursor=d.next_cursor||null;
@@ -4035,7 +4046,24 @@ async function loadMoreFeed(){
       _backendFeedMode=newMode;
       if(newMode==='seen_recycle') showFeedModeBanner('🔄 Reprises dos virais — você viu tudo de novo!');
     }
-    if(!newVids.length) return;
+    if(!newVids.length){
+      // Backend disse has_more=true mas tudo veio duplicado.
+      // Em recycle/explore_fallback, pode acontecer (videos do historico ja
+      // na janela visual). Auto-retry com cursor avançado ate 3x.
+      // Apos 3 vazios consecutivos: marca fim explicito (sem loop infinito).
+      if(_feedHasMore){
+        _feedEmptyRetries++;
+        if(_feedEmptyRetries >= 3){
+          _feedHasMore = false;
+          console.log('[loadMoreFeed] 3 retries vazios — marcando fim');
+        } else {
+          // Backend ja avançou cursor — proxima chamada deve trazer diferente
+          setTimeout(() => loadMoreFeed(), 300);
+        }
+      }
+      return;
+    }
+    _feedEmptyRetries = 0; // reset apos sucesso
     const feed=document.getElementById('feed');
     const startIdx=videos.length;
     const newSlideEls=[];
