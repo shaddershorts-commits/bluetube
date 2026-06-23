@@ -385,6 +385,35 @@ module.exports = async function handler(req, res) {
     } catch(e) { return res.status(200).json({ retention: [], error: e.message }); }
   }
 
+  // ── CLEANUP ANALYTICS (cron diario — retem 90 dias) ─────────────────────
+  // Cron diario 4h UTC. Deleta rows de blue_video_analytics > 90 dias.
+  // Agregados que importam (avg_watch_percent, views_24h) ja vivem em
+  // blue_videos via cron update-metrics. Logo, analytics granular > 90d
+  // so consome storage Supabase sem valor analitico real.
+  if (action === 'cleanup-analytics') {
+    const isCron = !!req.headers['x-vercel-cron'];
+    const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
+    if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
+    try {
+      const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+      // Conta antes (pra retornar metrica)
+      const cR = await fetch(
+        `${SU}/rest/v1/blue_video_analytics?created_at=lt.${cutoff}&select=id&limit=1`,
+        { headers: { ...h, Prefer: 'count=exact' } }
+      );
+      const totalAntes = parseInt((cR.headers.get('content-range') || '').split('/')[1] || '0') || 0;
+      // Delete em batch
+      const dR = await fetch(
+        `${SU}/rest/v1/blue_video_analytics?created_at=lt.${cutoff}`,
+        { method: 'DELETE', headers: { ...h, Prefer: 'return=minimal' } }
+      );
+      const ok = dR.ok;
+      return res.status(200).json({ ok, deleted: totalAntes, cutoff });
+    } catch (e) {
+      return res.status(200).json({ ok: false, error: e.message });
+    }
+  }
+
   // ── TRACK BATCH (2026-06-23: substitui track-view, reduz invocations ~90%) ─
   // POST body: { token, session_id, events: [{ video_id, percentual, origem,
   //   pulou?, replay?, curtiu?, salvou?, comentou?, compartilhou?, abriu_perfil?,
@@ -432,15 +461,16 @@ module.exports = async function handler(req, res) {
       }
 
       // 2. HISTORICO + INTERESSES — SO pra eventos com flush=true
-      // (1 vez por video terminado, nao a cada 10%)
+      // Otimizado 2026-06-23: BATCH historico (1 query pra todos) +
+      // atualizarInteressesBatch (3 queries totais em vez de N*3).
       if (uid) {
         const flushEvents = events.filter(ev => ev && ev.flush && ev.video_id);
-        for (const ev of flushEvents) {
-          const pct = Math.max(0, Math.min(100, parseInt(ev.percentual) || 0));
-          const historicoPayload = {
+        if (flushEvents.length) {
+          // BATCH historico — 1 query upsert pra todos os flushes
+          const historicoRows = flushEvents.map(ev => ({
             user_id: uid,
             video_id: ev.video_id,
-            percentual_assistido: pct,
+            percentual_assistido: Math.max(0, Math.min(100, parseInt(ev.percentual) || 0)),
             pulou: !!ev.pulou,
             replay: !!ev.replay,
             curtiu: !!ev.curtiu,
@@ -450,18 +480,16 @@ module.exports = async function handler(req, res) {
             abriu_perfil: !!ev.abriu_perfil,
             tempo_total_segundos: parseInt(ev.tempo_total_segundos) || 0,
             updated_at: new Date().toISOString(),
-          };
-          try {
-            await fetch(`${SU}/rest/v1/blue_feed_historico?on_conflict=user_id,video_id`, {
-              method: 'POST',
-              headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
-              body: JSON.stringify(historicoPayload),
-            });
-            atualizarInteresses(uid, ev.video_id, historicoPayload, { SU, h })
-              .catch(e => console.error('[track-batch:interesses]', e?.message));
-          } catch (e) {
-            console.error('[track-batch:hist]', e?.message);
-          }
+          }));
+          fetch(`${SU}/rest/v1/blue_feed_historico?on_conflict=user_id,video_id`, {
+            method: 'POST',
+            headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(historicoRows),
+          }).catch(e => console.error('[track-batch:hist]', e?.message));
+
+          // BATCH interesses — 3 queries totais (in vez de N*3)
+          atualizarInteressesBatch(uid, historicoRows, { SU, h })
+            .catch(e => console.error('[track-batch:interesses-batch]', e?.message));
         }
       }
       return;
@@ -1244,6 +1272,114 @@ async function atualizarInteresses(userId, videoId, sinal, { SU, h }) {
   const ultimoNicho = nichosVideo[0] || atual?.ultimo_nicho || null;
 
   // 8. Upsert final
+  await fetch(`${SU}/rest/v1/blue_user_interests?on_conflict=user_id`, {
+    method: 'POST',
+    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      user_id: userId,
+      nichos,
+      criadores_favoritos: criadoresFav.slice(-50),
+      criadores_bloqueados: criadoresBloq.slice(-100),
+      tags_positivas: tagsPos.slice(-100),
+      tags_negativas: tagsNeg.slice(-50),
+      ultimo_nicho: ultimoNicho,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// atualizarInteressesBatch (2026-06-23)
+// Versao batch: processa N flushes de UM user com apenas 3 queries totais
+// (1 SELECT videos in., 1 SELECT interests, 1 UPSERT) em vez de N*3.
+// Usada pelo track-batch action.
+// ──────────────────────────────────────────────────────────────────────────
+async function atualizarInteressesBatch(userId, sinais, { SU, h }) {
+  if (!userId || !Array.isArray(sinais) || !sinais.length) return;
+  const videoIds = [...new Set(sinais.map(s => s.video_id).filter(Boolean))];
+  if (!videoIds.length) return;
+
+  // Query 1: TODOS os videos referenciados (1 vez)
+  const vR = await fetch(
+    `${SU}/rest/v1/blue_videos?id=in.(${videoIds.join(',')})&select=id,user_id,nichos,hashtags`,
+    { headers: h }
+  );
+  const videosArr = vR.ok ? await vR.json() : [];
+  const vidMap = new Map(videosArr.map(v => [v.id, v]));
+
+  // Query 2: interesses atuais (1 vez)
+  const iR = await fetch(
+    `${SU}/rest/v1/blue_user_interests?user_id=eq.${userId}&select=*&limit=1`,
+    { headers: h }
+  );
+  const [atual] = iR.ok ? await iR.json() : [];
+  const nichos = atual?.nichos || {};
+  const criadoresFav = Array.isArray(atual?.criadores_favoritos) ? [...atual.criadores_favoritos] : [];
+  const criadoresBloq = Array.isArray(atual?.criadores_bloqueados) ? [...atual.criadores_bloqueados] : [];
+  const tagsPos = Array.isArray(atual?.tags_positivas) ? [...atual.tags_positivas] : [];
+  const tagsNeg = Array.isArray(atual?.tags_negativas) ? [...atual.tags_negativas] : [];
+  let ultimoNicho = atual?.ultimo_nicho || null;
+
+  // Loop sinais APLICA TUDO em memoria (zero queries adicionais)
+  for (const sinal of sinais) {
+    const video = vidMap.get(sinal.video_id);
+    if (!video) continue;
+
+    let forca = 0;
+    if (sinal.pulou) {
+      forca = -0.5;
+    } else {
+      forca = ((sinal.percentual_assistido || 0) / 100) * 0.3;
+      if (sinal.curtiu) forca += 0.2;
+      if (sinal.salvou) forca += 0.3;
+      if (sinal.comentou) forca += 0.2;
+      if (sinal.compartilhou) forca += 0.4;
+      if (sinal.replay) forca += 0.3;
+      if (sinal.abriu_perfil) forca += 0.2;
+      forca = Math.min(1, forca);
+    }
+
+    const nichosVideo = (video.nichos && video.nichos.length) ? video.nichos
+      : (Array.isArray(video.hashtags) ? video.hashtags.slice(0, 3) : []);
+
+    nichosVideo.forEach((nicho) => {
+      if (!nicho) return;
+      const atualScore = nichos[nicho] != null ? nichos[nicho] : 0.5;
+      const alvo = forca >= 0 ? Math.min(1, 0.5 + forca) : Math.max(0, 0.5 + forca);
+      nichos[nicho] = Math.max(0, Math.min(1, atualScore * 0.8 + alvo * 0.2));
+    });
+
+    // Afinidade com criador (so o caso forca > 0; bloqueio por skip rate
+    // fica pro cron periodico — nao vale 1 query extra no hot path)
+    if (video.user_id && video.user_id !== userId && forca > 0) {
+      const idxFav = criadoresFav.findIndex((c) => c.id === video.user_id);
+      if (idxFav >= 0) {
+        criadoresFav[idxFav].score = Math.min(1, (criadoresFav[idxFav].score || 0.5) + forca * 0.1);
+      } else {
+        criadoresFav.push({ id: video.user_id, score: 0.5 + forca });
+      }
+      const idxBlq = criadoresBloq.indexOf(video.user_id);
+      if (idxBlq >= 0) criadoresBloq.splice(idxBlq, 1);
+    }
+
+    // Tags pos/neg
+    const hashtags = Array.isArray(video.hashtags) ? video.hashtags : [];
+    if (forca > 0.3) {
+      hashtags.forEach((t) => {
+        if (t && !tagsPos.includes(t)) tagsPos.push(t);
+        const idxNeg = tagsNeg.indexOf(t);
+        if (idxNeg >= 0) tagsNeg.splice(idxNeg, 1);
+      });
+    } else if (forca < -0.3) {
+      hashtags.forEach((t) => {
+        if (t && !tagsNeg.includes(t) && !tagsPos.includes(t)) tagsNeg.push(t);
+      });
+    }
+
+    if (nichosVideo[0]) ultimoNicho = nichosVideo[0];
+  }
+
+  // Query 3: UPSERT final (1 vez pra todos os sinais consolidados)
   await fetch(`${SU}/rest/v1/blue_user_interests?on_conflict=user_id`, {
     method: 'POST',
     headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
