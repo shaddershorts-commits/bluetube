@@ -1,5 +1,8 @@
 // api/blue-upload.js — Salva metadata + retorna destino de upload
-// Upload limits by plan: Free=5/50MB, Full=20/200MB, Master=100/500MB
+// 2026-06-23: limites por plano REMOVIDOS (todos podem postar ilimitado).
+// Proteções mantidas: rate limit 10/hora, MIME types, ban, moderação AI,
+// palavras bloqueadas. Plano agora só diferencia features (BlueVoice,
+// BlueScore Deep, etc), não quantidade/tamanho de upload no Blue social.
 const { checkBan } = require('./_helpers/checkBan');
 
 module.exports = async function handler(req, res) {
@@ -46,52 +49,12 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Formato não suportado. Use MP4, MOV ou WebM.' });
     }
 
-    // ── BUSCA PLANO DO USUÁRIO ────────────────────────────────────────────
-    let plan = 'free';
-    try {
-      const planRes = await fetch(
-        `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at,is_manual`,
-        { headers: h }
-      );
-      if (planRes.ok) {
-        const subs = await planRes.json();
-        const sub = subs?.[0];
-        if (sub?.plan && sub.plan !== 'free') {
-          const valid = sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
-          if (valid) plan = sub.plan;
-        }
-      }
-    } catch(e) {}
-
-    // ── LIMITES POR PLANO ─────────────────────────────────────────────────
-    const LIMITS = {
-      free:   { maxVideos: 5,   maxSizeMB: 50  },
-      full:   { maxVideos: 20,  maxSizeMB: 200 },
-      master: { maxVideos: 100, maxSizeMB: 500 },
-    };
-    const limits = LIMITS[plan] || LIMITS.free;
-
-    // Conta vídeos ativos do usuário
-    const countRes = await fetch(
-      `${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=eq.active&select=id`,
-      { headers: h }
-    );
-    const activeCount = countRes.ok ? (await countRes.json()).length : 0;
-
-    if (activeCount >= limits.maxVideos) {
-      const upgradeMsg = plan === 'free'
-        ? `Você atingiu o limite de ${limits.maxVideos} vídeos. Faça upgrade para o plano Full e poste até 20 vídeos.`
-        : plan === 'full'
-        ? `Você atingiu o limite de ${limits.maxVideos} vídeos. Faça upgrade para o plano Master e poste até 100 vídeos.`
-        : `Você atingiu o limite de ${limits.maxVideos} vídeos.`;
-      return res.status(403).json({ error: upgradeMsg, limit: true, plan });
-    }
-
-    // Verifica tamanho do arquivo
-    const fileSizeMB = file_size ? parseFloat(file_size) / (1024 * 1024) : 0;
-    if (fileSizeMB > limits.maxSizeMB) {
-      return res.status(400).json({ error: `Seu vídeo é muito grande. O limite para o plano ${plan.toUpperCase()} é ${limits.maxSizeMB}MB.` });
-    }
+    // ── SEM LIMITES POR PLANO (2026-06-23) ────────────────────────────────
+    // Todos os planos podem postar ilimitado em quantidade e tamanho.
+    // Proteção real contra abuso: rate limit 10 uploads/hora + moderação AI.
+    // Tamanho fica limitado por Vercel function body limit (~4.5MB no payload
+    // do POST, mas upload real vai direto pro Supabase Storage via URL assinada,
+    // que aceita ate 5GB). Sem checagem manual de tamanho aqui.
 
     // ── MODERAÇÃO BÁSICA DE TEXTO ─────────────────────────────────────────
     const cleanTitle = (title || '').replace(/<[^>]*>/g, '').trim().slice(0, 100);
