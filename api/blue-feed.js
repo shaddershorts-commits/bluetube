@@ -701,23 +701,57 @@ module.exports = async function handler(req, res) {
       const following = fR.ok ? (await fR.json()).map(f => f.following_id) : [];
       if (!following.length) return res.status(200).json({ videos: [], has_more: false, next_cursor: null });
 
+      // Detecta modo explora (cursor começa com 'explora:'): já esgotou
+      // seguindo, está em loop infinito de descobertas populares.
+      const isExploreMode = segCursor && String(segCursor).startsWith('explora:');
+
       // user_id=neq.${uid} blinda contra eventual self-follow — proprio usuario nao aparece no Seguindo.
       let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=in.(${following.join(',')})&user_id=neq.${uid}&order=created_at.desc,id.desc&limit=${segLimit + 1}&select=*`;
-      if (segCursor) {
+      if (segCursor && !isExploreMode) {
         try {
           const decoded = Buffer.from(segCursor, 'base64').toString('utf8');
           const [ts, id] = decoded.split('|');
           if (ts && id) url += `&or=(created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${id}))`;
         } catch(e) {}
       }
-      const vR = await fetch(url, { headers: h });
+      // Se ja esta em modo explora, pula direto fresh seguindo (vazia)
+      const vR = isExploreMode ? { ok: true, json: async () => [] } : await fetch(url, { headers: h });
       const vids = vR.ok ? await vR.json() : [];
       const hasMore = vids.length > segLimit;
-      const videos = hasMore ? vids.slice(0, segLimit) : vids;
+      let videos = hasMore ? vids.slice(0, segLimit) : vids;
       const last = videos[videos.length - 1];
-      const nextCursor = hasMore && last
+      let nextCursor = hasMore && last
         ? Buffer.from(`${last.created_at}|${last.id}`, 'utf8').toString('base64')
         : null;
+      let feedModeOut = 'fresh';
+
+      // ── FALLBACK: Esgotou cronologico dos criadores que segue.
+      // Em vez de parar (has_more=false), MISTURA top videos populares de
+      // criadores NÃO seguidos como "descobertas". Feed-seguindo vira infinito
+      // tipo TikTok (que tambem nao para no "Following").
+      if (!hasMore && videos.length < segLimit) {
+        try {
+          const excludeIds = [uid, ...following];
+          const exploreR = await fetch(
+            `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=not.in.(${excludeIds.join(',')})&order=score.desc,views.desc.nullslast&limit=50&select=*`,
+            { headers: h }
+          );
+          let explore = exploreR.ok ? (await exploreR.json()).filter(v => v.video_url) : [];
+          // Shuffle pra variar entre paginas
+          for (let i = explore.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [explore[i], explore[j]] = [explore[j], explore[i]];
+          }
+          const fillCount = segLimit - videos.length;
+          const exploreSlice = explore.slice(0, fillCount + segLimit);
+          videos = [...videos, ...exploreSlice.slice(0, fillCount)];
+          // has_more=true SE ainda tem explore pra paginar
+          if (exploreSlice.length > fillCount) {
+            nextCursor = 'explora:' + Buffer.from(String(Date.now()), 'utf8').toString('base64');
+            feedModeOut = 'seguindo_explora';
+          }
+        } catch (e) { /* fail-soft: mantem hasMore=false */ }
+      }
 
       // Enrich profiles
       const userIds = [...new Set(videos.map(v => v.user_id).filter(Boolean))];
@@ -732,7 +766,12 @@ module.exports = async function handler(req, res) {
         thumbnail_url: applyCDN(v.thumbnail_url),
         creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' },
       }));
-      return res.status(200).json({ videos: enriched, has_more: hasMore, next_cursor: nextCursor });
+      return res.status(200).json({
+        videos: enriched,
+        has_more: hasMore || feedModeOut === 'seguindo_explora',
+        next_cursor: nextCursor,
+        feed_mode: feedModeOut,
+      });
     } catch(e) {
       console.error('feed-seguindo:', e.message);
       return res.status(200).json({ videos: [], has_more: false, error: e.message });
@@ -901,15 +940,52 @@ module.exports = async function handler(req, res) {
       }
       const histRows = recyR.ok ? await recyR.json() : [];
 
-      // Esgotou esta pagina do recycle — sinaliza loop pra proxima chamada
-      // (cursor zerado = recomeca pelo mais antigo do historico).
+      // Esgotou esta pagina do recycle — em vez de retornar videos=[]
+      // (que matava o infinite scroll silenciosamente pois observer nao
+      // disparava sem novos slides), faz FALLBACK pra top videos populares
+      // com shuffle. Mantém feed verdadeiramente infinito tipo TikTok.
       if (histRows.length === 0) {
-        return res.status(200).json({
-          videos: [],
-          has_more: true, // ainda infinito
-          next_cursor: encodeCursor('recycle', '', ''),
-          feed_mode: 'seen_recycle',
-        });
+        try {
+          const explExcludeSelf = `&user_id=neq.${userPrefs.uid}`;
+          const exploreR = await fetchDb(
+            `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${explExcludeSelf}&order=views.desc.nullslast,score.desc&limit=50&select=${FEED_FIELDS}`,
+            { headers: h }
+          );
+          let explore = exploreR.ok ? (await exploreR.json()).filter(v => v.video_url) : [];
+          if (blockedIds.length) explore = explore.filter(v => !blockedIds.includes(v.user_id));
+          // Shuffle Fisher-Yates pra nao repetir mesma ordem
+          for (let i = explore.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [explore[i], explore[j]] = [explore[j], explore[i]];
+          }
+          const explSlice = explore.slice(0, limit);
+          // Enrich profiles
+          const exUids = [...new Set(explSlice.map(v => v.user_id).filter(Boolean))];
+          let exProfs = {};
+          if (exUids.length) {
+            const pR = await fetchDb(
+              `${SU}/rest/v1/blue_profiles?user_id=in.(${exUids.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
+              { headers: h }
+            );
+            if (pR.ok) (await pR.json()).forEach(p => { exProfs[p.user_id] = p; });
+          }
+          const enriched = explSlice.map(v => ({
+            ...v,
+            video_url: applyCDN(v.video_url),
+            thumbnail_url: applyCDN(v.thumbnail_url),
+            creator: exProfs[v.user_id] || { username: 'blue', display_name: 'Blue' },
+          }));
+          return res.status(200).json({
+            videos: enriched,
+            has_more: true,
+            next_cursor: encodeCursor('recycle', '', ''),
+            feed_mode: 'explore_fallback',
+          });
+        } catch (e) {
+          // Worst-case: retorna vazio mas mantem has_more=false pra frontend parar
+          // (preferimos fim explicito a loop infinito vazio)
+          return res.status(200).json({ videos: [], has_more: false, feed_mode: 'seen_recycle_empty' });
+        }
       }
 
       const hasMoreRecy = histRows.length > limit;
