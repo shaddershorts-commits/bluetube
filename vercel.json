@@ -249,6 +249,14 @@
     {
       "path": "/api/blue-feed?action=cleanup-analytics",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/blue-embeddings?action=gerar-batch",
+      "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/blue-embeddings?action=atualizar-perfis",
+      "schedule": "0 5 * * 4"
     }
   ],
   "headers": [
