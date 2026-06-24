@@ -16,8 +16,11 @@ const COUNTRIES = [
   // Originais (8): América + Europa + Ásia central
   'us', 'br', 'mx', 'es', 'jp', 'kr', 'id', 'fr',
   // Novos (9): Europa expandida + sudeste asiático + outros
-  'uk', 'de', 'it', 'ph', 'th', 'vn', 'tr', 'ca', 'cn',
+  // 'gb' (não 'uk') — ISO 3166-1 alpha-2 oficial. uk dá HTTP 400 no TikAPI.
+  'gb', 'de', 'it', 'ph', 'th', 'vn', 'tr', 'ca', 'cn',
 ];
+const PARALLEL_CHUNK_SIZE = 5; // 17 simultâneos saturava TikAPI per-second
+const PARALLEL_CHUNK_DELAY_MS = 800;
 const MIN_LIKES = 800_000; // 2026-06-24: baixado de 1M pra 800k a pedido do user
 const FETCH_COUNT_PER_COUNTRY = 30; // TikAPI retorna até 30/chamada
 const RETENTION_DAYS = 30;
@@ -57,12 +60,11 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
 
   const results = { ok: true, by_country: {}, total_inserted: 0, total_skipped: 0, total_failed: 0 };
 
-  // 2026-06-24: paralelizado com Promise.allSettled.
-  // Antes: serial (loop com 300ms delay) → ~10s × 16 países = 160s estourava
-  //        Vercel maxDuration 120s. Agora: ~10-15s totais pra 17 países.
-  // Trade-off: pico de 17 fetches simultâneos pra TikAPI. Plano Starter não
-  // tem rate limit por segundo (só por dia), então aguenta tranquilo.
-  const settled = await Promise.allSettled(COUNTRIES.map(async (country) => {
+  // 2026-06-24: chunked parallelization.
+  // Primeira tentativa: 17 fetches simultâneos saturava rate per-second do
+  // TikAPI (5 países falhavam aleatoriamente). Solução: chunks de 5 paralelos
+  // com 800ms entre cada chunk. Tempo total: ~15-20s (cabe nos 120s).
+  async function coletarPais(country) {
     const stat = { fetched: 0, qualified: 0, inserted: 0, errors: 0 };
     try {
       const url = `https://api.tikapi.io/public/explore?country=${country}&count=${FETCH_COUNT_PER_COUNTRY}`;
@@ -123,10 +125,22 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
       stat.errors++;
       return { country, stat, failed: true };
     }
-  }));
+  }
+
+  // Quebra em chunks de PARALLEL_CHUNK_SIZE com pausa entre cada
+  const allResults = [];
+  for (let i = 0; i < COUNTRIES.length; i += PARALLEL_CHUNK_SIZE) {
+    const chunk = COUNTRIES.slice(i, i + PARALLEL_CHUNK_SIZE);
+    const chunkResults = await Promise.allSettled(chunk.map(coletarPais));
+    allResults.push(...chunkResults);
+    // Pausa entre chunks (exceto após o último)
+    if (i + PARALLEL_CHUNK_SIZE < COUNTRIES.length) {
+      await new Promise(rs => setTimeout(rs, PARALLEL_CHUNK_DELAY_MS));
+    }
+  }
 
   // Consolida resultados de cada país
-  for (const s of settled) {
+  for (const s of allResults) {
     if (s.status === 'fulfilled' && s.value) {
       const { country, stat, failed, skipped } = s.value;
       results.by_country[country] = stat;
@@ -134,7 +148,6 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
       else if (skipped) results.total_skipped++;
       else results.total_inserted += stat.inserted;
     } else {
-      // Promise rejeitada (extremo raro — Promise.allSettled raramente rejeita)
       results.total_failed++;
     }
   }
