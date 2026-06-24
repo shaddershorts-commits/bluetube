@@ -1517,6 +1517,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div style="display:flex;justify-content:space-between" id="profileDaysLeftRow" style="display:none"><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim)">Acesso premium até</span><span style="font-family:var(--font-mono);font-size:12px;color:#fbbf24" id="profileDaysLeft">—</span></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
+      <button id="btnIndicar" onclick="copiarLinkIndicacao(this)" style="background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 50%,#d97706 100%);border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:800;color:#000;cursor:pointer;box-shadow:0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2);letter-spacing:.02em;transition:transform .15s,box-shadow .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 0 22px rgba(251,191,36,.55),0 6px 16px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2)'">🎁 Indique e ganhe 1 mês grátis</button>
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
       <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
       <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
@@ -4289,6 +4290,62 @@ async function reactivateSubscription(){
     if(btn){ btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Reativar assinatura'; }
   }
 }
+// ── INDICAÇÃO: copia link do BlueTube no clipboard com feedback visual ──────
+function copiarLinkIndicacao(btn){
+  const link = 'https://www.bluetubeviral.com/';
+  const origText = btn.textContent;
+  const origBg = btn.style.background;
+  // Tenta API moderna primeiro, com fallback pra textarea hack (browsers antigos / iframes)
+  const onSuccess = () => {
+    btn.textContent = '✓ Link copiado!';
+    btn.style.background = 'linear-gradient(135deg,#10b981 0%,#059669 100%)';
+    btn.style.color = '#fff';
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = origText;
+      btn.style.background = origBg;
+      btn.style.color = '#000';
+      btn.disabled = false;
+    }, 2200);
+  };
+  const onFail = () => {
+    btn.textContent = '✗ Não consegui copiar';
+    btn.style.background = 'linear-gradient(135deg,#ef4444 0%,#b91c1c 100%)';
+    btn.style.color = '#fff';
+    setTimeout(() => {
+      btn.textContent = origText;
+      btn.style.background = origBg;
+      btn.style.color = '#000';
+    }, 2200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(onSuccess).catch(() => {
+      // Fallback textarea
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok ? onSuccess() : onFail();
+      } catch(e) { onFail(); }
+    });
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? onSuccess() : onFail();
+    } catch(e) { onFail(); }
+  }
+}
+
 async function sendPasswordReset(){
   const email=currentUserEmail;
   if(!email){alert('Email não encontrado. Faça login novamente.');return;}
