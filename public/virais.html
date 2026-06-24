@@ -545,8 +545,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       </div>
     </div>
     <div class="shorts-grid" id="tkGrid"></div>
+    <!-- Paginação: aparece se has_more=true -->
+    <div id="tkPaginacao" style="display:none;justify-content:center;align-items:center;gap:8px;margin-top:24px">
+      <button id="tkCarregarMais" onclick="tkLoadMore()" style="padding:10px 22px;border-radius:10px;background:rgba(255,140,0,0.10);border:1px solid rgba(255,140,0,0.30);color:#ff8c00;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600">⬇ Carregar mais</button>
+      <span id="tkPaginaInfo" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:11px;font-family:var(--mono)"></span>
+    </div>
     <div id="tkEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-dim);font-size:14px">
-      Nenhum vídeo no período selecionado ainda. Aguarde a próxima coleta (3x/dia).
+      Nenhum vídeo no período selecionado ainda. Aguarde a próxima coleta.
     </div>
   </div>
 
@@ -1459,6 +1464,9 @@ function nsRaioX(e, youtubeId){
 let _tkMode = false; // false=YouTube view (default), true=TikTok view
 let _tkPeriod = '24h';
 let _tkSort = 'likes'; // 'likes' (default) ou 'views'
+let _tkOffset = 0; // paginação: offset atual na chamada listar
+let _tkTotal = 0;  // total no banco pra exibir "X de Y"
+const _tkPageSize = 100;
 
 function tkSetSort(s, e){
   if(e) e.preventDefault();
@@ -1569,25 +1577,80 @@ if(_origSetPeriod){
 async function tkListar(){
   const grid = document.getElementById('tkGrid');
   const empty = document.getElementById('tkEmpty');
+  const pag = document.getElementById('tkPaginacao');
   if(!grid) return;
+  // Reseta paginação (filtro mudou)
+  _tkOffset = 0;
+  if(pag) pag.style.display = 'none';
   grid.innerHTML = Array(8).fill(0).map(()=>`
     <div style="aspect-ratio:9/16;background:rgba(255,255,255,.04);border-radius:12px;animation:pulse 1.5s ease-in-out infinite"></div>
   `).join('');
   empty.style.display = 'none';
   try{
-    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=100`);
+    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=${_tkPageSize}&offset=0`);
     if(!r.ok) throw new Error('API ' + r.status);
     const d = await r.json();
     const items = d.items || [];
+    _tkTotal = d.total || 0;
     if(!items.length){
       grid.innerHTML = '';
       empty.style.display = 'block';
       return;
     }
     grid.innerHTML = items.map((v, i) => tkMkCard(v, i + 1)).join('');
+    _tkOffset = items.length;
+    tkAtualizarPaginacao(d.has_more);
   }catch(e){
     console.error('[tkListar]', e);
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;font-size:13px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+async function tkLoadMore(){
+  const grid = document.getElementById('tkGrid');
+  const btn = document.getElementById('tkCarregarMais');
+  if(!grid || !btn) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Carregando...';
+  try{
+    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=${_tkPageSize}&offset=${_tkOffset}`);
+    if(!r.ok) throw new Error('API ' + r.status);
+    const d = await r.json();
+    const items = d.items || [];
+    if(items.length){
+      // Append nos novos com rank continuando
+      grid.insertAdjacentHTML('beforeend', items.map((v, i) => tkMkCard(v, _tkOffset + i + 1)).join(''));
+      _tkOffset += items.length;
+    }
+    tkAtualizarPaginacao(d.has_more);
+  }catch(e){
+    console.error('[tkLoadMore]', e);
+    btn.textContent = '✗ Erro — tentar de novo';
+    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2500);
+    return;
+  }
+  btn.textContent = origText;
+  btn.disabled = false;
+}
+
+function tkAtualizarPaginacao(hasMore){
+  const pag = document.getElementById('tkPaginacao');
+  const info = document.getElementById('tkPaginaInfo');
+  if(!pag) return;
+  if(hasMore){
+    pag.style.display = 'flex';
+    if(info) info.textContent = `${_tkOffset} de ${_tkTotal}`;
+  } else {
+    if(_tkOffset > 0 && _tkTotal > _tkPageSize){
+      // Mostra fim quando o user já carregou tudo
+      pag.style.display = 'flex';
+      if(info) info.textContent = `${_tkOffset} de ${_tkTotal} — fim`;
+      const btn = document.getElementById('tkCarregarMais');
+      if(btn) btn.style.display = 'none';
+    } else {
+      pag.style.display = 'none';
+    }
   }
 }
 
