@@ -1,0 +1,120 @@
+{
+  "generated_at": "2026-05-18T01:01:37.095Z",
+  "total_active_stripe_subs": 25,
+  "unique_emails": 22,
+  "summary": {
+    "A_orphans": 0,
+    "B_zombies": 0,
+    "C_duplicates": 3,
+    "D_stale_cust": 3,
+    "E_healthy": 22
+  },
+  "A_orphans": [],
+  "B_zombies": [],
+  "C_duplicates": [
+    {
+      "email": "manuelcardoso1814@gmail.com",
+      "count": 2,
+      "stripe_subs": [
+        {
+          "id": "sub_1TTMIwLe4wOQftBw8jxmgdGy",
+          "customer": "cus_USGqkNBDIpge3e",
+          "plan_amount": "14.99",
+          "price_id": "price_1TQ8HRLe4wOQftBwEIG9LZOo"
+        },
+        {
+          "id": "sub_1TOk0cLe4wOQftBwvc6REsFs",
+          "customer": "cus_UNV0mnNzCrnsU5",
+          "plan_amount": "29.99",
+          "price_id": "price_1TOk04Le4wOQftBwpANn8YdV"
+        }
+      ],
+      "db": {
+        "email": "manuelcardoso1814@gmail.com",
+        "plan": "full",
+        "plan_expires_at": "2026-06-10T13:13:00.392+00:00",
+        "is_manual": false,
+        "stripe_customer_id": "cus_USGqkNBDIpge3e",
+        "stripe_subscription_id": "sub_1TTMIwLe4wOQftBw8jxmgdGy",
+        "cancel_at_period_end": false
+      }
+    },
+    {
+      "email": "devargasdjully@gmail.com",
+      "count": 2,
+      "stripe_subs": [
+        {
+          "id": "sub_1TRN5vLe4wOQftBwNZZPA42k",
+          "customer": "cus_UQDWuF69Pj7kiE",
+          "plan_amount": "29.99",
+          "price_id": "price_1TQ8HRLe4wOQftBwC775TGZX"
+        },
+        {
+          "id": "sub_1TRN1HLe4wOQftBwDZbgujYI",
+          "customer": "cus_UQDS9CBrSAx4Ep",
+          "plan_amount": "29.99",
+          "price_id": "price_1TQ8HRLe4wOQftBwC775TGZX"
+        }
+      ],
+      "db": {
+        "email": "devargasdjully@gmail.com",
+        "plan": "full",
+        "plan_expires_at": "2026-06-05T01:45:18.359+00:00",
+        "is_manual": false,
+        "stripe_customer_id": "cus_UQDS9CBrSAx4Ep",
+        "stripe_subscription_id": "sub_1TRN1HLe4wOQftBwDZbgujYI",
+        "cancel_at_period_end": false
+      }
+    },
+    {
+      "email": "maurilioshorts@gmail.com",
+      "count": 2,
+      "stripe_subs": [
+        {
+          "id": "sub_1TNvD4Le4wOQftBwBEj4m6EW",
+          "customer": "cus_UMeWxobGbJadMN",
+          "plan_amount": "89.99",
+          "price_id": "price_1TNvBlLe4wOQftBwkdFtpao9"
+        },
+        {
+          "id": "sub_1TNu2aLe4wOQftBwWx3NUM8I",
+          "customer": "cus_UMdJeVZL9UaXKF",
+          "plan_amount": "29.99",
+          "price_id": "price_1TNu0NLe4wOQftBwwRnRyUs9"
+        }
+      ],
+      "db": {
+        "email": "maurilioshorts@gmail.com",
+        "plan": "master",
+        "plan_expires_at": "2026-05-26T13:16:28.568+00:00",
+        "is_manual": false,
+        "stripe_customer_id": "cus_UMeWxobGbJadMN",
+        "stripe_subscription_id": "sub_1TNvD4Le4wOQftBwBEj4m6EW",
+        "cancel_at_period_end": true
+      }
+    }
+  ],
+  "D_stale_cust": [
+    {
+      "email": "manuelcardoso1814@gmail.com",
+      "db_plan": "full",
+      "stripe_sub_id": "sub_1TOk0cLe4wOQftBwvc6REsFs",
+      "stripe_customer": "cus_UNV0mnNzCrnsU5",
+      "db_customer": "cus_USGqkNBDIpge3e"
+    },
+    {
+      "email": "devargasdjully@gmail.com",
+      "db_plan": "full",
+      "stripe_sub_id": "sub_1TRN5vLe4wOQftBwNZZPA42k",
+      "stripe_customer": "cus_UQDWuF69Pj7kiE",
+      "db_customer": "cus_UQDS9CBrSAx4Ep"
+    },
+    {
+      "email": "maurilioshorts@gmail.com",
+      "db_plan": "master",
+      "stripe_sub_id": "sub_1TNu2aLe4wOQftBwWx3NUM8I",
+      "stripe_customer": "cus_UMdJeVZL9UaXKF",
+      "db_customer": "cus_UMeWxobGbJadMN"
+    }
+  ]
+}

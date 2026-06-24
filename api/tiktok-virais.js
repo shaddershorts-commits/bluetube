@@ -127,10 +127,12 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
 }
 
 // ── LISTAR (frontend GET) ────────────────────────────────────────────────────
-// Params: period=24h|7d|30d, country=all|us|br|..., limit=20, offset=0
+// Params: period=24h|7d|30d, country=all|us|br|..., sort=likes|views, limit, offset
 async function listar(req, res, { SU, h }) {
   const period = req.query.period || '24h';
   const country = req.query.country || 'all';
+  const sortParam = req.query.sort || 'likes';
+  const sort = sortParam === 'views' ? 'views_count' : 'likes_count';
   const limit = Math.min(parseInt(req.query.limit) || 20, 50);
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
 
@@ -145,7 +147,7 @@ async function listar(req, res, { SU, h }) {
   if (country !== 'all' && COUNTRIES.includes(country)) {
     url += `&country=eq.${country}`;
   }
-  url += `&order=likes_count.desc&limit=${limit}&offset=${offset}`;
+  url += `&order=${sort}.desc&limit=${limit}&offset=${offset}`;
   url += `&select=tiktok_video_id,video_url,thumbnail_url,caption,author_handle,author_name,author_avatar,likes_count,views_count,comments_count,shares_count,country,duration_sec,tiktok_created_at,collected_at`;
 
   const r = await fetch(url, { headers: { ...h, Prefer: 'count=exact' } });
@@ -154,7 +156,7 @@ async function listar(req, res, { SU, h }) {
 
   return res.status(200).json({
     ok: true,
-    period, country, limit, offset, total,
+    period, country, sort: sortParam, limit, offset, total,
     has_more: offset + items.length < total,
     items,
   });

@@ -36,8 +36,7 @@
     "api/email-sequence.js": { "maxDuration": 60 },
     "api/trial-activate.js": { "maxDuration": 30 },
     "api/trial-expiry-warning.js": { "maxDuration": 60 },
-    "api/tiktok-virais.js": { "maxDuration": 120 },
-    "api/tiktok-download.js": { "maxDuration": 300 }
+    "api/tiktok-virais.js": { "maxDuration": 120 }
   },
   "crons": [
     {

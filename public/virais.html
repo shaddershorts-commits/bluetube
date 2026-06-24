@@ -538,21 +538,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <span style="font-size:18px">🔥</span>
         <span>TikTok Virais · 1M+ likes · 8 países</span>
       </div>
-      <select id="tkCountrySelect" onchange="tkListar()" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;color:#cbd5e1;cursor:pointer">
-        <option value="all" selected>🌐 Todos os países</option>
-        <option value="us">🇺🇸 United States</option>
-        <option value="br">🇧🇷 Brasil</option>
-        <option value="mx">🇲🇽 México</option>
-        <option value="es">🇪🇸 España</option>
-        <option value="jp">🇯🇵 日本</option>
-        <option value="kr">🇰🇷 한국</option>
-        <option value="id">🇮🇩 Indonesia</option>
-        <option value="fr">🇫🇷 France</option>
-      </select>
+      <!-- Toggle ordenação: Likes (default) ou Views -->
+      <div style="display:inline-flex;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px;font-family:var(--font);font-size:12px;font-weight:700">
+        <button id="tkSortLikes" onclick="tkSetSort('likes',event)" style="padding:6px 12px;border:none;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border-radius:6px;cursor:pointer">❤ Likes</button>
+        <button id="tkSortViews" onclick="tkSetSort('views',event)" style="padding:6px 12px;border:none;background:transparent;color:#cbd5e1;border-radius:6px;cursor:pointer">▶ Views</button>
+      </div>
     </div>
     <div class="shorts-grid" id="tkGrid"></div>
     <div id="tkEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-dim);font-size:14px">
-      Nenhum vídeo no período/país selecionado ainda. Aguarde a próxima coleta (3x/dia).
+      Nenhum vídeo no período selecionado ainda. Aguarde a próxima coleta (3x/dia).
     </div>
   </div>
 
@@ -1464,6 +1458,30 @@ function nsRaioX(e, youtubeId){
 // ════════════════════════════════════════════════════════════════════════════
 let _tkMode = false; // false=YouTube view (default), true=TikTok view
 let _tkPeriod = '24h';
+let _tkSort = 'likes'; // 'likes' (default) ou 'views'
+
+function tkSetSort(s, e){
+  if(e) e.preventDefault();
+  if(s === _tkSort) return;
+  _tkSort = s;
+  // Atualiza UI dos botões
+  const lk = document.getElementById('tkSortLikes');
+  const vw = document.getElementById('tkSortViews');
+  if(lk && vw){
+    if(s === 'likes'){
+      lk.style.background = 'linear-gradient(135deg,#fbbf24,#f59e0b)';
+      lk.style.color = '#000';
+      vw.style.background = 'transparent';
+      vw.style.color = '#cbd5e1';
+    } else {
+      vw.style.background = 'linear-gradient(135deg,#3b82f6,#1d4ed8)';
+      vw.style.color = '#fff';
+      lk.style.background = 'transparent';
+      lk.style.color = '#cbd5e1';
+    }
+  }
+  tkListar();
+}
 const _tkCountryFlag = { us:'🇺🇸', br:'🇧🇷', mx:'🇲🇽', es:'🇪🇸', jp:'🇯🇵', kr:'🇰🇷', id:'🇮🇩', fr:'🇫🇷' };
 
 function tkIsMaster(){
@@ -1549,13 +1567,12 @@ async function tkListar(){
   const grid = document.getElementById('tkGrid');
   const empty = document.getElementById('tkEmpty');
   if(!grid) return;
-  const country = document.getElementById('tkCountrySelect')?.value || 'all';
   grid.innerHTML = Array(8).fill(0).map(()=>`
     <div style="aspect-ratio:9/16;background:rgba(255,255,255,.04);border-radius:12px;animation:pulse 1.5s ease-in-out infinite"></div>
   `).join('');
   empty.style.display = 'none';
   try{
-    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=${country}&limit=24`);
+    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=24`);
     if(!r.ok) throw new Error('API ' + r.status);
     const d = await r.json();
     const items = d.items || [];
@@ -1612,38 +1629,24 @@ function tkMkCard(v, rank){
         <div class="tk-card-caption">${caption || '<em style="color:#475569">sem legenda</em>'}</div>
         <div class="tk-card-author">@${handle} · ${name}</div>
         <div class="tk-card-stats">
-          <span class="tk-card-likes">❤ ${tkFmt(v.likes_count)}</span>
+          <span class="tk-card-likes">${_tkSort === 'views' ? '▶' : '❤'} ${tkFmt(_tkSort === 'views' ? v.views_count : v.likes_count)}</span>
           <span>${tkTimeAgo(v.collected_at)} atrás</span>
         </div>
         <a class="tk-card-btn primary" href="${tkEsc(v.video_url)}" target="_blank" rel="noopener">↗ Ver no TikTok</a>
-        <button class="tk-card-btn secondary" onclick="tkBaixar(event, '${id}')">⬇ Baixar</button>
+        <button class="tk-card-btn secondary" onclick="tkBaixar(event, '${tkEsc(v.video_url)}')">⬇ Baixar no BlueTube</button>
       </div>
     </div>
   `;
 }
 
-async function tkBaixar(e, id){
+function tkBaixar(e, tiktokUrl){
   e.preventDefault(); e.stopPropagation();
-  const btn = e.currentTarget;
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '⏳ Preparando...';
-  try{
-    // Cria <a> invisível e dispara download nativo (sem nova aba)
-    const a = document.createElement('a');
-    a.href = `/api/tiktok-download?id=${encodeURIComponent(id)}`;
-    a.download = `tiktok_${id}.mp4`;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => a.remove(), 1000);
-    btn.textContent = '✓ Baixando...';
-    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
-  }catch(err){
-    console.error('[tkBaixar]', err);
-    btn.textContent = '✗ Erro';
-    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
-  }
+  // Reusa o BaixaBlue da home (que já suporta TikTok): salva URL no
+  // localStorage e redireciona pra /. A home detecta bt_prefill_url e
+  // pré-preenche o input — usuário só clica baixar lá. Mesmo padrão usado
+  // pelo botão "Usar no BlueTube" do YouTube Virais (linha 844 useShort).
+  localStorage.setItem('bt_prefill_url', tiktokUrl);
+  window.location.href = '/';
 }
 
 function tkFomoShow(){
