@@ -927,6 +927,79 @@ Botão "Baixar no BlueTube" pronto pra estudar formato.</p>
     cta_url: 'https://bluetubeviral.com/?upgrade=master',
     is_trial: false,
   },
+
+  // ── 19 — TikTok Virais · ROI direto + exemplo concreto (2026-06-24) ──────
+  {
+    id: 'full_19_tiktok_roi_38m',
+    category: 'tiktok_virais',
+    subject: 'Esse vídeo tem 38 milhões de likes',
+    preheader: 'E vai estar no seu feed do Shorts em 14 dias. Você vai ser o 100º a copiar.',
+    body: `<p>{{nome}}, exemplo real.</p>
+<p>Tem um vídeo no painel TikTok Virais do BlueTube agora com <strong>38.2 milhões de likes</strong> e 304 milhões de views. Criado na Indonésia. Formato simples, replicável em qualquer nicho.</p>
+<p>Cenário A — Você não vê hoje:</p>
+<ul>
+  <li>Daqui 7-14 dias, o formato vaza pro YouTube Shorts</li>
+  <li>Quando aparece no seu feed, já tem 50-100 criadores BR copiando</li>
+  <li>Você copia o 101º, vira ruído</li>
+</ul>
+<p>Cenário B — Você vê hoje (como Master):</p>
+<ul>
+  <li>Adapta o formato pro seu nicho em 1-2 horas</li>
+  <li>Publica antes da onda chegar no Shorts BR</li>
+  <li>Algoritmo identifica o formato emergente → boost</li>
+  <li>Você surfa a onda como pioneiro</li>
+</ul>
+<p>Diferença entre A e B: R$60/mês (Master vs Full). Pra você que é Full há {{dias_no_bluetube}} dias, faz a conta.</p>
+<p>O vídeo das 38M de likes tá lá. Junto com 200+ outros com 800k+ likes. Esperando.</p>`,
+    cta_text: 'Ver os virais TikTok agora →',
+    cta_url: 'https://bluetubeviral.com/?upgrade=master',
+    is_trial: false,
+  },
+
+  // ── 20 — TikTok Virais · Quebra 4ª parede + diss Full (2026-06-24) ───────
+  {
+    id: 'full_20_tiktok_full_vs_master_comportamento',
+    category: 'tiktok_virais',
+    subject: 'O que Master faz que Full não faz',
+    preheader: 'Não é uma feature. É um hábito.',
+    body: `<p>{{nome}}, observação honesta.</p>
+<p>Vejo 2 grupos de criadores na plataforma:</p>
+<p><strong>Grupo Full:</strong> Abre o /virais 1x por semana. Vê os top virais do YouTube. Tenta copiar. Posta. Cresce devagar.</p>
+<p><strong>Grupo Master:</strong> Abre o /virais 3-4x por semana. Clica no botão TikTok. Olha o que tá explodindo em 8 países. Identifica o formato que vai chegar no Shorts em 14 dias. Adapta. Posta antes da onda chegar. Cresce em ritmo diferente.</p>
+<p>A diferença não é a ferramenta. É o <strong>hábito</strong> que a ferramenta destrava.</p>
+<p>Master abre o painel TikTok porque sabe que tem 200+ virais lá. Full não abre porque o botão tá bloqueado.</p>
+<p>Você é Full há {{dias_no_bluetube}} dias. Pergunta sincera: seu canal cresceu o que você queria nesse período?</p>
+<p>Se não cresceu, talvez seja porque você tá olhando pra onde todo mundo já olha. Master olha 14 dias adiante.</p>
+<p>R$60/mês a mais. Tá lá.</p>`,
+    cta_text: 'Virar do Grupo Master →',
+    cta_url: 'https://bluetubeviral.com/?upgrade=master',
+    is_trial: false,
+  },
+
+  // ── 21 — TikTok Virais · Curiosidade por país (2026-06-24) ──────────────
+  {
+    id: 'full_21_tiktok_curiosidade_global',
+    category: 'tiktok_virais',
+    subject: 'Tem viral do Japão com formato que ninguém copia no BR',
+    preheader: 'Porque ninguém vê. Master vê.',
+    body: `<p>{{nome}}, curiosidade.</p>
+<p>O painel TikTok Virais cobre 8 países: 🇺🇸 🇧🇷 🇲🇽 🇪🇸 🇯🇵 🇰🇷 🇮🇩 🇫🇷.</p>
+<p>Por quê 8 países e não só BR? Porque tendências viralizam por país antes de viralizar global. Quem só olha pro BR copia BR. Quem olha pra 8 países identifica o formato que vai chegar.</p>
+<p>Exemplo: tem viral do <strong>Japão</strong> com formato visual MUITO específico (não vou explicar aqui — você precisa ver). Esse formato:</p>
+<ul>
+  <li>Tem milhões de likes lá</li>
+  <li>Zero criadores BR fazendo</li>
+  <li>Adaptável pra português com 1 hora de edição</li>
+  <li>Quando viralizar no Shorts BR (~14 dias), quem fez antes ganha</li>
+</ul>
+<p>Esse é só 1 exemplo. Tem outros nos outros 7 países. Coreia, Indonésia, México têm tendências visuais únicas que ainda não chegaram no Brasil.</p>
+<p>Master vê tudo. Filtra por likes ou views. Baixa formato pra estudar.</p>
+<p>Full não tem acesso.</p>
+<p>Você é Full há {{dias_no_bluetube}} dias. Master destrava em 1 minuto.</p>`,
+    cta_text: 'Ver virais globais agora →',
+    cta_url: 'https://bluetubeviral.com/?upgrade=master',
+    is_trial: false,
+  },
 ];
 
 module.exports = { FREE_TEMPLATES, FULL_TEMPLATES };
