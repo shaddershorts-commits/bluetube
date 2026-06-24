@@ -9,7 +9,15 @@
 // Filtro local: stats.diggCount >= 1_000_000
 // Países: us, br, mx, es, jp, kr, id, fr (8 países, conforme decisão)
 
-const COUNTRIES = ['us', 'br', 'mx', 'es', 'jp', 'kr', 'id', 'fr'];
+// 2026-06-24: expandido de 8 → 17 países (alvo ~220 reqs/dia, 73% quota).
+// CN: TikTok não opera na China oficialmente (lá é Douyin separado).
+// Mantemos no array pra TikAPI tentar — se retornar 0, é esperado.
+const COUNTRIES = [
+  // Originais (8): América + Europa + Ásia central
+  'us', 'br', 'mx', 'es', 'jp', 'kr', 'id', 'fr',
+  // Novos (9): Europa expandida + sudeste asiático + outros
+  'uk', 'de', 'it', 'ph', 'th', 'vn', 'tr', 'ca', 'cn',
+];
 const MIN_LIKES = 800_000; // 2026-06-24: baixado de 1M pra 800k a pedido do user
 const FETCH_COUNT_PER_COUNTRY = 30; // TikAPI retorna até 30/chamada
 const RETENTION_DAYS = 30;
@@ -49,7 +57,12 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
 
   const results = { ok: true, by_country: {}, total_inserted: 0, total_skipped: 0, total_failed: 0 };
 
-  for (const country of COUNTRIES) {
+  // 2026-06-24: paralelizado com Promise.allSettled.
+  // Antes: serial (loop com 300ms delay) → ~10s × 16 países = 160s estourava
+  //        Vercel maxDuration 120s. Agora: ~10-15s totais pra 17 países.
+  // Trade-off: pico de 17 fetches simultâneos pra TikAPI. Plano Starter não
+  // tem rate limit por segundo (só por dia), então aguenta tranquilo.
+  const settled = await Promise.allSettled(COUNTRIES.map(async (country) => {
     const stat = { fetched: 0, qualified: 0, inserted: 0, errors: 0 };
     try {
       const url = `https://api.tikapi.io/public/explore?country=${country}&count=${FETCH_COUNT_PER_COUNTRY}`;
@@ -59,19 +72,15 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
       });
       if (!r.ok) {
         stat.errors++;
-        results.by_country[country] = { ...stat, http_status: r.status };
-        results.total_failed++;
-        continue;
+        return { country, stat: { ...stat, http_status: r.status }, failed: true };
       }
       const data = await r.json();
       const items = Array.isArray(data?.itemList) ? data.itemList : [];
       stat.fetched = items.length;
 
-      // Filtra likes >= 1M
       const qualified = items.filter(v => (v?.stats?.diggCount || 0) >= MIN_LIKES);
       stat.qualified = qualified.length;
 
-      // Upsert em batch
       const now = new Date().toISOString();
       const rows = qualified.map(v => ({
         tiktok_video_id: v.id,
@@ -94,7 +103,6 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
       }));
 
       if (rows.length) {
-        // UPSERT em batch (mesma chave PK = atualiza last_seen + counts)
         const upR = await fetch(`${SU}/rest/v1/tiktok_virais?on_conflict=tiktok_video_id`, {
           method: 'POST',
           headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -102,25 +110,33 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
         });
         if (upR.ok) {
           stat.inserted = rows.length;
-          results.total_inserted += rows.length;
         } else {
           const errText = await upR.text();
           console.error(`[tiktok-virais:coletar:${country}] upsert ${upR.status}:`, errText.slice(0, 200));
           stat.errors++;
-          results.total_failed++;
+          return { country, stat, failed: true };
         }
-      } else {
-        results.total_skipped++;
       }
+      return { country, stat, skipped: rows.length === 0 };
     } catch (e) {
       console.error(`[tiktok-virais:coletar:${country}]`, e?.message);
       stat.errors++;
+      return { country, stat, failed: true };
+    }
+  }));
+
+  // Consolida resultados de cada país
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && s.value) {
+      const { country, stat, failed, skipped } = s.value;
+      results.by_country[country] = stat;
+      if (failed) results.total_failed++;
+      else if (skipped) results.total_skipped++;
+      else results.total_inserted += stat.inserted;
+    } else {
+      // Promise rejeitada (extremo raro — Promise.allSettled raramente rejeita)
       results.total_failed++;
     }
-    results.by_country[country] = stat;
-
-    // Pausa pequena entre países pra não afobar a API
-    await new Promise(rs => setTimeout(rs, 300));
   }
 
   return res.status(200).json({ ...results, timestamp: new Date().toISOString() });
