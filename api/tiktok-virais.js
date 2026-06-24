@@ -133,7 +133,7 @@ async function listar(req, res, { SU, h }) {
   const country = req.query.country || 'all';
   const sortParam = req.query.sort || 'likes';
   const sort = sortParam === 'views' ? 'views_count' : 'likes_count';
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100);
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
 
   const PERIOD_MS = {

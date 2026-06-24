@@ -1575,7 +1575,7 @@ async function tkListar(){
   `).join('');
   empty.style.display = 'none';
   try{
-    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=24`);
+    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=all&sort=${_tkSort}&limit=100`);
     if(!r.ok) throw new Error('API ' + r.status);
     const d = await r.json();
     const items = d.items || [];
