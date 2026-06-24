@@ -35,7 +35,9 @@
     "api/support-chat.js": { "maxDuration": 30 },
     "api/email-sequence.js": { "maxDuration": 60 },
     "api/trial-activate.js": { "maxDuration": 30 },
-    "api/trial-expiry-warning.js": { "maxDuration": 60 }
+    "api/trial-expiry-warning.js": { "maxDuration": 60 },
+    "api/tiktok-virais.js": { "maxDuration": 120 },
+    "api/tiktok-download.js": { "maxDuration": 300 }
   },
   "crons": [
     {
@@ -257,6 +259,14 @@
     {
       "path": "/api/blue-embeddings?action=atualizar-perfis",
       "schedule": "0 5 * * 4"
+    },
+    {
+      "path": "/api/tiktok-virais?action=coletar",
+      "schedule": "0 6,14,22 * * *"
+    },
+    {
+      "path": "/api/tiktok-virais?action=limpar",
+      "schedule": "30 4 * * *"
     }
   ],
   "headers": [
