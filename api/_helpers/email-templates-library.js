@@ -874,6 +874,59 @@ Se você quer continuar Full: ignora. Tô bem com isso.</p>
     cta_url: 'https://bluetubeviral.com/#plans',
     is_trial: false,
   },
+
+  // ── 17 — TikTok Virais · "vendo virais do mês passado" (2026-06-24) ──────
+  {
+    id: 'full_17_tiktok_atraso_14d',
+    category: 'tiktok_virais',
+    subject: 'Você tá vendo virais... do mês passado',
+    preheader: 'TikTok mostra hoje o que viraliza no Shorts em 14 dias.',
+    body: `<p>{{nome}}, conversa rápida.</p>
+<p>Os virais do YouTube Shorts que você analisa hoje? Eles bombaram no TikTok há 7 a 14 dias.</p>
+<p>Não é teoria. É padrão visível. O TikTok roda o algoritmo de viralização mais rápido do mundo. Quando um formato explode lá, ele vaza pro Reels em ~7 dias, pro YouTube Shorts em ~14.</p>
+<p>Quem chega antes, ganha. Quem só vê quando já tá viral no Shorts, copia o que já tá saturado.</p>
+<p>Hoje, mais cedo, conferi os virais TikTok:</p>
+<ul>
+  <li><strong>200+ vídeos com 800k+ likes</strong> — distribuídos em 8 países (US, BR, MX, ES, JP, KR, ID, FR)</li>
+  <li>Atualizados <strong>3x por dia</strong> automaticamente</li>
+  <li>Filtro por likes ou views</li>
+  <li>Botão "Baixar no BlueTube" — copia o formato, posta no seu canal, ganha a janela de 14 dias</li>
+</ul>
+<p>Tá no painel Virais. Botão "🔥 TikTok" do lado de "30 dias". <strong>Exclusivo Master.</strong> R$60/mês a mais que o Full.</p>
+<p>Vou ser brutalmente honesto: se você copia 1 formato TikTok antes da massa, paga o ano todo de Master de uma vez.</p>
+<p><em>(P.S.: você é Full há {{dias_no_bluetube}} dias. Vou parar de mandar isso quando você for Master. Promessa.)</em></p>`,
+    cta_text: 'Virar Master agora →',
+    cta_url: 'https://bluetubeviral.com/?upgrade=master',
+    is_trial: false,
+  },
+
+  // ── 18 — TikTok Virais · "200 virais agora · você vê 0" (2026-06-24) ─────
+  {
+    id: 'full_18_tiktok_200_zero',
+    category: 'tiktok_virais',
+    subject: '200 virais TikTok agora. Você vê 0.',
+    preheader: 'Master vê. Full não. Math is math.',
+    body: `<p>{{nome}}, contagem brutal.</p>
+<p>Hoje, neste exato momento, tem <strong>200+ vídeos virais no TikTok com 800k+ likes</strong> rodando no painel Virais do BlueTube.</p>
+<p>Países: 🇺🇸 🇧🇷 🇲🇽 🇪🇸 🇯🇵 🇰🇷 🇮🇩 🇫🇷<br>
+Atualização: 3x ao dia, automática.<br>
+Filtro: ordena por likes ou views — você escolhe.<br>
+Bandeira de país em destaque em cada card.<br>
+Botão "Baixar no BlueTube" pronto pra estudar formato.</p>
+<p>Você vê quantos disso hoje? <strong>Zero.</strong></p>
+<p>Porque Full não tem acesso. É exclusivo Master.</p>
+<p>Calcula com calma:</p>
+<ul>
+  <li>Você é Full há <strong>{{dias_no_bluetube}} dias</strong></li>
+  <li>Master custa R$60/mês a mais</li>
+  <li>1 vídeo seu copiando formato TikTok viraliza? Paga o ano inteiro</li>
+  <li>Tendência fica visível ~7 dias antes do Shorts</li>
+</ul>
+<p>Honestamente: a única razão pra ficar Full é não ter visto isso ainda. Agora você viu.</p>`,
+    cta_text: 'Subir pra Master por R$60/mês →',
+    cta_url: 'https://bluetubeviral.com/?upgrade=master',
+    is_trial: false,
+  },
 ];
 
 module.exports = { FREE_TEMPLATES, FULL_TEMPLATES };
