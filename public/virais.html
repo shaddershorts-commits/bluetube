@@ -1641,12 +1641,10 @@ function tkMkCard(v, rank){
 
 function tkBaixar(e, tiktokUrl){
   e.preventDefault(); e.stopPropagation();
-  // Reusa o BaixaBlue da home (que já suporta TikTok): salva URL no
-  // localStorage e redireciona pra /. A home detecta bt_prefill_url e
-  // pré-preenche o input — usuário só clica baixar lá. Mesmo padrão usado
-  // pelo botão "Usar no BlueTube" do YouTube Virais (linha 844 useShort).
-  localStorage.setItem('bt_prefill_url', tiktokUrl);
-  window.location.href = '/';
+  // Redireciona pro BaixaBlue com URL prefill via query param.
+  // BaixaBlue (public/baixaBlue.html:441-454) detecta ?url= e pré-preenche
+  // o input + dispara auto-detect TikTok. Usuário só clica "Baixar" lá.
+  window.location.href = '/baixaBlue?url=' + encodeURIComponent(tiktokUrl);
 }
 
 function tkFomoShow(){
