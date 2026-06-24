@@ -1506,8 +1506,9 @@ function tkToggleView(e){
 
 function tkEnterTiktok(){
   _tkMode = true;
-  // Esconde elementos do feed YouTube
-  const ytElements = ['grid','historico-paginacao','dateFilterWarn'];
+  // Esconde elementos do feed YouTube + botões YouTube-only
+  // (notificações email diário + nichos secretos = exclusivos YouTube)
+  const ytElements = ['grid','historico-paginacao','dateFilterWarn','btnDailyAlert','btnNichosSecretos'];
   ytElements.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
   // Esconde filtros YouTube-only (idioma, nicho, 5h)
   const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = 'none';
@@ -1526,8 +1527,10 @@ function tkEnterTiktok(){
 
 function tkExitToYouTube(){
   _tkMode = false;
-  // Restaura elementos YouTube
-  ['grid','historico-paginacao'].forEach(id => { const el = document.getElementById(id); if(el) el.style.display = ''; });
+  // Restaura elementos YouTube (incluindo botões notificações + nichos secretos)
+  ['grid','historico-paginacao','btnDailyAlert','btnNichosSecretos'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display = '';
+  });
   const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = '';
   const nichoSel = document.getElementById('nichoSelect'); if(nichoSel) nichoSel.style.display = '';
   document.querySelectorAll('.filter-btn[data-period="5h"]').forEach(b => b.style.display = '');
