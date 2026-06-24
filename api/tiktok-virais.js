@@ -10,7 +10,7 @@
 // Países: us, br, mx, es, jp, kr, id, fr (8 países, conforme decisão)
 
 const COUNTRIES = ['us', 'br', 'mx', 'es', 'jp', 'kr', 'id', 'fr'];
-const MIN_LIKES = 1_000_000;
+const MIN_LIKES = 800_000; // 2026-06-24: baixado de 1M pra 800k a pedido do user
 const FETCH_COUNT_PER_COUNTRY = 30; // TikAPI retorna até 30/chamada
 const RETENTION_DAYS = 30;
 
