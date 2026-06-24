@@ -204,6 +204,86 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
   .search-input:focus{width:100%}
   .shorts-grid{grid-template-columns:repeat(2,1fr);gap:8px}
 }
+
+/* ── TIKTOK BUTTON + ANIMACAO FOGO (2026-06-24) ─────────────────────────── */
+.tk-btn{
+  position:relative;display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--font);font-size:12px;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,#ff4d2e 0%,#ff8c00 50%,#ffd700 100%);
+  border:none;border-radius:8px;padding:8px 14px;cursor:pointer;
+  box-shadow:0 0 12px rgba(255,77,46,.5),0 0 24px rgba(255,140,0,.3);
+  animation:tkFireGlow 1.5s ease-in-out infinite alternate;
+  overflow:hidden;letter-spacing:.02em;text-transform:uppercase;
+}
+.tk-btn::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 0%,rgba(255,255,255,.25) 50%,transparent 100%);
+  animation:tkFireShimmer 2s ease-in-out infinite;pointer-events:none;
+}
+.tk-btn:hover{transform:translateY(-1px);box-shadow:0 0 18px rgba(255,77,46,.7),0 0 32px rgba(255,140,0,.5)}
+.tk-btn .tk-fire{display:inline-block;animation:tkFireFlicker .35s ease-in-out infinite alternate;filter:drop-shadow(0 0 4px rgba(255,200,0,.8))}
+@keyframes tkFireGlow{
+  0%{box-shadow:0 0 12px rgba(255,77,46,.5),0 0 24px rgba(255,140,0,.3)}
+  100%{box-shadow:0 0 18px rgba(255,77,46,.8),0 0 36px rgba(255,140,0,.6),0 0 50px rgba(255,215,0,.3)}
+}
+@keyframes tkFireShimmer{
+  0%{transform:translateY(100%)}
+  100%{transform:translateY(-100%)}
+}
+@keyframes tkFireFlicker{
+  0%{transform:scale(1) rotate(-2deg)}
+  100%{transform:scale(1.12) rotate(2deg)}
+}
+
+/* View TikTok (oculta por padrão) */
+#tkView{display:none}
+#tkView.active{display:block}
+#tkView .country-filter{
+  display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;
+  font-family:var(--font);font-size:12px;color:#cbd5e1;cursor:pointer
+}
+.tk-card{
+  position:relative;display:flex;flex-direction:column;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;overflow:hidden;transition:transform .15s,border-color .15s
+}
+.tk-card:hover{transform:translateY(-2px);border-color:rgba(255,140,0,.4)}
+.tk-card-thumb{position:relative;width:100%;aspect-ratio:9/16;background:#000;overflow:hidden}
+.tk-card-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.tk-card-flag{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border-radius:6px;padding:4px 8px;font-size:14px;font-weight:700;color:#fff;letter-spacing:.05em;z-index:2}
+.tk-card-rank{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;color:#fff;z-index:2}
+.tk-card-rank.top3{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000}
+.tk-card-views{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#fff;z-index:2}
+.tk-card-info{padding:12px}
+.tk-card-caption{font-size:13px;color:#e5e7eb;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px;min-height:36px}
+.tk-card-author{display:flex;align-items:center;gap:6px;color:#94a3b8;font-size:12px;margin-bottom:4px}
+.tk-card-stats{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8;margin-bottom:10px}
+.tk-card-likes{color:#fbbf24;font-weight:700}
+.tk-card-btn{display:block;width:100%;text-align:center;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;text-decoration:none;box-sizing:border-box;margin-bottom:6px}
+.tk-card-btn.primary{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff}
+.tk-card-btn.primary:hover{background:linear-gradient(135deg,#2563eb,#1e40af)}
+.tk-card-btn.secondary{background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);color:#fbbf24}
+.tk-card-btn.secondary:hover{background:rgba(251,191,36,.25)}
+.tk-card-btn.secondary:disabled{opacity:.5;cursor:wait}
+
+/* Popup FOMO pra Full */
+#tkFomoOverlay{position:fixed;inset:0;background:rgba(2,8,23,.88);backdrop-filter:blur(14px);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}
+#tkFomoOverlay.on{display:flex}
+.tk-fomo-modal{background:linear-gradient(180deg,#0f172a 0%,#020817 100%);border:1px solid rgba(255,140,0,.4);border-radius:18px;padding:36px 30px;max-width:500px;width:100%;text-align:center;box-shadow:0 30px 80px rgba(255,77,46,.25)}
+.tk-fomo-fire{font-size:54px;margin-bottom:10px;animation:tkFireFlicker .4s ease-in-out infinite alternate}
+.tk-fomo-modal h2{margin:0 0 10px;color:#fff;font-size:24px;font-weight:900;letter-spacing:-.02em}
+.tk-fomo-modal h2 span{background:linear-gradient(135deg,#ff4d2e,#ffd700);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.tk-fomo-modal .tk-fomo-lead{color:#cbd5e1;font-size:15px;line-height:1.55;margin:0 0 18px}
+.tk-fomo-modal ul{list-style:none;padding:0;margin:0 0 22px;text-align:left}
+.tk-fomo-modal li{padding:10px 14px;background:rgba(255,140,0,.08);border-left:3px solid #ff8c00;border-radius:6px;margin-bottom:8px;color:#e5e7eb;font-size:13px;line-height:1.45}
+.tk-fomo-cta{display:block;width:100%;padding:16px;background:linear-gradient(135deg,#ff4d2e 0%,#ff8c00 50%,#ffd700 100%);color:#000;border:none;border-radius:10px;font-size:15px;font-weight:900;text-decoration:none;cursor:pointer;margin-bottom:8px;letter-spacing:.02em}
+.tk-fomo-close{display:block;width:100%;padding:10px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer}
+
+@media(max-width:600px){
+  .tk-fomo-modal{padding:28px 22px}
+  .tk-fomo-modal h2{font-size:20px}
+}
 </style>
 <script src="/_ref-tracker.js" defer></script>
 </head>
@@ -250,6 +330,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <div class="filter-divider"></div>
         <button class="filter-btn" data-period="30d" onclick="setPeriod('30d',this)">30 dias</button>
       </div>
+
+      <!-- Botão TikTok (Master) / YouTube (volta) — animação fogo -->
+      <button class="tk-btn" id="tkToggleBtn" onclick="tkToggleView(event)" title="Vídeos virais do TikTok com 1M+ likes — exclusivo Master">
+        <span class="tk-fire">🔥</span><span id="tkToggleLabel">TikTok</span>
+      </button>
 
       <!-- Idioma agrupado: 1 opcao por lingua. Backend agrega US/GB/AU em "English" etc. -->
       <select class="filter-select" id="regionSelect" onchange="carregarHistorico(1); atualizarBadgeBanco();">
@@ -444,6 +529,48 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
   <div id="historico-paginacao" style="display:none;justify-content:center;align-items:center;gap:8px;margin-top:24px">
     <button id="btn-carregar-mais" onclick="mudarPaginaHistorico(1)" style="padding:10px 22px;border-radius:10px;background:rgba(0,170,255,0.08);border:1px solid rgba(0,170,255,0.18);color:var(--neon);cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600">⬇ Carregar mais</button>
     <span id="historico-pagina-info" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:11px;font-family:var(--mono)"></span>
+  </div>
+
+  <!-- ── VIEW TIKTOK (oculta por padrão; ativa via tkToggleView) ────────────── -->
+  <div id="tkView">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;color:#ff8c00;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase">
+        <span style="font-size:18px">🔥</span>
+        <span>TikTok Virais · 1M+ likes · 8 países</span>
+      </div>
+      <select id="tkCountrySelect" onchange="tkListar()" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;color:#cbd5e1;cursor:pointer">
+        <option value="all" selected>🌐 Todos os países</option>
+        <option value="us">🇺🇸 United States</option>
+        <option value="br">🇧🇷 Brasil</option>
+        <option value="mx">🇲🇽 México</option>
+        <option value="es">🇪🇸 España</option>
+        <option value="jp">🇯🇵 日本</option>
+        <option value="kr">🇰🇷 한국</option>
+        <option value="id">🇮🇩 Indonesia</option>
+        <option value="fr">🇫🇷 France</option>
+      </select>
+    </div>
+    <div class="shorts-grid" id="tkGrid"></div>
+    <div id="tkEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-dim);font-size:14px">
+      Nenhum vídeo no período/país selecionado ainda. Aguarde a próxima coleta (3x/dia).
+    </div>
+  </div>
+
+  <!-- ── POPUP FOMO PRA FULL ────────────────────────────────────────────────── -->
+  <div id="tkFomoOverlay" onclick="tkFomoClose(event)">
+    <div class="tk-fomo-modal" onclick="event.stopPropagation()">
+      <div class="tk-fomo-fire">🔥</div>
+      <h2>O que está <span>explodindo no mundo</span>, começa pelo TikTok</h2>
+      <p class="tk-fomo-lead">Você está vendo só os virais do YouTube. Os criadores que dominam estão um passo à frente — copiando o formato do TikTok antes da bolha estourar no resto.</p>
+      <ul>
+        <li><strong>1M+ likes</strong> — só os mega virais entram. Sem ruído.</li>
+        <li><strong>8 países, 3x ao dia</strong> — US, BR, MX, ES, JP, KR, ID, FR atualizados em tempo real.</li>
+        <li><strong>Baixe direto</strong> sem sair da plataforma. Estude o formato em casa.</li>
+        <li><strong>Tendências chegam dias antes</strong> do que aparece no YouTube Shorts.</li>
+      </ul>
+      <a href="/?upgrade=master" class="tk-fomo-cta">Virar Master agora — R$ 89,99/mês</a>
+      <button class="tk-fomo-close" onclick="tkFomoClose(event)">Continuar só com YouTube (você está perdendo tempo)</button>
+    </div>
   </div>
 
 </div>
@@ -1330,6 +1457,203 @@ function nsRaioX(e, youtubeId){
   e.preventDefault(); e.stopPropagation();
   if (!youtubeId) return;
   window.location.href = '/bluetendencias?rx=' + encodeURIComponent(youtubeId);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIKTOK VIRAIS (2026-06-24) — toggle, fetch, render, download
+// ════════════════════════════════════════════════════════════════════════════
+let _tkMode = false; // false=YouTube view (default), true=TikTok view
+let _tkPeriod = '24h';
+const _tkCountryFlag = { us:'🇺🇸', br:'🇧🇷', mx:'🇲🇽', es:'🇪🇸', jp:'🇯🇵', kr:'🇰🇷', id:'🇮🇩', fr:'🇫🇷' };
+
+function tkIsMaster(){
+  const p = (localStorage.getItem('bt_plan') || '').toLowerCase();
+  return p === 'master';
+}
+
+function tkToggleView(e){
+  if(e) e.preventDefault();
+  // Se está NA view TikTok, volta pro YouTube (sem checagem de plano)
+  if(_tkMode){
+    tkExitToYouTube();
+    return;
+  }
+  // Está na YouTube — Master entra na TikTok, Full/Free vê popup FOMO
+  if(!tkIsMaster()){
+    tkFomoShow();
+    return;
+  }
+  tkEnterTiktok();
+}
+
+function tkEnterTiktok(){
+  _tkMode = true;
+  // Esconde elementos do feed YouTube
+  const ytElements = ['grid','historico-paginacao','dateFilterWarn'];
+  ytElements.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  // Esconde filtros YouTube-only (idioma, nicho, 5h)
+  const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = 'none';
+  const nichoSel = document.getElementById('nichoSelect'); if(nichoSel) nichoSel.style.display = 'none';
+  document.querySelectorAll('.filter-btn[data-period="5h"]').forEach(b => b.style.display = 'none');
+  // Mostra view TikTok
+  const tkView = document.getElementById('tkView'); if(tkView) tkView.classList.add('active');
+  // Botão vira "YouTube"
+  const lbl = document.getElementById('tkToggleLabel'); if(lbl) lbl.textContent = 'YouTube';
+  document.getElementById('tkToggleBtn').title = 'Voltar pros virais do YouTube';
+  // Re-sincroniza filtros de período pro modo TikTok
+  tkSyncPeriodButtons();
+  // Primeira chamada
+  tkListar();
+}
+
+function tkExitToYouTube(){
+  _tkMode = false;
+  // Restaura elementos YouTube
+  ['grid','historico-paginacao'].forEach(id => { const el = document.getElementById(id); if(el) el.style.display = ''; });
+  const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = '';
+  const nichoSel = document.getElementById('nichoSelect'); if(nichoSel) nichoSel.style.display = '';
+  document.querySelectorAll('.filter-btn[data-period="5h"]').forEach(b => b.style.display = '');
+  // Esconde view TikTok
+  const tkView = document.getElementById('tkView'); if(tkView) tkView.classList.remove('active');
+  // Botão volta pra "TikTok"
+  const lbl = document.getElementById('tkToggleLabel'); if(lbl) lbl.textContent = 'TikTok';
+  document.getElementById('tkToggleBtn').title = 'Vídeos virais do TikTok com 1M+ likes — exclusivo Master';
+}
+
+function tkSyncPeriodButtons(){
+  // Aponta 24h/7d/30d pra tkListar e marca ativo. Esconde 5h.
+  document.querySelectorAll('.filter-btn[data-period]').forEach(btn => {
+    const p = btn.dataset.period;
+    if(p === '5h') return;
+    btn.classList.toggle('active', p === _tkPeriod);
+  });
+}
+
+// Hook nos botões existentes: se em tkMode, troca função
+// Override setPeriod sem quebrar o YouTube
+const _origSetPeriod = typeof setPeriod !== 'undefined' ? setPeriod : null;
+if(_origSetPeriod){
+  window.setPeriod = function(period, btn){
+    if(_tkMode){
+      _tkPeriod = period;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      if(btn) btn.classList.add('active');
+      tkListar();
+      return;
+    }
+    return _origSetPeriod(period, btn);
+  };
+}
+
+async function tkListar(){
+  const grid = document.getElementById('tkGrid');
+  const empty = document.getElementById('tkEmpty');
+  if(!grid) return;
+  const country = document.getElementById('tkCountrySelect')?.value || 'all';
+  grid.innerHTML = Array(8).fill(0).map(()=>`
+    <div style="aspect-ratio:9/16;background:rgba(255,255,255,.04);border-radius:12px;animation:pulse 1.5s ease-in-out infinite"></div>
+  `).join('');
+  empty.style.display = 'none';
+  try{
+    const r = await fetch(`/api/tiktok-virais?action=listar&period=${_tkPeriod}&country=${country}&limit=24`);
+    if(!r.ok) throw new Error('API ' + r.status);
+    const d = await r.json();
+    const items = d.items || [];
+    if(!items.length){
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    grid.innerHTML = items.map((v, i) => tkMkCard(v, i + 1)).join('');
+  }catch(e){
+    console.error('[tkListar]', e);
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;font-size:13px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+function tkFmt(n){
+  n = parseInt(n) || 0;
+  if(n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if(n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if(n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function tkTimeAgo(ts){
+  if(!ts) return '';
+  const diff = (Date.now() - new Date(ts)) / 1000;
+  if(diff < 60) return 'agora';
+  if(diff < 3600) return Math.floor(diff/60) + 'min';
+  if(diff < 86400) return Math.floor(diff/3600) + 'h';
+  return Math.floor(diff/86400) + 'd';
+}
+
+function tkEsc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function tkMkCard(v, rank){
+  const flag = _tkCountryFlag[v.country] || '🌐';
+  const rankLabel = rank === 1 ? '🥇 #1' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
+  const isTop3 = rank <= 3;
+  const caption = tkEsc((v.caption || '').slice(0, 80));
+  const handle = tkEsc(v.author_handle || 'tiktok');
+  const name = tkEsc(v.author_name || handle);
+  const id = tkEsc(v.tiktok_video_id);
+  return `
+    <div class="tk-card">
+      <div class="tk-card-thumb">
+        <img src="${tkEsc(v.thumbnail_url||'')}" alt="" loading="lazy" onerror="this.style.display='none'"/>
+        <div class="tk-card-flag">${flag}</div>
+        <div class="tk-card-rank ${isTop3?'top3':''}">${rankLabel}</div>
+        <div class="tk-card-views">▶ ${tkFmt(v.views_count)}</div>
+      </div>
+      <div class="tk-card-info">
+        <div class="tk-card-caption">${caption || '<em style="color:#475569">sem legenda</em>'}</div>
+        <div class="tk-card-author">@${handle} · ${name}</div>
+        <div class="tk-card-stats">
+          <span class="tk-card-likes">❤ ${tkFmt(v.likes_count)}</span>
+          <span>${tkTimeAgo(v.collected_at)} atrás</span>
+        </div>
+        <a class="tk-card-btn primary" href="${tkEsc(v.video_url)}" target="_blank" rel="noopener">↗ Ver no TikTok</a>
+        <button class="tk-card-btn secondary" onclick="tkBaixar(event, '${id}')">⬇ Baixar</button>
+      </div>
+    </div>
+  `;
+}
+
+async function tkBaixar(e, id){
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.currentTarget;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Preparando...';
+  try{
+    // Cria <a> invisível e dispara download nativo (sem nova aba)
+    const a = document.createElement('a');
+    a.href = `/api/tiktok-download?id=${encodeURIComponent(id)}`;
+    a.download = `tiktok_${id}.mp4`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1000);
+    btn.textContent = '✓ Baixando...';
+    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+  }catch(err){
+    console.error('[tkBaixar]', err);
+    btn.textContent = '✗ Erro';
+    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+  }
+}
+
+function tkFomoShow(){
+  document.getElementById('tkFomoOverlay').classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+function tkFomoClose(e){
+  if(e) e.stopPropagation();
+  document.getElementById('tkFomoOverlay').classList.remove('on');
+  document.body.style.overflow = '';
 }
 
 </script>
