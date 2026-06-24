@@ -95,6 +95,64 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to update plan: ' + JSON.stringify(patchData) });
     }
 
+    // ── AUTO-CANCEL STRIPE SUB QUANDO REBAIXA PRA FREE (2026-06-24) ────────
+    // Pedido do user: "se eu rebaixar a pessoa manualmente pra free, vai
+    // direto pro stripe também cancelar aquela cobrança"
+    // Caso invectgames@gmail.com: sub past_due ficou tentando cobrar 36 dias.
+    // Roda ANTES de retornar pra incluir resultado na resposta.
+    let stripeCancelInfo = null;
+    if (plan === 'free') {
+      try {
+        // Re-busca subscriber pra pegar stripe_subscription_id ATUAL (após PATCH)
+        const subR = await fetch(
+          `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=stripe_subscription_id,stripe_customer_id&limit=1`,
+          { headers }
+        );
+        const subs = subR.ok ? await subR.json() : [];
+        const sub = subs[0];
+        const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+        if (sub?.stripe_subscription_id && STRIPE_KEY) {
+          const subId = sub.stripe_subscription_id;
+          console.log(`[set_plan:free:${email}] cancelando Stripe sub ${subId}`);
+          const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${subId}`, {
+            method: 'DELETE',
+            headers: { Authorization: 'Bearer ' + STRIPE_KEY },
+          });
+          const delData = await delR.json().catch(() => ({}));
+          if (delR.ok && (delData.status === 'canceled' || delData.id)) {
+            stripeCancelInfo = { ok: true, sub_id: subId, stripe_status: delData.status };
+            // Zera o stripe_subscription_id pra não tentar cancelar de novo
+            await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+              method: 'PATCH',
+              headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+              body: JSON.stringify({ stripe_subscription_id: null }),
+            }).catch(() => {});
+          } else {
+            // Sub já cancelada/inexistente é OK (404)
+            const errCode = delData?.error?.code || delData?.error?.type;
+            const benignErrs = ['resource_missing', 'subscription_not_found'];
+            if (benignErrs.includes(errCode) || delR.status === 404) {
+              stripeCancelInfo = { ok: true, sub_id: subId, already_canceled: true };
+              // Zera mesmo assim pra limpar banco
+              await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+                method: 'PATCH',
+                headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+                body: JSON.stringify({ stripe_subscription_id: null }),
+              }).catch(() => {});
+            } else {
+              stripeCancelInfo = { ok: false, sub_id: subId, error: delData.error?.message || `status ${delR.status}` };
+              console.error(`[set_plan:free:${email}] cancel falhou:`, stripeCancelInfo);
+            }
+          }
+        } else if (sub?.stripe_subscription_id && !STRIPE_KEY) {
+          stripeCancelInfo = { ok: false, error: 'STRIPE_SECRET_KEY missing' };
+        }
+      } catch (e) {
+        console.error(`[set_plan:free:${email}] stripe cancel error:`, e.message);
+        stripeCancelInfo = { ok: false, error: e.message };
+      }
+    }
+
     // Email motivacional pro usuário quando admin promove manualmente pra Full ou Master.
     // skip_email=true pra reativacao silenciosa (caso anabarbara 2026-06-23: ja tinha
     // recebido email de upgrade no checkout original, nao queremos spammar).
@@ -105,7 +163,11 @@ export default async function handler(req, res) {
       } catch (e) { console.error('upgradeEmail import (admin):', e.message); }
     }
 
-    return res.status(200).json({ success: true, email, plan, expires_at: expiry, is_manual: isManual, email_sent: !skipEmail && (plan === 'full' || plan === 'master') });
+    return res.status(200).json({
+      success: true, email, plan, expires_at: expiry, is_manual: isManual,
+      email_sent: !skipEmail && (plan === 'full' || plan === 'master'),
+      stripe_cancel: stripeCancelInfo,
+    });
   }
 
   // ── RECUPERAR PAGAMENTO: busca no Stripe por email e ativa plano ─────────
@@ -283,6 +345,97 @@ export default async function handler(req, res) {
   // Criado pra prevenir caso joao21xx.7@gmail.com (refund manual sem cancel
   // sub → Stripe rebillou → user cobrado e ficou free). Use dry_run pra ver
   // o que seria feito sem executar.
+  // ── CANCELAR STRIPE SUB DIRETO (cirúrgico — sem mexer no plan/subscriber) ──
+  // POST { sub_id: "sub_...", email?: "..." (pra log), reason?: "..." }
+  // Cancela DELETE definitivo no Stripe + zera stripe_subscription_id no banco
+  // se email casar. Usado pra subs órfãs (caso invectgames@gmail.com).
+  if (req.method === 'POST' && action === 'cancelar-stripe-sub-direto') {
+    const { sub_id: subId, email: tgtEmail, reason } = req.body || {};
+    if (!subId) return res.status(400).json({ error: 'sub_id obrigatorio' });
+    const STRIPE_K = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_K) return res.status(500).json({ error: 'STRIPE_SECRET_KEY missing' });
+
+    try {
+      console.log(`[cancelar-stripe-sub-direto] ${subId} | email=${tgtEmail || 'n/a'} | reason=${reason || 'n/a'}`);
+      const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${subId}`, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + STRIPE_K },
+      });
+      const delData = await delR.json().catch(() => ({}));
+      const ok = delR.ok && (delData.status === 'canceled' || delData.id);
+      const already = ['resource_missing', 'subscription_not_found'].includes(delData?.error?.code) || delR.status === 404;
+
+      // Limpa stripe_subscription_id se email passado e bater
+      if ((ok || already) && tgtEmail) {
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(tgtEmail)}&stripe_subscription_id=eq.${subId}`,
+          {
+            method: 'PATCH',
+            headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify({ stripe_subscription_id: null }),
+          }
+        ).catch(() => {});
+      }
+
+      return res.status(200).json({
+        ok: ok || already,
+        sub_id: subId,
+        stripe_status: delData.status || 'unknown',
+        already_canceled: already,
+        error: ok || already ? null : delData.error?.message || `HTTP ${delR.status}`,
+      });
+    } catch (e) {
+      console.error('[cancelar-stripe-sub-direto] error:', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── DETECTOR DE SUBS ÓRFÃS (subscribers free MAS com stripe_subscription_id) ─
+  // GET ?action=detectar-subs-orfas
+  // Lista users free com stripe_subscription_id preenchido — provavelmente
+  // admin rebaixou no painel sem cancelar Stripe (antes do fix 2026-06-24).
+  // READ-ONLY. Pra cancelar em batch: POST cancelar-subs-orfas-batch.
+  if (req.method === 'GET' && action === 'detectar-subs-orfas') {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?plan=eq.free&stripe_subscription_id=not.is.null&select=email,stripe_customer_id,stripe_subscription_id,updated_at&order=updated_at.desc&limit=100`,
+        { headers }
+      );
+      const subscribers = r.ok ? await r.json() : [];
+      const STRIPE_K = process.env.STRIPE_SECRET_KEY;
+      // Pra cada subscriber, verifica status REAL no Stripe
+      const enriched = [];
+      for (const sub of subscribers) {
+        let stripeStatus = 'unknown';
+        if (STRIPE_K) {
+          try {
+            const sR = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, {
+              headers: { Authorization: 'Bearer ' + STRIPE_K },
+            });
+            const sData = await sR.json().catch(() => ({}));
+            stripeStatus = sR.ok ? (sData.status || 'unknown') : (sData.error?.code || `http_${sR.status}`);
+          } catch (e) { stripeStatus = 'error'; }
+        }
+        enriched.push({
+          email: sub.email,
+          sub_id: sub.stripe_subscription_id,
+          stripe_status: stripeStatus,
+          updated_at: sub.updated_at,
+          ativa_no_stripe: ['active', 'past_due', 'trialing', 'unpaid'].includes(stripeStatus),
+        });
+      }
+      const ativasNoStripe = enriched.filter(e => e.ativa_no_stripe);
+      return res.status(200).json({
+        ok: true,
+        total_orfas_banco: enriched.length,
+        ativas_no_stripe: ativasNoStripe.length,
+        all: enriched,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method === 'POST' && action === 'refund-and-cancel') {
     const { email: targetEmail, dry_run, skip_email } = req.body || {};
     if (!targetEmail) return res.status(400).json({ error: 'email obrigatorio' });
