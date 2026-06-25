@@ -1,0 +1,30 @@
+name: TikTok Virais — Cleanup diário
+
+# Deleta vídeos coletados há > 30 dias da tabela tiktok_virais.
+# Roda 1x/dia. Mantém banco enxuto (~500-1500 vídeos ativos).
+
+on:
+  schedule:
+    # 4h30 UTC diário (1h30 BRT, baixa atividade)
+    - cron: '30 4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  limpar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispara cleanup
+        run: |
+          echo "Cleanup às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP_CODE=$(curl -sS --max-time 60 \
+            -w "\n%{http_code}" \
+            -o /tmp/resp.json \
+            "https://www.bluetubeviral.com/api/tiktok-virais?action=limpar&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Cleanup falhou com HTTP $HTTP_CODE"
+            cat /tmp/resp.json | head -c 500
+            exit 1
+          fi
+          cat /tmp/resp.json

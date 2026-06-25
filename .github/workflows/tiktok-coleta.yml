@@ -1,0 +1,45 @@
+name: TikTok Virais — Coleta (8x/dia)
+
+# Dispara coleta de virais TikTok via endpoint Vercel a cada 3 horas.
+# Substitui crons Vercel pra esse endpoint (limit 40 do Vercel Pro foi
+# atingido; GitHub Actions roda gratuito).
+#
+# Volume esperado: 17 países × 8 coletas/dia ≈ 136 reqs/dia TikAPI
+# (~45% da quota Starter 300/dia, dentro do limite folgado).
+
+on:
+  schedule:
+    # A cada 3 horas: 0, 3, 6, 9, 12, 15, 18, 21 UTC
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {} # permite rodar manual quando precisar encher
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispara coleta TikTok Virais
+        id: coleta
+        run: |
+          echo "Iniciando coleta às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP_CODE=$(curl -sS --max-time 150 \
+            -w "\n%{http_code}" \
+            -o /tmp/resp.json \
+            "https://www.bluetubeviral.com/api/tiktok-virais?action=coletar&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Coleta falhou com HTTP $HTTP_CODE"
+            cat /tmp/resp.json | head -c 500
+            exit 1
+          fi
+          # Extrai resumo do JSON
+          INSERTED=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log(d.total_inserted||0)}catch(e){console.log('?')}")
+          FAILED=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log(d.total_failed||0)}catch(e){console.log('?')}")
+          echo "✓ Coleta OK | inseridos: $INSERTED | falhas país: $FAILED"
+          echo "inserted=$INSERTED" >> $GITHUB_OUTPUT
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "## TikTok Virais coleta — $(date -u +'%H:%M') UTC" >> $GITHUB_STEP_SUMMARY
+          echo "Vídeos novos inseridos: ${{ steps.coleta.outputs.inserted }}" >> $GITHUB_STEP_SUMMARY
