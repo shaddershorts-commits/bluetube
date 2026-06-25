@@ -1200,6 +1200,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${STRIPE_K_zumbi}` },
           });
+          let refundInfo = { tentou: false, ok: false, valor: null, charge_id: null, motivo_skip: null };
           if (delR.ok) {
             console.log(`✅ Zumbi cancelado em tempo real: ${sub.id} (${subscriber.email})`);
             // Zera stripe_subscription_id se for o mesmo
@@ -1210,13 +1211,85 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
                 body: JSON.stringify({ stripe_subscription_id: null, updated_at: new Date().toISOString() }),
               }).catch(() => {});
             }
+
+            // ── REFUND AUTOMÁTICO (2026-06-25 fix kevembeserra) ──────────────
+            // Busca a ÚLTIMA charge da sub. Se foi feita entre 10min e 24h,
+            // refunda automático. Janela temporal previne refund de:
+            // - Checkout em andamento (< 10min — webhook checkout ainda atualizando plan)
+            // - Histórico antigo (> 24h — pode ser cobrança válida que admin esqueceu)
+            try {
+              refundInfo.tentou = true;
+              // Pega charges recentes da sub via latest_invoice
+              const invoiceId = sub.latest_invoice;
+              if (!invoiceId) {
+                refundInfo.motivo_skip = 'sub sem latest_invoice';
+              } else {
+                const invR = await fetch(`https://api.stripe.com/v1/invoices/${invoiceId}`, {
+                  headers: { Authorization: `Bearer ${STRIPE_K_zumbi}` },
+                });
+                const invoice = invR.ok ? await invR.json() : null;
+                const chargeId = invoice?.charge;
+                if (!chargeId) {
+                  refundInfo.motivo_skip = 'invoice sem charge';
+                } else {
+                  const chR = await fetch(`https://api.stripe.com/v1/charges/${chargeId}`, {
+                    headers: { Authorization: `Bearer ${STRIPE_K_zumbi}` },
+                  });
+                  const charge = chR.ok ? await chR.json() : null;
+                  if (!charge) {
+                    refundInfo.motivo_skip = 'charge não encontrada';
+                  } else {
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const ageSec = charge.created ? (nowSec - charge.created) : Infinity;
+                    refundInfo.charge_id = charge.id;
+                    refundInfo.valor = charge.amount / 100;
+
+                    if (charge.status !== 'succeeded') {
+                      refundInfo.motivo_skip = `charge status=${charge.status} (não succeeded)`;
+                    } else if (charge.refunded === true || charge.amount_refunded >= charge.amount) {
+                      refundInfo.motivo_skip = 'já refundada';
+                    } else if (ageSec < 600) {
+                      refundInfo.motivo_skip = `charge muito fresca (${ageSec}s — possível race condition checkout)`;
+                    } else if (ageSec > 86400) {
+                      refundInfo.motivo_skip = `charge antiga (${Math.floor(ageSec/3600)}h — fora janela 24h)`;
+                    } else {
+                      // ✅ Refund OK — todas as guardas passaram
+                      const refR = await fetch('https://api.stripe.com/v1/refunds', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${STRIPE_K_zumbi}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `charge=${chargeId}&reason=duplicate&metadata[origem]=webhook_zumbi_realtime&metadata[email]=${encodeURIComponent(subscriber.email)}`,
+                      });
+                      if (refR.ok) {
+                        refundInfo.ok = true;
+                        console.log(`✅ Refund automático OK: ${refundInfo.valor} ${charge.currency} (${chargeId})`);
+                      } else {
+                        const errBody = await refR.text();
+                        refundInfo.motivo_skip = `refund API falhou: ${refR.status} ${errBody.slice(0, 150)}`;
+                        console.error(`❌ Refund falhou ${chargeId}: ${refR.status}`);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (refErr) {
+              refundInfo.motivo_skip = `exception: ${refErr.message}`;
+              console.error('[refund automático] erro:', refErr.message);
+            }
+
+            // Notificação Telegram com info de refund
+            const acaoTxt = refundInfo.ok
+              ? `✅ Sub cancelada + Refund R$${refundInfo.valor?.toFixed(2)} OK`
+              : refundInfo.tentou
+                ? `✅ Sub cancelada. ⚠️ REFUND MANUAL no Stripe (motivo skip: ${refundInfo.motivo_skip})`
+                : '✅ Sub cancelada. ⚠️ REFUND MANUAL no Stripe se cartão foi cobrado.';
             notifyStripe(`🚨 ZUMBI cancelado em tempo real — ${subscriber.email}`, [
               ['Cliente', subscriber.email],
               ['Sub cancelada (DELETE)', sub.id],
               ['Status no momento da cobrança', sub.status],
               ['Plan no banco', 'free'],
-              ['Ação', 'Cancelei sub. ⚠️ REFUND MANUAL no Stripe se cartão foi cobrado.'],
+              ['Ação', acaoTxt],
               ['Customer Stripe', sub.customer],
+              ...(refundInfo.charge_id ? [['Charge', refundInfo.charge_id]] : []),
             ]).catch(() => {});
           } else {
             console.error(`❌ Falha cancel zumbi tempo real ${sub.id}: ${delR.status}`);
