@@ -181,10 +181,12 @@ async function historicoAction(req, res) {
   //   30d ≥ 8M
   // Banco legacy abaixo desses thresholds nao aparece — comportamento
   // intencional, ferramenta vira "virais de verdade".
-  if (periodo === '5h')       parts.push('views=gte.60000');
-  else if (periodo === '24h') parts.push('views=gte.300000');
-  else if (periodo === '7d')  parts.push('views=gte.2000000');
-  else if (periodo === '30d') parts.push('views=gte.8000000');
+  // 2026-06-25: thresholds ajustados pelo user (mais permissivos pra
+  // mostrar mais vídeos no painel sem perder curadoria viral)
+  if (periodo === '5h')       parts.push('views=gte.40000');
+  else if (periodo === '24h') parts.push('views=gte.180000');
+  else if (periodo === '7d')  parts.push('views=gte.900000');
+  else if (periodo === '30d') parts.push('views=gte.3000000');
 
   // Hard limit de duracao: so Shorts ≤90s (sempre)
   parts.push('duracao_segundos=lte.90');
