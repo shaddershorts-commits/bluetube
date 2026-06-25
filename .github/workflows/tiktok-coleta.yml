@@ -22,8 +22,11 @@ jobs:
         id: coleta
         run: |
           echo "Iniciando coleta às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          # Fix 2026-06-25: -w "\n%{http_code}" -o /file gravava resposta no arquivo
+          # MAS retornava "\n200" no stdout -> bash comparava "\n200" != "200" -> falsa
+          # falha mesmo com HTTP 200 OK. Agora usa apenas %{http_code} sem newline.
           HTTP_CODE=$(curl -sS --max-time 150 \
-            -w "\n%{http_code}" \
+            -w "%{http_code}" \
             -o /tmp/resp.json \
             "https://www.bluetubeviral.com/api/tiktok-virais?action=coletar&admin_secret=${{ secrets.ADMIN_SECRET }}")
           echo "HTTP: $HTTP_CODE"

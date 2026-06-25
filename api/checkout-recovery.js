@@ -64,10 +64,13 @@ module.exports = async function handler(req, res) {
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
   const action = (req.query.action || '').toString();
 
-  // Auth: cron header OU Bearer ADMIN_SECRET
+  // Auth: cron header OU Bearer ADMIN_SECRET OU ?admin_secret= na query
+  // (GitHub Actions usa query string; padrao aceito pelos outros endpoints
+  // que foram migrados — ver reference_vercel_crons_limit_github_actions)
   const isCron = !!req.headers['x-vercel-cron'];
-  const isAdmin = ADMIN_SECRET && (req.headers.authorization || '') === `Bearer ${ADMIN_SECRET}`;
-  if (!isCron && !isAdmin) {
+  const bearerOk = ADMIN_SECRET && (req.headers.authorization || '') === `Bearer ${ADMIN_SECRET}`;
+  const queryOk = ADMIN_SECRET && req.query.admin_secret === ADMIN_SECRET;
+  if (!isCron && !bearerOk && !queryOk) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
