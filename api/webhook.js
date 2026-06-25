@@ -398,7 +398,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const session = event.data.object;
     const plan = session.metadata?.plan || 'full';
     const billing = session.metadata?.billing || 'monthly';
-    const email = session.customer_details?.email;
+    // Email: customer_details.email é primario, customer_email (passado no
+    // create-checkout) é fallback. Pix preenche customer_details.email só
+    // depois que user completa form de pagamento — fallback essencial.
+    const email = session.customer_details?.email || session.customer_email;
     const customerId = session.customer;
     const subscriptionId = session.subscription;
 
@@ -407,9 +410,20 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       return;
     }
 
-    const expiresAt = billing === 'annual'
-      ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
-      : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
+    // ── PIX MODE detection (2026-06-25): pagamento avulso 13 meses ─────────
+    // Pix Stripe = mode=payment (one-time). Sem subscription_id, sem renovação
+    // automática. Bonus: 13 meses (396 dias) pelo preço de 12 — alinha com a
+    // promessa "13 pelo preço de 12" mostrada na UI.
+    // Cron `pix-renewal-reminder` envia email 30d/15d antes do vencimento.
+    const paymentType = session.metadata?.payment_type || 'card';
+    const isPixPayment = paymentType === 'pix' || session.mode === 'payment';
+    const billingMethod = isPixPayment ? 'pix_annual' : 'card';
+
+    const expiresAt = isPixPayment
+      ? new Date(Date.now() + 396 * 24 * 60 * 60 * 1000).toISOString() // 13 meses
+      : billing === 'annual'
+        ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
+        : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
 
     // Valor REAL pago ao Stripe (com desconto de cupom). amount_total em centavos → /100.
     // Extraido aqui pra gravar no subscribers (antes era extraido depois e descartado — bug
@@ -450,6 +464,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         coupon_applied: couponApplied,
         coupon_discount: couponDiscount,
         billing_period: billingPeriod,
+        billing_method: billingMethod, // 'pix_annual' | 'card' (2026-06-25)
         updated_at: new Date().toISOString()
         // Nota: NAO inclui created_at — preserva o original se subscriber ja existir.
         // Se for INSERT novo, o DEFAULT NOW() do schema preenche.

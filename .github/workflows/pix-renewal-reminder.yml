@@ -1,0 +1,28 @@
+name: Lembrete Pix anual (30d + 15d antes do vencimento)
+
+# Cron diario 10h UTC. Detecta subscribers com billing_method='pix_annual'
+# cujo plan_expires_at cai em ~30d ou ~15d. Envia email informativo de
+# renovacao. Idempotente via flags pix_reminder_30d_sent_at / pix_reminder_15d_sent_at.
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispara endpoint
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" \
+            "https://www.bluetubeviral.com/api/pix-renewal-reminder?admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP"
+          head -c 600 /tmp/resp.json
+          echo ""
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::HTTP $HTTP"
+            exit 1
+          fi

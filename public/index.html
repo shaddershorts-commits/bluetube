@@ -790,24 +790,24 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </div>
     <!-- Annual toggle in modal -->
     <div class="billing-toggle-modal">
-      <span class="billing-label-modal active" id="modalLabelMonthly" onclick="setModalBilling(false)">Mensal</span>
+      <span class="billing-label-modal" id="modalLabelMonthly" onclick="setModalBilling(false)">Mensal</span>
       <label class="toggle-switch-sm">
-        <input type="checkbox" id="modalAnnualToggle" onchange="setModalBilling(this.checked)"/>
+        <input type="checkbox" id="modalAnnualToggle" checked onchange="setModalBilling(this.checked)"/>
         <span class="toggle-slider-sm"></span>
       </label>
-      <span class="billing-label-modal" id="modalLabelAnnual" onclick="setModalBilling(true)">Anual</span>
-      <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
+      <span class="billing-label-modal active" id="modalLabelAnnual" onclick="setModalBilling(true)">Anual</span>
+      <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25% + 1 mês grátis</span>
     </div>
     <div class="modal-plans" id="upgradeModalPlans">
       <div class="plan-card featured" onclick="selectPlan('full')" id="modalCardFull">
         <div class="plan-badge">⚡ Full</div>
-        <div class="plan-price" id="modalFullPrice">R$29,99<span>/mês</span></div>
+        <div class="plan-price" id="modalFullPrice"><span style="color:#fbbf24;font-size:22px;font-weight:800">R$22,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$269,88 cobrado anualmente</span></div>
         <div class="plan-features">✓ 9 roteiros/dia<br>✓ Todos os idiomas<br>✓ Download .TXT e .SRT<br>✓ Comunidade exclusiva<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais</div>
       </div>
       <div class="plan-card master-highlight" onclick="selectPlan('master')" id="modalCardMaster">
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
-        <div class="plan-price" id="modalMasterPrice">R$89,99<span>/mês</span></div>
+        <div class="plan-price" id="modalMasterPrice"><span style="color:#fbbf24;font-size:22px;font-weight:800">R$67,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$809,88 cobrado anualmente</span></div>
         <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice ilimitado<br>✓ BlueClean (remove overlays)<br>✓ BaixaBlue · BlueEditor (em breve)<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais</div>
       </div>
     </div>
@@ -1305,15 +1305,16 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <h2 class="sec-title" style="text-align:center;margin-bottom:12px">Escolha seu plano.</h2>
     <p style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);text-align:center;margin-bottom:28px">Comece grátis. Faça upgrade quando quiser.</p>
 
-    <div class="billing-toggle" style="margin-bottom:28px">
-      <span class="billing-label active" id="labelMonthly" onclick="toggleBilling(false)">Mensal</span>
+    <div class="billing-toggle" style="margin-bottom:10px">
+      <span class="billing-label" id="labelMonthly" onclick="toggleBilling(false)">Mensal</span>
       <label class="toggle-switch-sm">
-        <input type="checkbox" onchange="toggleBilling(this.checked)"/>
+        <input type="checkbox" id="billingToggleCheckbox" checked onchange="toggleBilling(this.checked)"/>
         <span class="toggle-slider-sm"></span>
       </label>
-      <span class="billing-label" id="labelAnnual" onclick="toggleBilling(true)">Anual</span>
+      <span class="billing-label active" id="labelAnnual" onclick="toggleBilling(true)">Anual</span>
       <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
     </div>
+    <p id="annualBonusBanner" style="font-family:var(--font-mono);font-size:12px;color:#fbbf24;text-align:center;margin:0 0 22px;font-weight:600">🎁 13 meses pelo preço de 12 + economize R$269,88/ano no Full · R$809,88/ano no Master</p>
 
     <div class="plans-grid">
       <!-- FREE -->
@@ -1334,12 +1335,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       </div>
 
       <!-- FULL -->
-      <div class="plan-box popular" id="planBoxFull">
+      <div class="plan-box popular annual" id="planBoxFull">
         <div class="plan-tag">Mais popular</div>
         <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
         <div id="fullPriceDisplay">
-          <div class="plan-amount">R$29<span>,99/mês</span></div>
-          <div class="plan-period">cobrado mensalmente</div>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <div class="plan-amount" style="color:#fbbf24">R$22<span style="color:#fbbf24">,49/mês</span></div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$29,99</div>
+          </div>
+          <div class="plan-period" style="color:#fbbf24">R$269,88 cobrado anualmente</div>
         </div>
         <ul class="plan-list">
           <li>9 roteiros por dia</li>
@@ -1352,14 +1356,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <li>Buscador de Virais</li>
         </ul>
         <button class="plan-btn" onclick="selectPlan('full')" style="width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(0,170,255,0.3)">Assinar Full →</button>
+        <button class="plan-btn-pix" id="pixBtnFull" onclick="selectPlan('full','pix')" style="display:none;width:100%;margin-top:8px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:10px;font-family:var(--font-display);font-size:12px;font-weight:600;color:#86efac;cursor:pointer">🇧🇷 Ou pague via Pix R$269,88 → <span style="font-weight:400;color:#a7f3d0">pagamento único</span></button>
       </div>
 
       <!-- MASTER -->
-      <div class="plan-box" id="planBoxMaster">
+      <div class="plan-box annual" id="planBoxMaster">
         <div class="plan-name" style="color:#fbbf24">👑 Master</div>
         <div id="masterPriceDisplay">
-          <div class="plan-amount">R$89<span>,99/mês</span></div>
-          <div class="plan-period">cobrado mensalmente</div>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <div class="plan-amount" style="color:#fbbf24">R$67<span style="color:#fbbf24">,49/mês</span></div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$89,99</div>
+          </div>
+          <div class="plan-period" style="color:#fbbf24">R$809,88 cobrado anualmente</div>
         </div>
         <ul class="plan-list">
           <li>Roteiros ilimitados</li>
@@ -1374,6 +1382,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <li>Suporte prioritário</li>
         </ul>
         <button class="plan-btn" onclick="selectPlan('master')" style="width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(251,191,36,0.3)">Assinar Master →</button>
+        <button class="plan-btn-pix" id="pixBtnMaster" onclick="selectPlan('master','pix')" style="display:none;width:100%;margin-top:8px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:10px;font-family:var(--font-display);font-size:12px;font-weight:600;color:#86efac;cursor:pointer">🇧🇷 Ou pague via Pix R$809,88 → <span style="font-weight:400;color:#a7f3d0">pagamento único</span></button>
       </div>
     </div>
   </div>
@@ -1688,7 +1697,8 @@ function updateCommunityBtn(){
 }
 
 // ── MODAL BILLING TOGGLE ───────────────────────────────────────────────────
-let modalIsAnnual=false;
+// 2026-06-25: Anual default no upgrade modal também (alinha com plans section).
+let modalIsAnnual=true;
 function setModalBilling(annual){
   modalIsAnnual=annual;
   document.getElementById('modalLabelMonthly').classList.toggle('active',!annual);
@@ -1886,24 +1896,29 @@ function closeUpgradeModal(){
   if(mCard) mCard.classList.remove('featured');
   if(fCard) fCard.classList.add('featured');
 }
-function selectPlan(plan){
+function selectPlan(plan, paymentMethod){
   selectedUpgradePlan=plan;
-  handleUpgradeClick(plan);
+  handleUpgradeClick(plan, paymentMethod);
 }
 function openUpgradeModalGeneric(){openUpgradeModal('generic');}
-let isAnnual = false;
+// 2026-06-25: Anual default (tática de conversão SaaS — Notion, Linear, Dropbox)
+// + transparência (toggle visível, preço mensal comparado lado a lado).
+let isAnnual = true;
 
 function toggleBilling(annual){
   isAnnual = annual;
   const lm = document.getElementById('labelMonthly');
   const la = document.getElementById('labelAnnual');
+  const cb = document.getElementById('billingToggleCheckbox');
   if(lm) lm.classList.toggle('active', !annual);
   if(la) la.classList.toggle('active', annual);
+  if(cb) cb.checked = annual;
 
   const fpd = document.getElementById('fullPriceDisplay');
   const mpd = document.getElementById('masterPriceDisplay');
   const pbf = document.getElementById('planBoxFull');
   const pbm = document.getElementById('planBoxMaster');
+  const banner = document.getElementById('annualBonusBanner');
 
   const _lp2 = typeof localPrice==='function' ? localPrice : (v)=>`R$${v.toFixed(2).replace('.',',')}`;
   if(annual){
@@ -1921,6 +1936,7 @@ function toggleBilling(annual){
       <div class="plan-period" style="color:#fbbf24">${_lp2(809.88)} cobrado anualmente</div>`;
     if(pbf) pbf.classList.add('annual');
     if(pbm) pbm.classList.add('annual');
+    if(banner) banner.style.display = '';
   }else{
     if(fpd) fpd.innerHTML=`
       <div class="plan-amount">${_lp2(29.99)}<span>/mês</span></div>
@@ -1930,15 +1946,28 @@ function toggleBilling(annual){
       <div class="plan-period">cobrado mensalmente</div>`;
     if(pbf) pbf.classList.remove('annual');
     if(pbm) pbm.classList.remove('annual');
+    if(banner) banner.style.display = 'none';
   }
+  refreshPixButtons();
+}
+
+// Pix: visível só em Anual + BRL (Stripe Pix one-time só funciona pra BR)
+function refreshPixButtons(){
+  const isBR = !!(siteCurrency && siteCurrency.isBRL);
+  const show = isAnnual && isBR;
+  const pbf = document.getElementById('pixBtnFull');
+  const pbm = document.getElementById('pixBtnMaster');
+  if(pbf) pbf.style.display = show ? '' : 'none';
+  if(pbm) pbm.style.display = show ? '' : 'none';
 }
 
 let pendingUpgradePlan = null;
 let pendingUpgradeBilling = null;
 
-async function handleUpgradeClick(plan){
+async function handleUpgradeClick(plan, paymentMethod){
   const p = plan || selectedUpgradePlan || 'full';
   const billing = (modalIsAnnual || isAnnual) ? 'annual' : 'monthly';
+  const pm = paymentMethod === 'pix' ? 'pix' : 'card';
 
   // ── REQUIRE ACCOUNT BEFORE CHECKOUT ───────────────────────────────────────
   const token = localStorage.getItem('bt_token');
@@ -1946,6 +1975,7 @@ async function handleUpgradeClick(plan){
     // Save intent and show signup modal
     pendingUpgradePlan = p;
     pendingUpgradeBilling = billing;
+    pendingUpgradePaymentMethod = pm;
     closeUpgradeModal();
     // Show signup tab with message explaining why
     openAuthModal();
@@ -1955,10 +1985,12 @@ async function handleUpgradeClick(plan){
   }
 
   // Has account — go straight to Stripe
-  await goToCheckout(p, billing);
+  await goToCheckout(p, billing, pm);
 }
 
-async function goToCheckout(plan, billing){
+let pendingUpgradePaymentMethod = null;
+
+async function goToCheckout(plan, billing, paymentMethod){
   const token = localStorage.getItem('bt_token');
   // Currency: alinhado com STRIPE_PRICES/SUPPORTED_CURRENCIES. Moeda nao suportada (MXN, JPY, etc)
   // → USD (que e o que o user viu na home via localPrice). Garante: ve = paga.
@@ -2011,10 +2043,11 @@ async function goToCheckout(plan, billing){
   try{
     // Usa _ref-tracker.js (janela.getRefAfiliado) que le LS/cookie/sessionStorage
     const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
+    const pm = paymentMethod === 'pix' ? 'pix' : 'card';
     const r=await fetch('/api/create-checkout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({plan, billing, token, ref, currency, lang})
+      body:JSON.stringify({plan, billing, token, ref, currency, lang, payment_method: pm})
     });
     const d=await r.json();
     if(d.url) window.location.href=d.url;
@@ -2408,9 +2441,11 @@ async function handleEmailLogin(){
       if(pendingUpgradePlan){
         const plan = pendingUpgradePlan;
         const billing = pendingUpgradeBilling || 'monthly';
+        const pm = pendingUpgradePaymentMethod || 'card';
         pendingUpgradePlan = null;
         pendingUpgradeBilling = null;
-        setTimeout(()=>goToCheckout(plan, billing), 800);
+        pendingUpgradePaymentMethod = null;
+        setTimeout(()=>goToCheckout(plan, billing, pm), 800);
       } else {
         _maybeAutoDispatchPendingTranscription();
       }
@@ -2497,8 +2532,9 @@ async function handleEmailSignup(){
         await checkSession();
         if(pendingUpgradePlan){
           const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
-          pendingUpgradePlan=null; pendingUpgradeBilling=null;
-          setTimeout(()=>goToCheckout(plan,billing),800);
+          const pm = pendingUpgradePaymentMethod || 'card';
+          pendingUpgradePlan=null; pendingUpgradeBilling=null; pendingUpgradePaymentMethod=null;
+          setTimeout(()=>goToCheckout(plan,billing,pm),800);
         } else {
           _maybeAutoDispatchPendingTranscription();
         }
@@ -3942,6 +3978,9 @@ async function detectAndTranslate(){
 }
 
 function applyLocalPrices(){
+  // Pix só pra BR — atualiza visibility dos botões Pix toda vez que a moeda
+  // detectada muda (IP detection assíncrono pode flipear isBRL após render).
+  if(typeof refreshPixButtons === 'function') { try { refreshPixButtons(); } catch(e){} }
   // BR mantem precos hardcoded no HTML; gringo (qualquer outra moeda) sempre roda
   // o lookup deterministico pra alinhar com Stripe. Nao depende mais de rate.
   if(siteCurrency.isBRL) return;
