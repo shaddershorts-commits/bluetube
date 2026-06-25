@@ -754,6 +754,47 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     return;
   }
 
+  // ── HELPER (fix #1 2026-06-25): busca subscriber por customer_id COM
+  // fallback pra email do customer Stripe. Resolve o caso kevembeserra: user
+  // tem múltiplos customers Stripe (cus_VELHO + cus_NOVO), subscriber aponta
+  // pro NOVO, webhook dispara pro VELHO → busca por customer_id retorna 0
+  // e defesas anti-zumbi (B2, camada C) NÃO acham o subscriber pra checar
+  // se é zumbi. Fallback: pega email do customer Stripe + busca por email.
+  async function findSubscriberByCustomerOrEmail(customerId, selectFields) {
+    if (!customerId) return null;
+    // 1. Tenta por customer_id (caminho rápido)
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=${selectFields}`,
+        { headers: supaHeaders }
+      );
+      const arr = r.ok ? await r.json() : [];
+      if (arr?.length) return arr[0];
+    } catch (e) { /* fail-soft pro fallback */ }
+    // 2. Fallback: busca email do customer no Stripe → busca subscriber por email
+    try {
+      const STRIPE_K = process.env.STRIPE_SECRET_KEY;
+      if (!STRIPE_K) return null;
+      const custR = await fetch(`https://api.stripe.com/v1/customers/${customerId}`, {
+        headers: { Authorization: `Bearer ${STRIPE_K}` }
+      });
+      if (!custR.ok) return null;
+      const cust = await custR.json();
+      const custEmail = (cust?.email || '').toLowerCase().trim();
+      if (!custEmail) return null;
+      const sR = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(custEmail)}&select=${selectFields}`,
+        { headers: supaHeaders }
+      );
+      const arr = sR.ok ? await sR.json() : [];
+      if (arr?.length) {
+        console.log(`[fix #1] subscriber achado por email (${custEmail}) — customer ${customerId} não batia`);
+        return arr[0];
+      }
+    } catch (e) { console.error('[findSubscriberByCustomerOrEmail] fallback err:', e.message); }
+    return null;
+  }
+
   // ── RENOVAÇÃO ────────────────────────────────────────────────────────────
   if (event.type === 'invoice.payment_succeeded') {
     const invoice = event.data.object;
@@ -761,9 +802,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const subscriptionId = invoice.subscription;
     if (!subscriptionId) return;
 
-    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan`, { headers: supaHeaders });
-    const subs = await subRes.json();
-    if (!subs?.length) return;
+    // FIX #1: usa helper que busca por email se customer_id não bater
+    const subscriberSingle = await findSubscriberByCustomerOrEmail(customerId, 'email,plan,stripe_customer_id');
+    if (!subscriberSingle) return;
+    const subs = [subscriberSingle];
 
     // ── Fase B2 — Recovery anti-zumbi ────────────────────────────────────
     // Se subscriber.plan='free' MAS chegou pagamento real (amount_paid>0), o
@@ -1185,13 +1227,8 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     try {
       const STRIPE_K_zumbi = process.env.STRIPE_SECRET_KEY;
       if (STRIPE_K_zumbi && ['active', 'past_due'].includes(sub.status) && sub.customer) {
-        // Busca subscriber pelo customer
-        const zR = await fetch(
-          `${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${sub.customer}&select=email,plan,is_manual,stripe_subscription_id&limit=1`,
-          { headers: supaHeaders }
-        );
-        const zSubs = zR.ok ? await zR.json() : [];
-        const subscriber = zSubs[0];
+        // FIX #1: busca por customer_id com fallback pra email do customer Stripe
+        const subscriber = await findSubscriberByCustomerOrEmail(sub.customer, 'email,plan,is_manual,stripe_subscription_id');
         // Só age se: subscriber existe + plan=free + não é manual override
         if (subscriber && subscriber.plan === 'free' && !subscriber.is_manual) {
           console.warn(`⚠️ ZUMBI tempo real detectado: ${subscriber.email} | sub ${sub.id} status=${sub.status} mas plan=free`);

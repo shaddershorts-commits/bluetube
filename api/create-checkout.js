@@ -168,6 +168,38 @@ export default async function handler(req, res) {
     } catch(e) {}
   }
 
+  // ── FIX #2 (2026-06-25 caso kevembeserra): reuso de customer Stripe ─────
+  // Antes: Stripe criava NOVO customer a cada checkout sem login persistente.
+  // User com 4 customers Stripe (cus_UM1n18, cus_UXUp, cus_UXlS, cus_Ul3r)
+  // gera rachas: webhooks de retry past_due acertam customer VELHO mas
+  // subscriber aponta NOVO → defesas anti-zumbi não encontram subscriber.
+  //
+  // Agora: se customerEmail conhecido, busca customer Stripe existente.
+  //  - Se 1+ existe: reusa o MAIS RECENTE (não-deletado)
+  //  - Se nenhum: deixa Stripe criar (mantém customer_email no params)
+  // Fail-soft: qualquer erro cai pro comportamento antigo (customer_email).
+  let reusedCustomerId = null;
+  if (customerEmail) {
+    try {
+      const STRIPE_LOOKUP = process.env.STRIPE_SECRET_KEY;
+      const custListR = await fetch(
+        `https://api.stripe.com/v1/customers?email=${encodeURIComponent(customerEmail.toLowerCase().trim())}&limit=50`,
+        { headers: { Authorization: `Bearer ${STRIPE_LOOKUP}` } }
+      );
+      if (custListR.ok) {
+        const custData = await custListR.json();
+        const customers = (custData.data || []).filter(c => !c.deleted);
+        if (customers.length > 0) {
+          // Pega o mais recente (Stripe lista descending por default)
+          reusedCustomerId = customers[0].id;
+          console.log(`[fix #2] reusando customer Stripe ${reusedCustomerId} pra ${customerEmail} (${customers.length} existente${customers.length > 1 ? 's' : ''})`);
+        }
+      }
+    } catch (e) {
+      console.error('[fix #2] busca customer falhou (fallback pra customer_email):', e.message);
+    }
+  }
+
   try {
     const params = new URLSearchParams({
       'mode': 'subscription',
@@ -198,7 +230,13 @@ export default async function handler(req, res) {
       params.set('metadata[ref]', ref);
       params.set('client_reference_id', ref);
     }
-    if (customerEmail) params.set('customer_email', customerEmail);
+    // FIX #2: usa customer reusado se achou, senão customer_email pra Stripe criar
+    if (reusedCustomerId) {
+      params.set('customer', reusedCustomerId);
+      // Quando passa customer=, NÃO passa customer_email (Stripe rejeita ambos)
+    } else if (customerEmail) {
+      params.set('customer_email', customerEmail);
+    }
 
     const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
