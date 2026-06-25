@@ -516,7 +516,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
               skippedRecent.push({ id: s.id, customer: c.id, age_seconds: ageSeconds });
               continue;
             }
-            stale.push({ id: s.id, customer: c.id, amount: s.items?.data?.[0]?.price?.unit_amount, currency: s.items?.data?.[0]?.price?.currency, age_seconds: ageSeconds });
+            stale.push({ id: s.id, customer: c.id, status: s.status, amount: s.items?.data?.[0]?.price?.unit_amount, currency: s.items?.data?.[0]?.price?.currency, age_seconds: ageSeconds });
           }
         }
 
@@ -525,22 +525,41 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         }
 
         if (stale.length > 0) {
-          console.warn(`⚠️  ${emailLower}: encontradas ${stale.length} sub(s) antiga(s) ativas. Cancelando com cancel_at_period_end=true (preserva acesso pago).`);
+          // 2026-06-25 (caso kevembeserra): diferenciar cancel por status.
+          // - past_due/unpaid: DELETE imediato. Sub não tá dando acesso pago
+          //   (cobrança ja falhou), então nao precisa preservar nada. Stripe
+          //   estava em retry loop e CONSEGUIU COBRAR 4h depois do user
+          //   assinar nova sub → cobrança dupla R$179,98.
+          // - active/trialing: cancel_at_period_end=true (preserva ciclo pago).
+          //   Bruno/Maurilio tinham 3 subs ativas concomitantes — preserva
+          //   acesso até fim do ciclo já cobrado.
+          console.warn(`⚠️  ${emailLower}: encontradas ${stale.length} sub(s) antiga(s) ativas. Cancelando conforme status (past_due → DELETE, active → cancel_at_period_end).`);
           for (const s of stale) {
             try {
-              const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
-                method: 'POST',
-                headers: { ...stripeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'cancel_at_period_end=true',
-              });
+              const useDelete = s.status === 'past_due' || s.status === 'unpaid';
+              const delR = useDelete
+                ? await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
+                    method: 'DELETE',
+                    headers: stripeAuth,
+                  })
+                : await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
+                    method: 'POST',
+                    headers: { ...stripeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'cancel_at_period_end=true',
+                  });
               if (delR.ok) {
-                console.log(`✅ Auto-cancel sub antiga (cancel_at_period_end): ${s.id} (cust ${s.customer}, ${(s.amount/100).toFixed(2)} ${s.currency}, age ${Math.floor(s.age_seconds/86400)}d)`);
+                const mode = useDelete ? 'DELETE imediato' : 'cancel_at_period_end';
+                console.log(`✅ Auto-cancel sub antiga (${mode}): ${s.id} status=${s.status} (cust ${s.customer}, ${(s.amount/100).toFixed(2)} ${s.currency}, age ${Math.floor(s.age_seconds/86400)}d)`);
                 notifyStripe(`🛡️ Auto-cancel sub duplicada — ${emailLower}`, [
                   ['Cliente', emailLower],
                   ['Sub antiga cancelada', s.id],
+                  ['Status anterior', s.status],
+                  ['Modo', mode],
                   ['Sub nova mantida', subscriptionId],
                   ['Plano', plan.toUpperCase()],
-                  ['Motivo', 'Novo checkout detectou sub paralela ativa (auto-blindagem)'],
+                  ['Motivo', useDelete
+                    ? 'past_due/unpaid → DELETE pra impedir retry de cobrança'
+                    : 'active/trialing → cancel_at_period_end preserva ciclo pago'],
                 ]).catch(() => {});
               } else {
                 console.error(`❌ Falha auto-cancel ${s.id}: ${delR.status}`);
