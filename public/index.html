@@ -1356,7 +1356,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <li>Buscador de Virais</li>
         </ul>
         <button class="plan-btn" onclick="selectPlan('full')" style="width:100%;background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(0,170,255,0.3)">Assinar Full →</button>
-        <button class="plan-btn-pix" id="pixBtnFull" onclick="selectPlan('full','pix')" style="display:none;width:100%;margin-top:8px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:10px;font-family:var(--font-display);font-size:12px;font-weight:600;color:#86efac;cursor:pointer">🇧🇷 Ou pague via Pix R$269,88 → <span style="font-weight:400;color:#a7f3d0">pagamento único</span></button>
+        <button class="plan-btn-pix" id="pixBtnFull" onclick="selectPlan('full','pix')" style="display:none;width:100%;margin-top:8px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;cursor:pointer;align-items:center;justify-content:center;gap:10px;color:#1f2937;font-family:var(--font-display);transition:all .2s">
+          <svg width="44" height="18" viewBox="0 0 100 40" aria-hidden="true" style="flex-shrink:0">
+            <path fill="#32BCAD" d="M20 4 L36 20 L20 36 L4 20 Z"/>
+            <text x="42" y="29" font-family="Arial, sans-serif" font-weight="700" font-size="22" fill="#737373">pix</text>
+          </svg>
+          <span style="font-size:13px;font-weight:700">R$269,88</span>
+          <span style="font-size:11px;font-weight:500;color:#6b7280">· pagamento único</span>
+        </button>
       </div>
 
       <!-- MASTER -->
@@ -1382,7 +1389,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <li>Suporte prioritário</li>
         </ul>
         <button class="plan-btn" onclick="selectPlan('master')" style="width:100%;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;border-radius:12px;padding:13px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 0 24px rgba(251,191,36,0.3)">Assinar Master →</button>
-        <button class="plan-btn-pix" id="pixBtnMaster" onclick="selectPlan('master','pix')" style="display:none;width:100%;margin-top:8px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:10px;font-family:var(--font-display);font-size:12px;font-weight:600;color:#86efac;cursor:pointer">🇧🇷 Ou pague via Pix R$809,88 → <span style="font-weight:400;color:#a7f3d0">pagamento único</span></button>
+        <button class="plan-btn-pix" id="pixBtnMaster" onclick="selectPlan('master','pix')" style="display:none;width:100%;margin-top:8px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;cursor:pointer;align-items:center;justify-content:center;gap:10px;color:#1f2937;font-family:var(--font-display);transition:all .2s">
+          <svg width="44" height="18" viewBox="0 0 100 40" aria-hidden="true" style="flex-shrink:0">
+            <path fill="#32BCAD" d="M20 4 L36 20 L20 36 L4 20 Z"/>
+            <text x="42" y="29" font-family="Arial, sans-serif" font-weight="700" font-size="22" fill="#737373">pix</text>
+          </svg>
+          <span style="font-size:13px;font-weight:700">R$809,88</span>
+          <span style="font-size:11px;font-weight:500;color:#6b7280">· pagamento único</span>
+        </button>
       </div>
     </div>
   </div>
@@ -1951,14 +1965,15 @@ function toggleBilling(annual){
   refreshPixButtons();
 }
 
-// Pix: visível só em Anual + BRL (Stripe Pix one-time só funciona pra BR)
+// Pix: visível só em Anual + BRL (Asaas Pix só funciona pra BR)
 function refreshPixButtons(){
   const isBR = !!(siteCurrency && siteCurrency.isBRL);
   const show = isAnnual && isBR;
   const pbf = document.getElementById('pixBtnFull');
   const pbm = document.getElementById('pixBtnMaster');
-  if(pbf) pbf.style.display = show ? '' : 'none';
-  if(pbm) pbm.style.display = show ? '' : 'none';
+  // Botão usa flex pra alinhar logo Pix + texto centralizado
+  if(pbf) pbf.style.display = show ? 'flex' : 'none';
+  if(pbm) pbm.style.display = show ? 'flex' : 'none';
 }
 
 let pendingUpgradePlan = null;
