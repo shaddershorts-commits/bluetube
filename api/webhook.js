@@ -1165,9 +1165,71 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     return;
   }
 
-  // ── CANCELAMENTO AGENDADO ────────────────────────────────────────────────
+  // ── CANCELAMENTO AGENDADO + DEFESA TEMPO REAL CONTRA ZUMBI PAGANTE ───────
   if (event.type === 'customer.subscription.updated') {
     const sub = event.data.object;
+
+    // ── DEFESA TEMPO REAL (2026-06-25 fix kevembeserra): ─────────────────
+    // Quando Stripe atualiza sub pra active/past_due (=cobrou ou tentou cobrar),
+    // checa se subscriber está como plan=free no banco. Se sim, é ZUMBI:
+    // Stripe acabou de processar mas user não tem acesso pago. Cancela DELETE
+    // imediato pra impedir retentativas futuras. Não bloqueia cobrança já
+    // feita (admin precisa refund manual via Stripe), mas estanca o sangramento.
+    //
+    // Cenário coberto: caso kevembeserra
+    // - User estava com plan=free (admin rebaixou após past_due)
+    // - Sub antiga past_due cobrada via retry de Stripe
+    // - sub.status muda pra active (charge succeeded)
+    // - Webhook detecta: plan=free + sub.status=active → ZUMBI imediato
+    // - Cancela DELETE + notifica admin pra refund
+    try {
+      const STRIPE_K_zumbi = process.env.STRIPE_SECRET_KEY;
+      if (STRIPE_K_zumbi && ['active', 'past_due'].includes(sub.status) && sub.customer) {
+        // Busca subscriber pelo customer
+        const zR = await fetch(
+          `${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${sub.customer}&select=email,plan,is_manual,stripe_subscription_id&limit=1`,
+          { headers: supaHeaders }
+        );
+        const zSubs = zR.ok ? await zR.json() : [];
+        const subscriber = zSubs[0];
+        // Só age se: subscriber existe + plan=free + não é manual override
+        if (subscriber && subscriber.plan === 'free' && !subscriber.is_manual) {
+          console.warn(`⚠️ ZUMBI tempo real detectado: ${subscriber.email} | sub ${sub.id} status=${sub.status} mas plan=free`);
+          // DELETE imediato pra parar retries futuros
+          const delR = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${STRIPE_K_zumbi}` },
+          });
+          if (delR.ok) {
+            console.log(`✅ Zumbi cancelado em tempo real: ${sub.id} (${subscriber.email})`);
+            // Zera stripe_subscription_id se for o mesmo
+            if (subscriber.stripe_subscription_id === sub.id) {
+              await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${sub.customer}`, {
+                method: 'PATCH',
+                headers: supaHeaders,
+                body: JSON.stringify({ stripe_subscription_id: null, updated_at: new Date().toISOString() }),
+              }).catch(() => {});
+            }
+            notifyStripe(`🚨 ZUMBI cancelado em tempo real — ${subscriber.email}`, [
+              ['Cliente', subscriber.email],
+              ['Sub cancelada (DELETE)', sub.id],
+              ['Status no momento da cobrança', sub.status],
+              ['Plan no banco', 'free'],
+              ['Ação', 'Cancelei sub. ⚠️ REFUND MANUAL no Stripe se cartão foi cobrado.'],
+              ['Customer Stripe', sub.customer],
+            ]).catch(() => {});
+          } else {
+            console.error(`❌ Falha cancel zumbi tempo real ${sub.id}: ${delR.status}`);
+          }
+          // Sai do handler — não processa cancel_at_period_end pra sub que vai ser DELETE
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('[zumbi tempo real] erro:', e.message);
+      // fail-soft: continua com handler normal
+    }
+
     if (sub.cancel_at_period_end === true) {
       const customerId = sub.customer;
       const periodEnd = sub.current_period_end
