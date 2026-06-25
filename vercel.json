@@ -2,41 +2,111 @@
   "version": 2,
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/@:username", "destination": "/api/og-perfil?u=:username" },
-    { "source": "/v/:videoId", "destination": "/api/og-video?v=:videoId" },
-    { "source": "/blue/(.*)", "destination": "/api/blue-app" },
-    { "source": "/sitemap.xml", "destination": "/api/sitemap" }
+    {
+      "source": "/@:username",
+      "destination": "/api/og-perfil?u=:username"
+    },
+    {
+      "source": "/v/:videoId",
+      "destination": "/api/og-video?v=:videoId"
+    },
+    {
+      "source": "/blue/(.*)",
+      "destination": "/api/blue-app"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    }
   ],
   "functions": {
-    "api/transcript.js": { "maxDuration": 60 },
-    "api/auth.js": { "maxDuration": 60 },
-    "api/payment-monitor.js": { "maxDuration": 60 },
-    "api/monitor.js": { "maxDuration": 60 },
-    "api/blue-editor.js": { "maxDuration": 60 },
-    "api/generate-from-zero.js": { "maxDuration": 60 },
-    "api/rewrite.js": { "maxDuration": 60 },
-    "api/bluetendencias.js": { "maxDuration": 120 },
-    "api/email-campanha.js": { "maxDuration": 60 },
-    "api/virais-canais.js": { "maxDuration": 300 },
-    "api/virais-coletor.js": { "maxDuration": 120 },
-    "api/checkout-recovery.js": { "maxDuration": 60 },
-    "api/blog-translate.js": { "maxDuration": 300 },
-    "api/desafio.js": { "maxDuration": 60 },
-    "api/nichos-secretos.js": { "maxDuration": 600 },
-    "api/audit-stripe-zumbis.js": { "maxDuration": 60 },
-    "api/audit-baixablue.js": { "maxDuration": 60 },
-    "api/bluelens-search.js": { "maxDuration": 30 },
-    "api/youtube-quota-status.js": { "maxDuration": 30 },
-    "api/bluelens-fingerprint.js": { "maxDuration": 300 },
-    "api/bluelens-seeder.js": { "maxDuration": 600 },
-    "api/bluelens-serpapi-test.js": { "maxDuration": 60 },
-    "api/bluelens-cleanup.js": { "maxDuration": 60 },
-    "api/bluelens-cookies-monitor.js": { "maxDuration": 120 },
-    "api/support-chat.js": { "maxDuration": 30 },
-    "api/email-sequence.js": { "maxDuration": 60 },
-    "api/trial-activate.js": { "maxDuration": 30 },
-    "api/trial-expiry-warning.js": { "maxDuration": 60 },
-    "api/tiktok-virais.js": { "maxDuration": 120 }
+    "api/transcript.js": {
+      "maxDuration": 60
+    },
+    "api/auth.js": {
+      "maxDuration": 60
+    },
+    "api/payment-monitor.js": {
+      "maxDuration": 60
+    },
+    "api/monitor.js": {
+      "maxDuration": 60
+    },
+    "api/blue-editor.js": {
+      "maxDuration": 60
+    },
+    "api/generate-from-zero.js": {
+      "maxDuration": 60
+    },
+    "api/rewrite.js": {
+      "maxDuration": 60
+    },
+    "api/bluetendencias.js": {
+      "maxDuration": 120
+    },
+    "api/email-campanha.js": {
+      "maxDuration": 60
+    },
+    "api/virais-canais.js": {
+      "maxDuration": 300
+    },
+    "api/virais-coletor.js": {
+      "maxDuration": 120
+    },
+    "api/checkout-recovery.js": {
+      "maxDuration": 60
+    },
+    "api/blog-translate.js": {
+      "maxDuration": 300
+    },
+    "api/desafio.js": {
+      "maxDuration": 60
+    },
+    "api/nichos-secretos.js": {
+      "maxDuration": 600
+    },
+    "api/audit-stripe-zumbis.js": {
+      "maxDuration": 60
+    },
+    "api/audit-baixablue.js": {
+      "maxDuration": 60
+    },
+    "api/bluelens-search.js": {
+      "maxDuration": 30
+    },
+    "api/youtube-quota-status.js": {
+      "maxDuration": 30
+    },
+    "api/bluelens-fingerprint.js": {
+      "maxDuration": 300
+    },
+    "api/bluelens-seeder.js": {
+      "maxDuration": 600
+    },
+    "api/bluelens-serpapi-test.js": {
+      "maxDuration": 60
+    },
+    "api/bluelens-cleanup.js": {
+      "maxDuration": 60
+    },
+    "api/bluelens-cookies-monitor.js": {
+      "maxDuration": 120
+    },
+    "api/support-chat.js": {
+      "maxDuration": 30
+    },
+    "api/email-sequence.js": {
+      "maxDuration": 60
+    },
+    "api/trial-activate.js": {
+      "maxDuration": 30
+    },
+    "api/trial-expiry-warning.js": {
+      "maxDuration": 60
+    },
+    "api/tiktok-virais.js": {
+      "maxDuration": 120
+    }
   },
   "crons": [
     {
@@ -198,163 +268,163 @@
     {
       "path": "/api/virais-ml?action=pipeline-diario",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/virais-ml?action=clusterizar-temas",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/virais-ml?action=detectar-emergentes-ml",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/virais-ml?action=validar-predicoes",
-      "schedule": "0 5 * * 0"
-    },
-    {
-      "path": "/api/virais-ml?action=verificar-alertas",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/checkout-recovery?action=sweep",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/checkout-recovery?action=send-1h",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/checkout-recovery?action=send-24h",
-      "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/checkout-recovery?action=send-72h",
-      "schedule": "45 * * * *"
-    },
-    {
-      "path": "/api/audit-stripe-zumbis",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/audit-baixablue",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/youtube-quota-status",
-      "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/bluelens-cleanup",
-      "schedule": "0 4 * * 0"
-    },
-    {
-      "path": "/api/blue-feed?action=cleanup-analytics",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/blue-embeddings?action=gerar-batch",
-      "schedule": "0 5 * * 1"
-    },
-    {
-      "path": "/api/blue-embeddings?action=atualizar-perfis",
-      "schedule": "0 5 * * 4"
-    },
-    {
-      "path": "/api/tiktok-virais?action=coletar",
-      "schedule": "0 0,3,6,9,12,15,18,21 * * *"
-    },
-    {
-      "path": "/api/tiktok-virais?action=coletar",
-      "schedule": "30 2,5,8,11,14 * * *"
-    },
-    {
-      "path": "/api/tiktok-virais?action=limpar",
-      "schedule": "30 4 * * *"
     }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "X-XSS-Protection", "value": "1; mode=block" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
       ]
     },
     {
       "source": "/blueEditor",
       "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" }
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "credentialless"
+        }
       ]
     },
     {
       "source": "/(.*).html",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
       ]
     },
     {
       "source": "/blue",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
       ]
     },
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
       ]
     },
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/blue-sw.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/(.*).png",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, immutable"
+        }
       ]
     },
     {
       "source": "/(.*).jpg",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, immutable"
+        }
       ]
     },
     {
       "source": "/toolbar.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
       ]
     },
     {
       "source": "/(.*).mp4",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
       ]
     },
     {
       "source": "/(.*).webm",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
       ]
     }
   ]

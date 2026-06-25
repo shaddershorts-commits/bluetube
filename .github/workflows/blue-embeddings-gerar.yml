@@ -1,0 +1,27 @@
+name: Blue embeddings gerar batch (segunda 5h UTC)
+
+# Migrado do Vercel pro GitHub Actions em 2026-06-25.
+# Razao: Vercel Pro limit eh 40 crons. BlueTube tinha 58 -> ultimos 18 ignorados.
+# GitHub Actions repos publicos = ilimitado e gratis.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispara endpoint
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/blue-embeddings?action=gerar-batch&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP"
+          head -c 400 /tmp/resp.json
+          echo ""
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::HTTP $HTTP"
+            exit 1
+          fi
