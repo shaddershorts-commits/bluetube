@@ -125,7 +125,7 @@ export default async function handler(req, res) {
   const i18nMod = await import('./_helpers/i18n.js');
   const { t } = i18nMod.default || i18nMod;
 
-  const { plan, billing, token, ref, currency: rawCurrency, lang, payment_method: rawPaymentMethod } = req.body || {};
+  const { plan, billing, token, ref, currency: rawCurrency, lang } = req.body || {};
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
   const SITE_URL      = process.env.SITE_URL || 'https://bluetubeviral.com';
   const SUPABASE_URL  = process.env.SUPABASE_URL;
@@ -200,25 +200,14 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── PIX MODE (2026-06-25): pagamento avulso anual BRL ──────────────────
-  // Pix Stripe só funciona em mode=payment (one-time), não em subscription.
-  // Logo Pix anual = pagamento avulso de 13 meses (12+1 bônus). Sem
-  // renovação automática — cron lembrete envia email 30d/15d antes do
-  // vencimento pra user renovar manualmente.
-  // Validações: payment_method=pix exige billing=annual + currency=brl.
-  const isPix = String(rawPaymentMethod || '').toLowerCase() === 'pix';
-  if (isPix && (billingKey !== 'annual' || currency !== 'brl')) {
-    return res.status(400).json({ error: 'Pix disponível apenas em assinatura anual BRL' });
-  }
-
-  // Valor pra Pix one-time (precisa do total — 12 meses × preço mensal)
-  // Bonus: 13 meses pelo preço de 12 (resolvido via plan_expires_at no webhook).
-  const pixTotalAmount = isPix ? FALLBACK_BRL_AMOUNTS[plan].annual : null;
+  // Pix migrou pra Asaas (2026-06-25 — Stripe Pix exige ativacao manual no
+  // dashboard que nao foi liberada). Frontend agora chama /api/asaas-create-pix
+  // em vez deste endpoint quando paga via Pix. Este endpoint trata so cartao.
 
   try {
-    const stripeMode = isPix ? 'payment' : 'subscription';
     const params = new URLSearchParams({
-      'mode': stripeMode,
+      'mode': 'subscription',
+      'payment_method_types[]': 'card',
       'line_items[0][quantity]': '1',
       'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
       'cancel_url':  `${SITE_URL}?payment=cancelled`,
@@ -226,28 +215,9 @@ export default async function handler(req, res) {
       'metadata[plan]': plan,
       'metadata[billing]': billing || 'monthly',
       'metadata[currency]': currency,
-      'metadata[payment_type]': isPix ? 'pix' : 'card',
+      'metadata[payment_type]': 'card',
     });
-    // payment_method_types: Pix em vez de card quando isPix
-    if (isPix) {
-      params.set('payment_method_types[]', 'pix');
-      // Pix Stripe expira sessão em 1h por padrão — config explícito
-      params.set('expires_at', String(Math.floor(Date.now()/1000) + 3600));
-      // Em mode=payment Stripe NÃO cria customer por default. Forçar criar
-      // pra que stripe_customer_id seja persistido no subscribers (uso futuro
-      // se user trocar pra cartão depois).
-      if (!reusedCustomerId) params.set('customer_creation', 'always');
-    } else {
-      params.set('payment_method_types[]', 'card');
-    }
-    if (isPix) {
-      // Pix one-time: price_data SEM recurring (mode=payment) com bonus 13 meses
-      const info = FALLBACK_PRODUCT_INFO[plan];
-      params.set('line_items[0][price_data][currency]', 'brl');
-      params.set('line_items[0][price_data][product_data][name]', `${info.name} — Anual (13 meses)`);
-      params.set('line_items[0][price_data][product_data][description]', `${info.description} · Pagamento único Pix · 13 meses pelo preço de 12`);
-      params.set('line_items[0][price_data][unit_amount]', String(pixTotalAmount));
-    } else if (useFallback) {
+    if (useFallback) {
       // Fallback BRL: price_data inline (compat lógica antiga)
       const amount = FALLBACK_BRL_AMOUNTS[plan][billingKey];
       const info = FALLBACK_PRODUCT_INFO[plan];

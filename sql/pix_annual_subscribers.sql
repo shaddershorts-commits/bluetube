@@ -15,12 +15,19 @@
 ALTER TABLE subscribers
   ADD COLUMN IF NOT EXISTS billing_method TEXT DEFAULT 'card',
   ADD COLUMN IF NOT EXISTS pix_reminder_30d_sent_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS pix_reminder_15d_sent_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS pix_reminder_15d_sent_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS asaas_payment_id TEXT,
+  ADD COLUMN IF NOT EXISTS asaas_customer_id TEXT;
 
 -- Index pra acelerar busca do cron (billing_method='pix_annual' + plan_expires_at janela)
 CREATE INDEX IF NOT EXISTS idx_subscribers_pix_annual_expires
   ON subscribers (plan_expires_at)
   WHERE billing_method = 'pix_annual';
+
+-- Index pra lookup rapido por asaas_payment_id (webhook dedup)
+CREATE INDEX IF NOT EXISTS idx_subscribers_asaas_payment
+  ON subscribers (asaas_payment_id)
+  WHERE asaas_payment_id IS NOT NULL;
 
 -- Verificação rápida
 -- SELECT email, plan, billing_method, plan_expires_at, pix_reminder_30d_sent_at, pix_reminder_15d_sent_at

@@ -1984,8 +1984,45 @@ async function handleUpgradeClick(plan, paymentMethod){
     return;
   }
 
-  // Has account — go straight to Stripe
+  // Pix anual via Asaas (BR only, anual obrigatório)
+  if(pm === 'pix') {
+    await goToAsaasPix(p);
+    return;
+  }
+
+  // Cartão: Stripe Checkout
   await goToCheckout(p, billing, pm);
+}
+
+async function goToAsaasPix(plan){
+  const token = localStorage.getItem('bt_token');
+  if(!token){
+    alert('Faça login pra pagar via Pix');
+    return;
+  }
+  try {
+    const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
+    const r = await fetch('/api/asaas-create-pix', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ plan, token, ref })
+    });
+    const d = await r.json();
+    if(d.url) {
+      // Tracking InitiateCheckout (Pix Asaas)
+      try {
+        const v = plan === 'master' ? 809.88 : 269.88;
+        if (typeof fbq !== 'undefined') fbq('track', 'InitiateCheckout', { value: v, currency: 'BRL', content_name: plan, content_category: 'pix_annual' });
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({ event: 'begin_checkout', ecommerce: { currency: 'BRL', value: v, items: [{ item_id: plan, item_name: 'BlueTube ' + plan, item_category: 'pix_annual', price: v, quantity: 1 }] } });
+      } catch(e){}
+      window.location.href = d.url;
+    } else {
+      alert(d.error || 'Erro ao gerar Pix. Tente novamente.');
+    }
+  } catch(e){
+    alert('Erro ao conectar com Asaas. Tente novamente.');
+  }
 }
 
 let pendingUpgradePaymentMethod = null;
@@ -2445,7 +2482,7 @@ async function handleEmailLogin(){
         pendingUpgradePlan = null;
         pendingUpgradeBilling = null;
         pendingUpgradePaymentMethod = null;
-        setTimeout(()=>goToCheckout(plan, billing, pm), 800);
+        setTimeout(()=> pm === 'pix' ? goToAsaasPix(plan) : goToCheckout(plan, billing, pm), 800);
       } else {
         _maybeAutoDispatchPendingTranscription();
       }
@@ -2534,7 +2571,7 @@ async function handleEmailSignup(){
           const plan=pendingUpgradePlan, billing=pendingUpgradeBilling||'monthly';
           const pm = pendingUpgradePaymentMethod || 'card';
           pendingUpgradePlan=null; pendingUpgradeBilling=null; pendingUpgradePaymentMethod=null;
-          setTimeout(()=>goToCheckout(plan,billing,pm),800);
+          setTimeout(()=> pm === 'pix' ? goToAsaasPix(plan) : goToCheckout(plan,billing,pm),800);
         } else {
           _maybeAutoDispatchPendingTranscription();
         }
