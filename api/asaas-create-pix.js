@@ -29,13 +29,19 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
-  const { plan, token, ref } = req.body || {};
+  const { plan, token, ref, cpfCnpj, name } = req.body || {};
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const ANON_KEY     = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
   const SITE_URL     = process.env.SITE_URL || 'https://bluetubeviral.com';
 
   if (!PIX_AMOUNTS[plan]) return res.status(400).json({ error: 'plano_invalido' });
   if (!token || !SUPABASE_URL) return res.status(401).json({ error: 'login_obrigatorio' });
+
+  // CPF/CNPJ obrigatorio (Asaas exige pra cobranca Pix)
+  const cpfClean = String(cpfCnpj || '').replace(/\D/g, '');
+  if (cpfClean.length !== 11 && cpfClean.length !== 14) {
+    return res.status(400).json({ error: 'cpf_invalido', mensagem: 'Informe um CPF (11 digitos) ou CNPJ (14 digitos) valido' });
+  }
 
   // Resolve email via token Supabase
   let userEmail = null;
@@ -48,8 +54,8 @@ module.exports = async function handler(req, res) {
   if (!userEmail) return res.status(401).json({ error: 'token_invalido' });
 
   try {
-    // 1. Cria/busca customer Asaas
-    const customer = await findOrCreateCustomer({ email: userEmail });
+    // 1. Cria/busca customer Asaas (com cpfCnpj — Asaas exige pra Pix)
+    const customer = await findOrCreateCustomer({ email: userEmail, name, cpfCnpj: cpfClean });
     if (!customer?.id) return res.status(502).json({ error: 'customer_falhou' });
 
     // 2. Cria cobranca Pix

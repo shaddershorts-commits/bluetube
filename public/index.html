@@ -2000,12 +2000,77 @@ async function goToAsaasPix(plan){
     alert('Faça login pra pagar via Pix');
     return;
   }
+  // Asaas exige CPF/CNPJ pra criar cobrança Pix. Reusa do localStorage se ja
+  // foi informado antes (uma vez só por user — fica salvo entre sessoes).
+  let cpfCnpj = localStorage.getItem('bt_cpf') || '';
+  if(!cpfCnpj){
+    cpfCnpj = await promptCpf(plan);
+    if(!cpfCnpj) return; // user cancelou
+  }
+  await submitAsaasPix(plan, cpfCnpj);
+}
+
+function promptCpf(plan){
+  return new Promise(resolve => {
+    const valorTotal = plan === 'master' ? 'R$809,88' : 'R$269,88';
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,15,0.85);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(180deg,#0f172a 0%,#0a0e1a 100%);border:1px solid rgba(34,197,94,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#e5e7eb">
+        <div style="font-size:14px;color:#86efac;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;font-weight:700">🇧🇷 Pagamento via Pix</div>
+        <h3 style="margin:0 0 12px;font-size:22px;font-weight:800;color:#fff">Quase lá — confirme seu CPF</h3>
+        <p style="margin:0 0 20px;font-size:14px;color:#94a3b8;line-height:1.5">O CPF é necessário pra emitir a cobrança Pix (${valorTotal}). Vai aparecer no comprovante de pagamento.</p>
+        <input id="_cpfInput" type="text" inputmode="numeric" placeholder="CPF (somente números) ou CNPJ" autocomplete="off" maxlength="18" style="width:100%;padding:14px 16px;background:rgba(2,8,23,0.6);border:1px solid rgba(34,197,94,0.3);border-radius:10px;color:#fff;font-size:16px;font-family:monospace;letter-spacing:1px;box-sizing:border-box;outline:none"/>
+        <div id="_cpfErr" style="font-size:12px;color:#f87171;margin-top:6px;min-height:14px"></div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+          <button id="_cpfCancel" style="flex:1;padding:12px;background:rgba(100,116,139,0.15);border:1px solid rgba(100,116,139,0.3);border-radius:10px;color:#cbd5e1;font-size:14px;font-weight:600;cursor:pointer">Cancelar</button>
+          <button id="_cpfOk" style="flex:2;padding:12px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Gerar Pix →</button>
+        </div>
+        <p style="margin:14px 0 0;font-size:11px;color:#64748b;text-align:center">Seus dados ficam só no Asaas (gateway). Não compartilhamos.</p>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#_cpfInput');
+    const err = overlay.querySelector('#_cpfErr');
+    const ok = overlay.querySelector('#_cpfOk');
+    const cancel = overlay.querySelector('#_cpfCancel');
+    setTimeout(()=>input.focus(), 50);
+    // Máscara CPF/CNPJ dinâmica
+    input.addEventListener('input', e => {
+      let v = e.target.value.replace(/\D/g,'').slice(0,14);
+      if(v.length <= 11){
+        v = v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+      } else {
+        v = v.replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d)/,'$1-$2');
+      }
+      e.target.value = v;
+      err.textContent = '';
+    });
+    const close = (val) => { document.body.removeChild(overlay); resolve(val); };
+    const tryOk = () => {
+      const digits = input.value.replace(/\D/g,'');
+      if(digits.length !== 11 && digits.length !== 14){
+        err.textContent = 'CPF deve ter 11 dígitos (ou CNPJ 14)';
+        input.focus();
+        return;
+      }
+      localStorage.setItem('bt_cpf', digits);
+      close(digits);
+    };
+    ok.onclick = tryOk;
+    cancel.onclick = () => close(null);
+    overlay.addEventListener('click', e => { if(e.target === overlay) close(null); });
+    input.addEventListener('keydown', e => { if(e.key === 'Enter') tryOk(); if(e.key === 'Escape') close(null); });
+  });
+}
+
+async function submitAsaasPix(plan, cpfCnpj){
+  const token = localStorage.getItem('bt_token');
   try {
     const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
     const r = await fetch('/api/asaas-create-pix', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ plan, token, ref })
+      body: JSON.stringify({ plan, token, ref, cpfCnpj })
     });
     const d = await r.json();
     if(d.url) {
@@ -2018,7 +2083,11 @@ async function goToAsaasPix(plan){
       } catch(e){}
       window.location.href = d.url;
     } else {
-      alert(d.error || 'Erro ao gerar Pix. Tente novamente.');
+      // Se erro for cpf_invalido, limpa cache pra user tentar de novo
+      if(d.error === 'cpf_invalido' || (d.mensagem && d.mensagem.includes('CPF'))) {
+        localStorage.removeItem('bt_cpf');
+      }
+      alert(d.mensagem || d.error || 'Erro ao gerar Pix. Tente novamente.');
     }
   } catch(e){
     alert('Erro ao conectar com Asaas. Tente novamente.');

@@ -44,21 +44,31 @@ async function asaasCall(path, opts = {}) {
 // Busca ou cria customer Asaas pra um email
 // Asaas exige customer pra anexar payment. Idempotente: se ja existe email,
 // reusa o ID via /customers?email=
+// Se customer existente NAO tem cpfCnpj mas foi passado um novo, faz UPDATE
+// (Asaas exige cpfCnpj pra criar cobranca Pix — sem isso da erro 400).
 async function findOrCreateCustomer({ email, name, cpfCnpj }) {
   if (!email) throw new Error('email_obrigatorio');
   const emailLower = String(email).toLowerCase().trim();
+  const cpfClean = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null;
 
   // Busca existente
   try {
     const existing = await asaasCall(`/customers?email=${encodeURIComponent(emailLower)}&limit=1`);
     if (existing?.data?.length > 0) {
-      return existing.data[0];
+      const c = existing.data[0];
+      // Customer ja tem cpfCnpj OU nao temos um novo pra setar → retorna como esta
+      if (c.cpfCnpj || !cpfClean) return c;
+      // Tem cpfCnpj novo e customer ainda nao tem → UPDATE
+      return await asaasCall(`/customers/${c.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ cpfCnpj: cpfClean }),
+      });
     }
   } catch (e) { /* fall through pra criar */ }
 
   // Cria novo
   const payload = { email: emailLower, name: name || emailLower.split('@')[0] };
-  if (cpfCnpj) payload.cpfCnpj = String(cpfCnpj).replace(/\D/g, '');
+  if (cpfClean) payload.cpfCnpj = cpfClean;
   return await asaasCall('/customers', {
     method: 'POST',
     body: JSON.stringify(payload),
