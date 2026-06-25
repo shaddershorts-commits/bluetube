@@ -2088,7 +2088,7 @@ async function submitAsaasPix(plan, cpfCnpj){
       body: JSON.stringify({ plan, token, ref, cpfCnpj })
     });
     const d = await r.json();
-    if(d.url) {
+    if(d.qr_code_image && d.qr_code_payload) {
       // Tracking InitiateCheckout (Pix Asaas)
       try {
         const v = plan === 'master' ? 809.88 : 269.88;
@@ -2096,7 +2096,7 @@ async function submitAsaasPix(plan, cpfCnpj){
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push({ event: 'begin_checkout', ecommerce: { currency: 'BRL', value: v, items: [{ item_id: plan, item_name: 'BlueTube ' + plan, item_category: 'pix_annual', price: v, quantity: 1 }] } });
       } catch(e){}
-      window.location.href = d.url;
+      showPixQrModal({ plan, paymentId: d.payment_id, qrImage: d.qr_code_image, payload: d.qr_code_payload, value: d.value });
     } else {
       // Se erro for cpf_invalido, limpa cache pra user tentar de novo
       if(d.error === 'cpf_invalido' || (d.mensagem && d.mensagem.includes('CPF'))) {
@@ -2107,6 +2107,103 @@ async function submitAsaasPix(plan, cpfCnpj){
   } catch(e){
     alert('Erro ao conectar com Asaas. Tente novamente.');
   }
+}
+
+let _pixPollingInterval = null;
+function showPixQrModal({ plan, paymentId, qrImage, payload, value }){
+  const valorBR = Number(value).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  const planLabel = plan === 'master' ? 'Master' : 'Full';
+  const overlay = document.createElement('div');
+  overlay.id = '_pixQrOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,15,0.92);backdrop-filter:blur(10px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  overlay.innerHTML = `
+    <div style="background:linear-gradient(180deg,#0f172a 0%,#0a0e1a 100%);border:1px solid rgba(34,197,94,0.3);border-radius:16px;padding:28px;max-width:460px;width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#e5e7eb;position:relative">
+      <button id="_pixCloseBtn" style="position:absolute;top:14px;right:14px;background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <svg width="50" height="20" viewBox="0 0 100 40" aria-hidden="true">
+          <path fill="#32BCAD" d="M20 4 L36 20 L20 36 L4 20 Z"/>
+          <text x="42" y="29" font-family="Arial, sans-serif" font-weight="700" font-size="22" fill="#737373">pix</text>
+        </svg>
+        <span style="font-size:12px;color:#94a3b8;font-weight:600;letter-spacing:1px;text-transform:uppercase">Pagamento</span>
+      </div>
+      <h3 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#fff">BlueTube ${planLabel} — Anual</h3>
+      <div style="font-size:24px;font-weight:800;color:#22c55e;margin-bottom:14px">${valorBR}</div>
+
+      <div style="background:#fff;border-radius:12px;padding:14px;display:flex;justify-content:center;margin-bottom:14px">
+        <img src="data:image/png;base64,${qrImage}" alt="QR Code Pix" style="width:100%;max-width:280px;display:block"/>
+      </div>
+
+      <p style="margin:0 0 12px;font-size:13px;color:#94a3b8;text-align:center;line-height:1.5">
+        Abra o app do seu banco, escaneie o QR code ou cole o código abaixo.<br>
+        <span style="color:#86efac">Seu plano ativa automaticamente após o pagamento.</span>
+      </p>
+
+      <div style="background:rgba(2,8,23,0.6);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px;margin-bottom:10px">
+        <div style="font-size:10px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-weight:600">Código Pix (copia e cola)</div>
+        <div id="_pixPayloadText" style="font-family:monospace;font-size:11px;color:#cbd5e1;word-break:break-all;line-height:1.4;max-height:60px;overflow:auto">${payload}</div>
+      </div>
+      <button id="_pixCopyBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px">📋 Copiar código Pix</button>
+
+      <div id="_pixStatusBox" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:8px;font-size:13px;color:#fbbf24">
+        <span class="_pixPulse" style="width:8px;height:8px;border-radius:50%;background:#fbbf24;animation:_pixPulse 1.4s ease-in-out infinite"></span>
+        Aguardando pagamento…
+      </div>
+
+      <p style="margin:14px 0 0;font-size:11px;color:#64748b;text-align:center;line-height:1.5">
+        QR válido por 24h · Pagamento processado pela Asaas<br>
+        Dúvidas? <a href="mailto:suporte@bluetubeviral.com" style="color:#86efac">suporte@bluetubeviral.com</a>
+      </p>
+    </div>
+    <style>@keyframes _pixPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}</style>
+  `;
+  document.body.appendChild(overlay);
+
+  // Copy payload
+  overlay.querySelector('#_pixCopyBtn').onclick = () => {
+    navigator.clipboard.writeText(payload).then(() => {
+      const btn = overlay.querySelector('#_pixCopyBtn');
+      const old = btn.innerHTML;
+      btn.innerHTML = '✓ Copiado!';
+      btn.style.background = 'linear-gradient(135deg,#0891b2,#06b6d4)';
+      setTimeout(() => { btn.innerHTML = old; btn.style.background = 'linear-gradient(135deg,#16a34a,#22c55e)'; }, 2000);
+    }).catch(() => alert('Não foi possível copiar. Copie manualmente.'));
+  };
+
+  // Close
+  const closeFn = () => {
+    if(_pixPollingInterval) { clearInterval(_pixPollingInterval); _pixPollingInterval = null; }
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  };
+  overlay.querySelector('#_pixCloseBtn').onclick = closeFn;
+
+  // Polling status a cada 5s
+  const token = localStorage.getItem('bt_token');
+  _pixPollingInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/asaas-payment-status?id=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`);
+      const d = await r.json();
+      if(d.paid) {
+        clearInterval(_pixPollingInterval);
+        _pixPollingInterval = null;
+        const box = overlay.querySelector('#_pixStatusBox');
+        if(box) {
+          box.style.background = 'rgba(34,197,94,0.15)';
+          box.style.borderColor = 'rgba(34,197,94,0.4)';
+          box.style.color = '#86efac';
+          box.innerHTML = '<span style="font-size:18px">✓</span> Pagamento confirmado! Ativando seu plano…';
+        }
+        // Tracking Purchase
+        try {
+          const v = plan === 'master' ? 809.88 : 269.88;
+          if (typeof fbq !== 'undefined') fbq('track', 'Purchase', { value: v, currency: 'BRL', content_name: plan });
+        } catch(e){}
+        // Redireciona pro success após 2s
+        setTimeout(() => {
+          window.location.href = `/?payment=success&plan=${plan}&via=pix`;
+        }, 2200);
+      }
+    } catch(e){}
+  }, 5000);
 }
 
 let pendingUpgradePaymentMethod = null;

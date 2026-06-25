@@ -14,7 +14,7 @@
 //
 // Resposta: { url } pra redirect, ou { error }
 
-const { findOrCreateCustomer, createPixPayment } = require('./_helpers/asaas');
+const { findOrCreateCustomer, createPixPayment, getPixQrCode } = require('./_helpers/asaas');
 
 // Valores Pix anual em REAIS (não centavos, Asaas trabalha em reais decimais)
 const PIX_AMOUNTS = {
@@ -77,20 +77,28 @@ module.exports = async function handler(req, res) {
       description,
       externalReference: externalRef,
       // dueDate default = amanhã. Pix expira em 24h se nao pago.
-      callback: {
-        successUrl: `${SITE_URL}?payment=success&plan=${plan}&via=pix`,
-        autoRedirect: true,
-      },
     });
 
-    if (!payment?.invoiceUrl) {
-      console.error('[asaas-create-pix] payment sem invoiceUrl:', JSON.stringify(payment).slice(0, 300));
-      return res.status(502).json({ error: 'invoice_url_ausente' });
+    if (!payment?.id) {
+      console.error('[asaas-create-pix] payment sem ID:', JSON.stringify(payment).slice(0, 300));
+      return res.status(502).json({ error: 'payment_falhou' });
+    }
+
+    // 3. Busca QR code (encodedImage base64 + payload copia-e-cola)
+    // Render INTERNO no site — NAO redirecionamos pro Asaas porque a pagina
+    // deles expoe dados pessoais do recebedor (nome, CNPJ, endereco, etc).
+    const qrCode = await getPixQrCode(payment.id);
+    if (!qrCode?.encodedImage || !qrCode?.payload) {
+      console.error('[asaas-create-pix] qrCode incompleto:', JSON.stringify(qrCode).slice(0, 300));
+      return res.status(502).json({ error: 'qrcode_falhou' });
     }
 
     return res.status(200).json({
-      url: payment.invoiceUrl,
       payment_id: payment.id,
+      value: payment.value,
+      qr_code_image: qrCode.encodedImage, // base64 PNG
+      qr_code_payload: qrCode.payload,    // copia-cola
+      expires_at: qrCode.expirationDate || null,
     });
   } catch (e) {
     console.error('[asaas-create-pix] erro:', e.message, e.asaas || '');
