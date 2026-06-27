@@ -628,8 +628,9 @@ window.BETimeline = (function() {
     return clip;
   }
 
-  // Drag clip: threshold 5px antes de virar drag de fato
+  // Drag clip: 5px OU 250ms long-press = drag de fato
   const DRAG_THRESHOLD_PX = 5;
+  const DRAG_LONGPRESS_MS = 250;
 
   function onPointerDown(clientX, clientY, evt) {
     if (!canvas) {
@@ -667,14 +668,8 @@ window.BETimeline = (function() {
     if (DEBUG_INTERACTION) console.log('[timeline] mousedown @', x.toFixed(0)+','+y.toFixed(0), '| trackY:', TRACK_PAD_TOP, '-', (TRACK_PAD_TOP+TRACK_H), '| hit:', clipHit ? ('clip#'+clipHit.id) : 'NULL');
 
     if (clipHit) {
-      // Se é virtual (vídeo sem cortes), materializa ANTES de armar drag
-      // pra ter id real persistido e funcionar undo.
       let realClipId = clipHit.id;
       if (clipHit.virtual && BEState.findClip) {
-        // Trigger materialização sem mexer em conteúdo (split em t inviável)
-        // Faz isso patcheando trim igual ao atual — materializeIfNeeded é interno
-        // Usa workaround: splitAtTime no centro, depois remove um lado? Não.
-        // Solução simples: criar clip único cobrindo [trim.in, trim.out] via API exposta
         const s = BEState.get();
         const inT = s.trim.in || 0;
         const outT = s.trim.out > 0 ? s.trim.out : duration;
@@ -687,6 +682,16 @@ window.BETimeline = (function() {
       BEState.selectClip(realClipId);
       const found = BEState.findClip(realClipId);
       const sourceIn = found ? found.clip.source_in : (clipHit.source_in || 0);
+      // Long-press timer: vira drag-move após 250ms mesmo sem mover
+      const longPressTimer = setTimeout(() => {
+        if (dragging && dragging.kind === 'clip-pending' && dragging.clipId === realClipId) {
+          dragging.kind = 'clip-move';
+          dragging.moved = true;
+          if (DEBUG_INTERACTION) console.log('[timeline] long-press -> drag-move for clip#'+realClipId);
+          canvas.style.cursor = 'grabbing';
+          requestRender();
+        }
+      }, DRAG_LONGPRESS_MS);
       dragging = {
         kind: 'clip-pending',
         clipId: realClipId,
@@ -694,8 +699,9 @@ window.BETimeline = (function() {
         startTime: t,
         sourceInOriginal: sourceIn,
         moved: false,
+        longPressTimer,
       };
-      if (DEBUG_INTERACTION) console.log('[timeline] arming clip-drag for clip#'+realClipId);
+      if (DEBUG_INTERACTION) console.log('[timeline] arming clip-drag for clip#'+realClipId+' (mova >5px OU segure 250ms)');
       evt.preventDefault && evt.preventDefault();
     } else {
       BEState.selectClip(null);
@@ -726,16 +732,17 @@ window.BETimeline = (function() {
       if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
       requestRender();
     } else if (dragging.kind === 'clip-pending') {
-      // Detecta se passou do threshold pra virar drag
       const dx = Math.abs(clientX - dragging.startClientX);
       if (dx > DRAG_THRESHOLD_PX) {
+        if (dragging.longPressTimer) { clearTimeout(dragging.longPressTimer); dragging.longPressTimer = null; }
         dragging.kind = 'clip-move';
         dragging.moved = true;
+        if (DEBUG_INTERACTION) console.log('[timeline] threshold 5px -> drag-move for clip#'+dragging.clipId);
       }
     }
     if (dragging.kind === 'clip-move') {
       evt.preventDefault && evt.preventDefault();
-      // Calcula novo source_in baseado no delta total desde o inicio
+      canvas.style.cursor = 'grabbing';
       const deltaSec = (clientX - dragging.startClientX) / pxPerSec();
       const clip = BEState.findClip(dragging.clipId);
       if (clip) {
@@ -743,7 +750,8 @@ window.BETimeline = (function() {
         const targetIn = dragging.sourceInOriginal + deltaSec;
         const delta = targetIn - currentIn;
         if (Math.abs(delta) > 0.01) {
-          BEState.moveClip(dragging.clipId, delta);
+          const ok = BEState.moveClip(dragging.clipId, delta);
+          if (DEBUG_INTERACTION) console.log('[timeline] moveClip#'+dragging.clipId, 'delta=', delta.toFixed(3)+'s', 'ok=', ok);
         }
       }
       requestRender();
@@ -752,6 +760,12 @@ window.BETimeline = (function() {
 
   function onPointerUp() {
     if (!dragging) return;
+    // Limpa timer de long-press se ainda existir
+    if (dragging.longPressTimer) { clearTimeout(dragging.longPressTimer); dragging.longPressTimer = null; }
+    canvas.style.cursor = '';
+    if (DEBUG_INTERACTION && dragging.kind === 'clip-pending') {
+      console.log('[timeline] mouseup sem mover: foi click puro (não virou drag). Pra arrastar, segure 250ms OU mova >5px.');
+    }
     // Se foi drag clip-move, registra um Command pra undo total
     if (dragging.kind === 'clip-move' && dragging.moved) {
       const clip = BEState.findClip(dragging.clipId);

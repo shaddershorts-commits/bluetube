@@ -207,7 +207,7 @@ window.BEState = (function() {
   function moveClip(id, delta) {
     materializeIfNeeded();
     const found = findClip(id);
-    if (!found) return false;
+    if (!found) { console.warn('[BEState.moveClip] clip#'+id+' not found'); return false; }
     const dur = state.video.duration || 0;
     const clipDur = found.clip.source_out - found.clip.source_in;
     let newIn = found.clip.source_in + delta;
@@ -215,6 +215,7 @@ window.BEState = (function() {
     if (newIn + clipDur > dur) newIn = dur - clipDur;
     const newOut = newIn + clipDur;
     if (Math.abs(newIn - found.clip.source_in) < 0.001) return false;
+    console.log('[BEState] moveClip#'+id+' source_in:', found.clip.source_in.toFixed(3), '->', newIn.toFixed(3));
     state.clips[found.idx] = { ...found.clip, source_in: newIn, source_out: newOut };
     state.updated_at = new Date().toISOString();
     backupSessionStorage();

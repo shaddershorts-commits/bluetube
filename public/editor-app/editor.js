@@ -307,12 +307,19 @@
           </div>
         </div>
         <div class="media-status">
-          <p>Use Ctrl+B pra cortar no playhead. Clique nos clips pra selecionar (borda dourada). Drag horizontal move o clip.</p>
+          <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.5">
+            <strong style="color:#fbbf24">💡 Como funciona:</strong><br>
+            • <strong>Ctrl+B</strong> = corta no playhead (só divide em segmentos)<br>
+            • <strong>Click</strong> em um segmento = seleciona (borda dourada)<br>
+            • <strong>Segure 250ms</strong> ou <strong>arraste 5+ pixels</strong> = move o clipe<br>
+            • <strong>Delete</strong> = remove o clipe selecionado (aí o player <em>pula</em> essa parte!)<br>
+            • <strong>Q / W</strong> = apaga esquerda/direita do playhead
+          </div>
           ${(s.clips && s.clips.length > 0) ? `
-            <button class="btn-secondary" id="mediaResetClips" style="margin-top:10px;width:100%;padding:8px;font-size:12px">
+            <button class="btn-secondary" id="mediaResetClips" style="width:100%;padding:8px;font-size:12px">
               ↺ Resetar cortes (volta pro vídeo inteiro)
             </button>
-            <p style="color:var(--text-3);font-size:11px;margin-top:6px">Você tem ${s.clips.length} clipe(s) cortado(s). Apertar acima descarta todos os cortes mantendo o vídeo.</p>
+            <p style="color:var(--text-3);font-size:11px;margin-top:6px">Você tem ${s.clips.length} clipe(s) cortado(s).</p>
           ` : ''}
         </div>
       `;
