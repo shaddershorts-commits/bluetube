@@ -622,7 +622,9 @@ window.BETimeline = (function() {
     if (y < TRACK_PAD_TOP || y > TRACK_PAD_TOP + TRACK_H) return null;
     const t = pxToSec(x);
     const clip = BEState.clipAtTime(t);
-    if (!clip || clip.virtual) return null;
+    if (!clip) return null;
+    // Virtual clip (vídeo sem cortes): retorna SIM pra permitir drag/seleção.
+    // Drag em virtual materializa antes de mover.
     return clip;
   }
 
@@ -665,16 +667,35 @@ window.BETimeline = (function() {
     if (DEBUG_INTERACTION) console.log('[timeline] mousedown @', x.toFixed(0)+','+y.toFixed(0), '| trackY:', TRACK_PAD_TOP, '-', (TRACK_PAD_TOP+TRACK_H), '| hit:', clipHit ? ('clip#'+clipHit.id) : 'NULL');
 
     if (clipHit) {
-      BEState.selectClip(clipHit.id);
+      // Se é virtual (vídeo sem cortes), materializa ANTES de armar drag
+      // pra ter id real persistido e funcionar undo.
+      let realClipId = clipHit.id;
+      if (clipHit.virtual && BEState.findClip) {
+        // Trigger materialização sem mexer em conteúdo (split em t inviável)
+        // Faz isso patcheando trim igual ao atual — materializeIfNeeded é interno
+        // Usa workaround: splitAtTime no centro, depois remove um lado? Não.
+        // Solução simples: criar clip único cobrindo [trim.in, trim.out] via API exposta
+        const s = BEState.get();
+        const inT = s.trim.in || 0;
+        const outT = s.trim.out > 0 ? s.trim.out : duration;
+        const newId = BEState.get().next_clip_id || 1;
+        BEState.replaceClips([{ id: newId, source_in: inT, source_out: outT }]);
+        BEState.get().next_clip_id = newId + 1;
+        realClipId = newId;
+        if (DEBUG_INTERACTION) console.log('[timeline] virtual clip materializado como #' + realClipId);
+      }
+      BEState.selectClip(realClipId);
+      const found = BEState.findClip(realClipId);
+      const sourceIn = found ? found.clip.source_in : (clipHit.source_in || 0);
       dragging = {
         kind: 'clip-pending',
-        clipId: clipHit.id,
+        clipId: realClipId,
         startClientX: clientX,
         startTime: t,
-        sourceInOriginal: clipHit.source_in,
+        sourceInOriginal: sourceIn,
         moved: false,
       };
-      if (DEBUG_INTERACTION) console.log('[timeline] arming clip-drag for clip#'+clipHit.id);
+      if (DEBUG_INTERACTION) console.log('[timeline] arming clip-drag for clip#'+realClipId);
       evt.preventDefault && evt.preventDefault();
     } else {
       BEState.selectClip(null);
@@ -923,7 +944,11 @@ window.BETimeline = (function() {
       waveformStatus = 'pending';
       const lbl = document.getElementById('tlZoomLabel');
       if (lbl) lbl.textContent = '100%';
-      if (DEBUG_INTERACTION) console.log('[timeline] onStateChange: video carregado, duration=', duration, '· canvasW=', canvasW, '· canvasH=', canvasH);
+      if (DEBUG_INTERACTION) {
+        console.log('[timeline] onStateChange: video carregado, duration=', duration, '· canvasW=', canvasW, '· canvasH=', canvasH);
+        const clips = s.clips || [];
+        console.log('[timeline] clips no estado (' + clips.length + '):', clips.map(c => '#'+c.id+' ['+c.source_in.toFixed(2)+'→'+c.source_out.toFixed(2)+']').join(', ') || '(nenhum — usando virtual do trim)');
+      }
       // Re-checa canvas size (parent pode ter zerado durante render)
       setTimeout(() => {
         resize();

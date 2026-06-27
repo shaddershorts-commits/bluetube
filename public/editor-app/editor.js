@@ -307,8 +307,13 @@
           </div>
         </div>
         <div class="media-status">
-          <p>Fase 2 ativa: timeline + waveform + thumbnails.</p>
-          <p style="color:var(--text-3);font-size:12px;margin-top:6px">Use os handles azuis pra cortar início/fim. Ctrl+Scroll = zoom timeline. Próximas fases: cortes múltiplos (Fase 3), texto (Fase 4), áudio extra (Fase 5).</p>
+          <p>Use Ctrl+B pra cortar no playhead. Clique nos clips pra selecionar (borda dourada). Drag horizontal move o clip.</p>
+          ${(s.clips && s.clips.length > 0) ? `
+            <button class="btn-secondary" id="mediaResetClips" style="margin-top:10px;width:100%;padding:8px;font-size:12px">
+              ↺ Resetar cortes (volta pro vídeo inteiro)
+            </button>
+            <p style="color:var(--text-3);font-size:11px;margin-top:6px">Você tem ${s.clips.length} clipe(s) cortado(s). Apertar acima descarta todos os cortes mantendo o vídeo.</p>
+          ` : ''}
         </div>
       `;
       const replaceBtn = document.getElementById('mediaReplaceBtn');
@@ -320,6 +325,20 @@
       if (delBtn) delBtn.addEventListener('click', () => {
         if (!confirm('Excluir vídeo e descartar projeto?')) return;
         this.discardCurrentProject();
+      });
+      const resetClipsBtn = document.getElementById('mediaResetClips');
+      if (resetClipsBtn) resetClipsBtn.addEventListener('click', () => {
+        if (!confirm('Descartar TODOS os cortes e voltar pro vídeo inteiro?')) return;
+        // Reset clips + trim
+        const st = BEState.get();
+        BEState.replaceClips([]);
+        BEState.patch({
+          trim: { in: 0, out: st.video.duration || 0 },
+          selected_clip_id: null,
+        });
+        if (window.BEHistory) BEHistory.clear();
+        console.log('[BEEditor] cortes resetados — volta pro vídeo inteiro');
+        this.showEditorMounted();
       });
     },
     async discardCurrentProject() {
