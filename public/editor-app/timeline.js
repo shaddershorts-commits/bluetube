@@ -156,10 +156,51 @@ window.BETimeline = (function() {
 
     drawRuler();
     drawTrack();
-    drawWaveform();
+    drawThumbnails();   // Fase 2.1: thumbs como background da track
+    drawWaveform();     // Waveform sobreposta nos thumbs
     drawTrimOverlay();
     drawHandles();
     drawPlayhead();
+  }
+
+  // ─── Thumbnails (renderiza frames extraidos) ───────────────────────────
+  function drawThumbnails() {
+    if (!window.BEThumbs) return;
+    const thumbs = BEThumbs.getThumbs();
+    if (!thumbs.length) {
+      // Indicador de loading
+      const status = BEThumbs.getStatus();
+      if (status === 'loading') {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,170,255,0.35)';
+        ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('◌ gerando thumbnails…', canvasW / 2, TRACK_PAD_TOP + 4);
+        ctx.restore();
+      }
+      return;
+    }
+    // Renderiza cada thumb na sua posicao temporal
+    ctx.save();
+    // Clip pra nao desenhar fora da track
+    ctx.beginPath();
+    ctx.rect(secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H);
+    ctx.clip();
+    for (const t of thumbs) {
+      const x = secToPx(t.time);
+      // Thumb largura proporcional ao aspect ratio capturado, altura = TRACK_H
+      const drawW = (TRACK_H / t.height) * t.width;
+      const drawX = x - drawW / 2;
+      if (drawX + drawW < 0 || drawX > canvasW) continue;
+      try {
+        ctx.drawImage(t.bitmap, drawX, TRACK_PAD_TOP, drawW, TRACK_H);
+      } catch(e) { /* ignora frames corrompidos */ }
+    }
+    // Overlay semi-transparente pra waveform ficar legivel por cima
+    ctx.fillStyle = 'rgba(2,8,23,0.45)';
+    ctx.fillRect(secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H);
+    ctx.restore();
   }
 
   // ─── Ruler ─────────────────────────────────────────────────────────────
@@ -227,7 +268,21 @@ window.BETimeline = (function() {
 
   // ─── Waveform (Web Audio decodificou em maybeGenerateWaveform) ─────────
   function drawWaveform() {
-    if (!waveformData || !waveformData.length) return;
+    // Indicador status quando ainda nao tem waveform
+    if (!waveformData || !waveformData.length) {
+      const midY = TRACK_PAD_TOP + TRACK_H / 2;
+      ctx.save();
+      ctx.fillStyle = waveformStatus === 'loading' ? 'rgba(0,170,255,0.55)' : 'rgba(150,190,230,0.35)';
+      ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const msg = waveformStatus === 'loading' ? '◌ gerando waveform…'
+        : waveformStatus === 'unavailable' ? '⚠ waveform indisponível'
+        : '';
+      if (msg) ctx.fillText(msg, canvasW / 2, midY);
+      ctx.restore();
+      return;
+    }
     const midY = TRACK_PAD_TOP + TRACK_H / 2;
     const ampH = (TRACK_H / 2) - 6;
     const s = BEState.get();
@@ -439,20 +494,76 @@ window.BETimeline = (function() {
   // ─── Waveform via Web Audio API ────────────────────────────────────────
   // Decodifica audio do MP4, downsample pra N buckets onde N = canvasW.
   // Cada bucket guarda (min, max) — 2 floats. Total waveformData.length = N*2.
+  //
+  // GOTCHAS:
+  //   - AudioContext pode estar 'suspended' (Chrome autoplay policy). Resume.
+  //   - Supabase Storage: pra fetch funcionar cross-origin no preview Vercel,
+  //     o bucket precisa ter CORS aberto OU o response ja vem com header CORS.
+  //   - Safari < 15: decodeAudioData so funciona com callback, nao promise.
+  //   - Video 100MB+: decodeAudioData carrega tudo em RAM. Pra >5min, fica
+  //     pesado. Tem timeout de 30s pra abortar.
+  let waveformStatus = 'pending'; // 'pending' | 'loading' | 'ready' | 'unavailable'
+
+  function setWaveformStatus(s, msg) {
+    waveformStatus = s;
+    console.log('[timeline waveform]', s, msg || '');
+    requestRender();
+  }
+
   async function maybeGenerateWaveform() {
     if (waveformGenerating || waveformData || !videoEl || !videoEl.src) return;
     const s = BEState.get();
     if (!s.video || !s.video.url) return;
     waveformGenerating = true;
+    setWaveformStatus('loading');
+
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
+      if (!AC) {
+        setWaveformStatus('unavailable', 'AudioContext nao suportado');
+        return;
+      }
       const ctxAudio = new AC();
-      const resp = await fetch(s.video.url, { credentials: 'omit' });
-      if (!resp.ok) throw new Error('fetch failed');
+      // Chrome/Edge bloqueiam audio sem interacao. Resume explicito.
+      if (ctxAudio.state === 'suspended') {
+        try { await ctxAudio.resume(); } catch(e) { /* ignora — decode ainda funciona */ }
+      }
+
+      // Fetch com timeout 30s
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 30000);
+      let resp;
+      try {
+        resp = await fetch(s.video.url, { credentials: 'omit', mode: 'cors', signal: ac.signal });
+      } catch (fetchErr) {
+        clearTimeout(tid);
+        setWaveformStatus('unavailable', 'fetch failed: ' + fetchErr.message);
+        return;
+      }
+      clearTimeout(tid);
+
+      if (!resp.ok) {
+        setWaveformStatus('unavailable', 'HTTP ' + resp.status);
+        return;
+      }
       const buf = await resp.arrayBuffer();
-      const audio = await ctxAudio.decodeAudioData(buf);
-      const data = audio.getChannelData(0); // 1º canal
+
+      // decodeAudioData: tenta promise (moderno), fallback callback (Safari < 15)
+      let audio;
+      try {
+        audio = await ctxAudio.decodeAudioData(buf);
+      } catch (decodeErr) {
+        // Fallback callback (Safari)
+        audio = await new Promise((resolve, reject) => {
+          ctxAudio.decodeAudioData(buf, resolve, reject);
+        }).catch(e2 => {
+          setWaveformStatus('unavailable', 'decode failed: ' + e2.message);
+          return null;
+        });
+      }
+      if (!audio) return;
+
+      const data = audio.getChannelData(0);
       const buckets = Math.max(100, canvasW);
       const samplesPerBucket = Math.max(1, Math.floor(data.length / buckets));
       const out = new Float32Array(buckets * 2);
@@ -471,7 +582,6 @@ window.BETimeline = (function() {
         if (-mn > max) max = -mn;
         if (mx > max) max = mx;
       }
-      // Normaliza pra usar toda altura disponivel
       if (max > 0 && max < 1) {
         const scale = 0.95 / max;
         for (let i = 0; i < out.length; i++) out[i] *= scale;
@@ -479,9 +589,9 @@ window.BETimeline = (function() {
       waveformData = out;
       waveformBuckets = buckets;
       try { ctxAudio.close(); } catch(e) {}
-      requestRender();
+      setWaveformStatus('ready', `${buckets} buckets`);
     } catch (e) {
-      console.warn('[timeline waveform]', e.message);
+      setWaveformStatus('unavailable', e.message);
     } finally {
       waveformGenerating = false;
     }
@@ -543,6 +653,10 @@ window.BETimeline = (function() {
     bindInput();
     bindZoomToolbar();
     BEState.subscribe(onStateChange);
+    // Subscribe pra atualizar render conforme thumbnails sao gerados
+    if (window.BEThumbs) {
+      BEThumbs.onUpdate(() => requestRender());
+    }
     // Caso já tenha video no init (recuperação de projeto)
     const s = BEState.get();
     if (s.video && s.video.duration) {

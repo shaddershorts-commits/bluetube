@@ -114,14 +114,6 @@ window.BEUpload = (function() {
           <input type="file" id="uploadFile" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
         </div>
 
-        <div class="upload-divider"><span>ou</span></div>
-
-        <div class="upload-url-box">
-          <label class="upload-url-label">URL de YouTube Short</label>
-          <input type="url" id="uploadUrl" placeholder="https://www.youtube.com/shorts/..." autocomplete="off" inputmode="url">
-          <button class="upload-url-btn" id="uploadUrlBtn">Importar</button>
-        </div>
-
         <div class="upload-progress" id="uploadProgress" hidden>
           <div class="up-row">
             <span class="up-label" id="upLabel">Preparando…</span>
@@ -142,8 +134,6 @@ window.BEUpload = (function() {
   function bindUploadHandlers() {
     const dz = document.getElementById('uploadDropzone');
     const fileInput = document.getElementById('uploadFile');
-    const urlInput = document.getElementById('uploadUrl');
-    const urlBtn = document.getElementById('uploadUrlBtn');
     const cancelBtn = document.getElementById('upCancel');
 
     if (dz) {
@@ -169,13 +159,6 @@ window.BEUpload = (function() {
       fileInput.addEventListener('change', e => {
         const f = e.target.files?.[0];
         if (f) handleFile(f);
-      });
-    }
-
-    if (urlBtn && urlInput) {
-      urlBtn.addEventListener('click', () => handleYouTubeUrl(urlInput.value.trim()));
-      urlInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); handleYouTubeUrl(urlInput.value.trim()); }
       });
     }
 
@@ -316,50 +299,6 @@ window.BEUpload = (function() {
 
   function cancelUpload() {
     if (currentXhr) currentXhr.abort();
-  }
-
-  // ─── URL YouTube Short → backend yt-download ──────────────────────────
-  async function handleYouTubeUrl(url) {
-    if (!url) return showError('Cola a URL do Short primeiro.');
-    if (!/youtube\.com\/(shorts|watch)|youtu\.be/i.test(url)) {
-      return showError('URL inválida. Use formato YouTube Short.');
-    }
-    showProgress('Baixando do YouTube…', 10);
-    try {
-      const token = localStorage.getItem('bt_token');
-      const r = await fetch('/api/blue-editor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'yt-download', token, youtube_url: url, quality: '720' }),
-      });
-      const d = await r.json();
-      if (!r.ok || !d.url) {
-        return showError('Falha no download: ' + (d.error || 'erro do servidor'));
-      }
-      setProgress('Lendo metadados…', 80);
-      const meta = await probeVideoMetadata(d.url);
-      if (meta.duration > MAX_DURATION_SEC) {
-        return showError('Vídeo muito longo. Limite: 10 min.');
-      }
-      const aspect = detectAspect(meta.width, meta.height);
-      BEState.patch({
-        video: {
-          url: d.url,
-          path: d.path || null,
-          filename: (url.match(/[?&]v=([^&]+)/)?.[1] || 'youtube-short') + '.mp4',
-          duration: meta.duration,
-          width: meta.width,
-          height: meta.height,
-          aspect,
-          size_bytes: d.size || 0,
-        },
-        trim: { in: 0, out: meta.duration },
-      });
-      setProgress('Pronto!', 100);
-      setTimeout(() => { hideProgress(); BEEditor.afterUploadComplete(); }, 400);
-    } catch (e) {
-      showError('Erro: ' + e.message);
-    }
   }
 
   return { renderUploadScreen };

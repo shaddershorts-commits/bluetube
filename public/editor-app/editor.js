@@ -206,7 +206,9 @@
       this.state = await BEState.init();
       // Inicializa player (subscreve state changes)
       BEPlayer.init();
-      // Inicializa timeline (Fase 2): canvas + handles + waveform
+      // Inicializa thumbnails generator (extrai frames do video)
+      if (window.BEThumbs) BEThumbs.init();
+      // Inicializa timeline (Fase 2): canvas + handles + waveform + thumbs
       BETimeline.init();
       // Subscribe pra atualizar trim info display
       BEState.subscribe(s => {
@@ -270,20 +272,50 @@
               <span class="badge-${v.aspect}">${labelAspect(v.aspect)}</span>
             </div>
           </div>
-          <button class="media-replace" id="mediaReplaceBtn" title="Trocar vídeo">↻</button>
+          <div class="media-actions">
+            <button class="media-action" id="mediaReplaceBtn" title="Trocar vídeo">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 21v-5h5"/></svg>
+            </button>
+            <button class="media-action media-action-danger" id="mediaDeleteBtn" title="Excluir vídeo">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </div>
         </div>
         <div class="media-status">
-          <p>Fase 1 ativa: vídeo carregado. Pré-visualização funcional.</p>
-          <p style="color:var(--text-3);font-size:12px;margin-top:6px">Próximas fases adicionam: timeline visual (Fase 2), cortes (Fase 3), texto (Fase 4), etc.</p>
+          <p>Fase 2 ativa: timeline + waveform + thumbnails.</p>
+          <p style="color:var(--text-3);font-size:12px;margin-top:6px">Use os handles azuis pra cortar início/fim. Ctrl+Scroll = zoom timeline. Próximas fases: cortes múltiplos (Fase 3), texto (Fase 4), áudio extra (Fase 5).</p>
         </div>
       `;
       const replaceBtn = document.getElementById('mediaReplaceBtn');
       if (replaceBtn) replaceBtn.addEventListener('click', () => {
         if (!confirm('Trocar de vídeo? O projeto atual será descartado.')) return;
-        BEState.reset();
-        BEUpload.renderUploadScreen();
-        this.updateProjectName();
+        this.discardCurrentProject();
       });
+      const delBtn = document.getElementById('mediaDeleteBtn');
+      if (delBtn) delBtn.addEventListener('click', () => {
+        if (!confirm('Excluir vídeo e descartar projeto?')) return;
+        this.discardCurrentProject();
+      });
+    },
+    async discardCurrentProject() {
+      // Apaga do servidor se ja tem ID
+      const s = BEState.get();
+      if (s.project_id) {
+        try {
+          const token = localStorage.getItem('bt_token');
+          await fetch('/api/blue-editor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete-project', token, project_id: s.project_id }),
+          });
+        } catch(e) { console.warn('[delete-project]', e.message); }
+      }
+      // Limpa state + thumbs + waveform
+      BEState.reset();
+      if (window.BEThumbs) BEThumbs.reset();
+      BEUpload.renderUploadScreen();
+      this.updateProjectName();
+      this.updateTrimInfo(BEState.get());
     },
     updateProjectName() {
       const el = document.getElementById('projectName');
