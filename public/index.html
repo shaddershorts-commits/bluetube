@@ -4869,6 +4869,50 @@ handleOAuthCallback().then(wasCallback => {
   if(!wasCallback) checkSession();
 });
 
+// ── ?login=1[&redirect=/path] — abre modal auth + redirect pos-login ────
+// Usado pelo BlueEditor (e qualquer outra pagina) que precisa de login.
+// Exemplo: /?login=1&redirect=/blueEditor-app
+(function(){
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('login') === '1') {
+      const redirectTo = params.get('redirect') || null;
+      // Salva redirect pra usar pos-login. checkSession ja redireciona se token valido.
+      if (redirectTo && /^\/[a-zA-Z0-9_/\-]+$/.test(redirectTo)) {
+        sessionStorage.setItem('bt_post_login_redirect', redirectTo);
+      }
+      // Abre modal um tick depois pra deixar checkSession rodar primeiro
+      setTimeout(() => {
+        const token = localStorage.getItem('bt_token');
+        if (token) {
+          // Ja logado — redireciona direto
+          const target = sessionStorage.getItem('bt_post_login_redirect');
+          if (target) {
+            sessionStorage.removeItem('bt_post_login_redirect');
+            location.href = target;
+          }
+        } else {
+          openAuthModal();
+        }
+      }, 300);
+    }
+    // Quando checkSession setar bt_token (login sucedido), checa redirect pendente
+    const _origCheckSession = window.checkSession;
+    window.checkSession = async function() {
+      const r = await _origCheckSession.apply(this, arguments);
+      try {
+        const tk = localStorage.getItem('bt_token');
+        const target = sessionStorage.getItem('bt_post_login_redirect');
+        if (tk && target) {
+          sessionStorage.removeItem('bt_post_login_redirect');
+          location.href = target;
+        }
+      } catch(e) {}
+      return r;
+    };
+  } catch(e) { console.warn('[?login=1 handler]', e); }
+})();
+
 // Pre-fill URL if coming from Virais page "Usar no BlueTube"
 const _prefillUrl = localStorage.getItem('bt_prefill_url');
 if(_prefillUrl){

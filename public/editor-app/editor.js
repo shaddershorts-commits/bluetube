@@ -155,11 +155,14 @@
     }
 
     if (!auth.logged) {
+      // Volta pro editor apos login. encodeURIComponent garante URL valida.
+      const back = encodeURIComponent('/blueEditor-app');
       showGate(
         `<strong>Faça login pra acessar.</strong><br>` +
-        `O BlueEditor está em fase de teste fechada.`,
+        `O BlueEditor está em fase de teste fechada.<br><br>` +
+        `<span style="font-size:12px;color:var(--text-3)">Atenção: preview deploy tem login separado do site principal.</span>`,
         [
-          { label: 'Entrar →', kind: 'primary', href: '/?login=1' },
+          { label: 'Entrar →', kind: 'primary', href: '/?login=1&redirect=' + back },
           { label: '← Voltar', kind: 'secondary', href: '/' },
         ]
       );
@@ -167,16 +170,22 @@
     }
 
     if (auth.plan !== 'master') {
-      showGate(
-        `<strong>Exclusivo Master.</strong><br>` +
-        `O BlueEditor está disponível pra contas Master ativas.<br><br>` +
-        `<span style="font-size:12px;color:var(--text-3)">Seu plano atual: <strong>${auth.plan}</strong></span>`,
-        [
-          { label: 'Fazer upgrade pro Master →', kind: 'gold', href: '/#plans' },
-          { label: '← Voltar', kind: 'secondary', href: '/' },
-        ]
-      );
-      return;
+      // FASE 0/teste: libera Full tambem (so eu testando, master eterno funciona)
+      // FASE 11+ produto: trava em master only via feature flag separada
+      const isTestEnv = location.hostname.includes('vercel.app') || location.hostname === 'localhost';
+      if (!isTestEnv) {
+        showGate(
+          `<strong>Exclusivo Master.</strong><br>` +
+          `O BlueEditor está disponível pra contas Master ativas.<br><br>` +
+          `<span style="font-size:12px;color:var(--text-3)">Seu plano atual: <strong>${auth.plan}</strong></span>`,
+          [
+            { label: 'Fazer upgrade pro Master →', kind: 'gold', href: '/#plans' },
+            { label: '← Voltar', kind: 'secondary', href: '/' },
+          ]
+        );
+        return;
+      }
+      console.warn('[BlueEditor V0] plano ' + auth.plan + ' liberado em ambiente de teste (' + location.hostname + ')');
     }
 
     // ── Tudo certo: renderiza app ────────────────────────────────────────
