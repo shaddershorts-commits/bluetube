@@ -700,6 +700,36 @@ button:disabled {
 .save-status.saving { color: var(--warn); }
 .save-status.saved { color: var(--ok); }
 
+/* ─── TRIM INFO + Play range (Fase 2) ──────────────────────────────────── */
+.trim-info {
+  display: inline-flex; align-items: center;
+  margin-left: 12px;
+  padding: 3px 8px;
+  background: rgba(0,170,255,0.08);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--neon);
+  font-family: var(--font-mono); font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.transport-btn-trim {
+  background: linear-gradient(135deg, var(--gold-deep), var(--gold)) !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 700;
+}
+.transport-btn-trim:disabled {
+  background: rgba(100,116,139,0.15) !important;
+  color: var(--text-4) !important;
+}
+.transport-btn-trim:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+/* Timeline canvas: melhora area de toque em mobile */
+.timeline-canvas { touch-action: none; user-select: none; -webkit-user-select: none; }
+
 /* ─── RESPONSIVO MOBILE ────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   :root {

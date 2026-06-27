@@ -12,10 +12,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/editor-app/editor.css"/>
-<!-- Modulos em ordem de dependencia: state -> upload/player -> editor (boot) -->
+<!-- Modulos em ordem de dependencia: state -> upload/player/timeline -> editor (boot) -->
 <script src="/editor-app/state.js" defer></script>
 <script src="/editor-app/upload.js" defer></script>
 <script src="/editor-app/player.js" defer></script>
+<script src="/editor-app/timeline.js" defer></script>
 <script src="/editor-app/editor.js" defer></script>
 </head>
 <body class="editor-shell">
@@ -149,11 +150,13 @@
           <span class="time-current" id="timeCurrent">00:00.00</span>
           <span class="time-sep">/</span>
           <span class="time-total" id="timeTotal">00:00.00</span>
+          <span class="trim-info" id="trimInfo" hidden></span>
         </div>
         <div class="transport-controls">
           <button class="transport-btn" disabled title="Disponível em Fase 1">⏮</button>
           <button class="transport-btn" disabled title="Disponível em Fase 1">⏵</button>
           <button class="transport-btn" disabled title="Disponível em Fase 1">⏭</button>
+          <button class="transport-btn transport-btn-trim" id="btnPlayTrim" disabled title="Tocar trecho selecionado">⏵▷</button>
         </div>
       </div>
     </section>

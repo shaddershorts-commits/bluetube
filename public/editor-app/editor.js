@@ -206,17 +206,44 @@
       this.state = await BEState.init();
       // Inicializa player (subscreve state changes)
       BEPlayer.init();
+      // Inicializa timeline (Fase 2): canvas + handles + waveform
+      BETimeline.init();
+      // Subscribe pra atualizar trim info display
+      BEState.subscribe(s => {
+        this.updateTrimInfo(s);
+      });
+      // Bind botão tocar trecho
+      const btnPlay = document.getElementById('btnPlayTrim');
+      if (btnPlay) {
+        btnPlay.addEventListener('click', () => BETimeline.playRange());
+      }
       // Decide tela inicial baseado em ter video carregado
       const s = BEState.get();
       if (s.video && s.video.url) {
-        // Projeto carregado: mostra editor montado
         this.showEditorMounted();
       } else {
-        // Sem projeto: mostra tela de upload
         BEUpload.renderUploadScreen();
       }
       this.updateProjectName();
       this.updateFaseFlags();
+      this.updateTrimInfo(s);
+    },
+    updateTrimInfo(s) {
+      const el = document.getElementById('trimInfo');
+      const btn = document.getElementById('btnPlayTrim');
+      if (!el) return;
+      const v = s.video;
+      const hasVideo = v && v.duration > 0;
+      const trimIn = s.trim?.in || 0;
+      const trimOut = s.trim?.out > 0 ? s.trim.out : (v?.duration || 0);
+      const isTrimmed = hasVideo && (trimIn > 0.05 || trimOut < v.duration - 0.05);
+      if (isTrimmed) {
+        el.hidden = false;
+        el.textContent = '✂ ' + fmtTimeMs(trimIn) + ' → ' + fmtTimeMs(trimOut) + ' (' + fmtTimeMs(trimOut - trimIn) + ')';
+      } else {
+        el.hidden = true;
+      }
+      if (btn) btn.disabled = !hasVideo;
     },
     afterUploadComplete() {
       // Apos upload terminar, decide painel a mostrar
@@ -264,7 +291,7 @@
     },
     updateFaseFlags() {
       const flagEl = document.querySelector('.header-flag');
-      if (flagEl) flagEl.textContent = 'FASE 1 · player';
+      if (flagEl) flagEl.textContent = 'FASE 2 · timeline';
     },
   };
 
@@ -276,6 +303,13 @@
     const m = (s/60)|0;
     const r = s - m*60;
     return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+  }
+  function fmtTimeMs(t) {
+    if (!isFinite(t) || t < 0) t = 0;
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t - m * 60);
+    const ms = Math.floor((t - Math.floor(t)) * 100);
+    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + String(ms).padStart(2,'0');
   }
   function labelAspect(a) {
     if (a === 'vertical') return '9:16';
