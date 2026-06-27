@@ -283,6 +283,68 @@ window.BEState = (function() {
     return true;
   }
 
+  // ─── Texts API (Fase 4) ────────────────────────────────────────────────
+  let nextTextId = 1;
+  function addText(props) {
+    if (!state.texts) state.texts = [];
+    // Gera id unico (max existing + 1)
+    const maxId = state.texts.reduce((m, t) => Math.max(m, t.id || 0), 0);
+    const id = Math.max(nextTextId, maxId + 1);
+    nextTextId = id + 1;
+    const newText = {
+      id,
+      content: 'Texto',
+      font: 'Anton',
+      color: '#ffffff',
+      size: 'medium',           // small | medium | large | xlarge
+      x_pct: 0.5,                // centro (0-1)
+      y_pct: 0.5,
+      start_sec: 0,
+      end_sec: 3,
+      active: true,
+      ...props,
+    };
+    state.texts = [...state.texts, newText];
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return id;
+  }
+  function updateText(id, props) {
+    if (!state.texts) return false;
+    const idx = state.texts.findIndex(t => t.id === id);
+    if (idx < 0) return false;
+    state.texts[idx] = { ...state.texts[idx], ...props };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+  function deleteText(id) {
+    if (!state.texts) return false;
+    const idx = state.texts.findIndex(t => t.id === id);
+    if (idx < 0) return false;
+    const removed = state.texts[idx];
+    state.texts = [...state.texts.slice(0, idx), ...state.texts.slice(idx + 1)];
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return removed;
+  }
+  function findText(id) {
+    if (!state.texts) return null;
+    const idx = state.texts.findIndex(t => t.id === id);
+    if (idx < 0) return null;
+    return { text: state.texts[idx], idx };
+  }
+  function getActiveTextsAt(t) {
+    if (!state.texts) return [];
+    return state.texts.filter(tx => tx.active !== false && t >= tx.start_sec && t <= tx.end_sec);
+  }
+
   // ─── Backup em sessionStorage (resiliencia anti-F5) ─────────────────────
   const SS_KEY = 'be_state_backup';
   function backupSessionStorage() {
@@ -421,5 +483,7 @@ window.BEState = (function() {
     findClip, moveClip, toggleClipActive,
     deleteLeftFromPlayhead, deleteRightFromPlayhead,
     updateClip,
+    // Fase 4 — texts
+    addText, updateText, deleteText, findText, getActiveTextsAt,
   };
 })();

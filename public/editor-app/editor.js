@@ -210,6 +210,12 @@
       if (window.BEThumbs) BEThumbs.init();
       // Inicializa timeline (Fase 2): canvas + handles + waveform + thumbs
       BETimeline.init();
+      // Inicializa overlay de texto (Fase 4)
+      if (window.BEText) BEText.init();
+      // Inicializa áudio extra mixer (Fase 5)
+      if (window.BEAudio) BEAudio.init();
+      // Bind tabs do sidebar pra trocar painel
+      this.bindSidebarTabs();
       // Subscribe pra atualizar trim info display
       BEState.subscribe(s => {
         this.updateTrimInfo(s);
@@ -335,7 +341,7 @@
     },
     updateFaseFlags() {
       const flagEl = document.querySelector('.header-flag');
-      if (flagEl) flagEl.textContent = 'FASE 3 · cortes';
+      if (flagEl) flagEl.textContent = 'FASE 4-6 · texto, áudio, transições';
     },
     // ─── Fase 3: timeline toolbar + clips ─────────────────────────────────
     bindTimelineToolbar() {
@@ -528,11 +534,326 @@
       });
     },
     getCutPoints() {
-      // Retorna lista de tempos onde ha cortes (boundaries dos clips)
       const clips = BEState.getEffectiveClips();
       const pts = new Set([0]);
       clips.forEach(c => { pts.add(c.source_in); pts.add(c.source_out); });
       return Array.from(pts).sort((a, b) => a - b);
+    },
+    // ─── Fase 4: tabs do sidebar ──────────────────────────────────────────
+    activeTab: 'media',
+    bindSidebarTabs() {
+      document.querySelectorAll('.sidebar-tab').forEach(tab => {
+        if (tab.disabled) tab.disabled = false; // re-enable em Fase 4+
+        tab.addEventListener('click', () => {
+          const t = tab.dataset.tab;
+          if (!t) return;
+          this.switchTab(t);
+        });
+      });
+    },
+    switchTab(name) {
+      this.activeTab = name;
+      document.querySelectorAll('.sidebar-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === name);
+      });
+      const titleEl = document.getElementById('panelTitle');
+      const labels = { media: 'Mídia', text: 'Texto', audio: 'Áudio', transitions: 'Transições', style: 'Estilo' };
+      if (titleEl) titleEl.textContent = labels[name] || name;
+      this.renderPanel(name);
+    },
+    renderPanel(name) {
+      const s = BEState.get();
+      const hasVideo = !!(s.video && s.video.url);
+      if (!hasVideo) {
+        BEUpload.renderUploadScreen();
+        return;
+      }
+      if (name === 'media') this.showEditorMounted();
+      else if (name === 'text') this.renderTextPanel();
+      else if (name === 'audio') this.renderAudioPanel();
+      else if (name === 'transitions') this.renderTransitionsPanel();
+      else if (name === 'style') this.renderStylePanel();
+    },
+    renderTextPanel() {
+      const panel = document.getElementById('panelBody');
+      if (!panel) return;
+      const s = BEState.get();
+      const texts = s.texts || [];
+      const selectedId = BEText && BEText.getSelectedTextId ? BEText.getSelectedTextId() : null;
+      panel.innerHTML = `
+        <button class="btn-add-item" id="btnAddText">+ Adicionar texto</button>
+        <div class="text-list">
+          ${texts.length === 0 ? '<div class="empty-list">Nenhum texto adicionado. Clica acima.</div>' :
+            texts.map(t => `
+              <div class="text-item ${selectedId === t.id ? 'selected' : ''}" data-id="${t.id}">
+                <div class="text-item-content">
+                  <div class="text-item-title">${escapeHtml(t.content || '(vazio)')}</div>
+                  <div class="text-item-meta">${fmtTime(t.start_sec)} → ${fmtTime(t.end_sec)}</div>
+                </div>
+                <button class="text-item-edit" data-id="${t.id}" title="Editar">✎</button>
+                <button class="text-item-delete" data-id="${t.id}" title="Excluir">🗑</button>
+              </div>
+            `).join('')
+          }
+        </div>
+      `;
+      const btnAdd = document.getElementById('btnAddText');
+      if (btnAdd) btnAdd.addEventListener('click', () => this.openTextModal(null));
+      panel.querySelectorAll('.text-item-edit').forEach(b => {
+        b.addEventListener('click', () => this.openTextModal(parseInt(b.dataset.id, 10)));
+      });
+      panel.querySelectorAll('.text-item-delete').forEach(b => {
+        b.addEventListener('click', () => {
+          const id = parseInt(b.dataset.id, 10);
+          if (!confirm('Excluir esse texto?')) return;
+          const removed = BEState.deleteText(id);
+          if (removed && window.BEHistory) {
+            BEHistory.execute({
+              label: 'remover texto',
+              do() { /* ja aplicado */ },
+              undo() { BEState.addText(removed); },
+            });
+          }
+          this.renderTextPanel();
+        });
+      });
+      panel.querySelectorAll('.text-item').forEach(it => {
+        it.addEventListener('click', e => {
+          if (e.target.closest('.text-item-edit') || e.target.closest('.text-item-delete')) return;
+          const id = parseInt(it.dataset.id, 10);
+          if (BEText) BEText.selectText(id);
+          this.renderTextPanel();
+        });
+      });
+    },
+    openTextModal(id) {
+      const isNew = id == null;
+      const existing = !isNew ? (BEState.findText(id)?.text) : null;
+      const vid = document.getElementById('previewVideo');
+      const now = vid ? vid.currentTime : 0;
+      const dur = BEState.get().video.duration || 30;
+      const t = existing || {
+        content: 'Olha isso',
+        font: 'Anton',
+        color: '#ffff00',
+        size: 'large',
+        x_pct: 0.5, y_pct: 0.5,
+        start_sec: now,
+        end_sec: Math.min(dur, now + 3),
+      };
+      const modal = document.createElement('div');
+      modal.className = 'editor-modal-overlay';
+      modal.innerHTML = `
+        <div class="editor-modal">
+          <div class="modal-header">
+            <h3>${isNew ? '+ Adicionar texto' : '✎ Editar texto'}</h3>
+            <button class="modal-close" id="textModalClose">✕</button>
+          </div>
+          <div class="modal-body">
+            <label class="modal-field">
+              <span>Conteúdo</span>
+              <input type="text" id="txContent" maxlength="100" value="${escapeHtml(t.content)}" autocomplete="off">
+            </label>
+            <div class="modal-row">
+              <label class="modal-field">
+                <span>Fonte</span>
+                <select id="txFont">
+                  ${['Anton','Bebas Neue','Oswald','Inter'].map(f => `<option value="${f}" ${t.font===f?'selected':''}>${f}</option>`).join('')}
+                </select>
+              </label>
+              <label class="modal-field">
+                <span>Tamanho</span>
+                <select id="txSize">
+                  ${['small','medium','large','xlarge'].map(sz => `<option value="${sz}" ${t.size===sz?'selected':''}>${sz}</option>`).join('')}
+                </select>
+              </label>
+            </div>
+            <label class="modal-field">
+              <span>Cor</span>
+              <div class="color-grid">
+                ${['#ffffff','#ffff00','#ff4444','#22c55e','#00aaff','#fbbf24','#a855f7','#000000'].map(c =>
+                  `<button class="color-swatch ${t.color===c?'selected':''}" data-color="${c}" style="background:${c}"></button>`).join('')}
+              </div>
+            </label>
+            <div class="modal-row">
+              <label class="modal-field">
+                <span>Aparece em (s)</span>
+                <input type="number" id="txStart" step="0.1" min="0" max="${dur}" value="${t.start_sec.toFixed(2)}">
+              </label>
+              <label class="modal-field">
+                <span>Some em (s)</span>
+                <input type="number" id="txEnd" step="0.1" min="0" max="${dur}" value="${t.end_sec.toFixed(2)}">
+              </label>
+            </div>
+            <div class="modal-hint">Arraste o texto direto no preview pra reposicionar.</div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="textModalCancel">Cancelar</button>
+            <button class="btn-primary" id="textModalSave">${isNew ? 'Adicionar' : 'Salvar'}</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      let chosenColor = t.color;
+      modal.querySelectorAll('.color-swatch').forEach(b => {
+        b.addEventListener('click', () => {
+          chosenColor = b.dataset.color;
+          modal.querySelectorAll('.color-swatch').forEach(x => x.classList.toggle('selected', x === b));
+        });
+      });
+      const close = () => modal.remove();
+      modal.querySelector('#textModalClose').addEventListener('click', close);
+      modal.querySelector('#textModalCancel').addEventListener('click', close);
+      modal.addEventListener('click', e => { if (e.target === modal) close(); });
+      modal.querySelector('#textModalSave').addEventListener('click', () => {
+        const content = modal.querySelector('#txContent').value.trim() || 'Texto';
+        const font = modal.querySelector('#txFont').value;
+        const size = modal.querySelector('#txSize').value;
+        const start_sec = Math.max(0, Math.min(dur, parseFloat(modal.querySelector('#txStart').value) || 0));
+        const end_sec = Math.max(start_sec + 0.1, Math.min(dur, parseFloat(modal.querySelector('#txEnd').value) || start_sec + 1));
+        const props = { content, font, size, color: chosenColor, start_sec, end_sec };
+        if (isNew) {
+          const newId = BEState.addText({ ...props, x_pct: t.x_pct, y_pct: t.y_pct });
+          if (window.BEHistory) {
+            BEHistory.execute({
+              label: 'adicionar texto',
+              do() { /* ja aplicado */ },
+              undo() { BEState.deleteText(newId); },
+            });
+          }
+          if (BEText) BEText.selectText(newId);
+        } else {
+          const before = { ...existing };
+          BEState.updateText(id, props);
+          if (window.BEHistory) {
+            BEHistory.execute({
+              label: 'editar texto',
+              do() { /* ja aplicado */ },
+              undo() { BEState.updateText(id, { content: before.content, font: before.font, size: before.size, color: before.color, start_sec: before.start_sec, end_sec: before.end_sec }); },
+            });
+          }
+        }
+        close();
+        this.renderTextPanel();
+      });
+      modal.querySelector('#txContent').focus();
+    },
+    onTextSelected(id) {
+      // Notificacao do text.js quando user clica em texto no preview
+      if (this.activeTab === 'text') this.renderTextPanel();
+    },
+    renderAudioPanel() {
+      const panel = document.getElementById('panelBody');
+      if (!panel) return;
+      const s = BEState.get();
+      const hasAudio = !!s.audio_extra;
+      panel.innerHTML = `
+        ${hasAudio ? `
+          <div class="media-info">
+            <div class="media-thumb">🎵</div>
+            <div class="media-detail">
+              <div class="media-name">${escapeHtml(s.audio_extra.filename || 'audio.mp3')}</div>
+              <div class="media-meta">${fmtTime(s.audio_extra.duration)}</div>
+            </div>
+            <div class="media-actions">
+              <button class="media-action media-action-danger" id="audioDeleteBtn" title="Remover">🗑</button>
+            </div>
+          </div>
+        ` : `<button class="btn-add-item" id="btnAddAudio">+ Adicionar áudio (música/narração)</button>`}
+        <div class="volume-section">
+          <h4 class="vol-section-title">Volume</h4>
+          <label class="vol-row">
+            <span>🎬 Vídeo</span>
+            <input type="range" id="volVideo" min="0" max="200" value="${Math.round((s.volumes?.video ?? 1) * 100)}">
+            <span class="vol-val" id="volVideoVal">${Math.round((s.volumes?.video ?? 1) * 100)}%</span>
+          </label>
+          ${hasAudio ? `
+          <label class="vol-row">
+            <span>🎵 Áudio extra</span>
+            <input type="range" id="volAudio" min="0" max="200" value="${Math.round((s.volumes?.audio_extra ?? 1) * 100)}">
+            <span class="vol-val" id="volAudioVal">${Math.round((s.volumes?.audio_extra ?? 1) * 100)}%</span>
+          </label>` : ''}
+          <input type="file" id="audioFileInput" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden>
+        </div>
+      `;
+      const btnAdd = document.getElementById('btnAddAudio');
+      const fileInp = document.getElementById('audioFileInput');
+      if (btnAdd && fileInp) {
+        btnAdd.addEventListener('click', () => fileInp.click());
+        fileInp.addEventListener('change', e => {
+          const f = e.target.files?.[0];
+          if (f && window.BEAudio) BEAudio.uploadAudio(f);
+        });
+      }
+      const delBtn = document.getElementById('audioDeleteBtn');
+      if (delBtn) delBtn.addEventListener('click', () => {
+        if (!confirm('Remover áudio?')) return;
+        BEState.patch({ audio_extra: null });
+        this.renderAudioPanel();
+      });
+      const vV = document.getElementById('volVideo');
+      const vA = document.getElementById('volAudio');
+      if (vV) vV.addEventListener('input', e => {
+        const v = parseInt(e.target.value, 10) / 100;
+        BEState.patch({ volumes: { ...(s.volumes||{}), video: v } });
+        document.getElementById('volVideoVal').textContent = e.target.value + '%';
+      });
+      if (vA) vA.addEventListener('input', e => {
+        const v = parseInt(e.target.value, 10) / 100;
+        BEState.patch({ volumes: { ...(s.volumes||{}), audio_extra: v } });
+        document.getElementById('volAudioVal').textContent = e.target.value + '%';
+      });
+    },
+    renderTransitionsPanel() {
+      const panel = document.getElementById('panelBody');
+      if (!panel) return;
+      const s = BEState.get();
+      const clips = BEState.getEffectiveClips();
+      if (clips.length <= 1) {
+        panel.innerHTML = `<div class="empty-list">Faça um corte (Ctrl+B) primeiro pra adicionar transição entre clipes.</div>`;
+        return;
+      }
+      const trans = s.transitions || [];
+      panel.innerHTML = `
+        <div class="transitions-list">
+          <div class="trans-help">Escolha o tipo de transição entre cada par de clipes.</div>
+          ${clips.slice(0, -1).map((c, i) => {
+            const t = trans.find(tr => tr.between === i) || { type: 'cut', duration: 0.5 };
+            return `
+              <div class="trans-row">
+                <div class="trans-label">Clipe #${i+1} → Clipe #${i+2}</div>
+                <select class="trans-type" data-between="${i}">
+                  <option value="cut" ${t.type==='cut'?'selected':''}>Cut (sem transição)</option>
+                  <option value="fade" ${t.type==='fade'?'selected':''}>Fade preto</option>
+                  <option value="crossfade" ${t.type==='crossfade'?'selected':''}>Cross-fade</option>
+                </select>
+                <input type="number" class="trans-dur" data-between="${i}" min="0.2" max="2" step="0.1" value="${t.duration||0.5}" ${t.type==='cut'?'disabled':''}>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+      panel.querySelectorAll('.trans-type').forEach(sel => {
+        sel.addEventListener('change', e => this.updateTransition(parseInt(sel.dataset.between, 10), { type: e.target.value }));
+      });
+      panel.querySelectorAll('.trans-dur').forEach(inp => {
+        inp.addEventListener('change', e => this.updateTransition(parseInt(inp.dataset.between, 10), { duration: parseFloat(e.target.value) }));
+      });
+    },
+    updateTransition(between, props) {
+      const s = BEState.get();
+      const trans = [...(s.transitions || [])];
+      const idx = trans.findIndex(t => t.between === between);
+      if (idx >= 0) trans[idx] = { ...trans[idx], ...props };
+      else trans.push({ between, type: 'cut', duration: 0.5, ...props });
+      BEState.patch({ transitions: trans });
+      // Re-render pra atualizar disabled
+      this.renderTransitionsPanel();
+    },
+    renderStylePanel() {
+      const panel = document.getElementById('panelBody');
+      if (!panel) return;
+      panel.innerHTML = `<div class="empty-list">Estilos prontos chegam em fases futuras. Por enquanto edita manualmente em Texto/Áudio.</div>`;
     },
     actionSplit() {
       const vid = document.getElementById('previewVideo');

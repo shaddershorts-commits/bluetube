@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/editor-app/editor.css"/>
-<!-- Modulos em ordem de dependencia: state -> history -> clips/upload/player/thumbs/timeline -> editor -->
+<!-- Modulos em ordem de dependencia -->
 <script src="/editor-app/state.js" defer></script>
 <script src="/editor-app/history.js" defer></script>
 <script src="/editor-app/clips.js" defer></script>
@@ -20,6 +20,8 @@
 <script src="/editor-app/player.js" defer></script>
 <script src="/editor-app/thumbnails.js" defer></script>
 <script src="/editor-app/timeline.js" defer></script>
+<script src="/editor-app/text.js" defer></script>
+<script src="/editor-app/audio.js" defer></script>
 <script src="/editor-app/editor.js" defer></script>
 </head>
 <body class="editor-shell">
@@ -77,19 +79,19 @@
         <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
         <span>Mídia</span>
       </button>
-      <button class="sidebar-tab" data-tab="text" disabled title="Disponível na Fase 4">
+      <button class="sidebar-tab" data-tab="text" title="Texto">
         <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 5h14M12 5v14M9 19h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
         <span>Texto</span>
       </button>
-      <button class="sidebar-tab" data-tab="audio" disabled title="Disponível na Fase 5">
+      <button class="sidebar-tab" data-tab="audio" title="Áudio">
         <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12h2l3-7 4 14 3-10 3 5h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Áudio</span>
       </button>
-      <button class="sidebar-tab" data-tab="transitions" disabled title="Disponível na Fase 6">
+      <button class="sidebar-tab" data-tab="transitions" title="Transições">
         <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12h6M15 12h6M9 8l3 4-3 4M15 8l-3 4 3 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Transições</span>
       </button>
-      <button class="sidebar-tab" data-tab="style" disabled title="Disponível na Fase 3">
+      <button class="sidebar-tab" data-tab="style" disabled title="Em breve">
         <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 3v9l6 3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
         <span>Estilo</span>
       </button>
