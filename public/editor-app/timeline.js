@@ -26,21 +26,48 @@
 window.BETimeline = (function() {
   'use strict';
 
-  // ─── Constantes visuais ────────────────────────────────────────────────
-  const RULER_H = 20;
-  const TRACK_PAD_TOP = 28;
-  const TRACK_H = 56;            // track de video
-  const TRACK_GAP = 6;
-  const AUDIO_TRACK_H = 32;      // track separada pra audio extra
+  // ─── Constantes visuais (CapCut-inspired) ──────────────────────────────
+  const RULER_H = 22;
+  const TRACK_PAD_TOP = 32;
+  const TRACK_H = 72;            // track de video (mais alta pros thumbs)
+  const TRACK_HEADER_H = 18;     // label "filename · duração" no topo
+  const TRACK_GAP = 10;
+  const AUDIO_TRACK_H = 48;      // track audio (waveform respira melhor)
+  const TRACK_RADIUS = 6;        // border-radius das faixas
   const HANDLE_W = 14;
   const HANDLE_TOUCH = 44;
   const PLAYHEAD_W = 2;
   const FRAME_RATE = 30;
+  const DEBUG_INTERACTION = true; // logs pra investigar click/drag
 
   function audioTrackY() { return TRACK_PAD_TOP + TRACK_H + TRACK_GAP; }
   function totalTracksH() { return TRACK_H + TRACK_GAP + AUDIO_TRACK_H; }
 
-  // ─── Cores (puxa CSS vars) ──────────────────────────────────────────────
+  // Desenha retângulo arredondado (fill + stroke)
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+  function fmtTimecode(t) {
+    if (!isFinite(t) || t < 0) t = 0;
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = Math.floor(t % 60);
+    const ff = Math.floor((t - Math.floor(t)) * 30);
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + ':' + String(ff).padStart(2,'0');
+  }
+
+  // ─── Cores (CapCut-inspired) ───────────────────────────────────────────
   function getCss(name, fallback) {
     try {
       const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -52,13 +79,19 @@ window.BETimeline = (function() {
     ruler: 'rgba(150,190,230,0.55)',
     rulerMajor: 'rgba(232,244,255,0.78)',
     tickLine: 'rgba(0,170,255,0.15)',
-    track: 'rgba(0,170,255,0.20)',
-    trackBorder: 'rgba(0,170,255,0.45)',
-    waveform: 'rgba(0,170,255,0.55)',
-    waveformOutside: 'rgba(100,116,139,0.35)',
-    outsideOverlay: 'rgba(2,8,23,0.65)',
-    handle: '#00aaff',
-    handleBorder: '#fff',
+    // Track video: ciano forte CapCut-style
+    videoTrack: 'rgba(34,197,219,0.20)',
+    videoTrackBorder: '#22c5db',
+    videoHeader: 'rgba(34,197,219,0.85)',
+    waveform: 'rgba(100,180,230,0.85)',
+    waveformOutside: 'rgba(100,116,139,0.30)',
+    outsideOverlay: 'rgba(2,8,23,0.62)',
+    // Track audio extra: azul escuro com waveform clara
+    audioTrack: 'rgba(13,50,90,0.85)',
+    audioTrackBorder: 'rgba(100,180,230,0.40)',
+    audioWave: 'rgba(140,200,240,0.90)',
+    handle: '#fbbf24',
+    handleBorder: '#1a1300',
     playhead: '#fbbf24',
     playheadGlow: 'rgba(251,191,36,0.4)',
   };
@@ -169,31 +202,62 @@ window.BETimeline = (function() {
     drawPlayhead();
   }
 
-  // ─── Audio extra: track separada abaixo do video ───────────────────────
+  // ─── Audio extra: track separada CapCut-style ─────────────────────────
   function drawAudioExtraTrack() {
     const s = BEState.get();
     const audio = s.audio_extra;
     const audioY = audioTrackY();
-    // Background da track (sempre visivel pra mostrar onde audio extra cabe)
+    const x0 = secToPx(0);
+    const w = secToPx(duration) - x0;
     ctx.save();
-    ctx.fillStyle = audio ? 'rgba(34,197,94,0.10)' : 'rgba(100,116,139,0.06)';
-    ctx.fillRect(secToPx(0), audioY, secToPx(duration) - secToPx(0), AUDIO_TRACK_H);
-    ctx.strokeStyle = audio ? 'rgba(34,197,94,0.4)' : 'rgba(100,116,139,0.2)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(secToPx(0) + 0.5, audioY + 0.5, secToPx(duration) - secToPx(0) - 1, AUDIO_TRACK_H - 1);
+    // Fundo azul escuro arredondado
+    roundRect(ctx, x0, audioY, w, AUDIO_TRACK_H, TRACK_RADIUS);
+    ctx.fillStyle = audio ? COLORS.audioTrack : 'rgba(20,30,50,0.5)';
+    ctx.fill();
     if (audio && audio.filename) {
-      ctx.fillStyle = '#86efac';
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.fillText('🎵 ' + audio.filename, secToPx(0) + 6, audioY + AUDIO_TRACK_H/2);
+      // Label no topo da faixa (semi-transparente)
+      ctx.save();
+      roundRect(ctx, x0, audioY, w, 14, TRACK_RADIUS);
+      ctx.fillStyle = 'rgba(140,200,240,0.18)';
+      ctx.fill();
+      ctx.restore();
+      if (w > 60) {
+        ctx.fillStyle = 'rgba(180,220,250,0.95)';
+        ctx.font = 'bold 10px "JetBrains Mono", monospace';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0 + 4, audioY, w - 8, 14);
+        ctx.clip();
+        ctx.fillText('🎵 ' + audio.filename, x0 + 6, audioY + 7);
+        ctx.restore();
+      }
+      // Waveform fake centralizada (TODO: waveform real do audio extra)
+      const midY = audioY + 14 + (AUDIO_TRACK_H - 14) / 2;
+      const ampH = (AUDIO_TRACK_H - 14) / 2 - 4;
+      ctx.fillStyle = COLORS.audioWave;
+      const bars = Math.floor(w / 2);
+      for (let i = 0; i < bars; i++) {
+        const x = x0 + i * 2;
+        const h = ampH * (0.3 + 0.7 * Math.abs(Math.sin(i * 0.21 + i * 0.07)));
+        ctx.fillRect(x, midY - h, 1, h * 2);
+      }
     } else {
+      // Placeholder centrado
       ctx.fillStyle = 'rgba(150,190,230,0.4)';
       ctx.font = '10px "JetBrains Mono", monospace';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
-      ctx.fillText('Áudio extra (tab Áudio pra adicionar)', secToPx(duration)/2, audioY + AUDIO_TRACK_H/2);
+      ctx.fillText('🎵 Áudio extra · tab Áudio pra adicionar', x0 + w/2, audioY + AUDIO_TRACK_H/2);
     }
+    // Borda
+    ctx.save();
+    roundRect(ctx, x0 + 0.5, audioY + 0.5, w - 1, AUDIO_TRACK_H - 1, TRACK_RADIUS);
+    ctx.strokeStyle = audio ? COLORS.audioTrackBorder : 'rgba(100,116,139,0.25)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
     ctx.restore();
   }
 
@@ -215,25 +279,22 @@ window.BETimeline = (function() {
       }
       return;
     }
-    // Renderiza cada thumb na sua posicao temporal
+    // Renderiza cada thumb na sua posicao temporal — abaixo do header
+    const thumbY = TRACK_PAD_TOP + TRACK_HEADER_H;
+    const thumbH = TRACK_H - TRACK_HEADER_H;
     ctx.save();
-    // Clip pra nao desenhar fora da track
-    ctx.beginPath();
-    ctx.rect(secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H);
+    // Clip arredondado embaixo
+    roundRect(ctx, secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H, TRACK_RADIUS);
     ctx.clip();
     for (const t of thumbs) {
       const x = secToPx(t.time);
-      // Thumb largura proporcional ao aspect ratio capturado, altura = TRACK_H
-      const drawW = (TRACK_H / t.height) * t.width;
+      const drawW = (thumbH / t.height) * t.width;
       const drawX = x - drawW / 2;
       if (drawX + drawW < 0 || drawX > canvasW) continue;
       try {
-        ctx.drawImage(t.bitmap, drawX, TRACK_PAD_TOP, drawW, TRACK_H);
-      } catch(e) { /* ignora frames corrompidos */ }
+        ctx.drawImage(t.bitmap, drawX, thumbY, drawW, thumbH);
+      } catch(e) {}
     }
-    // Overlay semi-transparente pra waveform ficar legivel por cima
-    ctx.fillStyle = 'rgba(2,8,23,0.45)';
-    ctx.fillRect(secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H);
     ctx.restore();
   }
 
@@ -288,75 +349,92 @@ window.BETimeline = (function() {
     return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
   }
 
-  // ─── Track (faixa do vídeo — agora desenha cada clip separado) ─────────
+  // ─── Track (CapCut-style: borda arredondada + label nome+duracao) ──────
   function drawTrack() {
     const clips = BEState.getEffectiveClips();
     const sel = BEState.get().selected_clip_id;
-    // Background da track (regiao que pode ter conteudo)
+    const s = BEState.get();
+    const filename = s.video?.filename || 'video.mp4';
+    // Background da track inteira (subtle)
     const x0 = secToPx(0);
     const x1 = secToPx(duration);
+    ctx.save();
+    roundRect(ctx, x0, TRACK_PAD_TOP, x1 - x0, TRACK_H, TRACK_RADIUS);
     ctx.fillStyle = 'rgba(2,8,23,0.4)';
-    ctx.fillRect(x0, TRACK_PAD_TOP, x1 - x0, TRACK_H);
+    ctx.fill();
+    ctx.restore();
 
-    // Cada clip como retangulo distinto
+    // Cada clip CapCut-style (rounded + ciano)
     for (let i = 0; i < clips.length; i++) {
       const clip = clips[i];
       const cx0 = secToPx(clip.source_in);
       const cx1 = secToPx(clip.source_out);
-      const w = Math.max(2, cx1 - cx0);
+      const w = Math.max(4, cx1 - cx0);
       const isSelected = sel === clip.id;
-      const isSingle = clips.length === 1;
       const isInactive = clip.active === false;
+      ctx.save();
+      // Fill
+      roundRect(ctx, cx0, TRACK_PAD_TOP, w, TRACK_H, TRACK_RADIUS);
       if (isInactive) {
-        // Clip desativado: cinza listrado
-        ctx.fillStyle = 'rgba(100,116,139,0.18)';
-        ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
-        // Listras diagonais
+        ctx.fillStyle = 'rgba(100,116,139,0.20)';
+      } else {
+        ctx.fillStyle = isSelected ? 'rgba(34,197,219,0.32)' : COLORS.videoTrack;
+      }
+      ctx.fill();
+      // Header: label + duracao no topo (estilo CapCut)
+      if (!isInactive) {
         ctx.save();
-        ctx.beginPath(); ctx.rect(cx0, TRACK_PAD_TOP, w, TRACK_H); ctx.clip();
-        ctx.strokeStyle = 'rgba(100,116,139,0.35)';
-        ctx.lineWidth = 1;
-        for (let lx = cx0 - TRACK_H; lx < cx0 + w + TRACK_H; lx += 12) {
+        roundRect(ctx, cx0, TRACK_PAD_TOP, w, TRACK_HEADER_H, TRACK_RADIUS);
+        ctx.fillStyle = COLORS.videoHeader;
+        ctx.fill();
+        if (w > 60) {
+          ctx.fillStyle = '#0a1628';
+          ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, monospace';
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'left';
+          const clipDur = clip.source_out - clip.source_in;
+          const prefix = clips.length === 1 ? filename : ('#' + (i+1));
+          const label = prefix + '  ' + fmtTimecode(clipDur);
+          // Clip texto pro tamanho disponivel
+          ctx.save();
           ctx.beginPath();
-          ctx.moveTo(lx, TRACK_PAD_TOP);
-          ctx.lineTo(lx + TRACK_H, TRACK_PAD_TOP + TRACK_H);
-          ctx.stroke();
+          ctx.rect(cx0 + 4, TRACK_PAD_TOP, w - 8, TRACK_HEADER_H);
+          ctx.clip();
+          ctx.fillText(label, cx0 + 8, TRACK_PAD_TOP + TRACK_HEADER_H/2 + 1);
+          ctx.restore();
         }
         ctx.restore();
-      } else {
-        ctx.fillStyle = isSelected ? 'rgba(0,170,255,0.32)'
-          : isSingle ? 'rgba(0,170,255,0.20)'
-          : (i % 2 === 0 ? 'rgba(0,170,255,0.22)' : 'rgba(26,107,255,0.22)');
-        ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
-      }
-      // Borda — selecionado: 3px dourado MUITO obvio
-      ctx.strokeStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(100,116,139,0.4)' : COLORS.trackBorder;
-      ctx.lineWidth = isSelected ? 3 : 1;
-      ctx.strokeRect(cx0 + (isSelected?1.5:0.5), TRACK_PAD_TOP + (isSelected?1.5:0.5), w - (isSelected?3:1), TRACK_H - (isSelected?3:1));
-      // Glow externo se selecionado
-      if (isSelected) {
-        ctx.save();
-        ctx.shadowColor = '#fbbf24';
-        ctx.shadowBlur = 8;
-        ctx.strokeRect(cx0 + 1.5, TRACK_PAD_TOP + 1.5, w - 3, TRACK_H - 3);
-        ctx.restore();
-      }
-      // Numero do clip (se ha mais de 1)
-      if (!isSingle && w > 30) {
-        ctx.fillStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(150,190,230,0.5)' : 'rgba(232,244,255,0.9)';
-        ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, monospace';
+      } else if (w > 30) {
+        // Inactive: label cinza
+        ctx.fillStyle = 'rgba(150,190,230,0.6)';
+        ctx.font = 'bold 11px "JetBrains Mono", monospace';
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
-        ctx.fillText('#' + (i+1) + (isInactive ? ' (off)' : ''), cx0 + 4, TRACK_PAD_TOP + 3);
+        ctx.fillText('#' + (i+1) + ' (off)', cx0 + 6, TRACK_PAD_TOP + 4);
       }
+      ctx.restore();
+      // Borda (sempre por cima) — selecionado: 3px dourado
+      ctx.save();
+      roundRect(ctx, cx0 + 0.5, TRACK_PAD_TOP + 0.5, w - 1, TRACK_H - 1, TRACK_RADIUS);
+      ctx.strokeStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(100,116,139,0.5)' : COLORS.videoTrackBorder;
+      ctx.lineWidth = isSelected ? 3 : 1.5;
+      if (isSelected) {
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 12;
+      }
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
   // ─── Waveform (Web Audio decodificou em maybeGenerateWaveform) ─────────
   function drawWaveform() {
+    // Waveform desenhada SOBRE thumbnails (faixa inferior da track de video)
+    const waveTop = TRACK_PAD_TOP + TRACK_HEADER_H;
+    const waveH = TRACK_H - TRACK_HEADER_H;
     // Indicador status quando ainda nao tem waveform
     if (!waveformData || !waveformData.length) {
-      const midY = TRACK_PAD_TOP + TRACK_H / 2;
+      const midY = waveTop + waveH / 2;
       ctx.save();
       ctx.fillStyle = waveformStatus === 'loading' ? 'rgba(0,170,255,0.55)' : 'rgba(150,190,230,0.35)';
       ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
@@ -369,11 +447,15 @@ window.BETimeline = (function() {
       ctx.restore();
       return;
     }
-    const midY = TRACK_PAD_TOP + TRACK_H / 2;
-    const ampH = (TRACK_H / 2) - 6;
-    const s = BEState.get();
-    const trimIn = s.trim.in;
-    const trimOut = s.trim.out > 0 ? s.trim.out : duration;
+    // Waveform na parte inferior da track de video (sobre thumbs)
+    const wMidY = waveTop + waveH * 0.78;
+    const wAmpH = waveH * 0.20;
+    const s2 = BEState.get();
+    const trimIn = s2.trim.in;
+    const trimOut = s2.trim.out > 0 ? s2.trim.out : duration;
+    ctx.save();
+    roundRect(ctx, secToPx(0), TRACK_PAD_TOP, secToPx(duration) - secToPx(0), TRACK_H, TRACK_RADIUS);
+    ctx.clip();
     for (let i = 0; i < waveformData.length; i += 2) {
       const bucketIdx = i / 2;
       const sec = (bucketIdx / waveformBuckets) * duration;
@@ -383,10 +465,11 @@ window.BETimeline = (function() {
       const max = waveformData[i + 1];
       const inTrim = sec >= trimIn && sec <= trimOut;
       ctx.fillStyle = inTrim ? COLORS.waveform : COLORS.waveformOutside;
-      const yTop = midY - max * ampH;
-      const yBot = midY - min * ampH;
+      const yTop = wMidY - max * wAmpH;
+      const yBot = wMidY - min * wAmpH;
       ctx.fillRect(Math.round(x), yTop, 1, Math.max(1, yBot - yTop));
     }
+    ctx.restore();
   }
 
   // ─── Trim overlay (escurece fora do trim) ─────────────────────────────
@@ -479,7 +562,13 @@ window.BETimeline = (function() {
 
   // ─── Input handlers ────────────────────────────────────────────────────
   function bindInput() {
-    if (!canvas) return;
+    if (!canvas) {
+      if (DEBUG_INTERACTION) console.warn('[timeline] bindInput: no canvas!');
+      return;
+    }
+    if (DEBUG_INTERACTION) console.log('[timeline] bindInput: registrando event listeners no canvas', canvas);
+    // Garante que o canvas captura mouse events
+    canvas.style.pointerEvents = 'auto';
 
     canvas.addEventListener('mousedown', e => onPointerDown(e.clientX, e.clientY, e));
     canvas.addEventListener('mousemove', e => onPointerMove(e.clientX, e.clientY, e));
@@ -541,7 +630,14 @@ window.BETimeline = (function() {
   const DRAG_THRESHOLD_PX = 5;
 
   function onPointerDown(clientX, clientY, evt) {
-    if (!canvas || !duration) return;
+    if (!canvas) {
+      if (DEBUG_INTERACTION) console.warn('[timeline] mousedown: no canvas');
+      return;
+    }
+    if (!duration) {
+      if (DEBUG_INTERACTION) console.warn('[timeline] mousedown: duration=0 (sem video?)');
+      return;
+    }
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
@@ -552,14 +648,22 @@ window.BETimeline = (function() {
     if (handle) {
       evt.preventDefault && evt.preventDefault();
       dragging = { kind: handle, lastClientX: clientX };
+      if (DEBUG_INTERACTION) console.log('[timeline] mousedown -> drag handle:', handle);
       return;
     }
 
     // 2) Sempre move playhead pra o clique (CapCut: clique = seek)
-    if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
+    if (videoEl) {
+      videoEl.currentTime = Math.max(0, Math.min(duration, t));
+      if (DEBUG_INTERACTION) console.log('[timeline] mousedown -> seek playhead:', t.toFixed(2), 's');
+    } else {
+      if (DEBUG_INTERACTION) console.warn('[timeline] mousedown: videoEl null!');
+    }
 
     // 3) Se clicou DENTRO da track de video E em um clip real: arma drag
     const clipHit = hitTestClip(x, y);
+    if (DEBUG_INTERACTION) console.log('[timeline] mousedown @', x.toFixed(0)+','+y.toFixed(0), '| trackY:', TRACK_PAD_TOP, '-', (TRACK_PAD_TOP+TRACK_H), '| hit:', clipHit ? ('clip#'+clipHit.id) : 'NULL');
+
     if (clipHit) {
       BEState.selectClip(clipHit.id);
       dragging = {
@@ -570,10 +674,12 @@ window.BETimeline = (function() {
         sourceInOriginal: clipHit.source_in,
         moved: false,
       };
+      if (DEBUG_INTERACTION) console.log('[timeline] arming clip-drag for clip#'+clipHit.id);
+      evt.preventDefault && evt.preventDefault();
     } else {
-      // Em qualquer outro lugar (espaço vazio, ruler, track de audio): playhead drag
       BEState.selectClip(null);
       dragging = { kind: 'playhead', lastClientX: clientX };
+      if (DEBUG_INTERACTION) console.log('[timeline] dragging playhead (clicou fora de clip)');
     }
     requestRender();
   }
@@ -817,9 +923,14 @@ window.BETimeline = (function() {
       waveformStatus = 'pending';
       const lbl = document.getElementById('tlZoomLabel');
       if (lbl) lbl.textContent = '100%';
+      if (DEBUG_INTERACTION) console.log('[timeline] onStateChange: video carregado, duration=', duration, '· canvasW=', canvasW, '· canvasH=', canvasH);
+      // Re-checa canvas size (parent pode ter zerado durante render)
       setTimeout(() => {
+        resize();
         if (!videoEl) bindVideoSync();
         maybeGenerateWaveform();
+        requestRender();
+        if (DEBUG_INTERACTION) console.log('[timeline] post-resize canvasW=', canvasW, '· duration=', duration);
       }, 300);
     }
     requestRender();
