@@ -225,6 +225,13 @@
       if (btnPlay) {
         btnPlay.addEventListener('click', () => BETimeline.playRange());
       }
+      // Fase 8: bind botão Exportar
+      const btnExp = document.querySelector('.btn-export');
+      if (btnExp) {
+        btnExp.disabled = false;
+        btnExp.title = 'Exportar MP4 final';
+        btnExp.addEventListener('click', () => this.openExportModal());
+      }
 
       // Fase 3: bind botoes timeline toolbar (split, delete, undo, redo)
       this.bindTimelineToolbar();
@@ -560,6 +567,14 @@
       const labels = { media: 'Mídia', text: 'Texto', audio: 'Áudio', transitions: 'Transições', style: 'Estilo' };
       if (titleEl) titleEl.textContent = labels[name] || name;
       this.renderPanel(name);
+      // Mobile: abre bottom sheet
+      const isMobile = window.matchMedia('(max-width: 900px)').matches;
+      const panel = document.querySelector('.editor-panel');
+      if (panel && isMobile) panel.classList.add('open');
+    },
+    closeMobilePanel() {
+      const panel = document.querySelector('.editor-panel');
+      if (panel) panel.classList.remove('open');
     },
     renderPanel(name) {
       const s = BEState.get();
@@ -854,6 +869,168 @@
       const panel = document.getElementById('panelBody');
       if (!panel) return;
       panel.innerHTML = `<div class="empty-list">Estilos prontos chegam em fases futuras. Por enquanto edita manualmente em Texto/Áudio.</div>`;
+    },
+    // ─── Fase 8: Export modal + polling ───────────────────────────────────
+    _exportPolling: null,
+    async openExportModal() {
+      const s = BEState.get();
+      if (!s.video || !s.video.url) return this.flashStatus('Sem vídeo carregado');
+      if (!s.project_id) {
+        // Força save pra ter project_id
+        this.flashStatus('Salvando projeto…');
+        await new Promise(r => setTimeout(r, 2500));
+        if (!BEState.get().project_id) return this.flashStatus('Erro ao salvar — tenta de novo');
+      }
+      const modal = document.createElement('div');
+      modal.className = 'editor-modal-overlay';
+      modal.id = 'exportModal';
+      modal.innerHTML = `
+        <div class="editor-modal export-modal">
+          <div class="modal-header">
+            <h3>Exportar vídeo</h3>
+            <button class="modal-close" id="expClose">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="export-summary" id="expSummary">
+              <div class="exp-meta">
+                <div><strong>Clipes:</strong> <span id="expClips">—</span></div>
+                <div><strong>Textos:</strong> <span id="expTexts">—</span></div>
+                <div><strong>Duração:</strong> <span id="expDur">—</span></div>
+                <div><strong>Resolução:</strong> 1080×1920 (9:16)</div>
+              </div>
+              <button class="btn-primary" id="expStart">Começar export</button>
+            </div>
+            <div class="export-progress" id="expProgress" hidden>
+              <div class="exp-stage" id="expStage">Preparando…</div>
+              <div class="exp-bar"><div class="exp-bar-fill" id="expBarFill"></div></div>
+              <div class="exp-pct" id="expPct">0%</div>
+              <button class="btn-secondary exp-cancel" id="expCancel">Cancelar</button>
+            </div>
+            <div class="export-result" id="expResult" hidden>
+              <div class="exp-success">✓ Pronto!</div>
+              <video id="expVideo" controls playsinline></video>
+              <a class="btn-primary exp-download" id="expDownload" download="bluetube-export.mp4">⬇ Baixar MP4</a>
+              <button class="btn-secondary" id="expNew">Fazer outro</button>
+            </div>
+            <div class="export-error" id="expError" hidden></div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      this.fillExportSummary();
+      modal.querySelector('#expClose').addEventListener('click', () => this.closeExportModal());
+      modal.querySelector('#expStart').addEventListener('click', () => this.startExport());
+      modal.querySelector('#expCancel').addEventListener('click', () => this.cancelExport());
+      modal.querySelector('#expNew').addEventListener('click', () => this.closeExportModal());
+    },
+    fillExportSummary() {
+      const s = BEState.get();
+      const clips = BEState.getEffectiveClips();
+      const totalDur = clips.reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
+      document.getElementById('expClips').textContent = clips.length;
+      document.getElementById('expTexts').textContent = (s.texts || []).filter(t => t.active !== false).length;
+      document.getElementById('expDur').textContent = fmtTimeMs(totalDur);
+    },
+    closeExportModal() {
+      if (this._exportPolling) { clearInterval(this._exportPolling); this._exportPolling = null; }
+      document.getElementById('exportModal')?.remove();
+    },
+    async startExport() {
+      const s = BEState.get();
+      document.getElementById('expSummary').hidden = true;
+      document.getElementById('expProgress').hidden = false;
+      document.getElementById('expError').hidden = true;
+      this.setExportProgress('Enviando pro render…', 5);
+      const token = localStorage.getItem('bt_token');
+      try {
+        const r = await fetch('/api/blue-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'edit-v0', token, project_id: s.project_id, project_state: s }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) {
+          return this.showExportError(d.error || 'Erro ao iniciar export');
+        }
+        this.setExportProgress('Processando vídeo…', 10);
+        this.startExportPolling();
+      } catch (e) {
+        this.showExportError('Erro de rede: ' + e.message);
+      }
+    },
+    startExportPolling() {
+      const s = BEState.get();
+      const token = localStorage.getItem('bt_token');
+      this._exportPolling = setInterval(async () => {
+        try {
+          const r = await fetch('/api/blue-editor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'status-v0', token, project_id: s.project_id }),
+          });
+          const d = await r.json();
+          if (!r.ok) return;
+          const stages = {
+            queued: 'Na fila…',
+            downloading: 'Baixando vídeo…',
+            trimming: 'Cortando clipes…',
+            concatenating: 'Juntando clipes…',
+            audio: 'Processando áudio…',
+            rendering: 'Renderizando vídeo final…',
+            uploading: 'Enviando MP4…',
+          };
+          const stage = stages[d.status] || d.status || 'Processando…';
+          if (d.status === 'done' && d.output_url) {
+            clearInterval(this._exportPolling); this._exportPolling = null;
+            this.setExportProgress('Pronto!', 100);
+            setTimeout(() => this.showExportResult(d.output_url), 400);
+            return;
+          }
+          if (d.status === 'error') {
+            clearInterval(this._exportPolling); this._exportPolling = null;
+            this.showExportError(d.erro || 'Erro no render');
+            return;
+          }
+          this.setExportProgress(stage, d.progresso || 10);
+        } catch (e) { /* ignora — re-tenta no próximo tick */ }
+      }, 2500);
+    },
+    setExportProgress(stage, pct) {
+      const stEl = document.getElementById('expStage');
+      const pctEl = document.getElementById('expPct');
+      const barEl = document.getElementById('expBarFill');
+      if (stEl) stEl.textContent = stage;
+      if (pctEl) pctEl.textContent = pct + '%';
+      if (barEl) barEl.style.width = pct + '%';
+    },
+    async cancelExport() {
+      if (this._exportPolling) { clearInterval(this._exportPolling); this._exportPolling = null; }
+      const token = localStorage.getItem('bt_token');
+      try {
+        await fetch('/api/blue-editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cancel-v0', token, project_id: BEState.get().project_id }),
+        });
+      } catch(e) {}
+      this.closeExportModal();
+    },
+    showExportError(msg) {
+      document.getElementById('expProgress').hidden = true;
+      document.getElementById('expSummary').hidden = false;
+      const errEl = document.getElementById('expError');
+      errEl.hidden = false;
+      errEl.textContent = '⚠ ' + msg;
+    },
+    showExportResult(url) {
+      document.getElementById('expProgress').hidden = true;
+      document.getElementById('expResult').hidden = false;
+      document.getElementById('expVideo').src = url;
+      document.getElementById('expDownload').href = url;
+      // Tracking
+      try {
+        if (typeof fbq !== 'undefined') fbq('track', 'Lead', { content_name: 'editor_export' });
+      } catch(e){}
     },
     actionSplit() {
       const vid = document.getElementById('previewVideo');

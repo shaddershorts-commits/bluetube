@@ -368,6 +368,223 @@ app.get('/status/:jobId', (req, res) => {
   res.json(job);
 });
 
+app.post('/cancel/:jobId', (req, res) => {
+  const job = JOBS.get(req.params.jobId);
+  if (!job) return res.json({ ok: false, msg: 'not found' });
+  JOBS.set(req.params.jobId, { ...job, status: 'cancelled', error: 'cancelled by user' });
+  res.json({ ok: true });
+});
+
+// ── BlueEditor V0 — Fase 7 render endpoint ────────────────────────────────
+// Recebe state simplificado do editor, pipeline FFmpeg:
+//   1. Cada clip (source_in, source_out) -> trim+reencode pra video_only.mp4
+//   2. Concat dos clips (xfade transitions se houver)
+//   3. drawtext overlays (texts[])
+//   4. amix vidio + audio_extra com volumes
+//   5. scale + crop pra 1080×1920 (ou letterbox se aspect_strategy)
+//   6. Upload pro Supabase
+app.post('/edit-v0', (req, res) => {
+  const p = req.body || {};
+  if (!p.video_url || !Array.isArray(p.clips) || p.clips.length === 0) {
+    return res.status(400).json({ error: 'video_url e clips[] obrigatórios' });
+  }
+  if (!p.supabase_url || !p.supabase_key) {
+    return res.status(400).json({ error: 'Faltam credenciais Supabase' });
+  }
+  const jobId = uuidv4();
+  JOBS.set(jobId, { status: 'queued', progress: 0 });
+  res.json({ ok: true, job_id: jobId });
+  processEditV0(jobId, p).catch(e => {
+    console.error('[edit-v0]', jobId, 'failed:', e.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+  });
+});
+
+function escapeDrawText(s) {
+  // FFmpeg drawtext exige escape de :' \ %
+  return String(s || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/%/g, '\\%');
+}
+function fontFile(fontName) {
+  // Mapeia fonte do user pra TTF instalada no container
+  const f = (fontName || '').toLowerCase();
+  if (f.includes('bebas')) return '/usr/share/fonts/truetype/bt/BebasNeue-Regular.ttf';
+  if (f.includes('oswald')) return '/usr/share/fonts/truetype/bt/Oswald-Bold.ttf';
+  if (f.includes('inter')) return '/usr/share/fonts/truetype/bt/Anton-Regular.ttf'; // fallback
+  return '/usr/share/fonts/truetype/bt/Anton-Regular.ttf';
+}
+function sizePct(size) {
+  return ({ small: 0.04, medium: 0.06, large: 0.09, xlarge: 0.13 })[size] || 0.06;
+}
+function hexToFfmpeg(hex) {
+  // FFmpeg cor: 0xRRGGBB
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '#ffffff');
+  return '0x' + (m ? m[1] : 'ffffff');
+}
+
+async function processEditV0(jobId, p) {
+  const dir = path.join('/tmp', jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const update = (status, progress, extra = {}) => {
+    if (JOBS.get(jobId)?.status === 'cancelled') throw new Error('cancelled');
+    JOBS.set(jobId, { status, progress, ...extra });
+  };
+
+  try {
+    // 1. Download source video
+    update('downloading', 5);
+    const sourcePath = path.join(dir, 'source.mp4');
+    await downloadFile(p.video_url, sourcePath);
+    // 2. Audio extra (opcional)
+    let audioExtraPath = null;
+    if (p.audio_extra_url) {
+      audioExtraPath = path.join(dir, 'audio_extra.mp3');
+      try { await downloadFile(p.audio_extra_url, audioExtraPath); }
+      catch (e) { console.log('[edit-v0] audio extra falhou, seguindo sem:', e.message); audioExtraPath = null; }
+    }
+
+    // 3. Trim cada clip
+    update('trimming', 15);
+    const clipFiles = [];
+    for (let i = 0; i < p.clips.length; i++) {
+      const c = p.clips[i];
+      const out = path.join(dir, `clip_${i}.mp4`);
+      const dur = (c.source_out - c.source_in);
+      if (dur < 0.05) continue;
+      // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
+      // V0 usa fast seek + re-encode pra balance
+      await run('ffmpeg', [
+        '-y', '-ss', String(c.source_in), '-t', String(dur),
+        '-i', sourcePath,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-force_key_frames', 'expr:gte(t,0)',
+        '-an', // pass1 sem audio (audio mux na fase final)
+        out,
+      ]);
+      clipFiles.push({ path: out, duration: dur });
+    }
+    if (clipFiles.length === 0) throw new Error('Nenhum clip valido apos trim');
+
+    // 4. Concat clips (sem transicoes complexas no V0 — cut simples)
+    update('concatenating', 40);
+    const concatPath = path.join(dir, 'concat.mp4');
+    if (clipFiles.length === 1) {
+      // Sem concat — só renomeia
+      fs.renameSync(clipFiles[0].path, concatPath);
+    } else {
+      // Concat via demuxer
+      const listFile = path.join(dir, 'concat.txt');
+      fs.writeFileSync(listFile, clipFiles.map(c => `file '${c.path.replace(/'/g, "'\\''")}'`).join('\n'));
+      await run('ffmpeg', [
+        '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
+        '-c:v', 'copy', concatPath,
+      ]);
+    }
+
+    // 5. Trilha de áudio: extrair audio source dos clips (mesma logica trim+concat)
+    update('audio', 55);
+    const audioClipFiles = [];
+    for (let i = 0; i < p.clips.length; i++) {
+      const c = p.clips[i];
+      const out = path.join(dir, `audio_${i}.aac`);
+      const dur = (c.source_out - c.source_in);
+      if (dur < 0.05) continue;
+      try {
+        await run('ffmpeg', [
+          '-y', '-ss', String(c.source_in), '-t', String(dur),
+          '-i', sourcePath, '-vn', '-c:a', 'aac', '-b:a', '128k', out,
+        ]);
+        audioClipFiles.push(out);
+      } catch(e) { /* video pode nao ter audio */ }
+    }
+    let sourceAudioPath = null;
+    if (audioClipFiles.length === 1) {
+      sourceAudioPath = audioClipFiles[0];
+    } else if (audioClipFiles.length > 1) {
+      const listA = path.join(dir, 'audio_concat.txt');
+      fs.writeFileSync(listA, audioClipFiles.map(a => `file '${a}'`).join('\n'));
+      sourceAudioPath = path.join(dir, 'source_audio.aac');
+      try {
+        await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listA, '-c', 'copy', sourceAudioPath]);
+      } catch(e) { sourceAudioPath = null; }
+    }
+
+    // 6. Pipeline final: scale+crop 1080×1920 + drawtext overlays + audio mix
+    update('rendering', 70);
+    const OUT_W = p.output_width || 1080;
+    const OUT_H = p.output_height || 1920;
+    const aspectStrategy = p.aspect_strategy || 'crop_center';
+    // Filter de aspect
+    let vf;
+    if (aspectStrategy === 'letterbox') {
+      vf = `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=decrease,pad=${OUT_W}:${OUT_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+    } else {
+      vf = `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1`;
+    }
+    // drawtext pra cada texto ativo. Source_w/source_h em pct -> px do output
+    const texts = p.texts || [];
+    let textFilters = '';
+    for (const t of texts) {
+      const fs_px = Math.round(sizePct(t.size) * OUT_W);
+      const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
+      const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
+      const txt = escapeDrawText(t.content || '');
+      const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
+      textFilters += `,drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${Math.max(2, Math.round(fs_px*0.06))}:bordercolor=0x000000:x=${x_px}:y=${y_px}:enable='${enable}'`;
+    }
+    vf += textFilters;
+
+    // Volumes
+    const volV = p.volumes?.video ?? 1;
+    const volA = p.volumes?.audio_extra ?? 1;
+    const finalPath = path.join(dir, 'output.mp4');
+    const args = ['-y', '-threads', '1'];
+    args.push('-i', concatPath);
+    if (sourceAudioPath) args.push('-i', sourceAudioPath);
+    if (audioExtraPath) args.push('-i', audioExtraPath);
+    args.push('-vf', vf);
+    // Audio: mix com base no que temos
+    if (sourceAudioPath && audioExtraPath) {
+      args.push('-filter_complex', `[1:a]volume=${volV}[a1];[2:a]volume=${volA}[a2];[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0[a]`);
+      args.push('-map', '0:v', '-map', '[a]');
+    } else if (sourceAudioPath) {
+      args.push('-filter_complex', `[1:a]volume=${volV}[a]`);
+      args.push('-map', '0:v', '-map', '[a]');
+    } else if (audioExtraPath) {
+      args.push('-filter_complex', `[1:a]volume=${volA}[a]`);
+      args.push('-map', '0:v', '-map', '[a]');
+    } else {
+      args.push('-map', '0:v');
+    }
+    args.push(
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      '-shortest',
+      finalPath,
+    );
+    await run('ffmpeg', args);
+
+    // 7. Upload
+    update('uploading', 92);
+    const outputPath = `editor/v0/${jobId}/output.mp4`;
+    const outputUrl = await uploadToSupabase(finalPath, outputPath, p.supabase_url, p.supabase_key);
+
+    update('done', 100, { output_url: outputUrl });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch(e){} }, 60000);
+  } catch (err) {
+    if (err.message === 'cancelled') return;
+    console.error('[edit-v0]', jobId, err.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: err.message });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch(e){} }, 10000);
+  }
+}
+
 // ── PROXY DOWNLOAD: streaming de URL remoto com CORS aberto ────────────────
 // Resolve o problema de CDNs (tokcdn, cdninstagram, etc) que não mandam
 // Access-Control-Allow-Origin, impedindo o browser de fetch + blob download.

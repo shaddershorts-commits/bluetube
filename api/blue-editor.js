@@ -325,6 +325,168 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 7 — Editor V0 render (edit-v0)
+  // Recebe project_state completo, valida, monta payload pro Railway FFmpeg.
+  // Frame accuracy via -force_key_frames. Concat clips + texts (drawtext) +
+  // audio mix + 1080×1920 (scale + crop center). Salva job no editor_jobs.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (action === 'edit-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    if (!RAILWAY_FFMPEG_URL) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL não configurada' });
+    const projectId = req.body?.project_id;
+    const projectState = req.body?.project_state;
+    if (!projectId || !projectState) return res.status(400).json({ error: 'project_id e project_state obrigatórios' });
+    if (!projectState.video?.url) return res.status(400).json({ error: 'video sem URL' });
+
+    // Determina clips efetivos (igual frontend.getEffectiveClips)
+    let effectiveClips = (projectState.clips || []).filter(c => c.active !== false);
+    if (effectiveClips.length === 0) {
+      const dur = projectState.video.duration || 0;
+      const inT = projectState.trim?.in || 0;
+      const outT = projectState.trim?.out > 0 ? projectState.trim.out : dur;
+      if (dur <= 0) return res.status(400).json({ error: 'duracao invalida' });
+      effectiveClips = [{ source_in: inT, source_out: outT }];
+    }
+    effectiveClips.sort((a, b) => a.source_in - b.source_in);
+    const totalDur = effectiveClips.reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
+    if (totalDur < 0.5) return res.status(400).json({ error: 'duracao total muito curta' });
+
+    // Quota mensal
+    try {
+      const MONTHLY_LIMIT = parseInt(process.env.EDITOR_MONTHLY_LIMIT || '100', 10);
+      const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0,0,0,0);
+      const cR = await fetch(
+        `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.done&created_at=gte.${startMonth.toISOString()}&select=id`,
+        { headers: { ...supaH, Prefer: 'count=exact' } }
+      );
+      const cd = cR.ok ? await cR.json() : [];
+      if ((cd?.length || 0) >= MONTHLY_LIMIT) {
+        return res.status(429).json({ error: `Limite de ${MONTHLY_LIMIT} exports/mês atingido` });
+      }
+    } catch (e) {}
+
+    // Payload pro Railway
+    const railwayPayload = {
+      video_url: projectState.video.url,
+      audio_extra_url: projectState.audio_extra?.url || null,
+      source_width: projectState.video.width || 1080,
+      source_height: projectState.video.height || 1920,
+      aspect_strategy: projectState.aspect_strategy || 'crop_center',
+      clips: effectiveClips.map(c => ({ source_in: c.source_in, source_out: c.source_out })),
+      transitions: projectState.transitions || [],
+      texts: (projectState.texts || []).filter(t => t.active !== false),
+      volumes: projectState.volumes || { video: 1, audio_extra: 1 },
+      output_width: 1080,
+      output_height: 1920,
+      supabase_url: SU,
+      supabase_key: SK,
+    };
+
+    try {
+      const jobR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/edit-v0`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(railwayPayload),
+      });
+      if (!jobR.ok) {
+        const et = await jobR.text();
+        return res.status(502).json({ error: 'Railway: ' + et.slice(0, 200) });
+      }
+      const jd = await jobR.json();
+      const railwayJobId = jd.job_id;
+      // Atualiza editor_job pra processing
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          status: 'processing',
+          railway_job_id: railwayJobId,
+          progresso: 0,
+          erro: null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      return res.status(200).json({ ok: true, project_id: projectId, railway_job_id: railwayJobId });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── status-v0: polling do export ───────────────────────────────────────
+  if (action === 'status-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    const projectId = req.body?.project_id || req.query?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=status,railway_job_id,progresso,output_url,erro`, { headers: supaH });
+      const rows = r.ok ? await r.json() : [];
+      const job = rows?.[0];
+      if (!job) return res.status(404).json({ error: 'job_nao_encontrado' });
+      if (job.status === 'done' && job.output_url) {
+        return res.status(200).json({ status: 'done', progresso: 100, output_url: job.output_url });
+      }
+      if (job.status === 'error') {
+        return res.status(200).json({ status: 'error', erro: job.erro });
+      }
+      // Consulta Railway
+      if (!job.railway_job_id || !RAILWAY_FFMPEG_URL) {
+        return res.status(200).json({ status: job.status, progresso: job.progresso || 0 });
+      }
+      const sR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/status/${job.railway_job_id}`);
+      if (!sR.ok) return res.status(200).json({ status: job.status, progresso: job.progresso || 0 });
+      const sd = await sR.json();
+      const patch = {
+        status: sd.status === 'done' ? 'done' : (sd.status === 'error' ? 'error' : 'processing'),
+        progresso: sd.progress || 0,
+      };
+      if (sd.status === 'done' && sd.output_url) {
+        patch.output_url = sd.output_url;
+        patch.concluido_em = new Date().toISOString();
+      }
+      if (sd.status === 'error') patch.erro = sd.error || 'erro desconhecido';
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify(patch),
+      }).catch(()=>{});
+      return res.status(200).json({
+        status: patch.status,
+        progresso: sd.progress || 0,
+        output_url: sd.output_url || null,
+        erro: sd.error || null,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── cancel-v0: cancela export ──────────────────────────────────────────
+  if (action === 'cancel-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    const projectId = req.body?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=railway_job_id`, { headers: supaH });
+      const rows = r.ok ? await r.json() : [];
+      const job = rows?.[0];
+      if (job?.railway_job_id && RAILWAY_FFMPEG_URL) {
+        await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/cancel/${job.railway_job_id}`, { method: 'POST' }).catch(()=>{});
+      }
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'editing', railway_job_id: null, progresso: 0, erro: null }),
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── generate: transcript + 2 roteiros ──────────────────────────────────────
   if (action === 'generate') {
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });

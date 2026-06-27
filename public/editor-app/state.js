@@ -367,13 +367,15 @@ window.BEState = (function() {
     saveTimer = setTimeout(doSave, 2000);
   }
 
+  let retryCount = 0;
+  const MAX_RETRIES = 5;
   async function doSave() {
     if (saveInFlight) { pendingSaveAfterFlight = true; return; }
-    if (!state.video.url) { setSaveStatus('idle'); return; } // nao salva projeto vazio
+    if (!state.video.url) { setSaveStatus('idle'); return; }
     saveInFlight = true;
     try {
       const token = localStorage.getItem('bt_token');
-      if (!token) { setSaveStatus('error', 'sem login'); return; }
+      if (!token) { setSaveStatus('error', 'sem login'); saveInFlight = false; return; }
       const body = {
         action: 'save-project',
         token,
@@ -382,20 +384,42 @@ window.BEState = (function() {
         nome_projeto: state.nome_projeto,
         video_url: state.video.url,
       };
+      // Timeout 15s pro autosave
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 15000);
       const r = await fetch('/api/blue-editor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: ac.signal,
       });
+      clearTimeout(tid);
       const d = await r.json();
       if (r.ok && d.ok) {
         if (!state.project_id && d.project_id) setProjectId(d.project_id);
         setSaveStatus('saved');
+        retryCount = 0;
       } else {
-        setSaveStatus('error', d.error || 'falha');
+        // Retry com backoff se for erro server-side transitorio
+        if (r.status >= 500 && retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.min(60000, 2000 * Math.pow(2, retryCount));
+          setSaveStatus('error', `retry ${retryCount}/${MAX_RETRIES} em ${(delay/1000)|0}s`);
+          setTimeout(() => scheduleSave(), delay);
+        } else {
+          setSaveStatus('error', d.error || 'falha');
+        }
       }
     } catch (e) {
-      setSaveStatus('error', e.message);
+      const isAbort = e.name === 'AbortError';
+      if (retryCount < MAX_RETRIES) {
+        retryCount++;
+        const delay = Math.min(60000, 2000 * Math.pow(2, retryCount));
+        setSaveStatus('error', `${isAbort ? 'timeout' : 'rede'} — retry em ${(delay/1000)|0}s`);
+        setTimeout(() => scheduleSave(), delay);
+      } else {
+        setSaveStatus('error', e.message);
+      }
     } finally {
       saveInFlight = false;
       if (pendingSaveAfterFlight) {
