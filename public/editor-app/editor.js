@@ -363,41 +363,176 @@
       this._tbBtns = btns;
     },
     bindKeyboardShortcuts() {
+      // Shortcuts CapCut Desktop (compativeis pra migracao):
+      //   Ctrl+B       Split clip (substituiu meu C)
+      //   Q            Delete left of playhead
+      //   W            Delete right of playhead
+      //   V            Toggle clip active (skip no export)
+      //   I / O        Set In/Out point (trim global)
+      //   Space        Play/Pause
+      //   J / K / L    Shuttle (J=seek-, K=stop, L=seek+/play)
+      //   ← / →        Frame backward/forward (Shift = 10 frames)
+      //   Home / End   Go to start/end
+      //   ↑ / ↓        Previous/next cut point
+      //   Ctrl + Z     Undo
+      //   Ctrl+Shift+Z / Ctrl+Y   Redo
+      //   Ctrl + +/-   Zoom in/out timeline
+      //   Shift + Z    Zoom to fit
+      //   Shift + X    Select clip at playhead
+      //   Alt + X      Deselect
+      //   Delete/Backspace  Delete selected clip
       document.addEventListener('keydown', e => {
-        // Ignora se foco em input/textarea
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         const s = BEState.get();
         if (!s.video || !s.video.url) return;
+        const vid = document.getElementById('previewVideo');
+        const now = vid ? vid.currentTime : 0;
+        const dur = s.video.duration || 0;
+        const ctrl = e.ctrlKey || e.metaKey;
+        const k = e.key;
+        const lower = k.length === 1 ? k.toLowerCase() : k;
 
-        // Ctrl/Cmd + Z = undo
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        // ─── Undo / Redo ────────────────────────────────────────────────
+        if (ctrl && lower === 'z' && !e.shiftKey) {
+          e.preventDefault(); BEHistory && BEHistory.undo(); return;
+        }
+        if ((ctrl && e.shiftKey && lower === 'z') || (ctrl && lower === 'y')) {
+          e.preventDefault(); BEHistory && BEHistory.redo(); return;
+        }
+        // ─── Ctrl + B = Split (CapCut) ─────────────────────────────────
+        if (ctrl && lower === 'b') {
+          e.preventDefault(); this.actionSplit(); return;
+        }
+        // ─── Ctrl + +/- = Zoom timeline ────────────────────────────────
+        if (ctrl && (k === '+' || k === '=')) {
+          e.preventDefault(); BETimeline && BETimeline.zoomBy && BETimeline.zoomBy(1.5); return;
+        }
+        if (ctrl && k === '-') {
+          e.preventDefault(); BETimeline && BETimeline.zoomBy && BETimeline.zoomBy(1/1.5); return;
+        }
+        // ─── Shift + Z = Zoom to fit ──────────────────────────────────
+        if (e.shiftKey && lower === 'z') {
+          e.preventDefault(); BETimeline && BETimeline.zoomFit && BETimeline.zoomFit(); return;
+        }
+        // ─── Shift + X = select clip at playhead, Alt + X = deselect ──
+        if (e.shiftKey && lower === 'x') {
           e.preventDefault();
-          BEHistory && BEHistory.undo();
+          const clip = BEState.clipAtTime(now);
+          if (clip && !clip.virtual) BEState.selectClip(clip.id);
           return;
         }
-        // Ctrl/Cmd + Shift + Z = redo, ou Ctrl + Y = redo
-        if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
-            || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
+        if (e.altKey && lower === 'x') {
+          e.preventDefault(); BEState.selectClip(null); return;
+        }
+        // ─── Q / W: ripple delete left/right ──────────────────────────
+        if (lower === 'q' && !ctrl && !e.altKey) {
           e.preventDefault();
-          BEHistory && BEHistory.redo();
+          if (!window.BEClips || !BEClips.deleteLeftFromPlayhead(now)) {
+            this.flashStatus('Posicione o playhead dentro de um clipe');
+          }
           return;
         }
-        // C = Cortar aqui
-        if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (lower === 'w' && !ctrl && !e.altKey) {
           e.preventDefault();
-          this.actionSplit();
+          if (!window.BEClips || !BEClips.deleteRightFromPlayhead(now)) {
+            this.flashStatus('Posicione o playhead dentro de um clipe');
+          }
           return;
         }
-        // Delete = excluir clipe selecionado
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        // ─── V: toggle clip active ────────────────────────────────────
+        if (lower === 'v' && !ctrl && !e.altKey && !e.shiftKey) {
+          e.preventDefault();
+          const id = s.selected_clip_id || (BEState.clipAtTime(now) || {}).id;
+          if (id && window.BEClips) BEClips.toggleClipActiveById(id);
+          return;
+        }
+        // ─── I / O: set trim In/Out ───────────────────────────────────
+        if (lower === 'i' && !ctrl && !e.altKey) {
+          e.preventDefault();
+          BEState.patch({ trim: { in: now, out: s.trim.out || dur } });
+          return;
+        }
+        if (lower === 'o' && !ctrl && !e.altKey) {
+          e.preventDefault();
+          BEState.patch({ trim: { in: s.trim.in || 0, out: now } });
+          return;
+        }
+        // ─── Space: play/pause ────────────────────────────────────────
+        if (k === ' ' && !ctrl && !e.altKey) {
+          e.preventDefault();
+          if (vid) { vid.paused ? vid.play().catch(()=>{}) : vid.pause(); }
+          return;
+        }
+        // ─── J / K / L: shuttle ──────────────────────────────────────
+        if (lower === 'j' && !ctrl) {
+          e.preventDefault();
+          if (vid) { vid.pause(); vid.currentTime = Math.max(0, now - 2); }
+          return;
+        }
+        if (lower === 'k' && !ctrl) {
+          e.preventDefault();
+          if (vid) vid.pause();
+          return;
+        }
+        if (lower === 'l' && !ctrl) {
+          e.preventDefault();
+          if (vid) vid.play().catch(()=>{});
+          return;
+        }
+        // ─── Frame nav (← / → e Shift+ pra 10 frames) ────────────────
+        const FRAME = 1/30;
+        if (k === 'ArrowLeft') {
+          e.preventDefault();
+          if (vid) vid.currentTime = Math.max(0, now - FRAME * (e.shiftKey ? 10 : 1));
+          return;
+        }
+        if (k === 'ArrowRight') {
+          e.preventDefault();
+          if (vid) vid.currentTime = Math.min(dur, now + FRAME * (e.shiftKey ? 10 : 1));
+          return;
+        }
+        // ─── ↑ / ↓: cut point navigation ─────────────────────────────
+        if (k === 'ArrowUp') {
+          e.preventDefault();
+          const cuts = this.getCutPoints();
+          const prev = cuts.filter(t => t < now - 0.05).pop();
+          if (vid && prev !== undefined) vid.currentTime = prev;
+          return;
+        }
+        if (k === 'ArrowDown') {
+          e.preventDefault();
+          const cuts = this.getCutPoints();
+          const next = cuts.find(t => t > now + 0.05);
+          if (vid && next !== undefined) vid.currentTime = next;
+          return;
+        }
+        // ─── Home / End ──────────────────────────────────────────────
+        if (k === 'Home') {
+          e.preventDefault();
+          if (vid) vid.currentTime = 0;
+          return;
+        }
+        if (k === 'End') {
+          e.preventDefault();
+          if (vid) vid.currentTime = dur;
+          return;
+        }
+        // ─── Delete: deletar clip selecionado ────────────────────────
+        if (k === 'Delete' || k === 'Backspace') {
           if (s.selected_clip_id) {
-            e.preventDefault();
-            this.actionDelete();
+            e.preventDefault(); this.actionDelete();
           }
           return;
         }
       });
+    },
+    getCutPoints() {
+      // Retorna lista de tempos onde ha cortes (boundaries dos clips)
+      const clips = BEState.getEffectiveClips();
+      const pts = new Set([0]);
+      clips.forEach(c => { pts.add(c.source_in); pts.add(c.source_out); });
+      return Array.from(pts).sort((a, b) => a - b);
     },
     actionSplit() {
       const vid = document.getElementById('previewVideo');

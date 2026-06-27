@@ -270,24 +270,42 @@ window.BETimeline = (function() {
       const cx0 = secToPx(clip.source_in);
       const cx1 = secToPx(clip.source_out);
       const w = Math.max(2, cx1 - cx0);
-      // Cor alternada (mais visivel quando ha multiplos clips)
       const isSelected = sel === clip.id;
       const isSingle = clips.length === 1;
-      ctx.fillStyle = isSelected ? 'rgba(0,170,255,0.32)'
-        : isSingle ? 'rgba(0,170,255,0.20)'
-        : (i % 2 === 0 ? 'rgba(0,170,255,0.22)' : 'rgba(26,107,255,0.22)');
-      ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
+      const isInactive = clip.active === false;
+      if (isInactive) {
+        // Clip desativado: cinza listrado
+        ctx.fillStyle = 'rgba(100,116,139,0.18)';
+        ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
+        // Listras diagonais
+        ctx.save();
+        ctx.beginPath(); ctx.rect(cx0, TRACK_PAD_TOP, w, TRACK_H); ctx.clip();
+        ctx.strokeStyle = 'rgba(100,116,139,0.35)';
+        ctx.lineWidth = 1;
+        for (let lx = cx0 - TRACK_H; lx < cx0 + w + TRACK_H; lx += 12) {
+          ctx.beginPath();
+          ctx.moveTo(lx, TRACK_PAD_TOP);
+          ctx.lineTo(lx + TRACK_H, TRACK_PAD_TOP + TRACK_H);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = isSelected ? 'rgba(0,170,255,0.32)'
+          : isSingle ? 'rgba(0,170,255,0.20)'
+          : (i % 2 === 0 ? 'rgba(0,170,255,0.22)' : 'rgba(26,107,255,0.22)');
+        ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
+      }
       // Borda
-      ctx.strokeStyle = isSelected ? '#fbbf24' : COLORS.trackBorder;
+      ctx.strokeStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(100,116,139,0.4)' : COLORS.trackBorder;
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.strokeRect(cx0 + 0.5, TRACK_PAD_TOP + 0.5, w - 1, TRACK_H - 1);
       // Numero do clip (se ha mais de 1)
       if (!isSingle && w > 30) {
-        ctx.fillStyle = isSelected ? '#fbbf24' : 'rgba(232,244,255,0.9)';
+        ctx.fillStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(150,190,230,0.5)' : 'rgba(232,244,255,0.9)';
         ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, monospace';
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
-        ctx.fillText('#' + (i+1), cx0 + 4, TRACK_PAD_TOP + 3);
+        ctx.fillText('#' + (i+1) + (isInactive ? ' (off)' : ''), cx0 + 4, TRACK_PAD_TOP + 3);
       }
     }
   }
@@ -451,13 +469,20 @@ window.BETimeline = (function() {
       }
     }, { passive: false });
 
-    // Cursor style hover
+    // Cursor style hover (CapCut-like: grab em clip, ew-resize em handle)
     canvas.addEventListener('mousemove', e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const hit = hitTestHandle(x, y);
-      canvas.style.cursor = hit ? 'ew-resize' : (y < RULER_H ? 'pointer' : 'default');
+      if (dragging && (dragging.kind === 'clip-move' || dragging.kind === 'clip-pending')) {
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+      const hitH = hitTestHandle(x, y);
+      if (hitH) { canvas.style.cursor = 'ew-resize'; return; }
+      const hitC = hitTestClip(x, y);
+      if (hitC) { canvas.style.cursor = 'grab'; return; }
+      canvas.style.cursor = 'pointer';
     });
   }
 
@@ -469,12 +494,16 @@ window.BETimeline = (function() {
     return clip;
   }
 
+  // Drag clip: threshold 5px antes de virar drag de fato (pra distinguir de click)
+  const DRAG_THRESHOLD_PX = 5;
+
   function onPointerDown(clientX, clientY, evt) {
     if (!canvas || !duration) return;
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
 
+    // 1) Hit handles primeiro (mais prioritario)
     const handle = hitTestHandle(x, y);
     if (handle) {
       evt.preventDefault && evt.preventDefault();
@@ -482,51 +511,93 @@ window.BETimeline = (function() {
       return;
     }
 
-    // Clique em area de track: seleciona clip (se ha multiplos)
-    if (y >= TRACK_PAD_TOP && y <= TRACK_PAD_TOP + TRACK_H) {
-      const clip = hitTestClip(x, y);
-      if (clip) {
-        BEState.selectClip(clip.id);
-      } else {
-        BEState.selectClip(null);
-      }
-      // Tambem move playhead pra o ponto clicado
-      const t = snap(pxToSec(x), evt);
-      if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
-      dragging = { kind: 'playhead', lastClientX: clientX };
-      requestRender();
-      return;
-    }
-
-    // Clique na ruler → seek
-    if (y < RULER_H + TRACK_PAD_TOP + TRACK_H) {
-      const t = snap(pxToSec(x), evt);
-      if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
-      dragging = { kind: 'playhead', lastClientX: clientX };
-      requestRender();
-    }
-  }
-
-  function onPointerMove(clientX, clientY, evt) {
-    if (!dragging || !canvas) return;
-    evt.preventDefault && evt.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
+    // 2) Clique em qualquer Y MOVE PLAYHEAD (CapCut-like)
     const t = snap(pxToSec(x), evt);
-    const s = BEState.get();
-    if (dragging.kind === 'in') {
-      const newIn = Math.max(0, Math.min((s.trim.out > 0 ? s.trim.out : duration) - 0.1, t));
-      BEState.patch({ trim: { in: newIn, out: s.trim.out } });
-    } else if (dragging.kind === 'out') {
-      const newOut = Math.max(s.trim.in + 0.1, Math.min(duration, t));
-      BEState.patch({ trim: { in: s.trim.in, out: newOut } });
-    } else if (dragging.kind === 'playhead') {
-      if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
+    if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
+
+    // 3) Se foi clique em clip da track, ARMAR drag potencial (so vira drag apos threshold)
+    const clipHit = hitTestClip(x, y);
+    if (clipHit) {
+      BEState.selectClip(clipHit.id);
+      dragging = {
+        kind: 'clip-pending',
+        clipId: clipHit.id,
+        startClientX: clientX,
+        startTime: t,
+        sourceInOriginal: clipHit.source_in,
+        moved: false,
+      };
+    } else {
+      // Clique fora de qualquer clip: desseleciona + apenas move playhead
+      BEState.selectClip(null);
+      dragging = { kind: 'playhead', lastClientX: clientX };
     }
     requestRender();
   }
 
+  function onPointerMove(clientX, clientY, evt) {
+    if (!dragging || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const t = snap(pxToSec(x), evt);
+    const s = BEState.get();
+
+    if (dragging.kind === 'in') {
+      evt.preventDefault && evt.preventDefault();
+      const newIn = Math.max(0, Math.min((s.trim.out > 0 ? s.trim.out : duration) - 0.1, t));
+      BEState.patch({ trim: { in: newIn, out: s.trim.out } });
+      requestRender();
+    } else if (dragging.kind === 'out') {
+      evt.preventDefault && evt.preventDefault();
+      const newOut = Math.max(s.trim.in + 0.1, Math.min(duration, t));
+      BEState.patch({ trim: { in: s.trim.in, out: newOut } });
+      requestRender();
+    } else if (dragging.kind === 'playhead') {
+      if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
+      requestRender();
+    } else if (dragging.kind === 'clip-pending') {
+      // Detecta se passou do threshold pra virar drag
+      const dx = Math.abs(clientX - dragging.startClientX);
+      if (dx > DRAG_THRESHOLD_PX) {
+        dragging.kind = 'clip-move';
+        dragging.moved = true;
+      }
+    }
+    if (dragging.kind === 'clip-move') {
+      evt.preventDefault && evt.preventDefault();
+      // Calcula novo source_in baseado no delta total desde o inicio
+      const deltaSec = (clientX - dragging.startClientX) / pxPerSec();
+      const clip = BEState.findClip(dragging.clipId);
+      if (clip) {
+        const currentIn = clip.clip.source_in;
+        const targetIn = dragging.sourceInOriginal + deltaSec;
+        const delta = targetIn - currentIn;
+        if (Math.abs(delta) > 0.01) {
+          BEState.moveClip(dragging.clipId, delta);
+        }
+      }
+      requestRender();
+    }
+  }
+
   function onPointerUp() {
+    if (!dragging) return;
+    // Se foi drag clip-move, registra um Command pra undo total
+    if (dragging.kind === 'clip-move' && dragging.moved) {
+      const clip = BEState.findClip(dragging.clipId);
+      if (clip) {
+        const delta = clip.clip.source_in - dragging.sourceInOriginal;
+        // Apenas registra Command sem re-aplicar (estado ja mudou via moveClip durante drag)
+        if (Math.abs(delta) > 0.01 && window.BEHistory) {
+          const clipId = dragging.clipId;
+          BEHistory.execute({
+            label: 'mover clipe',
+            do() { /* ja aplicado */ },
+            undo() { BEState.moveClip(clipId, -delta); },
+          });
+        }
+      }
+    }
     dragging = null;
   }
 
@@ -731,5 +802,17 @@ window.BETimeline = (function() {
     }, 30);
   }
 
-  return { init, playRange };
+  function zoomBy(factor) {
+    zoomAt(canvasW / 2, factor);
+  }
+  function zoomFit() {
+    zoom = 1;
+    panSec = 0;
+    clampPan();
+    requestRender();
+    const lbl = document.getElementById('tlZoomLabel');
+    if (lbl) lbl.textContent = '100%';
+  }
+
+  return { init, playRange, zoomBy, zoomFit };
 })();

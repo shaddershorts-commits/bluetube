@@ -1,11 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   clips.js — Acoes de clip wrapadas em Commands undo/redo
+   clips.js — Acoes de clip wrapadas em Commands undo/redo (CapCut-style)
    ═══════════════════════════════════════════════════════════════════════════
-   Usa BEState (operacoes de mutacao) + BEHistory (registra reverter).
-
-   API publica:
-     BEClips.splitAtPlayhead(playerCurrentTime)
-     BEClips.deleteSelected()
+   API:
+     BEClips.splitAtPlayhead(t)         — Ctrl+B
+     BEClips.deleteSelected()           — Backspace/Delete
+     BEClips.deleteLeftFromPlayhead(t)  — Q
+     BEClips.deleteRightFromPlayhead(t) — W
+     BEClips.toggleClipActiveById(id)   — V
+     BEClips.moveClipBy(id, deltaSec)   — drag horizontal
      BEClips.canSplitAt(t)
      BEClips.canDeleteSelected()
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -13,38 +15,36 @@
 window.BEClips = (function() {
   'use strict';
 
+  function fmtTime(t) {
+    if (!isFinite(t) || t < 0) t = 0;
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t - m * 60);
+    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+
   function canSplitAt(t) {
     const s = BEState.get();
     if (!s.video || !s.video.duration) return false;
     const clip = BEState.clipAtTime(t);
     if (!clip) return false;
-    // Pelo menos 0.1s de cada lado
     return (t - clip.source_in > 0.1) && (clip.source_out - t > 0.1);
   }
 
   function splitAtPlayhead(t) {
     if (!canSplitAt(t)) return false;
-    // Snapshot do estado anterior pra undo
     const before = JSON.parse(JSON.stringify({
       clips: BEState.get().clips,
       next_clip_id: BEState.get().next_clip_id,
     }));
-    let newIds = null;
     BEHistory.execute({
       label: 'cortar em ' + fmtTime(t),
-      do() {
-        const result = BEState.splitAtTime(t);
-        if (result) newIds = result;
-      },
+      do() { BEState.splitAtTime(t); },
       undo() {
-        // Restaura clips exatos
         BEState.replaceClips(before.clips || []);
-        // Restaura next_id (best-effort)
-        const cur = BEState.get();
-        cur.next_clip_id = before.next_clip_id;
+        BEState.get().next_clip_id = before.next_clip_id;
       },
     });
-    return !!newIds;
+    return true;
   }
 
   function canDeleteSelected() {
@@ -69,12 +69,66 @@ window.BEClips = (function() {
     return true;
   }
 
-  function fmtTime(t) {
-    if (!isFinite(t) || t < 0) t = 0;
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t - m * 60);
-    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  // Q: deleta o pedaco do playhead pra ESQUERDA do clip atual
+  function deleteLeftFromPlayhead(t) {
+    const clip = BEState.clipAtTime(t);
+    if (!clip || clip.virtual) return false;
+    if (t <= clip.source_in + 0.05 || t >= clip.source_out - 0.05) return false;
+    const before = { source_in: clip.source_in, source_out: clip.source_out };
+    const id = clip.id;
+    BEHistory.execute({
+      label: 'apagar esquerda (Q)',
+      do() { BEState.deleteLeftFromPlayhead(t); },
+      undo() { BEState.updateClip(id, before); },
+    });
+    return true;
   }
 
-  return { splitAtPlayhead, deleteSelected, canSplitAt, canDeleteSelected };
+  // W: deleta o pedaco do playhead pra DIREITA do clip atual
+  function deleteRightFromPlayhead(t) {
+    const clip = BEState.clipAtTime(t);
+    if (!clip || clip.virtual) return false;
+    if (t >= clip.source_out - 0.05 || t <= clip.source_in + 0.05) return false;
+    const before = { source_in: clip.source_in, source_out: clip.source_out };
+    const id = clip.id;
+    BEHistory.execute({
+      label: 'apagar direita (W)',
+      do() { BEState.deleteRightFromPlayhead(t); },
+      undo() { BEState.updateClip(id, before); },
+    });
+    return true;
+  }
+
+  // V: toggle active (clip pulado no export, mas continua na timeline)
+  function toggleClipActiveById(id) {
+    if (!id) return false;
+    const found = BEState.findClip(id);
+    if (!found) return false;
+    const wasActive = found.clip.active !== false;
+    BEHistory.execute({
+      label: wasActive ? 'desativar clipe' : 'ativar clipe',
+      do() { BEState.toggleClipActive(id); },
+      undo() { BEState.toggleClipActive(id); },
+    });
+    return true;
+  }
+
+  // Drag: move um clip preservando duracao (debounced — usuario solta = 1 Command)
+  // Aqui o argumento e o delta TOTAL (final - inicial) pra ser undoable num bloco
+  function moveClipBy(id, delta) {
+    if (Math.abs(delta) < 0.01) return false;
+    BEHistory.execute({
+      label: 'mover clipe',
+      do() { BEState.moveClip(id, delta); },
+      undo() { BEState.moveClip(id, -delta); },
+    });
+    return true;
+  }
+
+  return {
+    splitAtPlayhead, deleteSelected,
+    deleteLeftFromPlayhead, deleteRightFromPlayhead,
+    toggleClipActiveById, moveClipBy,
+    canSplitAt, canDeleteSelected,
+  };
 })();

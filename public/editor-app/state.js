@@ -195,6 +195,94 @@ window.BEState = (function() {
     emit();
   }
 
+  // Localiza clip + retorna {clip, idx} no array atual
+  function findClip(id) {
+    if (!state.clips) return null;
+    const idx = state.clips.findIndex(c => c.id === id);
+    if (idx < 0) return null;
+    return { clip: state.clips[idx], idx };
+  }
+
+  // Move clip (mantem duracao). delta em segundos. Clamp em [0, duration].
+  function moveClip(id, delta) {
+    materializeIfNeeded();
+    const found = findClip(id);
+    if (!found) return false;
+    const dur = state.video.duration || 0;
+    const clipDur = found.clip.source_out - found.clip.source_in;
+    let newIn = found.clip.source_in + delta;
+    if (newIn < 0) newIn = 0;
+    if (newIn + clipDur > dur) newIn = dur - clipDur;
+    const newOut = newIn + clipDur;
+    if (Math.abs(newIn - found.clip.source_in) < 0.001) return false;
+    state.clips[found.idx] = { ...found.clip, source_in: newIn, source_out: newOut };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+
+  // Toggle clip.active. Default = true (incluido no export).
+  function toggleClipActive(id) {
+    materializeIfNeeded();
+    const found = findClip(id);
+    if (!found) return false;
+    const newActive = found.clip.active === false ? true : false;
+    state.clips[found.idx] = { ...found.clip, active: newActive };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+
+  // Delete left of playhead (Q): encolhe source_in do clip atual ate t
+  function deleteLeftFromPlayhead(t) {
+    materializeIfNeeded();
+    const clip = clipAtTime(t);
+    if (!clip || clip.virtual) return false;
+    if (t <= clip.source_in + 0.05) return false; // ja no inicio
+    if (t >= clip.source_out - 0.05) return false; // deletaria tudo
+    const found = findClip(clip.id);
+    if (!found) return false;
+    state.clips[found.idx] = { ...found.clip, source_in: t };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+
+  // Delete right of playhead (W): encolhe source_out do clip atual ate t
+  function deleteRightFromPlayhead(t) {
+    materializeIfNeeded();
+    const clip = clipAtTime(t);
+    if (!clip || clip.virtual) return false;
+    if (t >= clip.source_out - 0.05) return false; // ja no fim
+    if (t <= clip.source_in + 0.05) return false; // deletaria tudo
+    const found = findClip(clip.id);
+    if (!found) return false;
+    state.clips[found.idx] = { ...found.clip, source_out: t };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+
+  // Define um clip inteiro (pra undo de move/Q/W)
+  function updateClip(id, newProps) {
+    const found = findClip(id);
+    if (!found) return false;
+    state.clips[found.idx] = { ...found.clip, ...newProps };
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return true;
+  }
+
   // ─── Backup em sessionStorage (resiliencia anti-F5) ─────────────────────
   const SS_KEY = 'be_state_backup';
   function backupSessionStorage() {
@@ -329,5 +417,9 @@ window.BEState = (function() {
     // Fase 3 clips API
     getEffectiveClips, clipAtTime, getOutputDuration,
     splitAtTime, deleteClip, insertClip, replaceClips, selectClip,
+    // Fase 3.1 — CapCut-style
+    findClip, moveClip, toggleClipActive,
+    deleteLeftFromPlayhead, deleteRightFromPlayhead,
+    updateClip,
   };
 })();
