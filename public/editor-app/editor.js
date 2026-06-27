@@ -219,6 +219,18 @@
       if (btnPlay) {
         btnPlay.addEventListener('click', () => BETimeline.playRange());
       }
+
+      // Fase 3: bind botoes timeline toolbar (split, delete, undo, redo)
+      this.bindTimelineToolbar();
+      this.bindKeyboardShortcuts();
+
+      // Subscribe history pra atualizar disabled state dos botoes
+      if (window.BEHistory) {
+        BEHistory.subscribe(st => this.updateHistoryButtons(st));
+        this.updateHistoryButtons(BEHistory.getState());
+      }
+      // Subscribe state pra atualizar botoes split/delete
+      BEState.subscribe(s => this.updateClipsButtons(s));
       // Decide tela inicial baseado em ter video carregado
       const s = BEState.get();
       if (s.video && s.video.url) {
@@ -323,7 +335,109 @@
     },
     updateFaseFlags() {
       const flagEl = document.querySelector('.header-flag');
-      if (flagEl) flagEl.textContent = 'FASE 2 · timeline';
+      if (flagEl) flagEl.textContent = 'FASE 3 · cortes';
+    },
+    // ─── Fase 3: timeline toolbar + clips ─────────────────────────────────
+    bindTimelineToolbar() {
+      const toolbar = document.querySelector('.timeline-toolbar .toolbar-left');
+      if (!toolbar) return;
+      const btns = toolbar.querySelectorAll('button');
+      // [0]=+ (add) [1]=✂ (split) [2]=🗑 (delete) [3]=↶ (undo) [4]=↷ (redo)
+      if (btns[1]) {
+        btns[1].title = 'Cortar aqui (C)';
+        btns[1].addEventListener('click', () => this.actionSplit());
+      }
+      if (btns[2]) {
+        btns[2].title = 'Excluir clipe (Delete)';
+        btns[2].addEventListener('click', () => this.actionDelete());
+      }
+      if (btns[3]) {
+        btns[3].title = 'Desfazer (Ctrl+Z)';
+        btns[3].addEventListener('click', () => BEHistory && BEHistory.undo());
+      }
+      if (btns[4]) {
+        btns[4].title = 'Refazer (Ctrl+Y)';
+        btns[4].addEventListener('click', () => BEHistory && BEHistory.redo());
+      }
+      // Cache pra updateClipsButtons / updateHistoryButtons
+      this._tbBtns = btns;
+    },
+    bindKeyboardShortcuts() {
+      document.addEventListener('keydown', e => {
+        // Ignora se foco em input/textarea
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        const s = BEState.get();
+        if (!s.video || !s.video.url) return;
+
+        // Ctrl/Cmd + Z = undo
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          BEHistory && BEHistory.undo();
+          return;
+        }
+        // Ctrl/Cmd + Shift + Z = redo, ou Ctrl + Y = redo
+        if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
+            || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
+          e.preventDefault();
+          BEHistory && BEHistory.redo();
+          return;
+        }
+        // C = Cortar aqui
+        if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          this.actionSplit();
+          return;
+        }
+        // Delete = excluir clipe selecionado
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (s.selected_clip_id) {
+            e.preventDefault();
+            this.actionDelete();
+          }
+          return;
+        }
+      });
+    },
+    actionSplit() {
+      const vid = document.getElementById('previewVideo');
+      const t = vid ? vid.currentTime : 0;
+      if (!window.BEClips || !BEClips.canSplitAt(t)) {
+        this.flashStatus('Posicione o playhead dentro de um clipe pra cortar');
+        return;
+      }
+      BEClips.splitAtPlayhead(t);
+    },
+    actionDelete() {
+      if (!window.BEClips || !BEClips.canDeleteSelected()) {
+        this.flashStatus('Selecione um clipe pra excluir (clique no canvas)');
+        return;
+      }
+      BEClips.deleteSelected();
+    },
+    flashStatus(msg) {
+      const el = document.getElementById('saveStatus');
+      if (!el) return;
+      const old = el.textContent;
+      el.textContent = '⚠ ' + msg;
+      el.style.color = 'var(--warn)';
+      setTimeout(() => {
+        el.textContent = '○ pronto';
+        el.style.color = '';
+      }, 2200);
+    },
+    updateHistoryButtons(st) {
+      if (!this._tbBtns) return;
+      if (this._tbBtns[3]) this._tbBtns[3].disabled = !st.canUndo;
+      if (this._tbBtns[4]) this._tbBtns[4].disabled = !st.canRedo;
+    },
+    updateClipsButtons(s) {
+      if (!this._tbBtns) return;
+      const hasVideo = !!(s.video && s.video.url);
+      const canSplit = hasVideo && window.BEClips;
+      const canDelete = hasVideo && window.BEClips && BEClips.canDeleteSelected();
+      if (this._tbBtns[1]) this._tbBtns[1].disabled = !canSplit;
+      if (this._tbBtns[2]) this._tbBtns[2].disabled = !canDelete;
     },
   };
 

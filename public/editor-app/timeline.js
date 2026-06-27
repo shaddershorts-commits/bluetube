@@ -254,16 +254,42 @@ window.BETimeline = (function() {
     return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
   }
 
-  // ─── Track (faixa do vídeo) ────────────────────────────────────────────
+  // ─── Track (faixa do vídeo — agora desenha cada clip separado) ─────────
   function drawTrack() {
+    const clips = BEState.getEffectiveClips();
+    const sel = BEState.get().selected_clip_id;
+    // Background da track (regiao que pode ter conteudo)
     const x0 = secToPx(0);
     const x1 = secToPx(duration);
-    const w = Math.max(2, x1 - x0);
-    ctx.fillStyle = COLORS.track;
-    ctx.fillRect(x0, TRACK_PAD_TOP, w, TRACK_H);
-    ctx.strokeStyle = COLORS.trackBorder;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x0 + 0.5, TRACK_PAD_TOP + 0.5, w - 1, TRACK_H - 1);
+    ctx.fillStyle = 'rgba(2,8,23,0.4)';
+    ctx.fillRect(x0, TRACK_PAD_TOP, x1 - x0, TRACK_H);
+
+    // Cada clip como retangulo distinto
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      const cx0 = secToPx(clip.source_in);
+      const cx1 = secToPx(clip.source_out);
+      const w = Math.max(2, cx1 - cx0);
+      // Cor alternada (mais visivel quando ha multiplos clips)
+      const isSelected = sel === clip.id;
+      const isSingle = clips.length === 1;
+      ctx.fillStyle = isSelected ? 'rgba(0,170,255,0.32)'
+        : isSingle ? 'rgba(0,170,255,0.20)'
+        : (i % 2 === 0 ? 'rgba(0,170,255,0.22)' : 'rgba(26,107,255,0.22)');
+      ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
+      // Borda
+      ctx.strokeStyle = isSelected ? '#fbbf24' : COLORS.trackBorder;
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.strokeRect(cx0 + 0.5, TRACK_PAD_TOP + 0.5, w - 1, TRACK_H - 1);
+      // Numero do clip (se ha mais de 1)
+      if (!isSingle && w > 30) {
+        ctx.fillStyle = isSelected ? '#fbbf24' : 'rgba(232,244,255,0.9)';
+        ctx.font = 'bold 11px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText('#' + (i+1), cx0 + 4, TRACK_PAD_TOP + 3);
+      }
+    }
   }
 
   // ─── Waveform (Web Audio decodificou em maybeGenerateWaveform) ─────────
@@ -435,6 +461,14 @@ window.BETimeline = (function() {
     });
   }
 
+  function hitTestClip(x, y) {
+    if (y < TRACK_PAD_TOP || y > TRACK_PAD_TOP + TRACK_H) return null;
+    const t = pxToSec(x);
+    const clip = BEState.clipAtTime(t);
+    if (!clip || clip.virtual) return null;
+    return clip;
+  }
+
   function onPointerDown(clientX, clientY, evt) {
     if (!canvas || !duration) return;
     const rect = canvas.getBoundingClientRect();
@@ -445,6 +479,22 @@ window.BETimeline = (function() {
     if (handle) {
       evt.preventDefault && evt.preventDefault();
       dragging = { kind: handle, lastClientX: clientX };
+      return;
+    }
+
+    // Clique em area de track: seleciona clip (se ha multiplos)
+    if (y >= TRACK_PAD_TOP && y <= TRACK_PAD_TOP + TRACK_H) {
+      const clip = hitTestClip(x, y);
+      if (clip) {
+        BEState.selectClip(clip.id);
+      } else {
+        BEState.selectClip(null);
+      }
+      // Tambem move playhead pra o ponto clicado
+      const t = snap(pxToSec(x), evt);
+      if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
+      dragging = { kind: 'playhead', lastClientX: clientX };
+      requestRender();
       return;
     }
 

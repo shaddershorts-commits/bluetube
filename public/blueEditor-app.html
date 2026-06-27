@@ -12,8 +12,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/editor-app/editor.css"/>
-<!-- Modulos em ordem de dependencia: state -> upload/player/thumbs/timeline -> editor (boot) -->
+<!-- Modulos em ordem de dependencia: state -> history -> clips/upload/player/thumbs/timeline -> editor -->
 <script src="/editor-app/state.js" defer></script>
+<script src="/editor-app/history.js" defer></script>
+<script src="/editor-app/clips.js" defer></script>
 <script src="/editor-app/upload.js" defer></script>
 <script src="/editor-app/player.js" defer></script>
 <script src="/editor-app/thumbnails.js" defer></script>

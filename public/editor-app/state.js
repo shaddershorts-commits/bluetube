@@ -33,9 +33,13 @@ window.BEState = (function() {
         aspect: null,               // 'vertical' | 'square' | 'horizontal'
         size_bytes: 0,
       },
-      // Edicao (preenchido em fases 2+)
+      // Edicao
+      // trim define bounds globais (handles externos). Clips definem cortes
+      // internos. Output = concat dos clips ativos em ordem source_in.
       trim: { in: 0, out: 0 },     // 0 = ate fim
-      clips: [],                    // splits (Fase 3)
+      clips: [],                    // [{ id, source_in, source_out }] (Fase 3)
+      next_clip_id: 1,
+      selected_clip_id: null,       // pra UI destacar + ops keyboard
       texts: [],                    // texto overlays (Fase 4)
       audio_extra: null,            // upload extra (Fase 5)
       transitions: [],              // entre clips (Fase 6)
@@ -89,6 +93,105 @@ window.BEState = (function() {
   function reset() {
     state = emptyState();
     backupSessionStorage();
+    emit();
+  }
+
+  // ─── Clips helpers (Fase 3) ────────────────────────────────────────────
+  // getEffectiveClips: retorna clips ordenados por source_in.
+  // Se clips[] vazio, retorna 1 clip virtual representando trim global.
+  function getEffectiveClips() {
+    if (state.clips && state.clips.length > 0) {
+      return [...state.clips].sort((a, b) => a.source_in - b.source_in);
+    }
+    const dur = state.video.duration || 0;
+    const inT = state.trim.in || 0;
+    const outT = state.trim.out > 0 ? state.trim.out : dur;
+    if (dur <= 0) return [];
+    return [{ id: 0, source_in: inT, source_out: outT, virtual: true }];
+  }
+
+  // Localiza o clipe que contem o tempo t (no source). Retorna null se nenhum.
+  function clipAtTime(t) {
+    const list = getEffectiveClips();
+    for (const c of list) {
+      if (t >= c.source_in && t <= c.source_out) return c;
+    }
+    return null;
+  }
+
+  // Calcula duracao total do output (soma de todos clipes ativos)
+  function getOutputDuration() {
+    return getEffectiveClips().reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
+  }
+
+  // Materializa clipes virtuais em clipes reais (1° split)
+  // Apos materializar, trim handles deixam de afetar bounds — clips assumem.
+  function materializeIfNeeded() {
+    if (state.clips && state.clips.length > 0) return;
+    const dur = state.video.duration || 0;
+    if (dur <= 0) return;
+    const inT = state.trim.in || 0;
+    const outT = state.trim.out > 0 ? state.trim.out : dur;
+    state.clips = [{ id: state.next_clip_id++, source_in: inT, source_out: outT }];
+  }
+
+  // Split: divide o clip em t (segundos no source) em 2 clips adjacentes.
+  // Retorna ids dos 2 novos clips (ou null se nao foi possivel).
+  function splitAtTime(t) {
+    materializeIfNeeded();
+    const list = state.clips;
+    const idx = list.findIndex(c => t > c.source_in + 0.05 && t < c.source_out - 0.05);
+    if (idx < 0) return null;
+    const original = list[idx];
+    const left = { id: state.next_clip_id++, source_in: original.source_in, source_out: t };
+    const right = { id: state.next_clip_id++, source_in: t, source_out: original.source_out };
+    state.clips = [...list.slice(0, idx), left, right, ...list.slice(idx + 1)];
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return [left.id, right.id];
+  }
+
+  // Delete: remove clip por id. Retorna o clip removido (pra undo).
+  function deleteClip(id) {
+    if (!state.clips || state.clips.length === 0) return null;
+    const idx = state.clips.findIndex(c => c.id === id);
+    if (idx < 0) return null;
+    if (state.clips.length === 1) return null; // nao pode deletar ultimo
+    const removed = state.clips[idx];
+    state.clips = [...state.clips.slice(0, idx), ...state.clips.slice(idx + 1)];
+    if (state.selected_clip_id === id) state.selected_clip_id = null;
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+    return removed;
+  }
+
+  // Reinsert (pra undo de delete)
+  function insertClip(clip, atIndex) {
+    if (!state.clips) state.clips = [];
+    const newList = [...state.clips];
+    newList.splice(atIndex, 0, clip);
+    state.clips = newList;
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+  }
+
+  // Substitui clips inteiro (pra undo de split)
+  function replaceClips(newClips) {
+    state.clips = [...newClips];
+    state.updated_at = new Date().toISOString();
+    backupSessionStorage();
+    emit();
+    scheduleSave();
+  }
+
+  function selectClip(id) {
+    state.selected_clip_id = id;
     emit();
   }
 
@@ -221,5 +324,10 @@ window.BEState = (function() {
     return state;
   }
 
-  return { init, get, patch, subscribe, reset, setProjectId, loadFromServer };
+  return {
+    init, get, patch, subscribe, reset, setProjectId, loadFromServer,
+    // Fase 3 clips API
+    getEffectiveClips, clipAtTime, getOutputDuration,
+    splitAtTime, deleteClip, insertClip, replaceClips, selectClip,
+  };
 })();
