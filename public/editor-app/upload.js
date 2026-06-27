@@ -1,10 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    upload.js — Tela de upload + validacao + upload progressive
    ═══════════════════════════════════════════════════════════════════════════
-   3 caminhos de input:
+   2 caminhos de input:
      1. Drag&drop arquivo
      2. File picker
-     3. URL YouTube Short (delega pro yt-download backend)
 
    Pipeline:
      a) Validacao client-side (formato, tamanho, duracao via <video> probe)
