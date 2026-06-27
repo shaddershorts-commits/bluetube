@@ -43,6 +43,11 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 *:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
 
+/* CRITICO: forca hidden funcionar em elementos com display:flex/grid.
+   Sem isso, gate-overlay (display:flex) e editor-app (display:grid)
+   ignoram o atributo hidden e ficam visiveis sempre. */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   background: var(--bg-0);
