@@ -21,6 +21,7 @@ window.BEPlayer = (function() {
   let timeTotalEl = null;
   let keyboardBound = false;
   let lastState = null;
+  let skipRangesEnabled = true; // pula regioes "cortadas" em tempo real
 
   // ─── Format mm:ss.ff (frames a 30fps) ──────────────────────────────────
   function fmt(t) {
@@ -54,10 +55,42 @@ window.BEPlayer = (function() {
 
     // Aplica aspect strategy ao carregar source
     videoEl.addEventListener('loadedmetadata', applyAspectStrategy);
-    videoEl.addEventListener('timeupdate', onTimeUpdate);
+    videoEl.addEventListener('timeupdate', () => {
+      onTimeUpdate();
+      enforceSkipRanges(); // Pula automatico regioes cortadas
+    });
+    videoEl.addEventListener('seeking', enforceSkipRanges);
     videoEl.addEventListener('play', () => updatePlayBtn(true));
     videoEl.addEventListener('pause', () => updatePlayBtn(false));
     videoEl.addEventListener('ended', () => updatePlayBtn(false));
+  }
+
+  // ─── Skip ranges: pula regioes "fora dos clips ativos" em tempo real ────
+  // Cortes = source preserva mas player pula. Sequencia logica:
+  //   Source: [0────────────10────────────20────────────30]
+  //   Clips ativos: [2, 8], [15, 25]
+  //   Player toca 2-8, pula pra 15, toca 15-25, pausa.
+  function enforceSkipRanges() {
+    if (!skipRangesEnabled || !videoEl) return;
+    const s = BEState.get();
+    if (!s.video || !s.video.duration) return;
+    const clips = BEState.getEffectiveClips().filter(c => c.active !== false);
+    if (clips.length === 0) return;
+    const t = videoEl.currentTime;
+    // Verifica se t cai DENTRO de algum clip ativo
+    for (const c of clips) {
+      if (t >= c.source_in - 0.05 && t <= c.source_out + 0.05) return; // OK
+    }
+    // Fora de qualquer clip ativo — encontra proximo clip
+    const sorted = [...clips].sort((a, b) => a.source_in - b.source_in);
+    const next = sorted.find(c => c.source_in > t);
+    if (next) {
+      videoEl.currentTime = next.source_in;
+    } else {
+      // Passou do ultimo clip — pausa no inicio do primeiro
+      videoEl.pause();
+      videoEl.currentTime = sorted[0].source_in;
+    }
   }
 
   // ─── Aspect: vertical = fit normal, horizontal/square = sera ajustado no export ─

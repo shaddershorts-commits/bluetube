@@ -323,7 +323,6 @@
       });
     },
     async discardCurrentProject() {
-      // Apaga do servidor se ja tem ID
       const s = BEState.get();
       if (s.project_id) {
         try {
@@ -335,9 +334,16 @@
           });
         } catch(e) { console.warn('[delete-project]', e.message); }
       }
-      // Limpa state + thumbs + waveform
+      // Limpa TUDO: state, thumbs, history, undo/redo, sessionStorage
       BEState.reset();
       if (window.BEThumbs) BEThumbs.reset();
+      if (window.BEHistory) BEHistory.clear();
+      try { sessionStorage.removeItem('be_state_backup'); } catch(e) {}
+      // Volta tab pra Media + render upload
+      this.activeTab = 'media';
+      document.querySelectorAll('.sidebar-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === 'media');
+      });
       BEUpload.renderUploadScreen();
       this.updateProjectName();
       this.updateTrimInfo(BEState.get());
@@ -548,15 +554,21 @@
     },
     // ─── Fase 4: tabs do sidebar ──────────────────────────────────────────
     activeTab: 'media',
+    _sidebarTabsBound: false,
     bindSidebarTabs() {
-      document.querySelectorAll('.sidebar-tab').forEach(tab => {
-        if (tab.disabled) tab.disabled = false; // re-enable em Fase 4+
-        tab.addEventListener('click', () => {
-          const t = tab.dataset.tab;
-          if (!t) return;
-          this.switchTab(t);
-        });
+      // Listeners ficam no SIDEBAR (estatico), nao no painelBody (que e re-renderizado).
+      // Idempotente — bind so 1 vez.
+      if (this._sidebarTabsBound) return;
+      const sidebar = document.querySelector('.editor-sidebar');
+      if (!sidebar) return;
+      sidebar.addEventListener('click', (e) => {
+        const tab = e.target.closest('.sidebar-tab');
+        if (!tab || tab.disabled) return;
+        const t = tab.dataset.tab;
+        if (!t) return;
+        this.switchTab(t);
       });
+      this._sidebarTabsBound = true;
     },
     switchTab(name) {
       this.activeTab = name;

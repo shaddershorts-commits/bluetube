@@ -29,11 +29,16 @@ window.BETimeline = (function() {
   // ─── Constantes visuais ────────────────────────────────────────────────
   const RULER_H = 20;
   const TRACK_PAD_TOP = 28;
-  const TRACK_H = 64;
+  const TRACK_H = 56;            // track de video
+  const TRACK_GAP = 6;
+  const AUDIO_TRACK_H = 32;      // track separada pra audio extra
   const HANDLE_W = 14;
-  const HANDLE_TOUCH = 44;       // area de toque (>= Apple HIG 44px)
+  const HANDLE_TOUCH = 44;
   const PLAYHEAD_W = 2;
-  const FRAME_RATE = 30;         // frames/seg pra snap
+  const FRAME_RATE = 30;
+
+  function audioTrackY() { return TRACK_PAD_TOP + TRACK_H + TRACK_GAP; }
+  function totalTracksH() { return TRACK_H + TRACK_GAP + AUDIO_TRACK_H; }
 
   // ─── Cores (puxa CSS vars) ──────────────────────────────────────────────
   function getCss(name, fallback) {
@@ -156,11 +161,40 @@ window.BETimeline = (function() {
 
     drawRuler();
     drawTrack();
-    drawThumbnails();   // Fase 2.1: thumbs como background da track
-    drawWaveform();     // Waveform sobreposta nos thumbs
+    drawThumbnails();        // thumbs como background da track de video
+    drawWaveform();          // waveform do source DENTRO da track de video (overlay claro)
     drawTrimOverlay();
+    drawAudioExtraTrack();   // track SEPARADA pra audio extra
     drawHandles();
     drawPlayhead();
+  }
+
+  // ─── Audio extra: track separada abaixo do video ───────────────────────
+  function drawAudioExtraTrack() {
+    const s = BEState.get();
+    const audio = s.audio_extra;
+    const audioY = audioTrackY();
+    // Background da track (sempre visivel pra mostrar onde audio extra cabe)
+    ctx.save();
+    ctx.fillStyle = audio ? 'rgba(34,197,94,0.10)' : 'rgba(100,116,139,0.06)';
+    ctx.fillRect(secToPx(0), audioY, secToPx(duration) - secToPx(0), AUDIO_TRACK_H);
+    ctx.strokeStyle = audio ? 'rgba(34,197,94,0.4)' : 'rgba(100,116,139,0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(secToPx(0) + 0.5, audioY + 0.5, secToPx(duration) - secToPx(0) - 1, AUDIO_TRACK_H - 1);
+    if (audio && audio.filename) {
+      ctx.fillStyle = '#86efac';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText('🎵 ' + audio.filename, secToPx(0) + 6, audioY + AUDIO_TRACK_H/2);
+    } else {
+      ctx.fillStyle = 'rgba(150,190,230,0.4)';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.fillText('Áudio extra (tab Áudio pra adicionar)', secToPx(duration)/2, audioY + AUDIO_TRACK_H/2);
+    }
+    ctx.restore();
   }
 
   // ─── Thumbnails (renderiza frames extraidos) ───────────────────────────
@@ -295,10 +329,18 @@ window.BETimeline = (function() {
           : (i % 2 === 0 ? 'rgba(0,170,255,0.22)' : 'rgba(26,107,255,0.22)');
         ctx.fillRect(cx0, TRACK_PAD_TOP, w, TRACK_H);
       }
-      // Borda
+      // Borda — selecionado: 3px dourado MUITO obvio
       ctx.strokeStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(100,116,139,0.4)' : COLORS.trackBorder;
-      ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(cx0 + 0.5, TRACK_PAD_TOP + 0.5, w - 1, TRACK_H - 1);
+      ctx.lineWidth = isSelected ? 3 : 1;
+      ctx.strokeRect(cx0 + (isSelected?1.5:0.5), TRACK_PAD_TOP + (isSelected?1.5:0.5), w - (isSelected?3:1), TRACK_H - (isSelected?3:1));
+      // Glow externo se selecionado
+      if (isSelected) {
+        ctx.save();
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.strokeRect(cx0 + 1.5, TRACK_PAD_TOP + 1.5, w - 3, TRACK_H - 3);
+        ctx.restore();
+      }
       // Numero do clip (se ha mais de 1)
       if (!isSingle && w > 30) {
         ctx.fillStyle = isSelected ? '#fbbf24' : isInactive ? 'rgba(150,190,230,0.5)' : 'rgba(232,244,255,0.9)';
@@ -487,6 +529,7 @@ window.BETimeline = (function() {
   }
 
   function hitTestClip(x, y) {
+    // Apenas na track de video
     if (y < TRACK_PAD_TOP || y > TRACK_PAD_TOP + TRACK_H) return null;
     const t = pxToSec(x);
     const clip = BEState.clipAtTime(t);
@@ -494,7 +537,7 @@ window.BETimeline = (function() {
     return clip;
   }
 
-  // Drag clip: threshold 5px antes de virar drag de fato (pra distinguir de click)
+  // Drag clip: threshold 5px antes de virar drag de fato
   const DRAG_THRESHOLD_PX = 5;
 
   function onPointerDown(clientX, clientY, evt) {
@@ -502,8 +545,9 @@ window.BETimeline = (function() {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    const t = snap(pxToSec(x), evt);
 
-    // 1) Hit handles primeiro (mais prioritario)
+    // 1) Handles trim PRIMEIRO (prioridade max)
     const handle = hitTestHandle(x, y);
     if (handle) {
       evt.preventDefault && evt.preventDefault();
@@ -511,11 +555,10 @@ window.BETimeline = (function() {
       return;
     }
 
-    // 2) Clique em qualquer Y MOVE PLAYHEAD (CapCut-like)
-    const t = snap(pxToSec(x), evt);
+    // 2) Sempre move playhead pra o clique (CapCut: clique = seek)
     if (videoEl) videoEl.currentTime = Math.max(0, Math.min(duration, t));
 
-    // 3) Se foi clique em clip da track, ARMAR drag potencial (so vira drag apos threshold)
+    // 3) Se clicou DENTRO da track de video E em um clip real: arma drag
     const clipHit = hitTestClip(x, y);
     if (clipHit) {
       BEState.selectClip(clipHit.id);
@@ -528,7 +571,7 @@ window.BETimeline = (function() {
         moved: false,
       };
     } else {
-      // Clique fora de qualquer clip: desseleciona + apenas move playhead
+      // Em qualquer outro lugar (espaço vazio, ruler, track de audio): playhead drag
       BEState.selectClip(null);
       dragging = { kind: 'playhead', lastClientX: clientX };
     }
@@ -752,14 +795,28 @@ window.BETimeline = (function() {
 
   // ─── State subscription ────────────────────────────────────────────────
   function onStateChange(s) {
-    if (s.video && s.video.duration && s.video.duration !== duration) {
+    // Vídeo removido: invalida waveform + duration + render limpo
+    if (!s.video || !s.video.url) {
+      if (duration !== 0) {
+        duration = 0;
+        panSec = 0;
+        zoom = 1;
+        waveformData = null;
+        waveformStatus = 'pending';
+        const lbl = document.getElementById('tlZoomLabel');
+        if (lbl) lbl.textContent = '100%';
+      }
+      requestRender();
+      return;
+    }
+    if (s.video.duration && s.video.duration !== duration) {
       duration = s.video.duration;
       panSec = 0;
       zoom = 1;
       waveformData = null;
+      waveformStatus = 'pending';
       const lbl = document.getElementById('tlZoomLabel');
       if (lbl) lbl.textContent = '100%';
-      // Tenta gerar waveform após o video element estar pronto
       setTimeout(() => {
         if (!videoEl) bindVideoSync();
         maybeGenerateWaveform();
