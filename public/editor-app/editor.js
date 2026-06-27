@@ -190,7 +190,98 @@
 
     // ── Tudo certo: renderiza app ────────────────────────────────────────
     showApp();
-    console.log('[BlueEditor V0] Fase 0 ativa', { flag, auth, device: dev });
+    console.log('[BlueEditor V0] Fase 1 ativa', { flag, auth, device: dev });
+
+    // Inicializa state + player + decide tela (upload ou editor montado)
+    await BEEditor.init();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Orquestrador (exposto pra modulos chamarem afterUploadComplete etc)
+  // ───────────────────────────────────────────────────────────────────────
+  window.BEEditor = {
+    state: null,
+    async init() {
+      // Inicializa state (carrega do servidor ou cria novo)
+      this.state = await BEState.init();
+      // Inicializa player (subscreve state changes)
+      BEPlayer.init();
+      // Decide tela inicial baseado em ter video carregado
+      const s = BEState.get();
+      if (s.video && s.video.url) {
+        // Projeto carregado: mostra editor montado
+        this.showEditorMounted();
+      } else {
+        // Sem projeto: mostra tela de upload
+        BEUpload.renderUploadScreen();
+      }
+      this.updateProjectName();
+      this.updateFaseFlags();
+    },
+    afterUploadComplete() {
+      // Apos upload terminar, decide painel a mostrar
+      this.showEditorMounted();
+      this.updateProjectName();
+    },
+    showEditorMounted() {
+      const panel = document.getElementById('panelBody');
+      if (!panel) return;
+      const s = BEState.get();
+      const v = s.video;
+      panel.innerHTML = `
+        <div class="media-info">
+          <div class="media-thumb">
+            <svg viewBox="0 0 24 24" width="32" height="32"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
+          </div>
+          <div class="media-detail">
+            <div class="media-name" title="${escapeHtml(v.filename || 'video.mp4')}">${escapeHtml(v.filename || 'video.mp4')}</div>
+            <div class="media-meta">
+              <span>${fmtTime(v.duration)}</span>
+              <span class="sep">·</span>
+              <span>${v.width}×${v.height}</span>
+              <span class="sep">·</span>
+              <span class="badge-${v.aspect}">${labelAspect(v.aspect)}</span>
+            </div>
+          </div>
+          <button class="media-replace" id="mediaReplaceBtn" title="Trocar vídeo">↻</button>
+        </div>
+        <div class="media-status">
+          <p>Fase 1 ativa: vídeo carregado. Pré-visualização funcional.</p>
+          <p style="color:var(--text-3);font-size:12px;margin-top:6px">Próximas fases adicionam: timeline visual (Fase 2), cortes (Fase 3), texto (Fase 4), etc.</p>
+        </div>
+      `;
+      const replaceBtn = document.getElementById('mediaReplaceBtn');
+      if (replaceBtn) replaceBtn.addEventListener('click', () => {
+        if (!confirm('Trocar de vídeo? O projeto atual será descartado.')) return;
+        BEState.reset();
+        BEUpload.renderUploadScreen();
+        this.updateProjectName();
+      });
+    },
+    updateProjectName() {
+      const el = document.getElementById('projectName');
+      if (el) el.textContent = BEState.get().nome_projeto || 'Projeto sem título';
+    },
+    updateFaseFlags() {
+      const flagEl = document.querySelector('.header-flag');
+      if (flagEl) flagEl.textContent = 'FASE 1 · player';
+    },
+  };
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function fmtTime(s) {
+    s = Math.max(0, s|0);
+    const m = (s/60)|0;
+    const r = s - m*60;
+    return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+  }
+  function labelAspect(a) {
+    if (a === 'vertical') return '9:16';
+    if (a === 'horizontal') return '16:9';
+    if (a === 'square') return '1:1';
+    return '?';
   }
 
   // Boot quando DOM pronto

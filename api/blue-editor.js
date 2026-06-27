@@ -199,6 +199,132 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário' });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BlueEditor V0 — Project state (autosave + retomada)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── save-project: cria ou atualiza projeto em edicao (status='editing') ──
+  // Body: { project_id?, project_state: {...}, nome_projeto?, video_url? }
+  // - Sem project_id → cria novo
+  // - Com project_id → atualiza (valida ownership)
+  // Idempotente, debounced no frontend (2s).
+  if (action === 'save-project') {
+    const projectId = req.body?.project_id || null;
+    const projectState = req.body?.project_state;
+    const nomeProjeto = (req.body?.nome_projeto || '').slice(0, 120) || null;
+    const vUrl = req.body?.video_url || null;
+
+    if (!projectState || typeof projectState !== 'object') {
+      return res.status(400).json({ error: 'project_state obrigatório (objeto JSON)' });
+    }
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+
+    try {
+      if (projectId) {
+        // UPDATE (valida ownership na clause WHERE)
+        const patchR = await fetch(
+          `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+          {
+            method: 'PATCH',
+            headers: { ...supaH, Prefer: 'return=representation' },
+            body: JSON.stringify({
+              project_state: projectState,
+              nome_projeto: nomeProjeto,
+              video_url: vUrl,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        );
+        if (!patchR.ok) {
+          const e = await patchR.text();
+          return res.status(500).json({ error: 'update_failed', detail: e.slice(0,200) });
+        }
+        const rows = await patchR.json();
+        if (!rows?.[0]) return res.status(404).json({ error: 'projeto_nao_encontrado' });
+        return res.status(200).json({ ok: true, project_id: rows[0].id, updated_at: rows[0].updated_at });
+      } else {
+        // INSERT novo projeto editing
+        const postR = await fetch(`${SU}/rest/v1/editor_jobs`, {
+          method: 'POST',
+          headers: { ...supaH, Prefer: 'return=representation' },
+          body: JSON.stringify({
+            user_id: userId,
+            status: 'editing',
+            project_state: projectState,
+            nome_projeto: nomeProjeto,
+            video_url: vUrl,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        if (!postR.ok) {
+          const e = await postR.text();
+          return res.status(500).json({ error: 'insert_failed', detail: e.slice(0,200) });
+        }
+        const rows = await postR.json();
+        return res.status(200).json({ ok: true, project_id: rows[0]?.id, updated_at: rows[0]?.updated_at });
+      }
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── load-project: retorna projeto editing mais recente OU especifico ──────
+  // Query: ?action=load-project&project_id=X (opcional)
+  // Sem project_id → ultimo editing do user
+  // Com project_id → especifico (valida ownership)
+  if (action === 'load-project') {
+    const projectId = req.body?.project_id || req.query?.project_id || null;
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      let url;
+      if (projectId) {
+        url = `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=id,nome_projeto,project_state,video_url,updated_at,status&limit=1`;
+      } else {
+        url = `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.editing&select=id,nome_projeto,project_state,video_url,updated_at&order=updated_at.desc&limit=1`;
+      }
+      const r = await fetch(url, { headers: supaH });
+      if (!r.ok) return res.status(500).json({ error: 'load_failed' });
+      const rows = await r.json();
+      if (!rows?.length) return res.status(200).json({ project: null });
+      return res.status(200).json({ project: rows[0] });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── list-projects: lista projetos em edicao (rascunhos do user) ───────────
+  if (action === 'list-projects') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.editing&select=id,nome_projeto,video_url,updated_at&order=updated_at.desc&limit=20`,
+        { headers: supaH }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'list_failed' });
+      const rows = await r.json();
+      return res.status(200).json({ projects: rows || [] });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── delete-project: apaga projeto em edicao ──────────────────────────────
+  if (action === 'delete-project') {
+    const projectId = req.body?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+        { method: 'DELETE', headers: { ...supaH, Prefer: 'return=minimal' } }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'delete_failed' });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── generate: transcript + 2 roteiros ──────────────────────────────────────
   if (action === 'generate') {
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });

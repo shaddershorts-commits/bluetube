@@ -474,6 +474,232 @@ button:disabled {
 .status-sep { color: var(--text-4); }
 .status-item { white-space: nowrap; }
 
+/* ─── UPLOAD SCREEN (Fase 1) ───────────────────────────────────────────── */
+.upload-screen {
+  display: flex; flex-direction: column;
+  gap: 18px;
+}
+.upload-dropzone {
+  background: var(--bg-2);
+  border: 2px dashed rgba(0,170,255,0.25);
+  border-radius: var(--radius-2);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+}
+.upload-dropzone:hover,
+.upload-dropzone:focus,
+.upload-dropzone.dragover {
+  border-color: var(--neon);
+  background: rgba(0,170,255,0.06);
+  transform: translateY(-1px);
+}
+.upload-dropzone.dragover {
+  box-shadow: 0 0 0 4px rgba(0,170,255,0.15);
+}
+.upload-icon {
+  color: var(--neon);
+  margin-bottom: 12px;
+  opacity: 0.85;
+}
+.upload-title {
+  font-size: 16px; font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 4px;
+}
+.upload-subtitle {
+  font-size: 13px; color: var(--text-2);
+  margin-bottom: 12px;
+}
+.upload-meta {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-3);
+}
+.upload-divider {
+  display: flex; align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.upload-divider::before,
+.upload-divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border-1);
+}
+.upload-url-box {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2);
+  padding: 14px;
+}
+.upload-url-label {
+  display: block;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-3);
+  margin-bottom: 6px;
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.upload-url-box input {
+  width: 100%;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-1);
+  color: var(--text-1);
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+.upload-url-box input:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 0 2px rgba(0,170,255,0.15);
+}
+.upload-url-btn {
+  width: 100%;
+  background: rgba(0,170,255,0.12);
+  color: var(--neon);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-1);
+  padding: 10px;
+  font-size: 13px; font-weight: 600;
+  transition: background .15s;
+}
+.upload-url-btn:hover {
+  background: rgba(0,170,255,0.2);
+}
+
+/* Progress */
+.upload-progress {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2);
+  padding: 12px 14px;
+}
+.up-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.up-label {
+  font-size: 12px; color: var(--text-1); font-weight: 500;
+}
+.up-pct {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--neon); font-weight: 600;
+}
+.up-bar {
+  height: 6px;
+  background: var(--bg-1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.up-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-2), var(--neon));
+  width: 0%;
+  transition: width .25s ease-out;
+}
+.up-actions {
+  display: flex; justify-content: flex-end;
+}
+.up-cancel {
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.up-cancel:hover {
+  color: var(--danger);
+}
+
+.upload-error {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius-1);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #fca5a5;
+}
+
+/* ─── MEDIA INFO (apos upload, Fase 1) ────────────────────────────────── */
+.media-info {
+  display: flex; align-items: center;
+  gap: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2);
+  padding: 12px;
+}
+.media-thumb {
+  width: 48px; height: 48px;
+  background: var(--bg-3);
+  border-radius: var(--radius-1);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--neon);
+  flex-shrink: 0;
+}
+.media-detail {
+  flex: 1; min-width: 0;
+}
+.media-name {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+.media-meta {
+  display: flex; align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-3);
+}
+.media-meta .sep { color: var(--text-4); }
+.badge-vertical { color: var(--ok); }
+.badge-horizontal, .badge-square { color: var(--warn); }
+.media-replace {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,170,255,0.05);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-1);
+  color: var(--text-3);
+  font-size: 14px;
+}
+.media-replace:hover {
+  background: rgba(0,170,255,0.12);
+  color: var(--text-1);
+}
+.media-status {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2);
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ─── PLAYER aspect hint (quando vídeo nao e 9:16) ────────────────────── */
+.aspect-hint {
+  position: absolute;
+  bottom: 8px; left: 8px; right: 8px;
+  background: rgba(251,191,36,0.92);
+  color: #1a1300;
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Save status states */
+.save-status.saving { color: var(--warn); }
+.save-status.saved { color: var(--ok); }
+
 /* ─── RESPONSIVO MOBILE ────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   :root {
