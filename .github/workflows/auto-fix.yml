@@ -1,0 +1,47 @@
+name: Auto-fix agent (Claude → PR)
+
+# Substitui o Vercel Log Drain self-referential que estava causando loop de
+# 1M hits/dia (~$68/mes). Agora roda a cada 30min consultando Vercel Logs
+# API, e abre Pull Request em vez de commit direto (revisao humana).
+#
+# Schedule: */30 = a cada 30min, 48 execucoes/dia
+# Concurrency: max 1 em paralelo (evita race em PRs)
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:  # permite rodar manual em testes
+
+concurrency:
+  group: auto-fix-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write          # criar branches + commits
+  pull-requests: write     # abrir PRs
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run auto-fix agent
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SINCE_MINUTES: '35'
+          MAX_FIXES_PER_RUN: '3'
+        run: node .github/scripts/auto-fix.mjs
