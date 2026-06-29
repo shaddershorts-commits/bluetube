@@ -28,7 +28,9 @@ const COUNTRIES = [
 const PARALLEL_CHUNK_SIZE = 5; // chunks de 5 paralelos pra não saturar rate per-second
 const PARALLEL_CHUNK_DELAY_MS = 800;
 const MIN_LIKES = 800_000;
-const FETCH_COUNT_PER_COUNTRY = 50; // 2026-06-29: 30 → 50 (mais vídeos por req, mesma quota)
+// 2026-06-29: tentei 30 → 50 mas TikAPI Starter retornou 0.00kb (provavelmente
+// rejeita count > 30 mas conta o req como usado). Voltado pra 30, valor seguro.
+const FETCH_COUNT_PER_COUNTRY = 30;
 const RETENTION_DAYS = 30;
 // Robustez 2026-06-29:
 const MAX_RETRIES = 1;              // 1 retry em 429/5xx (backoff 2s)
