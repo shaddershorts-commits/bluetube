@@ -175,18 +175,17 @@ async function historicoAction(req, res) {
 
   // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE.
   // "Respeitar filtro": cada janela exige views minimas REAIS de viral.
-  //   5h  ≥ 60k  (master only — calibrado pra 147 canais, ~240k/dia ritmo)
-  //   24h ≥ 300k
-  //   7d  ≥ 2M
-  //   30d ≥ 8M
-  // Banco legacy abaixo desses thresholds nao aparece — comportamento
-  // intencional, ferramenta vira "virais de verdade".
-  // 2026-06-25: thresholds ajustados pelo user (mais permissivos pra
-  // mostrar mais vídeos no painel sem perder curadoria viral)
-  if (periodo === '5h')       parts.push('views=gte.40000');
-  else if (periodo === '24h') parts.push('views=gte.180000');
-  else if (periodo === '7d')  parts.push('views=gte.900000');
-  else if (periodo === '30d') parts.push('views=gte.3000000');
+  // Histórico de calibrações:
+  //   Original (lançamento):    5h=60k    24h=300k   7d=2M    30d=8M
+  //   2026-06-25 (user):        5h=40k    24h=180k   7d=900k  30d=3M
+  //   2026-06-29 (user, atual): 5h=30k    24h=100k   7d=500k  30d=1M
+  // Banco legacy abaixo desses thresholds não aparece — comportamento intencional.
+  // Cada ajuste pra baixo expõe vídeos já coletados que estavam ocultos
+  // (não precisa re-coleta — o banco já tem o conteúdo).
+  if (periodo === '5h')       parts.push('views=gte.30000');
+  else if (periodo === '24h') parts.push('views=gte.100000');
+  else if (periodo === '7d')  parts.push('views=gte.500000');
+  else if (periodo === '30d') parts.push('views=gte.1000000');
 
   // Hard limit de duracao: so Shorts ≤90s (sempre)
   parts.push('duracao_segundos=lte.90');
