@@ -25,8 +25,13 @@ const COUNTRIES = [
   'za', // África do Sul (África)
   'se', // Suécia (Norte Europa)
 ];
-const PARALLEL_CHUNK_SIZE = 5; // chunks de 5 paralelos pra não saturar rate per-second
-const PARALLEL_CHUNK_DELAY_MS = 800;
+// 2026-06-29: Chunk de 5 saturava rate-limit per-second do TikAPI Starter.
+// Comportamento observado: 2 primeiros reqs do chunk passam, 3 últimos retornam
+// HTTP 403 com response vazio. TikAPI parece permitir ~2 reqs simultâneos.
+// Solução: chunks de 2 + delay maior. Total: 22 países / 2 = 11 chunks ×
+// (1.5s delay + ~2s TikAPI) ≈ 35-45s, cabe nos 60s timeout Vercel.
+const PARALLEL_CHUNK_SIZE = 2;
+const PARALLEL_CHUNK_DELAY_MS = 1500;
 const MIN_LIKES = 800_000;
 // 2026-06-29: tentei 30 → 50 mas TikAPI Starter retornou 0.00kb (provavelmente
 // rejeita count > 30 mas conta o req como usado). Voltado pra 30, valor seguro.
@@ -179,23 +184,32 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
   }
 
   // Quebra em chunks de PARALLEL_CHUNK_SIZE com pausa entre cada.
-  // Circuit breaker: se em qualquer chunk >50% dos países falharem (HTTP errors
-  // ou exceptions), aborta os próximos chunks pra preservar quota.
+  // Circuit breaker: avalia taxa de falha ACUMULADA após processar pelo menos
+  // 6 países (3 chunks). Em chunks pequenos (2), uma única falha isolada não
+  // dispara mais (evita falsos positivos). Só aborta se >50% do total processado
+  // até agora falhou — sinal de outage real do TikAPI.
   const allResults = [];
   let circuitBroken = false;
+  const MIN_COUNTRIES_BEFORE_BREAKER = 6;
+  let totalProcessed = 0;
+  let totalFailed = 0;
   for (let i = 0; i < COUNTRIES.length; i += PARALLEL_CHUNK_SIZE) {
     if (circuitBroken) break;
     const chunk = COUNTRIES.slice(i, i + PARALLEL_CHUNK_SIZE);
     const chunkResults = await Promise.allSettled(chunk.map(coletarPais));
     allResults.push(...chunkResults);
-    // Verifica taxa de falha do chunk
-    const failed = chunkResults.filter(r => r.status === 'rejected' || (r.value && r.value.failed)).length;
-    const failRatio = failed / chunk.length;
-    if (failRatio > CIRCUIT_BREAKER_FAIL_RATIO) {
-      console.error(`[tiktok-virais] CIRCUIT BREAKER: chunk ${i} teve ${Math.round(failRatio*100)}% falhas (${failed}/${chunk.length}). Abortando próximos chunks pra preservar quota.`);
-      results.circuit_broken = true;
-      results.circuit_broken_at_chunk = i;
-      circuitBroken = true;
+    // Acumula stats
+    totalProcessed += chunk.length;
+    totalFailed += chunkResults.filter(r => r.status === 'rejected' || (r.value && r.value.failed)).length;
+    // Circuit breaker: só dispara após mínimo de países E se >50% total falhou
+    if (totalProcessed >= MIN_COUNTRIES_BEFORE_BREAKER) {
+      const cumFailRatio = totalFailed / totalProcessed;
+      if (cumFailRatio > CIRCUIT_BREAKER_FAIL_RATIO) {
+        console.error(`[tiktok-virais] CIRCUIT BREAKER: ${totalFailed}/${totalProcessed} países (${Math.round(cumFailRatio*100)}%) falharam até agora. Abortando próximos pra preservar quota.`);
+        results.circuit_broken = true;
+        results.circuit_broken_at_chunk = i;
+        circuitBroken = true;
+      }
     }
     // Pausa entre chunks (exceto após o último ou se quebrou)
     if (!circuitBroken && i + PARALLEL_CHUNK_SIZE < COUNTRIES.length) {
