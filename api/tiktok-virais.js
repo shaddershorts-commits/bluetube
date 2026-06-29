@@ -9,21 +9,31 @@
 // Filtro local: stats.diggCount >= 1_000_000
 // Países: us, br, mx, es, jp, kr, id, fr (8 países, conforme decisão)
 
-// 2026-06-24: expandido de 8 → 17 países (alvo ~220 reqs/dia, 73% quota).
-// CN: TikTok não opera na China oficialmente (lá é Douyin separado).
-// Mantemos no array pra TikAPI tentar — se retornar 0, é esperado.
+// 2026-06-29: expandido pra 22 países × 12 coletas/dia × 50 vídeos/req.
+// Alvo: 264 reqs/dia = 88% da quota Starter (300), margem 12% pra retries.
+// Cobertura geográfica: Américas + Europa + Ásia + Oceania + África.
+// CN: TikTok não opera oficialmente (lá é Douyin). Mantemos — TikAPI tenta.
 const COUNTRIES = [
-  // Originais (8): América + Europa + Ásia central
+  // Originais (17)
   'us', 'br', 'mx', 'es', 'jp', 'kr', 'id', 'fr',
-  // Novos (9): Europa expandida + sudeste asiático + outros
   // 'gb' (não 'uk') — ISO 3166-1 alpha-2 oficial. uk dá HTTP 400 no TikAPI.
   'gb', 'de', 'it', 'ph', 'th', 'vn', 'tr', 'ca', 'cn',
+  // Novos 2026-06-29 (5): cobertura geográfica expandida
+  'ar', // Argentina (LATAM)
+  'au', // Austrália (Oceania)
+  'nl', // Holanda (Norte Europa)
+  'za', // África do Sul (África)
+  'se', // Suécia (Norte Europa)
 ];
-const PARALLEL_CHUNK_SIZE = 5; // 17 simultâneos saturava TikAPI per-second
+const PARALLEL_CHUNK_SIZE = 5; // chunks de 5 paralelos pra não saturar rate per-second
 const PARALLEL_CHUNK_DELAY_MS = 800;
-const MIN_LIKES = 800_000; // 2026-06-24: baixado de 1M pra 800k a pedido do user
-const FETCH_COUNT_PER_COUNTRY = 30; // TikAPI retorna até 30/chamada
+const MIN_LIKES = 800_000;
+const FETCH_COUNT_PER_COUNTRY = 50; // 2026-06-29: 30 → 50 (mais vídeos por req, mesma quota)
 const RETENTION_DAYS = 30;
+// Robustez 2026-06-29:
+const MAX_RETRIES = 1;              // 1 retry em 429/5xx (backoff 2s)
+const RETRY_BACKOFF_MS = 2000;
+const CIRCUIT_BREAKER_FAIL_RATIO = 0.5;  // se >50% países falham, aborta resto
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -44,7 +54,8 @@ module.exports = async function handler(req, res) {
     if (action === 'listar')  return await listar(req, res, { SU, h });
     if (action === 'limpar')  return await limpar(req, res, { SU, h });
     if (action === 'cache-thumbs') return await cacheThumbs(req, res, { SU, SK, h });
-    return res.status(400).json({ error: 'action_invalida', actions: ['coletar', 'listar', 'limpar', 'cache-thumbs'] });
+    if (action === 'health') return await health(req, res, { SU, h });
+    return res.status(400).json({ error: 'action_invalida', actions: ['coletar', 'listar', 'limpar', 'cache-thumbs', 'health'] });
   } catch (e) {
     console.error('[tiktok-virais fatal]', e?.message);
     return res.status(500).json({ error: e?.message });
@@ -66,18 +77,46 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
   // Primeira tentativa: 17 fetches simultâneos saturava rate per-second do
   // TikAPI (5 países falhavam aleatoriamente). Solução: chunks de 5 paralelos
   // com 800ms entre cada chunk. Tempo total: ~15-20s (cabe nos 120s).
-  async function coletarPais(country) {
-    const stat = { fetched: 0, qualified: 0, inserted: 0, errors: 0 };
-    try {
-      const url = `https://api.tikapi.io/public/explore?country=${country}&count=${FETCH_COUNT_PER_COUNTRY}`;
-      const r = await fetch(url, {
-        headers: { 'X-API-KEY': TIKAPI_KEY, 'accept': 'application/json' },
-        signal: AbortSignal.timeout(25000),
-      });
-      if (!r.ok) {
-        stat.errors++;
-        return { country, stat: { ...stat, http_status: r.status }, failed: true };
+  // Retry com backoff: 1 retry em 429/5xx (problema transitório).
+  // Em 4xx (exceto 429): não retry — erro nosso (key inválida, etc).
+  async function fetchTikAPIWithRetry(country) {
+    const url = `https://api.tikapi.io/public/explore?country=${country}&count=${FETCH_COUNT_PER_COUNTRY}`;
+    let lastError = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const r = await fetch(url, {
+          headers: { 'X-API-KEY': TIKAPI_KEY, 'accept': 'application/json' },
+          signal: AbortSignal.timeout(25000),
+        });
+        // Sucesso ou erro permanente (4xx exceto 429) — retorna
+        if (r.ok) return { ok: true, status: r.status, response: r, attempts: attempt + 1 };
+        const isRetryable = r.status === 429 || r.status >= 500;
+        if (!isRetryable || attempt === MAX_RETRIES) {
+          return { ok: false, status: r.status, response: r, attempts: attempt + 1 };
+        }
+        // Retry: aguarda backoff
+        console.warn(`[tiktok-virais:${country}] HTTP ${r.status} attempt ${attempt+1}, retry em ${RETRY_BACKOFF_MS}ms`);
+        await new Promise(rs => setTimeout(rs, RETRY_BACKOFF_MS * (attempt + 1)));
+      } catch (e) {
+        lastError = e;
+        if (attempt === MAX_RETRIES) break;
+        console.warn(`[tiktok-virais:${country}] ${e.message} attempt ${attempt+1}, retry em ${RETRY_BACKOFF_MS}ms`);
+        await new Promise(rs => setTimeout(rs, RETRY_BACKOFF_MS * (attempt + 1)));
       }
+    }
+    return { ok: false, error: lastError?.message || 'unknown', attempts: MAX_RETRIES + 1 };
+  }
+
+  async function coletarPais(country) {
+    const stat = { fetched: 0, qualified: 0, inserted: 0, errors: 0, attempts: 0 };
+    try {
+      const result = await fetchTikAPIWithRetry(country);
+      stat.attempts = result.attempts;
+      if (!result.ok) {
+        stat.errors++;
+        return { country, stat: { ...stat, http_status: result.status, error: result.error }, failed: true };
+      }
+      const r = result.response;
       const data = await r.json();
       const items = Array.isArray(data?.itemList) ? data.itemList : [];
       stat.fetched = items.length;
@@ -137,14 +176,27 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
     }
   }
 
-  // Quebra em chunks de PARALLEL_CHUNK_SIZE com pausa entre cada
+  // Quebra em chunks de PARALLEL_CHUNK_SIZE com pausa entre cada.
+  // Circuit breaker: se em qualquer chunk >50% dos países falharem (HTTP errors
+  // ou exceptions), aborta os próximos chunks pra preservar quota.
   const allResults = [];
+  let circuitBroken = false;
   for (let i = 0; i < COUNTRIES.length; i += PARALLEL_CHUNK_SIZE) {
+    if (circuitBroken) break;
     const chunk = COUNTRIES.slice(i, i + PARALLEL_CHUNK_SIZE);
     const chunkResults = await Promise.allSettled(chunk.map(coletarPais));
     allResults.push(...chunkResults);
-    // Pausa entre chunks (exceto após o último)
-    if (i + PARALLEL_CHUNK_SIZE < COUNTRIES.length) {
+    // Verifica taxa de falha do chunk
+    const failed = chunkResults.filter(r => r.status === 'rejected' || (r.value && r.value.failed)).length;
+    const failRatio = failed / chunk.length;
+    if (failRatio > CIRCUIT_BREAKER_FAIL_RATIO) {
+      console.error(`[tiktok-virais] CIRCUIT BREAKER: chunk ${i} teve ${Math.round(failRatio*100)}% falhas (${failed}/${chunk.length}). Abortando próximos chunks pra preservar quota.`);
+      results.circuit_broken = true;
+      results.circuit_broken_at_chunk = i;
+      circuitBroken = true;
+    }
+    // Pausa entre chunks (exceto após o último ou se quebrou)
+    if (!circuitBroken && i + PARALLEL_CHUNK_SIZE < COUNTRIES.length) {
       await new Promise(rs => setTimeout(rs, PARALLEL_CHUNK_DELAY_MS));
     }
   }
@@ -316,5 +368,85 @@ async function cacheThumbs(req, res, { SU, SK, h }) {
     ok: true, processed: items.length, cached, failed, skipped,
     remaining_estimate: items.length === limit ? 'mais a processar (rode de novo)' : 'completo',
     timestamp: new Date().toISOString(),
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health endpoint — monitora saúde do sistema de coleta
+// ─────────────────────────────────────────────────────────────────────────────
+// Retorna stats últimas 24h: total coletado, taxa de cache, distribuição por
+// país, % uso da quota TikAPI estimado. Útil pra dashboard/alerta.
+//
+// Query: GET ?action=health
+// Público (sem auth) — informações agregadas, sem PII.
+async function health(req, res, { SU, h }) {
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const oneDayAgo = new Date(now - ONE_DAY).toISOString();
+  const supaHost = new URL(SU).hostname;
+
+  // Busca vídeos coletados últimas 24h
+  const r = await fetch(
+    `${SU}/rest/v1/tiktok_virais?collected_at=gte.${oneDayAgo}&select=country,thumbnail_url,collected_at&order=collected_at.desc&limit=2000`,
+    { headers: h }
+  );
+  if (!r.ok) return res.status(500).json({ error: 'query_failed' });
+  const rows = await r.json();
+
+  // Agrega stats
+  const byCountry = {};
+  const byHour = {};
+  let cachedThumbs = 0, missingThumbs = 0;
+  for (const row of rows) {
+    byCountry[row.country] = (byCountry[row.country] || 0) + 1;
+    const hour = row.collected_at.slice(0, 13);
+    byHour[hour] = (byHour[hour] || 0) + 1;
+    if (!row.thumbnail_url) missingThumbs++;
+    else if (row.thumbnail_url.includes(supaHost)) cachedThumbs++;
+  }
+  const totalThumbs = rows.length - missingThumbs;
+  const cacheRate = totalThumbs > 0 ? (cachedThumbs / totalThumbs) : 0;
+
+  // Estimativa uso TikAPI (req por país × coletas hoje)
+  const colHours = Object.keys(byHour).length;
+  const estimatedReqs = colHours * COUNTRIES.length;
+  const QUOTA_DAILY = 300;
+  const quotaUsage = estimatedReqs / QUOTA_DAILY;
+
+  // Total geral do banco
+  const totalR = await fetch(`${SU}/rest/v1/tiktok_virais?select=tiktok_video_id&limit=1`, {
+    headers: { ...h, Prefer: 'count=exact' },
+  });
+  const totalDb = parseInt(totalR.headers.get('content-range')?.split('/')[1] || '0', 10);
+
+  return res.status(200).json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    config: {
+      countries: COUNTRIES.length,
+      fetch_count_per_country: FETCH_COUNT_PER_COUNTRY,
+      min_likes_threshold: MIN_LIKES,
+      retention_days: RETENTION_DAYS,
+      max_retries: MAX_RETRIES,
+      circuit_breaker_threshold: CIRCUIT_BREAKER_FAIL_RATIO,
+    },
+    last_24h: {
+      videos_inserted: rows.length,
+      collection_runs: colHours,
+      estimated_tikapi_reqs: estimatedReqs,
+      tikapi_quota_usage_pct: Math.round(quotaUsage * 100),
+      tikapi_quota_remaining: Math.max(0, QUOTA_DAILY - estimatedReqs),
+      videos_by_country: byCountry,
+      thumb_cache_rate_pct: Math.round(cacheRate * 100),
+      thumbs_cached: cachedThumbs,
+      thumbs_uncached: totalThumbs - cachedThumbs,
+      thumbs_missing: missingThumbs,
+    },
+    database: {
+      total_videos: totalDb,
+    },
+    status: estimatedReqs > QUOTA_DAILY * 0.95 ? 'WARNING_NEAR_QUOTA'
+      : colHours < 4 ? 'WARNING_LOW_COLLECTIONS'
+      : 'OK',
   });
 }
