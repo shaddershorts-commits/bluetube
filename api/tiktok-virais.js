@@ -43,7 +43,8 @@ module.exports = async function handler(req, res) {
     if (action === 'coletar') return await coletar(req, res, { SU, h, TIKAPI_KEY });
     if (action === 'listar')  return await listar(req, res, { SU, h });
     if (action === 'limpar')  return await limpar(req, res, { SU, h });
-    return res.status(400).json({ error: 'action_invalida', actions: ['coletar', 'listar', 'limpar'] });
+    if (action === 'cache-thumbs') return await cacheThumbs(req, res, { SU, SK, h });
+    return res.status(400).json({ error: 'action_invalida', actions: ['coletar', 'listar', 'limpar', 'cache-thumbs'] });
   } catch (e) {
     console.error('[tiktok-virais fatal]', e?.message);
     return res.status(500).json({ error: e?.message });
@@ -52,6 +53,7 @@ module.exports = async function handler(req, res) {
 
 // ── COLETAR (cron 3x/dia) ────────────────────────────────────────────────────
 async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
+  const SK = process.env.SUPABASE_SERVICE_KEY;
   // Auth: cron Vercel ou admin
   const isCron = !!req.headers['x-vercel-cron'];
   const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
@@ -84,10 +86,18 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
       stat.qualified = qualified.length;
 
       const now = new Date().toISOString();
-      const rows = qualified.map(v => ({
+      // Faz cache da thumbnail no Supabase Storage ANTES de salvar
+      // (TikTok URLs expiram em ~3-5d → 403). Cache permanente + CDN Cloudflare.
+      // Se cache falhar, mantém URL original (frontend ainda renderiza enquanto fresh).
+      const cached = await Promise.all(qualified.map(async v => {
+        const original = v.video?.cover || v.video?.dynamicCover || null;
+        if (!original) return null;
+        return await cacheThumbnail(original, v.id, { SU, SK });
+      }));
+      const rows = qualified.map((v, i) => ({
         tiktok_video_id: v.id,
         video_url: `https://www.tiktok.com/@${v.author?.uniqueId || 'tiktok'}/video/${v.id}`,
-        thumbnail_url: v.video?.cover || v.video?.dynamicCover || null,
+        thumbnail_url: cached[i] || v.video?.cover || v.video?.dynamicCover || null,
         caption: (v.desc || '').slice(0, 500),
         author_handle: v.author?.uniqueId || null,
         author_name: v.author?.nickname || null,
@@ -207,6 +217,104 @@ async function limpar(req, res, { SU, h }) {
     ok: r.ok,
     cutoff,
     retention_days: RETENTION_DAYS,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cache de thumbnails no Supabase Storage
+// TikTok URLs expiram em ~3-5 dias (403 depois). Baixamos a imagem e salvamos
+// no bucket 'tiktok-thumbs/{video_id}.jpg' — URL pública estável + cache CDN
+// Cloudflare (cdn.bluetubeviral.com configurado pra Supabase).
+// ─────────────────────────────────────────────────────────────────────────────
+const TIKTOK_THUMBS_BUCKET = 'tiktok-thumbs';
+
+async function cacheThumbnail(tiktokUrl, videoId, { SU, SK }) {
+  if (!tiktokUrl || !videoId) return null;
+  // Já é URL do nosso Supabase? Skip
+  if (tiktokUrl.includes(new URL(SU).hostname)) return tiktokUrl;
+  try {
+    // Baixa a imagem do TikTok CDN
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(tiktokUrl, { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!r.ok) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 1024 || buf.length > 5 * 1024 * 1024) return null; // 1KB-5MB sanity check
+    const contentType = r.headers.get('content-type') || 'image/jpeg';
+    const ext = contentType.includes('webp') ? 'webp' : contentType.includes('png') ? 'png' : 'jpg';
+    const objectPath = `${videoId}.${ext}`;
+    // Upload pro Supabase Storage (upsert)
+    const upR = await fetch(`${SU}/storage/v1/object/${TIKTOK_THUMBS_BUCKET}/${objectPath}`, {
+      method: 'POST',
+      headers: {
+        apikey: SK,
+        Authorization: 'Bearer ' + SK,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+        'cache-control': 'public, max-age=31536000, immutable',
+      },
+      body: buf,
+    });
+    if (!upR.ok) {
+      const e = await upR.text();
+      console.warn(`[tiktok-virais cache-thumb] upload ${videoId}: ${upR.status} ${e.slice(0,150)}`);
+      return null;
+    }
+    return `${SU}/storage/v1/object/public/${TIKTOK_THUMBS_BUCKET}/${objectPath}`;
+  } catch (e) {
+    console.warn(`[tiktok-virais cache-thumb] ${videoId}:`, e.message);
+    return null;
+  }
+}
+
+// Job batch: re-cacheia thumbs dos vídeos no banco que ainda apontam pro TikTok CDN
+// Útil pra migrar os 594 vídeos existentes pra Supabase, e como backup ongoing.
+//
+// Query: ?action=cache-thumbs[&limit=50][&force=1][&admin_secret=...]
+//   limit (default 50, max 200) — quantos processar nessa execução
+//   force=1 — re-cacheia mesmo URLs já no Supabase
+async function cacheThumbs(req, res, { SU, SK, h }) {
+  const isCron = !!req.headers['x-vercel-cron'];
+  const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
+  if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
+
+  const limit = Math.min(200, parseInt(req.query.limit || '50', 10));
+  const force = req.query.force === '1';
+  const myHost = new URL(SU).hostname;
+  // Busca vídeos com thumbnail_url do TikTok CDN (não cacheada ainda)
+  const filter = force
+    ? `select=tiktok_video_id,thumbnail_url&limit=${limit}`
+    : `thumbnail_url=not.is.null&thumbnail_url=not.ilike.*${encodeURIComponent(myHost)}*&select=tiktok_video_id,thumbnail_url&limit=${limit}`;
+  const listR = await fetch(`${SU}/rest/v1/tiktok_virais?${filter}&order=collected_at.desc`, { headers: h });
+  if (!listR.ok) return res.status(500).json({ error: 'list_failed' });
+  const items = await listR.json();
+  let cached = 0, failed = 0, skipped = 0;
+  const updates = [];
+  for (const item of items) {
+    const cachedUrl = await cacheThumbnail(item.thumbnail_url, item.tiktok_video_id, { SU, SK });
+    if (cachedUrl && cachedUrl !== item.thumbnail_url) {
+      updates.push({ tiktok_video_id: item.tiktok_video_id, thumbnail_url: cachedUrl });
+      cached++;
+    } else if (cachedUrl === item.thumbnail_url) {
+      skipped++;
+    } else {
+      failed++;
+    }
+    await new Promise(rs => setTimeout(rs, 100)); // rate limit
+  }
+  // Update em batch (upsert por on_conflict)
+  if (updates.length) {
+    await fetch(`${SU}/rest/v1/tiktok_virais?on_conflict=tiktok_video_id`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(updates),
+    });
+  }
+  return res.status(200).json({
+    ok: true, processed: items.length, cached, failed, skipped,
+    remaining_estimate: items.length === limit ? 'mais a processar (rode de novo)' : 'completo',
     timestamp: new Date().toISOString(),
   });
 }

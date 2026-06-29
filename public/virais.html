@@ -249,8 +249,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
   border-radius:12px;overflow:hidden;transition:transform .15s,border-color .15s
 }
 .tk-card:hover{transform:translateY(-2px);border-color:rgba(255,140,0,.4)}
-.tk-card-thumb{position:relative;width:100%;aspect-ratio:9/16;background:#000;overflow:hidden}
+.tk-card-thumb{position:relative;width:100%;aspect-ratio:9/16;background:linear-gradient(135deg,#0a1628,#020817);overflow:hidden}
 .tk-card-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.tk-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(0,170,255,0.10),rgba(0,0,0,0.5));padding:16px;text-align:center}
+.tk-fb-inner{display:flex;flex-direction:column;align-items:center;gap:10px}
+.tk-fb-icon{font-size:38px;opacity:0.7;filter:drop-shadow(0 2px 8px rgba(0,170,255,0.3))}
+.tk-fb-caption{font-family:var(--font-mono,monospace);font-size:11px;color:rgba(150,190,230,0.7);line-height:1.4;max-width:160px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .tk-card-flag{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border-radius:6px;padding:4px 8px;font-size:14px;font-weight:700;color:#fff;letter-spacing:.05em;z-index:2}
 .tk-card-rank{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;color:#fff;z-index:2}
 .tk-card-rank.top3{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000}
@@ -1686,7 +1690,7 @@ function tkMkCard(v, rank){
   return `
     <div class="tk-card">
       <div class="tk-card-thumb">
-        <img src="${tkEsc(v.thumbnail_url||'')}" alt="" loading="lazy" onerror="this.style.display='none'"/>
+        <img src="${tkEsc(v.thumbnail_url||'')}" alt="" loading="lazy" onerror="this.style.display='none';const p=this.parentElement;if(p&&!p.querySelector('.tk-fallback')){const d=document.createElement('div');d.className='tk-fallback';d.innerHTML='<div class=\\'tk-fb-inner\\'><div class=\\'tk-fb-icon\\'>🎵</div><div class=\\'tk-fb-caption\\'>${tkEsc((v.caption||'').slice(0,40)).replace(/'/g,'&#39;')}</div></div>';p.appendChild(d);}"/>
         <div class="tk-card-flag">${flag}</div>
         <div class="tk-card-rank ${isTop3?'top3':''}">${rankLabel}</div>
         <div class="tk-card-views">▶ ${tkFmt(v.views_count)}</div>
