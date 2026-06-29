@@ -9,8 +9,12 @@ name: TikTok Virais — Coleta (8x/dia)
 
 on:
   schedule:
-    # A cada 3 horas: 0, 3, 6, 9, 12, 15, 18, 21 UTC
-    - cron: '0 */3 * * *'
+    # A cada 3 horas no minuto 7: 00:07, 03:07, 06:07, 09:07, 12:07, 15:07, 18:07, 21:07 UTC
+    # 2026-06-29: Mudado de "0 */3 * * *" pra "7 */3 * * *". Razão: GH Actions
+    # tem alta carga global no minuto 0 de cada hora (todo mundo agenda no :00).
+    # Atrasos médios eram 1-2h + 2-3 execuções puladas/dia. Movendo pro :07
+    # reduz colisão e atrasos caem pra ~5-15min, perto de zero pulos.
+    - cron: '7 */3 * * *'
   workflow_dispatch: {} # permite rodar manual quando precisar encher
 
 jobs:
