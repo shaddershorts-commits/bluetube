@@ -1725,15 +1725,29 @@ async function saquesPanelAction(req, res, { SUPABASE_URL, headers }) {
     const now = new Date();
     const mesStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    // Commissions pending agrupadas por afiliado (pra calcular elegiveis + previsto)
-    const cR = await fetch(
-      `${SUPABASE_URL}/rest/v1/affiliate_commissions?status=eq.pending&select=affiliate_id,commission_amount`,
+    // ── FIX 2026-06-30: MRR baseado em ATIVOS (não soma de pendings) ──────
+    // Modelo MUDOU em 2026-06-22: comissão = MRR recorrente baseado em
+    // assinantes ativos no momento, NÃO mais soma de pending acumulado.
+    // Mesma fórmula do action 'list_affiliates' (linhas ~819-822):
+    //   MRR = total_full × R$29,99 × rate + total_master × R$89,99 × rate
+    //   rate = comissao_percentual / 100 (default 0.30 = bronze)
+    // Por que mudou: pending acumulado mostrava valor desatualizado quando
+    // afiliado perdia referidos entre Pix do mês passado e atual. MRR
+    // reflete o estado real "hoje".
+    const PLAN_AMOUNTS_LOCAL = { full: 29.99, master: 89.99 };
+    const aR = await fetch(
+      `${SUPABASE_URL}/rest/v1/affiliates?status=eq.active&select=id,total_full,total_master,comissao_percentual`,
       { headers }
     );
-    const pendings = cR.ok ? await cR.json() : [];
+    const ativos = aR.ok ? await aR.json() : [];
     const porAff = new Map();
-    for (const p of pendings) {
-      porAff.set(p.affiliate_id, (porAff.get(p.affiliate_id) || 0) + parseFloat(p.commission_amount || 0));
+    for (const a of ativos) {
+      const rate = (typeof a.comissao_percentual === 'number' && a.comissao_percentual > 0)
+        ? a.comissao_percentual / 100
+        : 0.30;
+      const mrr = (a.total_full || 0) * PLAN_AMOUNTS_LOCAL.full * rate
+                + (a.total_master || 0) * PLAN_AMOUNTS_LOCAL.master * rate;
+      if (mrr > 0) porAff.set(a.id, +mrr.toFixed(2));
     }
     const elegiveis = Array.from(porAff.entries()).filter(([, v]) => v >= VALOR_MINIMO);
     const previsto = elegiveis.reduce((s, [, v]) => s + v, 0);
