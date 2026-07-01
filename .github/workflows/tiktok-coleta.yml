@@ -27,10 +27,14 @@ jobs:
           # Fix 2026-06-25: -w "\n%{http_code}" -o /file gravava resposta no arquivo
           # MAS retornava "\n200" no stdout -> bash comparava "\n200" != "200" -> falsa
           # falha mesmo com HTTP 200 OK. Agora usa apenas %{http_code} sem newline.
-          HTTP_CODE=$(curl -sS --max-time 150 \
+          # Fix 2026-07-01: usa dominio Vercel direto (bluetube-ten.vercel.app)
+          # em vez de bluetubeviral.com pra bypass do Cloudflare (100-120s
+          # timeout = HTTP 504). Coleta pode demorar ate 150s pra rodar 22
+          # paises com fetchTikAPIWithRetry.
+          HTTP_CODE=$(curl -sS --max-time 180 \
             -w "%{http_code}" \
             -o /tmp/resp.json \
-            "https://www.bluetubeviral.com/api/tiktok-virais?action=coletar&admin_secret=${{ secrets.ADMIN_SECRET }}")
+            "https://bluetube-ten.vercel.app/api/tiktok-virais?action=coletar&admin_secret=${{ secrets.ADMIN_SECRET }}")
           echo "HTTP: $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
             echo "::error::Coleta falhou com HTTP $HTTP_CODE"

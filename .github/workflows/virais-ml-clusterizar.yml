@@ -22,12 +22,27 @@ jobs:
           # em vez de bluetubeviral.com pra bypass do Cloudflare (que mata em
           # 100s). Endpoint pode demorar ate 300s (maxDuration definido em
           # vercel.json). Cloudflare Free Plan corta em ~100s = HTTP 524.
-          HTTP=$(curl -sS --max-time 300 -o /tmp/resp.json -w "%{http_code}" \
+          # curl exit 28 = timeout local. Endpoint pode demorar >300s pra
+          # processar 1500 videos (PATCHes throttlados). Se timeout do curl,
+          # o processo continua rodando no Vercel ate maxDuration=300s. Nao
+          # marcar como falha (workflow roda 1x/dia; se pular hoje, roda
+          # amanha e clusteriza a partir do estado atual — idempotente).
+          set +e
+          HTTP=$(curl -sS --max-time 290 -o /tmp/resp.json -w "%{http_code}" \
             "https://bluetube-ten.vercel.app/api/virais-ml?action=clusterizar-temas&admin_secret=${{ secrets.ADMIN_SECRET }}")
-          echo "HTTP: $HTTP"
+          CURL_EXIT=$?
+          set -e
+          echo "HTTP: $HTTP (curl exit: $CURL_EXIT)"
           head -c 400 /tmp/resp.json
           echo ""
-          if [ "$HTTP" != "200" ]; then
+          if [ "$CURL_EXIT" = "28" ]; then
+            echo "::warning::curl timeout — endpoint continua rodando no Vercel"
+            exit 0
+          fi
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "504" ]; then
             echo "::error::HTTP $HTTP"
             exit 1
+          fi
+          if [ "$HTTP" = "504" ]; then
+            echo "::warning::HTTP 504 — job continua processando no Vercel"
           fi
