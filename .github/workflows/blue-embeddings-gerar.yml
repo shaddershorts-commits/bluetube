@@ -6,7 +6,8 @@ name: Blue embeddings gerar batch (segunda 5h UTC)
 
 on:
   schedule:
-    - cron: '0 5 * * 1'
+    # 2026-07-01: minuto :13 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '13 5 * * 1'
   workflow_dispatch: {}
 
 jobs:

@@ -6,7 +6,8 @@ name: Lembrete Pix anual (30d + 15d antes do vencimento)
 
 on:
   schedule:
-    - cron: '0 10 * * *'
+    # 2026-07-01: minuto :31 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '31 10 * * *'
   workflow_dispatch: {}
 
 jobs:

@@ -12,13 +12,18 @@ name: Refresh yt-dlp cache buster (mensal)
 
 on:
   schedule:
-    # Dia 1 de cada mes, 4h UTC (1h BRT)
-    - cron: '0 4 1 * *'
+    # Dia 1 de cada mes, 4h41 UTC (1h41 BRT). Minuto :41 evita pico do GH.
+    - cron: '41 4 1 * *'
   workflow_dispatch: {} # permite rodar manualmente em emergencias
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Fix 2026-07-01: sem essa guarda o GitHub disparava um "check run
+    # fantasma" com event=push a cada commit do repo (aparecia como failure
+    # no gh workflow list, mas nao era run real de cron). O if garante que
+    # so cron real ou dispatch manual executam o job.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     steps:

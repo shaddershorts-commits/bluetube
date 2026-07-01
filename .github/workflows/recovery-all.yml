@@ -1,0 +1,56 @@
+name: Recovery — sweep + emails 1h/24h/72h (consolidado)
+
+# Consolida 4 workflows separados (recovery-sweep, recovery-send-1h,
+# recovery-send-24h, recovery-send-72h) num unico cron. Motivo:
+#
+# 1) GH Actions descarta silenciosamente crons quando muitos disparam
+#    ao mesmo tempo. Menos workflows = menos slots na fila = menos descarte.
+# 2) Os 4 endpoints sao independentes e rapidos (~5-10s cada). Rodar em
+#    sequencia num unico job custa ~30s total, cabe folgado no timeout.
+# 3) Antes da consolidacao (2026-06-30 audit): cobertura estava 5-21%.
+#    Meta pos-consolidacao: >=80%.
+#
+# Cadencia mantida: rodar a cada 15min = mesma frequencia do recovery-sweep
+# antigo. Os endpoints 1h/24h/72h antes rodavam menos (hourly ou 30min);
+# roda-los mais nao gera efeito colateral (idempotentes com dedup por
+# `email_enviado_em`).
+
+on:
+  schedule:
+    # A cada 15min no minuto :08, :23, :38, :53. Evita pico do GH.
+    - cron: '8-59/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Roda os 4 endpoints em sequencia
+        env:
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          BASE="https://www.bluetubeviral.com/api/checkout-recovery"
+          FAILED=0
+
+          for ACTION in sweep send-1h send-24h send-72h; do
+            echo ""
+            echo "=== $ACTION ==="
+            HTTP=$(curl -sS --max-time 90 -o /tmp/resp.json -w "%{http_code}" \
+              "${BASE}?action=${ACTION}&admin_secret=${ADMIN_SECRET}")
+            echo "HTTP: $HTTP"
+            head -c 300 /tmp/resp.json
+            echo ""
+            if [ "$HTTP" != "200" ]; then
+              echo "::warning::${ACTION} retornou HTTP $HTTP (segue os demais)"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "Terminado. Falhas: $FAILED/4"
+          if [ "$FAILED" = "4" ]; then
+            echo "::error::Todos os 4 endpoints falharam"
+            exit 1
+          fi

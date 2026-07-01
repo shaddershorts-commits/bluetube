@@ -6,7 +6,8 @@ name: Blue feed cleanup analytics (4h UTC)
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    # 2026-07-01: minuto :29 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '29 4 * * *'
   workflow_dispatch: {}
 
 jobs:

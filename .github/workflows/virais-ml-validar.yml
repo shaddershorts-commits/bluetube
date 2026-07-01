@@ -6,7 +6,8 @@ name: Virais ML validar predicoes (domingo 5h UTC)
 
 on:
   schedule:
-    - cron: '0 5 * * 0'
+    # 2026-07-01: minuto :17 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '17 5 * * 0'
   workflow_dispatch: {}
 
 jobs:

@@ -1,0 +1,54 @@
+name: Virais ML — alertas + emergentes (consolidado)
+
+# Consolida 2 workflows (virais-ml-verificar-alertas + virais-ml-detectar-
+# emergentes) num unico cron. Justificativa:
+#
+# 1) GH Actions descarta silenciosamente crons em picos de carga.
+#    verificar-alertas rodava */30 mas so aparecia 10% em 48h de audit
+#    (2026-06-30). detectar-emergentes rodava */4h com 50%.
+# 2) Endpoints sao rapidos (<10s cada) e complementares.
+# 3) Menos slots na fila = menos descarte.
+#
+# Cadencia: mantem */30min (frequencia do verificar-alertas). Detectar-
+# emergentes passa de */4h pra */30min — nao tem efeito colateral porque
+# o endpoint usa flag na tabela pra nao duplicar deteccao.
+
+on:
+  schedule:
+    # A cada 30min no minuto :19 e :49. Evita pico do GH em :00/:30.
+    - cron: '19,49 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Roda os 2 endpoints em sequencia
+        env:
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          BASE="https://www.bluetubeviral.com/api/virais-ml"
+          FAILED=0
+
+          for ACTION in verificar-alertas detectar-emergentes-ml; do
+            echo ""
+            echo "=== $ACTION ==="
+            HTTP=$(curl -sS --max-time 90 -o /tmp/resp.json -w "%{http_code}" \
+              "${BASE}?action=${ACTION}&admin_secret=${ADMIN_SECRET}")
+            echo "HTTP: $HTTP"
+            head -c 300 /tmp/resp.json
+            echo ""
+            if [ "$HTTP" != "200" ]; then
+              echo "::warning::${ACTION} retornou HTTP $HTTP (segue os demais)"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "Terminado. Falhas: $FAILED/2"
+          if [ "$FAILED" = "2" ]; then
+            echo "::error::Ambos endpoints falharam"
+            exit 1
+          fi

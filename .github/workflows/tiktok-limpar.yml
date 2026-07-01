@@ -5,8 +5,9 @@ name: TikTok Virais — Cleanup diário
 
 on:
   schedule:
-    # 4h30 UTC diário (1h30 BRT, baixa atividade)
-    - cron: '30 4 * * *'
+    # 4h37 UTC diário (1h37 BRT, baixa atividade).
+    # Minuto :37 evita pico do GH Actions em :00/:15/:30/:45.
+    - cron: '37 4 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -17,8 +18,11 @@ jobs:
       - name: Dispara cleanup
         run: |
           echo "Cleanup às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          # Fix 2026-07-01: -w "\n%{http_code}" gravava "\n200" no stdout, o
+          # que fazia [ "\n200" != "200" ] disparar exit 1 mesmo com HTTP 200 OK
+          # (mesmo bug que corrigimos em tiktok-coleta em 2026-06-25).
           HTTP_CODE=$(curl -sS --max-time 60 \
-            -w "\n%{http_code}" \
+            -w "%{http_code}" \
             -o /tmp/resp.json \
             "https://www.bluetubeviral.com/api/tiktok-virais?action=limpar&admin_secret=${{ secrets.ADMIN_SECRET }}")
           echo "HTTP: $HTTP_CODE"

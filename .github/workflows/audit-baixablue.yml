@@ -1,4 +1,4 @@
-name: Health BaixaBlue (9h UTC)
+name: Health BaixaBlue (9h19 UTC)
 
 # Migrado do Vercel pro GitHub Actions em 2026-06-25.
 # Razao: Vercel Pro limit eh 40 crons. BlueTube tinha 58 -> ultimos 18 ignorados.
@@ -6,7 +6,8 @@ name: Health BaixaBlue (9h UTC)
 
 on:
   schedule:
-    - cron: '0 9 * * *'
+    # 2026-07-01: minuto :19 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '19 9 * * *'
   workflow_dispatch: {}
 
 jobs:

@@ -6,7 +6,8 @@ name: YouTube quota status (23h UTC)
 
 on:
   schedule:
-    - cron: '0 23 * * *'
+    # 2026-07-01: minuto :53 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '53 23 * * *'
   workflow_dispatch: {}
 
 jobs:

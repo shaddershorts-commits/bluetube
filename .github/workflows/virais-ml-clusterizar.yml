@@ -1,4 +1,4 @@
-name: Virais ML clusterizar (4h UTC)
+name: Virais ML clusterizar (4h47 UTC)
 
 # Migrado do Vercel pro GitHub Actions em 2026-06-25.
 # Razao: Vercel Pro limit eh 40 crons. BlueTube tinha 58 -> ultimos 18 ignorados.
@@ -6,18 +6,24 @@ name: Virais ML clusterizar (4h UTC)
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    # 4h47 UTC (1h47 BRT). Minuto :47 evita pico do GH em :00/:15/:30/:45.
+    - cron: '47 4 * * *'
   workflow_dispatch: {}
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - name: Dispara endpoint
         run: |
           echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
-          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/virais-ml?action=clusterizar-temas&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          # Fix 2026-07-01: usar dominio Vercel direto (bluetube-ten.vercel.app)
+          # em vez de bluetubeviral.com pra bypass do Cloudflare (que mata em
+          # 100s). Endpoint pode demorar ate 300s (maxDuration definido em
+          # vercel.json). Cloudflare Free Plan corta em ~100s = HTTP 524.
+          HTTP=$(curl -sS --max-time 300 -o /tmp/resp.json -w "%{http_code}" \
+            "https://bluetube-ten.vercel.app/api/virais-ml?action=clusterizar-temas&admin_secret=${{ secrets.ADMIN_SECRET }}")
           echo "HTTP: $HTTP"
           head -c 400 /tmp/resp.json
           echo ""

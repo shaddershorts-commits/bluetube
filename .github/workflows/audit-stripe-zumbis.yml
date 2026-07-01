@@ -10,7 +10,8 @@ name: Auditoria stripe zumbis (cada 4h, auto-fix ativo)
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    # 2026-07-01: minuto :23 em vez de :00 pra evitar pico do GH Actions.
+    - cron: '23 */4 * * *'
   workflow_dispatch: {}
 
 jobs:

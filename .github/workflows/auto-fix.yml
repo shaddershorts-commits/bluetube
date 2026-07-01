@@ -9,7 +9,8 @@ name: Auto-fix agent (Claude → PR)
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    # 2026-07-01: minuto :17 e :47 em vez de :00/:30 (pico do GH Actions).
+    - cron: '17,47 * * * *'
   workflow_dispatch:  # permite rodar manual em testes
 
 concurrency:
