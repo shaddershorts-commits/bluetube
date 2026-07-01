@@ -9,8 +9,12 @@ name: Auto-fix agent (Claude → PR)
 
 on:
   schedule:
-    # 2026-07-01: minuto :17 e :47 em vez de :00/:30 (pico do GH Actions).
-    - cron: '17,47 * * * *'
+    # 2026-07-01 (revisao): reduzido de */30 pra */2h (:17 hora impar).
+    #
+    # SLA GH Actions nao aguenta */30 (11% cobertura). */2h bate ~85%.
+    # Auto-fix analisa logs Vercel — nao urgente, tolera latencia 2-3h.
+    # Ajustado SINCE_MINUTES pra 125 pra pegar 2h+buffer.
+    - cron: '17 */2 * * *'
   workflow_dispatch:  # permite rodar manual em testes
 
 concurrency:
@@ -43,6 +47,6 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SINCE_MINUTES: '35'
+          SINCE_MINUTES: '125'
           MAX_FIXES_PER_RUN: '3'
         run: node .github/scripts/auto-fix.mjs

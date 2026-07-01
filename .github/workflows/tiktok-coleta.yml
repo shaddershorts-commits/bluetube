@@ -1,21 +1,18 @@
-name: TikTok Virais — Coleta (12x/dia)
+name: TikTok Virais — Coleta (8x/dia)
 
-# Dispara coleta de virais TikTok via endpoint Vercel a cada 2 horas.
+# Dispara coleta de virais TikTok via endpoint Vercel a cada 3 horas.
 # Substitui crons Vercel pra esse endpoint (limit 40 do Vercel Pro foi
 # atingido; GitHub Actions roda gratuito).
 #
-# Volume esperado: 22 países × 12 coletas/dia ≈ 264 reqs/dia TikAPI
-# (~88% da quota Starter 300/dia, margem 12% pra retries).
+# Volume esperado: 22 países × 8 coletas/dia ≈ 176 reqs/dia TikAPI
+# (~59% da quota Starter 300/dia, margem confortável).
 
 on:
   schedule:
-    # A cada 2 horas no minuto 7: 00:07, 02:07, 04:07, 06:07, 08:07, 10:07,
-    # 12:07, 14:07, 16:07, 18:07, 20:07, 22:07 UTC
-    # 2026-06-29 (1ª vez): Mudado de "0 */3" pra "7 */3" — GH Actions tem alta
-    # carga no minuto 0 (atrasos 1-2h, pulava 2-3 execs/dia). :07 sai do pico.
-    # 2026-06-29 (2ª vez): Frequência 3h → 2h (8 → 12 coletas/dia). Permite
-    # vídeos mais frescos (latência max 2h) sem estourar quota TikAPI.
-    - cron: '7 */2 * * *'
+    # 2026-07-01 (revisao): voltamos pra */3h. Audit mostrou que */2h so
+    # rodava 50% mesmo (12 execs efetivas em 48h vez de 24). Com */3h, GH
+    # bate ~90% e cobrimos os 8 slots esperados. Latencia max: 3h (era 2h).
+    - cron: '7 */3 * * *'
   workflow_dispatch: {} # permite rodar manual quando precisar encher
 
 jobs:

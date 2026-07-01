@@ -15,8 +15,13 @@ name: Virais ML — alertas + emergentes (consolidado)
 
 on:
   schedule:
-    # A cada 30min no minuto :19 e :49. Evita pico do GH em :00/:30.
-    - cron: '19,49 * * * *'
+    # 2026-07-01 (revisao): reduzido de */30 pra HOURLY (:19).
+    #
+    # SLA GH Actions nao aguenta */30 (10% cobertura). Hourly bate ~90%.
+    # Endpoints sao idempotentes e processam TODA janela pendente cada
+    # execucao (verificar-alertas usa flag no DB, detectar-emergentes-ml
+    # usa timestamp de ultima deteccao). Sem perda de efetividade.
+    - cron: '19 * * * *'
   workflow_dispatch: {}
 
 jobs:

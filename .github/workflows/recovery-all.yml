@@ -17,8 +17,19 @@ name: Recovery — sweep + emails 1h/24h/72h (consolidado)
 
 on:
   schedule:
-    # A cada 15min no minuto :08, :23, :38, :53. Evita pico do GH.
-    - cron: '8-59/15 * * * *'
+    # 2026-07-01 (revisao): reduzido de */15 pra HOURLY (:27).
+    #
+    # SLA do GH Actions cron nao aguenta */15 (5% de cobertura real medida
+    # em 48h). Sweet spot do GH: >=1h. Cadencia hourly bate 80-95%.
+    #
+    # Justificativa da reducao (sem perda de eficacia):
+    # - Endpoints usam catch-up nativo: filtro "email_Xh_sent_at IS NULL"
+    #   + "session_created_at < cutoff" pega TUDO pendente independente
+    #   de quando foi ultima execucao (checkout-recovery.js:216-222).
+    # - Latencia media inalterada: emails 1h antes chegavam entre 60-90min,
+    #   agora chegam entre 60-120min. Media identica (~90min).
+    # - Sem risco de duplicata: coluna sent_at bloqueia reenvio.
+    - cron: '27 * * * *'
   workflow_dispatch: {}
 
 jobs:
