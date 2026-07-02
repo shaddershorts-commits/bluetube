@@ -4,3 +4,5 @@
 node_modules/
 .vercel/
 _scripts/
+test-results/
+.playwright/

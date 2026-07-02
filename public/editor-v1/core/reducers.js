@@ -1,0 +1,246 @@
+// editor-v1/core/reducers.js
+// Reducer puro do documento. Invariantes garantidas AQUI (nao na UI):
+//   - clip.source_in < clip.source_out (sempre, minimo MIN_CLIP_DURATION)
+//   - clips nunca ultrapassam [0, video.duration]
+//   - deletar/mover nunca corrompe next_clip_id
+// Estado e imutavel: cada action retorna um objeto novo.
+
+import { A } from './actions.js';
+import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES } from './schema.js';
+import { timelineSegments, segmentAt } from './selectors.js';
+
+export function reduce(state, action) {
+  switch (action.type) {
+
+    case A.LOAD_PROJECT: {
+      return normalizeLoadedState(action.project);
+    }
+
+    case A.SET_VIDEO: {
+      const video = action.video;
+      const next = { ...createInitialState(), nome_projeto: state.nome_projeto, project_id: state.project_id, video };
+      if (video?.duration > 0) {
+        next.clips = [createFullClip(next, video.duration)];
+        next.next_clip_id = 2;
+        next.selected_clip_id = null;
+      }
+      next.created_at = state.created_at || new Date().toISOString();
+      return touch(next);
+    }
+
+    case A.RENAME_PROJECT: {
+      const nome = String(action.nome || '').slice(0, 120).trim();
+      if (!nome) return state;
+      return touch({ ...state, nome_projeto: nome });
+    }
+
+    case A.SET_PROJECT_ID:
+      return { ...state, project_id: action.id };
+
+    // ── clips ────────────────────────────────────────────────────────────
+
+    case A.SPLIT_CLIP: {
+      // Divide o clip sob o tempo virtual t em dois.
+      const seg = segmentAt(state, action.t);
+      if (!seg) return state;
+      const srcSplit = seg.clip.source_in + (action.t - seg.tStart);
+      // Nao cria fatia menor que o minimo
+      if (srcSplit - seg.clip.source_in < MIN_CLIP_DURATION) return state;
+      if (seg.clip.source_out - srcSplit < MIN_CLIP_DURATION) return state;
+      const idx = state.clips.findIndex(c => c.id === seg.clip.id);
+      const left = { ...seg.clip, source_out: srcSplit };
+      const right = { id: state.next_clip_id, source_in: srcSplit, source_out: seg.clip.source_out, active: true };
+      const clips = [...state.clips.slice(0, idx), left, right, ...state.clips.slice(idx + 1)];
+      return touch({ ...state, clips, next_clip_id: state.next_clip_id + 1, selected_clip_id: right.id });
+    }
+
+    case A.TRIM_CLIP: {
+      // edge: 'in' | 'out'. sourceTime em tempo do arquivo.
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const c = state.clips[idx];
+      const dur = state.video?.duration || Infinity;
+      let { source_in, source_out } = c;
+      if (action.edge === 'in') {
+        source_in = clamp(action.sourceTime, 0, source_out - MIN_CLIP_DURATION);
+      } else {
+        source_out = clamp(action.sourceTime, source_in + MIN_CLIP_DURATION, dur);
+      }
+      if (source_in === c.source_in && source_out === c.source_out) return state;
+      const clips = state.clips.slice();
+      clips[idx] = { ...c, source_in, source_out };
+      return touch({ ...state, clips });
+    }
+
+    case A.MOVE_CLIP: {
+      const from = state.clips.findIndex(c => c.id === action.clipId);
+      if (from < 0) return state;
+      const to = clamp(action.toIndex, 0, state.clips.length - 1);
+      if (from === to) return state;
+      const clips = state.clips.slice();
+      const [moved] = clips.splice(from, 1);
+      clips.splice(to, 0, moved);
+      return touch({ ...state, clips });
+    }
+
+    case A.DELETE_CLIP: {
+      const clips = state.clips.filter(c => c.id !== action.clipId);
+      if (clips.length === state.clips.length) return state;
+      const selected = state.selected_clip_id === action.clipId ? null : state.selected_clip_id;
+      return touch({ ...state, clips, selected_clip_id: selected });
+    }
+
+    case A.TOGGLE_CLIP: {
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const clips = state.clips.slice();
+      clips[idx] = { ...clips[idx], active: clips[idx].active === false };
+      return touch({ ...state, clips });
+    }
+
+    case A.SELECT_CLIP:
+      if (state.selected_clip_id === action.clipId) return state;
+      return { ...state, selected_clip_id: action.clipId, selected_text_id: null };
+
+    case A.DELETE_RANGE_LEFT: {
+      // Remove tudo antes do tempo virtual t (CapCut "Q"): trima o clip sob t
+      // e deleta os anteriores.
+      const seg = segmentAt(state, action.t);
+      if (!seg) return state;
+      const srcCut = seg.clip.source_in + (action.t - seg.tStart);
+      if (srcCut - seg.clip.source_in < MIN_CLIP_DURATION) {
+        // playhead praticamente no inicio do clip — só deleta anteriores
+        const before = timelineSegments(state).filter(s2 => s2.tEnd <= seg.tStart + 1e-9).map(s2 => s2.clip.id);
+        if (!before.length) return state;
+        const clips = state.clips.filter(c => !before.includes(c.id));
+        return touch({ ...state, clips });
+      }
+      const segs = timelineSegments(state);
+      const beforeIds = segs.filter(s2 => s2.tEnd <= seg.tStart + 1e-9).map(s2 => s2.clip.id);
+      const clips = state.clips
+        .filter(c => !beforeIds.includes(c.id))
+        .map(c => c.id === seg.clip.id ? { ...c, source_in: srcCut } : c);
+      return touch({ ...state, clips });
+    }
+
+    case A.DELETE_RANGE_RIGHT: {
+      const seg = segmentAt(state, action.t);
+      if (!seg) return state;
+      const srcCut = seg.clip.source_in + (action.t - seg.tStart);
+      if (seg.clip.source_out - srcCut < MIN_CLIP_DURATION) {
+        const after = timelineSegments(state).filter(s2 => s2.tStart >= seg.tEnd - 1e-9).map(s2 => s2.clip.id);
+        if (!after.length) return state;
+        const clips = state.clips.filter(c => !after.includes(c.id));
+        return touch({ ...state, clips });
+      }
+      const segs = timelineSegments(state);
+      const afterIds = segs.filter(s2 => s2.tStart >= seg.tEnd - 1e-9).map(s2 => s2.clip.id);
+      const clips = state.clips
+        .filter(c => !afterIds.includes(c.id))
+        .map(c => c.id === seg.clip.id ? { ...c, source_out: srcCut } : c);
+      return touch({ ...state, clips });
+    }
+
+    // ── textos ───────────────────────────────────────────────────────────
+
+    case A.ADD_TEXT: {
+      const p = action.props || {};
+      const text = {
+        id: state.next_text_id,
+        content: String(p.content || 'Texto').slice(0, 200),
+        font: TEXT_FONTS.includes(p.font) ? p.font : 'Anton',
+        size: TEXT_SIZES.includes(p.size) ? p.size : 'medium',
+        color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ffffff',
+        x_pct: clamp01(p.x_pct ?? 0.5),
+        y_pct: clamp01(p.y_pct ?? 0.35),
+        start_sec: Math.max(0, p.start_sec ?? 0),
+        end_sec: Math.max(0, p.end_sec ?? 3),
+        active: true,
+      };
+      if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;
+      return touch({
+        ...state,
+        texts: [...state.texts, text],
+        next_text_id: state.next_text_id + 1,
+        selected_text_id: text.id,
+      });
+    }
+
+    case A.UPDATE_TEXT: {
+      const idx = state.texts.findIndex(t => t.id === action.textId);
+      if (idx < 0) return state;
+      const cur = state.texts[idx];
+      const patch = { ...action.patch };
+      if (patch.font && !TEXT_FONTS.includes(patch.font)) delete patch.font;
+      if (patch.size && !TEXT_SIZES.includes(patch.size)) delete patch.size;
+      if (patch.color && !/^#[0-9a-fA-F]{6}$/.test(patch.color)) delete patch.color;
+      if (patch.content != null) patch.content = String(patch.content).slice(0, 200);
+      if (patch.x_pct != null) patch.x_pct = clamp01(patch.x_pct);
+      if (patch.y_pct != null) patch.y_pct = clamp01(patch.y_pct);
+      if (patch.start_sec != null) patch.start_sec = Math.max(0, patch.start_sec);
+      if (patch.end_sec != null) patch.end_sec = Math.max(0, patch.end_sec);
+      const next = { ...cur, ...patch };
+      if (next.end_sec <= next.start_sec) next.end_sec = next.start_sec + 0.5;
+      const texts = state.texts.slice();
+      texts[idx] = next;
+      return touch({ ...state, texts });
+    }
+
+    case A.MOVE_TEXT: {
+      const idx = state.texts.findIndex(t => t.id === action.textId);
+      if (idx < 0) return state;
+      const texts = state.texts.slice();
+      texts[idx] = { ...texts[idx], x_pct: clamp01(action.x_pct), y_pct: clamp01(action.y_pct) };
+      return touch({ ...state, texts });
+    }
+
+    case A.DELETE_TEXT: {
+      const texts = state.texts.filter(t => t.id !== action.textId);
+      if (texts.length === state.texts.length) return state;
+      const sel = state.selected_text_id === action.textId ? null : state.selected_text_id;
+      return touch({ ...state, texts, selected_text_id: sel });
+    }
+
+    case A.SELECT_TEXT:
+      if (state.selected_text_id === action.textId) return state;
+      return { ...state, selected_text_id: action.textId, selected_clip_id: null };
+
+    // ── audio / transicoes / config ─────────────────────────────────────
+
+    case A.SET_AUDIO_EXTRA:
+      return touch({ ...state, audio_extra: action.audio });
+
+    case A.REMOVE_AUDIO_EXTRA:
+      if (!state.audio_extra) return state;
+      return touch({ ...state, audio_extra: null });
+
+    case A.SET_VOLUME: {
+      const track = action.track === 'audio_extra' ? 'audio_extra' : 'video';
+      const value = clamp(Number(action.value) || 0, 0, 2);
+      if (state.volumes[track] === value) return state;
+      return touch({ ...state, volumes: { ...state.volumes, [track]: value } });
+    }
+
+    case A.SET_TRANSITION: {
+      const between = action.between | 0;
+      const ttype = action.ttype === 'fade' ? 'fade' : 'cut';
+      const duration = clamp(Number(action.duration) || 0.3, 0.1, 2);
+      const transitions = (state.transitions || []).filter(tr => tr.between !== between);
+      if (ttype !== 'cut') transitions.push({ between, type: ttype, duration });
+      return touch({ ...state, transitions });
+    }
+
+    case A.SET_ASPECT: {
+      const strategy = action.strategy === 'letterbox' ? 'letterbox' : 'crop_center';
+      if (state.aspect_strategy === strategy) return state;
+      return touch({ ...state, aspect_strategy: strategy });
+    }
+
+    default:
+      return state;
+  }
+}
+
+function touch(state) {
+  return { ...state, updated_at: new Date().toISOString() };
+}

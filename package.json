@@ -6,7 +6,15 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "playwright test -c tests/playwright.config.mjs",
+    "test:editor": "npm run test:unit && npm run test:e2e"
+  },
   "dependencies": {
     "@upstash/redis": "^1.37.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
   }
 }

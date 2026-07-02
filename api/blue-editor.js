@@ -199,6 +199,294 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário' });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BlueEditor V0 — Project state (autosave + retomada)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── save-project: cria ou atualiza projeto em edicao (status='editing') ──
+  // Body: { project_id?, project_state: {...}, nome_projeto?, video_url? }
+  // - Sem project_id → cria novo
+  // - Com project_id → atualiza (valida ownership)
+  // Idempotente, debounced no frontend (2s).
+  if (action === 'save-project') {
+    const projectId = req.body?.project_id || null;
+    const projectState = req.body?.project_state;
+    const nomeProjeto = (req.body?.nome_projeto || '').slice(0, 120) || null;
+    const vUrl = req.body?.video_url || null;
+
+    if (!projectState || typeof projectState !== 'object') {
+      return res.status(400).json({ error: 'project_state obrigatório (objeto JSON)' });
+    }
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+
+    try {
+      if (projectId) {
+        // UPDATE (valida ownership na clause WHERE)
+        const patchR = await fetch(
+          `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+          {
+            method: 'PATCH',
+            headers: { ...supaH, Prefer: 'return=representation' },
+            body: JSON.stringify({
+              project_state: projectState,
+              nome_projeto: nomeProjeto,
+              video_url: vUrl,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        );
+        if (!patchR.ok) {
+          const e = await patchR.text();
+          return res.status(500).json({ error: 'update_failed', detail: e.slice(0,200) });
+        }
+        const rows = await patchR.json();
+        if (!rows?.[0]) return res.status(404).json({ error: 'projeto_nao_encontrado' });
+        return res.status(200).json({ ok: true, project_id: rows[0].id, updated_at: rows[0].updated_at });
+      } else {
+        // INSERT novo projeto editing
+        const postR = await fetch(`${SU}/rest/v1/editor_jobs`, {
+          method: 'POST',
+          headers: { ...supaH, Prefer: 'return=representation' },
+          body: JSON.stringify({
+            user_id: userId,
+            status: 'editing',
+            project_state: projectState,
+            nome_projeto: nomeProjeto,
+            video_url: vUrl,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        if (!postR.ok) {
+          const e = await postR.text();
+          return res.status(500).json({ error: 'insert_failed', detail: e.slice(0,200) });
+        }
+        const rows = await postR.json();
+        return res.status(200).json({ ok: true, project_id: rows[0]?.id, updated_at: rows[0]?.updated_at });
+      }
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── load-project: retorna projeto editing mais recente OU especifico ──────
+  // Query: ?action=load-project&project_id=X (opcional)
+  // Sem project_id → ultimo editing do user
+  // Com project_id → especifico (valida ownership)
+  if (action === 'load-project') {
+    const projectId = req.body?.project_id || req.query?.project_id || null;
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      let url;
+      if (projectId) {
+        url = `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=id,nome_projeto,project_state,video_url,updated_at,status&limit=1`;
+      } else {
+        url = `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.editing&select=id,nome_projeto,project_state,video_url,updated_at&order=updated_at.desc&limit=1`;
+      }
+      const r = await fetch(url, { headers: supaH });
+      if (!r.ok) return res.status(500).json({ error: 'load_failed' });
+      const rows = await r.json();
+      if (!rows?.length) return res.status(200).json({ project: null });
+      return res.status(200).json({ project: rows[0] });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── list-projects: lista projetos em edicao (rascunhos do user) ───────────
+  if (action === 'list-projects') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.editing&select=id,nome_projeto,video_url,updated_at&order=updated_at.desc&limit=20`,
+        { headers: supaH }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'list_failed' });
+      const rows = await r.json();
+      return res.status(200).json({ projects: rows || [] });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── delete-project: apaga projeto em edicao ──────────────────────────────
+  if (action === 'delete-project') {
+    const projectId = req.body?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+        { method: 'DELETE', headers: { ...supaH, Prefer: 'return=minimal' } }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'delete_failed' });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 7 — Editor V0 render (edit-v0)
+  // Recebe project_state completo, valida, monta payload pro Railway FFmpeg.
+  // Frame accuracy via -force_key_frames. Concat clips + texts (drawtext) +
+  // audio mix + 1080×1920 (scale + crop center). Salva job no editor_jobs.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (action === 'edit-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    if (!RAILWAY_FFMPEG_URL) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL não configurada' });
+    const projectId = req.body?.project_id;
+    const projectState = req.body?.project_state;
+    if (!projectId || !projectState) return res.status(400).json({ error: 'project_id e project_state obrigatórios' });
+    if (!projectState.video?.url) return res.status(400).json({ error: 'video sem URL' });
+
+    // Determina clips efetivos (igual frontend.getEffectiveClips)
+    let effectiveClips = (projectState.clips || []).filter(c => c.active !== false);
+    if (effectiveClips.length === 0) {
+      const dur = projectState.video.duration || 0;
+      const inT = projectState.trim?.in || 0;
+      const outT = projectState.trim?.out > 0 ? projectState.trim.out : dur;
+      if (dur <= 0) return res.status(400).json({ error: 'duracao invalida' });
+      effectiveClips = [{ source_in: inT, source_out: outT }];
+    }
+    effectiveClips.sort((a, b) => a.source_in - b.source_in);
+    const totalDur = effectiveClips.reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
+    if (totalDur < 0.5) return res.status(400).json({ error: 'duracao total muito curta' });
+
+    // Quota mensal
+    try {
+      const MONTHLY_LIMIT = parseInt(process.env.EDITOR_MONTHLY_LIMIT || '100', 10);
+      const startMonth = new Date(); startMonth.setDate(1); startMonth.setHours(0,0,0,0);
+      const cR = await fetch(
+        `${SU}/rest/v1/editor_jobs?user_id=eq.${userId}&status=eq.done&created_at=gte.${startMonth.toISOString()}&select=id`,
+        { headers: { ...supaH, Prefer: 'count=exact' } }
+      );
+      const cd = cR.ok ? await cR.json() : [];
+      if ((cd?.length || 0) >= MONTHLY_LIMIT) {
+        return res.status(429).json({ error: `Limite de ${MONTHLY_LIMIT} exports/mês atingido` });
+      }
+    } catch (e) {}
+
+    // Payload pro Railway
+    const railwayPayload = {
+      video_url: projectState.video.url,
+      audio_extra_url: projectState.audio_extra?.url || null,
+      source_width: projectState.video.width || 1080,
+      source_height: projectState.video.height || 1920,
+      aspect_strategy: projectState.aspect_strategy || 'crop_center',
+      clips: effectiveClips.map(c => ({ source_in: c.source_in, source_out: c.source_out })),
+      transitions: projectState.transitions || [],
+      texts: (projectState.texts || []).filter(t => t.active !== false),
+      volumes: projectState.volumes || { video: 1, audio_extra: 1 },
+      output_width: 1080,
+      output_height: 1920,
+      supabase_url: SU,
+      supabase_key: SK,
+    };
+
+    try {
+      const jobR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/edit-v0`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(railwayPayload),
+      });
+      if (!jobR.ok) {
+        const et = await jobR.text();
+        return res.status(502).json({ error: 'Railway: ' + et.slice(0, 200) });
+      }
+      const jd = await jobR.json();
+      const railwayJobId = jd.job_id;
+      // Atualiza editor_job pra processing
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          status: 'processing',
+          railway_job_id: railwayJobId,
+          progresso: 0,
+          erro: null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      return res.status(200).json({ ok: true, project_id: projectId, railway_job_id: railwayJobId });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── status-v0: polling do export ───────────────────────────────────────
+  if (action === 'status-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    const projectId = req.body?.project_id || req.query?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=status,railway_job_id,progresso,output_url,erro`, { headers: supaH });
+      const rows = r.ok ? await r.json() : [];
+      const job = rows?.[0];
+      if (!job) return res.status(404).json({ error: 'job_nao_encontrado' });
+      if (job.status === 'done' && job.output_url) {
+        return res.status(200).json({ status: 'done', progresso: 100, output_url: job.output_url });
+      }
+      if (job.status === 'error') {
+        return res.status(200).json({ status: 'error', erro: job.erro });
+      }
+      // Consulta Railway
+      if (!job.railway_job_id || !RAILWAY_FFMPEG_URL) {
+        return res.status(200).json({ status: job.status, progresso: job.progresso || 0 });
+      }
+      const sR = await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/status/${job.railway_job_id}`);
+      if (!sR.ok) return res.status(200).json({ status: job.status, progresso: job.progresso || 0 });
+      const sd = await sR.json();
+      const patch = {
+        status: sd.status === 'done' ? 'done' : (sd.status === 'error' ? 'error' : 'processing'),
+        progresso: sd.progress || 0,
+      };
+      if (sd.status === 'done' && sd.output_url) {
+        patch.output_url = sd.output_url;
+        patch.concluido_em = new Date().toISOString();
+      }
+      if (sd.status === 'error') patch.erro = sd.error || 'erro desconhecido';
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify(patch),
+      }).catch(()=>{});
+      return res.status(200).json({
+        status: patch.status,
+        progresso: sd.progress || 0,
+        output_url: sd.output_url || null,
+        erro: sd.error || null,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── cancel-v0: cancela export ──────────────────────────────────────────
+  if (action === 'cancel-v0') {
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
+    const projectId = req.body?.project_id;
+    if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+    try {
+      const r = await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&select=railway_job_id`, { headers: supaH });
+      const rows = r.ok ? await r.json() : [];
+      const job = rows?.[0];
+      if (job?.railway_job_id && RAILWAY_FFMPEG_URL) {
+        await fetch(`${RAILWAY_FFMPEG_URL.replace(/\/$/, '')}/cancel/${job.railway_job_id}`, { method: 'POST' }).catch(()=>{});
+      }
+      await fetch(`${SU}/rest/v1/editor_jobs?id=eq.${projectId}`, {
+        method: 'PATCH',
+        headers: { ...supaH, Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'editing', railway_job_id: null, progresso: 0, erro: null }),
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── generate: transcript + 2 roteiros ──────────────────────────────────────
   if (action === 'generate') {
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl obrigatório' });
