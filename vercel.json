@@ -153,10 +153,6 @@
       "schedule": "0 8 * * 1"
     },
     {
-      "path": "/api/blueclean-poll",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/blue-stories?action=limpar",
       "schedule": "0 */6 * * *"
     },

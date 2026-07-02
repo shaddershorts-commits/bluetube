@@ -53,7 +53,24 @@ h1{font-size:clamp(28px,5vw,42px);font-weight:800;letter-spacing:-2px;margin-bot
 </head><body>
 <div class="wrap">
 <a href="/" class="back">← BlueTube</a>
-<div id="upgradeWall" class="upgrade"><div style="font-size:64px;margin-bottom:16px">🧹</div><h2>BlueClean — Exclusivo Master</h2><p style="font-family:var(--mono);font-size:13px;color:var(--dim);margin-bottom:24px">Remove legendas, setas e marcas d'água com IA.</p><a href="/?upgrade=master" class="btn" style="max-width:320px;margin:0 auto;display:block;text-decoration:none;text-align:center">Assinar Master →</a></div>
+
+<!-- MANUTENCAO 2026-07-02: BlueClean pausado (cron blueclean-poll removido do
+     vercel.json pra economia). Overlay bloqueia uso; pra REATIVAR: remover este
+     bloco + restaurar o cron + trocar display:none dos gates abaixo. -->
+<div id="maintenanceWall" style="text-align:center;padding:80px 20px">
+  <div style="font-size:64px;margin-bottom:16px">🛠️</div>
+  <h2 style="margin-bottom:10px">BlueClean está em atualização</h2>
+  <p style="font-family:var(--mono);font-size:13px;color:var(--dim);margin-bottom:8px;max-width:440px;margin-left:auto;margin-right:auto">
+    Estamos deixando a remoção de overlays ainda mais inteligente.
+    A ferramenta volta em breve, melhor do que nunca. 💙
+  </p>
+  <p style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:24px">
+    Enquanto isso, aproveita o BaixaBlue e o Buscador de Virais.
+  </p>
+  <a href="/" class="btn" style="max-width:320px;margin:0 auto;display:block;text-decoration:none;text-align:center">Voltar pro início →</a>
+</div>
+
+<div id="upgradeWall" class="upgrade" style="display:none!important"><div style="font-size:64px;margin-bottom:16px">🧹</div><h2>BlueClean — Exclusivo Master</h2><p style="font-family:var(--mono);font-size:13px;color:var(--dim);margin-bottom:24px">Remove legendas, setas e marcas d'água com IA.</p><a href="/?upgrade=master" class="btn" style="max-width:320px;margin:0 auto;display:block;text-decoration:none;text-align:center">Assinar Master →</a></div>
 
 <div id="main" style="display:none">
 <div class="badge">👑 Exclusivo Master</div>
@@ -134,6 +151,9 @@ function toast(m){const e=document.getElementById('toast');e.textContent=m;e.cla
 function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forEach(s=>document.getElementById(s).style.display=s===id?'block':'none');}
 
 // Init
+// MANUTENCAO 2026-07-02: init desativado — pagina mostra so o maintenanceWall.
+// Pra reativar: descomentar o bloco abaixo (e ver comentario no HTML).
+/*
 (async()=>{
   if(!TOKEN){document.getElementById('upgradeWall').style.display='block';return;}
   try{
@@ -148,6 +168,7 @@ function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forE
     loadHistory();
   }catch(e){document.getElementById('upgradeWall').style.display='block';}
 })();
+*/
 
 function updateUsage(d){
   document.getElementById('usageCount').textContent='Ilimitado';
