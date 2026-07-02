@@ -476,9 +476,11 @@ async function processEditV0(jobId, p) {
       // Sem concat — só renomeia
       fs.renameSync(clipFiles[0].path, concatPath);
     } else {
-      // Concat via demuxer
+      // Concat via demuxer. Paths RELATIVOS ao .txt (demuxer resolve assim) —
+      // absolutos quebram no Windows (dev local) e relativos funcionam igual
+      // no Linux porque clips e concat.txt vivem no mesmo dir.
       const listFile = path.join(dir, 'concat.txt');
-      fs.writeFileSync(listFile, clipFiles.map(c => `file '${c.path.replace(/'/g, "'\\''")}'`).join('\n'));
+      fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
       await run('ffmpeg', [
         '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
         '-c:v', 'copy', concatPath,
@@ -506,7 +508,7 @@ async function processEditV0(jobId, p) {
       sourceAudioPath = audioClipFiles[0];
     } else if (audioClipFiles.length > 1) {
       const listA = path.join(dir, 'audio_concat.txt');
-      fs.writeFileSync(listA, audioClipFiles.map(a => `file '${a}'`).join('\n'));
+      fs.writeFileSync(listA, audioClipFiles.map(a => `file '${path.basename(a)}'`).join('\n'));
       sourceAudioPath = path.join(dir, 'source_audio.aac');
       try {
         await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listA, '-c', 'copy', sourceAudioPath]);
