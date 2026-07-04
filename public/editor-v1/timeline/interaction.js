@@ -54,7 +54,8 @@ export function transition(fsm, ev, ctx) {
     if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
       fx.push({ do: 'abort-gesture' }); // adapter faz store.undo() do gesto coalescido
     }
-    if (fsm.name === 'trimming' || fsm.name === 'trimming-audio' || fsm.name === 'dragging-audio') {
+    if (fsm.name === 'trimming' || fsm.name === 'trimming-audio' || fsm.name === 'dragging-audio' ||
+        fsm.name === 'trimming-overlay' || fsm.name === 'dragging-overlay') {
       fx.push({ do: 'show-snap', active: false });
     }
     fx.push({ do: 'set-cursor', cursor: 'default' });
@@ -122,6 +123,24 @@ export function transition(fsm, ev, ctx) {
       if (hit.type === 'text-block') {
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
+      if (hit.type === 'overlay-trim-in' || hit.type === 'overlay-trim-out') {
+        const o = ctx.layout.overlayItems.find(k => k.overlayId === hit.overlayId);
+        if (!o) return { next: fsm, effects: fx };
+        fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        return {
+          next: {
+            name: 'trimming-overlay', overlayId: hit.overlayId,
+            edge: hit.type === 'overlay-trim-in' ? 'in' : 'out',
+            tStart0: o.tStart, tEnd0: o.tEnd, srcIn0: o.srcIn, srcOut0: o.srcOut,
+            preview: hit.type === 'overlay-trim-in' ? o.tStart : o.tEnd,
+          },
+          effects: fx,
+        };
+      }
+      if (hit.type === 'overlay-body') {
+        fx.push({ do: 'select-overlay', overlayId: hit.overlayId });
+        return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
+      }
       if (hit.type === 'audio-trim-in' || hit.type === 'audio-trim-out') {
         const a = ctx.layout.audioItems.find(k => k.audioId === hit.audioId);
         if (!a) return { next: fsm, effects: fx };
@@ -174,6 +193,18 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'set-cursor', cursor: 'grabbing' });
           return { next: { name: 'dragging-clip', clipId: fsm.hit.clipId, gestureId: newGestureId() }, effects: fx };
         }
+        if (fsm.hit.type === 'overlay-body') {
+          const o = ctx.layout.overlayItems.find(k => k.overlayId === fsm.hit.overlayId);
+          if (!o) return { next: idle(), effects: fx };
+          const grabT = xToTime(ctx.layout.vp, fsm.x0);
+          return {
+            next: {
+              name: 'dragging-overlay', overlayId: fsm.hit.overlayId,
+              grabOffset: grabT - o.tStart, previewStart: o.tStart,
+            },
+            effects: fx,
+          };
+        }
         if (fsm.hit.type === 'audio-body') {
           const a = ctx.layout.audioItems.find(k => k.audioId === fsm.hit.audioId);
           if (!a) return { next: idle(), effects: fx };
@@ -219,6 +250,14 @@ export function transition(fsm, ev, ctx) {
 
     case 'dragging-clip': {
       if (ev.kind === 'move') {
+        // arrastar pra CIMA da track principal = criar camada overlay (CapCut)
+        if (ev.y != null && ctx.layout.yVideo - ev.y > 30) {
+          const atT = Math.max(0, xToTime(ctx.layout.vp, ev.x));
+          fx.push({ do: 'end-gesture' });
+          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT });
+          fx.push({ do: 'set-cursor', cursor: 'default' });
+          return { next: idle(), effects: fx };
+        }
         // live reorder: calcula indice alvo e dispatcha MOVE_CLIP coalescido
         const target = dropIndexAt(ctx.layout, ev.x, fsm.clipId);
         if (target != null) {
@@ -322,6 +361,58 @@ export function transition(fsm, ev, ctx) {
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'dispatch', action: act.moveAudio(fsm.audioId, fsm.previewStart) });
+        fx.push({ do: 'show-snap', active: false });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'trimming-overlay': {
+      if (ev.kind === 'move') {
+        const vpT = xToTime(ctx.layout.vp, ev.x);
+        const points = defaultSnapPoints(ctx.cutPoints.filter(pt =>
+          Math.abs(pt - fsm.tStart0) > 1e-6 && Math.abs(pt - fsm.tEnd0) > 1e-6), ctx.playhead);
+        const snapped = ctx.snapEnabled && !ev.shiftKey
+          ? snapTime(vpT, points, ctx.layout.vp.pxPerSec)
+          : { t: vpT, snapped: false };
+        let preview = snapped.t;
+        if (fsm.edge === 'in') {
+          const minT = fsm.tStart0 - fsm.srcIn0;
+          preview = Math.min(Math.max(preview, Math.max(0, minT)), fsm.tEnd0 - MIN_CLIP_DURATION);
+        } else {
+          const maxT = fsm.tStart0 + (ctx.videoDuration || Infinity) - fsm.srcIn0;
+          preview = Math.max(fsm.tStart0 + MIN_CLIP_DURATION, Math.min(preview, maxT));
+        }
+        fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
+        return { next: { ...fsm, preview }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        const orig = fsm.edge === 'in' ? fsm.tStart0 : fsm.tEnd0;
+        if (Math.abs(fsm.preview - orig) > 1e-4) {
+          const value = fsm.edge === 'in'
+            ? fsm.preview
+            : fsm.srcIn0 + (fsm.preview - fsm.tStart0);
+          fx.push({ do: 'dispatch', action: act.trimOverlay(fsm.overlayId, fsm.edge, value) });
+        }
+        fx.push({ do: 'show-snap', active: false });
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'dragging-overlay': {
+      if (ev.kind === 'move') {
+        const t = xToTime(ctx.layout.vp, ev.x) - fsm.grabOffset;
+        const snapped = ctx.snapEnabled && !ev.shiftKey
+          ? snapTime(t, defaultSnapPoints(ctx.cutPoints, ctx.playhead), ctx.layout.vp.pxPerSec)
+          : { t, snapped: false };
+        const previewStart = Math.max(0, snapped.t);
+        fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
+        return { next: { ...fsm, previewStart }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'dispatch', action: act.moveOverlay(fsm.overlayId, fsm.previewStart) });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }

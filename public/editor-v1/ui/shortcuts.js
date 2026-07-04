@@ -67,6 +67,8 @@ export function attachShortcuts({ store, player, timeline }) {
       case 'Delete': case 'Backspace': {
         if (state.selected_text_id != null) {
           store.dispatch(act.deleteText(state.selected_text_id));
+        } else if (state.selected_overlay_id != null) {
+          store.dispatch(act.deleteOverlay(state.selected_overlay_id));
         } else if (state.selected_audio_id != null) {
           store.dispatch(act.deleteAudioClip(state.selected_audio_id));
         } else if (state.selected_clip_id != null) {

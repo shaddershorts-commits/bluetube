@@ -303,3 +303,45 @@ test('SPLIT_TEXT divide texto no cursor (CapCut)', () => {
   assert.equal(ts[1].start_sec, 5);
   assert.equal(ts[1].content, 'OI');
 });
+
+test('F3: CONVERT_TO_OVERLAY move clip pra camada (nunca esvazia a principal)', () => {
+  const store = storeWithVideo(60);
+  // com 1 clip so, nao pode virar overlay (main esvaziaria)
+  store.dispatch(act.convertToOverlay(store.getState().clips[0].id, 5));
+  assert.equal(store.getState().overlays.length, 0);
+  // com 2 clips, o segundo sobe
+  store.dispatch(act.splitClipAt(20));
+  const c2 = store.getState().clips[1].id;
+  store.dispatch(act.convertToOverlay(c2, 3));
+  const s = store.getState();
+  assert.equal(s.clips.length, 1);
+  assert.equal(s.overlays.length, 1);
+  assert.equal(s.overlays[0].start, 3);
+  assert.equal(s.overlays[0].source_in, 20);
+  assert.equal(s.selected_overlay_id, s.overlays[0].id);
+  // undo devolve o clip pra principal
+  store.undo();
+  assert.equal(store.getState().clips.length, 2);
+  assert.equal(store.getState().overlays.length, 0);
+});
+
+test('F3: overlay trim/move/transform/delete', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(20));
+  store.dispatch(act.convertToOverlay(store.getState().clips[1].id, 0));
+  const id = store.getState().overlays[0].id;
+  store.dispatch(act.moveOverlay(id, 7));
+  assert.equal(store.getState().overlays[0].start, 7);
+  store.dispatch(act.trimOverlay(id, 'in', 10)); // borda esquerda pra t=10: delta 3
+  let o = store.getState().overlays[0];
+  assert.equal(o.start, 10);
+  assert.equal(o.source_in, 23);
+  store.dispatch(act.setOverlayTransform(id, { x_pct: 0.2, scale: 5 }));
+  o = store.getState().overlays[0];
+  assert.equal(o.x_pct, 0.2);
+  assert.equal(o.scale, 2); // clamp
+  const p = exportPayload(store.getState());
+  assert.equal(p.overlays.length, 1);
+  store.dispatch(act.deleteOverlay(id));
+  assert.equal(store.getState().overlays.length, 0);
+});

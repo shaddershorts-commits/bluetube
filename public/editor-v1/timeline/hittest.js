@@ -30,6 +30,22 @@ export function hitTest(layout, x, y, opts = {}) {
     }
   }
 
+  // 1b. Overlays (camadas acima da principal): handles no selecionado + corpo
+  const selOv = (layout.overlayItems || []).find(o => o.selected);
+  if (selOv) {
+    if (within(x, y, selOv.x - handleW / 2, selOv.y - extra, handleW, selOv.h + extra * 2)) {
+      return { type: 'overlay-trim-in', overlayId: selOv.overlayId };
+    }
+    if (within(x, y, selOv.x + selOv.w - handleW / 2, selOv.y - extra, handleW, selOv.h + extra * 2)) {
+      return { type: 'overlay-trim-out', overlayId: selOv.overlayId };
+    }
+  }
+  for (const o of layout.overlayItems || []) {
+    if (within(x, y, o.x, o.y, o.w, o.h)) {
+      return { type: 'overlay-body', overlayId: o.overlayId };
+    }
+  }
+
   // 2. Corpo de clip ativo
   for (const c of layout.clips) {
     if (within(x, y, c.x, c.y, c.w, c.h)) {

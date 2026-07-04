@@ -100,7 +100,7 @@ export function reduce(state, action) {
 
     case A.SELECT_CLIP:
       if (state.selected_clip_id === action.clipId) return state;
-      return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null };
+      return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
 
     case A.DELETE_RANGE_LEFT: {
       // Remove tudo antes do tempo virtual t (CapCut "Q"): trima o clip sob t
@@ -216,7 +216,7 @@ export function reduce(state, action) {
 
     case A.SELECT_TEXT:
       if (state.selected_text_id === action.textId) return state;
-      return { ...state, selected_text_id: action.textId, selected_clip_id: null, selected_audio_id: null };
+      return { ...state, selected_text_id: action.textId, selected_clip_id: null, selected_audio_id: null, selected_overlay_id: null };
 
     // ── audio: clips editaveis (CapCut) ─────────────────────────────────
 
@@ -338,7 +338,95 @@ export function reduce(state, action) {
 
     case A.SELECT_AUDIO_CLIP: {
       if (state.selected_audio_id === action.audioId) return state;
-      return { ...state, selected_audio_id: action.audioId, selected_clip_id: null, selected_text_id: null };
+      return { ...state, selected_audio_id: action.audioId, selected_clip_id: null, selected_text_id: null, selected_overlay_id: null };
+    }
+
+    // ── camadas overlay (CapCut: arrastar clip pra cima) ────────────────
+
+    case A.CONVERT_TO_OVERLAY: {
+      // remove o clip da track principal e vira overlay na posicao atT.
+      // Regra CapCut: nao esvazia a principal (ultimo clip nao sobe).
+      const clip = state.clips.find(c => c.id === action.clipId);
+      if (!clip) return state;
+      const remaining = state.clips.filter(c => c.id !== action.clipId && c.active !== false);
+      if (remaining.length === 0) return state;
+      const overlay = {
+        id: state.next_overlay_id,
+        source_in: clip.source_in, source_out: clip.source_out,
+        start: Math.max(0, action.atT || 0),
+        x_pct: 0.5, y_pct: 0.5, scale: 0.5,
+        active: true,
+      };
+      return touch({
+        ...state,
+        clips: state.clips.filter(c => c.id !== action.clipId),
+        overlays: [...state.overlays, overlay],
+        next_overlay_id: state.next_overlay_id + 1,
+        selected_overlay_id: overlay.id,
+        selected_clip_id: null,
+      });
+    }
+
+    case A.TRIM_OVERLAY: {
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      let { start, source_in, source_out } = o;
+      if (action.edge === 'in') {
+        const delta = clamp(action.value - o.start,
+          -o.source_in, (o.source_out - o.source_in) - MIN_CLIP_DURATION);
+        start = Math.max(0, o.start + delta);
+        source_in = o.source_in + delta;
+      } else {
+        const maxOut = state.video?.duration || Infinity;
+        source_out = clamp(action.value, o.source_in + MIN_CLIP_DURATION, maxOut);
+      }
+      if (start === o.start && source_in === o.source_in && source_out === o.source_out) return state;
+      const overlays = state.overlays.slice();
+      overlays[idx] = { ...o, start, source_in, source_out };
+      return touch({ ...state, overlays });
+    }
+
+    case A.MOVE_OVERLAY: {
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const start = Math.max(0, Number(action.start) || 0);
+      if (state.overlays[idx].start === start) return state;
+      const overlays = state.overlays.slice();
+      overlays[idx] = { ...overlays[idx], start };
+      return touch({ ...state, overlays });
+    }
+
+    case A.SET_OVERLAY_TRANSFORM: {
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      const p = action.patch || {};
+      const next = {
+        ...o,
+        x_pct: p.x_pct != null ? clamp01(p.x_pct) : o.x_pct,
+        y_pct: p.y_pct != null ? clamp01(p.y_pct) : o.y_pct,
+        scale: p.scale != null ? clamp(p.scale, 0.1, 2) : o.scale,
+      };
+      if (next.x_pct === o.x_pct && next.y_pct === o.y_pct && next.scale === o.scale) return state;
+      const overlays = state.overlays.slice();
+      overlays[idx] = next;
+      return touch({ ...state, overlays });
+    }
+
+    case A.DELETE_OVERLAY: {
+      const overlays = state.overlays.filter(o => o.id !== action.overlayId);
+      if (overlays.length === state.overlays.length) return state;
+      const sel = state.selected_overlay_id === action.overlayId ? null : state.selected_overlay_id;
+      return touch({ ...state, overlays, selected_overlay_id: sel });
+    }
+
+    case A.SELECT_OVERLAY: {
+      if (state.selected_overlay_id === action.overlayId) return state;
+      return {
+        ...state, selected_overlay_id: action.overlayId,
+        selected_clip_id: null, selected_text_id: null, selected_audio_id: null,
+      };
     }
 
     case A.SET_VOLUME: {

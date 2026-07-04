@@ -65,6 +65,8 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
         case 'select-text': store.dispatch(act.selectText(e.textId)); break;
         case 'clear-selection': store.dispatch(act.selectClip(null)); break;
         case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
+        case 'select-overlay': store.dispatch(act.selectOverlay(e.overlayId)); break;
+        case 'convert-to-overlay': store.dispatch(act.convertToOverlay(e.clipId, e.atT)); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;

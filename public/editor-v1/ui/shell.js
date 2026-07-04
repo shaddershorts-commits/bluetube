@@ -9,6 +9,7 @@ import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
 import { formatTime, METRICS } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
+import { createPip } from '../preview/pip.js';
 import { createTimelineController } from './timeline-controller.js';
 import { attachShortcuts, splitSelectedAt } from './shortcuts.js';
 import { createThumbnails } from '../timeline/thumbnails.js';
@@ -32,6 +33,7 @@ export function mountEditor(root, store) {
     onEditText: openTextPanel,
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
+  const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
   const exporter = createExporter(store);
   const autosave = createAutosave(store, (s, detail) => {
     const el = $('#beSaveStatus');
@@ -99,12 +101,14 @@ export function mountEditor(root, store) {
   // clip selecionado -> acoes do clip | texto selecionado -> editor de texto
   function syncPropsPanel(state) {
     const showText = state.selected_text_id != null;
-    const showAudio = !showText && state.selected_audio_id != null;
-    const showClip = !showText && !showAudio && state.selected_clip_id != null;
+    const showOv = !showText && state.selected_overlay_id != null;
+    const showAudio = !showText && !showOv && state.selected_audio_id != null;
+    const showClip = !showText && !showOv && !showAudio && state.selected_clip_id != null;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
     $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
+    $('#bePropsOverlay').style.display = showOv ? 'flex' : 'none';
     $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
-    $('#bePropsProject').style.display = (!showText && !showAudio && !showClip) ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (!showText && !showOv && !showAudio && !showClip) ? 'flex' : 'none';
     if (showText) fillTextPanel(state);
     if (showAudio) {
       const ac = state.audio_clips.find(a => a.id === state.selected_audio_id);
@@ -298,6 +302,10 @@ export function mountEditor(root, store) {
     store.dispatch({ ...act.setAudioVolume(id, parseFloat(e.target.value)), gestureId: 'vol-sel' });
   });
   $('#beVolSelected').addEventListener('change', () => store.endGesture());
+  $('#beOverlayDelete').addEventListener('click', () => {
+    const id = store.getState().selected_overlay_id;
+    if (id != null) store.dispatch(act.deleteOverlay(id));
+  });
   $('#beAudioItemDelete').addEventListener('click', () => {
     const id = store.getState().selected_audio_id;
     if (id != null) store.dispatch(act.deleteAudioClip(id));
@@ -422,7 +430,7 @@ export function mountEditor(root, store) {
       detachResizers();
       detachShortcuts();
       document.removeEventListener('visibilitychange', flushOnHide);
-      player.destroy(); overlay.destroy(); timeline.destroy();
+      player.destroy(); overlay.destroy(); pip.destroy(); timeline.destroy();
       autosave.destroy(); exporter.destroy();
       thumbs?.destroy(); wave?.destroy(); videoWave?.destroy();
       if (localPreview.url) URL.revokeObjectURL(localPreview.url);
@@ -513,6 +521,12 @@ function buildTemplate() {
       <button id="beToggleClip2" class="be-tool-btn">◌ Desativar cena</button>
       <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
       <div class="be-dim">Atalhos: V liga/desliga · Delete exclui · Ctrl+B divide no cursor</div>
+    </div>
+
+    <div id="bePropsOverlay" class="be-props-stack" style="display:none">
+      <div class="be-side-title">⧉ Camada (overlay)</div>
+      <div class="be-dim">Arraste a camada direto no preview pra posicionar. Scroll em cima dela = tamanho. Arraste as bordas na timeline pra cortar.</div>
+      <button id="beOverlayDelete" class="be-danger-btn">🗑 Excluir camada</button>
     </div>
 
     <div id="bePropsAudio" class="be-props-stack" style="display:none">

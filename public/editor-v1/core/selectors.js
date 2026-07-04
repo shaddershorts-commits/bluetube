@@ -112,6 +112,13 @@ export function exportPayload(state) {
       source_out: round3(a.source_out),
       volume: a.volume ?? 1,
     })),
+    // camadas overlay (render: filter overlay + scale + enable window)
+    overlays: (state.overlays || []).filter(o => o.active !== false).map(o => ({
+      source_in: round3(o.source_in), source_out: round3(o.source_out),
+      start: round3(o.start),
+      x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),
+      scale: Math.round(o.scale * 100) / 100,
+    })),
     transitions: state.transitions || [],
     // com audio destacado o video renderiza MUDO (audio vem dos clips)
     volumes: state.audio_detached ? { ...state.volumes, video: 0 } : state.volumes,

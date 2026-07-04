@@ -189,6 +189,49 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
   }
 
+  // ── camadas overlay (acima da principal — CapCut) ──
+  for (const o of layout.overlayItems || []) {
+    let ox = o.x, ow = o.w, sI = o.srcIn, sO = o.srcOut;
+    if (fsm?.name === 'trimming-overlay' && fsm.overlayId === o.overlayId) {
+      const pps = layout.vp.pxPerSec;
+      if (fsm.edge === 'in') {
+        const d = fsm.preview - fsm.tStart0;
+        ox = o.x + d * pps; ow = o.w - d * pps; sI = fsm.srcIn0 + d;
+      } else {
+        const d = fsm.preview - fsm.tEnd0;
+        ow = o.w + d * pps; sO = fsm.srcOut0 + d;
+      }
+    }
+    if (fsm?.name === 'dragging-overlay' && fsm.overlayId === o.overlayId) {
+      ox = o.x + (fsm.previewStart - o.tStart) * layout.vp.pxPerSec;
+    }
+    if (ox + ow < 0 || ox > W) continue;
+    roundRect(ctx, ox, o.y, ow, o.h, 5);
+    ctx.fillStyle = '#3b2a63';
+    ctx.fill();
+    if (thumbs) {
+      const strip = thumbs.getStrip(sI, sO, ow, o.h);
+      if (strip) {
+        ctx.save(); roundRect(ctx, ox, o.y, ow, o.h, 5); ctx.clip();
+        ctx.globalAlpha = 0.8; ctx.drawImage(strip, ox, o.y, ow, o.h);
+        ctx.globalAlpha = 1; ctx.restore();
+      }
+    }
+    roundRect(ctx, ox, o.y, ow, o.h, 5);
+    ctx.strokeStyle = o.selected ? '#a97fee' : 'rgba(169,127,238,.45)';
+    ctx.lineWidth = o.selected ? 2 : 1;
+    ctx.stroke();
+    if (o.selected) {
+      drawHandle(ctx, ox, o.y, o.h, 'left');
+      drawHandle(ctx, ox + ow, o.y, o.h, 'right');
+    }
+    if (ow > 50) {
+      ctx.fillStyle = 'rgba(232,244,255,.8)';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText('⧉ camada', ox + 6, o.y + 3);
+    }
+  }
+
   // ── clips de audio (cada um editavel; preview de gesto igual video) ──
   for (const a of layout.audioItems || []) {
     let ax = a.x, aw = a.w, srcI = a.srcIn, srcO = a.srcOut;

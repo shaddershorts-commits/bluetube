@@ -37,6 +37,11 @@ export function createInitialState() {
     next_audio_id: 1,
     selected_audio_id: null,
     audio_detached: false,      // Ctrl+Shift+S: video fica mudo, audio vira clips
+    // camadas de video (CapCut): arrastar clip pra CIMA cria overlay.
+    // Posicionamento livre (start) + transform no preview (PiP).
+    overlays: [],        // [{id, source_in, source_out, start, x_pct, y_pct, scale, active}]
+    next_overlay_id: 1,
+    selected_overlay_id: null,
     // legado (migrado em normalizeLoadedState): audio_extra, selected_audio,
     // video_audio_removed
     transitions: [],      // [{ between, type, duration }]
@@ -110,6 +115,18 @@ export function normalizeLoadedState(raw) {
     s.audio_detached = true;
     s.audio_clips = s.audio_clips.filter(a => a.kind !== 'video');
   }
+  s.overlays = Array.isArray(raw.overlays) ? raw.overlays
+    .filter(o => o && o.source_out > o.source_in)
+    .map(o => ({
+      id: o.id, source_in: o.source_in, source_out: o.source_out,
+      start: Math.max(0, o.start || 0),
+      x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
+      scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
+      active: o.active !== false,
+    })) : [];
+  const maxOv = s.overlays.reduce((m, o) => Math.max(m, o.id || 0), 0);
+  s.next_overlay_id = Math.max(raw.next_overlay_id || 1, maxOv + 1);
+  s.selected_overlay_id = null;
   const maxAudio = s.audio_clips.reduce((m, a) => Math.max(m, a.id || 0), 0);
   s.next_audio_id = Math.max(raw.next_audio_id || 1, maxAudio + 1);
   delete s.audio_extra;

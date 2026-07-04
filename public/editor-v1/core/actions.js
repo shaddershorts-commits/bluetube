@@ -32,6 +32,13 @@ export const A = {
   DELETE_AUDIO_CLIP: 'DELETE_AUDIO_CLIP',
   SET_AUDIO_VOLUME: 'SET_AUDIO_VOLUME',
   SELECT_AUDIO_CLIP: 'SELECT_AUDIO_CLIP',
+  // camadas (overlays)
+  CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
+  TRIM_OVERLAY: 'TRIM_OVERLAY',
+  MOVE_OVERLAY: 'MOVE_OVERLAY',
+  SET_OVERLAY_TRANSFORM: 'SET_OVERLAY_TRANSFORM',
+  DELETE_OVERLAY: 'DELETE_OVERLAY',
+  SELECT_OVERLAY: 'SELECT_OVERLAY',
   SET_VOLUME: 'SET_VOLUME',
   SET_TRANSITION: 'SET_TRANSITION',
   SET_ASPECT: 'SET_ASPECT',
@@ -64,6 +71,11 @@ export const UNDOABLE = {
   [A.MOVE_AUDIO]: U,
   [A.DELETE_AUDIO_CLIP]: U,
   [A.SET_AUDIO_VOLUME]: U,
+  [A.CONVERT_TO_OVERLAY]: U,
+  [A.TRIM_OVERLAY]: U,
+  [A.MOVE_OVERLAY]: U,
+  [A.SET_OVERLAY_TRANSFORM]: U,
+  [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
   [A.SET_ASPECT]: U,
@@ -98,6 +110,12 @@ export const moveAudio = (audioId, start) => ({ type: A.MOVE_AUDIO, audioId, sta
 export const deleteAudioClip = (audioId) => ({ type: A.DELETE_AUDIO_CLIP, audioId });
 export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, audioId, value });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
+export const convertToOverlay = (clipId, atT) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT });
+export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
+export const moveOverlay = (overlayId, start) => ({ type: A.MOVE_OVERLAY, overlayId, start });
+export const setOverlayTransform = (overlayId, patch) => ({ type: A.SET_OVERLAY_TRANSFORM, overlayId, patch });
+export const deleteOverlay = (overlayId) => ({ type: A.DELETE_OVERLAY, overlayId });
+export const selectOverlay = (overlayId) => ({ type: A.SELECT_OVERLAY, overlayId });
 export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value });
 export const setTransition = (between, ttype, duration) => ({ type: A.SET_TRANSITION, between, ttype, duration });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });

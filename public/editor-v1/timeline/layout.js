@@ -35,10 +35,27 @@ export function computeLayout(state, vp) {
   const total = totalDuration(state);
 
   const yRuler = 0;
-  const yVideo = METRICS.RULER_H + METRICS.TRACK_GAP;
+  // Track de OVERLAY adaptativa (CapCut): so existe quando ha camadas —
+  // aparece ACIMA da principal (camada de cima renderiza na frente).
+  const hasOverlays = (state.overlays || []).some(o => o.active !== false);
+  const yOverlay = METRICS.RULER_H + METRICS.TRACK_GAP;
+  const overlayH = hasOverlays ? METRICS.VIDEO_TRACK_H * 0.7 + METRICS.TRACK_GAP : 0;
+  const yVideo = yOverlay + overlayH;
   const yText = yVideo + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP;
   const yAudio = yText + METRICS.TEXT_TRACK_H + METRICS.TRACK_GAP;
   const contentH = yAudio + METRICS.AUDIO_TRACK_H + METRICS.TRACK_GAP;
+
+  const overlayItems = (state.overlays || []).filter(o => o.active !== false).map(o => {
+    const dur = o.source_out - o.source_in;
+    return {
+      overlayId: o.id,
+      x: timeToX(vp, o.start), y: yOverlay,
+      w: dur * vp.pxPerSec, h: METRICS.VIDEO_TRACK_H * 0.7,
+      tStart: o.start, tEnd: o.start + dur,
+      srcIn: o.source_in, srcOut: o.source_out,
+      selected: state.selected_overlay_id === o.id,
+    };
+  });
 
   // Clips ativos (na track de video)
   const clips = segs.map(seg => {
@@ -115,6 +132,7 @@ export function computeLayout(state, vp) {
 
   return {
     vp, total, segs, clips, ghosts, texts, audioItems, audioLanes,
+    overlayItems, yOverlay, hasOverlays,
     // strip de waveform DENTRO do clip: so enquanto o audio esta embutido.
     // Fix waveform fantasma: apos detach (mesmo com clips deletados) a
     // strip NAO volta — audio agora vive (ou viveu) na track propria.
