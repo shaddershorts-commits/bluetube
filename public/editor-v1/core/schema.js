@@ -31,6 +31,9 @@ export function createInitialState() {
     next_text_id: 1,
     selected_text_id: null,
     audio_extra: null,    // { url, path, filename, duration, size_bytes }
+    audio_detached: false,      // Ctrl+Shift+S: audio do video vira track propria
+    video_audio_removed: false, // item de audio destacado foi deletado (export muta o video)
+    selected_audio: null,       // 'video' | 'extra' | null (selecao na track de audio)
     transitions: [],      // [{ between, type, duration }]
     volumes: { video: 1, audio_extra: 1 },
     aspect_strategy: 'crop_center',
@@ -73,6 +76,9 @@ export function normalizeLoadedState(raw) {
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
   s.volumes = { video: 1, audio_extra: 1, ...(raw.volumes || {}) };
+  s.audio_detached = raw.audio_detached === true;
+  s.video_audio_removed = raw.video_audio_removed === true;
+  s.selected_audio = null;
   // Migracao v0: se veio com trim global e sem clips, materializa em 1 clip
   if (s.clips.length === 0 && s.video?.duration > 0) {
     const inT = raw.trim?.in || 0;

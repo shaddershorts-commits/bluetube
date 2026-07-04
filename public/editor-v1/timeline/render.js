@@ -46,7 +46,7 @@ export function createRenderer(canvas) {
   return { draw, destroy };
 }
 
-function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, dpr }) {
+function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, videoWave, dpr }) {
   const W = layout.vp.width, H = Math.max(layout.contentH, layout.vp.height);
   // resolucao fisica (retina)
   const scale = dpr || 1;
@@ -102,16 +102,33 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.fillStyle = c.selected ? COLORS.clipSelected : COLORS.clip;
     ctx.fill();
 
+    // CapCut-style: thumbnails em cima + strip de waveform do audio DO VIDEO
+    // embaixo (some quando o audio foi destacado com Ctrl+Shift+S)
+    const waveH = (!layout.audioDetached && videoWave?.ready()) ? 14 : 0;
+    const thumbH = c.h - waveH;
+
     // thumbnails (bitmap cacheado por clip)
     if (thumbs) {
-      const strip = thumbs.getStrip(srcIn, srcOut, cw, c.h);
+      const strip = thumbs.getStrip(srcIn, srcOut, cw, thumbH);
       if (strip) {
         ctx.save();
         roundRect(ctx, cx0, c.y, cw, c.h, 6);
         ctx.clip();
         ctx.globalAlpha = isDragging ? 0.55 : 0.85;
-        ctx.drawImage(strip, cx0, c.y, cw, c.h);
+        ctx.drawImage(strip, cx0, c.y, cw, thumbH);
         ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+    }
+    if (waveH > 0) {
+      const wbmp = videoWave.getSlice(srcIn, srcOut, cw, waveH);
+      if (wbmp) {
+        ctx.save();
+        roundRect(ctx, cx0, c.y, cw, c.h, 6);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(2, 20, 12, .85)';
+        ctx.fillRect(cx0, c.y + thumbH, cw, waveH);
+        ctx.drawImage(wbmp, cx0, c.y + thumbH, cw, waveH);
         ctx.restore();
       }
     }
@@ -172,30 +189,37 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
   }
 
-  // ── track de audio extra ──
-  if (layout.audio) {
-    const a = layout.audio;
+  // ── itens da track de audio ──
+  for (const a of layout.audioItems || []) {
+    if (a.x + a.w < 0 || a.x > W) continue;
     roundRect(ctx, a.x, a.y, a.w, a.h, 4);
     ctx.fillStyle = COLORS.audio;
     ctx.fill();
-    ctx.strokeStyle = COLORS.audioBorder;
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = a.selected ? '#22c55e' : COLORS.audioBorder;
+    ctx.lineWidth = a.selected ? 2 : 1;
     ctx.stroke();
-    if (wave) {
-      const bmp = wave.getBitmap(a.w, a.h);
-      if (bmp) {
-        ctx.save();
-        roundRect(ctx, a.x, a.y, a.w, a.h, 4);
-        ctx.clip();
-        ctx.globalAlpha = 0.8;
-        ctx.drawImage(bmp, a.x, a.y, a.w, a.h);
-        ctx.globalAlpha = 1;
-        ctx.restore();
+
+    ctx.save();
+    roundRect(ctx, a.x, a.y, a.w, a.h, 4);
+    ctx.clip();
+    if (a.kind === 'video' && videoWave?.ready()) {
+      // waveform fatiada por segmento (espelha os cortes do video)
+      for (const seg of a.segments) {
+        const bmp = videoWave.getSlice(seg.srcIn, seg.srcOut, seg.w, a.h);
+        if (bmp) { ctx.globalAlpha = 0.85; ctx.drawImage(bmp, seg.x, a.y, seg.w, a.h); }
       }
+    } else if (a.kind === 'extra' && wave) {
+      const bmp = wave.getBitmap(a.w, a.h);
+      if (bmp) { ctx.globalAlpha = 0.8; ctx.drawImage(bmp, a.x, a.y, a.w, a.h); }
     }
-    ctx.fillStyle = 'rgba(232,244,255,.7)';
-    ctx.font = '9px "JetBrains Mono", monospace';
-    ctx.fillText('♪ áudio', a.x + 6, a.y + 5);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    if (a.w > 60) {
+      ctx.fillStyle = 'rgba(232,244,255,.75)';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText(a.label, a.x + 6, a.y + 3);
+    }
   }
 
   // ── linha de snap ──

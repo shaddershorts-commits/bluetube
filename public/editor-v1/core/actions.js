@@ -25,6 +25,9 @@ export const A = {
   // audio / transicoes / config
   SET_AUDIO_EXTRA: 'SET_AUDIO_EXTRA',
   REMOVE_AUDIO_EXTRA: 'REMOVE_AUDIO_EXTRA',
+  DETACH_AUDIO: 'DETACH_AUDIO',
+  REMOVE_VIDEO_AUDIO: 'REMOVE_VIDEO_AUDIO',
+  SELECT_AUDIO: 'SELECT_AUDIO',
   SET_VOLUME: 'SET_VOLUME',
   SET_TRANSITION: 'SET_TRANSITION',
   SET_ASPECT: 'SET_ASPECT',
@@ -51,6 +54,8 @@ export const UNDOABLE = {
   [A.DELETE_TEXT]: U,
   [A.SET_AUDIO_EXTRA]: U,
   [A.REMOVE_AUDIO_EXTRA]: U,
+  [A.DETACH_AUDIO]: U,
+  [A.REMOVE_VIDEO_AUDIO]: U,
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
   [A.SET_ASPECT]: U,
@@ -78,6 +83,9 @@ export const selectText = (textId) => ({ type: A.SELECT_TEXT, textId });
 
 export const setAudioExtra = (audio) => ({ type: A.SET_AUDIO_EXTRA, audio });
 export const removeAudioExtra = () => ({ type: A.REMOVE_AUDIO_EXTRA });
+export const detachAudio = () => ({ type: A.DETACH_AUDIO });
+export const removeVideoAudio = () => ({ type: A.REMOVE_VIDEO_AUDIO });
+export const selectAudio = (kind) => ({ type: A.SELECT_AUDIO, kind });
 export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value });
 export const setTransition = (between, ttype, duration) => ({ type: A.SET_TRANSITION, between, ttype, duration });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });

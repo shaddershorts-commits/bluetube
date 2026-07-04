@@ -100,7 +100,7 @@ export function reduce(state, action) {
 
     case A.SELECT_CLIP:
       if (state.selected_clip_id === action.clipId) return state;
-      return { ...state, selected_clip_id: action.clipId, selected_text_id: null };
+      return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio: null };
 
     case A.DELETE_RANGE_LEFT: {
       // Remove tudo antes do tempo virtual t (CapCut "Q"): trima o clip sob t
@@ -203,16 +203,41 @@ export function reduce(state, action) {
 
     case A.SELECT_TEXT:
       if (state.selected_text_id === action.textId) return state;
-      return { ...state, selected_text_id: action.textId, selected_clip_id: null };
+      return { ...state, selected_text_id: action.textId, selected_clip_id: null, selected_audio: null };
 
     // ── audio / transicoes / config ─────────────────────────────────────
 
     case A.SET_AUDIO_EXTRA:
       return touch({ ...state, audio_extra: action.audio });
 
-    case A.REMOVE_AUDIO_EXTRA:
+    case A.REMOVE_AUDIO_EXTRA: {
       if (!state.audio_extra) return state;
-      return touch({ ...state, audio_extra: null });
+      const selA = state.selected_audio === 'extra' ? null : state.selected_audio;
+      return touch({ ...state, audio_extra: null, selected_audio: selA });
+    }
+
+    case A.DETACH_AUDIO: {
+      // Ctrl+Shift+S (CapCut): audio do video vira item proprio na track de
+      // audio. Waveform sai do clip; volume/delecao passam a ser do item.
+      if (state.audio_detached || !state.video) return state;
+      return touch({ ...state, audio_detached: true, selected_audio: 'video' });
+    }
+
+    case A.REMOVE_VIDEO_AUDIO: {
+      // deleta o item de audio destacado -> export muta o audio original
+      if (!state.audio_detached || state.video_audio_removed) return state;
+      return touch({
+        ...state,
+        video_audio_removed: true,
+        selected_audio: state.selected_audio === 'video' ? null : state.selected_audio,
+      });
+    }
+
+    case A.SELECT_AUDIO: {
+      const kind = action.kind === 'video' || action.kind === 'extra' ? action.kind : null;
+      if (state.selected_audio === kind) return state;
+      return { ...state, selected_audio: kind, selected_clip_id: null, selected_text_id: null };
+    }
 
     case A.SET_VOLUME: {
       const track = action.track === 'audio_extra' ? 'audio_extra' : 'video';

@@ -23,9 +23,11 @@ export function createStore(initial) {
 
     dispatch(action) {
       if (!action || !action.type) return state;
-      history.record(state, action);
       const next = reduce(state, action);
+      // history so grava quando a action MUDOU o estado — no-ops (ex:
+      // detach repetido, trim sem delta) nao criam snapshots fantasmas
       if (next !== state) {
+        history.record(state, action);
         state = next;
         notify(action);
       }

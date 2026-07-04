@@ -24,6 +24,12 @@ export function attachShortcuts({ store, player, timeline }) {
     }
     // Split
     if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); store.dispatch(act.splitClipAt(t)); return; }
+    // Separar audio do video (CapCut: Ctrl+Shift+S)
+    if (mod && e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      store.dispatch(act.detachAudio());
+      return;
+    }
     // Zoom
     if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); timeline.zoomBy(1.25); return; }
     if (mod && e.key === '-') { e.preventDefault(); timeline.zoomBy(1 / 1.25); return; }
@@ -52,6 +58,10 @@ export function attachShortcuts({ store, player, timeline }) {
       case 'Delete': case 'Backspace': {
         if (state.selected_text_id != null) {
           store.dispatch(act.deleteText(state.selected_text_id));
+        } else if (state.selected_audio === 'video') {
+          store.dispatch(act.removeVideoAudio());
+        } else if (state.selected_audio === 'extra') {
+          store.dispatch(act.removeAudioExtra());
         } else if (state.selected_clip_id != null) {
           store.dispatch(act.deleteClip(state.selected_clip_id));
         }

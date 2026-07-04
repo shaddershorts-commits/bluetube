@@ -18,6 +18,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
   let snapIndicator = { active: false, t: null };
   let thumbs = null;
   let wave = null;
+  let videoWave = null;
   let longPressTimer = 0;
   const pointers = new Map(); // pointerId -> {x,y}
   const renderer = createRenderer(canvas);
@@ -44,6 +45,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
       snapIndicator,
       thumbs,
       wave,
+      videoWave,
       dpr: Math.min(2, window.devicePixelRatio || 1),
     });
   }
@@ -62,7 +64,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
         case 'select-clip': store.dispatch(act.selectClip(e.clipId)); break;
         case 'select-text': store.dispatch(act.selectText(e.textId)); break;
         case 'clear-selection': store.dispatch(act.selectClip(null)); break;
-        case 'select-audio': /* painel de audio destaca via evento */ document.dispatchEvent(new CustomEvent('be:select-audio')); break;
+        case 'select-audio': store.dispatch(act.selectAudio(e.kind)); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;
@@ -257,6 +259,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
     },
     setThumbs(t) { thumbs = t; draw(); },
     setWave(w) { wave = w; draw(); },
+    setVideoWave(w) { videoWave = w; draw(); },
     getFsmName: () => fsm.name,
     destroy() {
       renderer.destroy();

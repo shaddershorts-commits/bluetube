@@ -82,20 +82,45 @@ export function computeLayout(state, vp) {
     content: t.content,
   }));
 
-  // Track de audio extra (barra unica cobrindo a duracao do audio)
-  let audio = null;
-  if (state.audio_extra?.duration > 0) {
-    audio = {
+  // Track de audio: itens selecionaveis.
+  // - 'video': audio destacado do video (Ctrl+Shift+S) — cobre a timeline,
+  //   com sub-segmentos espelhando os clips pra waveform fatiada certa.
+  // - 'extra': musica/narracao enviada (barra unica da duracao do arquivo).
+  const audioItems = [];
+  const hasVideoAudio = state.audio_detached && !state.video_audio_removed && total > 0;
+  const hasExtra = state.audio_extra?.duration > 0;
+  // com os dois presentes, a track divide em 2 sub-linhas (video em cima)
+  const subH = (hasVideoAudio && hasExtra) ? METRICS.AUDIO_TRACK_H / 2 : METRICS.AUDIO_TRACK_H;
+  if (hasVideoAudio) {
+    audioItems.push({
+      kind: 'video',
+      x: timeToX(vp, 0), y: yAudio,
+      w: total * vp.pxPerSec, h: subH,
+      selected: state.selected_audio === 'video',
+      label: '♪ áudio do vídeo',
+      segments: segs.map(seg => ({
+        x: timeToX(vp, seg.tStart),
+        w: (seg.tEnd - seg.tStart) * vp.pxPerSec,
+        srcIn: seg.clip.source_in,
+        srcOut: seg.clip.source_out,
+      })),
+    });
+  }
+  if (hasExtra) {
+    audioItems.push({
+      kind: 'extra',
       x: timeToX(vp, 0),
-      y: yAudio,
-      w: Math.min(state.audio_extra.duration, Math.max(total, state.audio_extra.duration)) * vp.pxPerSec,
-      h: METRICS.AUDIO_TRACK_H,
+      y: yAudio + (hasVideoAudio ? subH : 0),
+      w: state.audio_extra.duration * vp.pxPerSec, h: subH,
+      selected: state.selected_audio === 'extra',
+      label: '♪ ' + (state.audio_extra.filename || 'áudio'),
       duration: state.audio_extra.duration,
-    };
+    });
   }
 
   return {
-    vp, total, segs, clips, ghosts, texts, audio,
+    vp, total, segs, clips, ghosts, texts, audioItems,
+    audioDetached: !!state.audio_detached && !state.video_audio_removed,
     yRuler, yVideo, yText, yAudio, contentH,
   };
 }

@@ -91,12 +91,12 @@ body {
 .be-drop-icon { font-size: 44px; }
 #beDropMsg { font-size: 15px; font-weight: 700; }
 
-/* ── workspace ── */
+/* ── workspace (CapCut desktop: rail | propriedades | PREVIEW a direita) ── */
 .be-workspace {
   flex: 1; min-height: 0; min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  grid-template-rows: 1fr auto;
+  grid-template-columns: 64px 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   padding: 10px 14px 12px;
   max-width: 100vw;
@@ -121,7 +121,7 @@ body {
 .be-rail-btn:hover { border-color: var(--neon); color: var(--text); }
 
 .be-preview-area {
-  grid-column: 2; grid-row: 1;
+  grid-column: 3; grid-row: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 0;
 }
@@ -151,7 +151,7 @@ body {
 
 /* ── painel de propriedades contextual (CapCut right panel) ── */
 .be-props {
-  grid-column: 3; grid-row: 1;
+  grid-column: 2; grid-row: 1;
   overflow-y: auto; min-height: 0;
   background: var(--card); border: 1px solid var(--blue-border);
   border-radius: 14px; padding: 14px;

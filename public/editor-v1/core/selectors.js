@@ -105,8 +105,13 @@ export function exportPayload(state) {
     })),
     audio_extra: state.audio_extra,
     transitions: state.transitions || [],
-    volumes: state.volumes,
+    // audio destacado + deletado (CapCut detach+delete) = video mudo no render
+    volumes: state.video_audio_removed
+      ? { ...state.volumes, video: 0 }
+      : state.volumes,
     aspect_strategy: state.aspect_strategy,
+    audio_detached: !!state.audio_detached,
+    video_audio_removed: !!state.video_audio_removed,
   };
 }
 

@@ -56,9 +56,11 @@ export function hitTest(layout, x, y, opts = {}) {
     return { type: 'ruler' };
   }
 
-  // 6. Track de audio
-  if (layout.audio && within(x, y, layout.audio.x, layout.audio.y, layout.audio.w, layout.audio.h)) {
-    return { type: 'audio-track' };
+  // 6. Itens da track de audio (audio do video destacado / musica extra)
+  for (const a of layout.audioItems || []) {
+    if (within(x, y, a.x, a.y, a.w, a.h)) {
+      return { type: 'audio-item', kind: a.kind };
+    }
   }
 
   // 7. Area da track de video vazia (scrub tambem — CapCut permite)

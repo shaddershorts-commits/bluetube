@@ -120,8 +120,8 @@ export function transition(fsm, ev, ctx) {
       if (hit.type === 'text-block') {
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
-      if (hit.type === 'audio-track') {
-        fx.push({ do: 'select-audio' });
+      if (hit.type === 'audio-item') {
+        fx.push({ do: 'select-audio', kind: hit.kind });
         return { next: fsm, effects: fx };
       }
       return { next: fsm, effects: fx };

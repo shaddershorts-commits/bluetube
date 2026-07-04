@@ -41,6 +41,7 @@ export function mountEditor(root, store) {
 
   let thumbs = null;
   let wave = null;
+  let videoWave = null;
   // preview local do arquivo recem-enviado (playback instantaneo pre-CDN)
   const localPreview = { url: null, for: null };
 
@@ -68,6 +69,8 @@ export function mountEditor(root, store) {
     $('#beAspect').value = state.aspect_strategy;
     // WYSIWYG do formato: letterbox = video inteiro com barras (contain)
     videoEl.style.objectFit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
+    // audio destacado + deletado = video mudo (espelha o export)
+    videoEl.muted = !!state.video_audio_removed;
     // video source: usa preview local (objectURL) quando disponivel —
     // instantaneo e imune a atraso de propagacao do CDN
     if (has && videoEl.dataset.src !== state.video.url) {
@@ -99,11 +102,18 @@ export function mountEditor(root, store) {
   // clip selecionado -> acoes do clip | texto selecionado -> editor de texto
   function syncPropsPanel(state) {
     const showText = state.selected_text_id != null;
-    const showClip = !showText && state.selected_clip_id != null;
+    const showAudio = !showText && state.selected_audio != null;
+    const showClip = !showText && !showAudio && state.selected_clip_id != null;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
+    $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
     $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
-    $('#bePropsProject').style.display = (!showText && !showClip) ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (!showText && !showAudio && !showClip) ? 'flex' : 'none';
     if (showText) fillTextPanel(state);
+    if (showAudio) {
+      const isVideo = state.selected_audio === 'video';
+      $('#beAudioPanelTitle').textContent = isVideo ? '♪ Áudio do vídeo' : '♪ ' + (state.audio_extra?.filename || 'Música');
+      $('#beVolSelected').value = isVideo ? state.volumes.video : state.volumes.audio_extra;
+    }
     if (showClip) {
       const clip = state.clips.find(c => c.id === state.selected_clip_id);
       if (clip) {
@@ -111,12 +121,21 @@ export function mountEditor(root, store) {
         $('#beToggleClip2').textContent = clip.active === false ? '◉ Reativar cena' : '◌ Desativar cena';
       }
     }
+    // botao "separar audio" so faz sentido antes do detach
+    $('#beDetachAudio').style.display = state.audio_detached ? 'none' : 'block';
   }
 
   function setupThumbsAndWave(state) {
     thumbs?.destroy();
     thumbs = createThumbnails(videoEl, state.video.duration, () => timeline.draw());
     timeline.setThumbs(thumbs);
+    // waveform do audio DO VIDEO (strip no clip, estilo CapCut). Usa o mesmo
+    // src do player (objectURL local quando disponivel = zero rede).
+    videoWave?.destroy();
+    const waveSrc = (localPreview.for === state.video.url && localPreview.url)
+      ? localPreview.url : state.video.url;
+    videoWave = createWaveform(waveSrc, () => timeline.draw(), { color: 'rgba(34,197,94,.9)' });
+    timeline.setVideoWave(videoWave);
     if (state.audio_extra?.url) {
       wave?.destroy();
       wave = createWaveform(state.audio_extra.url, () => timeline.draw());
@@ -281,6 +300,24 @@ export function mountEditor(root, store) {
   $('#beVolAudio').addEventListener('change', () => store.endGesture());
   $('#beAspect').addEventListener('change', (e) => store.dispatch(act.setAspect(e.target.value)));
 
+  // ── audio destacado (Ctrl+Shift+S) ──
+  $('#beDetachAudio').addEventListener('click', () => {
+    store.dispatch(act.detachAudio());
+    toast('Áudio separado do vídeo ✓ (track própria)');
+  });
+  $('#beVolSelected').addEventListener('input', (e) => {
+    const kind = store.getState().selected_audio;
+    if (!kind) return;
+    const track = kind === 'video' ? 'video' : 'audio_extra';
+    store.dispatch({ ...act.setVolume(track, parseFloat(e.target.value)), gestureId: 'vol-sel' });
+  });
+  $('#beVolSelected').addEventListener('change', () => store.endGesture());
+  $('#beAudioItemDelete').addEventListener('click', () => {
+    const kind = store.getState().selected_audio;
+    if (kind === 'video') store.dispatch(act.removeVideoAudio());
+    if (kind === 'extra') store.dispatch(act.removeAudioExtra());
+  });
+
   // ── transicoes ──
   function renderTransitionsRow(state) {
     const row = $('#beTransitions');
@@ -388,7 +425,7 @@ export function mountEditor(root, store) {
       document.removeEventListener('visibilitychange', flushOnHide);
       player.destroy(); overlay.destroy(); timeline.destroy();
       autosave.destroy(); exporter.destroy();
-      thumbs?.destroy(); wave?.destroy();
+      thumbs?.destroy(); wave?.destroy(); videoWave?.destroy();
       if (localPreview.url) URL.revokeObjectURL(localPreview.url);
     },
   };
@@ -468,6 +505,7 @@ function buildTemplate() {
       </div>
       <label class="be-slider-label">Volume do vídeo <input id="beVolVideo" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <label class="be-slider-label">Volume da música <input id="beVolAudio" type="range" min="0" max="2" step="0.05" value="1"/></label>
+      <button id="beDetachAudio" class="be-tool-btn" title="Ctrl+Shift+S">🔀 Separar áudio do vídeo</button>
       <div class="be-sep"></div>
       <div class="be-side-title">Transições</div>
       <div id="beTransitions" class="be-transitions"></div>
@@ -480,6 +518,13 @@ function buildTemplate() {
       <button id="beToggleClip2" class="be-tool-btn">◌ Desativar cena</button>
       <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
       <div class="be-dim">Atalhos: V liga/desliga · Delete exclui · Ctrl+B divide no cursor</div>
+    </div>
+
+    <div id="bePropsAudio" class="be-props-stack" style="display:none">
+      <div class="be-side-title" id="beAudioPanelTitle">♪ Áudio</div>
+      <label class="be-slider-label">Volume <input id="beVolSelected" type="range" min="0" max="2" step="0.05" value="1"/></label>
+      <button id="beAudioItemDelete" class="be-danger-btn">🗑 Excluir áudio</button>
+      <div class="be-dim">Delete/Backspace também exclui o item selecionado</div>
     </div>
 
     <div id="beTextPanel" class="be-props-stack" style="display:none">

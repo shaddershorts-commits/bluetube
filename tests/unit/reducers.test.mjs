@@ -221,3 +221,42 @@ test('segmentAt encontra clip certo apos reorder', () => {
   assert.equal(segmentAt(s, 10).clip.id, c2.id);
   assert.equal(segmentAt(s, 45).clip.id, c1.id);
 });
+
+test('DETACH_AUDIO (Ctrl+Shift+S): destaca e seleciona o item', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.detachAudio());
+  let s = store.getState();
+  assert.equal(s.audio_detached, true);
+  assert.equal(s.selected_audio, 'video');
+  // idempotente
+  store.dispatch(act.detachAudio());
+  assert.equal(store.getState().audio_detached, true);
+  // undo desfaz o detach
+  store.undo();
+  assert.equal(store.getState().audio_detached, false);
+});
+
+test('REMOVE_VIDEO_AUDIO: so apos detach; export muta o video', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.removeVideoAudio()); // sem detach = no-op
+  assert.equal(store.getState().video_audio_removed, false);
+  store.dispatch(act.detachAudio());
+  store.dispatch(act.removeVideoAudio());
+  const s = store.getState();
+  assert.equal(s.video_audio_removed, true);
+  assert.equal(s.selected_audio, null);
+  const p = exportPayload(s);
+  assert.equal(p.volumes.video, 0);       // video mudo no render
+  assert.equal(s.volumes.video, 1);       // estado original preservado (undo-friendly)
+});
+
+test('SELECT_AUDIO limpa selecao de clip/texto e vice-versa', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.detachAudio());
+  store.dispatch(act.selectClip(store.getState().clips[0].id));
+  assert.equal(store.getState().selected_audio, null);
+  store.dispatch(act.selectAudio('video'));
+  const s = store.getState();
+  assert.equal(s.selected_audio, 'video');
+  assert.equal(s.selected_clip_id, null);
+});
