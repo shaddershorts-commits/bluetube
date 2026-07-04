@@ -4,6 +4,15 @@
 import * as act from '../core/actions.js';
 import { segmentAt } from '../core/selectors.js';
 
+/** Split CapCut: corta a FAIXA selecionada no cursor.
+ *  texto selecionado -> divide texto; audio -> divide audio; senao video. */
+export function splitSelectedAt(store, t) {
+  const s = store.getState();
+  if (s.selected_text_id != null) return store.dispatch(act.splitTextAt(s.selected_text_id, t));
+  if (s.selected_audio_id != null) return store.dispatch(act.splitAudioAt(t));
+  return store.dispatch(act.splitClipAt(t));
+}
+
 export function attachShortcuts({ store, player, timeline }) {
   function isTyping() {
     const el = document.activeElement;
@@ -23,7 +32,7 @@ export function attachShortcuts({ store, player, timeline }) {
       e.preventDefault(); store.redo(); return;
     }
     // Split
-    if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); store.dispatch(act.splitClipAt(t)); return; }
+    if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); splitSelectedAt(store, t); return; }
     // Separar audio do video (CapCut: Ctrl+Shift+S)
     if (mod && e.shiftKey && e.key.toLowerCase() === 's') {
       e.preventDefault();
@@ -58,10 +67,8 @@ export function attachShortcuts({ store, player, timeline }) {
       case 'Delete': case 'Backspace': {
         if (state.selected_text_id != null) {
           store.dispatch(act.deleteText(state.selected_text_id));
-        } else if (state.selected_audio === 'video') {
-          store.dispatch(act.removeVideoAudio());
-        } else if (state.selected_audio === 'extra') {
-          store.dispatch(act.removeAudioExtra());
+        } else if (state.selected_audio_id != null) {
+          store.dispatch(act.deleteAudioClip(state.selected_audio_id));
         } else if (state.selected_clip_id != null) {
           store.dispatch(act.deleteClip(state.selected_clip_id));
         }

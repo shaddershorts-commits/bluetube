@@ -64,7 +64,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
         case 'select-clip': store.dispatch(act.selectClip(e.clipId)); break;
         case 'select-text': store.dispatch(act.selectText(e.textId)); break;
         case 'clear-selection': store.dispatch(act.selectClip(null)); break;
-        case 'select-audio': store.dispatch(act.selectAudio(e.kind)); break;
+        case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;

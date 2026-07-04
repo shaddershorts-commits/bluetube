@@ -30,10 +30,15 @@ export function createInitialState() {
     texts: [],            // [{ id, content, font, size, color, x_pct, y_pct, start_sec, end_sec, active }]
     next_text_id: 1,
     selected_text_id: null,
-    audio_extra: null,    // { url, path, filename, duration, size_bytes }
-    audio_detached: false,      // Ctrl+Shift+S: audio do video vira track propria
-    video_audio_removed: false, // item de audio destacado foi deletado (export muta o video)
-    selected_audio: null,       // 'video' | 'extra' | null (selecao na track de audio)
+    // clips de audio EDITAVEIS (CapCut): posicionaveis (start), cortaveis,
+    // com volume proprio. kind 'extra' = arquivo enviado (url);
+    // kind 'video' = trecho do audio do proprio video (pos-detach).
+    audio_clips: [],      // [{id, kind, url?, filename, media_duration, start, source_in, source_out, volume, active}]
+    next_audio_id: 1,
+    selected_audio_id: null,
+    audio_detached: false,      // Ctrl+Shift+S: video fica mudo, audio vira clips
+    // legado (migrado em normalizeLoadedState): audio_extra, selected_audio,
+    // video_audio_removed
     transitions: [],      // [{ between, type, duration }]
     volumes: { video: 1, audio_extra: 1 },
     aspect_strategy: 'crop_center',
@@ -77,8 +82,39 @@ export function normalizeLoadedState(raw) {
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
   s.volumes = { video: 1, audio_extra: 1, ...(raw.volumes || {}) };
   s.audio_detached = raw.audio_detached === true;
-  s.video_audio_removed = raw.video_audio_removed === true;
-  s.selected_audio = null;
+  s.selected_audio_id = null;
+  // audio_clips (modelo novo) + migracao dos formatos legados
+  s.audio_clips = Array.isArray(raw.audio_clips) ? raw.audio_clips
+    .filter(a => a && typeof a.source_in === 'number' && a.source_out > a.source_in)
+    .map(a => ({
+      id: a.id, kind: a.kind === 'video' ? 'video' : 'extra',
+      url: a.url || null, filename: a.filename || '',
+      media_duration: a.media_duration || (a.source_out - a.source_in),
+      start: Math.max(0, a.start || 0),
+      source_in: a.source_in, source_out: a.source_out,
+      volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
+      active: a.active !== false,
+    })) : [];
+  if (!s.audio_clips.length && raw.audio_extra?.url && raw.audio_extra?.duration > 0) {
+    // legado: audio_extra unico fixo no 0:00 -> vira clip editavel
+    s.audio_clips = [{
+      id: 1, kind: 'extra', url: raw.audio_extra.url,
+      filename: raw.audio_extra.filename || 'áudio',
+      media_duration: raw.audio_extra.duration,
+      start: 0, source_in: 0, source_out: raw.audio_extra.duration,
+      volume: s.volumes.audio_extra ?? 1, active: true,
+    }];
+  }
+  if (raw.video_audio_removed === true) {
+    // legado: detach+delete -> modelo novo = detach sem clips de video
+    s.audio_detached = true;
+    s.audio_clips = s.audio_clips.filter(a => a.kind !== 'video');
+  }
+  const maxAudio = s.audio_clips.reduce((m, a) => Math.max(m, a.id || 0), 0);
+  s.next_audio_id = Math.max(raw.next_audio_id || 1, maxAudio + 1);
+  delete s.audio_extra;
+  delete s.selected_audio;
+  delete s.video_audio_removed;
   // Migracao v0: se veio com trim global e sem clips, materializa em 1 clip
   if (s.clips.length === 0 && s.video?.duration > 0) {
     const inT = raw.trim?.in || 0;

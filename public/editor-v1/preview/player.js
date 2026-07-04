@@ -1,16 +1,18 @@
 // editor-v1/preview/player.js
-// Transporte com TEMPO VIRTUAL: o player expoe currentTime/duration no tempo
-// da timeline (clips ativos concatenados) e mapeia pro <video> via selectors.
-// Pula automaticamente trechos removidos durante o playback.
+// Transporte com TEMPO VIRTUAL + mixer multi-audio.
+// - <video> principal segue os clips ativos (pula trechos removidos)
+// - cada audio_clip ganha um Audio() proprio (Audio decodifica a trilha de
+//   audio de arquivos de VIDEO tambem), agendado por start/source_in/out
 
-import { timelineToSource, sourceToTimeline, totalDuration, segmentAt, timelineSegments } from '../core/selectors.js';
+import { timelineToSource, totalDuration, segmentAt } from '../core/selectors.js';
 
-export function createPlayer(videoEl, audioEl, store) {
-  let virtualTime = 0;        // fonte de verdade do playhead (tempo virtual)
+export function createPlayer(videoEl, _audioElUnused, store) {
+  let virtualTime = 0;
   let playing = false;
   let rafId = 0;
   let lastTick = 0;
   const listeners = new Set();
+  const pool = new Map(); // audio_clip.id -> { el, url }
 
   function emit() { for (const fn of listeners) fn(); }
 
@@ -22,13 +24,51 @@ export function createPlayer(videoEl, audioEl, store) {
     }
   }
 
-  function syncAudio() {
-    if (!audioEl || !audioEl.src) return;
+  /** cria/atualiza os Audio() do pool conforme audio_clips */
+  function syncPool() {
     const state = store.getState();
-    const vol = state.volumes?.audio_extra ?? 1;
-    audioEl.volume = Math.min(1, vol); // volume >1 so no export
-    if (Math.abs(audioEl.currentTime - virtualTime) > 0.25) {
-      try { audioEl.currentTime = Math.min(virtualTime, audioEl.duration || virtualTime); } catch {}
+    const clips = (state.audio_clips || []).filter(a => a.active !== false);
+    const seen = new Set();
+    for (const a of clips) {
+      seen.add(a.id);
+      const url = a.kind === 'video' ? (videoEl.currentSrc || videoEl.src) : a.url;
+      if (!url) continue;
+      let entry = pool.get(a.id);
+      if (!entry || entry.url !== url) {
+        entry?.el.pause?.();
+        const el = new Audio();
+        el.preload = 'auto';
+        el.src = url;
+        entry = { el, url };
+        pool.set(a.id, entry);
+      }
+    }
+    for (const [id, entry] of pool) {
+      if (!seen.has(id)) { entry.el.pause(); entry.el.removeAttribute('src'); pool.delete(id); }
+    }
+  }
+
+  /** agenda cada audio clip pro tempo virtual t */
+  function syncAudios(t) {
+    const state = store.getState();
+    for (const a of (state.audio_clips || [])) {
+      if (a.active === false) continue;
+      const entry = pool.get(a.id);
+      if (!entry) continue;
+      const el = entry.el;
+      const dur = a.source_out - a.source_in;
+      const inside = t >= a.start - 0.02 && t < a.start + dur;
+      el.volume = Math.min(1, a.volume ?? 1);
+      if (inside) {
+        const local = a.source_in + (t - a.start);
+        if (Math.abs(el.currentTime - local) > 0.25) {
+          try { el.currentTime = local; } catch {}
+        }
+        if (playing && el.paused) el.play().catch(() => {});
+        if (!playing && !el.paused) el.pause();
+      } else if (!el.paused) {
+        el.pause();
+      }
     }
   }
 
@@ -39,14 +79,11 @@ export function createPlayer(videoEl, audioEl, store) {
     const dt = lastTick ? (ts - lastTick) / 1000 : 0;
     lastTick = ts;
 
-    // Avanco baseado no video real (mais preciso) quando dentro de um segmento
     const seg = segmentAt(state, virtualTime);
     if (seg) {
       const vSrc = videoEl.currentTime;
-      // dentro do mesmo segmento? tempo virtual = tStart + (vSrc - source_in)
       if (vSrc >= seg.clip.source_in - 0.05 && vSrc <= seg.clip.source_out + 0.05) {
         virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in);
-        // passou do fim do segmento -> pula pro proximo
         if (vSrc >= seg.clip.source_out - 0.03) {
           const nextT = seg.tEnd + 0.001;
           if (nextT >= total) { pause(); virtualTime = total; emit(); return; }
@@ -54,7 +91,6 @@ export function createPlayer(videoEl, audioEl, store) {
           syncVideoToVirtual();
         }
       } else {
-        // video dessincronizado (seek externo?) -> força
         syncVideoToVirtual();
       }
     } else {
@@ -62,7 +98,7 @@ export function createPlayer(videoEl, audioEl, store) {
       if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
       syncVideoToVirtual();
     }
-    syncAudio();
+    syncAudios(virtualTime);
     emit();
     rafId = requestAnimationFrame(tick);
   }
@@ -72,13 +108,15 @@ export function createPlayer(videoEl, audioEl, store) {
     const total = totalDuration(state);
     if (total <= 0) return;
     if (virtualTime >= total - 0.01) virtualTime = 0;
+    syncPool();
     syncVideoToVirtual();
-    const vol = state.volumes?.video ?? 1;
-    videoEl.volume = Math.min(1, vol);
+    // video mudo quando o audio foi destacado (vive nos audio_clips agora)
+    videoEl.muted = !!state.audio_detached;
+    videoEl.volume = Math.min(1, state.volumes?.video ?? 1);
     playing = true;
     lastTick = 0;
     videoEl.play().catch(() => {});
-    if (audioEl?.src) { syncAudio(); audioEl.play().catch(() => {}); }
+    syncAudios(virtualTime);
     rafId = requestAnimationFrame(tick);
     emit();
   }
@@ -87,7 +125,7 @@ export function createPlayer(videoEl, audioEl, store) {
     playing = false;
     cancelAnimationFrame(rafId);
     videoEl.pause();
-    audioEl?.pause?.();
+    for (const [, entry] of pool) entry.el.pause();
     emit();
   }
 
@@ -95,7 +133,8 @@ export function createPlayer(videoEl, audioEl, store) {
     const total = totalDuration(store.getState());
     virtualTime = Math.min(Math.max(0, t), total);
     syncVideoToVirtual();
-    syncAudio();
+    syncPool();
+    syncAudios(virtualTime);
     emit();
   }
 
@@ -104,11 +143,13 @@ export function createPlayer(videoEl, audioEl, store) {
     seek(virtualTime + (dir * (big ? 10 : 1)) / fps);
   }
 
-  // Se o documento mudar (split/delete/trim), garante que o playhead continua valido
   store.subscribe(() => {
-    const total = totalDuration(store.getState());
+    const state = store.getState();
+    const total = totalDuration(state);
     if (virtualTime > total) { virtualTime = total; emit(); }
+    videoEl.muted = !!state.audio_detached;
     if (!playing) syncVideoToVirtual();
+    syncPool();
   });
 
   return {
@@ -117,9 +158,13 @@ export function createPlayer(videoEl, audioEl, store) {
     isPlaying: () => playing,
     getTime: () => virtualTime,
     getDuration: () => totalDuration(store.getState()),
-    /** tempo source atual do <video> mapeado, pra overlay/texto */
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    destroy() { pause(); listeners.clear(); },
+    destroy() {
+      pause();
+      for (const [, e] of pool) { e.el.pause(); e.el.removeAttribute('src'); }
+      pool.clear();
+      listeners.clear();
+    },
   };
 }

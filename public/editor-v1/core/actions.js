@@ -21,13 +21,17 @@ export const A = {
   UPDATE_TEXT: 'UPDATE_TEXT',
   MOVE_TEXT: 'MOVE_TEXT',
   DELETE_TEXT: 'DELETE_TEXT',
+  SPLIT_TEXT: 'SPLIT_TEXT',
   SELECT_TEXT: 'SELECT_TEXT',
-  // audio / transicoes / config
-  SET_AUDIO_EXTRA: 'SET_AUDIO_EXTRA',
-  REMOVE_AUDIO_EXTRA: 'REMOVE_AUDIO_EXTRA',
+  // audio (clips editaveis)
+  ADD_AUDIO_CLIP: 'ADD_AUDIO_CLIP',
   DETACH_AUDIO: 'DETACH_AUDIO',
-  REMOVE_VIDEO_AUDIO: 'REMOVE_VIDEO_AUDIO',
-  SELECT_AUDIO: 'SELECT_AUDIO',
+  SPLIT_AUDIO: 'SPLIT_AUDIO',
+  TRIM_AUDIO: 'TRIM_AUDIO',
+  MOVE_AUDIO: 'MOVE_AUDIO',
+  DELETE_AUDIO_CLIP: 'DELETE_AUDIO_CLIP',
+  SET_AUDIO_VOLUME: 'SET_AUDIO_VOLUME',
+  SELECT_AUDIO_CLIP: 'SELECT_AUDIO_CLIP',
   SET_VOLUME: 'SET_VOLUME',
   SET_TRANSITION: 'SET_TRANSITION',
   SET_ASPECT: 'SET_ASPECT',
@@ -52,10 +56,14 @@ export const UNDOABLE = {
   [A.UPDATE_TEXT]: U,
   [A.MOVE_TEXT]: U,
   [A.DELETE_TEXT]: U,
-  [A.SET_AUDIO_EXTRA]: U,
-  [A.REMOVE_AUDIO_EXTRA]: U,
+  [A.SPLIT_TEXT]: U,
+  [A.ADD_AUDIO_CLIP]: U,
   [A.DETACH_AUDIO]: U,
-  [A.REMOVE_VIDEO_AUDIO]: U,
+  [A.SPLIT_AUDIO]: U,
+  [A.TRIM_AUDIO]: U,
+  [A.MOVE_AUDIO]: U,
+  [A.DELETE_AUDIO_CLIP]: U,
+  [A.SET_AUDIO_VOLUME]: U,
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
   [A.SET_ASPECT]: U,
@@ -79,13 +87,17 @@ export const addText = (props) => ({ type: A.ADD_TEXT, props });
 export const updateText = (textId, patch) => ({ type: A.UPDATE_TEXT, textId, patch });
 export const moveText = (textId, x_pct, y_pct) => ({ type: A.MOVE_TEXT, textId, x_pct, y_pct });
 export const deleteText = (textId) => ({ type: A.DELETE_TEXT, textId });
+export const splitTextAt = (textId, t) => ({ type: A.SPLIT_TEXT, textId, t });
 export const selectText = (textId) => ({ type: A.SELECT_TEXT, textId });
 
-export const setAudioExtra = (audio) => ({ type: A.SET_AUDIO_EXTRA, audio });
-export const removeAudioExtra = () => ({ type: A.REMOVE_AUDIO_EXTRA });
+export const addAudioClip = (media) => ({ type: A.ADD_AUDIO_CLIP, media });
 export const detachAudio = () => ({ type: A.DETACH_AUDIO });
-export const removeVideoAudio = () => ({ type: A.REMOVE_VIDEO_AUDIO });
-export const selectAudio = (kind) => ({ type: A.SELECT_AUDIO, kind });
+export const splitAudioAt = (t) => ({ type: A.SPLIT_AUDIO, t });
+export const trimAudio = (audioId, edge, value) => ({ type: A.TRIM_AUDIO, audioId, edge, value });
+export const moveAudio = (audioId, start) => ({ type: A.MOVE_AUDIO, audioId, start });
+export const deleteAudioClip = (audioId) => ({ type: A.DELETE_AUDIO_CLIP, audioId });
+export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, audioId, value });
+export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
 export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value });
 export const setTransition = (between, ttype, duration) => ({ type: A.SET_TRANSITION, between, ttype, duration });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });

@@ -103,15 +103,20 @@ export function exportPayload(state) {
       start_sec: round3(t.start_sec),
       end_sec: round3(t.end_sec),
     })),
-    audio_extra: state.audio_extra,
+    // clips de audio pro mixer do render (adelay/atrim no Railway)
+    audio_clips: (state.audio_clips || []).filter(a => a.active !== false).map(a => ({
+      kind: a.kind,                 // 'video' usa o proprio source do video
+      url: a.url || null,
+      start: round3(a.start),
+      source_in: round3(a.source_in),
+      source_out: round3(a.source_out),
+      volume: a.volume ?? 1,
+    })),
     transitions: state.transitions || [],
-    // audio destacado + deletado (CapCut detach+delete) = video mudo no render
-    volumes: state.video_audio_removed
-      ? { ...state.volumes, video: 0 }
-      : state.volumes,
+    // com audio destacado o video renderiza MUDO (audio vem dos clips)
+    volumes: state.audio_detached ? { ...state.volumes, video: 0 } : state.volumes,
     aspect_strategy: state.aspect_strategy,
     audio_detached: !!state.audio_detached,
-    video_audio_removed: !!state.video_audio_removed,
   };
 }
 

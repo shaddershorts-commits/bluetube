@@ -100,7 +100,7 @@ export function reduce(state, action) {
 
     case A.SELECT_CLIP:
       if (state.selected_clip_id === action.clipId) return state;
-      return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio: null };
+      return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null };
 
     case A.DELETE_RANGE_LEFT: {
       // Remove tudo antes do tempo virtual t (CapCut "Q"): trima o clip sob t
@@ -201,42 +201,144 @@ export function reduce(state, action) {
       return touch({ ...state, texts, selected_text_id: sel });
     }
 
+    case A.SPLIT_TEXT: {
+      // divide o texto no tempo t: [start,t) + [t,end) — CapCut split em texto
+      const idx = state.texts.findIndex(x => x.id === action.textId);
+      if (idx < 0) return state;
+      const tx = state.texts[idx];
+      const t = action.t;
+      if (t <= tx.start_sec + MIN_CLIP_DURATION || t >= tx.end_sec - MIN_CLIP_DURATION) return state;
+      const left = { ...tx, end_sec: t };
+      const right = { ...tx, id: state.next_text_id, start_sec: t };
+      const texts = state.texts.flatMap(x => x.id === tx.id ? [left, right] : [x]);
+      return touch({ ...state, texts, next_text_id: state.next_text_id + 1, selected_text_id: right.id });
+    }
+
     case A.SELECT_TEXT:
       if (state.selected_text_id === action.textId) return state;
-      return { ...state, selected_text_id: action.textId, selected_clip_id: null, selected_audio: null };
+      return { ...state, selected_text_id: action.textId, selected_clip_id: null, selected_audio_id: null };
 
-    // ── audio / transicoes / config ─────────────────────────────────────
+    // ── audio: clips editaveis (CapCut) ─────────────────────────────────
 
-    case A.SET_AUDIO_EXTRA:
-      return touch({ ...state, audio_extra: action.audio });
-
-    case A.REMOVE_AUDIO_EXTRA: {
-      if (!state.audio_extra) return state;
-      const selA = state.selected_audio === 'extra' ? null : state.selected_audio;
-      return touch({ ...state, audio_extra: null, selected_audio: selA });
-    }
-
-    case A.DETACH_AUDIO: {
-      // Ctrl+Shift+S (CapCut): audio do video vira item proprio na track de
-      // audio. Waveform sai do clip; volume/delecao passam a ser do item.
-      if (state.audio_detached || !state.video) return state;
-      return touch({ ...state, audio_detached: true, selected_audio: 'video' });
-    }
-
-    case A.REMOVE_VIDEO_AUDIO: {
-      // deleta o item de audio destacado -> export muta o audio original
-      if (!state.audio_detached || state.video_audio_removed) return state;
+    case A.ADD_AUDIO_CLIP: {
+      const m = action.media || {};
+      if (!m.url || !(m.duration > 0)) return state;
+      const clip = {
+        id: state.next_audio_id, kind: 'extra',
+        url: m.url, filename: m.filename || 'áudio',
+        media_duration: m.duration,
+        start: 0, source_in: 0, source_out: m.duration,
+        volume: 1, active: true,
+      };
       return touch({
         ...state,
-        video_audio_removed: true,
-        selected_audio: state.selected_audio === 'video' ? null : state.selected_audio,
+        audio_clips: [...state.audio_clips, clip],
+        next_audio_id: state.next_audio_id + 1,
+        selected_audio_id: clip.id,
+        selected_clip_id: null, selected_text_id: null,
       });
     }
 
-    case A.SELECT_AUDIO: {
-      const kind = action.kind === 'video' || action.kind === 'extra' ? action.kind : null;
-      if (state.selected_audio === kind) return state;
-      return { ...state, selected_audio: kind, selected_clip_id: null, selected_text_id: null };
+    case A.DETACH_AUDIO: {
+      // Ctrl+Shift+S (CapCut): 1 clip de audio POR SEGMENTO de video atual,
+      // na mesma posicao da timeline. Depois disso sao INDEPENDENTES do video.
+      if (state.audio_detached || !state.video) return state;
+      let nid = state.next_audio_id;
+      const newClips = [];
+      let t = 0;
+      for (const c of state.clips.filter(c => c.active !== false)) {
+        const dur = c.source_out - c.source_in;
+        newClips.push({
+          id: nid++, kind: 'video', url: null,
+          filename: 'áudio do vídeo',
+          media_duration: state.video.duration,
+          start: t, source_in: c.source_in, source_out: c.source_out,
+          volume: state.volumes.video ?? 1, active: true,
+        });
+        t += dur;
+      }
+      return touch({
+        ...state,
+        audio_detached: true,
+        audio_clips: [...state.audio_clips, ...newClips],
+        next_audio_id: nid,
+        selected_audio_id: newClips[0]?.id ?? null,
+        selected_clip_id: null, selected_text_id: null,
+      });
+    }
+
+    case A.SPLIT_AUDIO: {
+      // corta o clip de audio sob o tempo virtual t (selecionado tem prioridade)
+      const t = action.t;
+      const hitClip = (a) => a.active !== false &&
+        t > a.start + MIN_CLIP_DURATION &&
+        t < a.start + (a.source_out - a.source_in) - MIN_CLIP_DURATION;
+      let target = state.audio_clips.find(a => a.id === state.selected_audio_id && hitClip(a));
+      if (!target) target = state.audio_clips.find(hitClip);
+      if (!target) return state;
+      const offset = t - target.start;
+      const splitSrc = target.source_in + offset;
+      const left = { ...target, source_out: splitSrc };
+      const right = {
+        ...target, id: state.next_audio_id,
+        start: t, source_in: splitSrc,
+      };
+      const audio_clips = state.audio_clips.flatMap(a => a.id === target.id ? [left, right] : [a]);
+      return touch({ ...state, audio_clips, next_audio_id: state.next_audio_id + 1, selected_audio_id: right.id });
+    }
+
+    case A.TRIM_AUDIO: {
+      // edge 'in': move start + source_in juntos (borda esquerda segue o
+      // cursor, conteudo fixo — CapCut). edge 'out': so source_out.
+      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      if (idx < 0) return state;
+      const a = state.audio_clips[idx];
+      let { start, source_in, source_out } = a;
+      if (action.edge === 'in') {
+        const delta = clamp(action.value - a.start,           // delta em segundos
+          -a.source_in,                                        // nao antes do inicio do media
+          (a.source_out - a.source_in) - MIN_CLIP_DURATION);   // nao colapsa
+        start = Math.max(0, a.start + delta);
+        source_in = a.source_in + delta;
+      } else {
+        source_out = clamp(action.value, a.source_in + MIN_CLIP_DURATION, a.media_duration);
+      }
+      if (start === a.start && source_in === a.source_in && source_out === a.source_out) return state;
+      const audio_clips = state.audio_clips.slice();
+      audio_clips[idx] = { ...a, start, source_in, source_out };
+      return touch({ ...state, audio_clips });
+    }
+
+    case A.MOVE_AUDIO: {
+      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      if (idx < 0) return state;
+      const start = Math.max(0, Number(action.start) || 0);
+      if (state.audio_clips[idx].start === start) return state;
+      const audio_clips = state.audio_clips.slice();
+      audio_clips[idx] = { ...audio_clips[idx], start };
+      return touch({ ...state, audio_clips });
+    }
+
+    case A.DELETE_AUDIO_CLIP: {
+      const audio_clips = state.audio_clips.filter(a => a.id !== action.audioId);
+      if (audio_clips.length === state.audio_clips.length) return state;
+      const sel = state.selected_audio_id === action.audioId ? null : state.selected_audio_id;
+      return touch({ ...state, audio_clips, selected_audio_id: sel });
+    }
+
+    case A.SET_AUDIO_VOLUME: {
+      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      if (idx < 0) return state;
+      const volume = clamp(Number(action.value) || 0, 0, 2);
+      if (state.audio_clips[idx].volume === volume) return state;
+      const audio_clips = state.audio_clips.slice();
+      audio_clips[idx] = { ...audio_clips[idx], volume };
+      return touch({ ...state, audio_clips });
+    }
+
+    case A.SELECT_AUDIO_CLIP: {
+      if (state.selected_audio_id === action.audioId) return state;
+      return { ...state, selected_audio_id: action.audioId, selected_clip_id: null, selected_text_id: null };
     }
 
     case A.SET_VOLUME: {

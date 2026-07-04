@@ -321,37 +321,63 @@ test.describe('mobile touch @mobile', () => {
 });
 
 test.describe('audio detach @smoke', () => {
-  test('Ctrl+Shift+S separa audio; item na track; Delete remove e muta export', async ({ page }) => {
+  test('Ctrl+Shift+S separa audio em clips; Delete remove; export muta video', async ({ page }) => {
     const { bootWithVideo, getState } = await import('./helpers.mjs');
     await bootWithVideo(page, { seconds: 2 });
 
-    // Ctrl+Shift+S destaca
+    // Ctrl+Shift+S destaca -> clips de audio kind video
     await page.keyboard.press('Control+Shift+s');
     let s = await getState(page);
     expect(s.audio_detached).toBe(true);
-    expect(s.selected_audio).toBe('video');
+    expect(s.audio_clips.length).toBeGreaterThanOrEqual(1);
+    expect(s.audio_clips[0].kind).toBe('video');
+    expect(s.selected_audio_id).toBe(s.audio_clips[0].id);
 
-    // painel de propriedades mostra o item de audio
+    // painel contextual do audio
     await expect(page.locator('#bePropsAudio')).toBeVisible();
-    await expect(page.locator('#beAudioPanelTitle')).toContainText('Áudio do vídeo');
 
-    // undo desfaz o detach
+    // undo/redo
     await page.keyboard.press('Control+z');
     s = await getState(page);
     expect(s.audio_detached).toBe(false);
-    await page.keyboard.press('Control+Shift+Z'); // redo
+    expect(s.audio_clips).toHaveLength(0);
+    await page.keyboard.press('Control+Shift+Z');
     s = await getState(page);
     expect(s.audio_detached).toBe(true);
 
-    // Delete remove o item -> export com video mudo
-    await page.evaluate(() => window.__BE__.store.dispatch({ type: 'SELECT_AUDIO', kind: 'video' }));
+    // Delete remove o clip de audio -> export com video mudo
+    await page.evaluate(() => {
+      const st = window.__BE__.getState();
+      window.__BE__.store.dispatch({ type: 'SELECT_AUDIO_CLIP', audioId: st.audio_clips[0].id });
+    });
     await page.keyboard.press('Delete');
     s = await getState(page);
-    expect(s.video_audio_removed).toBe(true);
+    expect(s.audio_clips).toHaveLength(0);
     const payload = await page.evaluate(async () => {
       const m = await import('/editor-v1/core/selectors.js');
       return m.exportPayload(window.__BE__.getState());
     });
     expect(payload.volumes.video).toBe(0);
+    expect(payload.audio_clips).toHaveLength(0);
+  });
+
+  test('audio importado corta com Ctrl+B e move com drag (split por faixa)', async ({ page }) => {
+    const { bootWithVideo, getState } = await import('./helpers.mjs');
+    await bootWithVideo(page, { seconds: 2 });
+    // injeta um audio clip direto (upload de audio real e coberto por unit)
+    await page.evaluate(() => {
+      window.__BE__.store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://mock-storage.test/public/video.webm', filename: 'trilha', duration: 2 } });
+    });
+    let s = await getState(page);
+    expect(s.audio_clips).toHaveLength(1);
+    expect(s.selected_audio_id).toBe(s.audio_clips[0].id);
+
+    // Ctrl+B com AUDIO selecionado corta o AUDIO (nao o video)
+    await page.evaluate(() => window.__BE__.player.seek(1.0));
+    await page.keyboard.press('Control+b');
+    s = await getState(page);
+    expect(s.audio_clips).toHaveLength(2);   // audio dividido
+    expect(s.clips).toHaveLength(1);          // video intacto
+    expect(s.audio_clips[1].start).toBeCloseTo(1.0, 1);
   });
 });

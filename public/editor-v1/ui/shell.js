@@ -10,13 +10,14 @@ import { formatTime, METRICS } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createTimelineController } from './timeline-controller.js';
-import { attachShortcuts } from './shortcuts.js';
+import { attachShortcuts, splitSelectedAt } from './shortcuts.js';
 import { createThumbnails } from '../timeline/thumbnails.js';
 import { createWaveform } from '../timeline/waveform.js';
 import { uploadMedia } from '../services/upload.js';
 import { createAutosave } from '../services/autosave.js';
 import { createExporter } from '../services/exporter.js';
 import { api } from '../services/api.js';
+import { attachResizers } from './resizer.js';
 
 export function mountEditor(root, store) {
   root.innerHTML = buildTemplate();
@@ -63,14 +64,14 @@ export function mountEditor(root, store) {
     $('#beRedo').disabled = !store.canRedo();
     $('#beExportBtn').disabled = !canExport(state);
     $('#beVolVideo').value = state.volumes.video;
-    $('#beVolAudio').value = state.volumes.audio_extra;
-    $('#beAudioRow').style.display = state.audio_extra ? 'flex' : 'none';
-    $('#beAudioName').textContent = state.audio_extra?.filename || '';
+    $('#beAudioCount').textContent = state.audio_clips.length
+      ? state.audio_clips.length + ' áudio(s) na timeline'
+      : 'Nenhum áudio adicional';
     $('#beAspect').value = state.aspect_strategy;
     // WYSIWYG do formato: letterbox = video inteiro com barras (contain)
     videoEl.style.objectFit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
-    // audio destacado + deletado = video mudo (espelha o export)
-    videoEl.muted = !!state.video_audio_removed;
+    // audio destacado = video mudo (o audio vive nos audio_clips)
+    videoEl.muted = !!state.audio_detached;
     // video source: usa preview local (objectURL) quando disponivel —
     // instantaneo e imune a atraso de propagacao do CDN
     if (has && videoEl.dataset.src !== state.video.url) {
@@ -81,11 +82,7 @@ export function mountEditor(root, store) {
       videoEl.load();
       setupThumbsAndWave(state);
     }
-    if (state.audio_extra?.url) {
-      if (audioEl.src !== state.audio_extra.url) { audioEl.src = state.audio_extra.url; audioEl.load(); }
-    } else if (audioEl.src) {
-      audioEl.removeAttribute('src'); audioEl.load();
-    }
+
     renderTransitionsRow(state);
     syncPropsPanel(state);
   }
@@ -102,7 +99,7 @@ export function mountEditor(root, store) {
   // clip selecionado -> acoes do clip | texto selecionado -> editor de texto
   function syncPropsPanel(state) {
     const showText = state.selected_text_id != null;
-    const showAudio = !showText && state.selected_audio != null;
+    const showAudio = !showText && state.selected_audio_id != null;
     const showClip = !showText && !showAudio && state.selected_clip_id != null;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
     $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
@@ -110,9 +107,12 @@ export function mountEditor(root, store) {
     $('#bePropsProject').style.display = (!showText && !showAudio && !showClip) ? 'flex' : 'none';
     if (showText) fillTextPanel(state);
     if (showAudio) {
-      const isVideo = state.selected_audio === 'video';
-      $('#beAudioPanelTitle').textContent = isVideo ? '♪ Áudio do vídeo' : '♪ ' + (state.audio_extra?.filename || 'Música');
-      $('#beVolSelected').value = isVideo ? state.volumes.video : state.volumes.audio_extra;
+      const ac = state.audio_clips.find(a => a.id === state.selected_audio_id);
+      if (ac) {
+        $('#beAudioPanelTitle').textContent = '♪ ' + (ac.filename || 'áudio');
+        $('#beVolSelected').value = ac.volume ?? 1;
+        $('#beAudioClipDur').textContent = (ac.source_out - ac.source_in).toFixed(1) + 's';
+      }
     }
     if (showClip) {
       const clip = state.clips.find(c => c.id === state.selected_clip_id);
@@ -136,11 +136,7 @@ export function mountEditor(root, store) {
       ? localPreview.url : state.video.url;
     videoWave = createWaveform(waveSrc, () => timeline.draw(), { color: 'rgba(34,197,94,.9)' });
     timeline.setVideoWave(videoWave);
-    if (state.audio_extra?.url) {
-      wave?.destroy();
-      wave = createWaveform(state.audio_extra.url, () => timeline.draw());
-      timeline.setWave(wave);
-    }
+    syncWaveRegistry(state);
   }
 
   // ── upload de video ──
@@ -197,7 +193,7 @@ export function mountEditor(root, store) {
   $('#beRedo').addEventListener('click', () => store.redo());
 
   // ── toolbar ──
-  $('#beSplit').addEventListener('click', () => store.dispatch(act.splitClipAt(player.getTime())));
+  $('#beSplit').addEventListener('click', () => splitSelectedAt(store, player.getTime()));
   $('#beDelLeft').addEventListener('click', () => { store.dispatch(act.deleteRangeLeft(player.getTime())); player.seek(0.001); });
   $('#beDelRight').addEventListener('click', () => store.dispatch(act.deleteRangeRight(player.getTime())));
   const doToggleClip = () => {
@@ -278,26 +274,17 @@ export function mountEditor(root, store) {
     try {
       toast('Enviando áudio…');
       const media = await uploadMedia(f, 'audio', () => {});
-      store.dispatch(act.setAudioExtra(media));
-      wave?.destroy();
-      wave = createWaveform(media.url, () => timeline.draw());
-      timeline.setWave(wave);
-      toast('Áudio adicionado ✓');
+      store.dispatch(act.addAudioClip(media));
+      syncWaveRegistry(store.getState());
+      toast('Áudio adicionado ✓ — arraste na timeline pra posicionar');
     } catch (e) { toast(e.message, true); }
   });
-  $('#beAudioRemove').addEventListener('click', () => {
-    store.dispatch(act.removeAudioExtra());
-    wave?.destroy(); wave = null;
-    timeline.setWave(null);
-  });
+
   $('#beVolVideo').addEventListener('input', (e) => {
     store.dispatch({ ...act.setVolume('video', parseFloat(e.target.value)), gestureId: 'vol-v' });
   });
   $('#beVolVideo').addEventListener('change', () => store.endGesture());
-  $('#beVolAudio').addEventListener('input', (e) => {
-    store.dispatch({ ...act.setVolume('audio_extra', parseFloat(e.target.value)), gestureId: 'vol-a' });
-  });
-  $('#beVolAudio').addEventListener('change', () => store.endGesture());
+
   $('#beAspect').addEventListener('change', (e) => store.dispatch(act.setAspect(e.target.value)));
 
   // ── audio destacado (Ctrl+Shift+S) ──
@@ -306,17 +293,26 @@ export function mountEditor(root, store) {
     toast('Áudio separado do vídeo ✓ (track própria)');
   });
   $('#beVolSelected').addEventListener('input', (e) => {
-    const kind = store.getState().selected_audio;
-    if (!kind) return;
-    const track = kind === 'video' ? 'video' : 'audio_extra';
-    store.dispatch({ ...act.setVolume(track, parseFloat(e.target.value)), gestureId: 'vol-sel' });
+    const id = store.getState().selected_audio_id;
+    if (id == null) return;
+    store.dispatch({ ...act.setAudioVolume(id, parseFloat(e.target.value)), gestureId: 'vol-sel' });
   });
   $('#beVolSelected').addEventListener('change', () => store.endGesture());
   $('#beAudioItemDelete').addEventListener('click', () => {
-    const kind = store.getState().selected_audio;
-    if (kind === 'video') store.dispatch(act.removeVideoAudio());
-    if (kind === 'extra') store.dispatch(act.removeAudioExtra());
+    const id = store.getState().selected_audio_id;
+    if (id != null) store.dispatch(act.deleteAudioClip(id));
   });
+
+  // registry de waveforms por URL (multiplos arquivos de audio)
+  const waveRegistry = new Map();
+  function syncWaveRegistry(state) {
+    for (const a of state.audio_clips) {
+      if (a.kind === 'extra' && a.url && !waveRegistry.has(a.url)) {
+        waveRegistry.set(a.url, createWaveform(a.url, () => timeline.draw()));
+      }
+    }
+    timeline.setWave({ get: (url) => waveRegistry.get(url) });
+  }
 
   // ── transicoes ──
   function renderTransitionsRow(state) {
@@ -417,10 +413,13 @@ export function mountEditor(root, store) {
   document.addEventListener('visibilitychange', flushOnHide);
   window.addEventListener('pagehide', () => autosave.flush());
 
+  const detachResizers = attachResizers(root, () => timeline.draw());
+
   sync();
 
   return {
     destroy() {
+      detachResizers();
       detachShortcuts();
       document.removeEventListener('visibilitychange', flushOnHide);
       player.destroy(); overlay.destroy(); timeline.destroy();
@@ -499,12 +498,8 @@ function buildTemplate() {
       <div class="be-side-title">Áudio</div>
       <button id="beAddAudio2" class="be-tool-btn">🎵 Adicionar música/narração</button>
       <input type="file" id="beAudioFile" accept="audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a,.aac" hidden/>
-      <div id="beAudioRow" class="be-audio-row" style="display:none">
-        <span id="beAudioName" class="be-dim"></span>
-        <button id="beAudioRemove" class="be-icon-btn" title="Remover">✕</button>
-      </div>
+      <div id="beAudioCount" class="be-dim">Nenhum áudio adicional</div>
       <label class="be-slider-label">Volume do vídeo <input id="beVolVideo" type="range" min="0" max="2" step="0.05" value="1"/></label>
-      <label class="be-slider-label">Volume da música <input id="beVolAudio" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <button id="beDetachAudio" class="be-tool-btn" title="Ctrl+Shift+S">🔀 Separar áudio do vídeo</button>
       <div class="be-sep"></div>
       <div class="be-side-title">Transições</div>
@@ -522,6 +517,7 @@ function buildTemplate() {
 
     <div id="bePropsAudio" class="be-props-stack" style="display:none">
       <div class="be-side-title" id="beAudioPanelTitle">♪ Áudio</div>
+      <div class="be-dim">Duração: <span id="beAudioClipDur">–</span> · corte com ✂, arraste pra mover</div>
       <label class="be-slider-label">Volume <input id="beVolSelected" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <button id="beAudioItemDelete" class="be-danger-btn">🗑 Excluir áudio</button>
       <div class="be-dim">Delete/Backspace também exclui o item selecionado</div>

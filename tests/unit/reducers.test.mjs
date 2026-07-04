@@ -222,41 +222,84 @@ test('segmentAt encontra clip certo apos reorder', () => {
   assert.equal(segmentAt(s, 45).clip.id, c1.id);
 });
 
-test('DETACH_AUDIO (Ctrl+Shift+S): destaca e seleciona o item', () => {
+test('DETACH_AUDIO (Ctrl+Shift+S): 1 clip de audio POR segmento, video muda', () => {
   const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(20)); // 2 segmentos
   store.dispatch(act.detachAudio());
   let s = store.getState();
   assert.equal(s.audio_detached, true);
-  assert.equal(s.selected_audio, 'video');
-  // idempotente
+  assert.equal(s.audio_clips.length, 2);            // 1 por segmento (CapCut)
+  assert.equal(s.audio_clips[0].kind, 'video');
+  assert.equal(s.audio_clips[0].start, 0);
+  assert.equal(s.audio_clips[1].start, 20);
+  assert.equal(s.audio_clips[1].source_in, 20);
+  // idempotente + undo
   store.dispatch(act.detachAudio());
-  assert.equal(store.getState().audio_detached, true);
-  // undo desfaz o detach
+  assert.equal(store.getState().audio_clips.length, 2);
   store.undo();
   assert.equal(store.getState().audio_detached, false);
+  assert.equal(store.getState().audio_clips.length, 0);
 });
 
-test('REMOVE_VIDEO_AUDIO: so apos detach; export muta o video', () => {
+test('audio clips: split/trim/move/volume/delete funcionam', () => {
   const store = storeWithVideo(60);
-  store.dispatch(act.removeVideoAudio()); // sem detach = no-op
-  assert.equal(store.getState().video_audio_removed, false);
-  store.dispatch(act.detachAudio());
-  store.dispatch(act.removeVideoAudio());
-  const s = store.getState();
-  assert.equal(s.video_audio_removed, true);
-  assert.equal(s.selected_audio, null);
-  const p = exportPayload(s);
-  assert.equal(p.volumes.video, 0);       // video mudo no render
-  assert.equal(s.volumes.video, 1);       // estado original preservado (undo-friendly)
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 30 }));
+  let a = store.getState().audio_clips[0];
+  assert.equal(a.start, 0);
+  // move
+  store.dispatch(act.moveAudio(a.id, 5));
+  assert.equal(store.getState().audio_clips[0].start, 5);
+  // split em t=15 (offset 10 do clip)
+  store.dispatch(act.selectAudioClip(a.id));
+  store.dispatch(act.splitAudioAt(15));
+  let clips = store.getState().audio_clips;
+  assert.equal(clips.length, 2);
+  assert.equal(clips[0].source_out, 10);
+  assert.equal(clips[1].start, 15);
+  assert.equal(clips[1].source_in, 10);
+  // trim-in do segundo: borda esquerda pra t=18 (start=18, source_in=13)
+  store.dispatch(act.trimAudio(clips[1].id, 'in', 18));
+  const c1 = store.getState().audio_clips[1];
+  assert.equal(c1.start, 18);
+  assert.equal(c1.source_in, 13);
+  // volume + delete
+  store.dispatch(act.setAudioVolume(c1.id, 0.4));
+  assert.equal(store.getState().audio_clips[1].volume, 0.4);
+  store.dispatch(act.deleteAudioClip(c1.id));
+  assert.equal(store.getState().audio_clips.length, 1);
 });
 
-test('SELECT_AUDIO limpa selecao de clip/texto e vice-versa', () => {
+test('exportPayload: audio_clips no contrato + video mudo pos-detach', () => {
   const store = storeWithVideo(60);
   store.dispatch(act.detachAudio());
+  const p = exportPayload(store.getState());
+  assert.equal(p.audio_detached, true);
+  assert.equal(p.volumes.video, 0);            // video mudo no render
+  assert.equal(p.audio_clips.length, 1);
+  assert.equal(p.audio_clips[0].kind, 'video');
+  assert.equal(p.audio_clips[0].source_out, 60);
+});
+
+test('SELECT_AUDIO_CLIP limpa selecao de clip/texto e vice-versa', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.detachAudio());
+  const aid = store.getState().audio_clips[0].id;
   store.dispatch(act.selectClip(store.getState().clips[0].id));
-  assert.equal(store.getState().selected_audio, null);
-  store.dispatch(act.selectAudio('video'));
+  assert.equal(store.getState().selected_audio_id, null);
+  store.dispatch(act.selectAudioClip(aid));
   const s = store.getState();
-  assert.equal(s.selected_audio, 'video');
+  assert.equal(s.selected_audio_id, aid);
   assert.equal(s.selected_clip_id, null);
+});
+
+test('SPLIT_TEXT divide texto no cursor (CapCut)', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addText({ content: 'OI', start_sec: 2, end_sec: 8 }));
+  const id = store.getState().texts[0].id;
+  store.dispatch(act.splitTextAt(id, 5));
+  const ts = store.getState().texts;
+  assert.equal(ts.length, 2);
+  assert.equal(ts[0].end_sec, 5);
+  assert.equal(ts[1].start_sec, 5);
+  assert.equal(ts[1].content, 'OI');
 });

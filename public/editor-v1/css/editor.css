@@ -321,3 +321,20 @@ body {
   .be-project-name { width: 110px; }
   .be-logo { display: none; }
 }
+
+/* ── divisores arrastaveis (CapCut) ── */
+.be-gutter-v {
+  grid-column: 2; grid-row: 1; justify-self: end;
+  width: 8px; margin-right: -9px; cursor: col-resize; z-index: 30;
+  border-radius: 4px; transition: background .15s;
+}
+.be-gutter-v:hover, .be-gutter-v:active { background: rgba(0,170,255,.35); }
+.be-gutter-h {
+  height: 8px; margin: -4px 0; cursor: row-resize; z-index: 30;
+  border-radius: 4px; transition: background .15s;
+}
+.be-gutter-h:hover, .be-gutter-h:active { background: rgba(0,170,255,.35); }
+
+@media (max-width: 860px) {
+  .be-gutter-v, .be-gutter-h { display: none; }
+}

@@ -104,7 +104,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
     // CapCut-style: thumbnails em cima + strip de waveform do audio DO VIDEO
     // embaixo (some quando o audio foi destacado com Ctrl+Shift+S)
-    const waveH = (!layout.audioDetached && videoWave?.ready()) ? 14 : 0;
+    const waveH = (layout.clipWaveform && videoWave?.ready()) ? 14 : 0;
     const thumbH = c.h - waveH;
 
     // thumbnails (bitmap cacheado por clip)
@@ -189,10 +189,25 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
   }
 
-  // ── itens da track de audio ──
+  // ── clips de audio (cada um editavel; preview de gesto igual video) ──
   for (const a of layout.audioItems || []) {
-    if (a.x + a.w < 0 || a.x > W) continue;
-    roundRect(ctx, a.x, a.y, a.w, a.h, 4);
+    let ax = a.x, aw = a.w, srcI = a.srcIn, srcO = a.srcOut;
+    if (fsm?.name === 'trimming-audio' && fsm.audioId === a.audioId) {
+      const pps = layout.vp.pxPerSec;
+      if (fsm.edge === 'in') {
+        const d = fsm.preview - fsm.tStart0;
+        ax = a.x + d * pps; aw = a.w - d * pps; srcI = fsm.srcIn0 + d;
+      } else {
+        const d = fsm.preview - fsm.tEnd0;
+        aw = a.w + d * pps; srcO = fsm.srcOut0 + d;
+      }
+    }
+    if (fsm?.name === 'dragging-audio' && fsm.audioId === a.audioId) {
+      ax = a.x + (fsm.previewStart - a.tStart) * layout.vp.pxPerSec;
+    }
+    if (ax + aw < 0 || ax > W) continue;
+
+    roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.fillStyle = COLORS.audio;
     ctx.fill();
     ctx.strokeStyle = a.selected ? '#22c55e' : COLORS.audioBorder;
@@ -200,25 +215,24 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.stroke();
 
     ctx.save();
-    roundRect(ctx, a.x, a.y, a.w, a.h, 4);
+    roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.clip();
-    if (a.kind === 'video' && videoWave?.ready()) {
-      // waveform fatiada por segmento (espelha os cortes do video)
-      for (const seg of a.segments) {
-        const bmp = videoWave.getSlice(seg.srcIn, seg.srcOut, seg.w, a.h);
-        if (bmp) { ctx.globalAlpha = 0.85; ctx.drawImage(bmp, seg.x, a.y, seg.w, a.h); }
-      }
-    } else if (a.kind === 'extra' && wave) {
-      const bmp = wave.getBitmap(a.w, a.h);
-      if (bmp) { ctx.globalAlpha = 0.8; ctx.drawImage(bmp, a.x, a.y, a.w, a.h); }
+    const wf = a.kind === 'video' ? videoWave : wave?.get?.(a.url);
+    if (wf?.ready?.()) {
+      const bmp = wf.getSlice(srcI, srcO, aw, a.h);
+      if (bmp) { ctx.globalAlpha = 0.85; ctx.drawImage(bmp, ax, a.y, aw, a.h); }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    if (a.w > 60) {
+    if (a.selected) {
+      drawHandle(ctx, ax, a.y, a.h, 'left');
+      drawHandle(ctx, ax + aw, a.y, a.h, 'right');
+    }
+    if (aw > 60) {
       ctx.fillStyle = 'rgba(232,244,255,.75)';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText(a.label, a.x + 6, a.y + 3);
+      ctx.fillText(a.label, ax + 6, a.y + 3);
     }
   }
 

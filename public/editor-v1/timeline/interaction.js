@@ -54,7 +54,9 @@ export function transition(fsm, ev, ctx) {
     if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
       fx.push({ do: 'abort-gesture' }); // adapter faz store.undo() do gesto coalescido
     }
-    if (fsm.name === 'trimming') fx.push({ do: 'show-snap', active: false });
+    if (fsm.name === 'trimming' || fsm.name === 'trimming-audio' || fsm.name === 'dragging-audio') {
+      fx.push({ do: 'show-snap', active: false });
+    }
     fx.push({ do: 'set-cursor', cursor: 'default' });
     return { next: idle(), effects: fx };
   }
@@ -120,9 +122,24 @@ export function transition(fsm, ev, ctx) {
       if (hit.type === 'text-block') {
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
-      if (hit.type === 'audio-item') {
-        fx.push({ do: 'select-audio', kind: hit.kind });
-        return { next: fsm, effects: fx };
+      if (hit.type === 'audio-trim-in' || hit.type === 'audio-trim-out') {
+        const a = ctx.layout.audioItems.find(k => k.audioId === hit.audioId);
+        if (!a) return { next: fsm, effects: fx };
+        const edge = hit.type === 'audio-trim-in' ? 'in' : 'out';
+        fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        return {
+          next: {
+            name: 'trimming-audio', audioId: hit.audioId, edge,
+            tStart0: a.tStart, tEnd0: a.tEnd,
+            srcIn0: a.srcIn, srcOut0: a.srcOut,
+            preview: edge === 'in' ? a.tStart : a.tEnd, // em tempo VIRTUAL
+          },
+          effects: fx,
+        };
+      }
+      if (hit.type === 'audio-body') {
+        fx.push({ do: 'select-audio-clip', audioId: hit.audioId });
+        return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       return { next: fsm, effects: fx };
     }
@@ -156,6 +173,20 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'select-clip', clipId: fsm.hit.clipId });
           fx.push({ do: 'set-cursor', cursor: 'grabbing' });
           return { next: { name: 'dragging-clip', clipId: fsm.hit.clipId, gestureId: newGestureId() }, effects: fx };
+        }
+        if (fsm.hit.type === 'audio-body') {
+          const a = ctx.layout.audioItems.find(k => k.audioId === fsm.hit.audioId);
+          if (!a) return { next: idle(), effects: fx };
+          const grabT = xToTime(ctx.layout.vp, fsm.x0);
+          return {
+            next: {
+              name: 'dragging-audio', audioId: fsm.hit.audioId,
+              grabOffset: grabT - a.tStart,
+              duration: a.tEnd - a.tStart,
+              previewStart: a.tStart,
+            },
+            effects: fx,
+          };
         }
         if (fsm.hit.type === 'text-block') {
           const tb = ctx.layout.texts.find(t => t.textId === fsm.hit.textId);
@@ -235,6 +266,63 @@ export function transition(fsm, ev, ctx) {
         }
         fx.push({ do: 'show-snap', active: false });
         fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'trimming-audio': {
+      if (ev.kind === 'move') {
+        const vpT = xToTime(ctx.layout.vp, ev.x);
+        const points = defaultSnapPoints(ctx.cutPoints.filter(p =>
+          Math.abs(p - fsm.tStart0) > 1e-6 && Math.abs(p - fsm.tEnd0) > 1e-6), ctx.playhead);
+        const snapped = ctx.snapEnabled && !ev.shiftKey
+          ? snapTime(vpT, points, ctx.layout.vp.pxPerSec)
+          : { t: vpT, snapped: false };
+        let preview = snapped.t;
+        if (fsm.edge === 'in') {
+          // borda esquerda: limitada pelo inicio do media e pelo minimo
+          const minT = fsm.tStart0 - fsm.srcIn0;                     // source_in chegaria a 0
+          const maxT = fsm.tEnd0 - MIN_CLIP_DURATION;
+          preview = Math.min(Math.max(preview, Math.max(0, minT)), maxT);
+        } else {
+          const maxT = fsm.tStart0 + (ctx.audioMediaDur?.[fsm.audioId] ?? Infinity) - fsm.srcIn0;
+          preview = Math.max(fsm.tStart0 + MIN_CLIP_DURATION, Math.min(preview, maxT));
+        }
+        fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
+        return { next: { ...fsm, preview }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        const orig = fsm.edge === 'in' ? fsm.tStart0 : fsm.tEnd0;
+        if (Math.abs(fsm.preview - orig) > 1e-4) {
+          // FSM trabalha em tempo virtual; reducer espera:
+          //   in  -> novo START desejado (value = novo tStart)
+          //   out -> novo source_out (srcIn0 + (preview - tStart0))
+          const value = fsm.edge === 'in'
+            ? fsm.preview
+            : fsm.srcIn0 + (fsm.preview - fsm.tStart0);
+          fx.push({ do: 'dispatch', action: act.trimAudio(fsm.audioId, fsm.edge, value) });
+        }
+        fx.push({ do: 'show-snap', active: false });
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'dragging-audio': {
+      if (ev.kind === 'move') {
+        const t = xToTime(ctx.layout.vp, ev.x) - fsm.grabOffset;
+        const snapped = ctx.snapEnabled && !ev.shiftKey
+          ? snapTime(t, defaultSnapPoints(ctx.cutPoints, ctx.playhead), ctx.layout.vp.pxPerSec)
+          : { t, snapped: false };
+        const previewStart = Math.max(0, snapped.t);
+        fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
+        return { next: { ...fsm, previewStart }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'dispatch', action: act.moveAudio(fsm.audioId, fsm.previewStart) });
+        fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };

@@ -56,10 +56,19 @@ export function hitTest(layout, x, y, opts = {}) {
     return { type: 'ruler' };
   }
 
-  // 6. Itens da track de audio (audio do video destacado / musica extra)
+  // 6. Clips de audio: trim handles no selecionado + corpo (drag/select)
+  const selAudio = (layout.audioItems || []).find(a => a.selected);
+  if (selAudio) {
+    if (within(x, y, selAudio.x - handleW / 2, selAudio.y - extra, handleW, selAudio.h + extra * 2)) {
+      return { type: 'audio-trim-in', audioId: selAudio.audioId };
+    }
+    if (within(x, y, selAudio.x + selAudio.w - handleW / 2, selAudio.y - extra, handleW, selAudio.h + extra * 2)) {
+      return { type: 'audio-trim-out', audioId: selAudio.audioId };
+    }
+  }
   for (const a of layout.audioItems || []) {
     if (within(x, y, a.x, a.y, a.w, a.h)) {
-      return { type: 'audio-item', kind: a.kind };
+      return { type: 'audio-body', audioId: a.audioId };
     }
   }
 

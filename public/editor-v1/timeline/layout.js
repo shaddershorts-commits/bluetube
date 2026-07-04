@@ -86,42 +86,41 @@ export function computeLayout(state, vp) {
   // - 'video': audio destacado do video (Ctrl+Shift+S) — cobre a timeline,
   //   com sub-segmentos espelhando os clips pra waveform fatiada certa.
   // - 'extra': musica/narracao enviada (barra unica da duracao do arquivo).
-  const audioItems = [];
-  const hasVideoAudio = state.audio_detached && !state.video_audio_removed && total > 0;
-  const hasExtra = state.audio_extra?.duration > 0;
-  // com os dois presentes, a track divide em 2 sub-linhas (video em cima)
-  const subH = (hasVideoAudio && hasExtra) ? METRICS.AUDIO_TRACK_H / 2 : METRICS.AUDIO_TRACK_H;
-  if (hasVideoAudio) {
-    audioItems.push({
-      kind: 'video',
-      x: timeToX(vp, 0), y: yAudio,
-      w: total * vp.pxPerSec, h: subH,
-      selected: state.selected_audio === 'video',
-      label: '♪ áudio do vídeo',
-      segments: segs.map(seg => ({
-        x: timeToX(vp, seg.tStart),
-        w: (seg.tEnd - seg.tStart) * vp.pxPerSec,
-        srcIn: seg.clip.source_in,
-        srcOut: seg.clip.source_out,
-      })),
+  // Clips de audio: cada um posicionavel (start). Lanes automaticas quando
+  // sobrepoe (CapCut empilha). Track de audio cresce com as lanes.
+  const activeAudio = (state.audio_clips || []).filter(a => a.active !== false);
+  const lanes = []; // laneIndex -> ultimo end
+  const audioItems = activeAudio
+    .slice()
+    .sort((a, b) => a.start - b.start)
+    .map(a => {
+      const dur = a.source_out - a.source_in;
+      const end = a.start + dur;
+      let lane = lanes.findIndex(le => a.start >= le - 1e-6);
+      if (lane < 0) { lane = lanes.length; lanes.push(end); }
+      else lanes[lane] = end;
+      return {
+        audioId: a.id, kind: a.kind, url: a.url || null,
+        x: timeToX(vp, a.start),
+        y: yAudio + lane * (METRICS.AUDIO_TRACK_H + 2),
+        w: dur * vp.pxPerSec, h: METRICS.AUDIO_TRACK_H,
+        tStart: a.start, tEnd: end,
+        srcIn: a.source_in, srcOut: a.source_out,
+        selected: state.selected_audio_id === a.id,
+        label: '♪ ' + (a.filename || 'áudio'),
+      };
     });
-  }
-  if (hasExtra) {
-    audioItems.push({
-      kind: 'extra',
-      x: timeToX(vp, 0),
-      y: yAudio + (hasVideoAudio ? subH : 0),
-      w: state.audio_extra.duration * vp.pxPerSec, h: subH,
-      selected: state.selected_audio === 'extra',
-      label: '♪ ' + (state.audio_extra.filename || 'áudio'),
-      duration: state.audio_extra.duration,
-    });
-  }
+  const audioLanes = Math.max(1, lanes.length);
+  const contentHFinal = yAudio + audioLanes * (METRICS.AUDIO_TRACK_H + 2) + METRICS.TRACK_GAP;
 
   return {
-    vp, total, segs, clips, ghosts, texts, audioItems,
-    audioDetached: !!state.audio_detached && !state.video_audio_removed,
-    yRuler, yVideo, yText, yAudio, contentH,
+    vp, total, segs, clips, ghosts, texts, audioItems, audioLanes,
+    // strip de waveform DENTRO do clip: so enquanto o audio esta embutido.
+    // Fix waveform fantasma: apos detach (mesmo com clips deletados) a
+    // strip NAO volta — audio agora vive (ou viveu) na track propria.
+    clipWaveform: !state.audio_detached,
+    yRuler, yVideo, yText, yAudio,
+    contentH: Math.max(contentH, contentHFinal),
   };
 }
 
