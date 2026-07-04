@@ -105,7 +105,7 @@
       "maxDuration": 60
     },
     "api/tiktok-virais.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     },
     "api/virais-ml.js": {
       "maxDuration": 300
@@ -151,10 +151,6 @@
     {
       "path": "/api/weekly-trends-email",
       "schedule": "0 8 * * 1"
-    },
-    {
-      "path": "/api/blueclean-poll",
-      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/blue-stories?action=limpar",
