@@ -51,7 +51,9 @@ export function createAutosave(store, onStatus) {
   const unsub = store.subscribe((state, action) => {
     // sessionStorage sempre (fallback F5 instantaneo)
     try { sessionStorage.setItem(SS_KEY, JSON.stringify(state)); } catch {}
-    if (action?.type?.startsWith('@')) return; // undo/redo/replace tambem salvam
+    // @replace = load inicial (nao re-salvar o que veio do servidor).
+    // Undo/redo (@undo/@redo) SAO mudancas reais do documento -> salvam.
+    if (action?.type === '@replace') return;
     schedule();
   });
 

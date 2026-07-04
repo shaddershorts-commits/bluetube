@@ -25,6 +25,7 @@
 
 import { xToTime, zoomAt, METRICS } from './layout.js';
 import { snapTime, defaultSnapPoints } from './snap.js';
+import { MIN_CLIP_DURATION } from '../core/schema.js';
 import * as act from '../core/actions.js';
 
 export const DRAG_THRESHOLD_MOUSE = 4;
@@ -48,9 +49,12 @@ export function transition(fsm, ev, ctx) {
   // Esc/cancel de qualquer estado -> idle, sem commit
   if (ev.kind === 'cancel' || ev.kind === 'esc') {
     if (fsm.name !== 'idle') fx.push({ do: 'end-gesture' });
-    if (fsm.name === 'trimming' || fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
+    // Gestos que live-dispatcham precisam de undo do coalescido. Trimming NAO
+    // dispatcha durante o gesto (preview puro) — descartar o preview basta.
+    if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
       fx.push({ do: 'abort-gesture' }); // adapter faz store.undo() do gesto coalescido
     }
+    if (fsm.name === 'trimming') fx.push({ do: 'show-snap', active: false });
     fx.push({ do: 'set-cursor', cursor: 'default' });
     return { next: idle(), effects: fx };
   }
@@ -96,13 +100,16 @@ export function transition(fsm, ev, ctx) {
       if (hit.type === 'trim-in' || hit.type === 'trim-out') {
         const c = ctx.layout.clips.find(k => k.clipId === hit.clipId);
         if (!c) return { next: fsm, effects: fx };
-        const gestureId = newGestureId();
         fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        const edge = hit.type === 'trim-in' ? 'in' : 'out';
         return {
           next: {
-            name: 'trimming', clipId: hit.clipId,
-            edge: hit.type === 'trim-in' ? 'in' : 'out',
-            tStartSeg: c.tStart, sourceIn0: c.sourceIn, gestureId,
+            name: 'trimming', clipId: hit.clipId, edge,
+            tStartSeg: c.tStart, tEndSeg: c.tEnd,
+            sourceIn0: c.sourceIn, sourceOut0: c.sourceOut,
+            // preview do gesto: NENHUM dispatch durante o move — o render
+            // desenha a partir daqui e o commit e 1 action unica no up
+            previewSource: edge === 'in' ? c.sourceIn : c.sourceOut,
           },
           effects: fx,
         };
@@ -200,20 +207,32 @@ export function transition(fsm, ev, ctx) {
     case 'trimming': {
       if (ev.kind === 'move') {
         const vpT = xToTime(ctx.layout.vp, ev.x);
+        // Snap SEM as bordas do proprio clip — sem isso o handle "gruda"
+        // de volta no ponto original nos primeiros px do arrasto (bug v1.0)
+        const ownEdges = (p) =>
+          Math.abs(p - fsm.tStartSeg) < 1e-6 || Math.abs(p - fsm.tEndSeg) < 1e-6;
+        const points = defaultSnapPoints(ctx.cutPoints.filter(p => !ownEdges(p)), ctx.playhead);
         const snapped = ctx.snapEnabled && !ev.shiftKey
-          ? snapTime(vpT, defaultSnapPoints(ctx.cutPoints, ctx.playhead), ctx.layout.vp.pxPerSec)
+          ? snapTime(vpT, points, ctx.layout.vp.pxPerSec)
           : { t: vpT, snapped: false };
         // tempo virtual -> tempo source relativo ao inicio do segmento
-        const sourceTime = fsm.sourceIn0 + (snapped.t - fsm.tStartSeg);
-        fx.push({
-          do: 'dispatch',
-          action: { ...act.trimClip(fsm.clipId, fsm.edge, sourceTime), gestureId: fsm.gestureId },
-        });
+        let sourceTime = fsm.sourceIn0 + (snapped.t - fsm.tStartSeg);
+        // clamp do preview (o reducer clampa de novo no commit)
+        if (fsm.edge === 'in') {
+          sourceTime = Math.min(Math.max(0, sourceTime), fsm.sourceOut0 - MIN_CLIP_DURATION);
+        } else {
+          const maxOut = ctx.videoDuration || Infinity;
+          sourceTime = Math.max(fsm.sourceIn0 + MIN_CLIP_DURATION, Math.min(sourceTime, maxOut));
+        }
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
-        return { next: fsm, effects: fx };
+        return { next: { ...fsm, previewSource: sourceTime }, effects: fx };
       }
       if (ev.kind === 'up') {
-        fx.push({ do: 'end-gesture' });
+        // commit unico: 1 action = 1 undo step, sem estados intermediarios
+        const orig = fsm.edge === 'in' ? fsm.sourceIn0 : fsm.sourceOut0;
+        if (Math.abs(fsm.previewSource - orig) > 1e-4) {
+          fx.push({ do: 'dispatch', action: act.trimClip(fsm.clipId, fsm.edge, fsm.previewSource) });
+        }
         fx.push({ do: 'show-snap', active: false });
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };

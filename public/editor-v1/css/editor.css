@@ -102,9 +102,26 @@ body {
   max-width: 100vw;
 }
 /* grid items nao podem estourar o track (min-width:auto = blowout classico) */
-.be-preview-area, .be-side, .be-timeline-area { min-width: 0; }
-.be-preview-area {
+.be-rail, .be-preview-area, .be-props, .be-timeline-area { min-width: 0; }
+
+/* rail de acoes (esquerda, CapCut-style: Midia / Texto / Audio) */
+.be-rail {
   grid-column: 1; grid-row: 1;
+  display: flex; flex-direction: column; gap: 8px;
+  padding-top: 4px;
+}
+.be-rail-btn {
+  background: var(--card); border: 1px solid var(--blue-border);
+  color: var(--text-sec); border-radius: 12px; padding: 10px 4px;
+  font-family: var(--font); font-size: 10px; font-weight: 700; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: all .15s;
+}
+.be-rail-btn span { font-size: 18px; line-height: 1; color: var(--neon); }
+.be-rail-btn:hover { border-color: var(--neon); color: var(--text); }
+
+.be-preview-area {
+  grid-column: 2; grid-row: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 0;
 }
@@ -132,18 +149,18 @@ body {
 }
 .be-time { font-family: var(--mono); font-size: 12px; color: var(--text-sec); }
 
-/* ── side ── */
-.be-side {
-  grid-column: 2; grid-row: 1;
-  overflow-y: auto;
-  display: flex; flex-direction: column; gap: 10px;
-  min-height: 0;
-}
-.be-side-section {
+/* ── painel de propriedades contextual (CapCut right panel) ── */
+.be-props {
+  grid-column: 3; grid-row: 1;
+  overflow-y: auto; min-height: 0;
   background: var(--card); border: 1px solid var(--blue-border);
-  border-radius: 12px; padding: 12px;
-  display: flex; flex-direction: column; gap: 8px;
+  border-radius: 14px; padding: 14px;
 }
+.be-props-stack { display: flex; flex-direction: column; gap: 10px; }
+.be-sep { height: 1px; background: var(--blue-border); margin: 4px 0; }
+.be-field { font-size: 11px; color: var(--text-sec); display: flex; flex-direction: column; gap: 5px; font-family: var(--mono); }
+.be-logo { font-weight: 800; font-size: 14px; letter-spacing: -.5px; }
+.be-logo b { color: var(--neon); }
 .be-side-title {
   font-size: 11px; font-weight: 800; color: var(--neon);
   text-transform: uppercase; letter-spacing: .1em; font-family: var(--mono);
@@ -164,7 +181,7 @@ body {
   color: var(--text); border-radius: 6px; padding: 4px 6px; font-size: 11px;
 }
 
-/* ── timeline ── */
+/* ── timeline multi-track ── */
 .be-timeline-area {
   grid-column: 1 / -1; grid-row: 2;
   display: flex; flex-direction: column; gap: 6px;
@@ -172,8 +189,25 @@ body {
 .be-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .be-toolbar-sep { width: 1px; height: 20px; background: var(--blue-border); margin: 0 4px; }
 .be-toolbar-spacer { flex: 1; }
+.be-timeline-row { display: flex; gap: 0; }
+.be-track-headers {
+  width: 36px; flex-shrink: 0;
+  background: rgba(4, 16, 31, .8);
+  border: 1px solid var(--blue-border); border-right: none;
+  border-radius: 12px 0 0 12px;
+  display: flex; flex-direction: column;
+  padding: 0;
+}
+.be-track-h {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 13px; font-weight: 800;
+  font-family: var(--mono);
+  border-top: 1px solid rgba(0, 170, 255, .06);
+}
 .be-timeline-wrap {
-  background: #04101f; border: 1px solid var(--blue-border); border-radius: 12px;
+  flex: 1; min-width: 0;
+  background: #04101f; border: 1px solid var(--blue-border);
+  border-radius: 0 12px 12px 0;
   height: 190px; overflow: hidden; position: relative;
 }
 #beTimeline {
@@ -182,28 +216,21 @@ body {
 }
 .be-hint { text-align: center; }
 
-/* ── panel (texto) ── */
-.be-panel {
-  position: fixed; right: 14px; bottom: 14px; width: 340px; max-width: calc(100vw - 28px);
-  background: var(--card); border: 1px solid var(--neon); border-radius: 14px;
-  padding: 14px; display: none; flex-direction: column; gap: 10px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, .6); z-index: 50;
-  backdrop-filter: blur(18px);
-}
-.be-panel.open { display: flex; }
+/* ── campos do painel de texto (inline no painel de props) ── */
 .be-panel-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 13px; }
-.be-panel textarea {
+.be-props textarea {
   background: rgba(2, 8, 23, .7); border: 1px solid var(--blue-border); border-radius: 8px;
   color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px; resize: vertical;
+  width: 100%;
 }
 .be-panel-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
-.be-panel-row label { font-size: 10px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); }
+.be-panel-row label { font-size: 10px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); flex: 1; }
 .be-panel-row select, .be-panel-row input {
   background: rgba(2, 8, 23, .7); border: 1px solid var(--blue-border); border-radius: 6px;
   color: var(--text); padding: 6px; font-size: 12px; font-family: var(--font);
-  min-width: 70px;
+  min-width: 60px; width: 100%;
 }
-.be-panel-row input[type=color] { padding: 2px; height: 30px; width: 46px; }
+.be-panel-row input[type=color] { padding: 2px; height: 30px; }
 
 /* ── modal export ── */
 .be-modal {
@@ -268,23 +295,29 @@ body {
 /* ── texto overlay (classe usada pelo overlay.js) ── */
 .be-text-overlay { font-weight: 700; }
 
-/* ── mobile ── */
+/* ── mobile (CapCut mobile: preview em cima, timeline, props em sheet) ── */
 @media (max-width: 860px) {
   .be-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     padding: 6px 8px 10px;
   }
-  .be-preview-area { grid-column: 1; grid-row: 1; }
-  .be-side {
-    grid-column: 1; grid-row: 3;
-    flex-direction: row; overflow-x: auto; overflow-y: hidden;
+  .be-rail {
+    grid-column: 1; grid-row: 1;
+    flex-direction: row; padding-top: 0;
   }
-  .be-side-section { min-width: 220px; flex-shrink: 0; }
-  .be-timeline-area { grid-column: 1; grid-row: 2; }
+  .be-rail-btn { flex: 1; flex-direction: row; padding: 8px; gap: 6px; font-size: 11px; }
+  .be-rail-btn span { font-size: 15px; }
+  .be-preview-area { grid-column: 1; grid-row: 2; }
+  .be-props {
+    grid-column: 1; grid-row: 4;
+    max-height: 34dvh;
+  }
+  .be-timeline-area { grid-column: 1; grid-row: 3; }
   .be-timeline-wrap { height: 168px; }
+  .be-track-headers { width: 28px; }
   .be-toolbar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
   .be-hint { display: none; }
   .be-project-name { width: 110px; }
-  .be-panel { left: 8px; right: 8px; width: auto; bottom: 8px; }
+  .be-logo { display: none; }
 }

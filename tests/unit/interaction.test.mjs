@@ -113,65 +113,80 @@ test('touch: long-press em clip vira dragging-clip com haptic', () => {
   assert.ok(r.effects.some(e => e.do === 'haptic'));
 });
 
-test('trim: down no handle -> trimming -> move dispatcha TRIM coalescido -> up idle', () => {
+test('trim: preview no gesto (ZERO dispatch no move) + commit unico no up', () => {
   const store = setup();
   const cid = store.getState().clips[0].id;
   store.dispatch(act.selectClip(cid));
-  let ctx = ctxFor(store);
+  const ctx = ctxFor(store);
   const c = ctx.layout.clips[0];
   // down no handle esquerdo
   let r = downOn(store, { x: c.x + 1, y: c.y + 10 });
   assert.equal(r.next.name, 'trimming');
   assert.equal(r.next.edge, 'in');
-  const gid = r.next.gestureId;
-  // arrasta pra t=5 (x = PAD + 50)
-  r = transition(r.next, { kind: 'move', x: timeToX(VP, 5), y: c.y + 10 }, ctx);
+  // move pra t=5: NENHUM dispatch — documento intacto, so preview na FSM
+  r = transition(r.next, { kind: 'move', x: timeToX(VP, 5), y: c.y + 10, shiftKey: true }, ctx);
+  assert.equal(r.effects.filter(e => e.do === 'dispatch').length, 0);
+  assert.ok(Math.abs(r.next.previewSource - 5) < 1e-6);
+  assert.equal(store.getState().clips[0].source_in, 0);
+  // up: commit de exatamente 1 action
+  r = transition(r.next, { kind: 'up', x: timeToX(VP, 5), y: c.y + 10 }, ctx);
+  assert.equal(r.next.name, 'idle');
   const disp = r.effects.filter(e => e.do === 'dispatch');
   assert.equal(disp.length, 1);
   assert.equal(disp[0].action.type, 'TRIM_CLIP');
-  assert.equal(disp[0].action.gestureId, gid);
-  runFx(store, r.effects);
-  assert.ok(Math.abs(store.getState().clips[0].source_in - 5) < 0.5); // snap pode ajustar
-  // up
-  r = transition(r.next, { kind: 'up', x: timeToX(VP, 5), y: c.y + 10 }, ctx);
-  assert.equal(r.next.name, 'idle');
-  assert.ok(r.effects.some(e => e.do === 'end-gesture'));
+  runFx(store, disp);
+  assert.ok(Math.abs(store.getState().clips[0].source_in - 5) < 1e-6);
 });
 
-test('trim continuo = 1 undo step (coalescing via gestureId)', () => {
+test('trim continuo = 1 undo step (commit unico no up)', () => {
   const store = setup();
   const cid = store.getState().clips[0].id;
   store.dispatch(act.selectClip(cid));
-  let ctx = ctxFor(store);
+  const ctx = ctxFor(store);
   const c = ctx.layout.clips[0];
   let r = downOn(store, { x: c.x + 1, y: c.y + 10 });
   for (const t of [2, 3, 4, 5, 6]) {
     r = transition(r.next, { kind: 'move', x: timeToX(VP, t), y: c.y + 10, shiftKey: true }, ctx);
-    runFx(store, r.effects);
-    ctx = ctxFor(store); // layout atualiza durante o gesto
-    // recoloca fsm com tStartSeg original (gesto continua)
   }
-  r = transition(r.next, { kind: 'up', x: 0, y: 0 }, ctx);
+  r = transition(r.next, { kind: 'up', x: timeToX(VP, 6), y: c.y + 10 }, ctx);
   runFx(store, r.effects);
   assert.equal(store.getState().clips[0].source_in, 6);
   store.undo();
   assert.equal(store.getState().clips[0].source_in, 0); // UM undo desfaz o gesto todo
 });
 
-test('Esc durante trim aborta e restaura estado', () => {
+test('Esc durante trim descarta preview sem tocar no documento', () => {
   const store = setup();
   const cid = store.getState().clips[0].id;
   store.dispatch(act.selectClip(cid));
-  let ctx = ctxFor(store);
+  const ctx = ctxFor(store);
   const c = ctx.layout.clips[0];
   let r = downOn(store, { x: c.x + 1, y: c.y + 10 });
   r = transition(r.next, { kind: 'move', x: timeToX(VP, 10), y: c.y + 10, shiftKey: true }, ctx);
-  runFx(store, r.effects);
-  assert.ok(store.getState().clips[0].source_in > 0);
+  assert.ok(r.next.previewSource > 0);                    // preview andou
+  assert.equal(store.getState().clips[0].source_in, 0);   // doc intocado
+  const undosBefore = store.canUndo();
   r = transition(r.next, { kind: 'esc' }, ctx);
   assert.equal(r.next.name, 'idle');
-  runFx(store, r.effects); // abort-gesture -> undo
+  runFx(store, r.effects);
   assert.equal(store.getState().clips[0].source_in, 0);
+  assert.equal(store.canUndo(), undosBefore); // nenhum snapshot fantasma
+});
+
+test('B2: snap NAO gruda na borda do proprio clip (trim pequeno funciona)', () => {
+  const store = setup();
+  store.dispatch(act.splitClipAt(30));
+  const cid = store.getState().clips[1].id; // 2o clip (30-60), tStart=30
+  store.dispatch(act.selectClip(cid));
+  const ctx = ctxFor(store);
+  const c = ctx.layout.clips[1];
+  let r = downOn(store, { x: c.x + 1, y: c.y + 10 });
+  assert.equal(r.next.name, 'trimming');
+  // move minusculo de 0.3s (3px a 10px/s — dentro do raio de snap de 8px)
+  r = transition(r.next, { kind: 'move', x: timeToX(VP, 30.3), y: c.y + 10 }, ctx);
+  // sem a exclusao das proprias bordas, snaparia de volta pro 30.0
+  assert.ok(Math.abs(r.next.previewSource - 30.3) < 1e-6,
+    `preview grudou em ${r.next.previewSource} (esperado 30.3)`);
 });
 
 test('pointercancel de QUALQUER estado termina idle', () => {

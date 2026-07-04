@@ -12,7 +12,8 @@ import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 
 export function createTimelineController({ canvas, store, player, onEditText }) {
-  let vp = { pxPerSec: 40, scrollX: 0, width: 300, height: 200 };
+  // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
+  let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
   let snapIndicator = { active: false, t: null };
   let thumbs = null;
@@ -26,11 +27,13 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
     return computeLayout(store.getState(), vp);
   }
   function ctxNow() {
+    const state = store.getState();
     return {
       layout: layoutNow(),
       playhead: player.getTime(),
-      cutPoints: cutPoints(store.getState()),
+      cutPoints: cutPoints(state),
       snapEnabled: true,
+      videoDuration: state.video?.duration || 0,
     };
   }
   function draw() {
@@ -204,10 +207,24 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
   window.addEventListener('keydown', escHandler);
 
   // ── resize ──
+  // pendingFit: zoomFit chamado antes do canvas ter medida real (parent era
+  // display:none) fica pendente e executa na primeira medicao valida do RO.
+  let pendingFit = false;
+  function doFit() {
+    const z = zoomToFit(store.getState(), vp.width);
+    vp = { ...vp, ...z };
+    draw();
+  }
   const ro = new ResizeObserver((entries) => {
     const r = entries[0].contentRect;
+    const widthChanged = Math.abs(r.width - vp.width) > 1;
     vp = { ...vp, width: r.width, height: r.height };
-    vp = { ...vp, scrollX: clampScroll(vp.scrollX, vp.pxPerSec) };
+    if (pendingFit && r.width > 50) {
+      pendingFit = false;
+      doFit();
+      return;
+    }
+    if (widthChanged) vp = { ...vp, scrollX: clampScroll(vp.scrollX, vp.pxPerSec) };
     draw();
   });
   ro.observe(canvas.parentElement || canvas);
@@ -222,9 +239,8 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
     draw,
     getViewport: () => vp,
     zoomFit() {
-      const z = zoomToFit(store.getState(), vp.width);
-      vp = { ...vp, ...z };
-      draw();
+      if (vp.width < 50) { pendingFit = true; return; }
+      doFit();
     },
     zoomBy(factor) {
       const z = zoomAt(vp, factor, vp.width / 2);

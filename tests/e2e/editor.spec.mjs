@@ -185,7 +185,7 @@ test.describe('textos @smoke', () => {
     await bootWithVideo(page, { seconds: 2 });
     await page.evaluate(() => window.__BE__.player.seek(0.5));
     await page.locator('#beAddText').click();
-    await expect(page.locator('#beTextPanel')).toHaveClass(/open/);
+    await expect(page.locator('#beTextPanel')).toBeVisible();
 
     await page.locator('#beTextContent').fill('TESTE E2E');
     let s = await getState(page);

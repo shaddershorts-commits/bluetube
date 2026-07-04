@@ -77,41 +77,61 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
   // ── clips ativos ──
   for (const c of layout.clips) {
-    if (c.x + c.w < 0 || c.x > W) continue;
     const isDragging = fsm?.name === 'dragging-clip' && fsm.clipId === c.clipId;
-    roundRect(ctx, c.x, c.y, c.w, c.h, 6);
+    const isTrimming = fsm?.name === 'trimming' && fsm.clipId === c.clipId;
+
+    // Preview de trim (estilo CapCut): a borda arrastada segue o cursor.
+    // Nada foi comitado no store ainda — só geometria visual deste frame.
+    let cx0 = c.x, cw = c.w, srcIn = c.sourceIn, srcOut = c.sourceOut;
+    if (isTrimming) {
+      const pps = layout.vp.pxPerSec;
+      if (fsm.edge === 'in') {
+        const delta = fsm.previewSource - fsm.sourceIn0; // >0 = encolhe pela esquerda
+        cx0 = c.x + delta * pps;
+        cw = c.w - delta * pps;
+        srcIn = fsm.previewSource;
+      } else {
+        const delta = fsm.previewSource - fsm.sourceOut0;
+        cw = c.w + delta * pps;
+        srcOut = fsm.previewSource;
+      }
+    }
+    if (cx0 + cw < 0 || cx0 > W) continue;
+
+    roundRect(ctx, cx0, c.y, cw, c.h, 6);
     ctx.fillStyle = c.selected ? COLORS.clipSelected : COLORS.clip;
     ctx.fill();
 
     // thumbnails (bitmap cacheado por clip)
     if (thumbs) {
-      const strip = thumbs.getStrip(c.sourceIn, c.sourceOut, c.w, c.h);
+      const strip = thumbs.getStrip(srcIn, srcOut, cw, c.h);
       if (strip) {
         ctx.save();
-        roundRect(ctx, c.x, c.y, c.w, c.h, 6);
+        roundRect(ctx, cx0, c.y, cw, c.h, 6);
         ctx.clip();
         ctx.globalAlpha = isDragging ? 0.55 : 0.85;
-        ctx.drawImage(strip, c.x, c.y, c.w, c.h);
+        ctx.drawImage(strip, cx0, c.y, cw, c.h);
         ctx.globalAlpha = 1;
         ctx.restore();
       }
     }
 
-    roundRect(ctx, c.x, c.y, c.w, c.h, 6);
+    roundRect(ctx, cx0, c.y, cw, c.h, 6);
     ctx.strokeStyle = c.selected ? COLORS.clipSelectedBorder : COLORS.clipBorder;
     ctx.lineWidth = c.selected ? 2 : 1;
     ctx.stroke();
 
     // trim handles do selecionado (CapCut-style: barras solidas nas pontas)
     if (c.selected) {
-      drawHandle(ctx, c.x, c.y, c.h, 'left');
-      drawHandle(ctx, c.x + c.w, c.y, c.h, 'right');
+      drawHandle(ctx, cx0, c.y, c.h, 'left');
+      drawHandle(ctx, cx0 + cw, c.y, c.h, 'right');
     }
-    // duracao no canto
-    if (c.w > 48) {
+    // duracao no canto (durante trim mostra a duracao do preview)
+    if (cw > 48) {
+      const dur = isTrimming ? (srcOut - srcIn) : (c.tEnd - c.tStart);
       ctx.fillStyle = 'rgba(232,244,255,.75)';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText(`${(c.tEnd - c.tStart).toFixed(1)}s`, c.x + 6, c.y + c.h - 12);
+      ctx.fillText(`${dur.toFixed(1)}s`, cx0 + 6, c.y + c.h - 12);
     }
   }
 

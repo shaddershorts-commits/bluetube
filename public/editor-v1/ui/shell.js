@@ -1,11 +1,12 @@
 // editor-v1/ui/shell.js
-// Monta a UI inteira e liga os modulos. Paineis (texto/audio/export/projetos)
-// vivem aqui como secoes — store continua a unica fonte de verdade.
+// Monta a UI no layout CapCut: preview central + painel de propriedades
+// CONTEXTUAL a direita (muda com a selecao) + timeline multi-track embaixo
+// com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
 import { totalDuration, canExport, timelineSegments } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
-import { formatTime } from '../timeline/layout.js';
+import { formatTime, METRICS } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createTimelineController } from './timeline-controller.js';
@@ -18,7 +19,7 @@ import { createExporter } from '../services/exporter.js';
 import { api } from '../services/api.js';
 
 export function mountEditor(root, store) {
-  root.innerHTML = TEMPLATE;
+  root.innerHTML = buildTemplate();
   const $ = (sel) => root.querySelector(sel);
 
   const videoEl = $('#beVideo');
@@ -40,6 +41,8 @@ export function mountEditor(root, store) {
 
   let thumbs = null;
   let wave = null;
+  // preview local do arquivo recem-enviado (playback instantaneo pre-CDN)
+  const localPreview = { url: null, for: null };
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
@@ -63,9 +66,15 @@ export function mountEditor(root, store) {
     $('#beAudioRow').style.display = state.audio_extra ? 'flex' : 'none';
     $('#beAudioName').textContent = state.audio_extra?.filename || '';
     $('#beAspect').value = state.aspect_strategy;
-    // video source
-    if (has && videoEl.src !== state.video.url) {
-      videoEl.src = state.video.url;
+    // WYSIWYG do formato: letterbox = video inteiro com barras (contain)
+    videoEl.style.objectFit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
+    // video source: usa preview local (objectURL) quando disponivel —
+    // instantaneo e imune a atraso de propagacao do CDN
+    if (has && videoEl.dataset.src !== state.video.url) {
+      videoEl.dataset.src = state.video.url;
+      videoEl.src = (localPreview.for === state.video.url && localPreview.url)
+        ? localPreview.url
+        : state.video.url;
       videoEl.load();
       setupThumbsAndWave(state);
     }
@@ -75,6 +84,7 @@ export function mountEditor(root, store) {
       audioEl.removeAttribute('src'); audioEl.load();
     }
     renderTransitionsRow(state);
+    syncPropsPanel(state);
   }
   store.subscribe(sync);
   player.onUpdate(() => {
@@ -83,6 +93,25 @@ export function mountEditor(root, store) {
     $('#bePlayBtn').textContent = player.isPlaying() ? '⏸' : '▶';
     if (player.isPlaying()) timeline.followPlayhead();
   });
+
+  // ── painel de propriedades CONTEXTUAL (estilo CapCut) ──
+  // nada selecionado -> propriedades do projeto
+  // clip selecionado -> acoes do clip | texto selecionado -> editor de texto
+  function syncPropsPanel(state) {
+    const showText = state.selected_text_id != null;
+    const showClip = !showText && state.selected_clip_id != null;
+    $('#beTextPanel').style.display = showText ? 'flex' : 'none';
+    $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (!showText && !showClip) ? 'flex' : 'none';
+    if (showText) fillTextPanel(state);
+    if (showClip) {
+      const clip = state.clips.find(c => c.id === state.selected_clip_id);
+      if (clip) {
+        $('#beClipDur').textContent = `${(clip.source_out - clip.source_in).toFixed(1)}s`;
+        $('#beToggleClip2').textContent = clip.active === false ? '◉ Reativar cena' : '◌ Desativar cena';
+      }
+    }
+  }
 
   function setupThumbsAndWave(state) {
     thumbs?.destroy();
@@ -111,6 +140,7 @@ export function mountEditor(root, store) {
     if (fileInput.files?.[0]) doUploadVideo(fileInput.files[0]);
     fileInput.value = '';
   });
+  $('#beAddMedia').addEventListener('click', () => fileInput.click());
 
   async function doUploadVideo(file) {
     const bar = $('#beDropProgress');
@@ -123,9 +153,14 @@ export function mountEditor(root, store) {
         bar.querySelector('i').style.width = pct + '%';
       });
       msg.textContent = 'Processando…';
+      if (localPreview.url) URL.revokeObjectURL(localPreview.url);
+      localPreview.url = URL.createObjectURL(file);
+      localPreview.for = media.url;
       store.dispatch(act.setVideo(media));
       player.seek(0);
-      timeline.zoomFit();
+      // zoomFit apos o browser medir o canvas recem-visivel; fallback
+      // pendingFit no controller cobre se o RO ainda nao mediu
+      requestAnimationFrame(() => requestAnimationFrame(() => timeline.zoomFit()));
       toast('Vídeo carregado ✓');
     } catch (e) {
       toast(e.message, true);
@@ -146,45 +181,54 @@ export function mountEditor(root, store) {
   $('#beSplit').addEventListener('click', () => store.dispatch(act.splitClipAt(player.getTime())));
   $('#beDelLeft').addEventListener('click', () => { store.dispatch(act.deleteRangeLeft(player.getTime())); player.seek(0.001); });
   $('#beDelRight').addEventListener('click', () => store.dispatch(act.deleteRangeRight(player.getTime())));
-  $('#beToggleClip').addEventListener('click', () => {
+  const doToggleClip = () => {
     const s = store.getState();
     if (s.selected_clip_id != null) store.dispatch(act.toggleClip(s.selected_clip_id));
-  });
-  $('#beDelClip').addEventListener('click', () => {
+  };
+  const doDeleteClip = () => {
     const s = store.getState();
     if (s.selected_clip_id != null) store.dispatch(act.deleteClip(s.selected_clip_id));
-  });
+  };
+  $('#beToggleClip').addEventListener('click', doToggleClip);
+  $('#beDelClip').addEventListener('click', doDeleteClip);
+  $('#beToggleClip2').addEventListener('click', doToggleClip);
+  $('#beDelClip2').addEventListener('click', doDeleteClip);
   $('#beZoomIn').addEventListener('click', () => timeline.zoomBy(1.25));
   $('#beZoomOut').addEventListener('click', () => timeline.zoomBy(1 / 1.25));
   $('#beZoomFit').addEventListener('click', () => timeline.zoomFit());
-  $('#beAddText').addEventListener('click', () => {
+  $('#beAddText').addEventListener('click', addTextAtPlayhead);
+  $('#beAddText2').addEventListener('click', addTextAtPlayhead);
+  function addTextAtPlayhead() {
     const t = player.getTime();
     store.dispatch(act.addText({ content: 'Seu texto', start_sec: t, end_sec: Math.min(t + 3, Math.max(t + 1, totalDuration(store.getState()))) }));
     openTextPanel(store.getState().texts.at(-1).id);
-  });
+  }
 
-  // ── painel de texto ──
-  const textPanel = $('#beTextPanel');
+  // ── painel de texto (inline no painel de propriedades) ──
   let editingTextId = null;
-  function openTextPanel(textId) {
-    const state = store.getState();
-    const txt = state.texts.find(x => x.id === textId);
-    if (!txt) return;
-    editingTextId = textId;
+  function fillTextPanel(state) {
+    const txt = state.texts.find(x => x.id === state.selected_text_id);
+    if (!txt || editingTextId === txt.id) return; // nao sobrescreve enquanto digita
+    editingTextId = txt.id;
     $('#beTextContent').value = txt.content;
     $('#beTextFont').value = txt.font;
     $('#beTextSize').value = txt.size;
     $('#beTextColor').value = txt.color;
     $('#beTextStart').value = txt.start_sec.toFixed(1);
     $('#beTextEnd').value = txt.end_sec.toFixed(1);
-    textPanel.classList.add('open');
+  }
+  function openTextPanel(textId) {
+    editingTextId = null; // forca refill
     store.dispatch(act.selectText(textId));
     setTimeout(() => $('#beTextContent').focus(), 60);
   }
-  $('#beTextClose').addEventListener('click', () => { textPanel.classList.remove('open'); editingTextId = null; });
+  $('#beTextClose').addEventListener('click', () => {
+    editingTextId = null;
+    store.dispatch(act.selectText(null));
+  });
   $('#beTextDelete').addEventListener('click', () => {
-    if (editingTextId != null) store.dispatch(act.deleteText(editingTextId));
-    textPanel.classList.remove('open');
+    const s = store.getState();
+    if (s.selected_text_id != null) store.dispatch(act.deleteText(s.selected_text_id));
     editingTextId = null;
   });
   for (const [sel, field, parse] of [
@@ -196,15 +240,18 @@ export function mountEditor(root, store) {
     ['#beTextEnd', 'end_sec', v => parseFloat(v) || 0],
   ]) {
     $(sel).addEventListener('input', (e) => {
-      if (editingTextId == null) return;
-      store.dispatch({ ...act.updateText(editingTextId, { [field]: parse(e.target.value) }), gestureId: 'textpanel-' + editingTextId + '-' + field });
+      const s = store.getState();
+      if (s.selected_text_id == null) return;
+      store.dispatch({ ...act.updateText(s.selected_text_id, { [field]: parse(e.target.value) }), gestureId: 'textpanel-' + s.selected_text_id + '-' + field });
     });
     $(sel).addEventListener('change', () => store.endGesture());
   }
 
   // ── audio extra ──
   const audioInput = $('#beAudioFile');
-  $('#beAddAudio').addEventListener('click', () => audioInput.click());
+  const pickAudio = () => audioInput.click();
+  $('#beAddAudio').addEventListener('click', pickAudio);
+  $('#beAddAudio2').addEventListener('click', pickAudio);
   audioInput.addEventListener('change', async () => {
     const f = audioInput.files?.[0];
     audioInput.value = '';
@@ -238,7 +285,7 @@ export function mountEditor(root, store) {
   function renderTransitionsRow(state) {
     const row = $('#beTransitions');
     const segs = timelineSegments(state);
-    if (segs.length < 2) { row.innerHTML = '<span class="be-dim">Divida o vídeo em 2+ cenas pra ter transições</span>'; return; }
+    if (segs.length < 2) { row.innerHTML = '<span class="be-dim">Divida o vídeo em 2+ cenas pra ter transições</span>'; row.dataset.rendered = ''; return; }
     let html = '';
     for (let i = 0; i < segs.length - 1; i++) {
       const tr = (state.transitions || []).find(x => x.between === i);
@@ -274,10 +321,8 @@ export function mountEditor(root, store) {
       onDone: (url) => {
         $('#beExportProgress').style.display = 'none';
         $('#beExportDone').style.display = 'block';
-        const a = $('#beExportLink');
-        a.href = url;
-        const v = $('#beExportPreview');
-        v.src = url;
+        $('#beExportLink').href = url;
+        $('#beExportPreview').src = url;
       },
       onError: (msg) => {
         $('#beExportProgress').style.display = 'none';
@@ -310,7 +355,7 @@ export function mountEditor(root, store) {
               store.replaceState((await import('../core/schema.js')).normalizeLoadedState({ ...project.project_state, project_id: project.id }));
               store.dispatch(act.setProjectId(project.id));
               box.style.display = 'none';
-              timeline.zoomFit();
+              requestAnimationFrame(() => requestAnimationFrame(() => timeline.zoomFit()));
               toast('Projeto restaurado ✓');
             }
           } catch (e) { toast('Falha ao carregar: ' + e.message, true); }
@@ -329,14 +374,22 @@ export function mountEditor(root, store) {
     toast._t = setTimeout(() => el.classList.remove('show'), 3500);
   }
 
+  // flush do autosave ao esconder/fechar a aba (debounce de 2s podia perder
+  // a ultima edicao). pagehide cobre iOS Safari.
+  const flushOnHide = () => { if (document.visibilityState === 'hidden') autosave.flush(); };
+  document.addEventListener('visibilitychange', flushOnHide);
+  window.addEventListener('pagehide', () => autosave.flush());
+
   sync();
 
   return {
     destroy() {
       detachShortcuts();
+      document.removeEventListener('visibilitychange', flushOnHide);
       player.destroy(); overlay.destroy(); timeline.destroy();
       autosave.destroy(); exporter.destroy();
       thumbs?.destroy(); wave?.destroy();
+      if (localPreview.url) URL.revokeObjectURL(localPreview.url);
     },
   };
 }
@@ -345,9 +398,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const TEMPLATE = `
+// Track headers espelham as alturas do layout do canvas (fonte unica: METRICS)
+function buildTemplate() {
+  const M = METRICS;
+  return `
 <header class="be-header">
   <a href="/blueEditor" class="be-back">←</a>
+  <span class="be-logo">Blue<b>Editor</b></span>
   <input id="beProjectName" class="be-project-name" maxlength="120" placeholder="Nome do projeto"/>
   <span id="beSaveStatus" class="be-save-status"></span>
   <div class="be-header-right">
@@ -368,6 +425,15 @@ const TEMPLATE = `
 </div>
 
 <div id="beWorkspace" class="be-workspace" style="display:none">
+
+  <!-- rail de acoes (CapCut: Midia / Texto / Audio) -->
+  <div class="be-rail">
+    <button id="beAddMedia" class="be-rail-btn" title="Trocar vídeo"><span>🎞</span>Mídia</button>
+    <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
+    <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
+  </div>
+
+  <!-- preview central -->
   <div class="be-preview-area">
     <div class="be-preview-frame">
       <video id="beVideo" playsinline preload="auto"></video>
@@ -380,10 +446,21 @@ const TEMPLATE = `
     </div>
   </div>
 
-  <div class="be-side">
-    <div class="be-side-section">
+  <!-- painel de propriedades contextual (CapCut right panel) -->
+  <div class="be-props">
+
+    <div id="bePropsProject" class="be-props-stack">
+      <div class="be-side-title">Projeto</div>
+      <label class="be-field">Formato de saída
+        <select id="beAspect" class="be-select">
+          <option value="crop_center">Preencher 9:16 (corta bordas)</option>
+          <option value="letterbox">Caber inteiro (barras)</option>
+        </select>
+      </label>
+      <div class="be-dim">Saída: 1080×1920 vertical</div>
+      <div class="be-sep"></div>
       <div class="be-side-title">Áudio</div>
-      <button id="beAddAudio" class="be-tool-btn">🎵 Adicionar música/narração</button>
+      <button id="beAddAudio2" class="be-tool-btn">🎵 Adicionar música/narração</button>
       <input type="file" id="beAudioFile" accept="audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a,.aac" hidden/>
       <div id="beAudioRow" class="be-audio-row" style="display:none">
         <span id="beAudioName" class="be-dim"></span>
@@ -391,21 +468,39 @@ const TEMPLATE = `
       </div>
       <label class="be-slider-label">Volume do vídeo <input id="beVolVideo" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <label class="be-slider-label">Volume da música <input id="beVolAudio" type="range" min="0" max="2" step="0.05" value="1"/></label>
-    </div>
-    <div class="be-side-section">
+      <div class="be-sep"></div>
       <div class="be-side-title">Transições</div>
       <div id="beTransitions" class="be-transitions"></div>
     </div>
-    <div class="be-side-section">
-      <div class="be-side-title">Formato</div>
-      <select id="beAspect" class="be-select">
-        <option value="crop_center">Preencher 9:16 (corta bordas)</option>
-        <option value="letterbox">Caber inteiro (barras)</option>
-      </select>
-      <div class="be-dim">Saída: 1080×1920 vertical</div>
+
+    <div id="bePropsClip" class="be-props-stack" style="display:none">
+      <div class="be-side-title">Cena selecionada</div>
+      <div class="be-dim">Duração: <span id="beClipDur">–</span></div>
+      <div class="be-dim">Arraste as bordas azuis na timeline pra ajustar o corte. Arraste o corpo pra reordenar.</div>
+      <button id="beToggleClip2" class="be-tool-btn">◌ Desativar cena</button>
+      <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
+      <div class="be-dim">Atalhos: V liga/desliga · Delete exclui · Ctrl+B divide no cursor</div>
     </div>
+
+    <div id="beTextPanel" class="be-props-stack" style="display:none">
+      <div class="be-panel-head">Texto <button id="beTextClose" class="be-icon-btn">✕</button></div>
+      <textarea id="beTextContent" rows="2" maxlength="200" placeholder="Digite o texto…"></textarea>
+      <div class="be-panel-row">
+        <label>Fonte <select id="beTextFont">${TEXT_FONTS.map(f => `<option>${f}</option>`).join('')}</select></label>
+        <label>Tamanho <select id="beTextSize">${TEXT_SIZES.map(s => `<option value="${s}">${({ small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Gigante' })[s]}</option>`).join('')}</select></label>
+      </div>
+      <div class="be-panel-row">
+        <label>Cor <input id="beTextColor" type="color" value="#ffffff"/></label>
+        <label>Início (s) <input id="beTextStart" type="number" min="0" step="0.1"/></label>
+        <label>Fim (s) <input id="beTextEnd" type="number" min="0" step="0.1"/></label>
+      </div>
+      <button id="beTextDelete" class="be-danger-btn">Excluir texto</button>
+      <div class="be-dim">Arraste o texto direto no preview pra posicionar</div>
+    </div>
+
   </div>
 
+  <!-- toolbar + timeline multi-track -->
   <div class="be-timeline-area">
     <div class="be-toolbar">
       <button id="beSplit" class="be-tool-btn" title="Dividir no cursor (Ctrl+B)">✂ Dividir</button>
@@ -414,33 +509,27 @@ const TEMPLATE = `
       <button id="beToggleClip" class="be-tool-btn" title="Ativar/desativar cena (V)">◫ Liga/desliga</button>
       <button id="beDelClip" class="be-tool-btn" title="Excluir cena selecionada (Delete)">🗑 Excluir</button>
       <span class="be-toolbar-sep"></span>
-      <button id="beAddText" class="be-tool-btn">＋ Texto</button>
+      <button id="beAddText2" class="be-tool-btn" title="Adicionar texto no cursor">＋ Texto</button>
       <span class="be-toolbar-spacer"></span>
       <button id="beZoomOut" class="be-icon-btn" title="Zoom - (Ctrl -)">−</button>
       <button id="beZoomFit" class="be-icon-btn" title="Caber (Shift+Z)">⤢</button>
       <button id="beZoomIn" class="be-icon-btn" title="Zoom + (Ctrl +)">＋</button>
     </div>
-    <div class="be-timeline-wrap">
-      <canvas id="beTimeline"></canvas>
+    <div class="be-timeline-row">
+      <div class="be-track-headers" aria-hidden="true">
+        <div style="height:${M.RULER_H + M.TRACK_GAP}px"></div>
+        <div class="be-track-h" style="height:${M.VIDEO_TRACK_H}px" title="Vídeo">🎞</div>
+        <div style="height:${M.TRACK_GAP}px"></div>
+        <div class="be-track-h" style="height:${M.TEXT_TRACK_H}px" title="Textos">T</div>
+        <div style="height:${M.TRACK_GAP}px"></div>
+        <div class="be-track-h" style="height:${M.AUDIO_TRACK_H}px" title="Áudio">♪</div>
+      </div>
+      <div class="be-timeline-wrap">
+        <canvas id="beTimeline"></canvas>
+      </div>
     </div>
     <div class="be-hint be-dim">Espaço reproduz · Ctrl+B divide · Q/W apagam antes/depois · arraste as cenas pra reordenar · toque longo (celular) move</div>
   </div>
-</div>
-
-<div id="beTextPanel" class="be-panel">
-  <div class="be-panel-head">Editar texto <button id="beTextClose" class="be-icon-btn">✕</button></div>
-  <textarea id="beTextContent" rows="2" maxlength="200" placeholder="Digite o texto…"></textarea>
-  <div class="be-panel-row">
-    <label>Fonte <select id="beTextFont">${TEXT_FONTS.map(f => `<option>${f}</option>`).join('')}</select></label>
-    <label>Tamanho <select id="beTextSize">${TEXT_SIZES.map(s => `<option value="${s}">${({ small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Gigante' })[s]}</option>`).join('')}</select></label>
-    <label>Cor <input id="beTextColor" type="color" value="#ffffff"/></label>
-  </div>
-  <div class="be-panel-row">
-    <label>Início (s) <input id="beTextStart" type="number" min="0" step="0.1"/></label>
-    <label>Fim (s) <input id="beTextEnd" type="number" min="0" step="0.1"/></label>
-    <button id="beTextDelete" class="be-danger-btn">Excluir texto</button>
-  </div>
-  <div class="be-dim">Arraste o texto direto no preview pra posicionar</div>
 </div>
 
 <div id="beExportModal" class="be-modal">
@@ -468,3 +557,4 @@ const TEMPLATE = `
 <div id="beProjects" class="be-projects" style="display:none"></div>
 <div id="beToast" class="be-toast"></div>
 `;
+}
