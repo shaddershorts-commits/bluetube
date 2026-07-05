@@ -3966,8 +3966,8 @@ async function doUpload(){
   if(!vt){_isUploading=false;closeUpload();toast(t('toast_session_expired','Sessão expirada'));setTimeout(openUpload,500);return;}
   btn.textContent='Publicando…';fill.style.width='10%';msg.textContent='Preparando…';
   try{
-    const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:vt,title,description:desc,duration:vDur,width:vW,height:vH,file_name:selFile.name,content_type:selFile.type,file_size:selFile.size,thumbnail_data:thumbB64})});
-    const d1=await r1.json();
+    const r1=await fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:vt,title,description:desc,duration:vDur,width:vW,height:vH,file_name:selFile.name,content_type:selFile.type,file_size:selFile.size,thumbnail_data:thumbB64})});window._lastUploadMeta=null;
+    const d1=await r1.json();window._lastUploadMeta=d1;
     if(!r1.ok)throw new Error(d1.error||'Erro '+r1.status);
     fill.style.width='15%';
     const totalMB=(selFile.size/1024/1024).toFixed(0);
@@ -4001,7 +4001,7 @@ async function doUpload(){
     fill.style.width='100%';msg.textContent='✅ Publicado!';btn.textContent='✅ Pronto!';toast(t('toast_upload_published','🎬 Publicado!'));haptic('success');
     if(d1.video){d1.video.creator=myProfile||{};videos.unshift(d1.video);renderFeed();}
     setTimeout(()=>{closeUpload();prog.style.display='none';fill.style.width='0%';msg.textContent='';btn.textContent='Publicar →';btn.disabled=true;selFile=null;thumbB64=null;document.getElementById('dropIcon').textContent='🎬';document.getElementById('dropLbl').textContent='Toque para selecionar';document.getElementById('prevRow').style.display='none';document.getElementById('prevThumb').innerHTML='🎬';document.getElementById('upTitle').value='';document.getElementById('upDesc').value='';},1800);
-  }catch(err){msg.className='up-msg err';msg.textContent=err.message;btn.disabled=false;btn.textContent='Tentar novamente';fill.style.width='0%';prog.style.display='none';haptic('error');}
+  }catch(err){msg.className='up-msg err';msg.textContent=err.message;btn.disabled=false;btn.textContent='Tentar novamente';fill.style.width='0%';prog.style.display='none';haptic('error');try{if(window._lastUploadMeta&&window._lastUploadMeta.video&&window._lastUploadMeta.video.id){fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete-video',token:vt,video_id:window._lastUploadMeta.video.id})}).catch(()=>{});}}catch(_){}}
   _isUploading=false;
 }
 
