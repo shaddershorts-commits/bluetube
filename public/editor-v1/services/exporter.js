@@ -2,7 +2,7 @@
 // Export: save fresh -> edit-v0 -> polling status-v0 -> done/erro/cancel.
 
 import { api } from './api.js';
-import { canExport } from '../core/selectors.js';
+import { canExport, exportPayload } from '../core/selectors.js';
 
 const POLL_MS = 1500;
 
@@ -21,7 +21,8 @@ export function createExporter(store) {
       const projectId = saved.project_id || state.project_id;
       if (!projectId) throw new Error('Não consegui salvar o projeto antes do export');
 
-      const r = await api.exportV0(projectId, store.getState());
+      // payload EXPANDIDO (compostos achatados, audio_clips, overlays)
+      const r = await api.exportV0(projectId, exportPayload(store.getState()));
       if (!r.ok) throw new Error(r.error || 'Falha ao iniciar export');
       onProgress?.(2, 'Na fila…');
 

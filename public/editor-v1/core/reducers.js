@@ -155,6 +155,7 @@ export function reduce(state, action) {
         y_pct: clamp01(p.y_pct ?? 0.35),
         start_sec: Math.max(0, p.start_sec ?? 0),
         end_sec: Math.max(0, p.end_sec ?? 3),
+        caption: p.caption === true,
         active: true,
       };
       if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;

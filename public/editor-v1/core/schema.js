@@ -88,6 +88,7 @@ export function normalizeLoadedState(raw) {
       y_pct: clamp01(t.y_pct ?? 0.5),
       start_sec: Math.max(0, t.start_sec || 0),
       end_sec: Math.max(0, t.end_sec || 0),
+      caption: t.caption === true,
       active: t.active !== false,
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];

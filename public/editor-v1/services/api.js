@@ -32,6 +32,7 @@ export const api = {
   listProjects: () => post({ action: 'list-projects' }),
   deleteProject: (project_id) => post({ action: 'delete-project', project_id }),
   exportV0: (project_id, project_state) => post({ action: 'edit-v0', project_id, project_state }),
+  autoCaptions: (video_url) => post({ action: 'auto-captions', video_url }),
   statusV0: (project_id) => post({ action: 'status-v0', project_id }),
   cancelV0: (project_id) => post({ action: 'cancel-v0', project_id }),
 };

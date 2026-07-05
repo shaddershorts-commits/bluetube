@@ -383,6 +383,30 @@ app.post('/cancel/:jobId', (req, res) => {
 //   4. amix vidio + audio_extra com volumes
 //   5. scale + crop pra 1080×1920 (ou letterbox se aspect_strategy)
 //   6. Upload pro Supabase
+// Extrai a trilha de audio de um video em mp3 compacto (pro Whisper 25MB).
+app.post('/extract-audio', async (req, res) => {
+  const { video_url, supabase_url, supabase_key } = req.body || {};
+  if (!video_url || !supabase_url || !supabase_key) {
+    return res.status(400).json({ error: 'video_url + credenciais obrigatorios' });
+  }
+  const jobId = uuidv4();
+  const dir = path.join('/tmp', 'xa-' + jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const src = path.join(dir, 'src.mp4');
+    await downloadFile(video_url, src);
+    const out = path.join(dir, 'audio.mp3');
+    await run('ffmpeg', ['-y', '-i', src, '-vn', '-c:a', 'libmp3lame', '-b:a', '64k', '-ac', '1', out]);
+    const url = await uploadToSupabase(out, `editor/captions/${jobId}.mp3`, supabase_url, supabase_key);
+    res.json({ ok: true, url });
+  } catch (e) {
+    console.error('[extract-audio]', e.message);
+    res.status(500).json({ error: e.message });
+  } finally {
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
+  }
+});
+
 app.post('/edit-v0', (req, res) => {
   const p = req.body || {};
   if (!p.video_url || !Array.isArray(p.clips) || p.clips.length === 0) {
@@ -487,9 +511,11 @@ async function processEditV0(jobId, p) {
       ]);
     }
 
-    // 5. Trilha de áudio: extrair audio source dos clips (mesma logica trim+concat)
+    // 5. Trilha de áudio v0 (fallback): so quando NAO ha audio_clips v2
     update('audio', 55);
+    const hasAudioClipsV2 = Array.isArray(p.audio_clips) && p.audio_clips.length > 0;
     const audioClipFiles = [];
+    if (!hasAudioClipsV2)
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
       const out = path.join(dir, `audio_${i}.aac`);
@@ -545,23 +571,82 @@ async function processEditV0(jobId, p) {
     const volA = p.volumes?.audio_extra ?? 1;
     const finalPath = path.join(dir, 'output.mp4');
     const args = ['-y', '-threads', '1'];
-    args.push('-i', concatPath);
-    if (sourceAudioPath) args.push('-i', sourceAudioPath);
-    if (audioExtraPath) args.push('-i', audioExtraPath);
-    args.push('-vf', vf);
-    // Audio: mix com base no que temos
-    if (sourceAudioPath && audioExtraPath) {
-      args.push('-filter_complex', `[1:a]volume=${volV}[a1];[2:a]volume=${volA}[a2];[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0[a]`);
-      args.push('-map', '0:v', '-map', '[a]');
-    } else if (sourceAudioPath) {
-      args.push('-filter_complex', `[1:a]volume=${volV}[a]`);
-      args.push('-map', '0:v', '-map', '[a]');
-    } else if (audioExtraPath) {
-      args.push('-filter_complex', `[1:a]volume=${volA}[a]`);
-      args.push('-map', '0:v', '-map', '[a]');
-    } else {
-      args.push('-map', '0:v');
+    args.push('-i', concatPath);                     // input 0: video base
+    const fc = [];                                   // filter_complex parts
+    let inputIdx = 1;
+
+    // ── OVERLAYS v2 (camadas PiP): trim de cada camada + overlay chain ──
+    const overlays = Array.isArray(p.overlays) ? p.overlays : [];
+    const ovInputs = [];
+    for (let i = 0; i < overlays.length; i++) {
+      const o = overlays[i];
+      const dur = o.source_out - o.source_in;
+      if (dur < 0.05) continue;
+      const out = path.join(dir, `ov_${i}.mp4`);
+      await run('ffmpeg', [
+        '-y', '-ss', String(o.source_in), '-t', String(dur),
+        '-i', sourcePath,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', out,
+      ]);
+      ovInputs.push({ idx: inputIdx, o, file: out });
+      args.push('-i', out);
+      inputIdx++;
     }
+    // video chain: [0:v] vf base -> overlays em cadeia (ordem = z-order)
+    let vLabel = 'base0';
+    fc.push(`[0:v]${vf}[${vLabel}]`);
+    ovInputs.forEach((ov, k) => {
+      const { idx, o } = ov;
+      const scaled = `ovs${k}`;
+      const nextL = `base${k + 1}`;
+      // escala relativa a LARGURA do output + posicao central em pct
+      fc.push(`[${idx}:v]scale=${Math.round((p.output_width || 1080) * (o.scale ?? 0.5))}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
+      fc.push(`[${vLabel}][${scaled}]overlay=x=${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2:y=${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2:enable='between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur0(o)).toFixed(3)})'[${nextL}]`);
+      vLabel = nextL;
+    });
+    function dur0(o) { return o.source_out - o.source_in; }
+
+    // ── AUDIO v2: mixer de audio_clips (posicao/trim/volume por clip) ──
+    const audioClips = Array.isArray(p.audio_clips) ? p.audio_clips : [];
+    const aLabels = [];
+    if (hasAudioClipsV2) {
+      for (let i = 0; i < audioClips.length; i++) {
+        const a = audioClips[i];
+        let mediaPath;
+        if (a.kind === 'video') {
+          mediaPath = sourcePath;
+        } else {
+          mediaPath = path.join(dir, `aud_${i}`);
+          try { await downloadFile(a.url, mediaPath); }
+          catch (e) { console.log('[edit-v0] audio clip download falhou, pulando:', e.message); continue; }
+        }
+        args.push('-i', mediaPath);
+        const delayMs = Math.round((a.start ?? 0) * 1000);
+        const lbl = `ac${i}`;
+        fc.push(`[${inputIdx}:a]atrim=${(a.source_in ?? 0).toFixed(3)}:${a.source_out.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(a.volume ?? 1).toFixed(2)},adelay=${delayMs}|${delayMs}[${lbl}]`);
+        aLabels.push(lbl);
+        inputIdx++;
+      }
+      // trilha do proprio video (se nao mudo) entra no mix tambem
+      if (volV > 0.001) {
+        fc.push(`[0:a]volume=${volV}[acv]`);
+        aLabels.push('acv');
+      }
+    } else {
+      // fallback v0: trilha source + audio extra fixo
+      if (sourceAudioPath) { args.push('-i', sourceAudioPath); fc.push(`[${inputIdx}:a]volume=${volV}[a1]`); aLabels.push('a1'); inputIdx++; }
+      if (audioExtraPath) { args.push('-i', audioExtraPath); fc.push(`[${inputIdx}:a]volume=${volA}[a2]`); aLabels.push('a2'); inputIdx++; }
+    }
+
+    if (aLabels.length > 1) {
+      fc.push(`[${aLabels.map(l => l).join('][')}]amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0[aout]`);
+    } else if (aLabels.length === 1) {
+      fc.push(`[${aLabels[0]}]anull[aout]`);
+    }
+
+    args.push('-filter_complex', fc.join(';'));
+    args.push('-map', `[${vLabel}]`);
+    if (aLabels.length) args.push('-map', '[aout]');
     args.push(
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
       '-c:a', 'aac', '-b:a', '128k',

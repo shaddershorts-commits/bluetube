@@ -203,6 +203,103 @@ module.exports = async function handler(req, res) {
   // BlueEditor V0 — Project state (autosave + retomada)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ── auto-captions: transcreve o audio do video -> frases com timestamps ──
+  // Body: { video_url }  ->  { captions: [{start, end, text}] }
+  if (action === 'auto-captions') {
+    const videoUrl = req.body?.video_url;
+    if (!videoUrl) return res.status(400).json({ error: 'video_url obrigatório' });
+    if (!OPENAI) return res.status(503).json({ error: 'Transcrição indisponível (OPENAI_API_KEY)' });
+    try {
+      // 1) fonte do audio: video pequeno vai direto; grande extrai no Railway
+      let mediaUrl = videoUrl;
+      let mediaName = 'video.mp4';
+      try {
+        const head = await fetch(videoUrl, { method: 'HEAD' });
+        const size = parseInt(head.headers.get('content-length') || '0', 10);
+        if (size > 24 * 1024 * 1024) {
+          const RW = process.env.RAILWAY_FFMPEG_URL;
+          if (!RW) return res.status(503).json({ error: 'Vídeo grande demais e RAILWAY_FFMPEG_URL ausente' });
+          const exR = await fetch(RW.replace(/\/$/, '') + '/extract-audio', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_url: videoUrl, supabase_url: SU, supabase_key: SK }),
+          });
+          const exD = await exR.json();
+          if (!exR.ok || !exD.url) return res.status(502).json({ error: 'Extração de áudio falhou' });
+          mediaUrl = exD.url;
+          mediaName = 'audio.mp3';
+        }
+      } catch (e) { /* HEAD falhou: tenta direto */ }
+
+      // 2) baixa a midia e manda pro Whisper com word timestamps
+      const mR = await fetch(mediaUrl);
+      if (!mR.ok) return res.status(502).json({ error: 'Falha ao baixar mídia' });
+      const mediaBuf = Buffer.from(await mR.arrayBuffer());
+
+      const boundary = '----btcap' + Math.random().toString(36).slice(2);
+      const parts = [];
+      const push = (name, value, filename, contentType) => {
+        let head = `--${boundary}\r\nContent-Disposition: form-data; name="${name}"`;
+        if (filename) head += `; filename="${filename}"`;
+        head += '\r\n';
+        if (contentType) head += `Content-Type: ${contentType}\r\n`;
+        head += '\r\n';
+        parts.push(Buffer.from(head, 'utf8'));
+        parts.push(typeof value === 'string' ? Buffer.from(value, 'utf8') : value);
+        parts.push(Buffer.from('\r\n', 'utf8'));
+      };
+      push('file', mediaBuf, mediaName, mediaName.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4');
+      push('model', 'whisper-1');
+      push('response_format', 'verbose_json');
+      push('timestamp_granularities[]', 'word');
+      parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+      const body = Buffer.concat(parts);
+
+      const wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + OPENAI,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': String(body.length),
+        },
+        body,
+      });
+      if (!wR.ok) {
+        const et = await wR.text();
+        return res.status(502).json({ error: 'Whisper falhou: ' + et.slice(0, 150) });
+      }
+      const wd = await wR.json();
+      const words = (wd.words || []).map(w => ({
+        word: (w.word || '').trim(), start: w.start || 0, end: w.end || 0,
+      })).filter(w => w.word);
+
+      // 3) agrupa palavras em FRASES (CapCut): quebra em pausa >0.6s,
+      //    pontuacao final ou ~42 chars
+      const captions = [];
+      let cur = null;
+      for (const w of words) {
+        if (!cur) { cur = { start: w.start, end: w.end, text: w.word }; continue; }
+        const gap = w.start - cur.end;
+        const wouldBe = cur.text + ' ' + w.word;
+        const endsSentence = /[.!?…]$/.test(cur.text);
+        if (gap > 0.6 || wouldBe.length > 42 || endsSentence) {
+          captions.push(cur);
+          cur = { start: w.start, end: w.end, text: w.word };
+        } else {
+          cur.text = wouldBe;
+          cur.end = w.end;
+        }
+      }
+      if (cur) captions.push(cur);
+      // duracao minima legivel de 0.7s
+      for (const c of captions) if (c.end - c.start < 0.7) c.end = c.start + 0.7;
+
+      return res.status(200).json({ ok: true, captions, language: wd.language || null });
+    } catch (e) {
+      console.error('[auto-captions]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── save-project: cria ou atualiza projeto em edicao (status='editing') ──
   // Body: { project_id?, project_state: {...}, nome_projeto?, video_url? }
   // - Sem project_id → cria novo
@@ -367,8 +464,10 @@ module.exports = async function handler(req, res) {
       }
     } catch (e) {}
 
-    // Payload pro Railway
+    // Payload pro Railway (v2: audio_clips posicionados + overlays PiP)
     const railwayPayload = {
+      audio_clips: Array.isArray(projectState.audio_clips) ? projectState.audio_clips : [],
+      overlays: Array.isArray(projectState.overlays) ? projectState.overlays : [],
       video_url: projectState.video.url,
       audio_extra_url: projectState.audio_extra?.url || null,
       source_width: projectState.video.width || 1080,

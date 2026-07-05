@@ -88,6 +88,7 @@ export function mountEditor(root, store) {
 
     renderTransitionsRow(state);
     syncPropsPanel(state);
+    $('#beCapStyleRow').style.display = state.texts.some(t => t.caption) ? 'flex' : 'none';
   }
   store.subscribe(sync);
   player.onUpdate(() => {
@@ -449,6 +450,56 @@ export function mountEditor(root, store) {
     toast('Alterações salvas no clipe composto ✓');
   }
   $('#beCompoundExit').addEventListener('click', exitCompound);
+
+  // ── legendas automaticas (CapCut auto captions) ──
+  async function generateCaptions() {
+    const state = store.getState();
+    if (!state.video?.url) return toast('Envie um vídeo primeiro', true);
+    toast('Transcrevendo áudio… (pode levar ~1min)');
+    try {
+      const r = await api.autoCaptions(state.video.url);
+      const caps = r.captions || [];
+      if (!caps.length) return toast('Nenhuma fala detectada no áudio', true);
+      // remove legendas antigas antes de aplicar as novas
+      for (const t of store.getState().texts.filter(t => t.caption)) {
+        store.dispatch({ ...act.deleteText(t.id), gestureId: 'caps' });
+      }
+      for (const c of caps) {
+        store.dispatch({
+          ...act.addText({
+            content: c.text, caption: true,
+            start_sec: c.start, end_sec: c.end,
+            font: 'Anton', size: 'medium', color: '#ffffff',
+            x_pct: 0.5, y_pct: 0.82,
+          }),
+          gestureId: 'caps',
+        });
+      }
+      store.endGesture(); // 1 undo desfaz a geracao inteira
+      $('#beCapStyleRow').style.display = 'flex';
+      toast(caps.length + ' legendas geradas ✓ — clique numa pra editar o texto');
+    } catch (e) { toast('Legendas: ' + e.message, true); }
+  }
+  $('#beAutoCaptions').addEventListener('click', generateCaptions);
+  $('#beAutoCaptions2').addEventListener('click', generateCaptions);
+
+  // estilo GLOBAL das legendas: muda uma vez, aplica em todas (CapCut)
+  function applyCapStyle(patchObj) {
+    for (const t of store.getState().texts.filter(t => t.caption)) {
+      store.dispatch({ ...act.updateText(t.id, patchObj), gestureId: 'capstyle' });
+    }
+    store.endGesture();
+  }
+  $('#beCapSize').addEventListener('change', (e) => applyCapStyle({ size: e.target.value }));
+  $('#beCapColor').addEventListener('change', (e) => applyCapStyle({ color: e.target.value }));
+  $('#beCapPos').addEventListener('change', (e) => applyCapStyle({ y_pct: parseFloat(e.target.value) }));
+  $('#beCapDeleteAll').addEventListener('click', () => {
+    for (const t of store.getState().texts.filter(t => t.caption)) {
+      store.dispatch({ ...act.deleteText(t.id), gestureId: 'capdel' });
+    }
+    store.endGesture();
+    $('#beCapStyleRow').style.display = 'none';
+  });
   $('#beGroupBtn').addEventListener('click', () => store.dispatch(act.createCompound()));
 
   // ── toast ──
@@ -520,6 +571,7 @@ function buildTemplate() {
     <button id="beAddMedia" class="be-rail-btn" title="Trocar vídeo"><span>🎞</span>Mídia</button>
     <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
     <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
+    <button id="beAutoCaptions" class="be-rail-btn" title="Gerar legendas automáticas (IA)"><span>💬</span>Legendas</button>
   </div>
 
   <!-- preview central -->
@@ -554,6 +606,25 @@ function buildTemplate() {
       <div id="beAudioCount" class="be-dim">Nenhum áudio adicional</div>
       <label class="be-slider-label">Volume do vídeo <input id="beVolVideo" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <button id="beDetachAudio" class="be-tool-btn" title="Ctrl+Shift+S">🔀 Separar áudio do vídeo</button>
+      <div class="be-sep"></div>
+      <div class="be-side-title">Legendas</div>
+      <button id="beAutoCaptions2" class="be-tool-btn">💬 Gerar legendas automáticas</button>
+      <div id="beCapStyleRow" style="display:none;flex-direction:column;gap:6px">
+        <div class="be-panel-row">
+          <label>Tamanho <select id="beCapSize">
+            <option value="small">Pequeno</option>
+            <option value="medium" selected>Médio</option>
+            <option value="large">Grande</option>
+          </select></label>
+          <label>Cor <input id="beCapColor" type="color" value="#ffffff"/></label>
+          <label>Posição <select id="beCapPos">
+            <option value="0.82" selected>Embaixo</option>
+            <option value="0.5">Centro</option>
+            <option value="0.15">Em cima</option>
+          </select></label>
+        </div>
+        <button id="beCapDeleteAll" class="be-danger-btn">🗑 Remover todas as legendas</button>
+      </div>
       <div class="be-sep"></div>
       <div class="be-side-title">Transições</div>
       <div id="beTransitions" class="be-transitions"></div>
