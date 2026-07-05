@@ -7,7 +7,7 @@
 
 import { A } from './actions.js';
 import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES } from './schema.js';
-import { timelineSegments, segmentAt } from './selectors.js';
+import { timelineSegments, segmentAt, mainTrackItems } from './selectors.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -246,7 +246,7 @@ export function reduce(state, action) {
       let nid = state.next_audio_id;
       const newClips = [];
       let t = 0;
-      for (const c of state.clips.filter(c => c.active !== false)) {
+      for (const c of state.clips.filter(c => c.active !== false && !c.compound_id)) {
         const dur = c.source_out - c.source_in;
         newClips.push({
           id: nid++, kind: 'video', url: null,
@@ -427,6 +427,114 @@ export function reduce(state, action) {
         ...state, selected_overlay_id: action.overlayId,
         selected_clip_id: null, selected_text_id: null, selected_audio_id: null,
       };
+    }
+
+    // ── clipes compostos (CapCut Alt+G) ─────────────────────────────────
+
+    case A.TOGGLE_MULTI_SELECT: {
+      const key = (x) => x.type + ':' + x.id;
+      const item = { type: action.itemType, id: action.id };
+      const has = state.multi_selected.some(x => key(x) === key(item));
+      const multi_selected = has
+        ? state.multi_selected.filter(x => key(x) !== key(item))
+        : [...state.multi_selected, item];
+      return { ...state, multi_selected };
+    }
+
+    case A.SELECT_ALL: {
+      const multi_selected = [
+        ...state.clips.filter(c => c.active !== false).map(c => ({ type: 'clip', id: c.id })),
+        ...state.texts.filter(t => t.active !== false).map(t => ({ type: 'text', id: t.id })),
+        ...state.audio_clips.filter(a => a.active !== false).map(a => ({ type: 'audio', id: a.id })),
+        ...state.overlays.filter(o => o.active !== false).map(o => ({ type: 'overlay', id: o.id })),
+      ];
+      return { ...state, multi_selected };
+    }
+
+    case A.CREATE_COMPOUND: {
+      // Alt+G: agrupa a multi-selecao (ou a selecao simples) num composto.
+      let sel = state.multi_selected;
+      if (!sel.length) {
+        sel = [];
+        if (state.selected_clip_id != null) sel.push({ type: 'clip', id: state.selected_clip_id });
+        if (state.selected_text_id != null) sel.push({ type: 'text', id: state.selected_text_id });
+        if (state.selected_audio_id != null) sel.push({ type: 'audio', id: state.selected_audio_id });
+        if (state.selected_overlay_id != null) sel.push({ type: 'overlay', id: state.selected_overlay_id });
+      }
+      const clipIds = sel.filter(x => x.type === 'clip').map(x => x.id);
+      const inClips = state.clips.filter(c => clipIds.includes(c.id) && !c.compound_id && c.active !== false);
+      if (!inClips.length) return state; // composto precisa de >=1 clip de video
+      const items = mainTrackItems(state);
+      const firstIt = items.find(it => clipIds.includes(it.clip.id));
+      const base = firstIt ? firstIt.tStart : 0;
+      const textIds = sel.filter(x => x.type === 'text').map(x => x.id);
+      const audioIds = sel.filter(x => x.type === 'audio').map(x => x.id);
+      const ovIds = sel.filter(x => x.type === 'overlay').map(x => x.id);
+      const comp = {
+        id: state.next_compound_id,
+        name: 'Clipe composto ' + state.next_compound_id,
+        clips: inClips.map(c => ({ ...c })),
+        texts: state.texts.filter(t => textIds.includes(t.id))
+          .map(t => ({ ...t, start_sec: Math.max(0, t.start_sec - base), end_sec: Math.max(0.1, t.end_sec - base) })),
+        audio_clips: state.audio_clips.filter(a => audioIds.includes(a.id))
+          .map(a => ({ ...a, start: Math.max(0, a.start - base) })),
+        overlays: state.overlays.filter(o => ovIds.includes(o.id))
+          .map(o => ({ ...o, start: Math.max(0, o.start - base) })),
+      };
+      const compClip = { id: state.next_clip_id, compound_id: comp.id, active: true };
+      const firstIdx = state.clips.findIndex(c => c.id === inClips[0].id);
+      const clips = state.clips
+        .map((c, i) => i === firstIdx ? compClip : c)
+        .filter(c => c === compClip || !clipIds.includes(c.id));
+      return touch({
+        ...state,
+        clips,
+        next_clip_id: state.next_clip_id + 1,
+        texts: state.texts.filter(t => !textIds.includes(t.id)),
+        audio_clips: state.audio_clips.filter(a => !audioIds.includes(a.id)),
+        overlays: state.overlays.filter(o => !ovIds.includes(o.id)),
+        compounds: [...state.compounds, comp],
+        next_compound_id: state.next_compound_id + 1,
+        multi_selected: [],
+        selected_clip_id: compClip.id,
+        selected_text_id: null, selected_audio_id: null, selected_overlay_id: null,
+      });
+    }
+
+    case A.UNGROUP_COMPOUND: {
+      // Shift+Alt+G: devolve o conteudo pro documento principal
+      const comp = state.compounds.find(k => k.id === action.compoundId);
+      if (!comp) return state;
+      const items = mainTrackItems(state);
+      const it = items.find(x => x.clip.compound_id === comp.id);
+      const base = it ? it.tStart : 0;
+      const idx = state.clips.findIndex(c => c.compound_id === comp.id);
+      if (idx < 0) return state;
+      let nextClip = state.next_clip_id, nextText = state.next_text_id,
+          nextAudio = state.next_audio_id, nextOv = state.next_overlay_id;
+      const newClips = comp.clips.map(c => ({ ...c, id: nextClip++ }));
+      const newTexts = comp.texts.map(t => ({ ...t, id: nextText++, start_sec: t.start_sec + base, end_sec: t.end_sec + base }));
+      const newAudios = comp.audio_clips.map(a => ({ ...a, id: nextAudio++, start: a.start + base }));
+      const newOvs = comp.overlays.map(o => ({ ...o, id: nextOv++, start: o.start + base }));
+      const clips = [...state.clips.slice(0, idx), ...newClips, ...state.clips.slice(idx + 1)];
+      return touch({
+        ...state,
+        clips, next_clip_id: nextClip,
+        texts: [...state.texts, ...newTexts], next_text_id: nextText,
+        audio_clips: [...state.audio_clips, ...newAudios], next_audio_id: nextAudio,
+        overlays: [...state.overlays, ...newOvs], next_overlay_id: nextOv,
+        compounds: state.compounds.filter(k => k.id !== comp.id),
+        selected_clip_id: null,
+      });
+    }
+
+    case A.UPDATE_COMPOUND: {
+      // salva o doc editado dentro do composto (sair do modo de edicao)
+      const idx = state.compounds.findIndex(k => k.id === action.compoundId);
+      if (idx < 0) return state;
+      const compounds = state.compounds.slice();
+      compounds[idx] = { ...compounds[idx], ...action.doc };
+      return touch({ ...state, compounds });
     }
 
     case A.SET_VOLUME: {

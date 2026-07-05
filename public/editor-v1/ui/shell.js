@@ -31,6 +31,7 @@ export function mountEditor(root, store) {
     canvas: $('#beTimeline'),
     store, player,
     onEditText: openTextPanel,
+    onOpenCompound: enterCompound,
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
@@ -406,6 +407,50 @@ export function mountEditor(root, store) {
   }
   showProjects();
 
+  // ── clipe composto: entrar/sair (CapCut) ──
+  // Ao ENTRAR: o editor passa a mostrar SO o conteudo interno do composto.
+  // Ao SAIR: o doc interno volta pro composto e o principal e restaurado.
+  let compoundCtx = null; // { compoundId, savedDoc }
+  function enterCompound(compoundId) {
+    const state = store.getState();
+    const comp = state.compounds.find(k => k.id === compoundId);
+    if (!comp || compoundCtx) return;
+    compoundCtx = { compoundId, savedDoc: state };
+    const inner = {
+      ...state,
+      nome_projeto: comp.name,
+      clips: comp.clips.map(c => ({ ...c })),
+      texts: comp.texts.map(t => ({ ...t })),
+      audio_clips: comp.audio_clips.map(a => ({ ...a })),
+      overlays: comp.overlays.map(o => ({ ...o })),
+      compounds: [], multi_selected: [],
+      selected_clip_id: null, selected_text_id: null,
+      selected_audio_id: null, selected_overlay_id: null,
+    };
+    store.replaceState(inner);
+    $('#beCompoundBar').style.display = 'flex';
+    $('#beCompoundName').textContent = '⧉ ' + comp.name;
+    requestAnimationFrame(() => requestAnimationFrame(() => timeline.zoomFit()));
+    toast('Editando clipe composto — clique em Sair pra voltar');
+  }
+  function exitCompound() {
+    if (!compoundCtx) return;
+    const inner = store.getState();
+    const doc = {
+      clips: inner.clips, texts: inner.texts,
+      audio_clips: inner.audio_clips, overlays: inner.overlays,
+    };
+    const { compoundId, savedDoc } = compoundCtx;
+    compoundCtx = null;
+    store.replaceState(savedDoc);
+    store.dispatch(act.updateCompound(compoundId, doc));
+    $('#beCompoundBar').style.display = 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => timeline.zoomFit()));
+    toast('Alterações salvas no clipe composto ✓');
+  }
+  $('#beCompoundExit').addEventListener('click', exitCompound);
+  $('#beGroupBtn').addEventListener('click', () => store.dispatch(act.createCompound()));
+
   // ── toast ──
   function toast(msg, isError) {
     const el = $('#beToast');
@@ -557,6 +602,10 @@ function buildTemplate() {
 
   <!-- toolbar + timeline multi-track -->
   <div class="be-timeline-area">
+    <div id="beCompoundBar" style="display:none;align-items:center;gap:10px;padding:4px 2px">
+      <button id="beCompoundExit" class="be-tool-btn">← Sair do clipe</button>
+      <span id="beCompoundName" class="be-dim"></span>
+    </div>
     <div class="be-toolbar">
       <button id="beSplit" class="be-tool-btn" title="Dividir no cursor (Ctrl+B)">✂ Dividir</button>
       <button id="beDelLeft" class="be-tool-btn" title="Apagar antes do cursor (Q)">⇤ Apagar antes</button>
@@ -565,6 +614,7 @@ function buildTemplate() {
       <button id="beDelClip" class="be-tool-btn" title="Excluir cena selecionada (Delete)">🗑 Excluir</button>
       <span class="be-toolbar-sep"></span>
       <button id="beAddText2" class="be-tool-btn" title="Adicionar texto no cursor">＋ Texto</button>
+      <button id="beGroupBtn" class="be-tool-btn" title="Agrupar selecionados em clipe composto (Alt+G)">⧉ Agrupar</button>
       <span class="be-toolbar-spacer"></span>
       <button id="beZoomOut" class="be-icon-btn" title="Zoom - (Ctrl -)">−</button>
       <button id="beZoomFit" class="be-icon-btn" title="Caber (Shift+Z)">⤢</button>

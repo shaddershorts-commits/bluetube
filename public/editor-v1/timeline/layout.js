@@ -3,7 +3,7 @@
 // Modulo puro: sem DOM/canvas. Toda posicao visual nasce aqui — render e
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
-import { timelineSegments, totalDuration } from '../core/selectors.js';
+import { timelineSegments, totalDuration, mainTrackItems } from '../core/selectors.js';
 
 export const METRICS = {
   PAD_LEFT: 16,          // margem esquerda em px antes de t=0
@@ -57,18 +57,26 @@ export function computeLayout(state, vp) {
     };
   });
 
-  // Clips ativos (na track de video)
-  const clips = segs.map(seg => {
-    const x = timeToX(vp, seg.tStart);
-    const w = (seg.tEnd - seg.tStart) * vp.pxPerSec;
+  // Itens da track principal (compound = 1 bloco; nao expande aqui)
+  const multiKeys = new Set((state.multi_selected || []).map(m => m.type + ':' + m.id));
+  const clips = mainTrackItems(state).map(it => {
+    const x = timeToX(vp, it.tStart);
+    const w = (it.tEnd - it.tStart) * vp.pxPerSec;
+    const comp = it.isCompound
+      ? (state.compounds || []).find(k => k.id === it.clip.compound_id) : null;
+    const firstSub = comp?.clips?.[0];
     return {
-      clipId: seg.clip.id,
-      tStart: seg.tStart,
-      tEnd: seg.tEnd,
-      sourceIn: seg.clip.source_in,
-      sourceOut: seg.clip.source_out,
+      clipId: it.clip.id,
+      isCompound: it.isCompound,
+      compoundId: it.clip.compound_id || null,
+      compoundName: comp?.name || null,
+      tStart: it.tStart,
+      tEnd: it.tEnd,
+      sourceIn: it.isCompound ? (firstSub?.source_in ?? 0) : it.clip.source_in,
+      sourceOut: it.isCompound ? (firstSub?.source_out ?? 1) : it.clip.source_out,
       x, y: yVideo, w, h: METRICS.VIDEO_TRACK_H,
-      selected: state.selected_clip_id === seg.clip.id,
+      selected: state.selected_clip_id === it.clip.id,
+      multi: multiKeys.has('clip:' + it.clip.id),
     };
   });
 

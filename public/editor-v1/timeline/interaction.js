@@ -76,6 +76,9 @@ export function transition(fsm, ev, ctx) {
       }
       if (ev.kind === 'dblclick') {
         if (ev.hit.type === 'text-block') fx.push({ do: 'open-text-editor', textId: ev.hit.textId });
+        if (ev.hit.type === 'clip-body' && ev.hit.compoundId) {
+          fx.push({ do: 'open-compound', compoundId: ev.hit.compoundId });
+        }
         return { next: fsm, effects: fx };
       }
       if (ev.kind !== 'down') return { next: fsm, effects: fx };
@@ -118,6 +121,11 @@ export function transition(fsm, ev, ctx) {
         };
       }
       if (hit.type === 'clip-body') {
+        if (ev.ctrlKey) {
+          // Ctrl+click: alterna na multi-selecao (CapCut) sem virar drag
+          fx.push({ do: 'toggle-multi', itemType: 'clip', id: hit.clipId });
+          return { next: fsm, effects: fx };
+        }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       if (hit.type === 'text-block') {

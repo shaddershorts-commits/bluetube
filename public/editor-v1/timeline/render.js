@@ -133,13 +133,25 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
 
+    if (c.isCompound) {
+      // faixa de titulo do composto (CapCut)
+      ctx.save();
+      roundRect(ctx, cx0, c.y, cw, c.h, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(112, 72, 184, .55)';
+      ctx.fillRect(cx0, c.y, cw, 14);
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText('⧉ ' + (c.compoundName || 'Clipe composto') + ' (2x clique abre)', cx0 + 6, c.y + 3);
+      ctx.restore();
+    }
     roundRect(ctx, cx0, c.y, cw, c.h, 6);
-    ctx.strokeStyle = c.selected ? COLORS.clipSelectedBorder : COLORS.clipBorder;
-    ctx.lineWidth = c.selected ? 2 : 1;
+    ctx.strokeStyle = c.multi ? COLORS.snap : (c.selected ? COLORS.clipSelectedBorder : COLORS.clipBorder);
+    ctx.lineWidth = (c.selected || c.multi) ? 2 : 1;
     ctx.stroke();
 
-    // trim handles do selecionado (CapCut-style: barras solidas nas pontas)
-    if (c.selected) {
+    // trim handles do selecionado (compound nao trima no v1)
+    if (c.selected && !c.isCompound) {
       drawHandle(ctx, cx0, c.y, c.h, 'left');
       drawHandle(ctx, cx0 + cw, c.y, c.h, 'right');
     }

@@ -10,20 +10,104 @@ export function effectiveClips(state) {
 
 /** Duracao total do corte final (soma dos clips ativos). */
 export function totalDuration(state) {
-  return effectiveClips(state).reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
+  return effectiveClips(state).reduce((acc, c) => acc + clipDuration(state, c), 0);
 }
 
 /** Segmentos da timeline: cada clip ativo com seu offset acumulado no tempo
  *  virtual. [{ clip, tStart, tEnd }] onde t* e tempo virtual. */
 export function timelineSegments(state) {
+  // EXPANDIDO (player/export): compostos viram seus sub-clips reais
   const segs = [];
   let t = 0;
   for (const clip of effectiveClips(state)) {
-    const dur = clip.source_out - clip.source_in;
-    segs.push({ clip, tStart: t, tEnd: t + dur });
-    t += dur;
+    if (clip.compound_id) {
+      const comp = (state.compounds || []).find(k => k.id === clip.compound_id);
+      for (const sub of (comp?.clips || []).filter(x => x.active !== false)) {
+        const dur = sub.source_out - sub.source_in;
+        segs.push({ clip: sub, tStart: t, tEnd: t + dur, compoundId: clip.compound_id });
+        t += dur;
+      }
+    } else {
+      const dur = clip.source_out - clip.source_in;
+      segs.push({ clip, tStart: t, tEnd: t + dur });
+      t += dur;
+    }
   }
   return segs;
+}
+
+/** Duracao de um clip da main (compound = soma interna). */
+export function clipDuration(state, c) {
+  if (c.compound_id) {
+    const comp = (state.compounds || []).find(k => k.id === c.compound_id);
+    if (!comp) return 0;
+    return comp.clips.filter(x => x.active !== false)
+      .reduce((a, x) => a + (x.source_out - x.source_in), 0);
+  }
+  return c.source_out - c.source_in;
+}
+
+/** Itens da MAIN track pro layout/render: compound = 1 bloco. */
+export function mainTrackItems(state) {
+  const items = [];
+  let t = 0;
+  for (const clip of effectiveClips(state)) {
+    const dur = clipDuration(state, clip);
+    items.push({ clip, tStart: t, tEnd: t + dur, isCompound: !!clip.compound_id });
+    t += dur;
+  }
+  return items;
+}
+
+/** Offset virtual (tStart) de cada compound na timeline. */
+export function compoundOffsets(state) {
+  const map = new Map();
+  for (const it of mainTrackItems(state)) {
+    if (it.isCompound) map.set(it.clip.compound_id, it.tStart);
+  }
+  return map;
+}
+
+/** Textos efetivos (soltos + dos compostos, offsets absolutos). */
+export function effectiveTexts(state) {
+  const out = (state.texts || []).filter(t => t.active !== false).map(t => ({ ...t }));
+  const offs = compoundOffsets(state);
+  for (const comp of (state.compounds || [])) {
+    const off = offs.get(comp.id);
+    if (off == null) continue;
+    for (const t of (comp.texts || []).filter(x => x.active !== false)) {
+      out.push({ ...t, id: 'c' + comp.id + '_' + t.id, start_sec: t.start_sec + off, end_sec: t.end_sec + off, _compound: true });
+    }
+  }
+  return out;
+}
+
+/** Audios efetivos (soltos + dos compostos, offsets absolutos). */
+export function effectiveAudioClips(state) {
+  const out = (state.audio_clips || []).filter(a => a.active !== false).map(a => ({ ...a }));
+  const offs = compoundOffsets(state);
+  for (const comp of (state.compounds || [])) {
+    const off = offs.get(comp.id);
+    if (off == null) continue;
+    for (const a of (comp.audio_clips || []).filter(x => x.active !== false)) {
+      out.push({ ...a, id: 'c' + comp.id + '_' + a.id, start: a.start + off, _compound: true });
+    }
+  }
+  return out;
+}
+
+/** Overlays efetivos (soltos + dos compostos, offsets absolutos). */
+export function effectiveOverlays(state) {
+  const out = (state.overlays || []).filter(o => o.active !== false).map(o => ({ ...o }));
+  const offs = compoundOffsets(state);
+  for (const comp of (state.compounds || [])) {
+    const off = offs.get(comp.id);
+    if (off == null) continue;
+    for (const o of (comp.overlays || []).filter(x => x.active !== false)) {
+      out.push({ ...o, id: 'c' + comp.id + '_' + o.id, start: o.start + off, _compound: true });
+    }
+  }
+  return out;
 }
 
 /** tempo virtual -> tempo no arquivo source. Retorna null se fora do range. */
@@ -76,16 +160,17 @@ export function cutPoints(state) {
 
 /** Textos visiveis num tempo virtual. */
 export function textsAt(state, t) {
-  return (state.texts || []).filter(x =>
-    x.active !== false && t >= x.start_sec - 1e-9 && t <= x.end_sec + 1e-9);
+  return effectiveTexts(state).filter(x =>
+    t >= x.start_sec - 1e-9 && t <= x.end_sec + 1e-9);
 }
 
 /** Payload de export — espelha exatamente o contrato edit-v0 do Vercel.
  *  A validacao do backend: clips efetivos ordenados por source_in, totalDur >= 0.5. */
 export function exportPayload(state) {
-  const clips = effectiveClips(state).map(c => ({
-    source_in: round3(c.source_in),
-    source_out: round3(c.source_out),
+  // compostos sao ACHATADOS no export (timelineSegments ja expande)
+  const clips = timelineSegments(state).map(seg => ({
+    source_in: round3(seg.clip.source_in),
+    source_out: round3(seg.clip.source_out),
   }));
   return {
     version: 1,
@@ -93,7 +178,7 @@ export function exportPayload(state) {
     nome_projeto: state.nome_projeto,
     video: state.video,
     clips,
-    texts: (state.texts || []).filter(t => t.active !== false).map(t => ({
+    texts: effectiveTexts(state).map(t => ({
       content: t.content,
       font: t.font,
       size: t.size,
@@ -104,7 +189,7 @@ export function exportPayload(state) {
       end_sec: round3(t.end_sec),
     })),
     // clips de audio pro mixer do render (adelay/atrim no Railway)
-    audio_clips: (state.audio_clips || []).filter(a => a.active !== false).map(a => ({
+    audio_clips: effectiveAudioClips(state).map(a => ({
       kind: a.kind,                 // 'video' usa o proprio source do video
       url: a.url || null,
       start: round3(a.start),
@@ -113,7 +198,7 @@ export function exportPayload(state) {
       volume: a.volume ?? 1,
     })),
     // camadas overlay (render: filter overlay + scale + enable window)
-    overlays: (state.overlays || []).filter(o => o.active !== false).map(o => ({
+    overlays: effectiveOverlays(state).map(o => ({
       source_in: round3(o.source_in), source_out: round3(o.source_out),
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),

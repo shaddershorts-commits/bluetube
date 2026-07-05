@@ -42,6 +42,12 @@ export function createInitialState() {
     overlays: [],        // [{id, source_in, source_out, start, x_pct, y_pct, scale, active}]
     next_overlay_id: 1,
     selected_overlay_id: null,
+    // clipes compostos (CapCut Alt+G): conteudo agrupado vive aqui; na main
+    // track o composto e um clip {id, compound_id}. Offsets internos sao
+    // RELATIVOS ao inicio do composto.
+    compounds: [],       // [{id, name, clips, texts, audio_clips, overlays}]
+    next_compound_id: 1,
+    multi_selected: [],  // [{type:'clip'|'text'|'audio'|'overlay', id}] ctrl+click
     // legado (migrado em normalizeLoadedState): audio_extra, selected_audio,
     // video_audio_removed
     transitions: [],      // [{ between, type, duration }]
@@ -124,6 +130,10 @@ export function normalizeLoadedState(raw) {
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
       active: o.active !== false,
     })) : [];
+  s.compounds = Array.isArray(raw.compounds) ? raw.compounds : [];
+  const maxComp = s.compounds.reduce((m, c) => Math.max(m, c.id || 0), 0);
+  s.next_compound_id = Math.max(raw.next_compound_id || 1, maxComp + 1);
+  s.multi_selected = [];
   const maxOv = s.overlays.reduce((m, o) => Math.max(m, o.id || 0), 0);
   s.next_overlay_id = Math.max(raw.next_overlay_id || 1, maxOv + 1);
   s.selected_overlay_id = null;

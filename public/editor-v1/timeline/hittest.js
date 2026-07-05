@@ -49,7 +49,7 @@ export function hitTest(layout, x, y, opts = {}) {
   // 2. Corpo de clip ativo
   for (const c of layout.clips) {
     if (within(x, y, c.x, c.y, c.w, c.h)) {
-      return { type: 'clip-body', clipId: c.clipId };
+      return { type: 'clip-body', clipId: c.clipId, compoundId: c.compoundId || null };
     }
   }
 

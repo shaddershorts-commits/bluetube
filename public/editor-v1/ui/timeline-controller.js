@@ -11,7 +11,7 @@ import { cutPoints, totalDuration } from '../core/selectors.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 
-export function createTimelineController({ canvas, store, player, onEditText }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
@@ -67,6 +67,8 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
         case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
         case 'select-overlay': store.dispatch(act.selectOverlay(e.overlayId)); break;
         case 'convert-to-overlay': store.dispatch(act.convertToOverlay(e.clipId, e.atT)); break;
+        case 'toggle-multi': store.dispatch(act.toggleMultiSelect(e.itemType, e.id)); break;
+        case 'open-compound': onOpenCompound?.(e.compoundId); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;
@@ -152,7 +154,7 @@ export function createTimelineController({ canvas, store, player, onEditText }) 
     if (p.touch) {
       longPressTimer = setTimeout(() => step({ kind: 'longpress' }), LONG_PRESS_MS);
     }
-    step({ kind: 'down', ...p, hit, button: e.button, shiftKey: e.shiftKey });
+    step({ kind: 'down', ...p, hit, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
   });
 
   canvas.addEventListener('pointermove', (e) => {

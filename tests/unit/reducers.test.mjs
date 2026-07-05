@@ -345,3 +345,40 @@ test('F3: overlay trim/move/transform/delete', () => {
   store.dispatch(act.deleteOverlay(id));
   assert.equal(store.getState().overlays.length, 0);
 });
+
+test('F4: Alt+G cria composto (offsets relativos) e Shift+Alt+G desfaz', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(20));
+  store.dispatch(act.splitClipAt(40));
+  store.dispatch(act.addText({ content: 'T', start_sec: 25, end_sec: 30 }));
+  const [c1, c2, c3] = store.getState().clips.map(c => c.id);
+  const tid = store.getState().texts[0].id;
+  // seleciona c2 + c3 + texto via ctrl+click
+  store.dispatch(act.toggleMultiSelect('clip', c2));
+  store.dispatch(act.toggleMultiSelect('clip', c3));
+  store.dispatch(act.toggleMultiSelect('text', tid));
+  store.dispatch(act.createCompound());
+  let s = store.getState();
+  assert.equal(s.compounds.length, 1);
+  assert.equal(s.clips.length, 2);                    // c1 + bloco composto
+  assert.ok(s.clips[1].compound_id);
+  assert.equal(s.texts.length, 0);                    // texto entrou no composto
+  assert.equal(s.compounds[0].clips.length, 2);
+  assert.equal(s.compounds[0].texts[0].start_sec, 5); // 25 - base(20) = offset relativo
+  assert.equal(totalDuration(s), 60);                 // duracao total preservada
+  // player expande: t=30 continua mapeando pro source 30
+  assert.equal(timelineToSource(s, 30), 30);
+  // export achata
+  const p = exportPayload(s);
+  assert.equal(p.clips.length, 3);
+  assert.equal(p.texts.length, 1);
+  assert.equal(p.texts[0].start_sec, 25);             // offset absoluto de volta
+  // desagrupar restaura
+  store.dispatch(act.ungroupCompound(s.compounds[0].id));
+  s = store.getState();
+  assert.equal(s.compounds.length, 0);
+  assert.equal(s.clips.length, 3);
+  assert.equal(s.texts.length, 1);
+  assert.equal(s.texts[0].start_sec, 25);
+  assert.equal(totalDuration(s), 60);
+});

@@ -4,7 +4,7 @@
 // - cada audio_clip ganha um Audio() proprio (Audio decodifica a trilha de
 //   audio de arquivos de VIDEO tambem), agendado por start/source_in/out
 
-import { timelineToSource, totalDuration, segmentAt } from '../core/selectors.js';
+import { timelineToSource, totalDuration, segmentAt, effectiveAudioClips } from '../core/selectors.js';
 
 export function createPlayer(videoEl, _audioElUnused, store) {
   let virtualTime = 0;
@@ -27,7 +27,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
   /** cria/atualiza os Audio() do pool conforme audio_clips */
   function syncPool() {
     const state = store.getState();
-    const clips = (state.audio_clips || []).filter(a => a.active !== false);
+    const clips = effectiveAudioClips(state);
     const seen = new Set();
     for (const a of clips) {
       seen.add(a.id);
@@ -51,8 +51,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
   /** agenda cada audio clip pro tempo virtual t */
   function syncAudios(t) {
     const state = store.getState();
-    for (const a of (state.audio_clips || [])) {
-      if (a.active === false) continue;
+    for (const a of effectiveAudioClips(state)) {
       const entry = pool.get(a.id);
       if (!entry) continue;
       const el = entry.el;

@@ -39,6 +39,20 @@ export function attachShortcuts({ store, player, timeline }) {
       store.dispatch(act.detachAudio());
       return;
     }
+    // Clipe composto (CapCut): Alt+G cria, Shift+Alt+G desfaz, Ctrl+A seleciona tudo
+    if (e.altKey && !e.shiftKey && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      store.dispatch(act.createCompound());
+      return;
+    }
+    if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      const st = store.getState();
+      const sel = st.clips.find(c => c.id === st.selected_clip_id);
+      if (sel?.compound_id) store.dispatch(act.ungroupCompound(sel.compound_id));
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); store.dispatch(act.selectAll()); return; }
     // Zoom
     if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); timeline.zoomBy(1.25); return; }
     if (mod && e.key === '-') { e.preventDefault(); timeline.zoomBy(1 / 1.25); return; }

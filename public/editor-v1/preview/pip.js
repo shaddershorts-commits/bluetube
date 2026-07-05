@@ -4,6 +4,7 @@
 // A camada de CIMA (ultima do array) aparece na frente.
 
 import * as act from '../core/actions.js';
+import { effectiveOverlays } from '../core/selectors.js';
 
 export function createPip(container, videoSrcEl, store, player) {
   const el = document.createElement('video');
@@ -19,8 +20,8 @@ export function createPip(container, videoSrcEl, store, player) {
   let dragging = null;
 
   function activeOverlayAt(state, t) {
-    const list = (state.overlays || []).filter(o =>
-      o.active !== false && t >= o.start - 1e-6 && t < o.start + (o.source_out - o.source_in));
+    const list = effectiveOverlays(state).filter(o =>
+      t >= o.start - 1e-6 && t < o.start + (o.source_out - o.source_in));
     return list.length ? list[list.length - 1] : null; // topo = frente
   }
 
