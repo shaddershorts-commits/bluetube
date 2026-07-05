@@ -666,8 +666,9 @@ async function processEditV0(jobId, p) {
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch(e){} }, 60000);
   } catch (err) {
     if (err.message === 'cancelled') return;
-    console.error('[edit-v0]', jobId, err.message);
-    JOBS.set(jobId, { status: 'error', progress: 0, error: err.message });
+    console.error('[edit-v0]', jobId, err.message, err.stack?.slice(0, 400));
+    const detail = err.message || err.code || (err.stack ? err.stack.slice(0, 300) : String(err));
+    JOBS.set(jobId, { status: 'error', progress: 0, error: detail });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch(e){} }, 10000);
   }
 }
