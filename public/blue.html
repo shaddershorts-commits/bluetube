@@ -3989,7 +3989,7 @@ async function doUpload(){
           lastLoaded=e.loaded;lastTime=now;
         }
       };
-      xhr.onload=()=>xhr.status<300?res():rej(new Error('HTTP '+xhr.status+': '+xhr.responseText.slice(0,80)));
+      xhr.onload=()=>{if(xhr.status<300)return res();const body=xhr.responseText||'';if(xhr.status===413||body.includes('exceeded')||body.includes('too large')){rej(new Error(t('toast_upload_storage_limit','❌ O vídeo passou do limite do servidor de armazenamento. Tenta um arquivo menor (ou comprime antes de enviar).')));}else{rej(new Error('HTTP '+xhr.status+': '+body.slice(0,80)));}};
       xhr.onerror=()=>rej(new Error('Falha de rede'));
       xhr.open('POST',upUrl);
       xhr.setRequestHeader('apikey',d1.anon_key);
