@@ -138,8 +138,9 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Email pro admin SE houver problemas
-    const tem_problema = zumbis_pagantes.length > 0 || zumbis_orfaos.length > 0;
+    // Email pro admin SO quando o auto-fix EXECUTOU (acao real). Deteccao
+    // passiva repetida (mesmo zumbi guardrail-blocked a cada 4h) nao spamma.
+    const tem_problema = !!(auto_fix_status && auto_fix_status.startsWith('executado'));
     if (tem_problema && RESEND_KEY && ADMIN_EMAIL) {
       const html = renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors, auto_fix_status, auto_fix_results });
       const subjectExtra = auto_fix && auto_fix_status?.startsWith('executado') ? ' (AUTO-FIX rodou)' : '';

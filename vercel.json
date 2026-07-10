@@ -129,30 +129,6 @@
       "schedule": "0 */6 * * *"
     },
     {
-      "path": "/api/reactivation-emails",
-      "schedule": "0 10 * * 3"
-    },
-    {
-      "path": "/api/email-sequence?audience=free",
-      "schedule": "0 10 * * 4"
-    },
-    {
-      "path": "/api/email-sequence?audience=full",
-      "schedule": "0 10 * * 5"
-    },
-    {
-      "path": "/api/trial-expiry-warning",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/milestone-emails",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/weekly-trends-email",
-      "schedule": "0 8 * * 1"
-    },
-    {
       "path": "/api/blue-stories?action=limpar",
       "schedule": "0 */6 * * *"
     },
@@ -213,20 +189,8 @@
       "schedule": "0 11 22 * *"
     },
     {
-      "path": "/api/affiliate-robustness?action=daily-orphans-alert",
-      "schedule": "0 11 * * *"
-    },
-    {
       "path": "/api/virais-canais?action=coletar-curados",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/baixablue-cookies-monitor",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/virais-canais?action=daily-alert-master",
-      "schedule": "30 10 * * *"
     },
     {
       "path": "/api/nichos-secretos?action=coletar",

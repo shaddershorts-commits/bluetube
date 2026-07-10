@@ -117,25 +117,8 @@ module.exports = async function handler(req, res) {
         }
       } catch(e) {}
 
-      // Email summary (so com sucesso)
-      const RESEND = process.env.RESEND_API_KEY;
-      if (RESEND && upR.ok) {
-        fetch('https://api.resend.com/emails', { method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + RESEND },
-          body: JSON.stringify({
-            from: 'Blue Backup <noreply@bluetubeviral.com>',
-            to: ['cannongames01@gmail.com'],
-            subject: '✅ Backup Blue (encrypted) - ' + new Date().toLocaleDateString('pt-BR'),
-            html: `<div style="font-family:sans-serif;background:#0a1628;color:#e8f4ff;padding:24px;border-radius:12px">
-              <h2 style="color:#3b82f6">💾 Backup encrypted concluido</h2>
-              <p>Tamanho: <strong>${(encrypted.length/1024).toFixed(1)}KB</strong> (${(gzipped.length/1024).toFixed(1)}KB gzip + 42B encrypt overhead)</p>
-              <p>Tabelas: ${TABELAS.length}</p>
-              ${Object.entries(dados).map(([t,d])=>`<p>• ${t}: ${d.length} rows</p>`).join('')}
-              <p style="color:#999;font-size:11px;margin-top:20px">Bucket privado: ${BUCKET} · Path: ${storagePath || 'erro'}</p>
-            </div>`
-          })
-        }).catch(() => {});
-      }
+      // Email diario de sucesso REMOVIDO (2026-07-05 — economia Resend).
+      // Falhas continuam visiveis nos logs/monitor-health.
 
       return res.status(200).json({
         ok: true,
