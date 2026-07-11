@@ -108,7 +108,10 @@ module.exports = async function handler(req, res) {
     let auto_fix_results = [];
     if (auto_fix) {
       const ADMIN_SECRET = process.env.ADMIN_SECRET;
-      const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
+      // www DIRETO: o apex 307-redireciona e o fetch DERRUBA o header
+      // Authorization em redirect cross-origin -> admin 401 -> auto-fix nunca
+      // funcionava (zumbi re-alertado pra sempre). Causa raiz do spam.
+      const SITE_URL = (process.env.SITE_URL || 'https://www.bluetubeviral.com').replace('https://bluetubeviral.com', 'https://www.bluetubeviral.com');
       if (!ADMIN_SECRET) {
         auto_fix_status = 'skipped_sem_admin_secret';
       } else if (zumbis_pagantes.length === 0) {
@@ -116,8 +119,14 @@ module.exports = async function handler(req, res) {
       } else if (zumbis_pagantes.length > 5) {
         auto_fix_status = `skipped_demais_zumbis_${zumbis_pagantes.length}_acima_de_5`;
       } else {
-        auto_fix_status = `executado_${zumbis_pagantes.length}_zumbi(s)`;
-        for (const z of zumbis_pagantes) {
+        // GUARDRAIL is_manual: conta mexida manualmente pelo admin NUNCA
+        // sofre refund automatico (pode haver acordo por fora). Esses casos
+        // aparecem so no resumo diario pro admin decidir.
+        const fixaveis = zumbis_pagantes.filter(z => !z.is_manual);
+        auto_fix_status = fixaveis.length
+          ? `executado_${fixaveis.length}_zumbi(s)`
+          : `skipped_todos_is_manual_${zumbis_pagantes.length}`;
+        for (const z of fixaveis) {
           try {
             const r = await fetch(`${SITE_URL}/api/admin`, {
               method: 'POST',
@@ -138,22 +147,35 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Email pro admin SO quando o auto-fix EXECUTOU (acao real). Deteccao
-    // passiva repetida (mesmo zumbi guardrail-blocked a cada 4h) nao spamma.
-    const tem_problema = !!(auto_fix_status && auto_fix_status.startsWith('executado'));
+    // Email do audit com THROTTLE DE 24H (orcamento Resend Free: max 1/dia,
+    // deixando o limite diario de 100 livre pro que importa — OTP de cadastro).
+    const tem_problema = zumbis_pagantes.length > 0 || zumbis_orfaos.length > 0;
     if (tem_problema && RESEND_KEY && ADMIN_EMAIL) {
-      const html = renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors, auto_fix_status, auto_fix_results });
-      const subjectExtra = auto_fix && auto_fix_status?.startsWith('executado') ? ' (AUTO-FIX rodou)' : '';
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: FROM_EMAIL,
-          to: ADMIN_EMAIL,
-          subject: `🚨 Audit Stripe — ${zumbis_pagantes.length} zumbi(s) pagante(s), ${zumbis_orfaos.length} orfao(s)${subjectExtra}`,
-          html,
-        }),
-      }).catch((e) => console.error('[audit-stripe-zumbis] email falhou:', e.message));
+      try {
+        const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const lastR = await fetch(
+          SUPABASE_URL + "/rest/v1/admin_actions?action=eq.audit-zumbi-email&created_at=gte." + cutoff + "&select=id&limit=1",
+          { headers: supaH }
+        );
+        const recent = lastR.ok ? await lastR.json() : [];
+        if (!recent.length) {
+          const html = renderEmailHtml({ zumbis_pagantes, zumbis_orfaos, total_checados, stripe_errors, auto_fix_status, auto_fix_results });
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + RESEND_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: FROM_EMAIL, to: ADMIN_EMAIL,
+              subject: "🚨 Audit Stripe — " + zumbis_pagantes.length + " zumbi(s), " + zumbis_orfaos.length + " orfao(s) (resumo diario)",
+              html,
+            }),
+          });
+          await fetch(SUPABASE_URL + "/rest/v1/admin_actions", {
+            method: "POST",
+            headers: { ...supaH, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ admin_email: "system", action: "audit-zumbi-email", target_email: ADMIN_EMAIL, details: { zumbis: zumbis_pagantes.length } }),
+          }).catch(() => {});
+        }
+      } catch (e) { console.error("[audit] email throttle:", e.message); }
     }
 
     return res.status(200).json({
