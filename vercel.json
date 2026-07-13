@@ -209,22 +209,6 @@
       "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/bluetendencias-old?action=atualizar-tendencias",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/bluetendencias-old?action=detectar-emergentes",
-      "schedule": "0 */2 * * *"
-    },
-    {
-      "path": "/api/bluetendencias-old?action=analisar-titulos",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/bluetendencias-old?action=notificar-oportunidades",
-      "schedule": "0 9 * * *"
-    },
-    {
       "path": "/api/virais-ml?action=enriquecer-velocidades",
       "schedule": "0 */3 * * *"
     },
