@@ -6,6 +6,40 @@
 const { checkBan } = require('./_helpers/checkBan');
 
 module.exports = async function handler(req, res) {
+  // ── TRANSCODE pos-upload (fix permanente da fluidez do feed) ──────────
+  if (req.body?.action === 'transcode') {
+    const SU = process.env.SUPABASE_URL;
+    const SK = process.env.SUPABASE_SERVICE_KEY;
+    const AK = process.env.SUPABASE_ANON_KEY || SK;
+    const RW = process.env.RAILWAY_FFMPEG_URL;
+    const { token, video_id } = req.body || {};
+    if (!token || !video_id) return res.status(400).json({ error: 'token e video_id obrigatorios' });
+    if (!RW) return res.status(200).json({ ok: false, motivo: 'railway_ausente' });
+    try {
+      const uR = await fetch(SU + '/auth/v1/user', { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'token invalido' });
+      const uid = (await uR.json()).id;
+      const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+      const vR = await fetch(SU + '/rest/v1/blue_videos?id=eq.' + encodeURIComponent(video_id) + '&user_id=eq.' + uid + '&select=id,video_url&limit=1', { headers: h });
+      const [v] = vR.ok ? await vR.json() : [];
+      if (!v?.video_url) return res.status(404).json({ error: 'video_nao_encontrado' });
+      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/(.+)$/);
+      if (!m) return res.status(400).json({ error: 'url_invalida' });
+      const jr = await fetch(RW.replace(/\/$/, '') + '/blue-transcode', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_url: v.video_url.replace('cdn.bluetubeviral.com', SU.replace('https://', '')),
+          storage_path: m[1], video_id: v.id, backup: false,
+          supabase_url: SU, supabase_key: SK,
+        }),
+      });
+      const jd = await jr.json().catch(() => ({}));
+      return res.status(200).json({ ok: jr.ok, job_id: jd.job_id || null });
+    } catch (e) {
+      return res.status(200).json({ ok: false, erro: e.message });
+    }
+  }
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

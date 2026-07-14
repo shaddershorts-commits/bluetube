@@ -17,6 +17,41 @@ module.exports = async function handler(req, res) {
   const H = { 'apikey': SK, 'Authorization': `Bearer ${SK}`, 'Content-Type': 'application/json' };
   const now = new Date().toISOString();
 
+  // ── SWEEPER de transcode (rede de seguranca do fix de fluidez) ─────────
+  // Roda no cron 6/6h: videos das ultimas 48h sem transcoded_at sao
+  // enviados pro worker (max 4/rodada pra nao saturar o Railway).
+  if (req.query?.action === 'transcode-sweep' || (!req.body?.action && req.headers['x-vercel-cron'])) {
+    try {
+      const RW = process.env.RAILWAY_FFMPEG_URL;
+      if (RW) {
+        const cutoff = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+        const r = await fetch(
+          SU + '/rest/v1/blue_videos?transcoded_at=is.null&created_at=gte.' + cutoff + '&status=eq.active&select=id,video_url&limit=4',
+          { headers: H }
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          for (const v of rows) {
+            const m = (v.video_url || '').match(/object\/(?:public\/)?blue-videos\/(.+)$/);
+            if (!m) continue;
+            fetch(RW.replace(/\/$/, '') + '/blue-transcode', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                video_url: v.video_url.replace('cdn.bluetubeviral.com', SU.replace('https://', '')),
+                storage_path: m[1], video_id: v.id, backup: false,
+                supabase_url: SU, supabase_key: SK,
+              }),
+            }).catch(() => {});
+          }
+          console.log('[transcode-sweep] disparados:', rows.length);
+        } else {
+          // coluna transcoded_at pode nao existir ainda (400) — tolera
+          console.log('[transcode-sweep] skip:', r.status);
+        }
+      }
+    } catch (e) { console.log('[transcode-sweep] erro:', e.message); }
+  }
+
   // ── REPORT VIDEO (user report: inappropriate, spam, etc) ────────────────────
   if (req.method === 'POST' && req.body?.action === 'report-video') {
     const { video_id, reason, token } = req.body;

@@ -384,6 +384,86 @@ app.post('/cancel/:jobId', (req, res) => {
 //   5. scale + crop pra 1080×1920 (ou letterbox se aspect_strategy)
 //   6. Upload pro Supabase
 // Extrai a trilha de audio de um video em mp3 compacto (pro Whisper 25MB).
+// ── BLUE FEED: transcode permanente de videos ─────────────────────────────
+// Re-encoda pra H264 CRF 26 (cap 1080 largura) + AAC 128k + FASTSTART
+// (moov no inicio = progressive streaming real). Sobrescreve o arquivo no
+// MESMO storage_path; opcionalmente salva backup do original (.orig.mp4).
+// Job assincrono (padrao JOBS do edit-v0): responde job_id, polling /status.
+app.post('/blue-transcode', (req, res) => {
+  const p = req.body || {};
+  if (!p.video_url || !p.storage_path || !p.supabase_url || !p.supabase_key) {
+    return res.status(400).json({ error: 'video_url, storage_path e credenciais obrigatorios' });
+  }
+  const jobId = uuidv4();
+  JOBS.set(jobId, { status: 'queued', progress: 0 });
+  res.json({ ok: true, job_id: jobId });
+  processBlueTranscode(jobId, p).catch(e => {
+    console.error('[blue-transcode]', jobId, e.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
+  });
+});
+
+async function processBlueTranscode(jobId, p) {
+  const dir = path.join('/tmp', 'bt-' + jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const update = (status, progress, extra = {}) => JOBS.set(jobId, { status, progress, ...extra });
+  try {
+    update('downloading', 10);
+    const src = path.join(dir, 'src.mp4');
+    await downloadFile(p.video_url, src);
+    const beforeBytes = fs.statSync(src).size;
+
+    // backup do original ANTES de sobrescrever (path .orig.mp4, mesmo bucket)
+    if (p.backup) {
+      update('backup', 25);
+      try {
+        await uploadToSupabase(src, p.storage_path.replace(/\.mp4$/i, '') + '.orig.mp4', p.supabase_url, p.supabase_key);
+      } catch (e) { console.log('[blue-transcode] backup falhou (segue):', e.message); }
+    }
+
+    update('transcoding', 40);
+    const out = path.join(dir, 'out.mp4');
+    // scale: cap 1080 de largura, mantem aspect, par (h264 exige)
+    await run('ffmpeg', [
+      '-y', '-i', src,
+      '-vf', "scale='min(1080,iw)':-2",
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26',
+      '-maxrate', '4M', '-bufsize', '8M',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      out,
+    ]);
+    const afterBytes = fs.statSync(out).size;
+
+    update('uploading', 80);
+    // sobrescreve o MESMO path (URLs existentes continuam validas; CDN tem
+    // cache 30d — o purge acontece pela query ?v= no cliente OU naturalmente)
+    await uploadToSupabase(out, p.storage_path, p.supabase_url, p.supabase_key);
+
+    // marca no banco (coluna transcoded_at; tolera nao existir ainda)
+    if (p.video_id) {
+      try {
+        await fetch(`${p.supabase_url}/rest/v1/blue_videos?id=eq.${p.video_id}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: p.supabase_key, Authorization: 'Bearer ' + p.supabase_key,
+            'Content-Type': 'application/json', Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({ transcoded_at: new Date().toISOString() }),
+        });
+      } catch (e) { console.log('[blue-transcode] patch db falhou (segue):', e.message); }
+    }
+
+    update('done', 100, { before_bytes: beforeBytes, after_bytes: afterBytes });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 60000);
+  } catch (err) {
+    console.error('[blue-transcode]', jobId, err.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: err.message || err.code || String(err) });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 10000);
+  }
+}
+
 app.post('/extract-audio', async (req, res) => {
   const { video_url, supabase_url, supabase_key } = req.body || {};
   if (!video_url || !supabase_url || !supabase_key) {

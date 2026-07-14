@@ -3999,6 +3999,7 @@ async function doUpload(){
       xhr.send(selFile);
     });
     fill.style.width='100%';msg.textContent='✅ Publicado!';btn.textContent='✅ Pronto!';toast(t('toast_upload_published','🎬 Publicado!'));haptic('success');
+    if(d1.video&&d1.video.id){fetch('/api/blue-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'transcode',token:vt,video_id:d1.video.id})}).catch(()=>{});}
     if(d1.video){d1.video.creator=myProfile||{};videos.unshift(d1.video);renderFeed();}
     setTimeout(()=>{closeUpload();prog.style.display='none';fill.style.width='0%';msg.textContent='';btn.textContent='Publicar →';btn.disabled=true;selFile=null;thumbB64=null;document.getElementById('dropIcon').textContent='🎬';document.getElementById('dropLbl').textContent='Toque para selecionar';document.getElementById('prevRow').style.display='none';document.getElementById('prevThumb').innerHTML='🎬';document.getElementById('upTitle').value='';document.getElementById('upDesc').value='';},1800);
   }catch(err){msg.className='up-msg err';msg.textContent=err.message;btn.disabled=false;btn.textContent='Tentar novamente';fill.style.width='0%';prog.style.display='none';haptic('error');try{if(window._lastUploadMeta&&window._lastUploadMeta.video&&window._lastUploadMeta.video.id){fetch('/api/blue-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete-video',token:vt,video_id:window._lastUploadMeta.video.id})}).catch(()=>{});}}catch(_){}}
