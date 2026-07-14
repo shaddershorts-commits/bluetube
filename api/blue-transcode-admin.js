@@ -93,6 +93,27 @@ module.exports = async function handler(req, res) {
       return res.status(jr.status).json(jd);
     }
 
+    if (action === 'thumb') {
+      // Regenera thumbnail com anti-frame-preto (sincrono no Railway)
+      if (!RW) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL ausente' });
+      const videoId = req.query.video_id || req.body?.video_id;
+      if (!videoId) return res.status(400).json({ error: 'video_id obrigatorio' });
+      const r = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${videoId}&select=id,video_url&limit=1`, { headers: h });
+      const [v] = r.ok ? await r.json() : [];
+      if (!v?.video_url) return res.status(404).json({ error: 'video_nao_encontrado' });
+      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/([^?]+)/);
+      if (!m) return res.status(400).json({ error: 'url_fora_do_bucket' });
+      const jr = await fetch(`${RW.replace(/\/$/, '')}/blue-thumb`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_url: v.video_url.replace('cdn.bluetubeviral.com', SU.replace('https://', '')),
+          storage_path: m[1], video_id: v.id,
+          supabase_url: SU, supabase_key: SK,
+        }),
+      });
+      return res.status(jr.status).json(await jr.json().catch(() => ({})));
+    }
+
     if (action === 'job') {
       if (!RW) return res.status(503).json({ error: 'RAILWAY_FFMPEG_URL ausente' });
       const jobId = req.query.job_id;

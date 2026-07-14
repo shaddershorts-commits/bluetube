@@ -29,7 +29,7 @@ module.exports = async function handler(req, res) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_url: v.video_url.replace('cdn.bluetubeviral.com', SU.replace('https://', '')),
-          storage_path: m[1], video_id: v.id, backup: false,
+          storage_path: m[1], video_id: v.id, backup: false, gen_thumb: true,
           supabase_url: SU, supabase_key: SK,
         }),
       });

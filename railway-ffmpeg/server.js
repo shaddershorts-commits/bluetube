@@ -252,14 +252,14 @@ async function finalRender(dir, estilo, hasMusic, audioDur, videoDur) {
 }
 
 // Upload para Supabase Storage via REST
-async function uploadToSupabase(filePath, outputPath, supabaseUrl, supabaseKey) {
+async function uploadToSupabase(filePath, outputPath, supabaseUrl, supabaseKey, contentType) {
   const bucket = 'blue-videos';
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${outputPath}`;
   const fileBuffer = fs.readFileSync(filePath);
 
   const res = await axios.post(url, fileBuffer, {
     headers: {
-      'Content-Type': 'video/mp4',
+      'Content-Type': contentType || 'video/mp4',
       'Authorization': `Bearer ${supabaseKey}`,
       'apikey': supabaseKey,
       'x-upsert': 'true'
@@ -403,6 +403,64 @@ app.post('/blue-transcode', (req, res) => {
   });
 });
 
+// Regenera SO a thumbnail de um video ja existente (anti-frame-preto).
+// Sincrono — download + 3 frames leva poucos segundos.
+app.post('/blue-thumb', async (req, res) => {
+  const p = req.body || {};
+  if (!p.video_url || !p.storage_path || !p.supabase_url || !p.supabase_key) {
+    return res.status(400).json({ error: 'video_url, storage_path e credenciais obrigatorios' });
+  }
+  const dir = path.join('/tmp', 'bthumb-' + uuidv4());
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const src = path.join(dir, 'src.mp4');
+    await downloadFile(p.video_url, src);
+    const tf = await extractBrightThumb(src, dir);
+    if (!tf) return res.status(500).json({ error: 'nenhum frame extraido' });
+    const thumbPath = p.storage_path.replace(/[^/]+$/, 'thumb.jpg');
+    await uploadToSupabase(tf, thumbPath, p.supabase_url, p.supabase_key, 'image/jpeg');
+    const thumbUrl = `${p.supabase_url}/storage/v1/object/public/blue-videos/${thumbPath}?v=${Date.now()}`;
+    if (p.video_id) {
+      await fetch(`${p.supabase_url}/rest/v1/blue_videos?id=eq.${p.video_id}`, {
+        method: 'PATCH',
+        headers: { apikey: p.supabase_key, Authorization: 'Bearer ' + p.supabase_key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ thumbnail_url: thumbUrl }),
+      }).catch(() => {});
+    }
+    res.json({ ok: true, thumbnail_url: thumbUrl });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
+  }
+});
+
+// Extrai thumbnail EVITANDO frames pretos: testa 3 pontos do video e aceita
+// o primeiro com brilho medio (YAVG) > 18. Corrige as "thumbs de tela preta"
+// que a captura client-side (frame fixo em ~1s) gerava.
+async function extractBrightThumb(src, dir) {
+  let dur = 10;
+  try {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src]);
+    dur = parseFloat(stdout) || 10;
+  } catch (_) {}
+  let fallback = null;
+  for (const pct of [0.15, 0.35, 0.6]) {
+    const t = Math.max(0.3, Math.min(dur - 0.2, dur * pct));
+    const out = path.join(dir, `thumb_${Math.round(pct * 100)}.jpg`);
+    try {
+      await run('ffmpeg', ['-y', '-ss', String(t.toFixed(2)), '-i', src, '-frames:v', '1', '-vf', "scale='min(720,iw)':-2", '-q:v', '4', out]);
+      if (!fs.existsSync(out) || !fs.statSync(out).size) continue;
+      if (!fallback) fallback = out;
+      const { stdout: so, stderr: se } = await run('ffmpeg', ['-i', out, '-vf', 'signalstats,metadata=print:file=-', '-f', 'null', '-']);
+      const m = (so + se).match(/YAVG[=:]\s*([\d.]+)/);
+      const yavg = m ? parseFloat(m[1]) : 0;
+      if (yavg > 18) return out;
+    } catch (_) {}
+  }
+  return fallback;
+}
+
 async function processBlueTranscode(jobId, p) {
   const dir = path.join('/tmp', 'bt-' + jobId);
   fs.mkdirSync(dir, { recursive: true });
@@ -441,6 +499,20 @@ async function processBlueTranscode(jobId, p) {
     // cache 30d — o purge acontece pela query ?v= no cliente OU naturalmente)
     await uploadToSupabase(out, p.storage_path, p.supabase_url, p.supabase_key);
 
+    // Thumbnail server-side com anti-frame-preto (substitui a captura do
+    // cliente, que pegava frame fixo e saia preta em videos com intro escura)
+    let thumbUrl = null;
+    if (p.gen_thumb) {
+      try {
+        const tf = await extractBrightThumb(out, dir);
+        if (tf) {
+          const thumbPath = p.storage_path.replace(/[^/]+$/, 'thumb.jpg');
+          await uploadToSupabase(tf, thumbPath, p.supabase_url, p.supabase_key, 'image/jpeg');
+          thumbUrl = `${p.supabase_url}/storage/v1/object/public/blue-videos/${thumbPath}?v=${Date.now()}`;
+        }
+      } catch (e) { console.log('[blue-transcode] thumb falhou (segue):', e.message); }
+    }
+
     // marca no banco + cache-bust: ?v=timestamp na video_url forca o
     // Cloudflare (cache 30d) a buscar o arquivo novo. Se transcoded_at
     // ainda nao existir como coluna, repete so com a video_url.
@@ -450,12 +522,13 @@ async function processBlueTranscode(jobId, p) {
         'Content-Type': 'application/json', Prefer: 'return=minimal',
       };
       const bustedUrl = String(p.video_url).split('?')[0] + '?v=' + Date.now();
+      const extra = thumbUrl ? { thumbnail_url: thumbUrl } : {};
       const patchDb = (body) => fetch(`${p.supabase_url}/rest/v1/blue_videos?id=eq.${p.video_id}`, {
         method: 'PATCH', headers: dbHeaders, body: JSON.stringify(body),
       });
       try {
-        const r1 = await patchDb({ video_url: bustedUrl, transcoded_at: new Date().toISOString() });
-        if (!r1.ok) await patchDb({ video_url: bustedUrl });
+        const r1 = await patchDb({ video_url: bustedUrl, ...extra, transcoded_at: new Date().toISOString() });
+        if (!r1.ok) await patchDb({ video_url: bustedUrl, ...extra });
       } catch (e) { console.log('[blue-transcode] patch db falhou (segue):', e.message); }
     }
 

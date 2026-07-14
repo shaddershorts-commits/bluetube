@@ -179,6 +179,32 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({ last_message: text.trim(), last_message_at: new Date().toISOString() })
       }).catch(() => {});
 
+      // Notificacao inbox (blue_notificacoes — tabela VIVA; blue_notifications
+      // e legacy inexistente). Dedupe: 1 notif nao-lida por remetente.
+      try {
+        const dupR = await fetch(
+          `${SU}/rest/v1/blue_notificacoes?user_id=eq.${to_user_id}&tipo=eq.mensagem&lida=eq.false&dados->>from_user_id=eq.${userId}&select=id&limit=1`,
+          { headers: h }
+        );
+        const dup = dupR.ok ? await dupR.json() : [];
+        if (!dup.length) {
+          const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
+          const username = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
+          await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+            method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+            body: JSON.stringify({
+              user_id: to_user_id, tipo: 'mensagem', titulo: 'Nova mensagem',
+              mensagem: `@${username}: "${text.trim().slice(0, 60)}${text.trim().length > 60 ? '…' : ''}"`,
+              dados: { from_user_id: userId, conv_id: convId },
+            })
+          }).catch(() => null);
+          try {
+            const { sendPushToUser } = require('./_helpers/push.js');
+            await sendPushToUser(to_user_id, { title: 'Nova mensagem', body: `@${username} te mandou uma mensagem` });
+          } catch (_) {}
+        }
+      } catch (_) {}
+
       return res.status(200).json({ message: Array.isArray(msg) ? msg[0] : msg, conv_id: convId });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }

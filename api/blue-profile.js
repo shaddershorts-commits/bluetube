@@ -154,11 +154,17 @@ module.exports = async function handler(req, res) {
   // POST update profile
   if (req.method === 'POST' && action === 'update') {
     if (!userId) return res.status(401).json({ error: 'Login necessário' });
-    const { display_name, bio, avatar_data, username } = req.body;
+    const { display_name, bio, avatar_data, username, link_url, link_label } = req.body;
     try {
       const patch = { updated_at: new Date().toISOString() };
       if (display_name !== undefined) patch.display_name = display_name.slice(0,50);
       if (bio !== undefined) patch.bio = bio.slice(0,150);
+      // Link estilo Instagram (colunas em sql/blue_profile_link.sql)
+      if (link_url !== undefined) {
+        const u = String(link_url || '').trim().slice(0, 200);
+        patch.link_url = u && !/^https?:\/\//i.test(u) ? 'https://' + u : u || null;
+      }
+      if (link_label !== undefined) patch.link_label = String(link_label || '').trim().slice(0, 40) || null;
       if (username) {
         const clean = username.toLowerCase().replace(/[^a-z0-9_.]/g,'').slice(0,30);
         if (clean.length > 2) patch.username = clean;
