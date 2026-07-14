@@ -512,6 +512,10 @@ Regras:
       geminiModel: 'gemini-2.5-flash',
     });
     const text = _clean(raw);
+    // Debug temporario (remover antes do merge): expoe o prompt real
+    if (req.body?.debug === 'v3') {
+      return res.status(200).json({ text, engine: provider, _debug: { userPrompt: userPrompt.slice(0, 800), version, isAdjust } });
+    }
     if (text) {
       const result = { text, engine: provider };
       if (_ckRewrite && _SU2 && _SK2) {
