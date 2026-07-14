@@ -17,6 +17,14 @@ const _FX_TARGET = {
   'Português (Brasil)': 'BRL', 'English': 'USD', 'Français': 'EUR',
   'Deutsch': 'EUR', 'Italiano': 'EUR', '日本語': 'JPY', '中文': 'CNY',
 };
+// Lookup tolerante a encoding/acentos ("Portugu?s", "Portugues" etc.)
+const _FX_TARGET_LOOSE = { portugu: 'BRL', english: 'USD', fran: 'EUR', deutsch: 'EUR', italiano: 'EUR' };
+function _fxTarget(lang) {
+  if (_FX_TARGET[lang]) return _FX_TARGET[lang];
+  const norm = String(lang || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '');
+  for (const k of Object.keys(_FX_TARGET_LOOSE)) if (norm.startsWith(k)) return _FX_TARGET_LOOSE[k];
+  return null;
+}
 const _SYM2CODE = { 'US$': 'USD', 'USD': 'USD', '$': 'USD', 'R$': 'BRL', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
 const _WORD2CODE = {
   dollar: 'USD', dollars: 'USD', bucks: 'USD', 'dólar': 'USD', 'dólares': 'USD', dolares: 'USD',
@@ -48,7 +56,7 @@ function _fmtMoney(usd, code) {
   return sym + (Math.round(v * 100) / 100).toLocaleString(code === 'BRL' ? 'pt-BR' : 'en-US');
 }
 export function _annotateCurrencies(text, lang) {
-  const dst = _FX_TARGET[lang];
+  const dst = _fxTarget(lang);
   if (!dst) return { text, found: false };
   let found = false;
   const conv = (raw, srcCode, numStr, multWord) => {
