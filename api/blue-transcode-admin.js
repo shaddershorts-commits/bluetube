@@ -23,8 +23,13 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === 'list') {
-      const r = await fetch(
-        `${SU}/rest/v1/blue_videos?select=id,video_url,file_size,created_at,hidden&order=created_at.desc&limit=500`,
+      // transcoded_at pode nao existir ainda (SQL pendente) — tenta com, cai sem
+      let r = await fetch(
+        `${SU}/rest/v1/blue_videos?status=eq.active&select=id,video_url,created_at,transcoded_at&order=created_at.desc&limit=500`,
+        { headers: h }
+      );
+      if (!r.ok) r = await fetch(
+        `${SU}/rest/v1/blue_videos?status=eq.active&select=id,video_url,created_at&order=created_at.desc&limit=500`,
         { headers: h }
       );
       const rows = r.ok ? await r.json() : [];
@@ -33,7 +38,7 @@ module.exports = async function handler(req, res) {
 
     if (action === 'audit-files') {
       const r = await fetch(
-        `${SU}/rest/v1/blue_videos?select=id,video_url,hidden&order=created_at.desc&limit=500`,
+        `${SU}/rest/v1/blue_videos?status=eq.active&select=id,video_url&order=created_at.desc&limit=500`,
         { headers: h }
       );
       const rows = r.ok ? await r.json() : [];
