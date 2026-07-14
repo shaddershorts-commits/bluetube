@@ -67,7 +67,7 @@ export default async function handler(req, res) {
 
   // Helper: save roteiro, increment user stats, send transactional email
   async function saveAndReturn(result) {
-    if (!adjust && SUPABASE_URL && SUPABASE_KEY && result.text) {
+    if (!adjust && version !== 'V3' && SUPABASE_URL && SUPABASE_KEY && result.text) {
       try {
         const isCasual = version !== 'V2';
         const payload = {
@@ -322,7 +322,30 @@ IDIOMA DE SAÍDA OBRIGATÓRIO: ${lang}
 ⚠️ O roteiro DEVE ser escrito 100% em ${lang}. Se o idioma de saída não for ${lang}, o roteiro está ERRADO — reescreva.
 ${ANGLE}`;
 
-  const systemPrompt = isAdjust ? systemPromptAdjust : systemPromptCreate;
+  // ── SYSTEM PROMPT — V3 TRADUCAO FIEL (tradutor, NAO roteirista) ────────────
+  const systemPromptTranslate = `Você é um tradutor profissional especializado em localização de conteúdo para vídeos curtos.
+
+SUA ÚNICA TAREFA: traduzir a transcrição para ${lang} com MÁXIMA fidelidade — sem reescrever, sem resumir, sem "melhorar".
+
+REGRAS DE FIDELIDADE (as mais importantes):
+1. NÃO mude a estrutura, a ordem das frases nem o estilo do original
+2. NÃO adicione nem remova informações
+3. NÃO transforme em roteiro novo — é uma TRADUÇÃO, não uma re-narração
+4. Mantenha a mesma pessoa narrativa do original (primeira pessoa continua primeira pessoa)
+5. Mantenha o mesmo comprimento aproximado do original
+
+LOCALIZAÇÃO INTELIGENTE (aplique com precisão cirúrgica):
+- MOEDAS: converta valores para ${profile.currency} usando taxa de câmbio aproximada e arredonde para números naturais de se falar. Ex.: "¥1.000.000" para português vira "R$ 35 mil"; "R$ 500" para inglês vira "about $100". NUNCA deixe moeda estrangeira sem converter.
+- UNIDADES: converta milhas↔km, libras↔kg, pés↔metros, °F↔°C, galões↔litros conforme o padrão do país de ${lang}
+- EXPRESSÕES IDIOMÁTICAS: use o equivalente nativo de ${lang} — nunca traduza ao pé da letra
+- TERMOS E REFERÊNCIAS não comuns no país de destino (instituições, exames, programas de TV, marcas regionais): adapte para o equivalente local mais próximo mantendo o sentido exato; se não houver equivalente, mantenha o original com 2-3 palavras de contexto
+- Nomes próprios de pessoas e lugares reais: mantenha originais
+
+Retorne APENAS o texto traduzido, sem comentários, sem títulos, sem explicações.`;
+
+  const systemPrompt = isAdjust
+    ? systemPromptAdjust
+    : (version === 'V3' ? systemPromptTranslate : systemPromptCreate);
 
   const userPrompt = isAdjust
     ? `ROTEIRO ATUAL (este é o texto que você vai editar):
@@ -336,6 +359,13 @@ ${adjust.slice(0, 500)}
 """
 
 Aplique a instrução acima no ROTEIRO ATUAL fazendo o MÍNIMO de mudanças possível. Não reescreva partes que o usuário não pediu para mudar. Retorne apenas o roteiro ajustado completo, no idioma ${lang}, sem explicações.`
+    : version === 'V3'
+    ? `TRANSCRIÇÃO ORIGINAL:
+"""
+${transcript.slice(0, 3000)}
+"""
+
+Traduza o texto acima fielmente para ${lang}, aplicando a localização inteligente (moedas convertidas para ${profile.currency} com valores aproximados, unidades e expressões nativas). Não reescreva, não resuma, não reordene — apenas traduza com precisão. Retorne apenas o texto traduzido.`
     : `TRANSCRIÇÃO REAL DO VÍDEO ORIGINAL (esta é a fonte da verdade — siga de perto):
 """
 ${transcript.slice(0, 3000)}
@@ -383,8 +413,8 @@ Regras:
     const aiMod = await import('./_helpers/ai.js');
     const callAI = aiMod.callAI || aiMod.default?.callAI;
     if (typeof callAI !== 'function') throw new Error('callAI não exportado do helper');
-    const { result: raw, provider } = await callAI(userPrompt, systemPrompt, 600, null, {
-      temperature: isAdjust ? 0.55 : 0.85,
+    const { result: raw, provider } = await callAI(userPrompt, systemPrompt, version === 'V3' ? 1400 : 600, null, {
+      temperature: isAdjust ? 0.55 : (version === 'V3' ? 0.2 : 0.85),
       topP: 0.95,
       geminiModel: 'gemini-2.5-flash',
     });
@@ -410,7 +440,9 @@ Regras:
     'Español': ['No vas a creer lo que acaba de pasar. Una historia que parece ficción pero es real. Todo empezó cuando alguien decidió hacer las cosas diferente. El resultado? Nadie lo esperaba.','Deja de hacer scroll. Esto va en serio. Lo que te voy a contar puede cambiar tu forma de pensar. Presta atención porque después no hay vuelta atrás.'],
   };
   const fbScripts = _fb[lang] || _fb['Português (Brasil)'];
-  const fbText = version === 'V2' ? (fbScripts[1] || fbScripts[0]) : fbScripts[0];
+  const fbText = version === 'V3'
+    ? cleanTranscript.slice(0, 1400)
+    : version === 'V2' ? (fbScripts[1] || fbScripts[0]) : fbScripts[0];
   res.setHeader('Retry-After', '60');
   return res.status(200).json({
     text: fbText,
