@@ -56,6 +56,7 @@ Rules:
     : `a plain, faithful, descriptive title summarizing the transcript in ${safeLang} — NO clickbait, no embellishment`}
 - No emojis
 - No quotes inside the text
+- Grammar must be IMPECCABLE in ${safeLang} — correct gender agreement, articles and plurals (e.g. in Portuguese "coruja" is feminine: "das corujas", never "dos corujas")
 
 Reminder: write the titles in ${safeLang}. Reply with ONLY valid JSON, no markdown:
 {"casual":"<title in ${safeLang}>","apelativo":"<title in ${safeLang}>","traducao":"<title in ${safeLang}>"}`;
