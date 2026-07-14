@@ -8,6 +8,82 @@ import crypto from 'crypto';
 // evitar problemas de resolução do createRequire no runtime ESM do Vercel.
 function _ck(parts){ return crypto.createHash('md5').update(parts.join('|')).digest('hex'); }
 
+// ── CONVERSOR DETERMINISTICO DE MOEDA (V3 Tradução) ─────────────────────────
+// LLMs erram aritmética de câmbio ($2M virava "R$ 10 mil"). O código detecta
+// valores monetários, converte com tabela fixa e injeta «original = convertido»
+// na transcrição — a IA só substitui, sem calcular nada.
+const _FX = { USD: 1, BRL: 5.4, EUR: 0.92, GBP: 0.79, JPY: 155, CNY: 7.25, INR: 84 };
+const _FX_TARGET = {
+  'Português (Brasil)': 'BRL', 'English': 'USD', 'Français': 'EUR',
+  'Deutsch': 'EUR', 'Italiano': 'EUR', '日本語': 'JPY', '中文': 'CNY',
+};
+const _SYM2CODE = { 'US$': 'USD', 'USD': 'USD', '$': 'USD', 'R$': 'BRL', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
+const _WORD2CODE = {
+  dollar: 'USD', dollars: 'USD', bucks: 'USD', 'dólar': 'USD', 'dólares': 'USD', dolares: 'USD',
+  real: 'BRL', reais: 'BRL', euro: 'EUR', euros: 'EUR', pound: 'GBP', pounds: 'GBP',
+  yen: 'JPY', iene: 'JPY', ienes: 'JPY', rupee: 'INR', rupees: 'INR', 'rúpias': 'INR', rupias: 'INR',
+};
+const _MULT = { million: 1e6, millions: 1e6, 'milhão': 1e6, 'milhões': 1e6, milhao: 1e6, milhoes: 1e6, m: 1e6, billion: 1e9, billions: 1e9, 'bilhão': 1e9, 'bilhões': 1e9, bn: 1e9, thousand: 1e3, mil: 1e3, k: 1e3 };
+function _parseNum(s) {
+  s = String(s).trim();
+  // "2,000,000"/"2.000.000" = separador de milhar; "2.5"/"2,5" = decimal
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) return parseFloat(s.replace(/[.,]/g, ''));
+  return parseFloat(s.replace(',', '.'));
+}
+function _fmtMoney(usd, code) {
+  const v = usd * _FX[code];
+  const sym = { USD: '$', BRL: 'R$ ', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', INR: '₹' }[code];
+  const big = { USD: [' billion', ' million'], BRL: [' bilhões', ' milhões'], EUR: [' milliards', ' millions'], GBP: [' billion', ' million'], JPY: ['億', '万'], CNY: ['亿', '万'], INR: [' billion', ' million'] }[code];
+  const dec = code === 'BRL' ? ',' : '.';
+  const r1 = (n) => { const x = Math.round(n * 10) / 10; return String(x).replace('.', dec); };
+  if (code === 'JPY' || code === 'CNY') {
+    if (v >= 1e8) return sym + r1(v / 1e8) + big[0];
+    if (v >= 1e4) return sym + Math.round(v / 1e4) + big[1];
+    return sym + Math.round(v).toLocaleString('en-US');
+  }
+  if (v >= 1e9) return sym + r1(v / 1e9) + big[0];
+  if (v >= 1e6) return sym + r1(v / 1e6) + big[1];
+  if (v >= 10000 && code === 'BRL') return sym + Math.round(v / 1000) + ' mil';
+  if (v >= 1000) return sym + Math.round(v).toLocaleString(code === 'BRL' ? 'pt-BR' : 'en-US');
+  return sym + (Math.round(v * 100) / 100).toLocaleString(code === 'BRL' ? 'pt-BR' : 'en-US');
+}
+export function _annotateCurrencies(text, lang) {
+  const dst = _FX_TARGET[lang];
+  if (!dst) return { text, found: false };
+  let found = false;
+  const conv = (raw, srcCode, numStr, multWord) => {
+    const n = _parseNum(numStr);
+    if (!isFinite(n) || n <= 0) return raw;
+    const mult = multWord ? (_MULT[multWord.toLowerCase()] || 1) : 1;
+    if (srcCode === dst) return raw;
+    const usd = (n * mult) / _FX[srcCode];
+    if (!isFinite(usd) || usd <= 0) return raw;
+    found = true;
+    return `«${raw} = ${_fmtMoney(usd, dst)}»`;
+  };
+  const MULT_RE = 'million|millions|billion|billions|thousand|milh(?:ão|ões|ao|oes)|bilh(?:ão|ões|ao|oes)|mil|bn';
+  // Padrao 1: simbolo antes — $2,000,000 | US$ 2.5 million | ¥50,000 | R$ 300 mil
+  // (espaco+multiplicador so e consumido quando o multiplicador existe)
+  let out = text.replace(
+    new RegExp(`(US\\$|R\\$|USD|[$€£¥₹])\\s?(\\d[\\d.,]*)((?:\\s*(?:${MULT_RE}))?)\\b`, 'g'),
+    (raw, sym, num, multRaw) => {
+      const code = _SYM2CODE[sym] || _SYM2CODE[sym.toUpperCase()];
+      return code ? conv(raw, code, num, multRaw.trim() || null) : raw;
+    }
+  );
+  // Padrao 2: numero + palavra — 50,000 yen | 2 million dollars | 300 reais
+  out = out.replace(
+    new RegExp(`(\\d[\\d.,]*)((?:\\s+(?:${MULT_RE}))?)\\s+(dollars?|bucks|d[óo]lares?|reais|real|euros?|pounds?|yen|ienes?|rupees?|r[úu]pias)\\b`, 'gi'),
+    (raw, num, multRaw, word, offset, full) => {
+      // pula trechos ja anotados pelo padrao 1
+      if (full.lastIndexOf('«', offset) > full.lastIndexOf('»', offset)) return raw;
+      const code = _WORD2CODE[word.toLowerCase()];
+      return code ? conv(raw, code, num, multRaw.trim() || null) : raw;
+    }
+  );
+  return { text: out, found };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -363,12 +439,20 @@ ${adjust.slice(0, 500)}
 
 Aplique a instrução acima no ROTEIRO ATUAL fazendo o MÍNIMO de mudanças possível. Não reescreva partes que o usuário não pediu para mudar. Retorne apenas o roteiro ajustado completo, no idioma ${lang}, sem explicações.`
     : version === 'V3'
-    ? `TRANSCRIÇÃO ORIGINAL:
+    ? (() => {
+        // Conversao de moeda calculada EM CODIGO (LLM nao faz cambio confiavel):
+        // valores viram «original = convertido» e a IA apenas substitui.
+        const ann = _annotateCurrencies(transcript.slice(0, 3000), lang);
+        const currencyRule = ann.found
+          ? '\nMOEDAS JÁ CONVERTIDAS: onde aparecer «valor original = valor convertido», escreva APENAS o valor convertido (o texto depois do "="), integrado naturalmente à frase. Não recalcule nada.'
+          : '';
+        return `TRANSCRIÇÃO ORIGINAL:
 """
-${transcript.slice(0, 3000)}
+${ann.text}
 """
 
-Traduza o texto acima fielmente para ${lang}, aplicando a localização inteligente (moedas convertidas para ${profile.currency} com valores aproximados, unidades e expressões nativas). Não reescreva, não resuma, não reordene — apenas traduza com precisão. Retorne apenas o texto traduzido.`
+Traduza o texto acima fielmente para ${lang}, aplicando a localização inteligente (unidades e expressões nativas).${currencyRule} Não reescreva, não resuma, não reordene — apenas traduza com precisão. Retorne apenas o texto traduzido.`;
+      })()
     : `TRANSCRIÇÃO REAL DO VÍDEO ORIGINAL (esta é a fonte da verdade — siga de perto):
 """
 ${transcript.slice(0, 3000)}
