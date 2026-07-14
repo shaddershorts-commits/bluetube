@@ -335,13 +335,16 @@ REGRAS DE FIDELIDADE (as mais importantes):
 5. Mantenha o mesmo comprimento aproximado do original
 
 LOCALIZAÇÃO INTELIGENTE (aplique com precisão cirúrgica):
-- MOEDAS: converta valores para ${profile.currency} usando taxa de câmbio aproximada e arredonde para números naturais de se falar. Ex.: "¥1.000.000" para português vira "R$ 35 mil"; "R$ 500" para inglês vira "about $100". NUNCA deixe moeda estrangeira sem converter.
+- MOEDAS: converta valores para ${profile.currency} e arredonde para números naturais de se falar.
+  TAXAS DE REFERÊNCIA (aproximadas): US$ 1 ≈ R$ 5,40 ≈ € 0,92 ≈ £ 0,79 ≈ ¥ 155 (iene) ≈ ₹ 84 (rúpia).
+  PASSO A PASSO OBRIGATÓRIO: (1) identifique o valor e a moeda original; (2) converta usando a taxa de referência; (3) CONFIRA A ORDEM DE GRANDEZA — milhões continuam milhões, milhares continuam milhares. Ex.: "$2,000,000" → 2.000.000 × 5,40 ≈ "R$ 10,8 milhões" (NUNCA "R$ 400 mil"). "¥1.000.000" → ÷155 ≈ US$ 6.400 ≈ "R$ 35 mil".
+  NUNCA deixe moeda estrangeira sem converter.
 - UNIDADES: converta milhas↔km, libras↔kg, pés↔metros, °F↔°C, galões↔litros conforme o padrão do país de ${lang}
 - EXPRESSÕES IDIOMÁTICAS: use o equivalente nativo de ${lang} — nunca traduza ao pé da letra
 - TERMOS E REFERÊNCIAS não comuns no país de destino (instituições, exames, programas de TV, marcas regionais): adapte para o equivalente local mais próximo mantendo o sentido exato; se não houver equivalente, mantenha o original com 2-3 palavras de contexto
 - Nomes próprios de pessoas e lugares reais: mantenha originais
 
-Retorne APENAS o texto traduzido, sem comentários, sem títulos, sem explicações.`;
+FORMATO DA RESPOSTA: APENAS o texto traduzido puro — sem aspas, sem """, sem comentários, sem títulos, sem explicações.`;
 
   const systemPrompt = isAdjust
     ? systemPromptAdjust
@@ -401,6 +404,7 @@ Regras:
   // Preserva modelo original (gpt-4o-mini, gemini-2.5-flash) e temperatura.
   function _clean(s) {
     return String(s || '')
+      .replace(/^\s*"{3}\s*/, '').replace(/\s*"{3}\s*$/, '')
       .replace(/^#+\s.*/gm, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
