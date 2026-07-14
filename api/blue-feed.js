@@ -35,6 +35,24 @@ module.exports = async function handler(req, res) {
     return url.replace(`${SU}/storage/v1/object/public`, CDN);
   }
 
+  // Marca liked/saved do usuario logado em cada video retornado — sem isso
+  // o app/site nao tem como mostrar o coracao/bookmark preenchido ao reabrir
+  // (estado sempre resetava e parecia que a interacao "sumiu").
+  async function markMine(videos, uid) {
+    if (!uid || !Array.isArray(videos) || !videos.length) return videos;
+    try {
+      const ids = videos.map((v) => v.id).filter(Boolean).join(',');
+      if (!ids) return videos;
+      const [lR, sR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_likes?user_id=eq.${uid}&video_id=in.(${ids})&select=video_id`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_salvos?user_id=eq.${uid}&video_id=in.(${ids})&select=video_id`, { headers: h }),
+      ]);
+      const liked = new Set(lR.ok ? (await lR.json()).map((r) => r.video_id) : []);
+      const saved = new Set(sR.ok ? (await sR.json()).map((r) => r.video_id) : []);
+      return videos.map((v) => ({ ...v, liked: liked.has(v.id), saved: saved.has(v.id) }));
+    } catch (_) { return videos; }
+  }
+
   // ── RATE LIMITING ───────────────────────────────────────────────────────
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   async function checkRate(id, endpoint, max, windowMin) {
@@ -768,7 +786,7 @@ module.exports = async function handler(req, res) {
         creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' },
       }));
       return res.status(200).json({
-        videos: enriched,
+        videos: await markMine(enriched, uid),
         has_more: hasMore || feedModeOut === 'seguindo_explora',
         next_cursor: nextCursor,
         feed_mode: feedModeOut,
@@ -900,8 +918,9 @@ module.exports = async function handler(req, res) {
             { headers: h }
           );
           const profs = pR.ok ? await pR.json() : [];
+          const single = [{ ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator: profs[0] || null }];
           return res.status(200).json({
-            videos: [{ ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator: profs[0] || null }],
+            videos: await markMine(single, userPrefs?.uid),
             has_more: false,
           });
         }
@@ -978,7 +997,7 @@ module.exports = async function handler(req, res) {
             creator: exProfs[v.user_id] || { username: 'blue', display_name: 'Blue' },
           }));
           return res.status(200).json({
-            videos: enriched,
+            videos: await markMine(enriched, userPrefs?.uid),
             has_more: true,
             next_cursor: encodeCursor('recycle', '', ''),
             feed_mode: 'explore_fallback',
@@ -1031,7 +1050,7 @@ module.exports = async function handler(req, res) {
       }));
 
       return res.status(200).json({
-        videos: enrichedRecy,
+        videos: await markMine(enrichedRecy, userPrefs?.uid),
         has_more: true, // recycle loops infinitamente
         next_cursor: nextCursor,
         feed_mode: 'seen_recycle',
@@ -1324,7 +1343,7 @@ module.exports = async function handler(req, res) {
       creator: profiles[v.user_id] || { username: 'blue', display_name: 'Blue' }
     }));
 
-    return res.status(200).json({ videos: enriched, has_more, next_cursor, feed_mode: 'fresh' });
+    return res.status(200).json({ videos: await markMine(enriched, userPrefs?.uid), has_more, next_cursor, feed_mode: 'fresh' });
   } catch(err) {
     console.error('blue-feed fatal:', err.message);
     return res.status(500).json({ error: err.message, videos: [], has_more: false });
