@@ -8,6 +8,90 @@ import crypto from 'crypto';
 // evitar problemas de resolução do createRequire no runtime ESM do Vercel.
 function _ck(parts){ return crypto.createHash('md5').update(parts.join('|')).digest('hex'); }
 
+// ── CONVERSOR DETERMINISTICO DE MOEDA (V3 Tradução) ─────────────────────────
+// LLMs erram aritmética de câmbio ($2M virava "R$ 10 mil"). O código detecta
+// valores monetários, converte com tabela fixa e injeta «original = convertido»
+// na transcrição — a IA só substitui, sem calcular nada.
+const _FX = { USD: 1, BRL: 5.4, EUR: 0.92, GBP: 0.79, JPY: 155, CNY: 7.25, INR: 84 };
+const _FX_TARGET = {
+  'Português (Brasil)': 'BRL', 'English': 'USD', 'Français': 'EUR',
+  'Deutsch': 'EUR', 'Italiano': 'EUR', '日本語': 'JPY', '中文': 'CNY',
+};
+// Lookup tolerante a encoding/acentos ("Portugu?s", "Portugues" etc.)
+const _FX_TARGET_LOOSE = { portugu: 'BRL', english: 'USD', fran: 'EUR', deutsch: 'EUR', italiano: 'EUR' };
+function _fxTarget(lang) {
+  if (_FX_TARGET[lang]) return _FX_TARGET[lang];
+  const norm = String(lang || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '');
+  for (const k of Object.keys(_FX_TARGET_LOOSE)) if (norm.startsWith(k)) return _FX_TARGET_LOOSE[k];
+  return null;
+}
+const _SYM2CODE = { 'US$': 'USD', 'USD': 'USD', '$': 'USD', 'R$': 'BRL', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
+const _WORD2CODE = {
+  dollar: 'USD', dollars: 'USD', bucks: 'USD', 'dólar': 'USD', 'dólares': 'USD', dolares: 'USD',
+  real: 'BRL', reais: 'BRL', euro: 'EUR', euros: 'EUR', pound: 'GBP', pounds: 'GBP',
+  yen: 'JPY', iene: 'JPY', ienes: 'JPY', rupee: 'INR', rupees: 'INR', 'rúpias': 'INR', rupias: 'INR',
+};
+const _MULT = { million: 1e6, millions: 1e6, 'milhão': 1e6, 'milhões': 1e6, milhao: 1e6, milhoes: 1e6, m: 1e6, billion: 1e9, billions: 1e9, 'bilhão': 1e9, 'bilhões': 1e9, bn: 1e9, thousand: 1e3, mil: 1e3, k: 1e3 };
+function _parseNum(s) {
+  s = String(s).trim();
+  // "2,000,000"/"2.000.000" = separador de milhar; "2.5"/"2,5" = decimal
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) return parseFloat(s.replace(/[.,]/g, ''));
+  return parseFloat(s.replace(',', '.'));
+}
+function _fmtMoney(usd, code) {
+  const v = usd * _FX[code];
+  const sym = { USD: '$', BRL: 'R$ ', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', INR: '₹' }[code];
+  const big = { USD: [' billion', ' million'], BRL: [' bilhões', ' milhões'], EUR: [' milliards', ' millions'], GBP: [' billion', ' million'], JPY: ['億', '万'], CNY: ['亿', '万'], INR: [' billion', ' million'] }[code];
+  const dec = code === 'BRL' ? ',' : '.';
+  const r1 = (n) => { const x = Math.round(n * 10) / 10; return String(x).replace('.', dec); };
+  if (code === 'JPY' || code === 'CNY') {
+    if (v >= 1e8) return sym + r1(v / 1e8) + big[0];
+    if (v >= 1e4) return sym + Math.round(v / 1e4) + big[1];
+    return sym + Math.round(v).toLocaleString('en-US');
+  }
+  if (v >= 1e9) return sym + r1(v / 1e9) + big[0];
+  if (v >= 1e6) return sym + r1(v / 1e6) + big[1];
+  if (v >= 10000 && code === 'BRL') return sym + Math.round(v / 1000) + ' mil';
+  if (v >= 1000) return sym + Math.round(v).toLocaleString(code === 'BRL' ? 'pt-BR' : 'en-US');
+  return sym + (Math.round(v * 100) / 100).toLocaleString(code === 'BRL' ? 'pt-BR' : 'en-US');
+}
+export function _annotateCurrencies(text, lang) {
+  const dst = _fxTarget(lang);
+  if (!dst) return { text, found: false };
+  let found = false;
+  const conv = (raw, srcCode, numStr, multWord) => {
+    const n = _parseNum(numStr);
+    if (!isFinite(n) || n <= 0) return raw;
+    const mult = multWord ? (_MULT[multWord.toLowerCase()] || 1) : 1;
+    if (srcCode === dst) return raw;
+    const usd = (n * mult) / _FX[srcCode];
+    if (!isFinite(usd) || usd <= 0) return raw;
+    found = true;
+    return `«${raw} = ${_fmtMoney(usd, dst)}»`;
+  };
+  const MULT_RE = 'million|millions|billion|billions|thousand|milh(?:ão|ões|ao|oes)|bilh(?:ão|ões|ao|oes)|mil|bn';
+  // Padrao 1: simbolo antes — $2,000,000 | US$ 2.5 million | ¥50,000 | R$ 300 mil
+  // (espaco+multiplicador so e consumido quando o multiplicador existe)
+  let out = text.replace(
+    new RegExp(`(US\\$|R\\$|USD|[$€£¥₹])\\s?(\\d[\\d.,]*)((?:\\s*(?:${MULT_RE}))?)\\b`, 'g'),
+    (raw, sym, num, multRaw) => {
+      const code = _SYM2CODE[sym] || _SYM2CODE[sym.toUpperCase()];
+      return code ? conv(raw, code, num, multRaw.trim() || null) : raw;
+    }
+  );
+  // Padrao 2: numero + palavra — 50,000 yen | 2 million dollars | 300 reais
+  out = out.replace(
+    new RegExp(`(\\d[\\d.,]*)((?:\\s+(?:${MULT_RE}))?)\\s+(dollars?|bucks|d[óo]lares?|reais|real|euros?|pounds?|yen|ienes?|rupees?|r[úu]pias)\\b`, 'gi'),
+    (raw, num, multRaw, word, offset, full) => {
+      // pula trechos ja anotados pelo padrao 1
+      if (full.lastIndexOf('«', offset) > full.lastIndexOf('»', offset)) return raw;
+      const code = _WORD2CODE[word.toLowerCase()];
+      return code ? conv(raw, code, num, multRaw.trim() || null) : raw;
+    }
+  );
+  return { text: out, found };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -67,7 +151,7 @@ export default async function handler(req, res) {
 
   // Helper: save roteiro, increment user stats, send transactional email
   async function saveAndReturn(result) {
-    if (!adjust && SUPABASE_URL && SUPABASE_KEY && result.text) {
+    if (!adjust && version !== 'V3' && SUPABASE_URL && SUPABASE_KEY && result.text) {
       try {
         const isCasual = version !== 'V2';
         const payload = {
@@ -322,7 +406,46 @@ IDIOMA DE SAÍDA OBRIGATÓRIO: ${lang}
 ⚠️ O roteiro DEVE ser escrito 100% em ${lang}. Se o idioma de saída não for ${lang}, o roteiro está ERRADO — reescreva.
 ${ANGLE}`;
 
-  const systemPrompt = isAdjust ? systemPromptAdjust : systemPromptCreate;
+  // ── SYSTEM PROMPT — V3 TRADUCAO FIEL (tradutor, NAO roteirista) ────────────
+  const systemPromptTranslate = `Você é um tradutor profissional especializado em localização de conteúdo para vídeos curtos.
+
+SUA ÚNICA TAREFA: traduzir a transcrição para ${lang} com MÁXIMA fidelidade — sem reescrever, sem resumir, sem "melhorar".
+
+REGRAS DE FIDELIDADE (as mais importantes):
+1. NÃO mude a ordem das informações nem o sentido do original
+2. NÃO adicione nem remova informações
+3. NÃO transforme em roteiro novo — é uma TRADUÇÃO, não uma re-narração
+4. Mantenha a mesma pessoa narrativa do original (primeira pessoa continua primeira pessoa)
+5. Mantenha o mesmo comprimento aproximado do original
+
+NATURALIDADE DE NARRAÇÃO (tão importante quanto a fidelidade):
+- Traduza com fidelidade ao sentido original, mas escreva como um falante nativo de ${lang} naturalmente falaria
+- Evite traduções literais de palavras isoladas — traduza a IDEIA, não palavra por palavra
+- Divida frases excessivamente longas em frases menores (isso NÃO viola a fidelidade)
+- Mantenha consistência nos termos ao longo de todo o texto (mesmo conceito = mesma palavra)
+- Revise mentalmente "em voz alta" antes de responder: o texto deve fluir como uma narração natural, sem travar
+
+TESTE DO NATIVO (aplique a CADA termo, nome, instituição ou referência do texto):
+Pergunte-se: "um falante nativo de ${lang} comum, que nunca saiu do próprio país e não conhece nada do país do vídeo, entenderia PLENAMENTE este termo? Ele é comum no dia a dia dessa pessoa?"
+- Se SIM → mantenha traduzido normalmente
+- Se NÃO → adapte para o equivalente local mais próximo que preserve o sentido exato; se não existir equivalente, mantenha o termo original com 2-3 palavras de contexto
+Este teste vale para QUALQUER termo — não se limite a moedas e unidades. Exemplos do raciocínio: "IRS" → "Receita Federal"; "Thanksgiving" → depende: no Brasil adapte para algo como "feriado de Ação de Graças (típico dos EUA)"; "prom" → "baile de formatura"; "911" → "190".
+
+LOCALIZAÇÃO INTELIGENTE (aplique com precisão cirúrgica):
+- MOEDAS: converta valores para ${profile.currency} e arredonde para números naturais de se falar.
+  TAXAS DE REFERÊNCIA (aproximadas): US$ 1 ≈ R$ 5,40 ≈ € 0,92 ≈ £ 0,79 ≈ ¥ 155 (iene) ≈ ₹ 84 (rúpia).
+  PASSO A PASSO OBRIGATÓRIO: (1) identifique o valor e a moeda original; (2) converta usando a taxa de referência; (3) CONFIRA A ORDEM DE GRANDEZA — milhões continuam milhões, milhares continuam milhares. Ex.: "$2,000,000" → 2.000.000 × 5,40 ≈ "R$ 10,8 milhões" (NUNCA "R$ 400 mil"). "¥1.000.000" → ÷155 ≈ US$ 6.400 ≈ "R$ 35 mil".
+  NUNCA deixe moeda estrangeira sem converter.
+- UNIDADES: converta milhas↔km, libras↔kg, pés↔metros, °F↔°C, galões↔litros conforme o padrão do país de ${lang}
+- EXPRESSÕES IDIOMÁTICAS: use o equivalente nativo de ${lang} — nunca traduza ao pé da letra
+- TERMOS E REFERÊNCIAS não comuns no país de destino (instituições, exames, programas de TV, marcas regionais): adapte para o equivalente local mais próximo mantendo o sentido exato; se não houver equivalente, mantenha o original com 2-3 palavras de contexto
+- Nomes próprios de pessoas e lugares reais: mantenha originais
+
+FORMATO DA RESPOSTA: APENAS o texto traduzido puro — sem aspas, sem """, sem comentários, sem títulos, sem explicações.`;
+
+  const systemPrompt = isAdjust
+    ? systemPromptAdjust
+    : (version === 'V3' ? systemPromptTranslate : systemPromptCreate);
 
   const userPrompt = isAdjust
     ? `ROTEIRO ATUAL (este é o texto que você vai editar):
@@ -336,6 +459,21 @@ ${adjust.slice(0, 500)}
 """
 
 Aplique a instrução acima no ROTEIRO ATUAL fazendo o MÍNIMO de mudanças possível. Não reescreva partes que o usuário não pediu para mudar. Retorne apenas o roteiro ajustado completo, no idioma ${lang}, sem explicações.`
+    : version === 'V3'
+    ? (() => {
+        // Conversao de moeda calculada EM CODIGO (LLM nao faz cambio confiavel):
+        // valores viram «original = convertido» e a IA apenas substitui.
+        const ann = _annotateCurrencies(transcript.slice(0, 3000), lang);
+        const currencyRule = ann.found
+          ? '\nMOEDAS JÁ CONVERTIDAS: onde aparecer «valor original = valor convertido», escreva APENAS o valor convertido (o texto depois do "="), integrado naturalmente à frase. Não recalcule nada.'
+          : '';
+        return `TRANSCRIÇÃO ORIGINAL:
+"""
+${ann.text}
+"""
+
+Traduza o texto acima fielmente para ${lang}, aplicando a localização inteligente (unidades e expressões nativas).${currencyRule} Não reescreva, não resuma, não reordene — apenas traduza com precisão. Retorne apenas o texto traduzido.`;
+      })()
     : `TRANSCRIÇÃO REAL DO VÍDEO ORIGINAL (esta é a fonte da verdade — siga de perto):
 """
 ${transcript.slice(0, 3000)}
@@ -371,6 +509,7 @@ Regras:
   // Preserva modelo original (gpt-4o-mini, gemini-2.5-flash) e temperatura.
   function _clean(s) {
     return String(s || '')
+      .replace(/^\s*"{3}\s*/, '').replace(/\s*"{3}\s*$/, '')
       .replace(/^#+\s.*/gm, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
@@ -383,9 +522,14 @@ Regras:
     const aiMod = await import('./_helpers/ai.js');
     const callAI = aiMod.callAI || aiMod.default?.callAI;
     if (typeof callAI !== 'function') throw new Error('callAI não exportado do helper');
-    const { result: raw, provider } = await callAI(userPrompt, systemPrompt, 600, null, {
-      temperature: isAdjust ? 0.55 : 0.85,
+    // V3 (traducao com conversao de moeda) exige aritmetica confiavel:
+    // gpt-4o-mini errava ordem de grandeza ($2M virava "R$ 10 mil") mesmo
+    // com taxas-ancora no prompt. V3 usa gpt-4o completo (~US$0,01/uso);
+    // V1/V2 continuam no mini (barato e suficiente pra reescrita criativa).
+    const { result: raw, provider } = await callAI(userPrompt, systemPrompt, version === 'V3' ? 1400 : 600, null, {
+      temperature: isAdjust ? 0.55 : (version === 'V3' ? 0.2 : 0.85),
       topP: 0.95,
+      openaiModel: version === 'V3' ? 'gpt-4o' : undefined,
       geminiModel: 'gemini-2.5-flash',
     });
     const text = _clean(raw);
@@ -410,7 +554,9 @@ Regras:
     'Español': ['No vas a creer lo que acaba de pasar. Una historia que parece ficción pero es real. Todo empezó cuando alguien decidió hacer las cosas diferente. El resultado? Nadie lo esperaba.','Deja de hacer scroll. Esto va en serio. Lo que te voy a contar puede cambiar tu forma de pensar. Presta atención porque después no hay vuelta atrás.'],
   };
   const fbScripts = _fb[lang] || _fb['Português (Brasil)'];
-  const fbText = version === 'V2' ? (fbScripts[1] || fbScripts[0]) : fbScripts[0];
+  const fbText = version === 'V3'
+    ? cleanTranscript.slice(0, 1400)
+    : version === 'V2' ? (fbScripts[1] || fbScripts[0]) : fbScripts[0];
   res.setHeader('Retry-After', '60');
   return res.status(200).json({
     text: fbText,
