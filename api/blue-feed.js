@@ -711,7 +711,8 @@ module.exports = async function handler(req, res) {
         try {
           const decoded = Buffer.from(segCursor, 'base64').toString('utf8');
           const [ts, id] = decoded.split('|');
-          if (ts && id) url += `&or=(created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${id}))`;
+          // encodeURIComponent: '+' do timestamp viraria espaco na query (400)
+          if (ts && id) url += `&or=(created_at.lt.${encodeURIComponent(ts)},and(created_at.eq.${encodeURIComponent(ts)},id.lt.${id}))`;
         } catch(e) {}
       }
       // Se ja esta em modo explora, pula direto fresh seguindo (vazia)
@@ -929,7 +930,8 @@ module.exports = async function handler(req, res) {
     if (cur.mode === 'recycle' && userPrefs?.uid) {
       let recyUrl = `${SU}/rest/v1/blue_feed_historico?user_id=eq.${userPrefs.uid}&select=id,video_id,created_at&order=created_at.asc,id.asc&limit=${limit + 1}`;
       if (cur.ts && cur.id) {
-        recyUrl += `&or=(created_at.gt.${cur.ts},and(created_at.eq.${cur.ts},id.gt.${cur.id}))`;
+        // encodeURIComponent: '+' do timestamp viraria espaco na query (400)
+        recyUrl += `&or=(created_at.gt.${encodeURIComponent(cur.ts)},and(created_at.eq.${encodeURIComponent(cur.ts)},id.gt.${cur.id}))`;
       }
       let recyR;
       try {
@@ -1041,11 +1043,15 @@ module.exports = async function handler(req, res) {
     // ═══════════════════════════════════════════════════════════════════════
     let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
     if (cur.ts) {
+      // encodeURIComponent obrigatorio: created_at vem do banco com +00:00 e
+      // o '+' cru em query string vira ESPACO no PostgREST → 400 → pagina 2
+      // sempre vazia (bug que matava o feed infinito depois do 1o lote).
+      const curTs = encodeURIComponent(cur.ts);
       if (cur.id) {
         // Compound predicate: (created_at < ts) OR (created_at = ts AND id < id)
-        url += `&or=(created_at.lt.${cur.ts},and(created_at.eq.${cur.ts},id.lt.${cur.id}))`;
+        url += `&or=(created_at.lt.${curTs},and(created_at.eq.${curTs},id.lt.${cur.id}))`;
       } else {
-        url += `&created_at=lt.${cur.ts}`;
+        url += `&created_at=lt.${curTs}`;
       }
     }
 

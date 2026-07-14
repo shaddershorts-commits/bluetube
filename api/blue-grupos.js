@@ -119,7 +119,8 @@ module.exports = async function handler(req, res) {
     if (!grupo_id) return res.status(400).json({ error: 'grupo_id obrigatório' });
     try {
       let url = `${SU}/rest/v1/blue_grupo_mensagens?grupo_id=eq.${grupo_id}&order=created_at.desc&limit=50&select=*`;
-      if (cursor) url += `&created_at=lt.${cursor}`;
+      // encodeURIComponent: '+' do timestamp viraria espaco na query (400)
+      if (cursor) url += `&created_at=lt.${encodeURIComponent(cursor)}`;
       const mR = await fetch(url, { headers: h });
       const msgs = mR.ok ? await mR.json() : [];
       // Enrich with profiles

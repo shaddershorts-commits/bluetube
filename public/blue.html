@@ -4106,14 +4106,25 @@ function showFeedModeBanner(text){
 
 let _scrollObs=null;
 function setupInfiniteScroll(){
+  const feed=document.getElementById('feed');
+  if(!feed) return;
+  // Sentinel DEDICADO no fim do feed. Antes observavamos os 2 ultimos .slide,
+  // mas a virtualizacao (_rehydrateSlide) troca slides via replaceWith() —
+  // o observer ficava preso no no antigo (desanexado) e o infinite scroll
+  // morria silenciosamente apos o 1o lote. O sentinel e um elemento proprio
+  // que nenhuma virtualizacao/prune toca; appendChild o re-move pro fim.
+  let sent=document.getElementById('feedSentinel');
+  if(!sent){
+    sent=document.createElement('div');
+    sent.id='feedSentinel';
+    sent.style.cssText='height:1px;margin-top:-1px;pointer-events:none';
+  }
+  feed.appendChild(sent);
   if(_scrollObs) _scrollObs.disconnect();
   _scrollObs=new IntersectionObserver(entries=>{
     entries.forEach(e=>{if(e.isIntersecting) loadMoreFeed();});
-  },{threshold:0.1});
-  // Observe the last 2 slides
-  const slides=document.querySelectorAll('#feed .slide');
-  if(slides.length>=2) _scrollObs.observe(slides[slides.length-2]);
-  if(slides.length>=1) _scrollObs.observe(slides[slides.length-1]);
+  },{root:feed,rootMargin:'150% 0px',threshold:0});
+  _scrollObs.observe(sent);
 }
 
 // ── INIT AUTH ─────────────────────────────────────────────────────────────────
