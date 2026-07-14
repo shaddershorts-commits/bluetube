@@ -215,6 +215,34 @@
     {
       "path": "/api/virais-ml?action=pipeline-diario",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/reactivation-emails",
+      "schedule": "0 10 * * 3"
+    },
+    {
+      "path": "/api/email-sequence?audience=free",
+      "schedule": "0 10 * * 4"
+    },
+    {
+      "path": "/api/email-sequence?audience=full",
+      "schedule": "0 10 * * 5"
+    },
+    {
+      "path": "/api/trial-expiry-warning",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/milestone-emails",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/weekly-trends-email",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/virais-canais?action=daily-alert-master",
+      "schedule": "30 10 * * *"
     }
   ],
   "headers": [
