@@ -1347,15 +1347,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <p style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);text-align:center;margin-bottom:28px">Comece grátis. Faça upgrade quando quiser.</p>
 
     <div class="billing-toggle" style="margin-bottom:10px">
-      <span class="billing-label" id="labelMonthly" onclick="toggleBilling(false)">Mensal</span>
+      <span class="billing-label active" id="labelMonthly" onclick="toggleBilling(false)">Mensal</span>
       <label class="toggle-switch-sm">
-        <input type="checkbox" id="billingToggleCheckbox" checked onchange="toggleBilling(this.checked)"/>
+        <input type="checkbox" id="billingToggleCheckbox" onchange="toggleBilling(this.checked)"/>
         <span class="toggle-slider-sm"></span>
       </label>
-      <span class="billing-label active" id="labelAnnual" onclick="toggleBilling(true)">Anual</span>
+      <span class="billing-label" id="labelAnnual" onclick="toggleBilling(true)">Anual</span>
       <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">-25%</span>
     </div>
-    <p id="annualBonusBanner" style="font-family:var(--font-mono);font-size:12px;color:#fbbf24;text-align:center;margin:0 0 22px;font-weight:600">🎁 13 meses pelo preço de 12 + economize R$269,88/ano no Full · R$809,88/ano no Master</p>
+    <p id="annualBonusBanner" style="display:none;font-family:var(--font-mono);font-size:12px;color:#fbbf24;text-align:center;margin:0 0 22px;font-weight:600">🎁 13 meses pelo preço de 12 + economize R$269,88/ano no Full · R$809,88/ano no Master</p>
 
     <div class="plans-grid">
       <!-- FREE -->
@@ -1376,15 +1376,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       </div>
 
       <!-- FULL -->
-      <div class="plan-box popular annual" id="planBoxFull">
+      <div class="plan-box popular" id="planBoxFull">
         <div class="plan-tag">Mais popular</div>
         <div class="plan-name" style="color:var(--neon)">⚡ Full</div>
         <div id="fullPriceDisplay">
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-            <div class="plan-amount" style="color:#fbbf24">R$22<span style="color:#fbbf24">,49/mês</span></div>
-            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$29,99</div>
-          </div>
-          <div class="plan-period" style="color:#fbbf24">R$269,88 cobrado anualmente</div>
+          <div class="plan-amount">R$29<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
           <li>9 roteiros por dia</li>
@@ -1408,14 +1405,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       </div>
 
       <!-- MASTER -->
-      <div class="plan-box annual" id="planBoxMaster">
+      <div class="plan-box" id="planBoxMaster">
         <div class="plan-name" style="color:#fbbf24">👑 Master</div>
         <div id="masterPriceDisplay">
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-            <div class="plan-amount" style="color:#fbbf24">R$67<span style="color:#fbbf24">,49/mês</span></div>
-            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-decoration:line-through">R$89,99</div>
-          </div>
-          <div class="plan-period" style="color:#fbbf24">R$809,88 cobrado anualmente</div>
+          <div class="plan-amount">R$89<span>,99/mês</span></div>
+          <div class="plan-period">cobrado mensalmente</div>
         </div>
         <ul class="plan-list">
           <li>Roteiros ilimitados</li>
@@ -1956,9 +1950,9 @@ function selectPlan(plan, paymentMethod){
   handleUpgradeClick(plan, paymentMethod);
 }
 function openUpgradeModalGeneric(){openUpgradeModal('generic');}
-// 2026-06-25: Anual default (tática de conversão SaaS — Notion, Linear, Dropbox)
-// + transparência (toggle visível, preço mensal comparado lado a lado).
-let isAnnual = true;
+// 2026-07-14: default MENSAL na landing (pedido do user). O modal de upgrade
+// mantém anual como nudge de conversão (modalIsAnnual).
+let isAnnual = false;
 
 function toggleBilling(annual){
   isAnnual = annual;
@@ -2022,7 +2016,12 @@ let pendingUpgradeBilling = null;
 
 async function handleUpgradeClick(plan, paymentMethod){
   const p = plan || selectedUpgradePlan || 'full';
-  const billing = (modalIsAnnual || isAnnual) ? 'annual' : 'monthly';
+  // Fonte de verdade por CONTEXTO: se o modal de upgrade está aberto, usa o
+  // toggle dele; senão, o toggle da landing. O antigo (modalIsAnnual||isAnnual)
+  // forçava anual sempre que QUALQUER toggle estivesse em anual (bug: mensal na
+  // landing abria checkout anual porque modalIsAnnual continuava true).
+  const _modalOpen = document.getElementById('upgradeModal')?.classList.contains('on');
+  const billing = (_modalOpen ? modalIsAnnual : isAnnual) ? 'annual' : 'monthly';
   const pm = paymentMethod === 'pix' ? 'pix' : 'card';
 
   // ── REQUIRE ACCOUNT BEFORE CHECKOUT ───────────────────────────────────────
