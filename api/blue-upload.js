@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
       const vR = await fetch(SU + '/rest/v1/blue_videos?id=eq.' + encodeURIComponent(video_id) + '&user_id=eq.' + uid + '&select=id,video_url&limit=1', { headers: h });
       const [v] = vR.ok ? await vR.json() : [];
       if (!v?.video_url) return res.status(404).json({ error: 'video_nao_encontrado' });
-      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/(.+)$/);
+      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/([^?]+)/);
       if (!m) return res.status(400).json({ error: 'url_invalida' });
       const jr = await fetch(RW.replace(/\/$/, '') + '/blue-transcode', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

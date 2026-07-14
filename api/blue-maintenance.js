@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
         if (r.ok) {
           const rows = await r.json();
           for (const v of rows) {
-            const m = (v.video_url || '').match(/object\/(?:public\/)?blue-videos\/(.+)$/);
+            const m = (v.video_url || '').match(/object\/(?:public\/)?blue-videos\/([^?]+)/);
             if (!m) continue;
             fetch(RW.replace(/\/$/, '') + '/blue-transcode', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },

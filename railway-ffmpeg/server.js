@@ -441,17 +441,21 @@ async function processBlueTranscode(jobId, p) {
     // cache 30d — o purge acontece pela query ?v= no cliente OU naturalmente)
     await uploadToSupabase(out, p.storage_path, p.supabase_url, p.supabase_key);
 
-    // marca no banco (coluna transcoded_at; tolera nao existir ainda)
+    // marca no banco + cache-bust: ?v=timestamp na video_url forca o
+    // Cloudflare (cache 30d) a buscar o arquivo novo. Se transcoded_at
+    // ainda nao existir como coluna, repete so com a video_url.
     if (p.video_id) {
+      const dbHeaders = {
+        apikey: p.supabase_key, Authorization: 'Bearer ' + p.supabase_key,
+        'Content-Type': 'application/json', Prefer: 'return=minimal',
+      };
+      const bustedUrl = String(p.video_url).split('?')[0] + '?v=' + Date.now();
+      const patchDb = (body) => fetch(`${p.supabase_url}/rest/v1/blue_videos?id=eq.${p.video_id}`, {
+        method: 'PATCH', headers: dbHeaders, body: JSON.stringify(body),
+      });
       try {
-        await fetch(`${p.supabase_url}/rest/v1/blue_videos?id=eq.${p.video_id}`, {
-          method: 'PATCH',
-          headers: {
-            apikey: p.supabase_key, Authorization: 'Bearer ' + p.supabase_key,
-            'Content-Type': 'application/json', Prefer: 'return=minimal',
-          },
-          body: JSON.stringify({ transcoded_at: new Date().toISOString() }),
-        });
+        const r1 = await patchDb({ video_url: bustedUrl, transcoded_at: new Date().toISOString() });
+        if (!r1.ok) await patchDb({ video_url: bustedUrl });
       } catch (e) { console.log('[blue-transcode] patch db falhou (segue):', e.message); }
     }
 

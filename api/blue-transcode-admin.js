@@ -77,7 +77,7 @@ module.exports = async function handler(req, res) {
       const [v] = r.ok ? await r.json() : [];
       if (!v?.video_url) return res.status(404).json({ error: 'video_nao_encontrado' });
       // storage_path a partir da URL publica
-      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/(.+)$/);
+      const m = v.video_url.match(/object\/(?:public\/)?blue-videos\/([^?]+)/);
       if (!m) return res.status(400).json({ error: 'url_fora_do_bucket', url: v.video_url });
       const jr = await fetch(`${RW.replace(/\/$/, '')}/blue-transcode`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
