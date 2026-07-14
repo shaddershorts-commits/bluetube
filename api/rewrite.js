@@ -149,6 +149,36 @@ export default async function handler(req, res) {
   const cleanTranscript = (typeof transcript === 'string' ? transcript : '').replace(/<[^>]*>/g, '').trim();
   if (cleanTranscript.length > 5000) return res.status(400).json({ error: 'Transcrição excede o limite de 5000 caracteres.' });
 
+  // ── V3 (Tradução Fiel) é EXCLUSIVA Full/Master — gate server-side ─────────
+  // (mesmo padrão do generate-from-zero; front mostra cadeado pro free)
+  if (version === 'V3') {
+    let v3Plan = 'free';
+    const v3Token = req.body?.token;
+    const AKv3 = process.env.SUPABASE_ANON_KEY || SUPABASE_KEY;
+    if (v3Token && SUPABASE_URL && AKv3) {
+      try {
+        const uR = await fetch(SUPABASE_URL + '/auth/v1/user', { headers: { apikey: AKv3, Authorization: 'Bearer ' + v3Token } });
+        if (uR.ok) {
+          const uD = await uR.json();
+          if (uD.email && SUPABASE_KEY) {
+            const sR = await fetch(
+              SUPABASE_URL + '/rest/v1/subscribers?email=eq.' + encodeURIComponent(uD.email) + '&select=plan,plan_expires_at,is_manual',
+              { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } }
+            );
+            if (sR.ok) {
+              const sub = (await sR.json())?.[0];
+              if (sub && (sub.plan === 'full' || sub.plan === 'master')) {
+                const expired = sub.plan_expires_at && new Date(sub.plan_expires_at) < new Date() && !sub.is_manual;
+                if (!expired) v3Plan = sub.plan;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+    if (v3Plan === 'free') return res.status(403).json({ error: 'A Tradução Fiel é exclusiva dos planos Full e Master.', upgrade: true });
+  }
+
   // Helper: save roteiro, increment user stats, send transactional email
   async function saveAndReturn(result) {
     if (!adjust && version !== 'V3' && SUPABASE_URL && SUPABASE_KEY && result.text) {

@@ -1226,6 +1226,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       </div>
     </div>
     <div class="tab-panel" id="panel-v3">
+      <div id="v3Lock" style="display:none;position:relative;border:1px solid rgba(52,211,153,.2);border-radius:16px;overflow:hidden;cursor:pointer" onclick="openUpgradeModal(&quot;tool_blocked&quot;,&quot;full&quot;)">
+        <div style="filter:blur(7px);user-select:none;pointer-events:none;padding:26px 22px;font-size:14px;line-height:1.7;color:var(--text,#e2e8f0)">Esse homem encontrou uma pérola avaliada em R$ 18 milhões dentro de um molusco gigante. Ele guardou debaixo da cama por dez anos sem fazer ideia do valor. Quando finalmente levou para avaliar, os especialistas confirmaram: era a maior já encontrada no mundo. A tradução fiel mantém cada detalhe do vídeo original, com moedas e termos adaptados para o seu público.</div>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(2,8,23,.55)">
+          <div style="font-size:38px">🔒</div>
+          <div style="font-family:var(--font-mono,monospace);font-size:13px;font-weight:700;color:#e8f4ff">Tradução Fiel é exclusiva Full e Master</div>
+          <div style="font-size:12px;color:rgba(150,190,230,.7)">O vídeo original traduzido com moedas e termos adaptados</div>
+          <button style="margin-top:6px;background:linear-gradient(135deg,#0050ff,#00aaff);border:none;border-radius:10px;padding:10px 22px;font-family:var(--font-mono,monospace);font-size:12px;font-weight:700;color:#fff;cursor:pointer">⚡ Desbloquear agora</button>
+        </div>
+      </div>
       <div class="scripts-loading" id="loadingV3">
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV3">Traduzindo com localização inteligente…</div>
@@ -3322,7 +3331,15 @@ function generateAllScripts(lang){
   });
   generateScript('V1',lang);
   setTimeout(()=>generateScript('V2',lang),3000);
-  setTimeout(()=>generateScript('V3',lang),6000);
+  const _v3Paid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
+  const _v3LockEl=document.getElementById('v3Lock');
+  if(_v3Paid){
+    if(_v3LockEl)_v3LockEl.style.display='none';
+    setTimeout(()=>generateScript('V3',lang),6000);
+  } else {
+    const l3=document.getElementById('loadingV3'); if(l3)l3.classList.remove('on');
+    if(_v3LockEl)_v3LockEl.style.display='block';
+  }
   setTimeout(()=>{ if(typeof generateTitles==='function')generateTitles(lang); },1500);
 }
 
@@ -3535,7 +3552,8 @@ async function generateTitles(lang){
       document.getElementById('titleApelatText').textContent=d.apelativo;
       document.getElementById('titleApelatBox').style.display='block';
     }
-    if(d.traducao && document.getElementById('titleTradText')){
+    const _tPaid = userPlan==='full'||userPlan==='master'||localStorage.getItem('bt_plan')==='full'||localStorage.getItem('bt_plan')==='master';
+    if(_tPaid && d.traducao && document.getElementById('titleTradText')){
       document.getElementById('titleTradText').textContent=d.traducao;
       document.getElementById('titleTradBox').style.display='block';
     }
