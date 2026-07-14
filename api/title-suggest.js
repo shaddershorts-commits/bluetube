@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
 
   if (await applyRateLimit(req, res)) return;
 
-  const { transcript, lang, originalTitle } = req.body || {};
+  const { transcript, lang, originalTitle, videoUrl } = req.body || {};
   if (!transcript || typeof transcript !== 'string' || transcript.trim().length < 10) return res.status(400).json({ error: 'Transcrição muito curta.' });
   if (transcript.length > 5000) return res.status(400).json({ error: 'Transcrição excede o limite.' });
   if (detectInjection(sanitizeInput(transcript))) return res.status(400).json({ error: 'Conteúdo não permitido detectado.' });
@@ -25,27 +25,40 @@ module.exports = async function handler(req, res) {
   ].filter(Boolean).sort(() => Math.random() - 0.5);
 
   const safeLang = lang || 'Português (Brasil)';
-  const prompt = `OUTPUT LANGUAGE: ${safeLang}
-You MUST write both titles in ${safeLang} and ONLY in ${safeLang}. Do NOT use any other language.
 
-Task: generate 2 viral short-video title suggestions based on the transcript below.
+  // Busca o titulo REAL do video via oEmbed do YouTube (gratis, sem quota,
+  // sem key) — alimenta a "traducao" direta do titulo na aba V3 e melhora
+  // o contexto dos titulos casual/apelativo. Fail-soft.
+  let realTitle = (originalTitle || '').trim();
+  if (!realTitle && videoUrl && /youtube\.com|youtu\.be/.test(videoUrl)) {
+    try {
+      const oe = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`, { signal: AbortSignal.timeout(4000) });
+      if (oe.ok) realTitle = ((await oe.json()).title || '').trim().slice(0, 150);
+    } catch (_) {}
+  }
+
+  const prompt = `OUTPUT LANGUAGE: ${safeLang}
+You MUST write all titles in ${safeLang} and ONLY in ${safeLang}. Do NOT use any other language.
+
+Task: generate 3 short-video titles based on the transcript below.
 
 TRANSCRIPT:
 "${transcript.trim().slice(0, 600)}"
-${originalTitle ? `\nORIGINAL TITLE: "${originalTitle}"` : ''}
+${realTitle ? `\nORIGINAL TITLE: "${realTitle}"` : ''}
 
 Rules:
-- Both titles MUST be written in ${safeLang}
-- Max 60 characters each
-- Native social-media tone for that language
-- Spark curiosity and clicks
-- "casual" = lighter, natural tone
-- "apelativo" = stronger, more urgent tone
+- All titles MUST be written in ${safeLang}
+- Max 60 characters each (max 100 for "traducao")
+- "casual" = lighter, natural tone, sparks curiosity
+- "apelativo" = stronger, more urgent tone, maximum click appeal
+- "traducao" = ${realTitle
+    ? `the ORIGINAL TITLE faithfully translated into ${safeLang} — do NOT rewrite or embellish it, just translate it precisely and naturally (adapt idioms; keep the meaning identical)`
+    : `a plain, faithful, descriptive title summarizing the transcript in ${safeLang} — NO clickbait, no embellishment`}
 - No emojis
 - No quotes inside the text
 
 Reminder: write the titles in ${safeLang}. Reply with ONLY valid JSON, no markdown:
-{"casual":"<title in ${safeLang}>","apelativo":"<title in ${safeLang}>"}`;
+{"casual":"<title in ${safeLang}>","apelativo":"<title in ${safeLang}>","traducao":"<title in ${safeLang}>"}`;
 
   let result = null;
 

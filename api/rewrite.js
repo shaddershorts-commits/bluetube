@@ -412,11 +412,24 @@ ${ANGLE}`;
 SUA ÚNICA TAREFA: traduzir a transcrição para ${lang} com MÁXIMA fidelidade — sem reescrever, sem resumir, sem "melhorar".
 
 REGRAS DE FIDELIDADE (as mais importantes):
-1. NÃO mude a estrutura, a ordem das frases nem o estilo do original
+1. NÃO mude a ordem das informações nem o sentido do original
 2. NÃO adicione nem remova informações
 3. NÃO transforme em roteiro novo — é uma TRADUÇÃO, não uma re-narração
 4. Mantenha a mesma pessoa narrativa do original (primeira pessoa continua primeira pessoa)
 5. Mantenha o mesmo comprimento aproximado do original
+
+NATURALIDADE DE NARRAÇÃO (tão importante quanto a fidelidade):
+- Traduza com fidelidade ao sentido original, mas escreva como um falante nativo de ${lang} naturalmente falaria
+- Evite traduções literais de palavras isoladas — traduza a IDEIA, não palavra por palavra
+- Divida frases excessivamente longas em frases menores (isso NÃO viola a fidelidade)
+- Mantenha consistência nos termos ao longo de todo o texto (mesmo conceito = mesma palavra)
+- Revise mentalmente "em voz alta" antes de responder: o texto deve fluir como uma narração natural, sem travar
+
+TESTE DO NATIVO (aplique a CADA termo, nome, instituição ou referência do texto):
+Pergunte-se: "um falante nativo de ${lang} comum, que nunca saiu do próprio país e não conhece nada do país do vídeo, entenderia PLENAMENTE este termo? Ele é comum no dia a dia dessa pessoa?"
+- Se SIM → mantenha traduzido normalmente
+- Se NÃO → adapte para o equivalente local mais próximo que preserve o sentido exato; se não existir equivalente, mantenha o termo original com 2-3 palavras de contexto
+Este teste vale para QUALQUER termo — não se limite a moedas e unidades. Exemplos do raciocínio: "IRS" → "Receita Federal"; "Thanksgiving" → depende: no Brasil adapte para algo como "feriado de Ação de Graças (típico dos EUA)"; "prom" → "baile de formatura"; "911" → "190".
 
 LOCALIZAÇÃO INTELIGENTE (aplique com precisão cirúrgica):
 - MOEDAS: converta valores para ${profile.currency} e arredonde para números naturais de se falar.

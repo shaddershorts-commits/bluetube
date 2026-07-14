@@ -1230,6 +1230,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="waveform"><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div></div>
         <div class="scripts-loading-label" id="labelV3">Traduzindo com localização inteligente…</div>
       </div>
+      <div id="titleTradBox" style="display:none;background:rgba(52,211,153,.05);border:1px solid rgba(52,211,153,.2);border-radius:12px;padding:12px 16px;margin-bottom:10px">
+        <div style="font-family:var(--font-mono,monospace);font-size:10px;color:#34d399;opacity:.8;margin-bottom:6px;letter-spacing:.08em">🌍 TÍTULO ORIGINAL TRADUZIDO</div>
+        <div id="titleTradText" style="font-size:14px;font-weight:600;color:var(--text,#e2e8f0)"></div>
+        <button onclick="copyTitleEl(&quot;titleTradText&quot;,this)" style="margin-top:8px;background:none;border:1px solid rgba(52,211,153,.25);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono,monospace);color:#34d399;cursor:pointer">📋 Copiar título</button>
+      </div>
       <div class="script-card" id="cardV3" style="display:none;">
         <div class="script-card-top">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -3309,7 +3314,7 @@ function zeroRestoreResults(){
 }
 
 function generateAllScripts(lang){
-  ['titleCasualBox','titleApelatBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  ['titleCasualBox','titleApelatBox','titleTradBox'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   ['V1','V2','V3'].forEach(v=>{
     const l=document.getElementById('loading'+v), c=document.getElementById('card'+v);
     if(l)l.classList.add('on');
@@ -3448,7 +3453,8 @@ function _saveRoteiroState(){
   const v3  = document.getElementById('scriptV3')?.textContent?.trim() || '';
   const tc  = document.getElementById('titleCasualText')?.textContent?.trim() || '';
   const ta  = document.getElementById('titleApelatText')?.textContent?.trim() || '';
-  if(v1 || v2 || v3) _save('bt_roteiro', {url, v1, v2, v3, tc, ta, vid: currentVideoId});
+  const tt  = document.getElementById('titleTradText')?.textContent?.trim() || '';
+  if(v1 || v2 || v3) _save('bt_roteiro', {url, v1, v2, v3, tc, ta, tt, vid: currentVideoId});
 }
 
 // ── RESTAURAR ESTADO AO VOLTAR ────────────────────────────────────────────────
@@ -3486,6 +3492,10 @@ function _restoreState(){
     document.getElementById('titleApelatText').textContent = saved.ta;
     document.getElementById('titleApelatBox').style.display = 'block';
   }
+  if(saved.tt && document.getElementById('titleTradText')){
+    document.getElementById('titleTradText').textContent = saved.tt;
+    document.getElementById('titleTradBox').style.display = 'block';
+  }
   if(saved.url && urlEl) urlEl.value = saved.url;
   if(saved.vid) currentVideoId = saved.vid;
 
@@ -3514,7 +3524,7 @@ function _restoreState(){
 async function generateTitles(lang){
   try{
     const r=await fetch('/api/title-suggest',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({transcript,lang,originalTitle:''})});
+      body:JSON.stringify({transcript,lang,originalTitle:'',videoUrl:document.getElementById('urlInput')?.value?.trim()||''})});
     if(!r.ok) return;
     const d=await r.json();
     if(d.casual && document.getElementById('titleCasualText')){
@@ -3524,6 +3534,10 @@ async function generateTitles(lang){
     if(d.apelativo && document.getElementById('titleApelatText')){
       document.getElementById('titleApelatText').textContent=d.apelativo;
       document.getElementById('titleApelatBox').style.display='block';
+    }
+    if(d.traducao && document.getElementById('titleTradText')){
+      document.getElementById('titleTradText').textContent=d.traducao;
+      document.getElementById('titleTradBox').style.display='block';
     }
     _saveRoteiroState();
   }catch(e){console.log('titles:',e.message);}
