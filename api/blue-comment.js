@@ -11,9 +11,9 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK) return res.status(500).json({ error: 'Config missing' });
   const h = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-  // GET — lista comentários de um vídeo
+  // GET — lista comentários de um vídeo (flat; app faz o threading via parent_id)
   if (req.method === 'GET') {
-    const { video_id, limit = 50 } = req.query;
+    const { video_id, limit = 200, token } = req.query;
     if (!video_id) return res.status(400).json({ error: 'video_id obrigatório' });
     try {
       const r = await fetch(
@@ -24,20 +24,77 @@ module.exports = async function handler(req, res) {
       const userIds = [...new Set(comments.map(c => c.user_id).filter(Boolean))];
       let profiles = {};
       if (userIds.length > 0) {
+        // avatar_url incluido (fix: foto nao aparecia nos comentarios)
         const pR = await fetch(
-          `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name`,
+          `${SU}/rest/v1/blue_profiles?user_id=in.(${userIds.join(',')})&select=user_id,username,display_name,avatar_url,verificado`,
           { headers: h }
         );
         if (pR.ok) { const pd = await pR.json(); pd.forEach(p => profiles[p.user_id] = p); }
       }
-      const enriched = comments.map(c => ({ ...c, creator: profiles[c.user_id] || { username: 'usuário' } }));
+      // liked_by_me: quais comentarios o user logado ja curtiu
+      let likedSet = new Set();
+      if (token && comments.length) {
+        try {
+          const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+          if (uR.ok) {
+            const uid = (await uR.json()).id;
+            const ids = comments.map(c => c.id).join(',');
+            const lR = await fetch(`${SU}/rest/v1/blue_comment_likes?user_id=eq.${uid}&comment_id=in.(${ids})&select=comment_id`, { headers: h });
+            if (lR.ok) (await lR.json()).forEach(l => likedSet.add(l.comment_id));
+          }
+        } catch (_) {}
+      }
+      const enriched = comments.map(c => ({
+        ...c,
+        likes: c.likes || 0,
+        parent_id: c.parent_id || null,
+        liked_by_me: likedSet.has(c.id),
+        creator: profiles[c.user_id] || { username: 'usuário' },
+      }));
       return res.status(200).json({ comments: enriched });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // POST — cria comentário com rate limiting
+  // POST action=like — curtir/descurtir um comentário (toggle)
+  if (req.method === 'POST' && req.body?.action === 'like') {
+    const { token, comment_id } = req.body || {};
+    if (!token) return res.status(401).json({ error: 'Login necessário.' });
+    if (!comment_id) return res.status(400).json({ error: 'comment_id obrigatório.' });
+    try {
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido.' });
+      const { id: userId } = await uR.json();
+
+      // Ja curtiu? (unique comment_id+user_id)
+      const exR = await fetch(`${SU}/rest/v1/blue_comment_likes?comment_id=eq.${comment_id}&user_id=eq.${userId}&select=id`, { headers: h });
+      const existing = exR.ok ? await exR.json() : [];
+      // Contador atual
+      const cR = await fetch(`${SU}/rest/v1/blue_comments?id=eq.${comment_id}&select=likes`, { headers: h });
+      const cur = cR.ok ? (await cR.json())?.[0]?.likes || 0 : 0;
+
+      let liked, likes;
+      if (existing.length) {
+        await fetch(`${SU}/rest/v1/blue_comment_likes?id=eq.${existing[0].id}`, { method: 'DELETE', headers: h });
+        likes = Math.max(0, cur - 1); liked = false;
+      } else {
+        const insR = await fetch(`${SU}/rest/v1/blue_comment_likes`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify({ comment_id, user_id: userId }),
+        });
+        // se colidiu no unique (race), nao incrementa
+        likes = insR.ok ? cur + 1 : cur; liked = true;
+      }
+      await fetch(`${SU}/rest/v1/blue_comments?id=eq.${comment_id}`, {
+        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ likes }),
+      }).catch(() => null);
+      return res.status(200).json({ ok: true, liked, likes });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // POST — cria comentário (ou resposta, via parent_id) com rate limiting
   if (req.method === 'POST') {
-    const { token, video_id, text } = req.body || {};
+    const { token, video_id, text, parent_id } = req.body || {};
     if (!token) return res.status(401).json({ error: 'Login necessário para comentar.' });
     if (!video_id || !text?.trim()) return res.status(400).json({ error: 'Comentário não pode ser vazio.' });
 
@@ -66,13 +123,16 @@ module.exports = async function handler(req, res) {
         return res.status(429).json({ error: 'Muitos comentários. Aguarde um pouco antes de comentar novamente.' });
       }
 
-      // Max 3 comments on same video
-      const vidRes = await fetch(
-        `${SU}/rest/v1/blue_comments?user_id=eq.${userId}&video_id=eq.${video_id}&select=id`,
-        { headers: h }
-      );
-      if (vidRes.ok && (await vidRes.json()).length >= 3) {
-        return res.status(429).json({ error: 'Você já comentou 3 vezes neste vídeo.' });
+      // Max 3 comentários-RAIZ no mesmo vídeo (respostas não contam — senão
+      // travaria a conversa em thread)
+      if (!parent_id) {
+        const vidRes = await fetch(
+          `${SU}/rest/v1/blue_comments?user_id=eq.${userId}&video_id=eq.${video_id}&parent_id=is.null&select=id`,
+          { headers: h }
+        );
+        if (vidRes.ok && (await vidRes.json()).length >= 3) {
+          return res.status(429).json({ error: 'Você já comentou 3 vezes neste vídeo.' });
+        }
       }
 
       // Duplicate check: same text within 1 hour
@@ -87,7 +147,7 @@ module.exports = async function handler(req, res) {
       // ── SAVE COMMENT ───────────────────────────────────────────────────────
       const cR = await fetch(`${SU}/rest/v1/blue_comments`, {
         method: 'POST', headers: { ...h, Prefer: 'return=representation' },
-        body: JSON.stringify({ video_id, user_id: userId, text: cleanText })
+        body: JSON.stringify({ video_id, user_id: userId, text: cleanText, parent_id: parent_id || null, likes: 0 })
       });
       if (!cR.ok) return res.status(500).json({ error: 'Erro ao salvar comentário.' });
       const comment = (await cR.json())[0];
@@ -106,15 +166,23 @@ module.exports = async function handler(req, res) {
       // que NÃO existe — confirmado PGRST205, dead code silencioso). Mantida
       // apenas a tabela ativa blue_notificacoes (lida por blue-interact action=notificacoes).
       try {
-        const vr = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&select=user_id`, { headers: h });
-        if (vr.ok) {
-          const vd = await vr.json();
-          const ownerId = vd?.[0]?.user_id;
+        // Resposta → notifica o autor do comentário-pai; raiz → dono do vídeo
+        let targetId = null;
+        if (parent_id) {
+          const parR = await fetch(`${SU}/rest/v1/blue_comments?id=eq.${parent_id}&select=user_id`, { headers: h });
+          targetId = parR.ok ? (await parR.json())?.[0]?.user_id : null;
+        } else {
+          const vr = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}&select=user_id`, { headers: h });
+          targetId = vr.ok ? (await vr.json())?.[0]?.user_id : null;
+        }
+        {
+          const ownerId = targetId;
           if (ownerId && ownerId !== userId) {
             const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
             const username = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
-            const titulo = 'Novo comentário';
-            const mensagem = `@${username} comentou: "${cleanText.slice(0, 60)}${cleanText.length > 60 ? '…' : ''}"`;
+            const titulo = parent_id ? 'Nova resposta' : 'Novo comentário';
+            const verbo = parent_id ? 'respondeu' : 'comentou';
+            const mensagem = `@${username} ${verbo}: "${cleanText.slice(0, 60)}${cleanText.length > 60 ? '…' : ''}"`;
             // Notif persistente na inbox (await — eram fire-and-forget perdidos)
             await fetch(`${SU}/rest/v1/blue_notificacoes`, {
               method: 'POST', headers: { ...h, Prefer: 'return=minimal' },

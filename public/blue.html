@@ -2462,7 +2462,9 @@ async function loadComments(id){
     const r=await fetch('/api/blue-comment?video_id='+id+'&limit=50');
     if(!r.ok){list.innerHTML='<div class="cp-empty" style="color:#f87171">Erro '+r.status+'<br><small>Tabela blue_comments criada?</small></div>';return;}
     const d=await r.json();
-    const cms=d.comments||[];
+    // Web mostra só comentários-raiz (respostas em thread são feature do app),
+    // ordenados por curtidas e depois recência.
+    const cms=(d.comments||[]).filter(c=>!c.parent_id).sort((a,b)=>(b.likes||0)-(a.likes||0)||new Date(b.created_at)-new Date(a.created_at));
     if(!cms.length){list.innerHTML='<div class="cp-empty">Nenhum comentário ainda.<br>Seja o primeiro! 💬</div>';return;}
     list.innerHTML='';
     cms.forEach(cm=>{
