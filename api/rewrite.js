@@ -417,9 +417,14 @@ Regras:
     const aiMod = await import('./_helpers/ai.js');
     const callAI = aiMod.callAI || aiMod.default?.callAI;
     if (typeof callAI !== 'function') throw new Error('callAI não exportado do helper');
+    // V3 (traducao com conversao de moeda) exige aritmetica confiavel:
+    // gpt-4o-mini errava ordem de grandeza ($2M virava "R$ 10 mil") mesmo
+    // com taxas-ancora no prompt. V3 usa gpt-4o completo (~US$0,01/uso);
+    // V1/V2 continuam no mini (barato e suficiente pra reescrita criativa).
     const { result: raw, provider } = await callAI(userPrompt, systemPrompt, version === 'V3' ? 1400 : 600, null, {
       temperature: isAdjust ? 0.55 : (version === 'V3' ? 0.2 : 0.85),
       topP: 0.95,
+      openaiModel: version === 'V3' ? 'gpt-4o' : undefined,
       geminiModel: 'gemini-2.5-flash',
     });
     const text = _clean(raw);
