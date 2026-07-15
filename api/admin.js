@@ -751,6 +751,15 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && action === 'set_affiliate_status') {
     const { email, status } = req.body; // status: active | pending | suspended
     if (!email || !status) return res.status(400).json({ error: 'email e status obrigatórios' });
+
+    // Status ANTES do patch — email de boas-vindas só na TRANSIÇÃO pra active
+    // (re-clicar "aprovar" num afiliado já ativo não re-envia)
+    let prevStatus = null;
+    try {
+      const pR = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(email)}&select=status`, { headers });
+      prevStatus = pR.ok ? (await pR.json())?.[0]?.status : null;
+    } catch (_) {}
+
     const r = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?email=eq.${encodeURIComponent(email)}`, {
       method: 'PATCH',
       headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
@@ -758,6 +767,55 @@ export default async function handler(req, res) {
     });
     const data = await r.json();
     console.log(`Affiliate ${status}: ${email}`);
+
+    // ── EMAIL DE APROVAÇÃO (2026-07-15): empolgado, com nome do afiliado ────
+    if (status === 'active' && prevStatus !== 'active' && process.env.RESEND_API_KEY) {
+      try {
+        const aff = Array.isArray(data) ? data[0] : data;
+        const nome = (aff?.name || email.split('@')[0]).split(' ')[0];
+        const nomeCap = nome.charAt(0).toUpperCase() + nome.slice(1);
+        const refLink = `https://bluetubeviral.com/?ref=${aff?.ref_code || ''}`;
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.RESEND_API_KEY}` },
+          body: JSON.stringify({
+            from: 'BlueTube <noreply@bluetubeviral.com>',
+            to: [email],
+            subject: `🎉 ${nomeCap}, você foi APROVADO! Bem-vindo ao time de afiliados do Blue`,
+            html: `
+<div style="font-family:Arial,sans-serif;background:#0a1628;color:#e8f4ff;padding:32px 24px;border-radius:16px;max-width:560px;margin:0 auto">
+  <div style="text-align:center;font-size:44px;margin-bottom:8px">🚀</div>
+  <h1 style="text-align:center;color:#00aaff;font-size:24px;margin:0 0 6px">É oficial, ${nomeCap}!</h1>
+  <p style="text-align:center;font-size:16px;color:#9fc5e8;margin:0 0 24px">Você agora faz parte do <strong style="color:#e8f4ff">time de afiliados do Blue</strong> 💙</p>
+
+  <p style="font-size:14px;line-height:1.7">A partir de <strong>agora</strong>, cada pessoa que assinar o BlueTube pelo seu link vira <strong style="color:#4ade80">renda recorrente no seu bolso — todo mês, enquanto ela for assinante</strong>. Não é comissão única: é um patrimônio que cresce a cada indicação.</p>
+
+  <div style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.25);border-radius:12px;padding:16px;margin:20px 0;text-align:center">
+    <div style="font-size:11px;color:#9fc5e8;letter-spacing:.08em;margin-bottom:6px">🔗 SEU LINK EXCLUSIVO</div>
+    <a href="${refLink}" style="color:#00aaff;font-size:15px;font-weight:bold;word-break:break-all">${refLink}</a>
+  </div>
+
+  <p style="font-size:14px;line-height:1.7"><strong>Como transformar isso em resultado:</strong></p>
+  <table style="font-size:14px;line-height:1.9;color:#e8f4ff">
+    <tr><td style="padding-right:8px">1️⃣</td><td>Compartilhe seu link nos seus vídeos, bio e grupos</td></tr>
+    <tr><td>2️⃣</td><td>Cada assinatura vira comissão <strong>recorrente</strong> pra você</td></tr>
+    <tr><td>3️⃣</td><td>Todo dia <strong>22</strong> o pagamento cai direto no seu <strong>Pix</strong> 💸</td></tr>
+  </table>
+
+  <p style="font-size:14px;line-height:1.7;margin-top:20px">Os nossos top afiliados começaram exatamente onde você está agora. A diferença entre eles e todo mundo? <strong style="color:#fbbf24">Começaram hoje.</strong></p>
+
+  <div style="text-align:center;margin:28px 0 8px">
+    <a href="https://bluetubeviral.com/afiliado" style="background:linear-gradient(135deg,#0050ff,#00aaff);color:#fff;text-decoration:none;font-weight:bold;font-size:15px;padding:14px 32px;border-radius:12px;display:inline-block">Abrir meu painel de afiliado →</a>
+  </div>
+
+  <p style="text-align:center;font-size:12px;color:#5a7a9a;margin-top:24px">Estamos construindo a nova rede social de vídeos — e você acabou de garantir seu lugar nessa história. 💙<br>Equipe BlueTube</p>
+</div>`,
+          }),
+        });
+        console.log(`[affiliate-welcome] email de aprovação enviado: ${email}`);
+      } catch (e) { console.error('[affiliate-welcome] falhou (aprovação segue ok):', e.message); }
+    }
+
     return res.status(200).json({ success: true, email, status });
   }
 
