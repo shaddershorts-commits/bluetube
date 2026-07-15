@@ -46,7 +46,49 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ error: 'action inválida (run|status)' });
+    // ── UPLOAD: base64 → Supabase → URL pública (pra alimentar o pipeline) ──
+    if (action === 'upload') {
+      const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+      const b64 = req.body?.b64; const name = req.body?.name || `test_${Date.now()}.mp4`;
+      if (!SU || !SK) return res.status(500).json({ error: 'supabase env ausente' });
+      if (!b64) return res.status(400).json({ error: 'b64 obrigatório' });
+      const buf = Buffer.from(b64, 'base64');
+      const objPath = `blueclean/_test/${name}`;
+      const up = await fetch(`${SU}/storage/v1/object/blue-videos/${objPath}`, {
+        method: 'POST', headers: { Authorization: 'Bearer ' + SK, apikey: SK, 'Content-Type': 'video/mp4', 'x-upsert': 'true' },
+        body: buf,
+      });
+      if (!up.ok) return res.status(502).json({ error: 'upload falhou', detail: await up.text() });
+      return res.status(200).json({ url: `${SU}/storage/v1/object/public/blue-videos/${objPath}` });
+    }
+
+    // ── PROCESS: dispara o pipeline de chunking completo no Railway ─────────
+    if (action === 'process') {
+      const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY, RW = process.env.RAILWAY_FFMPEG_URL;
+      const { video_url, watermark, chunk_sec } = req.body || {};
+      if (!RW) return res.status(500).json({ error: 'RAILWAY_FFMPEG_URL ausente' });
+      if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
+      const outPath = `blueclean/_test/out_${Date.now()}.mp4`;
+      const rr = await fetch(RW.replace(/\/$/, '') + '/blueclean-process', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url, output_path: outPath, supabase_url: SU, supabase_key: SK, replicate_token: REPLICATE, watermark: watermark !== false, chunk_sec }),
+      });
+      const rd = await rr.json().catch(() => ({}));
+      if (!rr.ok) return res.status(rr.status).json({ error: 'railway erro', detail: rd });
+      return res.status(200).json({ job_id: rd.job_id, output_path: outPath, output_url: `${SU}/storage/v1/object/public/blue-videos/${outPath}` });
+    }
+
+    // ── POLL: status do job do Railway ──────────────────────────────────────
+    if (action === 'poll') {
+      const RW = process.env.RAILWAY_FFMPEG_URL;
+      const id = req.query.id || req.body?.id;
+      if (!RW || !id) return res.status(400).json({ error: 'RW/id obrigatório' });
+      const rr = await fetch(RW.replace(/\/$/, '') + '/status/' + id);
+      const d = await rr.json().catch(() => ({}));
+      return res.status(rr.status).json(d);
+    }
+
+    return res.status(400).json({ error: 'action inválida (run|status|upload|process|poll)' });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
