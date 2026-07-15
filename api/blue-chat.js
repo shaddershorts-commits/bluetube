@@ -79,6 +79,13 @@ module.exports = async function handler(req, res) {
   // ── GET conversations list ────────────────────────────────────────────────
   if (req.method === 'GET' && action === 'conversations') {
     try {
+      // Ticks estilo WhatsApp: buscar conversas = "meu aparelho recebeu" →
+      // marca delivered nas mensagens destinadas a mim (fire com await:
+      // serverless descarta promises nao-aguardadas)
+      await fetch(`${SU}/rest/v1/blue_messages?receiver_id=eq.${userId}&delivered=eq.false`, {
+        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ delivered: true })
+      }).catch(() => {});
       const r = await fetch(
         `${SU}/rest/v1/blue_conversations?or=(user1_id.eq.${userId},user2_id.eq.${userId})&order=last_message_at.desc&limit=30&select=*`,
         { headers: h }
@@ -91,7 +98,7 @@ module.exports = async function handler(req, res) {
       const uniqueIds = [...new Set(otherIds)];
       let profiles = {};
       if (uniqueIds.length > 0) {
-        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uniqueIds.join(',')})&select=user_id,username,display_name,avatar_url,status`, { headers: h });
+        const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uniqueIds.join(',')})&select=user_id,username,display_name,avatar_url,status,status_updated_at`, { headers: h });
         if (pR.ok) { const pd = await pR.json(); pd.forEach(p => profiles[p.user_id] = p); }
       }
 
@@ -139,9 +146,17 @@ module.exports = async function handler(req, res) {
 
   // ── POST send message ─────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'send') {
-    const { to_user_id, text } = req.body;
-    if (!to_user_id || !text?.trim()) return res.status(400).json({ error: 'to_user_id e text obrigatórios' });
-    if (text.length > 1000) return res.status(400).json({ error: 'Mensagem muito longa' });
+    const { to_user_id, text, media_url, media_type, media_duration } = req.body;
+    const hasText = !!text?.trim();
+    const hasMedia = !!media_url && ['image', 'video', 'audio', 'gif'].includes(media_type);
+    if (!to_user_id || (!hasText && !hasMedia)) return res.status(400).json({ error: 'to_user_id e text (ou mídia) obrigatórios' });
+    if (hasText && text.length > 1000) return res.status(400).json({ error: 'Mensagem muito longa' });
+    // Preview na lista de conversas quando for midia
+    const preview = hasText ? text.trim()
+      : media_type === 'image' ? '📷 Foto'
+      : media_type === 'gif' ? '🎞️ GIF'
+      : media_type === 'video' ? '🎬 Vídeo'
+      : '🎤 Áudio';
     if (to_user_id === userId) return res.status(400).json({ error: 'Não pode enviar para si mesmo' });
 
     try {
@@ -160,23 +175,29 @@ module.exports = async function handler(req, res) {
       } else {
         const ncR = await fetch(`${SU}/rest/v1/blue_conversations`, {
           method: 'POST', headers: { ...h, Prefer: 'return=representation' },
-          body: JSON.stringify({ user1_id: u1, user2_id: u2, last_message: text.trim(), last_message_at: new Date().toISOString() })
+          body: JSON.stringify({ user1_id: u1, user2_id: u2, last_message: preview, last_message_at: new Date().toISOString() })
         });
         const nc = await ncR.json();
         convId = (Array.isArray(nc) ? nc[0] : nc).id;
       }
 
-      // Insert message
+      // Insert message (texto e/ou midia)
       const mR = await fetch(`${SU}/rest/v1/blue_messages`, {
         method: 'POST', headers: { ...h, Prefer: 'return=representation' },
-        body: JSON.stringify({ conversation_id: convId, sender_id: userId, receiver_id: to_user_id, text: text.trim() })
+        body: JSON.stringify({
+          conversation_id: convId, sender_id: userId, receiver_id: to_user_id,
+          text: hasText ? text.trim() : '',
+          media_url: hasMedia ? media_url : null,
+          media_type: hasMedia ? media_type : null,
+          media_duration: hasMedia ? (parseInt(media_duration) || null) : null,
+        })
       });
       const msg = await mR.json();
 
       // Update conversation last message
-      fetch(`${SU}/rest/v1/blue_conversations?id=eq.${convId}`, {
+      await fetch(`${SU}/rest/v1/blue_conversations?id=eq.${convId}`, {
         method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
-        body: JSON.stringify({ last_message: text.trim(), last_message_at: new Date().toISOString() })
+        body: JSON.stringify({ last_message: preview, last_message_at: new Date().toISOString() })
       }).catch(() => {});
 
       // Notificacao inbox (blue_notificacoes — tabela VIVA; blue_notifications
@@ -194,7 +215,7 @@ module.exports = async function handler(req, res) {
             method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
             body: JSON.stringify({
               user_id: to_user_id, tipo: 'mensagem', titulo: 'Nova mensagem',
-              mensagem: `@${username}: "${text.trim().slice(0, 60)}${text.trim().length > 60 ? '…' : ''}"`,
+              mensagem: `@${username}: "${preview.slice(0, 60)}${preview.length > 60 ? '…' : ''}"`,
               dados: { from_user_id: userId, conv_id: convId },
             })
           }).catch(() => null);
@@ -221,6 +242,17 @@ module.exports = async function handler(req, res) {
       });
       return res.status(200).json({ ok: true });
     } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── GET presence: online / visto por ultimo (header da conversa) ─────────
+  if (req.method === 'GET' && action === 'presence') {
+    const uid = req.query.user_id;
+    if (!uid) return res.status(400).json({ error: 'user_id obrigatório' });
+    try {
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${encodeURIComponent(uid)}&select=status,status_updated_at`, { headers: h });
+      const p = pR.ok ? (await pR.json())?.[0] : null;
+      return res.status(200).json({ status: p?.status || 'offline', status_updated_at: p?.status_updated_at || null });
+    } catch (e) { return res.status(200).json({ status: 'offline', status_updated_at: null }); }
   }
 
   // ── POST get or create conversation ──────────────────────────────────────

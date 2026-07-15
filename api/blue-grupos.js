@@ -26,7 +26,7 @@ module.exports = async function handler(req, res) {
 
   // ── CRIAR GRUPO ─────────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'criar') {
-    const { token, nome, descricao, tipo } = req.body;
+    const { token, nome, descricao, tipo, membros } = req.body;
     const user = await getUser(token);
     if (!user) return res.status(401).json({ error: 'Token inválido' });
     if (!nome) return res.status(400).json({ error: 'Nome obrigatório' });
@@ -44,6 +44,18 @@ module.exports = async function handler(req, res) {
         method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ grupo_id: grupo.id, user_id: user.id, role: 'admin' })
       });
+
+      // Membros iniciais (WhatsApp-like: criador ja escolhe quem entra)
+      if (Array.isArray(membros) && membros.length) {
+        const rows = [...new Set(membros)].filter(id => id && id !== user.id).slice(0, 50)
+          .map(id => ({ grupo_id: grupo.id, user_id: id, role: 'membro' }));
+        if (rows.length) {
+          await fetch(`${SU}/rest/v1/blue_grupo_membros`, {
+            method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+            body: JSON.stringify(rows)
+          }).catch(() => {});
+        }
+      }
 
       return res.status(200).json({ ok: true, grupo });
     } catch(e) { return res.status(500).json({ error: e.message }); }
@@ -136,23 +148,55 @@ module.exports = async function handler(req, res) {
 
   // ── ENVIAR MENSAGEM ─────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'mensagem') {
-    const { token, grupo_id, mensagem, tipo } = req.body;
+    const { token, grupo_id, mensagem, tipo, media_url, media_type, media_duration } = req.body;
     const user = await getUser(token);
     if (!user) return res.status(401).json({ error: 'Token inválido' });
-    if (!grupo_id || !mensagem) return res.status(400).json({ error: 'grupo_id e mensagem obrigatórios' });
+    const gHasMedia = !!media_url && ['image', 'video', 'audio', 'gif'].includes(media_type);
+    if (!grupo_id || (!mensagem?.trim() && !gHasMedia)) return res.status(400).json({ error: 'grupo_id e mensagem (ou mídia) obrigatórios' });
 
     try {
       // Verify membership
       const mR = await fetch(`${SU}/rest/v1/blue_grupo_membros?grupo_id=eq.${grupo_id}&user_id=eq.${user.id}&select=grupo_id`, { headers: h });
       if (!mR.ok || !(await mR.json()).length) return res.status(403).json({ error: 'Não é membro deste grupo' });
 
+      const gPreview = mensagem?.trim()
+        || (media_type === 'image' ? '📷 Foto' : media_type === 'gif' ? '🎞️ GIF' : media_type === 'video' ? '🎬 Vídeo' : '🎤 Áudio');
       const msgR = await fetch(`${SU}/rest/v1/blue_grupo_mensagens`, {
         method: 'POST', headers: { ...h, 'Prefer': 'return=representation' },
-        body: JSON.stringify({ grupo_id, user_id: user.id, mensagem, tipo: tipo || 'texto' })
+        body: JSON.stringify({
+          grupo_id, user_id: user.id, mensagem: mensagem?.trim() || '', tipo: tipo || 'texto',
+          media_url: gHasMedia ? media_url : null,
+          media_type: gHasMedia ? media_type : null,
+          media_duration: gHasMedia ? (parseInt(media_duration) || null) : null,
+        })
       });
       const msg = msgR.ok ? (await msgR.json())[0] : null;
+      // last_message do grupo (lista de conversas estilo WhatsApp) — tolera coluna ausente
+      await fetch(`${SU}/rest/v1/blue_grupos?id=eq.${grupo_id}`, {
+        method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ last_message: gPreview.slice(0, 120), last_message_at: new Date().toISOString() })
+      }).catch(() => {});
       return res.status(200).json({ ok: true, mensagem: msg ? { ...msg, autor: user.profile } : null });
     } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── ADICIONAR MEMBRO (admin adiciona pessoas, estilo WhatsApp) ──────────
+  if (req.method === 'POST' && action === 'adicionar') {
+    const { token, grupo_id, user_id: novoId } = req.body;
+    const user = await getUser(token);
+    if (!user) return res.status(401).json({ error: 'Token inválido' });
+    if (!grupo_id || !novoId) return res.status(400).json({ error: 'grupo_id e user_id obrigatórios' });
+    try {
+      const aR = await fetch(`${SU}/rest/v1/blue_grupo_membros?grupo_id=eq.${grupo_id}&user_id=eq.${user.id}&role=eq.admin&select=grupo_id`, { headers: h });
+      if (!aR.ok || !(await aR.json()).length) return res.status(403).json({ error: 'Só admins podem adicionar membros' });
+      const exR = await fetch(`${SU}/rest/v1/blue_grupo_membros?grupo_id=eq.${grupo_id}&user_id=eq.${novoId}&select=grupo_id`, { headers: h });
+      if (exR.ok && (await exR.json()).length) return res.status(200).json({ ok: true, ja_membro: true });
+      await fetch(`${SU}/rest/v1/blue_grupo_membros`, {
+        method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ grupo_id, user_id: novoId, role: 'membro' })
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
   // ── MEMBROS DO GRUPO ────────────────────────────────────────────────────
