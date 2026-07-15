@@ -435,6 +435,67 @@ app.post('/blue-thumb', async (req, res) => {
   }
 });
 
+// BlueClean v2 — gera a MASCARA de texto/marca-dagua a partir do vídeo
+// original + o vídeo com texto pintado de preto (modo 'black' do detector).
+// Diferença dos dois (com PTS re-alinhado por frame) = onde o texto estava.
+// Sync alignment: setpts=N/FRAME_RATE/TB nos dois força pareamento por
+// número de frame (o blend do ffmpeg parearia por timestamp, e os re-encodes
+// têm PTS diferente → tudo branco). Sobe a máscara pro Supabase e devolve URL.
+app.post('/blueclean-mask', (req, res) => {
+  const p = req.body || {};
+  if (!p.original_url || !p.black_url || !p.supabase_url || !p.supabase_key || !p.output_path) {
+    return res.status(400).json({ error: 'original_url, black_url, output_path e credenciais obrigatorios' });
+  }
+  const jobId = uuidv4();
+  JOBS.set(jobId, { status: 'processing', progress: 10 });
+  res.json({ ok: true, job_id: jobId });
+  processBlueCleanMask(jobId, p).catch((e) => {
+    console.error('[blueclean-mask]', jobId, e.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
+  });
+});
+
+async function processBlueCleanMask(jobId, p) {
+  const dir = path.join('/tmp', 'bcmask-' + jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const orig = path.join(dir, 'orig.mp4');
+    const black = path.join(dir, 'black.mp4');
+    await downloadFile(p.original_url, orig);
+    await downloadFile(p.black_url, black);
+
+    // fps do original pra re-indexar os dois na mesma base
+    let fps = 30;
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', orig]);
+      const m = String(stdout).trim().split('/');
+      if (m.length === 2 && +m[1]) fps = +m[0] / +m[1];
+      else if (+stdout) fps = +stdout;
+    } catch (_) {}
+    fps = Math.max(1, Math.min(60, Math.round(fps)));
+
+    const thr = p.threshold || 45;      // sensibilidade da diferença
+    const dil = Math.max(0, Math.min(6, p.dilation != null ? p.dilation : 2)); // margem
+    const dilChain = Array(dil).fill('dilation').join(',');
+    const out = path.join(dir, 'mask.mp4');
+    const fc =
+      `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
+      `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
+      `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
+      (dilChain ? ',' + dilChain : '') + `,format=gray[m]`;
+    await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-filter_complex', fc, '-map', '[m]',
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), out]);
+
+    await uploadToSupabase(out, p.output_path, p.supabase_url, p.supabase_key, 'video/mp4');
+    const maskUrl = `${p.supabase_url}/storage/v1/object/public/blue-videos/${p.output_path}?v=${Date.now()}`;
+    JOBS.set(jobId, { status: 'done', progress: 100, mask_url: maskUrl });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
+  } catch (e) {
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
+  }
+}
+
 // Extrai thumbnail EVITANDO frames pretos: testa 3 pontos do video e aceita
 // o primeiro com brilho medio (YAVG) > 18. Corrige as "thumbs de tela preta"
 // que a captura client-side (frame fixo em ~1s) gerava.
