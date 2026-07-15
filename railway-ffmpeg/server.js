@@ -464,25 +464,37 @@ async function processBlueCleanMask(jobId, p) {
     await downloadFile(p.original_url, orig);
     await downloadFile(p.black_url, black);
 
-    // fps do original pra re-indexar os dois na mesma base
-    let fps = 30;
+    // fps + dimensões do original pra re-indexar e posicionar o watermark
+    let fps = 30, W = 0, Hh = 0;
     try {
-      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', orig]);
-      const m = String(stdout).trim().split('/');
-      if (m.length === 2 && +m[1]) fps = +m[0] / +m[1];
-      else if (+stdout) fps = +stdout;
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate,width,height', '-of', 'default=noprint_wrappers=1:nokey=0', orig]);
+      const g = (k) => { const m = String(stdout).match(new RegExp(k + '=([^\\n]+)')); return m ? m[1].trim() : ''; };
+      const fr = g('r_frame_rate').split('/'); if (fr.length === 2 && +fr[1]) fps = +fr[0] / +fr[1]; else if (+fr[0]) fps = +fr[0];
+      W = parseInt(g('width')) || 0; Hh = parseInt(g('height')) || 0;
     } catch (_) {}
     fps = Math.max(1, Math.min(60, Math.round(fps)));
 
     const thr = p.threshold || 45;      // sensibilidade da diferença
     const dil = Math.max(0, Math.min(6, p.dilation != null ? p.dilation : 2)); // margem
     const dilChain = Array(dil).fill('dilation').join(',');
+
+    // Watermark é ESTÁTICO mas a detecção é intermitente (pequeno/fraco) →
+    // ele "fica" no vídeo. Como fica sempre no rodapé, cobrimos uma faixa
+    // inferior fixa na máscara (ProPainter reconstrói dos frames vizinhos).
+    // wm_off=1 desliga. Faixa = 12% da altura, largura toda.
+    let wmBox = '';
+    if (p.watermark !== false && W && Hh) {
+      const bh = Math.round(Hh * (p.wm_height_pct || 0.12));
+      const by = Hh - bh - Math.round(Hh * 0.02);
+      wmBox = `,drawbox=x=0:y=${by}:w=${W}:h=${bh}:color=white:t=fill`;
+    }
+
     const out = path.join(dir, 'mask.mp4');
     const fc =
       `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
       `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
       `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
-      (dilChain ? ',' + dilChain : '') + `,format=gray[m]`;
+      (dilChain ? ',' + dilChain : '') + wmBox + `,format=gray[m]`;
     await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-filter_complex', fc, '-map', '[m]',
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), out]);
 
