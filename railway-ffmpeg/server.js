@@ -508,6 +508,192 @@ async function processBlueCleanMask(jobId, p) {
   }
 }
 
+// ── BlueClean PROCESS — pipeline COMPLETO com chunking ─────────────────────
+// Aguenta Shorts reais (15-60s+). Divide o video em trechos curtos (~5s,
+// dentro do teto que os modelos aguentam), roda o pipeline completo em cada
+// um (detecta texto -> gera mascara blend-diff PTS-aligned + faixa da marca
+// d'agua -> preenche com ProPainter deep), reconcatena e recola o audio
+// original (ProPainter descarta o audio). Job assincrono; polling em /status.
+// Body: { video_url, output_path, supabase_url, supabase_key, replicate_token,
+//         chunk_sec?, watermark?, wm_height_pct?, threshold?, dilation? }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function replicateRun(token, model, input, { pollMs = 4000, timeoutMs = 12 * 60 * 1000 } = {}) {
+  const vr = await axios.get(`https://api.replicate.com/v1/models/${model}/versions`, { headers: { Authorization: 'Token ' + token } });
+  const version = vr.data?.results?.[0]?.id;
+  if (!version) throw new Error('Replicate: versao nao encontrada de ' + model);
+  const cr = await axios.post('https://api.replicate.com/v1/predictions',
+    { version, input }, { headers: { Authorization: 'Token ' + token, 'Content-Type': 'application/json' } });
+  let pred = cr.data;
+  const deadline = Date.now() + timeoutMs;
+  while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
+    if (Date.now() > deadline) throw new Error('Replicate timeout em ' + model);
+    await sleep(pollMs);
+    const gr = await axios.get(`https://api.replicate.com/v1/predictions/${pred.id}`, { headers: { Authorization: 'Token ' + token } });
+    pred = gr.data;
+  }
+  if (pred.status !== 'succeeded') throw new Error('Replicate ' + model + ' falhou: ' + (pred.error || pred.status));
+  const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
+  if (!out) throw new Error('Replicate ' + model + ' sem output');
+  return out;
+}
+
+app.post('/blueclean-process', (req, res) => {
+  const p = req.body || {};
+  if (!p.video_url || !p.output_path || !p.supabase_url || !p.supabase_key || !p.replicate_token) {
+    return res.status(400).json({ error: 'video_url, output_path, replicate_token e credenciais obrigatorios' });
+  }
+  const jobId = uuidv4();
+  JOBS.set(jobId, { status: 'processing', progress: 2, stage: 'preparando' });
+  res.json({ ok: true, job_id: jobId });
+  processBlueClean(jobId, p).catch((e) => {
+    console.error('[blueclean-process]', jobId, e.message);
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
+  });
+});
+
+// Limpa 1 trecho: upload -> detecta (black) -> mascara -> ProPainter -> baixa.
+// Retorna o caminho local do trecho ja preenchido (sem audio).
+async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, uploaded, opt) {
+  const chunkKey = `${tmpPrefix}/chunk_${idx}.mp4`;
+  const chunkUrl = await uploadToSupabase(chunkPath, chunkKey, SU, SK, 'video/mp4');
+  uploaded.push(chunkKey);
+
+  // (a) DETECCAO — modelo pinta texto/marca de preto (conf baixa)
+  const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover', {
+    video: chunkUrl, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1,
+  }, { pollMs: 3000, timeoutMs: 8 * 60 * 1000 });
+
+  // (b) MASCARA — blend-diff PTS-aligned + faixa fixa da marca d'agua
+  const black = path.join(dir, `black_${idx}.mp4`);
+  await downloadFile(blackUrl, black);
+  const mask = path.join(dir, `mask_${idx}.mp4`);
+  const fps = Math.max(1, Math.min(60, Math.round(opt.fps || 30)));
+  const thr = opt.threshold || 45;
+  const dil = Math.max(0, Math.min(6, opt.dilation != null ? opt.dilation : 2));
+  const dilChain = Array(dil).fill('dilation').join(',');
+  let wmBox = '';
+  if (opt.watermark !== false && opt.W && opt.Hh) {
+    const bh = Math.round(opt.Hh * (opt.wm_height_pct || 0.12));
+    const by = opt.Hh - bh - Math.round(opt.Hh * 0.02);
+    wmBox = `,drawbox=x=0:y=${by}:w=${opt.W}:h=${bh}:color=white:t=fill`;
+  }
+  const fc =
+    `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
+    `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
+    `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
+    (dilChain ? ',' + dilChain : '') + wmBox + `,format=gray[m]`;
+  await run('ffmpeg', ['-y', '-i', chunkPath, '-i', black, '-filter_complex', fc, '-map', '[m]',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), mask]);
+  const maskKey = `${tmpPrefix}/mask_${idx}.mp4`;
+  const maskUrl = await uploadToSupabase(mask, maskKey, SU, SK, 'video/mp4');
+  uploaded.push(maskKey);
+
+  // (c) PREENCHIMENTO — ProPainter deep (fp16 evita erro de dtype)
+  const filledUrl = await replicateRun(token, 'jd7h/propainter', {
+    video: chunkUrl, mask: maskUrl, fp16: true, mask_dilation: 4,
+  }, { pollMs: 4000, timeoutMs: 12 * 60 * 1000 });
+  const filled = path.join(dir, `filled_${idx}.mp4`);
+  await downloadFile(filledUrl, filled);
+
+  // (d) NORMALIZA — ProPainter pode devolver outra resolucao/timebase. Forca
+  // dimensoes/fps/pixfmt canonicos pro concat demuxer nao glitchar nem falhar.
+  const norm = path.join(dir, `norm_${idx}.mp4`);
+  const scale = (opt.W && opt.Hh) ? `scale=${opt.W}:${opt.Hh}:flags=bicubic,` : '';
+  await run('ffmpeg', ['-y', '-i', filled, '-an', '-vf', `${scale}fps=${fps},format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-video_track_timescale', '90000', norm]);
+  return norm;
+}
+
+async function processBlueClean(jobId, p) {
+  const dir = path.join('/tmp', 'bclean-' + jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const setJob = (o) => JOBS.set(jobId, { ...(JOBS.get(jobId) || {}), ...o });
+  const token = p.replicate_token, SU = p.supabase_url, SK = p.supabase_key;
+  const CHUNK = Math.max(3, Math.min(10, p.chunk_sec || 5));
+  const tmpPrefix = `blueclean/_work/${jobId}`;
+  const uploaded = [];
+  try {
+    // 1. baixa o original
+    setJob({ progress: 5, stage: 'baixando' });
+    const orig = path.join(dir, 'orig.mp4');
+    await downloadFile(p.video_url, orig);
+
+    // 2. probe: fps, dimensoes, duracao, audio
+    let fps = 30, W = 0, Hh = 0;
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate,width,height', '-of', 'default=noprint_wrappers=1:nokey=0', orig]);
+      const g = (k) => { const m = String(stdout).match(new RegExp(k + '=([^\\n]+)')); return m ? m[1].trim() : ''; };
+      const fr = g('r_frame_rate').split('/'); if (fr.length === 2 && +fr[1]) fps = +fr[0] / +fr[1]; else if (+fr[0]) fps = +fr[0];
+      W = parseInt(g('width')) || 0; Hh = parseInt(g('height')) || 0;
+    } catch (_) {}
+    fps = Math.max(1, Math.min(60, Math.round(fps)));
+    let hasAudio = false;
+    try { const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', orig]); hasAudio = /audio/.test(stdout); } catch (_) {}
+
+    // 3. divide em trechos (re-encode + keyframes forcados = cortes limpos)
+    setJob({ progress: 10, stage: 'dividindo' });
+    const chunkDir = path.join(dir, 'chunks'); fs.mkdirSync(chunkDir, { recursive: true });
+    await run('ffmpeg', ['-y', '-i', orig, '-an', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p',
+      '-force_key_frames', `expr:gte(t,n_forced*${CHUNK})`,
+      '-f', 'segment', '-segment_time', String(CHUNK), '-reset_timestamps', '1', path.join(chunkDir, 'c_%03d.mp4')]);
+    const chunkFiles = fs.readdirSync(chunkDir).filter((f) => /\.mp4$/.test(f)).sort();
+    if (!chunkFiles.length) throw new Error('Falha ao dividir video em trechos');
+    setJob({ chunks_total: chunkFiles.length });
+
+    // 4. processa cada trecho (concorrencia limitada)
+    const opt = { fps, W, Hh, watermark: p.watermark, wm_height_pct: p.wm_height_pct, threshold: p.threshold, dilation: p.dilation };
+    const filled = new Array(chunkFiles.length);
+    const queue = chunkFiles.map((f, i) => ({ f, i }));
+    let done = 0;
+    const worker = async () => {
+      while (queue.length) {
+        const { f, i } = queue.shift();
+        filled[i] = await processChunkClean(dir, path.join(chunkDir, f), i, token, SU, SK, tmpPrefix, uploaded, opt);
+        done++;
+        setJob({ progress: Math.min(88, 15 + Math.round((done / chunkFiles.length) * 70)), stage: `limpando ${done}/${chunkFiles.length}` });
+      }
+    };
+    const CONC = Math.min(2, chunkFiles.length);
+    await Promise.all(Array.from({ length: CONC }, worker));
+
+    // 5. reconcatena os trechos preenchidos
+    setJob({ progress: 90, stage: 'juntando' });
+    const listFile = path.join(dir, 'concat.txt');
+    fs.writeFileSync(listFile, filled.map((fp) => `file '${fp.replace(/'/g, "'\\''")}'`).join('\n'));
+    const merged = path.join(dir, 'merged.mp4');
+    await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile,
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', merged]);
+
+    // 6. recola o audio original (ProPainter descarta o audio)
+    setJob({ progress: 94, stage: 'audio' });
+    const finalOut = path.join(dir, 'final.mp4');
+    if (hasAudio) {
+      await run('ffmpeg', ['-y', '-i', merged, '-i', orig, '-map', '0:v:0', '-map', '1:a:0',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest', finalOut]);
+    } else { fs.copyFileSync(merged, finalOut); }
+
+    // 7. upload do resultado final
+    setJob({ progress: 97, stage: 'finalizando' });
+    const outputUrl = await uploadToSupabase(finalOut, p.output_path, SU, SK, 'video/mp4');
+
+    // 8. limpa arquivos temporarios do storage (best effort)
+    for (const pth of uploaded) {
+      try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
+    }
+
+    JOBS.set(jobId, { status: 'done', progress: 100, stage: 'concluido', chunks: chunkFiles.length, output_url: outputUrl + '?v=' + Date.now() });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
+  } catch (e) {
+    // best-effort cleanup dos temporarios mesmo em erro
+    for (const pth of uploaded) {
+      try { await axios.delete(`${p.supabase_url}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + p.supabase_key, apikey: p.supabase_key } }); } catch (_) {}
+    }
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
+  }
+}
+
 // Extrai thumbnail EVITANDO frames pretos: testa 3 pontos do video e aceita
 // o primeiro com brilho medio (YAVG) > 18. Corrige as "thumbs de tela preta"
 // que a captura client-side (frame fixo em ~1s) gerava.
