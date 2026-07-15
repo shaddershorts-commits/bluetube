@@ -46,6 +46,13 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (action === 'cancel') {
+      const id = req.query.id || req.body?.id;
+      if (!id) return res.status(400).json({ error: 'id obrigatório' });
+      const rr = await fetch(`https://api.replicate.com/v1/predictions/${id}/cancel`, { method: 'POST', headers: H });
+      return res.status(rr.status).json(await rr.json().catch(() => ({})));
+    }
+
     // ── UPLOAD: base64 → Supabase → URL pública (pra alimentar o pipeline) ──
     if (action === 'upload') {
       const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;

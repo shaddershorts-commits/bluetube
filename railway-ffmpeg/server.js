@@ -518,24 +518,65 @@ async function processBlueCleanMask(jobId, p) {
 //         chunk_sec?, watermark?, wm_height_pct?, threshold?, dilation? }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function replicateRun(token, model, input, { pollMs = 4000, timeoutMs = 12 * 60 * 1000 } = {}) {
-  const vr = await axios.get(`https://api.replicate.com/v1/models/${model}/versions`, { headers: { Authorization: 'Token ' + token } });
+// Retry com backoff exponencial em 429 (rate limit) e 5xx. Respeita Retry-After.
+// Blinda a rajada de chamadas do chunking (varios trechos em paralelo).
+async function axiosRetry(label, fn, { tries = 6, base = 2000 } = {}) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); }
+    catch (e) {
+      last = e;
+      const st = e.response?.status;
+      if (st !== 429 && !(st >= 500 && st < 600)) {
+        const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : '';
+        throw new Error(`${label} (HTTP ${st || '?'}) ${body || e.message}`);
+      }
+      if (i === tries - 1) break;
+      const ra = parseInt(e.response?.headers?.['retry-after']) || 0;
+      const wait = ra ? ra * 1000 : Math.min(30000, base * Math.pow(2, i)) + Math.floor(Math.random() * 800);
+      await sleep(wait);
+    }
+  }
+  const st = last?.response?.status;
+  throw new Error(`${label} esgotou retries (HTTP ${st || '?'}): ${last?.message || ''}`);
+}
+
+// Cache de versao por modelo (persiste na instancia; versao muda raramente) —
+// evita marretar o endpoint /versions a cada trecho.
+const REPL_VER_CACHE = new Map();
+async function replicateVersion(token, model) {
+  if (REPL_VER_CACHE.has(model)) return REPL_VER_CACHE.get(model);
+  const vr = await axiosRetry('replicate versions ' + model, () =>
+    axios.get(`https://api.replicate.com/v1/models/${model}/versions`, { headers: { Authorization: 'Token ' + token } }));
   const version = vr.data?.results?.[0]?.id;
   if (!version) throw new Error('Replicate: versao nao encontrada de ' + model);
-  const cr = await axios.post('https://api.replicate.com/v1/predictions',
-    { version, input }, { headers: { Authorization: 'Token ' + token, 'Content-Type': 'application/json' } });
+  REPL_VER_CACHE.set(model, version);
+  return version;
+}
+
+async function replicateRun(token, model, input, { pollMs = 4000, timeoutMs = 12 * 60 * 1000 } = {}) {
+  const version = await replicateVersion(token, model);
+  const cr = await axiosRetry('replicate create ' + model, () =>
+    axios.post('https://api.replicate.com/v1/predictions',
+      { version, input }, { headers: { Authorization: 'Token ' + token, 'Content-Type': 'application/json' } }));
   let pred = cr.data;
   const deadline = Date.now() + timeoutMs;
   while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
     if (Date.now() > deadline) throw new Error('Replicate timeout em ' + model);
     await sleep(pollMs);
-    const gr = await axios.get(`https://api.replicate.com/v1/predictions/${pred.id}`, { headers: { Authorization: 'Token ' + token } });
+    const gr = await axiosRetry('replicate poll ' + model, () =>
+      axios.get(`https://api.replicate.com/v1/predictions/${pred.id}`, { headers: { Authorization: 'Token ' + token } }));
     pred = gr.data;
   }
   if (pred.status !== 'succeeded') throw new Error('Replicate ' + model + ' falhou: ' + (pred.error || pred.status));
   const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
   if (!out) throw new Error('Replicate ' + model + ' sem output');
   return out;
+}
+
+// Upload com retry (Supabase tambem pode 429 sob rajada de trechos).
+async function uploadRetry(label, filePath, outputPath, SU, SK, ct) {
+  return axiosRetry('upload ' + label, () => uploadToSupabase(filePath, outputPath, SU, SK, ct), { tries: 4, base: 1500 });
 }
 
 app.post('/blueclean-process', (req, res) => {
@@ -556,7 +597,7 @@ app.post('/blueclean-process', (req, res) => {
 // Retorna o caminho local do trecho ja preenchido (sem audio).
 async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, uploaded, opt) {
   const chunkKey = `${tmpPrefix}/chunk_${idx}.mp4`;
-  const chunkUrl = await uploadToSupabase(chunkPath, chunkKey, SU, SK, 'video/mp4');
+  const chunkUrl = await uploadRetry('chunk ' + idx, chunkPath, chunkKey, SU, SK, 'video/mp4');
   uploaded.push(chunkKey);
 
   // (a) DETECCAO — modelo pinta texto/marca de preto (conf baixa)
@@ -586,7 +627,7 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
   await run('ffmpeg', ['-y', '-i', chunkPath, '-i', black, '-filter_complex', fc, '-map', '[m]',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), mask]);
   const maskKey = `${tmpPrefix}/mask_${idx}.mp4`;
-  const maskUrl = await uploadToSupabase(mask, maskKey, SU, SK, 'video/mp4');
+  const maskUrl = await uploadRetry('mask ' + idx, mask, maskKey, SU, SK, 'video/mp4');
   uploaded.push(maskKey);
 
   // (c) PREENCHIMENTO — ProPainter deep (fp16 evita erro de dtype)
