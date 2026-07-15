@@ -124,6 +124,15 @@ async function cancelarSubscriptionAtPeriodEnd(subscriptionId, customKey) {
   });
 }
 
+// ── Compat API 2026-03-25.dahlia+ ───────────────────────────────────────────
+// Versões novas da API moveram sub.current_period_end pro nível do item
+// (sub.items.data[0].current_period_end). Leitor aceita ambos os formatos.
+// Sem isso, new Date(undefined*1000).toISOString() LANÇAVA aqui e o catch
+// devolvia null = "sem assinatura" pra clientes pagantes (bug 03-07/2026).
+function subCurrentPeriodEnd(sub) {
+  return sub?.current_period_end || sub?.items?.data?.[0]?.current_period_end || null;
+}
+
 // ── Assinatura ativa do customer ────────────────────────────────────────────
 async function verificarAssinaturaAtiva(stripeCustomerId) {
   if (!stripeCustomerId) return null;
@@ -135,13 +144,14 @@ async function verificarAssinaturaAtiva(stripeCustomerId) {
     if (!sub) return null;
     const item = sub.items?.data?.[0];
     const price = item?.price;
+    const periodEnd = subCurrentPeriodEnd(sub);
     return {
       ativa: true,
       stripe_subscription_id: sub.id,
       status: sub.status,
       cancel_at_period_end: sub.cancel_at_period_end,
-      current_period_end: sub.current_period_end,
-      expira_em: new Date(sub.current_period_end * 1000).toISOString(),
+      current_period_end: periodEnd,
+      expira_em: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
       price_id: price?.id || null,
       price_amount: price?.unit_amount || 0,
       price_interval: price?.recurring?.interval || null,
@@ -251,6 +261,7 @@ module.exports = {
   criarTransfer,
   cancelarSubscriptionAtPeriodEnd,
   verificarAssinaturaAtiva,
+  subCurrentPeriodEnd,
   supaFetch,
   buscarEvento,
   registrarEventoIniciando,

@@ -53,8 +53,12 @@ module.exports = async function handler(req, res) {
   const startTs = Date.now();
   const zumbis_pagantes = []; // free no DB MAS active no Stripe — CRITICO
   const zumbis_orfaos = [];   // paid no DB MAS deleted no Stripe — bug menor
+  const drift_curados = [];   // CASO C — pagante com expiry defasado → auto-estendido
   let total_checados = 0;
   let stripe_errors = 0;
+
+  // Compat Stripe API dahlia+: current_period_end moveu pro nível do item.
+  const subPeriodEnd = (s) => s?.current_period_end || s?.items?.data?.[0]?.current_period_end || null;
 
   try {
     // 1. Subscribers com stripe_subscription_id (qualquer status)
@@ -79,7 +83,7 @@ module.exports = async function handler(req, res) {
             is_manual: sub.is_manual,
             customer_id: sub.stripe_customer_id,
             subscription_id: sub.stripe_subscription_id,
-            current_period_end: stripeSub.current_period_end ? new Date(stripeSub.current_period_end * 1000).toISOString() : null,
+            current_period_end: subPeriodEnd(stripeSub) ? new Date(subPeriodEnd(stripeSub) * 1000).toISOString() : null,
             ultimo_update_db: sub.updated_at,
           });
         }
@@ -95,6 +99,52 @@ module.exports = async function handler(req, res) {
               subscription_id: sub.stripe_subscription_id,
               ultimo_update_db: sub.updated_at,
             });
+          }
+        }
+
+        // CASO C — DRIFT-HEALING (2026-07-15): pagante com sub ATIVA no Stripe
+        // mas plan_expires_at defasado no DB (< period_end da sub). Foi o
+        // sintoma do bug dahlia (renovações não estendiam expiry) — clientes
+        // pagando tratados como free pelo get-plan. Auto-cura na direção
+        // SEGURA: só ESTENDE acesso de quem está comprovadamente pagando;
+        // nunca revoga, nunca mexe em is_manual, nunca move dinheiro.
+        // Rede de segurança permanente: mesmo se o Stripe mudar formato de
+        // novo, o drift é curado em <=4h (cadência deste cron).
+        if (
+          (sub.plan === 'full' || sub.plan === 'master') &&
+          !sub.is_manual &&
+          (stripeStatus === 'active' || stripeStatus === 'trialing')
+        ) {
+          const periodEndSec = subPeriodEnd(stripeSub);
+          if (periodEndSec) {
+            const dbExpira = sub.plan_expires_at ? new Date(sub.plan_expires_at).getTime() : 0;
+            const stripeFim = periodEndSec * 1000;
+            // margem de 1h evita PATCH em micro-diferenças de clock
+            if (dbExpira + 3600 * 1000 < stripeFim) {
+              const novoExpira = new Date(stripeFim + 7 * 86400 * 1000).toISOString(); // period_end + 7d (mesma folga do +37d mensal)
+              try {
+                const patchR = await fetch(
+                  `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(sub.email)}&is_manual=not.is.true`,
+                  {
+                    method: 'PATCH',
+                    headers: { ...supaH, Prefer: 'return=minimal' },
+                    body: JSON.stringify({ plan_expires_at: novoExpira, updated_at: new Date().toISOString() }),
+                  }
+                );
+                if (patchR.ok) {
+                  drift_curados.push({
+                    email: sub.email,
+                    plan: sub.plan,
+                    expira_antes: sub.plan_expires_at,
+                    expira_depois: novoExpira,
+                    stripe_period_end: new Date(stripeFim).toISOString(),
+                  });
+                  console.log(`🩹 [drift-healing] ${sub.email}: expiry ${(sub.plan_expires_at || 'null').slice(0, 10)} → ${novoExpira.slice(0, 10)}`);
+                }
+              } catch (e) {
+                console.error('[drift-healing]', sub.email, e.message);
+              }
+            }
           }
         }
       } catch (e) {
@@ -185,8 +235,10 @@ module.exports = async function handler(req, res) {
       stripe_errors,
       zumbis_pagantes_count: zumbis_pagantes.length,
       zumbis_orfaos_count: zumbis_orfaos.length,
+      drift_curados_count: drift_curados.length,
       zumbis_pagantes,
       zumbis_orfaos,
+      drift_curados,
       auto_fix_status,
       auto_fix_results,
     });

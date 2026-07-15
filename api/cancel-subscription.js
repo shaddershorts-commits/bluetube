@@ -16,6 +16,11 @@
 //
 // Garante: nenhuma sub "orfa" fica cobrando depois que user cancela.
 
+// Compat Stripe API dahlia+: current_period_end moveu pro nível do item.
+function subPeriodEnd(s) {
+  return s?.current_period_end || s?.items?.data?.[0]?.current_period_end || null;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -111,7 +116,7 @@ export default async function handler(req, res) {
       const sList = await sListR.json();
       for (const s of (sList.data || [])) {
         if (!ACTIVE_LIKE.includes(s.status)) continue;
-        allActiveSubs.push({ sub_id: s.id, customer: c.id, current_period_end: s.current_period_end });
+        allActiveSubs.push({ sub_id: s.id, customer: c.id, current_period_end: subPeriodEnd(s) });
       }
     }
 
@@ -125,7 +130,7 @@ export default async function handler(req, res) {
         if (r.ok) {
           const s = await r.json();
           if (s.status === 'active' || s.status === 'trialing' || s.status === 'past_due') {
-            allActiveSubs.push({ sub_id: s.id, customer: s.customer, current_period_end: s.current_period_end });
+            allActiveSubs.push({ sub_id: s.id, customer: s.customer, current_period_end: subPeriodEnd(s) });
           }
         }
       } catch {}
@@ -177,9 +182,10 @@ export default async function handler(req, res) {
         );
         const cancelData = await cancelR.json();
         if (cancelR.ok) {
-          cancelResults.push({ sub_id: s.sub_id, ok: true, current_period_end: cancelData.current_period_end });
-          if (cancelData.current_period_end && (!lastPeriodEnd || cancelData.current_period_end > lastPeriodEnd)) {
-            lastPeriodEnd = cancelData.current_period_end;
+          const cancelPE = subPeriodEnd(cancelData);
+          cancelResults.push({ sub_id: s.sub_id, ok: true, current_period_end: cancelPE });
+          if (cancelPE && (!lastPeriodEnd || cancelPE > lastPeriodEnd)) {
+            lastPeriodEnd = cancelPE;
           }
         } else {
           cancelResults.push({ sub_id: s.sub_id, ok: false, error: cancelData.error?.message });

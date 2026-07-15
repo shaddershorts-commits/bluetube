@@ -14,6 +14,51 @@ async function getRawBody(req) {
   });
 }
 
+// ── Compat Stripe API 2026-03-25.dahlia ─────────────────────────────────────
+// O endpoint de webhook foi criado com api_version dahlia, que MOVEU campos
+// que este arquivo lia no formato antigo (bug real: renovações silenciosamente
+// ignoradas de ~03/2026 a 07/2026 — ver memória project-stripe-renewal-bug):
+//   invoice.subscription   → invoice.parent.subscription_details.subscription
+//   invoice.charge         → removido do payload (buscar via /v1/charges?invoice=)
+//   sub.current_period_end → sub.items.data[0].current_period_end
+//   lines[0].plan.interval → removido (detectar por duração do period da line)
+// Estes leitores aceitam AMBOS os formatos — imunes a mudança de versão em
+// qualquer direção. Payload real dahlia validado via stripe_webhook_log.
+function getInvoiceSubscriptionId(invoice) {
+  return invoice?.subscription
+    || invoice?.parent?.subscription_details?.subscription
+    || invoice?.lines?.data?.[0]?.parent?.subscription_item_details?.subscription
+    || null;
+}
+
+function invoiceIsAnnual(invoice) {
+  const line = invoice?.lines?.data?.[0];
+  if (line?.plan?.interval) return line.plan.interval === 'year';
+  if (line?.price?.recurring?.interval) return line.price.recurring.interval === 'year';
+  const p = line?.period;
+  if (p?.start && p?.end) return (p.end - p.start) > 300 * 86400;
+  return false;
+}
+
+function getSubPeriodEnd(sub) {
+  return sub?.current_period_end || sub?.items?.data?.[0]?.current_period_end || null;
+}
+
+async function getInvoiceChargeId(invoice) {
+  if (invoice?.charge) return invoice.charge;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || !invoice?.id) return null;
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/charges?invoice=${encodeURIComponent(invoice.id)}&limit=1`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.data?.[0]?.id || null;
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   // Cron: reprocessa eventos com status=erro e tentativas<5
   if (req.method === 'GET' && (req.query?.action === 'reprocessar')) {
@@ -610,10 +655,20 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
     const SITE_URL = process.env.SITE_URL || 'https://bluetubeviral.com';
 
-    fetch(`${SITE_URL}/api/auth`, {
+    // await é obrigatório aqui: sem ele, esse fetch (e toda a correcao de
+    // comissao encadeada abaixo) roda fire-and-forget e pode ser morto pelo
+    // Vercel assim que o handler retorna, deixando afiliado sem credito
+    // silenciosamente (bug real encontrado em 2026-07-15 — ver auditoria).
+    // Timeout curto: resposta pro Stripe ja foi enviada antes desse ponto
+    // (linha ~63), entao isso nunca bloqueia o webhook em si — so limita
+    // quanto tempo o processamento em background pode rodar.
+    const convCtrl = new AbortController();
+    const convTimer = setTimeout(() => convCtrl.abort(), 10000);
+    await fetch(`${SITE_URL}/api/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` })
+      body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` }),
+      signal: convCtrl.signal
     }).then(async () => {
       try {
         // Fonte 1 (primaria): affiliate_ref salvo no subscribers (cookie venceu no signup)
@@ -681,7 +736,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           console.log(`⏳ Commission queued for retry: ${aff.email} ← ${email} (${plan})`);
         }
       } catch(e) { console.error('Commission correction error:', e.message); }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => clearTimeout(convTimer));
 
     // Programa Pioneiros
     try {
@@ -814,11 +869,17 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
   if (event.type === 'invoice.payment_succeeded') {
     const invoice = event.data.object;
     const customerId = invoice.customer;
-    const subscriptionId = invoice.subscription;
-    if (!subscriptionId) return;
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
+    if (!subscriptionId) {
+      // Legítimo pra pagamentos one-off (Pix anual mode=payment não gera
+      // invoice de subscription). Log pra visibilidade — o bug de 03-07/2026
+      // era exatamente um return silencioso aqui.
+      console.log(`[payment_succeeded] invoice ${invoice.id} sem subscription (one-off) — skip renewal`);
+      return;
+    }
 
     // FIX #1: usa helper que busca por email se customer_id não bater
-    const subscriberSingle = await findSubscriberByCustomerOrEmail(customerId, 'email,plan,stripe_customer_id');
+    const subscriberSingle = await findSubscriberByCustomerOrEmail(customerId, 'email,plan,stripe_customer_id,is_manual');
     if (!subscriberSingle) return;
     const subs = [subscriberSingle];
 
@@ -826,6 +887,20 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     // Se subscriber.plan='free' MAS chegou pagamento real (amount_paid>0), o
     // user esta pagando sem ter acesso (zumbi pagante). Auto-corrige:
     // cancela sub + refund do charge atual + alerta admin. Sistema autocura.
+    // GUARDRAIL is_manual (2026-07-15): conta gerida manualmente pelo admin
+    // NUNCA sofre refund/cancel automático — mesma regra das outras 2 camadas
+    // anti-zumbi (audit cron e defesa tempo-real). Só alerta o admin.
+    if (subs[0].plan === 'free' && subs[0].is_manual && (invoice.amount_paid || 0) > 0) {
+      console.warn(`⚠️ [B2] pagamento de conta is_manual com plan=free: ${subs[0].email} — SEM ação automática (admin decide)`);
+      await notifyStripe(`⚠️ Pagamento recebido de conta manual free — ${subs[0].email}`, [
+        ['Cliente', subs[0].email],
+        ['Valor', `R$${((invoice.amount_paid || 0)/100).toFixed(2)}`],
+        ['Sub', subscriptionId],
+        ['Situação', 'plan=free + is_manual=true no DB, mas Stripe cobrou'],
+        ['Ação', 'Nenhuma automática (guardrail is_manual). Decida: restaurar plano ou cancelar+refund.'],
+      ]).catch(() => {});
+      return;
+    }
     if (subs[0].plan === 'free' && (invoice.amount_paid || 0) > 0) {
       console.warn(`🚨 [B2] ZUMBI PAGANTE: ${subs[0].email} pagou R$${(invoice.amount_paid/100).toFixed(2)} mas plan=free. Auto-corrigindo.`);
       const STRIPE_SECRET_B2 = process.env.STRIPE_SECRET_KEY;
@@ -836,7 +911,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
             headers: { Authorization: `Bearer ${STRIPE_SECRET_B2}` }
           });
         }
-        const chargeId = invoice.charge;
+        const chargeId = await getInvoiceChargeId(invoice);
         if (STRIPE_SECRET_B2 && chargeId) {
           await fetch('https://api.stripe.com/v1/refunds', {
             method: 'POST',
@@ -847,7 +922,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
             body: new URLSearchParams({ charge: chargeId, reason: 'requested_by_customer' }).toString()
           });
         }
-        await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+        // PATCH por email (não por customer_id): se o subscriber foi achado
+        // pelo fallback de email do FIX #1, o customer_id do DB diverge e o
+        // PATCH por customer_id não acharia nenhuma row.
+        await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(subs[0].email)}`, {
           method: 'PATCH', headers: supaHeaders,
           body: JSON.stringify({
             plan: 'free',
@@ -876,12 +954,13 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       }
     }
 
-    const billing = invoice.lines?.data?.[0]?.plan?.interval === 'year' ? 'annual' : 'monthly';
+    const billing = invoiceIsAnnual(invoice) ? 'annual' : 'monthly';
     const expiresAt = billing === 'annual'
       ? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString()
       : new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
 
-    await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}`, {
+    // PATCH por email — cobre o caso FIX #1 (customer_id do DB divergente).
+    await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(subs[0].email)}`, {
       method: 'PATCH',
       headers: supaHeaders,
       body: JSON.stringify({ plan_expires_at: expiresAt, updated_at: new Date().toISOString() })
@@ -958,7 +1037,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const invoice = event.data.object;
     const customerId = invoice.customer;
     const attemptCount = invoice.attempt_count;
-    const invoiceSubId = invoice.subscription || null;
+    const invoiceSubId = getInvoiceSubscriptionId(invoice);
 
     const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?stripe_customer_id=eq.${customerId}&select=email,plan,stripe_subscription_id`, { headers: supaHeaders });
     const subs = await subRes.json();
@@ -1166,8 +1245,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     const sub = event.data.object;
     const customerId = sub.customer;
 
-    const periodEnd = sub.current_period_end
-      ? new Date(sub.current_period_end * 1000)
+    const rawPeriodEnd = getSubPeriodEnd(sub);
+    if (!rawPeriodEnd) console.error(`[subscription.deleted] ${sub.id}: sem current_period_end em nenhum formato — fallback pra agora (downgrade imediato)`);
+    const periodEnd = rawPeriodEnd
+      ? new Date(rawPeriodEnd * 1000)
       : new Date();
     const now = new Date();
     const expiresAt = periodEnd > now ? periodEnd : now;
@@ -1280,7 +1361,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
                   headers: { Authorization: `Bearer ${STRIPE_K_zumbi}` },
                 });
                 const invoice = invR.ok ? await invR.json() : null;
-                const chargeId = invoice?.charge;
+                const chargeId = invoice ? await getInvoiceChargeId(invoice) : null;
                 if (!chargeId) {
                   refundInfo.motivo_skip = 'invoice sem charge';
                 } else {
@@ -1357,8 +1438,10 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
 
     if (sub.cancel_at_period_end === true) {
       const customerId = sub.customer;
-      const periodEnd = sub.current_period_end
-        ? new Date(sub.current_period_end * 1000)
+      const rawPE = getSubPeriodEnd(sub);
+      if (!rawPE) console.error(`[subscription.updated] ${sub.id}: cancel_at_period_end sem current_period_end em nenhum formato — data de expiração não gravada`);
+      const periodEnd = rawPE
+        ? new Date(rawPE * 1000)
         : null;
 
       if (periodEnd) {

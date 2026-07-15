@@ -1766,12 +1766,19 @@ Responda APENAS em JSON válido sem markdown:
           method: 'POST', headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
           body: JSON.stringify({ email, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: new Date().toISOString() })
         }).catch(() => {});
-        // Afiliado
+        // Afiliado — await garante que a conversao registra antes da function
+        // encerrar (fire-and-forget sem await podia ser morto pelo Vercel
+        // antes de completar, deixando o afiliado sem credito pelo cadastro).
+        // Timeout curto: conta ja foi criada acima, entao isso nunca deve
+        // travar a resposta de signup por muito tempo mesmo se degradar.
         if (stored.ref_code) {
-          fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
+          const refCtrl = new AbortController();
+          const refTimer = setTimeout(() => refCtrl.abort(), 8000);
+          await fetch(`${process.env.SITE_URL || 'https://bluetubeviral.com'}/api/auth`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'conversion', email, plan: 'free', conversion_type: 'signup' })
-          }).catch(() => {});
+            body: JSON.stringify({ action: 'conversion', email, plan: 'free', conversion_type: 'signup' }),
+            signal: refCtrl.signal
+          }).catch(e => console.error('[affiliate-conversion] falhou:', e.message)).finally(() => clearTimeout(refTimer));
         }
 
         // Delete used OTP
@@ -1991,6 +1998,15 @@ Responda APENAS em JSON válido sem markdown:
       const clkr = await fetch(`${SUPA_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&landed_at=gte.${thirtyDaysAgo}&select=landed_at`, { headers: supaH });
       const clicks = await clkr.json() || [];
 
+      // Contagem AO VIVO (não usa affiliate.total_clicks/total_free — esses
+      // contadores cacheados podem dessincronizar quando o registro de
+      // conversao falha; ver auditoria 2026-07-15). Mesmo padrao ja usado
+      // com sucesso no painel admin (admin.js list_affiliates).
+      const clkTotalR = await fetch(`${SUPA_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${affiliate.id}&select=id&limit=1`, { headers: { ...supaH, Prefer: 'count=exact' } });
+      const totalClicksLive = parseInt((clkTotalR.headers.get('content-range') || '').split('/')[1] || '0', 10);
+      const freeR = await fetch(`${SUPA_URL}/rest/v1/subscribers?affiliate_ref=eq.${encodeURIComponent(affiliate.ref_code)}&plan=eq.free&select=id&limit=1`, { headers: { ...supaH, Prefer: 'count=exact' } });
+      const totalFreeLive = parseInt((freeR.headers.get('content-range') || '').split('/')[1] || '0', 10);
+
       // Histórico de comissões por mês (últimos 12 meses)
       const twelveMonthsAgo = new Date(Date.now() - 365*24*60*60*1000).toISOString();
       const histR = await fetch(`${SUPA_URL}/rest/v1/affiliate_commissions?affiliate_id=eq.${affiliate.id}&created_at=gte.${twelveMonthsAgo}&select=commission_amount,status,created_at,plan,subscriber_email&order=created_at.desc`, { headers: supaH });
@@ -2057,9 +2073,9 @@ Responda APENAS em JSON válido sem markdown:
       return res.status(200).json({
         affiliate: { ...affiliate, level },
         stats: {
-          totalClicks: affiliate.total_clicks || 0,
+          totalClicks: totalClicksLive,
           clicksLast30: clicks.length,
-          totalFree: affiliate.total_free || 0,
+          totalFree: totalFreeLive,
           totalFull: affiliate.total_full || 0,
           totalMaster: affiliate.total_master || 0,
           totalPaying,

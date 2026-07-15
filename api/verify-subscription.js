@@ -108,7 +108,8 @@ module.exports = async function handler(req, res) {
         body: {
           plan: planoCorrreto,
           stripe_subscription_id: assinatura.stripe_subscription_id,
-          plan_expires_at: assinatura.expira_em,
+          // Nunca sobrescreve com null se o period_end faltar no objeto Stripe
+          ...(assinatura.expira_em ? { plan_expires_at: assinatura.expira_em } : {}),
           updated_at: new Date().toISOString(),
         },
       }).catch((e) => console.error('[verify-sub] sync falhou:', e.message));

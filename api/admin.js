@@ -224,11 +224,14 @@ export default async function handler(req, res) {
           const ss = (await ssR.json()).data || [];
           ss.forEach(s => allSubs.push(s));
         }
-        row.stripe_subs = allSubs.map(s => ({
-          id: s.id, status: s.status, cancel_at_period_end: s.cancel_at_period_end,
-          ended_at: s.ended_at ? new Date(s.ended_at * 1000).toISOString() : null,
-          current_period_end: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
-        }));
+        row.stripe_subs = allSubs.map(s => {
+          const pe = s.current_period_end || s.items?.data?.[0]?.current_period_end;
+          return {
+            id: s.id, status: s.status, cancel_at_period_end: s.cancel_at_period_end,
+            ended_at: s.ended_at ? new Date(s.ended_at * 1000).toISOString() : null,
+            current_period_end: pe ? new Date(pe * 1000).toISOString() : null,
+          };
+        });
 
         // 4. Diagnóstico:
         //    - BUG: tem sub active|trialing|past_due COM cancel_at_period_end=false → vai renovar e cobrar
@@ -302,8 +305,8 @@ export default async function handler(req, res) {
           const ss = (await subsR.json()).data || [];
           ss.forEach(s => out.all_subscriptions.push({
             id: s.id, status: s.status, created: new Date(s.created * 1000).toISOString(),
-            current_period_start: s.current_period_start ? new Date(s.current_period_start * 1000).toISOString() : null,
-            current_period_end: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+            current_period_start: (s.current_period_start || s.items?.data?.[0]?.current_period_start) ? new Date((s.current_period_start || s.items?.data?.[0]?.current_period_start) * 1000).toISOString() : null,
+            current_period_end: (s.current_period_end || s.items?.data?.[0]?.current_period_end) ? new Date((s.current_period_end || s.items?.data?.[0]?.current_period_end) * 1000).toISOString() : null,
             cancel_at_period_end: s.cancel_at_period_end,
             ended_at: s.ended_at ? new Date(s.ended_at * 1000).toISOString() : null,
             customer: c.id,
@@ -822,16 +825,50 @@ export default async function handler(req, res) {
   if (req.method === 'GET' && action === 'list_affiliates') {
     try {
       const sete = new Date(Date.now() - 7 * 86400000).toISOString();
-      const [affRes, commRes, clksRes, clks7dRes] = await Promise.all([
+      const [affRes, commRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/affiliates?select=*&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?select=affiliate_id,commission_amount,status&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?select=affiliate_id,cookie_id&limit=50000`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?landed_at=gte.${sete}&select=affiliate_id&limit=50000`, { headers }),
       ]);
       const affiliates = affRes.ok ? await affRes.json() : [];
       const commissions = commRes.ok ? await commRes.json() : [];
-      const clicks = clksRes.ok ? await clksRes.json() : [];
-      const clicks7d = clks7dRes.ok ? await clks7dRes.json() : [];
+
+      // Cliques por afiliado — POR AFILIADO, nao numa query global.
+      // PostgREST trava em 1000 rows por request INDEPENDENTE do limit
+      // pedido (db-max-rows do projeto). Uma query global somando cliques
+      // de TODOS os afiliados de uma vez cortava em 1000 rows totais e
+      // sub-contava qualquer afiliado grande (achado real 2026-07-15:
+      // luiz.gui2 tinha 2243 cliques reais, painel só via uma fração).
+      // total/7d usam count=exact (agregado no Postgres, sem cap). Cookie_id
+      // unico precisa paginar de verdade pra nao truncar em 1000.
+      const clickMap = {};
+      const click7dMap = {};
+      const uniqSets = {};
+      await Promise.all((Array.isArray(affiliates) ? affiliates : []).map(async (a) => {
+        const [totR, sevenR] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${a.id}&select=id&limit=1`, { headers: { ...headers, Prefer: 'count=exact' } }),
+          fetch(`${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${a.id}&landed_at=gte.${sete}&select=id&limit=1`, { headers: { ...headers, Prefer: 'count=exact' } }),
+        ]);
+        if (!totR.ok) console.error(`[list_affiliates] count clicks falhou p/ ${a.id}:`, totR.status);
+        if (!sevenR.ok) console.error(`[list_affiliates] count clicks7d falhou p/ ${a.id}:`, sevenR.status);
+        clickMap[a.id] = totR.ok ? parseInt((totR.headers.get('content-range') || '').split('/')[1] || '0', 10) : 0;
+        click7dMap[a.id] = sevenR.ok ? parseInt((sevenR.headers.get('content-range') || '').split('/')[1] || '0', 10) : 0;
+
+        // Paginacao real (batches de 1000) pra contar visitantes unicos sem
+        // truncar afiliados grandes.
+        const uniq = new Set();
+        let offset = 0;
+        for (;;) {
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/affiliate_clicks?affiliate_id=eq.${a.id}&select=cookie_id&limit=1000&offset=${offset}`,
+            { headers }
+          );
+          const rows = r.ok ? await r.json() : [];
+          rows.forEach(row => { if (row.cookie_id) uniq.add(row.cookie_id); });
+          if (rows.length < 1000) break;
+          offset += 1000;
+        }
+        uniqSets[a.id] = uniq;
+      }));
 
       // Agrupa comissões por afiliado — IGNORA cancelled/refunded
       const commMap = {};
@@ -842,19 +879,6 @@ export default async function handler(req, res) {
         commMap[c.affiliate_id].total += amt;
         if (c.status === 'pending') commMap[c.affiliate_id].pending += amt;
         if (c.status === 'paid') commMap[c.affiliate_id].paid += amt;
-      });
-
-      // Agrupa clicks (total + visitantes unicos por cookie_id) por afiliado
-      const clickMap = {};
-      const uniqSets = {};
-      (Array.isArray(clicks) ? clicks : []).forEach(c => {
-        if (!clickMap[c.affiliate_id]) { clickMap[c.affiliate_id] = 0; uniqSets[c.affiliate_id] = new Set(); }
-        clickMap[c.affiliate_id]++;
-        if (c.cookie_id) uniqSets[c.affiliate_id].add(c.cookie_id);
-      });
-      const click7dMap = {};
-      (Array.isArray(clicks7d) ? clicks7d : []).forEach(c => {
-        click7dMap[c.affiliate_id] = (click7dMap[c.affiliate_id] || 0) + 1;
       });
 
       // MRR recorrente: comissao que entra TODO MES enquanto assinantes nao
