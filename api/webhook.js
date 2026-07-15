@@ -102,15 +102,28 @@ export default async function handler(req, res) {
     // Nao bloqueia processamento — log eh best-effort
   }
 
-  // Responde 200 ANTES de processar (Stripe exige < 30s)
-  // Vercel mantem a funcao viva ate o handler retornar, entao o processing
-  // abaixo continua rodando ate o maxDuration.
-  res.status(200).json({ received: true });
-
+  // Processa ANTES de responder, com cap de tempo (2026-07-15).
+  // Antes o 200 saía primeiro e o processing rodava depois — mas runtimes
+  // novos do Vercel CONGELAM a execução quando a resposta termina (provado
+  // em produção: eventos ficavam presos em 'processando' e nada rodava).
+  // Processamento típico: ~2s. Cap de 8s << timeout do Stripe (~20-30s);
+  // se estourar, respondemos 200 mesmo assim e o cron reprocessar (*/15min,
+  // que roda processarEvento in-band num GET) termina o serviço.
+  let capTimer;
+  const cap = new Promise((resolve) => { capTimer = setTimeout(() => resolve('cap'), 8000); });
   try {
-    await processarEvento(event, { SUPABASE_URL, SUPABASE_KEY });
-    await H.marcarEventoConcluido(event.id).catch(() => {});
-    console.log(`[webhook] ${event.type} ${event.id} — concluido`);
+    const raceResult = await Promise.race([
+      (async () => {
+        await processarEvento(event, { SUPABASE_URL, SUPABASE_KEY });
+        await H.marcarEventoConcluido(event.id).catch(() => {});
+        console.log(`[webhook] ${event.type} ${event.id} — concluido`);
+        return 'done';
+      })(),
+      cap,
+    ]);
+    if (raceResult === 'cap') {
+      console.warn(`[webhook] ${event.type} ${event.id} — cap 8s atingido, cron reprocessar termina (fica 'processando')`);
+    }
   } catch (err) {
     console.error(`[webhook] ${event.type} ${event.id} — erro:`, err.message);
     const status = await H.marcarEventoErro(event.id, err.message, tentativa).catch(() => 'erro');
@@ -123,7 +136,13 @@ export default async function handler(req, res) {
     if (eventosCriticos.includes(event.type) || status === 'falha_permanente') {
       await H.notificarAdminWebhookErro(event, err).catch(() => {});
     }
+  } finally {
+    clearTimeout(capTimer);
   }
+
+  // 200 sempre — erro interno não deve fazer o Stripe re-entregar (idempotência
+  // + cron cobrem); assinatura inválida já respondeu 400 lá em cima.
+  return res.status(200).json({ received: true });
 }
 
 // ──────────────────────────────────────────────────────────────────────────
