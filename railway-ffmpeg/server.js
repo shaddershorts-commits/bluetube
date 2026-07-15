@@ -336,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r8-pot-cli',
+      build: 'r9-blueclean-composite',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
