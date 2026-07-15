@@ -120,13 +120,13 @@ module.exports = async function handler(req, res) {
     if (!REPLICATE) return res.status(500).json({ error: 'Replicate não configurado.' });
     if (!RW) return res.status(500).json({ error: 'Railway não configurado.' });
 
-    const { video_url, watermark } = req.body;
+    const { video_url, boxes } = req.body;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
 
     const used = await getUsed();
     if (used >= LIMIT) return res.status(429).json({ error: `Limite atingido (${LIMIT}/${LIMIT}).` });
 
-    console.log('[blueclean] Start pipeline v2 (chunking), user:', userEmail);
+    console.log('[blueclean] Start pipeline v2 (chunking+boxes), user:', userEmail, 'boxes:', Array.isArray(boxes) ? boxes.length : 0);
 
     try {
       const outPath = `blueclean/${userId}/${Date.now()}/clean.mp4`;
@@ -134,7 +134,7 @@ module.exports = async function handler(req, res) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_url, output_path: outPath, supabase_url: SU, supabase_key: SK,
-          replicate_token: REPLICATE, watermark: watermark !== false,
+          replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [],
         }),
       });
       const rd = await rr.json().catch(() => ({}));

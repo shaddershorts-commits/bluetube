@@ -605,7 +605,10 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
     video: chunkUrl, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1,
   }, { pollMs: 3000, timeoutMs: 8 * 60 * 1000 });
 
-  // (b) MASCARA — blend-diff PTS-aligned + faixa fixa da marca d'agua
+  // (b) MASCARA — auto (blend-diff PTS-aligned pega legenda) UNIAO caixas
+  // manuais (o que a IA nao pega: marca estatica, numero estilizado, seta).
+  // Cada caixa tem intervalo de tempo GLOBAL; gatilhamos por tempo local do
+  // trecho (chunkStart = idx*chunkSec). Caixa sem intervalo = trecho todo.
   const black = path.join(dir, `black_${idx}.mp4`);
   await downloadFile(blackUrl, black);
   const mask = path.join(dir, `mask_${idx}.mp4`);
@@ -613,17 +616,27 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
   const thr = opt.threshold || 45;
   const dil = Math.max(0, Math.min(6, opt.dilation != null ? opt.dilation : 2));
   const dilChain = Array(dil).fill('dilation').join(',');
-  let wmBox = '';
-  if (opt.watermark !== false && opt.W && opt.Hh) {
-    const bh = Math.round(opt.Hh * (opt.wm_height_pct || 0.12));
-    const by = opt.Hh - bh - Math.round(opt.Hh * 0.02);
-    wmBox = `,drawbox=x=0:y=${by}:w=${opt.W}:h=${bh}:color=white:t=fill`;
+  const W = opt.W, Hh = opt.Hh, chunkSec = opt.chunkSec || 5, chunkStart = idx * chunkSec;
+  let boxChain = '';
+  if (Array.isArray(opt.boxes) && W && Hh) {
+    for (const b of opt.boxes) {
+      const gs = (b.start_sec == null) ? -1e9 : +b.start_sec;
+      const ge = (b.end_sec == null) ? 1e9 : +b.end_sec;
+      if (ge < chunkStart || gs > chunkStart + chunkSec) continue; // caixa nao toca este trecho
+      const x = Math.max(0, Math.round((b.x_pct || 0) * W));
+      const y = Math.max(0, Math.round((b.y_pct || 0) * Hh));
+      const w = Math.max(2, Math.round((b.w_pct || 0) * W));
+      const h = Math.max(2, Math.round((b.h_pct || 0) * Hh));
+      const ls = Math.max(0, gs - chunkStart), le = Math.min(chunkSec, ge - chunkStart);
+      const en = (b.start_sec == null && b.end_sec == null) ? '' : `:enable='between(t\\,${ls.toFixed(3)}\\,${le.toFixed(3)})'`;
+      boxChain += `,drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=white:t=fill${en}`;
+    }
   }
   const fc =
     `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
     `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
     `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
-    (dilChain ? ',' + dilChain : '') + wmBox + `,format=gray[m]`;
+    (dilChain ? ',' + dilChain : '') + boxChain + `,format=gray[m]`;
   await run('ffmpeg', ['-y', '-i', chunkPath, '-i', black, '-filter_complex', fc, '-map', '[m]',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), mask]);
   const maskKey = `${tmpPrefix}/mask_${idx}.mp4`;
@@ -637,13 +650,24 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
   const filled = path.join(dir, `filled_${idx}.mp4`);
   await downloadFile(filledUrl, filled);
 
-  // (d) NORMALIZA — ProPainter pode devolver outra resolucao/timebase. Forca
-  // dimensoes/fps/pixfmt canonicos pro concat demuxer nao glitchar nem falhar.
+  // (d) NORMALIZA — ProPainter pode devolver outra resolucao/timebase.
   const norm = path.join(dir, `norm_${idx}.mp4`);
-  const scale = (opt.W && opt.Hh) ? `scale=${opt.W}:${opt.Hh}:flags=bicubic,` : '';
+  const scale = (W && Hh) ? `scale=${W}:${Hh}:flags=bicubic,` : '';
   await run('ffmpeg', ['-y', '-i', filled, '-an', '-vf', `${scale}fps=${fps},format=yuv420p`,
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-video_track_timescale', '90000', norm]);
-  return norm;
+
+  // (e) COMPOSITE — usa o preenchimento do ProPainter APENAS onde a mascara e
+  // branca (regiao removida); o resto fica ORIGINAL pixel-perfect. Corrige o
+  // "qualidade despencou" (ProPainter re-renderiza e borra o frame inteiro).
+  const comp = path.join(dir, `comp_${idx}.mp4`);
+  const cfc =
+    `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=yuv420p[b];` +
+    `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=yuv420p[o];` +
+    `[2:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray,boxblur=2[m];` +
+    `[b][o][m]maskedmerge[out]`;
+  await run('ffmpeg', ['-y', '-i', chunkPath, '-i', norm, '-i', mask, '-filter_complex', cfc, '-map', '[out]',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '16', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', comp]);
+  return comp;
 }
 
 async function processBlueClean(jobId, p) {
@@ -683,7 +707,7 @@ async function processBlueClean(jobId, p) {
     setJob({ chunks_total: chunkFiles.length });
 
     // 4. processa cada trecho (concorrencia limitada)
-    const opt = { fps, W, Hh, watermark: p.watermark, wm_height_pct: p.wm_height_pct, threshold: p.threshold, dilation: p.dilation };
+    const opt = { fps, W, Hh, threshold: p.threshold, dilation: p.dilation, boxes: Array.isArray(p.boxes) ? p.boxes : [], chunkSec: CHUNK };
     const filled = new Array(chunkFiles.length);
     const queue = chunkFiles.map((f, i) => ({ f, i }));
     let done = 0;

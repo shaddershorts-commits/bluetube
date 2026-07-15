@@ -72,13 +72,13 @@ module.exports = async function handler(req, res) {
     // ── PROCESS: dispara o pipeline de chunking completo no Railway ─────────
     if (action === 'process') {
       const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY, RW = process.env.RAILWAY_FFMPEG_URL;
-      const { video_url, watermark, chunk_sec } = req.body || {};
+      const { video_url, boxes, chunk_sec } = req.body || {};
       if (!RW) return res.status(500).json({ error: 'RAILWAY_FFMPEG_URL ausente' });
       if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
       const outPath = `blueclean/_test/out_${Date.now()}.mp4`;
       const rr = await fetch(RW.replace(/\/$/, '') + '/blueclean-process', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_url, output_path: outPath, supabase_url: SU, supabase_key: SK, replicate_token: REPLICATE, watermark: watermark !== false, chunk_sec }),
+        body: JSON.stringify({ video_url, output_path: outPath, supabase_url: SU, supabase_key: SK, replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [], chunk_sec }),
       });
       const rd = await rr.json().catch(() => ({}));
       if (!rr.ok) return res.status(rr.status).json({ error: 'railway erro', detail: rd });
