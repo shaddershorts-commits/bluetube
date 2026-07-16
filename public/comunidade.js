@@ -66,7 +66,11 @@
   .cbt-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#8aa0bd;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:13px;padding:10px 4px;cursor:pointer;letter-spacing:.2px}
   .cbt-tab.on{color:#00aaff;border-bottom-color:#00aaff}
   .cbt-shell{display:flex;flex-direction:column;flex:1;min-height:0}
-  .cbt-feed{flex:1;overflow-y:auto;padding:14px 16px 8px;-webkit-overflow-scrolling:touch}
+  .cbt-feed{flex:1;overflow-y:auto;padding:14px 16px 8px;-webkit-overflow-scrolling:touch;scrollbar-color:rgba(0,170,255,.3) transparent}
+  .cbt-feed::-webkit-scrollbar,.cbt-rail::-webkit-scrollbar{width:8px}
+  .cbt-feed::-webkit-scrollbar-thumb,.cbt-rail::-webkit-scrollbar-thumb{background:rgba(0,170,255,.22);border-radius:8px}
+  .cbt-feed::-webkit-scrollbar-track,.cbt-rail::-webkit-scrollbar-track{background:transparent}
+  .cbt-rail{scrollbar-color:rgba(0,170,255,.3) transparent}
   .cbt-foot{flex:0 0 auto;padding:9px 16px;border-top:1px solid rgba(0,170,255,.08);text-align:center}
   .cbt-foot a{font-family:var(--font-mono,monospace);font-size:10.5px;color:#5f7590;text-decoration:none}
   .cbt-foot a:hover{color:#25D366}
