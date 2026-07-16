@@ -579,6 +579,49 @@ async function uploadRetry(label, filePath, outputPath, SU, SK, ct) {
   return axiosRetry('upload ' + label, () => uploadToSupabase(filePath, outputPath, SU, SK, ct), { tries: 4, base: 1500 });
 }
 
+// ── YT-SUBS: extrai legenda/CC de vídeo do YouTube via yt-dlp (com cookies +
+// PO token). Fallback do /api/transcript quando o Supadata esgota o plano.
+// 1 chamada -J pra descobrir as tracks + 1 fetch da json3 escolhida.
+app.get('/yt-subs', async (req, res) => {
+  const v = String(req.query.v || '');
+  if (!/^[a-zA-Z0-9_-]{6,20}$/.test(v)) return res.status(400).json({ error: 'v invalido' });
+  const dir = path.join('/tmp', 'subs-' + uuidv4());
+  fs.mkdirSync(dir, { recursive: true });
+  const cleanup = () => setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 2000);
+  try {
+    const jobCookies = writeJobCookies(dir);
+    const { stdout } = await run('yt-dlp', [
+      ...POT_CLI_ARGS,
+      '--skip-download', '--no-playlist', '--no-warnings', '-J',
+      ...(jobCookies ? ['--cookies', jobCookies] : []),
+      'https://www.youtube.com/watch?v=' + v,
+    ]);
+    const info = JSON.parse(stdout);
+    const subs = info.subtitles || {};
+    const autos = info.automatic_captions || {};
+    // Ordem: legenda manual (qualquer) > auto original (-orig) > pt > en > es > primeira auto
+    let pick = null, lang = null;
+    const firstKey = (o) => Object.keys(o)[0];
+    if (firstKey(subs)) { lang = firstKey(subs); pick = subs[lang]; }
+    else {
+      const orig = Object.keys(autos).find((k) => k.endsWith('-orig'));
+      lang = orig || ['pt', 'pt-BR', 'en', 'es'].find((k) => autos[k]) || firstKey(autos);
+      if (lang) pick = autos[lang];
+    }
+    const entry = pick && (pick.find((f) => f.ext === 'json3') || pick[0]);
+    if (!entry?.url) { cleanup(); return res.status(404).json({ error: 'sem_legenda' }); }
+    const cr = await axios.get(entry.url, { timeout: 20000 });
+    const cd = typeof cr.data === 'string' ? JSON.parse(cr.data) : cr.data;
+    const text = (cd.events || []).filter((e) => e.segs).map((e) => e.segs.map((s) => s.utf8 || '').join('')).join(' ').replace(/\s+/g, ' ').trim();
+    cleanup();
+    if (text.length < 20) return res.status(404).json({ error: 'sem_legenda' });
+    res.json({ content: text, lang: (lang || 'pt').replace('-orig', ''), source: 'ytdlp' });
+  } catch (e) {
+    cleanup();
+    res.status(502).json({ error: (e.message || 'falha yt-dlp').slice(0, 200) });
+  }
+});
+
 app.post('/blueclean-process', (req, res) => {
   const p = req.body || {};
   if (!p.video_url || !p.output_path || !p.supabase_url || !p.supabase_key || !p.replicate_token) {

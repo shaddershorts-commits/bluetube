@@ -1,5 +1,41 @@
 // api/transcript.js — Vercel Serverless Function
 // Hides the Supadata API key on the server side.
+// Fallbacks GRATUITOS quando o Supadata falha (plano estourado/429/5xx):
+//   1. Railway /yt-subs — yt-dlp com cookies+PO token (robusto)
+//   2. timedtext anônimo (YouTube costuma devolver vazio, mas custa pouco)
+
+async function railwaySubsFallback(videoId) {
+  const RW = process.env.RAILWAY_FFMPEG_URL;
+  if (!RW) return null;
+  try {
+    const r = await fetch(RW.replace(/\/$/, '') + '/yt-subs?v=' + encodeURIComponent(videoId), { signal: AbortSignal.timeout(40000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.content ? { content: d.content, lang: d.lang || 'pt', source: 'ytdlp' } : null;
+  } catch (e) { return null; }
+}
+
+async function timedtextFallback(videoId) {
+  try {
+    const pR = await fetch('https://www.youtube.com/watch?v=' + videoId, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!pR.ok) return null;
+    const html = await pR.text();
+    const cm = html.match(/"captionTracks":\s*(\[.*?\])/);
+    if (!cm) return null;
+    const tracks = JSON.parse(cm[1]);
+    const track = tracks.find(t => t.kind !== 'asr') || tracks[0];
+    if (!track?.baseUrl) return null;
+    const cR = await fetch(track.baseUrl + '&fmt=json3', { signal: AbortSignal.timeout(15000) });
+    if (!cR.ok) return null;
+    const cd = await cR.json();
+    const text = (cd.events || []).filter(e => e.segs).map(e => e.segs.map(s => s.utf8 || '').join('')).join(' ').replace(/\s+/g, ' ').trim();
+    if (text.length < 20) return null;
+    return { content: text, lang: track.languageCode || 'pt', source: 'timedtext' };
+  } catch (e) { return null; }
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -157,6 +193,20 @@ export default async function handler(req, res) {
         }
       }
       return res.status(408).json({ error: 'Transcription timed out. Try a shorter video.' });
+    }
+
+    // Supadata falhou (plano estourado, sem legenda, indisponível...) → tenta
+    // os fallbacks gratuitos antes de devolver erro pro usuário.
+    if (!supaRes.ok && platform === 'youtube' && videoId) {
+      const tt = (await railwaySubsFallback(videoId)) || (await timedtextFallback(videoId));
+      if (tt) {
+        if (SU && SK) {
+          fetch(`${SU}/rest/v1/api_cache?cache_key=eq.${ck}`, { method:'DELETE', headers:{'apikey':SK,'Authorization':`Bearer ${SK}`} }).catch(()=>{});
+          fetch(`${SU}/rest/v1/api_cache`, { method:'POST', headers:{'Content-Type':'application/json','apikey':SK,'Authorization':`Bearer ${SK}`,'Prefer':'return=minimal'},
+            body:JSON.stringify({cache_key:ck,value:tt,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+30*24*3600*1000).toISOString()}) }).catch(()=>{});
+        }
+        return res.status(200).json(tt);
+      }
     }
 
     if (supaRes.status === 401 || supaRes.status === 403) {
