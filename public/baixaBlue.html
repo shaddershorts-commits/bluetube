@@ -234,7 +234,7 @@ footer a{color:var(--neon);text-decoration:none}
           Baixar
         </button>
       </div>
-      <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook · Snapchat</span></div>
+      <div class="hint">Suporte a <span>YouTube · TikTok · Instagram · Twitter/X · Reddit · Facebook · Snapchat · Threads · Douyin</span></div>
     </div>
 
     <!-- MODO UPLOAD -->
@@ -431,6 +431,8 @@ function detectSource(url){
   if(url.includes('facebook.com')||url.includes('fb.watch')||url.includes('fb.com')) return {name:'Facebook',emoji:'📘'};
   if(url.includes('kwai.com')) return {name:'Kwai',emoji:'🎬'};
   if(url.includes('snapchat.com')) return {name:'Snapchat',emoji:'👻'};
+  if(url.includes('threads.net')||url.includes('threads.com')) return {name:'Threads',emoji:'🧵'};
+  if(url.includes('douyin.com')||url.includes('iesdouyin.com')) return {name:'Douyin',emoji:'🐉'};
   return {name:'Vídeo',emoji:'🎬'};
 }
 

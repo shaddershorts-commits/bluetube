@@ -26,7 +26,11 @@ function detectPlatform(url) {
     const host = u.hostname.replace(/^www\./, '');
     // Verifica se e uma das plataformas que Cobalt suporta
     const cobaltSupported = COBALT_SUPPORTED.some(p => host === p || host.endsWith('.' + p));
-    return { host, name: host.split('.')[0], cobaltSupported };
+    // Nome amigavel (short-links tipo v.douyin.com viram 'douyin', nao 'v')
+    let name = host.split('.')[0];
+    if (host === 'douyin.com' || host.endsWith('.douyin.com') || host.endsWith('iesdouyin.com')) name = 'douyin';
+    else if (host === 'threads.net' || host === 'threads.com' || host.endsWith('.threads.net') || host.endsWith('.threads.com')) name = 'threads';
+    return { host, name, cobaltSupported };
   } catch (e) {
     return { host: 'desconhecido', name: 'desconhecido', cobaltSupported: false };
   }
@@ -139,23 +143,25 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // 1.5) SNAPCHAT FALLBACK: Cobalt v11 só suporta /spotlight/. Pra /highlight/,
-  // /story/ etc, yt-dlp via Railway. Só dispara se platform=snapchat — não
-  // afeta outras URLs (Vimeo/Pinterest/etc continuam só com Cobalt).
-  const isSnapchat = platform.host === 'snapchat.com' || platform.host.endsWith('.snapchat.com');
-  if (isSnapchat) {
+  // 1.5) FALLBACK yt-dlp (Railway): Snapchat (/highlight/, /story/ — Cobalt v11
+  // só cobre /spotlight/), Threads e Douyin (Cobalt não suporta nenhum dos
+  // dois; yt-dlp tem extractor). Só dispara pros hosts da lista — não afeta
+  // outras URLs (Vimeo/Pinterest/etc continuam só com Cobalt).
+  const YTDLP_HOSTS = ['snapchat.com', 'threads.net', 'threads.com', 'douyin.com', 'iesdouyin.com'];
+  const isYtdlpHost = YTDLP_HOSTS.some((h) => platform.host === h || platform.host.endsWith('.' + h));
+  if (isYtdlpHost) {
     const snap = await trySnapchatYtdlp(url);
     if (snap?.url) {
       const safeName = snap.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
       let finalUrl = snap.url;
       if (RAILWAY_FFMPEG) {
-        finalUrl = `${RAILWAY_FFMPEG.replace(/\/$/, '')}/proxy-download?url=${encodeURIComponent(snap.url)}&filename=BaixaBlue_snapchat_${safeName}`;
+        finalUrl = `${RAILWAY_FFMPEG.replace(/\/$/, '')}/proxy-download?url=${encodeURIComponent(snap.url)}&filename=BaixaBlue_${platform.name}_${safeName}`;
       }
       return res.status(200).json({
         url: finalUrl,
-        title: snap.title || 'Snapchat Video',
+        title: snap.title || `Vídeo de ${platform.name}`,
         thumbnail: null,
-        platform: 'snapchat',
+        platform: platform.name,
         proxied: !!RAILWAY_FFMPEG,
       });
     }

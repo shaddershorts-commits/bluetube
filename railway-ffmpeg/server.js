@@ -1214,6 +1214,8 @@ const PROXY_ALLOWED_HOSTS = [
   'ytimg.com',
   'up.railway.app', // Cobalt self-hosted (cobalt-production-*.up.railway.app)
   'sc-cdn.net', 'snapchat.com', // Snapchat CDN (cf-st.sc-cdn.net e variantes)
+  'douyinvod.com', 'zjcdn.com', 'snssdk.com', 'douyin.com', 'bytecdn.cn', // Douyin CDNs
+  'threads.net', 'threads.com', // Threads (mídia real sai em fbcdn/cdninstagram, já na lista)
   // Camada 5: Piped + Invidious (fallback YouTube quando providers principais caem)
   'piped.video', 'kavin.rocks', 'adminforge.de', 'private.coffee', 'leptons.xyz',
   'invidious.io', 'yewtu.be', 'nadeko.net', 'nerdvpn.de', 'privacyredirect.com', 'melmac.space',
@@ -1255,6 +1257,8 @@ app.get('/proxy-download', async (req, res) => {
     if (h.includes('tokcdn') || h.includes('tiktokv') || h.includes('tiktokcdn')) return 'https://www.tiktok.com/';
     if (h.includes('googlevideo') || h.includes('ytimg')) return 'https://www.youtube.com/';
     if (h.includes('sc-cdn') || h.includes('snapchat')) return 'https://www.snapchat.com/';
+    if (h.includes('douyin') || h.includes('zjcdn') || h.includes('snssdk') || h.includes('bytecdn')) return 'https://www.douyin.com/';
+    if (h.includes('threads')) return 'https://www.threads.net/';
     return '';
   };
   const refererUrl = refererFor(parsed.hostname);
@@ -2735,17 +2739,20 @@ app.post('/snapchat-extract', async (req, res) => {
     if (got !== expectedKey) return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const { snapchat_url } = req.body || {};
+  const snapchat_url = (req.body || {}).snapchat_url || (req.body || {}).url;
   if (!snapchat_url || typeof snapchat_url !== 'string') {
-    return res.status(400).json({ error: 'snapchat_url required' });
+    return res.status(400).json({ error: 'url required' });
   }
-  // Whitelist alinhada com baixa-generic.js (defesa em profundidade contra SSRF)
+  // Whitelist alinhada com baixa-generic.js (defesa em profundidade contra
+  // SSRF). 2026-07-16: ampliada pra Threads e Douyin — yt-dlp tem extractor
+  // pros dois; o endpoint sempre foi genérico, só o gate era snapchat-only.
+  const OK_HOSTS = ['snapchat.com', 'threads.net', 'threads.com', 'douyin.com', 'iesdouyin.com'];
   let hostOk = false;
   try {
     const host = new URL(snapchat_url).hostname.replace(/^www\./, '');
-    hostOk = host === 'snapchat.com' || host.endsWith('.snapchat.com');
+    hostOk = OK_HOSTS.some((h) => host === h || host.endsWith('.' + h));
   } catch (_) {}
-  if (!hostOk) return res.status(400).json({ error: 'somente_snapchat' });
+  if (!hostOk) return res.status(400).json({ error: 'host_nao_suportado' });
 
   try {
     // -g extrai URL CDN sem baixar. Roda --get-title EM PARALELO via -J (json full)
