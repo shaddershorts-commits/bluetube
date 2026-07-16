@@ -1084,6 +1084,22 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       ['Stripe ID', customerId || '—'],
     ]).catch(() => {});
 
+    // Email pro CLIENTE na 1a falha (antes só o admin sabia; usuário descobria
+    // o rebaixamento sozinho). CTA = hosted_invoice_url: paga a fatura em aberto
+    // com qualquer cartão e o payment_succeeded renova sem passar pela 2a falha.
+    if (!willDowngrade && email !== 'desconhecido') {
+      try {
+        const { sendPaymentFailedWarning } = require('./_helpers/dunningEmail.js');
+        const r = await sendPaymentFailedWarning(
+          email,
+          subs?.[0]?.plan,
+          invoice.next_payment_attempt ? new Date(invoice.next_payment_attempt * 1000) : null,
+          invoice.hosted_invoice_url || null
+        );
+        console.log(`[dunning] aviso de falha → ${email}: ${r.sent ? 'enviado' : r.reason}`);
+      } catch (e) { console.error('[dunning] falha ao enviar aviso:', e.message); }
+    }
+
     if (willDowngrade) {
       // 1) DELETE sub no Stripe — zera dunning (sem isso o Stripe continua tentando ate ~7d).
       const STRIPE_SECRET_F = process.env.STRIPE_SECRET_KEY;
@@ -1123,6 +1139,17 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         })
       });
       console.log(`⬇️ Downgrade por falha de pagamento: ${email}`);
+
+      // Email pro CLIENTE no dia do rebaixamento: perdeu o acesso por falta de
+      // pagamento + botão de assinar de novo. Enviado APÓS o PATCH pra nunca
+      // anunciar um rebaixamento que não aconteceu. Plan lido antes do PATCH.
+      if (email !== 'desconhecido') {
+        try {
+          const { sendAccessLost } = require('./_helpers/dunningEmail.js');
+          const r = await sendAccessLost(email, subs?.[0]?.plan);
+          console.log(`[dunning] acesso encerrado → ${email}: ${r.sent ? 'enviado' : r.reason}`);
+        } catch (e) { console.error('[dunning] falha ao enviar acesso-encerrado:', e.message); }
+      }
 
       // 3) Cancela comissao de afiliado — renovacao falhou, afiliado nao recebe
       //    por quem parou de pagar. action=cancel e idempotente (skip se ja
