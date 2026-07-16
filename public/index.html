@@ -1578,6 +1578,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button id="btnIndicar" onclick="copiarLinkIndicacao(this)" style="background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 50%,#d97706 100%);border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:800;color:#000;cursor:pointer;box-shadow:0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2);letter-spacing:.02em;transition:transform .15s,box-shadow .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 0 22px rgba(251,191,36,.55),0 6px 16px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2)'">🎁 Indique e ganhe 1 mês grátis</button>
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
       <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
+      <button onclick="closeProfileModal();openCommunity({profile:true})" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.18);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(251,191,36,0.45)'" onmouseout="this.style.borderColor='rgba(251,191,36,0.18)'">🏛️ Meu perfil na Comunidade — nome e foto</button>
       <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
     </div>
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(0,170,255,0.07);display:flex;justify-content:space-between;align-items:center">
@@ -1730,14 +1731,19 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 
 // ── COMMUNITY ──────────────────────────────────────────────────────────────
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
-function openCommunity(){
+// 2026-07-15: Comunidade agora é o painel interno (feed estilo X). O grupo
+// do WhatsApp virou link no rodapé do painel. Free/deslogado vê paywall.
+function loadComunidade(){
+  if(window.ComunidadeBT) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');s.src='/comunidade.js?v=1';
+    s.onload=res;s.onerror=rej;document.body.appendChild(s);
+  });
+}
+function openCommunity(opts){
   const token = localStorage.getItem('bt_token');
-  if(!token){ openUpgradeModal('tool_blocked','full'); return; }
-  if(userPlan === 'full' || userPlan === 'master'){
-    window.open(COMMUNITY_URL,'_blank');
-  } else {
-    openUpgradeModal('tool_blocked','full');
-  }
+  if(!token){ openAuthModal(); return; }
+  loadComunidade().then(()=>window.ComunidadeBT.open(opts||{})).catch(()=>openUpgradeModal('tool_blocked','full'));
 }
 function updateCommunityBtn(){
   const lock=document.getElementById('communityLock');
@@ -3953,15 +3959,12 @@ function setLoggedIn(email, plan){
     }
   });
 
-  // Update community button
+  // Update community button — sempre abre o painel interno (ele decide paywall)
   const commBtn = document.getElementById('communityBtn');
   if(commBtn){
-    commBtn.onclick = isPaid
-      ? (communityJoined ? showCommunityJoinedMsg : openCommunityModal)
-      : openUpgradeModal;
+    commBtn.onclick = () => openCommunity();
     const lock = document.getElementById('communityLock');
     if(lock) lock.style.display = isPaid ? 'none' : 'inline';
-    commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
   }
 
   // Rebuild right side of nav keeping tool buttons (desktop + mobile)
@@ -3985,9 +3988,9 @@ function setLoggedIn(email, plan){
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       <span class="nav-blog-label">Blog</span>
     </a>
-    <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
+    <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
+      Comunidade
       ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
     </button>
     <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">

@@ -1,0 +1,544 @@
+// comunidade.js — Painel Comunidade BlueTube (feed estilo X, exclusivo Full/Master)
+// Carregado sob demanda pelo index.html (openCommunity). Autocontido: injeta
+// CSS + overlay. Abas: Dicas (só moderador posta; vídeo destaque no topo) e
+// Comunidade (feed dos assinantes). Moderador = anel + selo dourado + controle
+// total (editar/apagar/fixar/banir). Mídia: foto/vídeo/áudio via Storage com
+// JWT do próprio usuário; vídeo passa pelo transcode do Railway (faststart).
+(function () {
+  if (window.ComunidadeBT) return;
+
+  const API = '/api/community';
+  const FEATURED_VIDEO = { id: 'JAaEud-fde8', title: 'Criei 2 Canais do ZERO, Bati 100 MIL Inscritos Em Menos de 42 dias (Faça o Mesmo)' };
+  const WHATSAPP_URL = 'https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
+
+  const S = { open: false, tab: 'comunidade', me: null, posts: [], next: null, loading: false, media: [], sending: false, wall: null };
+
+  // ── Utils ─────────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const token = () => localStorage.getItem('bt_token');
+  const toast = (m) => { try { window.toast ? window.toast(m) : alert(m); } catch (e) { alert(m); } };
+  const timeAgo = (iso) => {
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 60) return 'agora';
+    if (s < 3600) return Math.floor(s / 60) + 'min';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    if (s < 604800) return Math.floor(s / 86400) + 'd';
+    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  };
+  const initials = (n) => (n || '?').trim().charAt(0).toUpperCase();
+  const hue = (n) => { let h = 0; for (const c of String(n || '')) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+
+  async function api(action, opts = {}) {
+    const isGet = !opts.body;
+    const url = API + '?action=' + action + '&token=' + encodeURIComponent(token() || '') + (opts.qs || '');
+    const r = await fetch(url, isGet ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, token: token(), ...opts.body }) });
+    const d = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, d };
+  }
+
+  // ── CSS ───────────────────────────────────────────────────────────────────
+  const css = `
+  .cbt-ov{position:fixed;inset:0;z-index:9000;background:rgba(2,8,23,.78);backdrop-filter:blur(8px);display:none;opacity:0;transition:opacity .25s}
+  .cbt-ov.on{display:block;opacity:1}
+  .cbt-panel{position:fixed;inset:0;z-index:9001;display:none;flex-direction:column;background:#050d1f;transform:translateY(24px);opacity:0;transition:transform .28s,opacity .28s}
+  .cbt-panel.on{display:flex;transform:none;opacity:1}
+  @media(min-width:760px){.cbt-panel{left:50%;transform:translate(-50%,24px);width:680px;inset:18px auto 18px 50%;border:1px solid rgba(0,170,255,.18);border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+  .cbt-panel.on{transform:translate(-50%,0)}}
+  .cbt-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(0,170,255,.12);flex:0 0 auto}
+  .cbt-title{font-family:var(--font-display,Syne,sans-serif);font-weight:800;font-size:16px;letter-spacing:-.4px;color:#fff;flex:1}
+  .cbt-title small{display:block;font-family:var(--font-mono,monospace);font-size:10px;font-weight:400;color:#00aaff;letter-spacing:.4px}
+  .cbt-x{background:none;border:none;color:#8aa0bd;font-size:20px;cursor:pointer;padding:6px 10px;border-radius:10px}
+  .cbt-x:hover{background:rgba(255,255,255,.06);color:#fff}
+  .cbt-me{width:36px;height:36px;border-radius:50%;cursor:pointer;overflow:hidden;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px;border:2px solid rgba(0,170,255,.35)}
+  .cbt-me img{width:100%;height:100%;object-fit:cover}
+  .cbt-tabs{display:flex;gap:4px;padding:10px 16px 0;flex:0 0 auto}
+  .cbt-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#8aa0bd;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:13px;padding:10px 4px;cursor:pointer;letter-spacing:.2px}
+  .cbt-tab.on{color:#00aaff;border-bottom-color:#00aaff}
+  .cbt-feed{flex:1;overflow-y:auto;padding:14px 16px 8px;-webkit-overflow-scrolling:touch}
+  .cbt-foot{flex:0 0 auto;padding:9px 16px;border-top:1px solid rgba(0,170,255,.08);text-align:center}
+  .cbt-foot a{font-family:var(--font-mono,monospace);font-size:10.5px;color:#5f7590;text-decoration:none}
+  .cbt-foot a:hover{color:#25D366}
+  .cbt-composer{background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.14);border-radius:14px;padding:12px;margin-bottom:16px}
+  .cbt-composer textarea{width:100%;background:none;border:none;outline:none;resize:none;color:#e8f0fb;font-family:inherit;font-size:14px;line-height:1.5;min-height:44px;max-height:180px}
+  .cbt-composer textarea::placeholder{color:#5f7590}
+  .cbt-crow{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .cbt-mbtn{background:none;border:1px solid rgba(0,170,255,.2);border-radius:9px;color:#00aaff;font-size:14px;padding:6px 10px;cursor:pointer}
+  .cbt-mbtn:hover{background:rgba(0,170,255,.1)}
+  .cbt-pub{margin-left:auto;background:linear-gradient(135deg,#0077ff,#00aaff);border:none;border-radius:10px;color:#fff;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:13px;padding:9px 22px;cursor:pointer;box-shadow:0 0 18px rgba(0,170,255,.25)}
+  .cbt-pub:disabled{opacity:.5;cursor:default}
+  .cbt-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .cbt-chip{position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;border:1px solid rgba(0,170,255,.25);background:#0a1830;display:flex;align-items:center;justify-content:center;font-size:22px}
+  .cbt-chip img{width:100%;height:100%;object-fit:cover}
+  .cbt-chip .rm{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1}
+  .cbt-chip .pct{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.15)}
+  .cbt-chip .pct i{display:block;height:100%;background:#00aaff;width:0%}
+  .cbt-card{border:1px solid rgba(0,170,255,.1);border-radius:14px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,.015)}
+  .cbt-card.pin{border-color:rgba(251,191,36,.35)}
+  .cbt-prow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .cbt-av{width:40px;height:40px;border-radius:50%;overflow:hidden;flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px}
+  .cbt-av img{width:100%;height:100%;object-fit:cover}
+  .cbt-av.mod{box-shadow:0 0 0 2px #050d1f,0 0 0 4px #fbbf24,0 0 14px rgba(251,191,36,.5)}
+  .cbt-pname{font-weight:700;font-size:13.5px;color:#fff;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .cbt-modbadge{background:linear-gradient(135deg,#fbbf24,#d97706);color:#1a1200;font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.5px}
+  .cbt-ptime{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590}
+  .cbt-menu{margin-left:auto;position:relative}
+  .cbt-menu>button{background:none;border:none;color:#5f7590;font-size:17px;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .cbt-menu>button:hover{background:rgba(255,255,255,.06);color:#fff}
+  .cbt-dd{position:absolute;right:0;top:28px;background:#0a1830;border:1px solid rgba(0,170,255,.2);border-radius:12px;min-width:170px;z-index:5;display:none;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  .cbt-dd.on{display:block}
+  .cbt-dd button{display:block;width:100%;background:none;border:none;color:#c7d5ea;font-size:12.5px;text-align:left;padding:10px 14px;cursor:pointer}
+  .cbt-dd button:hover{background:rgba(0,170,255,.1)}
+  .cbt-dd button.danger{color:#f87171}
+  .cbt-content{font-size:14px;line-height:1.55;color:#dbe7f7;white-space:pre-wrap;word-break:break-word}
+  .cbt-media{margin-top:10px;display:grid;gap:6px;border-radius:12px;overflow:hidden}
+  .cbt-media.g2{grid-template-columns:1fr 1fr}
+  .cbt-media img{width:100%;max-height:420px;object-fit:cover;border-radius:10px;cursor:pointer;display:block}
+  .cbt-media video{width:100%;max-height:480px;border-radius:10px;background:#000;display:block}
+  .cbt-media audio{width:100%}
+  .cbt-abar{display:flex;gap:18px;margin-top:10px;align-items:center}
+  .cbt-act{background:none;border:none;color:#7d93b0;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px}
+  .cbt-act:hover{color:#00aaff;background:rgba(0,170,255,.07)}
+  .cbt-act.liked{color:#f87171}
+  .cbt-cbox{margin-top:10px;border-top:1px solid rgba(0,170,255,.08);padding-top:10px;display:none}
+  .cbt-cbox.on{display:block}
+  .cbt-c{display:flex;gap:9px;margin-bottom:10px}
+  .cbt-c .cbt-av{width:30px;height:30px;flex:0 0 30px;font-size:12px}
+  .cbt-cbody{flex:1;min-width:0}
+  .cbt-cname{font-size:12px;font-weight:700;color:#fff;display:flex;gap:6px;align-items:center}
+  .cbt-ctext{font-size:13px;color:#c7d5ea;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .cbt-cdel{background:none;border:none;color:#5f7590;font-size:10px;cursor:pointer;padding:2px 4px}
+  .cbt-cdel:hover{color:#f87171}
+  .cbt-cinput{display:flex;gap:8px;margin-top:6px}
+  .cbt-cinput input{flex:1;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:10px;color:#e8f0fb;font-size:13px;padding:9px 12px;outline:none}
+  .cbt-cinput button{background:rgba(0,170,255,.15);border:none;border-radius:10px;color:#00aaff;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer}
+  .cbt-more{width:100%;background:none;border:1px dashed rgba(0,170,255,.25);border-radius:12px;color:#00aaff;font-family:var(--font-mono,monospace);font-size:12px;padding:12px;cursor:pointer;margin:4px 0 12px}
+  .cbt-empty{text-align:center;color:#5f7590;font-family:var(--font-mono,monospace);font-size:12px;padding:40px 20px;line-height:1.8}
+  .cbt-feat{border:1px solid rgba(251,191,36,.3);border-radius:14px;overflow:hidden;margin-bottom:16px;background:rgba(251,191,36,.03)}
+  .cbt-feat .yt{position:relative;padding-top:56.25%}
+  .cbt-feat iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .cbt-feat .cap{padding:10px 14px;font-size:12.5px;font-weight:700;color:#fbbf24;display:flex;gap:8px;align-items:center}
+  .cbt-wall{text-align:center;padding:48px 28px}
+  .cbt-wall .ico{font-size:44px;margin-bottom:14px}
+  .cbt-wall h3{font-family:var(--font-display,Syne,sans-serif);font-size:19px;color:#fff;margin:0 0 10px;letter-spacing:-.4px}
+  .cbt-wall p{font-family:var(--font-mono,monospace);font-size:12px;color:#8aa0bd;line-height:1.9;margin:0 0 22px}
+  .cbt-wall .cta{background:linear-gradient(135deg,#0077ff,#00aaff);border:none;border-radius:12px;color:#fff;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:14px;padding:13px 30px;cursor:pointer;box-shadow:0 0 24px rgba(0,170,255,.3)}
+  .cbt-dlg{position:fixed;inset:0;z-index:9010;background:rgba(2,8,23,.85);display:none;align-items:center;justify-content:center;padding:20px}
+  .cbt-dlg.on{display:flex}
+  .cbt-dlgbox{background:#0a1830;border:1px solid rgba(0,170,255,.25);border-radius:16px;padding:24px;width:100%;max-width:380px}
+  .cbt-dlgbox h3{font-family:var(--font-display,Syne,sans-serif);color:#fff;font-size:16px;margin:0 0 6px}
+  .cbt-dlgbox p{font-family:var(--font-mono,monospace);font-size:11px;color:#8aa0bd;margin:0 0 16px;line-height:1.7}
+  .cbt-dlgbox input{width:100%;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:10px;color:#fff;font-size:14px;padding:11px 13px;outline:none;margin-bottom:14px}
+  .cbt-avpick{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .cbt-avpick .cbt-av{width:64px;height:64px;flex:0 0 64px;font-size:24px;cursor:pointer;border:2px dashed rgba(0,170,255,.35)}
+  .cbt-avpick small{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590;line-height:1.6}
+  .cbt-dlgbtns{display:flex;gap:10px}
+  .cbt-dlgbtns button{flex:1;border-radius:10px;padding:11px;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:13px;cursor:pointer;border:none}
+  .cbt-dlgsave{background:linear-gradient(135deg,#0077ff,#00aaff);color:#fff}
+  .cbt-dlgcancel{background:rgba(255,255,255,.06);color:#8aa0bd}
+  .cbt-lightbox{position:fixed;inset:0;z-index:9020;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;cursor:zoom-out}
+  .cbt-lightbox.on{display:flex}
+  .cbt-lightbox img{max-width:96vw;max-height:94vh;border-radius:8px}
+  .cbt-skel{height:110px;border-radius:14px;background:linear-gradient(100deg,rgba(0,170,255,.05) 30%,rgba(0,170,255,.11) 50%,rgba(0,170,255,.05) 70%);background-size:200% 100%;animation:cbtsk 1.2s infinite;margin-bottom:12px}
+  @keyframes cbtsk{to{background-position:-200% 0}}
+  `;
+
+  // ── HTML ──────────────────────────────────────────────────────────────────
+  function mount() {
+    if ($('cbtPanel')) return;
+    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    const w = document.createElement('div');
+    w.innerHTML = `
+    <div class="cbt-ov" id="cbtOv" onclick="ComunidadeBT.close()"></div>
+    <div class="cbt-panel" id="cbtPanel" role="dialog" aria-label="Comunidade BlueTube">
+      <div class="cbt-head">
+        <div class="cbt-title">🏛️ Comunidade BlueTube<small>exclusiva de assinantes</small></div>
+        <div class="cbt-me" id="cbtMe" title="Meu perfil na comunidade" onclick="ComunidadeBT.editProfile()">?</div>
+        <button class="cbt-x" onclick="ComunidadeBT.close()" aria-label="Fechar">✕</button>
+      </div>
+      <div class="cbt-tabs" id="cbtTabs">
+        <button class="cbt-tab" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas</button>
+        <button class="cbt-tab on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade</button>
+      </div>
+      <div class="cbt-feed" id="cbtFeed"></div>
+      <div class="cbt-foot"><a href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Prefere o grupo do WhatsApp? Entrar aqui</a></div>
+    </div>
+    <div class="cbt-dlg" id="cbtDlg">
+      <div class="cbt-dlgbox">
+        <h3 id="cbtDlgTitle">Seu perfil na Comunidade</h3>
+        <p>Escolha como você aparece nos posts. O nome é único e sua foto é opcional.</p>
+        <div class="cbt-avpick">
+          <div class="cbt-av" id="cbtDlgAv" onclick="document.getElementById('cbtAvFile').click()">📷</div>
+          <small>Toque na foto pra trocar<br>(JPG/PNG, vira um círculo)</small>
+          <input type="file" id="cbtAvFile" accept="image/jpeg,image/png,image/webp" style="display:none">
+        </div>
+        <input id="cbtDlgName" maxlength="24" placeholder="Nome de exibição (ex: CriadorDark)">
+        <div class="cbt-dlgbtns">
+          <button class="cbt-dlgcancel" onclick="ComunidadeBT.closeDlg()">Cancelar</button>
+          <button class="cbt-dlgsave" id="cbtDlgSave" onclick="ComunidadeBT.saveProfile()">Salvar</button>
+        </div>
+      </div>
+    </div>
+    <div class="cbt-lightbox" id="cbtLight" onclick="this.classList.remove('on')"><img id="cbtLightImg" alt=""></div>
+    <input type="file" id="cbtMediaFile" style="display:none">`;
+    while (w.firstChild) document.body.appendChild(w.firstChild);
+
+    $('cbtAvFile').addEventListener('change', onAvatarPick);
+    $('cbtMediaFile').addEventListener('change', onMediaPick);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) ComunidadeBT.close(); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.cbt-menu')) document.querySelectorAll('.cbt-dd.on').forEach((d) => d.classList.remove('on')); });
+  }
+
+  // ── Estado/abertura ───────────────────────────────────────────────────────
+  async function open(opts = {}) {
+    mount();
+    S.open = true;
+    $('cbtOv').classList.add('on'); $('cbtPanel').classList.add('on');
+    document.body.style.overflow = 'hidden';
+    if (!S.me) {
+      $('cbtFeed').innerHTML = '<div class="cbt-skel"></div><div class="cbt-skel"></div><div class="cbt-skel"></div>';
+      const { ok, status, d } = await api('me');
+      if (!ok) {
+        S.wall = status === 401 ? 'login' : (d.banned ? 'banned' : 'upgrade');
+        renderWall();
+        return;
+      }
+      S.me = d;
+      renderMeAvatar();
+    }
+    S.wall = null;
+    if (opts.profile) { editProfile(); }
+    loadFeed(true);
+  }
+
+  function close() {
+    S.open = false;
+    $('cbtOv')?.classList.remove('on'); $('cbtPanel')?.classList.remove('on');
+    document.body.style.overflow = '';
+    document.querySelectorAll('#cbtFeed video, #cbtFeed audio').forEach((m) => { try { m.pause(); } catch (e) {} });
+  }
+
+  function renderWall() {
+    const kind = S.wall;
+    const walls = {
+      login: { ico: '🔐', h: 'Faça login pra entrar', p: 'A Comunidade é o espaço exclusivo dos assinantes BlueTube.', cta: 'Fazer login', fn: "ComunidadeBT.close();window.openAuthModal&&openAuthModal()" },
+      upgrade: { ico: '👑', h: 'Comunidade exclusiva de assinantes', p: 'Feed exclusivo com criadores dark que fazem milhões de views<br>✦ Dicas e tutoriais em primeira mão<br>✦ Poste dúvidas, vídeos e resultados<br>✦ Networking com quem já vive disso', cta: 'Desbloquear com Full ou Master', fn: "ComunidadeBT.close();window.openUpgradeModal&&openUpgradeModal('tool_blocked','full')" },
+      banned: { ico: '🚫', h: 'Você foi banido da Comunidade', p: 'Seu acesso foi removido pelo moderador.', cta: 'Fechar', fn: 'ComunidadeBT.close()' },
+    };
+    const wl = walls[kind] || walls.upgrade;
+    $('cbtFeed').innerHTML = `<div class="cbt-wall"><div class="ico">${wl.ico}</div><h3>${wl.h}</h3><p>${wl.p}</p><button class="cta" onclick="${wl.fn}">${wl.cta}</button></div>`;
+  }
+
+  function renderMeAvatar() {
+    const el = $('cbtMe'); const p = S.me?.profile;
+    if (p?.avatar_url) el.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`;
+    else { el.textContent = initials(p?.display_name || '?'); el.style.background = `hsl(${hue(p?.display_name || 'x')},60%,38%)`; }
+  }
+
+  // ── Feed ──────────────────────────────────────────────────────────────────
+  function setTab(tab) {
+    if (S.tab === tab) return;
+    S.tab = tab;
+    document.querySelectorAll('.cbt-tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    loadFeed(true);
+  }
+
+  async function loadFeed(reset) {
+    if (S.loading || S.wall) return;
+    S.loading = true;
+    if (reset) { S.posts = []; S.next = null; $('cbtFeed').innerHTML = '<div class="cbt-skel"></div><div class="cbt-skel"></div>'; }
+    const { ok, status, d } = await api('feed', { qs: '&tab=' + S.tab + (S.next && !reset ? '&before=' + encodeURIComponent(S.next) : '') });
+    S.loading = false;
+    if (!ok) { S.wall = status === 401 ? 'login' : 'upgrade'; renderWall(); return; }
+    S.posts = reset ? d.posts : S.posts.concat(d.posts);
+    S.next = d.next;
+    render();
+  }
+
+  function render() {
+    const f = $('cbtFeed');
+    const canPost = S.tab === 'comunidade' || S.me?.is_moderator;
+    let h = '';
+    if (S.tab === 'dicas') {
+      h += `<div class="cbt-feat"><div class="yt"><iframe src="https://www.youtube.com/embed/${FEATURED_VIDEO.id}" title="${esc(FEATURED_VIDEO.title)}" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy"></iframe></div><div class="cap">⭐ ${esc(FEATURED_VIDEO.title)}</div></div>`;
+    }
+    if (canPost) {
+      const p = S.me?.profile;
+      h += `<div class="cbt-composer">
+        <textarea id="cbtText" placeholder="${S.tab === 'dicas' ? 'Compartilhe uma dica com a comunidade…' : 'No que você está trabalhando, ' + esc((p?.display_name || 'criador').split(' ')[0]) + '?'}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,180)+'px'"></textarea>
+        <div class="cbt-chips" id="cbtChips"></div>
+        <div class="cbt-crow">
+          <button class="cbt-mbtn" title="Foto" onclick="ComunidadeBT.pick('image')">📷</button>
+          <button class="cbt-mbtn" title="Vídeo" onclick="ComunidadeBT.pick('video')">🎬</button>
+          <button class="cbt-mbtn" title="Áudio" onclick="ComunidadeBT.pick('audio')">🎤</button>
+          <button class="cbt-pub" id="cbtPub" onclick="ComunidadeBT.publish()">Publicar</button>
+        </div>
+      </div>`;
+    }
+    if (!S.posts.length) {
+      h += `<div class="cbt-empty">${S.tab === 'dicas' ? '💡 As dicas do time BlueTube aparecem aqui.' : '🏛️ Seja o primeiro a postar!<br>Compartilhe resultados, dúvidas e ideias.'}</div>`;
+    } else {
+      h += S.posts.map(cardHtml).join('');
+      if (S.next) h += `<button class="cbt-more" onclick="ComunidadeBT.more()">Carregar mais ↓</button>`;
+    }
+    f.innerHTML = h;
+    renderChips();
+  }
+
+  function cardHtml(p) {
+    const a = p.author || {};
+    const av = a.avatar
+      ? `<div class="cbt-av${a.mod ? ' mod' : ''}"><img src="${esc(a.avatar)}" alt=""></div>`
+      : `<div class="cbt-av${a.mod ? ' mod' : ''}" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+    const mine = p.mine, mod = S.me?.is_moderator;
+    let menu = '';
+    if (mine || mod) {
+      menu = `<div class="cbt-menu"><button onclick="this.nextElementSibling.classList.toggle('on');event.stopPropagation()">⋮</button><div class="cbt-dd">
+        ${(mine || mod) ? `<button onclick="ComunidadeBT.editPost('${p.id}')">✏️ Editar</button>` : ''}
+        ${mod ? `<button onclick="ComunidadeBT.pin('${p.id}')">📌 ${p.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
+        ${(mine || mod) ? `<button class="danger" onclick="ComunidadeBT.delPost('${p.id}')">🗑️ Apagar</button>` : ''}
+        ${(mod && !mine && p.author_id) ? `<button class="danger" onclick="ComunidadeBT.ban('${p.author_id}','${esc(a.name)}')">🚫 Banir usuário</button>` : ''}
+      </div></div>`;
+    }
+    const media = (p.media || []).map((m) => {
+      if (m.type === 'image') return `<img src="${esc(m.url)}" loading="lazy" alt="" onclick="ComunidadeBT.light(this.src)">`;
+      if (m.type === 'video') return `<video controls playsinline preload="metadata" ${m.thumb ? `poster="${esc(m.thumb)}"` : ''} src="${esc(m.url)}"></video>`;
+      return `<audio controls preload="none" src="${esc(m.url)}"></audio>`;
+    }).join('');
+    const imgs = (p.media || []).filter((m) => m.type === 'image').length;
+    return `<div class="cbt-card${p.pinned ? ' pin' : ''}" id="post-${p.id}">
+      <div class="cbt-prow">${av}<div><div class="cbt-pname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${p.pinned ? ' 📌' : ''}</div>
+      <div class="cbt-ptime">${timeAgo(p.created_at)}${p.edited_at ? ' · editado' : ''}</div></div>${menu}</div>
+      ${p.content ? `<div class="cbt-content" id="pc-${p.id}">${esc(p.content)}</div>` : ''}
+      ${media ? `<div class="cbt-media${imgs > 1 ? ' g2' : ''}">${media}</div>` : ''}
+      <div class="cbt-abar">
+        <button class="cbt-act${p.liked ? ' liked' : ''}" id="like-${p.id}" onclick="ComunidadeBT.like('${p.id}')">${p.liked ? '❤️' : '🤍'} <span>${p.likes_count || 0}</span></button>
+        <button class="cbt-act" onclick="ComunidadeBT.comments('${p.id}')">💬 <span id="cc-${p.id}">${p.comments_count || 0}</span></button>
+      </div>
+      <div class="cbt-cbox" id="cb-${p.id}"></div>
+    </div>`;
+  }
+
+  // ── Ações de post ─────────────────────────────────────────────────────────
+  async function needProfile() {
+    if (S.me?.profile?.display_name) return false;
+    editProfile();
+    return true;
+  }
+
+  async function publish() {
+    if (S.sending) return;
+    if (await needProfile()) return;
+    const text = ($('cbtText')?.value || '').trim();
+    if (!text && !S.media.length) return toast('Escreva algo ou anexe uma mídia.');
+    if (S.media.some((m) => m.uploading)) return toast('Aguarde o envio da mídia terminar.');
+    S.sending = true; const btn = $('cbtPub'); if (btn) { btn.disabled = true; btn.textContent = 'Publicando…'; }
+    const media = S.media.filter((m) => m.url).map((m) => ({ type: m.type, url: m.url, thumb: m.thumb || null }));
+    const { ok, d } = await api('post-create', { body: { tab: S.tab, content: text, media } });
+    S.sending = false;
+    if (!ok) { if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; } if (d.needs_profile) return editProfile(); return toast('❌ ' + (d.error || 'Erro ao publicar.')); }
+    S.media = [];
+    toast('✅ Publicado!');
+    loadFeed(true);
+  }
+
+  async function like(id) {
+    if (await needProfile()) return;
+    const post = S.posts.find((p) => p.id === id); if (!post) return;
+    post.liked = !post.liked; post.likes_count += post.liked ? 1 : -1; // otimista
+    const el = $('like-' + id); if (el) { el.classList.toggle('liked', post.liked); el.innerHTML = `${post.liked ? '❤️' : '🤍'} <span>${post.likes_count}</span>`; }
+    const { ok, d } = await api('like-toggle', { body: { post_id: id } });
+    if (ok && typeof d.likes_count === 'number') { post.likes_count = d.likes_count; post.liked = d.liked; if (el) el.innerHTML = `${d.liked ? '❤️' : '🤍'} <span>${d.likes_count}</span>`; }
+  }
+
+  async function delPost(id) {
+    if (!confirm('Apagar este post?')) return;
+    const { ok, d } = await api('post-delete', { body: { post_id: id } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    $('post-' + id)?.remove();
+    S.posts = S.posts.filter((p) => p.id !== id);
+  }
+
+  async function editPost(id) {
+    const post = S.posts.find((p) => p.id === id); if (!post) return;
+    const novo = prompt('Editar post:', post.content || '');
+    if (novo == null || novo.trim() === post.content) return;
+    const { ok, d } = await api('post-edit', { body: { post_id: id, content: novo.trim() } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    post.content = novo.trim(); post.edited_at = new Date().toISOString();
+    const el = $('pc-' + id); if (el) el.textContent = post.content;
+    toast('✏️ Editado.');
+  }
+
+  async function pin(id) {
+    const { ok, d } = await api('pin-toggle', { body: { post_id: id } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    toast(d.pinned ? '📌 Fixado no topo.' : 'Desafixado.');
+    loadFeed(true);
+  }
+
+  async function ban(uid, name) {
+    if (!confirm(`Banir "${name}" da Comunidade? A pessoa não poderá mais postar nem comentar.`)) return;
+    const { ok, d } = await api('ban-user', { body: { user_id: uid, banned: true } });
+    toast(ok ? `🚫 ${name} banido.` : '❌ ' + (d.error || 'Erro.'));
+  }
+
+  // ── Comentários ───────────────────────────────────────────────────────────
+  async function comments(id) {
+    const box = $('cb-' + id); if (!box) return;
+    if (box.classList.contains('on')) { box.classList.remove('on'); return; }
+    box.classList.add('on');
+    box.innerHTML = '<div class="cbt-empty" style="padding:14px">Carregando…</div>';
+    const { ok, d } = await api('comments', { qs: '&post_id=' + encodeURIComponent(id) });
+    if (!ok) { box.innerHTML = ''; return toast('❌ ' + (d.error || 'Erro.')); }
+    renderComments(id, d.comments);
+  }
+
+  function renderComments(postId, list) {
+    const box = $('cb-' + postId); if (!box) return;
+    const mod = S.me?.is_moderator;
+    const items = list.map((c) => {
+      const a = c.author || {};
+      const av = a.avatar ? `<div class="cbt-av"><img src="${esc(a.avatar)}"></div>` : `<div class="cbt-av" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+      return `<div class="cbt-c">${av}<div class="cbt-cbody">
+        <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span>
+        ${(c.mine || mod) ? `<button class="cbt-cdel" onclick="ComunidadeBT.delComment('${postId}','${c.id}')">apagar</button>` : ''}</div>
+        <div class="cbt-ctext">${esc(c.content)}</div></div></div>`;
+    }).join('');
+    box.innerHTML = `${items || ''}<div class="cbt-cinput"><input id="ci-${postId}" maxlength="600" placeholder="Comentar…" onkeydown="if(event.key==='Enter')ComunidadeBT.sendComment('${postId}')"><button onclick="ComunidadeBT.sendComment('${postId}')">➤</button></div>`;
+  }
+
+  async function sendComment(postId) {
+    if (await needProfile()) return;
+    const inp = $('ci-' + postId); const text = (inp?.value || '').trim();
+    if (!text) return;
+    inp.value = '';
+    const { ok, d } = await api('comment-create', { body: { post_id: postId, content: text } });
+    if (!ok) { inp.value = text; return toast('❌ ' + (d.error || 'Erro.')); }
+    const cc = $('cc-' + postId); if (cc) cc.textContent = (parseInt(cc.textContent) || 0) + 1;
+    const post = S.posts.find((p) => p.id === postId); if (post) post.comments_count++;
+    const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
+    if (ok2) renderComments(postId, d2.comments);
+  }
+
+  async function delComment(postId, commentId) {
+    if (!confirm('Apagar comentário?')) return;
+    const { ok, d } = await api('comment-delete', { body: { comment_id: commentId } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
+    if (ok2) { renderComments(postId, d2.comments); const cc = $('cc-' + postId); if (cc) cc.textContent = d2.comments.length; }
+  }
+
+  // ── Mídia ─────────────────────────────────────────────────────────────────
+  let pickKind = 'image';
+  function pick(kind) {
+    if (S.media.length >= 4) return toast('Máximo de 4 mídias por post.');
+    if (kind !== 'image' && S.media.some((m) => m.type !== 'image')) return toast('Só 1 vídeo ou áudio por post.');
+    pickKind = kind;
+    const f = $('cbtMediaFile');
+    f.accept = kind === 'image' ? 'image/jpeg,image/png,image/webp,image/gif' : kind === 'video' ? 'video/mp4,video/quicktime,video/webm' : 'audio/*';
+    f.value = ''; f.click();
+  }
+
+  async function onMediaPick(e) {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (await needProfile()) return;
+    const kind = pickKind;
+    const item = { type: kind, file, uploading: true, pct: 0, url: null, thumb: null, preview: kind === 'image' ? URL.createObjectURL(file) : null };
+    S.media.push(item); renderChips();
+
+    const { ok, d } = await api('get-upload-url', { body: { kind, content_type: file.type, filename: file.name } });
+    if (!ok) { S.media = S.media.filter((m) => m !== item); renderChips(); return toast('❌ ' + (d.error || 'Erro no upload.')); }
+    if (file.size > d.max_mb * 1024 * 1024) { S.media = S.media.filter((m) => m !== item); renderChips(); return toast(`❌ Arquivo grande demais (máx ${d.max_mb}MB).`); }
+
+    try {
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) { item.pct = Math.round((ev.loaded / ev.total) * 100); renderChips(); } };
+        xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error('HTTP ' + xhr.status)));
+        xhr.onerror = () => reject(new Error('Falha de rede'));
+        xhr.open('POST', d.supabase_url + '/storage/v1/object/blue-videos/' + d.storage_path);
+        xhr.setRequestHeader('apikey', d.anon_key);
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token());
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('x-upsert', 'true');
+        xhr.send(file);
+      });
+      item.url = d.public_url;
+      if (kind === 'video') {
+        const t = await api('transcode', { body: { storage_path: d.storage_path } });
+        if (t.ok && t.d.thumb_url) item.thumb = t.d.thumb_url;
+      }
+    } catch (err) {
+      S.media = S.media.filter((m) => m !== item); renderChips();
+      return toast('❌ Upload falhou: ' + err.message);
+    }
+    item.uploading = false; item.pct = 100; renderChips();
+  }
+
+  function renderChips() {
+    const el = $('cbtChips'); if (!el) return;
+    el.innerHTML = S.media.map((m, i) => `<div class="cbt-chip">
+      ${m.preview ? `<img src="${m.preview}">` : (m.type === 'video' ? '🎬' : m.type === 'audio' ? '🎤' : '🖼️')}
+      <button class="rm" onclick="ComunidadeBT.rmMedia(${i})">✕</button>
+      ${m.uploading ? `<div class="pct"><i style="width:${m.pct}%"></i></div>` : ''}
+    </div>`).join('');
+  }
+  function rmMedia(i) { S.media.splice(i, 1); renderChips(); }
+
+  // ── Perfil ────────────────────────────────────────────────────────────────
+  let avatarData = null;
+  function editProfile() {
+    mount();
+    avatarData = null;
+    const p = S.me?.profile;
+    $('cbtDlgName').value = p?.display_name || '';
+    const av = $('cbtDlgAv');
+    if (p?.avatar_url) av.innerHTML = `<img src="${esc(p.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    else { av.textContent = '📷'; av.style.background = ''; }
+    $('cbtDlg').classList.add('on');
+  }
+  function closeDlg() { $('cbtDlg').classList.remove('on'); }
+
+  function onAvatarPick(e) {
+    const file = e.target.files?.[0]; if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const s = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
+      avatarData = c.toDataURL('image/jpeg', 0.85);
+      $('cbtDlgAv').innerHTML = `<img src="${avatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(file);
+  }
+
+  async function saveProfile() {
+    const name = $('cbtDlgName').value.trim();
+    if (!name && !S.me?.profile?.display_name) return toast('Escolha um nome.');
+    const btn = $('cbtDlgSave'); btn.disabled = true; btn.textContent = 'Salvando…';
+    const body = {};
+    if (name) body.display_name = name;
+    if (avatarData) body.avatar_data = avatarData;
+    const { ok, d } = await api('profile-set', { body });
+    btn.disabled = false; btn.textContent = 'Salvar';
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    S.me = S.me || {};
+    S.me.profile = { ...(S.me.profile || {}), ...d.profile };
+    S.me.needs_profile = false;
+    renderMeAvatar(); closeDlg();
+    toast('✅ Perfil salvo!');
+    loadFeed(true);
+  }
+
+  // ── API pública ───────────────────────────────────────────────────────────
+  window.ComunidadeBT = {
+    open, close, setTab, publish, like, delPost, editPost, pin, ban,
+    comments, sendComment, delComment, pick, rmMedia, editProfile, closeDlg, saveProfile,
+    more: () => loadFeed(false),
+    light: (u) => { $('cbtLightImg').src = u; $('cbtLight').classList.add('on'); },
+    whats: () => { try { window.joinCommunity ? joinCommunity() : window.open(WHATSAPP_URL, '_blank'); } catch (e) { window.open(WHATSAPP_URL, '_blank'); } },
+  };
+})();
