@@ -1603,13 +1603,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
       <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
       <div id="commProfileSec" style="display:none;background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.16);border-radius:10px;padding:12px">
-        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em;margin-bottom:10px">🏛️ SEU PERFIL NA COMUNIDADE</div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em;margin-bottom:10px">🏛️ SUA FOTO NA COMUNIDADE</div>
+        <div style="display:flex;gap:12px;align-items:center">
           <div id="cpAv" onclick="document.getElementById('cpFile').click()" title="Trocar foto" style="width:46px;height:46px;border-radius:50%;flex:0 0 46px;border:2px dashed rgba(251,191,36,.4);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;overflow:hidden;background:rgba(0,0,0,.25)">📷</div>
-          <input id="cpName" maxlength="24" placeholder="Nome de exibição" style="flex:1;min-width:0;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:9px;color:#fff;font-size:13px;padding:10px 12px;outline:none">
+          <div style="flex:1;min-width:0">
+            <div id="cpName" style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+            <div id="cpMsg" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:3px">Toque na foto pra trocar. O nome é o seu usuário.</div>
+          </div>
           <button id="cpSave" onclick="saveCommProfile()" style="background:linear-gradient(135deg,#0077ff,#00c4ff);border:none;border-radius:9px;color:#fff;font-family:var(--font-display);font-size:12px;font-weight:700;padding:10px 16px;cursor:pointer">Salvar</button>
         </div>
-        <div id="cpMsg" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:8px">Nome e foto que aparecem nos seus posts e comentários.</div>
         <input type="file" id="cpFile" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="cpPickAvatar(this)">
       </div>
       <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
@@ -1782,8 +1784,15 @@ function openCommunityPreview(){
 }
 function closeCommunityPreview(){ document.getElementById('communityPreviewModal')?.classList.remove('on'); }
 
-// ── Perfil da Comunidade (edição SÓ aqui na home, dentro do popup de perfil) ─
+// ── Foto da Comunidade (edição SÓ aqui na home; nome = usuário da conta) ────
 let cpAvatarData=null;
+function applyCommAvatar(url){
+  if(!url) return;
+  // Reflete a foto escolhida no ícone do topo e no círculo do popup de perfil
+  document.querySelectorAll('.nav-avatar').forEach(el=>{el.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;});
+  const pa=document.getElementById('profileAvatar');
+  if(pa) pa.innerHTML=`<img src="${url}" style="width:56px;height:56px;object-fit:cover;border-radius:50%">`;
+}
 async function loadCommProfileUI(isPaid){
   const sec=document.getElementById('commProfileSec');
   if(!sec) return;
@@ -1793,9 +1802,10 @@ async function loadCommProfileUI(isPaid){
     const r=await fetch('/api/community?action=me&token='+encodeURIComponent(localStorage.getItem('bt_token')||''));
     if(!r.ok) { sec.style.display='none'; return; }
     const d=await r.json();
-    const nameEl=document.getElementById('cpName'); if(nameEl) nameEl.value=d.profile?.display_name||'';
+    const nameEl=document.getElementById('cpName'); if(nameEl) nameEl.textContent=d.profile?.display_name||currentUserEmail.split('@')[0];
     const av=document.getElementById('cpAv');
     if(av) av.innerHTML=d.profile?.avatar_url?`<img src="${d.profile.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:'📷';
+    applyCommAvatar(d.profile?.avatar_url);
   }catch(e){}
 }
 function cpPickAvatar(inp){
@@ -1813,17 +1823,13 @@ function cpPickAvatar(inp){
 }
 async function saveCommProfile(){
   const btn=document.getElementById('cpSave');const msg=document.getElementById('cpMsg');
-  const name=(document.getElementById('cpName')?.value||'').trim();
-  if(!name&&!cpAvatarData){ if(msg)msg.textContent='Escolha um nome ou uma foto pra salvar.'; return; }
+  if(!cpAvatarData){ if(msg)msg.textContent='Toque na foto pra escolher uma imagem antes de salvar.'; return; }
   btn.disabled=true;btn.textContent='…';
-  const body={action:'profile-set',token:localStorage.getItem('bt_token')};
-  if(name)body.display_name=name;
-  if(cpAvatarData)body.avatar_data=cpAvatarData;
   try{
-    const r=await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'profile-set',token:localStorage.getItem('bt_token'),avatar_data:cpAvatarData})});
     const d=await r.json();
-    if(msg)msg.textContent=r.ok?'✅ Salvo! Já vale na Comunidade.':'❌ '+(d.error||'Erro ao salvar.');
-    if(r.ok)cpAvatarData=null;
+    if(msg)msg.textContent=r.ok?'✅ Foto salva! Já vale na Comunidade e aqui no site.':'❌ '+(d.error||'Erro ao salvar.');
+    if(r.ok){ applyCommAvatar(d.profile?.avatar_url); cpAvatarData=null; }
   }catch(e){ if(msg)msg.textContent='❌ Falha de rede.'; }
   btn.disabled=false;btn.textContent='Salvar';
 }
@@ -1839,6 +1845,7 @@ async function updateCommunityBell(){
     const r=await fetch('/api/community?action=me&token='+encodeURIComponent(token));
     if(!r.ok) return;
     const d=await r.json();
+    applyCommAvatar(d.profile?.avatar_url); // foto escolhida aparece no ícone do site
     const n=(d.unseen?.dicas||0)+(d.unseen?.comunidade||0);
     if(!n) return;
     const btn=document.getElementById('communityBtn');

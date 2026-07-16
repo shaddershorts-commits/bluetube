@@ -53,11 +53,23 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário.', login: true });
 
-  // Perfil da comunidade (pode não existir ainda)
+  // Perfil da comunidade — auto-provisionado com o USERNAME da conta (prefixo
+  // do email, igual ao mostrado na home). Nome NÃO é editável; só a foto.
   let profile = null;
   try {
     const pf = await fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}&select=*`, { headers: H });
     if (pf.ok) profile = (await pf.json())[0] || null;
+    if (!profile) {
+      const base = (userEmail || 'user').split('@')[0].replace(/[^a-z0-9._-]/gi, '').slice(0, 20) || 'criador';
+      for (const name of [base, base + Math.floor(10 + Math.random() * 90), base + '-' + userId.slice(0, 4)]) {
+        const ins = await fetch(`${SU}/rest/v1/community_profiles`, {
+          method: 'POST', headers: { ...H, Prefer: 'return=representation' },
+          body: JSON.stringify({ user_id: userId, email: userEmail, display_name: name }),
+        });
+        if (ins.ok) { profile = (await ins.json())[0]; break; }
+        if (ins.status !== 409) break; // 409 = nome em uso → tenta variação
+      }
+    }
   } catch (e) {}
   const isMod = !!profile?.is_moderator;
   if (!paying && !isMod) return res.status(403).json({ error: 'A Comunidade é exclusiva de assinantes.', upgrade: true });
@@ -96,8 +108,9 @@ module.exports = async function handler(req, res) {
       } catch (e) {}
       return res.status(200).json({
         user_id: userId, paying, plan: planName, is_moderator: isMod, unseen,
+        gifs: !!process.env.GIPHY_API_KEY,
         profile: profile ? { display_name: profile.display_name, avatar_url: profile.avatar_url, banned: profile.banned } : null,
-        needs_profile: !profile?.display_name,
+        needs_profile: false,
       });
     }
 
@@ -113,14 +126,9 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ── PROFILE-SET: nome de exibição + avatar (base64 pequeno) ─────────────
+    // ── PROFILE-SET: SÓ a foto (nome é o username da conta, não muda) ───────
     if (action === 'profile-set' && req.method === 'POST') {
-      const name = clean(b.display_name, 24);
-      if (name && (name.length < 2 || !/^[\p{L}\p{N} ._-]+$/u.test(name))) {
-        return res.status(400).json({ error: 'Nome inválido. Use 2-24 caracteres (letras, números, espaço, . _ -).' });
-      }
-      if (name && hasBlocked(name)) return res.status(400).json({ error: 'Nome não permitido.' });
-
+      if (!profile) return res.status(500).json({ error: 'Perfil indisponível.' });
       let avatarUrl;
       if (b.avatar_data && typeof b.avatar_data === 'string' && b.avatar_data.length < 2_500_000) {
         const m = b.avatar_data.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
@@ -132,29 +140,34 @@ module.exports = async function handler(req, res) {
         });
         if (up.ok) avatarUrl = `${SU}/storage/v1/object/public/blue-videos/${path}?v=${Date.now()}`;
       }
-
-      const patch = {};
-      if (name) patch.display_name = name;
-      if (avatarUrl) patch.avatar_url = avatarUrl;
-      if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nada pra salvar.' });
-      patch.updated_at = nowIso();
-
-      let r;
-      if (profile) {
-        r = await fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}`, {
-          method: 'PATCH', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(patch),
-        });
-      } else {
-        if (!name) return res.status(400).json({ error: 'Escolha um nome de exibição.' });
-        r = await fetch(`${SU}/rest/v1/community_profiles`, {
-          method: 'POST', headers: { ...H, Prefer: 'return=representation' },
-          body: JSON.stringify({ user_id: userId, email: userEmail, ...patch }),
-        });
-      }
-      if (r.status === 409) return res.status(409).json({ error: 'Esse nome já está em uso. Escolha outro.' });
-      if (!r.ok) return res.status(500).json({ error: 'Erro ao salvar perfil.' });
+      if (!avatarUrl) return res.status(400).json({ error: 'Envie uma foto (JPG/PNG/WebP até ~1,5MB).' });
+      const r = await fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=representation' },
+        body: JSON.stringify({ avatar_url: avatarUrl, updated_at: nowIso() }),
+      });
+      if (!r.ok) return res.status(500).json({ error: 'Erro ao salvar foto.' });
       const saved = (await r.json())[0];
       return res.status(200).json({ ok: true, profile: { display_name: saved.display_name, avatar_url: saved.avatar_url } });
+    }
+
+    // ── GIF-SEARCH: proxy do GIPHY (mesma fonte do Instagram). Sem chave
+    // configurada, devolve disabled — o botão de GIF fica oculto no front.
+    if (action === 'gif-search') {
+      const GK = process.env.GIPHY_API_KEY;
+      if (!GK) return res.status(200).json({ gifs: [], disabled: true });
+      const qq = clean(q.q, 60);
+      const gu = qq
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${GK}&q=${encodeURIComponent(qq)}&limit=24&rating=pg-13&lang=pt`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${GK}&limit=24&rating=pg-13`;
+      const gr = await fetch(gu);
+      if (!gr.ok) return res.status(200).json({ gifs: [] });
+      const gd = await gr.json();
+      return res.status(200).json({
+        gifs: (gd.data || []).map((g) => ({
+          url: g.images?.fixed_height?.url || g.images?.original?.url,
+          preview: g.images?.fixed_height_small?.url || g.images?.fixed_height?.url,
+        })).filter((g) => g.url),
+      });
     }
 
     // ── FEED: posts de uma aba, com autor, curtidas e "curti?" ───────────────
@@ -372,11 +385,18 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, liked, likes_count: total });
     }
 
-    // ── COMMENT-CREATE ───────────────────────────────────────────────────────
+    // ── COMMENT-CREATE (texto, ou GIF via marcador [gif]url-do-giphy) ────────
     if (action === 'comment-create') {
-      const content = clean(b.content, 600);
-      if (!content) return res.status(400).json({ error: 'Comentário vazio.' });
-      if (hasBlocked(content)) return res.status(400).json({ error: 'Conteúdo não permitido.' });
+      let content;
+      if (typeof b.content === 'string' && b.content.startsWith('[gif]')) {
+        const gm = b.content.match(/^\[gif\](https:\/\/media\d*\.giphy\.com\/[^\s"'<>]+)$/);
+        if (!gm) return res.status(400).json({ error: 'GIF inválido.' });
+        content = '[gif]' + gm[1];
+      } else {
+        content = clean(b.content, 600);
+        if (!content) return res.status(400).json({ error: 'Comentário vazio.' });
+        if (hasBlocked(content)) return res.status(400).json({ error: 'Conteúdo não permitido.' });
+      }
       const postId = String(b.post_id || '');
       const pr = await fetch(`${SU}/rest/v1/community_posts?id=eq.${encodeURIComponent(postId)}&deleted=eq.false&select=id,comments_count`, { headers: H });
       const post = pr.ok ? (await pr.json())[0] : null;

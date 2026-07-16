@@ -160,6 +160,19 @@
   .cbt-cpinned{background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.18);border-radius:14px;padding:10px 12px;margin-bottom:12px}
   .cbt-pinbadge{font-family:var(--font-mono,monospace);font-size:9px;color:#fbbf24;background:rgba(251,191,36,.1);border-radius:20px;padding:2px 8px}
   .cbt-replybox{margin-top:8px}
+  .cbt-cgif{max-width:220px;max-height:180px;border-radius:12px;display:block;margin-top:2px}
+  .cbt-mini{background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.16);border-radius:10px;color:#8fb6d8;font-family:var(--font-mono,monospace);font-size:11px;font-weight:700;padding:0 10px;cursor:pointer;transition:all .15s;flex:0 0 auto}
+  .cbt-mini:hover{background:rgba(0,170,255,.14);color:#00c4ff}
+  .cbt-float{position:fixed;z-index:9040;display:none;width:320px;max-width:92vw;background:rgba(10,24,48,.9);backdrop-filter:var(--cbt-blur);-webkit-backdrop-filter:var(--cbt-blur);border:1px solid rgba(0,170,255,.25);border-radius:16px;padding:10px;box-shadow:0 20px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)}
+  .cbt-float.on{display:block}
+  .cbt-emj{background:none;border:none;font-size:21px;padding:5px;cursor:pointer;border-radius:8px;line-height:1}
+  .cbt-emj:hover{background:rgba(0,170,255,.12);transform:scale(1.15)}
+  .cbt-gifhead{display:flex;gap:6px;margin-bottom:8px}
+  .cbt-gifhead input{flex:1;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:9px;color:#fff;font-size:12px;padding:8px 10px;outline:none}
+  .cbt-gifhead button{background:rgba(0,170,255,.15);border:none;border-radius:9px;color:#00c4ff;padding:0 12px;cursor:pointer}
+  .cbt-gifgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;max-height:260px;overflow-y:auto}
+  .cbt-gifgrid img{width:100%;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;display:block}
+  .cbt-gifgrid img:hover{outline:2px solid #00c4ff}
   .cbt-cinput{display:flex;gap:8px;margin-top:6px}
   .cbt-cinput input{flex:1;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:10px;color:#e8f0fb;font-size:13px;padding:9px 12px;outline:none}
   .cbt-cinput button{background:rgba(0,170,255,.15);border:none;border-radius:10px;color:#00aaff;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer}
@@ -261,23 +274,9 @@
       </div>
       <div class="cbt-foot"><a href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Prefere o grupo do WhatsApp? Entrar aqui</a></div>
     </div>
-    <div class="cbt-dlg" id="cbtDlg">
-      <div class="cbt-dlgbox">
-        <h3 id="cbtDlgTitle">Como você quer aparecer?</h3>
-        <p>Escolha seu nome (único) e foto. Depois dá pra mudar no seu perfil na página inicial do site.</p>
-        <div class="cbt-avpick">
-          <div class="cbt-av" id="cbtDlgAv" onclick="document.getElementById('cbtAvFile').click()">📷</div>
-          <small>Toque na foto pra trocar<br>(JPG/PNG, vira um círculo)</small>
-          <input type="file" id="cbtAvFile" accept="image/jpeg,image/png,image/webp" style="display:none">
-        </div>
-        <input id="cbtDlgName" maxlength="24" placeholder="Nome de exibição (ex: CriadorDark)">
-        <div class="cbt-dlgbtns">
-          <button class="cbt-dlgcancel" onclick="ComunidadeBT.closeDlg()">Cancelar</button>
-          <button class="cbt-dlgsave" id="cbtDlgSave" onclick="ComunidadeBT.saveProfile()">Salvar</button>
-        </div>
-      </div>
-    </div>
     <div class="cbt-lightbox" id="cbtLight" onclick="this.classList.remove('on')"><img id="cbtLightImg" alt=""></div>
+    <div class="cbt-float" id="cbtEmojiPanel"></div>
+    <div class="cbt-float" id="cbtGifPanel"></div>
     <input type="file" id="cbtMediaFile" style="display:none">`;
     const host = (S.pageMode && document.getElementById('pgMain')) || document.body;
     while (w.firstChild) host.appendChild(w.firstChild);
@@ -289,10 +288,12 @@
         `<div class="cbt-railcard"><h4>🎓 Treinamento oficial</h4><p>Na aba <b style="color:#ffd977">💡 Dicas</b> você encontra os vídeos do time BlueTube ensinando a usar cada ferramenta e a viralizar — com espaço de comentários pra tirar dúvidas.</p></div>`;
     }
 
-    $('cbtAvFile').addEventListener('change', onAvatarPick);
     $('cbtMediaFile').addEventListener('change', onMediaPick);
     if (!S.pageMode) document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) ComunidadeBT.close(); });
-    document.addEventListener('click', (e) => { if (!e.target.closest('.cbt-menu')) document.querySelectorAll('.cbt-dd.on').forEach((d) => d.classList.remove('on')); });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.cbt-menu')) document.querySelectorAll('.cbt-dd.on').forEach((d) => d.classList.remove('on'));
+      if (!e.target.closest('.cbt-float') && !e.target.closest('[data-float]')) hideFloats();
+    });
   }
 
   // ── Estado/abertura ───────────────────────────────────────────────────────
@@ -408,6 +409,7 @@
           <button class="cbt-mbtn" title="Foto" onclick="ComunidadeBT.pick('image')">📷</button>
           <button class="cbt-mbtn" title="Vídeo" onclick="ComunidadeBT.pick('video')">🎬</button>
           <button class="cbt-mbtn" title="Áudio" onclick="ComunidadeBT.pick('audio')">🎤</button>
+          <button class="cbt-mbtn" data-float title="Emoji" onclick="ComunidadeBT.openEmoji(this,'cbtText')">😊</button>
           <button class="cbt-pub" id="cbtPub" onclick="ComunidadeBT.publish()">Publicar</button>
         </div>
       </div>`;
@@ -480,11 +482,8 @@
   }
 
   // ── Ações de post ─────────────────────────────────────────────────────────
-  async function needProfile() {
-    if (S.me?.profile?.display_name) return false;
-    editProfile();
-    return true;
-  }
+  // Perfil é auto-provisionado pelo backend (username da conta) — nada a pedir
+  async function needProfile() { return false; }
 
   async function publish() {
     if (S.sending) return;
@@ -557,20 +556,34 @@
     renderComments(id, d.comments);
   }
 
+  // Barra de input de comentário (usada no rodapé do post e nas respostas)
+  function cinputHtml(inputId, postId, parentId) {
+    const send = `ComunidadeBT.sendComment('${postId}'${parentId ? `,'${parentId}'` : ''})`;
+    return `<div class="cbt-cinput">
+      <button class="cbt-mini" data-float title="Emoji" onclick="ComunidadeBT.openEmoji(this,'${inputId}')">😊</button>
+      ${S.me?.gifs ? `<button class="cbt-mini" data-float title="GIF" onclick="ComunidadeBT.openGif(this,'${postId}'${parentId ? `,'${parentId}'` : ''})">GIF</button>` : ''}
+      <input id="${inputId}" maxlength="600" placeholder="${parentId ? 'Responder…' : 'Comentar…'}" onkeydown="if(event.key==='Enter')${send}">
+      <button onclick="${send}">➤</button>
+    </div>`;
+  }
+
   function commentHtml(c, postId, isReply) {
     const mod = S.me?.is_moderator;
     const a = c.author || {};
     const av = avHtml(a);
+    const body = (c.content || '').startsWith('[gif]')
+      ? `<img class="cbt-cgif" src="${esc(c.content.slice(5))}" loading="lazy" alt="GIF">`
+      : esc(c.content);
     return `<div class="cbt-c${isReply ? ' cbt-creply' : ''}${c.pinned ? ' cbt-cpinned' : ''}">${av}<div class="cbt-cbody">
       <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
-      <div class="cbt-ctext">${esc(c.content)}</div>
+      <div class="cbt-ctext">${body}</div>
       <div class="cbt-cact">
         <button class="cbt-cbtn${c.liked ? ' liked' : ''}" id="cl-${c.id}" onclick="ComunidadeBT.likeComment('${c.id}')">${c.liked ? '❤️' : '🤍'} <span>${c.likes_count || 0}</span></button>
         ${!isReply ? `<button class="cbt-cbtn" onclick="ComunidadeBT.toggleReply('${c.id}')">↩ Responder</button>` : ''}
         ${(mod && !isReply) ? `<button class="cbt-cbtn" onclick="ComunidadeBT.pinComment('${postId}','${c.id}')">📌 ${c.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
         ${(c.mine || mod) ? `<button class="cbt-cbtn danger" onclick="ComunidadeBT.delComment('${postId}','${c.id}')">apagar</button>` : ''}
       </div>
-      ${!isReply ? `<div class="cbt-replybox" id="rb-${c.id}" style="display:none"><div class="cbt-cinput"><input id="ri-${c.id}" maxlength="600" placeholder="Responder ${esc((a.name || '').split(' ')[0])}…" onkeydown="if(event.key==='Enter')ComunidadeBT.sendComment('${postId}','${c.id}')"><button onclick="ComunidadeBT.sendComment('${postId}','${c.id}')">➤</button></div></div>` : ''}
+      ${!isReply ? `<div class="cbt-replybox" id="rb-${c.id}" style="display:none">${cinputHtml('ri-' + c.id, postId, c.id)}</div>` : ''}
     </div></div>`;
   }
 
@@ -582,7 +595,7 @@
     const replies = {};
     list.filter((c) => c.parent_id).sort((x, y) => new Date(x.created_at) - new Date(y.created_at)).forEach((c) => { (replies[c.parent_id] = replies[c.parent_id] || []).push(c); });
     const items = tops.map((c) => commentHtml(c, postId, false) + (replies[c.id] || []).map((r) => commentHtml(r, postId, true)).join('')).join('');
-    box.innerHTML = `${items || ''}<div class="cbt-cinput"><input id="ci-${postId}" maxlength="600" placeholder="Comentar…" onkeydown="if(event.key==='Enter')ComunidadeBT.sendComment('${postId}')"><button onclick="ComunidadeBT.sendComment('${postId}')">➤</button></div>`;
+    box.innerHTML = `${items || ''}${cinputHtml('ci-' + postId, postId)}`;
   }
 
   async function sendComment(postId, parentId) {
@@ -691,58 +704,69 @@
   }
   function rmMedia(i) { S.media.splice(i, 1); renderChips(); }
 
-  // ── Perfil ────────────────────────────────────────────────────────────────
-  let avatarData = null;
-  function editProfile() {
-    mount();
-    avatarData = null;
-    const p = S.me?.profile;
-    $('cbtDlgName').value = p?.display_name || '';
-    const av = $('cbtDlgAv');
-    if (p?.avatar_url) av.innerHTML = `<img src="${esc(p.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-    else { av.textContent = '📷'; av.style.background = ''; }
-    $('cbtDlg').classList.add('on');
-  }
-  function closeDlg() { $('cbtDlg').classList.remove('on'); }
+  // ── Emojis e GIFs nos comentários ─────────────────────────────────────────
+  const EMOJIS = ['😀','😂','🤣','😊','😍','😎','🥳','🤯','😅','😢','😡','🤔','👀','🙏','💪','👏','🙌','🤝','👍','👎','❤️','💙','🔥','⭐','✨','⚡','👑','🚀','🎯','🎉','💰','📈','🏆','✅','❌','💡','🎬','📌','🧠','💥'];
+  let floatTarget = null; // input alvo do painel aberto
 
-  function onAvatarPick(e) {
-    const file = e.target.files?.[0]; if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas'); c.width = c.height = 256;
-      const ctx = c.getContext('2d');
-      const s = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
-      avatarData = c.toDataURL('image/jpeg', 0.85);
-      $('cbtDlgAv').innerHTML = `<img src="${avatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(file);
+  function hideFloats() { $('cbtEmojiPanel')?.classList.remove('on'); $('cbtGifPanel')?.classList.remove('on'); }
+
+  function placeFloat(panel, anchorBtn) {
+    const r = anchorBtn.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(window.innerWidth - 328, r.left - 150)) + 'px';
+    const top = r.top - panel.offsetHeight - 8;
+    panel.style.top = (top > 8 ? top : r.bottom + 8) + 'px';
   }
 
-  async function saveProfile() {
-    const name = $('cbtDlgName').value.trim();
-    if (!name && !S.me?.profile?.display_name) return toast('Escolha um nome.');
-    const btn = $('cbtDlgSave'); btn.disabled = true; btn.textContent = 'Salvando…';
-    const body = {};
-    if (name) body.display_name = name;
-    if (avatarData) body.avatar_data = avatarData;
-    const { ok, d } = await api('profile-set', { body });
-    btn.disabled = false; btn.textContent = 'Salvar';
-    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
-    S.me = S.me || {};
-    S.me.profile = { ...(S.me.profile || {}), ...d.profile };
-    S.me.needs_profile = false;
-    renderMeAvatar(); closeDlg();
-    toast('✅ Perfil salvo!');
-    loadFeed(true);
+  function openEmoji(btn, inputId) {
+    hideFloats();
+    floatTarget = inputId;
+    const p = $('cbtEmojiPanel');
+    if (!p.innerHTML) p.innerHTML = EMOJIS.map((e2) => `<button class="cbt-emj" onclick="ComunidadeBT.addEmoji('${e2}')">${e2}</button>`).join('');
+    p.classList.add('on');
+    placeFloat(p, btn);
+  }
+
+  function addEmoji(e2) {
+    const inp = $(floatTarget); if (!inp) return;
+    inp.value += e2; inp.focus();
+  }
+
+  async function openGif(btn, postId, parentId) {
+    hideFloats();
+    const p = $('cbtGifPanel');
+    p.dataset.post = postId; p.dataset.parent = parentId || '';
+    p.innerHTML = `<div class="cbt-gifhead"><input id="cbtGifQ" placeholder="Buscar GIF…" onkeydown="if(event.key==='Enter')ComunidadeBT.searchGif()"><button onclick="ComunidadeBT.searchGif()">🔎</button></div><div class="cbt-gifgrid" id="cbtGifGrid"><div class="cbt-empty" style="padding:14px">Carregando…</div></div>`;
+    p.classList.add('on');
+    placeFloat(p, btn);
+    await searchGif();
+    $('cbtGifQ')?.focus();
+  }
+
+  async function searchGif() {
+    const grid = $('cbtGifGrid'); if (!grid) return;
+    const qv = ($('cbtGifQ')?.value || '').trim();
+    const { ok, d } = await api('gif-search', { qs: '&q=' + encodeURIComponent(qv) });
+    if (!ok || d.disabled || !d.gifs?.length) { grid.innerHTML = '<div class="cbt-empty" style="padding:14px">Nenhum GIF encontrado.</div>'; return; }
+    grid.innerHTML = d.gifs.map((g) => `<img src="${esc(g.preview)}" loading="lazy" onclick="ComunidadeBT.sendGif('${esc(g.url)}')">`).join('');
+  }
+
+  async function sendGif(url) {
+    const p = $('cbtGifPanel');
+    const postId = p.dataset.post, parentId = p.dataset.parent || undefined;
+    hideFloats();
+    const { ok, d } = await api('comment-create', { body: { post_id: postId, content: '[gif]' + url, parent_id: parentId } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro ao enviar GIF.'));
+    const cc = $('cc-' + postId); if (cc) cc.textContent = (parseInt(cc.textContent) || 0) + 1;
+    const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
+    if (ok2) renderComments(postId, d2.comments);
   }
 
   // ── API pública ───────────────────────────────────────────────────────────
   window.ComunidadeBT = {
     open, close, setTab, publish, like, delPost, editPost, pin, ban, toggleComposer,
     comments, sendComment, delComment, likeComment, toggleReply, pinComment,
-    pick, rmMedia, editProfile, closeDlg, saveProfile,
+    openEmoji, addEmoji, openGif, searchGif, sendGif,
+    pick, rmMedia,
     more: () => loadFeed(false),
     light: (u) => { $('cbtLightImg').src = u; $('cbtLight').classList.add('on'); },
     whats: () => { try { window.joinCommunity ? joinCommunity() : window.open(WHATSAPP_URL, '_blank'); } catch (e) { window.open(WHATSAPP_URL, '_blank'); } },
