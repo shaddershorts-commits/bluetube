@@ -1523,6 +1523,30 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
 </section>
 
+<!-- ── COMMUNITY PREVIEW (free/deslogado clica em Comunidade) ─────────────── -->
+<div class="community-overlay" id="communityPreviewModal">
+  <div class="modal-box" style="max-width:470px;text-align:left;background:rgba(10,22,40,.75);backdrop-filter:blur(30px) saturate(140%);-webkit-backdrop-filter:blur(30px) saturate(140%);border:1px solid rgba(0,170,255,.2);box-shadow:0 24px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)">
+    <button class="modal-close" onclick="closeCommunityPreview()">✕</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+      <div style="font-size:36px">🏛️</div>
+      <div>
+        <div style="font-size:19px;font-weight:800;letter-spacing:-.5px">Comunidade BlueTube</div>
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em">EXCLUSIVA DOS PLANOS FULL E MASTER</div>
+      </div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-secondary);line-height:2;margin-bottom:20px">
+      O QG dos criadores dark que fazem <strong style="color:var(--text-primary)">milhões de views por mês:</strong><br><br>
+      🎓 <strong style="color:var(--text-primary)">Treinamentos oficiais em vídeo</strong> — passo a passo pra viralizar, com espaço pra tirar dúvidas<br>
+      🏛️ <strong style="color:var(--text-primary)">Feed exclusivo de membros</strong> — poste resultados, dúvidas e ideias (texto, foto, vídeo e áudio)<br>
+      💬 Comentários com curtidas e respostas — os melhores sobem<br>
+      👑 Destaque no seu perfil: anel dourado Master ou azul Full<br>
+      🤝 Networking direto com quem já vive de dark channels
+    </div>
+    <button onclick="closeCommunityPreview();openUpgradeModal('tool_blocked','full')" style="width:100%;background:linear-gradient(135deg,#0077ff,#00c4ff);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 4px 24px rgba(0,150,255,.35);margin-bottom:10px">🚀 Desbloquear a Comunidade</button>
+    <button id="cpvAltBtn" onclick="closeCommunityPreview();openAuthModal()" style="width:100%;background:none;border:1px solid rgba(0,170,255,.25);border-radius:12px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer">Já sou assinante — entrar</button>
+  </div>
+</div>
+
 <!-- ── COMMUNITY MODAL ────────────────────────────────────────────────────── -->
 <div class="community-overlay" id="communityModal">
   <div class="modal-box" style="max-width:480px;text-align:left">
@@ -1578,6 +1602,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button id="btnIndicar" onclick="copiarLinkIndicacao(this)" style="background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 50%,#d97706 100%);border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:800;color:#000;cursor:pointer;box-shadow:0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2);letter-spacing:.02em;transition:transform .15s,box-shadow .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 0 22px rgba(251,191,36,.55),0 6px 16px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2)'">🎁 Indique e ganhe 1 mês grátis</button>
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
       <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
+      <div id="commProfileSec" style="display:none;background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.16);border-radius:10px;padding:12px">
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em;margin-bottom:10px">🏛️ SUA FOTO NA COMUNIDADE</div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <div id="cpAv" onclick="document.getElementById('cpFile').click()" title="Trocar foto" style="width:46px;height:46px;border-radius:50%;flex:0 0 46px;border:2px dashed rgba(251,191,36,.4);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;overflow:hidden;background:rgba(0,0,0,.25)">📷</div>
+          <div style="flex:1;min-width:0">
+            <div id="cpName" style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+            <div id="cpMsg" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:3px">Toque na foto pra trocar. O nome é o seu usuário.</div>
+          </div>
+          <button id="cpSave" onclick="saveCommProfile()" style="background:linear-gradient(135deg,#0077ff,#00c4ff);border:none;border-radius:9px;color:#fff;font-family:var(--font-display);font-size:12px;font-weight:700;padding:10px 16px;cursor:pointer">Salvar</button>
+        </div>
+        <input type="file" id="cpFile" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="cpPickAvatar(this)">
+      </div>
       <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
     </div>
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(0,170,255,0.07);display:flex;justify-content:space-between;align-items:center">
@@ -1730,15 +1766,108 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 
 // ── COMMUNITY ──────────────────────────────────────────────────────────────
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
+// 2026-07-16: Comunidade é página dedicada /comunidade (feed estilo X).
+// Assinante Full/Master entra direto; free/deslogado vê popup-resumo aqui.
 function openCommunity(){
-  const token = localStorage.getItem('bt_token');
-  if(!token){ openUpgradeModal('tool_blocked','full'); return; }
-  if(userPlan === 'full' || userPlan === 'master'){
-    window.open(COMMUNITY_URL,'_blank');
-  } else {
-    openUpgradeModal('tool_blocked','full');
+  const isPaid = userPlan === 'full' || userPlan === 'master';
+  if(isPaid){ location.href = '/comunidade'; return; }
+  openCommunityPreview();
+}
+function openCommunityPreview(){
+  const m = document.getElementById('communityPreviewModal');
+  if(m){
+    const logged = !!localStorage.getItem('bt_token');
+    const alt = document.getElementById('cpvAltBtn');
+    if(alt) alt.style.display = logged ? 'none' : 'block';
+    m.classList.add('on');
   }
 }
+function closeCommunityPreview(){ document.getElementById('communityPreviewModal')?.classList.remove('on'); }
+
+// ── Foto da Comunidade (edição SÓ aqui na home; nome = usuário da conta) ────
+let cpAvatarData=null;
+function applyCommAvatar(url){
+  if(!url) return;
+  // Reflete a foto escolhida no ícone do topo e no círculo do popup de perfil
+  document.querySelectorAll('.nav-avatar').forEach(el=>{el.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;});
+  const pa=document.getElementById('profileAvatar');
+  if(pa) pa.innerHTML=`<img src="${url}" style="width:56px;height:56px;object-fit:cover;border-radius:50%">`;
+}
+async function loadCommProfileUI(isPaid){
+  const sec=document.getElementById('commProfileSec');
+  if(!sec) return;
+  if(!isPaid){ sec.style.display='none'; return; }
+  sec.style.display='block'; cpAvatarData=null;
+  try{
+    const r=await fetch('/api/community?action=me&token='+encodeURIComponent(localStorage.getItem('bt_token')||''));
+    if(!r.ok) { sec.style.display='none'; return; }
+    const d=await r.json();
+    const nameEl=document.getElementById('cpName'); if(nameEl) nameEl.textContent=d.profile?.display_name||currentUserEmail.split('@')[0];
+    const av=document.getElementById('cpAv');
+    if(av) av.innerHTML=d.profile?.avatar_url?`<img src="${d.profile.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:'📷';
+    applyCommAvatar(d.profile?.avatar_url);
+  }catch(e){}
+}
+function cpPickAvatar(inp){
+  const file=inp.files&&inp.files[0]; if(!file) return;
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');c.width=c.height=256;
+    const ctx=c.getContext('2d');const s=Math.min(img.width,img.height);
+    ctx.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,256,256);
+    cpAvatarData=c.toDataURL('image/jpeg',0.85);
+    document.getElementById('cpAv').innerHTML=`<img src="${cpAvatarData}" style="width:100%;height:100%;object-fit:cover">`;
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+}
+async function saveCommProfile(){
+  const btn=document.getElementById('cpSave');const msg=document.getElementById('cpMsg');
+  if(!cpAvatarData){ if(msg)msg.textContent='Toque na foto pra escolher uma imagem antes de salvar.'; return; }
+  btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'profile-set',token:localStorage.getItem('bt_token'),avatar_data:cpAvatarData})});
+    const d=await r.json();
+    if(msg)msg.textContent=r.ok?'✅ Foto salva! Já vale na Comunidade e aqui no site.':'❌ '+(d.error||'Erro ao salvar.');
+    if(r.ok){ applyCommAvatar(d.profile?.avatar_url); cpAvatarData=null; }
+  }catch(e){ if(msg)msg.textContent='❌ Falha de rede.'; }
+  btn.disabled=false;btn.textContent='Salvar';
+}
+
+// ── Sino: novidades da Comunidade no botão do topo ───────────────────────────
+let _bellDone=false;
+async function updateCommunityBell(){
+  if(_bellDone) return; _bellDone=true;
+  try{
+    const isPaid=userPlan==='full'||userPlan==='master';
+    const token=localStorage.getItem('bt_token');
+    if(!isPaid||!token) return;
+    const r=await fetch('/api/community?action=me&token='+encodeURIComponent(token));
+    if(!r.ok) return;
+    const d=await r.json();
+    applyCommAvatar(d.profile?.avatar_url); // foto escolhida aparece no ícone do site
+    const n=(d.unseen?.dicas||0)+(d.unseen?.comunidade||0);
+    if(!n) return;
+    const btn=document.getElementById('communityBtn');
+    if(btn&&!document.getElementById('commBell')){
+      const s=document.createElement('span');s.id='commBell';
+      s.style.cssText='background:linear-gradient(135deg,#ff4757,#ff6b81);color:#fff;font-family:var(--font-mono);font-size:9px;font-weight:700;border-radius:100px;padding:1px 6px;margin-left:4px;box-shadow:0 0 10px rgba(255,71,87,.4)';
+      s.textContent='🔔 '+(n>99?'99+':n);
+      btn.appendChild(s);
+    }
+  }catch(e){}
+}
+// Vindo de /comunidade sem login/plano: ?login=comunidade abre o modal de
+// login e volta pra lá depois; ?upgrade=comunidade abre o modal de planos.
+(function(){
+  const q = new URLSearchParams(location.search);
+  if(q.get('login') === 'comunidade'){
+    sessionStorage.setItem('bt_next', JSON.stringify({n:'/comunidade',t:Date.now()}));
+    window.addEventListener('DOMContentLoaded', ()=>{ try{ openAuthModal(); }catch(e){} });
+  } else if(q.get('upgrade') === 'comunidade'){
+    window.addEventListener('DOMContentLoaded', ()=>{ try{ openUpgradeModal('tool_blocked','full'); }catch(e){} });
+  }
+})();
 function updateCommunityBtn(){
   const lock=document.getElementById('communityLock');
   const isPaidUser = userPlan === 'full' || userPlan === 'master';
@@ -3024,14 +3153,12 @@ async function startTranscription(e){
         localStorage.setItem('bt_shown_signup_popup','1');
         setTimeout(()=>showFreeUserPopup(), 3000);
       }
-      // No 3o short: convida para a comunidade
+      // No 3o short: convida para a comunidade (painel interno; free vê paywall)
       const _sc = parseInt(localStorage.getItem('bt_shorts_done')||'0') + 1;
       localStorage.setItem('bt_shorts_done', _sc);
       if(_sc === 3 && !localStorage.getItem('bt_community_shown')){
         localStorage.setItem('bt_community_shown','1');
-        setTimeout(()=>{
-          document.getElementById('communityModal').classList.add('on');
-        }, 2500);
+        setTimeout(()=>openCommunity(), 2500);
       }
     },400);
 
@@ -3914,6 +4041,16 @@ async function checkSession(_isRetry){
 }
 
 function setLoggedIn(email, plan){
+  // Retorno pós-login (ex.: veio de /comunidade pra logar) — volta pra lá.
+  // Validade 10min: se fechou o modal sem logar, não teleporta depois.
+  try{
+    const raw=sessionStorage.getItem('bt_next');
+    if(raw){
+      sessionStorage.removeItem('bt_next');
+      const nx=JSON.parse(raw);
+      if(nx && nx.n && Date.now()-nx.t < 600000){ location.href=nx.n; return; }
+    }
+  }catch(e){}
   // Notifica shell pai (se estiver em iframe) que o plano mudou
   try{ if(window.parent!==window) window.parent.postMessage({type:'bt-plan',plan:plan||userPlan},'*'); }catch(e){}
   const p = plan || userPlan || 'free';
@@ -3953,15 +4090,12 @@ function setLoggedIn(email, plan){
     }
   });
 
-  // Update community button
+  // Update community button — assinante navega, free vê popup-resumo
   const commBtn = document.getElementById('communityBtn');
   if(commBtn){
-    commBtn.onclick = isPaid
-      ? (communityJoined ? showCommunityJoinedMsg : openCommunityModal)
-      : openUpgradeModal;
+    commBtn.onclick = () => openCommunity();
     const lock = document.getElementById('communityLock');
     if(lock) lock.style.display = isPaid ? 'none' : 'inline';
-    commBtn.querySelector('svg').nextSibling.textContent = communityJoined && isPaid ? ' ✓ Comunidade' : ' Comunidade';
   }
 
   // Rebuild right side of nav keeping tool buttons (desktop + mobile)
@@ -3985,9 +4119,9 @@ function setLoggedIn(email, plan){
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       <span class="nav-blog-label">Blog</span>
     </a>
-    <button class="nav-community-btn" id="communityBtn" onclick="${isPaid ? (communityJoined ? 'showCommunityJoinedMsg()' : 'openCommunityModal()') : 'openUpgradeModal()'}" >
+    <button class="nav-community-btn" id="communityBtn" onclick="openCommunity()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      ${communityJoined && isPaid ? '✓ Comunidade' : 'Comunidade'}
+      Comunidade
       ${!isPaid ? '<span style="font-size:10px">🔒</span>' : ''}
     </button>
     <button class="nav-user-btn" onclick="openProfileModal()" title="${email}">
@@ -3997,6 +4131,7 @@ function setLoggedIn(email, plan){
     </button>
     ${showUpgrade ? '<button class="nav-upgrade-btn" onclick="openUpgradeModalGeneric()">⚡ Upgrade</button>' : ''}
   `;
+  updateCommunityBell(); // depois do rebuild — anexa no botão novo
 
   // Re-apply tool locking after innerHTML reset
   document.querySelectorAll('.nav-tool-btn').forEach(btn => {
@@ -4515,6 +4650,7 @@ function openProfileModal(){
 
   document.getElementById('profileAvatar').textContent=planIcon||currentUserEmail[0]?.toUpperCase()||'U';
   document.getElementById('profileEmail').textContent=currentUserEmail;
+  loadCommProfileUI(isPaid);
   document.getElementById('profilePlanBadge').innerHTML=`<span style="color:${planColor}">${planIcon} ${planLabel}</span>`;
   document.getElementById('profilePlan').innerHTML=`<span style="color:${planColor}">${planLabel}</span>`;
 
