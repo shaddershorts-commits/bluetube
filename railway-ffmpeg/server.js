@@ -2754,6 +2754,36 @@ app.post('/snapchat-extract', async (req, res) => {
   } catch (_) {}
   if (!hostOk) return res.status(400).json({ error: 'host_nao_suportado' });
 
+  // Douyin: yt-dlp exige cookies "frescos" (anônimos servem — ttwid etc).
+  // Buscamos na hora do próprio douyin.com e escrevemos um cookies.txt por job.
+  let extraArgs = [], cookieDir = null;
+  const isDouyin = /(^|\.)((ies)?douyin\.com)$/.test(new URL(snapchat_url).hostname.replace(/^www\./, ''));
+  if (isDouyin) {
+    try {
+      cookieDir = path.join('/tmp', 'dycookies-' + uuidv4());
+      fs.mkdirSync(cookieDir, { recursive: true });
+      const cr = await axios.get('https://www.douyin.com/', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' },
+        maxRedirects: 3, timeout: 10000, validateStatus: () => true,
+      });
+      const setC = cr.headers['set-cookie'] || [];
+      const exp = String(Math.floor(Date.now() / 1000) + 86400);
+      const lines = ['# Netscape HTTP Cookie File'];
+      for (const c of setC) {
+        const pair = c.split(';')[0]; const eq = pair.indexOf('=');
+        if (eq < 1) continue;
+        lines.push(['.douyin.com', 'TRUE', '/', 'TRUE', exp, pair.slice(0, eq).trim(), pair.slice(eq + 1).trim()].join('\t'));
+      }
+      if (lines.length > 1) {
+        const cf = path.join(cookieDir, 'douyin_cookies.txt');
+        fs.writeFileSync(cf, lines.join('\n'));
+        extraArgs = ['--cookies', cf];
+        console.log('[snapchat-extract] cookies douyin frescos:', lines.length - 1);
+      }
+    } catch (e) { console.warn('[snapchat-extract] cookies douyin falharam:', e.message); }
+  }
+  const cleanupCookies = () => { if (cookieDir) setTimeout(() => { try { fs.rmSync(cookieDir, { recursive: true, force: true }); } catch {} }, 2000); };
+
   try {
     // -g extrai URL CDN sem baixar. Roda --get-title EM PARALELO via -J (json full)
     // pra evitar 2 processos sequenciais (timeout cumulativo estourava Vercel).
@@ -2765,6 +2795,7 @@ app.post('/snapchat-extract', async (req, res) => {
       '--no-playlist',
       '--no-check-certificate',
       '--socket-timeout', '15',
+      ...extraArgs,
       snapchat_url
     ];
     const result = await new Promise((resolve, reject) => {
@@ -2802,6 +2833,7 @@ app.post('/snapchat-extract', async (req, res) => {
       p.on('error', e => { clearTimeout(timer); reject(e); });
     });
 
+    cleanupCookies();
     const safeTitle = result.title ? result.title.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) : 'snapchat';
     return res.status(200).json({
       ok: true,
@@ -2812,6 +2844,7 @@ app.post('/snapchat-extract', async (req, res) => {
       extra_formats: result.extra_formats,
     });
   } catch (e) {
+    cleanupCookies();
     console.error('[snapchat-extract]', e.message);
     return res.status(500).json({ error: 'extract_failed', detail: e.message.slice(0, 300) });
   }
