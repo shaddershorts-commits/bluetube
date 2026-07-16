@@ -117,6 +117,11 @@
   .cbt-media img{width:100%;max-height:420px;object-fit:cover;border-radius:10px;cursor:pointer;display:block}
   .cbt-media video{width:100%;max-height:480px;border-radius:10px;background:#000;display:block}
   .cbt-media audio{width:100%}
+  .cbt-media .yt-embed{position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .cbt-media .yt-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .cbt-ytin{width:100%;background:rgba(255,0,0,.04);border:1px solid rgba(255,80,80,.2);border-radius:12px;color:#e8f0fb;font-family:var(--cbt-sans);font-size:12.5px;padding:10px 13px;outline:none;margin-top:10px;transition:border-color .2s}
+  .cbt-ytin:focus{border-color:rgba(255,80,80,.5)}
+  .cbt-ytin::placeholder{color:#5f7590}
   .cbt-abar{display:flex;gap:18px;margin-top:10px;align-items:center}
   .cbt-act{background:none;border:none;color:#7d93b0;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px}
   .cbt-act:hover{color:#00aaff;background:rgba(0,170,255,.07)}
@@ -130,6 +135,15 @@
   .cbt-ctext{font-family:var(--cbt-sans);font-size:13.5px;color:#c7d5ea;line-height:1.5;white-space:pre-wrap;word-break:break-word}
   .cbt-cdel{background:none;border:none;color:#5f7590;font-size:10px;cursor:pointer;padding:2px 4px}
   .cbt-cdel:hover{color:#f87171}
+  .cbt-cact{display:flex;gap:10px;margin-top:5px;align-items:center;flex-wrap:wrap}
+  .cbt-cbtn{background:none;border:none;color:#6d84a3;font-family:var(--font-mono,monospace);font-size:10.5px;cursor:pointer;display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:8px;transition:all .15s}
+  .cbt-cbtn:hover{color:#00c4ff;background:rgba(0,170,255,.07)}
+  .cbt-cbtn.liked{color:#f87171}
+  .cbt-cbtn.danger:hover{color:#f87171;background:rgba(248,113,113,.07)}
+  .cbt-creply{margin-left:40px}
+  .cbt-cpinned{background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.18);border-radius:14px;padding:10px 12px;margin-bottom:12px}
+  .cbt-pinbadge{font-family:var(--font-mono,monospace);font-size:9px;color:#fbbf24;background:rgba(251,191,36,.1);border-radius:20px;padding:2px 8px}
+  .cbt-replybox{margin-top:8px}
   .cbt-cinput{display:flex;gap:8px;margin-top:6px}
   .cbt-cinput input{flex:1;background:rgba(0,170,255,.05);border:1px solid rgba(0,170,255,.15);border-radius:10px;color:#e8f0fb;font-size:13px;padding:9px 12px;outline:none}
   .cbt-cinput button{background:rgba(0,170,255,.15);border:none;border-radius:10px;color:#00aaff;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer}
@@ -351,9 +365,11 @@
 
   function composerHtml() {
     const p = S.me?.profile;
-    const ph = S.tab === 'dicas' ? 'Escreva a dica/treinamento…' : 'No que você está trabalhando, ' + esc((p?.display_name || 'criador').split(' ')[0]) + '?';
+    const dicas = S.tab === 'dicas';
+    const ph = dicas ? 'Escreva a dica/treinamento…' : 'No que você está trabalhando, ' + esc((p?.display_name || 'criador').split(' ')[0]) + '?';
     return `<div class="cbt-composer">
         <textarea id="cbtText" placeholder="${ph}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,180)+'px'"></textarea>
+        ${dicas ? '<input class="cbt-ytin" id="cbtYt" placeholder="▶️ Cole o link do vídeo do YouTube (opcional)">' : ''}
         <div class="cbt-chips" id="cbtChips"></div>
         <div class="cbt-crow">
           <button class="cbt-mbtn" title="Foto" onclick="ComunidadeBT.pick('image')">📷</button>
@@ -410,6 +426,7 @@
       </div></div>`;
     }
     const media = (p.media || []).map((m) => {
+      if (m.type === 'youtube' && /^[A-Za-z0-9_-]{6,15}$/.test(m.id || '')) return `<div class="yt-embed"><iframe src="https://www.youtube.com/embed/${m.id}" title="YouTube" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
       if (m.type === 'image') return `<img src="${esc(m.url)}" loading="lazy" alt="" onclick="ComunidadeBT.light(this.src)">`;
       if (m.type === 'video') return `<video controls playsinline preload="metadata" ${m.thumb ? `poster="${esc(m.thumb)}"` : ''} src="${esc(m.url)}"></video>`;
       return `<audio controls preload="none" src="${esc(m.url)}"></audio>`;
@@ -439,11 +456,13 @@
     if (S.sending) return;
     if (await needProfile()) return;
     const text = ($('cbtText')?.value || '').trim();
-    if (!text && !S.media.length) return toast('Escreva algo ou anexe uma mídia.');
+    const yt = ($('cbtYt')?.value || '').trim();
+    if (yt && !/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)[A-Za-z0-9_-]{6,15}/.test(yt)) return toast('❌ Link do YouTube inválido.');
+    if (!text && !S.media.length && !yt) return toast('Escreva algo ou anexe uma mídia.');
     if (S.media.some((m) => m.uploading)) return toast('Aguarde o envio da mídia terminar.');
     S.sending = true; const btn = $('cbtPub'); if (btn) { btn.disabled = true; btn.textContent = 'Publicando…'; }
     const media = S.media.filter((m) => m.url).map((m) => ({ type: m.type, url: m.url, thumb: m.thumb || null }));
-    const { ok, d } = await api('post-create', { body: { tab: S.tab, content: text, media } });
+    const { ok, d } = await api('post-create', { body: { tab: S.tab, content: text, media, youtube: yt || undefined } });
     S.sending = false;
     if (!ok) { if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; } if (d.needs_profile) return editProfile(); return toast('❌ ' + (d.error || 'Erro ao publicar.')); }
     S.media = [];
@@ -504,29 +523,70 @@
     renderComments(id, d.comments);
   }
 
+  function commentHtml(c, postId, isReply) {
+    const mod = S.me?.is_moderator;
+    const a = c.author || {};
+    const av = a.avatar ? `<div class="cbt-av"><img src="${esc(a.avatar)}"></div>` : `<div class="cbt-av" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+    return `<div class="cbt-c${isReply ? ' cbt-creply' : ''}${c.pinned ? ' cbt-cpinned' : ''}">${av}<div class="cbt-cbody">
+      <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
+      <div class="cbt-ctext">${esc(c.content)}</div>
+      <div class="cbt-cact">
+        <button class="cbt-cbtn${c.liked ? ' liked' : ''}" id="cl-${c.id}" onclick="ComunidadeBT.likeComment('${c.id}')">${c.liked ? '❤️' : '🤍'} <span>${c.likes_count || 0}</span></button>
+        ${!isReply ? `<button class="cbt-cbtn" onclick="ComunidadeBT.toggleReply('${c.id}')">↩ Responder</button>` : ''}
+        ${(mod && !isReply) ? `<button class="cbt-cbtn" onclick="ComunidadeBT.pinComment('${postId}','${c.id}')">📌 ${c.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
+        ${(c.mine || mod) ? `<button class="cbt-cbtn danger" onclick="ComunidadeBT.delComment('${postId}','${c.id}')">apagar</button>` : ''}
+      </div>
+      ${!isReply ? `<div class="cbt-replybox" id="rb-${c.id}" style="display:none"><div class="cbt-cinput"><input id="ri-${c.id}" maxlength="600" placeholder="Responder ${esc((a.name || '').split(' ')[0])}…" onkeydown="if(event.key==='Enter')ComunidadeBT.sendComment('${postId}','${c.id}')"><button onclick="ComunidadeBT.sendComment('${postId}','${c.id}')">➤</button></div></div>` : ''}
+    </div></div>`;
+  }
+
   function renderComments(postId, list) {
     const box = $('cb-' + postId); if (!box) return;
-    const mod = S.me?.is_moderator;
-    const items = list.map((c) => {
-      const a = c.author || {};
-      const av = a.avatar ? `<div class="cbt-av"><img src="${esc(a.avatar)}"></div>` : `<div class="cbt-av" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
-      return `<div class="cbt-c">${av}<div class="cbt-cbody">
-        <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span>
-        ${(c.mine || mod) ? `<button class="cbt-cdel" onclick="ComunidadeBT.delComment('${postId}','${c.id}')">apagar</button>` : ''}</div>
-        <div class="cbt-ctext">${esc(c.content)}</div></div></div>`;
-    }).join('');
+    S.commentsCache = S.commentsCache || {}; S.commentsCache[postId] = list;
+    // Fixados primeiro, depois mais curtidos, depois mais antigos
+    const tops = list.filter((c) => !c.parent_id).sort((x, y) => (y.pinned - x.pinned) || ((y.likes_count || 0) - (x.likes_count || 0)) || (new Date(x.created_at) - new Date(y.created_at)));
+    const replies = {};
+    list.filter((c) => c.parent_id).sort((x, y) => new Date(x.created_at) - new Date(y.created_at)).forEach((c) => { (replies[c.parent_id] = replies[c.parent_id] || []).push(c); });
+    const items = tops.map((c) => commentHtml(c, postId, false) + (replies[c.id] || []).map((r) => commentHtml(r, postId, true)).join('')).join('');
     box.innerHTML = `${items || ''}<div class="cbt-cinput"><input id="ci-${postId}" maxlength="600" placeholder="Comentar…" onkeydown="if(event.key==='Enter')ComunidadeBT.sendComment('${postId}')"><button onclick="ComunidadeBT.sendComment('${postId}')">➤</button></div>`;
   }
 
-  async function sendComment(postId) {
+  async function sendComment(postId, parentId) {
     if (await needProfile()) return;
-    const inp = $('ci-' + postId); const text = (inp?.value || '').trim();
+    const inp = parentId ? $('ri-' + parentId) : $('ci-' + postId);
+    const text = (inp?.value || '').trim();
     if (!text) return;
     inp.value = '';
-    const { ok, d } = await api('comment-create', { body: { post_id: postId, content: text } });
+    const { ok, d } = await api('comment-create', { body: { post_id: postId, content: text, parent_id: parentId || undefined } });
     if (!ok) { inp.value = text; return toast('❌ ' + (d.error || 'Erro.')); }
     const cc = $('cc-' + postId); if (cc) cc.textContent = (parseInt(cc.textContent) || 0) + 1;
     const post = S.posts.find((p) => p.id === postId); if (post) post.comments_count++;
+    const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
+    if (ok2) renderComments(postId, d2.comments);
+  }
+
+  async function likeComment(cid) {
+    if (await needProfile()) return;
+    // Otimista no DOM (sem re-render pra não reordenar enquanto a pessoa lê)
+    const el = $('cl-' + cid); if (!el) return;
+    const wasLiked = el.classList.contains('liked');
+    const n = (parseInt(el.querySelector('span')?.textContent) || 0) + (wasLiked ? -1 : 1);
+    el.classList.toggle('liked', !wasLiked);
+    el.innerHTML = `${!wasLiked ? '❤️' : '🤍'} <span>${Math.max(0, n)}</span>`;
+    const { ok, d } = await api('comment-like-toggle', { body: { comment_id: cid } });
+    if (ok && typeof d.likes_count === 'number') { el.classList.toggle('liked', d.liked); el.innerHTML = `${d.liked ? '❤️' : '🤍'} <span>${d.likes_count}</span>`; }
+  }
+
+  function toggleReply(cid) {
+    const rb = $('rb-' + cid); if (!rb) return;
+    rb.style.display = rb.style.display === 'none' ? 'block' : 'none';
+    if (rb.style.display === 'block') $('ri-' + cid)?.focus();
+  }
+
+  async function pinComment(postId, cid) {
+    const { ok, d } = await api('comment-pin-toggle', { body: { comment_id: cid } });
+    if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    toast(d.pinned ? '📌 Comentário fixado no topo.' : 'Comentário desafixado.');
     const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
     if (ok2) renderComments(postId, d2.comments);
   }
@@ -647,7 +707,8 @@
   // ── API pública ───────────────────────────────────────────────────────────
   window.ComunidadeBT = {
     open, close, setTab, publish, like, delPost, editPost, pin, ban, toggleComposer,
-    comments, sendComment, delComment, pick, rmMedia, editProfile, closeDlg, saveProfile,
+    comments, sendComment, delComment, likeComment, toggleReply, pinComment,
+    pick, rmMedia, editProfile, closeDlg, saveProfile,
     more: () => loadFeed(false),
     light: (u) => { $('cbtLightImg').src = u; $('cbtLight').classList.add('on'); },
     whats: () => { try { window.joinCommunity ? joinCommunity() : window.open(WHATSAPP_URL, '_blank'); } catch (e) { window.open(WHATSAPP_URL, '_blank'); } },

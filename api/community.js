@@ -157,22 +157,26 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ posts: out, is_moderator: isMod, next: posts.length === limit && lastNonPinned ? lastNonPinned.created_at : null });
     }
 
-    // ── COMMENTS: lista de um post ───────────────────────────────────────────
+    // ── COMMENTS: lista de um post (com curtidas, respostas e fixado) ────────
     if (action === 'comments') {
       const postId = q.post_id;
       if (!postId) return res.status(400).json({ error: 'post_id obrigatório' });
-      const cr = await fetch(`${SU}/rest/v1/community_comments?post_id=eq.${encodeURIComponent(postId)}&deleted=eq.false&order=created_at.asc&limit=200&select=*`, { headers: H });
+      const cr = await fetch(`${SU}/rest/v1/community_comments?post_id=eq.${encodeURIComponent(postId)}&deleted=eq.false&order=created_at.asc&limit=300&select=*`, { headers: H });
       const comments = cr.ok ? await cr.json() : [];
       const uids = [...new Set(comments.map((c) => c.user_id))];
-      let profiles = [];
-      if (uids.length) {
-        const fr = await fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H });
-        if (fr.ok) profiles = await fr.json();
-      }
+      const cids = comments.map((c) => c.id);
+      let profiles = [], myLikes = [];
+      const [fr, lr] = await Promise.all([
+        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H }) : null,
+        cids.length ? fetch(`${SU}/rest/v1/community_comment_likes?user_id=eq.${userId}&comment_id=in.(${cids.join(',')})&select=comment_id`, { headers: H }) : null,
+      ]);
+      if (fr?.ok) profiles = await fr.json();
+      if (lr?.ok) myLikes = (await lr.json()).map((l) => l.comment_id);
       const pmap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
       return res.status(200).json({
         comments: comments.map((c) => ({
           id: c.id, content: c.content, created_at: c.created_at, edited_at: c.edited_at, mine: c.user_id === userId,
+          parent_id: c.parent_id || null, likes_count: c.likes_count || 0, liked: myLikes.includes(c.id), pinned: !!c.pinned,
           author: pmap[c.user_id] ? { name: pmap[c.user_id].display_name, avatar: pmap[c.user_id].avatar_url, mod: pmap[c.user_id].is_moderator } : { name: 'Usuário', avatar: null, mod: false },
           author_id: isMod ? c.user_id : undefined,
         })),
@@ -181,7 +185,7 @@ module.exports = async function handler(req, res) {
     }
 
     // Daqui pra baixo é escrita — exige perfil com nome + respeita ban global do Blue
-    const WRITE = ['post-create', 'post-edit', 'post-delete', 'comment-create', 'comment-edit', 'comment-delete', 'like-toggle', 'pin-toggle', 'ban-user', 'get-upload-url', 'transcode'];
+    const WRITE = ['post-create', 'post-edit', 'post-delete', 'comment-create', 'comment-edit', 'comment-delete', 'comment-like-toggle', 'comment-pin-toggle', 'like-toggle', 'pin-toggle', 'ban-user', 'get-upload-url', 'transcode'];
     if (WRITE.includes(action)) {
       if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
       if (!profile?.display_name) return res.status(428).json({ error: 'Escolha seu nome antes de participar.', needs_profile: true });
@@ -235,6 +239,12 @@ module.exports = async function handler(req, res) {
       const media = (Array.isArray(b.media) ? b.media : []).slice(0, 4)
         .filter((m) => m && ['image', 'video', 'audio'].includes(m.type) && isMediaUrl(m.url))
         .map((m) => ({ type: m.type, url: m.url, thumb: isMediaUrl(m.thumb) ? m.thumb : null }));
+      // Dicas (moderador): aceita vídeo do YouTube embedado — treinamentos
+      if (b.youtube && tab === 'dicas' && isMod) {
+        const ym = String(b.youtube).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,15})/);
+        if (!ym) return res.status(400).json({ error: 'Link do YouTube inválido.' });
+        media.unshift({ type: 'youtube', id: ym[1] });
+      }
       if (!content && !media.length) return res.status(400).json({ error: 'Escreva algo ou anexe uma mídia.' });
       if (hasBlocked(content)) return res.status(400).json({ error: 'Conteúdo não permitido.' });
 
@@ -344,10 +354,19 @@ module.exports = async function handler(req, res) {
       const rl = await fetch(`${SU}/rest/v1/community_comments?user_id=eq.${userId}&created_at=gt.${encodeURIComponent(hourAgo)}&select=id`, { headers: H });
       if (rl.ok && (await rl.json()).length >= 60) return res.status(429).json({ error: 'Limite de comentários por hora atingido.' });
 
+      // Resposta: 1 nível só — responder uma resposta cai na thread do pai
+      let parentId = null;
+      if (b.parent_id) {
+        const pr2 = await fetch(`${SU}/rest/v1/community_comments?id=eq.${encodeURIComponent(b.parent_id)}&post_id=eq.${encodeURIComponent(postId)}&deleted=eq.false&select=id,parent_id`, { headers: H });
+        const parent = pr2.ok ? (await pr2.json())[0] : null;
+        if (!parent) return res.status(404).json({ error: 'Comentário respondido não existe mais.' });
+        parentId = parent.parent_id || parent.id;
+      }
+
       const id = uuid();
       const ins = await fetch(`${SU}/rest/v1/community_comments`, {
         method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
-        body: JSON.stringify({ id, post_id: postId, user_id: userId, content, created_at: nowIso() }),
+        body: JSON.stringify({ id, post_id: postId, user_id: userId, content, parent_id: parentId, created_at: nowIso() }),
       });
       if (!ins.ok) return res.status(500).json({ error: 'Erro ao comentar.' });
       // Contador via count real (mesmo padrão do delete — sem drift em concorrência)
@@ -357,6 +376,44 @@ module.exports = async function handler(req, res) {
         method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ comments_count: total }),
       });
       return res.status(200).json({ ok: true, id });
+    }
+
+    // ── COMMENT-LIKE-TOGGLE ──────────────────────────────────────────────────
+    if (action === 'comment-like-toggle') {
+      const cid = String(b.comment_id || '');
+      if (!cid) return res.status(400).json({ error: 'comment_id obrigatório' });
+      const cx = await fetch(`${SU}/rest/v1/community_comments?id=eq.${encodeURIComponent(cid)}&deleted=eq.false&select=id`, { headers: H });
+      if (!cx.ok || !(await cx.json()).length) return res.status(404).json({ error: 'Comentário não encontrado.' });
+      const ins = await fetch(`${SU}/rest/v1/community_comment_likes`, {
+        method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ comment_id: cid, user_id: userId }),
+      });
+      let liked;
+      if (ins.ok) liked = true;
+      else if (ins.status === 409) {
+        const del = await fetch(`${SU}/rest/v1/community_comment_likes?comment_id=eq.${encodeURIComponent(cid)}&user_id=eq.${userId}`, { method: 'DELETE', headers: H });
+        if (!del.ok) return res.status(500).json({ error: 'Erro ao descurtir.' });
+        liked = false;
+      } else return res.status(500).json({ error: 'Erro ao curtir.' });
+      const cr2 = await fetch(`${SU}/rest/v1/community_comment_likes?comment_id=eq.${encodeURIComponent(cid)}&select=user_id`, { headers: { ...H, Prefer: 'count=exact' } });
+      const total = parseInt((cr2.headers.get('content-range') || '').split('/')[1]) || 0;
+      await fetch(`${SU}/rest/v1/community_comments?id=eq.${encodeURIComponent(cid)}`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ likes_count: total }),
+      });
+      return res.status(200).json({ ok: true, liked, likes_count: total });
+    }
+
+    // ── COMMENT-PIN-TOGGLE (moderador) ───────────────────────────────────────
+    if (action === 'comment-pin-toggle') {
+      if (!isMod) return res.status(403).json({ error: 'Só moderador.' });
+      const cid = String(b.comment_id || '');
+      const gr = await fetch(`${SU}/rest/v1/community_comments?id=eq.${encodeURIComponent(cid)}&select=pinned`, { headers: H });
+      const cur = gr.ok ? (await gr.json())[0] : null;
+      if (!cur) return res.status(404).json({ error: 'Comentário não encontrado.' });
+      await fetch(`${SU}/rest/v1/community_comments?id=eq.${encodeURIComponent(cid)}`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ pinned: !cur.pinned }),
+      });
+      return res.status(200).json({ ok: true, pinned: !cur.pinned });
     }
 
     // ── COMMENT-EDIT / COMMENT-DELETE (dono ou moderador) ────────────────────
