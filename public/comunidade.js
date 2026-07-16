@@ -65,6 +65,7 @@
   .cbt-tabs{display:flex;gap:4px;padding:10px 16px 0;flex:0 0 auto}
   .cbt-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#8aa0bd;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:13px;padding:10px 4px;cursor:pointer;letter-spacing:.2px}
   .cbt-tab.on{color:#00aaff;border-bottom-color:#00aaff}
+  .cbt-shell{display:flex;flex-direction:column;flex:1;min-height:0}
   .cbt-feed{flex:1;overflow-y:auto;padding:14px 16px 8px;-webkit-overflow-scrolling:touch}
   .cbt-foot{flex:0 0 auto;padding:9px 16px;border-top:1px solid rgba(0,170,255,.08);text-align:center}
   .cbt-foot a{font-family:var(--font-mono,monospace);font-size:10.5px;color:#5f7590;text-decoration:none}
@@ -151,11 +152,45 @@
   .cbt-lightbox img{max-width:96vw;max-height:94vh;border-radius:8px}
   .cbt-skel{height:110px;border-radius:14px;background:linear-gradient(100deg,rgba(0,170,255,.05) 30%,rgba(0,170,255,.11) 50%,rgba(0,170,255,.05) 70%);background-size:200% 100%;animation:cbtsk 1.2s infinite;margin-bottom:12px}
   @keyframes cbtsk{to{background-position:-200% 0}}
-  /* MODO PÁGINA (/comunidade): painel inline, sem popup/overlay */
-  .cbt-panel.cbt-page{position:static;inset:auto;transform:none;opacity:1;display:flex;width:100%;max-width:720px;margin:0 auto;height:calc(100dvh - 58px);border:none;border-radius:0;box-shadow:none}
+  /* MODO PÁGINA (/comunidade): layout tela cheia estilo X — sidebar + feed + rail */
+  .cbt-panel.cbt-page{position:static;inset:auto;transform:none;opacity:1;display:flex;flex-direction:column;width:100%;max-width:none;margin:0;height:calc(100dvh - 58px);border:none;border-radius:0;box-shadow:none}
   @media(min-width:760px){.cbt-panel.cbt-page{position:static;inset:auto;transform:none;width:100%;border:none;border-radius:0}
   .cbt-panel.cbt-page.on{transform:none}}
   .cbt-panel.cbt-page .cbt-x{display:none}
+  .cbt-page .cbt-shell{display:grid;grid-template-columns:minmax(0,1fr);width:100%;height:100%;min-height:0;flex:1}
+  .cbt-side,.cbt-rail{display:none}
+  @media(min-width:900px){
+    .cbt-page .cbt-shell{grid-template-columns:250px minmax(0,1fr);max-width:1360px;margin:0 auto}
+    .cbt-page .cbt-head,.cbt-page .cbt-tabs,.cbt-page .cbt-foot{display:none}
+    .cbt-side{display:flex;flex-direction:column;gap:6px;padding:22px 14px;border-right:1px solid rgba(0,170,255,.1)}
+    .cbt-brand{font-family:var(--font-display,Syne,sans-serif);font-weight:800;font-size:17px;color:#fff;letter-spacing:-.4px;padding:0 12px 16px}
+    .cbt-brand small{display:block;font-family:var(--font-mono,monospace);font-size:9.5px;font-weight:400;color:#00aaff;letter-spacing:.4px;margin-top:3px}
+    .cbt-snav{display:flex;align-items:center;gap:12px;background:none;border:none;border-radius:12px;color:#c7d5ea;font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:14.5px;padding:12px 14px;cursor:pointer;text-align:left;transition:all .15s}
+    .cbt-snav:hover{background:rgba(0,170,255,.08)}
+    .cbt-snav.on{color:#00aaff;background:rgba(0,170,255,.1)}
+    .cbt-swa{margin-top:10px;display:flex;align-items:center;gap:10px;color:#5f7590;font-family:var(--font-mono,monospace);font-size:11px;text-decoration:none;padding:10px 14px;border-radius:12px}
+    .cbt-swa:hover{color:#25D366;background:rgba(37,211,102,.06)}
+    .cbt-sideme{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(0,170,255,.14);border-radius:14px;cursor:pointer;transition:all .15s}
+    .cbt-sideme:hover{border-color:rgba(0,170,255,.4)}
+    .cbt-sideme .cbt-av{width:38px;height:38px;flex:0 0 38px;font-size:15px}
+    .cbt-sideme b{font-size:13px;color:#fff;display:block;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cbt-sideme small{font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7590}
+    .cbt-page .cbt-feed{border-right:1px solid rgba(0,170,255,.1);padding:20px 26px}
+    .cbt-page .cbt-feed>*{max-width:760px;margin-left:auto;margin-right:auto}
+    .cbt-page .cbt-card{margin-bottom:12px}
+  }
+  .cbt-page.cbt-walled .cbt-side,.cbt-page.cbt-walled .cbt-rail{display:none!important}
+  .cbt-page.cbt-walled .cbt-shell{grid-template-columns:minmax(0,1fr)!important}
+  .cbt-page.cbt-walled .cbt-feed{border-right:none!important}
+  @media(min-width:1220px){
+    .cbt-page .cbt-shell{grid-template-columns:250px minmax(0,1fr) 350px}
+    .cbt-rail{display:block;padding:22px 18px;overflow-y:auto}
+    .cbt-page .cbt-feed .cbt-feat{display:none}
+    .cbt-railcard{border:1px solid rgba(0,170,255,.12);border-radius:16px;padding:16px;margin-bottom:16px;background:rgba(255,255,255,.015)}
+    .cbt-railcard h4{font-family:var(--font-display,Syne,sans-serif);font-size:13px;color:#fff;margin:0 0 12px;letter-spacing:-.2px}
+    .cbt-railcard p{font-family:var(--font-mono,monospace);font-size:11px;color:#8aa0bd;line-height:1.8;margin:0}
+    .cbt-rail .cbt-feat{margin-bottom:0;display:block}
+  }
   `;
 
   // ── HTML ──────────────────────────────────────────────────────────────────
@@ -175,7 +210,17 @@
         <button class="cbt-tab" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas</button>
         <button class="cbt-tab on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade</button>
       </div>
-      <div class="cbt-feed" id="cbtFeed"></div>
+      <div class="cbt-shell">
+        <aside class="cbt-side">
+          <div class="cbt-brand">🏛️ Comunidade<small>EXCLUSIVA DE ASSINANTES</small></div>
+          <button class="cbt-snav" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas</button>
+          <button class="cbt-snav on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade</button>
+          <a class="cbt-swa" href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Grupo no WhatsApp</a>
+          <div class="cbt-sideme" id="cbtSideMe" onclick="ComunidadeBT.editProfile()"></div>
+        </aside>
+        <div class="cbt-feed" id="cbtFeed"></div>
+        <aside class="cbt-rail" id="cbtRail"></aside>
+      </div>
       <div class="cbt-foot"><a href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Prefere o grupo do WhatsApp? Entrar aqui</a></div>
     </div>
     <div class="cbt-dlg" id="cbtDlg">
@@ -198,6 +243,13 @@
     <input type="file" id="cbtMediaFile" style="display:none">`;
     const host = (S.pageMode && document.getElementById('pgMain')) || document.body;
     while (w.firstChild) host.appendChild(w.firstChild);
+
+    // Rail (só desktop página): vídeo destaque sempre visível + card de regras
+    if (S.pageMode) {
+      $('cbtRail').innerHTML =
+        `<div class="cbt-feat"><div class="yt"><iframe src="https://www.youtube.com/embed/${FEATURED_VIDEO.id}" title="${esc(FEATURED_VIDEO.title)}" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy"></iframe></div><div class="cap">⭐ ${esc(FEATURED_VIDEO.title)}</div></div>` +
+        `<div class="cbt-railcard" style="margin-top:16px"><h4>📜 Como funciona</h4><p>✦ Poste resultados, dúvidas e ideias<br>✦ Respeito sempre — sem spam<br>✦ Dicas oficiais na aba 💡 Dicas<br>✦ Moderado pelo time BlueTube <span class="cbt-modbadge">★ MOD</span></p></div>`;
+    }
 
     $('cbtAvFile').addEventListener('change', onAvatarPick);
     $('cbtMediaFile').addEventListener('change', onMediaPick);
@@ -249,20 +301,31 @@
       banned: { ico: '🚫', h: 'Você foi banido da Comunidade', p: 'Seu acesso foi removido pelo moderador.', cta: 'Fechar', fn: 'ComunidadeBT.close()' },
     };
     const wl = walls[kind] || walls.upgrade;
+    $('cbtPanel')?.classList.add('cbt-walled');
     $('cbtFeed').innerHTML = `<div class="cbt-wall"><div class="ico">${wl.ico}</div><h3>${wl.h}</h3><p>${wl.p}</p><button class="cta" onclick="${wl.fn}">${wl.cta}</button></div>`;
   }
 
   function renderMeAvatar() {
-    const el = $('cbtMe'); const p = S.me?.profile;
-    if (p?.avatar_url) el.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`;
-    else { el.textContent = initials(p?.display_name || '?'); el.style.background = `hsl(${hue(p?.display_name || 'x')},60%,38%)`; }
+    const p = S.me?.profile;
+    const el = $('cbtMe');
+    if (el) {
+      if (p?.avatar_url) el.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`;
+      else { el.textContent = initials(p?.display_name || '?'); el.style.background = `hsl(${hue(p?.display_name || 'x')},60%,38%)`; }
+    }
+    const sm = $('cbtSideMe');
+    if (sm) {
+      const av = p?.avatar_url
+        ? `<div class="cbt-av${S.me?.is_moderator ? ' mod' : ''}"><img src="${esc(p.avatar_url)}" alt=""></div>`
+        : `<div class="cbt-av${S.me?.is_moderator ? ' mod' : ''}" style="background:hsl(${hue(p?.display_name || 'x')},60%,38%)">${esc(initials(p?.display_name || '?'))}</div>`;
+      sm.innerHTML = `${av}<div><b>${esc(p?.display_name || 'Defina seu nome')}</b><small>editar perfil ✏️</small></div>`;
+    }
   }
 
   // ── Feed ──────────────────────────────────────────────────────────────────
   function setTab(tab) {
     if (S.tab === tab) return;
     S.tab = tab;
-    document.querySelectorAll('.cbt-tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    document.querySelectorAll('.cbt-tab,.cbt-snav').forEach((b) => { if (b.dataset.tab) b.classList.toggle('on', b.dataset.tab === tab); });
     loadFeed(true);
   }
 
@@ -280,6 +343,7 @@
 
   function render() {
     const f = $('cbtFeed');
+    $('cbtPanel')?.classList.remove('cbt-walled');
     const canPost = S.tab === 'comunidade' || S.me?.is_moderator;
     let h = '';
     if (S.tab === 'dicas') {
