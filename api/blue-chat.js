@@ -419,6 +419,20 @@ module.exports = async function handler(req, res) {
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // ── GET video-info: dados de 1 vídeo (card de compartilhamento no chat) ───
+  if (req.method === 'GET' && action === 'video-info') {
+    const vid = req.query.id;
+    if (!vid) return res.status(400).json({ error: 'id obrigatório' });
+    try {
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${encodeURIComponent(vid)}&status=eq.active&select=*`, { headers: h });
+      const v = vR.ok ? (await vR.json())[0] : null;
+      if (!v) return res.status(404).json({ error: 'Vídeo não encontrado' });
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${v.user_id}&select=user_id,username,display_name,avatar_url`, { headers: h });
+      const creator = pR.ok ? (await pR.json())[0] : null;
+      return res.status(200).json({ video: { ...v, creator: creator || {} } });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
   // ── GET top-chats: contatos+grupos que EU mais mando mensagem (share) ─────
   if (req.method === 'GET' && action === 'top-chats') {
     try {
