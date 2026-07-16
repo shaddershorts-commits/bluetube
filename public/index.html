@@ -1731,20 +1731,22 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 
 // ── COMMUNITY ──────────────────────────────────────────────────────────────
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
-// 2026-07-15: Comunidade agora é o painel interno (feed estilo X). O grupo
-// do WhatsApp virou link no rodapé do painel. Free/deslogado vê paywall.
-function loadComunidade(){
-  if(window.ComunidadeBT) return Promise.resolve();
-  return new Promise((res,rej)=>{
-    const s=document.createElement('script');s.src='/comunidade.js?v=1';
-    s.onload=res;s.onerror=rej;document.body.appendChild(s);
-  });
-}
+// 2026-07-16: Comunidade é página dedicada /comunidade (feed estilo X).
+// O grupo do WhatsApp virou link no rodapé de lá. Free/deslogado vê paywall.
 function openCommunity(opts){
-  const token = localStorage.getItem('bt_token');
-  if(!token){ openAuthModal(); return; }
-  loadComunidade().then(()=>window.ComunidadeBT.open(opts||{})).catch(()=>openUpgradeModal('tool_blocked','full'));
+  location.href = '/comunidade' + (opts && opts.profile ? '#perfil' : '');
 }
+// Vindo de /comunidade sem login/plano: ?login=comunidade abre o modal de
+// login e volta pra lá depois; ?upgrade=comunidade abre o modal de planos.
+(function(){
+  const q = new URLSearchParams(location.search);
+  if(q.get('login') === 'comunidade'){
+    sessionStorage.setItem('bt_next', JSON.stringify({n:'/comunidade',t:Date.now()}));
+    window.addEventListener('DOMContentLoaded', ()=>{ try{ openAuthModal(); }catch(e){} });
+  } else if(q.get('upgrade') === 'comunidade'){
+    window.addEventListener('DOMContentLoaded', ()=>{ try{ openUpgradeModal('tool_blocked','full'); }catch(e){} });
+  }
+})();
 function updateCommunityBtn(){
   const lock=document.getElementById('communityLock');
   const isPaidUser = userPlan === 'full' || userPlan === 'master';
@@ -3918,6 +3920,16 @@ async function checkSession(_isRetry){
 }
 
 function setLoggedIn(email, plan){
+  // Retorno pós-login (ex.: veio de /comunidade pra logar) — volta pra lá.
+  // Validade 10min: se fechou o modal sem logar, não teleporta depois.
+  try{
+    const raw=sessionStorage.getItem('bt_next');
+    if(raw){
+      sessionStorage.removeItem('bt_next');
+      const nx=JSON.parse(raw);
+      if(nx && nx.n && Date.now()-nx.t < 600000){ location.href=nx.n; return; }
+    }
+  }catch(e){}
   // Notifica shell pai (se estiver em iframe) que o plano mudou
   try{ if(window.parent!==window) window.parent.postMessage({type:'bt-plan',plan:plan||userPlan},'*'); }catch(e){}
   const p = plan || userPlan || 'free';

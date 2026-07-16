@@ -11,13 +11,23 @@
   const FEATURED_VIDEO = { id: 'JAaEud-fde8', title: 'Criei 2 Canais do ZERO, Bati 100 MIL Inscritos Em Menos de 42 dias (Faça o Mesmo)' };
   const WHATSAPP_URL = 'https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
 
-  const S = { open: false, tab: 'comunidade', me: null, posts: [], next: null, loading: false, media: [], sending: false, wall: null };
+  const S = { open: false, tab: 'comunidade', me: null, posts: [], next: null, loading: false, media: [], sending: false, wall: null, pageMode: false };
 
   // ── Utils ─────────────────────────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const token = () => localStorage.getItem('bt_token');
-  const toast = (m) => { try { window.toast ? window.toast(m) : alert(m); } catch (e) { alert(m); } };
+  // Toast próprio (a página /comunidade não tem o toast() da home)
+  const toast = (m) => {
+    let el = $('cbtToast');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'cbtToast';
+      el.style.cssText = 'position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:9050;background:#0a1830;border:1px solid rgba(0,170,255,.35);color:#e8f0fb;font-family:var(--font-mono,monospace);font-size:12.5px;padding:11px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:88vw;transition:opacity .3s;pointer-events:none';
+      document.body.appendChild(el);
+    }
+    el.textContent = m; el.style.opacity = '1';
+    clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, 2600);
+  };
   const timeAgo = (iso) => {
     const s = (Date.now() - new Date(iso).getTime()) / 1000;
     if (s < 60) return 'agora';
@@ -141,6 +151,11 @@
   .cbt-lightbox img{max-width:96vw;max-height:94vh;border-radius:8px}
   .cbt-skel{height:110px;border-radius:14px;background:linear-gradient(100deg,rgba(0,170,255,.05) 30%,rgba(0,170,255,.11) 50%,rgba(0,170,255,.05) 70%);background-size:200% 100%;animation:cbtsk 1.2s infinite;margin-bottom:12px}
   @keyframes cbtsk{to{background-position:-200% 0}}
+  /* MODO PÁGINA (/comunidade): painel inline, sem popup/overlay */
+  .cbt-panel.cbt-page{position:static;inset:auto;transform:none;opacity:1;display:flex;width:100%;max-width:720px;margin:0 auto;height:calc(100dvh - 58px);border:none;border-radius:0;box-shadow:none}
+  @media(min-width:760px){.cbt-panel.cbt-page{position:static;inset:auto;transform:none;width:100%;border:none;border-radius:0}
+  .cbt-panel.cbt-page.on{transform:none}}
+  .cbt-panel.cbt-page .cbt-x{display:none}
   `;
 
   // ── HTML ──────────────────────────────────────────────────────────────────
@@ -149,8 +164,8 @@
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     const w = document.createElement('div');
     w.innerHTML = `
-    <div class="cbt-ov" id="cbtOv" onclick="ComunidadeBT.close()"></div>
-    <div class="cbt-panel" id="cbtPanel" role="dialog" aria-label="Comunidade BlueTube">
+    ${S.pageMode ? '' : '<div class="cbt-ov" id="cbtOv" onclick="ComunidadeBT.close()"></div>'}
+    <div class="cbt-panel${S.pageMode ? ' cbt-page' : ''}" id="cbtPanel" role="${S.pageMode ? 'main' : 'dialog'}" aria-label="Comunidade BlueTube">
       <div class="cbt-head">
         <div class="cbt-title">🏛️ Comunidade BlueTube<small>exclusiva de assinantes</small></div>
         <div class="cbt-me" id="cbtMe" title="Meu perfil na comunidade" onclick="ComunidadeBT.editProfile()">?</div>
@@ -181,20 +196,22 @@
     </div>
     <div class="cbt-lightbox" id="cbtLight" onclick="this.classList.remove('on')"><img id="cbtLightImg" alt=""></div>
     <input type="file" id="cbtMediaFile" style="display:none">`;
-    while (w.firstChild) document.body.appendChild(w.firstChild);
+    const host = (S.pageMode && document.getElementById('pgMain')) || document.body;
+    while (w.firstChild) host.appendChild(w.firstChild);
 
     $('cbtAvFile').addEventListener('change', onAvatarPick);
     $('cbtMediaFile').addEventListener('change', onMediaPick);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) ComunidadeBT.close(); });
+    if (!S.pageMode) document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) ComunidadeBT.close(); });
     document.addEventListener('click', (e) => { if (!e.target.closest('.cbt-menu')) document.querySelectorAll('.cbt-dd.on').forEach((d) => d.classList.remove('on')); });
   }
 
   // ── Estado/abertura ───────────────────────────────────────────────────────
   async function open(opts = {}) {
+    S.pageMode = !!opts.page;
     mount();
     S.open = true;
-    $('cbtOv').classList.add('on'); $('cbtPanel').classList.add('on');
-    document.body.style.overflow = 'hidden';
+    $('cbtOv')?.classList.add('on'); $('cbtPanel').classList.add('on');
+    if (!S.pageMode) document.body.style.overflow = 'hidden';
     if (!S.me) {
       $('cbtFeed').innerHTML = '<div class="cbt-skel"></div><div class="cbt-skel"></div><div class="cbt-skel"></div>';
       const { ok, status, d } = await api('me');
@@ -212,6 +229,7 @@
   }
 
   function close() {
+    if (S.pageMode) { location.href = '/'; return; }
     S.open = false;
     $('cbtOv')?.classList.remove('on'); $('cbtPanel')?.classList.remove('on');
     document.body.style.overflow = '';
@@ -220,7 +238,12 @@
 
   function renderWall() {
     const kind = S.wall;
-    const walls = {
+    // Na página /comunidade os CTAs navegam pra home (que abre o modal certo)
+    const walls = S.pageMode ? {
+      login: { ico: '🔐', h: 'Faça login pra entrar', p: 'A Comunidade é o espaço exclusivo dos assinantes BlueTube.', cta: 'Fazer login', fn: "location.href='/?login=comunidade'" },
+      upgrade: { ico: '👑', h: 'Comunidade exclusiva de assinantes', p: 'Feed exclusivo com criadores dark que fazem milhões de views<br>✦ Dicas e tutoriais em primeira mão<br>✦ Poste dúvidas, vídeos e resultados<br>✦ Networking com quem já vive disso', cta: 'Desbloquear com Full ou Master', fn: "location.href='/?upgrade=comunidade'" },
+      banned: { ico: '🚫', h: 'Você foi banido da Comunidade', p: 'Seu acesso foi removido pelo moderador.', cta: 'Voltar ao site', fn: "location.href='/'" },
+    } : {
       login: { ico: '🔐', h: 'Faça login pra entrar', p: 'A Comunidade é o espaço exclusivo dos assinantes BlueTube.', cta: 'Fazer login', fn: "ComunidadeBT.close();window.openAuthModal&&openAuthModal()" },
       upgrade: { ico: '👑', h: 'Comunidade exclusiva de assinantes', p: 'Feed exclusivo com criadores dark que fazem milhões de views<br>✦ Dicas e tutoriais em primeira mão<br>✦ Poste dúvidas, vídeos e resultados<br>✦ Networking com quem já vive disso', cta: 'Desbloquear com Full ou Master', fn: "ComunidadeBT.close();window.openUpgradeModal&&openUpgradeModal('tool_blocked','full')" },
       banned: { ico: '🚫', h: 'Você foi banido da Comunidade', p: 'Seu acesso foi removido pelo moderador.', cta: 'Fechar', fn: 'ComunidadeBT.close()' },
