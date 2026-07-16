@@ -593,6 +593,7 @@ app.get('/yt-subs', async (req, res) => {
     const { stdout } = await run('yt-dlp', [
       ...POT_CLI_ARGS,
       '--skip-download', '--no-playlist', '--no-warnings', '-J',
+      '--ignore-no-formats-error',
       ...(jobCookies ? ['--cookies', jobCookies] : []),
       'https://www.youtube.com/watch?v=' + v,
     ]);
