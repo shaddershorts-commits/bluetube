@@ -3030,14 +3030,12 @@ async function startTranscription(e){
         localStorage.setItem('bt_shown_signup_popup','1');
         setTimeout(()=>showFreeUserPopup(), 3000);
       }
-      // No 3o short: convida para a comunidade
+      // No 3o short: convida para a comunidade (painel interno; free vê paywall)
       const _sc = parseInt(localStorage.getItem('bt_shorts_done')||'0') + 1;
       localStorage.setItem('bt_shorts_done', _sc);
       if(_sc === 3 && !localStorage.getItem('bt_community_shown')){
         localStorage.setItem('bt_community_shown','1');
-        setTimeout(()=>{
-          document.getElementById('communityModal').classList.add('on');
-        }, 2500);
+        setTimeout(()=>openCommunity(), 2500);
       }
     },400);
 

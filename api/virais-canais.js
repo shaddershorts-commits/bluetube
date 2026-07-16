@@ -351,9 +351,11 @@ async function listarCanais(req, res) {
 // garante fairness — canais não processados têm prioridade).
 //
 // Quota YouTube por canal: ~2 units por página (playlistItems + videos.list).
-// 500 canais × 10 páginas × 2 = ~10k units/rodada. Com 12 chaves (120k/dia)
-// e cron a cada 15min (96 rodadas), quota real depende de quantas páginas
-// cada canal de fato tem (paginação inteligente para cedo em canais pequenos).
+// Com o early-stop por janela (ver processarCanal): só páginas com vídeo
+// dentro de COLETA_JANELA_DIAS são processadas — ~1-3 páginas/canal típico
+// em regime, ~1.5-2.2k units/rodada × 96 rodadas = ~140-210k units/dia,
+// dentro do pool de 28 chaves (280k/dia) com margem. Primeira coleta de
+// canal novo ainda faz backfill completo (até MAX_PAGES×50 vídeos).
 async function coletarCurados(req, res) {
   // Sem auth obrigatoria (chamada pelo Vercel cron). Pode rodar manual com Bearer.
   const startTs = Date.now();
@@ -417,12 +419,29 @@ async function coletarCurados(req, res) {
 // Processa UM canal: paginação inteligente + upsert. Retorna {videos, paginas}.
 // Try/catch interno garante que ultimo_check é atualizado mesmo em falha
 // (evita canal "poison" preso no topo da fila retentando infinitamente).
+//
+// EARLY-STOP POR JANELA (2026-07-15): a playlist de uploads vem do mais novo
+// pro mais velho. Vídeos novos estão SEMPRE na página 1; páginas fundas são
+// re-crawl de conteúdo antigo. Antes: 10 páginas/canal a cada 15min = ~420k
+// units/dia contra pool de 280k (28 chaves) → quota esgotava no meio do dia
+// e os filtros do site paravam de encher (view counts congelavam).
+// Agora: para de paginar quando a página inteira é mais velha que
+// JANELA_DIAS (default 35d — os filtros do site vão até 30d; mais fundo que
+// isso não alimenta filtro nenhum). Dentro da janela o upsert continua
+// atualizando views a cada rodada → vídeo cruza o piso de views do filtro
+// (5h≥30k, 24h≥100k...) e aparece em ≤15min, o dia inteiro, sem esgotar.
+// PRIMEIRA COLETA de canal novo (videos_coletados=0) mantém backfill
+// completo de até maxPages×50 vídeos — comportamento original intacto.
+const COLETA_JANELA_DIAS = Math.max(31, parseInt(process.env.VIRAIS_COLETA_JANELA_DIAS || '35', 10) || 35);
+
 async function processarCanal(canal, maxPages) {
   const uploadsId = canal.channel_id.replace(/^UC/, 'UU');
   const langMeta = LANG_BY_CODE[canal.idioma_manual] || LANG_BY_CODE['pt-BR'];
   let totalRows = 0;
   let paginasUsadas = 0;
   let nextPageToken = null;
+  const primeiraColeta = !(canal.videos_coletados > 0);
+  const cutoffJanelaMs = Date.now() - COLETA_JANELA_DIAS * 24 * 60 * 60 * 1000;
 
   try {
   for (let page = 0; page < maxPages; page++) {
@@ -437,6 +456,18 @@ async function processarCanal(canal, maxPages) {
     const plR = await youtubeRequest('playlistItems', params);
     const pageItems = plR?.items || [];
     paginasUsadas++;
+
+    // EARLY-STOP: se a página INTEIRA é mais velha que a janela (e não é a
+    // primeira coleta do canal), as próximas são mais velhas ainda — para
+    // ANTES do videos.list (economiza também essa unit). Item sem data conta
+    // como fora da janela (vídeo privado/deletado não tem stats úteis).
+    if (!primeiraColeta && pageItems.length) {
+      const algumNaJanela = pageItems.some(it => {
+        const pub = it.contentDetails?.videoPublishedAt;
+        return pub && new Date(pub).getTime() >= cutoffJanelaMs;
+      });
+      if (!algumNaJanela) break;
+    }
 
     const ids = pageItems.map(it => it.contentDetails?.videoId).filter(Boolean);
     if (!ids.length) break; // canal sem mais vídeos — para

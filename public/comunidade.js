@@ -297,7 +297,7 @@
         ${(mine || mod) ? `<button onclick="ComunidadeBT.editPost('${p.id}')">✏️ Editar</button>` : ''}
         ${mod ? `<button onclick="ComunidadeBT.pin('${p.id}')">📌 ${p.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
         ${(mine || mod) ? `<button class="danger" onclick="ComunidadeBT.delPost('${p.id}')">🗑️ Apagar</button>` : ''}
-        ${(mod && !mine && p.author_id) ? `<button class="danger" onclick="ComunidadeBT.ban('${p.author_id}','${esc(a.name)}')">🚫 Banir usuário</button>` : ''}
+        ${(mod && !mine && p.author_id) ? `<button class="danger" onclick="ComunidadeBT.ban('${p.author_id}')">🚫 Banir usuário</button>` : ''}
       </div></div>`;
     }
     const media = (p.media || []).map((m) => {
@@ -377,7 +377,8 @@
     loadFeed(true);
   }
 
-  async function ban(uid, name) {
+  async function ban(uid) {
+    const name = (S.posts.find((p) => p.author_id === uid)?.author?.name) || 'este usuário';
     if (!confirm(`Banir "${name}" da Comunidade? A pessoa não poderá mais postar nem comentar.`)) return;
     const { ok, d } = await api('ban-user', { body: { user_id: uid, banned: true } });
     toast(ok ? `🚫 ${name} banido.` : '❌ ' + (d.error || 'Erro.'));
@@ -425,8 +426,9 @@
     if (!confirm('Apagar comentário?')) return;
     const { ok, d } = await api('comment-delete', { body: { comment_id: commentId } });
     if (!ok) return toast('❌ ' + (d.error || 'Erro.'));
+    const cc = $('cc-' + postId); if (cc) cc.textContent = Math.max(0, (parseInt(cc.textContent) || 1) - 1);
     const { ok: ok2, d: d2 } = await api('comments', { qs: '&post_id=' + encodeURIComponent(postId) });
-    if (ok2) { renderComments(postId, d2.comments); const cc = $('cc-' + postId); if (cc) cc.textContent = d2.comments.length; }
+    if (ok2) renderComments(postId, d2.comments);
   }
 
   // ── Mídia ─────────────────────────────────────────────────────────────────

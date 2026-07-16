@@ -6,7 +6,9 @@
 // com JWT do próprio usuário (mesmo padrão do Blue — sem expor service key);
 // vídeo passa pelo transcode do Railway (faststart + thumb).
 
-const BLOCKED_WORDS = ['porn','xxx','nude','nudes','onlyfans','xvideos','pornhub','hentai','gore','suicidio','cp '];
+const { checkBan } = require('./_helpers/checkBan');
+
+const BLOCKED_WORDS = ['porn','xxx','nude','nudes','onlyfans','xvideos','pornhub','hentai','gore','suicidio'];
 const MIME = {
   image: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   video: ['video/mp4', 'video/quicktime', 'video/webm'],
@@ -65,7 +67,9 @@ module.exports = async function handler(req, res) {
   const hasBlocked = (s) => { const t = ' ' + String(s).toLowerCase() + ' '; return BLOCKED_WORDS.some((w) => t.includes(w)); };
   const uuid = () => require('crypto').randomUUID();
   const nowIso = () => new Date().toISOString();
-  const isMediaUrl = (u) => typeof u === 'string' && u.startsWith(`${SU}/storage/v1/object/public/blue-videos/community/`);
+  // Mídia: UID como PRIMEIRA pasta (política de storage do bucket) — de quebra
+  // amarra a mídia ao dono: só dá pra postar arquivo do próprio prefixo.
+  const isMediaUrl = (u) => typeof u === 'string' && u.startsWith(`${SU}/storage/v1/object/public/blue-videos/${userId}/community/`) && !u.includes('..');
 
   try {
     // ── ME: estado do usuário (perfil, moderador, precisa criar nome?) ──────
@@ -133,14 +137,12 @@ module.exports = async function handler(req, res) {
       const ids = posts.map((p) => p.id);
       const uids = [...new Set(posts.map((p) => p.user_id))];
       let profiles = [], myLikes = [];
-      if (uids.length) {
-        const fr = await fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H });
-        if (fr.ok) profiles = await fr.json();
-      }
-      if (ids.length) {
-        const lr = await fetch(`${SU}/rest/v1/community_likes?user_id=eq.${userId}&post_id=in.(${ids.join(',')})&select=post_id`, { headers: H });
-        if (lr.ok) myLikes = (await lr.json()).map((l) => l.post_id);
-      }
+      const [fr, lr] = await Promise.all([
+        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H }) : null,
+        ids.length ? fetch(`${SU}/rest/v1/community_likes?user_id=eq.${userId}&post_id=in.(${ids.join(',')})&select=post_id`, { headers: H }) : null,
+      ]);
+      if (fr?.ok) profiles = await fr.json();
+      if (lr?.ok) myLikes = (await lr.json()).map((l) => l.post_id);
       const pmap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
       const out = posts.map((p) => ({
         id: p.id, tab: p.tab, content: p.content, media: p.media || [], pinned: p.pinned,
@@ -150,7 +152,9 @@ module.exports = async function handler(req, res) {
         author: pmap[p.user_id] ? { name: pmap[p.user_id].display_name, avatar: pmap[p.user_id].avatar_url, mod: pmap[p.user_id].is_moderator } : { name: 'Usuário', avatar: null, mod: false },
         author_id: isMod ? p.user_id : undefined,
       }));
-      return res.status(200).json({ posts: out, is_moderator: isMod, next: posts.length === limit ? posts[posts.length - 1].created_at : null });
+      // Cursor = último post NÃO fixado (fixado tem created_at antigo e pularia posts)
+      const lastNonPinned = [...posts].reverse().find((p) => !p.pinned);
+      return res.status(200).json({ posts: out, is_moderator: isMod, next: posts.length === limit && lastNonPinned ? lastNonPinned.created_at : null });
     }
 
     // ── COMMENTS: lista de um post ───────────────────────────────────────────
@@ -176,11 +180,15 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // Daqui pra baixo é escrita — exige perfil com nome definido
+    // Daqui pra baixo é escrita — exige perfil com nome + respeita ban global do Blue
     const WRITE = ['post-create', 'post-edit', 'post-delete', 'comment-create', 'comment-edit', 'comment-delete', 'like-toggle', 'pin-toggle', 'ban-user', 'get-upload-url', 'transcode'];
     if (WRITE.includes(action)) {
       if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
       if (!profile?.display_name) return res.status(428).json({ error: 'Escolha seu nome antes de participar.', needs_profile: true });
+      if (!isMod) {
+        const ban = await checkBan(userId, SU, H);
+        if (ban) return res.status(403).json({ error: 'Conta suspensa na plataforma.', banned: true });
+      }
     }
 
     // ── GET-UPLOAD-URL: destino pra upload direto com o JWT do usuário ──────
@@ -192,7 +200,8 @@ module.exports = async function handler(req, res) {
       if (!MIME[kind].includes(b.content_type)) return res.status(400).json({ error: 'Formato não suportado.' });
       const extMap = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/webm': 'weba', 'audio/wav': 'wav' };
       const ext = extMap[b.content_type] || 'bin';
-      const storagePath = `community/media/${userId}/${Date.now()}/${kind}.${ext}`;
+      // UID na primeira pasta = mesma convenção do Blue (política do bucket)
+      const storagePath = `${userId}/community/${Date.now()}/${kind}.${ext}`;
       return res.status(200).json({
         supabase_url: SU, anon_key: AK, storage_path: storagePath,
         public_url: `${SU}/storage/v1/object/public/blue-videos/${storagePath}`,
@@ -204,7 +213,7 @@ module.exports = async function handler(req, res) {
     if (action === 'transcode') {
       const RW = process.env.RAILWAY_FFMPEG_URL;
       const sp = String(b.storage_path || '');
-      if (!sp.startsWith(`community/media/${userId}/`)) return res.status(400).json({ error: 'storage_path inválido' });
+      if (!sp.startsWith(`${userId}/community/`) || sp.includes('..')) return res.status(400).json({ error: 'storage_path inválido' });
       if (!RW) return res.status(200).json({ ok: false });
       const jr = await fetch(RW.replace(/\/$/, '') + '/blue-transcode', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -299,6 +308,8 @@ module.exports = async function handler(req, res) {
     if (action === 'like-toggle') {
       const postId = String(b.post_id || '');
       if (!postId) return res.status(400).json({ error: 'post_id obrigatório' });
+      const px = await fetch(`${SU}/rest/v1/community_posts?id=eq.${encodeURIComponent(postId)}&deleted=eq.false&select=id`, { headers: H });
+      if (!px.ok || !(await px.json()).length) return res.status(404).json({ error: 'Post não encontrado.' });
       const ins = await fetch(`${SU}/rest/v1/community_likes`, {
         method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
         body: JSON.stringify({ post_id: postId, user_id: userId }),
@@ -306,7 +317,8 @@ module.exports = async function handler(req, res) {
       let liked;
       if (ins.ok) liked = true;
       else if (ins.status === 409) {
-        await fetch(`${SU}/rest/v1/community_likes?post_id=eq.${encodeURIComponent(postId)}&user_id=eq.${userId}`, { method: 'DELETE', headers: H });
+        const del = await fetch(`${SU}/rest/v1/community_likes?post_id=eq.${encodeURIComponent(postId)}&user_id=eq.${userId}`, { method: 'DELETE', headers: H });
+        if (!del.ok) return res.status(500).json({ error: 'Erro ao descurtir.' });
         liked = false;
       } else return res.status(500).json({ error: 'Erro ao curtir.' });
       // Atualiza contador com o total real (evita drift de read-modify-write)
@@ -338,8 +350,11 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({ id, post_id: postId, user_id: userId, content, created_at: nowIso() }),
       });
       if (!ins.ok) return res.status(500).json({ error: 'Erro ao comentar.' });
+      // Contador via count real (mesmo padrão do delete — sem drift em concorrência)
+      const cr = await fetch(`${SU}/rest/v1/community_comments?post_id=eq.${encodeURIComponent(postId)}&deleted=eq.false&select=id`, { headers: { ...H, Prefer: 'count=exact' } });
+      const total = parseInt((cr.headers.get('content-range') || '').split('/')[1]) || 0;
       await fetch(`${SU}/rest/v1/community_posts?id=eq.${encodeURIComponent(postId)}`, {
-        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ comments_count: (post.comments_count || 0) + 1 }),
+        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ comments_count: total }),
       });
       return res.status(200).json({ ok: true, id });
     }
