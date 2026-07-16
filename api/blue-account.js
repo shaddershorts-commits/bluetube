@@ -1,5 +1,9 @@
-// api/blue-account.js — Exclusão de conta (exigência Google Play).
+// api/blue-account.js — Conta: exclusão (exigência Google Play) e troca de
+// senha in-app com código por email.
 // POST { action:'delete', token }
+// POST { action:'change-password', token, otp, new_password }
+//   O código vem do send_otp do auth.js (grava otp_<email> no api_cache);
+//   aqui só LEMOS o cache — auth.js permanece intocado.
 //   - Assinatura paga ATIVA → 409 (cancele antes; jamais mexemos em dinheiro
 //     sem autorização explícita — a exclusão não cancela cobrança sozinha).
 //   - Livre: apaga/anonimiza dados do Blue + Comunidade e deleta o usuário
@@ -10,7 +14,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  if (req.body?.action !== 'delete') return res.status(400).json({ error: 'Ação inválida.' });
+  if (!['delete', 'change-password'].includes(req.body?.action)) return res.status(400).json({ error: 'Ação inválida.' });
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -26,6 +30,38 @@ module.exports = async function handler(req, res) {
     if (ur.ok) { const u = await ur.json(); userId = u.id; email = u.email; }
   } catch (e) {}
   if (!userId) return res.status(401).json({ error: 'Sessão inválida. Faça login de novo.' });
+
+  // ── TROCA DE SENHA (código por email + nova senha) ─────────────────────────
+  if (req.body.action === 'change-password') {
+    const { otp, new_password } = req.body;
+    if (!otp || !new_password) return res.status(400).json({ error: 'Código e nova senha são obrigatórios.' });
+    if (String(new_password).length < 6) return res.status(400).json({ error: 'A senha precisa ter ao menos 6 caracteres.' });
+    try {
+      // Valida o código gravado pelo send_otp (auth.js) no api_cache
+      const cr = await fetch(`${SU}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: H });
+      const stored = cr.ok ? (await cr.json())?.[0]?.value : null;
+      if (!stored || String(stored.code) !== String(otp)) {
+        return res.status(400).json({ error: 'Código incorreto ou expirado. Peça um novo código.' });
+      }
+      // Troca a senha usando a sessão do próprio usuário
+      const pr = await fetch(`${SU}/auth/v1/user`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', apikey: AK, Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ password: String(new_password) }),
+      });
+      if (!pr.ok) {
+        const t = await pr.text().catch(() => '');
+        console.error('[blue-account] change-password falhou:', pr.status, t.slice(0, 120));
+        return res.status(500).json({ error: 'Não foi possível trocar a senha. Tente novamente.' });
+      }
+      // Invalida o código usado
+      fetch(`${SU}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: H }).catch(() => {});
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      console.error('[blue-account] change-password:', e.message);
+      return res.status(500).json({ error: 'Erro interno. Tente novamente.' });
+    }
+  }
 
   try {
     // Assinatura paga ativa bloqueia (não cancelamos cobrança automaticamente)
