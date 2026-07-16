@@ -26,6 +26,9 @@
   async function initLang() {
     let l = 'pt';
     try {
+      // ?lang=en na URL vence tudo (teste manual + link de suporte no idioma certo)
+      const qlang = new URLSearchParams(location.search).get('lang');
+      if (qlang) { LANG = (qlang === 'pt' || CT[qlang]) ? qlang : 'en'; return; }
       const manual = localStorage.getItem('bt_user_lang');
       const cache = JSON.parse(localStorage.getItem('bt_lang_cache') || 'null');
       const cacheTs = parseInt(localStorage.getItem('bt_lang_cache_time') || '0', 10);
