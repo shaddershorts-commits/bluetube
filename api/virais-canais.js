@@ -374,7 +374,7 @@ async function coletarCurados(req, res) {
 
   try {
     const r = await fetch(
-      `${SU}/rest/v1/virais_canais_curados?ativo=eq.true&order=ultimo_check.asc.nullsfirst&select=id,channel_id,channel_handle,channel_name,nicho_manual,idioma_manual,videos_coletados&limit=${CHANNEL_LIMIT}`,
+      `${SU}/rest/v1/virais_canais_curados?ativo=eq.true&order=ultimo_check.asc.nullsfirst&select=id,channel_id,channel_handle,channel_name,nicho_manual,idioma_manual,videos_coletados,ultimo_check&limit=${CHANNEL_LIMIT}`,
       { headers: HDR }
     );
     const canais = r.ok ? await r.json() : [];
@@ -430,7 +430,7 @@ async function coletarCurados(req, res) {
 // isso não alimenta filtro nenhum). Dentro da janela o upsert continua
 // atualizando views a cada rodada → vídeo cruza o piso de views do filtro
 // (5h≥30k, 24h≥100k...) e aparece em ≤15min, o dia inteiro, sem esgotar.
-// PRIMEIRA COLETA de canal novo (videos_coletados=0) mantém backfill
+// PRIMEIRA COLETA de canal novo (ultimo_check nulo) mantém backfill
 // completo de até maxPages×50 vídeos — comportamento original intacto.
 const COLETA_JANELA_DIAS = Math.max(31, parseInt(process.env.VIRAIS_COLETA_JANELA_DIAS || '35', 10) || 35);
 
@@ -440,7 +440,10 @@ async function processarCanal(canal, maxPages) {
   let totalRows = 0;
   let paginasUsadas = 0;
   let nextPageToken = null;
-  const primeiraColeta = !(canal.videos_coletados > 0);
+  // "Primeira coleta" = canal NUNCA checado (ultimo_check nulo). Não usar
+  // videos_coletados como flag: canal curado sem nenhum Short ficaria com 0
+  // pra sempre e re-faria o crawl completo a cada rodada, eternamente.
+  const primeiraColeta = !canal.ultimo_check;
   const cutoffJanelaMs = Date.now() - COLETA_JANELA_DIAS * 24 * 60 * 60 * 1000;
 
   try {
