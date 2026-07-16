@@ -8,7 +8,6 @@
   if (window.ComunidadeBT) return;
 
   const API = '/api/community';
-  const FEATURED_VIDEO = { id: 'JAaEud-fde8', title: 'Criei 2 Canais do ZERO, Bati 100 MIL Inscritos Em Menos de 42 dias (Faça o Mesmo)' };
   const WHATSAPP_URL = 'https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
 
   const S = { open: false, tab: 'comunidade', me: null, posts: [], next: null, loading: false, media: [], sending: false, wall: null, pageMode: false };
@@ -38,6 +37,15 @@
   };
   const initials = (n) => (n || '?').trim().charAt(0).toUpperCase();
   const hue = (n) => { let h = 0; for (const c of String(n || '')) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+  // Avatar com anel por status: MOD dourado fixo, Master 👑 dourado pulsando, Full ⚡ azul
+  const avHtml = (a) => {
+    const ring = a.mod ? ' mod' : a.plan === 'master' ? ' pmaster' : a.plan === 'full' ? ' pfull' : '';
+    const badge = a.mod ? '' : a.plan === 'master' ? '<span class="cbt-pbdg">👑</span>' : a.plan === 'full' ? '<span class="cbt-pbdg">⚡</span>' : '';
+    const core = a.avatar
+      ? `<div class="cbt-av${ring}"><img src="${esc(a.avatar)}" alt=""></div>`
+      : `<div class="cbt-av${ring}" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+    return `<div class="cbt-avwrap">${core}${badge}</div>`;
+  };
 
   async function api(action, opts = {}) {
     const isGet = !opts.body;
@@ -100,6 +108,14 @@
   .cbt-av{width:40px;height:40px;border-radius:50%;overflow:hidden;flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px}
   .cbt-av img{width:100%;height:100%;object-fit:cover}
   .cbt-av.mod{box-shadow:0 0 0 2px #050d1f,0 0 0 4px #fbbf24,0 0 14px rgba(251,191,36,.5)}
+  .cbt-avwrap{position:relative;flex:0 0 auto;display:flex}
+  .cbt-pbdg{position:absolute;bottom:-5px;right:-5px;font-size:12px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.9));pointer-events:none}
+  .cbt-c .cbt-pbdg{font-size:10px;bottom:-4px;right:-4px}
+  .cbt-av.pfull{box-shadow:0 0 0 2px #050d1f,0 0 0 3px #00aaff,0 0 12px rgba(0,170,255,.5)}
+  .cbt-av.pmaster{animation:cbtGold 2.2s ease-in-out infinite}
+  @keyframes cbtGold{0%,100%{box-shadow:0 0 0 2px #050d1f,0 0 0 3px #fbbf24,0 0 8px rgba(251,191,36,.3)}50%{box-shadow:0 0 0 2px #050d1f,0 0 0 3px #ffd977,0 0 20px rgba(251,191,36,.75)}}
+  .cbt-train{font-family:var(--font-mono,monospace);font-size:9.5px;font-weight:700;color:#fbbf24;letter-spacing:.18em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .cbt-nbadge{display:none;background:linear-gradient(135deg,#ff4757,#ff6b81);color:#fff;font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;border-radius:100px;padding:1px 7px;margin-left:6px;vertical-align:middle;box-shadow:0 0 10px rgba(255,71,87,.4)}
   .cbt-pname{font-weight:700;font-size:13.5px;color:#fff;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .cbt-modbadge{background:linear-gradient(135deg,#fbbf24,#d97706);color:#1a1200;font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.5px}
   .cbt-ptime{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590}
@@ -225,20 +241,20 @@
     <div class="cbt-panel${S.pageMode ? ' cbt-page' : ''}" id="cbtPanel" role="${S.pageMode ? 'main' : 'dialog'}" aria-label="Comunidade BlueTube">
       <div class="cbt-head">
         <div class="cbt-title">🏛️ Comunidade BlueTube<small>exclusiva de assinantes</small></div>
-        <div class="cbt-me" id="cbtMe" title="Meu perfil na comunidade" onclick="ComunidadeBT.editProfile()">?</div>
+        <div class="cbt-me" id="cbtMe" title="Você">?</div>
         <button class="cbt-x" onclick="ComunidadeBT.close()" aria-label="Fechar">✕</button>
       </div>
       <div class="cbt-tabs" id="cbtTabs">
-        <button class="cbt-tab" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas</button>
-        <button class="cbt-tab on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade</button>
+        <button class="cbt-tab" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas<span class="cbt-nbadge" data-nb="dicas"></span></button>
+        <button class="cbt-tab on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade<span class="cbt-nbadge" data-nb="comunidade"></span></button>
       </div>
       <div class="cbt-shell">
         <aside class="cbt-side">
           <div class="cbt-brand">🏛️ Comunidade<small>EXCLUSIVA DE ASSINANTES</small></div>
-          <button class="cbt-snav" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas</button>
-          <button class="cbt-snav on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade</button>
+          <button class="cbt-snav" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas<span class="cbt-nbadge" data-nb="dicas"></span></button>
+          <button class="cbt-snav on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade<span class="cbt-nbadge" data-nb="comunidade"></span></button>
           <a class="cbt-swa" href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Grupo no WhatsApp</a>
-          <div class="cbt-sideme" id="cbtSideMe" onclick="ComunidadeBT.editProfile()"></div>
+          <div class="cbt-sideme" id="cbtSideMe" style="cursor:default"></div>
         </aside>
         <div class="cbt-feed" id="cbtFeed"></div>
         <aside class="cbt-rail" id="cbtRail"></aside>
@@ -247,8 +263,8 @@
     </div>
     <div class="cbt-dlg" id="cbtDlg">
       <div class="cbt-dlgbox">
-        <h3 id="cbtDlgTitle">Seu perfil na Comunidade</h3>
-        <p>Escolha como você aparece nos posts. O nome é único e sua foto é opcional.</p>
+        <h3 id="cbtDlgTitle">Como você quer aparecer?</h3>
+        <p>Escolha seu nome (único) e foto. Depois dá pra mudar no seu perfil na página inicial do site.</p>
         <div class="cbt-avpick">
           <div class="cbt-av" id="cbtDlgAv" onclick="document.getElementById('cbtAvFile').click()">📷</div>
           <small>Toque na foto pra trocar<br>(JPG/PNG, vira um círculo)</small>
@@ -298,7 +314,6 @@
       renderMeAvatar();
     }
     S.wall = null;
-    if (opts.profile) { editProfile(); }
     loadFeed(true);
   }
 
@@ -336,11 +351,28 @@
     }
     const sm = $('cbtSideMe');
     if (sm) {
-      const av = p?.avatar_url
-        ? `<div class="cbt-av${S.me?.is_moderator ? ' mod' : ''}"><img src="${esc(p.avatar_url)}" alt=""></div>`
-        : `<div class="cbt-av${S.me?.is_moderator ? ' mod' : ''}" style="background:hsl(${hue(p?.display_name || 'x')},60%,38%)">${esc(initials(p?.display_name || '?'))}</div>`;
-      sm.innerHTML = `${av}<div><b>${esc(p?.display_name || 'Defina seu nome')}</b><small>editar perfil ✏️</small></div>`;
+      const av = avHtml({ name: p?.display_name, avatar: p?.avatar_url, mod: S.me?.is_moderator, plan: S.me?.plan });
+      const tag = S.me?.is_moderator ? 'moderador ★' : S.me?.plan === 'master' ? 'assinante Master 👑' : S.me?.plan === 'full' ? 'assinante Full ⚡' : 'assinante';
+      sm.innerHTML = `${av}<div><b>${esc(p?.display_name || 'Você')}</b><small>${tag} · foto/nome no perfil do site</small></div>`;
     }
+    updateBadges();
+  }
+
+  // Sino: badges de novidades nas abas (some ao abrir a aba)
+  function updateBadges() {
+    const u = S.me?.unseen || {};
+    document.querySelectorAll('.cbt-nbadge').forEach((el) => {
+      const n = u[el.dataset.nb] || 0;
+      el.textContent = n > 99 ? '99+' : String(n);
+      el.style.display = n > 0 ? 'inline-block' : 'none';
+    });
+  }
+
+  function markSeen(tab) {
+    if (!S.me) return;
+    S.me.unseen = S.me.unseen || {};
+    if (S.me.unseen[tab]) { S.me.unseen[tab] = 0; updateBadges(); }
+    api('seen', { body: { tab } }).catch(() => {});
   }
 
   // ── Feed ──────────────────────────────────────────────────────────────────
@@ -361,6 +393,7 @@
     S.posts = reset ? d.posts : S.posts.concat(d.posts);
     S.next = d.next;
     render();
+    if (reset) markSeen(S.tab); // viu a aba → sino dela zera
   }
 
   function composerHtml() {
@@ -385,9 +418,9 @@
     $('cbtPanel')?.classList.remove('cbt-walled');
     let h = '';
     if (S.tab === 'dicas') {
-      // Dicas = área de treinamento: vídeo em destaque + posts do moderador.
+      // Dicas = área de treinamento: os vídeos são POSTS (fixados ganham o
+      // selo dourado de treinamento e têm comentários como qualquer post).
       // Sem composer aberto — só o mod vê o botão discreto de nova dica.
-      h += `<div class="cbt-feat"><div class="eyebrow">🎓 TREINAMENTO OFICIAL BLUETUBE</div><div class="yt"><iframe src="https://www.youtube.com/embed/${FEATURED_VIDEO.id}" title="${esc(FEATURED_VIDEO.title)}" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy"></iframe></div><div class="cap">⭐ ${esc(FEATURED_VIDEO.title)}</div></div>`;
       if (S.me?.is_moderator) {
         h += `<button class="cbt-newdica" onclick="ComunidadeBT.toggleComposer()">➕ Nova dica <span style="font-family:var(--font-mono,monospace);font-size:9.5px;font-weight:400;color:#8a7a3d;margin-left:auto">só você vê isso</span></button>`;
         h += `<div id="cbtComposerWrap" style="display:none">${composerHtml()}</div>`;
@@ -412,10 +445,10 @@
 
   function cardHtml(p) {
     const a = p.author || {};
-    const av = a.avatar
-      ? `<div class="cbt-av${a.mod ? ' mod' : ''}"><img src="${esc(a.avatar)}" alt=""></div>`
-      : `<div class="cbt-av${a.mod ? ' mod' : ''}" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+    const av = avHtml(a);
     const mine = p.mine, mod = S.me?.is_moderator;
+    // Post fixado de Dicas = treinamento oficial (tratamento dourado)
+    const train = (p.tab === 'dicas' && p.pinned) ? '<div class="cbt-train">🎓 TREINAMENTO OFICIAL BLUETUBE</div>' : '';
     let menu = '';
     if (mine || mod) {
       menu = `<div class="cbt-menu"><button onclick="this.nextElementSibling.classList.toggle('on');event.stopPropagation()">⋮</button><div class="cbt-dd">
@@ -433,6 +466,7 @@
     }).join('');
     const imgs = (p.media || []).filter((m) => m.type === 'image').length;
     return `<div class="cbt-card${p.pinned ? ' pin' : ''}" id="post-${p.id}">
+      ${train}
       <div class="cbt-prow">${av}<div><div class="cbt-pname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${p.pinned ? ' 📌' : ''}</div>
       <div class="cbt-ptime">${timeAgo(p.created_at)}${p.edited_at ? ' · editado' : ''}</div></div>${menu}</div>
       ${p.content ? `<div class="cbt-content" id="pc-${p.id}">${esc(p.content)}</div>` : ''}
@@ -526,7 +560,7 @@
   function commentHtml(c, postId, isReply) {
     const mod = S.me?.is_moderator;
     const a = c.author || {};
-    const av = a.avatar ? `<div class="cbt-av"><img src="${esc(a.avatar)}"></div>` : `<div class="cbt-av" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
+    const av = avHtml(a);
     return `<div class="cbt-c${isReply ? ' cbt-creply' : ''}${c.pinned ? ' cbt-cpinned' : ''}">${av}<div class="cbt-cbody">
       <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
       <div class="cbt-ctext">${esc(c.content)}</div>

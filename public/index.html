@@ -1523,6 +1523,30 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
 </section>
 
+<!-- ── COMMUNITY PREVIEW (free/deslogado clica em Comunidade) ─────────────── -->
+<div class="community-overlay" id="communityPreviewModal">
+  <div class="modal-box" style="max-width:470px;text-align:left;background:rgba(10,22,40,.75);backdrop-filter:blur(30px) saturate(140%);-webkit-backdrop-filter:blur(30px) saturate(140%);border:1px solid rgba(0,170,255,.2);box-shadow:0 24px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)">
+    <button class="modal-close" onclick="closeCommunityPreview()">✕</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+      <div style="font-size:36px">🏛️</div>
+      <div>
+        <div style="font-size:19px;font-weight:800;letter-spacing:-.5px">Comunidade BlueTube</div>
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em">EXCLUSIVA DOS PLANOS FULL E MASTER</div>
+      </div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-secondary);line-height:2;margin-bottom:20px">
+      O QG dos criadores dark que fazem <strong style="color:var(--text-primary)">milhões de views por mês:</strong><br><br>
+      🎓 <strong style="color:var(--text-primary)">Treinamentos oficiais em vídeo</strong> — passo a passo pra viralizar, com espaço pra tirar dúvidas<br>
+      🏛️ <strong style="color:var(--text-primary)">Feed exclusivo de membros</strong> — poste resultados, dúvidas e ideias (texto, foto, vídeo e áudio)<br>
+      💬 Comentários com curtidas e respostas — os melhores sobem<br>
+      👑 Destaque no seu perfil: anel dourado Master ou azul Full<br>
+      🤝 Networking direto com quem já vive de dark channels
+    </div>
+    <button onclick="closeCommunityPreview();openUpgradeModal('tool_blocked','full')" style="width:100%;background:linear-gradient(135deg,#0077ff,#00c4ff);border:none;border-radius:12px;padding:14px;font-family:var(--font-display);font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 4px 24px rgba(0,150,255,.35);margin-bottom:10px">🚀 Desbloquear a Comunidade</button>
+    <button id="cpvAltBtn" onclick="closeCommunityPreview();openAuthModal()" style="width:100%;background:none;border:1px solid rgba(0,170,255,.25);border-radius:12px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer">Já sou assinante — entrar</button>
+  </div>
+</div>
+
 <!-- ── COMMUNITY MODAL ────────────────────────────────────────────────────── -->
 <div class="community-overlay" id="communityModal">
   <div class="modal-box" style="max-width:480px;text-align:left">
@@ -1578,7 +1602,16 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button id="btnIndicar" onclick="copiarLinkIndicacao(this)" style="background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 50%,#d97706 100%);border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:800;color:#000;cursor:pointer;box-shadow:0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2);letter-spacing:.02em;transition:transform .15s,box-shadow .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 0 22px rgba(251,191,36,.55),0 6px 16px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 14px rgba(251,191,36,.35),0 4px 12px rgba(0,0,0,.2)'">🎁 Indique e ganhe 1 mês grátis</button>
       <button onclick="sendPasswordReset()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">🔑 Alterar senha — link enviado por email</button>
       <button onclick="openSupportChat()" style="background:rgba(0,170,255,0.07);border:1px solid rgba(0,170,255,0.15);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(0,170,255,0.4)'" onmouseout="this.style.borderColor='rgba(0,170,255,0.15)'">💬 Falar com suporte</button>
-      <button onclick="closeProfileModal();openCommunity({profile:true})" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.18);border-radius:10px;padding:12px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-align:left" onmouseover="this.style.borderColor='rgba(251,191,36,0.45)'" onmouseout="this.style.borderColor='rgba(251,191,36,0.18)'">🏛️ Meu perfil na Comunidade — nome e foto</button>
+      <div id="commProfileSec" style="display:none;background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.16);border-radius:10px;padding:12px">
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:#fbbf24;letter-spacing:.08em;margin-bottom:10px">🏛️ SEU PERFIL NA COMUNIDADE</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div id="cpAv" onclick="document.getElementById('cpFile').click()" title="Trocar foto" style="width:46px;height:46px;border-radius:50%;flex:0 0 46px;border:2px dashed rgba(251,191,36,.4);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;overflow:hidden;background:rgba(0,0,0,.25)">📷</div>
+          <input id="cpName" maxlength="24" placeholder="Nome de exibição" style="flex:1;min-width:0;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.2);border-radius:9px;color:#fff;font-size:13px;padding:10px 12px;outline:none">
+          <button id="cpSave" onclick="saveCommProfile()" style="background:linear-gradient(135deg,#0077ff,#00c4ff);border:none;border-radius:9px;color:#fff;font-family:var(--font-display);font-size:12px;font-weight:700;padding:10px 16px;cursor:pointer">Salvar</button>
+        </div>
+        <div id="cpMsg" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:8px">Nome e foto que aparecem nos seus posts e comentários.</div>
+        <input type="file" id="cpFile" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="cpPickAvatar(this)">
+      </div>
       <button id="profileUpgradeBtn" onclick="openProfileUpgrade()" style="background:linear-gradient(135deg,var(--blue-500),var(--neon));border:none;border-radius:10px;padding:12px;font-family:var(--font-display);font-size:13px;font-weight:700;color:#fff;cursor:pointer">⚡ Mudar de plano →</button>
     </div>
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(0,170,255,0.07);display:flex;justify-content:space-between;align-items:center">
@@ -1732,9 +1765,90 @@ const MASTER_LANGS=['Türkçe','हिन्दी','한국어','Русский'
 // ── COMMUNITY ──────────────────────────────────────────────────────────────
 const COMMUNITY_URL='https://chat.whatsapp.com/EoHpURgJ9Kz1ZLkNOFaGyh';
 // 2026-07-16: Comunidade é página dedicada /comunidade (feed estilo X).
-// O grupo do WhatsApp virou link no rodapé de lá. Free/deslogado vê paywall.
-function openCommunity(opts){
-  location.href = '/comunidade' + (opts && opts.profile ? '#perfil' : '');
+// Assinante Full/Master entra direto; free/deslogado vê popup-resumo aqui.
+function openCommunity(){
+  const isPaid = userPlan === 'full' || userPlan === 'master';
+  if(isPaid){ location.href = '/comunidade'; return; }
+  openCommunityPreview();
+}
+function openCommunityPreview(){
+  const m = document.getElementById('communityPreviewModal');
+  if(m){
+    const logged = !!localStorage.getItem('bt_token');
+    const alt = document.getElementById('cpvAltBtn');
+    if(alt) alt.style.display = logged ? 'none' : 'block';
+    m.classList.add('on');
+  }
+}
+function closeCommunityPreview(){ document.getElementById('communityPreviewModal')?.classList.remove('on'); }
+
+// ── Perfil da Comunidade (edição SÓ aqui na home, dentro do popup de perfil) ─
+let cpAvatarData=null;
+async function loadCommProfileUI(isPaid){
+  const sec=document.getElementById('commProfileSec');
+  if(!sec) return;
+  if(!isPaid){ sec.style.display='none'; return; }
+  sec.style.display='block'; cpAvatarData=null;
+  try{
+    const r=await fetch('/api/community?action=me&token='+encodeURIComponent(localStorage.getItem('bt_token')||''));
+    if(!r.ok) { sec.style.display='none'; return; }
+    const d=await r.json();
+    const nameEl=document.getElementById('cpName'); if(nameEl) nameEl.value=d.profile?.display_name||'';
+    const av=document.getElementById('cpAv');
+    if(av) av.innerHTML=d.profile?.avatar_url?`<img src="${d.profile.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:'📷';
+  }catch(e){}
+}
+function cpPickAvatar(inp){
+  const file=inp.files&&inp.files[0]; if(!file) return;
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');c.width=c.height=256;
+    const ctx=c.getContext('2d');const s=Math.min(img.width,img.height);
+    ctx.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,256,256);
+    cpAvatarData=c.toDataURL('image/jpeg',0.85);
+    document.getElementById('cpAv').innerHTML=`<img src="${cpAvatarData}" style="width:100%;height:100%;object-fit:cover">`;
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+}
+async function saveCommProfile(){
+  const btn=document.getElementById('cpSave');const msg=document.getElementById('cpMsg');
+  const name=(document.getElementById('cpName')?.value||'').trim();
+  if(!name&&!cpAvatarData){ if(msg)msg.textContent='Escolha um nome ou uma foto pra salvar.'; return; }
+  btn.disabled=true;btn.textContent='…';
+  const body={action:'profile-set',token:localStorage.getItem('bt_token')};
+  if(name)body.display_name=name;
+  if(cpAvatarData)body.avatar_data=cpAvatarData;
+  try{
+    const r=await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(msg)msg.textContent=r.ok?'✅ Salvo! Já vale na Comunidade.':'❌ '+(d.error||'Erro ao salvar.');
+    if(r.ok)cpAvatarData=null;
+  }catch(e){ if(msg)msg.textContent='❌ Falha de rede.'; }
+  btn.disabled=false;btn.textContent='Salvar';
+}
+
+// ── Sino: novidades da Comunidade no botão do topo ───────────────────────────
+let _bellDone=false;
+async function updateCommunityBell(){
+  if(_bellDone) return; _bellDone=true;
+  try{
+    const isPaid=userPlan==='full'||userPlan==='master';
+    const token=localStorage.getItem('bt_token');
+    if(!isPaid||!token) return;
+    const r=await fetch('/api/community?action=me&token='+encodeURIComponent(token));
+    if(!r.ok) return;
+    const d=await r.json();
+    const n=(d.unseen?.dicas||0)+(d.unseen?.comunidade||0);
+    if(!n) return;
+    const btn=document.getElementById('communityBtn');
+    if(btn&&!document.getElementById('commBell')){
+      const s=document.createElement('span');s.id='commBell';
+      s.style.cssText='background:linear-gradient(135deg,#ff4757,#ff6b81);color:#fff;font-family:var(--font-mono);font-size:9px;font-weight:700;border-radius:100px;padding:1px 6px;margin-left:4px;box-shadow:0 0 10px rgba(255,71,87,.4)';
+      s.textContent='🔔 '+(n>99?'99+':n);
+      btn.appendChild(s);
+    }
+  }catch(e){}
 }
 // Vindo de /comunidade sem login/plano: ?login=comunidade abre o modal de
 // login e volta pra lá depois; ?upgrade=comunidade abre o modal de planos.
@@ -3969,7 +4083,7 @@ function setLoggedIn(email, plan){
     }
   });
 
-  // Update community button — sempre abre o painel interno (ele decide paywall)
+  // Update community button — assinante navega, free vê popup-resumo
   const commBtn = document.getElementById('communityBtn');
   if(commBtn){
     commBtn.onclick = () => openCommunity();
@@ -4010,6 +4124,7 @@ function setLoggedIn(email, plan){
     </button>
     ${showUpgrade ? '<button class="nav-upgrade-btn" onclick="openUpgradeModalGeneric()">⚡ Upgrade</button>' : ''}
   `;
+  updateCommunityBell(); // depois do rebuild — anexa no botão novo
 
   // Re-apply tool locking after innerHTML reset
   document.querySelectorAll('.nav-tool-btn').forEach(btn => {
@@ -4528,6 +4643,7 @@ function openProfileModal(){
 
   document.getElementById('profileAvatar').textContent=planIcon||currentUserEmail[0]?.toUpperCase()||'U';
   document.getElementById('profileEmail').textContent=currentUserEmail;
+  loadCommProfileUI(isPaid);
   document.getElementById('profilePlanBadge').innerHTML=`<span style="color:${planColor}">${planIcon} ${planLabel}</span>`;
   document.getElementById('profilePlan').innerHTML=`<span style="color:${planColor}">${planLabel}</span>`;
 

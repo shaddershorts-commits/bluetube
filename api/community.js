@@ -33,7 +33,7 @@ module.exports = async function handler(req, res) {
   const token = q.token || b.token;
 
   // ── AUTH: login + plano pago (moderador entra mesmo sem plano) ────────────
-  let userId = null, userEmail = null, paying = false;
+  let userId = null, userEmail = null, paying = false, planName = null;
   if (token) {
     try {
       const ur = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
           // Comunidade é benefício dos planos Full e Master (o básico não tem)
           if (sub && ['full', 'master'].includes(sub.plan)) {
             const v = sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
-            if (v) paying = true;
+            if (v) { paying = true; planName = sub.plan; }
           }
         }
       }
@@ -72,13 +72,45 @@ module.exports = async function handler(req, res) {
   const isMediaUrl = (u) => typeof u === 'string' && u.startsWith(`${SU}/storage/v1/object/public/blue-videos/${userId}/community/`) && !u.includes('..');
 
   try {
-    // ── ME: estado do usuário (perfil, moderador, precisa criar nome?) ──────
+    // ── ME: estado do usuário (perfil, moderador, sino de novidades) ────────
     if (action === 'me') {
+      // Mantém o plano gravado no perfil em dia (alimenta os anéis ⚡/👑)
+      if (profile && (profile.plan || null) !== planName) {
+        fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}`, {
+          method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ plan: planName }),
+        }).catch(() => {});
+      }
+      // Sino: posts de OUTROS criados depois da última visita a cada aba
+      const unseen = { dicas: 0, comunidade: 0 };
+      try {
+        const count = async (tab, since) => {
+          let u = `${SU}/rest/v1/community_posts?tab=eq.${tab}&deleted=eq.false&user_id=neq.${userId}&select=id&limit=100`;
+          if (since) u += `&created_at=gt.${encodeURIComponent(since)}`;
+          const r = await fetch(u, { headers: { ...H, Prefer: 'count=exact' } });
+          return r.ok ? (parseInt((r.headers.get('content-range') || '').split('/')[1]) || 0) : 0;
+        };
+        const [d, c] = await Promise.all([
+          count('dicas', profile?.last_seen_dicas), count('comunidade', profile?.last_seen_comunidade),
+        ]);
+        unseen.dicas = d; unseen.comunidade = c;
+      } catch (e) {}
       return res.status(200).json({
-        user_id: userId, paying, is_moderator: isMod,
+        user_id: userId, paying, plan: planName, is_moderator: isMod, unseen,
         profile: profile ? { display_name: profile.display_name, avatar_url: profile.avatar_url, banned: profile.banned } : null,
         needs_profile: !profile?.display_name,
       });
+    }
+
+    // ── SEEN: marca a aba como vista (zera o sino dela) ─────────────────────
+    if (action === 'seen' && req.method === 'POST') {
+      const tab = b.tab === 'dicas' ? 'dicas' : 'comunidade';
+      if (profile) {
+        await fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}`, {
+          method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({ ['last_seen_' + tab]: nowIso() }),
+        });
+      }
+      return res.status(200).json({ ok: true });
     }
 
     // ── PROFILE-SET: nome de exibição + avatar (base64 pequeno) ─────────────
@@ -138,7 +170,7 @@ module.exports = async function handler(req, res) {
       const uids = [...new Set(posts.map((p) => p.user_id))];
       let profiles = [], myLikes = [];
       const [fr, lr] = await Promise.all([
-        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H }) : null,
+        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator,plan`, { headers: H }) : null,
         ids.length ? fetch(`${SU}/rest/v1/community_likes?user_id=eq.${userId}&post_id=in.(${ids.join(',')})&select=post_id`, { headers: H }) : null,
       ]);
       if (fr?.ok) profiles = await fr.json();
@@ -149,7 +181,7 @@ module.exports = async function handler(req, res) {
         likes_count: p.likes_count, comments_count: p.comments_count,
         created_at: p.created_at, edited_at: p.edited_at,
         mine: p.user_id === userId, liked: myLikes.includes(p.id),
-        author: pmap[p.user_id] ? { name: pmap[p.user_id].display_name, avatar: pmap[p.user_id].avatar_url, mod: pmap[p.user_id].is_moderator } : { name: 'Usuário', avatar: null, mod: false },
+        author: pmap[p.user_id] ? { name: pmap[p.user_id].display_name, avatar: pmap[p.user_id].avatar_url, mod: pmap[p.user_id].is_moderator, plan: pmap[p.user_id].plan || null } : { name: 'Usuário', avatar: null, mod: false, plan: null },
         author_id: isMod ? p.user_id : undefined,
       }));
       // Cursor = último post NÃO fixado (fixado tem created_at antigo e pularia posts)
@@ -167,7 +199,7 @@ module.exports = async function handler(req, res) {
       const cids = comments.map((c) => c.id);
       let profiles = [], myLikes = [];
       const [fr, lr] = await Promise.all([
-        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator`, { headers: H }) : null,
+        uids.length ? fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${uids.join(',')})&select=user_id,display_name,avatar_url,is_moderator,plan`, { headers: H }) : null,
         cids.length ? fetch(`${SU}/rest/v1/community_comment_likes?user_id=eq.${userId}&comment_id=in.(${cids.join(',')})&select=comment_id`, { headers: H }) : null,
       ]);
       if (fr?.ok) profiles = await fr.json();
@@ -177,7 +209,7 @@ module.exports = async function handler(req, res) {
         comments: comments.map((c) => ({
           id: c.id, content: c.content, created_at: c.created_at, edited_at: c.edited_at, mine: c.user_id === userId,
           parent_id: c.parent_id || null, likes_count: c.likes_count || 0, liked: myLikes.includes(c.id), pinned: !!c.pinned,
-          author: pmap[c.user_id] ? { name: pmap[c.user_id].display_name, avatar: pmap[c.user_id].avatar_url, mod: pmap[c.user_id].is_moderator } : { name: 'Usuário', avatar: null, mod: false },
+          author: pmap[c.user_id] ? { name: pmap[c.user_id].display_name, avatar: pmap[c.user_id].avatar_url, mod: pmap[c.user_id].is_moderator, plan: pmap[c.user_id].plan || null } : { name: 'Usuário', avatar: null, mod: false, plan: null },
           author_id: isMod ? c.user_id : undefined,
         })),
         is_moderator: isMod,
