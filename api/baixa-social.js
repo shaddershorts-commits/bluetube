@@ -72,11 +72,51 @@ module.exports = async function handler(req, res) {
         });
       }
 
-      // 2º: Fallback — Twitter v1.1 guest token API (pode falhar se Twitter mudar)
       const tweetMatch = url.match(/status\/(\d+)/);
       if (!tweetMatch) return res.status(400).json({ error: 'Link inválido. Use: x.com/user/status/ID' });
       const tweetId = tweetMatch[1];
 
+      // 2º: fxtwitter — espelho público; resolve inclusive vídeo em tweet
+      // CITADO (quote), que o Cobalt e a API guest não pegam.
+      try {
+        const fr = await fetch(`https://api.fxtwitter.com/status/${tweetId}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+        if (fr.ok) {
+          const ft = (await fr.json())?.tweet;
+          for (const obj of [ft, ft?.quote]) {
+            if (!obj) continue;
+            const vids = obj.media?.videos || (obj.media?.all || []).filter(m => m.type === 'video' || m.type === 'gif');
+            if (vids?.length && vids[0].url) {
+              const twTitle = (obj.text || 'Twitter/X Video').slice(0, 100) || 'Twitter/X Video';
+              return res.status(200).json({
+                url: proxyWrap(vids[0].url, 'twitter', twTitle),
+                title: twTitle,
+                thumbnail: vids[0].thumbnail_url || null,
+                platform: 'twitter'
+              });
+            }
+          }
+        }
+      } catch (e) { console.log('[baixa-social] fxtwitter failed:', e.message); }
+
+      // 3º: vxtwitter — segundo espelho público (não resolve quote)
+      try {
+        const vr = await fetch(`https://api.vxtwitter.com/Twitter/status/${tweetId}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+        if (vr.ok) {
+          const vt = await vr.json();
+          const vid = (vt.media_extended || []).find(m => m.type === 'video' || m.type === 'gif');
+          if (vid?.url) {
+            const twTitle = (vt.text || 'Twitter/X Video').slice(0, 100) || 'Twitter/X Video';
+            return res.status(200).json({
+              url: proxyWrap(vid.url, 'twitter', twTitle),
+              title: twTitle,
+              thumbnail: vid.thumbnail_url || null,
+              platform: 'twitter'
+            });
+          }
+        }
+      } catch (e) { console.log('[baixa-social] vxtwitter failed:', e.message); }
+
+      // 4º: Twitter v1.1 guest token API (legado — geralmente morto)
       let guestToken = '';
       try {
         const gt = await fetch('https://api.twitter.com/1.1/guest/activate.json', {
@@ -113,7 +153,7 @@ module.exports = async function handler(req, res) {
       }
 
       // Todos falharam: erro explícito, sem fallback externo
-      return res.status(502).json({
+      return res.status(422).json({
         error: 'Não foi possível extrair este tweet. Verifique se o link é público e tente novamente.',
         platform: 'twitter'
       });
@@ -293,7 +333,7 @@ module.exports = async function handler(req, res) {
 
       console.log('[reddit] Todas as fontes falharam. Último:', lastDebug);
       // Mensagem amigavel + debug discreto no response pra diagnostico via network tab
-      return res.status(502).json({
+      return res.status(422).json({
         error: 'Não foi possível extrair este post do Reddit. Verifique se o link é público (não NSFW/privado) e tente novamente.',
         platform: 'reddit',
         _debug: lastDebug,
@@ -342,7 +382,7 @@ module.exports = async function handler(req, res) {
       } catch(e) {}
 
       // Todos falharam: erro explícito
-      return res.status(502).json({
+      return res.status(422).json({
         error: 'Não foi possível extrair este vídeo do Facebook. Verifique se o link é público e tente novamente.',
         platform: 'facebook'
       });
