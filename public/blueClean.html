@@ -239,7 +239,7 @@ async function pickFile(file){
     const scale=Math.min(1,640/vid.videoWidth);
     canvasW=Math.round(vid.videoWidth*scale);canvasH=Math.round(vid.videoHeight*scale);
     fc.width=canvasW;fc.height=canvasH;mc.width=canvasW;mc.height=canvasH;
-    frameCtx=fc.getContext('2d');maskCtx=mc.getContext('2d');
+    frameCtx=fc.getContext('2d',{willReadFrequently:true});maskCtx=mc.getContext('2d',{willReadFrequently:true});
     frames=[];
     const times=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8].map(t=>t*vid.duration);
     for(const t of times){
