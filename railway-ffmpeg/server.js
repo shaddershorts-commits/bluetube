@@ -969,9 +969,13 @@ async function processBlueCleanGuided(jobId, p) {
           const outUrl = await guidedInpaint(token, { image: frameUrl, mask: maskUrl });
           const lpath = path.join(dir, `l_${i}.img`);
           await downloadFile(outUrl, lpath);
-          // composite: inpaint SO dentro da mascara; resto do frame original
+          // composite: inpaint SO dentro da mascara; resto do frame original.
+          // TUDO em gbrp (RGB full-range) ANTES do maskedmerge: com base JPEG
+          // (yuvj) o ffmpeg negociava o merge em YUV limitado, branco da
+          // mascara virava 235/255 e ~8% do original vazava = fantasma da
+          // legenda no video final (bug provado e corrigido 2026-07-17).
           await run('ffmpeg', ['-y', '-i', src, '-i', lpath, '-i', mpath, '-filter_complex',
-            `[1:v]scale=${W}:${Hh}[l];[2:v]format=gray,boxblur=1[mm];[0:v][l][mm]maskedmerge`,
+            `[0:v]format=gbrp[b];[1:v]scale=${W}:${Hh},format=gbrp[l];[2:v]format=gray,boxblur=1,format=gbrp[mm];[b][l][mm]maskedmerge,format=yuvj420p`,
             '-q:v', '2', out]);
           fs.rmSync(lpath, { force: true });
         } catch (e) {
