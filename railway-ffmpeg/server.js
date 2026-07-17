@@ -336,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r12-blueclean-seq',
+      build: 'r13-blueclean-rescap',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -708,9 +708,17 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
   // subvideo_length 60 = processa em sub-videos menores (margem anti-OOM).
   // O ganho de qualidade real veio da DETECCAO de anotacoes na mascara (acima),
   // nao de settings pesados de ProPainter.
+  // CAP DE RESOLUCAO (anti CUDA OOM): ProPainter estoura a GPU em Full HD
+  // (1080x1920 tentou alocar 15.6GB). Limita o lado maior a ~896px pro
+  // processamento; o composite depois recoloca a regiao inpaint (upscalada) SO
+  // na mascara, sobre o original em RES CHEIA — resto fica pixel-perfect, so a
+  // area do overlay (que ja e reconstruida) fica levemente mais suave.
+  const maxDim = Math.max(W || 1080, Hh || 1080);
+  const ppRatio = Math.min(1, 896 / maxDim);
   const filledUrl = await replicateRun(token, 'jd7h/propainter', {
     video: chunkUrl, mask: maskUrl, fp16: true,
-    mask_dilation: 6, neighbor_length: 10, ref_stride: 10, raft_iter: 20, subvideo_length: 60,
+    mask_dilation: 6, neighbor_length: 10, ref_stride: 10, raft_iter: 20,
+    subvideo_length: 40, resize_ratio: ppRatio,
   }, { pollMs: 4000, timeoutMs: 12 * 60 * 1000 });
   const filled = path.join(dir, `filled_${idx}.mp4`);
   await downloadFile(filledUrl, filled);
