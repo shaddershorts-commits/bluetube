@@ -367,6 +367,107 @@ module.exports = async function handler(req, res) {
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // ── POST contato-request: pedir pra adicionar alguém (precisa de aceite) ──
+  if (req.method === 'POST' && action === 'contato-request') {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: 'username obrigatório' });
+    try {
+      const un = String(username).trim().replace(/^@/, '').toLowerCase();
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?username=ilike.${encodeURIComponent(un)}&select=user_id,username,display_name&limit=1`, { headers: h });
+      const alvo = pR.ok ? (await pR.json())[0] : null;
+      if (!alvo) return res.status(404).json({ error: 'Usuário não encontrado.' });
+      if (alvo.user_id === userId) return res.status(400).json({ error: 'Esse é você. 😄' });
+
+      const eR = await fetch(`${SU}/rest/v1/blue_contatos?user_id=eq.${userId}&contato_id=eq.${alvo.user_id}&select=status&limit=1`, { headers: h });
+      const existente = eR.ok ? (await eR.json())[0] : null;
+      if (existente?.status === 'accepted') return res.status(409).json({ error: 'Vocês já são contatos.' });
+      if (existente?.status === 'pending') return res.status(409).json({ error: 'Solicitação já enviada — aguardando aceite.' });
+
+      await fetch(`${SU}/rest/v1/blue_contatos`, {
+        method: 'POST', headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ user_id: userId, contato_id: alvo.user_id, status: 'pending' }),
+      });
+
+      // Notifica o alvo (best-effort; falha de push não bloqueia a solicitação)
+      try {
+        const meR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username,display_name&limit=1`, { headers: h });
+        const me = meR.ok ? (await meR.json())[0] : null;
+        const { sendPushToUser } = require('./_helpers/push.js');
+        await sendPushToUser(alvo.user_id, {
+          title: 'BlueChat — nova solicitação',
+          body: `@${me?.username || 'alguém'} quer te adicionar aos contatos`,
+          data: { url: 'bluetube://chat' },
+        });
+      } catch (e) { /* sem push, segue */ }
+
+      return res.status(200).json({ ok: true, para: alvo.username });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── GET contato-requests: solicitações pendentes PRA MIM ──────────────────
+  if (req.method === 'GET' && action === 'contato-requests') {
+    try {
+      const rR = await fetch(`${SU}/rest/v1/blue_contatos?contato_id=eq.${userId}&status=eq.pending&select=user_id,created_at&order=created_at.desc&limit=100`, { headers: h });
+      const rows = rR.ok ? await rR.json() : [];
+      if (!rows.length) return res.status(200).json({ requests: [] });
+      const ids = rows.map(r => `"${r.user_id}"`).join(',');
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${ids})&select=user_id,username,display_name,avatar_url`, { headers: h });
+      const perfis = pR.ok ? await pR.json() : [];
+      const pm = new Map(perfis.map(p => [p.user_id, p]));
+      return res.status(200).json({
+        requests: rows.map(r => ({ ...(pm.get(r.user_id) || { user_id: r.user_id }), requested_at: r.created_at })),
+      });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── POST contato-accept: aceitar solicitação → contato MÚTUO ──────────────
+  if (req.method === 'POST' && action === 'contato-accept') {
+    const { user_id: rid } = req.body;
+    if (!rid) return res.status(400).json({ error: 'user_id obrigatório' });
+    try {
+      const eR = await fetch(`${SU}/rest/v1/blue_contatos?user_id=eq.${rid}&contato_id=eq.${userId}&status=eq.pending&select=user_id&limit=1`, { headers: h });
+      if (!eR.ok || !(await eR.json()).length) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+      await fetch(`${SU}/rest/v1/blue_contatos?user_id=eq.${rid}&contato_id=eq.${userId}`, {
+        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'accepted' }),
+      });
+      // Recíproco: quem aceita também ganha o solicitante como contato
+      await fetch(`${SU}/rest/v1/blue_contatos`, {
+        method: 'POST', headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ user_id: userId, contato_id: rid, status: 'accepted' }),
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── POST contato-reject: recusar solicitação ──────────────────────────────
+  if (req.method === 'POST' && action === 'contato-reject') {
+    const { user_id: rid } = req.body;
+    if (!rid) return res.status(400).json({ error: 'user_id obrigatório' });
+    try {
+      await fetch(`${SU}/rest/v1/blue_contatos?user_id=eq.${rid}&contato_id=eq.${userId}&status=eq.pending`, {
+        method: 'DELETE', headers: { ...h, Prefer: 'return=minimal' },
+      });
+      return res.status(200).json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── GET contatos-list: meus contatos aceitos (pro popup de adicionar) ─────
+  if (req.method === 'GET' && action === 'contatos-list') {
+    try {
+      const cR = await fetch(`${SU}/rest/v1/blue_contatos?user_id=eq.${userId}&status=eq.accepted&select=contato_id,created_at&order=created_at.desc&limit=1000`, { headers: h });
+      const rows = cR.ok ? await cR.json() : [];
+      if (!rows.length) return res.status(200).json({ contatos: [] });
+      const ids = rows.map(r => `"${r.contato_id}"`).join(',');
+      const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${ids})&select=user_id,username,display_name,avatar_url`, { headers: h });
+      const perfis = pR.ok ? await pR.json() : [];
+      const pm = new Map(perfis.map(p => [p.user_id, p]));
+      return res.status(200).json({
+        contatos: rows.map(r => pm.get(r.contato_id)).filter(Boolean),
+      });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
   // ── POST msg-delete: apagar pra mim (sempre) ou pra todos (minha, ≤3h) ────
   if (req.method === 'POST' && action === 'msg-delete') {
     const { message_id, scope } = req.body; // scope: 'me' | 'all'

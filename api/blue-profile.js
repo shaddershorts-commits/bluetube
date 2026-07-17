@@ -143,6 +143,17 @@ module.exports = async function handler(req, res) {
     const queryUserId = req.query.user_id;
     if (!queryUserId) return res.status(400).json({ error: 'user_id obrigatório' });
     try {
+      // Perfil privado: vídeos só pra seguidores (dono sempre vê os próprios)
+      const privR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${encodeURIComponent(queryUserId)}&select=is_private&limit=1`, { headers: h });
+      const alvoPriv = privR.ok ? (await privR.json())[0]?.is_private : false;
+      if (alvoPriv && userId !== queryUserId) {
+        let segue = false;
+        if (userId) {
+          const fR = await fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${userId}&following_id=eq.${encodeURIComponent(queryUserId)}&select=follower_id&limit=1`, { headers: h });
+          segue = fR.ok && (await fR.json()).length > 0;
+        }
+        if (!segue) return res.status(200).json({ videos: [], private: true });
+      }
       const r = await fetch(
         `${SU}/rest/v1/blue_videos?user_id=eq.${encodeURIComponent(queryUserId)}&status=eq.active&order=created_at.desc&select=*`,
         { headers: h }
@@ -154,10 +165,13 @@ module.exports = async function handler(req, res) {
   // POST update profile
   if (req.method === 'POST' && action === 'update') {
     if (!userId) return res.status(401).json({ error: 'Login necessário' });
-    const { display_name, bio, avatar_data, username, link_url, link_label } = req.body;
+    const { display_name, bio, avatar_data, username, link_url, link_label, is_private, account_type } = req.body;
     try {
       const patch = { updated_at: new Date().toISOString() };
       if (display_name !== undefined) patch.display_name = display_name.slice(0,50);
+      // Privacidade + tipo de conta (sql/status_bluechat_v1.sql)
+      if (is_private !== undefined) patch.is_private = !!is_private;
+      if (account_type !== undefined && ['pessoal', 'profissional'].includes(account_type)) patch.account_type = account_type;
       if (bio !== undefined) patch.bio = bio.slice(0,150);
       // Link estilo Instagram (colunas em sql/blue_profile_link.sql)
       if (link_url !== undefined) {

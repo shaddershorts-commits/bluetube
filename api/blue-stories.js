@@ -55,23 +55,37 @@ module.exports = async function handler(req, res) {
   // ── GET feed: stories dos seguidos agrupados por user ────────────────────
   if (req.method === 'GET' && action === 'feed') {
     try {
-      // 1) Quem o user segue
-      const fR = await fetch(
-        `${SU}/rest/v1/blue_follows?follower_id=eq.${userId}&select=following_id&limit=500`,
-        { headers: H }
-      );
-      const follows = fR.ok ? await fR.json() : [];
-      const followedIds = follows.map(f => f.following_id);
+      // Modo: 'stories' (default) = quem eu SIGO; 'status' = meus CONTATOS
+      // aceitos do BlueChat (mecânica WhatsApp: status só aparece pra quem
+      // o dono adicionou previamente — a relação é do DONO pro viewer, então
+      // eu vejo o status de quem ME TEM como contato aceito).
+      const feedMode = req.query?.feed === 'status' ? 'status' : 'stories';
+      let sourceIds = [];
+      if (feedMode === 'status') {
+        const cR = await fetch(
+          `${SU}/rest/v1/blue_contatos?contato_id=eq.${userId}&status=eq.accepted&select=user_id&limit=1000`,
+          { headers: H }
+        );
+        const contatos = cR.ok ? await cR.json() : [];
+        sourceIds = contatos.map(c => c.user_id);
+      } else {
+        const fR = await fetch(
+          `${SU}/rest/v1/blue_follows?follower_id=eq.${userId}&select=following_id&limit=500`,
+          { headers: H }
+        );
+        const follows = fR.ok ? await fR.json() : [];
+        sourceIds = follows.map(f => f.following_id);
+      }
 
       // Incluir o próprio user pra "Seu story" aparecer também
-      const targetIds = [...new Set([userId, ...followedIds])];
+      const targetIds = [...new Set([userId, ...sourceIds])];
       if (!targetIds.length) return res.status(200).json({ users: [], meu: null });
 
-      // 2) Stories ativos dos seguidos (expirado_em > NOW())
+      // 2) Stories ativos da audiência certa (expirado_em > NOW())
       const now = new Date().toISOString();
       const idsParam = targetIds.map(id => `"${id}"`).join(',');
       const sR = await fetch(
-        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em`,
+        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id`,
         { headers: H }
       );
       const stories = sR.ok ? await sR.json() : [];
@@ -98,7 +112,8 @@ module.exports = async function handler(req, res) {
           duracao: s.duracao,
           visto: vistoArr.includes(userId),
           created_at: s.created_at,
-          expirado_em: s.expirado_em
+          expirado_em: s.expirado_em,
+          video_id: s.video_id || null
         });
         grouped.set(s.user_id, arr);
       }
@@ -259,12 +274,16 @@ module.exports = async function handler(req, res) {
 
   // ── POST criar: cria novo story ──────────────────────────────────────────
   if (req.method === 'POST' && action === 'criar') {
-    const { tipo, media_url, texto, cor_fundo, duracao } = req.body;
-    if (!['imagem', 'video', 'texto'].includes(tipo)) {
-      return res.status(400).json({ error: 'tipo inválido (imagem|video|texto)' });
+    const { tipo, media_url, texto, cor_fundo, duracao, audience, video_id } = req.body;
+    if (!['imagem', 'video', 'texto', 'video_share'].includes(tipo)) {
+      return res.status(400).json({ error: 'tipo inválido (imagem|video|texto|video_share)' });
     }
     if (tipo === 'texto' && !texto) return res.status(400).json({ error: 'texto obrigatório' });
     if ((tipo === 'imagem' || tipo === 'video') && !media_url) return res.status(400).json({ error: 'media_url obrigatório' });
+    // video_share: vídeo do feed compartilhado no story/status (viewer resolve via video_id)
+    if (tipo === 'video_share' && !video_id) return res.status(400).json({ error: 'video_id obrigatório' });
+    // audience: 'stories' (seguidores, default) | 'status' (só contatos do BlueChat)
+    const audienceFinal = audience === 'status' ? 'status' : 'stories';
 
     const duracaoFinal = Math.max(2, Math.min(15, parseInt(duracao) || (tipo === 'video' ? 15 : tipo === 'texto' ? 4 : 5)));
 
@@ -279,7 +298,9 @@ module.exports = async function handler(req, res) {
           texto: texto || null,
           cor_fundo: cor_fundo || '#020817',
           duracao: duracaoFinal,
-          visto_por: []
+          visto_por: [],
+          audience: audienceFinal,
+          video_id: video_id || null
         })
       });
       if (!r.ok) {
