@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r15-blueclean-gbrp',
+      build: 'r16-blueclean-turbo',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -856,12 +856,37 @@ async function processBlueClean(jobId, p) {
 // o frame original — resto do video fica pixel-perfect.
 const GUIDED_MODEL = 'zylim0702/remove-object';
 
+// Prediction SINCRONA (Prefer: wait) — a resposta ja volta com o resultado na
+// maioria dos casos, eliminando ~2,5s de latencia de polling POR QUADRO (em
+// video de 20s/600 quadros isso somava minutos). Se o hold de 55s nao bastar,
+// cai no polling normal so pra este quadro.
+async function replicateRunSync(token, model, input) {
+  const version = await replicateVersion(token, model);
+  const cr = await axiosRetry('replicate sync ' + model, () =>
+    axios.post('https://api.replicate.com/v1/predictions',
+      { version, input },
+      { headers: { Authorization: 'Token ' + token, 'Content-Type': 'application/json', Prefer: 'wait=55' }, timeout: 70000 }));
+  let pred = cr.data;
+  const deadline = Date.now() + 4 * 60 * 1000;
+  while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
+    if (Date.now() > deadline) throw new Error('Replicate timeout em ' + model);
+    await sleep(2000);
+    const gr = await axiosRetry('replicate poll ' + model, () =>
+      axios.get(`https://api.replicate.com/v1/predictions/${pred.id}`, { headers: { Authorization: 'Token ' + token } }));
+    pred = gr.data;
+  }
+  if (pred.status !== 'succeeded') throw new Error('Replicate ' + model + ' falhou: ' + (pred.error || pred.status));
+  const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
+  if (!out) throw new Error('Replicate ' + model + ' sem output');
+  return out;
+}
+
 // Retry resiliente a throttle do Replicate (burst baixo com saldo baixo).
 async function guidedInpaint(token, input) {
   let lastErr;
   for (let a = 0; a < 8; a++) {
     try {
-      return await replicateRun(token, GUIDED_MODEL, input, { pollMs: 2500, timeoutMs: 5 * 60 * 1000 });
+      return await replicateRunSync(token, GUIDED_MODEL, input);
     } catch (e) {
       lastErr = e;
       if (/throttl|rate.?limit|429/i.test(String(e.message || ''))) { await sleep(4000 + a * 3000); continue; }
@@ -989,7 +1014,11 @@ async function processBlueCleanGuided(jobId, p) {
         }
       }
     };
-    const CONC = Math.max(1, Math.min(8, parseInt(p.conc) || 3));
+    // Paralelismo alto por padrao: o limite real vem do burst do Replicate
+    // (proporcional ao saldo). Lane que toma 429 recua sozinha (retry com
+    // backoff no guidedInpaint) — com saldo ok, 16 lanes rodam de verdade e um
+    // video de 20s cai de ~40min pra poucos minutos.
+    const CONC = Math.max(1, Math.min(32, parseInt(p.conc) || 16));
     await Promise.all(Array.from({ length: CONC }, worker));
     if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
 
