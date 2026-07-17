@@ -84,10 +84,18 @@ module.exports = async function handler(req, res) {
       // 2) Stories ativos da audiência certa (expirado_em > NOW())
       const now = new Date().toISOString();
       const idsParam = targetIds.map(id => `"${id}"`).join(',');
-      const sR = await fetch(
+      let sR = await fetch(
         `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id`,
         { headers: H }
       );
+      // Retrocompat: coluna audience/video_id ainda não criada (sql/status_bluechat_v1.sql)
+      // → PostgREST 400. Cai no shape antigo pra não derrubar o feed.
+      if (!sR.ok) {
+        sR = await fetch(
+          `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em`,
+          { headers: H }
+        );
+      }
       const stories = sR.ok ? await sR.json() : [];
 
       // 3) Perfis dos users (avatar + username)
@@ -288,21 +296,29 @@ module.exports = async function handler(req, res) {
     const duracaoFinal = Math.max(2, Math.min(15, parseInt(duracao) || (tipo === 'video' ? 15 : tipo === 'texto' ? 4 : 5)));
 
     try {
-      const r = await fetch(`${SU}/rest/v1/blue_stories`, {
+      const basePayload = {
+        user_id: userId,
+        tipo,
+        media_url: media_url || null,
+        texto: texto || null,
+        cor_fundo: cor_fundo || '#020817',
+        duracao: duracaoFinal,
+        visto_por: []
+      };
+      let r = await fetch(`${SU}/rest/v1/blue_stories`, {
         method: 'POST',
         headers: { ...H, Prefer: 'return=representation' },
-        body: JSON.stringify({
-          user_id: userId,
-          tipo,
-          media_url: media_url || null,
-          texto: texto || null,
-          cor_fundo: cor_fundo || '#020817',
-          duracao: duracaoFinal,
-          visto_por: [],
-          audience: audienceFinal,
-          video_id: video_id || null
-        })
+        body: JSON.stringify({ ...basePayload, audience: audienceFinal, video_id: video_id || null })
       });
+      // Retrocompat: colunas novas ainda não criadas → tenta shape antigo
+      // (só pra stories comuns; video_share EXIGE as colunas do SQL novo)
+      if (!r.ok && tipo !== 'video_share' && audienceFinal === 'stories') {
+        r = await fetch(`${SU}/rest/v1/blue_stories`, {
+          method: 'POST',
+          headers: { ...H, Prefer: 'return=representation' },
+          body: JSON.stringify(basePayload)
+        });
+      }
       if (!r.ok) {
         const et = await r.text();
         return res.status(500).json({ error: 'insert falhou: ' + et.slice(0, 200) });
