@@ -52,8 +52,15 @@ async function downloadFile(url, dest) {
   const response = await axios.get(url, { responseType: 'stream', timeout: 60000 });
   response.data.pipe(writer);
   return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
+    // erro no stream de RESPOSTA nao propaga pelo pipe: sem listener vira
+    // uncaught exception (derruba o processo) ou worker pendurado pra sempre.
+    let idle = null;
+    const arm = () => { clearTimeout(idle); idle = setTimeout(() => { const e = new Error('download parado (sem dados ha 60s): ' + url.slice(0, 80)); response.data.destroy(e); writer.destroy(); reject(e); }, 60000); };
+    arm();
+    response.data.on('data', arm);
+    response.data.on('error', (e) => { clearTimeout(idle); writer.destroy(); reject(e); });
+    writer.on('finish', () => { clearTimeout(idle); resolve(); });
+    writer.on('error', (e) => { clearTimeout(idle); reject(e); });
   });
 }
 
@@ -891,13 +898,23 @@ async function processBlueCleanGuided(jobId, p) {
     let hasAudio = false;
     try { const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', orig]); hasAudio = /audio/.test(stdout); } catch (_) {}
 
-    // explode frames (JPEG q2 ~ visualmente transparente; PNG estouraria o disco)
+    // explode frames (JPEG q2 ~ visualmente transparente; PNG estouraria o disco).
+    // fps= conforma VFR/120fps pro mesmo fps da remontagem (senao video acelera/
+    // trava e -shortest corta conteudo).
     setJob({ progress: 7, stage: 'preparando frames' });
     const fdir = path.join(dir, 'f'); fs.mkdirSync(fdir);
-    await run('ffmpeg', ['-y', '-i', orig, '-q:v', '2', path.join(fdir, 'i_%05d.jpg')]);
+    await run('ffmpeg', ['-y', '-i', orig, '-vf', `fps=${fps}`, '-q:v', '2', path.join(fdir, 'i_%05d.jpg')]);
     const frames = fs.readdirSync(fdir).filter((f) => /^i_\d+\.jpg$/.test(f)).sort();
     const N = frames.length;
     if (!N) throw new Error('Falha ao extrair frames');
+    // dimensoes REAIS pos-rotacao: o probe do mp4 da o tamanho codificado, mas o
+    // ffmpeg auto-rotaciona no explode (video de celular com rotate=90 viraria
+    // caixas no lugar errado). O frame extraido e a verdade.
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path.join(fdir, frames[0])]);
+      const [fw, fh] = String(stdout).trim().split(',').map((v) => parseInt(v));
+      if (fw && fh) { W = fw; Hh = fh; }
+    } catch (_) {}
 
     // caixas normalizadas em pixels (clampadas), com janela de tempo global
     const boxes = p.boxes.map((b) => ({
@@ -909,25 +926,25 @@ async function processBlueCleanGuided(jobId, p) {
       e: b.end_sec == null ? 1e9 : +b.end_sec,
     })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
 
-    // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so)
-    const maskCache = new Map(); // key -> { url, crop:{cx,cy,cw,ch} }
-    const even = (v) => v - (v % 2);
+    // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so).
+    // FRAME INTEIRO + mascara tamanho cheio: mandar so o recorte deixava a area
+    // branca ~70% da imagem e o modelo devolvia preenchimento fraco (fantasma).
+    // Com o frame inteiro a caixa vira fracao pequena e a remocao sai limpa
+    // (validado: banda de legenda 12% do frame = zero fantasma).
+    const maskCache = new Map(); // key -> { url, mpath }
+    let maskSeq = 0; // nome unico sincrono (size no nome racearia entre workers)
+    const PAD = 10; // folga na mascara alem da caixa do usuario (borda anti-aliased)
     async function maskFor(active) {
       const key = active.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join('|');
       if (maskCache.has(key)) return maskCache.get(key);
-      const M = 48; // margem de contexto pro inpaint enxergar fundo ao redor
-      let x1 = Math.min(...active.map((b) => b.x)), y1 = Math.min(...active.map((b) => b.y));
-      let x2 = Math.max(...active.map((b) => b.x + b.w)), y2 = Math.max(...active.map((b) => b.y + b.h));
-      x1 = Math.max(0, x1 - M); y1 = Math.max(0, y1 - M);
-      x2 = Math.min(W, x2 + M); y2 = Math.min(Hh, y2 + M);
-      const crop = { cx: even(x1), cy: even(y1), cw: even(x2 - even(x1)), ch: even(y2 - even(y1)) };
-      const draws = active.map((b) => `drawbox=x=${b.x - crop.cx}:y=${b.y - crop.cy}:w=${b.w}:h=${b.h}:color=white:t=fill`).join(',');
-      const mpath = path.join(dir, `mask_${maskCache.size}.png`);
-      await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${crop.cw}x${crop.ch}`, '-vf', draws, '-frames:v', '1', mpath]);
-      const mkey = `${tmpPrefix}/mask_${maskCache.size}.png`;
+      const seq = maskSeq++;
+      const draws = active.map((b) => `drawbox=x=${Math.max(0, b.x - PAD)}:y=${Math.max(0, b.y - PAD)}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
+      const mpath = path.join(dir, `mask_${seq}.png`);
+      await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}`, '-vf', draws, '-frames:v', '1', mpath]);
+      const mkey = `${tmpPrefix}/mask_${seq}.png`;
       const url = await uploadRetry('gmask', mpath, mkey, SU, SK, 'image/png');
       uploaded.push(mkey);
-      const entry = { url, crop, mpath };
+      const entry = { url, mpath };
       maskCache.set(key, entry);
       return entry;
     }
@@ -944,18 +961,17 @@ async function processBlueCleanGuided(jobId, p) {
         const src = path.join(fdir, f);
         const out = path.join(fdir, f.replace('i_', 'o_'));
         if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
-        const { url: maskUrl, crop, mpath } = await maskFor(active);
-        const cpath = path.join(dir, `c_${i}.jpg`);
-        await run('ffmpeg', ['-y', '-i', src, '-vf', `crop=${crop.cw}:${crop.ch}:${crop.cx}:${crop.cy}`, '-q:v', '2', cpath]);
-        const ckey = `${tmpPrefix}/c_${i}.jpg`;
-        const cropUrl = await uploadRetry('gcrop ' + i, cpath, ckey, SU, SK, 'image/jpeg');
-        uploaded.push(ckey);
+        const { url: maskUrl, mpath } = await maskFor(active);
+        const fkey = `${tmpPrefix}/f_${i}.jpg`;
+        const frameUrl = await uploadRetry('gframe ' + i, src, fkey, SU, SK, 'image/jpeg');
+        uploaded.push(fkey);
         try {
-          const outUrl = await guidedInpaint(token, { image: cropUrl, mask: maskUrl });
+          const outUrl = await guidedInpaint(token, { image: frameUrl, mask: maskUrl });
           const lpath = path.join(dir, `l_${i}.img`);
           await downloadFile(outUrl, lpath);
+          // composite: inpaint SO dentro da mascara; resto do frame original
           await run('ffmpeg', ['-y', '-i', src, '-i', lpath, '-i', mpath, '-filter_complex',
-            `[1:v]scale=${crop.cw}:${crop.ch}[l];[2:v]format=gray,boxblur=1[mm];[0:v]crop=${crop.cw}:${crop.ch}:${crop.cx}:${crop.cy}[oc];[oc][l][mm]maskedmerge[pt];[0:v][pt]overlay=${crop.cx}:${crop.cy}`,
+            `[1:v]scale=${W}:${Hh}[l];[2:v]format=gray,boxblur=1[mm];[0:v][l][mm]maskedmerge`,
             '-q:v', '2', out]);
           fs.rmSync(lpath, { force: true });
         } catch (e) {
@@ -963,7 +979,6 @@ async function processBlueCleanGuided(jobId, p) {
           console.error('[bcg]', jobId, 'frame', i, e.message.slice(0, 120));
           fs.copyFileSync(src, out); failed++;
         }
-        fs.rmSync(cpath, { force: true });
         done++;
         if (done % 5 === 0 || done === N) {
           setJob({ progress: Math.min(90, 8 + Math.round((done / N) * 82)), stage: `limpando ${done}/${N}`, frames_done: done, frames_total: N });
@@ -988,10 +1003,16 @@ async function processBlueCleanGuided(jobId, p) {
 
     setJob({ progress: 97, stage: 'finalizando' });
     const outputUrl = await uploadToSupabase(finalOut, p.output_path, SU, SK, 'video/mp4');
-    for (const pth of uploaded) {
-      try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
-    }
+    // done ANTES do cleanup: milhares de DELETEs em serie deixariam o user
+    // olhando "97%" por minutos com o video ja pronto. Cleanup vira best-effort
+    // em lotes paralelos depois.
     JOBS.set(jobId, { status: 'done', progress: 100, stage: 'concluido', frames: N, frames_failed: failed, elapsed_sec: Math.round((Date.now() - startedAt) / 1000), output_url: outputUrl + '?v=' + Date.now() });
+    (async () => {
+      for (let i = 0; i < uploaded.length; i += 20) {
+        await Promise.all(uploaded.slice(i, i + 20).map((pth) =>
+          axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }).catch(() => {})));
+      }
+    })().catch(() => {});
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   } catch (e) {
     for (const pth of uploaded) {

@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
       if (sd.status === 'error') return fail('Limpeza falhou: ' + (sd.error || ''));
       if (sd.status === 'done' && sd.output_url) {
         await patch({ status: 'completed', output_url: sd.output_url });
-        return res.status(200).json({ ...job, status: 'completed', output_url: sd.output_url });
+        return res.status(200).json({ ...job, status: 'completed', output_url: sd.output_url, frames_failed: sd.frames_failed || 0, elapsed_sec: sd.elapsed_sec });
       }
       return res.status(200).json({ ...job, status: 'processing', progress: sd.progress || 10, stage: sd.stage || 'processando' });
     } catch (e) { console.error('[blueclean:status]', e.message); }
@@ -121,7 +121,11 @@ module.exports = async function handler(req, res) {
     if (!RW) return res.status(500).json({ error: 'Railway não configurado.' });
 
     const { video_url, boxes } = req.body;
+    const engine = req.body.engine === 'guided' ? 'guided' : undefined;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
+    if (engine === 'guided' && !(Array.isArray(boxes) && boxes.length)) {
+      return res.status(400).json({ error: 'Marque pelo menos uma área pra remover.' });
+    }
 
     const used = await getUsed();
     if (used >= LIMIT) return res.status(429).json({ error: `Limite atingido (${LIMIT}/${LIMIT}).` });
@@ -135,6 +139,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           video_url, output_path: outPath, supabase_url: SU, supabase_key: SK,
           replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [],
+          ...(engine ? { engine } : {}),
         }),
       });
       const rd = await rr.json().catch(() => ({}));
