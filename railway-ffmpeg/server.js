@@ -336,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r13-blueclean-rescap',
+      build: 'r14-blueclean-guided',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -628,10 +628,14 @@ app.post('/blueclean-process', (req, res) => {
   if (!p.video_url || !p.output_path || !p.supabase_url || !p.supabase_key || !p.replicate_token) {
     return res.status(400).json({ error: 'video_url, output_path, replicate_token e credenciais obrigatorios' });
   }
+  if (p.engine === 'guided' && !(Array.isArray(p.boxes) && p.boxes.length)) {
+    return res.status(400).json({ error: 'engine guided exige boxes (marcacao do usuario)' });
+  }
   const jobId = uuidv4();
-  JOBS.set(jobId, { status: 'processing', progress: 2, stage: 'preparando' });
+  JOBS.set(jobId, { status: 'processing', progress: 2, stage: 'preparando', started_at: Date.now() });
   res.json({ ok: true, job_id: jobId });
-  processBlueClean(jobId, p).catch((e) => {
+  const runner = p.engine === 'guided' ? processBlueCleanGuided : processBlueClean;
+  runner(jobId, p).catch((e) => {
     console.error('[blueclean-process]', jobId, e.message);
     JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
   });
@@ -829,6 +833,169 @@ async function processBlueClean(jobId, p) {
     // best-effort cleanup dos temporarios mesmo em erro
     for (const pth of uploaded) {
       try { await axios.delete(`${p.supabase_url}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + p.supabase_key, apikey: p.supabase_key } }); } catch (_) {}
+    }
+    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
+  }
+}
+
+// ── BLUECLEAN GUIADO (engine=guided) ─────────────────────────────────────────
+// O usuario MARCA na tela o que quer remover (caixas com intervalo de tempo
+// opcional). As caixas viram a mascara diretamente — sem detector automatico
+// (cobertura garantida, zero falso-positivo, mais barato). O preenchimento e
+// POR-FRAME (inpaint espacial): reconstrucao independente em cada frame, o que
+// elimina o fantasma de legenda persistente que o motor temporal deixava.
+// Processa so o RECORTE da regiao marcada (mais rapido/barato) e recompoe sobre
+// o frame original — resto do video fica pixel-perfect.
+const GUIDED_MODEL = 'zylim0702/remove-object';
+
+// Retry resiliente a throttle do Replicate (burst baixo com saldo baixo).
+async function guidedInpaint(token, input) {
+  let lastErr;
+  for (let a = 0; a < 8; a++) {
+    try {
+      return await replicateRun(token, GUIDED_MODEL, input, { pollMs: 2500, timeoutMs: 5 * 60 * 1000 });
+    } catch (e) {
+      lastErr = e;
+      if (/throttl|rate.?limit|429/i.test(String(e.message || ''))) { await sleep(4000 + a * 3000); continue; }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function processBlueCleanGuided(jobId, p) {
+  const dir = path.join('/tmp', 'bcg-' + jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const setJob = (o) => JOBS.set(jobId, { ...(JOBS.get(jobId) || {}), ...o });
+  const token = p.replicate_token, SU = p.supabase_url, SK = p.supabase_key;
+  const tmpPrefix = `blueclean/_work/${jobId}`;
+  const uploaded = [];
+  const startedAt = Date.now();
+  try {
+    setJob({ progress: 4, stage: 'baixando', started_at: startedAt });
+    const orig = path.join(dir, 'orig.mp4');
+    await downloadFile(p.video_url, orig);
+
+    // probe fps/dimensoes/duracao/audio
+    let fps = 30, W = 0, Hh = 0, dur = 0;
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate,width,height', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=0', orig]);
+      const g = (k) => { const m = String(stdout).match(new RegExp(k + '=([^\\n]+)')); return m ? m[1].trim() : ''; };
+      const fr = g('r_frame_rate').split('/'); if (fr.length === 2 && +fr[1]) fps = +fr[0] / +fr[1]; else if (+fr[0]) fps = +fr[0];
+      W = parseInt(g('width')) || 0; Hh = parseInt(g('height')) || 0; dur = parseFloat(g('duration')) || 0;
+    } catch (_) {}
+    fps = Math.max(1, Math.min(60, Math.round(fps)));
+    if (!W || !Hh) throw new Error('Nao consegui ler as dimensoes do video');
+    if (dur > 95) throw new Error('Video muito longo pro modo guiado (max 90s). Corte antes de limpar.');
+    let hasAudio = false;
+    try { const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', orig]); hasAudio = /audio/.test(stdout); } catch (_) {}
+
+    // explode frames (JPEG q2 ~ visualmente transparente; PNG estouraria o disco)
+    setJob({ progress: 7, stage: 'preparando frames' });
+    const fdir = path.join(dir, 'f'); fs.mkdirSync(fdir);
+    await run('ffmpeg', ['-y', '-i', orig, '-q:v', '2', path.join(fdir, 'i_%05d.jpg')]);
+    const frames = fs.readdirSync(fdir).filter((f) => /^i_\d+\.jpg$/.test(f)).sort();
+    const N = frames.length;
+    if (!N) throw new Error('Falha ao extrair frames');
+
+    // caixas normalizadas em pixels (clampadas), com janela de tempo global
+    const boxes = p.boxes.map((b) => ({
+      x: Math.max(0, Math.min(W - 2, Math.round((b.x_pct || 0) * W))),
+      y: Math.max(0, Math.min(Hh - 2, Math.round((b.y_pct || 0) * Hh))),
+      w: Math.max(2, Math.round((b.w_pct || 0) * W)),
+      h: Math.max(2, Math.round((b.h_pct || 0) * Hh)),
+      s: b.start_sec == null ? -1e9 : +b.start_sec,
+      e: b.end_sec == null ? 1e9 : +b.end_sec,
+    })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
+
+    // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so)
+    const maskCache = new Map(); // key -> { url, crop:{cx,cy,cw,ch} }
+    const even = (v) => v - (v % 2);
+    async function maskFor(active) {
+      const key = active.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join('|');
+      if (maskCache.has(key)) return maskCache.get(key);
+      const M = 48; // margem de contexto pro inpaint enxergar fundo ao redor
+      let x1 = Math.min(...active.map((b) => b.x)), y1 = Math.min(...active.map((b) => b.y));
+      let x2 = Math.max(...active.map((b) => b.x + b.w)), y2 = Math.max(...active.map((b) => b.y + b.h));
+      x1 = Math.max(0, x1 - M); y1 = Math.max(0, y1 - M);
+      x2 = Math.min(W, x2 + M); y2 = Math.min(Hh, y2 + M);
+      const crop = { cx: even(x1), cy: even(y1), cw: even(x2 - even(x1)), ch: even(y2 - even(y1)) };
+      const draws = active.map((b) => `drawbox=x=${b.x - crop.cx}:y=${b.y - crop.cy}:w=${b.w}:h=${b.h}:color=white:t=fill`).join(',');
+      const mpath = path.join(dir, `mask_${maskCache.size}.png`);
+      await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${crop.cw}x${crop.ch}`, '-vf', draws, '-frames:v', '1', mpath]);
+      const mkey = `${tmpPrefix}/mask_${maskCache.size}.png`;
+      const url = await uploadRetry('gmask', mpath, mkey, SU, SK, 'image/png');
+      uploaded.push(mkey);
+      const entry = { url, crop, mpath };
+      maskCache.set(key, entry);
+      return entry;
+    }
+
+    // fila de frames; worker por frame: crop -> upload -> inpaint -> composite
+    setJob({ progress: 8, stage: `limpando 0/${N}`, frames_total: N, frames_done: 0 });
+    const queue = frames.map((f, i) => ({ f, i }));
+    let done = 0, failed = 0;
+    const worker = async () => {
+      while (queue.length) {
+        const { f, i } = queue.shift();
+        const t = (i + 0.5) / fps;
+        const active = boxes.filter((b) => t >= b.s && t <= b.e);
+        const src = path.join(fdir, f);
+        const out = path.join(fdir, f.replace('i_', 'o_'));
+        if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
+        const { url: maskUrl, crop, mpath } = await maskFor(active);
+        const cpath = path.join(dir, `c_${i}.jpg`);
+        await run('ffmpeg', ['-y', '-i', src, '-vf', `crop=${crop.cw}:${crop.ch}:${crop.cx}:${crop.cy}`, '-q:v', '2', cpath]);
+        const ckey = `${tmpPrefix}/c_${i}.jpg`;
+        const cropUrl = await uploadRetry('gcrop ' + i, cpath, ckey, SU, SK, 'image/jpeg');
+        uploaded.push(ckey);
+        try {
+          const outUrl = await guidedInpaint(token, { image: cropUrl, mask: maskUrl });
+          const lpath = path.join(dir, `l_${i}.img`);
+          await downloadFile(outUrl, lpath);
+          await run('ffmpeg', ['-y', '-i', src, '-i', lpath, '-i', mpath, '-filter_complex',
+            `[1:v]scale=${crop.cw}:${crop.ch}[l];[2:v]format=gray,boxblur=1[mm];[0:v]crop=${crop.cw}:${crop.ch}:${crop.cx}:${crop.cy}[oc];[oc][l][mm]maskedmerge[pt];[0:v][pt]overlay=${crop.cx}:${crop.cy}`,
+            '-q:v', '2', out]);
+          fs.rmSync(lpath, { force: true });
+        } catch (e) {
+          // frame que falhou nao derruba o job: mantem o original nele
+          console.error('[bcg]', jobId, 'frame', i, e.message.slice(0, 120));
+          fs.copyFileSync(src, out); failed++;
+        }
+        fs.rmSync(cpath, { force: true });
+        done++;
+        if (done % 5 === 0 || done === N) {
+          setJob({ progress: Math.min(90, 8 + Math.round((done / N) * 82)), stage: `limpando ${done}/${N}`, frames_done: done, frames_total: N });
+        }
+      }
+    };
+    const CONC = Math.max(1, Math.min(8, parseInt(p.conc) || 3));
+    await Promise.all(Array.from({ length: CONC }, worker));
+    if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
+
+    // remonta + audio
+    setJob({ progress: 92, stage: 'montando video' });
+    const merged = path.join(dir, 'merged.mp4');
+    await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(fdir, 'o_%05d.jpg'),
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '17', '-pix_fmt', 'yuv420p', merged]);
+    setJob({ progress: 95, stage: 'audio' });
+    const finalOut = path.join(dir, 'final.mp4');
+    if (hasAudio) {
+      await run('ffmpeg', ['-y', '-i', merged, '-i', orig, '-map', '0:v:0', '-map', '1:a:0',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest', finalOut]);
+    } else { fs.copyFileSync(merged, finalOut); }
+
+    setJob({ progress: 97, stage: 'finalizando' });
+    const outputUrl = await uploadToSupabase(finalOut, p.output_path, SU, SK, 'video/mp4');
+    for (const pth of uploaded) {
+      try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
+    }
+    JOBS.set(jobId, { status: 'done', progress: 100, stage: 'concluido', frames: N, frames_failed: failed, elapsed_sec: Math.round((Date.now() - startedAt) / 1000), output_url: outputUrl + '?v=' + Date.now() });
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
+  } catch (e) {
+    for (const pth of uploaded) {
+      try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
     }
     JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
