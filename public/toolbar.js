@@ -184,24 +184,29 @@ if ('serviceWorker' in navigator) {
   // ── PERSISTENT SESSION — refresh on load + every 15min + auto re-login ────
   async function _btRefreshToken() {
     const refresh = localStorage.getItem('bt_refresh_token');
-    if (!refresh) return false;
+    if (!refresh) return _btAutoRelogin();
     try {
-      const r = await fetch('/api/auth', {
+      // Endpoint dedicado: api/auth NAO tem action refresh (chamava e falhava
+      // em silencio — token vencia com a aba aberta e conteudo Master "sumia").
+      const r = await fetch('/api/session-refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'refresh', refresh_token: refresh })
+        body: JSON.stringify({ refresh_token: refresh })
       });
       if (r.ok) {
         const d = await r.json();
         const t = d.session?.access_token || d.access_token;
-        const rf = d.session?.refresh_token;
-        if (t) { localStorage.setItem('bt_token', t); if (typeof TOKEN !== 'undefined') TOKEN = t; return true; }
+        const rf = d.session?.refresh_token || d.refresh_token;
+        // Supabase rotaciona o refresh_token: salvar SEMPRE o novo, senao a
+        // proxima renovacao usa um token ja consumido e a sessao morre.
         if (rf) localStorage.setItem('bt_refresh_token', rf);
+        if (t) { localStorage.setItem('bt_token', t); if (typeof TOKEN !== 'undefined') TOKEN = t; return true; }
       }
     } catch (e) {}
     // Refresh failed — try saved credentials
     return _btAutoRelogin();
   }
+  window._btRefreshToken = _btRefreshToken;
 
   function _btDecodeCred(saved) {
     if (!saved) return null;

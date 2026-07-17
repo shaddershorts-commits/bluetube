@@ -990,7 +990,7 @@ function atualizarBadgeBanco(){
   });
   if (nichoSel) params.set('nicho', nichoSel);
   // Token p/ filtro 5h Master-only (ignorado nas outras janelas)
-  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
   if (tk) params.set('token', tk);
   fetch(`/api/virais?${params}`).then(r => r.json()).then(d => {
     const el = document.getElementById('banco-stats');
@@ -1042,14 +1042,32 @@ async function carregarHistorico(pagina){
     if (nichoSel) params.set('nicho', nichoSel);
     // Token Supabase eh obrigatorio pra periodo=5h (filtro Master-only).
     // Pra outras janelas, token eh ignorado pelo backend — sempre envia.
-    const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+    const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
     if (tk) params.set('token', tk);
 
-    const r = await fetch(`/api/virais?${params}`);
+    let r = await fetch(`/api/virais?${params}`);
+    // Token venceu com a aba aberta (JWT ~1h): renova e tenta 1x de novo.
+    // Sem isso o filtro 5h "sumia" ate o usuario relogar na mao.
+    if (r.status === 401 && typeof window._btRefreshToken === 'function') {
+      const ok = await window._btRefreshToken().catch(() => false);
+      if (ok) {
+        params.set('token', localStorage.getItem('bt_token') || '');
+        r = await fetch(`/api/virais?${params}`);
+      }
+    }
     if (!r.ok) {
       // Limpa paginacao residual de filtro anterior
       const pag = document.getElementById('historico-paginacao');
       if (pag) pag.style.display = 'none';
+      // 401/403 persistente no 5h: avisa em vez de deixar o grid vazio mudo
+      if ((r.status === 401 || r.status === 403) && periodo === '5h' && (pagina || 1) === 1 && grid && !grid.children.length) {
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-dim)">
+          <div style="font-size:40px;margin-bottom:12px;opacity:.5">🔐</div>
+          <div style="font-size:14px;margin-bottom:4px">Sua sessão expirou</div>
+          <div style="font-size:12px;margin-bottom:16px">Entre de novo pra continuar vendo o filtro 5h (exclusivo Master)</div>
+          <a href="/?login=1" style="color:var(--neon);font-size:13px;text-decoration:none;border:1px solid var(--neon);border-radius:100px;padding:8px 20px">Entrar →</a>
+        </div>`;
+      }
       return;
     }
     const d = await r.json();
@@ -1152,7 +1170,7 @@ let _alertUserPlan = (typeof plan !== 'undefined' && plan) ? plan : (localStorag
 let _alertModalOpen = false;
 
 async function syncDailyAlertState(){
-  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
   if (!tk) {
     console.warn('[daily-alert] sem token — usando localStorage fallback');
     return;
@@ -1267,7 +1285,7 @@ function closeDailyAlertModal(){
 }
 
 async function confirmDailyAlert(enable){
-  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
   const status = document.getElementById('damStatus');
   const btn = document.getElementById('damConfirmBtn');
   if (!tk){
@@ -1359,7 +1377,7 @@ async function carregarNichosSecretos(pagina){
     pag.style.display = 'none';
   }
 
-  const tk = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('bt_token') || '');
+  const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
   if (!tk){
     loading.style.display = 'none';
     errorEl.style.display = 'block';
