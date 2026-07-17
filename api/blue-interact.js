@@ -193,7 +193,8 @@ module.exports = async function handler(req, res) {
       });
     } else if (type === 'unsave') { patch.saves = Math.max(0, (v.saves || 0) - 1);
     } else if (type === 'share') {
-      // Nao atualiza contador (sem coluna shares) — apenas notifica.
+      // Conta no insight do criador (coluna shares — sql/status_bluechat_v1.sql)
+      patch.shares = (v.shares || 0) + 1;
       _notifyOwner(SU, h, user_id, v.user_id, video_id, {
         tipo: 'share', titulo: 'Vídeo compartilhado',
         msgFn: (uname) => `@${uname} compartilhou seu vídeo`,
@@ -216,9 +217,16 @@ module.exports = async function handler(req, res) {
 
     patch.updated_at = new Date().toISOString();
 
-    await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
+    let pR = await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
       method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' }, body: JSON.stringify(patch)
     });
+    // Retrocompat: coluna shares ainda não criada → repete sem ela
+    if (!pR.ok && patch.shares !== undefined) {
+      delete patch.shares;
+      await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
+        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' }, body: JSON.stringify(patch)
+      });
+    }
 
     return res.status(200).json({ ok: true, score: patch.score });
   } catch(err) {

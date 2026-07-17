@@ -53,15 +53,23 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET' && action === 'analytics') {
     if (!userId) return res.status(401).json({ error: 'Login necessário' });
     try {
-      const vr = await fetch(
-        `${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=eq.active&select=id,title,thumbnail_url,views,likes,saves,comments,completion_rate,skip_rate,created_at&order=views.desc`,
+      let vr = await fetch(
+        `${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=eq.active&select=id,title,thumbnail_url,views,likes,saves,comments,shares,completion_rate,skip_rate,created_at&order=views.desc`,
         { headers: h }
       );
+      // Retrocompat: coluna shares ainda não criada
+      if (!vr.ok) {
+        vr = await fetch(
+          `${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=eq.active&select=id,title,thumbnail_url,views,likes,saves,comments,completion_rate,skip_rate,created_at&order=views.desc`,
+          { headers: h }
+        );
+      }
       const vids = vr.ok ? await vr.json() : [];
       const stats = {
         total_views: vids.reduce((s, v) => s + (v.views || 0), 0),
         total_likes: vids.reduce((s, v) => s + (v.likes || 0), 0),
         total_saves: vids.reduce((s, v) => s + (v.saves || 0), 0),
+        total_shares: vids.reduce((s, v) => s + (v.shares || 0), 0),
         total_comments: vids.reduce((s, v) => s + (v.comments || 0), 0),
         avg_completion: vids.length > 0 ? vids.reduce((s, v) => s + (v.completion_rate || 0), 0) / vids.length : 0,
         video_count: vids.length,
@@ -134,6 +142,23 @@ module.exports = async function handler(req, res) {
       const r = await fetch(`${SU}/rest/v1/blue_videos?user_id=eq.${userId}&status=neq.deleted&order=created_at.desc&select=*`, { headers: h });
       return res.status(200).json({ videos: r.ok ? await r.json() : [] });
     } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // GET my-likes — "Sua atividade": vídeos que EU curti (blue_likes → videos)
+  if (req.method === 'GET' && action === 'my-likes') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    try {
+      let lR = await fetch(`${SU}/rest/v1/blue_likes?user_id=eq.${userId}&select=video_id,created_at&order=created_at.desc&limit=200`, { headers: h });
+      if (!lR.ok) lR = await fetch(`${SU}/rest/v1/blue_likes?user_id=eq.${userId}&select=video_id&limit=200`, { headers: h });
+      const likes = lR.ok ? await lR.json() : [];
+      if (!likes.length) return res.status(200).json({ videos: [] });
+      const ids = [...new Set(likes.map(l => l.video_id))];
+      const vR = await fetch(`${SU}/rest/v1/blue_videos?id=in.(${ids.join(',')})&status=eq.active&select=*`, { headers: h });
+      const vids = vR.ok ? await vR.json() : [];
+      // Mantém a ordem das curtidas (mais recente primeiro)
+      const vm = new Map(vids.map(v => [v.id, v]));
+      return res.status(200).json({ videos: ids.map(id => vm.get(id)).filter(Boolean) });
+    } catch(e) { return res.status(200).json({ videos: [], error: e.message }); }
   }
 
   // GET videos publicos de qualquer usuario (sem auth) — usado em openCreatorProfile.

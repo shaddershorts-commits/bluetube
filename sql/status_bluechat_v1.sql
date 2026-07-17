@@ -55,3 +55,6 @@ CREATE INDEX IF NOT EXISTS idx_bcontatos_pending ON blue_contatos(contato_id, st
 -- ── 4. Perfil: privacidade + tipo de conta ───────────────────────────────────
 ALTER TABLE blue_profiles ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE blue_profiles ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'profissional';
+
+-- ── 5. Compartilhamentos contam nos insights (add 2026-07-17 tarde) ──────────
+ALTER TABLE blue_videos ADD COLUMN IF NOT EXISTS shares INTEGER NOT NULL DEFAULT 0;
