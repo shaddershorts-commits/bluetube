@@ -336,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r11-blueclean-safe',
+      build: 'r12-blueclean-seq',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -784,7 +784,10 @@ async function processBlueClean(jobId, p) {
         setJob({ progress: Math.min(88, 15 + Math.round((done / chunkFiles.length) * 70)), stage: `limpando ${done}/${chunkFiles.length}` });
       }
     };
-    const CONC = Math.min(2, chunkFiles.length);
+    // CONC=1 (sequencial): evita o rate-limit burst-1 do Replicate (detect +
+    // ProPainter por trecho = 2 predictions; 2 workers em paralelo throttlavam).
+    // Mais lento mas CONFIÁVEL — prioridade em produção.
+    const CONC = 1;
     await Promise.all(Array.from({ length: CONC }, worker));
 
     // 5. reconcatena os trechos preenchidos
