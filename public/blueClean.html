@@ -50,9 +50,18 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
 
 /* Editor / modes */
 .editor{display:none;margin-top:20px}
-.mode-tabs{display:flex;gap:8px;margin-bottom:14px}
-.mode-tab{flex:1;padding:11px;border-radius:12px;font-family:var(--font);font-weight:700;font-size:13px;text-align:center;cursor:pointer;border:1px solid var(--line);background:var(--glass);color:var(--muted);transition:all .2s}
-.mode-tab.on{background:rgba(0,212,255,.12);border-color:rgba(0,212,255,.5);color:var(--cyan)}
+.mark-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.mark-count{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.3);border-radius:100px;padding:5px 12px;white-space:nowrap}
+.frame-nav{display:flex;align-items:center;gap:10px;margin:10px 0}
+.frame-nav button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--glass);color:var(--ink);font-size:15px;cursor:pointer}
+.frame-nav input[type=range]{flex:1;accent-color:var(--cyan)}
+.frame-nav .fl{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.proc-timer{font-family:var(--mono);font-size:34px;font-weight:700;letter-spacing:.04em;color:var(--ink);margin:10px 0 2px}
+.proc-stage{font-family:var(--mono);font-size:12px;color:var(--dim);min-height:16px}
+.proc-bar{height:6px;background:rgba(0,170,255,.12);border-radius:100px;overflow:hidden;margin:14px auto 0;max-width:340px}
+.proc-bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--gold));border-radius:100px;transition:width .8s ease}
+.done-time{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:14px}
 .hint{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;line-height:1.5}
 .hint b{color:var(--ink)}
 .btn{display:block;width:100%;background:linear-gradient(100deg,#00d4ff,#1a6bff);border:none;border-radius:14px;padding:15px;font-family:var(--font);font-size:15px;font-weight:800;color:#021018;cursor:pointer;box-shadow:0 12px 34px -10px rgba(0,150,255,.7);transition:transform .15s}
@@ -142,43 +151,45 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
 
   <!-- STEP 2: Editor -->
   <div class="editor" id="stepEditor">
-    <div class="mode-tabs">
-      <div class="mode-tab on" onclick="setMode('auto')">✨ Automático</div>
-      <div class="mode-tab" onclick="setMode('mask')">💪 Reforçado</div>
+    <div class="mark-head">
+      <div class="hint" style="margin:0">🎯 <b>Marque o que quer remover:</b> desenhe uma caixa sobre cada legenda, marca ou desenho. Nossa IA usa suas marcações como guia.</div>
+      <div class="mark-count" id="markCount">0 áreas</div>
     </div>
-    <div id="autoMode"><div class="hint">✨ <b>Automático:</b> a IA detecta e remove textos, setas, círculos e marcas — do jeito certo pra maioria dos vídeos.</div><button class="btn" onclick="startProcess('auto')">Limpar meu vídeo →</button></div>
-    <div id="maskMode" style="display:none"><div class="hint">💪 <b>Reforçado:</b> detecção mais sensível e margem extra — pra legendas persistentes ou textos pequenos que o automático não pegou.</div><button class="btn" onclick="startProcess('mask')">Limpar (reforçado) →</button></div>
-    <div id="maskModeOld" style="display:none">
-      <div class="hint">🎯 Marque em vermelho as regiões que quer remover.</div>
-      <div class="editor-layout">
-        <div class="canvas-wrap" id="canvasWrap"><canvas id="frameCanvas"></canvas><canvas id="maskCanvas"></canvas></div>
-        <div class="toolbar">
-          <div class="tb-title">Ferramentas</div>
-          <button class="tb-btn active" id="tbBrush" onclick="setTool('brush')">🖌️ Pincel</button>
-          <button class="tb-btn" id="tbRect" onclick="setTool('rect')">⬜ Retângulo</button>
-          <button class="tb-btn" id="tbEraser" onclick="setTool('eraser')">🧽 Borracha</button>
-          <div class="tb-title" style="margin-top:8px">Tamanho</div>
-          <input type="range" class="tb-range" min="5" max="80" value="20" oninput="brushSize=+this.value"/>
-          <button class="tb-btn" onclick="detectOverlays()">🤖 Detectar</button>
-          <button class="tb-btn" onclick="clearMask()">🗑️ Limpar</button>
-          <button class="btn" onclick="startProcess('mask')" style="margin-top:auto">✨ Processar →</button>
-        </div>
+    <div class="editor-layout">
+      <div class="canvas-wrap" id="canvasWrap"><canvas id="frameCanvas"></canvas><canvas id="maskCanvas"></canvas></div>
+      <div class="toolbar">
+        <div class="tb-title">Ferramentas</div>
+        <button class="tb-btn active" id="tbRect">⬜ Desenhar caixa</button>
+        <button class="tb-btn" onclick="undoBox()">↩️ Desfazer</button>
+        <button class="tb-btn" onclick="clearBoxes()">🗑️ Limpar tudo</button>
+        <button class="btn" id="goBtn" disabled onclick="startProcess()">Marque o que remover</button>
       </div>
     </div>
+    <div class="frame-nav">
+      <button onclick="stepFrame(-1)">‹</button>
+      <input type="range" id="frameSlider" min="0" max="7" value="3" oninput="showFrame(+this.value)"/>
+      <button onclick="stepFrame(1)">›</button>
+      <span class="fl" id="frameLabel">momento 4/8</span>
+    </div>
+    <div class="hint" style="font-size:12px">💡 Navegue nos momentos do vídeo pra conferir se as caixas cobrem tudo, do começo ao fim.</div>
     <button class="btn btn-sec" onclick="resetAll()">← Trocar vídeo</button>
   </div>
 
   <!-- STEP 3: Processing -->
   <div class="processing" id="stepProcessing">
     <div class="spin"></div>
+    <div class="proc-timer" id="procTimer">00:00</div>
     <div style="font-family:var(--mono);font-size:14px;color:var(--cyan)" id="stepLabel">Processando…</div>
+    <div class="proc-stage" id="procStage"></div>
+    <div class="proc-bar"><i id="procBarFill"></i></div>
     <div class="proc-note">Fica tranquilo, pode até fechar a página.<br>A limpeza roda no servidor e aparece no seu histórico quando terminar. ⚡</div>
   </div>
 
   <!-- STEP 4: Result -->
   <div class="result" id="stepResult">
-    <div style="font-size:30px;margin-bottom:6px">✨</div>
-    <div style="font-size:20px;font-weight:800;margin-bottom:16px">Seu vídeo ficou <span style="color:var(--cyan)">limpo!</span></div>
+    <div style="font-size:30px;margin-bottom:6px">🎉</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:4px">Seu vídeo ficou <span style="color:var(--cyan)">limpo!</span></div>
+    <div class="done-time" id="doneTime"></div>
     <div class="comparison" id="compWrap">
       <div class="lbl b">Antes</div><div class="lbl a">Depois</div>
       <video id="vidBefore" loop muted playsinline></video>
@@ -195,8 +206,10 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
 <script>
 const TOKEN=localStorage.getItem('bt_token');
 let selectedFile=null,videoUrl=null,currentJobId=null,pollTimer=null;
-let tool='brush',brushSize=20,drawing=false,startX=0,startY=0;
-let frameCtx,maskCtx,canvasW=0,canvasH=0,frames=[];
+let drawing=false,startX=0,startY=0,curBox=null;
+let boxesArr=[]; // caixas marcadas pelo usuario (coords do canvas)
+let frameCtx,maskCtx,canvasW=0,canvasH=0,frames=[],curFrame=3;
+let procStart=0,procTick=null;
 let supaConfig=null;
 
 function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),3500);}
@@ -248,44 +261,69 @@ async function pickFile(file){
       frameCtx.drawImage(vid,0,0,canvasW,canvasH);
       frames.push(frameCtx.getImageData(0,0,canvasW,canvasH));
     }
-    frameCtx.putImageData(frames[3]||frames[0],0,0);
+    boxesArr=[];curBox=null;
+    document.getElementById('frameSlider').max=String(Math.max(0,frames.length-1));
+    showFrame(3);redrawBoxes();updateMarkUI();
     show('stepEditor');
-    toast('✅ Vídeo carregado');
+    toast('✅ Agora marque o que quer remover');
   }catch(e){toast('❌ Erro ao ler o vídeo: '+e.message);}
 }
 
-function setMode(mode){
-  document.querySelectorAll('.mode-tab').forEach((t,i)=>t.classList.toggle('on',i===(mode==='auto'?0:1)));
-  document.getElementById('autoMode').style.display=mode==='auto'?'block':'none';
-  document.getElementById('maskMode').style.display=mode==='mask'?'block':'none';
+// ── MARCAÇÃO: caixas desenhadas pelo usuário = guia dos motores ──
+function showFrame(i){
+  curFrame=Math.max(0,Math.min(frames.length-1,i));
+  if(frames[curFrame])frameCtx.putImageData(frames[curFrame],0,0);
+  document.getElementById('frameSlider').value=curFrame;
+  document.getElementById('frameLabel').textContent=`momento ${curFrame+1}/${frames.length||8}`;
 }
-
-function detectOverlays(){
-  if(frames.length<3)return;
+function stepFrame(d){showFrame(curFrame+d);}
+function redrawBoxes(extra){
   maskCtx.clearRect(0,0,canvasW,canvasH);
-  const cs=16;
-  for(let y=0;y<canvasH;y+=cs){for(let x=0;x<canvasW;x+=cs){
-    let isStatic=true;const ref=avgColor(frames[0],x,y,cs);
-    for(let f=1;f<frames.length;f++){const c=avgColor(frames[f],x,y,cs);if(Math.abs(c.r-ref.r)+Math.abs(c.g-ref.g)+Math.abs(c.b-ref.b)>20){isStatic=false;break;}}
-    if(isStatic&&(ref.r+ref.g+ref.b)>30){maskCtx.fillStyle='rgba(255,0,0,0.45)';maskCtx.fillRect(x,y,cs,cs);}
-  }}
-  toast('🤖 Regiões detectadas');
+  const all=extra?[...boxesArr,extra]:boxesArr;
+  all.forEach((b,i)=>{
+    maskCtx.fillStyle='rgba(255,70,70,.25)';maskCtx.fillRect(b.x,b.y,b.w,b.h);
+    maskCtx.strokeStyle='#ff5c5c';maskCtx.lineWidth=2;maskCtx.setLineDash([6,4]);maskCtx.strokeRect(b.x,b.y,b.w,b.h);maskCtx.setLineDash([]);
+    if(!extra||i<all.length-1){maskCtx.fillStyle='#ff5c5c';maskCtx.beginPath();maskCtx.arc(b.x+12,b.y+12,10,0,Math.PI*2);maskCtx.fill();maskCtx.fillStyle='#fff';maskCtx.font='bold 12px monospace';maskCtx.textAlign='center';maskCtx.textBaseline='middle';maskCtx.fillText(String(i+1),b.x+12,b.y+12);}
+  });
 }
-function avgColor(imgData,x,y,size){let r=0,g=0,b=0,n=0;for(let dy=0;dy<size&&y+dy<imgData.height;dy++){for(let dx=0;dx<size&&x+dx<imgData.width;dx++){const i=((y+dy)*imgData.width+(x+dx))*4;r+=imgData.data[i];g+=imgData.data[i+1];b+=imgData.data[i+2];n++;}}return{r:r/n,g:g/n,b:b/n};}
-function setTool(t){tool=t;document.querySelectorAll('.toolbar .tb-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tb'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.add('active');}
-function clearMask(){maskCtx.clearRect(0,0,canvasW,canvasH);}
+function updateMarkUI(){
+  const n=boxesArr.length;
+  document.getElementById('markCount').textContent=n+(n===1?' área':' áreas');
+  const go=document.getElementById('goBtn');
+  go.disabled=n===0;
+  go.textContent=n===0?'Marque o que remover':'🧹 Limpar meu vídeo →';
+}
+function undoBox(){boxesArr.pop();redrawBoxes();updateMarkUI();}
+function clearBoxes(){boxesArr=[];redrawBoxes();updateMarkUI();}
 const mc=document.getElementById('maskCanvas');
-function getPos(e){const r=mc.getBoundingClientRect();const sx=canvasW/r.width;const sy=canvasH/r.height;return{x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};}
-mc.addEventListener('pointerdown',e=>{e.preventDefault();drawing=true;const p=getPos(e);startX=p.x;startY=p.y;if(tool==='brush')drawDot(p.x,p.y);if(tool==='eraser')eraseDot(p.x,p.y);});
-mc.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=getPos(e);if(tool==='brush')drawDot(p.x,p.y);if(tool==='eraser')eraseDot(p.x,p.y);});
-mc.addEventListener('pointerup',e=>{if(tool==='rect'&&drawing){const p=getPos(e);maskCtx.fillStyle='rgba(255,0,0,0.5)';maskCtx.fillRect(Math.min(startX,p.x),Math.min(startY,p.y),Math.abs(p.x-startX),Math.abs(p.y-startY));}drawing=false;});
-mc.addEventListener('pointerleave',()=>{drawing=false;});
-function drawDot(x,y){maskCtx.globalCompositeOperation='source-over';maskCtx.fillStyle='rgba(255,0,0,0.5)';maskCtx.beginPath();maskCtx.arc(x,y,brushSize/2,0,Math.PI*2);maskCtx.fill();}
-function eraseDot(x,y){maskCtx.globalCompositeOperation='destination-out';maskCtx.beginPath();maskCtx.arc(x,y,brushSize/2,0,Math.PI*2);maskCtx.fill();maskCtx.globalCompositeOperation='source-over';}
-function generateMask(){const c=document.createElement('canvas');c.width=canvasW;c.height=canvasH;const ctx=c.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,canvasW,canvasH);const src=maskCtx.getImageData(0,0,canvasW,canvasH);const dst=ctx.getImageData(0,0,canvasW,canvasH);for(let i=0;i<src.data.length;i+=4){if(src.data[i+3]>50){dst.data[i]=dst.data[i+1]=dst.data[i+2]=255;dst.data[i+3]=255;}}ctx.putImageData(dst,0,0);return c.toDataURL('image/png');}
+function getPos(e){const r=mc.getBoundingClientRect();const sx=canvasW/r.width;const sy=canvasH/r.height;return{x:Math.max(0,Math.min(canvasW,(e.clientX-r.left)*sx)),y:Math.max(0,Math.min(canvasH,(e.clientY-r.top)*sy))};}
+mc.addEventListener('pointerdown',e=>{e.preventDefault();mc.setPointerCapture(e.pointerId);drawing=true;const p=getPos(e);startX=p.x;startY=p.y;curBox=null;});
+mc.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=getPos(e);curBox={x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY)};redrawBoxes(curBox);});
+mc.addEventListener('pointerup',e=>{
+  if(!drawing)return;drawing=false;
+  const p=getPos(e);
+  const b={x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY)};
+  curBox=null;
+  if(b.w>=10&&b.h>=10){boxesArr.push(b);toast('✅ Área '+boxesArr.length+' marcada');}
+  redrawBoxes();updateMarkUI();
+});
+mc.addEventListener('pointercancel',()=>{drawing=false;curBox=null;redrawBoxes();});
 
-async function startProcess(mode){
+function startTimer(){
+  procStart=Date.now();
+  const el=document.getElementById('procTimer');
+  if(procTick)clearInterval(procTick);
+  procTick=setInterval(()=>{
+    const s=Math.floor((Date.now()-procStart)/1000);
+    el.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  },1000);
+  el.textContent='00:00';
+}
+function stopTimer(){if(procTick){clearInterval(procTick);procTick=null;}}
+
+async function startProcess(){
   if(!selectedFile||!TOKEN)return;
+  if(!boxesArr.length){toast('🎯 Marque pelo menos uma área pra remover');return;}
   try{
     const testVid=document.createElement('video');
     testVid.src=URL.createObjectURL(selectedFile);
@@ -294,8 +332,14 @@ async function startProcess(mode){
     if(testVid.videoWidth>1920){toast('❌ Resolução muito alta. Máximo 1920px.');return;}
   }catch(e){if(e.message.includes('inválido')){toast('❌ '+e.message);return;}}
 
+  // caixas do canvas -> percentuais do vídeo (canvas é o vídeo em escala uniforme)
+  const boxes=boxesArr.map(b=>({x_pct:b.x/canvasW,y_pct:b.y/canvasH,w_pct:b.w/canvasW,h_pct:b.h/canvasH}));
+
   show('stepProcessing');
+  startTimer();
   document.getElementById('stepLabel').textContent='⬆️ Enviando vídeo…';
+  document.getElementById('procStage').textContent='';
+  document.getElementById('procBarFill').style.width='2%';
   try{
     const cfgR=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'get-upload-url',token:TOKEN,filename:selectedFile.name})});
     if(!cfgR.ok){const ce=await cfgR.json();throw new Error(ce.error||'Auth falhou');}
@@ -305,20 +349,13 @@ async function startProcess(mode){
     if(!upR.ok){const errTxt=await upR.text().catch(()=>'');console.error('Upload failed:',upR.status,errTxt);throw new Error('Upload falhou ('+upR.status+'). Tente de novo.');}
     videoUrl=cfg.video_public_url;
 
-    let maskUrl=null;
-    if(mode==='mask'&&document.getElementById('maskModeOld').style.display!=='none'){
-      const maskB64=generateMask();const maskBlob=await(await fetch(maskB64)).blob();
-      const mR=await fetch(`${cfg.supabase_url}/storage/v1/object/blue-videos/${cfg.mask_path}`,{method:'POST',headers:{...uploadHeaders,'Content-Type':'image/png'},body:maskBlob});
-      if(mR.ok) maskUrl=cfg.mask_public_url;
-    }
-
-    document.getElementById('stepLabel').textContent='🤖 IA limpando…';
-    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,mode,mask_url:maskUrl})});
+    document.getElementById('stepLabel').textContent='🧹 Nossa IA está limpando…';
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao iniciar');
     currentJobId=d.job_id;
     startPolling();
-  }catch(e){toast('❌ '+e.message);show('stepEditor');}
+  }catch(e){stopTimer();toast('❌ '+e.message);show('stepEditor');}
 }
 
 function startPolling(){
@@ -328,14 +365,61 @@ function startPolling(){
       const r=await fetch(`/api/blueclean?action=status&token=${encodeURIComponent(TOKEN)}&job_id=${currentJobId}`);
       const d=await r.json();
       if(d.status==='completed'&&d.output_url){clearInterval(pollTimer);showResult(d.output_url);}
-      else if(d.status==='failed'){clearInterval(pollTimer);toast('❌ '+(d.error_message||'Processamento falhou.'));show('stepEditor');}
-      else{const steps=['🔍 Detectando overlays…','🤖 Reconstruindo o fundo…','✨ Finalizando…'];document.getElementById('stepLabel').textContent=steps[Math.min(2,Math.floor((d.progress||20)/40))];}
+      else if(d.status==='failed'){clearInterval(pollTimer);stopTimer();toast('❌ '+(d.error_message||'Processamento falhou.'));show('stepEditor');}
+      else{
+        document.getElementById('procBarFill').style.width=Math.max(2,d.progress||2)+'%';
+        const m=/limpando (\d+)\/(\d+)/.exec(d.stage||'');
+        if(m){document.getElementById('stepLabel').textContent='🧹 Nossa IA está limpando…';document.getElementById('procStage').textContent=`quadro ${m[1]} de ${m[2]}`;}
+        else{
+          const st={'baixando':'📥 Recebendo o vídeo…','preparando frames':'🎞️ Preparando os quadros…','montando video':'🎬 Montando o vídeo final…','audio':'🔊 Recolocando o áudio…','finalizando':'✨ Finalizando…'}[d.stage];
+          if(st)document.getElementById('stepLabel').textContent=st;
+          document.getElementById('procStage').textContent='';
+        }
+      }
     }catch(e){}
   },5000);
 }
 
+// ── CONFETE de conclusão ──
+function confetti(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  cv.width=innerWidth;cv.height=innerHeight;
+  const ctx=cv.getContext('2d');
+  const colors=['#00d4ff','#ffd166','#5cffd0','#ff5c8a','#8ab4ff','#ffffff'];
+  const P=Array.from({length:160},()=>({
+    x:cv.width/2+(Math.random()-.5)*cv.width*.4,
+    y:cv.height*.35,
+    vx:(Math.random()-.5)*14,
+    vy:-(6+Math.random()*11),
+    w:6+Math.random()*6,h:8+Math.random()*8,
+    c:colors[(Math.random()*colors.length)|0],
+    r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,
+    o:1
+  }));
+  const t0=performance.now();
+  (function tick(t){
+    const el=t-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    for(const p of P){
+      p.vy+=.32;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;
+      if(el>1900)p.o=Math.max(0,1-(el-1900)/900);
+      ctx.save();ctx.globalAlpha=p.o;ctx.translate(p.x,p.y);ctx.rotate(p.r);
+      ctx.fillStyle=p.c;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h*Math.abs(Math.sin(p.r)));
+      ctx.restore();
+    }
+    if(el<2800)requestAnimationFrame(tick);else cv.remove();
+  })(t0);
+}
+
 function showResult(outputUrl){
+  const secs=procStart?Math.floor((Date.now()-procStart)/1000):0;
+  stopTimer();
   show('stepResult');
+  document.getElementById('doneTime').textContent=secs?`concluído em ${Math.floor(secs/60)}m ${String(secs%60).padStart(2,'0')}s`:'';
+  confetti();
   const vb=document.getElementById('vidBefore');vb.src=videoUrl;vb.play().catch(()=>{});
   const va=document.getElementById('vidAfter');va.src=outputUrl+(outputUrl.includes('?')?'&':'?')+'v='+Date.now();va.play().catch(()=>{});
   document.getElementById('dlBtn').href=outputUrl;
@@ -350,7 +434,7 @@ function showResult(outputUrl){
   loadHistory();
 }
 
-function resetAll(){selectedFile=null;videoUrl=null;currentJobId=null;frames=[];if(pollTimer)clearInterval(pollTimer);show('stepUpload');document.getElementById('fileInput').value='';}
+function resetAll(){selectedFile=null;videoUrl=null;currentJobId=null;frames=[];boxesArr=[];curBox=null;stopTimer();if(pollTimer)clearInterval(pollTimer);show('stepUpload');document.getElementById('fileInput').value='';}
 
 async function loadHistory(){
   try{

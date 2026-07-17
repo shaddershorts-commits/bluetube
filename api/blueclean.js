@@ -121,7 +121,11 @@ module.exports = async function handler(req, res) {
     if (!RW) return res.status(500).json({ error: 'Railway não configurado.' });
 
     const { video_url, boxes } = req.body;
+    const engine = req.body.engine === 'guided' ? 'guided' : undefined;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
+    if (engine === 'guided' && !(Array.isArray(boxes) && boxes.length)) {
+      return res.status(400).json({ error: 'Marque pelo menos uma área pra remover.' });
+    }
 
     const used = await getUsed();
     if (used >= LIMIT) return res.status(429).json({ error: `Limite atingido (${LIMIT}/${LIMIT}).` });
@@ -135,6 +139,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           video_url, output_path: outPath, supabase_url: SU, supabase_key: SK,
           replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [],
+          ...(engine ? { engine } : {}),
         }),
       });
       const rd = await rr.json().catch(() => ({}));
