@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r14-blueclean-guided',
+      build: 'r15-blueclean-gbrp',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
