@@ -52,8 +52,15 @@ async function downloadFile(url, dest) {
   const response = await axios.get(url, { responseType: 'stream', timeout: 60000 });
   response.data.pipe(writer);
   return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
+    // erro no stream de RESPOSTA nao propaga pelo pipe: sem listener vira
+    // uncaught exception (derruba o processo) ou worker pendurado pra sempre.
+    let idle = null;
+    const arm = () => { clearTimeout(idle); idle = setTimeout(() => { const e = new Error('download parado (sem dados ha 60s): ' + url.slice(0, 80)); response.data.destroy(e); writer.destroy(); reject(e); }, 60000); };
+    arm();
+    response.data.on('data', arm);
+    response.data.on('error', (e) => { clearTimeout(idle); writer.destroy(); reject(e); });
+    writer.on('finish', () => { clearTimeout(idle); resolve(); });
+    writer.on('error', (e) => { clearTimeout(idle); reject(e); });
   });
 }
 
@@ -891,13 +898,23 @@ async function processBlueCleanGuided(jobId, p) {
     let hasAudio = false;
     try { const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', orig]); hasAudio = /audio/.test(stdout); } catch (_) {}
 
-    // explode frames (JPEG q2 ~ visualmente transparente; PNG estouraria o disco)
+    // explode frames (JPEG q2 ~ visualmente transparente; PNG estouraria o disco).
+    // fps= conforma VFR/120fps pro mesmo fps da remontagem (senao video acelera/
+    // trava e -shortest corta conteudo).
     setJob({ progress: 7, stage: 'preparando frames' });
     const fdir = path.join(dir, 'f'); fs.mkdirSync(fdir);
-    await run('ffmpeg', ['-y', '-i', orig, '-q:v', '2', path.join(fdir, 'i_%05d.jpg')]);
+    await run('ffmpeg', ['-y', '-i', orig, '-vf', `fps=${fps}`, '-q:v', '2', path.join(fdir, 'i_%05d.jpg')]);
     const frames = fs.readdirSync(fdir).filter((f) => /^i_\d+\.jpg$/.test(f)).sort();
     const N = frames.length;
     if (!N) throw new Error('Falha ao extrair frames');
+    // dimensoes REAIS pos-rotacao: o probe do mp4 da o tamanho codificado, mas o
+    // ffmpeg auto-rotaciona no explode (video de celular com rotate=90 viraria
+    // caixas no lugar errado). O frame extraido e a verdade.
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path.join(fdir, frames[0])]);
+      const [fw, fh] = String(stdout).trim().split(',').map((v) => parseInt(v));
+      if (fw && fh) { W = fw; Hh = fh; }
+    } catch (_) {}
 
     // caixas normalizadas em pixels (clampadas), com janela de tempo global
     const boxes = p.boxes.map((b) => ({
@@ -991,10 +1008,16 @@ async function processBlueCleanGuided(jobId, p) {
 
     setJob({ progress: 97, stage: 'finalizando' });
     const outputUrl = await uploadToSupabase(finalOut, p.output_path, SU, SK, 'video/mp4');
-    for (const pth of uploaded) {
-      try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
-    }
+    // done ANTES do cleanup: milhares de DELETEs em serie deixariam o user
+    // olhando "97%" por minutos com o video ja pronto. Cleanup vira best-effort
+    // em lotes paralelos depois.
     JOBS.set(jobId, { status: 'done', progress: 100, stage: 'concluido', frames: N, frames_failed: failed, elapsed_sec: Math.round((Date.now() - startedAt) / 1000), output_url: outputUrl + '?v=' + Date.now() });
+    (async () => {
+      for (let i = 0; i < uploaded.length; i += 20) {
+        await Promise.all(uploaded.slice(i, i + 20).map((pth) =>
+          axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }).catch(() => {})));
+      }
+    })().catch(() => {});
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   } catch (e) {
     for (const pth of uploaded) {

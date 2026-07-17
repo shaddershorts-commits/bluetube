@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
       if (sd.status === 'error') return fail('Limpeza falhou: ' + (sd.error || ''));
       if (sd.status === 'done' && sd.output_url) {
         await patch({ status: 'completed', output_url: sd.output_url });
-        return res.status(200).json({ ...job, status: 'completed', output_url: sd.output_url });
+        return res.status(200).json({ ...job, status: 'completed', output_url: sd.output_url, frames_failed: sd.frames_failed || 0, elapsed_sec: sd.elapsed_sec });
       }
       return res.status(200).json({ ...job, status: 'processing', progress: sd.progress || 10, stage: sd.stage || 'processando' });
     } catch (e) { console.error('[blueclean:status]', e.message); }

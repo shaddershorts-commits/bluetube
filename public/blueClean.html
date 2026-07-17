@@ -240,13 +240,15 @@ function updateUsage(d){
 // File pick + frame extraction
 async function pickFile(file){
   if(!file)return;
+  if(file.type&&!file.type.startsWith('video/')){toast('❌ Isso não é um vídeo');return;}
   if(file.size>200*1024*1024){toast('❌ Máximo 200MB');return;}
   selectedFile=file;
   toast('Carregando vídeo…');
   try{
     const vid=document.createElement('video');
     vid.src=URL.createObjectURL(file);vid.muted=true;
-    await new Promise(r=>{vid.onloadedmetadata=r;});
+    await new Promise((r,j)=>{vid.onloadedmetadata=r;vid.onerror=()=>j(new Error('formato não suportado pelo navegador'));setTimeout(()=>j(new Error('demorou demais pra abrir')),15000);});
+    if(!vid.videoWidth)throw new Error('formato não suportado pelo navegador');
     const fc=document.getElementById('frameCanvas');
     const mc=document.getElementById('maskCanvas');
     const scale=Math.min(1,640/vid.videoWidth);
@@ -256,8 +258,9 @@ async function pickFile(file){
     frames=[];
     const times=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8].map(t=>t*vid.duration);
     for(const t of times){
-      vid.currentTime=t;
-      await new Promise(r=>{vid.onseeked=r;setTimeout(r,500);});
+      // espera o seek DE VERDADE (fallback 1.5s): resolver cedo capturava o
+      // frame anterior/preto em arquivo grande no celular
+      await new Promise(r=>{let done=false;const ok=()=>{if(!done){done=true;r();}};vid.onseeked=ok;vid.currentTime=t;setTimeout(ok,1500);});
       frameCtx.drawImage(vid,0,0,canvasW,canvasH);
       frames.push(frameCtx.getImageData(0,0,canvasW,canvasH));
     }
@@ -364,7 +367,7 @@ function startPolling(){
     try{
       const r=await fetch(`/api/blueclean?action=status&token=${encodeURIComponent(TOKEN)}&job_id=${currentJobId}`);
       const d=await r.json();
-      if(d.status==='completed'&&d.output_url){clearInterval(pollTimer);showResult(d.output_url);}
+      if(d.status==='completed'&&d.output_url){clearInterval(pollTimer);showResult(d.output_url,d.frames_failed||0);}
       else if(d.status==='failed'){clearInterval(pollTimer);stopTimer();toast('❌ '+(d.error_message||'Processamento falhou.'));show('stepEditor');}
       else{
         document.getElementById('procBarFill').style.width=Math.max(2,d.progress||2)+'%';
@@ -414,22 +417,27 @@ function confetti(){
   })(t0);
 }
 
-function showResult(outputUrl){
+function showResult(outputUrl,framesFailed){
   const secs=procStart?Math.floor((Date.now()-procStart)/1000):0;
   stopTimer();
   show('stepResult');
-  document.getElementById('doneTime').textContent=secs?`concluído em ${Math.floor(secs/60)}m ${String(secs%60).padStart(2,'0')}s`:'';
-  confetti();
+  let dt=secs?`concluído em ${Math.floor(secs/60)}m ${String(secs%60).padStart(2,'0')}s`:'';
+  if(framesFailed>0)dt+=(dt?' · ':'')+`⚠️ ${framesFailed} quadro${framesFailed>1?'s':''} não ${framesFailed>1?'puderam':'pôde'} ser limpo${framesFailed>1?'s':''} — se notar a marca piscando, rode de novo`;
+  document.getElementById('doneTime').textContent=dt;
+  if(!framesFailed)confetti();
   const vb=document.getElementById('vidBefore');vb.src=videoUrl;vb.play().catch(()=>{});
   const va=document.getElementById('vidAfter');va.src=outputUrl+(outputUrl.includes('?')?'&':'?')+'v='+Date.now();va.play().catch(()=>{});
   document.getElementById('dlBtn').href=outputUrl;
-  vb.addEventListener('timeupdate',()=>{if(Math.abs(va.currentTime-vb.currentTime)>.2)va.currentTime=vb.currentTime;});
-  const wrap=document.getElementById('compWrap');const handle=document.getElementById('sliderHandle');let dragging=false;
-  function moveSlider(x){const r=wrap.getBoundingClientRect();const pct=Math.max(0,Math.min(100,((x-r.left)/r.width)*100));handle.style.left=pct+'%';wrap.querySelector('.after').style.clipPath=`inset(0 ${100-pct}% 0 0)`;}
-  handle.addEventListener('pointerdown',()=>dragging=true);
-  document.addEventListener('pointermove',e=>{if(dragging)moveSlider(e.clientX);});
-  document.addEventListener('pointerup',()=>dragging=false);
-  wrap.addEventListener('click',e=>moveSlider(e.clientX));
+  vb.ontimeupdate=()=>{if(Math.abs(va.currentTime-vb.currentTime)>.2)va.currentTime=vb.currentTime;};
+  const wrap=document.getElementById('compWrap');const handle=document.getElementById('sliderHandle');
+  if(!wrap._wired){
+    wrap._wired=true;let dragging=false;
+    const moveSlider=x=>{const r=wrap.getBoundingClientRect();const pct=Math.max(0,Math.min(100,((x-r.left)/r.width)*100));handle.style.left=pct+'%';wrap.querySelector('.after').style.clipPath=`inset(0 ${100-pct}% 0 0)`;};
+    handle.addEventListener('pointerdown',()=>dragging=true);
+    document.addEventListener('pointermove',e=>{if(dragging)moveSlider(e.clientX);});
+    document.addEventListener('pointerup',()=>dragging=false);
+    wrap.addEventListener('click',e=>moveSlider(e.clientX));
+  }
   fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'usage',token:TOKEN})}).then(r=>r.json()).then(updateUsage).catch(()=>{});
   loadHistory();
 }
