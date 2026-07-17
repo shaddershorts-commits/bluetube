@@ -144,7 +144,31 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({ type, video_id, user_id: user_id || null, session_id: session_id || null, watch_duration, video_duration, completion_pct, completed, skipped })
     });
 
-    // Marca como visto no feed
+    // ── Validação de VIEW (régua "Equilibrada", escolha do user 2026-07-17) ──
+    // Visitante conta, mas o contador só sobe se: (1) o vídeo REALMENTE tocou
+    // (≥1s OU ≥25%) e (2) essa identidade não contou esse vídeo nas últimas 24h.
+    // Identidade: user_id (logado) senão session_id do app (visitante) — a
+    // relaunch do guest gera nova sessão, mas o teto de 30/min por IP no topo
+    // barra inflação via API direto.
+    let viewCounts = false;
+    if (type === 'view') {
+      const played = watch_duration >= 1 || completion_pct >= 25;
+      let alreadyCounted = false;
+      const dedupCol = user_id ? 'user_id' : (session_id ? 'session_id' : null);
+      const dedupVal = user_id || session_id;
+      if (played && dedupCol) {
+        const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const dR = await fetch(
+          `${SU}/rest/v1/blue_feed_seen?video_id=eq.${encodeURIComponent(video_id)}&${dedupCol}=eq.${encodeURIComponent(dedupVal)}&seen_at=gt.${since}&select=video_id&limit=1`,
+          { headers: h }
+        ).catch(() => null);
+        alreadyCounted = dR && dR.ok && (await dR.json().catch(() => [])).length > 0;
+      }
+      // sem identidade (dedupCol null): não dá pra deduplicar → conta 1x só se tocou
+      viewCounts = played && !alreadyCounted;
+    }
+
+    // Marca como visto no feed (mantém a lógica do feed + refresca a janela de dedup)
     if ((user_id || session_id) && type === 'view') {
       await fetch(`${SU}/rest/v1/blue_feed_seen`, {
         method: 'POST',
@@ -164,6 +188,9 @@ module.exports = async function handler(req, res) {
     const patch = {};
 
     if (type === 'view') {
+      // Só conta se passou na validação (tocou + não-duplicado em 24h).
+      // View repetida/phantom: não mexe em nenhum contador nem no score.
+      if (!viewCounts) return res.status(200).json({ ok: true, counted: false });
       patch.views = (v.views || 0) + 1;
       patch.test_views = (v.test_views || 0) + 1;
       patch.total_watch_time = (v.total_watch_time || 0) + watch_duration;
