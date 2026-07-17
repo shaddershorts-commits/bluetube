@@ -676,20 +676,39 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
       boxChain += `,drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=white:t=fill${en}`;
     }
   }
-  const fc =
-    `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
-    `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
-    `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
-    (dilChain ? ',' + dilChain : '') + boxChain + `,format=gray[m]`;
+  // DETECCAO DE ANOTACOES DESENHADAS (seta/circulo vermelho ou laranja) por cor.
+  // O detector de texto (hjunior29) so pega TEXTO, nao grafismo que o editor
+  // desenha. Condicao: R bem maior que G e B (pega vermelho E laranja), robusta
+  // a pele (pele tem R~G, nao dispara). Unida (lighten = max) com a mascara de
+  // texto (blend-diff por FORMA). Default ON; opt.detectAnnotations=false desliga.
+  // Aspas simples nas geq protegem as virgulas (mesmo padrao do geq de texto).
+  const annOn = opt.detectAnnotations !== false;
+  const annCond = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
+  const fc = annOn
+    ? `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},split[cc0][cc1];` +
+      `[cc0]format=gray[a];` +
+      `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
+      `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'[txt];` +
+      `[cc1]format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray[ann];` +
+      `[txt][ann]blend=all_mode=lighten` + (dilChain ? ',' + dilChain : '') + boxChain + `,format=gray[m]`
+    : `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
+      `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
+      `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'` +
+      (dilChain ? ',' + dilChain : '') + boxChain + `,format=gray[m]`;
   await run('ffmpeg', ['-y', '-i', chunkPath, '-i', black, '-filter_complex', fc, '-map', '[m]',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), mask]);
   const maskKey = `${tmpPrefix}/mask_${idx}.mp4`;
   const maskUrl = await uploadRetry('mask ' + idx, mask, maskKey, SU, SK, 'video/mp4');
   uploaded.push(maskKey);
 
-  // (c) PREENCHIMENTO — ProPainter deep (fp16 evita erro de dtype)
+  // (c) PREENCHIMENTO — ProPainter deep (fp16 evita erro de dtype).
+  // Settings fortes: neighbor_length 20 + ref_stride 6 = mais contexto temporal
+  // (copia pixels reais de mais frames vizinhos = fill nitido). mask_dilation 6
+  // cobre a borda anti-aliased de anotacoes grossas (circulo). subvideo_length
+  // 80 processa em sub-videos = evita CUDA OOM em 1080p.
   const filledUrl = await replicateRun(token, 'jd7h/propainter', {
-    video: chunkUrl, mask: maskUrl, fp16: true, mask_dilation: 4,
+    video: chunkUrl, mask: maskUrl, fp16: true,
+    mask_dilation: 6, neighbor_length: 20, ref_stride: 6, raft_iter: 20, subvideo_length: 80,
   }, { pollMs: 4000, timeoutMs: 12 * 60 * 1000 });
   const filled = path.join(dir, `filled_${idx}.mp4`);
   await downloadFile(filledUrl, filled);
