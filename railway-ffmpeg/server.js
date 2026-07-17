@@ -336,7 +336,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r10-blueclean-annotations',
+      build: 'r11-blueclean-safe',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -702,13 +702,15 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
   uploaded.push(maskKey);
 
   // (c) PREENCHIMENTO — ProPainter deep (fp16 evita erro de dtype).
-  // Settings fortes: neighbor_length 20 + ref_stride 6 = mais contexto temporal
-  // (copia pixels reais de mais frames vizinhos = fill nitido). mask_dilation 6
-  // cobre a borda anti-aliased de anotacoes grossas (circulo). subvideo_length
-  // 80 processa em sub-videos = evita CUDA OOM em 1080p.
+  // Settings SEGUROS de memoria (1080p a 44GB): neighbor_length/ref_stride nos
+  // defaults (10/10) — subir pra 20 estoura CUDA OOM. mask_dilation 6 cobre a
+  // borda anti-aliased de anotacoes grossas (circulo) e e barato (so morfologia).
+  // subvideo_length 60 = processa em sub-videos menores (margem anti-OOM).
+  // O ganho de qualidade real veio da DETECCAO de anotacoes na mascara (acima),
+  // nao de settings pesados de ProPainter.
   const filledUrl = await replicateRun(token, 'jd7h/propainter', {
     video: chunkUrl, mask: maskUrl, fp16: true,
-    mask_dilation: 6, neighbor_length: 20, ref_stride: 6, raft_iter: 20, subvideo_length: 80,
+    mask_dilation: 6, neighbor_length: 10, ref_stride: 10, raft_iter: 20, subvideo_length: 60,
   }, { pollMs: 4000, timeoutMs: 12 * 60 * 1000 });
   const filled = path.join(dir, `filled_${idx}.mp4`);
   await downloadFile(filledUrl, filled);
