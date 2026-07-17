@@ -131,9 +131,9 @@ module.exports = async function handler(req, res) {
         stories: meuStories
       };
 
-      // 6) Outros users (seguidos com stories)
+      // 6) Outros users (seguidos/contatos com stories)
       const outros = [];
-      for (const uid of followedIds) {
+      for (const uid of sourceIds) {
         const arr = grouped.get(uid);
         if (!arr?.length) continue;
         const prof = profileMap.get(uid);
