@@ -2,6 +2,15 @@
 // Returns admin dashboard data: users, subscribers, usage stats.
 // Protected by ADMIN_SECRET environment variable.
 
+// Comparação em tempo constante — não vaza o segredo por timing do !==.
+function safeEqual(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -11,7 +20,7 @@ export default async function handler(req, res) {
   // Auth check
   const authHeader = req.headers['authorization'];
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
-  if (!ADMIN_SECRET || authHeader !== `Bearer ${ADMIN_SECRET}`) {
+  if (!ADMIN_SECRET || !safeEqual(authHeader, `Bearer ${ADMIN_SECRET}`)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

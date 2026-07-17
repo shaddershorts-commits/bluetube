@@ -712,7 +712,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
           }).catch(() => {});
           return;
         }
-        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
+        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${encodeURIComponent(refCode)}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) {
           fetch(`${SUPABASE_URL}/rest/v1/affiliate_attribution_log`, {
@@ -1026,7 +1026,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         const refData = subRef.ok ? await subRef.json() : [];
         const refCode = refData?.[0]?.affiliate_ref;
         if (!refCode) return;
-        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
+        const affRes = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?ref_code=eq.${encodeURIComponent(refCode)}&select=id,comissao_percentual,nivel,level,email,total_earnings,total_earnings_by_currency`, { headers: supaHeaders });
         const aff = affRes.ok ? (await affRes.json())?.[0] : null;
         if (!aff) return;
         const { rate, levelKey, source: rateSource } = effectiveRate(aff);

@@ -32,7 +32,28 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = req.body || {};
-    const { type, action: interactAction, video_id, user_id, session_id, watch_duration = 0, video_duration = 0, completion_pct = 0 } = body;
+    const { type, action: interactAction, video_id, user_id, session_id, token, watch_duration = 0, video_duration = 0, completion_pct = 0 } = body;
+
+    // ── Anti-fraude: ações LOGADAS (curtir/descurtir/compartilhar) tiram a
+    //    identidade do TOKEN validado, não do user_id do corpo (que era
+    //    spoofável → dava pra inflar curtida de qualquer um). View NÃO passa
+    //    por aqui: visitante conta sem login (validação de view é por
+    //    dedup+watch, mais abaixo).
+    // like/unlike: exigem token (ação logada; kill do spoof de curtida).
+    // share/view: visitante conta — best-effort (dedup + rate limit por IP).
+    let actorId = user_id || null;
+    if (['like', 'unlike'].includes(type)) {
+      if (!token) return res.status(401).json({ error: 'Login necessário' });
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
+      if (!uR.ok) return res.status(401).json({ error: 'Token inválido' });
+      actorId = (await uR.json()).id;
+    } else if (type === 'share' && token) {
+      // Se veio token no share, usa a identidade validada (senão fica null = guest)
+      const AK = process.env.SUPABASE_ANON_KEY || SK;
+      const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } }).catch(() => null);
+      if (uR && uR.ok) actorId = (await uR.json()).id;
+    }
 
     // ── SALVAR / DESALVAR VÍDEO ────────────────────────────────────────────
     if (interactAction === 'salvar') {
@@ -157,11 +178,11 @@ module.exports = async function handler(req, res) {
       // IDEMPOTENCIA via UNIQUE(user_id, video_id) em blue_likes.
       // Tenta INSERT — se ja existir, ignore-duplicates retorna corpo vazio.
       // Apenas incrementa o contador + notifica se foi 1a curtida desse user.
-      if (!user_id) return res.status(200).json({ ok: true, skipped: 'anonymous_like' });
+      // actorId vem do token validado (não do corpo) — anti-spoof
       const insR = await fetch(`${SU}/rest/v1/blue_likes`, {
         method: 'POST',
         headers: { ...h, Prefer: 'return=representation,resolution=ignore-duplicates' },
-        body: JSON.stringify({ user_id, video_id }),
+        body: JSON.stringify({ user_id: actorId, video_id }),
       });
       const insBody = await insR.json().catch(() => []);
       const insertedNew = Array.isArray(insBody) && insBody.length > 0;
@@ -170,15 +191,14 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, skipped: 'already_liked' });
       }
       patch.likes = Math.max(0, (v.likes || 0) + 1);
-      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+      _notifyOwner(SU, h, actorId, v.user_id, video_id, {
         tipo: 'like', titulo: 'Nova curtida',
         msgFn: (uname) => `@${uname} curtiu seu vídeo`,
       });
     } else if (type === 'unlike') {
       // Espelho: deleta de blue_likes; so decrementa se realmente removeu uma row
-      if (!user_id) return res.status(200).json({ ok: true, skipped: 'anonymous_unlike' });
       const delR = await fetch(
-        `${SU}/rest/v1/blue_likes?user_id=eq.${user_id}&video_id=eq.${video_id}`,
+        `${SU}/rest/v1/blue_likes?user_id=eq.${encodeURIComponent(actorId)}&video_id=eq.${encodeURIComponent(video_id)}`,
         { method: 'DELETE', headers: { ...h, Prefer: 'return=representation' } }
       );
       const delBody = await delR.json().catch(() => []);
@@ -195,7 +215,7 @@ module.exports = async function handler(req, res) {
     } else if (type === 'share') {
       // Conta no insight do criador (coluna shares — sql/status_bluechat_v1.sql)
       patch.shares = (v.shares || 0) + 1;
-      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+      _notifyOwner(SU, h, actorId, v.user_id, video_id, {
         tipo: 'share', titulo: 'Vídeo compartilhado',
         msgFn: (uname) => `@${uname} compartilhou seu vídeo`,
       });

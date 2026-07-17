@@ -3,6 +3,15 @@
 
 const { signToken } = require('./_helpers/unsub-token');
 
+// Comparação em tempo constante (não vaza segredo por timing do !==)
+function safeEqual(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -15,7 +24,7 @@ module.exports = async function handler(req, res) {
   if (!testEmail) {
     const auth = req.headers['authorization'];
     const ADMIN_SECRET = process.env.ADMIN_SECRET;
-    if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
+    if (!ADMIN_SECRET || !safeEqual(auth, `Bearer ${ADMIN_SECRET}`)) return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const SU = process.env.SUPABASE_URL;

@@ -116,7 +116,7 @@ export default async function handler(req, res) {
 
     try {
       // Busca afiliado pelo ref_code
-      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}&select=id,status`, { headers: supaH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${encodeURIComponent(ref)}&select=id,status`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate || affiliate.status === 'suspended') {
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
       });
 
       // Incrementa total_clicks
-      await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${ref}`, {
+      await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${encodeURIComponent(ref)}`, {
         method: 'PATCH',
         headers: { ...supaH, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ total_clicks: (affiliate.total_clicks || 0) + 1, updated_at: new Date().toISOString() })
@@ -359,7 +359,7 @@ export default async function handler(req, res) {
       if (!refCode) return res.status(200).json({ ok: true, skipped: 'no_ref' });
 
       // Busca afiliado
-      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${refCode}&select=*`, { headers: supaH });
+      const ar = await fetch(`${SUPA_URL}/rest/v1/affiliates?ref_code=eq.${encodeURIComponent(refCode)}&select=*`, { headers: supaH });
       const affiliates = await ar.json();
       const affiliate = affiliates?.[0];
       if (!affiliate) return res.status(200).json({ ok: true, skipped: 'affiliate_not_found' });
