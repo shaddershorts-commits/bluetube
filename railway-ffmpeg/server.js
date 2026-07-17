@@ -910,21 +910,24 @@ async function processBlueCleanGuided(jobId, p) {
     })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
 
     // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so)
-    const maskCache = new Map(); // key -> { url, crop:{cx,cy,cw,ch} }
+    const maskCache = new Map(); // key -> { url, crop:{cx,cy,cw,ch}, mpath }
+    let maskSeq = 0; // nome unico sincrono (size no nome racearia entre workers)
     const even = (v) => v - (v % 2);
+    const PAD = 10; // folga na mascara alem da caixa do usuario (borda anti-aliased)
     async function maskFor(active) {
       const key = active.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join('|');
       if (maskCache.has(key)) return maskCache.get(key);
-      const M = 48; // margem de contexto pro inpaint enxergar fundo ao redor
+      const seq = maskSeq++;
+      const M = 48 + PAD; // margem de contexto pro inpaint enxergar fundo ao redor
       let x1 = Math.min(...active.map((b) => b.x)), y1 = Math.min(...active.map((b) => b.y));
       let x2 = Math.max(...active.map((b) => b.x + b.w)), y2 = Math.max(...active.map((b) => b.y + b.h));
       x1 = Math.max(0, x1 - M); y1 = Math.max(0, y1 - M);
       x2 = Math.min(W, x2 + M); y2 = Math.min(Hh, y2 + M);
       const crop = { cx: even(x1), cy: even(y1), cw: even(x2 - even(x1)), ch: even(y2 - even(y1)) };
-      const draws = active.map((b) => `drawbox=x=${b.x - crop.cx}:y=${b.y - crop.cy}:w=${b.w}:h=${b.h}:color=white:t=fill`).join(',');
-      const mpath = path.join(dir, `mask_${maskCache.size}.png`);
+      const draws = active.map((b) => `drawbox=x=${b.x - PAD - crop.cx}:y=${b.y - PAD - crop.cy}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
+      const mpath = path.join(dir, `mask_${seq}.png`);
       await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${crop.cw}x${crop.ch}`, '-vf', draws, '-frames:v', '1', mpath]);
-      const mkey = `${tmpPrefix}/mask_${maskCache.size}.png`;
+      const mkey = `${tmpPrefix}/mask_${seq}.png`;
       const url = await uploadRetry('gmask', mpath, mkey, SU, SK, 'image/png');
       uploaded.push(mkey);
       const entry = { url, crop, mpath };
