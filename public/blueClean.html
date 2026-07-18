@@ -162,6 +162,10 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
         <button class="tb-btn active" id="tbRect">⬜ Desenhar caixa</button>
         <button class="tb-btn" onclick="undoBox()">↩️ Desfazer</button>
         <button class="tb-btn" onclick="clearBoxes()">🗑️ Limpar tudo</button>
+        <label class="tb-btn" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="chkAnotacoes" style="accent-color:var(--red);width:15px;height:15px"/>
+          <span>🔴 Tem setas/círculos</span>
+        </label>
         <button class="btn" id="goBtn" disabled onclick="startProcess()">Marque o que remover</button>
       </div>
     </div>
@@ -354,7 +358,8 @@ async function startProcess(){
     videoUrl=cfg.video_public_url;
 
     document.getElementById('stepLabel').textContent='🧹 Nossa IA está limpando…';
-    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes})});
+    const anotacoes=!!document.getElementById('chkAnotacoes')?.checked;
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes,anotacoes})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao iniciar');
     currentJobId=d.job_id;
