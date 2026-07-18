@@ -623,7 +623,15 @@ app.get('/yt-subs', async (req, res) => {
     const text = (cd.events || []).filter((e) => e.segs).map((e) => e.segs.map((s) => s.utf8 || '').join('')).join(' ').replace(/\s+/g, ' ').trim();
     cleanup();
     if (text.length < 20) return res.status(404).json({ error: 'sem_legenda' });
-    res.json({ content: text, lang: (lang || 'pt').replace('-orig', ''), source: 'ytdlp' });
+    const out = { content: text, lang: (lang || 'pt').replace('-orig', ''), source: 'ytdlp' };
+    // seg=1 (Blublu confirma citacao): segmentos com timestamp em segundos —
+    // permite responder "citado aos 2:13" e linkar direto no momento.
+    if (String(req.query.seg || '') === '1') {
+      out.segments = (cd.events || []).filter((e) => e.segs)
+        .map((e) => ({ t: Math.round((e.tStartMs || 0) / 1000), x: e.segs.map((s) => s.utf8 || '').join('').replace(/\s+/g, ' ').trim() }))
+        .filter((s) => s.x);
+    }
+    res.json(out);
   } catch (e) {
     cleanup();
     res.status(502).json({ error: (e.message || 'falha yt-dlp').slice(0, 200) });
