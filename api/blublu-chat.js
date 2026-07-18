@@ -122,7 +122,14 @@ module.exports = async function handler(req, res) {
     // PRECISÃO > volume (regra do user: na dúvida, não manda): termo solto
     // curto demais (tipo "ney") pesca lixo — só passa termo com 4+ letras,
     // com dígito (CR7) ou composto ("michael jackson")
-    const termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
+    let termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
+    // rede de segurança: se o modelo só mandou frases compostas ("tigre
+    // escalando arvore"), o título em outro idioma nunca bate — extrai o
+    // núcleo do tema e busca ele sozinho também (caso do tigre em espanhol)
+    if (tema && termosOk.length && termosOk.every((t) => t.includes(' '))) {
+      const nucleo = clean(tema).split(' ').filter((w) => w.length >= 4);
+      if (nucleo.length) termosOk.push(nucleo[0]);
+    }
     const secParts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em'];
     if (minViews) secParts.push(`views=gte.${minViews}`);
     if (dias) secParts.push(`publicado_em=gte.${new Date(Date.now() - dias * 86400000).toISOString()}`);
@@ -296,7 +303,7 @@ module.exports = async function handler(req, res) {
         type: 'object',
         properties: {
           tema: { type: ['string', 'null'], description: 'assunto OU nome de canal/criador do pedido. null se for busca só por números/filtros' },
-          termos: { type: 'array', items: { type: 'string' }, description: '3-6 variações do tema pra busca (nome completo, apelidos, traduções, grafias)' },
+          termos: { type: 'array', items: { type: 'string' }, description: 'OBRIGATÓRIO: (1) o substantivo-núcleo do tema SOZINHO (ex: "tigre"), (2) traduções do núcleo em inglês e espanhol ("tiger") — o acervo tem 10 idiomas!, (3) apelidos/grafias famosas. Frases compostas ("tigre escalando árvore") só como COMPLEMENTO, nunca no lugar do núcleo.' },
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
@@ -329,6 +336,7 @@ REGRAS DO CHAT:
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
 - PRECISÃO: termos INEQUÍVOCOS (nome completo, apelidos famosos) — nada de palavra solta genérica que traga vídeo errado. Na dúvida, melhor menos e certo.
 - DATA: "mais recente", "último", "novo" = ordem "recentes" na busca, SEMPRE. Não responda recência com o mais visto.
+- IDIOMAS: o acervo é GLOBAL (pt, en, es, fr, de, it, ja, ko, zh, ru). Sempre inclua nos termos o núcleo traduzido pro inglês e espanhol no mínimo. Só filtre nicho se o usuário pedir explicitamente.
 - HONESTIDADE DE ACERVO: NUNCA afirme que o acervo tem ou não tem um assunto sem ter BUSCADO esse assunto. Nada de inventar inventário ("tenho leão, crocodilo…") — se quiser sugerir alternativas, diga que pode buscar, não que "tem".
 - Confirmação: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). Teu diferencial — ostenta quando houver.
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
