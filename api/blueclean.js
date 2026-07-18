@@ -142,7 +142,24 @@ module.exports = async function handler(req, res) {
     const { video_url, boxes } = req.body;
     const engine = req.body.engine === 'guided' ? 'guided' : undefined;
     if (!video_url) return res.status(400).json({ error: 'video_url obrigatório' });
-    if (engine === 'guided' && !(Array.isArray(boxes) && boxes.length)) {
+    // marcações adaptativas (anel/pincel com janela de tempo) — valida e repassa
+    let marks = [];
+    if (Array.isArray(req.body.marks)) {
+      marks = req.body.marks.slice(0, 12).filter((m) =>
+        m && (m.type === 'ring' || m.type === 'brush') &&
+        [m.x_pct, m.y_pct, m.w_pct, m.h_pct].every((v) => typeof v === 'number' && v >= 0 && v <= 1) &&
+        (m.start_sec == null || typeof m.start_sec === 'number') &&
+        (m.end_sec == null || typeof m.end_sec === 'number') &&
+        (m.type !== 'brush' || (typeof m.png === 'string' && m.png.startsWith('data:image/png') && m.png.length < 1500000))
+      ).map((m) => ({
+        type: m.type, x_pct: m.x_pct, y_pct: m.y_pct, w_pct: m.w_pct, h_pct: m.h_pct,
+        ...(m.start_sec != null ? { start_sec: m.start_sec } : {}),
+        ...(m.end_sec != null ? { end_sec: m.end_sec } : {}),
+        ...(typeof m.thick_pct === 'number' ? { thick_pct: m.thick_pct } : {}),
+        ...(m.type === 'brush' ? { png: m.png } : {}),
+      }));
+    }
+    if (engine === 'guided' && !(Array.isArray(boxes) && boxes.length) && !marks.length) {
       return res.status(400).json({ error: 'Marque pelo menos uma área pra remover.' });
     }
 
@@ -158,6 +175,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           video_url, output_path: outPath, supabase_url: SU, supabase_key: SK,
           replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [],
+          ...(marks.length ? { marks } : {}),
           ...(engine ? { engine } : {}),
           ...(req.body.anotacoes ? { anotacoes: true } : {}),
         }),
