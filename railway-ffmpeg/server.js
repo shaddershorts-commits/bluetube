@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r25h-blueclean-detwasm',
+      build: 'r26b-blueclean-temporal',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -643,8 +643,8 @@ app.post('/blueclean-process', (req, res) => {
   if (!p.video_url || !p.output_path || !p.supabase_url || !p.supabase_key || !p.replicate_token) {
     return res.status(400).json({ error: 'video_url, output_path, replicate_token e credenciais obrigatorios' });
   }
-  if (p.engine === 'guided' && !(Array.isArray(p.boxes) && p.boxes.length)) {
-    return res.status(400).json({ error: 'engine guided exige boxes (marcacao do usuario)' });
+  if (p.engine === 'guided' && !(Array.isArray(p.boxes) && p.boxes.length) && !(Array.isArray(p.marks) && p.marks.length)) {
+    return res.status(400).json({ error: 'engine guided exige boxes ou marks (marcacao do usuario)' });
   }
   const jobId = uuidv4();
   JOBS.set(jobId, { status: 'processing', progress: 2, stage: 'preparando', started_at: Date.now() });
@@ -1119,7 +1119,7 @@ async function processBlueCleanGuided(jobId, p) {
     } catch (_) {}
 
     // caixas normalizadas em pixels (clampadas), com janela de tempo global
-    const boxes = p.boxes.map((b) => ({
+    const boxes = (Array.isArray(p.boxes) ? p.boxes : []).map((b) => ({
       x: Math.max(0, Math.min(W - 2, Math.round((b.x_pct || 0) * W))),
       y: Math.max(0, Math.min(Hh - 2, Math.round((b.y_pct || 0) * Hh))),
       w: Math.max(2, Math.round((b.w_pct || 0) * W)),
@@ -1127,6 +1127,77 @@ async function processBlueCleanGuided(jobId, p) {
       s: b.start_sec == null ? -1e9 : +b.start_sec,
       e: b.end_sec == null ? 1e9 : +b.end_sec,
     })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
+
+    // ── MARCAÇÕES ADAPTATIVAS (r26): anel/pincel com janela de tempo ────────
+    // Caixa quadrada sobre círculo desperdiçava área e o miolo (rosto/objeto
+    // destacado) era arriscado. Agora: 'ring' remove SÓ a borda elíptica;
+    // 'brush' remove exatamente o traço pintado no front. Determinístico —
+    // zero detecção de cor. s/e (janela) corta o trabalho aos quadros em que
+    // a anotação existe (caso real: seta que aparece 3s e some).
+    const marcas = [];
+    if (Array.isArray(p.marks)) {
+      for (const m of p.marks.slice(0, 12)) {
+        if (m.type !== 'ring' && m.type !== 'brush') continue;
+        const x = Math.max(0, Math.min(W - 2, Math.round((m.x_pct || 0) * W)));
+        const y = Math.max(0, Math.min(Hh - 2, Math.round((m.y_pct || 0) * Hh)));
+        const w = Math.max(2, Math.min(Math.round((m.w_pct || 0) * W), W - x));
+        const h = Math.max(2, Math.min(Math.round((m.h_pct || 0) * Hh), Hh - y));
+        marcas.push({
+          type: m.type, x, y, w, h,
+          s: m.start_sec == null ? -1e9 : +m.start_sec,
+          e: m.end_sec == null ? 1e9 : +m.end_sec,
+          thick: +m.thick_pct || 0.3, png: m.png,
+        });
+      }
+    }
+    // Formas viram PNGs (RGBA pro overlay time-gated + BW pra máscara de
+    // inpaint). A REMOÇÃO delas acontece num passe TEMPORAL próprio depois da
+    // legenda (ver "ANOTAÇÕES TRANSIENTES" abaixo) — espacial por-frame vira
+    // borrão em anel largo sobre cena complexa (comprovado no smoke30).
+    if (marcas.length) {
+      try {
+        const sharp = require('sharp');
+        for (let k = 0; k < marcas.length; k++) {
+          const m = marcas[k];
+          const um = Buffer.alloc(W * Hh);
+          if (m.type === 'ring') {
+            // anel elíptico: fora do raio interno, dentro do externo (+folga)
+            const rx = m.w / 2, ry = m.h / 2, cx0 = m.x + rx, cy0 = m.y + ry;
+            const th = Math.min(0.6, Math.max(0.12, m.thick));
+            const inner = 1 - th;
+            const folga = 1 + 6 / Math.max(6, Math.min(rx, ry));
+            for (let yy = Math.max(0, m.y - 8); yy < Math.min(Hh, m.y + m.h + 8); yy++) {
+              for (let xx = Math.max(0, m.x - 8); xx < Math.min(W, m.x + m.w + 8); xx++) {
+                const dx = (xx - cx0) / rx, dy = (yy - cy0) / ry;
+                const q = dx * dx + dy * dy;
+                if (q <= folga * folga && q >= inner * inner) um[yy * W + xx] = 255;
+              }
+            }
+          } else {
+            // pincel: PNG pintado no front (dataURL) → res real → binariza
+            const b64 = String(m.png || '').split(',').pop();
+            if (!b64 || b64.length < 100 || b64.length > 1400000) throw new Error('pincel invalido');
+            const g = await sharp(Buffer.from(b64, 'base64'))
+              .resize(W, Hh, { fit: 'fill' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            const ch = g.info.channels; // traço = alpha OU luminância alta
+            for (let i2 = 0; i2 < W * Hh; i2++) {
+              const a = ch === 4 ? g.data[i2 * ch + 3] : 255;
+              if (a > 60 && g.data[i2 * ch] + g.data[i2 * ch + 1] + g.data[i2 * ch + 2] > 90) um[i2] = 255;
+            }
+          }
+          const rgba = Buffer.alloc(W * Hh * 4);
+          for (let i2 = 0; i2 < W * Hh; i2++) { const v = um[i2]; rgba[i2 * 4] = v; rgba[i2 * 4 + 1] = v; rgba[i2 * 4 + 2] = v; rgba[i2 * 4 + 3] = v; }
+          m.sp = path.join(dir, `shape_${k}.png`);
+          await sharp(rgba, { raw: { width: W, height: Hh, channels: 4 } }).png().toFile(m.sp);
+          m.spbw = path.join(dir, `shapebw_${k}.png`);
+          await sharp(um, { raw: { width: W, height: Hh, channels: 1 } }).png().toFile(m.spbw);
+        }
+        console.log('[bcg]', jobId, `marcações adaptativas: ${marcas.map((m) => m.type).join(', ')}`);
+      } catch (e) {
+        marcas.length = 0;
+        console.error('[bcg]', jobId, 'marcações falharam (seguem só caixas):', e.message.slice(0, 100));
+      }
+    }
 
     // ── CAIXAS AUTOMÁTICAS DE ANOTAÇÕES (r24, multi-cor + clusters) ─────────
     // r23b falhou no caso real: cropdetect faz UNIÃO — vermelho em 2 cantos =
@@ -1308,6 +1379,20 @@ async function processBlueCleanGuided(jobId, p) {
         console.error('[bcg]', jobId, 'camada texto falhou -> modo caixa:', e.message.slice(0, 120));
       }
     }
+    // YAVG por quadro da máscara FINAL (PNGs gray full-range: preto = 0.00).
+    // Substitui o "PNG < 800 bytes = vazio" — PNG todo-preto tem ~10KB, então
+    // NENHUM quadro era pulado (parte real dos 13min do job da seta).
+    let tmYavg = null;
+    if (textMaskDir) {
+      try {
+        const { stdout: st2 } = await run('ffmpeg', ['-framerate', String(fps), '-i', path.join(textMaskDir, 'm_%05d.png'),
+          '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
+        tmYavg = [...String(st2).matchAll(/YAVG=([0-9.]+)/g)].map((mm) => parseFloat(mm[1]));
+        const vazios = tmYavg.filter((v) => v <= 0.15).length;
+        console.log('[bcg]', jobId, `máscara final: ${N - vazios}/${N} quadros com trabalho real`);
+      } catch (_) { tmYavg = null; }
+    }
+    const mascaraVazia = (i) => !!(tmYavg && tmYavg[i] !== undefined && tmYavg[i] <= 0.15);
     // cache de upload de mascara pro FALLBACK replicate (mpath -> url)
     const textMaskCache = new Map();
     // semaforo de composicao: rede escala a 32, CPU nao
@@ -1363,7 +1448,7 @@ async function processBlueCleanGuided(jobId, p) {
             const src = path.join(fdir, f);
             const out = path.join(fdir, f.replace('i_', 'o_'));
             const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 800) {
+            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || mascaraVazia(i)) {
               fs.copyFileSync(src, out); done++;
             } else precisa.push({ i, src, out, mf });
           }
@@ -1484,16 +1569,17 @@ async function processBlueCleanGuided(jobId, p) {
         const active = boxes.filter((b) => t >= b.s && t <= b.e);
         const src = path.join(fdir, f);
         const out = path.join(fdir, f.replace('i_', 'o_'));
-        if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
+        if (!boxes.some((b) => t >= b.s && t <= b.e)) { fs.copyFileSync(src, out); done++; continue; }
         let mpath;
         if (textMaskDir) {
-          // modo TEXTO: mascara por-frame (so os tracos das letras). Frame sem
-          // texto = mascara preta = PNG minusculo -> copia original (economiza
-          // 1 chamada de inpaint e preserva 100% o frame).
+          // modo TEXTO: mascara por-frame (tracos das letras + formas ativas).
+          // Mascara vazia (YAVG=0, nao tamanho de PNG — preto tem ~10KB) =
+          // copia original (economiza 1 inpaint e preserva 100% o frame).
           const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-          if (!fs.existsSync(mf) || fs.statSync(mf).size < 800) { fs.copyFileSync(src, out); done++; continue; }
+          if (!fs.existsSync(mf) || mascaraVazia(i)) { fs.copyFileSync(src, out); done++; continue; }
           mpath = mf; // upload so no fallback replicate (fal vai por data-URI)
         } else {
+          if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
           ({ mpath } = await maskFor(active));
         }
         try {
@@ -1555,6 +1641,91 @@ async function processBlueCleanGuided(jobId, p) {
       return;
     }
     if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
+
+    // ── ANOTAÇÕES TRANSIENTES (r26): anel/pincel via inpaint TEMPORAL ────────
+    // Espacial por-frame vira borrão em anel largo sobre cena complexa
+    // (smoke30). A anotação é TRANSIENTE (janela s→e): o fundo real existe nos
+    // quadros vizinhos sem ela → o motor temporal copia de lá (fill nítido).
+    // Segmento = janela ± 0.7s de folga (os quadros de folga entram com máscara
+    // PRETA = referência limpa pro motor). Composite maskedmerge devolve SÓ a
+    // região da forma; resto do quadro fica como estava.
+    const compositeMasked = async (baseJpg, fillPath, maskPath, tmpOut) => {
+      await run('ffmpeg', ['-y', '-i', baseJpg, '-i', fillPath, '-i', maskPath, '-filter_complex',
+        `[2:v]format=gray,dilation,dilation,dilation,dilation,boxblur=2[m];[0:v]format=gbrp[a];[1:v]format=gbrp[b];[m]format=gbrp[mg];[a][b][mg]maskedmerge,format=yuvj420p`,
+        '-q:v', '2', tmpOut]);
+      fs.copyFileSync(tmpOut, baseJpg);
+    };
+    if (marcas.length && (JOBS.get(jobId) || {}).status !== 'cancelled') {
+      const durT = N / fps;
+      for (let mk = 0; mk < marcas.length; mk++) {
+        const m = marcas[mk];
+        if (!m.sp || (JOBS.get(jobId) || {}).status === 'cancelled') continue;
+        const mS = m.s === -1e9 ? 0 : Math.max(0, m.s);
+        const mE = m.e === 1e9 ? durT : Math.min(durT, m.e);
+        try {
+          setJob({ progress: 87, stage: `removendo anotação ${mk + 1}/${marcas.length}` });
+          const s0 = Math.max(0, mS - 0.7), e0 = Math.min(durT, mE + 0.7);
+          const f0 = Math.max(0, Math.floor(s0 * fps)), f1 = Math.min(N - 1, Math.ceil(e0 * fps));
+          const nseg = f1 - f0 + 1;
+          if (nseg < 2) continue;
+          // segmento a partir dos quadros JÁ limpos (legenda já saiu)
+          const segV = path.join(dir, `seg_${mk}.mp4`);
+          await run('ffmpeg', ['-y', '-start_number', String(f0 + 1), '-framerate', String(fps), '-i', path.join(fdir, 'o_%05d.jpg'),
+            '-frames:v', String(nseg), '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), segV]);
+          const relS = Math.max(0, mS - (f0 / fps)), relE = Math.min(nseg / fps, mE - (f0 / fps));
+          const segM = path.join(dir, `segm_${mk}.mp4`);
+          await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}:rate=${fps}`, '-loop', '1', '-i', m.sp,
+            '-filter_complex', `[0:v][1:v]overlay=shortest=0:enable='between(t,${relS.toFixed(3)},${relE.toFixed(3)})',format=gray[m]`,
+            '-map', '[m]', '-frames:v', String(nseg), '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), segM]);
+          const segKey = `${tmpPrefix}/seg_${mk}.mp4`, segMKey = `${tmpPrefix}/segm_${mk}.mp4`;
+          const segUrl = await uploadRetry('seg' + mk, segV, segKey, SU, SK, 'video/mp4'); uploaded.push(segKey);
+          const segMUrl = await uploadRetry('segm' + mk, segM, segMKey, SU, SK, 'video/mp4'); uploaded.push(segMKey);
+          const ppRatio = Math.min(1, 896 / Math.max(W, Hh));
+          const filledUrl = await replicateRun(token, 'jd7h/propainter', {
+            video: segUrl, mask: segMUrl, fp16: true,
+            mask_dilation: 8, neighbor_length: 10, ref_stride: 10, raft_iter: 20,
+            subvideo_length: 40, resize_ratio: ppRatio,
+          }, { pollMs: 4000, timeoutMs: 12 * 60 * 1000 });
+          const filled = path.join(dir, `fill_${mk}.mp4`);
+          await downloadFile(filledUrl, filled);
+          const fillDir = path.join(dir, `filld_${mk}`); fs.mkdirSync(fillDir);
+          await run('ffmpeg', ['-y', '-i', filled, '-vf', `scale=${W}:${Hh}:flags=bicubic,fps=${fps}`, '-q:v', '2', path.join(fillDir, 'p_%05d.jpg')]);
+          let comp = 0;
+          const tmpOut = path.join(dir, `co_${mk}.jpg`);
+          for (let i2 = 0; i2 < nseg; i2++) {
+            const t2 = (f0 + i2 + 0.5) / fps;
+            if (t2 < mS || t2 > mE) continue; // folga: intocada
+            const oF = path.join(fdir, `o_${String(f0 + i2 + 1).padStart(5, '0')}.jpg`);
+            const pF = path.join(fillDir, `p_${String(i2 + 1).padStart(5, '0')}.jpg`);
+            if (!fs.existsSync(oF) || !fs.existsSync(pF)) continue;
+            await compositeMasked(oF, pF, m.spbw, tmpOut); comp++;
+          }
+          console.log('[bcg]', jobId, `anotação ${mk + 1} (${m.type}): ${comp} quadros compostos via motor temporal`);
+        } catch (e) {
+          console.error('[bcg]', jobId, `anotação ${mk + 1} temporal falhou, fallback espacial:`, e.message.slice(0, 100));
+          // fallback: espacial por-frame só nos quadros da janela
+          try {
+            let fb = 0;
+            const tmpOut = path.join(dir, `co_${mk}.jpg`);
+            const tmpFill = path.join(dir, `cf_${mk}.jpg`);
+            for (let i2 = 0; i2 < N; i2++) {
+              const t2 = (i2 + 0.5) / fps;
+              if (t2 < mS || t2 > mE) continue;
+              if ((JOBS.get(jobId) || {}).status === 'cancelled') break;
+              const oF = path.join(fdir, `o_${String(i2 + 1).padStart(5, '0')}.jpg`);
+              let outUrl = null;
+              if (process.env.FAL_KEY) {
+                for (let a = 0; a < 2 && !outUrl; a++) { try { outUrl = await falInpaintPaths(oF, m.spbw); } catch (_) { await sleep(800); } }
+              }
+              if (!outUrl) continue;
+              await downloadFile(outUrl, tmpFill);
+              await compositeMasked(oF, tmpFill, m.spbw, tmpOut); fb++;
+            }
+            console.log('[bcg]', jobId, `anotação ${mk + 1}: fallback espacial em ${fb} quadros`);
+          } catch (e2) { console.error('[bcg]', jobId, 'fallback espacial falhou:', e2.message.slice(0, 80)); }
+        }
+      }
+    }
 
     // ── PASSE 2: VERIFICAÇÃO (rumo aos 100%) ─────────────────────────────────
     // O motor confere o PRÓPRIO trabalho: roda o detector no vídeo já limpo;
