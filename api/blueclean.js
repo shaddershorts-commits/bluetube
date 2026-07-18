@@ -115,6 +115,25 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(job);
   }
 
+  // ── CANCEL (botão na tela de processamento) ────────────────────────────────
+  if (req.method === 'POST' && action === 'cancel') {
+    const jobId = req.body?.job_id;
+    if (!jobId) return res.status(400).json({ error: 'job_id required' });
+    const jr = await fetch(`${SU}/rest/v1/blueclean_jobs?id=eq.${jobId}&user_id=eq.${userId}&select=*`, { headers: H });
+    const job = jr.ok ? (await jr.json())[0] : null;
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'processing') return res.status(200).json({ ok: true, ja_finalizado: true, status: job.status });
+    if (RW && job.railway_id) {
+      await fetch(RW.replace(/\/$/, '') + '/cancel/' + job.railway_id, { method: 'POST' }).catch(() => {});
+    }
+    await fetch(`${SU}/rest/v1/blueclean_jobs?id=eq.${jobId}`, {
+      method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: 'failed', error_message: 'Cancelado por você.', updated_at: new Date().toISOString() }),
+    });
+    await refundUsage();
+    return res.status(200).json({ ok: true, cancelled: true });
+  }
+
   // ── START ──────────────────────────────────────────────────────────────────
   if (req.method === 'POST' && action === 'start') {
     if (!REPLICATE) return res.status(500).json({ error: 'Replicate não configurado.' });
