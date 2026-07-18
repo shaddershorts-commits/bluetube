@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r20-blueclean-mosaico',
+      build: 'r22-blueclean-100',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -510,7 +510,7 @@ async function processBlueCleanMask(jobId, p) {
     JOBS.set(jobId, { status: 'done', progress: 100, mask_url: maskUrl });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
   } catch (e) {
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
   }
 }
@@ -651,7 +651,7 @@ app.post('/blueclean-process', (req, res) => {
   res.json({ ok: true, job_id: jobId });
   const runner = p.engine === 'guided' ? processBlueCleanGuided : processBlueClean;
   runner(jobId, p).catch((e) => {
-    console.error('[blueclean-process]', jobId, e.message);
+    console.error('[blueclean-process]', jobId, e.message); console.error('[stack]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[axios-url]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 200) : '');
     JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
   });
 });
@@ -849,7 +849,7 @@ async function processBlueClean(jobId, p) {
     for (const pth of uploaded) {
       try { await axios.delete(`${p.supabase_url}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + p.supabase_key, apikey: p.supabase_key } }); } catch (_) {}
     }
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   }
 }
@@ -1027,10 +1027,11 @@ async function processBlueCleanGuided(jobId, p) {
     // d'água gráfica/logo), volta pra caixa cheia (comportamento atual).
     setJob({ progress: 9, stage: 'mapeando texto' });
     let textMaskDir = null; // per-frame m_%05d.png quando modo texto ativo
+    let boxPngPath = null;  // limite das caixas (usado tambem no passe de verificacao)
     if (boxes.length && p.mask_mode !== 'caixa') {
       try {
         const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 2 },
+          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black = path.join(dir, 'black.mp4');
         await downloadFile(blackUrl, black);
@@ -1038,12 +1039,26 @@ async function processBlueCleanGuided(jobId, p) {
         const drawsAll = boxes.map((b) => `drawbox=x=${Math.max(0, b.x - PAD)}:y=${Math.max(0, b.y - PAD)}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
         const boxPng = path.join(dir, 'boxlimit.png');
         await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}`, '-vf', drawsAll, '-frames:v', '1', boxPng]);
-        // texto por FORMA (blend-diff + close fecha contorno das letras) ∩ caixas
+        boxPngPath = boxPng;
+        // MÁSCARA r22 (rumo aos 100%): DENTRO da caixa do user, errar é limpar
+        // demais — nunca de menos:
+        //  - blend-diff threshold 45→26 (pega contorno/brilho fraco da letra)
+        //  - SETAS/CÍRCULOS por COR (p.anotacoes=true, opção do user): condição
+        //    vermelho/laranja validada em maio (r-g>45 & r-b>60 & r>110, não
+        //    dispara em pele) somada por lighten
+        //  - close 12/8 + tmix 5 quadros (herda 2 vizinhos de cada lado)
+        //  - +2 dilations FINAIS: mata o halo anti-aliased ("vazamentos")
         const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
+        const annCond = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
+        const comAnn = !!p.anotacoes;
+        const txtChain = `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[rawtxt]`;
+        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
+        const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
         const maskVid = path.join(dir, 'maskv.mp4');
         await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
-          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),45),255,0)',${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',format=gray[m]`,
+          `${txtChain}${annChain};${uniLbl}${''}${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=5,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,format=gray[m]`,
           '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        if (comAnn) console.log('[bcg]', jobId, 'camada de ANOTAÇÕES (setas/círculos por cor) ativa');
         // cobertura media: se ~zero, detector nao achou texto -> fallback caixa
         const { stdout: st } = await run('ffmpeg', ['-i', maskVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
         const yavgs = [...String(st).matchAll(/YAVG=([0-9.]+)/g)].map((m) => parseFloat(m[1]));
@@ -1115,7 +1130,7 @@ async function processBlueCleanGuided(jobId, p) {
             const src = path.join(fdir, f);
             const out = path.join(fdir, f.replace('i_', 'o_'));
             const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 2000) {
+            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 800) {
               fs.copyFileSync(src, out); done++;
             } else precisa.push({ i, src, out, mf });
           }
@@ -1243,7 +1258,7 @@ async function processBlueCleanGuided(jobId, p) {
           // texto = mascara preta = PNG minusculo -> copia original (economiza
           // 1 chamada de inpaint e preserva 100% o frame).
           const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-          if (!fs.existsSync(mf) || fs.statSync(mf).size < 2000) { fs.copyFileSync(src, out); done++; continue; }
+          if (!fs.existsSync(mf) || fs.statSync(mf).size < 800) { fs.copyFileSync(src, out); done++; continue; }
           mpath = mf; // upload so no fallback replicate (fal vai por data-URI)
         } else {
           ({ mpath } = await maskFor(active));
@@ -1308,6 +1323,72 @@ async function processBlueCleanGuided(jobId, p) {
     }
     if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
 
+    // ── PASSE 2: VERIFICAÇÃO (rumo aos 100%) ─────────────────────────────────
+    // O motor confere o PRÓPRIO trabalho: roda o detector no vídeo já limpo;
+    // se ainda achar texto dentro das caixas ("vazamentos"), re-limpa SÓ os
+    // quadros culpados com a máscara do resíduo. Garantia por inspeção, não fé.
+    if (textMaskDir && boxPngPath && process.env.FAL_KEY && (JOBS.get(jobId) || {}).status !== 'cancelled') {
+      try {
+        setJob({ progress: 90, stage: 'verificando resultado' });
+        const interim = path.join(dir, 'interim.mp4');
+        await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(fdir, 'o_%05d.jpg'),
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', interim]);
+        const ikey = `${tmpPrefix}/interim.mp4`;
+        const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
+        uploaded.push(ikey);
+        const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
+          { video: iurl, method: 'black', conf_threshold: 0.10, iou_threshold: 0.15, margin: 10, resolution: 'original', detection_interval: 2 },
+          { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
+        const black2 = path.join(dir, 'black2.mp4');
+        await downloadFile(blackUrl2, black2);
+        const D2 = Array(12).fill('dilation').join(','), E2 = Array(6).fill('erosion').join(',');
+        const resVid = path.join(dir, 'resmask.mp4');
+        await run('ffmpeg', ['-y', '-i', interim, '-i', black2, '-i', boxPngPath, '-filter_complex',
+          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),24),255,0)',${D2},${E2}[r];[2:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,format=gray[m]`,
+          '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
+        const rdir = path.join(dir, 'rm'); fs.mkdirSync(rdir);
+        await run('ffmpeg', ['-y', '-i', resVid, path.join(rdir, 'r_%05d.png')]);
+        // quadros culpados = mascara de residuo com conteudo
+        const culpados = [];
+        for (let i = 0; i < N; i++) {
+          const rp = path.join(rdir, `r_${String(i + 1).padStart(5, '0')}.png`);
+          if (fs.existsSync(rp) && fs.statSync(rp).size >= 800) culpados.push({ i, rp });
+        }
+        console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo`);
+        if (culpados.length && culpados.length <= N * 0.5) {
+          setJob({ progress: 93, stage: `recorrigindo ${culpados.length} quadros` });
+          const fila2 = [...culpados];
+          await Promise.all(Array.from({ length: 12 }, async () => {
+            while (fila2.length) {
+              if ((JOBS.get(jobId) || {}).status === 'cancelled') return;
+              const { i, rp } = fila2.shift();
+              const oF = path.join(fdir, `o_${String(i + 1).padStart(5, '0')}.jpg`);
+              try {
+                let outUrl = null;
+                for (let a = 0; a < 3 && !outUrl; a++) {
+                  try { outUrl = await falInpaintPaths(oF, rp); } catch (e) { await sleep(600 + a * 900); }
+                }
+                if (!outUrl) continue; // mantem como esta (melhor 95% que job morto)
+                const lp = path.join(dir, `l2_${i}.img`);
+                await downloadFile(outUrl, lp);
+                const tmpO = oF + '.new.jpg';
+                await compAcquire();
+                try {
+                  await run('ffmpeg', ['-y', '-i', oF, '-i', lp, '-i', rp, '-filter_complex',
+                    `[0:v]format=gbrp[b];[1:v]scale=${W}:${Hh},format=gbrp[l];[2:v]format=gray,boxblur=1,format=gbrp[mm];[b][l][mm]maskedmerge,format=yuvj420p`,
+                    '-q:v', '2', tmpO]);
+                } finally { compRelease(); }
+                fs.renameSync(tmpO, oF);
+                fs.rmSync(lp, { force: true });
+              } catch (e) { console.error('[bcg] recorrecao frame', i, e.message.slice(0, 80)); }
+            }
+          }));
+        }
+      } catch (e) {
+        console.error('[bcg]', jobId, 'verificacao falhou (segue sem passe 2):', e.message.slice(0, 120));
+      }
+    }
+
     // remonta + audio
     setJob({ progress: 92, stage: 'montando video' });
     const merged = path.join(dir, 'merged.mp4');
@@ -1337,7 +1418,7 @@ async function processBlueCleanGuided(jobId, p) {
     for (const pth of uploaded) {
       try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
     }
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   }
 }
@@ -1484,7 +1565,7 @@ app.post('/edit-v0', (req, res) => {
   res.json({ ok: true, job_id: jobId });
   processEditV0(jobId, p).catch(e => {
     console.error('[edit-v0]', jobId, 'failed:', e.message);
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
   });
 });
 
