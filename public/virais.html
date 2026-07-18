@@ -2029,9 +2029,10 @@ function tkFomoClose(e){
     bbOcupado = true;
     if (!continuar){ bbAddMsg('user', msg); inp.value=''; bbVerificados = []; }
     bbTyping(true);
-    // quips de espera: 1 logo de cara, outro se demorar (busca com transcrição)
-    const q1 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 900);
-    const q2 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 10000);
+    // quips de espera SÓ quando demora (= busca de verdade rodando; papo
+    // responde em ~2s e não ganha quip — senão vira teatrinho, user notou)
+    const q1 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 4000);
+    const q2 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 15000);
     try{
       // histórico só entra DEPOIS do sucesso (par user+assistant completo) —
       // falha no meio não pode deixar turno órfão que quebra as próximas
