@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r23-blueclean-fast100',
+      build: 'r24-blueclean-multicor',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -708,7 +708,7 @@ async function processChunkClean(dir, chunkPath, idx, token, SU, SK, tmpPrefix, 
       `[cc0]format=gray[a];` +
       `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
       `[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),${thr}),255,0)'[txt];` +
-      `[cc1]format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray[ann];` +
+      `[cc1]format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray[ann];` +
       `[txt][ann]blend=all_mode=lighten` + (dilChain ? ',' + dilChain : '') + boxChain + `,format=gray[m]`
     : `[0:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[a];` +
       `[1:v]setpts=N/FRAME_RATE/TB,fps=${fps},format=gray[b];` +
@@ -1009,35 +1009,76 @@ async function processBlueCleanGuided(jobId, p) {
       e: b.end_sec == null ? 1e9 : +b.end_sec,
     })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
 
-    // ── CAIXA AUTOMÁTICA DO VERMELHO (r23b) ─────────────────────────────────
-    // Caso real do user: marcou "tem setas/círculos" mas o círculo estava FORA
-    // das caixas → intocado. Modelo mental correto = "marquei → remove".
-    // Solução: o motor ACHA as regiões vermelhas sozinho (cropdetect na
-    // máscara de cor) e adiciona a caixa por conta própria.
-    if (p.anotacoes && boxes.length >= 0) {
+    // ── CAIXAS AUTOMÁTICAS DE ANOTAÇÕES (r24, multi-cor + clusters) ─────────
+    // r23b falhou no caso real: cropdetect faz UNIÃO — vermelho em 2 cantos =
+    // caixa do frame inteiro = guard descartava = círculo intocado. Agora:
+    // amostra frames → máscara MULTI-COR (vermelho/laranja/AMARELO/azul/verde
+    // vivos) em grade baixa → CLUSTERS conectados em node → uma caixa POR
+    // mancha, com guards de tamanho (gigante = roupa/cena, ignora; média =
+    // seta/círculo/emoji, caixa nela).
+    const ANN_CORES = [
+      'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)',                 // vermelho/laranja
+      'gt(r(X,Y),150)*gt(g(X,Y),120)*lt(b(X,Y),110)*gt(r(X,Y)-b(X,Y),70)',        // amarelo
+      'gt(b(X,Y),140)*gt(b(X,Y)-r(X,Y),50)*gt(b(X,Y)-g(X,Y),40)',                 // azul vivo
+      'gt(g(X,Y),140)*gt(g(X,Y)-r(X,Y),60)*gt(g(X,Y)-b(X,Y),50)',                 // verde vivo
+    ];
+    const ANN_COND = ANN_CORES.map((c) => `(${c})`).join('+');
+    if (p.anotacoes) {
       try {
-        const annCondProbe = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
-        const { stderr: cd } = await run('ffmpeg', ['-i', orig, '-vf',
-          `fps=3,format=rgb24,geq=r='255*(${annCondProbe})':g='255*(${annCondProbe})':b='255*(${annCondProbe})',cropdetect=limit=24:round=2:reset=0:skip=0`,
-          '-f', 'null', '-']);
-        const ms = [...String(cd).matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
-        if (ms.length) {
-          const last = ms[ms.length - 1];
-          const [aw, ah, ax, ay] = [parseInt(last[1]), parseInt(last[2]), parseInt(last[3]), parseInt(last[4])];
-          // só adiciona se a região é significativa e não é o frame inteiro
-          if (aw > 20 && ah > 20 && aw * ah < 0.6 * W * Hh) {
-            const PADA = 24;
-            const nb = { x: Math.max(0, ax - PADA), y: Math.max(0, ay - PADA), w: Math.min(W, aw + PADA * 2), h: Math.min(Hh, ah + PADA * 2), s: -1e9, e: 1e9 };
-            nb.w = Math.min(nb.w, W - nb.x); nb.h = Math.min(nb.h, Hh - nb.y);
-            boxes.push(nb);
-            console.log('[bcg]', jobId, `caixa AUTO do vermelho: ${nb.w}x${nb.h}@${nb.x},${nb.y}`);
-          } else {
-            console.log('[bcg]', jobId, 'auto-vermelho: regiao invalida/gigante, ignorada', aw, ah);
-          }
-        } else {
-          console.log('[bcg]', jobId, 'auto-vermelho: nada vermelho detectado no video');
+        const GS = 8; // grade: 1 celula = 8x8 px
+        const gw = Math.ceil(W / GS), gh = Math.ceil(Hh / GS);
+        const pdir = path.join(dir, 'annprobe'); fs.mkdirSync(pdir);
+        await run('ffmpeg', ['-y', '-i', orig, '-vf',
+          `fps=3,format=rgb24,geq=r='255*gte(${ANN_COND},1)':g='255*gte(${ANN_COND},1)':b='255*gte(${ANN_COND},1)',scale=${gw}:${gh}:flags=area,format=gray`,
+          path.join(pdir, 'p_%03d.pgm')]);
+        // grade acumulada (celula ativa se acesa em QUALQUER amostra)
+        const grid = new Uint8Array(gw * gh);
+        for (const f of fs.readdirSync(pdir)) {
+          const buf = fs.readFileSync(path.join(pdir, f));
+          // PGM P5: header ate o 3o \n (P5 \n W H \n MAX \n) — robusto a comentarios ausentes
+          let pos = 0, nl = 0;
+          while (nl < 3 && pos < buf.length) { if (buf[pos] === 0x0a) nl++; pos++; }
+          const px = buf.subarray(pos);
+          for (let i = 0; i < gw * gh && i < px.length; i++) if (px[i] > 40) grid[i] = 1;
         }
-      } catch (e) { console.error('[bcg] auto-vermelho falhou:', e.message.slice(0, 80)); }
+        // clusters conectados (BFS 4-viz) na grade
+        const vista = new Uint8Array(gw * gh);
+        const clusters = [];
+        for (let idx = 0; idx < gw * gh; idx++) {
+          if (!grid[idx] || vista[idx]) continue;
+          const fila = [idx]; vista[idx] = 1;
+          let minx = gw, maxx = 0, miny = gh, maxy = 0, cont = 0;
+          while (fila.length) {
+            const c = fila.pop(); cont++;
+            const cx2 = c % gw, cy2 = (c / gw) | 0;
+            if (cx2 < minx) minx = cx2; if (cx2 > maxx) maxx = cx2;
+            if (cy2 < miny) miny = cy2; if (cy2 > maxy) maxy = cy2;
+            for (const nb of [c - 1, c + 1, c - gw, c + gw]) {
+              if (nb < 0 || nb >= gw * gh) continue;
+              if (Math.abs((nb % gw) - cx2) > 1) continue; // sem wrap lateral
+              if (grid[nb] && !vista[nb]) { vista[nb] = 1; fila.push(nb); }
+            }
+          }
+          clusters.push({ minx, maxx, miny, maxy, cont });
+        }
+        // guards: mancha entre 0.03% e 12% do frame; max 5 caixas (maiores primeiro)
+        const areaFrame = gw * gh;
+        const validos = clusters
+          .filter((c) => c.cont >= Math.max(3, areaFrame * 0.0003) && c.cont <= areaFrame * 0.12)
+          .sort((a, b) => b.cont - a.cont).slice(0, 5);
+        for (const c of validos) {
+          const PADA = 26;
+          const nb = {
+            x: Math.max(0, c.minx * GS - PADA), y: Math.max(0, c.miny * GS - PADA),
+            w: Math.min(W, (c.maxx - c.minx + 1) * GS + PADA * 2), h: Math.min(Hh, (c.maxy - c.miny + 1) * GS + PADA * 2),
+            s: -1e9, e: 1e9,
+          };
+          nb.w = Math.min(nb.w, W - nb.x); nb.h = Math.min(nb.h, Hh - nb.y);
+          boxes.push(nb);
+          console.log('[bcg]', jobId, `caixa AUTO anotacao: ${nb.w}x${nb.h}@${nb.x},${nb.y} (${c.cont} celulas)`);
+        }
+        if (!validos.length) console.log('[bcg]', jobId, `auto-anotacoes: ${clusters.length} manchas, nenhuma no tamanho seta/circulo`);
+      } catch (e) { console.error('[bcg] auto-anotacoes falhou:', e.message.slice(0, 100)); }
     }
 
     // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so).
@@ -1080,10 +1121,10 @@ async function processBlueCleanGuided(jobId, p) {
         //  - close 12/8 + tmix 5 quadros (herda 2 vizinhos de cada lado)
         //  - +2 dilations FINAIS: mata o halo anti-aliased ("vazamentos")
         const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
-        const annCond = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
+        const annCond = 'gte(' + ANN_COND + ',1)'; // multi-cor (vermelho/amarelo/azul/verde vivos)
         const comAnn = !!p.anotacoes;
         const txtChain = `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[rawtxt]`;
-        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
+        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
         const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
         const maskVid = path.join(dir, 'maskv.mp4');
         await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
@@ -1368,7 +1409,7 @@ async function processBlueCleanGuided(jobId, p) {
         const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
         uploaded.push(ikey);
         const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: iurl, method: 'black', conf_threshold: 0.18, iou_threshold: 0.15, margin: 10, resolution: '720p', detection_interval: 2 },
+          { video: iurl, method: 'black', conf_threshold: 0.2, iou_threshold: 0.15, margin: 10, resolution: '480p', detection_interval: 3 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black2 = path.join(dir, 'black2.mp4');
         await downloadFile(blackUrl2, black2);
@@ -1391,7 +1432,7 @@ async function processBlueCleanGuided(jobId, p) {
           if (fs.existsSync(rp) && fs.statSync(rp).size >= 800) culpados.push({ i, rp });
         }
         console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo real`);
-        if (culpados.length > 90) { console.log('[bcg]', jobId, 'cap de correcao: 90 primeiros'); culpados = culpados.slice(0, 90); }
+        culpados.sort((a, b) => fs.statSync(b.rp).size - fs.statSync(a.rp).size); if (culpados.length > 40) { console.log('[bcg]', jobId, 'cap de correcao: top-40 por tamanho de residuo'); culpados = culpados.slice(0, 40); }
         if (culpados.length) {
           setJob({ progress: 93, stage: `recorrigindo ${culpados.length} quadros` });
           const fila2 = [...culpados];
