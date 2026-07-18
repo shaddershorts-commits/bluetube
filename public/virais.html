@@ -59,6 +59,58 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .filter-btn-master{color:#fbbf24;font-weight:700;background:rgba(251,191,36,.06)}
 .filter-btn-master:hover:not(.active){background:rgba(251,191,36,.14);color:#fcd34d}
 .filter-btn-master.active{background:linear-gradient(135deg,rgba(251,191,36,.25),rgba(245,158,11,.25));color:#fcd34d;box-shadow:inset 0 0 0 1px rgba(251,191,36,.4)}
+/* ── FALAR COM O BLUBLU (liquid glass azul claro + brilho tech) ── */
+.btn-blublu{position:relative;display:inline-flex;align-items:center;gap:10px;padding:9px 18px 9px 10px;border-radius:14px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:700;color:#dff3ff;
+  background:linear-gradient(135deg,rgba(127,212,255,.16),rgba(0,170,255,.08) 55%,rgba(127,212,255,.14));
+  border:1px solid rgba(127,212,255,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 0 18px rgba(0,190,255,.35),inset 0 1px 0 rgba(255,255,255,.25),inset 0 -8px 18px rgba(0,140,255,.12);
+  overflow:hidden;transition:all .25s;animation:bbGlow 2.6s ease-in-out infinite}
+.btn-blublu::before{content:"";position:absolute;top:0;left:-70%;width:45%;height:100%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.35),transparent);
+  transform:skewX(-18deg);animation:bbShine 3.8s ease-in-out infinite}
+@keyframes bbShine{0%,55%{left:-70%}85%,100%{left:130%}}
+@keyframes bbGlow{0%,100%{box-shadow:0 0 14px rgba(0,190,255,.3),inset 0 1px 0 rgba(255,255,255,.25)}50%{box-shadow:0 0 26px rgba(80,210,255,.55),inset 0 1px 0 rgba(255,255,255,.3)}}
+.btn-blublu:hover{transform:translateY(-2px);border-color:rgba(160,225,255,.7);box-shadow:0 6px 30px rgba(0,190,255,.5),inset 0 1px 0 rgba(255,255,255,.3)}
+.btn-blublu-img{width:30px;height:30px;object-fit:contain;filter:drop-shadow(0 0 6px rgba(0,190,255,.6))}
+.btn-blublu-txt{max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.btn-blublu-txt{max-width:150px;font-size:12px}}
+/* ── POPUP DO CHAT ── */
+.bb-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:rgba(2,8,23,.55);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);padding:16px}
+.bb-overlay.on{display:flex;animation:bbFade .25s ease-out}
+@keyframes bbFade{from{opacity:0}to{opacity:1}}
+.bb-pop{width:100%;max-width:560px;height:min(78vh,680px);display:flex;flex-direction:column;border-radius:20px;overflow:hidden;
+  background:linear-gradient(180deg,rgba(8,20,44,.96),rgba(4,12,30,.98));border:1px solid rgba(127,212,255,.35);
+  box-shadow:0 30px 90px rgba(0,60,180,.5),0 0 40px rgba(0,190,255,.18);animation:bbPop .3s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes bbPop{from{transform:translateY(24px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+.bb-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid rgba(127,212,255,.18);background:rgba(0,170,255,.05)}
+.bb-head img{width:38px;height:38px;object-fit:contain;filter:drop-shadow(0 0 8px rgba(0,190,255,.5))}
+.bb-head .bb-nome{font-weight:800;font-size:15px;color:#dff3ff}
+.bb-head .bb-st{font-family:var(--mono);font-size:10px;color:#5cffd0;display:flex;align-items:center;gap:5px}
+.bb-head .bb-st::before{content:"";width:6px;height:6px;border-radius:50%;background:#5cffd0;box-shadow:0 0 8px #5cffd0}
+.bb-close{margin-left:auto;background:none;border:none;color:#7d92b8;font-size:22px;cursor:pointer;padding:4px 8px}
+.bb-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.bb-m{max-width:86%;padding:11px 14px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.bb-m.user{align-self:flex-end;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;border-bottom-right-radius:4px}
+.bb-m.bot{align-self:flex-start;background:rgba(127,212,255,.09);border:1px solid rgba(127,212,255,.18);color:#dbeafe;border-bottom-left-radius:4px}
+.bb-typing{align-self:flex-start;display:flex;gap:4px;padding:12px 16px}
+.bb-typing i{width:7px;height:7px;border-radius:50%;background:#7fd4ff;animation:bbDot 1.2s infinite}
+.bb-typing i:nth-child(2){animation-delay:.15s}.bb-typing i:nth-child(3){animation-delay:.3s}
+@keyframes bbDot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.bb-vids{align-self:stretch;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.bb-vcard{display:block;background:rgba(6,16,38,.8);border:1px solid rgba(127,212,255,.18);border-radius:12px;overflow:hidden;text-decoration:none;transition:all .2s}
+.bb-vcard:hover{transform:translateY(-2px);border-color:rgba(127,212,255,.5)}
+.bb-vthumb{width:100%;aspect-ratio:9/14;object-fit:cover;display:block;background:#04122b}
+.bb-vinfo{padding:8px 9px}
+.bb-vtit{font-size:11px;font-weight:600;color:#dbeafe;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bb-vmeta{margin-top:5px;font-family:var(--mono);font-size:10px;color:#7d92b8;display:flex;gap:6px;flex-wrap:wrap}
+.bb-cit{display:inline-flex;align-items:center;gap:3px;color:#5cffd0;background:rgba(92,255,208,.08);border:1px solid rgba(92,255,208,.3);border-radius:100px;padding:1px 7px;font-size:9.5px}
+.bb-more{align-self:center;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.35);border-radius:100px;color:#7fd4ff;font-family:var(--mono);font-size:11.5px;font-weight:700;padding:8px 18px;cursor:pointer}
+.bb-input{display:flex;gap:8px;padding:12px 14px;border-top:1px solid rgba(127,212,255,.18);background:rgba(0,170,255,.04)}
+.bb-input input{flex:1;background:rgba(6,16,38,.9);border:1px solid rgba(127,212,255,.25);border-radius:12px;padding:11px 14px;font-family:var(--font);font-size:13.5px;color:#e8f4ff;outline:none}
+.bb-input input:focus{border-color:rgba(127,212,255,.6)}
+.bb-input button{background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:12px;width:44px;font-size:17px;color:#fff;cursor:pointer}
+.bb-limite{font-family:var(--mono);font-size:9.5px;color:#5b7099;text-align:center;padding:0 0 8px}
+.bb-off{opacity:.35;pointer-events:none;filter:saturate(.4)}
 .filter-divider{width:1px;background:var(--blue-border);align-self:stretch}
 
 /* Botão Nichos Secretos — DOURADO BRILHANDO */
@@ -365,6 +417,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="artistas">🎤 Artistas, shows e famosos</option>
         <option value="pessoas_blogs">👤 Pessoas e blogs</option>
         <option value="culinaria">🍳 Culinária</option>
+        <option value="__secreto" id="optNichoSecreto">🔮 Nicho Secreto</option>
       </select>
 
       <!-- Botão Notificar diário (Master toggle / Free+Full modal upgrade) -->
@@ -373,10 +426,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <span id="btnDailyAlertLabel">Notificar diariamente</span>
       </button>
 
-      <!-- Botão Nichos Secretos (DOURADO BRILHANDO — Master only) -->
-      <button id="btnNichosSecretos" onclick="abrirNichosSecretos()" title="Nichos Secretos — pasta exclusiva Master com vídeos ≥10M views dos últimos 45d" class="btn-nichos-secretos">
-        <span style="font-size:14px">🔮</span>
-        <span>Nichos Secretos</span>
+      <!-- Falar com o Blublu (liquid glass — Master; FOMO pros demais).
+           Nichos Secretos virou opção no dropdown de nichos (__secreto). -->
+      <button id="btnBlublu" onclick="abrirBlublu()" title="Falar com o Blublu — exclusivo Master" class="btn-blublu">
+        <img src="/blublu-happy.png" alt="Blublu" class="btn-blublu-img"/>
+        <span class="btn-blublu-txt" id="btnBlubluFrase">Fala comigo.</span>
       </button>
     </div>
   </div>
@@ -1745,6 +1799,343 @@ function tkFomoClose(e){
   document.body.style.overflow = '';
 }
 
+</script>
+<script>
+// ═══════════════ FALAR COM O BLUBLU + NICHO SECRETO NO DROPDOWN ═══════════════
+(function(){
+  const planB = () => localStorage.getItem('bt_plan') || 'free';
+  const tokenB = () => localStorage.getItem('bt_token') || '';
+
+  // ── Frase adaptiva do botão ──
+  // Grupos: horário (madrugada/manhã/tarde/noite) + CARENTE (3+ dias sem abrir,
+  // sente falta e chama pelo nome) + PROVOCATIVA pro Full (upsell Master no
+  // humor do Blublu). Variações com/sem nome; guarda de 38 chars pra não cortar
+  // no botão. PROVISÓRIAS — user vai revisar as falas depois.
+  // apelido escolhido no chat (Blublu pergunta no 1º contato) > nome do estúdio
+  let bbNome = (() => { try { return (localStorage.getItem('bt_blublu_apelido') || localStorage.getItem('bt_studio_nome') || '').trim().split(/\s+/)[0].slice(0, 14); } catch(e){ return ''; } })();
+  const BB_FRASES = {
+    madrugada: [
+      () => 'Acordado? Os virais também.',
+      (n) => n ? `${n}, insônia? Bora caçar viral.` : 'Insônia? Bora achar teu viral.',
+      () => 'Madrugada é quando eu caço melhor.',
+      (n) => n ? `Só nós dois agora, ${n}.` : 'Só nós dois e o algoritmo agora.',
+    ],
+    manha: [
+      (n) => n ? `Bom dia, ${n}. Bora?` : 'Bom dia. Me diz o que procura.',
+      () => 'Café na mão? Eu acho teu viral.',
+      (n) => n ? `${n}, um viral pra começar o dia?` : 'Começa o dia com um viral certo.',
+      () => 'Manhã produtiva começa aqui.',
+    ],
+    tarde: [
+      (n) => n ? `${n}, me pede um tema. Eu acho.` : 'Me pede um tema. Eu acho.',
+      () => 'Tarde é hora de garimpar viral.',
+      (n) => n ? `Fala um assunto, ${n}. Eu varro.` : 'Fala um assunto, eu varro o banco.',
+      () => 'Teu concorrente não me tem. Usa.',
+    ],
+    noite: [
+      (n) => n ? `A noite é nossa, ${n}. Fala.` : 'A noite é dos virais. Fala comigo.',
+      () => 'Me testa: pede qualquer tema.',
+      (n) => n ? `${n}, todos dormem. Eu acho.` : 'Enquanto todos dormem, eu acho.',
+      () => 'Um tema. Milhões de views. Bora.',
+    ],
+    carente: [
+      (n) => n ? `${n}?? Dias sumido. Senti falta.` : 'Sumiu, hein. Eu senti falta.',
+      (n) => n ? `Achei que tinha me trocado, ${n}…` : 'Achei que tinha me trocado…',
+      (n) => n ? `${n}, some não. Eu fico carente.` : 'Some não. Eu fico carente.',
+      (n) => n ? `Voltou, ${n}! Eu tava aqui… só.` : 'Voltou! Eu tava aqui… sozinho.',
+    ],
+    full: [
+      () => 'Olha, se você fosse Master…',
+      (n) => n ? `FALA COMIGO, ${n}. Ah… é Master?` : 'FALA COMIGO. Ah… assinou o Master?',
+      () => 'O que separa nós dois: Master.',
+      (n) => n ? `${n}, eu falo. Mas só com Master. 😏` : 'Eu falo. Mas só com Master. 😏',
+    ],
+  };
+  function fraseBlublu(){
+    const plano = planB();
+    let grupo;
+    if (plano === 'full') grupo = 'full';
+    else {
+      const last = parseInt(localStorage.getItem('bt_blublu_last_open') || '0', 10);
+      const carente = last > 0 && (Date.now() - last) > 3 * 86400000;
+      if (carente) grupo = 'carente';
+      else { const h = new Date().getHours(); grupo = h < 5 ? 'madrugada' : h < 12 ? 'manha' : h < 18 ? 'tarde' : 'noite'; }
+    }
+    const arr = BB_FRASES[grupo];
+    let idx = 0;
+    try { idx = parseInt(localStorage.getItem('bt_blublu_frase_idx') || '0', 10) % arr.length; localStorage.setItem('bt_blublu_frase_idx', String((idx + 1) % arr.length)); } catch(e){}
+    let frase = arr[idx](bbNome);
+    if (frase.length > 38) frase = arr[idx](''); // nome comprido cortaria — cai na versão sem nome
+    return frase;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('btnBlubluFrase');
+    if (el) el.textContent = fraseBlublu();
+    // cadeado na opção Nicho Secreto pra quem não é Master
+    if (planB() !== 'master') {
+      const opt = document.getElementById('optNichoSecreto');
+      if (opt) opt.textContent = '🔒 Nicho Secreto (Master)';
+    }
+  });
+
+  // ── Popup do chat (DOM injetado uma vez) ──
+  let bbInjetado = false, bbHist = [], bbUltimaBusca = null, bbOcupado = false;
+  function bbInjeta(){
+    if (bbInjetado) return; bbInjetado = true;
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="bb-overlay" id="bbOverlay" onclick="if(event.target===this)fecharBlublu()">
+      <div class="bb-pop">
+        <div class="bb-head">
+          <img src="/blublu-pointing.png" alt="Blublu"/>
+          <div><div class="bb-nome">Blublu</div><div class="bb-st">online no laboratório</div></div>
+          <button class="bb-close" onclick="fecharBlublu()">✕</button>
+        </div>
+        <div class="bb-msgs" id="bbMsgs"></div>
+        <div class="bb-limite" id="bbLimite"></div>
+        <div class="bb-input">
+          <input id="bbInput" type="text" maxlength="500" placeholder="Ex.: vídeos que falam do Michael Jackson…" onkeydown="if(event.key==='Enter')enviarBlublu()"/>
+          <button onclick="enviarBlublu()" title="Enviar">➤</button>
+        </div>
+      </div>
+    </div>
+    <div class="bb-overlay" id="bbUpsell" onclick="if(event.target===this)this.classList.remove('on')">
+      <div class="bb-pop" style="height:auto;max-width:420px;text-align:center;padding:34px 26px">
+        <img src="/blublu-sad.png" alt="Blublu" style="width:84px;margin:0 auto 14px;filter:drop-shadow(0 0 12px rgba(0,190,255,.5))"/>
+        <div style="font-size:19px;font-weight:800;color:#dff3ff;margin-bottom:8px">O Blublu só atende Master</div>
+        <div style="font-family:var(--mono);font-size:12px;color:#7d92b8;line-height:1.6;margin-bottom:20px">Peça qualquer tema — "vídeos que falam do Messi" — e ele vasculha o acervo inteiro por você, confirmando onde o assunto é citado.</div>
+        <a href="/?upgrade=master" style="display:inline-block;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;padding:14px 30px;border-radius:12px;font-weight:900;text-decoration:none;font-size:14px;box-shadow:0 4px 16px rgba(251,191,36,.35)">👑 Virar Master</a>
+      </div>
+    </div>`);
+  }
+  function bbAddMsg(cls, texto){
+    const box = document.getElementById('bbMsgs');
+    const div = document.createElement('div');
+    div.className = 'bb-m ' + cls; div.textContent = texto;
+    box.appendChild(div); box.scrollTop = box.scrollHeight;
+    return div;
+  }
+  function bbTyping(on){
+    const box = document.getElementById('bbMsgs');
+    let t = document.getElementById('bbTypingEl');
+    if (on && !t){ t = document.createElement('div'); t.id='bbTypingEl'; t.className='bb-typing'; t.innerHTML='<i></i><i></i><i></i>'; box.appendChild(t); box.scrollTop = box.scrollHeight; }
+    if (!on && t) t.remove();
+  }
+  const bbFmt = n => n>=1e6 ? (n/1e6).toFixed(1)+'M' : n>=1e3 ? Math.round(n/1e3)+'K' : String(n||0);
+  const bbMMSS = s => Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+  function bbAddVideos(videos, temMais){
+    const box = document.getElementById('bbMsgs');
+    if (videos.length){
+      const grid = document.createElement('div'); grid.className = 'bb-vids';
+      grid.innerHTML = videos.map(v => {
+        const vid = String(v.youtube_id||'').replace(/[^A-Za-z0-9_-]/g,''); // sanitiza pra atributo/onclick
+        const cit = Math.max(0, parseInt(v.citado_em_s)||0);
+        return `
+        <a class="bb-vcard" href="${escHtml(v.url || 'https://youtube.com/shorts/'+vid)}" target="_blank" rel="noopener">
+          ${v.thumbnail_url ? `<img class="bb-vthumb" src="${escHtml(v.thumbnail_url)}" loading="lazy" alt="" onerror="this.style.display='none'"/>` : '<div class="bb-vthumb"></div>'}
+          <div class="bb-vinfo">
+            <div class="bb-vtit">${escHtml(v.titulo || '')}</div>
+            <div class="bb-vmeta">
+              <span>👁 ${bbFmt(Number(v.views)||0)}</span>
+              ${(v.plataforma!=='tiktok'&&vid) ? `<span class="bb-cit" style="color:#a78bfa;border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.08)" onclick="event.preventDefault();event.stopPropagation();window.open('/bluetendencias?rx=${vid}','_blank')">🔬 Analisar</span><span class="bb-cit" style="color:#5cffd0;border-color:rgba(92,255,208,.35);background:rgba(92,255,208,.07)" onclick="useShort(event,'${vid}','')">📝 Roteiro</span>` : ''}
+              ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${vid}&t=${cit}s','_blank')">🗣️ citado aos ${bbMMSS(cit)}</span>` : (v.confirmado_por==='canal' ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">📺 do canal</span>' : v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
+              ${v.plataforma==='tiktok' ? '<span class="bb-cit" style="color:#ff5c8a;border-color:rgba(255,92,138,.35);background:rgba(255,92,138,.07)">🎵 TikTok</span>' : ''}
+              ${v.secreto ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">🔮 secreto</span>' : ''}
+            </div>
+          </div>
+        </a>`;
+      }).join('');
+      box.appendChild(grid);
+    }
+    if (temMais){
+      const btn = document.createElement('button'); btn.className='bb-more'; btn.textContent='🔎 Continuar procurando';
+      btn.onclick = () => { btn.remove(); enviarBlublu(bbUltimaBusca, true); };
+      box.appendChild(btn);
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+  // Boas-vindas: quem já usa não precisa de apresentação toda vez — variações
+  // curtas rotativas. Primeiro contato ganha a apresentação completa (e o
+  // backend faz o Blublu perguntar como quer ser chamado).
+  const BB_BEMVINDO_CONHECIDO = [
+    (n) => `Falai ${n}, só dizer do que precisa que te trago agora.`,
+    (n) => `${n}. De volta ao laboratório. Que tema hoje?`,
+    (n) => `Opa, ${n}. Sem cerimônia: pede.`,
+    (n) => `${n}, fala. Tema, canal ou filtro — eu acho.`,
+    (n) => `De novo por aqui, ${n}? Gosto disso. Manda.`,
+  ];
+  const BB_BEMVINDO_NOVO = [
+    'Cheguei. 🧪 Me pede um tema ("vídeos que falam do Michael Jackson"), um canal ("vídeos do Luiz Stubbe") ou um filtro ("mais de 5 mi de views em 2 semanas"). Eu vasculho o acervo INTEIRO — até o que a página não mostra — e te digo ONDE o assunto foi citado.',
+    'Blublu na área. 🧪 Funciona assim: você fala um tema, canal ou filtro, e eu viro o acervo de cabeça pra baixo — com prova de onde o assunto foi citado. Testa.',
+  ];
+  window.abrirBlublu = function(){
+    if (planB() !== 'master'){ bbInjeta(); document.getElementById('bbUpsell').classList.add('on'); return; }
+    bbInjeta();
+    try { localStorage.setItem('bt_blublu_last_open', String(Date.now())); } catch(e){}
+    document.getElementById('bbOverlay').classList.add('on');
+    document.body.style.overflow = 'hidden';
+    if (!bbHist.length){
+      const jaUsou = (() => { try { return localStorage.getItem('bt_blublu_ja_usou') === '1'; } catch(e){ return false; } })();
+      let msg;
+      if (jaUsou && bbNome){
+        let i = 0; try { i = parseInt(localStorage.getItem('bt_blublu_bv_idx') || '0', 10) % BB_BEMVINDO_CONHECIDO.length; localStorage.setItem('bt_blublu_bv_idx', String((i + 1) % BB_BEMVINDO_CONHECIDO.length)); } catch(e){}
+        msg = BB_BEMVINDO_CONHECIDO[i](bbNome);
+      } else {
+        msg = BB_BEMVINDO_NOVO[Math.random() < .5 ? 0 : 1];
+      }
+      bbAddMsg('bot', msg);
+    }
+    setTimeout(() => document.getElementById('bbInput')?.focus(), 250);
+  };
+  window.fecharBlublu = function(){
+    document.getElementById('bbOverlay')?.classList.remove('on');
+    document.body.style.overflow = '';
+  };
+  // Mensagens de ESPERA no personagem (humor ácido + 4ª parede) — saco
+  // embaralhado sem repetição até esgotar o ciclo. Simula conversa fluida
+  // enquanto a busca roda de verdade.
+  const BB_QUIPS = [
+    'Peraí, tô abrindo o acervo. Sim, eu tenho um acervo. Você não.',
+    'Buscando… enquanto isso, reflete: quando foi teu último viral?',
+    'Vasculhando frame por frame. (Mentira, é mais rápido que isso. Charme meu.)',
+    'Um segundo. Gênio também trabalha.',
+    'Procurando… se eu fosse você, já ia preparando o roteiro.',
+    'Cavando fundo no acervo. Os estagiários aqui sou eu mesmo.',
+    'Já achei coisa. Conferindo se presta — padrão Blublu é alto.',
+    'Isso que você pediu… interessante. Vamos ver se o acervo concorda.',
+    'Rodando a máquina. (Eu SOU a máquina, mas você entendeu.)',
+    'Buscando com a fúria de quem analisou 50 mil Shorts. Porque analisei.',
+    'Calma, ansioso(a). Qualidade leva 10 segundos.',
+    'Farejando views… tem cheiro de viral aqui.',
+    'Confirmando NA FALA dos vídeos. Eu não chuto, eu provo.',
+    'Se não achar, a culpa é do assunto. Nunca minha. (Quase nunca.)',
+  ];
+  function bbQuip(){
+    let bag = [];
+    try { bag = JSON.parse(localStorage.getItem('bt_blublu_quips') || '[]'); } catch(e){}
+    if (!Array.isArray(bag) || !bag.length){
+      bag = BB_QUIPS.map((_, i) => i);
+      for (let i = bag.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    }
+    const idx = bag.pop();
+    try { localStorage.setItem('bt_blublu_quips', JSON.stringify(bag)); } catch(e){}
+    return BB_QUIPS[idx] || BB_QUIPS[0];
+  }
+
+  let bbVerificados = []; // ids já checados na conversa (progresso do "continuar")
+  window.enviarBlublu = async function(forcarMsg, continuar){
+    if (bbOcupado) return;
+    const inp = document.getElementById('bbInput');
+    const msg = (forcarMsg || inp.value || '').trim();
+    if (!msg) return;
+    bbOcupado = true;
+    if (!continuar){ bbAddMsg('user', msg); inp.value=''; bbVerificados = []; }
+    bbTyping(true);
+    // quips de espera SÓ quando demora (= busca de verdade rodando; papo
+    // responde em ~2s e não ganha quip — senão vira teatrinho, user notou)
+    const q1 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 4000);
+    const q2 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 15000);
+    try{
+      // histórico só entra DEPOIS do sucesso (par user+assistant completo) —
+      // falha no meio não pode deixar turno órfão que quebra as próximas
+      const r = await fetch('/api/blublu-chat', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist, skip_ids: continuar ? bbVerificados : [], nome: bbNome }) });
+      const d = await r.json();
+      clearTimeout(q1); clearTimeout(q2); bbTyping(false);
+      if (!r.ok){ bbAddMsg('bot', d.error || 'Deu ruim aqui. Tenta de novo?'); bbOcupado=false; return; }
+      bbUltimaBusca = msg;
+      bbAddMsg('bot', d.reply || '…');
+      bbHist.push({ role:'user', content: msg }, { role:'assistant', content: d.reply || '' });
+      if (bbHist.length > 12) bbHist = bbHist.slice(-12);
+      // apelido que o Blublu aprendeu → botão e boas-vindas passam a usar
+      if (d.apelido){ try { localStorage.setItem('bt_blublu_apelido', d.apelido); } catch(e){} bbNome = d.apelido.split(/\s+/)[0].slice(0, 14); }
+      try { localStorage.setItem('bt_blublu_ja_usou', '1'); } catch(e){}
+      if (Array.isArray(d.verificados)) bbVerificados = [...new Set([...bbVerificados, ...d.verificados])].slice(-300);
+      if (Array.isArray(d.videos)) bbAddVideos(d.videos, !!d.tem_mais);
+      const lim = document.getElementById('bbLimite');
+      if (d.usage) lim.textContent = `${d.usage.used}/${d.usage.limit} mensagens hoje`;
+    }catch(e){ clearTimeout(q1); clearTimeout(q2); bbTyping(false); bbAddMsg('bot','Conexão falhou. Tenta de novo? ⚡'); }
+    bbOcupado = false;
+  };
+
+  // ── NICHO SECRETO no dropdown (Master filtra o grid; demais veem FOMO) ──
+  window._secretMode = false;
+  const _origOnNicho = window.onNichoChange;
+  window.onNichoChange = function(){
+    const sel = document.getElementById('nichoSelect');
+    if (sel.value === '__secreto'){
+      if (planB() !== 'master'){
+        sel.value = window._nichoAnterior || '';
+        const fomo = document.getElementById('nichosSecretosFomoModal');
+        if (fomo) fomo.style.display = 'flex'; else { bbInjeta(); document.getElementById('bbUpsell').classList.add('on'); }
+        return;
+      }
+      window._secretMode = true;
+      document.querySelectorAll('.filter-btn').forEach(el=>el.classList.add('bb-off'));
+      document.getElementById('regionSelect')?.classList.add('bb-off');
+      carregarSecretosGrid();
+      return;
+    }
+    window._nichoAnterior = sel.value;
+    if (window._secretMode){
+      window._secretMode = false;
+      document.querySelectorAll('.filter-btn').forEach(el=>el.classList.remove('bb-off'));
+      document.getElementById('regionSelect')?.classList.remove('bb-off');
+    }
+    if (_origOnNicho) _origOnNicho();
+  };
+  // auto-refresh de 2min chama carregarHistorico: em modo secreto, redireciona
+  const _origCarregar = window.carregarHistorico;
+  window.carregarHistorico = function(p){
+    if (window._secretMode){ carregarSecretosGrid(); return; }
+    return _origCarregar(p);
+  };
+  const _origBadge = window.atualizarBadgeBanco;
+  window.atualizarBadgeBanco = function(){
+    if (window._secretMode) return;
+    return _origBadge();
+  };
+  window.carregarSecretosGrid = async function(){
+    const grid = document.getElementById('grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8;font-family:var(--mono);font-size:12px">🔮 Abrindo a pasta secreta…</div>';
+    const el = document.getElementById('banco-stats');
+    const tk = localStorage.getItem('bt_token') || '';
+    try{
+      let todos = [], total = 0;
+      for (let pg = 1; pg <= 3; pg++){
+        const r = await fetch(`/api/nichos-secretos?action=historico&pagina=${pg}&token=${encodeURIComponent(tk)}`);
+        if (!r.ok){ if (pg===1){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Sessão expirada — entre de novo.</div>'; } break; }
+        const d = await r.json();
+        total = d.total || 0;
+        todos = todos.concat(d.videos || []);
+        if (!d.tem_mais) break;
+      }
+      if (!window._secretMode) return; // user saiu do modo enquanto carregava
+      if (el) el.textContent = `🔮 Nicho Secreto · ${total.toLocaleString('pt-BR')} vídeos ≥10M views · últimos 45 dias`;
+      const pagEl = document.getElementById('historico-paginacao'); if (pagEl) pagEl.style.display='none';
+      if (!todos.length){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Nenhum vídeo secreto no momento.</div>'; return; }
+      grid.innerHTML = todos.map((v,i)=>{
+        const views = Number(v.views)||0;
+        const vf = views>=1e6 ? (views/1e6).toFixed(1)+'M' : views>=1e3 ? Math.round(views/1e3)+'K' : String(views);
+        const url = v.url || `https://youtube.com/shorts/${v.youtube_id}`;
+        return `<a class="short-card" href="${url}" target="_blank" rel="noopener" data-vid="${escHtml(v.youtube_id)}" style="border-color:rgba(251,191,36,.35)">
+          <div class="card-thumb-wrap">
+            ${v.thumbnail_url?`<img class="card-thumb" src="${v.thumbnail_url}" alt="${escHtml(v.titulo||'')}" loading="lazy" onerror="this.style.display='none'"/>`:''}
+            <div class="card-overlay"><span class="card-views">${vf} views</span></div>
+            <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+            <div class="card-rank" style="background:linear-gradient(135deg,#92400e,#fbbf24)">🔮 #${i+1}</div>
+          </div>
+          <div class="card-info">
+            <div class="card-title">${escHtml(v.titulo||'')}</div>
+            <div class="card-channel">${escHtml(v.canal_nome||'')}</div>
+            <div class="card-meta"><span class="card-views-badge">${vf}</span><span class="card-date">${timeAgo(v.publicado_em)}</span></div>
+            <div class="card-use-btn" onclick="useShort(event,'${v.youtube_id}','${escHtml(url)}')">↗ Usar no BlueTube</div>
+          </div>
+        </a>`;
+      }).join('');
+    }catch(e){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Erro ao abrir a pasta secreta. Tenta de novo.</div>'; }
+  };
+})();
 </script>
 <script src="/toolbar.js" defer></script>
 </body>

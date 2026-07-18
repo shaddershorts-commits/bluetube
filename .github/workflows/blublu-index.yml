@@ -1,0 +1,25 @@
+name: Blublu index embeddings (hourly)
+
+# Indexador da camada semântica do Blublu Chat (Falar com o Blublu na Virais).
+# Processa lote de títulos sem embedding por execução (catch-up nativo: quando
+# o backlog zerar, cada run só pega os vídeos novos do coletor).
+# Guard no endpoint: sem OPENAI_API_KEY = sai limpo (camada opcional).
+
+on:
+  schedule:
+    # minuto :37 (não-redondo, evita pico do GH Actions; cadência 1h = sweet spot)
+    - cron: '37 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispara indexador
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/blublu-index?batch=300&secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP $HTTP"
+          cat /tmp/resp.json
+          [ "$HTTP" = "200" ] || exit 1
