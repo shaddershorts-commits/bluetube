@@ -151,6 +151,20 @@ module.exports = async function handler(req, res) {
         const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&${tkOr}&order=views_count.desc&limit=15`, { headers: H });
         if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
       } catch (e) {}
+      // busca DIRETA no cache de transcrições: acha vídeo cujo título NÃO cita
+      // o tema mas a FALA cita (o cache cresce a cada busca — recall melhora
+      // sozinho com o uso). Índice trigram cobre o ilike.
+      try {
+        for (const t of termosOk.slice(0, 3)) {
+          const rc = await fetch(`${SU}/rest/v1/virais_transcricoes?select=youtube_id&sem_legenda=eq.false&transcript=ilike.*${encodeURIComponent(t)}*&limit=15`, { headers: H });
+          if (!rc.ok) continue;
+          const hits = (await rc.json()).map((r) => r.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id));
+          if (hits.length) {
+            const r3 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&youtube_id=in.(${hits.map(encodeURIComponent).join(',')})&order=${ordem}`, { headers: H });
+            if (r3.ok) candidatos = candidatos.concat(await r3.json());
+          }
+        }
+      } catch (e) {}
       // semântica opcional (completa candidatos com títulos que não citam o termo)
       if (OPENAI && candidatos.length < MAX_CANDIDATOS) {
         try {
@@ -286,7 +300,7 @@ module.exports = async function handler(req, res) {
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
-          ordem: { type: ['string', 'null'], description: '"views" (padrão) ou "recentes"' },
+          ordem: { type: ['string', 'null'], description: '"views" (padrão) ou "recentes". OBRIGATÓRIO "recentes" quando o usuário falar "mais recente", "último", "novo", "essa semana" etc.' },
           quantidade: { type: ['number', 'null'], description: 'SÓ se o usuário pediu número exato de vídeos. null = padrão saudável' },
         },
       },
@@ -314,6 +328,8 @@ REGRAS DO CHAT:
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
 - PRECISÃO: termos INEQUÍVOCOS (nome completo, apelidos famosos) — nada de palavra solta genérica que traga vídeo errado. Na dúvida, melhor menos e certo.
+- DATA: "mais recente", "último", "novo" = ordem "recentes" na busca, SEMPRE. Não responda recência com o mais visto.
+- HONESTIDADE DE ACERVO: NUNCA afirme que o acervo tem ou não tem um assunto sem ter BUSCADO esse assunto. Nada de inventar inventário ("tenho leão, crocodilo…") — se quiser sugerir alternativas, diga que pode buscar, não que "tem".
 - Confirmação: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). Teu diferencial — ostenta quando houver.
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
 - ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
@@ -353,6 +369,7 @@ REGRAS DO CHAT:
         if (bloco.type !== 'tool_use') continue;
         let out;
         if (bloco.name === 'buscar_videos') {
+          console.log('[blublu-chat] busca:', JSON.stringify(bloco.input || {}).slice(0, 300));
           resultado = await executarBusca(bloco.input || {});
           out = JSON.stringify(resultado.resumo);
         } else if (bloco.name === 'definir_apelido') {
