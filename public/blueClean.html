@@ -152,30 +152,36 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
   <!-- STEP 2: Editor -->
   <div class="editor" id="stepEditor">
     <div class="mark-head">
-      <div class="hint" style="margin:0">🎯 <b>Marque o que quer remover:</b> desenhe uma caixa sobre cada legenda, marca ou desenho. Nossa IA usa suas marcações como guia.</div>
-      <div class="mark-count" id="markCount">0 áreas</div>
+      <div class="hint" style="margin:0">🎯 <b>Marque o que quer remover:</b> caixa pra legenda/texto, círculo pra círculos (só a borda sai — o que está dentro fica) e pincel pra setas/rabiscos. Nossa IA usa suas marcações como guia.</div>
+      <div class="mark-count" id="markCount">0 marcações</div>
     </div>
     <div class="editor-layout">
       <div class="canvas-wrap" id="canvasWrap"><canvas id="frameCanvas"></canvas><canvas id="maskCanvas"></canvas></div>
       <div class="toolbar">
         <div class="tb-title">Ferramentas</div>
-        <button class="tb-btn active" id="tbRect">⬜ Desenhar caixa</button>
+        <button class="tb-btn active" id="toolRect" onclick="setTool('rect')">▭ Legenda / texto</button>
+        <button class="tb-btn" id="toolRing" onclick="setTool('ring')">⭕ Círculo</button>
+        <button class="tb-btn" id="toolBrush" onclick="setTool('brush')">🖌️ Pincel (setas)</button>
+        <div id="brushOpts" style="display:none;gap:6px;align-items:center;padding:2px 4px">
+          <span style="font-size:11px;opacity:.7">Pincel:</span>
+          <button class="tb-btn" style="padding:4px 10px" onclick="setBrush(14)">fino</button>
+          <button class="tb-btn" style="padding:4px 10px" onclick="setBrush(26)">médio</button>
+          <button class="tb-btn" style="padding:4px 10px" onclick="setBrush(44)">grosso</button>
+        </div>
         <button class="tb-btn" onclick="undoBox()">↩️ Desfazer</button>
         <button class="tb-btn" onclick="clearBoxes()">🗑️ Limpar tudo</button>
-        <label class="tb-btn" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="chkAnotacoes" style="accent-color:var(--red);width:15px;height:15px"/>
-          <span>🔴 Tem setas/círculos</span>
-        </label>
+        <div class="tb-title" style="margin-top:8px">Marcações</div>
+        <div id="marksList" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto"></div>
         <button class="btn" id="goBtn" disabled onclick="startProcess()">Marque o que remover</button>
       </div>
     </div>
     <div class="frame-nav">
       <button onclick="stepFrame(-1)">‹</button>
-      <input type="range" id="frameSlider" min="0" max="7" value="3" oninput="showFrame(+this.value)"/>
+      <input type="range" id="frameSlider" min="0" max="1000" value="0" oninput="seekPct(+this.value)"/>
       <button onclick="stepFrame(1)">›</button>
-      <span class="fl" id="frameLabel">momento 4/8</span>
+      <span class="fl" id="frameLabel">0,0s</span>
     </div>
-    <div class="hint" style="font-size:12px">💡 Navegue nos momentos do vídeo pra conferir se as caixas cobrem tudo, do começo ao fim.</div>
+    <div class="hint" style="font-size:12px" id="windowHint">💡 Arraste a linha do tempo. Se a seta/círculo <b>aparece e some</b>, selecione a marcação e use <b>📍 Começa aqui</b> / <b>🏁 Termina aqui</b> — o motor só mexe naquele trecho. A marcação some do preview fora da janela dela: se ela acompanha a anotação do vídeo, está certa.</div>
     <button class="btn btn-sec" onclick="resetAll()">← Trocar vídeo</button>
   </div>
 
@@ -212,8 +218,11 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
 const TOKEN=localStorage.getItem('bt_token');
 let selectedFile=null,videoUrl=null,currentJobId=null,pollTimer=null;
 let drawing=false,startX=0,startY=0,curBox=null;
-let boxesArr=[]; // caixas marcadas pelo usuario (coords do canvas)
-let frameCtx,maskCtx,canvasW=0,canvasH=0,frames=[],curFrame=3;
+let marksArr=[]; // marcações: {kind:'rect'|'ring'|'brush', x,y,w,h, s:null|seg, e:null|seg, stroke?:canvas}
+let selMark=-1;  // marcação selecionada (janela de tempo aplica nela)
+let tool='rect',brushSize=26;
+let vidEl=null,videoDur=0,curTime=0,seekBusy=false,seekPend=-1;
+let frameCtx,maskCtx,canvasW=0,canvasH=0;
 let procStart=0,procTick=null;
 let supaConfig=null;
 
@@ -260,62 +269,168 @@ async function pickFile(file){
     canvasW=Math.round(vid.videoWidth*scale);canvasH=Math.round(vid.videoHeight*scale);
     fc.width=canvasW;fc.height=canvasH;mc.width=canvasW;mc.height=canvasH;
     frameCtx=fc.getContext('2d',{willReadFrequently:true});maskCtx=mc.getContext('2d',{willReadFrequently:true});
-    frames=[];
-    const times=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8].map(t=>t*vid.duration);
-    for(const t of times){
-      // espera o seek DE VERDADE (fallback 1.5s): resolver cedo capturava o
-      // frame anterior/preto em arquivo grande no celular
-      await new Promise(r=>{let done=false;const ok=()=>{if(!done){done=true;r();}};vid.onseeked=ok;vid.currentTime=t;setTimeout(ok,1500);});
-      frameCtx.drawImage(vid,0,0,canvasW,canvasH);
-      frames.push(frameCtx.getImageData(0,0,canvasW,canvasH));
-    }
-    boxesArr=[];curBox=null;
-    document.getElementById('frameSlider').max=String(Math.max(0,frames.length-1));
-    showFrame(3);redrawBoxes();updateMarkUI();
+    vidEl=vid;videoDur=vid.duration||0;
+    // primeiro frame útil (10% do vídeo)
+    await new Promise(r=>{let done=false;const ok=()=>{if(!done){done=true;r();}};vid.onseeked=ok;vid.currentTime=0.1*videoDur;setTimeout(ok,1500);});
+    curTime=vidEl.currentTime;frameCtx.drawImage(vidEl,0,0,canvasW,canvasH);
+    vidEl.onseeked=()=>{ // scrubbing contínuo: desenha e encadeia seek pendente
+      curTime=vidEl.currentTime;
+      frameCtx.drawImage(vidEl,0,0,canvasW,canvasH);
+      renderOverlay();updateTimeLabel();
+      if(seekPend>=0){const t=seekPend;seekPend=-1;vidEl.currentTime=t;}
+      else seekBusy=false;
+    };
+    marksArr=[];selMark=-1;curBox=null;setTool('rect');
+    document.getElementById('frameSlider').value='100';
+    renderOverlay();updateMarkUI();updateTimeLabel();
     show('stepEditor');
     toast('✅ Agora marque o que quer remover');
   }catch(e){toast('❌ Erro ao ler o vídeo: '+e.message);}
 }
 
-// ── MARCAÇÃO: caixas desenhadas pelo usuário = guia dos motores ──
-function showFrame(i){
-  curFrame=Math.max(0,Math.min(frames.length-1,i));
-  if(frames[curFrame])frameCtx.putImageData(frames[curFrame],0,0);
-  document.getElementById('frameSlider').value=curFrame;
-  document.getElementById('frameLabel').textContent=`momento ${curFrame+1}/${frames.length||8}`;
+// ── LINHA DO TEMPO contínua ──
+function seekPct(v){
+  if(!vidEl||!videoDur)return;
+  const t=Math.max(0,Math.min(videoDur-0.05,(v/1000)*videoDur));
+  if(seekBusy){seekPend=t;return;}
+  seekBusy=true;vidEl.currentTime=t;
 }
-function stepFrame(d){showFrame(curFrame+d);}
-function redrawBoxes(extra){
+function stepFrame(d){
+  const sl=document.getElementById('frameSlider');
+  sl.value=String(Math.max(0,Math.min(1000,(+sl.value)+d*12)));
+  seekPct(+sl.value);
+}
+function fmtT(t){return t.toFixed(1).replace('.',',')+'s';}
+function updateTimeLabel(){document.getElementById('frameLabel').textContent=fmtT(curTime);}
+function markVisible(m){return (m.s==null||curTime>=m.s-0.02)&&(m.e==null||curTime<=m.e+0.02);}
+
+// ── MARCAÇÃO: caixa / círculo (anel) / pincel ──
+function setTool(t){
+  tool=t;
+  ['toolRect','toolRing','toolBrush'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  document.getElementById(t==='rect'?'toolRect':t==='ring'?'toolRing':'toolBrush').classList.add('active');
+  document.getElementById('brushOpts').style.display=t==='brush'?'flex':'none';
+  if(t!=='brush')selMark=-1;
+  renderOverlay();refreshMarksList();
+}
+function setBrush(s){brushSize=s;toast('🖌️ Pincel '+(s<=14?'fino':s<=26?'médio':'grosso'));}
+const MK_ICON={rect:'▭',ring:'⭕',brush:'🖌️'};
+function drawMark(m,i,ghost){
+  const sel=i===selMark;
+  maskCtx.save();
+  maskCtx.globalAlpha=ghost?0.55:1;
+  if(m.kind==='rect'){
+    maskCtx.fillStyle='rgba(255,70,70,.22)';maskCtx.fillRect(m.x,m.y,m.w,m.h);
+    maskCtx.strokeStyle=sel?'#7ee0ff':'#ff5c5c';maskCtx.lineWidth=sel?3:2;maskCtx.setLineDash([6,4]);maskCtx.strokeRect(m.x,m.y,m.w,m.h);maskCtx.setLineDash([]);
+  }else if(m.kind==='ring'){
+    const rx=m.w/2,ry=m.h/2,cx=m.x+rx,cy=m.y+ry,th=Math.max(6,0.3*Math.min(rx,ry));
+    maskCtx.strokeStyle=sel?'rgba(126,224,255,.55)':'rgba(255,70,70,.45)';
+    maskCtx.lineWidth=th;
+    maskCtx.beginPath();maskCtx.ellipse(cx,cy,Math.max(4,rx-th/2),Math.max(4,ry-th/2),0,0,Math.PI*2);maskCtx.stroke();
+    maskCtx.strokeStyle=sel?'#7ee0ff':'#ff5c5c';maskCtx.lineWidth=1.5;maskCtx.setLineDash([5,4]);
+    maskCtx.beginPath();maskCtx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);maskCtx.stroke();
+    maskCtx.beginPath();maskCtx.ellipse(cx,cy,Math.max(2,rx-th),Math.max(2,ry-th),0,0,Math.PI*2);maskCtx.stroke();maskCtx.setLineDash([]);
+  }else if(m.kind==='brush'&&m.stroke){
+    maskCtx.globalAlpha=ghost?0.4:0.55;
+    maskCtx.drawImage(m.stroke,0,0);
+  }
+  maskCtx.restore();
+  if(!ghost){
+    const bx=m.kind==='brush'?(m.x||16):m.x, by=m.kind==='brush'?(m.y||16):m.y;
+    maskCtx.fillStyle=sel?'#7ee0ff':'#ff5c5c';maskCtx.beginPath();maskCtx.arc(bx+12,by+12,10,0,Math.PI*2);maskCtx.fill();
+    maskCtx.fillStyle=sel?'#04222e':'#fff';maskCtx.font='bold 12px monospace';maskCtx.textAlign='center';maskCtx.textBaseline='middle';maskCtx.fillText(String(i+1),bx+12,by+12);
+  }
+}
+function renderOverlay(extra){
+  if(!maskCtx)return;
   maskCtx.clearRect(0,0,canvasW,canvasH);
-  const all=extra?[...boxesArr,extra]:boxesArr;
-  all.forEach((b,i)=>{
-    maskCtx.fillStyle='rgba(255,70,70,.25)';maskCtx.fillRect(b.x,b.y,b.w,b.h);
-    maskCtx.strokeStyle='#ff5c5c';maskCtx.lineWidth=2;maskCtx.setLineDash([6,4]);maskCtx.strokeRect(b.x,b.y,b.w,b.h);maskCtx.setLineDash([]);
-    if(!extra||i<all.length-1){maskCtx.fillStyle='#ff5c5c';maskCtx.beginPath();maskCtx.arc(b.x+12,b.y+12,10,0,Math.PI*2);maskCtx.fill();maskCtx.fillStyle='#fff';maskCtx.font='bold 12px monospace';maskCtx.textAlign='center';maskCtx.textBaseline='middle';maskCtx.fillText(String(i+1),b.x+12,b.y+12);}
-  });
+  marksArr.forEach((m,i)=>{if(markVisible(m))drawMark(m,i,false);});
+  if(extra)drawMark(extra,marksArr.length,true);
 }
 function updateMarkUI(){
-  const n=boxesArr.length;
-  document.getElementById('markCount').textContent=n+(n===1?' área':' áreas');
+  const n=marksArr.length;
+  document.getElementById('markCount').textContent=n+(n===1?' marcação':' marcações');
   const go=document.getElementById('goBtn');
   go.disabled=n===0;
   go.textContent=n===0?'Marque o que remover':'🧹 Limpar meu vídeo →';
+  refreshMarksList();
 }
-function undoBox(){boxesArr.pop();redrawBoxes();updateMarkUI();}
-function clearBoxes(){boxesArr=[];redrawBoxes();updateMarkUI();}
+function winLabel(m){return (m.s==null&&m.e==null)?'vídeo todo':fmtT(m.s==null?0:m.s)+' → '+(m.e==null?'fim':fmtT(m.e));}
+function refreshMarksList(){
+  const el=document.getElementById('marksList');
+  if(!el)return;
+  el.innerHTML='';
+  marksArr.forEach((m,i)=>{
+    const c=document.createElement('div');
+    c.style.cssText='border:1px solid '+(i===selMark?'#7ee0ff':'rgba(255,255,255,.14)')+';border-radius:8px;padding:6px 8px;font-size:11px;cursor:pointer;background:'+(i===selMark?'rgba(126,224,255,.08)':'transparent');
+    c.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'
+      +'<span>'+MK_ICON[m.kind]+' <b>'+(i+1)+'</b> · <span style="opacity:.75">'+winLabel(m)+'</span></span>'
+      +'<span style="white-space:nowrap"><button data-a="s" title="Começa aqui" style="all:unset;cursor:pointer;padding:2px 4px">📍</button>'
+      +'<button data-a="e" title="Termina aqui" style="all:unset;cursor:pointer;padding:2px 4px">🏁</button>'
+      +'<button data-a="r" title="Janela: vídeo todo" style="all:unset;cursor:pointer;padding:2px 4px">↺</button>'
+      +'<button data-a="x" title="Apagar" style="all:unset;cursor:pointer;padding:2px 4px">✕</button></span></div>';
+    c.onclick=(ev)=>{
+      const a=ev.target&&ev.target.dataset?ev.target.dataset.a:null;
+      if(a==='s'){m.s=Math.round(curTime*10)/10;if(m.e!=null&&m.e<m.s)m.e=null;toast('📍 Marcação '+(i+1)+' começa em '+fmtT(m.s));}
+      else if(a==='e'){m.e=Math.round(curTime*10)/10;if(m.s!=null&&m.s>m.e)m.s=null;toast('🏁 Marcação '+(i+1)+' termina em '+fmtT(m.e));}
+      else if(a==='r'){m.s=null;m.e=null;toast('↺ Marcação '+(i+1)+': vídeo todo');}
+      else if(a==='x'){marksArr.splice(i,1);if(selMark===i)selMark=-1;else if(selMark>i)selMark--;updateMarkUI();renderOverlay();return;}
+      selMark=i;refreshMarksList();renderOverlay();
+    };
+    el.appendChild(c);
+  });
+}
+function undoBox(){marksArr.pop();if(selMark>=marksArr.length)selMark=-1;renderOverlay();updateMarkUI();}
+function clearBoxes(){marksArr=[];selMark=-1;renderOverlay();updateMarkUI();}
 const mc=document.getElementById('maskCanvas');
 function getPos(e){const r=mc.getBoundingClientRect();const sx=canvasW/r.width;const sy=canvasH/r.height;return{x:Math.max(0,Math.min(canvasW,(e.clientX-r.left)*sx)),y:Math.max(0,Math.min(canvasH,(e.clientY-r.top)*sy))};}
-mc.addEventListener('pointerdown',e=>{e.preventDefault();mc.setPointerCapture(e.pointerId);drawing=true;const p=getPos(e);startX=p.x;startY=p.y;curBox=null;});
-mc.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=getPos(e);curBox={x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY)};redrawBoxes(curBox);});
+let lastBrush=null;
+mc.addEventListener('pointerdown',e=>{
+  e.preventDefault();mc.setPointerCapture(e.pointerId);drawing=true;
+  const p=getPos(e);startX=p.x;startY=p.y;curBox=null;
+  if(tool==='brush'){
+    // pintar continua na marcação de pincel selecionada; senão cria nova
+    let m=(selMark>=0&&marksArr[selMark]&&marksArr[selMark].kind==='brush')?marksArr[selMark]:null;
+    if(!m){
+      const oc=document.createElement('canvas');oc.width=canvasW;oc.height=canvasH;
+      m={kind:'brush',stroke:oc,x:p.x,y:p.y,w:0,h:0,s:null,e:null};
+      marksArr.push(m);selMark=marksArr.length-1;
+    }
+    lastBrush=p;paintBrush(m,p,p);renderOverlay();updateMarkUI();
+  }
+});
+function paintBrush(m,a,b){
+  const c=m.stroke.getContext('2d');
+  c.strokeStyle='rgba(255,80,80,1)';c.lineWidth=brushSize;c.lineCap='round';c.lineJoin='round';
+  c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();
+  // bbox do traço (pro backend recortar/tempo e pro chip)
+  const r=brushSize/2+2;
+  const x1=Math.max(0,Math.min(a.x,b.x)-r),y1=Math.max(0,Math.min(a.y,b.y)-r);
+  const x2=Math.min(canvasW,Math.max(a.x,b.x)+r),y2=Math.min(canvasH,Math.max(a.y,b.y)+r);
+  if(!m.w){m.x=x1;m.y=y1;m.w=x2-x1;m.h=y2-y1;}
+  else{const nx=Math.min(m.x,x1),ny=Math.min(m.y,y1);m.w=Math.max(m.x+m.w,x2)-nx;m.h=Math.max(m.y+m.h,y2)-ny;m.x=nx;m.y=ny;}
+}
+mc.addEventListener('pointermove',e=>{
+  if(!drawing)return;e.preventDefault();
+  const p=getPos(e);
+  if(tool==='brush'){
+    const m=marksArr[selMark];
+    if(m&&m.kind==='brush'&&lastBrush){paintBrush(m,lastBrush,p);lastBrush=p;renderOverlay();}
+    return;
+  }
+  curBox={kind:tool,x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY),s:null,e:null};
+  renderOverlay(curBox);
+});
 mc.addEventListener('pointerup',e=>{
   if(!drawing)return;drawing=false;
+  if(tool==='brush'){lastBrush=null;toast('🖌️ Traço adicionado à marcação '+(selMark+1));return;}
   const p=getPos(e);
-  const b={x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY)};
+  const b={kind:tool,x:Math.min(startX,p.x),y:Math.min(startY,p.y),w:Math.abs(p.x-startX),h:Math.abs(p.y-startY),s:null,e:null};
   curBox=null;
-  if(b.w>=10&&b.h>=10){boxesArr.push(b);toast('✅ Área '+boxesArr.length+' marcada');}
-  redrawBoxes();updateMarkUI();
+  if(b.w>=10&&b.h>=10){marksArr.push(b);selMark=marksArr.length-1;toast('✅ Marcação '+marksArr.length+' ('+(tool==='rect'?'texto':'círculo')+')'+(tool==='ring'?' — só a borda sai, o miolo fica':''));}
+  renderOverlay();updateMarkUI();
 });
-mc.addEventListener('pointercancel',()=>{drawing=false;curBox=null;redrawBoxes();});
+mc.addEventListener('pointercancel',()=>{drawing=false;curBox=null;lastBrush=null;renderOverlay();});
 
 function startTimer(){
   procStart=Date.now();
@@ -331,7 +446,7 @@ function stopTimer(){if(procTick){clearInterval(procTick);procTick=null;}}
 
 async function startProcess(){
   if(!selectedFile||!TOKEN)return;
-  if(!boxesArr.length){toast('🎯 Marque pelo menos uma área pra remover');return;}
+  if(!marksArr.length){toast('🎯 Marque pelo menos uma área pra remover');return;}
   try{
     const testVid=document.createElement('video');
     testVid.src=URL.createObjectURL(selectedFile);
@@ -340,8 +455,16 @@ async function startProcess(){
     if(testVid.videoWidth>1920){toast('❌ Resolução muito alta. Máximo 1920px.');return;}
   }catch(e){if(e.message.includes('inválido')){toast('❌ '+e.message);return;}}
 
-  // caixas do canvas -> percentuais do vídeo (canvas é o vídeo em escala uniforme)
-  const boxes=boxesArr.map(b=>({x_pct:b.x/canvasW,y_pct:b.y/canvasH,w_pct:b.w/canvasW,h_pct:b.h/canvasH}));
+  // canvas -> percentuais do vídeo (canvas é o vídeo em escala uniforme).
+  // rect = caixa de texto (boxes); ring/brush = marcações adaptativas (marks)
+  const tj=(m)=>({...(m.s!=null?{start_sec:m.s}:{}),...(m.e!=null?{end_sec:m.e}:{})});
+  const boxes=marksArr.filter(m=>m.kind==='rect').map(b=>({x_pct:b.x/canvasW,y_pct:b.y/canvasH,w_pct:b.w/canvasW,h_pct:b.h/canvasH,...tj(b)}));
+  const marks=marksArr.filter(m=>m.kind!=='rect').map(m=>({
+    type:m.kind,x_pct:m.x/canvasW,y_pct:m.y/canvasH,w_pct:m.w/canvasW,h_pct:m.h/canvasH,
+    ...(m.kind==='ring'?{thick_pct:0.38}:{}),
+    ...(m.kind==='brush'?{png:m.stroke.toDataURL('image/png')}:{}),
+    ...tj(m),
+  }));
 
   show('stepProcessing');
   startTimer();
@@ -358,8 +481,7 @@ async function startProcess(){
     videoUrl=cfg.video_public_url;
 
     document.getElementById('stepLabel').textContent='🧹 Nossa IA está limpando…';
-    const anotacoes=!!document.getElementById('chkAnotacoes')?.checked;
-    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes,anotacoes})});
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes,marks})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao iniciar');
     currentJobId=d.job_id;
@@ -448,7 +570,7 @@ function showResult(outputUrl,framesFailed){
   loadHistory();
 }
 
-function resetAll(){selectedFile=null;videoUrl=null;currentJobId=null;frames=[];boxesArr=[];curBox=null;stopTimer();if(pollTimer)clearInterval(pollTimer);show('stepUpload');document.getElementById('fileInput').value='';}
+function resetAll(){selectedFile=null;videoUrl=null;currentJobId=null;marksArr=[];selMark=-1;curBox=null;if(vidEl){try{URL.revokeObjectURL(vidEl.src)}catch(e){}vidEl=null;}stopTimer();if(pollTimer)clearInterval(pollTimer);show('stepUpload');document.getElementById('fileInput').value='';}
 
 async function cancelarLimpeza(){
   if(!currentJobId){resetAll();return;}

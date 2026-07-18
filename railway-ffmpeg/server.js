@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r26b-blueclean-temporal',
+      build: 'r26c-blueclean-anelfolga',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -1161,13 +1161,16 @@ async function processBlueCleanGuided(jobId, p) {
           const m = marcas[k];
           const um = Buffer.alloc(W * Hh);
           if (m.type === 'ring') {
-            // anel elíptico: fora do raio interno, dentro do externo (+folga)
+            // anel elíptico: fora do raio interno, dentro do externo. Folga
+            // EXTERNA proporcional (7% do raio, mín 8px): círculo desenhado à
+            // mão "balança" quadro a quadro — sem folga sobra arco (smoke32)
             const rx = m.w / 2, ry = m.h / 2, cx0 = m.x + rx, cy0 = m.y + ry;
             const th = Math.min(0.6, Math.max(0.12, m.thick));
             const inner = 1 - th;
-            const folga = 1 + 6 / Math.max(6, Math.min(rx, ry));
-            for (let yy = Math.max(0, m.y - 8); yy < Math.min(Hh, m.y + m.h + 8); yy++) {
-              for (let xx = Math.max(0, m.x - 8); xx < Math.min(W, m.x + m.w + 8); xx++) {
+            const folga = 1 + Math.max(0.07, 8 / Math.max(8, Math.min(rx, ry)));
+            const mgm = Math.ceil(Math.max(rx, ry) * 0.1) + 8;
+            for (let yy = Math.max(0, m.y - mgm); yy < Math.min(Hh, m.y + m.h + mgm); yy++) {
+              for (let xx = Math.max(0, m.x - mgm); xx < Math.min(W, m.x + m.w + mgm); xx++) {
                 const dx = (xx - cx0) / rx, dy = (yy - cy0) / ry;
                 const q = dx * dx + dy * dy;
                 if (q <= folga * folga && q >= inner * inner) um[yy * W + xx] = 255;
