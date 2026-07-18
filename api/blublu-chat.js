@@ -173,20 +173,12 @@ module.exports = async function handler(req, res) {
         const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&${tkOr}&order=views_count.desc&limit=${plat === 'tiktok' ? 40 : 15}`, { headers: H });
         if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
       } catch (e) {}
-      // busca DIRETA no cache de transcrições: acha vídeo cujo título NÃO cita
-      // o tema mas a FALA cita (o cache cresce a cada busca — recall melhora
-      // sozinho com o uso). Índice trigram cobre o ilike.
-      if (plat !== 'tiktok') try {
-        for (const t of termosOk.slice(0, 3)) {
-          const rc = await fetch(`${SU}/rest/v1/virais_transcricoes?select=youtube_id&sem_legenda=eq.false&transcript=ilike.*${encodeURIComponent(t)}*&limit=15`, { headers: H });
-          if (!rc.ok) continue;
-          const hits = (await rc.json()).map((r) => r.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id));
-          if (hits.length) {
-            const r3 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&youtube_id=in.(${hits.map(encodeURIComponent).join(',')})&order=${ordem}`, { headers: H });
-            if (r3.ok) candidatos = candidatos.concat(await r3.json());
-          }
-        }
-      } catch (e) {}
+      // REMOVIDO (2026-07-18): a busca direta no cache de transcrições era
+      // VENENO de precisão — re-injetava como candidato qualquer vídeo que
+      // MENCIONASSE o termo na fala (vídeo infantil cantando "tiger" voltava
+      // toda vez, mesmo com o cache sendo só o efeito colateral de buscas
+      // antigas). Transcrição agora faz o papel original do desenho do user:
+      // CONFIRMAR candidatos achados por tema — nunca ser fonte de candidato.
       // semântica opcional (completa candidatos com títulos que não citam o termo)
       if (OPENAI && plat !== 'tiktok' && candidatos.length < MAX_CANDIDATOS) {
         try {
@@ -421,6 +413,7 @@ REGRAS DO CHAT:
         if (bloco.name === 'buscar_videos') {
           console.log('[blublu-chat] busca:', JSON.stringify(bloco.input || {}).slice(0, 300));
           resultado = await executarBusca(bloco.input || {});
+          resultado._input = bloco.input || {};
           out = JSON.stringify(resultado.resumo);
         } else if (bloco.name === 'definir_apelido') {
           const ap = String(bloco.input?.apelido || '').replace(/[^\p{L}\p{N} ]/gu, '').trim().slice(0, 24);
@@ -442,6 +435,19 @@ REGRAS DO CHAT:
     if (!perfil.apelido && !apelidoFinal && !perfil.memoria?.perguntou_nome) {
       await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true } });
     }
+
+    // log de uso (análise de produto — o que pediram, o que entendemos, o que saiu)
+    fetch(`${SU}/rest/v1/blublu_chat_logs`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({
+      user_id: userId, mensagem: message.slice(0, 300),
+      tema: resultado?._input?.tema || null,
+      termos: resultado?._input?.termos || null,
+      qualificadores: resultado?._input?.qualificadores || null,
+      filtros: resultado ? { min_views: resultado._input?.min_views, dias: resultado._input?.dias, nicho: resultado._input?.nicho, ordem: resultado._input?.ordem, plataforma: resultado._input?.plataforma, quantidade: resultado._input?.quantidade } : null,
+      entregues: resultado ? resultado.videos.length : null,
+      confirmados_fala: resultado ? resultado.videos.filter((v) => v.confirmado_por === 'fala').length : null,
+      com_relevancia: resultado ? resultado.videos.filter((v) => (v._score || 0) > 0).length : null,
+      usou_busca: !!resultado,
+    }) }).catch(() => {});
 
     await bump();
     return res.status(200).json({
