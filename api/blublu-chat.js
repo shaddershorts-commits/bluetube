@@ -17,6 +17,11 @@
 // Limite: 60 mensagens/dia por usuário (blublu_chat_usage).
 // Nunca revelar motores/stack na resposta — é "nossa tecnologia".
 
+// PERSONALIDADE REAL: manifesto v3 completo (Finch/Marçal/Jota/Flávio/Ruyter +
+// pitada Deadpool, quebra de 4ª parede). Sem ele o Blublu vira atendente
+// genérico — user notou na hora.
+const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality.js');
+
 const MODEL = 'claude-haiku-4-5-20251001';
 const DAILY_LIMIT = 60;
 const MAX_CANDIDATOS = 40;      // teto do funil por busca
@@ -78,6 +83,20 @@ module.exports = async function handler(req, res) {
   const skipIds = new Set((Array.isArray(req.body?.skip_ids) ? req.body.skip_ids : []).slice(0, 300).map(String));
   if (!message) return res.status(400).json({ error: 'mensagem vazia' });
 
+  // ── PERFIL + MEMÓRIA do usuário (apelido escolhido, temas recentes) ────────
+  let perfil = { apelido: null, memoria: {} };
+  try {
+    const pr2 = await fetch(`${SU}/rest/v1/blublu_perfil?user_id=eq.${userId}&select=apelido,memoria`, { headers: H });
+    if (pr2.ok) { const row = (await pr2.json())[0]; if (row) perfil = { apelido: row.apelido, memoria: row.memoria || {} }; }
+  } catch (e) {}
+  const salvarPerfil = async (patch) => {
+    try {
+      await fetch(`${SU}/rest/v1/blublu_perfil`, { method: 'POST', headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ user_id: userId, ...patch, atualizado_em: new Date().toISOString() }) });
+    } catch (e) {}
+  };
+  const chamarDe = perfil.apelido || nome || '';
+
   const claude = async (system, messages, maxTokens) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -90,19 +109,31 @@ module.exports = async function handler(req, res) {
   };
 
   try {
-    // ── 1) INTERPRETAÇÃO ─────────────────────────────────────────────────────
+    // ── 1) INTERPRETAÇÃO (com a personalidade REAL no papo) ──────────────────
     const hoje = new Date().toISOString().slice(0, 10);
-    const parseSystem = `Você interpreta pedidos de busca de vídeos virais e devolve APENAS um JSON válido, nada mais.
+    const memoTemas = Array.isArray(perfil.memoria?.temas) ? perfil.memoria.temas.slice(0, 5) : [];
+    const contextoUser = [
+      chamarDe ? `O usuário atende por "${chamarDe}".` : 'Você AINDA NÃO SABE como chamar o usuário.',
+      memoTemas.length ? `Temas que ele já buscou com você: ${memoTemas.join(', ')}.` : 'Primeira conversa de buscas com ele.',
+      (!perfil.apelido && !perfil.memoria?.perguntou_nome) ? 'PRIMEIRO CONTATO: no fim da sua resposta, pergunte como a pessoa prefere ser chamada (do seu jeito, sem formulário).' : '',
+    ].filter(Boolean).join(' ');
+    const parseSystem = `${BLUBLU_MANIFESTO_V3}
+
+─── SUA MISSÃO AGORA (chat da Virais) ───
+Você está no "Falar com o Blublu": acha vídeos no SEU acervo de virais por tema, canal ou filtros. Interprete a mensagem do usuário e devolva APENAS um JSON válido, nada mais.
 Hoje é ${hoje}. Nichos válidos: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria.
+${contextoUser}
 Formato:
 {"tipo":"busca"|"papo",
  "tema": string|null,            // assunto de CONTEÚDO (ex: "Michael Jackson"). null se o pedido é só filtro numérico/temporal.
- "termos": string[],             // 3-6 variações do tema pra busca em texto (nome completo, apelidos, traduções, grafias). [] se tema null.
+ "termos": string[],             // 3-6 variações do tema (nome completo, apelidos, traduções, grafias). [] se tema null.
  "filtros": {"min_views": number|null, "dias": number|null, "nicho": string|null, "ordem": "views"|"recentes"|null},
- "resposta_papo": string|null    // SÓ se tipo=papo: resposta curta no personagem (você é Blublu, mentor de virais direto, confiante, levemente provocador, pt-BR). null se tipo=busca.
+ "quantidade": number|null,      // SÓ se o usuário pediu um número específico de vídeos ("me manda 5")
+ "definir_apelido": string|null, // SÓ se o usuário disse como quer ser chamado ("me chama de X", "meu nome é X", "pode ser X")
+ "resposta_papo": string|null    // SÓ se tipo=papo: resposta NO SEU PERSONAGEM (curta, 1-4 frases, humor ácido seu). null se tipo=busca.
 }
-"papo" = cumprimento, dúvida sobre você, ou pedido que não é busca de vídeo. Qualquer pedido de vídeos = "busca".
-"vídeos do X" pode ser TEMA ou CANAL/criador — trate igual: gere termos com o nome (a busca cobre título E canal).${nome ? ` O usuário se chama ${nome} — no papo, use o nome dele às vezes, natural.` : ''}`;
+"papo" = cumprimento, pergunta sobre você, resposta sobre o nome, ou qualquer coisa que não é busca de vídeo. Qualquer pedido de vídeos = "busca".
+"vídeos do X" pode ser TEMA ou CANAL/criador — trate igual: gere termos com o nome (a busca cobre título E canal).`;
     const parseRaw = await claude(parseSystem, [...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, 300) })), { role: 'user', content: message }], 500);
     let parsed;
     try {
@@ -119,12 +150,25 @@ Formato:
       if (r && !r.ok) console.error('[blublu-chat] usage NAO gravado (rodar sql/blublu_chat.sql?):', r.status);
     };
 
+    // apelido definido pelo usuário nesta mensagem → salva e passa a usar
+    let apelidoNovo = null;
+    if (parsed.definir_apelido) {
+      apelidoNovo = String(parsed.definir_apelido).replace(/[^\p{L}\p{N} ]/gu, '').trim().slice(0, 24) || null;
+      if (apelidoNovo) await salvarPerfil({ apelido: apelidoNovo, memoria: { ...perfil.memoria, perguntou_nome: true } });
+    } else if (!perfil.apelido && !perfil.memoria?.perguntou_nome) {
+      // marcou que já perguntou (pra não virar chatice a cada mensagem)
+      await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true } });
+    }
+    const apelidoFinal = apelidoNovo || chamarDe || null;
+
     if (parsed.tipo === 'papo') {
       await bump();
-      return res.status(200).json({ reply: parsed.resposta_papo || 'Diz aí o que você quer encontrar. 🎯', videos: [], usage: { used: used + 1, limit: DAILY_LIMIT } });
+      return res.status(200).json({ reply: parsed.resposta_papo || 'Diz aí o que você quer encontrar. 🎯', videos: [], apelido: apelidoFinal, usage: { used: used + 1, limit: DAILY_LIMIT } });
     }
 
     // ── 2) BUSCA HÍBRIDA no banco curado ─────────────────────────────────────
+    // "me manda 5" = 5 MESMO (user pediu, user recebe — não os 24 do teto)
+    const qtdPedida = Math.min(24, Math.max(1, parseInt(parsed.quantidade) || 0)) || null;
     const f = parsed.filtros || {};
     const fDias = Math.max(0, parseInt(f.dias) || 0); // Haiku pode devolver "duas semanas" → NaN → RangeError
     const parts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em,nicho'];
@@ -285,27 +329,38 @@ Formato:
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
       videos.sort((a, b) => (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
-      videos = videos.slice(0, 24);
+      videos = videos.slice(0, qtdPedida || 24);
       // ids com veredito nesta conversa (cache + transcritos agora): o front
       // devolve em skip_ids no "continuar" pra garantir avanco na fila
       verificadosIds = candidatos.filter((c) => cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
-      videos = candidatos.slice(0, 24).map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
+      videos = candidatos.slice(0, qtdPedida || 24).map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
     }
 
-    // ── 4) RESPOSTA no personagem ────────────────────────────────────────────
+    // ── 4) RESPOSTA no personagem (manifesto completo) ───────────────────────
     const confirmadosFala = videos.filter((v) => v.confirmado_por === 'fala').length;
+    const porCanal = videos.filter((v) => v.confirmado_por === 'canal').length;
     const ctx = parsed.tema
-      ? `Busca por conteúdo: "${parsed.tema}". Encontrados ${videos.length} vídeos (${confirmadosFala} com o tema CITADO NA FALA — confirmado, o resto pelo título).${temMais ? ' Ainda há candidatos não verificados — o usuário pode pedir pra continuar procurando.' : ''}`
-      : `Busca por filtros (${JSON.stringify(f)}). Encontrados ${videos.length} vídeos.`;
-    const replySystem = `Você é o Blublu: mentor de virais do BlueTube, direto, confiante, levemente provocador, pt-BR, no máximo 2-3 frases. Os vídeos aparecem em cards abaixo da sua fala (NÃO liste vídeos no texto). Nunca fale de tecnologia interna, modelos ou fornecedores — a tecnologia é sua. Se 0 resultados: sugira reformular ou avisa que só vasculha o acervo curado de virais.${nome ? ` O usuário se chama ${nome} — use o nome dele de vez em quando, natural, sem forçar.` : ''}`;
-    const reply = await claude(replySystem, [{ role: 'user', content: `Pedido do usuário: "${message}"\n${ctx}` }], 260);
+      ? `Busca por conteúdo/canal: "${parsed.tema}". Entregando ${videos.length} vídeos${qtdPedida ? ` (o usuário pediu ${qtdPedida})` : ''} — ${confirmadosFala} com o tema CITADO NA FALA (confirmado com timestamp), ${porCanal} do próprio canal, o resto pelo título.${temMais ? ' Ainda há candidatos não verificados — ele pode pedir pra continuar procurando.' : ''}`
+      : `Busca por filtros (${JSON.stringify(f)}). Entregando ${videos.length} vídeos${qtdPedida ? ` (pediu ${qtdPedida})` : ''}.`;
+    const replySystem = `${BLUBLU_MANIFESTO_V3}
+
+─── SUA MISSÃO AGORA (chat da Virais) ───
+Você acabou de buscar vídeos no SEU acervo pro usuário. Comente o resultado NO SEU PERSONAGEM em 1-4 frases curtas. Os vídeos aparecem em CARDS abaixo da sua fala — NÃO liste vídeos no texto. Nunca cite tecnologia interna, modelos ou fornecedores — a tecnologia é SUA. Se 0 resultados: provoca e sugere reformular (você só vasculha o acervo curado de virais). ${contextoUser}`;
+    const reply = await claude(replySystem, [{ role: 'user', content: `Pedido do usuário: "${message}"\n${ctx}` }], 300);
+
+    // memória: temas recentes + contagem (contexto real nas próximas conversas)
+    if (parsed.tema) {
+      const temasNovos = [parsed.tema, ...memoTemas.filter((t) => t !== parsed.tema)].slice(0, 5);
+      await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true, temas: temasNovos, buscas: (perfil.memoria?.buscas || 0) + 1 } });
+    }
 
     await bump();
     return res.status(200).json({
       reply: reply.trim(), videos, tem_mais: temMais,
       confirmados_fala: confirmadosFala,
       verificados: verificadosIds,
+      apelido: apelidoFinal,
       usage: { used: used + 1, limit: DAILY_LIMIT },
     });
   } catch (e) {

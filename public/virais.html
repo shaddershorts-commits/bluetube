@@ -1811,7 +1811,8 @@ function tkFomoClose(e){
   // sente falta e chama pelo nome) + PROVOCATIVA pro Full (upsell Master no
   // humor do Blublu). Variações com/sem nome; guarda de 38 chars pra não cortar
   // no botão. PROVISÓRIAS — user vai revisar as falas depois.
-  const bbNome = (() => { try { return (localStorage.getItem('bt_studio_nome') || '').trim().split(/\s+/)[0].slice(0, 14); } catch(e){ return ''; } })();
+  // apelido escolhido no chat (Blublu pergunta no 1º contato) > nome do estúdio
+  let bbNome = (() => { try { return (localStorage.getItem('bt_blublu_apelido') || localStorage.getItem('bt_studio_nome') || '').trim().split(/\s+/)[0].slice(0, 14); } catch(e){ return ''; } })();
   const BB_FRASES = {
     madrugada: [
       () => 'Acordado? Os virais também.',
@@ -1951,6 +1952,20 @@ function tkFomoClose(e){
     }
     box.scrollTop = box.scrollHeight;
   }
+  // Boas-vindas: quem já usa não precisa de apresentação toda vez — variações
+  // curtas rotativas. Primeiro contato ganha a apresentação completa (e o
+  // backend faz o Blublu perguntar como quer ser chamado).
+  const BB_BEMVINDO_CONHECIDO = [
+    (n) => `Falai ${n}, só dizer do que precisa que te trago agora.`,
+    (n) => `${n}. De volta ao laboratório. Que tema hoje?`,
+    (n) => `Opa, ${n}. Sem cerimônia: pede.`,
+    (n) => `${n}, fala. Tema, canal ou filtro — eu acho.`,
+    (n) => `De novo por aqui, ${n}? Gosto disso. Manda.`,
+  ];
+  const BB_BEMVINDO_NOVO = [
+    'Cheguei. 🧪 Me pede um tema ("vídeos que falam do Michael Jackson"), um canal ("vídeos do Luiz Stubbe") ou um filtro ("mais de 5 mi de views em 2 semanas"). Eu vasculho o acervo INTEIRO — até o que a página não mostra — e te digo ONDE o assunto foi citado.',
+    'Blublu na área. 🧪 Funciona assim: você fala um tema, canal ou filtro, e eu viro o acervo de cabeça pra baixo — com prova de onde o assunto foi citado. Testa.',
+  ];
   window.abrirBlublu = function(){
     if (planB() !== 'master'){ bbInjeta(); document.getElementById('bbUpsell').classList.add('on'); return; }
     bbInjeta();
@@ -1958,8 +1973,15 @@ function tkFomoClose(e){
     document.getElementById('bbOverlay').classList.add('on');
     document.body.style.overflow = 'hidden';
     if (!bbHist.length){
-      const oi = bbNome ? `Cheguei, ${bbNome}. 🧪` : 'Cheguei. 🧪';
-      bbAddMsg('bot', oi + ' Me diz um tema — "vídeos que falam do Michael Jackson" —, um canal — "vídeos do Luiz Stubbe" — ou um filtro — "mais de 5 mi de views nas últimas 2 semanas". Eu vasculho o acervo INTEIRO (até o que não aparece na página) e te digo ONDE o assunto foi citado.');
+      const jaUsou = (() => { try { return localStorage.getItem('bt_blublu_ja_usou') === '1'; } catch(e){ return false; } })();
+      let msg;
+      if (jaUsou && bbNome){
+        let i = 0; try { i = parseInt(localStorage.getItem('bt_blublu_bv_idx') || '0', 10) % BB_BEMVINDO_CONHECIDO.length; localStorage.setItem('bt_blublu_bv_idx', String((i + 1) % BB_BEMVINDO_CONHECIDO.length)); } catch(e){}
+        msg = BB_BEMVINDO_CONHECIDO[i](bbNome);
+      } else {
+        msg = BB_BEMVINDO_NOVO[Math.random() < .5 ? 0 : 1];
+      }
+      bbAddMsg('bot', msg);
     }
     setTimeout(() => document.getElementById('bbInput')?.focus(), 250);
   };
@@ -1967,6 +1989,37 @@ function tkFomoClose(e){
     document.getElementById('bbOverlay')?.classList.remove('on');
     document.body.style.overflow = '';
   };
+  // Mensagens de ESPERA no personagem (humor ácido + 4ª parede) — saco
+  // embaralhado sem repetição até esgotar o ciclo. Simula conversa fluida
+  // enquanto a busca roda de verdade.
+  const BB_QUIPS = [
+    'Peraí, tô abrindo o acervo. Sim, eu tenho um acervo. Você não.',
+    'Buscando… enquanto isso, reflete: quando foi teu último viral?',
+    'Vasculhando frame por frame. (Mentira, é mais rápido que isso. Charme meu.)',
+    'Um segundo. Gênio também trabalha.',
+    'Procurando… se eu fosse você, já ia preparando o roteiro.',
+    'Cavando fundo no acervo. Os estagiários aqui sou eu mesmo.',
+    'Já achei coisa. Conferindo se presta — padrão Blublu é alto.',
+    'Isso que você pediu… interessante. Vamos ver se o acervo concorda.',
+    'Rodando a máquina. (Eu SOU a máquina, mas você entendeu.)',
+    'Buscando com a fúria de quem analisou 50 mil Shorts. Porque analisei.',
+    'Calma, ansioso(a). Qualidade leva 10 segundos.',
+    'Farejando views… tem cheiro de viral aqui.',
+    'Confirmando NA FALA dos vídeos. Eu não chuto, eu provo.',
+    'Se não achar, a culpa é do assunto. Nunca minha. (Quase nunca.)',
+  ];
+  function bbQuip(){
+    let bag = [];
+    try { bag = JSON.parse(localStorage.getItem('bt_blublu_quips') || '[]'); } catch(e){}
+    if (!Array.isArray(bag) || !bag.length){
+      bag = BB_QUIPS.map((_, i) => i);
+      for (let i = bag.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    }
+    const idx = bag.pop();
+    try { localStorage.setItem('bt_blublu_quips', JSON.stringify(bag)); } catch(e){}
+    return BB_QUIPS[idx] || BB_QUIPS[0];
+  }
+
   let bbVerificados = []; // ids já checados na conversa (progresso do "continuar")
   window.enviarBlublu = async function(forcarMsg, continuar){
     if (bbOcupado) return;
@@ -1976,23 +2029,29 @@ function tkFomoClose(e){
     bbOcupado = true;
     if (!continuar){ bbAddMsg('user', msg); inp.value=''; bbVerificados = []; }
     bbTyping(true);
+    // quips de espera: 1 logo de cara, outro se demorar (busca com transcrição)
+    const q1 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 900);
+    const q2 = setTimeout(() => { if (bbOcupado){ bbTyping(false); bbAddMsg('bot', bbQuip()); bbTyping(true); } }, 10000);
     try{
       // histórico só entra DEPOIS do sucesso (par user+assistant completo) —
       // falha no meio não pode deixar turno órfão que quebra as próximas
       const r = await fetch('/api/blublu-chat', { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist, skip_ids: continuar ? bbVerificados : [], nome: bbNome }) });
       const d = await r.json();
-      bbTyping(false);
+      clearTimeout(q1); clearTimeout(q2); bbTyping(false);
       if (!r.ok){ bbAddMsg('bot', d.error || 'Deu ruim aqui. Tenta de novo?'); bbOcupado=false; return; }
       bbUltimaBusca = msg;
       bbAddMsg('bot', d.reply || '…');
       bbHist.push({ role:'user', content: msg }, { role:'assistant', content: d.reply || '' });
       if (bbHist.length > 12) bbHist = bbHist.slice(-12);
+      // apelido que o Blublu aprendeu → botão e boas-vindas passam a usar
+      if (d.apelido){ try { localStorage.setItem('bt_blublu_apelido', d.apelido); } catch(e){} bbNome = d.apelido.split(/\s+/)[0].slice(0, 14); }
+      try { localStorage.setItem('bt_blublu_ja_usou', '1'); } catch(e){}
       if (Array.isArray(d.verificados)) bbVerificados = [...new Set([...bbVerificados, ...d.verificados])].slice(-300);
       if (Array.isArray(d.videos)) bbAddVideos(d.videos, !!d.tem_mais);
       const lim = document.getElementById('bbLimite');
       if (d.usage) lim.textContent = `${d.usage.used}/${d.usage.limit} mensagens hoje`;
-    }catch(e){ bbTyping(false); bbAddMsg('bot','Conexão falhou. Tenta de novo? ⚡'); }
+    }catch(e){ clearTimeout(q1); clearTimeout(q2); bbTyping(false); bbAddMsg('bot','Conexão falhou. Tenta de novo? ⚡'); }
     bbOcupado = false;
   };
 
