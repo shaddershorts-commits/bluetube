@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r19b-blueclean-falqueue',
+      build: 'r20-blueclean-mosaico',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -1086,6 +1086,147 @@ async function processBlueCleanGuided(jobId, p) {
     setJob({ progress: 8, stage: `limpando 0/${N}`, frames_total: N, frames_done: 0 });
     const queue = frames.map((f, i) => ({ f, i }));
     let done = 0, failed = 0;
+
+    // ── r20 MOSAICO (modo texto + fal): a conta fal processa 1 imagem por vez
+    // (~1 quadro/s medido). Empacotar K recortes por chamada multiplica o
+    // throughput por K sem tocar na qualidade — SEGURO porque a mascara de
+    // texto e fina (fracao branca baixa mesmo no recorte; a regra "recorte
+    // mata qualidade" valia pra mascara-caixa gorda). Modo caixa segue no
+    // caminho por-frame (fracao alta = qualidade primeiro).
+    const podeMosaico = !!(textMaskDir && process.env.FAL_KEY && boxes.length);
+    let mosaicoOk = false;
+    if (podeMosaico) {
+      try {
+        const MPAD = 42; // margem de contexto em volta da uniao das caixas
+        const even2 = (v) => v - (v % 2);
+        let x1 = Math.max(0, Math.min(...boxes.map((b) => b.x)) - MPAD);
+        let y1 = Math.max(0, Math.min(...boxes.map((b) => b.y)) - MPAD);
+        let x2 = Math.min(W, Math.max(...boxes.map((b) => b.x + b.w)) + MPAD);
+        let y2 = Math.min(Hh, Math.max(...boxes.map((b) => b.y + b.h)) + MPAD);
+        const cx = even2(x1), cy = even2(y1), cw = even2(x2 - cx), ch = even2(y2 - cy);
+        const K = Math.max(1, Math.min(8, Math.floor(2200000 / Math.max(1, cw * ch))));
+        if (cw * ch <= 0.55 * W * Hh && K >= 2) {
+          mosaicoOk = true;
+          const vertical = cw >= ch; // banda larga empilha; coluna estreita enfileira
+          // frames que PRECISAM de inpaint (mascara com conteudo); resto copia
+          const precisa = [];
+          for (const { f, i } of queue) {
+            const t = (i + 0.5) / fps;
+            const src = path.join(fdir, f);
+            const out = path.join(fdir, f.replace('i_', 'o_'));
+            const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
+            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 2000) {
+              fs.copyFileSync(src, out); done++;
+            } else precisa.push({ i, src, out, mf });
+          }
+          const grupos = [];
+          for (let g = 0; g < precisa.length; g += K) grupos.push(precisa.slice(g, g + K));
+          console.log('[bcg]', jobId, `mosaico: crop ${cw}x${ch} K=${K} ${vertical ? 'V' : 'H'} | ${precisa.length} frames em ${grupos.length} tiles`);
+
+          // FASE A: monta tiles (CPU, semaforo) e SUBMETE tudo na fila do fal
+          const stackF = vertical ? `vstack=${'{N}'}` : `hstack=${'{N}'}`;
+          const buildTile = async (grupo, gi, tipo) => {
+            const outP = path.join(dir, `${tipo}_${gi}.${tipo === 'tile' ? 'jpg' : 'png'}`);
+            const inputs = [];
+            grupo.forEach((fr) => { inputs.push('-i', tipo === 'tile' ? fr.src : fr.mf); });
+            const crops = grupo.map((_, s) => `[${s}:v]crop=${cw}:${ch}:${cx}:${cy}[c${s}]`).join(';');
+            const labels = grupo.map((_, s) => `[c${s}]`).join('');
+            const fcx = grupo.length === 1 ? `${crops}` : `${crops};${labels}${stackF.replace('{N}', grupo.length)}[t]`;
+            const mapLbl = grupo.length === 1 ? '[c0]' : '[t]';
+            const args = ['-y', ...inputs, '-filter_complex', fcx, '-map', mapLbl];
+            if (tipo === 'tile') args.push('-q:v', '3');
+            args.push(outP);
+            await compAcquire();
+            try { await run('ffmpeg', args); } finally { compRelease(); }
+            return outP;
+          };
+          const FAL = process.env.FAL_KEY;
+          const submeter = async (tileP, maskP) => {
+            const body = {
+              image_url: 'data:image/jpeg;base64,' + fs.readFileSync(tileP).toString('base64'),
+              mask_image_url: 'data:image/png;base64,' + fs.readFileSync(maskP).toString('base64'),
+            };
+            const sub = await axios.post('https://queue.fal.run/fal-ai/lama', body,
+              { headers: { Authorization: 'Key ' + FAL, 'Content-Type': 'application/json' }, timeout: 60000 });
+            if (!sub.data?.request_id) throw new Error('sem request_id');
+            return sub.data.request_id;
+          };
+          setJob({ progress: 12, stage: `montando mosaicos 0/${grupos.length}` });
+          const pendentes = []; // { grupo, gi, reqId, tileP, maskP }
+          const falhosPorTile = [];
+          {
+            let gi2 = 0;
+            const buildQ = grupos.map((g, gi) => ({ g, gi }));
+            await Promise.all(Array.from({ length: 6 }, async () => {
+              while (buildQ.length) {
+                if ((JOBS.get(jobId) || {}).status === 'cancelled') return;
+                const { g, gi } = buildQ.shift();
+                try {
+                  const tileP = await buildTile(g, gi, 'tile');
+                  const maskP = await buildTile(g, gi, 'tmsk');
+                  const reqId = await submeter(tileP, maskP);
+                  pendentes.push({ grupo: g, gi, reqId, tileP, maskP });
+                } catch (e) {
+                  console.error('[bcg] tile', gi, 'falhou montar/submeter:', e.message.slice(0, 90));
+                  falhosPorTile.push(g);
+                }
+                gi2++;
+                if (gi2 % 5 === 0) setJob({ progress: Math.min(25, 12 + Math.round((gi2 / grupos.length) * 13)), stage: `montando mosaicos ${gi2}/${grupos.length}` });
+              }
+            }));
+          }
+
+          // FASE B: acompanha a fila e recompoe conforme conclui
+          const deadlineAll = Date.now() + Math.max(300000, grupos.length * 4000 + 180000);
+          const compor = async (p, resultP) => {
+            for (let s = 0; s < p.grupo.length; s++) {
+              const fr = p.grupo[s];
+              const ox = vertical ? 0 : s * cw, oy = vertical ? s * ch : 0;
+              await compAcquire();
+              try {
+                await run('ffmpeg', ['-y', '-i', fr.src, '-i', resultP, '-i', fr.mf, '-filter_complex',
+                  `[1:v]crop=${cw}:${ch}:${ox}:${oy}[l];[2:v]crop=${cw}:${ch}:${cx}:${cy},format=gray,boxblur=1[mc];[0:v]crop=${cw}:${ch}:${cx}:${cy}[oc];[oc]format=gbrp[og];[l]format=gbrp[lg];[mc]format=gbrp[mg];[og][lg][mg]maskedmerge,format=yuvj420p[pt];[0:v][pt]overlay=${cx}:${cy}`,
+                  '-q:v', '2', fr.out]);
+              } finally { compRelease(); }
+              done++;
+            }
+            fs.rmSync(resultP, { force: true }); fs.rmSync(p.tileP, { force: true }); fs.rmSync(p.maskP, { force: true });
+          };
+          while (pendentes.some((p) => !p._fim) && Date.now() < deadlineAll) {
+            if ((JOBS.get(jobId) || {}).status === 'cancelled') break;
+            const abertos = pendentes.filter((p) => !p._fim).slice(0, 12);
+            await Promise.all(abertos.map(async (p) => {
+              try {
+                const st = await axios.get(`https://queue.fal.run/fal-ai/lama/requests/${p.reqId}/status`,
+                  { headers: { Authorization: 'Key ' + FAL }, timeout: 20000, validateStatus: () => true });
+                const stat = st.data?.status;
+                if (stat === 'COMPLETED') {
+                  const rr = await axios.get(`https://queue.fal.run/fal-ai/lama/requests/${p.reqId}`, { headers: { Authorization: 'Key ' + FAL }, timeout: 30000 });
+                  const outUrl = rr.data?.image?.url;
+                  if (!outUrl) throw new Error('sem output');
+                  const resP = path.join(dir, `tout_${p.gi}.png`);
+                  await downloadFile(outUrl, resP);
+                  p._fim = true;
+                  await compor(p, resP);
+                  setJob({ progress: Math.min(90, 25 + Math.round((done / N) * 65)), stage: `limpando ${done}/${N}`, frames_done: done, frames_total: N });
+                } else if (['FAILED', 'ERROR', 'CANCELLED'].includes(stat)) {
+                  p._fim = true; falhosPorTile.push(p.grupo);
+                }
+              } catch (e) { /* tenta na proxima varredura */ }
+            }));
+            await sleep(700);
+          }
+          for (const p of pendentes) if (!p._fim) { p._fim = true; falhosPorTile.push(p.grupo); }
+          // tiles que falharam: caem no caminho por-frame (fila abaixo)
+          queue.length = 0;
+          for (const g of falhosPorTile) for (const fr of g) queue.push({ f: path.basename(fr.src), i: fr.i });
+          if (queue.length) console.log('[bcg]', jobId, 'mosaico: ', queue.length, 'frames pro fallback por-frame');
+        }
+      } catch (e) {
+        console.error('[bcg]', jobId, 'mosaico falhou, caminho por-frame:', e.message.slice(0, 120));
+        mosaicoOk = false;
+      }
+    }
     const worker = async () => {
       while (queue.length) {
         // CANCELAMENTO obedecido: /cancel marca o job e as lanes param aqui
