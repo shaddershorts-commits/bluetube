@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r22-blueclean-100',
+      build: 'r22c-blueclean-100',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -1031,7 +1031,7 @@ async function processBlueCleanGuided(jobId, p) {
     if (boxes.length && p.mask_mode !== 'caixa') {
       try {
         const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
+          { video: p.video_url, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black = path.join(dir, 'black.mp4');
         await downloadFile(blackUrl, black);
@@ -1052,7 +1052,7 @@ async function processBlueCleanGuided(jobId, p) {
         const annCond = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
         const comAnn = !!p.anotacoes;
         const txtChain = `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[rawtxt]`;
-        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
+        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*(${annCond})':g='255*(${annCond})':b='255*(${annCond})',format=gray,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
         const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
         const maskVid = path.join(dir, 'maskv.mp4');
         await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
@@ -1337,7 +1337,7 @@ async function processBlueCleanGuided(jobId, p) {
         const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
         uploaded.push(ikey);
         const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: iurl, method: 'black', conf_threshold: 0.10, iou_threshold: 0.15, margin: 10, resolution: 'original', detection_interval: 2 },
+          { video: iurl, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 10, resolution: 'original', detection_interval: 2 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black2 = path.join(dir, 'black2.mp4');
         await downloadFile(blackUrl2, black2);
@@ -1355,7 +1355,7 @@ async function processBlueCleanGuided(jobId, p) {
           if (fs.existsSync(rp) && fs.statSync(rp).size >= 800) culpados.push({ i, rp });
         }
         console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo`);
-        if (culpados.length && culpados.length <= N * 0.5) {
+        if (culpados.length) {
           setJob({ progress: 93, stage: `recorrigindo ${culpados.length} quadros` });
           const fila2 = [...culpados];
           await Promise.all(Array.from({ length: 12 }, async () => {
