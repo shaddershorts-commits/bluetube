@@ -59,8 +59,8 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(403).json({ error: 'Falar com o Blublu é exclusivo do plano Master.', upgrade: true });
 
-  // ── LIMITE DIÁRIO ──────────────────────────────────────────────────────────
-  const dia = new Date().toISOString().slice(0, 10);
+  // ── LIMITE DIÁRIO (dia no fuso de Brasília, UTC-3 fixo) ────────────────────
+  const dia = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
   const ur2 = await fetch(`${SU}/rest/v1/blublu_chat_usage?user_id=eq.${userId}&dia=eq.${dia}&select=count`, { headers: H });
   const used = ur2.ok ? ((await ur2.json())[0]?.count || 0) : 0;
   if (used >= DAILY_LIMIT) {
@@ -68,8 +68,12 @@ module.exports = async function handler(req, res) {
   }
 
   const message = String(req.body?.message || '').slice(0, 600).trim();
-  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
-  const continuar = !!req.body?.continuar;
+  let history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
+  // API exige que a 1a mensagem seja user: descarta assistants orfaos do inicio
+  while (history.length && history[0].role !== 'user') history.shift();
+  // ids ja verificados nesta conversa (progresso do "continuar procurando"
+  // mesmo sem a tabela de cache criada)
+  const skipIds = new Set((Array.isArray(req.body?.skip_ids) ? req.body.skip_ids : []).slice(0, 300).map(String));
   if (!message) return res.status(400).json({ error: 'mensagem vazia' });
 
   const claude = async (system, messages, maxTokens) => {
@@ -98,11 +102,18 @@ Formato:
 "papo" = cumprimento, dúvida sobre você, ou pedido que não é busca de vídeo. Qualquer pedido de vídeos = "busca".`;
     const parseRaw = await claude(parseSystem, [...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, 300) })), { role: 'user', content: message }], 500);
     let parsed;
-    try { parsed = JSON.parse(parseRaw.replace(/^```json?\s*/i, '').replace(/```\s*$/, '')); } catch (e) { parsed = { tipo: 'papo', resposta_papo: 'Me pede de novo de outro jeito? Não captei. 🤔' }; }
+    try {
+      let raw = parseRaw.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+      if (!raw.startsWith('{')) raw = (raw.match(/\{[\s\S]*\}/) || ['{}'])[0];
+      parsed = JSON.parse(raw);
+    } catch (e) { parsed = { tipo: 'papo', resposta_papo: 'Me pede de novo de outro jeito? Não captei. 🤔' }; }
 
     const bump = async () => {
-      if (used === 0) await fetch(`${SU}/rest/v1/blublu_chat_usage`, { method: 'POST', headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: userId, dia, count: 1 }) });
-      else await fetch(`${SU}/rest/v1/blublu_chat_usage?user_id=eq.${userId}&dia=eq.${dia}`, { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ count: used + 1 }) });
+      let r;
+      if (used === 0) r = await fetch(`${SU}/rest/v1/blublu_chat_usage`, { method: 'POST', headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: userId, dia, count: 1 }) });
+      else r = await fetch(`${SU}/rest/v1/blublu_chat_usage?user_id=eq.${userId}&dia=eq.${dia}`, { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ count: used + 1 }) });
+      // tabela ausente = limite DESLIGADO sem sinal; loga alto pra nao passar batido
+      if (r && !r.ok) console.error('[blublu-chat] usage NAO gravado (rodar sql/blublu_chat.sql?):', r.status);
     };
 
     if (parsed.tipo === 'papo') {
@@ -112,19 +123,24 @@ Formato:
 
     // ── 2) BUSCA HÍBRIDA no banco curado ─────────────────────────────────────
     const f = parsed.filtros || {};
+    const fDias = Math.max(0, parseInt(f.dias) || 0); // Haiku pode devolver "duas semanas" → NaN → RangeError
     const parts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em,nicho'];
     if (f.min_views) parts.push(`views=gte.${Math.max(0, parseInt(f.min_views) || 0)}`);
-    if (f.dias) parts.push(`publicado_em=gte.${new Date(Date.now() - f.dias * 86400000).toISOString()}`);
+    if (fDias) parts.push(`publicado_em=gte.${new Date(Date.now() - fDias * 86400000).toISOString()}`);
     if (f.nicho) parts.push(`nicho=eq.${encodeURIComponent(f.nicho)}`);
     const ordem = f.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
 
     const termos = (parsed.termos || []).map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 6);
     let candidatos = [];
     if (parsed.tema && termos.length) {
-      // 2a. termos no título (escapa caracteres do PostgREST)
-      const esc = (t) => t.replace(/[,()*]/g, ' ').replace(/\s+/g, ' ').trim();
-      const orExpr = 'or=(' + termos.map((t) => `titulo.ilike.*${esc(t)}*`).join(',') + ')';
-      const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${encodeURI(orExpr)}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
+      // 2a. termos no título. Sanitiza pra só letra/número/espaço (mata , ( ) *
+      // do PostgREST E & # % + que quebram a query string — classe do bug do
+      // cursor com + no feed do Blue) e percent-encoda CADA termo.
+      const clean = (t) => t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+      const termosOk = termos.map(clean).filter((t) => t.length >= 2);
+      if (!termosOk.length) termosOk.push(clean(parsed.tema) || 'viral');
+      const orExpr = 'or=(' + termosOk.map((t) => `titulo.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
+      const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
       if (r1.ok) candidatos = await r1.json();
       // 2b. semântica (se disponível) — completa o funil com vídeos cujo título
       // não cita o termo mas o assunto é próximo
@@ -134,7 +150,7 @@ Formato:
           const ed = await er.json();
           const emb = ed?.data?.[0]?.embedding;
           if (emb) {
-            const rr = await fetch(`${SU}/rest/v1/rpc/blublu_match_videos`, { method: 'POST', headers: H, body: JSON.stringify({ query_embedding: emb, match_count: MAX_CANDIDATOS, min_views: f.min_views || 0, desde: f.dias ? new Date(Date.now() - f.dias * 86400000).toISOString() : null }) });
+            const rr = await fetch(`${SU}/rest/v1/rpc/blublu_match_videos`, { method: 'POST', headers: H, body: JSON.stringify({ query_embedding: emb, match_count: MAX_CANDIDATOS, min_views: Math.max(0, parseInt(f.min_views) || 0), desde: fDias ? new Date(Date.now() - fDias * 86400000).toISOString() : null }) });
             if (rr.ok) {
               const matches = await rr.json();
               const ids = matches.filter((m) => m.similarity > 0.35).map((m) => m.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id)).slice(0, MAX_CANDIDATOS - candidatos.length);
@@ -155,16 +171,19 @@ Formato:
     // ── 3) CONFIRMAÇÃO POR TRANSCRIÇÃO (só busca de conteúdo) ────────────────
     const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const termosN = termos.map(norm);
-    let videos = [], temMais = false;
+    let videos = [], temMais = false, verificadosIds = [];
     if (parsed.tema && candidatos.length) {
       const ids = candidatos.map((c) => c.youtube_id);
       const tr = await fetch(`${SU}/rest/v1/virais_transcricoes?youtube_id=in.(${ids.map(encodeURIComponent).join(',')})&select=youtube_id,transcript,segments,sem_legenda`, { headers: H });
       const cache = tr.ok ? await tr.json() : [];
       const cacheMap = new Map(cache.map((c) => [c.youtube_id, c]));
 
-      // transcreve os que faltam (paralelo limitado, orçamento de tempo)
-      const faltam = candidatos.filter((c) => !cacheMap.has(c.youtube_id)).slice(0, MAX_TRANSCREVER);
-      temMais = candidatos.filter((c) => !cacheMap.has(c.youtube_id)).length > faltam.length;
+      // transcreve os que faltam (paralelo limitado, orçamento de tempo).
+      // skipIds = ja verificados nesta conversa: garante PROGRESSO no
+      // "continuar procurando" mesmo se o cache nao persistir (tabela ausente).
+      const pendentes = candidatos.filter((c) => !cacheMap.has(c.youtube_id) && !skipIds.has(c.youtube_id));
+      const faltam = pendentes.slice(0, MAX_TRANSCREVER);
+      temMais = pendentes.length > faltam.length;
       if (RW && faltam.length) {
         const t0 = Date.now();
         const fila = [...faltam];
@@ -208,6 +227,9 @@ Formato:
       }
       videos.sort((a, b) => (a.confirmado_por === 'fala' ? 0 : 1) - (b.confirmado_por === 'fala' ? 0 : 1) || (b.views || 0) - (a.views || 0));
       videos = videos.slice(0, 24);
+      // ids com veredito nesta conversa (cache + transcritos agora): o front
+      // devolve em skip_ids no "continuar" pra garantir avanco na fila
+      verificadosIds = candidatos.filter((c) => cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
       videos = candidatos.slice(0, 24).map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro' }));
     }
@@ -224,6 +246,7 @@ Formato:
     return res.status(200).json({
       reply: reply.trim(), videos, tem_mais: temMais,
       confirmados_fala: confirmadosFala,
+      verificados: verificadosIds,
       usage: { used: used + 1, limit: DAILY_LIMIT },
     });
   } catch (e) {

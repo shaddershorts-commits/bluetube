@@ -1900,17 +1900,21 @@ function tkFomoClose(e){
     const box = document.getElementById('bbMsgs');
     if (videos.length){
       const grid = document.createElement('div'); grid.className = 'bb-vids';
-      grid.innerHTML = videos.map(v => `
-        <a class="bb-vcard" href="${v.url || 'https://youtube.com/shorts/'+v.youtube_id}" target="_blank" rel="noopener">
-          ${v.thumbnail_url ? `<img class="bb-vthumb" src="${v.thumbnail_url}" loading="lazy" alt=""/>` : '<div class="bb-vthumb"></div>'}
+      grid.innerHTML = videos.map(v => {
+        const vid = String(v.youtube_id||'').replace(/[^A-Za-z0-9_-]/g,''); // sanitiza pra atributo/onclick
+        const cit = Math.max(0, parseInt(v.citado_em_s)||0);
+        return `
+        <a class="bb-vcard" href="${escHtml(v.url || 'https://youtube.com/shorts/'+vid)}" target="_blank" rel="noopener">
+          ${v.thumbnail_url ? `<img class="bb-vthumb" src="${escHtml(v.thumbnail_url)}" loading="lazy" alt=""/>` : '<div class="bb-vthumb"></div>'}
           <div class="bb-vinfo">
             <div class="bb-vtit">${escHtml(v.titulo || '')}</div>
             <div class="bb-vmeta">
               <span>👁 ${bbFmt(Number(v.views)||0)}</span>
-              ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${v.youtube_id}&t=${v.citado_em_s}s','_blank')">🗣️ citado aos ${bbMMSS(v.citado_em_s)}</span>` : (v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
+              ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${vid}&t=${cit}s','_blank')">🗣️ citado aos ${bbMMSS(cit)}</span>` : (v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
             </div>
           </div>
-        </a>`).join('');
+        </a>`;
+      }).join('');
       box.appendChild(grid);
     }
     if (temMais){
@@ -1934,24 +1938,28 @@ function tkFomoClose(e){
     document.getElementById('bbOverlay')?.classList.remove('on');
     document.body.style.overflow = '';
   };
+  let bbVerificados = []; // ids já checados na conversa (progresso do "continuar")
   window.enviarBlublu = async function(forcarMsg, continuar){
     if (bbOcupado) return;
     const inp = document.getElementById('bbInput');
     const msg = (forcarMsg || inp.value || '').trim();
     if (!msg) return;
     bbOcupado = true;
-    if (!continuar){ bbAddMsg('user', msg); inp.value=''; }
-    bbHist.push({ role:'user', content: msg });
+    if (!continuar){ bbAddMsg('user', msg); inp.value=''; bbVerificados = []; }
     bbTyping(true);
     try{
+      // histórico só entra DEPOIS do sucesso (par user+assistant completo) —
+      // falha no meio não pode deixar turno órfão que quebra as próximas
       const r = await fetch('/api/blublu-chat', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist.slice(0,-1), continuar: !!continuar }) });
+        body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist, skip_ids: continuar ? bbVerificados : [] }) });
       const d = await r.json();
       bbTyping(false);
       if (!r.ok){ bbAddMsg('bot', d.error || 'Deu ruim aqui. Tenta de novo?'); bbOcupado=false; return; }
       bbUltimaBusca = msg;
       bbAddMsg('bot', d.reply || '…');
-      bbHist.push({ role:'assistant', content: d.reply || '' });
+      bbHist.push({ role:'user', content: msg }, { role:'assistant', content: d.reply || '' });
+      if (bbHist.length > 12) bbHist = bbHist.slice(-12);
+      if (Array.isArray(d.verificados)) bbVerificados = [...new Set([...bbVerificados, ...d.verificados])].slice(-300);
       if (Array.isArray(d.videos)) bbAddVideos(d.videos, !!d.tem_mais);
       const lim = document.getElementById('bbLimite');
       if (d.usage) lim.textContent = `${d.usage.used}/${d.usage.limit} mensagens hoje`;

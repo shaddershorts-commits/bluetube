@@ -19,14 +19,27 @@ module.exports = async function handler(req, res) {
   const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
   const batch = Math.max(50, Math.min(500, parseInt(req.query.batch) || 300));
 
+  // PostgREST tem cap de max-rows (~1000) que IGNORA limit= — pagina com
+  // header Range ate acabar (mesmo cap que mordeu o painel de afiliados).
+  const fetchAll = async (base, maxPages = 80) => {
+    const out = [];
+    for (let p = 0; p < maxPages; p++) {
+      const from = p * 1000;
+      const r = await fetch(`${SU}/rest/v1/${base}`, { headers: { ...H, Range: `${from}-${from + 999}`, 'Range-Unit': 'items' } });
+      if (!r.ok) break;
+      const rows = await r.json();
+      out.push(...rows);
+      if (rows.length < 1000) break;
+    }
+    return out;
+  };
+
   try {
     // vídeos do banco ainda sem embedding (mais views primeiro = valor primeiro)
-    const idsR = await fetch(`${SU}/rest/v1/virais_embeddings?select=youtube_id&limit=100000`, { headers: H });
-    const done = new Set(idsR.ok ? (await idsR.json()).map((r) => r.youtube_id) : []);
-    const bR = await fetch(`${SU}/rest/v1/virais_banco?select=youtube_id,titulo,canal_nome,nicho&order=views.desc&limit=${batch + done.size}`, { headers: H });
-    if (!bR.ok) return res.status(502).json({ error: 'banco: ' + bR.status });
-    const pend = (await bR.json()).filter((v) => !done.has(v.youtube_id) && v.titulo).slice(0, batch);
-    if (!pend.length) return res.status(200).json({ ok: true, indexados: 0, backlog_zerado: true });
+    const done = new Set((await fetchAll('virais_embeddings?select=youtube_id')).map((r) => r.youtube_id));
+    const banco = await fetchAll('virais_banco?select=youtube_id,titulo,canal_nome,nicho&order=views.desc');
+    const pend = banco.filter((v) => !done.has(v.youtube_id) && v.titulo).slice(0, batch);
+    if (!pend.length) return res.status(200).json({ ok: true, indexados: 0, ja_indexados: done.size, backlog_zerado: true });
 
     // OpenAI aceita array de inputs — 1 chamada por lote de 100
     let indexados = 0;
