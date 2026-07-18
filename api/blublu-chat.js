@@ -19,7 +19,14 @@ const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality.js');
 
 const MODEL = 'claude-haiku-4-5-20251001';
 const DAILY_LIMIT = 60;
-const QTD_PADRAO = 12;          // saudável sem pedido explícito; avisa que tem mais
+const QTD_PADRAO = 24;          // sem pedido explícito = TODOS os certeiros (teto do grid)
+
+// Ídolos oficiais do Blublu (mesmo easter egg da BlueTendências): quando o
+// canal aparece no resultado, ele vira fã histérico — lore do produto.
+const IDOLOS = [
+  { nome: 'Luiz Stubbe', patterns: ['luiz stubbe', 'luiz_stubbe', 'opiska'] },
+  { nome: 'Giuliana Mafra', patterns: ['giuliana mafra', 'cortes giuliana mafra oficial', 'giulianamafra'] },
+];
 const MAX_CANDIDATOS = 40;      // teto do funil por busca
 const MAX_TRANSCREVER = 10;     // novas transcrições por mensagem (latência)
 const TRANSC_PARALELAS = 4;     // concorrência no Railway
@@ -94,7 +101,10 @@ module.exports = async function handler(req, res) {
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   async function executarBusca(inp) {
     const tema = inp.tema ? String(inp.tema).slice(0, 120) : null;
-    const qtd = Math.min(24, Math.max(1, parseInt(inp.quantidade) || 0)) || QTD_PADRAO;
+    // quantidade: SÓ vale se o USUÁRIO falou um número (dígito ou por extenso)
+    // — o modelo tentava "escolher o melhor" e entregava 1 (user reclamou 2x)
+    const userFalouNumero = /\d/.test(message) || /\b(um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte)\b/i.test(message);
+    const qtd = (userFalouNumero && parseInt(inp.quantidade) > 0) ? Math.min(24, parseInt(inp.quantidade)) : QTD_PADRAO;
     const minViews = Math.max(0, parseInt(inp.min_views) || 0);
     const dias = Math.max(0, parseInt(inp.dias) || 0);
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
@@ -109,7 +119,10 @@ module.exports = async function handler(req, res) {
 
     let candidatos = [];
     const clean = (t) => t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-    const termosOk = termos.map(clean).filter((t) => t.length >= 2);
+    // PRECISÃO > volume (regra do user: na dúvida, não manda): termo solto
+    // curto demais (tipo "ney") pesca lixo — só passa termo com 4+ letras,
+    // com dígito (CR7) ou composto ("michael jackson")
+    const termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
     const secParts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em'];
     if (minViews) secParts.push(`views=gte.${minViews}`);
     if (dias) secParts.push(`publicado_em=gte.${new Date(Date.now() - dias * 86400000).toISOString()}`);
@@ -147,7 +160,7 @@ module.exports = async function handler(req, res) {
           if (emb) {
             const rr = await fetch(`${SU}/rest/v1/rpc/blublu_match_videos`, { method: 'POST', headers: H, body: JSON.stringify({ query_embedding: emb, match_count: MAX_CANDIDATOS, min_views: minViews, desde: dias ? new Date(Date.now() - dias * 86400000).toISOString() : null }) });
             if (rr.ok) {
-              const ids = (await rr.json()).filter((m) => m.similarity > 0.35).map((m) => m.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id)).slice(0, MAX_CANDIDATOS - candidatos.length);
+              const ids = (await rr.json()).filter((m) => m.similarity > 0.45).map((m) => m.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id)).slice(0, MAX_CANDIDATOS - candidatos.length);
               if (ids.length) {
                 const r2 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&youtube_id=in.(${ids.map(encodeURIComponent).join(',')})&order=${ordem}`, { headers: H });
                 if (r2.ok) candidatos = candidatos.concat(await r2.json());
@@ -239,6 +252,13 @@ module.exports = async function handler(req, res) {
       await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true, temas: temasNovos, buscas: (perfil.memoria?.buscas || 0) + 1 } });
     }
 
+    // ídolo no resultado? (easter egg fã histérico — mesmo lore da BlueTendências)
+    const idolosNoResultado = [...new Set(videos.map((v) => {
+      const c = norm(v.canal_nome);
+      const hit = IDOLOS.find((i) => i.patterns.some((p) => c === p || c.includes(p)));
+      return hit ? hit.nome : null;
+    }).filter(Boolean))];
+
     // resumo pro MODELO comentar com propriedade (os cards o front renderiza)
     const resumo = {
       total_entregue: videos.length,
@@ -247,6 +267,7 @@ module.exports = async function handler(req, res) {
       pelo_titulo: videos.filter((v) => v.confirmado_por === 'titulo').length,
       tinha_mais_alem_do_entregue: cortados > 0,
       ha_candidatos_ainda_nao_verificados: temMais,
+      idolos_no_resultado: idolosNoResultado,
       amostra: videos.slice(0, 6).map((v) => ({ titulo: (v.titulo || '').slice(0, 70), canal: v.canal_nome, views: v.views, confirmado_por: v.confirmado_por })),
     };
     return { videos, temMais, verificadosIds, resumo };
@@ -291,8 +312,11 @@ REGRAS DO CHAT:
 - Respostas CURTAS (1-4 frases). É chat, não palestra.
 - Pedido de vídeos = chame buscar_videos. Conversa = responda direto, no personagem.
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
-- Se o usuário não pediu quantidade, a busca entrega até ${QTD_PADRAO}; se houver mais (campo tinha_mais_alem_do_entregue ou ha_candidatos_ainda_nao_verificados), avise que é só pedir mais.
-- Confirmação: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). Isso é teu diferencial — ostenta quando houver.
+- QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
+- PRECISÃO: termos INEQUÍVOCOS (nome completo, apelidos famosos) — nada de palavra solta genérica que traga vídeo errado. Na dúvida, melhor menos e certo.
+- Confirmação: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). Teu diferencial — ostenta quando houver.
+- BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
+- ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
 - NUNCA cite tecnologia interna, modelos, fornecedores ou APIs. A tecnologia é SUA.
 - pt-BR sempre.`;
 
