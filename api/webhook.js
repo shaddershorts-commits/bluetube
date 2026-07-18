@@ -689,6 +689,24 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       body: JSON.stringify({ action: 'conversion', email, plan, stripe_customer_id: customerId, conversion_type: `upgrade_${plan}` }),
       signal: convCtrl.signal
     }).then(async () => {
+      // EMAIL DE COMISSÃO PRO AFILIADO (2026-07-18): o handler vivo da
+      // conversion é o do auth.js (intocável) e NÃO manda email — o do
+      // affiliate.js com email é código morto pra pagos (caso guri/Luiz).
+      // Aqui é o único ponto vivo pós-criação da comissão: busca a comissão
+      // recém-criada deste assinante e notifica o afiliado. AWAITED.
+      try {
+        const cm = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&created_at=gte.${new Date(Date.now() - 10 * 60 * 1000).toISOString()}&order=created_at.desc&limit=1&select=affiliate_id,commission_amount`, { headers: supaHeaders });
+        const comm = cm.ok ? (await cm.json())[0] : null;
+        if (comm) {
+          const afR = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${comm.affiliate_id}&select=email,name,total_full,total_master`, { headers: supaHeaders });
+          const aff = afR.ok ? (await afR.json())[0] : null;
+          if (aff) {
+            const { enviarEmailComissao } = require('./_helpers/affiliate-comissao-email.js');
+            const envio = await enviarEmailComissao(aff, { subscriber: email, plan, commission_amount: comm.commission_amount });
+            console.log('[webhook] email comissao afiliado:', JSON.stringify(envio));
+          }
+        }
+      } catch (e) { console.error('[webhook] email comissao falhou:', e.message); }
       try {
         // Fonte 1 (primaria): affiliate_ref salvo no subscribers (cookie venceu no signup)
         const subRef = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: supaHeaders });
