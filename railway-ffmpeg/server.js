@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r14-blueclean-guided',
+      build: 'r19b-blueclean-falqueue',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -623,7 +623,15 @@ app.get('/yt-subs', async (req, res) => {
     const text = (cd.events || []).filter((e) => e.segs).map((e) => e.segs.map((s) => s.utf8 || '').join('')).join(' ').replace(/\s+/g, ' ').trim();
     cleanup();
     if (text.length < 20) return res.status(404).json({ error: 'sem_legenda' });
-    res.json({ content: text, lang: (lang || 'pt').replace('-orig', ''), source: 'ytdlp' });
+    const out = { content: text, lang: (lang || 'pt').replace('-orig', ''), source: 'ytdlp' };
+    // seg=1 (Blublu confirma citacao): segmentos com timestamp em segundos —
+    // permite responder "citado aos 2:13" e linkar direto no momento.
+    if (String(req.query.seg || '') === '1') {
+      out.segments = (cd.events || []).filter((e) => e.segs)
+        .map((e) => ({ t: Math.round((e.tStartMs || 0) / 1000), x: e.segs.map((s) => s.utf8 || '').join('').replace(/\s+/g, ' ').trim() }))
+        .filter((s) => s.x);
+    }
+    res.json(out);
   } catch (e) {
     cleanup();
     res.status(502).json({ error: (e.message || 'falha yt-dlp').slice(0, 200) });
@@ -856,12 +864,87 @@ async function processBlueClean(jobId, p) {
 // o frame original — resto do video fica pixel-perfect.
 const GUIDED_MODEL = 'zylim0702/remove-object';
 
-// Retry resiliente a throttle do Replicate (burst baixo com saldo baixo).
+// Prediction SINCRONA (Prefer: wait) — a resposta ja volta com o resultado na
+// maioria dos casos, eliminando ~2,5s de latencia de polling POR QUADRO (em
+// video de 20s/600 quadros isso somava minutos). Se o hold de 55s nao bastar,
+// cai no polling normal so pra este quadro.
+async function replicateRunSync(token, model, input) {
+  const version = await replicateVersion(token, model);
+  const cr = await axiosRetry('replicate sync ' + model, () =>
+    axios.post('https://api.replicate.com/v1/predictions',
+      { version, input },
+      { headers: { Authorization: 'Token ' + token, 'Content-Type': 'application/json', Prefer: 'wait=55' }, timeout: 70000 }));
+  let pred = cr.data;
+  const deadline = Date.now() + 4 * 60 * 1000;
+  while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
+    if (Date.now() > deadline) throw new Error('Replicate timeout em ' + model);
+    await sleep(2000);
+    const gr = await axiosRetry('replicate poll ' + model, () =>
+      axios.get(`https://api.replicate.com/v1/predictions/${pred.id}`, { headers: { Authorization: 'Token ' + token } }));
+    pred = gr.data;
+  }
+  if (pred.status !== 'succeeded') throw new Error('Replicate ' + model + ' falhou: ' + (pred.error || pred.status));
+  const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
+  if (!out) throw new Error('Replicate ' + model + ' sem output');
+  return out;
+}
+
+// MOTOR PRINCIPAL: fal.ai (mesma familia LaMa, 1.7s/quadro e paralelismo REAL
+// sem throttle — validado 2026-07-18: 8/8 em burst, qualidade identica).
+// Replicate vira FALLBACK por quadro (dupla engine = robustez em camadas).
+async function falInpaint(imageUrl, maskUrl) {
+  const r = await axios.post('https://fal.run/fal-ai/lama',
+    { image_url: imageUrl, mask_image_url: maskUrl },
+    { headers: { Authorization: 'Key ' + (process.env.FAL_KEY || ''), 'Content-Type': 'application/json' }, timeout: 90000 });
+  const out = r.data?.image?.url;
+  if (!out) throw new Error('fal sem output: ' + JSON.stringify(r.data).slice(0, 120));
+  return out;
+}
+
+// DATA-URI + FILA oficial do fal (r19b): o endpoint sincrono devolve 429 com
+// muitas lanes (32 minhas + job do user = conta estourou). A FILA
+// (queue.fal.run) absorve qualquer volume e processa na concorrencia da conta
+// — zero 429, zero briga entre jobs simultaneos.
+async function falInpaintPaths(imgPath, maskPath) {
+  const FAL = process.env.FAL_KEY || '';
+  const body = {
+    image_url: 'data:image/jpeg;base64,' + fs.readFileSync(imgPath).toString('base64'),
+    mask_image_url: 'data:image/png;base64,' + fs.readFileSync(maskPath).toString('base64'),
+  };
+  const sub = await axios.post('https://queue.fal.run/fal-ai/lama', body,
+    { headers: { Authorization: 'Key ' + FAL, 'Content-Type': 'application/json' }, timeout: 60000 });
+  const reqId = sub.data?.request_id;
+  if (!reqId) throw new Error('fal queue sem request_id: ' + JSON.stringify(sub.data).slice(0, 100));
+  const deadline = Date.now() + 150000;
+  while (Date.now() < deadline) {
+    await sleep(1100);
+    const st = await axios.get(`https://queue.fal.run/fal-ai/lama/requests/${reqId}/status`,
+      { headers: { Authorization: 'Key ' + FAL }, timeout: 30000, validateStatus: () => true });
+    const stat = st.data?.status;
+    if (stat === 'COMPLETED') {
+      const rr = await axios.get(`https://queue.fal.run/fal-ai/lama/requests/${reqId}`,
+        { headers: { Authorization: 'Key ' + FAL }, timeout: 30000 });
+      const out = rr.data?.image?.url;
+      if (!out) throw new Error('fal queue sem output');
+      return out;
+    }
+    if (['FAILED', 'ERROR', 'CANCELLED'].includes(stat)) throw new Error('fal queue ' + stat);
+  }
+  throw new Error('fal queue timeout');
+}
+
+// Retry resiliente: fal 3 tentativas -> fallback Replicate (throttle-aware).
 async function guidedInpaint(token, input) {
+  if (process.env.FAL_KEY) {
+    for (let a = 0; a < 3; a++) {
+      try { return await falInpaint(input.image, input.mask); }
+      catch (e) { if (a === 2) console.error('[guided] fal falhou 3x, fallback replicate:', e.message.slice(0, 100)); await sleep(1000 + a * 1500); }
+    }
+  }
   let lastErr;
   for (let a = 0; a < 8; a++) {
     try {
-      return await replicateRun(token, GUIDED_MODEL, input, { pollMs: 2500, timeoutMs: 5 * 60 * 1000 });
+      return await replicateRunSync(token, GUIDED_MODEL, input);
     } catch (e) {
       lastErr = e;
       if (/throttl|rate.?limit|429/i.test(String(e.message || ''))) { await sleep(4000 + a * 3000); continue; }
@@ -934,6 +1017,56 @@ async function processBlueCleanGuided(jobId, p) {
     const maskCache = new Map(); // key -> { url, mpath }
     let maskSeq = 0; // nome unico sincrono (size no nome racearia entre workers)
     const PAD = 10; // folga na mascara alem da caixa do usuario (borda anti-aliased)
+
+    // ── CAMADA 1: MÁSCARA EM FORMATO DE TEXTO dentro das caixas ─────────────
+    // Problema real (caso bailarina 2026-07-18): caixa sobre PESSOA apagava a
+    // pessoa junto (o inpaint reconstrói "fundo", não gente). Solução: detector
+    // acha o desenho exato das LETRAS dentro da caixa → só os traços do texto
+    // são reconstruídos → ~90% do rosto/corpo por baixo sobrevive.
+    // Fallback automático: se o detector não achar texto na caixa (marca
+    // d'água gráfica/logo), volta pra caixa cheia (comportamento atual).
+    setJob({ progress: 9, stage: 'mapeando texto' });
+    let textMaskDir = null; // per-frame m_%05d.png quando modo texto ativo
+    if (boxes.length && p.mask_mode !== 'caixa') {
+      try {
+        const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
+          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 2 },
+          { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
+        const black = path.join(dir, 'black.mp4');
+        await downloadFile(blackUrl, black);
+        // caixa(s) do user viram um PNG-limite (uniao de todas, com PAD)
+        const drawsAll = boxes.map((b) => `drawbox=x=${Math.max(0, b.x - PAD)}:y=${Math.max(0, b.y - PAD)}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
+        const boxPng = path.join(dir, 'boxlimit.png');
+        await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}`, '-vf', drawsAll, '-frames:v', '1', boxPng]);
+        // texto por FORMA (blend-diff + close fecha contorno das letras) ∩ caixas
+        const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
+        const maskVid = path.join(dir, 'maskv.mp4');
+        await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
+          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),45),255,0)',${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',format=gray[m]`,
+          '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        // cobertura media: se ~zero, detector nao achou texto -> fallback caixa
+        const { stdout: st } = await run('ffmpeg', ['-i', maskVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
+        const yavgs = [...String(st).matchAll(/YAVG=([0-9.]+)/g)].map((m) => parseFloat(m[1]));
+        const media = yavgs.length ? yavgs.reduce((a, b) => a + b, 0) / yavgs.length : 0;
+        if (media > 0.15) { // texto real detectado dentro das caixas
+          const mdir = path.join(dir, 'tm'); fs.mkdirSync(mdir);
+          await run('ffmpeg', ['-y', '-i', maskVid, path.join(mdir, 'm_%05d.png')]);
+          textMaskDir = mdir;
+          console.log('[bcg]', jobId, 'modo TEXTO ativo (yavg medio', media.toFixed(2) + ')');
+        } else {
+          console.log('[bcg]', jobId, 'sem texto nas caixas (yavg', media.toFixed(2) + ') -> modo caixa');
+        }
+      } catch (e) {
+        console.error('[bcg]', jobId, 'camada texto falhou -> modo caixa:', e.message.slice(0, 120));
+      }
+    }
+    // cache de upload de mascara pro FALLBACK replicate (mpath -> url)
+    const textMaskCache = new Map();
+    // semaforo de composicao: rede escala a 32, CPU nao
+    let compSlots = 4; const compFila = [];
+    const compAcquire = () => new Promise((res) => { if (compSlots > 0) { compSlots--; res(); } else compFila.push(res); });
+    const compRelease = () => { const n = compFila.shift(); if (n) n(); else compSlots++; };
+
     async function maskFor(active) {
       const key = active.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join('|');
       if (maskCache.has(key)) return maskCache.get(key);
@@ -955,28 +1088,59 @@ async function processBlueCleanGuided(jobId, p) {
     let done = 0, failed = 0;
     const worker = async () => {
       while (queue.length) {
+        // CANCELAMENTO obedecido: /cancel marca o job e as lanes param aqui
+        if ((JOBS.get(jobId) || {}).status === 'cancelled') return;
         const { f, i } = queue.shift();
         const t = (i + 0.5) / fps;
         const active = boxes.filter((b) => t >= b.s && t <= b.e);
         const src = path.join(fdir, f);
         const out = path.join(fdir, f.replace('i_', 'o_'));
         if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
-        const { url: maskUrl, mpath } = await maskFor(active);
-        const fkey = `${tmpPrefix}/f_${i}.jpg`;
-        const frameUrl = await uploadRetry('gframe ' + i, src, fkey, SU, SK, 'image/jpeg');
-        uploaded.push(fkey);
+        let mpath;
+        if (textMaskDir) {
+          // modo TEXTO: mascara por-frame (so os tracos das letras). Frame sem
+          // texto = mascara preta = PNG minusculo -> copia original (economiza
+          // 1 chamada de inpaint e preserva 100% o frame).
+          const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
+          if (!fs.existsSync(mf) || fs.statSync(mf).size < 2000) { fs.copyFileSync(src, out); done++; continue; }
+          mpath = mf; // upload so no fallback replicate (fal vai por data-URI)
+        } else {
+          ({ mpath } = await maskFor(active));
+        }
         try {
-          const outUrl = await guidedInpaint(token, { image: frameUrl, mask: maskUrl });
+          // r19: fal via DATA-URI (zero upload por quadro). Fallback replicate
+          // faz os uploads sob demanda (raro).
+          let outUrl = null;
+          if (process.env.FAL_KEY) {
+            for (let a = 0; a < 3 && !outUrl; a++) {
+              try { outUrl = await falInpaintPaths(src, mpath); }
+              catch (e) { if (a === 2) console.error('[bcg] fal 3x falhou, fallback:', e.message.slice(0, 90)); else await sleep(700 + a * 1200); }
+            }
+          }
+          if (!outUrl) {
+            const fkey = `${tmpPrefix}/f_${i}.jpg`;
+            const frameUrl = await uploadRetry('gframe ' + i, src, fkey, SU, SK, 'image/jpeg');
+            uploaded.push(fkey);
+            let mUrl = textMaskCache.get(mpath);
+            if (!mUrl) {
+              const mkey = `${tmpPrefix}/tm_${i}.png`;
+              mUrl = await uploadRetry('tmask ' + i, mpath, mkey, SU, SK, 'image/png');
+              uploaded.push(mkey);
+              textMaskCache.set(mpath, mUrl);
+            }
+            outUrl = await replicateRunSync(token, GUIDED_MODEL, { image: frameUrl, mask: mUrl });
+          }
           const lpath = path.join(dir, `l_${i}.img`);
           await downloadFile(outUrl, lpath);
           // composite: inpaint SO dentro da mascara; resto do frame original.
-          // TUDO em gbrp (RGB full-range) ANTES do maskedmerge: com base JPEG
-          // (yuvj) o ffmpeg negociava o merge em YUV limitado, branco da
-          // mascara virava 235/255 e ~8% do original vazava = fantasma da
-          // legenda no video final (bug provado e corrigido 2026-07-17).
-          await run('ffmpeg', ['-y', '-i', src, '-i', lpath, '-i', mpath, '-filter_complex',
-            `[0:v]format=gbrp[b];[1:v]scale=${W}:${Hh},format=gbrp[l];[2:v]format=gray,boxblur=1,format=gbrp[mm];[b][l][mm]maskedmerge,format=yuvj420p`,
-            '-q:v', '2', out]);
+          // gbrp full-range (fix do fantasma 2026-07-17). Semaforo de 4: 32
+          // lanes de rede nao podem virar 32 ffmpegs brigando por CPU.
+          await compAcquire();
+          try {
+            await run('ffmpeg', ['-y', '-i', src, '-i', lpath, '-i', mpath, '-filter_complex',
+              `[0:v]format=gbrp[b];[1:v]scale=${W}:${Hh},format=gbrp[l];[2:v]format=gray,boxblur=1,format=gbrp[mm];[b][l][mm]maskedmerge,format=yuvj420p`,
+              '-q:v', '2', out]);
+          } finally { compRelease(); }
           fs.rmSync(lpath, { force: true });
         } catch (e) {
           // frame que falhou nao derruba o job: mantem o original nele
@@ -989,8 +1153,18 @@ async function processBlueCleanGuided(jobId, p) {
         }
       }
     };
-    const CONC = Math.max(1, Math.min(8, parseInt(p.conc) || 3));
+    // Paralelismo alto por padrao: o limite real vem do burst do Replicate
+    // (proporcional ao saldo). Lane que toma 429 recua sozinha (retry com
+    // backoff no guidedInpaint) — com saldo ok, 16 lanes rodam de verdade e um
+    // video de 20s cai de ~40min pra poucos minutos.
+    const CONC = Math.max(1, Math.min(40, parseInt(p.conc) || (process.env.FAL_KEY ? 24 : 16)));
     await Promise.all(Array.from({ length: CONC }, worker));
+    if ((JOBS.get(jobId) || {}).status === 'cancelled') {
+      // limpeza best-effort e sai mantendo o status cancelled
+      (async () => { for (const pth of uploaded) { try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {} } })().catch(() => {});
+      setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 3000);
+      return;
+    }
     if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
 
     // remonta + audio

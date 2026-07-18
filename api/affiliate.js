@@ -44,7 +44,34 @@ function generateRefCode(email) {
   return base + suffix;
 }
 
-// Notifica afiliado por email quando nova comissao e criada (fire-and-forget)
+// Notifica afiliado por email assim que a comissao e criada. 3 variacoes
+// (rotacao pelo total de pagantes) — tom inspirador/motivador + gratidao por
+// ser parceiro BlueTube (pedido do user 2026-07-18). Chamada AWAITED no fluxo
+// da conversao: fire-and-forget morre quando a function responde (bug classe
+// ja conhecida do runtime).
+function variacoesComissao(nomeAff, valorFmt, planLabel) {
+  return [
+    {
+      assunto: `💙 ${valorFmt} — obrigado por construir isso com a gente, ${nomeAff}`,
+      badge: '💙 PARCEIRO BLUETUBE',
+      titulo: `Isso aqui é obra sua, ${nomeAff}.`,
+      texto: `Mais um criador acabou de entrar pro BlueTube <b style="color:#fff;">pela SUA indicação</b> — e a sua comissão de <b style="color:#10b981;">${valorFmt}</b> já está no seu saldo.<br/><br/>A gente só chega em quem confia em nós porque pessoas como você emprestam a própria credibilidade pra isso. Não é pouca coisa — é a parte mais valiosa que alguém pode dar. <b style="color:#fff;">Obrigado de verdade por fazer parte dos parceiros BlueTube.</b> 💙`,
+    },
+    {
+      assunto: `🚀 +${valorFmt} — teu link tá trabalhando por você, ${nomeAff}`,
+      badge: '🚀 SEU LINK EM AÇÃO',
+      titulo: `Enquanto você vivia sua vida… caiu mais uma.`,
+      texto: `É disso que a gente fala quando fala de renda que trabalha por você: <b style="color:#fff;">nova assinatura ${planLabel}</b> pelo seu link, <b style="color:#10b981;">${valorFmt}</b> de comissão no seu saldo.<br/><br/>Cada indicação tua é prova de que o seu público confia no que você recomenda — e essa confiança está virando resultado. Que orgulho ter você no time de parceiros BlueTube. <b style="color:#fff;">Segue o jogo, que o momentum é seu.</b> 🚀`,
+    },
+    {
+      assunto: `🌱 ${valorFmt} plantados — sua rede tá crescendo, ${nomeAff}`,
+      badge: '🌱 SEMENTE PLANTADA',
+      titulo: `Cada indicação é uma semente. Essa germinou.`,
+      texto: `Nova assinatura ${planLabel} pelo seu link — <b style="color:#10b981;">${valorFmt}</b> direto pro seu saldo.<br/><br/>O que você está construindo não é só comissão: é uma rede de criadores que entraram porque VOCÊ mostrou o caminho. Isso se acumula, mês após mês. A gente vê o seu trabalho, e é uma honra ter você como parceiro BlueTube. <b style="color:#fff;">Continua plantando — a colheita é sua.</b> 🌱`,
+    },
+  ];
+}
+
 async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, commission_amount }) {
   const RESEND = process.env.RESEND_API_KEY;
   if (!RESEND || !affiliate?.email) return;
@@ -56,13 +83,15 @@ async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, comm
   const planLabel = plan === 'master' ? '👑 Master' : '⚡ Full';
   const valorFmt = 'R$ ' + Number(commission_amount || 0).toFixed(2).replace('.', ',');
   const nomeAff = (affiliate.name || affiliate.email.split('@')[0]).split(' ')[0];
+  const vars = variacoesComissao(nomeAff, valorFmt, planLabel);
+  const v = vars[((affiliate.total_full || 0) + (affiliate.total_master || 0)) % vars.length];
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;background:#020817;color:#e8f4ff;padding:40px 28px;border-radius:14px">
     <div style="text-align:center;margin-bottom:28px">
-      <div style="display:inline-block;background:linear-gradient(135deg,#10b981,#3b82f6);color:#fff;font-weight:800;padding:8px 20px;border-radius:20px;letter-spacing:1px;font-size:11px">💰 NOVA COMISSÃO</div>
+      <div style="display:inline-block;background:linear-gradient(135deg,#10b981,#3b82f6);color:#fff;font-weight:800;padding:8px 20px;border-radius:20px;letter-spacing:1px;font-size:11px">${v.badge}</div>
     </div>
-    <h1 style="font-size:24px;font-weight:800;margin:0 0 12px;color:#fff">Boa, ${nomeAff}!</h1>
-    <p style="font-size:15px;line-height:1.5;color:rgba(200,220,240,.8);margin:0 0 24px">Uma nova assinatura entrou pelo seu link de afiliado. A comissão já está no seu saldo pendente.</p>
+    <h1 style="font-size:24px;font-weight:800;margin:0 0 12px;color:#fff">${v.titulo}</h1>
+    <p style="font-size:15px;line-height:1.6;color:rgba(200,220,240,.85);margin:0 0 24px">${v.texto}</p>
     <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:20px;margin:20px 0">
       <div style="font-size:11px;color:rgba(200,220,240,.6);letter-spacing:2px;margin-bottom:8px;font-family:monospace">COMISSÃO GERADA</div>
       <div style="font-size:32px;font-weight:800;color:#10b981">${valorFmt}</div>
@@ -73,7 +102,7 @@ async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, comm
       <tr><td style="padding:8px 0;color:rgba(200,220,240,.6);font-size:13px">Status:</td><td style="padding:8px 0;text-align:right"><span style="background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">PENDENTE</span></td></tr>
     </table>
     <div style="text-align:center;margin:28px 0">
-      <a href="https://www.bluetubeviral.com/afiliado" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#00aaff);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px">Ver painel do afiliado →</a>
+      <a href="https://www.bluetubeviral.com/afiliado" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#00aaff);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px">Confere no seu painel →</a>
     </div>
     <p style="font-size:12px;color:rgba(200,220,240,.5);text-align:center;margin:24px 0 0;line-height:1.5">Pagamentos via Pix todo dia 22. Comissões ficam pendentes por 37 dias (garantia de reembolso) antes de liberar pra saque.</p>
   </div>`;
@@ -84,7 +113,7 @@ async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, comm
       body: JSON.stringify({
         from: 'BlueAfiliados <noreply@bluetubeviral.com>',
         to: [affiliate.email],
-        subject: `💰 Nova comissão: ${valorFmt}`,
+        subject: v.assunto,
         html,
       }),
     });
@@ -434,7 +463,8 @@ export default async function handler(req, res) {
             console.log(`💰 Commission: ${affiliate.email} ← ${email} (${plan}) @ ${(rate*100).toFixed(0)}% = R$${commissionAmount.toFixed(2)}`);
 
             // Email de notificação pro afiliado (fire-and-forget, nao bloqueia)
-            notificarAfiliadoNovaComissao(affiliate, { subscriber: email, plan, commission_amount: commissionAmount }).catch(()=>{});
+            // AWAITED: fire-and-forget morre quando a function responde (Vercel)
+            await notificarAfiliadoNovaComissao(affiliate, { subscriber: email, plan, commission_amount: commissionAmount }).catch(()=>{});
           }
         } else if (plan === 'free') {
           // Incrementa total_free

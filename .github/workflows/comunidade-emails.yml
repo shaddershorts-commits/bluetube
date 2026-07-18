@@ -1,0 +1,40 @@
+name: Comunidade emails (Daniel + 2 anuncios)
+
+# Campanha da Comunidade BlueTube: email 1 = voz do Daniel (treinamento 100 mil
+# inscritos, FUROU A FILA — 19/jul), emails 2 e 3 = anuncio geral (25 e 29/jul).
+# Audiencia master+full (~30/disparo). Guarda anti-reenvio no endpoint (crons
+# anuais refiram sem efeito).
+
+on:
+  schedule:
+    - cron: '37 13 19 7 *'   # email 1 (Daniel) — 19/jul 10:37 BRT
+    - cron: '37 13 25 7 *'   # email 2 (anuncio) — 25/jul 10:37 BRT
+    - cron: '37 13 29 7 *'   # email 3 (anuncio) — 29/jul 10:37 BRT
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Qual email disparar (1=Daniel, 2, 3)'
+        required: true
+        default: '1'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide qual email pelo dia (cron) ou input (manual)
+        id: pick
+        run: |
+          if [ -n "${{ github.event.inputs.email }}" ]; then
+            echo "n=${{ github.event.inputs.email }}" >> $GITHUB_OUTPUT
+          else
+            DIA=$(date -u +%d)
+            if [ "$DIA" -le 19 ]; then echo "n=1" >> $GITHUB_OUTPUT
+            elif [ "$DIA" -le 25 ]; then echo "n=2" >> $GITHUB_OUTPUT
+            else echo "n=3" >> $GITHUB_OUTPUT; fi
+          fi
+      - name: Dispara
+        run: |
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/comunidade-emails?action=disparar&email=${{ steps.pick.outputs.n }}&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP $HTTP"; cat /tmp/resp.json
+          [ "$HTTP" = "200" ] || exit 1

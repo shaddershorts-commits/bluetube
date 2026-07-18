@@ -1,0 +1,21 @@
+name: Blublu relatorio de demanda (semanal)
+
+# Toda segunda 10:13 BRT: analisa 7 dias de uso do Blublu Chat e manda o
+# relatorio por email pro admin — destaque pras buscas com ZERO resultado
+# (demanda nao atendida = guia de curadoria de canais novos).
+
+on:
+  schedule:
+    - cron: '13 13 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Gera e envia relatorio
+        run: |
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/blublu-index?action=demanda&enviar_email=1&secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP $HTTP"; cat /tmp/resp.json
+          [ "$HTTP" = "200" ] || exit 1

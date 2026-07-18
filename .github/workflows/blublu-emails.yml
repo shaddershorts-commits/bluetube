@@ -1,0 +1,42 @@
+name: Blublu emails de lancamento (3 disparos)
+
+# Campanha "Falar com o Blublu": 3 emails no personagem, master+full (~30/disparo,
+# dentro da cota Resend Free 100/dia). Crons com data fixa de julho — o endpoint
+# tem guarda anti-reenvio (email_campanhas), entao o refire anual e inofensivo.
+# Disparo manual: workflow_dispatch com input email.
+
+on:
+  schedule:
+    # ADIADO (2026-07-18): o email do Daniel (comunidade-emails) furou a fila
+    # e ficou com 19/jul — Blublu passou pra 21/23/27.
+    - cron: '37 13 21 7 *'   # email 1 — 21/jul 10:37 BRT
+    - cron: '37 13 23 7 *'   # email 2 — 23/jul 10:37 BRT
+    - cron: '37 13 27 7 *'   # email 3 — 27/jul 10:37 BRT
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Qual email disparar (1, 2 ou 3)'
+        required: true
+        default: '1'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide qual email pelo dia (cron) ou input (manual)
+        id: pick
+        run: |
+          if [ -n "${{ github.event.inputs.email }}" ]; then
+            echo "n=${{ github.event.inputs.email }}" >> $GITHUB_OUTPUT
+          else
+            DIA=$(date -u +%d)
+            if [ "$DIA" -le 21 ]; then echo "n=1" >> $GITHUB_OUTPUT
+            elif [ "$DIA" -le 23 ]; then echo "n=2" >> $GITHUB_OUTPUT
+            else echo "n=3" >> $GITHUB_OUTPUT; fi
+          fi
+      - name: Dispara
+        run: |
+          HTTP=$(curl -sS --max-time 240 -o /tmp/resp.json -w "%{http_code}" "https://www.bluetubeviral.com/api/blublu-emails?action=disparar&email=${{ steps.pick.outputs.n }}&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP $HTTP"; cat /tmp/resp.json
+          [ "$HTTP" = "200" ] || exit 1
