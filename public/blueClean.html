@@ -183,6 +183,7 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
     <div class="proc-stage" id="procStage"></div>
     <div class="proc-bar"><i id="procBarFill"></i></div>
     <div class="proc-note">Fica tranquilo, pode até fechar a página.<br>A limpeza roda no servidor e aparece no seu histórico quando terminar. ⚡</div>
+    <button onclick="cancelarLimpeza()" style="margin-top:18px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:10px 22px;font-family:var(--mono);font-size:12px;font-weight:700;color:#f87171;cursor:pointer">✕ Cancelar limpeza</button>
   </div>
 
   <!-- STEP 4: Result -->
@@ -443,6 +444,20 @@ function showResult(outputUrl,framesFailed){
 }
 
 function resetAll(){selectedFile=null;videoUrl=null;currentJobId=null;frames=[];boxesArr=[];curBox=null;stopTimer();if(pollTimer)clearInterval(pollTimer);show('stepUpload');document.getElementById('fileInput').value='';}
+
+async function cancelarLimpeza(){
+  if(!currentJobId){resetAll();return;}
+  if(!confirm('Cancelar a limpeza deste vídeo?'))return;
+  try{
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',token:TOKEN,job_id:currentJobId})});
+    const d=await r.json();
+    if(pollTimer)clearInterval(pollTimer);
+    stopTimer();
+    toast(d.cancelled?'✕ Limpeza cancelada':'Job já tinha finalizado');
+    show('stepEditor');
+    loadHistory();
+  }catch(e){toast('❌ Não consegui cancelar: '+e.message);}
+}
 
 async function loadHistory(){
   try{
