@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r26c-blueclean-anelfolga',
+      build: 'r26f-blueclean-grayfix',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -1680,9 +1680,13 @@ async function processBlueCleanGuided(jobId, p) {
           await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}:rate=${fps}`, '-loop', '1', '-i', m.sp,
             '-filter_complex', `[0:v][1:v]overlay=shortest=0:enable='between(t,${relS.toFixed(3)},${relE.toFixed(3)})',format=gray[m]`,
             '-map', '[m]', '-frames:v', String(nseg), '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), segM]);
+          // (r26d testou máscara adaptativa por cor ∩ banda: fantasma — máscara
+          // fina amplifica vazamento de borda no upscale do motor temporal.
+          // Anel ESTÁTICO com folga é o robusto; espessura é alavanca do user.)
+          const segMuso = segM;
           const segKey = `${tmpPrefix}/seg_${mk}.mp4`, segMKey = `${tmpPrefix}/segm_${mk}.mp4`;
           const segUrl = await uploadRetry('seg' + mk, segV, segKey, SU, SK, 'video/mp4'); uploaded.push(segKey);
-          const segMUrl = await uploadRetry('segm' + mk, segM, segMKey, SU, SK, 'video/mp4'); uploaded.push(segMKey);
+          const segMUrl = await uploadRetry('segm' + mk, segMuso, segMKey, SU, SK, 'video/mp4'); uploaded.push(segMKey);
           const ppRatio = Math.min(1, 896 / Math.max(W, Hh));
           const filledUrl = await replicateRun(token, 'jd7h/propainter', {
             video: segUrl, mask: segMUrl, fp16: true,
@@ -1693,6 +1697,12 @@ async function processBlueCleanGuided(jobId, p) {
           await downloadFile(filledUrl, filled);
           const fillDir = path.join(dir, `filld_${mk}`); fs.mkdirSync(fillDir);
           await run('ffmpeg', ['-y', '-i', filled, '-vf', `scale=${W}:${Hh}:flags=bicubic,fps=${fps}`, '-q:v', '2', path.join(fillDir, 'p_%05d.jpg')]);
+          // máscaras por-frame do composite = as MESMAS enviadas ao motor
+          // (adaptativas seguem o traço; re-binariza o preto-16 do x264)
+          const kDir = path.join(dir, `kmsk_${mk}`); fs.mkdirSync(kDir);
+          // format=gray ANTES do geq: geq só-luma em yuv zera o chroma (máscara
+          // VERDE → format=gray no composite virava 165/45 = fantasma 35%)
+          await run('ffmpeg', ['-y', '-i', segMuso, '-vf', `format=gray,geq=lum='if(gt(lum(X,Y),100),255,0)'`, '-pix_fmt', 'gray', path.join(kDir, 'k_%05d.png')]);
           let comp = 0;
           const tmpOut = path.join(dir, `co_${mk}.jpg`);
           for (let i2 = 0; i2 < nseg; i2++) {
@@ -1700,8 +1710,9 @@ async function processBlueCleanGuided(jobId, p) {
             if (t2 < mS || t2 > mE) continue; // folga: intocada
             const oF = path.join(fdir, `o_${String(f0 + i2 + 1).padStart(5, '0')}.jpg`);
             const pF = path.join(fillDir, `p_${String(i2 + 1).padStart(5, '0')}.jpg`);
-            if (!fs.existsSync(oF) || !fs.existsSync(pF)) continue;
-            await compositeMasked(oF, pF, m.spbw, tmpOut); comp++;
+            const kF = path.join(kDir, `k_${String(i2 + 1).padStart(5, '0')}.png`);
+            if (!fs.existsSync(oF) || !fs.existsSync(pF) || !fs.existsSync(kF)) continue;
+            await compositeMasked(oF, pF, kF, tmpOut); comp++;
           }
           console.log('[bcg]', jobId, `anotação ${mk + 1} (${m.type}): ${comp} quadros compostos via motor temporal`);
         } catch (e) {
@@ -1774,9 +1785,10 @@ async function processBlueCleanGuided(jobId, p) {
             '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
         }
         const rdir = path.join(dir, 'rm'); fs.mkdirSync(rdir);
-        // re-binariza na extração: o round-trip x264 yuv420p (range limitado)
-        // vira "preto"=16 — sem isso a máscara ia cinza-16 pro inpaint
-        await run('ffmpeg', ['-y', '-i', resVid, '-vf', `geq=lum='if(gt(lum(X,Y),128),255,0)'`, path.join(rdir, 'r_%05d.png')]);
+        // re-binariza na extração (format=gray ANTES do geq: geq só-luma em yuv
+        // zera o chroma = máscara verde; e o round-trip x264 limitado vira
+        // "preto"=16 — sem isso a máscara ia cinza pro inpaint)
+        await run('ffmpeg', ['-y', '-i', resVid, '-vf', `format=gray,geq=lum='if(gt(lum(X,Y),128),255,0)'`, '-pix_fmt', 'gray', path.join(rdir, 'r_%05d.png')]);
         // quadros culpados por ESTATÍSTICA DE LUMA, não tamanho de PNG:
         // PNG todo-preto tem ~10KB (bug r23b→r25: filtro >=800B flagrava
         // TODOS os quadros → 40 correções inúteis com remendos visíveis).
