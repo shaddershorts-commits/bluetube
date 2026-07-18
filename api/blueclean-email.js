@@ -35,7 +35,7 @@ function html(email) {
       A BlueClean está no ar completamente repaginada. Legenda queimada, seta, círculo, marca d'água: você marca o que quer tirar e a <b style="color:#eaf3ff;">nossa tecnologia remove</b> com uma qualidade que a gente nunca tinha alcançado — reconstruindo o fundo <b style="color:#eaf3ff;">sem deixar rastro</b>. Sem borrão, sem mancha estranha, sem aquele "buraco" no vídeo.<br/><br/>
       O que mudou? Tudo o que importa. A precisão deu um salto, o resultado ficou limpo <i>de verdade</i>, e agora <b style="color:#00d4ff;">você controla</b> exatamente o que sai e o que fica — até nos círculos, onde só a borda some e o que estava destacado continua lá, intacto.<br/><br/>
       E aqui vai o mais importante: <b style="color:#eaf3ff;">nada disso seria possível sem você</b>. É porque você é Master que a gente pode investir, testar e refinar até a qualidade chegar nesse nível. Cada assinatura vira tecnologia melhor nas suas mãos. Obrigado, de verdade. 💙<br/><br/>
-      Sua cota Master inclui <b style="color:#fbbf24;">15 limpezas por mês</b>. Bora estrear?
+      Sua cota Master inclui <b style="color:#fbbf24;">10 limpezas por mês</b>. Bora estrear?
     </div>
   </td></tr>
   <tr><td align="center" style="padding:24px 28px 34px;">

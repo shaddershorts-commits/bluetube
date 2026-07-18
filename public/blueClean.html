@@ -249,10 +249,10 @@ function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forE
   }catch(e){document.getElementById('upgradeWall').style.display='block';}
 })();
 
-let usageState={used:0,limit:15,remaining:15,renova:null,max_seconds:35};
+let usageState={used:0,limit:10,remaining:10,renova:null,max_seconds:35};
 function fmtDate(iso){try{const p=iso.split('-');return p[2]+'/'+p[1];}catch(e){return iso;}}
 function updateUsage(d){
-  usageState={used:d.used||0,limit:d.limit||15,remaining:d.remaining!=null?d.remaining:((d.limit||15)-(d.used||0)),renova:d.renova||null,max_seconds:d.max_seconds||35};
+  usageState={used:d.used||0,limit:d.limit||10,remaining:d.remaining!=null?d.remaining:((d.limit||10)-(d.used||0)),renova:d.renova||null,max_seconds:d.max_seconds||35};
   const cnt=document.getElementById('usageCount');
   const lbl=document.querySelector('.usage-label');
   const usedEl=document.getElementById('usageUsed');

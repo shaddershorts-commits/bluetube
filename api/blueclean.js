@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
   // renovação, o expires_at avança e a chave do período vira outra => a cota
   // reseta junto com o pagamento, exatamente como pedido. Master manual/eterno
   // (sem expires) cai no reset por mês calendário.
-  const LIMIT = 15;
+  const LIMIT = 10;
   const cicloInfo = (() => {
     const now = new Date();
     let dia = 1;
