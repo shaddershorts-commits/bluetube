@@ -27,7 +27,10 @@ const IDOLOS = [
   { nome: 'Luiz Stubbe', patterns: ['luiz stubbe', 'luiz_stubbe', 'opiska'] },
   { nome: 'Giuliana Mafra', patterns: ['giuliana mafra', 'cortes giuliana mafra oficial', 'giulianamafra'] },
 ];
-const MAX_CANDIDATOS = 40;      // teto do funil por busca
+const MAX_CANDIDATOS = 100;     // recall LARGO (o corte por views aos 40 escondia
+                                // o video certo atras de genericos populares —
+                                // caso do tigre na arvore); entrega cirurgica
+                                // fica por conta do ranking de relevancia
 const MAX_TRANSCREVER = 10;     // novas transcrições por mensagem (latência)
 const TRANSC_PARALELAS = 4;     // concorrência no Railway
 const BUDGET_TRANSC_MS = 20000; // orçamento de tempo da confirmação
@@ -210,6 +213,7 @@ module.exports = async function handler(req, res) {
 
     // confirmação por transcrição (YouTube; TikTok confirma por caption/autor)
     const termosN = termosOk.map(norm);
+    const qualifN = (Array.isArray(inp.qualificadores) ? inp.qualificadores : []).map((q) => norm(clean(String(q)))).filter((q) => q.length >= 3).slice(0, 16);
     let videos = [], temMais = false, verificadosIds = [];
     if (tema && candidatos.length) {
       const ids = candidatos.filter((c) => c.youtube_id).map((c) => c.youtube_id);
@@ -255,11 +259,17 @@ module.exports = async function handler(req, res) {
           }
         }
         if (falaBate || tituloBate || canalBate) {
-          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : (canalBate ? 'canal' : 'titulo'), plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto });
+          // RANKING CIRÚRGICO: cada qualificador distinto do pedido achado no
+          // título/fala soma ponto — "tigre escalando árvore" rankeia o tigre
+          // NA ÁRVORE acima do tigre genérico de 20M views
+          let score = 0;
+          const alvo = norm(c.titulo) + ' ' + (tc && tc.transcript ? norm(tc.transcript).slice(0, 4000) : '');
+          for (const q of qualifN) if (q && alvo.includes(q)) score++;
+          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : (canalBate ? 'canal' : 'titulo'), plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto, _score: score });
         }
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
-      videos.sort((a, b) => (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
+      videos.sort((a, b) => (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
       verificadosIds = candidatos.filter((c) => c.youtube_id && cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
       videos = candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
@@ -288,8 +298,9 @@ module.exports = async function handler(req, res) {
       pelo_titulo: videos.filter((v) => v.confirmado_por === 'titulo').length,
       tinha_mais_alem_do_entregue: cortados > 0,
       ha_candidatos_ainda_nao_verificados: temMais,
+      com_relevancia_exata: videos.filter((v) => (v._score || 0) > 0).length,
       idolos_no_resultado: idolosNoResultado,
-      amostra: videos.slice(0, 6).map((v) => ({ titulo: (v.titulo || '').slice(0, 70), canal: v.canal_nome, views: v.views, confirmado_por: v.confirmado_por })),
+      amostra: videos.slice(0, 6).map((v) => ({ titulo: (v.titulo || '').slice(0, 70), canal: v.canal_nome, views: v.views, confirmado_por: v.confirmado_por, bateu_qualificadores: (v._score || 0) > 0 })),
     };
     return { videos, temMais, verificadosIds, resumo };
   }
@@ -303,7 +314,8 @@ module.exports = async function handler(req, res) {
         type: 'object',
         properties: {
           tema: { type: ['string', 'null'], description: 'assunto OU nome de canal/criador do pedido. null se for busca só por números/filtros' },
-          termos: { type: 'array', items: { type: 'string' }, description: 'OBRIGATÓRIO: (1) o substantivo-núcleo do tema SOZINHO (ex: "tigre"), (2) traduções do núcleo em inglês e espanhol ("tiger") — o acervo tem 10 idiomas!, (3) apelidos/grafias famosas. Frases compostas ("tigre escalando árvore") só como COMPLEMENTO, nunca no lugar do núcleo.' },
+          termos: { type: 'array', items: { type: 'string' }, description: 'SÓ o substantivo-NÚCLEO do tema, traduzido em TODOS os idiomas do acervo que fizerem sentido: pt, en, es, fr, de, it e escritas nativas ja/ko/zh/ru quando for palavra comum (ex: ["tigre","tiger","tigre","Tiger","тигр","虎"]). Nome próprio (Neymar) não traduz. NUNCA frases compostas aqui.' },
+          qualificadores: { type: 'array', items: { type: 'string' }, description: 'o RESTO do pedido em palavras soltas, traduzidas pt+en+es (ex: pedido "tigre escalando árvore" → ["escalando","subindo","trepando","climbing","árvore","tree","árbol","árboles"]). Usado pra RANQUEAR o vídeo exato acima dos genéricos. Vazio se o pedido é só o núcleo.' },
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
