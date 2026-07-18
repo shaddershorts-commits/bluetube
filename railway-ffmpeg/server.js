@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r22c-blueclean-100',
+      build: 'r23-blueclean-fast100',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -1009,6 +1009,37 @@ async function processBlueCleanGuided(jobId, p) {
       e: b.end_sec == null ? 1e9 : +b.end_sec,
     })).map((b) => ({ ...b, w: Math.min(b.w, W - b.x), h: Math.min(b.h, Hh - b.y) }));
 
+    // ── CAIXA AUTOMÁTICA DO VERMELHO (r23b) ─────────────────────────────────
+    // Caso real do user: marcou "tem setas/círculos" mas o círculo estava FORA
+    // das caixas → intocado. Modelo mental correto = "marquei → remove".
+    // Solução: o motor ACHA as regiões vermelhas sozinho (cropdetect na
+    // máscara de cor) e adiciona a caixa por conta própria.
+    if (p.anotacoes && boxes.length >= 0) {
+      try {
+        const annCondProbe = 'gt(r(X,Y)-g(X,Y),45)*gt(r(X,Y)-b(X,Y),60)*gt(r(X,Y),110)';
+        const { stderr: cd } = await run('ffmpeg', ['-i', orig, '-vf',
+          `fps=3,format=rgb24,geq=r='255*(${annCondProbe})':g='255*(${annCondProbe})':b='255*(${annCondProbe})',cropdetect=limit=24:round=2:reset=0:skip=0`,
+          '-f', 'null', '-']);
+        const ms = [...String(cd).matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+        if (ms.length) {
+          const last = ms[ms.length - 1];
+          const [aw, ah, ax, ay] = [parseInt(last[1]), parseInt(last[2]), parseInt(last[3]), parseInt(last[4])];
+          // só adiciona se a região é significativa e não é o frame inteiro
+          if (aw > 20 && ah > 20 && aw * ah < 0.6 * W * Hh) {
+            const PADA = 24;
+            const nb = { x: Math.max(0, ax - PADA), y: Math.max(0, ay - PADA), w: Math.min(W, aw + PADA * 2), h: Math.min(Hh, ah + PADA * 2), s: -1e9, e: 1e9 };
+            nb.w = Math.min(nb.w, W - nb.x); nb.h = Math.min(nb.h, Hh - nb.y);
+            boxes.push(nb);
+            console.log('[bcg]', jobId, `caixa AUTO do vermelho: ${nb.w}x${nb.h}@${nb.x},${nb.y}`);
+          } else {
+            console.log('[bcg]', jobId, 'auto-vermelho: regiao invalida/gigante, ignorada', aw, ah);
+          }
+        } else {
+          console.log('[bcg]', jobId, 'auto-vermelho: nada vermelho detectado no video');
+        }
+      } catch (e) { console.error('[bcg] auto-vermelho falhou:', e.message.slice(0, 80)); }
+    }
+
     // mascara em cache por combinacao de caixas ativas (caixas estaticas = 1 so).
     // FRAME INTEIRO + mascara tamanho cheio: mandar so o recorte deixava a area
     // branca ~70% da imagem e o modelo devolvia preenchimento fraco (fantasma).
@@ -1031,7 +1062,7 @@ async function processBlueCleanGuided(jobId, p) {
     if (boxes.length && p.mask_mode !== 'caixa') {
       try {
         const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: p.video_url, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
+          { video: p.video_url, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 8, resolution: '720p', detection_interval: 1 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black = path.join(dir, 'black.mp4');
         await downloadFile(blackUrl, black);
@@ -1337,24 +1368,30 @@ async function processBlueCleanGuided(jobId, p) {
         const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
         uploaded.push(ikey);
         const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: iurl, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 10, resolution: 'original', detection_interval: 2 },
+          { video: iurl, method: 'black', conf_threshold: 0.18, iou_threshold: 0.15, margin: 10, resolution: '720p', detection_interval: 2 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black2 = path.join(dir, 'black2.mp4');
         await downloadFile(blackUrl2, black2);
-        const D2 = Array(12).fill('dilation').join(','), E2 = Array(6).fill('erosion').join(',');
+        // RESÍDUO EXATO (fix da explosão de 12min): antes era blend-diff com
+        // threshold baixo que flagrava RUÍDO de compressão → 100% dos quadros
+        // "culpados" → correção em massa por-frame. Agora: resíduo = onde o
+        // detector PINTOU DE PRETO (lum<16) e o vídeo limpo NÃO era escuro
+        // (lum>40) — detecção verdadeira, zero ruído.
         const resVid = path.join(dir, 'resmask.mp4');
         await run('ffmpeg', ['-y', '-i', interim, '-i', black2, '-i', boxPngPath, '-filter_complex',
-          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),24),255,0)',${D2},${E2}[r];[2:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,format=gray[m]`,
+          `[0:v]fps=${fps},format=gray,geq=lum='if(gt(lum(X,Y),40),255,0)'[na];[1:v]fps=${fps},format=gray,geq=lum='if(lt(lum(X,Y),16),255,0)'[pb];[na][pb]blend=all_mode=multiply[r];[2:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,dilation,dilation,format=gray[m]`,
           '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
         const rdir = path.join(dir, 'rm'); fs.mkdirSync(rdir);
         await run('ffmpeg', ['-y', '-i', resVid, path.join(rdir, 'r_%05d.png')]);
-        // quadros culpados = mascara de residuo com conteudo
-        const culpados = [];
+        // quadros culpados = mascara de residuo com conteudo (limite de
+        // seguranca 90: com extração exata, vazamento real é pontual)
+        let culpados = [];
         for (let i = 0; i < N; i++) {
           const rp = path.join(rdir, `r_${String(i + 1).padStart(5, '0')}.png`);
           if (fs.existsSync(rp) && fs.statSync(rp).size >= 800) culpados.push({ i, rp });
         }
-        console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo`);
+        console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo real`);
+        if (culpados.length > 90) { console.log('[bcg]', jobId, 'cap de correcao: 90 primeiros'); culpados = culpados.slice(0, 90); }
         if (culpados.length) {
           setJob({ progress: 93, stage: `recorrigindo ${culpados.length} quadros` });
           const fila2 = [...culpados];
