@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r17-blueclean-fal',
+      build: 'r18-blueclean-textmask',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -985,6 +985,52 @@ async function processBlueCleanGuided(jobId, p) {
     const maskCache = new Map(); // key -> { url, mpath }
     let maskSeq = 0; // nome unico sincrono (size no nome racearia entre workers)
     const PAD = 10; // folga na mascara alem da caixa do usuario (borda anti-aliased)
+
+    // ── CAMADA 1: MÁSCARA EM FORMATO DE TEXTO dentro das caixas ─────────────
+    // Problema real (caso bailarina 2026-07-18): caixa sobre PESSOA apagava a
+    // pessoa junto (o inpaint reconstrói "fundo", não gente). Solução: detector
+    // acha o desenho exato das LETRAS dentro da caixa → só os traços do texto
+    // são reconstruídos → ~90% do rosto/corpo por baixo sobrevive.
+    // Fallback automático: se o detector não achar texto na caixa (marca
+    // d'água gráfica/logo), volta pra caixa cheia (comportamento atual).
+    setJob({ progress: 9, stage: 'mapeando texto' });
+    let textMaskDir = null; // per-frame m_%05d.png quando modo texto ativo
+    if (boxes.length && p.mask_mode !== 'caixa') {
+      try {
+        const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
+          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
+          { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
+        const black = path.join(dir, 'black.mp4');
+        await downloadFile(blackUrl, black);
+        // caixa(s) do user viram um PNG-limite (uniao de todas, com PAD)
+        const drawsAll = boxes.map((b) => `drawbox=x=${Math.max(0, b.x - PAD)}:y=${Math.max(0, b.y - PAD)}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
+        const boxPng = path.join(dir, 'boxlimit.png');
+        await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}`, '-vf', drawsAll, '-frames:v', '1', boxPng]);
+        // texto por FORMA (blend-diff + close fecha contorno das letras) ∩ caixas
+        const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
+        const maskVid = path.join(dir, 'maskv.mp4');
+        await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
+          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),45),255,0)',${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',format=gray[m]`,
+          '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        // cobertura media: se ~zero, detector nao achou texto -> fallback caixa
+        const { stdout: st } = await run('ffmpeg', ['-i', maskVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
+        const yavgs = [...String(st).matchAll(/YAVG=([0-9.]+)/g)].map((m) => parseFloat(m[1]));
+        const media = yavgs.length ? yavgs.reduce((a, b) => a + b, 0) / yavgs.length : 0;
+        if (media > 0.15) { // texto real detectado dentro das caixas
+          const mdir = path.join(dir, 'tm'); fs.mkdirSync(mdir);
+          await run('ffmpeg', ['-y', '-i', maskVid, path.join(mdir, 'm_%05d.png')]);
+          textMaskDir = mdir;
+          console.log('[bcg]', jobId, 'modo TEXTO ativo (yavg medio', media.toFixed(2) + ')');
+        } else {
+          console.log('[bcg]', jobId, 'sem texto nas caixas (yavg', media.toFixed(2) + ') -> modo caixa');
+        }
+      } catch (e) {
+        console.error('[bcg]', jobId, 'camada texto falhou -> modo caixa:', e.message.slice(0, 120));
+      }
+    }
+    // upload das mascaras por-frame do modo texto tem cache proprio no worker
+    const textMaskCache = new Map(); // idx -> url
+
     async function maskFor(active) {
       const key = active.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join('|');
       if (maskCache.has(key)) return maskCache.get(key);
@@ -1012,7 +1058,24 @@ async function processBlueCleanGuided(jobId, p) {
         const src = path.join(fdir, f);
         const out = path.join(fdir, f.replace('i_', 'o_'));
         if (!active.length) { fs.copyFileSync(src, out); done++; continue; }
-        const { url: maskUrl, mpath } = await maskFor(active);
+        let maskUrl, mpath;
+        if (textMaskDir) {
+          // modo TEXTO: mascara por-frame (so os tracos das letras). Frame sem
+          // texto = mascara preta = PNG minusculo -> copia original (economiza
+          // 1 chamada de inpaint e preserva 100% o frame).
+          const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
+          if (!fs.existsSync(mf) || fs.statSync(mf).size < 2000) { fs.copyFileSync(src, out); done++; continue; }
+          if (textMaskCache.has(i)) { ({ url: maskUrl, mpath } = textMaskCache.get(i)); }
+          else {
+            const mkey = `${tmpPrefix}/tm_${i}.png`;
+            maskUrl = await uploadRetry('tmask ' + i, mf, mkey, SU, SK, 'image/png');
+            uploaded.push(mkey);
+            mpath = mf;
+            textMaskCache.set(i, { url: maskUrl, mpath });
+          }
+        } else {
+          ({ url: maskUrl, mpath } = await maskFor(active));
+        }
         const fkey = `${tmpPrefix}/f_${i}.jpg`;
         const frameUrl = await uploadRetry('gframe ' + i, src, fkey, SU, SK, 'image/jpeg');
         uploaded.push(fkey);
