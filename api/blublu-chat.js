@@ -250,7 +250,11 @@ module.exports = async function handler(req, res) {
         let citadoEm = null, falaBate = false;
         if (tc && tc.transcript && !tc.sem_legenda) {
           const txt = norm(tc.transcript);
-          falaBate = termosN.some((t) => txt.includes(t));
+          // MENÇÃO DE PASSAGEM NÃO CONTA (video infantil cantando "tiger" 1x
+          // entrava como confirmado — user pegou). Fala só confirma sozinha se
+          // o termo aparece 2+ vezes; 1 menção precisa do título junto.
+          const occ = termosN.reduce((n, t) => n + (t ? txt.split(t).length - 1 : 0), 0);
+          falaBate = occ >= 2 || (occ >= 1 && tituloBate);
           if (falaBate && Array.isArray(tc.segments)) {
             for (let i = 0; i < tc.segments.length; i++) {
               const seg = norm(tc.segments[i].x) + ' ' + norm(tc.segments[i + 1]?.x || '');
@@ -270,6 +274,14 @@ module.exports = async function handler(req, res) {
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
       videos.sort((a, b) => (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
+      // PORTÃO ANTI-ALEATÓRIO (regra do user: na dúvida, NÃO manda):
+      // - pedido específico (tem qualificadores) e ALGUÉM pontuou → entrega SÓ quem pontuou
+      // - pedido específico e NINGUÉM pontuou → entrega só quem tem o núcleo no
+      //   TÍTULO/CANAL (vídeos do tema), nunca menção solta na fala
+      if (qualifN.length) {
+        const comScore = videos.filter((v) => (v._score || 0) > 0);
+        videos = comScore.length ? comScore : videos.filter((v) => v.confirmado_por !== 'fala' || (v._score || 0) > 0);
+      }
       verificadosIds = candidatos.filter((c) => c.youtube_id && cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
       videos = candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
