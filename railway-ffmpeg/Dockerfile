@@ -59,7 +59,17 @@ RUN mkdir -p /usr/share/fonts/truetype/bt && cd /tmp \
 # Verifica se as fontes foram instaladas (não falha o build se alguma faltar)
 RUN fc-list | grep -iE "bebas|oswald|anton|liberation|dejavu" || true
 
+# Compat glibc pro onnxruntime-node (detector de texto PRÓPRIO da BlueClean).
+# Se falhar em runtime, o server.js cai no fallback (detector externo) sem quebrar.
+RUN apk add --no-cache gcompat libstdc++
+
 WORKDIR /app
+
+# Modelo DBNet PP-OCRv4 (detecção de texto, 4.7MB) — RapidOCR ONNX oficial.
+# Falha no download = build falha = deploy anterior continua no ar.
+RUN curl -fsSL -o /app/det.onnx \
+  https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx \
+  && ls -la /app/det.onnx
 
 COPY package.json ./
 RUN npm install --omit=dev

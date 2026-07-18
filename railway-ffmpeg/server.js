@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r24-blueclean-multicor',
+      build: 'r25g-blueclean-detproprio',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -864,6 +864,111 @@ async function processBlueClean(jobId, p) {
 // o frame original — resto do video fica pixel-perfect.
 const GUIDED_MODEL = 'zylim0702/remove-object';
 
+// ── DETECTOR DE TEXTO PRÓPRIO (r25): DBNet PP-OCRv4 ONNX rodando AQUI na CPU
+// (~100-160ms/quadro) — substitui as 2 chamadas externas de detecção que eram
+// o maior custo de tempo do guided (2-3min cada). Máscara SAI pixel-accurate
+// direto do modelo. Carregamento preguiçoso + fallback: qualquer falha (ex:
+// glibc no alpine) => volta pro detector externo sem quebrar nada.
+let _ortSession = null, _ortTentado = false;
+async function getDetSession() {
+  if (_ortSession || _ortTentado) return _ortSession;
+  _ortTentado = true;
+  try {
+    const ort = require('onnxruntime-node');
+    const modelo = process.env.DET_MODEL_PATH || '/app/det.onnx';
+    if (!fs.existsSync(modelo)) throw new Error('modelo ausente: ' + modelo);
+    _ortSession = await ort.InferenceSession.create(modelo, { intraOpNumThreads: 3 });
+    console.log('[det-proprio] carregado:', modelo);
+  } catch (e) {
+    console.error('[det-proprio] indisponivel (fallback externo):', e.message.slice(0, 120));
+    _ortSession = null;
+  }
+  return _ortSession;
+}
+
+// Detecta texto em UM frame → máscara PNG full-res (255 = texto).
+async function detProprioFrame(sess, imgPath, outPng, W, Hh, thr) {
+  const ort = require('onnxruntime-node');
+  const sharp = require('sharp');
+  const LADO = 736;
+  const escala = LADO / Math.max(W, Hh);
+  let nw = Math.max(32, Math.ceil((W * escala) / 32) * 32);
+  let nh = Math.max(32, Math.ceil((Hh * escala) / 32) * 32);
+  const raw = await sharp(imgPath).resize(nw, nh, { fit: 'fill' }).removeAlpha().raw().toBuffer();
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+  const data = new Float32Array(3 * nh * nw);
+  for (let i = 0; i < nh * nw; i++) {
+    data[i] = (raw[i * 3] / 255 - mean[0]) / std[0];
+    data[nh * nw + i] = (raw[i * 3 + 1] / 255 - mean[1]) / std[1];
+    data[2 * nh * nw + i] = (raw[i * 3 + 2] / 255 - mean[2]) / std[2];
+  }
+  const input = new ort.Tensor('float32', data, [1, 3, nh, nw]);
+  const out = await sess.run({ [sess.inputNames[0]]: input });
+  const p = out[sess.outputNames[0]].data;
+  const corte = thr || 0.25;
+  const mask = Buffer.alloc(nh * nw);
+  let acesos = 0;
+  for (let i = 0; i < nh * nw; i++) if (p[i] > corte) { mask[i] = 255; acesos++; }
+  // DESENCOLHE (unclip do DBNet): o mapa de prob cobre só o MIOLO da linha de
+  // texto (~40-50% da altura do glifo) — sem expandir, legenda grossa com
+  // contorno sobrevive ao inpaint mutilada ("isso" smoke20) ou vira borrão
+  // ("entregou" smoke23: expansão FIXA não escala com letra grande). Unclip
+  // PROPORCIONAL como no DBNet original: cada run vertical expande 0.8x o
+  // próprio comprimento (letra grande = expansão grande), depois um alarga
+  // horizontal fixo pro contorno lateral. Tudo em JS puro — encadear
+  // .blur().threshold() no sharp não respeita ordem de chamada (pipeline
+  // interna fixa) e mascarou dois smokes seguidos.
+  const um = Buffer.alloc(nh * nw);
+  for (let x = 0; x < nw; x++) {
+    let y = 0;
+    while (y < nh) {
+      if (mask[y * nw + x]) {
+        let y2 = y; while (y2 + 1 < nh && mask[(y2 + 1) * nw + x]) y2++;
+        const r = Math.min(26, Math.max(3, Math.round(0.8 * (y2 - y + 1))));
+        for (let k = Math.max(0, y - r); k <= Math.min(nh - 1, y2 + r); k++) um[k * nw + x] = 255;
+        y = y2 + 1;
+      } else y++;
+    }
+  }
+  const fin = Buffer.alloc(nh * nw);
+  const RH = 8; // alarga horizontal fixo (contorno lateral ~6px no res do modelo)
+  for (let y = 0; y < nh; y++) {
+    let x = 0;
+    while (x < nw) {
+      if (um[y * nw + x]) {
+        let x2 = x; while (x2 + 1 < nw && um[y * nw + x2 + 1]) x2++;
+        for (let k = Math.max(0, x - RH); k <= Math.min(nw - 1, x2 + RH); k++) fin[y * nw + k] = 255;
+        x = x2 + 1;
+      } else x++;
+    }
+  }
+  await sharp(fin, { raw: { width: nw, height: nh, channels: 1 } })
+    .resize(W, Hh, { fit: 'fill', kernel: 'nearest' }).png().toFile(outPng);
+  return acesos;
+}
+
+// Detecta em LOTE (workers) → dir com dm_%05d.png. null se sessão indisponível.
+async function detProprioLote(sess, fdir, frames, W, Hh, outDir, prefixo, conc, thr) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const fila = frames.map((f, i) => ({ f, i }));
+  await Promise.all(Array.from({ length: conc || 3 }, async () => {
+    while (fila.length) {
+      const { f, i } = fila.shift();
+      const alvo = path.join(outDir, `${prefixo}_${String(i + 1).padStart(5, '0')}.png`);
+      try { await detProprioFrame(sess, path.join(fdir, f), alvo, W, Hh, thr); }
+      catch (e) {
+        console.error('[det-proprio] frame', i, e.message.slice(0, 60));
+        // buraco na sequência truncaria o vídeo de máscara → frame preto no lugar
+        try {
+          const sharp = require('sharp');
+          await sharp(Buffer.alloc(W * Hh), { raw: { width: W, height: Hh, channels: 1 } }).png().toFile(alvo);
+        } catch (_) {}
+      }
+    }
+  }));
+  return outDir;
+}
+
 // Prediction SINCRONA (Prefer: wait) — a resposta ja volta com o resultado na
 // maioria dos casos, eliminando ~2,5s de latencia de polling POR QUADRO (em
 // video de 20s/600 quadros isso somava minutos). Se o hold de 55s nao bastar,
@@ -1102,16 +1207,36 @@ async function processBlueCleanGuided(jobId, p) {
     let boxPngPath = null;  // limite das caixas (usado tambem no passe de verificacao)
     if (boxes.length && p.mask_mode !== 'caixa') {
       try {
-        const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: p.video_url, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 8, resolution: '720p', detection_interval: 1 },
-          { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
-        const black = path.join(dir, 'black.mp4');
-        await downloadFile(blackUrl, black);
         // caixa(s) do user viram um PNG-limite (uniao de todas, com PAD)
         const drawsAll = boxes.map((b) => `drawbox=x=${Math.max(0, b.x - PAD)}:y=${Math.max(0, b.y - PAD)}:w=${b.w + PAD * 2}:h=${b.h + PAD * 2}:color=white:t=fill`).join(',');
         const boxPng = path.join(dir, 'boxlimit.png');
         await run('ffmpeg', ['-y', '-f', 'lavfi', '-i', `color=black:size=${W}x${Hh}`, '-vf', drawsAll, '-frames:v', '1', boxPng]);
         boxPngPath = boxPng;
+        // r25: DETECTOR PRÓPRIO primeiro (DBNet local ~140ms/quadro = segundos
+        // no vídeo todo, vs minutos do externo); fallback externo se indisponível
+        const sess = await getDetSession();
+        let detSeqDir = null;
+        // hjunior: obrigatório sem detector próprio; com anotações roda EM
+        // PARALELO com o lote local — validado no smoke r25: seta com borda
+        // PRETA não é cor viva nem "texto" pro DBNet, mas o detector externo
+        // pinta gráficos bold (parecem glifos). Sem anotações: zero externo.
+        const rodarHjunior = async () => {
+          const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
+            { video: p.video_url, method: 'black', conf_threshold: 0.03, iou_threshold: 0.15, margin: 8, resolution: '720p', detection_interval: 1 },
+            { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
+          const bp = path.join(dir, 'black.mp4');
+          await downloadFile(blackUrl, bp);
+          return bp;
+        };
+        let blackPromise = null;
+        if (!sess) blackPromise = rodarHjunior(); // falha aqui = job falha (não há detector nenhum)
+        else if (p.anotacoes) blackPromise = rodarHjunior().catch((e) => { console.error('[bcg]', jobId, 'hjunior anotações falhou (segue com cor+DBNet):', e.message.slice(0, 80)); return null; });
+        if (sess) {
+          setJob({ progress: 10, stage: 'mapeando texto (motor próprio)' });
+          detSeqDir = await detProprioLote(sess, fdir, frames, W, Hh, path.join(dir, 'dm'), 'dm', 3);
+          console.log('[bcg]', jobId, 'detector PRÓPRIO usado no passe 1');
+        }
+        const black = blackPromise ? await blackPromise : null;
         // MÁSCARA r22 (rumo aos 100%): DENTRO da caixa do user, errar é limpar
         // demais — nunca de menos:
         //  - blend-diff threshold 45→26 (pega contorno/brilho fraco da letra)
@@ -1123,19 +1248,41 @@ async function processBlueCleanGuided(jobId, p) {
         const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
         const annCond = 'gte(' + ANN_COND + ',1)'; // multi-cor (vermelho/amarelo/azul/verde vivos)
         const comAnn = !!p.anotacoes;
-        const txtChain = `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[rawtxt]`;
-        const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation,dilation[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
-        const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
+        const annDil = Array(10).fill('dilation').join(',');
         const maskVid = path.join(dir, 'maskv.mp4');
-        await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
-          `${txtChain}${annChain};${uniLbl}${''}${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=5,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,format=gray[m]`,
-          '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        // POST-PROCESSAMENTO DE OURO (idêntico nos 2 detectores): close 12/8 +
+        // ∩ caixas + tmix 5 + rethreshold + 2 dilations finais
+        const posOuro = `${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=5,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,format=gray[m]`;
+        if (detSeqDir && black) {
+          // anotações: DBNet (texto pixel-accurate) ∪ blend-diff hjunior
+          // (gráficos bold/bordas pretas) ∪ camada de cor (setas/círculos)
+          const annChain = comAnn ? `;[1:v]fps=${fps},format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray,${annDil}[ann];[u1][ann]blend=all_mode=lighten[uni]` : '';
+          const uniLbl = comAnn ? '[uni]' : '[u1]';
+          await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(detSeqDir, 'dm_%05d.png'), '-i', orig, '-i', boxPng, '-i', black, '-filter_complex',
+            `[0:v]format=gray[dt];[1:v]fps=${fps},format=gray[a];[3:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[df];[dt][df]blend=all_mode=lighten[u1]${annChain};${uniLbl}${posOuro}`,
+            '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        } else if (detSeqDir) {
+          // fonte = máscaras pixel-accurate do detector próprio (sequência)
+          const annChain = comAnn ? `;[1:v]fps=${fps},format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray,${annDil}[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
+          const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
+          await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(detSeqDir, 'dm_%05d.png'), '-i', orig, '-i', boxPng, '-filter_complex',
+            `[0:v]format=gray[rawtxt]${annChain};${uniLbl}${posOuro}`,
+            '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        } else {
+          // fonte = blend-diff do vídeo pintado pelo detector externo
+          const txtChain = `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),26),255,0)'[rawtxt]`;
+          const annChain = comAnn ? `;[0:v]fps=${fps},format=rgb24,geq=r='255*${annCond}':g='255*${annCond}':b='255*${annCond}',format=gray,${annDil}[ann];[rawtxt][ann]blend=all_mode=lighten[uni]` : '';
+          const uniLbl = comAnn ? '[uni]' : '[rawtxt]';
+          await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
+            `${txtChain}${annChain};${uniLbl}${posOuro}`,
+            '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
+        }
         if (comAnn) console.log('[bcg]', jobId, 'camada de ANOTAÇÕES (setas/círculos por cor) ativa');
         // cobertura media: se ~zero, detector nao achou texto -> fallback caixa
         const { stdout: st } = await run('ffmpeg', ['-i', maskVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
         const yavgs = [...String(st).matchAll(/YAVG=([0-9.]+)/g)].map((m) => parseFloat(m[1]));
         const media = yavgs.length ? yavgs.reduce((a, b) => a + b, 0) / yavgs.length : 0;
-        if (media > 0.15) { // texto real detectado dentro das caixas
+        if (media > 16.15) { // texto real detectado (>16: preto do range limitado x264 crava YAVG=16, gate antigo 0.15 passava SEMPRE e o fallback caixa-cheia estava morto)
           const mdir = path.join(dir, 'tm'); fs.mkdirSync(mdir);
           await run('ffmpeg', ['-y', '-i', maskVid, path.join(mdir, 'm_%05d.png')]);
           textMaskDir = mdir;
@@ -1402,37 +1549,60 @@ async function processBlueCleanGuided(jobId, p) {
     if (textMaskDir && boxPngPath && process.env.FAL_KEY && (JOBS.get(jobId) || {}).status !== 'cancelled') {
       try {
         setJob({ progress: 90, stage: 'verificando resultado' });
-        const interim = path.join(dir, 'interim.mp4');
-        await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(fdir, 'o_%05d.jpg'),
-          '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', interim]);
-        const ikey = `${tmpPrefix}/interim.mp4`;
-        const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
-        uploaded.push(ikey);
-        const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: iurl, method: 'black', conf_threshold: 0.2, iou_threshold: 0.15, margin: 10, resolution: '480p', detection_interval: 3 },
-          { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
-        const black2 = path.join(dir, 'black2.mp4');
-        await downloadFile(blackUrl2, black2);
-        // RESÍDUO EXATO (fix da explosão de 12min): antes era blend-diff com
-        // threshold baixo que flagrava RUÍDO de compressão → 100% dos quadros
-        // "culpados" → correção em massa por-frame. Agora: resíduo = onde o
-        // detector PINTOU DE PRETO (lum<16) e o vídeo limpo NÃO era escuro
-        // (lum>40) — detecção verdadeira, zero ruído.
         const resVid = path.join(dir, 'resmask.mp4');
-        await run('ffmpeg', ['-y', '-i', interim, '-i', black2, '-i', boxPngPath, '-filter_complex',
-          `[0:v]fps=${fps},format=gray,geq=lum='if(gt(lum(X,Y),40),255,0)'[na];[1:v]fps=${fps},format=gray,geq=lum='if(lt(lum(X,Y),16),255,0)'[pb];[na][pb]blend=all_mode=multiply[r];[2:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,dilation,dilation,format=gray[m]`,
-          '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
+        const sess2 = await getDetSession();
+        if (sess2) {
+          // r25: verificação com o DETECTOR PRÓPRIO direto nos quadros limpos —
+          // "ainda tem texto aqui?" sem upload interim nem chamada externa.
+          // Resíduo = texto detectado no vídeo LIMPO ∩ caixas do user.
+          // Threshold 0.45 (vs 0.25 do passe 1): no smoke r25 o 0.25 flagrou
+          // 90/90 quadros (fantasmas fracos/textura) → 40 recorreções deixando
+          // remendos claros visíveis. Verificação só deve disparar em texto NÍTIDO.
+          const oFrames = fs.readdirSync(fdir).filter((f) => /^o_\d+\.jpg$/.test(f)).sort();
+          const dvDir = await detProprioLote(sess2, fdir, oFrames, W, Hh, path.join(dir, 'dv'), 'dv', 3, 0.45);
+          console.log('[bcg]', jobId, 'detector PRÓPRIO usado na verificação');
+          await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(dvDir, 'dv_%05d.png'), '-i', boxPngPath, '-filter_complex',
+            `[0:v]format=gray[r];[1:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,dilation,dilation,format=gray[m]`,
+            '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
+        } else {
+          const interim = path.join(dir, 'interim.mp4');
+          await run('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(fdir, 'o_%05d.jpg'),
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', interim]);
+          const ikey = `${tmpPrefix}/interim.mp4`;
+          const iurl = await uploadRetry('interim', interim, ikey, SU, SK, 'video/mp4');
+          uploaded.push(ikey);
+          const blackUrl2 = await replicateRun(token, 'hjunior29/video-text-remover',
+            { video: iurl, method: 'black', conf_threshold: 0.2, iou_threshold: 0.15, margin: 10, resolution: '480p', detection_interval: 3 },
+            { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
+          const black2 = path.join(dir, 'black2.mp4');
+          await downloadFile(blackUrl2, black2);
+          // RESÍDUO EXATO (fix da explosão de 12min): antes era blend-diff com
+          // threshold baixo que flagrava RUÍDO de compressão → 100% dos quadros
+          // "culpados" → correção em massa por-frame. Agora: resíduo = onde o
+          // detector PINTOU DE PRETO (lum<16) e o vídeo limpo NÃO era escuro
+          // (lum>40) — detecção verdadeira, zero ruído.
+          await run('ffmpeg', ['-y', '-i', interim, '-i', black2, '-i', boxPngPath, '-filter_complex',
+            `[0:v]fps=${fps},format=gray,geq=lum='if(gt(lum(X,Y),40),255,0)'[na];[1:v]fps=${fps},format=gray,geq=lum='if(lt(lum(X,Y),16),255,0)'[pb];[na][pb]blend=all_mode=multiply[r];[2:v]format=gray[bx];[r][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),24),255,0)',dilation,dilation,dilation,dilation,format=gray[m]`,
+            '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), resVid]);
+        }
         const rdir = path.join(dir, 'rm'); fs.mkdirSync(rdir);
-        await run('ffmpeg', ['-y', '-i', resVid, path.join(rdir, 'r_%05d.png')]);
-        // quadros culpados = mascara de residuo com conteudo (limite de
-        // seguranca 90: com extração exata, vazamento real é pontual)
+        // re-binariza na extração: o round-trip x264 yuv420p (range limitado)
+        // vira "preto"=16 — sem isso a máscara ia cinza-16 pro inpaint
+        await run('ffmpeg', ['-y', '-i', resVid, '-vf', `geq=lum='if(gt(lum(X,Y),128),255,0)'`, path.join(rdir, 'r_%05d.png')]);
+        // quadros culpados por ESTATÍSTICA DE LUMA, não tamanho de PNG:
+        // PNG todo-preto tem ~10KB (bug r23b→r25: filtro >=800B flagrava
+        // TODOS os quadros → 40 correções inúteis com remendos visíveis).
+        // Preto limitado = YAVG 16.00 cravado; resíduo real sobe a média.
+        const { stdout: rst } = await run('ffmpeg', ['-i', resVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
+        const yvres = [...String(rst).matchAll(/YAVG=([0-9.]+)/g)].map((m) => parseFloat(m[1]));
         let culpados = [];
-        for (let i = 0; i < N; i++) {
+        for (let i = 0; i < Math.min(N, yvres.length); i++) {
+          if (yvres[i] <= 16.15) continue; // ~0.05% do quadro aceso
           const rp = path.join(rdir, `r_${String(i + 1).padStart(5, '0')}.png`);
-          if (fs.existsSync(rp) && fs.statSync(rp).size >= 800) culpados.push({ i, rp });
+          if (fs.existsSync(rp)) culpados.push({ i, rp, yavg: yvres[i] });
         }
         console.log('[bcg]', jobId, `verificacao: ${culpados.length}/${N} quadros com residuo real`);
-        culpados.sort((a, b) => fs.statSync(b.rp).size - fs.statSync(a.rp).size); if (culpados.length > 40) { console.log('[bcg]', jobId, 'cap de correcao: top-40 por tamanho de residuo'); culpados = culpados.slice(0, 40); }
+        culpados.sort((a, b) => b.yavg - a.yavg); if (culpados.length > 40) { console.log('[bcg]', jobId, 'cap de correcao: top-40 por tamanho de residuo'); culpados = culpados.slice(0, 40); }
         if (culpados.length) {
           setJob({ progress: 93, stage: `recorrigindo ${culpados.length} quadros` });
           const fila2 = [...culpados];
