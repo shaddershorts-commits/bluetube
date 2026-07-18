@@ -23,6 +23,12 @@
     "api/blublu-chat.js": {
       "maxDuration": 60
     },
+    "api/blublu-emails.js": {
+      "maxDuration": 60
+    },
+    "api/comunidade-emails.js": {
+      "maxDuration": 60
+    },
     "api/transcript.js": {
       "maxDuration": 60
     },

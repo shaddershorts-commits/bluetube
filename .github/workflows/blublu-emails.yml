@@ -7,9 +7,11 @@ name: Blublu emails de lancamento (3 disparos)
 
 on:
   schedule:
-    - cron: '37 13 19 7 *'   # email 1 — 19/jul 10:37 BRT
-    - cron: '37 13 21 7 *'   # email 2 — 21/jul 10:37 BRT
-    - cron: '37 13 25 7 *'   # email 3 — 25/jul 10:37 BRT
+    # ADIADO (2026-07-18): o email do Daniel (comunidade-emails) furou a fila
+    # e ficou com 19/jul — Blublu passou pra 21/23/27.
+    - cron: '37 13 21 7 *'   # email 1 — 21/jul 10:37 BRT
+    - cron: '37 13 23 7 *'   # email 2 — 23/jul 10:37 BRT
+    - cron: '37 13 27 7 *'   # email 3 — 27/jul 10:37 BRT
   workflow_dispatch:
     inputs:
       email:
@@ -29,8 +31,8 @@ jobs:
             echo "n=${{ github.event.inputs.email }}" >> $GITHUB_OUTPUT
           else
             DIA=$(date -u +%d)
-            if [ "$DIA" -le 19 ]; then echo "n=1" >> $GITHUB_OUTPUT
-            elif [ "$DIA" -le 21 ]; then echo "n=2" >> $GITHUB_OUTPUT
+            if [ "$DIA" -le 21 ]; then echo "n=1" >> $GITHUB_OUTPUT
+            elif [ "$DIA" -le 23 ]; then echo "n=2" >> $GITHUB_OUTPUT
             else echo "n=3" >> $GITHUB_OUTPUT; fi
           fi
       - name: Dispara
