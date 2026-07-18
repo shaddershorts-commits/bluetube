@@ -231,7 +231,8 @@ module.exports = async function handler(req, res) {
           const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&order=views_count.desc&limit=${plat === 'tiktok' ? 30 : 15}`, { headers: H });
           if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
         }
-        candidatos.sort((a, b) => ordem === 'publicado_em.desc' ? new Date(b.publicado_em || 0) - new Date(a.publicado_em || 0) : (b.views || 0) - (a.views || 0));
+        const pTk = (v) => (plat !== 'tiktok' && v._tiktok) ? 1 : 0; // YouTube primeiro
+        candidatos.sort((a, b) => pTk(a) - pTk(b) || (ordem === 'publicado_em.desc' ? new Date(b.publicado_em || 0) - new Date(a.publicado_em || 0) : (b.views || 0) - (a.views || 0)));
       } catch (e) {}
     }
 
@@ -297,7 +298,11 @@ module.exports = async function handler(req, res) {
         }
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
-      videos.sort((a, b) => (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
+      // PRIORIDADE YOUTUBE (user 2026-07-18): YouTube Shorts sempre na frente —
+      // TikTok tem views absurdas e dominava o sort; só lidera se o usuário
+      // pedir TikTok explicitamente (plat === 'tiktok').
+      const pPlat = (v) => (plat !== 'tiktok' && v.plataforma === 'tiktok') ? 1 : 0;
+      videos.sort((a, b) => pPlat(a) - pPlat(b) || (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
       // NOVA DIRETRIZ (user 2026-07-18): VOLUME MÁXIMO do tema. Qualificador
       // ORDENA (quem bate sobe), NUNCA exclui — o portão antigo cortava tudo
       // quando o modelo punha palavra genérica ("shorts") como qualificador
@@ -308,7 +313,7 @@ module.exports = async function handler(req, res) {
       if (videos.length < qtd) {
         const jaTem = new Set(videos.map((v) => v.youtube_id || v.url));
         const resto = candidatos.filter((c) => !jaTem.has(c.youtube_id || c.url))
-          .sort((a, b) => (b.views || 0) - (a.views || 0))
+          .sort((a, b) => ((plat !== 'tiktok' && a._tiktok) ? 1 : 0) - ((plat !== 'tiktok' && b._tiktok) ? 1 : 0) || (b.views || 0) - (a.views || 0))
           .slice(0, qtd - videos.length)
           .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
         videos = videos.concat(resto);
@@ -401,7 +406,19 @@ REGRAS DO CHAT:
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
 - ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
 - NUNCA cite tecnologia interna, modelos, fornecedores ou APIs. A tecnologia é SUA.
-- pt-BR sempre.`;
+- pt-BR sempre.
+
+─── A CASA (você conhece TUDO do BlueTube e vende com orgulho) ───
+O usuário que fala com você é Master — ele TEM acesso a tudo isso. Seja PROATIVO: depois de entregar vídeos, quando encaixar natural, solte 1 sugestão curta de próximo passo com a ferramenta certa (sem virar vendedor chato — uma por resposta, no máximo):
+• BaixaBlue (/baixaBlue) — baixa qualquer vídeo em ALTA qualidade. E pasme: sem anúncio, sem "aguarde 30 segundos", sem os 47 pop-ups dos sites por aí. É pra cá que você manda quem quer baixar. SEMPRE.
+• BlueLens (/blueLens) — acha as cópias/reposts de um vídeo pela IMAGEM. Perfeito pra "quem mais postou isso?" e pra estudar variações que bombaram.
+• BlueVoice (/blueVoice) — narração nova com vozes de IA. Pra quem quer refazer o áudio/narrar o próprio corte.
+• BlueTendências (/bluetendencias) — sua outra casa: você disseca o vídeo em 5 atos lá (o card já tem o botão 🔬 Analisar).
+• Roteiros (botão 📝 Roteiro no card) — roteiro pronto a partir do vídeo, na hora.
+• Comunidade (/comunidade) — treinamentos oficiais exclusivos + troca entre criadores.
+REGRA DE OURO: JAMAIS recomende ferramenta de FORA (yt-dlp, snaptik, savefrom, sites de download, apps externos — NENHUM). Tudo se resolve dentro do BlueTube. Se realmente não existir ferramenta da casa pra algo, diga que ainda não fazemos — sem indicar concorrente. Piada ácida sobre os gambiarras de fora é bem-vinda.
+PLATAFORMA: YouTube Shorts é a prioridade da casa nas entregas; TikTok só protagoniza se o usuário pedir.
+CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobre X", "só do youtube"), monte a busca juntando com o contexto da conversa — não trate como papo.`;
 
   const anthropicCall = async (messages) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
