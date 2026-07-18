@@ -128,7 +128,7 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
   <p class="lede">Legendas queimadas, setas, círculos, marcas d'água — a <b>BlueClean</b> detecta e apaga sozinha, reconstruindo o fundo com qualidade de cinema. Sem rastro.</p>
 
   <div class="usage-bar">
-    <div><div class="usage-count" id="usageCount">Ilimitado</div><div class="usage-label">Plano Master · sem limites</div></div>
+    <div><div class="usage-count" id="usageCount">—</div><div class="usage-label">limpezas restantes este mês</div></div>
     <div style="flex:1;height:5px;background:rgba(0,170,255,.1);border-radius:100px;overflow:hidden"><div id="usageFill" style="height:100%;background:linear-gradient(90deg,var(--cyan),var(--gold));border-radius:100px;width:100%"></div></div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--dim)"><span id="usageRemaining"></span><span id="usageUsed"></span></div>
   </div>
@@ -227,6 +227,10 @@ let procStart=0,procTick=null;
 let supaConfig=null;
 
 function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),3500);}
+// download DIRETO: o atributo download do <a> é ignorado em URL cross-origin
+// (só abre o vídeo). O param ?download do Supabase manda Content-Disposition:
+// attachment => o navegador baixa direto, sem abrir a página do storage.
+function dlHref(url,name){if(!url)return url;return url+(url.includes('?')?'&':'?')+'download='+encodeURIComponent(name||'blueclean.mp4');}
 function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forEach(s=>document.getElementById(s).style.display=s===id?'block':'none');}
 
 // Init
@@ -245,10 +249,33 @@ function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forE
   }catch(e){document.getElementById('upgradeWall').style.display='block';}
 })();
 
+let usageState={used:0,limit:15,remaining:15,renova:null,max_seconds:35};
+function fmtDate(iso){try{const p=iso.split('-');return p[2]+'/'+p[1];}catch(e){return iso;}}
 function updateUsage(d){
-  document.getElementById('usageCount').textContent='Ilimitado';
+  usageState={used:d.used||0,limit:d.limit||15,remaining:d.remaining!=null?d.remaining:((d.limit||15)-(d.used||0)),renova:d.renova||null,max_seconds:d.max_seconds||35};
+  const cnt=document.getElementById('usageCount');
+  const lbl=document.querySelector('.usage-label');
   const usedEl=document.getElementById('usageUsed');
-  if(usedEl) usedEl.textContent=(d.used||0)+' processados';
+  const fill=document.getElementById('usageFill');
+  if(cnt)cnt.textContent=usageState.remaining;
+  if(lbl)lbl.textContent='limpezas restantes este mês';
+  if(usedEl)usedEl.textContent=usageState.used+' de '+usageState.limit+' usadas'+(usageState.renova?' · renova '+fmtDate(usageState.renova):'');
+  if(fill)fill.style.width=Math.max(0,Math.round(100*usageState.remaining/usageState.limit))+'%';
+}
+function showLimitPopup(){
+  const r=usageState.renova?fmtDate(usageState.renova):null;
+  const old=document.getElementById('limitPopup');if(old)old.remove();
+  const ov=document.createElement('div');
+  ov.id='limitPopup';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(2,8,23,.82);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML='<div style="max-width:390px;width:100%;background:#0a1628;border:1px solid rgba(0,170,255,.25);border-radius:18px;padding:32px 26px;text-align:center;box-shadow:0 30px 80px -30px rgba(0,120,255,.6)">'
+    +'<div style="font-size:46px;margin-bottom:12px">🎬</div>'
+    +'<div style="font-size:19px;font-weight:800;margin-bottom:10px;color:#eaf3ff">Você usou suas '+usageState.limit+' limpezas do mês</div>'
+    +'<div style="font-family:var(--mono);font-size:12.5px;color:#8299bd;line-height:1.65;margin-bottom:22px">Seu plano Master inclui <b style="color:#eaf3ff">'+usageState.limit+' limpezas por mês</b>.'+(r?' Sua cota <b style="color:#00d4ff">renova em '+r+'</b>.':'')+'<br>Enquanto isso, aproveite as outras ferramentas do BlueTube 💙</div>'
+    +'<button id="limitPopupOk" style="width:100%;background:linear-gradient(100deg,#00d4ff,#1a6bff);border:none;border-radius:12px;padding:13px;font-family:var(--font);font-size:14px;font-weight:800;color:#021018;cursor:pointer">Entendi</button></div>';
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  document.body.appendChild(ov);
+  document.getElementById('limitPopupOk').addEventListener('click',()=>ov.remove());
 }
 
 // File pick + frame extraction
@@ -446,14 +473,19 @@ function startTimer(){
 }
 function stopTimer(){if(procTick){clearInterval(procTick);procTick=null;}}
 
+let lastDurationSec=0;
 async function startProcess(){
   if(!selectedFile||!TOKEN)return;
   if(!marksArr.length){toast('🎯 Marque pelo menos uma área pra remover');return;}
+  // cota esgotada: popup e não deixa nem começar (economiza upload)
+  if(usageState.remaining<=0){showLimitPopup();return;}
+  const maxS=usageState.max_seconds||35;
   try{
     const testVid=document.createElement('video');
     testVid.src=URL.createObjectURL(selectedFile);
     await new Promise((r,j)=>{testVid.onloadedmetadata=r;testVid.onerror=()=>j(new Error('Vídeo inválido'));setTimeout(r,3000);});
-    if(testVid.duration>65){toast('❌ Vídeo muito longo. Máximo 60 segundos.');return;}
+    lastDurationSec=testVid.duration||0;
+    if(testVid.duration>maxS+1){toast('❌ Vídeo muito longo. Máximo '+maxS+' segundos.');return;}
     if(testVid.videoWidth>1920){toast('❌ Resolução muito alta. Máximo 1920px.');return;}
   }catch(e){if(e.message.includes('inválido')){toast('❌ '+e.message);return;}}
 
@@ -483,9 +515,12 @@ async function startProcess(){
     videoUrl=cfg.video_public_url;
 
     document.getElementById('stepLabel').textContent='🧹 Nossa IA está limpando…';
-    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes,marks})});
+    const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',token:TOKEN,video_url:videoUrl,engine:'guided',boxes,marks,duration_sec:Math.round(lastDurationSec)})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Erro ao iniciar');
+    if(!r.ok){
+      if(d.limit_reached){if(d.renova)usageState.renova=d.renova;usageState.remaining=0;stopTimer();show('stepEditor');showLimitPopup();return;}
+      throw new Error(d.error||'Erro ao iniciar');
+    }
     currentJobId=d.job_id;
     startPolling();
   }catch(e){stopTimer();toast('❌ '+e.message);show('stepEditor');}
@@ -557,7 +592,7 @@ function showResult(outputUrl,framesFailed){
   if(!framesFailed)confetti();
   const vb=document.getElementById('vidBefore');vb.src=videoUrl;vb.play().catch(()=>{});
   const va=document.getElementById('vidAfter');va.src=outputUrl+(outputUrl.includes('?')?'&':'?')+'v='+Date.now();va.play().catch(()=>{});
-  document.getElementById('dlBtn').href=outputUrl;
+  document.getElementById('dlBtn').href=dlHref(outputUrl,'blueclean.mp4');
   vb.ontimeupdate=()=>{if(Math.abs(va.currentTime-vb.currentTime)>.2)va.currentTime=vb.currentTime;};
   const wrap=document.getElementById('compWrap');const handle=document.getElementById('sliderHandle');
   if(!wrap._wired){
@@ -596,7 +631,7 @@ async function loadHistory(){
     if(!d.jobs?.length){el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--dim)">Nenhum vídeo processado ainda.</div>';return;}
     el.innerHTML=d.jobs.slice(0,5).map(j=>{
       const s=j.status==='completed'?'color:var(--green)':j.status==='processing'?'color:var(--cyan)':'color:var(--red)';
-      return`<div class="job"><span style="font-family:var(--mono);font-size:11px;color:var(--dim)">${new Date(j.created_at).toLocaleDateString('pt-BR')}</span><span style="font-family:var(--mono);font-size:11px;${s}">${j.status==='completed'?'✅ Pronto':j.status==='processing'?'⏳ Processando':'❌ Falhou'}</span>${j.output_url?`<a href="${j.output_url}" download style="color:var(--cyan);font-size:11px">⬇️ Baixar</a>`:'<span></span>'}</div>`;
+      return`<div class="job"><span style="font-family:var(--mono);font-size:11px;color:var(--dim)">${new Date(j.created_at).toLocaleDateString('pt-BR')}</span><span style="font-family:var(--mono);font-size:11px;${s}">${j.status==='completed'?'✅ Pronto':j.status==='processing'?'⏳ Processando':'❌ Falhou'}</span>${j.output_url?`<a href="${dlHref(j.output_url,'blueclean.mp4')}" style="color:var(--cyan);font-size:11px">⬇️ Baixar</a>`:'<span></span>'}</div>`;
     }).join('');
   }catch(e){}
 }

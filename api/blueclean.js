@@ -23,22 +23,42 @@ module.exports = async function handler(req, res) {
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
 
   // ── AUTH (all actions require auth) ────────────────────────────────────────
-  let userId = null, userEmail = null, userPlan = 'free';
+  let userId = null, userEmail = null, userPlan = 'free', subExpires = null, subManual = false;
   if (token) {
     try {
       const ur = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
       if (ur.ok) {
         const u = await ur.json(); userId = u.id; userEmail = u.email;
         const pr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(userEmail)}&select=plan,plan_expires_at,is_manual`, { headers: H });
-        if (pr.ok) { const sub = (await pr.json())[0]; if (sub?.plan !== 'free') { const v = sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date(); if (v) userPlan = sub.plan; } }
+        if (pr.ok) { const sub = (await pr.json())[0]; if (sub?.plan !== 'free') { const v = sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date(); if (v) { userPlan = sub.plan; subExpires = sub.plan_expires_at; subManual = !!sub.is_manual; } } }
       }
     } catch (e) {}
   }
   if (!userId) return res.status(401).json({ error: 'Login necessário.' });
   if (userPlan !== 'master') return res.status(403).json({ error: 'BlueClean é exclusivo do plano Master.', upgrade: true });
 
-  const month = new Date().toISOString().slice(0, 7);
-  const LIMIT = 999999; // Ilimitado para Master
+  // ── LIMITE MENSAL ALINHADO AO CICLO DE RENOVAÇÃO ───────────────────────────
+  // 15 limpezas por ciclo. A janela é MENSAL ancorada no DIA da cobrança
+  // (plan_expires_at), não no dia 1 do calendário: quando o Master paga a
+  // renovação, o expires_at avança e a chave do período vira outra => a cota
+  // reseta junto com o pagamento, exatamente como pedido. Master manual/eterno
+  // (sem expires) cai no reset por mês calendário.
+  const LIMIT = 15;
+  const cicloInfo = (() => {
+    const now = new Date();
+    let dia = 1;
+    if (subExpires) { const e = new Date(subExpires); if (!isNaN(e.getTime())) dia = e.getUTCDate(); }
+    let y = now.getUTCFullYear(), m = now.getUTCMonth();
+    const diasNoMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const diaEf = Math.min(dia, diasNoMes);
+    if (now.getUTCDate() < diaEf) { m -= 1; if (m < 0) { m = 11; y -= 1; } }
+    // próxima renovação (fim do ciclo) pro popup
+    let ny = y, nm = m + 1; if (nm > 11) { nm = 0; ny += 1; }
+    const diasProx = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+    const proxData = new Date(Date.UTC(ny, nm, Math.min(dia, diasProx)));
+    return { key: `${y}-${String(m + 1).padStart(2, '0')}`, renova: proxData.toISOString().slice(0, 10) };
+  })();
+  const month = cicloInfo.key;
 
   const getUsed = async () => {
     const ur = await fetch(`${SU}/rest/v1/blueclean_usage?user_id=eq.${userId}&month=eq.${month}&select=count`, { headers: H });
@@ -72,7 +92,7 @@ module.exports = async function handler(req, res) {
   // ── USAGE ──────────────────────────────────────────────────────────────────
   if (action === 'usage') {
     const used = await getUsed();
-    return res.status(200).json({ used, limit: LIMIT, remaining: Math.max(0, LIMIT - used) });
+    return res.status(200).json({ used, limit: LIMIT, remaining: Math.max(0, LIMIT - used), renova: cicloInfo.renova, max_seconds: 35 });
   }
 
   // ── HISTORY ────────────────────────────────────────────────────────────────
@@ -164,7 +184,13 @@ module.exports = async function handler(req, res) {
     }
 
     const used = await getUsed();
-    if (used >= LIMIT) return res.status(429).json({ error: `Limite atingido (${LIMIT}/${LIMIT}).` });
+    if (used >= LIMIT) return res.status(429).json({
+      error: `Você já usou suas ${LIMIT} limpezas deste mês.`,
+      limit_reached: true, used, limit: LIMIT, renova: cicloInfo.renova,
+    });
+    // guarda de duração server-side (o front também barra): rejeita > 35s
+    const dur = Number(req.body.duration_sec);
+    if (dur && dur > 36) return res.status(400).json({ error: 'Vídeo acima de 35 segundos.', too_long: true, max_seconds: 35 });
 
     console.log('[blueclean] Start pipeline v2 (chunking+boxes), user:', userEmail, 'boxes:', Array.isArray(boxes) ? boxes.length : 0);
 
