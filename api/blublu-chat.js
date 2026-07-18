@@ -19,7 +19,7 @@ const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality.js');
 
 const MODEL = 'claude-haiku-4-5-20251001';
 const DAILY_LIMIT = 60;
-const QTD_PADRAO = 24;          // sem pedido explícito = TODOS os certeiros (teto do grid)
+const QTD_PADRAO = 30;          // VOLUME: sem pedido explícito = tudo do tema (teto do grid)
 
 // Ídolos oficiais do Blublu (mesmo easter egg da BlueTendências): quando o
 // canal aparece no resultado, ele vira fã histérico — lore do produto.
@@ -124,8 +124,13 @@ module.exports = async function handler(req, res) {
     // — o modelo tentava "escolher o melhor" e entregava 1 (user reclamou 2x)
     const userFalouNumero = /\d/.test(message) || /\b(um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte)\b/i.test(message);
     const qtd = (userFalouNumero && parseInt(inp.quantidade) > 0) ? Math.min(24, parseInt(inp.quantidade)) : QTD_PADRAO;
-    const minViews = Math.max(0, parseInt(inp.min_views) || 0);
-    const dias = Math.max(0, parseInt(inp.dias) || 0);
+    // FILTRO INVENTADO MATA VOLUME (forense: "que mais explodiram" virou
+    // min_views gigante → 1 vídeo). min_views só vale se o USUÁRIO falou
+    // número/quantia; dias só com referência temporal explícita.
+    const falouQuantia = /\d|\b(mil|milh[aã]o|milh[oõ]es|k\b|m\b)\b/i.test(message);
+    const falouTempo = /\d|\b(dia|dias|semana|semanas|m[eê]s|meses|hoje|ontem|recente|últim)\w*/i.test(message);
+    const minViews = falouQuantia ? Math.max(0, parseInt(inp.min_views) || 0) : 0;
+    const dias = falouTempo ? Math.max(0, parseInt(inp.dias) || 0) : 0;
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
     const ordem = inp.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
     const plat = inp.plataforma === 'tiktok' ? 'tiktok' : (inp.plataforma === 'youtube' ? 'youtube' : null);
@@ -176,13 +181,8 @@ module.exports = async function handler(req, res) {
       if (plat !== 'tiktok') {
         const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
         if (r1.ok) candidatos = await r1.json();
-        try {
-          const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&${orExpr}&order=${ordem}&limit=20`, { headers: H });
-          if (rs.ok) {
-            const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
-            candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
-          }
-        } catch (e) {}
+        // NICHO SECRETO FORA da busca do Blublu (ordem do user 2026-07-18):
+        // acervo do chat = Virais (banco principal + TikTok), secretos só no filtro da página.
       }
       if (plat !== 'youtube') try {
         const tkOr = 'or=(' + termosOk.map((t) => `caption.ilike.*${encodeURIComponent(t)}*,author_name.ilike.*${encodeURIComponent(t)}*,author_handle.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
@@ -226,13 +226,7 @@ module.exports = async function handler(req, res) {
         if (r1.ok) candidatos = await r1.json();
       }
       try {
-        if (plat !== 'tiktok') {
-          const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&order=${ordem}&limit=15`, { headers: H });
-          if (rs.ok) {
-            const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
-            candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
-          }
-        }
+        // (nicho secreto fora — ordem do user)
         if (!nicho && plat !== 'youtube') {
           const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&order=views_count.desc&limit=${plat === 'tiktok' ? 30 : 15}`, { headers: H });
           if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
@@ -304,13 +298,20 @@ module.exports = async function handler(req, res) {
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
       videos.sort((a, b) => (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
-      // PORTÃO ANTI-ALEATÓRIO (regra do user: na dúvida, NÃO manda):
-      // - pedido específico (tem qualificadores) e ALGUÉM pontuou → entrega SÓ quem pontuou
-      // - pedido específico e NINGUÉM pontuou → entrega só quem tem o núcleo no
-      //   TÍTULO/CANAL (vídeos do tema), nunca menção solta na fala
-      if (qualifN.length) {
-        const comScore = videos.filter((v) => (v._score || 0) > 0);
-        videos = comScore.length ? comScore : videos.filter((v) => v.confirmado_por !== 'fala' || (v._score || 0) > 0);
+      // NOVA DIRETRIZ (user 2026-07-18): VOLUME MÁXIMO do tema. Qualificador
+      // ORDENA (quem bate sobe), NUNCA exclui — o portão antigo cortava tudo
+      // quando o modelo punha palavra genérica ("shorts") como qualificador
+      // (caso Lamine Yamal: 2 vídeos). A única exclusão que fica é a menção de
+      // passagem na fala (occ<2 sem título), que era lixo real.
+      // VOLUME FILL: se ainda couber, completa com os demais candidatos do
+      // tema (recall/semântica) marcados 'relacionado', por views.
+      if (videos.length < qtd) {
+        const jaTem = new Set(videos.map((v) => v.youtube_id || v.url));
+        const resto = candidatos.filter((c) => !jaTem.has(c.youtube_id || c.url))
+          .sort((a, b) => (b.views || 0) - (a.views || 0))
+          .slice(0, qtd - videos.length)
+          .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
+        videos = videos.concat(resto);
       }
       verificadosIds = candidatos.filter((c) => c.youtube_id && cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
@@ -358,7 +359,7 @@ module.exports = async function handler(req, res) {
           tema: { type: ['string', 'null'], description: 'OBRIGATÓRIO sempre que o pedido menciona QUALQUER assunto/pessoa/canal (ex: "chimpanzé", "Lebron James"). null APENAS em busca puramente numérica/temporal ("mais de 5mi em 2 semanas"). JAMAIS deixe null com nucleos preenchidos.' },
           tipo_tema: { type: ['string', 'null'], description: '"nome_proprio" (pessoa, artista, canal, marca — ex: Harry Styles, Billie Eilish) ou "assunto" (conceito comum — ex: tigre, futebol)' },
           nucleos: { type: 'array', items: { type: 'string' }, description: 'APENAS o substantivo-núcleo e suas traduções/apelidos. nome_proprio → nome COMPLETO intacto + grafias ("harry styles","harrystyles"), JAMAIS separar palavras. assunto → traduções nos idiomas do acervo. PROIBIDO verbos, adjetivos ou o resto do pedido aqui — isso vai em qualificadores. EXEMPLO pedido "tigre subindo em árvore": nucleos=["tigre","tiger","тигр","虎"] (SÓ o bicho!), qualificadores=["subindo","escalando","climbing","árvore","tree","árbol"].' },
-          qualificadores: { type: 'array', items: { type: 'string' }, description: 'TODO o resto do pedido além do núcleo, em palavras soltas pt+en+es. Servem pra RANQUEAR o vídeo exato acima dos genéricos (nunca pra recall). Mesmo EXEMPLO acima: ["subindo","escalando","climbing","árvore","tree","árbol"]. Vazio se o pedido é só o núcleo.' },
+          qualificadores: { type: 'array', items: { type: 'string' }, description: 'SÓ características do CONTEÚDO além do núcleo (ação, objeto, contexto), pt+en+es — servem pra ORDENAR os melhores primeiro, nunca excluem ninguém. PROIBIDO palavra de formato/plataforma ("shorts","video","youtube","tiktok","viral") — isso NÃO é qualificador. Vazio na dúvida.' },
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
@@ -391,6 +392,7 @@ REGRAS DO CHAT:
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
 - CAMPOS DA BUSCA: tema NUNCA null quando o pedido tem assunto/pessoa/canal. nucleos = SÓ o núcleo e traduções; verbos/adjetivos/contexto vão SEMPRE em qualificadores (misturar destrói a precisão — regra dura).
+- VOLUME É REI: entregue TODOS os vídeos do tema que a busca devolver. NUNCA converta expressões como "que explodiram"/"em alta" em min_views — isso é só ordem por views. Filtro numérico APENAS quando o usuário falar um número. Nunca diga que "não tem" se a busca entregou vídeos ou marcou que há mais.
 - PRECISÃO: termos INEQUÍVOCOS (nome completo, apelidos famosos) — nada de palavra solta genérica que traga vídeo errado. Na dúvida, melhor menos e certo.
 - DATA: "mais recente", "último", "novo" = ordem "recentes" na busca, SEMPRE. Não responda recência com o mais visto.
 - IDIOMAS: o acervo é GLOBAL (pt, en, es, fr, de, it, ja, ko, zh, ru). Sempre inclua nos termos o núcleo traduzido pro inglês e espanhol no mínimo. Só filtre nicho se o usuário pedir explicitamente.
