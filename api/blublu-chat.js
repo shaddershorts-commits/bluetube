@@ -70,6 +70,17 @@ module.exports = async function handler(req, res) {
   }
   if (!userId) return res.status(403).json({ error: 'Falar com o Blublu é exclusivo do plano Master.', upgrade: true });
 
+  // ── EVENTOS DE APRENDIZADO (clique em card / enquete) ─────────────────────
+  // Fora do limite diário: feedback nunca gasta mensagem do usuário.
+  if (req.body?.action === 'evento') {
+    const tipo = ['clique', 'enquete'].includes(req.body.tipo) ? req.body.tipo : null;
+    if (!tipo) return res.status(400).json({ error: 'tipo' });
+    await fetch(`${SU}/rest/v1/blublu_eventos`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({
+      user_id: userId, tipo, alvo: String(req.body.alvo || '').slice(0, 120), valor: String(req.body.valor || '').slice(0, 40),
+    }) }).catch(() => {});
+    return res.status(200).json({ ok: true });
+  }
+
   // ── LIMITE DIÁRIO (BRT) ────────────────────────────────────────────────────
   const dia = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
   const ur2 = await fetch(`${SU}/rest/v1/blublu_chat_usage?user_id=eq.${userId}&dia=eq.${dia}&select=count`, { headers: H });
