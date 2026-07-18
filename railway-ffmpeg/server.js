@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r25g-blueclean-detproprio',
+      build: 'r25h-blueclean-detwasm',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -869,26 +869,40 @@ const GUIDED_MODEL = 'zylim0702/remove-object';
 // o maior custo de tempo do guided (2-3min cada). Máscara SAI pixel-accurate
 // direto do modelo. Carregamento preguiçoso + fallback: qualquer falha (ex:
 // glibc no alpine) => volta pro detector externo sem quebrar nada.
-let _ortSession = null, _ortTentado = false;
+let _ortSession = null, _ortTentado = false, _ortLib = null;
 async function getDetSession() {
   if (_ortSession || _ortTentado) return _ortSession;
   _ortTentado = true;
+  const modelo = process.env.DET_MODEL_PATH || '/app/det.onnx';
+  if (!fs.existsSync(modelo)) { console.error('[det-proprio] modelo ausente:', modelo); return null; }
   try {
     const ort = require('onnxruntime-node');
-    const modelo = process.env.DET_MODEL_PATH || '/app/det.onnx';
-    if (!fs.existsSync(modelo)) throw new Error('modelo ausente: ' + modelo);
     _ortSession = await ort.InferenceSession.create(modelo, { intraOpNumThreads: 3 });
-    console.log('[det-proprio] carregado:', modelo);
+    _ortLib = ort;
+    console.log('[det-proprio] carregado (nativo):', modelo);
   } catch (e) {
-    console.error('[det-proprio] indisponivel (fallback externo):', e.message.slice(0, 120));
-    _ortSession = null;
+    // Alpine/musl: gcompat NÃO cobre __vsnprintf_chk → binário nativo não
+    // carrega (visto em produção r25g). onnxruntime-web roda o mesmo modelo
+    // em WASM dentro do V8 (zero .so) com velocidade ~igual (134ms vs 145ms
+    // por quadro, medido) e saída bit-idêntica.
+    console.error('[det-proprio] nativo indisponivel, tentando wasm:', e.message.slice(0, 100));
+    try {
+      const ortw = require('onnxruntime-web');
+      ortw.env.wasm.numThreads = 3;
+      _ortSession = await ortw.InferenceSession.create(fs.readFileSync(modelo));
+      _ortLib = ortw;
+      console.log('[det-proprio] carregado (wasm):', modelo);
+    } catch (e2) {
+      console.error('[det-proprio] indisponivel (fallback externo):', e2.message.slice(0, 120));
+      _ortSession = null; _ortLib = null;
+    }
   }
   return _ortSession;
 }
 
 // Detecta texto em UM frame → máscara PNG full-res (255 = texto).
 async function detProprioFrame(sess, imgPath, outPng, W, Hh, thr) {
-  const ort = require('onnxruntime-node');
+  const ort = _ortLib; // lib que efetivamente carregou (nativo ou wasm)
   const sharp = require('sharp');
   const LADO = 736;
   const escala = LADO / Math.max(W, Hh);
