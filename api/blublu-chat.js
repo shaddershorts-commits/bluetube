@@ -103,7 +103,12 @@ module.exports = async function handler(req, res) {
   // ── EXECUTOR DA BUSCA (o funil de precisão) ────────────────────────────────
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   async function executarBusca(inp) {
-    const tema = inp.tema ? String(inp.tema).slice(0, 120) : null;
+    // BLINDAGEM (forense 2026-07-18): o modelo às vezes manda termos/nucleos
+    // com tema=null — sem isso o fluxo caía no ramo "só filtros" e DESPEJAVA
+    // o top do acervo por views (os mesmos 24 sempre, caso Kidshire).
+    const nucleosIn = Array.isArray(inp.nucleos) && inp.nucleos.length ? inp.nucleos : (Array.isArray(inp.termos) ? inp.termos : []);
+    let tema = inp.tema ? String(inp.tema).slice(0, 120) : null;
+    if (!tema && nucleosIn.length) tema = String(nucleosIn[0]).slice(0, 120);
     // quantidade: SÓ vale se o USUÁRIO falou um número (dígito ou por extenso)
     // — o modelo tentava "escolher o melhor" e entregava 1 (user reclamou 2x)
     const userFalouNumero = /\d/.test(message) || /\b(um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte)\b/i.test(message);
@@ -113,7 +118,7 @@ module.exports = async function handler(req, res) {
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
     const ordem = inp.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
     const plat = inp.plataforma === 'tiktok' ? 'tiktok' : (inp.plataforma === 'youtube' ? 'youtube' : null);
-    let termos = (Array.isArray(inp.termos) ? inp.termos : []).map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 6);
+    let termos = nucleosIn.map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 8);
     if (tema && !termos.length) termos = [tema];
 
     const parts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em,nicho'];
@@ -198,7 +203,13 @@ module.exports = async function handler(req, res) {
         } catch (e) {}
       }
     } else {
-      // só filtros: SQL direto no acervo completo
+      // só filtros: SQL direto no acervo completo — MAS só quando há filtro
+      // REAL. Sem tema, sem termos E sem filtro = pedido sem critério: devolve
+      // vazio pro modelo pedir esclarecimento (jamais despejar top views).
+      const temFiltroReal = !!(minViews || dias || nicho || plat || inp.ordem);
+      if (!temFiltroReal) {
+        return { videos: [], temMais: false, verificadosIds: [], resumo: { erro: 'pedido_sem_criterio', instrucao: 'Nenhum tema nem filtro identificado. Pergunte ao usuário o que ele quer (tema, canal ou filtro) — NÃO invente resultados.' } };
+      }
       if (plat !== 'tiktok') {
         const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&order=${ordem}&limit=30`, { headers: H });
         if (r1.ok) candidatos = await r1.json();
@@ -333,10 +344,10 @@ module.exports = async function handler(req, res) {
       input_schema: {
         type: 'object',
         properties: {
-          tema: { type: ['string', 'null'], description: 'assunto OU nome de canal/criador do pedido. null se for busca só por números/filtros' },
+          tema: { type: ['string', 'null'], description: 'OBRIGATÓRIO sempre que o pedido menciona QUALQUER assunto/pessoa/canal (ex: "chimpanzé", "Lebron James"). null APENAS em busca puramente numérica/temporal ("mais de 5mi em 2 semanas"). JAMAIS deixe null com nucleos preenchidos.' },
           tipo_tema: { type: ['string', 'null'], description: '"nome_proprio" (pessoa, artista, canal, marca — ex: Harry Styles, Billie Eilish) ou "assunto" (conceito comum — ex: tigre, futebol)' },
-          termos: { type: 'array', items: { type: 'string' }, description: 'REGRAS POR TIPO: nome_proprio → o NOME COMPLETO INTACTO + apelidos/grafias famosas ("harry styles","harrystyles") — JAMAIS separe as palavras (buscar só "harry" acha gente errada; "billie" sozinho acha Billie Jean do MJ). assunto → o núcleo traduzido nos idiomas do acervo ("tigre","tiger","тигр","虎"). NUNCA frases descritivas aqui.' },
-          qualificadores: { type: 'array', items: { type: 'string' }, description: 'o RESTO do pedido em palavras soltas, traduzidas pt+en+es (ex: pedido "tigre escalando árvore" → ["escalando","subindo","trepando","climbing","árvore","tree","árbol","árboles"]). Usado pra RANQUEAR o vídeo exato acima dos genéricos. Vazio se o pedido é só o núcleo.' },
+          nucleos: { type: 'array', items: { type: 'string' }, description: 'APENAS o substantivo-núcleo e suas traduções/apelidos. nome_proprio → nome COMPLETO intacto + grafias ("harry styles","harrystyles"), JAMAIS separar palavras. assunto → traduções nos idiomas do acervo. PROIBIDO verbos, adjetivos ou o resto do pedido aqui — isso vai em qualificadores. EXEMPLO pedido "tigre subindo em árvore": nucleos=["tigre","tiger","тигр","虎"] (SÓ o bicho!), qualificadores=["subindo","escalando","climbing","árvore","tree","árbol"].' },
+          qualificadores: { type: 'array', items: { type: 'string' }, description: 'TODO o resto do pedido além do núcleo, em palavras soltas pt+en+es. Servem pra RANQUEAR o vídeo exato acima dos genéricos (nunca pra recall). Mesmo EXEMPLO acima: ["subindo","escalando","climbing","árvore","tree","árbol"]. Vazio se o pedido é só o núcleo.' },
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
@@ -368,6 +379,7 @@ REGRAS DO CHAT:
 - Pedido de vídeos = chame buscar_videos. Conversa = responda direto, no personagem.
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
+- CAMPOS DA BUSCA: tema NUNCA null quando o pedido tem assunto/pessoa/canal. nucleos = SÓ o núcleo e traduções; verbos/adjetivos/contexto vão SEMPRE em qualificadores (misturar destrói a precisão — regra dura).
 - PRECISÃO: termos INEQUÍVOCOS (nome completo, apelidos famosos) — nada de palavra solta genérica que traga vídeo errado. Na dúvida, melhor menos e certo.
 - DATA: "mais recente", "último", "novo" = ordem "recentes" na busca, SEMPRE. Não responda recência com o mais visto.
 - IDIOMAS: o acervo é GLOBAL (pt, en, es, fr, de, it, ja, ko, zh, ru). Sempre inclua nos termos o núcleo traduzido pro inglês e espanhol no mínimo. Só filtre nicho se o usuário pedir explicitamente.
@@ -440,7 +452,7 @@ REGRAS DO CHAT:
     fetch(`${SU}/rest/v1/blublu_chat_logs`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({
       user_id: userId, mensagem: message.slice(0, 300),
       tema: resultado?._input?.tema || null,
-      termos: resultado?._input?.termos || null,
+      termos: resultado?._input?.nucleos || resultado?._input?.termos || null,
       qualificadores: resultado?._input?.qualificadores || null,
       filtros: resultado ? { min_views: resultado._input?.min_views, dias: resultado._input?.dias, nicho: resultado._input?.nicho, ordem: resultado._input?.ordem, plataforma: resultado._input?.plataforma, quantidade: resultado._input?.quantidade } : null,
       entregues: resultado ? resultado.videos.length : null,
