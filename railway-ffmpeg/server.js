@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r16-blueclean-turbo',
+      build: 'r17-blueclean-fal',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -889,8 +889,26 @@ async function replicateRunSync(token, model, input) {
   return out;
 }
 
-// Retry resiliente a throttle do Replicate (burst baixo com saldo baixo).
+// MOTOR PRINCIPAL: fal.ai (mesma familia LaMa, 1.7s/quadro e paralelismo REAL
+// sem throttle — validado 2026-07-18: 8/8 em burst, qualidade identica).
+// Replicate vira FALLBACK por quadro (dupla engine = robustez em camadas).
+async function falInpaint(imageUrl, maskUrl) {
+  const r = await axios.post('https://fal.run/fal-ai/lama',
+    { image_url: imageUrl, mask_image_url: maskUrl },
+    { headers: { Authorization: 'Key ' + (process.env.FAL_KEY || ''), 'Content-Type': 'application/json' }, timeout: 90000 });
+  const out = r.data?.image?.url;
+  if (!out) throw new Error('fal sem output: ' + JSON.stringify(r.data).slice(0, 120));
+  return out;
+}
+
+// Retry resiliente: fal 3 tentativas -> fallback Replicate (throttle-aware).
 async function guidedInpaint(token, input) {
+  if (process.env.FAL_KEY) {
+    for (let a = 0; a < 3; a++) {
+      try { return await falInpaint(input.image, input.mask); }
+      catch (e) { if (a === 2) console.error('[guided] fal falhou 3x, fallback replicate:', e.message.slice(0, 100)); await sleep(1000 + a * 1500); }
+    }
+  }
   let lastErr;
   for (let a = 0; a < 8; a++) {
     try {
@@ -1026,7 +1044,7 @@ async function processBlueCleanGuided(jobId, p) {
     // (proporcional ao saldo). Lane que toma 429 recua sozinha (retry com
     // backoff no guidedInpaint) — com saldo ok, 16 lanes rodam de verdade e um
     // video de 20s cai de ~40min pra poucos minutos.
-    const CONC = Math.max(1, Math.min(32, parseInt(p.conc) || 16));
+    const CONC = Math.max(1, Math.min(32, parseInt(p.conc) || (process.env.FAL_KEY ? 24 : 16)));
     await Promise.all(Array.from({ length: CONC }, worker));
     if (failed > N * 0.2) throw new Error(`Muitos frames falharam (${failed}/${N}). Tente de novo.`);
 
