@@ -112,6 +112,7 @@ module.exports = async function handler(req, res) {
     const dias = Math.max(0, parseInt(inp.dias) || 0);
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
     const ordem = inp.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
+    const plat = inp.plataforma === 'tiktok' ? 'tiktok' : (inp.plataforma === 'youtube' ? 'youtube' : null);
     let termos = (Array.isArray(inp.termos) ? inp.termos : []).map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 6);
     if (tema && !termos.length) termos = [tema];
 
@@ -126,10 +127,19 @@ module.exports = async function handler(req, res) {
     // curto demais (tipo "ney") pesca lixo — só passa termo com 4+ letras,
     // com dígito (CR7) ou composto ("michael jackson")
     let termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
-    // rede de segurança: se o modelo só mandou frases compostas ("tigre
-    // escalando arvore"), o título em outro idioma nunca bate — extrai o
-    // núcleo do tema e busca ele sozinho também (caso do tigre em espanhol)
-    if (tema && termosOk.length && termosOk.every((t) => t.includes(' '))) {
+    // NOME PRÓPRIO composto: proibido fragmento solto — "harry" acha gente
+    // errada, "billie" acha Billie Jean. Só passa o nome completo/apelidos.
+    if (inp.tipo_tema === 'nome_proprio' && tema && tema.trim().includes(' ')) {
+      const temaN = norm(clean(tema));
+      termosOk = termosOk.filter((t) => {
+        const tn = norm(t);
+        return tn.includes(' ') || !temaN.split(' ').includes(tn);
+      });
+      if (!termosOk.length) termosOk = [clean(tema)];
+    }
+    // rede de segurança: se o modelo só mandou frases compostas de ASSUNTO
+    // ("tigre escalando arvore"), extrai o núcleo e busca sozinho também
+    if (inp.tipo_tema !== 'nome_proprio' && tema && termosOk.length && termosOk.every((t) => t.includes(' '))) {
       const nucleo = clean(tema).split(' ').filter((w) => w.length >= 4);
       if (nucleo.length) termosOk.push(nucleo[0]);
     }
@@ -147,24 +157,26 @@ module.exports = async function handler(req, res) {
     if (tema && termosOk.length) {
       // título E canal ("vídeos do Luiz Stubbe" = canal), termo a termo encodado
       const orExpr = 'or=(' + termosOk.map((t) => `titulo.ilike.*${encodeURIComponent(t)}*,canal_nome.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
-      const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
-      if (r1.ok) candidatos = await r1.json();
-      try {
-        const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&${orExpr}&order=${ordem}&limit=20`, { headers: H });
-        if (rs.ok) {
-          const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
-          candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
-        }
-      } catch (e) {}
-      try {
+      if (plat !== 'tiktok') {
+        const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
+        if (r1.ok) candidatos = await r1.json();
+        try {
+          const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&${orExpr}&order=${ordem}&limit=20`, { headers: H });
+          if (rs.ok) {
+            const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
+            candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
+          }
+        } catch (e) {}
+      }
+      if (plat !== 'youtube') try {
         const tkOr = 'or=(' + termosOk.map((t) => `caption.ilike.*${encodeURIComponent(t)}*,author_name.ilike.*${encodeURIComponent(t)}*,author_handle.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
-        const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&${tkOr}&order=views_count.desc&limit=15`, { headers: H });
+        const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&${tkOr}&order=views_count.desc&limit=${plat === 'tiktok' ? 40 : 15}`, { headers: H });
         if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
       } catch (e) {}
       // busca DIRETA no cache de transcrições: acha vídeo cujo título NÃO cita
       // o tema mas a FALA cita (o cache cresce a cada busca — recall melhora
       // sozinho com o uso). Índice trigram cobre o ilike.
-      try {
+      if (plat !== 'tiktok') try {
         for (const t of termosOk.slice(0, 3)) {
           const rc = await fetch(`${SU}/rest/v1/virais_transcricoes?select=youtube_id&sem_legenda=eq.false&transcript=ilike.*${encodeURIComponent(t)}*&limit=15`, { headers: H });
           if (!rc.ok) continue;
@@ -176,7 +188,7 @@ module.exports = async function handler(req, res) {
         }
       } catch (e) {}
       // semântica opcional (completa candidatos com títulos que não citam o termo)
-      if (OPENAI && candidatos.length < MAX_CANDIDATOS) {
+      if (OPENAI && plat !== 'tiktok' && candidatos.length < MAX_CANDIDATOS) {
         try {
           const er = await fetch('https://api.openai.com/v1/embeddings', { method: 'POST', headers: { Authorization: 'Bearer ' + OPENAI, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'text-embedding-3-small', input: tema }) });
           const ed = await er.json();
@@ -195,16 +207,20 @@ module.exports = async function handler(req, res) {
       }
     } else {
       // só filtros: SQL direto no acervo completo
-      const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&order=${ordem}&limit=30`, { headers: H });
-      if (r1.ok) candidatos = await r1.json();
+      if (plat !== 'tiktok') {
+        const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&order=${ordem}&limit=30`, { headers: H });
+        if (r1.ok) candidatos = await r1.json();
+      }
       try {
-        const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&order=${ordem}&limit=15`, { headers: H });
-        if (rs.ok) {
-          const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
-          candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
+        if (plat !== 'tiktok') {
+          const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${secParts.join('&')}&order=${ordem}&limit=15`, { headers: H });
+          if (rs.ok) {
+            const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
+            candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
+          }
         }
-        if (!nicho) {
-          const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&order=views_count.desc&limit=15`, { headers: H });
+        if (!nicho && plat !== 'youtube') {
+          const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&order=views_count.desc&limit=${plat === 'tiktok' ? 30 : 15}`, { headers: H });
           if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
         }
         candidatos.sort((a, b) => ordem === 'publicado_em.desc' ? new Date(b.publicado_em || 0) - new Date(a.publicado_em || 0) : (b.views || 0) - (a.views || 0));
@@ -326,12 +342,14 @@ module.exports = async function handler(req, res) {
         type: 'object',
         properties: {
           tema: { type: ['string', 'null'], description: 'assunto OU nome de canal/criador do pedido. null se for busca só por números/filtros' },
-          termos: { type: 'array', items: { type: 'string' }, description: 'SÓ o substantivo-NÚCLEO do tema, traduzido em TODOS os idiomas do acervo que fizerem sentido: pt, en, es, fr, de, it e escritas nativas ja/ko/zh/ru quando for palavra comum (ex: ["tigre","tiger","tigre","Tiger","тигр","虎"]). Nome próprio (Neymar) não traduz. NUNCA frases compostas aqui.' },
+          tipo_tema: { type: ['string', 'null'], description: '"nome_proprio" (pessoa, artista, canal, marca — ex: Harry Styles, Billie Eilish) ou "assunto" (conceito comum — ex: tigre, futebol)' },
+          termos: { type: 'array', items: { type: 'string' }, description: 'REGRAS POR TIPO: nome_proprio → o NOME COMPLETO INTACTO + apelidos/grafias famosas ("harry styles","harrystyles") — JAMAIS separe as palavras (buscar só "harry" acha gente errada; "billie" sozinho acha Billie Jean do MJ). assunto → o núcleo traduzido nos idiomas do acervo ("tigre","tiger","тигр","虎"). NUNCA frases descritivas aqui.' },
           qualificadores: { type: 'array', items: { type: 'string' }, description: 'o RESTO do pedido em palavras soltas, traduzidas pt+en+es (ex: pedido "tigre escalando árvore" → ["escalando","subindo","trepando","climbing","árvore","tree","árbol","árboles"]). Usado pra RANQUEAR o vídeo exato acima dos genéricos. Vazio se o pedido é só o núcleo.' },
           min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
           dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
           ordem: { type: ['string', 'null'], description: '"views" (padrão) ou "recentes". OBRIGATÓRIO "recentes" quando o usuário falar "mais recente", "último", "novo", "essa semana" etc.' },
+          plataforma: { type: ['string', 'null'], description: '"youtube" ou "tiktok" quando o usuário restringir ("só TikTok", "sem YouTube"). null = todas' },
           quantidade: { type: ['number', 'null'], description: 'SÓ se o usuário pediu número exato de vídeos. null = padrão saudável' },
         },
       },
