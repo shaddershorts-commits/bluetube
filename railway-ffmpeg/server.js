@@ -343,7 +343,7 @@ app.get('/health', async (req, res) => {
       ok: true,
       ffmpeg: ffmpegVer,
       ytdlp: ytdlpVer,
-      build: 'r20-blueclean-mosaico',
+      build: 'r21-blueclean-qfix',
       jobs_in_memory: JOBS.size
     });
   } catch (e) {
@@ -510,7 +510,7 @@ async function processBlueCleanMask(jobId, p) {
     JOBS.set(jobId, { status: 'done', progress: 100, mask_url: maskUrl });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
   } catch (e) {
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
   }
 }
@@ -651,7 +651,7 @@ app.post('/blueclean-process', (req, res) => {
   res.json({ ok: true, job_id: jobId });
   const runner = p.engine === 'guided' ? processBlueCleanGuided : processBlueClean;
   runner(jobId, p).catch((e) => {
-    console.error('[blueclean-process]', jobId, e.message);
+    console.error('[blueclean-process]', jobId, e.message); console.error('[stack]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[axios-url]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 200) : '');
     JOBS.set(jobId, { status: 'error', progress: 0, error: e.message || String(e) });
   });
 });
@@ -849,7 +849,7 @@ async function processBlueClean(jobId, p) {
     for (const pth of uploaded) {
       try { await axios.delete(`${p.supabase_url}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + p.supabase_key, apikey: p.supabase_key } }); } catch (_) {}
     }
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   }
 }
@@ -1030,7 +1030,7 @@ async function processBlueCleanGuided(jobId, p) {
     if (boxes.length && p.mask_mode !== 'caixa') {
       try {
         const blackUrl = await replicateRun(token, 'hjunior29/video-text-remover',
-          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 2 },
+          { video: p.video_url, method: 'black', conf_threshold: 0.08, iou_threshold: 0.15, margin: 8, resolution: 'original', detection_interval: 1 },
           { pollMs: 4000, timeoutMs: 15 * 60 * 1000 });
         const black = path.join(dir, 'black.mp4');
         await downloadFile(blackUrl, black);
@@ -1042,7 +1042,7 @@ async function processBlueCleanGuided(jobId, p) {
         const D = Array(12).fill('dilation').join(','), E = Array(8).fill('erosion').join(',');
         const maskVid = path.join(dir, 'maskv.mp4');
         await run('ffmpeg', ['-y', '-i', orig, '-i', black, '-i', boxPng, '-filter_complex',
-          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),45),255,0)',${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',format=gray[m]`,
+          `[0:v]fps=${fps},format=gray[a];[1:v]fps=${fps},format=gray[b];[a][b]blend=all_mode=difference,geq=lum='if(gt(lum(X,Y),45),255,0)',${D},${E}[txt];[2:v]format=gray[bx];[txt][bx]blend=all_mode=multiply,geq=lum='if(gt(lum(X,Y),128),255,0)',tmix=frames=3,geq=lum='if(gt(lum(X,Y),40),255,0)',format=gray[m]`,
           '-map', '[m]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), maskVid]);
         // cobertura media: se ~zero, detector nao achou texto -> fallback caixa
         const { stdout: st } = await run('ffmpeg', ['-i', maskVid, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-']);
@@ -1115,7 +1115,7 @@ async function processBlueCleanGuided(jobId, p) {
             const src = path.join(fdir, f);
             const out = path.join(fdir, f.replace('i_', 'o_'));
             const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 2000) {
+            if (!boxes.some((b) => t >= b.s && t <= b.e) || !fs.existsSync(mf) || fs.statSync(mf).size < 800) {
               fs.copyFileSync(src, out); done++;
             } else precisa.push({ i, src, out, mf });
           }
@@ -1243,7 +1243,7 @@ async function processBlueCleanGuided(jobId, p) {
           // texto = mascara preta = PNG minusculo -> copia original (economiza
           // 1 chamada de inpaint e preserva 100% o frame).
           const mf = path.join(textMaskDir, `m_${String(i + 1).padStart(5, '0')}.png`);
-          if (!fs.existsSync(mf) || fs.statSync(mf).size < 2000) { fs.copyFileSync(src, out); done++; continue; }
+          if (!fs.existsSync(mf) || fs.statSync(mf).size < 800) { fs.copyFileSync(src, out); done++; continue; }
           mpath = mf; // upload so no fallback replicate (fal vai por data-URI)
         } else {
           ({ mpath } = await maskFor(active));
@@ -1337,7 +1337,7 @@ async function processBlueCleanGuided(jobId, p) {
     for (const pth of uploaded) {
       try { await axios.delete(`${SU}/storage/v1/object/blue-videos/${pth}`, { headers: { Authorization: 'Bearer ' + SK, apikey: SK } }); } catch (_) {}
     }
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
     setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 8000);
   }
 }
@@ -1484,7 +1484,7 @@ app.post('/edit-v0', (req, res) => {
   res.json({ ok: true, job_id: jobId });
   processEditV0(jobId, p).catch(e => {
     console.error('[edit-v0]', jobId, 'failed:', e.message);
-    JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
+    console.error('[bcg-fatal]', String(e.stack || '').replace(/\n/g, ' | ').slice(0, 600)); if (e.config) console.error('[bcg-axios]', e.config.url, e.response ? JSON.stringify(e.response.data).slice(0, 300) : ''); JOBS.set(jobId, { status: 'error', progress: 0, error: e.message });
   });
 });
 
