@@ -38,7 +38,7 @@ if ('serviceWorker' in navigator) {
     { id:'virais',   icon:'🔥', label:'Virais',        href:'/virais' },
     { id:'baixa',    icon:'⬇️', label:'BaixaBlue',     href:'/baixaBlue' },
     { id:'editor',   icon:'✨', label:'BlueEditor',    href:'/blueEditor' },
-    { id:'clean',    icon:'🛠️', label:'BlueClean (atualizando)', href:'/blueClean' },
+    { id:'clean',    icon:'🧹', label:'BlueClean',      href:'/blueClean' },
     { id:'tendencias', icon:'🚀', label:'BlueTendências', href:'/bluetendencias' },
     { id:'blue',     icon:'🎬', label:'Blue',          href:'/blue' },
   ];
