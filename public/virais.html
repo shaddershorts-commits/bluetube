@@ -1806,41 +1806,66 @@ function tkFomoClose(e){
   const planB = () => localStorage.getItem('bt_plan') || 'free';
   const tokenB = () => localStorage.getItem('bt_token') || '';
 
-  // ── Frase adaptiva do botão (por horário, com variações rotativas) ──
-  // PROVISÓRIAS — user vai revisar as falas depois.
+  // ── Frase adaptiva do botão ──
+  // Grupos: horário (madrugada/manhã/tarde/noite) + CARENTE (3+ dias sem abrir,
+  // sente falta e chama pelo nome) + PROVOCATIVA pro Full (upsell Master no
+  // humor do Blublu). Variações com/sem nome; guarda de 38 chars pra não cortar
+  // no botão. PROVISÓRIAS — user vai revisar as falas depois.
+  const bbNome = (() => { try { return (localStorage.getItem('bt_studio_nome') || '').trim().split(/\s+/)[0].slice(0, 14); } catch(e){ return ''; } })();
   const BB_FRASES = {
     madrugada: [
-      'Acordado? Os virais também.',
-      'Madrugada é quando eu caço melhor.',
-      'Insônia? Bora achar teu próximo viral.',
-      'Só nós dois e o algoritmo agora.',
+      () => 'Acordado? Os virais também.',
+      (n) => n ? `${n}, insônia? Bora caçar viral.` : 'Insônia? Bora achar teu viral.',
+      () => 'Madrugada é quando eu caço melhor.',
+      (n) => n ? `Só nós dois agora, ${n}.` : 'Só nós dois e o algoritmo agora.',
     ],
     manha: [
-      'Bom dia. Me diz o que procura.',
-      'Café na mão? Eu acho teu viral.',
-      'Começa o dia com um viral certo.',
-      'Manhã produtiva começa aqui.',
+      (n) => n ? `Bom dia, ${n}. Bora?` : 'Bom dia. Me diz o que procura.',
+      () => 'Café na mão? Eu acho teu viral.',
+      (n) => n ? `${n}, um viral pra começar o dia?` : 'Começa o dia com um viral certo.',
+      () => 'Manhã produtiva começa aqui.',
     ],
     tarde: [
-      'Me pede um tema. Eu acho.',
-      'Tarde é hora de garimpar viral.',
-      'Fala um assunto, eu varro o banco.',
-      'Teu concorrente não me tem. Usa.',
+      (n) => n ? `${n}, me pede um tema. Eu acho.` : 'Me pede um tema. Eu acho.',
+      () => 'Tarde é hora de garimpar viral.',
+      (n) => n ? `Fala um assunto, ${n}. Eu varro.` : 'Fala um assunto, eu varro o banco.',
+      () => 'Teu concorrente não me tem. Usa.',
     ],
     noite: [
-      'A noite é dos virais. Fala comigo.',
-      'Me testa: pede qualquer tema.',
-      'Enquanto todos dormem, eu acho.',
-      'Um tema. Milhões de views. Bora.',
+      (n) => n ? `A noite é nossa, ${n}. Fala.` : 'A noite é dos virais. Fala comigo.',
+      () => 'Me testa: pede qualquer tema.',
+      (n) => n ? `${n}, todos dormem. Eu acho.` : 'Enquanto todos dormem, eu acho.',
+      () => 'Um tema. Milhões de views. Bora.',
+    ],
+    carente: [
+      (n) => n ? `${n}?? Dias sumido. Senti falta.` : 'Sumiu, hein. Eu senti falta.',
+      (n) => n ? `Achei que tinha me trocado, ${n}…` : 'Achei que tinha me trocado…',
+      (n) => n ? `${n}, some não. Eu fico carente.` : 'Some não. Eu fico carente.',
+      (n) => n ? `Voltou, ${n}! Eu tava aqui… só.` : 'Voltou! Eu tava aqui… sozinho.',
+    ],
+    full: [
+      () => 'Olha, se você fosse Master…',
+      (n) => n ? `FALA COMIGO, ${n}. Ah… é Master?` : 'FALA COMIGO. Ah… assinou o Master?',
+      () => 'O que separa nós dois: Master.',
+      (n) => n ? `${n}, eu falo. Mas só com Master. 😏` : 'Eu falo. Mas só com Master. 😏',
     ],
   };
   function fraseBlublu(){
-    const h = new Date().getHours();
-    const grupo = h < 5 ? 'madrugada' : h < 12 ? 'manha' : h < 18 ? 'tarde' : 'noite';
+    const plano = planB();
+    let grupo;
+    if (plano === 'full') grupo = 'full';
+    else {
+      const last = parseInt(localStorage.getItem('bt_blublu_last_open') || '0', 10);
+      const carente = last > 0 && (Date.now() - last) > 3 * 86400000;
+      if (carente) grupo = 'carente';
+      else { const h = new Date().getHours(); grupo = h < 5 ? 'madrugada' : h < 12 ? 'manha' : h < 18 ? 'tarde' : 'noite'; }
+    }
     const arr = BB_FRASES[grupo];
     let idx = 0;
     try { idx = parseInt(localStorage.getItem('bt_blublu_frase_idx') || '0', 10) % arr.length; localStorage.setItem('bt_blublu_frase_idx', String((idx + 1) % arr.length)); } catch(e){}
-    return arr[idx];
+    let frase = arr[idx](bbNome);
+    if (frase.length > 38) frase = arr[idx](''); // nome comprido cortaria — cai na versão sem nome
+    return frase;
   }
   document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('btnBlubluFrase');
@@ -1910,7 +1935,9 @@ function tkFomoClose(e){
             <div class="bb-vtit">${escHtml(v.titulo || '')}</div>
             <div class="bb-vmeta">
               <span>👁 ${bbFmt(Number(v.views)||0)}</span>
-              ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${vid}&t=${cit}s','_blank')">🗣️ citado aos ${bbMMSS(cit)}</span>` : (v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
+              ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${vid}&t=${cit}s','_blank')">🗣️ citado aos ${bbMMSS(cit)}</span>` : (v.confirmado_por==='canal' ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">📺 do canal</span>' : v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
+              ${v.plataforma==='tiktok' ? '<span class="bb-cit" style="color:#ff5c8a;border-color:rgba(255,92,138,.35);background:rgba(255,92,138,.07)">🎵 TikTok</span>' : ''}
+              ${v.secreto ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">🔮 secreto</span>' : ''}
             </div>
           </div>
         </a>`;
@@ -1927,10 +1954,12 @@ function tkFomoClose(e){
   window.abrirBlublu = function(){
     if (planB() !== 'master'){ bbInjeta(); document.getElementById('bbUpsell').classList.add('on'); return; }
     bbInjeta();
+    try { localStorage.setItem('bt_blublu_last_open', String(Date.now())); } catch(e){}
     document.getElementById('bbOverlay').classList.add('on');
     document.body.style.overflow = 'hidden';
     if (!bbHist.length){
-      bbAddMsg('bot', 'Cheguei. 🧪 Me diz um tema — "vídeos que falam do Michael Jackson" — ou um filtro — "mais de 5 mi de views nas últimas 2 semanas". Eu vasculho o acervo e ainda te digo ONDE o assunto foi citado.');
+      const oi = bbNome ? `Cheguei, ${bbNome}. 🧪` : 'Cheguei. 🧪';
+      bbAddMsg('bot', oi + ' Me diz um tema — "vídeos que falam do Michael Jackson" —, um canal — "vídeos do Luiz Stubbe" — ou um filtro — "mais de 5 mi de views nas últimas 2 semanas". Eu vasculho o acervo INTEIRO (até o que não aparece na página) e te digo ONDE o assunto foi citado.');
     }
     setTimeout(() => document.getElementById('bbInput')?.focus(), 250);
   };
@@ -1951,7 +1980,7 @@ function tkFomoClose(e){
       // histórico só entra DEPOIS do sucesso (par user+assistant completo) —
       // falha no meio não pode deixar turno órfão que quebra as próximas
       const r = await fetch('/api/blublu-chat', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist, skip_ids: continuar ? bbVerificados : [] }) });
+        body: JSON.stringify({ action:'chat', token: tokenB(), message: msg, history: bbHist, skip_ids: continuar ? bbVerificados : [], nome: bbNome }) });
       const d = await r.json();
       bbTyping(false);
       if (!r.ok){ bbAddMsg('bot', d.error || 'Deu ruim aqui. Tenta de novo?'); bbOcupado=false; return; }

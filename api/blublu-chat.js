@@ -68,6 +68,8 @@ module.exports = async function handler(req, res) {
   }
 
   const message = String(req.body?.message || '').slice(0, 600).trim();
+  // nome do usuario (personalizacao) — só letras/espacos, curto
+  const nome = String(req.body?.nome || '').replace(/[^\p{L} ]/gu, '').trim().slice(0, 30);
   let history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
   // API exige que a 1a mensagem seja user: descarta assistants orfaos do inicio
   while (history.length && history[0].role !== 'user') history.shift();
@@ -99,7 +101,8 @@ Formato:
  "filtros": {"min_views": number|null, "dias": number|null, "nicho": string|null, "ordem": "views"|"recentes"|null},
  "resposta_papo": string|null    // SÓ se tipo=papo: resposta curta no personagem (você é Blublu, mentor de virais direto, confiante, levemente provocador, pt-BR). null se tipo=busca.
 }
-"papo" = cumprimento, dúvida sobre você, ou pedido que não é busca de vídeo. Qualquer pedido de vídeos = "busca".`;
+"papo" = cumprimento, dúvida sobre você, ou pedido que não é busca de vídeo. Qualquer pedido de vídeos = "busca".
+"vídeos do X" pode ser TEMA ou CANAL/criador — trate igual: gere termos com o nome (a busca cobre título E canal).${nome ? ` O usuário se chama ${nome} — no papo, use o nome dele às vezes, natural.` : ''}`;
     const parseRaw = await claude(parseSystem, [...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, 300) })), { role: 'user', content: message }], 500);
     let parsed;
     try {
@@ -132,16 +135,46 @@ Formato:
 
     const termos = (parsed.termos || []).map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 6);
     let candidatos = [];
+    // ACERVO TOTAL: banco principal (coletor salva TUDO ≤90s dos canais
+    // curados — os pisos de views são só da exibição da página) + banco dos
+    // canais SECRETOS + TikTok (busca por caption/autor; sem confirmação por
+    // fala, que é YouTube-only).
     if (parsed.tema && termos.length) {
-      // 2a. termos no título. Sanitiza pra só letra/número/espaço (mata , ( ) *
-      // do PostgREST E & # % + que quebram a query string — classe do bug do
-      // cursor com + no feed do Blue) e percent-encoda CADA termo.
+      // termos no TÍTULO e no NOME DO CANAL ("vídeos do Luiz Stubbe" = canal!).
+      // Sanitiza pra só letra/número/espaço (mata , ( ) * do PostgREST E & # %
+      // + que quebram a query string) e percent-encoda CADA termo.
       const clean = (t) => t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
       const termosOk = termos.map(clean).filter((t) => t.length >= 2);
       if (!termosOk.length) termosOk.push(clean(parsed.tema) || 'viral');
-      const orExpr = 'or=(' + termosOk.map((t) => `titulo.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
+      const orExpr = 'or=(' + termosOk.map((t) => `titulo.ilike.*${encodeURIComponent(t)}*,canal_nome.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
       const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
       if (r1.ok) candidatos = await r1.json();
+      // canais secretos (sem coluna nicho — monta filtros próprios)
+      try {
+        const sParts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em'];
+        if (f.min_views) sParts.push(`views=gte.${Math.max(0, parseInt(f.min_views) || 0)}`);
+        if (fDias) sParts.push(`publicado_em=gte.${new Date(Date.now() - fDias * 86400000).toISOString()}`);
+        const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${sParts.join('&')}&${orExpr}&order=${ordem}&limit=20`, { headers: H });
+        if (rs.ok) {
+          const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
+          candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
+        }
+      } catch (e) {}
+      // TikTok (caption/autor)
+      try {
+        const tkOr = 'or=(' + termosOk.map((t) => `caption.ilike.*${encodeURIComponent(t)}*,author_name.ilike.*${encodeURIComponent(t)}*,author_handle.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
+        const tkParts = ['select=tiktok_video_id,video_url,thumbnail_url,caption,author_name,views_count,tiktok_created_at', 'status=eq.active'];
+        if (f.min_views) tkParts.push(`views_count=gte.${Math.max(0, parseInt(f.min_views) || 0)}`);
+        if (fDias) tkParts.push(`tiktok_created_at=gte.${new Date(Date.now() - fDias * 86400000).toISOString()}`);
+        const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkParts.join('&')}&${tkOr}&order=views_count.desc&limit=15`, { headers: H });
+        if (rt.ok) {
+          const tk = await rt.json();
+          candidatos = candidatos.concat(tk.map((v) => ({
+            youtube_id: null, _tiktok_id: v.tiktok_video_id, titulo: (v.caption || '').slice(0, 200) || 'TikTok de ' + (v.author_name || ''),
+            thumbnail_url: v.thumbnail_url, url: v.video_url, canal_nome: v.author_name, views: v.views_count, publicado_em: v.tiktok_created_at, _tiktok: true,
+          })));
+        }
+      } catch (e) {}
       // 2b. semântica (se disponível) — completa o funil com vídeos cujo título
       // não cita o termo mas o assunto é próximo
       if (OPENAI && candidatos.length < MAX_CANDIDATOS) {
@@ -163,9 +196,32 @@ Formato:
         } catch (e) { /* semântica é opcional */ }
       }
     } else {
-      // pedido só de filtros: SQL direto, precisão total
+      // pedido só de filtros: SQL direto, precisão total — acervo completo
       const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&order=${ordem}&limit=30`, { headers: H });
       if (r1.ok) candidatos = await r1.json();
+      try {
+        const sParts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em'];
+        if (f.min_views) sParts.push(`views=gte.${Math.max(0, parseInt(f.min_views) || 0)}`);
+        if (fDias) sParts.push(`publicado_em=gte.${new Date(Date.now() - fDias * 86400000).toISOString()}`);
+        const rs = await fetch(`${SU}/rest/v1/virais_banco_secretos?${sParts.join('&')}&order=${ordem}&limit=15`, { headers: H });
+        if (rs.ok) {
+          const sec = (await rs.json()).filter((v) => !candidatos.some((c) => c.youtube_id === v.youtube_id));
+          candidatos = candidatos.concat(sec.map((v) => ({ ...v, _secreto: true })));
+        }
+        if (!f.nicho) { // nicho é conceito do YouTube curado; TikTok só entra sem esse filtro
+          const tkParts = ['select=tiktok_video_id,video_url,thumbnail_url,caption,author_name,views_count,tiktok_created_at', 'status=eq.active'];
+          if (f.min_views) tkParts.push(`views_count=gte.${Math.max(0, parseInt(f.min_views) || 0)}`);
+          if (fDias) tkParts.push(`tiktok_created_at=gte.${new Date(Date.now() - fDias * 86400000).toISOString()}`);
+          const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkParts.join('&')}&order=views_count.desc&limit=15`, { headers: H });
+          if (rt.ok) {
+            candidatos = candidatos.concat((await rt.json()).map((v) => ({
+              youtube_id: null, _tiktok_id: v.tiktok_video_id, titulo: (v.caption || '').slice(0, 200) || 'TikTok de ' + (v.author_name || ''),
+              thumbnail_url: v.thumbnail_url, url: v.video_url, canal_nome: v.author_name, views: v.views_count, publicado_em: v.tiktok_created_at, _tiktok: true,
+            })));
+          }
+        }
+        candidatos.sort((a, b) => ordem === 'publicado_em.desc' ? new Date(b.publicado_em || 0) - new Date(a.publicado_em || 0) : (b.views || 0) - (a.views || 0));
+      } catch (e) {}
     }
 
     // ── 3) CONFIRMAÇÃO POR TRANSCRIÇÃO (só busca de conteúdo) ────────────────
@@ -173,15 +229,16 @@ Formato:
     const termosN = termos.map(norm);
     let videos = [], temMais = false, verificadosIds = [];
     if (parsed.tema && candidatos.length) {
-      const ids = candidatos.map((c) => c.youtube_id);
-      const tr = await fetch(`${SU}/rest/v1/virais_transcricoes?youtube_id=in.(${ids.map(encodeURIComponent).join(',')})&select=youtube_id,transcript,segments,sem_legenda`, { headers: H });
+      const ids = candidatos.filter((c) => c.youtube_id).map((c) => c.youtube_id);
+      const tr = ids.length ? await fetch(`${SU}/rest/v1/virais_transcricoes?youtube_id=in.(${ids.map(encodeURIComponent).join(',')})&select=youtube_id,transcript,segments,sem_legenda`, { headers: H }) : { ok: false };
       const cache = tr.ok ? await tr.json() : [];
       const cacheMap = new Map(cache.map((c) => [c.youtube_id, c]));
 
       // transcreve os que faltam (paralelo limitado, orçamento de tempo).
+      // TikTok fica de fora (sem legenda pronta — confirma por caption/autor).
       // skipIds = ja verificados nesta conversa: garante PROGRESSO no
       // "continuar procurando" mesmo se o cache nao persistir (tabela ausente).
-      const pendentes = candidatos.filter((c) => !cacheMap.has(c.youtube_id) && !skipIds.has(c.youtube_id));
+      const pendentes = candidatos.filter((c) => c.youtube_id && !cacheMap.has(c.youtube_id) && !skipIds.has(c.youtube_id));
       const faltam = pendentes.slice(0, MAX_TRANSCREVER);
       temMais = pendentes.length > faltam.length;
       if (RW && faltam.length) {
@@ -206,10 +263,11 @@ Formato:
         temMais = temMais || fila.length > 0;
       }
 
-      // classifica: fala (com timestamp) > título > semântico não confirmado
+      // classifica: fala (com timestamp) > CANAL > título
       for (const c of candidatos) {
         const tituloBate = termosN.some((t) => norm(c.titulo).includes(t));
-        const tc = cacheMap.get(c.youtube_id);
+        const canalBate = termosN.some((t) => norm(c.canal_nome).includes(t));
+        const tc = c.youtube_id ? cacheMap.get(c.youtube_id) : null;
         let citadoEm = null, falaBate = false;
         if (tc && tc.transcript && !tc.sem_legenda) {
           const txt = norm(tc.transcript);
@@ -221,17 +279,18 @@ Formato:
             }
           }
         }
-        if (falaBate || tituloBate) {
-          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : 'titulo' });
+        if (falaBate || tituloBate || canalBate) {
+          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : (canalBate ? 'canal' : 'titulo'), plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto });
         }
       }
-      videos.sort((a, b) => (a.confirmado_por === 'fala' ? 0 : 1) - (b.confirmado_por === 'fala' ? 0 : 1) || (b.views || 0) - (a.views || 0));
+      const peso = { fala: 0, canal: 1, titulo: 2 };
+      videos.sort((a, b) => (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
       videos = videos.slice(0, 24);
       // ids com veredito nesta conversa (cache + transcritos agora): o front
       // devolve em skip_ids no "continuar" pra garantir avanco na fila
       verificadosIds = candidatos.filter((c) => cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
-      videos = candidatos.slice(0, 24).map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro' }));
+      videos = candidatos.slice(0, 24).map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
     }
 
     // ── 4) RESPOSTA no personagem ────────────────────────────────────────────
@@ -239,7 +298,7 @@ Formato:
     const ctx = parsed.tema
       ? `Busca por conteúdo: "${parsed.tema}". Encontrados ${videos.length} vídeos (${confirmadosFala} com o tema CITADO NA FALA — confirmado, o resto pelo título).${temMais ? ' Ainda há candidatos não verificados — o usuário pode pedir pra continuar procurando.' : ''}`
       : `Busca por filtros (${JSON.stringify(f)}). Encontrados ${videos.length} vídeos.`;
-    const replySystem = `Você é o Blublu: mentor de virais do BlueTube, direto, confiante, levemente provocador, pt-BR, no máximo 2-3 frases. Os vídeos aparecem em cards abaixo da sua fala (NÃO liste vídeos no texto). Nunca fale de tecnologia interna, modelos ou fornecedores — a tecnologia é sua. Se 0 resultados: sugira reformular ou avisa que só vasculha o acervo curado de virais.`;
+    const replySystem = `Você é o Blublu: mentor de virais do BlueTube, direto, confiante, levemente provocador, pt-BR, no máximo 2-3 frases. Os vídeos aparecem em cards abaixo da sua fala (NÃO liste vídeos no texto). Nunca fale de tecnologia interna, modelos ou fornecedores — a tecnologia é sua. Se 0 resultados: sugira reformular ou avisa que só vasculha o acervo curado de virais.${nome ? ` O usuário se chama ${nome} — use o nome dele de vez em quando, natural, sem forçar.` : ''}`;
     const reply = await claude(replySystem, [{ role: 'user', content: `Pedido do usuário: "${message}"\n${ctx}` }], 260);
 
     await bump();
