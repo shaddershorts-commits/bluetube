@@ -159,6 +159,7 @@ module.exports = async function handler(req, res) {
           video_url, output_path: outPath, supabase_url: SU, supabase_key: SK,
           replicate_token: REPLICATE, boxes: Array.isArray(boxes) ? boxes : [],
           ...(engine ? { engine } : {}),
+          ...(req.body.anotacoes ? { anotacoes: true } : {}),
         }),
       });
       const rd = await rr.json().catch(() => ({}));
