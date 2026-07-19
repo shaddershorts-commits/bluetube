@@ -34,6 +34,11 @@ const MAX_CANDIDATOS = 100;     // recall LARGO (o corte por views aos 40 escond
 const MAX_TRANSCREVER = 10;     // novas transcrições por mensagem (latência)
 const TRANSC_PARALELAS = 4;     // concorrência no Railway
 const BUDGET_TRANSC_MS = 20000; // orçamento de tempo da confirmação
+// Sobrenomes que TAMBÉM são palavra comum (pt/en): NÃO podem virar termo solto
+// (buscar "styles" traz "hairstyles", "grande" traz "grande"=big). Distintivos
+// (Haaland, Yamal, Eilish) ficam de fora e podem buscar sozinhos — é o que
+// destrava o volume de nome próprio sem quebrar a precisão.
+const SOBRENOME_COMUM = new Set(['styles', 'grande', 'brown', 'white', 'black', 'green', 'west', 'king', 'young', 'hall', 'park', 'wood', 'stone', 'snow', 'love', 'price', 'banks', 'fields', 'winter', 'summer', 'cook', 'baker', 'smith', 'jones', 'gray', 'grey', 'bell', 'hill', 'lake', 'moon', 'star', 'rose', 'silva', 'santos', 'costa', 'souza', 'sousa', 'lima', 'rocha', 'dias', 'ramos', 'campos', 'gomes', 'neves', 'pinto', 'cruz', 'reis', 'melo', 'lopes', 'martins', 'day', 'best', 'long', 'rich', 'wise', 'ford']);
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -148,14 +153,22 @@ module.exports = async function handler(req, res) {
     // curto demais (tipo "ney") pesca lixo — só passa termo com 4+ letras,
     // com dígito (CR7) ou composto ("michael jackson")
     let termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
-    // NOME PRÓPRIO composto: proibido fragmento solto — "harry" acha gente
-    // errada, "billie" acha Billie Jean. Só passa o nome completo/apelidos.
+    // NOME PRÓPRIO composto: o PRIMEIRO nome é ambíguo ("harry" acha Harry
+    // Potter, "billie" acha Billie Jean) — proibido solto. MAS o SOBRENOME
+    // distintivo (Haaland, Yamal) é o identificador real e a forma que os
+    // títulos MAIS usam: mantê-lo destrava o volume (forense 2026-07-18:
+    // "Erling Haaland" sozinho achava 1 vídeo; +"Haaland" = 33). Sobrenome que
+    // é palavra comum (Styles→hairstyles) fica de fora — precisão primeiro.
     if (inp.tipo_tema === 'nome_proprio' && tema && tema.trim().includes(' ')) {
       const temaN = norm(clean(tema));
+      const partes = temaN.split(' ');
+      const sobrenome = partes[partes.length - 1];
+      const sobrenomeVale = sobrenome.length >= 5 && !SOBRENOME_COMUM.has(sobrenome);
       termosOk = termosOk.filter((t) => {
         const tn = norm(t);
-        return tn.includes(' ') || !temaN.split(' ').includes(tn);
+        return tn.includes(' ') || !partes.includes(tn) || (sobrenomeVale && tn === sobrenome);
       });
+      if (sobrenomeVale && !termosOk.some((t) => norm(t) === sobrenome)) termosOk.push(sobrenome);
       if (!termosOk.length) termosOk = [clean(tema)];
     }
     // rede de segurança: se o modelo só mandou frases compostas de ASSUNTO
