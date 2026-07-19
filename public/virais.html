@@ -1819,24 +1819,32 @@ function tkFomoClose(e){
       (n) => n ? `${n}, insônia? Bora caçar viral.` : 'Insônia? Bora achar teu viral.',
       () => 'Madrugada é quando eu caço melhor.',
       (n) => n ? `Só nós dois agora, ${n}.` : 'Só nós dois e o algoritmo agora.',
+      (n) => n ? `${n}, viral não dorme. Nem eu.` : 'Viral não dorme. Nem eu.',
+      (n) => n ? `Joga o tema, ${n}. Tô acordado.` : 'Joga o tema. Tô acordado.',
     ],
     manha: [
       (n) => n ? `Bom dia, ${n}. Bora?` : 'Bom dia. Me diz o que procura.',
       () => 'Café na mão? Eu acho teu viral.',
       (n) => n ? `${n}, um viral pra começar o dia?` : 'Começa o dia com um viral certo.',
       () => 'Manhã produtiva começa aqui.',
+      (n) => n ? `Primeiro viral do dia, ${n}?` : 'Primeiro viral do dia?',
+      (n) => n ? `${n}, acordou? Pede um tema.` : 'Acordou? Pede um tema.',
     ],
     tarde: [
       (n) => n ? `${n}, me pede um tema. Eu acho.` : 'Me pede um tema. Eu acho.',
       () => 'Tarde é hora de garimpar viral.',
       (n) => n ? `Fala um assunto, ${n}. Eu varro.` : 'Fala um assunto, eu varro o banco.',
       () => 'Teu concorrente não me tem. Usa.',
+      (n) => n ? `${n}, joga o tema. Eu acho.` : 'Joga o tema. Eu acho.',
+      (n) => n ? `Pausa do trampo, ${n}? Pede.` : 'Pausa do trampo? Pede aí.',
     ],
     noite: [
       (n) => n ? `A noite é nossa, ${n}. Fala.` : 'A noite é dos virais. Fala comigo.',
       () => 'Me testa: pede qualquer tema.',
       (n) => n ? `${n}, todos dormem. Eu acho.` : 'Enquanto todos dormem, eu acho.',
       () => 'Um tema. Milhões de views. Bora.',
+      (n) => n ? `Fim de dia, ${n}? Um viral.` : 'Fim de dia? Bora um viral.',
+      (n) => n ? `${n}, um último garimpo hoje?` : 'Um último garimpo hoje?',
     ],
     carente: [
       (n) => n ? `${n}?? Dias sumido. Senti falta.` : 'Sumiu, hein. Eu senti falta.',
@@ -1998,6 +2006,9 @@ function tkFomoClose(e){
     (n) => `Opa, ${n}. Sem cerimônia: pede.`,
     (n) => `${n}, fala. Tema, canal ou filtro — eu acho.`,
     (n) => `De novo por aqui, ${n}? Gosto disso. Manda.`,
+    (n) => `${n}! Bora achar teu próximo viral. Qual o tema?`,
+    (n) => `Sabia que você voltava, ${n}. Manda o assunto.`,
+    (n) => `${n}, tô com o acervo quentinho. O que procura?`,
   ];
   const BB_BEMVINDO_NOVO = [
     'Cheguei. 🧪 Me pede um tema ("vídeos que falam do Michael Jackson"), um canal ("vídeos do Luiz Stubbe") ou um filtro ("mais de 5 mi de views em 2 semanas"). Eu vasculho o acervo INTEIRO — até o que a página não mostra — e te digo ONDE o assunto foi citado.',

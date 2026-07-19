@@ -338,12 +338,22 @@ module.exports = async function handler(req, res) {
       return hit ? hit.nome : null;
     }).filter(Boolean))];
 
+    // DIRETOS = casaram no tema de verdade (fala/título/canal). O resto é
+    // "relacionado" (volume fill) ou "filtro". Precisão-primeiro: se os diretos
+    // são poucos, o modelo AVISA em vez de fingir fartura.
+    const diretos = videos.filter((v) => ['fala', 'titulo', 'canal'].includes(v.confirmado_por)).length;
+    const buscaTematica = !!(tema && termosOk.length);
     // resumo pro MODELO comentar com propriedade (os cards o front renderiza)
     const resumo = {
       total_entregue: videos.length,
       confirmados_na_fala: videos.filter((v) => v.confirmado_por === 'fala').length,
       do_canal: videos.filter((v) => v.confirmado_por === 'canal').length,
       pelo_titulo: videos.filter((v) => v.confirmado_por === 'titulo').length,
+      diretos_do_tema: diretos,
+      relacionados_complemento: videos.filter((v) => v.confirmado_por === 'relacionado').length,
+      // COBERTURA FINA: busca de tema trouxe POUCOS diretos (<=4). O modelo deve
+      // ser transparente (número real + oferecer ampliar), nunca fingir fartura.
+      cobertura_fina: buscaTematica && diretos > 0 && diretos <= 4,
       tinha_mais_alem_do_entregue: cortados > 0,
       ha_candidatos_ainda_nao_verificados: temMais,
       com_relevancia_exata: videos.filter((v) => (v._score || 0) > 0).length,
@@ -402,7 +412,8 @@ REGRAS DO CHAT:
 - DATA: "mais recente", "último", "novo" = ordem "recentes" na busca, SEMPRE. Não responda recência com o mais visto.
 - IDIOMAS: o acervo é GLOBAL (pt, en, es, fr, de, it, ja, ko, zh, ru). Sempre inclua nos termos o núcleo traduzido pro inglês e espanhol no mínimo. Só filtre nicho se o usuário pedir explicitamente.
 - HONESTIDADE DE ACERVO: NUNCA afirme que o acervo tem ou não tem um assunto sem ter BUSCADO esse assunto. Nada de inventar inventário ("tenho leão, crocodilo…") — se quiser sugerir alternativas, diga que pode buscar, não que "tem".
-- Confirmação: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). Teu diferencial — ostenta quando houver.
+- COBERTURA FINA (precisão > volume): se resumo.cobertura_fina=true, o acervo tem POUCOS vídeos DIRETOS sobre o tema (resumo.diretos_do_tema). Seja HONESTO no personagem: diga o número real que achou de certeiro ("achei só 3 cravados sobre o Haaland — o forte do acervo é outro") e ofereça ampliar ("quero que eu traga relacionados/parecidos?" ou sugira tema vizinho). JAMAIS finja fartura mandando o card cheio de "relacionado" como se fossem todos do tema. Melhor 3 certos e avisar, do que 30 e enrolar — é a regra do usuário: precisão primeiro.
+- Confirmação/PROVA: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). É teu diferencial, mas só EXISTE quando confirmados_na_fala>0. Se for 0 (comum em conteúdo VISUAL — um short de tigre não fala "tigre"), NÃO prometa nem invente "prova na fala"/"te digo o minuto" — apoie no título/canal/relevância com naturalidade. Ostenta a prova SÓ quando ela é real.
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
 - ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
 - NUNCA cite tecnologia interna, modelos, fornecedores ou APIs. A tecnologia é SUA.
@@ -478,8 +489,12 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true } });
     }
 
-    // log de uso (análise de produto — o que pediram, o que entendemos, o que saiu)
-    fetch(`${SU}/rest/v1/blublu_chat_logs`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({
+    // log de uso (análise de produto — o que pediram, o que entendemos, o que
+    // saiu, E a RESPOSTA do Blublu — pra auditar tom/qualidade na análise diária,
+    // que hoje é cega ao texto que ele fala). RESILIENTE: se a coluna 'resposta'
+    // ainda não existe no banco (rodar sql/blublu_resposta.sql), o 1º insert
+    // falha e cai no log SEM resposta — o log atual nunca regride.
+    const logBase = {
       user_id: userId, mensagem: message.slice(0, 300),
       tema: resultado?._input?.tema || null,
       termos: resultado?._input?.nucleos || resultado?._input?.termos || null,
@@ -489,7 +504,11 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       confirmados_fala: resultado ? resultado.videos.filter((v) => v.confirmado_por === 'fala').length : null,
       com_relevancia: resultado ? resultado.videos.filter((v) => (v._score || 0) > 0).length : null,
       usou_busca: !!resultado,
-    }) }).catch(() => {});
+    };
+    const gravarLog = (obj) => fetch(`${SU}/rest/v1/blublu_chat_logs`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(obj) });
+    gravarLog({ ...logBase, resposta: reply.slice(0, 2000), cobertura_fina: resultado?.resumo?.cobertura_fina ?? null })
+      .then((r) => { if (r && !r.ok) gravarLog(logBase).catch(() => {}); })
+      .catch(() => { gravarLog(logBase).catch(() => {}); });
 
     await bump();
     return res.status(200).json({
