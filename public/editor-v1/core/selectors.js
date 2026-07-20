@@ -13,6 +13,17 @@ export function totalDuration(state) {
   return effectiveClips(state).reduce((acc, c) => acc + clipDuration(state, c), 0);
 }
 
+/** Duracao REPRODUZIVEL da timeline: video OU audio, o que terminar depois.
+ *  Sem isso, projeto so-audio (ou com a faixa de video excluida) tinha
+ *  duracao 0 e o play nunca andava (bug user 2026-07-20). */
+export function playableDuration(state) {
+  let total = totalDuration(state);
+  for (const a of effectiveAudioClips(state)) {
+    total = Math.max(total, a.start + (a.source_out - a.source_in));
+  }
+  return total;
+}
+
 /** Segmentos da timeline: cada clip ativo com seu offset acumulado no tempo
  *  virtual. [{ clip, tStart, tEnd }] onde t* e tempo virtual. */
 export function timelineSegments(state) {
@@ -22,11 +33,15 @@ export function timelineSegments(state) {
   for (const clip of effectiveClips(state)) {
     if (clip.compound_id) {
       const comp = (state.compounds || []).find(k => k.id === clip.compound_id);
+      const t0 = t;
       for (const sub of (comp?.clips || []).filter(x => x.active !== false)) {
         const dur = sub.source_out - sub.source_in;
         segs.push({ clip: sub, tStart: t, tEnd: t + dur, compoundId: clip.compound_id });
         t += dur;
       }
+      // composto pode ser MAIOR que o video interno (so-audio/texto):
+      // o bloco ocupa a duracao total — o trecho sem video toca preto+audio
+      t = t0 + compoundDuration(comp);
     } else {
       const dur = clip.source_out - clip.source_in;
       segs.push({ clip, tStart: t, tEnd: t + dur });
@@ -36,13 +51,29 @@ export function timelineSegments(state) {
   return segs;
 }
 
-/** Duracao de um clip da main (compound = soma interna). */
+/** Duracao INTERNA de um composto: video em sequencia OU o fim do ultimo
+ *  audio/texto/camada — o que terminar depois. Compostos sem video (so
+ *  audio, por ex.) existem desde 2026-07-20. */
+export function compoundDuration(comp) {
+  if (!comp) return 0;
+  let total = (comp.clips || []).filter(x => x.active !== false)
+    .reduce((a, x) => a + (x.source_out - x.source_in), 0);
+  for (const a of (comp.audio_clips || []).filter(x => x.active !== false)) {
+    total = Math.max(total, a.start + (a.source_out - a.source_in));
+  }
+  for (const x of (comp.texts || []).filter(x => x.active !== false)) {
+    total = Math.max(total, x.end_sec);
+  }
+  for (const o of (comp.overlays || []).filter(x => x.active !== false)) {
+    total = Math.max(total, o.start + (o.source_out - o.source_in));
+  }
+  return total;
+}
+
+/** Duracao de um clip da main (compound = duracao interna total). */
 export function clipDuration(state, c) {
   if (c.compound_id) {
-    const comp = (state.compounds || []).find(k => k.id === c.compound_id);
-    if (!comp) return 0;
-    return comp.clips.filter(x => x.active !== false)
-      .reduce((a, x) => a + (x.source_out - x.source_in), 0);
+    return compoundDuration((state.compounds || []).find(k => k.id === c.compound_id));
   }
   return c.source_out - c.source_in;
 }
@@ -110,6 +141,15 @@ export function effectiveOverlays(state) {
   return out;
 }
 
+/** URL da midia de um clip/overlay: media_id -> pool; sem media_id -> video
+ *  principal. null se nao resolver (pool corrompido). */
+export function mediaUrlFor(state, item) {
+  if (item?.media_id != null) {
+    return (state.media || []).find(m => m.id === item.media_id)?.url || null;
+  }
+  return state.video?.url || null;
+}
+
 /** tempo virtual -> tempo no arquivo source. Retorna null se fora do range. */
 export function timelineToSource(state, t) {
   for (const seg of timelineSegments(state)) {
@@ -171,6 +211,8 @@ export function exportPayload(state) {
   const clips = timelineSegments(state).map(seg => ({
     source_in: round3(seg.clip.source_in),
     source_out: round3(seg.clip.source_out),
+    // multi-take: Railway baixa cada fonte distinta (null = video principal)
+    media_url: seg.clip.media_id != null ? mediaUrlFor(state, seg.clip) : null,
   }));
   return {
     version: 1,
@@ -201,6 +243,7 @@ export function exportPayload(state) {
     // camadas overlay (render: filter overlay + scale + enable window)
     overlays: effectiveOverlays(state).map(o => ({
       source_in: round3(o.source_in), source_out: round3(o.source_out),
+      media_url: o.media_id != null ? mediaUrlFor(state, o) : null,
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),
       scale: Math.round(o.scale * 100) / 100,

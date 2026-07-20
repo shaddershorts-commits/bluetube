@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt } from '../../public/editor-v1/core/selectors.js';
+import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration } from '../../public/editor-v1/core/selectors.js';
 
 function storeWithVideo(duration = 60) {
   const store = createStore();
@@ -200,7 +200,7 @@ test('exportPayload espelha contrato edit-v0', () => {
   store.dispatch(act.addText({ content: 'X', start_sec: 1, end_sec: 3 }));
   const p = exportPayload(store.getState());
   assert.equal(p.clips.length, 1);
-  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60 });
+  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null });
   assert.equal(p.texts.length, 1);
   assert.ok(p.texts[0].x_pct >= 0 && p.texts[0].x_pct <= 1);
   assert.ok(canExport(store.getState()));
@@ -428,4 +428,136 @@ test('SET_ITEM_LANE muda camada de overlay e texto (com clamp)', () => {
   assert.equal(s.texts[0].lane, 1);
   store.dispatch(act.setItemLane('text', txId, 99)); // clamp em MAX_LANE
   assert.equal(store.getState().texts[0].lane, 5);
+});
+
+// ── rodada 2026-07-20: multi-midia, compostos any-type, split geral, legendas ──
+
+test('ADD_MEDIA_CLIP acrescenta take SEM resetar o projeto', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.splitClipAt(5)); // edicao em andamento
+  const clipsAntes = store.getState().clips.length;
+  store.dispatch(act.addMediaClip({ url: 'https://x/take2.mp4', duration: 4, filename: 'take2.mp4' }));
+  const s = store.getState();
+  assert.equal(s.clips.length, clipsAntes + 1);   // ACRESCENTOU no fim
+  assert.equal(s.media.length, 1);
+  assert.equal(s.clips.at(-1).media_id, s.media[0].id);
+  assert.equal(s.clips.at(-1).source_out, 4);
+  // undo desfaz o take, edicao anterior intacta
+  store.undo();
+  assert.equal(store.getState().clips.length, clipsAntes);
+});
+
+test('ADD_MEDIA_CLIP com mediaId reusa o pool sem duplicar', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 3 }));
+  const mid = store.getState().media[0].id;
+  store.dispatch(act.addClipFromMedia(mid));
+  const s = store.getState();
+  assert.equal(s.media.length, 1);       // pool NAO duplicou
+  assert.equal(s.clips.length, 3);       // principal + 2 takes
+  assert.equal(s.clips[1].media_id, mid);
+  assert.equal(s.clips[2].media_id, mid);
+});
+
+test('TRIM_CLIP de take respeita a duracao da PROPRIA midia', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 4 }));
+  const take = store.getState().clips.at(-1);
+  store.dispatch(act.trimClip(take.id, 'out', 30)); // alem do fim da midia (4s)
+  assert.equal(store.getState().clips.at(-1).source_out, 4); // clampou na midia, nao no 60
+});
+
+test('exportPayload leva media_url por clip (null = principal)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addMediaClip({ url: 'https://x/take.mp4', duration: 4 }));
+  const pay = exportPayload(store.getState());
+  assert.equal(pay.clips[0].media_url, null);
+  assert.equal(pay.clips[1].media_url, 'https://x/take.mp4');
+});
+
+test('CREATE_COMPOUND aceita SO AUDIO (any-type) e conta na duracao', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 8 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setMultiSelect([{ type: 'audio', id: aid }]));
+  store.dispatch(act.createCompound());
+  const s = store.getState();
+  assert.equal(s.compounds.length, 1);
+  assert.equal(s.compounds[0].clips.length, 0);          // sem video interno
+  assert.equal(s.compounds[0].audio_clips.length, 1);
+  assert.equal(s.audio_clips.length, 0);                 // saiu da faixa solta
+  const bloco = s.clips.find(c => c.compound_id === s.compounds[0].id);
+  assert.ok(bloco, 'composto vira bloco na main');
+  assert.equal(clipDuration(s, bloco), 8);               // duracao = audio interno
+  assert.equal(playableDuration(s), 18);                 // 10 video + 8 do bloco
+});
+
+test('CREATE_COMPOUND respeita o maximo de 4 compostos', () => {
+  const store = storeWithVideo(40);
+  for (let i = 0; i < 5; i++) {
+    store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a' + i + '.mp3', filename: 'a', duration: 2 } });
+    const aid = store.getState().audio_clips.at(-1).id;
+    store.dispatch(act.setMultiSelect([{ type: 'audio', id: aid }]));
+    store.dispatch(act.createCompound());
+  }
+  assert.equal(store.getState().compounds.length, 4); // o 5o foi bloqueado
+});
+
+test('UNGROUP de composto so-audio devolve o audio sem afetar o resto', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addText({ content: 'fora', start_sec: 0, end_sec: 2 }));
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 6 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setMultiSelect([{ type: 'audio', id: aid }]));
+  store.dispatch(act.createCompound());
+  const compId = store.getState().compounds[0].id;
+  store.dispatch(act.ungroupCompound(compId));
+  const s = store.getState();
+  assert.equal(s.compounds.length, 0);
+  assert.equal(s.audio_clips.length, 1);            // audio voltou
+  assert.equal(s.texts.length, 1);                  // texto de fora intacto
+  assert.equal(s.clips.filter(c => c.compound_id).length, 0);
+});
+
+test('SPLIT_OVERLAY corta a camada sob o tempo', () => {
+  const store = storeWithVideo(20);
+  store.dispatch(act.splitClipAt(10));
+  store.dispatch(act.convertToOverlay(store.getState().clips[1].id, 2, 1)); // camada 10s em t=2
+  store.dispatch(act.splitOverlayAt(5));
+  const s = store.getState();
+  assert.equal(s.overlays.length, 2);
+  assert.ok(Math.abs(s.overlays[1].start - 5) < 1e-6);
+  // fora da camada = no-op
+  store.dispatch(act.splitOverlayAt(0.5));
+  assert.equal(store.getState().overlays.length, 2);
+});
+
+test('SET_CAPTIONS troca todas as legendas em 1 dispatch sem roubar selecao', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.selectClip(store.getState().clips[0].id));
+  store.dispatch(act.setCaptions([
+    { content: 'ola', start_sec: 0.5, end_sec: 1 },
+    { content: 'mundo', start_sec: 1, end_sec: 2 },
+  ]));
+  let s = store.getState();
+  assert.equal(s.texts.filter(t => t.caption).length, 2);
+  assert.equal(s.selected_text_id, null);                    // NAO selecionou texto
+  assert.equal(s.selected_clip_id, s.clips[0].id);           // clip continua
+  // regenerar SUBSTITUI (nao acumula)
+  store.dispatch(act.setCaptions([{ content: 'x', start_sec: 0, end_sec: 1 }]));
+  s = store.getState();
+  assert.equal(s.texts.filter(t => t.caption).length, 1);
+  // 1 undo volta as 2
+  store.undo();
+  assert.equal(store.getState().texts.filter(t => t.caption).length, 2);
+});
+
+test('playableDuration cobre projeto com audio alem do video (e so-audio toca)', () => {
+  const store = storeWithVideo(5);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 12 } });
+  assert.equal(playableDuration(store.getState()), 12);
+  // exclui o video da timeline -> playable segue pelo audio
+  store.dispatch(act.deleteClip(store.getState().clips[0].id));
+  assert.equal(totalDuration(store.getState()), 0);
+  assert.equal(playableDuration(store.getState()), 12);
 });

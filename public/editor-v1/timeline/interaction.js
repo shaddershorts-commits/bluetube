@@ -99,6 +99,12 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'clear-selection' });
           return { next: { name: 'panning', x0: ev.x, scrollX0: ctx.layout.vp.scrollX }, effects: fx };
         }
+        if ((ev.detail || 1) >= 2) {
+          // DUPLO clique no vazio segurando: o ponteiro SEGUE o mouse
+          // enquanto o botao estiver pressionado (user 2026-07-20)
+          fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
+          return { next: { name: 'scrubbing' }, effects: fx };
+        }
         // Mouse no vazio: CLIQUE = seek+desseleciona (decidido no up);
         // ARRASTO = seletor retangular (marquee, como a area de trabalho do
         // Windows) — user 2026-07-20.
@@ -347,7 +353,8 @@ export function transition(fsm, ev, ctx) {
         if (fsm.edge === 'in') {
           sourceTime = Math.min(Math.max(0, sourceTime), fsm.sourceOut0 - MIN_CLIP_DURATION);
         } else {
-          const maxOut = ctx.videoDuration || Infinity;
+          // takes extras tem duracao propria (clipMaxOut); principal usa a do video
+          const maxOut = ctx.clipMaxOut?.[fsm.clipId] ?? (ctx.videoDuration || Infinity);
           sourceTime = Math.max(fsm.sourceIn0 + MIN_CLIP_DURATION, Math.min(sourceTime, maxOut));
         }
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });

@@ -4,7 +4,7 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, sourceToTimeline } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
 import { formatTime, METRICS } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
@@ -25,8 +25,15 @@ export function mountEditor(root, store) {
   const $ = (sel) => root.querySelector(sel);
 
   const videoEl = $('#beVideo');
-  const audioEl = $('#beAudio');
-  const player = createPlayer(videoEl, audioEl, store);
+  // primaryUrl: o player troca o src por take (multi-midia); pro PRINCIPAL a
+  // url preferida e o objectURL local (instantaneo, pre-CDN) quando existir
+  const player = createPlayer(videoEl, {
+    primaryUrl: () => {
+      const v = store.getState().video;
+      if (!v) return null;
+      return (localPreview.for === v.url && localPreview.url) ? localPreview.url : v.url;
+    },
+  }, store);
   const timeline = createTimelineController({
     canvas: $('#beTimeline'),
     store, player,
@@ -48,6 +55,7 @@ export function mountEditor(root, store) {
   let videoWave = null;
   // preview local do arquivo recem-enviado (playback instantaneo pre-CDN)
   const localPreview = { url: null, for: null };
+  let mediaPanelOpen = false; // painel 🎞 Mídia (pool do projeto)
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
@@ -77,11 +85,14 @@ export function mountEditor(root, store) {
     videoEl.muted = !!state.audio_detached;
     // video source: usa preview local (objectURL) quando disponivel —
     // instantaneo e imune a atraso de propagacao do CDN
+    if (has) {
+      // url preferida do video PRINCIPAL (blob local > CDN) — pip/player leem
+      videoEl.dataset.primaryChoice = (localPreview.for === state.video.url && localPreview.url)
+        ? localPreview.url : state.video.url;
+    }
     if (has && videoEl.dataset.src !== state.video.url) {
       videoEl.dataset.src = state.video.url;
-      videoEl.src = (localPreview.for === state.video.url && localPreview.url)
-        ? localPreview.url
-        : state.video.url;
+      videoEl.src = videoEl.dataset.primaryChoice;
       videoEl.load();
       setupThumbsAndWave(state);
     }
@@ -106,11 +117,15 @@ export function mountEditor(root, store) {
     const showOv = !showText && state.selected_overlay_id != null;
     const showAudio = !showText && !showOv && state.selected_audio_id != null;
     const showClip = !showText && !showOv && !showAudio && state.selected_clip_id != null;
+    const nadaSel = !showText && !showOv && !showAudio && !showClip;
+    const showMedia = mediaPanelOpen && nadaSel;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
     $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
     $('#bePropsOverlay').style.display = showOv ? 'flex' : 'none';
     $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
-    $('#bePropsProject').style.display = (!showText && !showOv && !showAudio && !showClip) ? 'flex' : 'none';
+    $('#bePropsMedia').style.display = showMedia ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (nadaSel && !showMedia) ? 'flex' : 'none';
+    if (showMedia) renderMediaPanel();
     if (showText) fillTextPanel(state);
     if (showAudio) {
       const ac = state.audio_clips.find(a => a.id === state.selected_audio_id);
@@ -154,16 +169,59 @@ export function mountEditor(root, store) {
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
     drop.classList.remove('over');
-    const f = e.dataTransfer?.files?.[0];
-    if (f) doUploadVideo(f);
+    importFiles(e.dataTransfer?.files);
   });
   fileInput.addEventListener('change', () => {
-    if (fileInput.files?.[0]) doUploadVideo(fileInput.files[0]);
+    importFiles(fileInput.files);
     fileInput.value = '';
   });
-  $('#beAddMedia').addEventListener('click', () => fileInput.click());
+  // drag&drop com a edicao JA aberta: solta em qualquer lugar do editor e a
+  // midia e ACRESCENTADA na timeline (nao reseta o projeto) — user 2026-07-20
+  window.addEventListener('dragover', (e) => { e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if ($('#beWorkspace').style.display !== 'none') importFiles(e.dataTransfer?.files);
+  });
 
-  async function doUploadVideo(file) {
+  const isVideoFile = (f) => /^video\//.test(f.type) || /\.(mp4|mov|webm)$/i.test(f.name);
+  const isAudioFile = (f) => /^audio\//.test(f.type) || /\.(mp3|wav|m4a|aac)$/i.test(f.name);
+
+  /** Importa QUALQUER quantidade de midias. 1º video de projeto vazio =
+   *  principal; demais videos = takes ACRESCENTADOS no fim da timeline;
+   *  audios = faixa de audio. Nunca reseta o que ja esta em edicao. */
+  async function importFiles(fileList) {
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    let ok = 0;
+    for (const file of files) {
+      try {
+        if (isVideoFile(file)) {
+          if (!store.getState().video) await uploadPrimary(file);
+          else {
+            toast(`Enviando ${file.name}…`);
+            const media = await uploadMedia(file, 'video', () => {});
+            store.dispatch(act.addMediaClip(media));
+          }
+          ok++;
+        } else if (isAudioFile(file)) {
+          toast(`Enviando áudio ${file.name}…`);
+          const media = await uploadMedia(file, 'audio', () => {});
+          store.dispatch(act.addAudioClip(media));
+          syncWaveRegistry(store.getState());
+          ok++;
+        } else if (/^image\//.test(file.type)) {
+          toast('Imagens na timeline: em breve — por enquanto vídeo e áudio', true);
+        } else {
+          toast(`Formato não suportado: ${file.name}`, true);
+        }
+      } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+    }
+    if (ok > 1) toast(`${ok} mídias adicionadas à timeline ✓`);
+    else if (ok === 1) toast('Mídia adicionada ✓');
+    renderMediaPanel();
+  }
+
+  async function uploadPrimary(file) {
     const bar = $('#beDropProgress');
     const msg = $('#beDropMsg');
     try {
@@ -186,9 +244,57 @@ export function mountEditor(root, store) {
     } catch (e) {
       toast(e.message, true);
       msg.textContent = 'Arraste um vídeo ou clique pra escolher';
+      throw e;
     } finally {
       bar.style.display = 'none';
       bar.querySelector('i').style.width = '0%';
+    }
+  }
+
+  // ── painel Mídia (pool de midias do projeto) ──
+  $('#beAddMedia').addEventListener('click', () => {
+    mediaPanelOpen = !mediaPanelOpen;
+    if (mediaPanelOpen) store.dispatch(act.selectClip(null)); // painel contextual libera
+    renderMediaPanel();
+    sync();
+  });
+  $('#beMediaImport')?.addEventListener('click', () => fileInput.click());
+  $('#beMediaClose')?.addEventListener('click', () => { mediaPanelOpen = false; sync(); });
+
+  function renderMediaPanel() {
+    const list = $('#beMediaList');
+    if (!list) return;
+    const s = store.getState();
+    const rows = [];
+    if (s.video) {
+      rows.push({ icon: '🎬', name: s.video.filename || 'vídeo principal', dur: s.video.duration, tag: 'principal' });
+    }
+    for (const m of (s.media || [])) {
+      rows.push({ icon: '🎞', name: m.filename, dur: m.duration, mediaId: m.id, tag: 'take' });
+    }
+    const audUrls = new Set();
+    for (const a of (s.audio_clips || []).filter(a => a.kind !== 'video' && a.url)) {
+      if (audUrls.has(a.url)) continue;
+      audUrls.add(a.url);
+      rows.push({ icon: '🎵', name: a.filename || 'áudio', dur: a.media_duration, tag: 'áudio' });
+    }
+    list.innerHTML = rows.length ? '' : '<div class="be-dim">Nenhuma mídia importada ainda</div>';
+    for (const r of rows) {
+      const row = document.createElement('div');
+      row.className = 'be-media-row';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06)';
+      const secs = r.dur ? Math.round(r.dur) + 's' : '';
+      row.innerHTML = `<span>${r.icon}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</span><span class="be-dim">${secs} · ${r.tag}</span>`;
+      if (r.mediaId != null) {
+        const btn = document.createElement('button');
+        btn.className = 'be-tool-btn';
+        btn.style.cssText = 'padding:2px 8px;font-size:11px';
+        btn.textContent = '＋';
+        btn.title = 'Adicionar de novo na timeline';
+        btn.addEventListener('click', () => { store.dispatch(act.addClipFromMedia(r.mediaId)); toast('Take adicionado ✓'); });
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
     }
   }
 
@@ -459,7 +565,7 @@ export function mountEditor(root, store) {
 
   function aplicarLegendas(mode) {
     const words = lastCaptionWords || [];
-    const caps = mode === 'palavra'
+    const brutos = mode === 'palavra'
       // PALAVRA POR PALAVRA: cada palavra com o timestamp REAL da fala —
       // a legenda acompanha a narração exatamente (pedido do user)
       ? words.map((w, i) => ({
@@ -469,27 +575,34 @@ export function mountEditor(root, store) {
           end: Math.max(w.end, (words[i + 1]?.start ?? w.end + 0.4) - 0.02, w.start + 0.25),
         }))
       : (lastCaptionPhrases || []);
+    if (!brutos.length) return 0;
+
+    const state = store.getState();
+    // Whisper devolve tempos do ARQUIVO original; a timeline pode ter cortes/
+    // reordenacao. Mapear fonte->timeline mantem a legenda em cima da fala
+    // mesmo depois de editar (palavras em trechos cortados somem).
+    const caps = [];
+    for (const c of brutos) {
+      const ts = sourceToTimeline(state, c.start);
+      if (ts == null) continue; // fala num trecho removido
+      const te = sourceToTimeline(state, c.end);
+      const dur = te != null && te > ts ? te - ts : Math.max(0.25, c.end - c.start);
+      caps.push({ text: c.text, start: ts, end: ts + dur });
+    }
     if (!caps.length) return 0;
+
     // preserva o estilo atual (se o user ja tinha legendas estilizadas)
-    const atual = store.getState().texts.find(t => t.caption);
+    const atual = state.texts.find(t => t.caption);
     const estilo = {
       font: atual?.font || 'Anton', size: atual?.size || 'medium',
       color: atual?.color || '#ffffff', y_pct: atual?.y_pct ?? 0.82,
     };
-    for (const t of store.getState().texts.filter(t => t.caption)) {
-      store.dispatch({ ...act.deleteText(t.id), gestureId: 'caps' });
-    }
-    for (const c of caps) {
-      store.dispatch({
-        ...act.addText({
-          content: c.text, caption: true,
-          start_sec: c.start, end_sec: c.end,
-          x_pct: 0.5, ...estilo,
-        }),
-        gestureId: 'caps',
-      });
-    }
-    store.endGesture(); // 1 undo desfaz a geracao inteira
+    // UM dispatch: nao rouba a selecao (painel fica), 1 undo, sem freeze
+    // com videos longos (300+ palavras = 300 dispatches na versao antiga)
+    store.dispatch(act.setCaptions(caps.map(c => ({
+      content: c.text, start_sec: c.start, end_sec: c.end,
+      x_pct: 0.5, ...estilo,
+    }))));
     return caps.length;
   }
 
@@ -511,7 +624,12 @@ export function mountEditor(root, store) {
       if (!n) return toast('Nenhuma fala detectada no áudio', true);
       $('#beCapStyleRow').style.display = 'flex';
       toast(n + (mode === 'palavra' ? ' palavras' : ' legendas') + ' geradas ✓ — sincronizadas com a fala');
-    } catch (e) { toast('Legendas: ' + e.message, true); }
+    } catch (e) {
+      const msg = (e.status === 504 || /timeout|timed out|HTTP 50/i.test(e.message || ''))
+        ? 'A transcrição demorou demais — tente um vídeo mais curto'
+        : e.message;
+      toast('Legendas: ' + msg, true);
+    }
   }
   $('#beAutoCaptions').addEventListener('click', generateCaptions);
   $('#beAutoCaptions2').addEventListener('click', generateCaptions);
@@ -568,7 +686,14 @@ export function mountEditor(root, store) {
     store.endGesture();
     $('#beCapStyleRow').style.display = 'none';
   });
-  $('#beGroupBtn').addEventListener('click', () => store.dispatch(act.createCompound()));
+  $('#beGroupBtn').addEventListener('click', () => {
+    if ((store.getState().compounds || []).length >= 4) {
+      return toast('Máximo de 4 clipes compostos — desfaça um (botão direito nele) pra criar outro', true);
+    }
+    const antes = (store.getState().compounds || []).length;
+    store.dispatch(act.createCompound());
+    if ((store.getState().compounds || []).length > antes) toast('Clipe composto criado ✓');
+  });
 
   // ── toast ──
   function toast(msg, isError) {
@@ -629,14 +754,14 @@ function buildTemplate() {
     <div class="be-dim">MP4, MOV ou WebM · máx 500MB</div>
     <div id="beDropProgress" class="be-progress" style="display:none"><i></i></div>
   </div>
-  <input type="file" id="beFile" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden/>
+  <input type="file" id="beFile" multiple accept="video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac" hidden/>
 </div>
 
 <div id="beWorkspace" class="be-workspace" style="display:none">
 
   <!-- rail de acoes (CapCut: Midia / Texto / Audio) -->
   <div class="be-rail">
-    <button id="beAddMedia" class="be-rail-btn" title="Trocar vídeo"><span>🎞</span>Mídia</button>
+    <button id="beAddMedia" class="be-rail-btn" title="Mídias do projeto — importar e ver vídeos/áudios (Ctrl+O importa direto)"><span>🎞</span>Mídia</button>
     <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
     <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
     <button id="beAutoCaptions" class="be-rail-btn" title="Gerar legendas automáticas (IA)"><span>💬</span>Legendas</button>
@@ -657,6 +782,13 @@ function buildTemplate() {
 
   <!-- painel de propriedades contextual (CapCut right panel) -->
   <div class="be-props">
+
+    <div id="bePropsMedia" class="be-props-stack" style="display:none">
+      <div class="be-side-title">🎞 Mídia do projeto <button id="beMediaClose" class="be-tool-btn" style="float:right;padding:1px 8px">✕</button></div>
+      <button id="beMediaImport" class="be-tool-btn">＋ Importar mídias (Ctrl+O)</button>
+      <div class="be-dim">Vídeos viram takes no fim da timeline; áudios entram na faixa de áudio. Pode selecionar vários de uma vez ou arrastar aqui.</div>
+      <div id="beMediaList"></div>
+    </div>
 
     <div id="bePropsProject" class="be-props-stack">
       <div class="be-side-title">Projeto</div>

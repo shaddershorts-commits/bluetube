@@ -36,6 +36,7 @@ export const A = {
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
   SET_ITEM_LANE: 'SET_ITEM_LANE',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
+  SPLIT_OVERLAY: 'SPLIT_OVERLAY',
   MOVE_OVERLAY: 'MOVE_OVERLAY',
   SET_OVERLAY_TRANSFORM: 'SET_OVERLAY_TRANSFORM',
   DELETE_OVERLAY: 'DELETE_OVERLAY',
@@ -48,9 +49,12 @@ export const A = {
   SELECT_ALL: 'SELECT_ALL',
   SET_MULTI_SELECT: 'SET_MULTI_SELECT',
   DELETE_MULTI: 'DELETE_MULTI',
+  SET_CAPTIONS: 'SET_CAPTIONS',
   CREATE_COMPOUND: 'CREATE_COMPOUND',
   UNGROUP_COMPOUND: 'UNGROUP_COMPOUND',
   UPDATE_COMPOUND: 'UPDATE_COMPOUND',
+  // multi-midia (takes)
+  ADD_MEDIA_CLIP: 'ADD_MEDIA_CLIP',
   // meta
   SET_PROJECT_ID: 'SET_PROJECT_ID',
 };
@@ -82,6 +86,7 @@ export const UNDOABLE = {
   [A.SET_AUDIO_VOLUME]: U,
   [A.CONVERT_TO_OVERLAY]: U,
   [A.TRIM_OVERLAY]: U,
+  [A.SPLIT_OVERLAY]: U,
   [A.MOVE_OVERLAY]: U,
   [A.SET_OVERLAY_TRANSFORM]: U,
   [A.SET_ITEM_LANE]: U,
@@ -93,6 +98,8 @@ export const UNDOABLE = {
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
   [A.DELETE_MULTI]: U, // apaga a multi-selecao inteira = 1 undo step
+  [A.SET_CAPTIONS]: U, // geracao de legendas inteira = 1 undo step
+  [A.ADD_MEDIA_CLIP]: U,
 };
 
 // ── creators ────────────────────────────────────────────────────────────────
@@ -128,6 +135,7 @@ export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVE
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline
 export const setItemLane = (itemType, id, lane) => ({ type: A.SET_ITEM_LANE, itemType, id, lane });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
+export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });
 export const moveOverlay = (overlayId, start) => ({ type: A.MOVE_OVERLAY, overlayId, start });
 export const setOverlayTransform = (overlayId, patch) => ({ type: A.SET_OVERLAY_TRANSFORM, overlayId, patch });
 export const deleteOverlay = (overlayId) => ({ type: A.DELETE_OVERLAY, overlayId });
@@ -142,6 +150,14 @@ export const selectAll = () => ({ type: A.SELECT_ALL });
 export const setMultiSelect = (items) => ({ type: A.SET_MULTI_SELECT, items });
 // Delete com multi-selecao ativa: apaga tudo que esta selecionado
 export const deleteMulti = () => ({ type: A.DELETE_MULTI });
+// caps: [{content,start_sec,end_sec,font,size,color,y_pct,...}] — substitui
+// TODAS as legendas num unico dispatch (nao rouba selecao, 1 undo)
+export const setCaptions = (caps) => ({ type: A.SET_CAPTIONS, caps });
+// media: { url, path, filename, duration, width, height } — vira take no FIM
+// da track principal SEM resetar o projeto (multi-midia 2026-07-20)
+export const addMediaClip = (media) => ({ type: A.ADD_MEDIA_CLIP, media });
+// reusa uma midia JA no pool (painel Midia: "+ adicionar de novo")
+export const addClipFromMedia = (mediaId) => ({ type: A.ADD_MEDIA_CLIP, mediaId });
 export const createCompound = () => ({ type: A.CREATE_COMPOUND });
 export const ungroupCompound = (compoundId) => ({ type: A.UNGROUP_COMPOUND, compoundId });
 export const updateCompound = (compoundId, doc) => ({ type: A.UPDATE_COMPOUND, compoundId, doc });

@@ -28,6 +28,40 @@ export function reduce(state, action) {
       return touch(next);
     }
 
+    case A.ADD_MEDIA_CLIP: {
+      // take extra: entra no pool e vira clip no FIM da track principal.
+      // NAO reseta nada — pedido explicito do user (2026-07-20): importar com
+      // a edicao em andamento ACRESCENTA na timeline.
+      // action.mediaId (sem media) = reusar item ja existente no pool.
+      let media, pool = state.media || [], nextMediaId = state.next_media_id;
+      if (action.mediaId != null) {
+        media = pool.find(m => m.id === action.mediaId);
+        if (!media) return state;
+      } else {
+        const m = action.media;
+        if (!m?.url || !(m.duration > 0)) return state;
+        media = {
+          id: nextMediaId, url: m.url, path: m.path || null,
+          filename: m.filename || 'mídia', duration: m.duration,
+          width: m.width || 0, height: m.height || 0,
+        };
+        pool = [...pool, media];
+        nextMediaId++;
+      }
+      const clip = {
+        id: state.next_clip_id, media_id: media.id,
+        source_in: 0, source_out: media.duration, active: true,
+      };
+      return touch({
+        ...state,
+        media: pool,
+        next_media_id: nextMediaId,
+        clips: [...state.clips, clip],
+        next_clip_id: state.next_clip_id + 1,
+        selected_clip_id: clip.id,
+      });
+    }
+
     case A.RENAME_PROJECT: {
       const nome = String(action.nome || '').slice(0, 120).trim();
       if (!nome) return state;
@@ -59,7 +93,10 @@ export function reduce(state, action) {
       const idx = state.clips.findIndex(c => c.id === action.clipId);
       if (idx < 0) return state;
       const c = state.clips[idx];
-      const dur = state.video?.duration || Infinity;
+      // take extra: o limite e a duracao da PROPRIA midia, nao a do principal
+      const dur = c.media_id != null
+        ? ((state.media || []).find(m => m.id === c.media_id)?.duration || Infinity)
+        : (state.video?.duration || Infinity);
       let { source_in, source_out } = c;
       if (action.edge === 'in') {
         source_in = clamp(action.sourceTime, 0, source_out - MIN_CLIP_DURATION);
@@ -140,28 +177,26 @@ export function reduce(state, action) {
     // ── textos ───────────────────────────────────────────────────────────
 
     case A.ADD_TEXT: {
-      const p = action.props || {};
-      const text = {
-        id: state.next_text_id,
-        content: String(p.content || 'Texto').slice(0, 200),
-        font: TEXT_FONTS.includes(p.font) ? p.font : 'Anton',
-        size: TEXT_SIZES.includes(p.size) ? p.size : 'medium',
-        color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ffffff',
-        x_pct: clamp01(p.x_pct ?? 0.5),
-        y_pct: clamp01(p.y_pct ?? 0.35),
-        start_sec: Math.max(0, p.start_sec ?? 0),
-        end_sec: Math.max(0, p.end_sec ?? 3),
-        caption: p.caption === true,
-        lane: clampLane(p.lane, TEXT_DEFAULT_LANE),
-        active: true,
-      };
-      if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;
+      const text = buildText(action.props || {}, state.next_text_id);
       return touch({
         ...state,
         texts: [...state.texts, text],
         next_text_id: state.next_text_id + 1,
         selected_text_id: text.id,
       });
+    }
+
+    // legendas em LOTE: troca todas as captions num unico passo (1 dispatch,
+    // 1 undo) SEM roubar a selecao — gerar legenda nao pode trocar o painel
+    case A.SET_CAPTIONS: {
+      const texts = state.texts.filter(t => !t.caption);
+      let id = state.next_text_id;
+      for (const c of (action.caps || [])) {
+        texts.push(buildText({ ...c, caption: true }, id++));
+      }
+      const sel = state.texts.some(t => t.id === state.selected_text_id && t.caption)
+        ? null : state.selected_text_id;
+      return touch({ ...state, texts, next_text_id: id, selected_text_id: sel });
     }
 
     case A.UPDATE_TEXT: {
@@ -353,6 +388,7 @@ export function reduce(state, action) {
       const overlay = {
         id: state.next_overlay_id,
         source_in: clip.source_in, source_out: clip.source_out,
+        ...(clip.media_id != null ? { media_id: clip.media_id } : {}),
         start: Math.max(0, action.atT || 0),
         x_pct: 0.5, y_pct: 0.5, scale: 1,
         lane: clampLane(action.lane, OVERLAY_DEFAULT_LANE),
@@ -368,6 +404,22 @@ export function reduce(state, action) {
       });
     }
 
+    case A.SPLIT_OVERLAY: {
+      // corta a CAMADA sob o tempo virtual t (espelho do SPLIT_AUDIO)
+      const t = action.t;
+      const hitOv = (o) => o.active !== false &&
+        t > o.start + MIN_CLIP_DURATION &&
+        t < o.start + (o.source_out - o.source_in) - MIN_CLIP_DURATION;
+      let target = state.overlays.find(o => o.id === state.selected_overlay_id && hitOv(o));
+      if (!target) target = state.overlays.find(hitOv);
+      if (!target) return state;
+      const splitSrc = target.source_in + (t - target.start);
+      const left = { ...target, source_out: splitSrc };
+      const right = { ...target, id: state.next_overlay_id, start: t, source_in: splitSrc };
+      const overlays = state.overlays.flatMap(o => o.id === target.id ? [left, right] : [o]);
+      return touch({ ...state, overlays, next_overlay_id: state.next_overlay_id + 1, selected_overlay_id: right.id });
+    }
+
     case A.TRIM_OVERLAY: {
       const idx = state.overlays.findIndex(o => o.id === action.overlayId);
       if (idx < 0) return state;
@@ -379,7 +431,9 @@ export function reduce(state, action) {
         start = Math.max(0, o.start + delta);
         source_in = o.source_in + delta;
       } else {
-        const maxOut = state.video?.duration || Infinity;
+        const maxOut = o.media_id != null
+          ? ((state.media || []).find(m => m.id === o.media_id)?.duration || Infinity)
+          : (state.video?.duration || Infinity);
         source_out = clamp(action.value, o.source_in + MIN_CLIP_DURATION, maxOut);
       }
       if (start === o.start && source_in === o.source_in && source_out === o.source_out) return state;
@@ -515,13 +569,25 @@ export function reduce(state, action) {
       }
       const clipIds = sel.filter(x => x.type === 'clip').map(x => x.id);
       const inClips = state.clips.filter(c => clipIds.includes(c.id) && !c.compound_id && c.active !== false);
-      if (!inClips.length) return state; // composto precisa de >=1 clip de video
-      const items = mainTrackItems(state);
-      const firstIt = items.find(it => clipIds.includes(it.clip.id));
-      const base = firstIt ? firstIt.tStart : 0;
       const textIds = sel.filter(x => x.type === 'text').map(x => x.id);
       const audioIds = sel.filter(x => x.type === 'audio').map(x => x.id);
       const ovIds = sel.filter(x => x.type === 'overlay').map(x => x.id);
+      // composto aceita QUALQUER combinacao (so audio, so texto, tudo junto) —
+      // precisa apenas de >=1 item real. Maximo de 4 compostos (regra do user).
+      const temAlgo = inClips.length || state.texts.some(t => textIds.includes(t.id)) ||
+        state.audio_clips.some(a => audioIds.includes(a.id)) ||
+        state.overlays.some(o => ovIds.includes(o.id));
+      if (!temAlgo) return state;
+      if ((state.compounds || []).length >= 4) return state; // shell mostra o aviso
+      const items = mainTrackItems(state);
+      const firstIt = items.find(it => clipIds.includes(it.clip.id));
+      // sem clip de video, a base e o inicio do item selecionado mais cedo —
+      // o conteudo interno fica relativo a ele
+      const base = firstIt ? firstIt.tStart : Math.min(...[
+        ...state.texts.filter(t => textIds.includes(t.id)).map(t => t.start_sec),
+        ...state.audio_clips.filter(a => audioIds.includes(a.id)).map(a => a.start),
+        ...state.overlays.filter(o => ovIds.includes(o.id)).map(o => o.start),
+      ]);
       const comp = {
         id: state.next_compound_id,
         name: 'Clipe composto ' + state.next_compound_id,
@@ -534,10 +600,16 @@ export function reduce(state, action) {
           .map(o => ({ ...o, start: Math.max(0, o.start - base) })),
       };
       const compClip = { id: state.next_clip_id, compound_id: comp.id, active: true };
-      const firstIdx = state.clips.findIndex(c => c.id === inClips[0].id);
-      const clips = state.clips
-        .map((c, i) => i === firstIdx ? compClip : c)
-        .filter(c => c === compClip || !clipIds.includes(c.id));
+      let clips;
+      if (inClips.length) {
+        const firstIdx = state.clips.findIndex(c => c.id === inClips[0].id);
+        clips = state.clips
+          .map((c, i) => i === firstIdx ? compClip : c)
+          .filter(c => c === compClip || !clipIds.includes(c.id));
+      } else {
+        // composto sem video vira um bloco no FIM da track principal
+        clips = [...state.clips, compClip];
+      }
       return touch({
         ...state,
         clips,
@@ -618,4 +690,24 @@ export function reduce(state, action) {
 
 function touch(state) {
   return { ...state, updated_at: new Date().toISOString() };
+}
+
+/** Texto validado/normalizado — unica fonte (ADD_TEXT e SET_CAPTIONS). */
+function buildText(p, id) {
+  const text = {
+    id,
+    content: String(p.content || 'Texto').slice(0, 200),
+    font: TEXT_FONTS.includes(p.font) ? p.font : 'Anton',
+    size: TEXT_SIZES.includes(p.size) ? p.size : 'medium',
+    color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ffffff',
+    x_pct: clamp01(p.x_pct ?? 0.5),
+    y_pct: clamp01(p.y_pct ?? 0.35),
+    start_sec: Math.max(0, p.start_sec ?? 0),
+    end_sec: Math.max(0, p.end_sec ?? 3),
+    caption: p.caption === true,
+    lane: clampLane(p.lane, TEXT_DEFAULT_LANE),
+    active: true,
+  };
+  if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;
+  return text;
 }

@@ -2,15 +2,58 @@
 // Atalhos CapCut. Ignora quando o foco esta em input/textarea/contenteditable.
 
 import * as act from '../core/actions.js';
-import { segmentAt, timelineSegments } from '../core/selectors.js';
+import {
+  segmentAt, timelineSegments, effectiveTexts, effectiveAudioClips, effectiveOverlays,
+} from '../core/selectors.js';
 
 /** Split CapCut: corta a FAIXA selecionada no cursor.
- *  texto selecionado -> divide texto; audio -> divide audio; senao video. */
+ *  Texto/audio/camada selecionado -> divide essa faixa; clip -> video;
+ *  NADA selecionado -> corta TUDO que estiver sob o ponteiro (user 2026-07-20). */
 export function splitSelectedAt(store, t) {
   const s = store.getState();
   if (s.selected_text_id != null) return store.dispatch(act.splitTextAt(s.selected_text_id, t));
   if (s.selected_audio_id != null) return store.dispatch(act.splitAudioAt(t));
-  return store.dispatch(act.splitClipAt(t));
+  if (s.selected_overlay_id != null) return store.dispatch(act.splitOverlayAt(t));
+  if (s.selected_clip_id != null) return store.dispatch(act.splitClipAt(t));
+  return splitAllAt(store, t);
+}
+
+const EPS = 1e-3;
+const spanAudio = (a) => a.source_out - a.source_in;
+
+/** Corta TODAS as faixas sob o tempo t (video + textos + audios + camadas).
+ *  Tudo com o mesmo gestureId => 1 undo desfaz o corte inteiro. */
+export function splitAllAt(store, t) {
+  const gestureId = 'splitall-' + Date.now();
+  const s = store.getState();
+  // compostos nao sao cortados aqui (dentro deles se edita com duplo clique)
+  if (segmentAt(s, t) && !segmentAt(s, t).compoundId) {
+    store.dispatch({ ...act.splitClipAt(t), gestureId });
+  }
+  for (const tx of s.texts.filter(x => x.active !== false &&
+      t > x.start_sec + EPS && t < x.end_sec - EPS)) {
+    store.dispatch({ ...act.splitTextAt(tx.id, t), gestureId });
+  }
+  // SPLIT_AUDIO/SPLIT_OVERLAY cortam 1 por dispatch: repete enquanto houver
+  // faixa inteira sob o ponteiro (as metades novas nao batem mais no filtro)
+  const nAud = s.audio_clips.filter(a => a.active !== false &&
+    t > a.start + EPS && t < a.start + spanAudio(a) - EPS).length;
+  for (let i = 0; i < nAud; i++) store.dispatch({ ...act.splitAudioAt(t), gestureId });
+  const nOv = s.overlays.filter(o => o.active !== false &&
+    t > o.start + EPS && t < o.start + spanAudio(o) - EPS).length;
+  for (let i = 0; i < nOv; i++) store.dispatch({ ...act.splitOverlayAt(t), gestureId });
+  store.endGesture();
+}
+
+/** Intervalos [start,end] de TODAS as faixas (video/texto/audio/camada) em
+ *  tempo virtual — base da navegacao com as setas ↑/↓. */
+function trackSpans(state) {
+  const spans = [];
+  for (const s of timelineSegments(state)) spans.push({ start: s.tStart, end: s.tEnd });
+  for (const x of effectiveTexts(state)) spans.push({ start: x.start_sec, end: x.end_sec });
+  for (const a of effectiveAudioClips(state)) spans.push({ start: a.start, end: a.start + spanAudio(a) });
+  for (const o of effectiveOverlays(state)) spans.push({ start: o.start, end: o.start + spanAudio(o) });
+  return spans;
 }
 
 export function attachShortcuts({ store, player, timeline }) {
@@ -33,6 +76,12 @@ export function attachShortcuts({ store, player, timeline }) {
     }
     // Split
     if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); splitSelectedAt(store, t); return; }
+    // Importar midias (video/audio) — abre direto a janela de arquivos
+    if (mod && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      document.getElementById('beFile')?.click();
+      return;
+    }
     // Separar audio do video (CapCut: Ctrl+Shift+S)
     if (mod && e.shiftKey && e.key.toLowerCase() === 's') {
       e.preventDefault();
@@ -105,6 +154,20 @@ export function attachShortcuts({ store, player, timeline }) {
       }
       case 'ArrowLeft': e.preventDefault(); player.stepFrame(-1, e.shiftKey); break;
       case 'ArrowRight': e.preventDefault(); player.stepFrame(1, e.shiftKey); break;
+      // ↑ = ponteiro pro INICIO da faixa mais proxima (qualquer track);
+      // ↓ = pro FINAL. Apertar de novo continua andando pelas bordas.
+      case 'ArrowUp': {
+        e.preventDefault();
+        const starts = trackSpans(state).map(sp => sp.start).filter(v => v < t - 1e-3);
+        player.seek(starts.length ? Math.max(...starts) : 0);
+        break;
+      }
+      case 'ArrowDown': {
+        e.preventDefault();
+        const ends = trackSpans(state).map(sp => sp.end).filter(v => v > t + 1e-3);
+        player.seek(ends.length ? Math.min(...ends) : player.getDuration());
+        break;
+      }
       case 'Home': e.preventDefault(); player.seek(0); break;
       case 'End': e.preventDefault(); player.seek(player.getDuration()); break;
       case 'z': case 'Z':

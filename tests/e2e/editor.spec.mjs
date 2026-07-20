@@ -46,6 +46,43 @@ test.describe('upload + documento @smoke', () => {
     await expect.poll(() => saved.count, { timeout: 6000 }).toBeGreaterThan(before);
     expect(saved.lastState.clips.length).toBeGreaterThanOrEqual(1);
   });
+
+  test('importar 2o video ACRESCENTA take sem resetar o projeto (multi-midia)', async ({ page }) => {
+    const { makeSyntheticVideo } = await import('./helpers.mjs');
+    await bootWithVideo(page, { seconds: 2 });
+    // edicao em andamento: split no principal
+    await page.evaluate(() => window.__BE__.player.seek(1.0));
+    await page.keyboard.press('Control+b');
+    let s = await getState(page);
+    const clipsAntes = s.clips.length;
+    expect(clipsAntes).toBe(2);
+    const videoUrlAntes = s.video.url;
+
+    // 2o video: drop no workspace (edicao ja aberta) — deve virar TAKE
+    const vid2 = await makeSyntheticVideo(page, 1);
+    await page.evaluate(async (b64) => {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const file = new File([bytes], 'take2.webm', { type: 'video/webm' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }, vid2);
+
+    await expect.poll(async () => (await getState(page)).clips.length, { timeout: 20000 }).toBe(clipsAntes + 1);
+    s = await getState(page);
+    expect(s.video.url).toBe(videoUrlAntes);           // principal NAO trocou (sem reset)
+    expect(s.media.length).toBe(1);                    // take entrou no pool
+    expect(s.clips.at(-1).media_id).toBe(s.media[0].id);
+    // export leva a fonte do take
+    const pay = await page.evaluate(async () => {
+      const m = await import('/editor-v1/core/selectors.js');
+      return m.exportPayload(window.__BE__.getState());
+    });
+    expect(pay.clips.at(-1).media_url).toContain('mock-storage');
+    expect(pay.clips[0].media_url).toBe(null);         // principal
+  });
 });
 
 test.describe('edicao via teclado @smoke', () => {
@@ -383,5 +420,57 @@ test.describe('audio detach @smoke', () => {
     expect(s.audio_clips).toHaveLength(2);   // audio dividido
     expect(s.clips).toHaveLength(1);          // video intacto
     expect(s.audio_clips[1].start).toBeCloseTo(1.0, 1);
+  });
+});
+
+test.describe('legendas automaticas @smoke', () => {
+  // cobre o caminho que quebrou em 2026-07-20: modo palavra-por-palavra
+  async function mockCaptions(page) {
+    // route adicionada DEPOIS do mockBackend => tem precedencia (LIFO)
+    await page.route('**/api/blue-editor', async (route) => {
+      const body = route.request().postDataJSON() || {};
+      if (body.action === 'auto-captions') {
+        return route.fulfill({ json: {
+          ok: true,
+          captions: [{ start: 0.2, end: 1.4, text: 'ola mundo teste' }],
+          words: [
+            { word: 'ola',   start: 0.2, end: 0.5 },
+            { word: 'mundo', start: 0.6, end: 0.9 },
+            { word: 'teste', start: 1.0, end: 1.4 },
+          ],
+        } });
+      }
+      return route.fallback();
+    });
+  }
+
+  test('modo palavra gera 1 texto por palavra sincronizado; frase gera bloco', async ({ page }) => {
+    await bootWithVideo(page, { seconds: 2 });
+    await mockCaptions(page);
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+
+    await page.selectOption('#beCapMode', 'palavra');
+    await page.click('#beAutoCaptions2');
+
+    await expect.poll(async () => {
+      const s = await getState(page);
+      return s.texts.filter(t => t.caption).length;
+    }, { timeout: 10000 }).toBe(3);
+
+    const s = await getState(page);
+    const caps = s.texts.filter(t => t.caption);
+    expect(caps[0].content).toBe('ola');
+    expect(caps[0].start_sec).toBeCloseTo(0.2, 2);
+    expect(caps[1].start_sec).toBeCloseTo(0.6, 2);  // acompanha a fala
+    expect(errors).toEqual([]);
+
+    // trocar modo pra FRASE regenera SEM nova transcricao
+    await page.selectOption('#beCapMode', 'frase');
+    await expect.poll(async () => {
+      const s2 = await getState(page);
+      return s2.texts.filter(t => t.caption).length;
+    }).toBe(1);
+    expect(errors).toEqual([]);
   });
 });

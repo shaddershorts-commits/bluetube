@@ -2055,6 +2055,19 @@ async function processEditV0(jobId, p) {
     update('downloading', 5);
     const sourcePath = path.join(dir, 'source.mp4');
     await downloadFile(p.video_url, sourcePath);
+    // 1b. Multi-take (2026-07-20): clips/overlays podem apontar pra OUTRAS
+    // midias via media_url — baixa cada fonte distinta uma unica vez
+    const mediaPaths = new Map(); // media_url -> path local
+    const distinctMedia = [...new Set(
+      [...(p.clips || []), ...(p.overlays || [])].map(x => x.media_url).filter(Boolean)
+    )];
+    for (let i = 0; i < distinctMedia.length; i++) {
+      const mp = path.join(dir, `media_${i}.mp4`);
+      await downloadFile(distinctMedia[i], mp);
+      mediaPaths.set(distinctMedia[i], mp);
+    }
+    const srcFor = (x) => x.media_url ? (mediaPaths.get(x.media_url) || sourcePath) : sourcePath;
+    const multiSource = distinctMedia.length > 0;
     // 2. Audio extra (opcional)
     let audioExtraPath = null;
     if (p.audio_extra_url) {
@@ -2065,6 +2078,13 @@ async function processEditV0(jobId, p) {
 
     // 3. Trim cada clip
     update('trimming', 15);
+    // multi-take: fontes com resolucao/fps diferentes NAO concatenam com
+    // -c copy — normaliza cada trim pro formato de saida ANTES do concat
+    const NORM_W = p.output_width || 1080;
+    const NORM_H = p.output_height || 1920;
+    const normVf = (p.aspect_strategy || 'crop_center') === 'letterbox'
+      ? `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=decrease,pad=${NORM_W}:${NORM_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+      : `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=increase,crop=${NORM_W}:${NORM_H},setsar=1`;
     const clipFiles = [];
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
@@ -2075,7 +2095,8 @@ async function processEditV0(jobId, p) {
       // V0 usa fast seek + re-encode pra balance
       await run('ffmpeg', [
         '-y', '-ss', String(c.source_in), '-t', String(dur),
-        '-i', sourcePath,
+        '-i', srcFor(c),
+        ...(multiSource ? ['-vf', normVf, '-r', '30', '-pix_fmt', 'yuv420p'] : []),
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '128k',
         '-force_key_frames', 'expr:gte(t,0)',
@@ -2117,7 +2138,7 @@ async function processEditV0(jobId, p) {
       try {
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
-          '-i', sourcePath, '-vn', '-c:a', 'aac', '-b:a', '128k', out,
+          '-i', srcFor(c), '-vn', '-c:a', 'aac', '-b:a', '128k', out,
         ]);
         audioClipFiles.push(out);
       } catch(e) { /* video pode nao ter audio */ }
@@ -2167,7 +2188,7 @@ async function processEditV0(jobId, p) {
       const out = path.join(dir, `ov_${i}.mp4`);
       await run('ffmpeg', [
         '-y', '-ss', String(o.source_in), '-t', String(dur),
-        '-i', sourcePath,
+        '-i', srcFor(o),
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', out,
       ]);
       ovInputs.push({ idx: inputIdx, o, file: out });

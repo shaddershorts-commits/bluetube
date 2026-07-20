@@ -6,7 +6,7 @@
 // por scroll (a selecionada).
 
 import * as act from '../core/actions.js';
-import { effectiveOverlays } from '../core/selectors.js';
+import { effectiveOverlays, mediaUrlFor } from '../core/selectors.js';
 
 export function createPip(container, videoSrcEl, store, player) {
   const pool = new Map(); // overlay.id -> <video>
@@ -41,7 +41,12 @@ export function createPip(container, videoSrcEl, store, player) {
       vistos.add(String(ov.id));
       let el = pool.get(String(ov.id));
       if (!el) { el = makeEl(String(ov.id)); pool.set(String(ov.id), el); }
-      const src = videoSrcEl.currentSrc || videoSrcEl.src;
+      // multi-take: camada de take usa a midia DELA; camada do principal usa
+      // a escolha do shell (blob local > CDN) — nunca o src atual do player,
+      // que pode estar num take
+      const src = ov.media_id != null
+        ? mediaUrlFor(state, ov)
+        : (videoSrcEl.dataset.primaryChoice || videoSrcEl.currentSrc || videoSrcEl.src);
       if (src && el.dataset.src !== src) { el.src = src; el.dataset.src = src; }
       el.style.display = 'block';
       el.style.left = (ov.x_pct * 100) + '%';

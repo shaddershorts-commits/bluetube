@@ -113,8 +113,9 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     const waveH = (layout.clipWaveform && videoWave?.ready()) ? 14 : 0;
     const thumbH = c.h - waveH;
 
-    // thumbnails (bitmap cacheado por clip)
-    if (thumbs) {
+    // thumbnails (bitmap cacheado por clip) — takes extras nao usam os thumbs
+    // do video principal (seria o frame errado); ganham slab com o nome
+    if (thumbs && c.mediaId == null) {
       const strip = thumbs.getStrip(srcIn, srcOut, cw, thumbH);
       if (strip) {
         ctx.save();
@@ -139,6 +140,18 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
 
+    if (c.mediaId != null) {
+      // take extra: slab colorido + nome do arquivo
+      ctx.save();
+      roundRect(ctx, cx0, c.y, cw, c.h, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(30, 120, 90, .45)';
+      ctx.fillRect(cx0, c.y, cw, c.h);
+      ctx.fillStyle = '#dff5ec';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText('🎞 ' + (c.mediaName || 'take'), cx0 + 6, c.y + 4);
+      ctx.restore();
+    }
     if (c.isCompound) {
       // faixa de titulo do composto (CapCut)
       ctx.save();

@@ -29,12 +29,20 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   }
   function ctxNow() {
     const state = store.getState();
+    // teto de trim por clip: take extra e limitado pela PROPRIA midia
+    const clipMaxOut = {};
+    for (const c of state.clips || []) {
+      if (c.media_id != null) {
+        clipMaxOut[c.id] = (state.media || []).find(m => m.id === c.media_id)?.duration || Infinity;
+      }
+    }
     return {
       layout: layoutNow(),
       playhead: player.getTime(),
       cutPoints: cutPoints(state),
       snapEnabled: true,
       videoDuration: state.video?.duration || 0,
+      clipMaxOut,
     };
   }
   function draw() {
@@ -166,8 +174,39 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     draw();
   }
 
-  // long-press em touch dispara contextmenu nativo -> cancelaria o gesto
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // long-press em touch dispara contextmenu nativo -> cancelaria o gesto.
+  // Botao DIREITO em clipe composto: menu "Desfazer" (user 2026-07-20)
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const p = evFrom(e);
+    const hit = hitTest(layoutNow(), p.x, p.y);
+    if (hit.type === 'clip-body' && hit.compoundId) {
+      showCompoundMenu(e.clientX, e.clientY, hit.compoundId);
+    }
+  });
+
+  function showCompoundMenu(x, y, compoundId) {
+    document.getElementById('beCtxMenu')?.remove();
+    const m = document.createElement('div');
+    m.id = 'beCtxMenu';
+    m.style.cssText = 'position:fixed;z-index:1000;background:#0b1526;border:1px solid #1e3a5f;' +
+      'border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);font:13px Syne,sans-serif';
+    const btn = document.createElement('button');
+    btn.textContent = '⧉ Desfazer clipe composto';
+    btn.style.cssText = 'all:unset;display:block;padding:8px 12px;color:#dfe9ff;cursor:pointer;border-radius:6px';
+    btn.onmouseenter = () => { btn.style.background = 'rgba(0,170,255,.15)'; };
+    btn.onmouseleave = () => { btn.style.background = ''; };
+    btn.onclick = () => { store.dispatch(act.ungroupCompound(compoundId)); m.remove(); };
+    m.appendChild(btn);
+    m.style.left = x + 'px'; m.style.top = y + 'px';
+    document.body.appendChild(m);
+    setTimeout(() => {
+      const close = (ev) => {
+        if (!m.contains(ev.target)) { m.remove(); window.removeEventListener('pointerdown', close, true); }
+      };
+      window.addEventListener('pointerdown', close, true);
+    }, 0);
+  }
 
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -186,7 +225,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     if (p.touch) {
       longPressTimer = setTimeout(() => step({ kind: 'longpress' }), LONG_PRESS_MS);
     }
-    step({ kind: 'down', ...p, hit, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
+    step({ kind: 'down', ...p, hit, button: e.button, detail: e.detail, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
   });
 
   canvas.addEventListener('pointermove', (e) => {

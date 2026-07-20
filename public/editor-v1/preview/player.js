@@ -4,26 +4,53 @@
 // - cada audio_clip ganha um Audio() proprio (Audio decodifica a trilha de
 //   audio de arquivos de VIDEO tambem), agendado por start/source_in/out
 
-import { timelineToSource, totalDuration, segmentAt, effectiveAudioClips } from '../core/selectors.js';
+import { timelineToSource, totalDuration, playableDuration, segmentAt, effectiveAudioClips, mediaUrlFor } from '../core/selectors.js';
 
-export function createPlayer(videoEl, _audioElUnused, store) {
+// opts.primaryUrl(): url preferida do video PRINCIPAL (shell injeta o
+// objectURL local quando disponivel). Takes extras usam a url do pool.
+export function createPlayer(videoEl, opts, store) {
   let virtualTime = 0;
   let playing = false;
   let rafId = 0;
   let lastTick = 0;
+  let pendingSeek = null; // seek agendado pra depois do loadedmetadata (troca de take)
   const listeners = new Set();
   const pool = new Map(); // audio_clip.id -> { el, url }
 
   function emit() { for (const fn of listeners) fn(); }
 
+  function primaryUrl() {
+    return opts?.primaryUrl?.() || store.getState().video?.url || null;
+  }
+
+  // troca de src (multi-take) termina o seek quando a midia carrega
+  videoEl.addEventListener('loadedmetadata', () => {
+    if (pendingSeek == null) return;
+    try { videoEl.currentTime = pendingSeek; } catch {}
+    pendingSeek = null;
+    if (playing) videoEl.play().catch(() => {});
+  });
+
   function syncVideoToVirtual(seekVideo = true) {
     const state = store.getState();
-    const src = timelineToSource(state, Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001)));
+    const tClamped = Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001));
+    const seg = segmentAt(state, tClamped);
+    const src = seg ? seg.clip.source_in + (tClamped - seg.tStart) : null;
     // Sem clip de vídeo ativo neste instante (faixa excluída/vazia): o <video>
     // congelava no último frame decodificado — esconde (preto) até voltar a
     // haver conteúdo. Fix do "excluí a faixa mas a imagem continuou".
     videoEl.style.visibility = src == null ? 'hidden' : '';
-    if (src != null && seekVideo && Math.abs(videoEl.currentTime - src) > 0.06) {
+    if (src == null) return;
+    // multi-take: cada clip pode vir de uma midia diferente — troca o src
+    const url = seg.clip.media_id != null ? mediaUrlFor(state, seg.clip) : primaryUrl();
+    const atual = videoEl.currentSrc || videoEl.src || '';
+    if (url && atual !== url) {
+      videoEl.src = url;
+      videoEl.load();
+      pendingSeek = src;
+      return;
+    }
+    if (seekVideo && pendingSeek == null && Math.abs(videoEl.currentTime - src) > 0.06) {
       videoEl.currentTime = src;
     }
   }
@@ -35,7 +62,8 @@ export function createPlayer(videoEl, _audioElUnused, store) {
     const seen = new Set();
     for (const a of clips) {
       seen.add(a.id);
-      const url = a.kind === 'video' ? (videoEl.currentSrc || videoEl.src) : a.url;
+      // kind 'video' = audio destacado do PRINCIPAL — nunca o take ativo
+      const url = a.kind === 'video' ? primaryUrl() : a.url;
       if (!url) continue;
       let entry = pool.get(a.id);
       if (!entry || entry.url !== url) {
@@ -78,12 +106,21 @@ export function createPlayer(videoEl, _audioElUnused, store) {
   function tick(ts) {
     if (!playing) return;
     const state = store.getState();
-    const total = totalDuration(state);
+    // total REPRODUZIVEL: audio alem do video conta (projeto so-audio toca)
+    const total = playableDuration(state);
     const dt = lastTick ? (ts - lastTick) / 1000 : 0;
     lastTick = ts;
 
     const seg = segmentAt(state, virtualTime);
+    if (seg && pendingSeek != null) {
+      // trocando de take (src carregando): segura o relogio — o currentTime
+      // ainda e da midia ANTIGA e enganaria o clock
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
     if (seg) {
+      // voltou pra um trecho COM video (ex: depois de um gap so-audio)
+      if (videoEl.paused) videoEl.play().catch(() => {});
       const vSrc = videoEl.currentTime;
       if (vSrc >= seg.clip.source_in - 0.05 && vSrc <= seg.clip.source_out + 0.05) {
         virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in);
@@ -97,6 +134,10 @@ export function createPlayer(videoEl, _audioElUnused, store) {
         syncVideoToVirtual();
       }
     } else {
+      // gap sem video (projeto so-audio ou audio alem do fim do video):
+      // relogio anda por rAF e o <video> PAUSA — senao o som dele vazava
+      // por tras do preto enquanto so o audio devia tocar
+      if (!videoEl.paused) videoEl.pause();
       virtualTime += dt;
       if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
       syncVideoToVirtual();
@@ -108,7 +149,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
 
   function play() {
     const state = store.getState();
-    const total = totalDuration(state);
+    const total = playableDuration(state);
     if (total <= 0) return;
     if (virtualTime >= total - 0.01) virtualTime = 0;
     syncPool();
@@ -118,7 +159,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
     videoEl.volume = Math.min(1, state.volumes?.video ?? 1);
     playing = true;
     lastTick = 0;
-    videoEl.play().catch(() => {});
+    if (segmentAt(state, virtualTime)) videoEl.play().catch(() => {});
     syncAudios(virtualTime);
     rafId = requestAnimationFrame(tick);
     emit();
@@ -133,7 +174,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
   }
 
   function seek(t) {
-    const total = totalDuration(store.getState());
+    const total = playableDuration(store.getState());
     virtualTime = Math.min(Math.max(0, t), total);
     syncVideoToVirtual();
     syncPool();
@@ -148,7 +189,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
 
   store.subscribe(() => {
     const state = store.getState();
-    const total = totalDuration(state);
+    const total = playableDuration(state);
     if (virtualTime > total) { virtualTime = total; emit(); }
     videoEl.muted = !!state.audio_detached;
     if (!playing) syncVideoToVirtual();
@@ -160,7 +201,7 @@ export function createPlayer(videoEl, _audioElUnused, store) {
     toggle() { playing ? pause() : play(); },
     isPlaying: () => playing,
     getTime: () => virtualTime,
-    getDuration: () => totalDuration(store.getState()),
+    getDuration: () => playableDuration(store.getState()),
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     destroy() {

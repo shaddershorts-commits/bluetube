@@ -38,7 +38,11 @@ export function createInitialState() {
     project_id: null,
     nome_projeto: 'Projeto sem título',
     video: null,          // { url, path, filename, duration, width, height, size_bytes }
-    clips: [],            // [{ id, source_in, source_out, active }] — ordem do array = ordem na timeline
+    // POOL de midias extras (multi-take 2026-07-20): videos alem do principal.
+    // clips/overlays com media_id apontam pra ca; sem media_id = video principal.
+    media: [],            // [{ id, url, path, filename, duration, width, height }]
+    next_media_id: 1,
+    clips: [],            // [{ id, media_id?, source_in, source_out, active }] — ordem do array = ordem na timeline
     next_clip_id: 1,
     selected_clip_id: null,
     texts: [],            // [{ id, content, font, size, color, x_pct, y_pct, start_sec, end_sec, active }]
@@ -87,9 +91,18 @@ export function normalizeLoadedState(raw) {
   const base = createInitialState();
   if (!raw || typeof raw !== 'object') return base;
   const s = { ...base, ...raw };
+  s.media = Array.isArray(raw.media) ? raw.media
+    .filter(m => m && m.url && m.duration > 0)
+    .map(m => ({ id: m.id, url: m.url, path: m.path || null, filename: m.filename || 'mídia', duration: m.duration, width: m.width || 0, height: m.height || 0 })) : [];
+  const mediaIds = new Set(s.media.map(m => m.id));
+  const maxMedia = s.media.reduce((m, x) => Math.max(m, x.id || 0), 0);
+  s.next_media_id = Math.max(raw.next_media_id || 1, maxMedia + 1);
   s.clips = Array.isArray(raw.clips) ? raw.clips
     .filter(c => c && typeof c.source_in === 'number' && typeof c.source_out === 'number' && c.source_out > c.source_in)
-    .map(c => ({ id: c.id, source_in: c.source_in, source_out: c.source_out, active: c.active !== false })) : [];
+    .map(c => ({
+      id: c.id, source_in: c.source_in, source_out: c.source_out, active: c.active !== false,
+      ...(c.media_id != null && mediaIds.has(c.media_id) ? { media_id: c.media_id } : {}),
+    })) : [];
   s.texts = Array.isArray(raw.texts) ? raw.texts
     .filter(t => t && typeof t.content === 'string')
     .map(t => ({
@@ -141,6 +154,7 @@ export function normalizeLoadedState(raw) {
     .filter(o => o && o.source_out > o.source_in)
     .map(o => ({
       id: o.id, source_in: o.source_in, source_out: o.source_out,
+      ...(o.media_id != null && mediaIds.has(o.media_id) ? { media_id: o.media_id } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),

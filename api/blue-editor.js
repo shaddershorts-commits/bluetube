@@ -254,15 +254,26 @@ module.exports = async function handler(req, res) {
       parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
       const body = Buffer.concat(parts);
 
-      const wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + OPENAI,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': String(body.length),
-        },
-        body,
-      });
+      // aborta ANTES do maxDuration de 60s do Vercel: melhor um erro JSON
+      // claro do que um 504 de texto puro que vira "HTTP 504" no toast
+      let wR;
+      try {
+        wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + OPENAI,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': String(body.length),
+          },
+          body,
+          signal: AbortSignal.timeout(48000),
+        });
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          return res.status(504).json({ error: 'A transcrição demorou demais — tente um vídeo mais curto' });
+        }
+        throw err;
+      }
       if (!wR.ok) {
         const et = await wR.text();
         return res.status(502).json({ error: 'Whisper falhou: ' + et.slice(0, 150) });

@@ -88,6 +88,11 @@ export function computeLayout(state, vp) {
       isCompound: it.isCompound,
       compoundId: it.clip.compound_id || null,
       compoundName: comp?.name || null,
+      // take extra: thumbs do principal nao valem — render mostra slab+nome
+      mediaId: it.clip.media_id ?? null,
+      mediaName: it.clip.media_id != null
+        ? ((state.media || []).find(m => m.id === it.clip.media_id)?.filename || 'take')
+        : null,
       tStart: it.tStart,
       tEnd: it.tEnd,
       sourceIn: it.isCompound ? (firstSub?.source_in ?? 0) : it.clip.source_in,
