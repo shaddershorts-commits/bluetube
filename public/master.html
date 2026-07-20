@@ -1,0 +1,558 @@
+<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Vire Master — BlueTube | O arsenal completo do criador viral</title>
+<meta name="description" content="Buscador de virais, remoção de legendas com IA, download HD sem anúncio, análise de viralidade e muito mais. Tudo num único plano. Torne-se Master."/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2300aaff'/><path d='M6 22l6-12 4 7 3-5 7 10z' fill='white'/></svg>"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#020817;--ink:#eaf3ff;--muted:#93a9cc;--dim:#5f76a0;
+  --neon:#00d4ff;--blue:#1a6bff;--deep:#0a1e46;
+  --gold:#fbbf24;--gold2:#f59e0b;--green:#22c55e;--red:#ef4444;--violet:#a855f7;
+  --card:rgba(12,26,54,.55);--line:rgba(120,170,255,.14);--glass:rgba(140,180,255,.05);
+  --mono:'DM Mono',ui-monospace,monospace;--font:'Syne',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font);
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;line-height:1.5;
+}
+/* ── LUZES DE FUNDO (aurora + blobs azuis) ── */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;background:
+  radial-gradient(120% 60% at 50% -10%,rgba(0,120,255,.22),transparent 60%),
+  radial-gradient(80% 50% at 90% 8%,rgba(0,212,255,.12),transparent 55%),
+  radial-gradient(70% 50% at 5% 30%,rgba(120,60,255,.08),transparent 60%);}
+.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;animation:float 20s ease-in-out infinite alternate}
+.blob.b1{width:46vw;height:46vw;background:radial-gradient(circle,rgba(0,150,255,.35),transparent 70%);top:-10vw;left:-8vw}
+.blob.b2{width:38vw;height:38vw;background:radial-gradient(circle,rgba(0,212,255,.28),transparent 70%);top:40vh;right:-10vw;animation-delay:-7s}
+.blob.b3{width:34vw;height:34vw;background:radial-gradient(circle,rgba(120,80,255,.22),transparent 70%);bottom:-8vw;left:30vw;animation-delay:-13s}
+@keyframes float{from{transform:translate(0,0) scale(1)}to{transform:translate(4vw,-3vw) scale(1.12)}}
+.grid-lines{position:absolute;inset:0;background-image:linear-gradient(rgba(90,150,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(90,150,255,.05) 1px,transparent 1px);background-size:60px 60px;mask-image:radial-gradient(120% 80% at 50% 0%,#000,transparent 75%)}
+@media(prefers-reduced-motion:reduce){.blob{animation:none}}
+
+.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 20px}
+.mono{font-family:var(--mono)}
+
+/* ── TOPO / CTA FLUTUANTE ── */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;backdrop-filter:blur(14px);background:linear-gradient(180deg,rgba(2,8,23,.82),rgba(2,8,23,0));transition:.3s}
+.topbar.solid{background:rgba(2,8,23,.9);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:-.02em}
+.logo .sq{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#00d4ff,#1a6bff);display:grid;place-items:center;box-shadow:0 0 18px rgba(0,180,255,.6)}
+.logo .sq svg{width:16px;height:16px}
+.logo span{color:var(--gold)}
+.top-cta{font-family:var(--font);font-weight:800;font-size:13.5px;color:#04121f;background:linear-gradient(100deg,var(--gold),var(--gold2));border:none;
+  padding:10px 20px;border-radius:100px;cursor:pointer;box-shadow:0 8px 24px -8px rgba(251,191,36,.7);transition:transform .15s}
+.top-cta:hover{transform:translateY(-1px) scale(1.03)}
+
+/* ── HERO ── */
+.hero{text-align:center;padding:130px 0 40px}
+.badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gold);background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.28);padding:7px 16px;border-radius:100px;margin-bottom:26px}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);animation:pulse 1.8s infinite}
+@keyframes pulse{50%{opacity:.4}}
+h1{font-size:clamp(38px,7.5vw,74px);line-height:.98;letter-spacing:-.035em;font-weight:800;text-wrap:balance;margin-bottom:20px}
+h1 .g{background:linear-gradient(100deg,#7fe3ff,#00d4ff 45%,#1a6bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1 .go{background:linear-gradient(100deg,#ffe08a,#fbbf24 50%,#f59e0b);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:clamp(16px,2.4vw,20px);color:var(--muted);max-width:600px;margin:0 auto 34px;line-height:1.6}
+.sub b{color:var(--ink);font-weight:700}
+.hero-cta{display:inline-flex;flex-direction:column;align-items:center;gap:12px}
+.cta-big{font-family:var(--font);font-weight:800;font-size:19px;color:#04121f;background:linear-gradient(100deg,var(--gold),var(--gold2));border:none;
+  padding:19px 46px;border-radius:100px;cursor:pointer;position:relative;overflow:hidden;
+  box-shadow:0 18px 50px -14px rgba(251,191,36,.75),0 0 0 1px rgba(255,220,140,.5) inset;transition:transform .18s}
+.cta-big:hover{transform:translateY(-2px) scale(1.02)}
+.cta-big::after{content:"";position:absolute;top:0;left:-120%;width:60%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);animation:shine 3.4s infinite}
+@keyframes shine{0%,60%{left:-120%}100%{left:160%}}
+.cta-note{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.trust{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;margin-top:34px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.trust b{color:var(--neon)}
+
+/* ── HERO 3D SHOWCASE (mockup do app com brilho) ── */
+.stage{margin:44px auto 0;max-width:720px;perspective:1400px}
+.deck{position:relative;transform:rotateX(14deg);transform-style:preserve-3d;transition:transform .3s}
+.screen{background:linear-gradient(180deg,#0a1834,#050d20);border:1px solid var(--line);border-radius:20px;padding:16px;
+  box-shadow:0 50px 120px -30px rgba(0,110,255,.5),0 0 0 1px rgba(120,180,255,.08) inset}
+.screen-bar{display:flex;gap:6px;margin-bottom:12px}
+.screen-bar i{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.15)}
+.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tool-chip{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:14px 10px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted);transition:.3s;opacity:0;transform:translateY(10px)}
+.deck.in .tool-chip{opacity:1;transform:none}
+.tool-chip .ic{font-size:22px;display:block;margin-bottom:6px}
+.tool-chip:hover{border-color:var(--neon);color:var(--ink);box-shadow:0 0 24px -6px rgba(0,180,255,.5)}
+
+/* ── SEÇÕES DE FEATURE ── */
+.section{padding:64px 0;position:relative}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--neon);display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.eyebrow::before{content:"";width:26px;height:1px;background:linear-gradient(90deg,var(--neon),transparent)}
+.feat{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
+.feat.rev .feat-copy{order:2}
+.feat-copy h2{font-size:clamp(26px,3.6vw,38px);line-height:1.05;letter-spacing:-.025em;font-weight:800;margin-bottom:14px;text-wrap:balance}
+.feat-copy p{color:var(--muted);font-size:15.5px;line-height:1.65;margin-bottom:16px}
+.feat-copy p b{color:var(--ink)}
+.mini{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.mini li{list-style:none;display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted)}
+.mini li b{color:var(--ink);font-weight:700}
+.mini .ck{color:var(--green);flex:0 0 auto;margin-top:1px}
+/* reveal on scroll */
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* ── PALCO DE DEMO (3D card) ── */
+.demo{position:relative;border-radius:20px;overflow:hidden;background:linear-gradient(180deg,#0a1834,#060f24);
+  border:1px solid var(--line);box-shadow:0 40px 90px -34px rgba(0,110,255,.55);aspect-ratio:4/3;
+  transform:perspective(1000px) rotateY(0deg);transition:transform .25s}
+.demo .lbl{position:absolute;top:12px;left:12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);z-index:5}
+.demo .stat{position:absolute;bottom:12px;right:14px;font-family:var(--mono);font-size:11px;color:var(--neon);z-index:5}
+
+/* DEMO: BlueClean (wipe legenda+seta somem) */
+.dc{position:absolute;inset:0}
+.dc .frame{position:absolute;inset:0;background:linear-gradient(160deg,#2b3a2e,#1c2a22);display:grid;place-items:center}
+.dc .frame::before{content:"🎬";font-size:70px;opacity:.25}
+.dc .cap{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);background:#000;color:var(--gold);font-weight:800;
+  font-size:clamp(16px,3vw,26px);padding:4px 14px;border-radius:6px;white-space:nowrap;-webkit-text-stroke:1px #000}
+.dc .arrow{position:absolute;top:14%;right:20%;font-size:clamp(38px,7vw,66px);color:var(--red);transform:rotate(35deg);filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}
+.dc .wipe{position:absolute;inset:0;background:linear-gradient(120deg,#22331f 0%,#1a2a20 100%);clip-path:inset(0 100% 0 0);transition:clip-path 2.2s cubic-bezier(.7,0,.3,1)}
+.dc .wipe::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,#2b3a2e,#1c2a22)}
+.dc .wipe::after{content:"✨ limpo";position:absolute;left:50%;bottom:22%;transform:translateX(-50%);color:var(--green);font-family:var(--mono);font-size:13px}
+.demo.in .dc .wipe{clip-path:inset(0 0 0 0)}
+.dc .scan{position:absolute;top:0;bottom:0;width:3px;background:linear-gradient(180deg,transparent,var(--green),transparent);left:0;box-shadow:0 0 16px var(--green);opacity:0}
+.demo.in .dc .scan{animation:scanx 2.2s cubic-bezier(.7,0,.3,1) forwards}
+@keyframes scanx{0%{left:0;opacity:1}100%{left:100%;opacity:0}}
+
+/* DEMO: Virais (cards entram + views sobem) */
+.dv{position:absolute;inset:0;padding:38px 16px 16px;display:flex;flex-direction:column;gap:8px}
+.dv .q{background:rgba(2,8,23,.6);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dv .q .cur{border-right:2px solid var(--neon);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{border-color:transparent}}
+.dv .row{display:flex;gap:8px;align-items:center;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:8px;opacity:0;transform:translateX(18px)}
+.demo.in .dv .row{animation:rowin .5s forwards}
+.demo.in .dv .row:nth-child(2){animation-delay:.5s}.demo.in .dv .row:nth-child(3){animation-delay:.75s}.demo.in .dv .row:nth-child(4){animation-delay:1s}
+@keyframes rowin{to{opacity:1;transform:none}}
+.dv .th{width:44px;height:30px;border-radius:6px;background:linear-gradient(135deg,#123,#245);flex:0 0 auto;display:grid;place-items:center;font-size:14px}
+.dv .tt{flex:1;min-width:0}.dv .tt b{font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv .tt span{font-family:var(--mono);font-size:10px;color:var(--neon)}
+.dv .tag{font-family:var(--mono);font-size:9px;color:var(--green);border:1px solid rgba(34,197,94,.3);border-radius:5px;padding:2px 5px;flex:0 0 auto}
+
+/* DEMO: BaixaBlue (barra de download + sem-anuncio) */
+.db{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:30px}
+.db .url{background:rgba(2,8,23,.6);border:1px solid var(--line);border-radius:10px;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.db .bar{height:12px;border-radius:100px;background:rgba(0,150,255,.15);overflow:hidden}
+.db .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--neon),var(--blue));border-radius:100px}
+.demo.in .db .bar i{animation:fill 2s .3s cubic-bezier(.6,0,.2,1) forwards}
+@keyframes fill{to{width:100%}}
+.db .done{font-family:var(--mono);font-size:13px;color:var(--green);opacity:0}
+.demo.in .db .done{animation:pop .4s 2.2s forwards}
+@keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+.db .nos{display:flex;gap:8px;flex-wrap:wrap}
+.db .nos span{font-family:var(--mono);font-size:10px;color:var(--red);text-decoration:line-through;opacity:.6;border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:3px 8px}
+
+/* DEMO: BlueTendências (5 atos scan) */
+.dt{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:34px 24px}
+.dt .act{display:flex;align-items:center;gap:10px;opacity:.3;transition:.4s}
+.dt.go .act{opacity:1}
+.dt .act .n{width:24px;height:24px;border-radius:6px;background:rgba(0,180,255,.12);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--neon);flex:0 0 auto}
+.dt .act .l{flex:1;height:8px;border-radius:100px;background:rgba(0,150,255,.1);overflow:hidden}
+.dt .act .l i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--neon),var(--violet));border-radius:100px;transition:width .8s}
+.dt.go .act .l i{width:var(--w)}
+.dt .act .t{font-family:var(--mono);font-size:10px;color:var(--muted);width:66px;flex:0 0 auto}
+
+/* DEMO: BlueScore (gauge) */
+.ds{position:absolute;inset:0;display:grid;place-items:center}
+.ds .gauge{position:relative;width:170px;height:170px;border-radius:50%;
+  background:conic-gradient(var(--green) 0deg,var(--neon) 0deg,rgba(255,255,255,.06) 0deg);transition:none}
+.ds .gauge::before{content:"";position:absolute;inset:14px;border-radius:50%;background:#081226}
+.ds .num{position:relative;text-align:center}
+.ds .num b{font-size:44px;font-weight:800;background:linear-gradient(120deg,#7fffa8,#00d4ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ds .num span{font-family:var(--mono);font-size:10px;color:var(--muted);display:block;letter-spacing:.1em}
+
+/* DEMO genérico (voz/roteiro/lens) */
+.dg{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:32px}
+.dg .wave{display:flex;align-items:center;gap:4px;height:56px}
+.dg .wave i{flex:1;background:linear-gradient(180deg,var(--neon),var(--blue));border-radius:4px;height:20%;animation:wv 1.1s ease-in-out infinite}
+.demo.in .dg .wave i{animation-play-state:running}
+@keyframes wv{50%{height:100%}}
+.dg .line{height:9px;border-radius:100px;background:rgba(120,170,255,.14);width:0}
+.demo.in .dg .line{animation:type 1.6s forwards}
+.demo.in .dg .line:nth-child(2){animation-delay:.2s}.demo.in .dg .line:nth-child(3){animation-delay:.4s}
+@keyframes type{to{width:var(--tw,100%)}}
+.dg .radar{position:relative;width:120px;height:120px;margin:0 auto;border-radius:50%;border:1px solid var(--line)}
+.dg .radar::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(0,212,255,.4),transparent 40%);animation:spin 2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dg .radar .hit{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+
+/* ── STACK DE VALOR ── */
+.stack{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:10px}
+.vcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;transition:.25s}
+.vcard:hover{transform:translateY(-4px);border-color:rgba(0,180,255,.35);box-shadow:0 20px 40px -20px rgba(0,120,255,.5)}
+.vcard .ic{font-size:26px;margin-bottom:10px}
+.vcard b{display:block;font-size:15px;margin-bottom:5px}
+.vcard p{font-size:13px;color:var(--muted);line-height:1.5}
+
+/* ── PRICING ── */
+.price-wrap{text-align:center;padding:20px 0}
+.toggle{display:inline-flex;background:rgba(2,8,23,.6);border:1px solid var(--line);border-radius:100px;padding:5px;margin:0 auto 30px;gap:4px}
+.toggle button{font-family:var(--mono);font-size:12.5px;padding:9px 20px;border-radius:100px;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:.2s;position:relative}
+.toggle button.on{background:linear-gradient(100deg,#00d4ff,#1a6bff);color:#04121f;font-weight:600}
+.toggle .save{position:absolute;top:-9px;right:-6px;background:var(--green);color:#04121f;font-size:9px;font-weight:700;padding:2px 6px;border-radius:100px}
+.plan{max-width:440px;margin:0 auto;background:linear-gradient(180deg,rgba(20,34,66,.7),rgba(8,16,36,.9));
+  border:1px solid rgba(251,191,36,.35);border-radius:24px;padding:38px 30px;position:relative;overflow:hidden;
+  box-shadow:0 40px 100px -30px rgba(0,120,255,.5)}
+.plan::before{content:"";position:absolute;top:-2px;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.plan .crown{font-size:34px;margin-bottom:8px}
+.plan .pname{font-size:13px;font-family:var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+.plan .amt{font-size:52px;font-weight:800;line-height:1;letter-spacing:-.03em}
+.plan .amt small{font-size:18px;color:var(--muted);font-weight:600}
+.plan .per{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:8px;min-height:16px}
+.plan .feats{text-align:left;display:flex;flex-direction:column;gap:10px;margin:24px 0}
+.plan .feats li{list-style:none;display:flex;gap:10px;font-size:14px;color:var(--muted)}
+.plan .feats li b{color:var(--ink);font-weight:700}
+.plan .feats .ck{color:var(--gold);flex:0 0 auto}
+.plan .cta-big{width:100%;font-size:18px;margin-top:4px}
+.plan .guar{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:14px}
+
+/* ── FAQ ── */
+.faq{max-width:680px;margin:0 auto}
+.qa{border-bottom:1px solid var(--line);padding:18px 0;cursor:pointer}
+.qa .qq{display:flex;justify-content:space-between;gap:12px;font-weight:700;font-size:15.5px}
+.qa .qq span{color:var(--neon);transition:.2s}
+.qa.open .qq span{transform:rotate(45deg)}
+.qa .aa{max-height:0;overflow:hidden;transition:max-height .3s ease;color:var(--muted);font-size:14px;line-height:1.6}
+.qa.open .aa{max-height:200px;padding-top:10px}
+
+/* ── FINAL + FOOTER ── */
+.final{text-align:center;padding:80px 0 40px}
+.final h2{font-size:clamp(30px,5vw,52px);letter-spacing:-.03em;font-weight:800;margin-bottom:18px;text-wrap:balance}
+footer{text-align:center;padding:36px 0 60px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+footer a{color:var(--muted);text-decoration:none}
+
+@media(max-width:760px){
+  .feat{grid-template-columns:1fr;gap:22px}
+  .feat.rev .feat-copy{order:0}
+  .tool-grid{grid-template-columns:repeat(3,1fr)}
+  .hero{padding:110px 0 20px}
+  .deck{transform:rotateX(8deg)}
+}
+/* toast */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(10,22,40,.96);border:1px solid var(--line);border-radius:12px;padding:12px 20px;font-size:13px;z-index:100;opacity:0;transition:.3s}
+.toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+<div class="bg"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="grid-lines"></span></div>
+
+<div class="topbar" id="topbar">
+  <a href="/" class="logo"><span class="sq"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-11 4 7 3-4 3 8"/></svg></span>Blue<span>Tube</span></a>
+  <button class="top-cta" onclick="assinarMaster('top')">👑 Virar Master</button>
+</div>
+
+<!-- HERO -->
+<div class="wrap">
+  <section class="hero">
+    <div class="badge"><span class="dot"></span>O plano dos criadores que levam a sério</div>
+    <h1>Todo viral que você <span class="g">precisa achar,</span><br>toda edição que você <span class="go">precisa fazer.</span></h1>
+    <p class="sub">Um plano. <b>Todas as ferramentas.</b> Buscar virais, remover legendas e marcas com IA, baixar em HD sem anúncio, analisar viralidade e muito mais — tudo dentro do BlueTube.</p>
+    <div class="hero-cta">
+      <button class="cta-big" onclick="assinarMaster('hero')">Quero ser Master →</button>
+      <div class="cta-note">Ativa na hora · cancela quando quiser</div>
+    </div>
+    <div class="trust"><div>🔓 <b>9+</b> ferramentas liberadas</div><div>⚡ Acesso <b>imediato</b></div><div>🇧🇷 Suporte em português</div></div>
+
+    <div class="stage"><div class="deck" id="deck">
+      <div class="screen">
+        <div class="screen-bar"><i></i><i></i><i></i></div>
+        <div class="tool-grid">
+          <div class="tool-chip"><span class="ic">🔥</span>Virais</div>
+          <div class="tool-chip"><span class="ic">🧹</span>BlueClean</div>
+          <div class="tool-chip"><span class="ic">⬇️</span>BaixaBlue</div>
+          <div class="tool-chip"><span class="ic">🔬</span>Tendências</div>
+          <div class="tool-chip"><span class="ic">📊</span>BlueScore</div>
+          <div class="tool-chip"><span class="ic">🎙️</span>BlueVoice</div>
+          <div class="tool-chip"><span class="ic">🔍</span>BlueLens</div>
+          <div class="tool-chip"><span class="ic">📝</span>Roteiros</div>
+          <div class="tool-chip"><span class="ic">💬</span>Comunidade</div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+</div>
+
+<!-- FEATURE 1: VIRAIS -->
+<div class="wrap"><section class="section">
+  <div class="feat reveal">
+    <div class="feat-copy">
+      <div class="eyebrow">Passo 1 · Ache o viral</div>
+      <h2>Fala um tema. Recebe uma enxurrada de virais.</h2>
+      <p>O <b>Buscador de Virais</b> varre um acervo de mais de 130 mil vídeos que estão explodindo agora. E o <b>Blublu</b> — seu assistente de IA exclusivo Master — acha por tema, canal, idioma e ainda <b>te diz o minuto exato</b> em que o assunto é citado.</p>
+      <ul class="mini">
+        <li><span class="ck">✓</span><span><b>Precisão + volume:</b> todos os vídeos do tema, os certos primeiro.</span></li>
+        <li><span class="ck">✓</span><span>YouTube Shorts e TikTok, em <b>10 idiomas</b>.</span></li>
+        <li><span class="ck">✓</span><span>Seu concorrente não tem isso. Você tem.</span></li>
+      </ul>
+    </div>
+    <div class="demo" data-demo><div class="lbl">Buscador · Blublu</div>
+      <div class="dv">
+        <div class="q">🔎 vídeos que falam do Haaland<span class="cur">&nbsp;</span></div>
+        <div class="row"><div class="th">⚽</div><div class="tt"><b>HAALAND NÃO É HUMANO 😱</b><span>12.4M views · citado em 0:07</span></div><div class="tag">✓ na fala</div></div>
+        <div class="row"><div class="th">🔥</div><div class="tt"><b>O segredo do gol impossível</b><span>8.1M views · YouTube Shorts</span></div><div class="tag">✓ tema</div></div>
+        <div class="row"><div class="th">🏆</div><div class="tt"><b>Comparei Haaland x Mbappé</b><span>5.6M views · citado em 0:15</span></div><div class="tag">✓ na fala</div></div>
+      </div>
+      <div class="stat">33 achados</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FEATURE 2: BLUECLEAN -->
+<div class="wrap"><section class="section">
+  <div class="feat rev reveal">
+    <div class="feat-copy">
+      <div class="eyebrow">Passo 2 · Limpe o vídeo</div>
+      <h2>Legenda, seta, marca d'água? Some com um toque.</h2>
+      <p>O <b>BlueClean</b> é a nossa tecnologia mais avançada — recém-lançada. Você marca o que quer tirar e a IA <b>reconstrói o fundo sem deixar rastro</b>. Sem borrão, sem mancha. Até círculos: só a borda sai, o que está dentro fica intacto.</p>
+      <ul class="mini">
+        <li><span class="ck">✓</span><span>Remove <b>legenda queimada, setas, círculos e marcas</b>.</span></li>
+        <li><span class="ck">✓</span><span>Qualidade de cinema — o fundo volta perfeito.</span></li>
+        <li><span class="ck">✓</span><span><b>Exclusivo Master.</b> Ninguém no Brasil entrega isso assim.</span></li>
+      </ul>
+    </div>
+    <div class="demo" data-demo><div class="lbl">BlueClean · antes → depois</div>
+      <div class="dc">
+        <div class="frame"></div>
+        <div class="cap">LEGENDA QUEIMADA</div>
+        <div class="arrow">➘</div>
+        <div class="wipe"></div>
+        <div class="scan"></div>
+      </div>
+      <div class="stat">sem rastro ✨</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FEATURE 3: BAIXABLUE -->
+<div class="wrap"><section class="section">
+  <div class="feat reveal">
+    <div class="feat-copy">
+      <div class="eyebrow">Passo 3 · Baixe em HD</div>
+      <h2>Download em alta qualidade. Sem anúncio. Sem espera.</h2>
+      <p>O <b>BaixaBlue</b> baixa qualquer vídeo em HD — e pasme: <b>sem anúncio, sem "aguarde 30 segundos", sem os 47 pop-ups</b> dos sites por aí. Ainda passa por descaracterização automática, pronto pra repostar.</p>
+      <ul class="mini">
+        <li><span class="ck">✓</span><span>YouTube, TikTok, Instagram e mais.</span></li>
+        <li><span class="ck">✓</span><span>Metadados limpos + reconfiguração de pixel automática.</span></li>
+        <li><span class="ck">✓</span><span>Rápido de verdade. Do jeito que sempre deveria ter sido.</span></li>
+      </ul>
+    </div>
+    <div class="demo" data-demo><div class="lbl">BaixaBlue</div>
+      <div class="db">
+        <div class="url">https://youtube.com/shorts/viral…</div>
+        <div class="bar"><i></i></div>
+        <div class="done">✓ Baixado em HD — pronto pra postar</div>
+        <div class="nos"><span>anúncio</span><span>aguarde 30s</span><span>47 pop-ups</span><span>marca d'água do site</span></div>
+      </div>
+      <div class="stat">HD · limpo</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FEATURE 4: BLUETENDÊNCIAS -->
+<div class="wrap"><section class="section">
+  <div class="feat rev reveal">
+    <div class="feat-copy">
+      <div class="eyebrow">Passo 4 · Entenda por que viralizou</div>
+      <h2>A IA disseca o vídeo em 5 atos. Você copia a fórmula.</h2>
+      <p>O <b>BlueTendências</b> abre o viral como um cirurgião: gancho, retenção, virada, clímax e chamada. Você para de adivinhar e passa a <b>reproduzir o que já funciona</b> — no seu nicho, com seu rosto.</p>
+      <ul class="mini">
+        <li><span class="ck">✓</span><span>Mapa de retenção segundo a segundo.</span></li>
+        <li><span class="ck">✓</span><span>O que prendeu, o que segurou, o que converteu.</span></li>
+        <li><span class="ck">✓</span><span>Direto do card de qualquer vídeo achado.</span></li>
+      </ul>
+    </div>
+    <div class="demo" data-demo><div class="lbl">BlueTendências · 5 atos</div>
+      <div class="dt" data-dt>
+        <div class="act" style="--w:88%"><div class="n">1</div><div class="t">Gancho</div><div class="l"><i></i></div></div>
+        <div class="act" style="--w:72%"><div class="n">2</div><div class="t">Retenção</div><div class="l"><i></i></div></div>
+        <div class="act" style="--w:95%"><div class="n">3</div><div class="t">Virada</div><div class="l"><i></i></div></div>
+        <div class="act" style="--w:64%"><div class="n">4</div><div class="t">Clímax</div><div class="l"><i></i></div></div>
+        <div class="act" style="--w:81%"><div class="n">5</div><div class="t">Chamada</div><div class="l"><i></i></div></div>
+      </div>
+      <div class="stat">fórmula decodificada</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FEATURE 5: BLUESCORE -->
+<div class="wrap"><section class="section">
+  <div class="feat reveal">
+    <div class="feat-copy">
+      <div class="eyebrow">Passo 5 · Saiba antes de postar</div>
+      <h2>Um número que diz se o seu vídeo vai bombar.</h2>
+      <p>O <b>BlueScore</b> analisa áudio, imagem e estrutura e te dá uma nota de potencial viral — com um parecer no estilo "advogado do YouTube" apontando o que ajustar <b>antes</b> de você postar e descobrir tarde demais.</p>
+      <ul class="mini">
+        <li><span class="ck">✓</span><span>Análise profunda de áudio + visual + retenção.</span></li>
+        <li><span class="ck">✓</span><span>O que travar a monetização, apontado na hora.</span></li>
+        <li><span class="ck">✓</span><span>Pare de postar no escuro.</span></li>
+      </ul>
+    </div>
+    <div class="demo" data-demo><div class="lbl">BlueScore</div>
+      <div class="ds"><div class="gauge" data-gauge><div class="num"><b data-count>0</b><span>POTENCIAL VIRAL</span></div></div></div>
+      <div class="stat">nota antes de postar</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FEATURE 6: MAIS (voz, roteiro, lens, comunidade) -->
+<div class="wrap"><section class="section">
+  <div class="reveal" style="text-align:center;margin-bottom:30px">
+    <div class="eyebrow" style="justify-content:center">E ainda tem mais no pacote</div>
+    <h2 style="font-size:clamp(24px,3.4vw,34px);letter-spacing:-.02em;font-weight:800">Tudo que falta pro seu conteúdo decolar</h2>
+  </div>
+  <div class="stack reveal">
+    <div class="vcard"><div class="ic">🎙️</div><b>BlueVoice</b><p>Narração nova com vozes de IA realistas. Refaça o áudio do seu corte em segundos.</p></div>
+    <div class="vcard"><div class="ic">📝</div><b>Roteiros ilimitados</b><p>Roteiro pronto a partir de qualquer vídeo, na hora, em todos os idiomas.</p></div>
+    <div class="vcard"><div class="ic">🔍</div><b>BlueLens</b><p>Acha as cópias e reposts de um vídeo pela imagem. Estude o que já bombou.</p></div>
+    <div class="vcard"><div class="ic">💬</div><b>Comunidade</b><p>Treinamentos oficiais exclusivos e troca direta com outros criadores.</p></div>
+  </div>
+</section></div>
+
+<!-- STACK DE VALOR / POR QUE AGORA -->
+<div class="wrap"><section class="section">
+  <div class="reveal" style="text-align:center;margin-bottom:8px">
+    <div class="eyebrow" style="justify-content:center">Por que Master, por que agora</div>
+    <h2 style="font-size:clamp(26px,4vw,40px);letter-spacing:-.025em;font-weight:800;text-wrap:balance">Enquanto você pensa,<br>seu concorrente já tá usando.</h2>
+    <p class="sub" style="margin-top:16px">Cada dia sem essas ferramentas é um viral que você não achou, uma edição que te tomou horas, um vídeo que travou na monetização. O Master paga o próprio preço com <b style="color:var(--ink)">um único viral certo</b>.</p>
+  </div>
+</section></div>
+
+<!-- PRICING -->
+<div class="wrap"><section class="section" id="planos">
+  <div class="price-wrap reveal">
+    <div class="toggle" role="tablist">
+      <button id="tMon" class="on" onclick="setBilling('monthly')">Mensal</button>
+      <button id="tAnn" onclick="setBilling('annual')">Anual<span class="save">-25%</span></button>
+    </div>
+    <div class="plan">
+      <div class="crown">👑</div>
+      <div class="pname">Plano Master</div>
+      <div class="amt" id="amt">R$89,<small>99/mês</small></div>
+      <div class="per" id="per">no cartão, renova todo mês</div>
+      <ul class="feats">
+        <li><span class="ck">✓</span><span><b>Buscador de Virais + Blublu</b> (IA exclusiva)</span></li>
+        <li><span class="ck">✓</span><span><b>BlueClean</b> — remove legenda, seta e marca com IA</span></li>
+        <li><span class="ck">✓</span><span><b>BaixaBlue</b> HD sem anúncio + descaracterização</span></li>
+        <li><span class="ck">✓</span><span><b>BlueTendências</b> + <b>BlueScore</b> — análise profunda</span></li>
+        <li><span class="ck">✓</span><span><b>BlueVoice</b>, <b>BlueLens</b>, <b>Roteiros ilimitados</b></span></li>
+        <li><span class="ck">✓</span><span><b>Comunidade</b> e treinamentos exclusivos</span></li>
+      </ul>
+      <button class="cta-big" onclick="assinarMaster('plano')" id="planCta">Virar Master agora →</button>
+      <div class="guar">Ativa na hora · cancela quando quiser · pagamento seguro</div>
+    </div>
+  </div>
+</section></div>
+
+<!-- FAQ -->
+<div class="wrap"><section class="section">
+  <div class="reveal" style="text-align:center;margin-bottom:24px"><h2 style="font-size:clamp(24px,3.4vw,32px);font-weight:800;letter-spacing:-.02em">Perguntas rápidas</h2></div>
+  <div class="faq reveal">
+    <div class="qa" onclick="this.classList.toggle('open')"><div class="qq">Posso cancelar quando quiser? <span>+</span></div><div class="aa">Sim, a qualquer momento, sem multa. Você continua Master até o fim do período já pago.</div></div>
+    <div class="qa" onclick="this.classList.toggle('open')"><div class="qq">O acesso é imediato? <span>+</span></div><div class="aa">É. Assim que o pagamento é confirmado, todas as ferramentas Master já ficam liberadas na sua conta.</div></div>
+    <div class="qa" onclick="this.classList.toggle('open')"><div class="qq">O BlueClean funciona mesmo? <span>+</span></div><div class="aa">Funciona — é a nossa tecnologia mais avançada, recém-lançada. Você marca legenda, seta ou círculo e a IA remove reconstruindo o fundo sem rastro. Inclui 10 limpezas por mês.</div></div>
+    <div class="qa" onclick="this.classList.toggle('open')"><div class="qq">Preciso instalar algo? <span>+</span></div><div class="aa">Nada. Tudo roda no navegador, no computador ou no celular. É só entrar e usar.</div></div>
+  </div>
+</section></div>
+
+<!-- FINAL -->
+<div class="wrap"><section class="final reveal">
+  <div class="badge" style="margin:0 auto 22px"><span class="dot"></span>Sua vez de virar o jogo</div>
+  <h2>O arsenal completo do criador viral<br>está a <span class="go">um clique</span> de você.</h2>
+  <div class="hero-cta" style="margin-top:10px">
+    <button class="cta-big" onclick="assinarMaster('final')">👑 Virar Master agora</button>
+    <div class="cta-note">Ativa na hora · cancela quando quiser</div>
+  </div>
+</section></div>
+
+<footer>
+  BlueTube · Criador Viral &nbsp;·&nbsp; <a href="/">voltar ao início</a> &nbsp;·&nbsp; <a href="/termos">termos</a>
+</footer>
+
+<div class="toast" id="toast"></div>
+<script src="/_ref-tracker.js" defer></script>
+<script>
+// ── CHECKOUT ──────────────────────────────────────────────────────────────
+let billing = 'monthly';
+const PRICES = {
+  monthly: { amt: 'R$89,<small>99/mês</small>', per: 'no cartão, renova todo mês' },
+  annual:  { amt: 'R$67,<small>49/mês</small>', per: 'R$809,88/ano · economize R$269,88 (2 meses grátis)' },
+};
+function setBilling(b){
+  billing = b;
+  document.getElementById('tMon').classList.toggle('on', b==='monthly');
+  document.getElementById('tAnn').classList.toggle('on', b==='annual');
+  document.getElementById('amt').innerHTML = PRICES[b].amt;
+  document.getElementById('per').textContent = PRICES[b].per;
+}
+function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),3500);}
+
+async function assinarMaster(origem){
+  const token = localStorage.getItem('bt_token');
+  // sem conta: manda pro fluxo de cadastro do site que já leva ao checkout Master
+  if(!token){ window.location.href = '/?upgrade=master'; return; }
+  toast('Abrindo pagamento seguro…');
+  try{
+    const ref = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
+    const r = await fetch('/api/create-checkout', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ plan:'master', billing, token, ref, currency:'brl', lang:'pt', payment_method:'card' })
+    });
+    const d = await r.json();
+    if(d.url){ window.location.href = d.url; }
+    else { toast(d.error || 'Não consegui iniciar o pagamento. Tenta de novo?'); }
+  }catch(e){ toast('Erro de conexão. Tenta de novo?'); }
+}
+
+// ── TOPBAR sólida ao rolar ──
+addEventListener('scroll', () => {
+  document.getElementById('topbar').classList.toggle('solid', scrollY > 40);
+}, { passive:true });
+
+// ── REVEAL + DEMOS ao entrar na tela ──
+const io = new IntersectionObserver((es) => {
+  es.forEach(e => {
+    if(!e.isIntersecting) return;
+    e.target.classList.add('in');
+    // demos específicas
+    const dt = e.target.querySelector?.('[data-dt]'); if(dt) setTimeout(()=>dt.classList.add('go'), 200);
+    const gauge = e.target.querySelector?.('[data-gauge]'); if(gauge) animarGauge(gauge);
+    io.unobserve(e.target);
+  });
+}, { threshold: .35 });
+document.querySelectorAll('.reveal, [data-demo], #deck').forEach(el => io.observe(el));
+
+function animarGauge(g){
+  const alvo = 92, num = g.querySelector('[data-count]');
+  let v = 0;
+  const step = () => {
+    v += 2; if(v > alvo) v = alvo;
+    g.style.background = `conic-gradient(#22c55e ${v*3.6*0.55}deg, #00d4ff ${v*3.6}deg, rgba(255,255,255,.06) ${v*3.6}deg)`;
+    num.textContent = v;
+    if(v < alvo) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ── tilt 3D leve no deck do hero ──
+const deck = document.getElementById('deck');
+if(deck && matchMedia('(pointer:fine)').matches){
+  addEventListener('mousemove', (e) => {
+    const rx = 14 - (e.clientY / innerHeight) * 10;
+    const ry = (e.clientX / innerWidth - .5) * 12;
+    deck.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
+  }, { passive:true });
+}
+
+// ── volta do pagamento (?payment=success) → manda pro app ──
+(function(){
+  const p = new URLSearchParams(location.search);
+  if(p.get('payment') === 'success'){ toast('🎉 Bem-vindo ao Master! Redirecionando…'); setTimeout(()=>location.href='/', 1800); }
+})();
+</script>
+</body></html>
