@@ -57,8 +57,12 @@ export function mountEditor(root, store) {
   const localPreview = { url: null, for: null };
   let captionsPanelOpen = false; // painel 💬 Legendas (escolher estilo antes)
   let capChosenPreset = 'classico'; // estilo escolhido pra aplicar ao gerar
+  let audioLibOpen = false;      // painel ♪ Áudio (biblioteca)
+  let audioLibTab = 'musicas';   // musicas | efeitos | favoritos
+  let audioLibQuery = '';
   let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
   let filledAudioId = null;
+  let filledOvId = null;
   // mapeamento log do slider de velocidade: value -100..200 -> 0.10x..100x,
   // 0 = 1.00x (controle fino perto de 1x)
   const sliderToSpeed = (v) => Math.min(100, Math.max(0.1, Math.pow(10, v / 100)));
@@ -150,12 +154,15 @@ export function mountEditor(root, store) {
     const showClip = !showText && !showOv && !showAudio && state.selected_clip_id != null;
     const nadaSel = !showText && !showOv && !showAudio && !showClip;
     const showCaptions = captionsPanelOpen && nadaSel;
+    const showAudioLib = audioLibOpen && nadaSel && !showCaptions;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
     $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
     $('#bePropsOverlay').style.display = showOv ? 'flex' : 'none';
     $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
     $('#bePropsCaptions').style.display = showCaptions ? 'flex' : 'none';
-    $('#bePropsProject').style.display = (nadaSel && !showCaptions) ? 'flex' : 'none';
+    $('#bePropsAudioLib').style.display = showAudioLib ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (nadaSel && !showCaptions && !showAudioLib) ? 'flex' : 'none';
+    if (showAudioLib) renderAudioLib();
     renderMediaPanel(); // biblioteca (coluna 1) sempre atualizada
     if (showText) fillTextPanel(state);
     if (showAudio) {
@@ -171,6 +178,15 @@ export function mountEditor(root, store) {
         }
       }
     } else { filledAudioId = null; }
+    if (showOv) {
+      const ov = state.overlays.find(o => o.id === state.selected_overlay_id);
+      if (ov && filledOvId !== ov.id) {
+        filledOvId = ov.id;
+        const sp = ov.speed ?? 1;
+        $('#beOvSpeed').value = speedToSlider(sp); $('#beOvSpeedVal').textContent = fmtSpeed(sp);
+        $('#beOvRot').value = Math.round(ov.rotation || 0); $('#beOvRotVal').textContent = Math.round(ov.rotation || 0) + '°';
+      }
+    } else { filledOvId = null; }
     if (showClip) {
       const clip = state.clips.find(c => c.id === state.selected_clip_id);
       if (clip) {
@@ -378,6 +394,42 @@ export function mountEditor(root, store) {
     }
   }
 
+  // ── fullscreen do preview (tecla F) com barra de tempo ──
+  const frame = $('#beFrame');
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else frame.requestFullscreen?.().catch(() => {});
+  }
+  $('#beFsExit').addEventListener('click', () => document.exitFullscreen?.());
+  $('#beFsPlay').addEventListener('click', () => player.toggle());
+  // scrub na barra do fullscreen
+  const fsProg = $('#beFsProgress');
+  let fsScrub = false;
+  const fsSeekTo = (clientX) => {
+    const r = fsProg.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    player.seek(pct * player.getDuration());
+  };
+  fsProg.addEventListener('pointerdown', (e) => { fsScrub = true; fsProg.setPointerCapture(e.pointerId); fsSeekTo(e.clientX); });
+  fsProg.addEventListener('pointermove', (e) => { if (fsScrub) fsSeekTo(e.clientX); });
+  fsProg.addEventListener('pointerup', () => { fsScrub = false; });
+  // atualiza a barra do fullscreen
+  player.onUpdate(() => {
+    if (!document.fullscreenElement) return;
+    const dur = player.getDuration() || 1;
+    $('#beFsFill').style.width = (player.getTime() / dur * 100) + '%';
+    $('#beFsPlay').textContent = player.isPlaying() ? '⏸' : '▶';
+    $('#beFsTime').textContent = `${formatTime(player.getTime())} / ${formatTime(dur)}`;
+  });
+  // tecla F: entra/sai do fullscreen (ignora quando digitando)
+  window.addEventListener('keydown', (e) => {
+    const el = document.activeElement;
+    const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    if (!typing && (e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); toggleFullscreen();
+    }
+  });
+
   // ── transporte ──
   $('#bePlayBtn').addEventListener('click', () => player.toggle());
   $('#beProjectName').addEventListener('change', (e) => store.dispatch(act.renameProject(e.target.value)));
@@ -457,6 +509,23 @@ export function mountEditor(root, store) {
     store.dispatch({ ...act.setSpeed('audio', id, sp), gestureId: 'audiospeed-' + id });
   });
   $('#beAudioSpeed').addEventListener('change', () => store.endGesture());
+  // Velocidade + Giro da CAMADA (overlay) — igual à faixa principal
+  $('#beOvSpeed').addEventListener('input', (e) => {
+    const id = store.getState().selected_overlay_id;
+    if (id == null) return;
+    const sp = sliderToSpeed(parseInt(e.target.value, 10));
+    $('#beOvSpeedVal').textContent = fmtSpeed(sp);
+    store.dispatch({ ...act.setSpeed('overlay', id, sp), gestureId: 'ovspeed-' + id });
+  });
+  $('#beOvSpeed').addEventListener('change', () => store.endGesture());
+  $('#beOvRot').addEventListener('input', (e) => {
+    const id = store.getState().selected_overlay_id;
+    if (id == null) return;
+    const deg = parseInt(e.target.value, 10);
+    $('#beOvRotVal').textContent = deg + '°';
+    store.dispatch({ ...act.setOverlayTransform(id, { rotation: deg }), gestureId: 'ovrot-' + id });
+  });
+  $('#beOvRot').addEventListener('change', () => store.endGesture());
 
   $('#beZoomIn').addEventListener('click', () => timeline.zoomBy(1.25));
   $('#beZoomOut').addEventListener('click', () => timeline.zoomBy(1 / 1.25));
@@ -588,11 +657,87 @@ export function mountEditor(root, store) {
     });
   }
 
-  // ── audio extra ──
+  // ── audio extra + biblioteca de áudio ──
   const audioInput = $('#beAudioFile');
   const pickAudio = () => audioInput.click();
-  $('#beAddAudio').addEventListener('click', pickAudio);
-  $('#beAddAudio2').addEventListener('click', pickAudio);
+  // rail "Áudio": abre a BIBLIOTECA (Músicas/Efeitos/Favoritos), não importa direto
+  $('#beAddAudio').addEventListener('click', () => {
+    audioLibOpen = !audioLibOpen;
+    if (audioLibOpen) { captionsPanelOpen = false; store.dispatch(act.selectClip(null)); }
+    sync();
+  });
+  $('#beAddAudio2').addEventListener('click', pickAudio); // botão do painel de projeto = importar
+  $('#beAudioLibClose')?.addEventListener('click', () => { audioLibOpen = false; sync(); });
+  $('#beAudioLibImport')?.addEventListener('click', pickAudio);
+  // sub-abas da biblioteca (Músicas / Efeitos / Favoritos)
+  $('#beAudioLibTabs')?.addEventListener('click', (e) => {
+    const b = e.target.closest('.be-cfg-subtab'); if (!b) return;
+    audioLibTab = b.dataset.atab;
+    $('#beAudioLibTabs').querySelectorAll('.be-cfg-subtab').forEach(x => x.classList.toggle('active', x === b));
+    renderAudioLib();
+  });
+  $('#beAudioLibSearch')?.addEventListener('input', (e) => { audioLibQuery = e.target.value; renderAudioLibDebounced(); });
+  let audioLibDeb = 0;
+  function renderAudioLibDebounced() { clearTimeout(audioLibDeb); audioLibDeb = setTimeout(renderAudioLib, 350); }
+  async function renderAudioLib() {
+    const box = $('#beAudioLibResults'); if (!box) return;
+    const q = (audioLibQuery || '').trim();
+    if (audioLibTab === 'favoritos') {
+      const favs = getAudioFavs();
+      box.innerHTML = favs.length ? '' : '<div class="be-dim">Sem favoritos ainda. Salve com a ⭐ nos resultados.</div>';
+      favs.forEach(f => box.appendChild(audioResultRow(f, true)));
+      return;
+    }
+    if (!q) { box.innerHTML = '<div class="be-dim">Digite pra buscar ' + (audioLibTab === 'efeitos' ? 'efeitos sonoros' : 'músicas') + '.</div>'; return; }
+    box.innerHTML = '<div class="be-dim">Buscando…</div>';
+    try {
+      const r = await api.audioSearch(q, audioLibTab === 'efeitos' ? 'sfx' : 'music');
+      const items = r.results || [];
+      if (!items.length) {
+        box.innerHTML = '<div class="be-dim">' + (r.message || 'Nada encontrado.') + '</div>';
+        return;
+      }
+      box.innerHTML = '';
+      items.forEach(it => box.appendChild(audioResultRow(it, false)));
+    } catch (e) {
+      box.innerHTML = '<div class="be-dim">Biblioteca ainda não conectada. Use ＋ Importar por enquanto.</div>';
+    }
+  }
+  function audioResultRow(it, isFav) {
+    const row = document.createElement('div');
+    row.className = 'be-audio-lib-row';
+    const meta = [it.category, it.duration ? Math.round(it.duration) + 's' : ''].filter(Boolean).join(' · ');
+    row.innerHTML = `<button class="be-audiolib-play" title="Ouvir">▶</button>
+      <span class="be-audiolib-name" title="${it.name || ''}">${it.name || 'áudio'}</span>
+      <span class="be-dim">${meta}</span>`;
+    let audio = null;
+    row.querySelector('.be-audiolib-play').addEventListener('click', () => {
+      if (!it.preview) return;
+      if (audio && !audio.paused) { audio.pause(); return; }
+      audio = new Audio(it.preview); audio.play().catch(() => {});
+    });
+    const star = document.createElement('button');
+    star.className = 'be-audiolib-star'; star.textContent = isFav ? '★' : '☆'; star.title = 'Favoritar';
+    star.addEventListener('click', () => { toggleAudioFav(it); renderAudioLib(); });
+    const use = document.createElement('button');
+    use.className = 'be-tool-btn'; use.style.cssText = 'padding:2px 8px;font-size:11px'; use.textContent = '＋';
+    use.title = 'Adicionar na timeline';
+    use.addEventListener('click', () => {
+      store.dispatch(act.addAudioClip({ url: it.url, filename: it.name, duration: it.duration || 10 }));
+      syncWaveRegistry(store.getState());
+      toast('Áudio adicionado ✓');
+    });
+    row.appendChild(star); row.appendChild(use);
+    return row;
+  }
+  const AUDIO_FAV_KEY = 'be_v1_audio_favs';
+  function getAudioFavs() { try { return JSON.parse(localStorage.getItem(AUDIO_FAV_KEY)) || []; } catch { return []; } }
+  function toggleAudioFav(it) {
+    const favs = getAudioFavs();
+    const i = favs.findIndex(f => f.url === it.url);
+    if (i >= 0) favs.splice(i, 1); else favs.push(it);
+    try { localStorage.setItem(AUDIO_FAV_KEY, JSON.stringify(favs)); } catch {}
+  }
   audioInput.addEventListener('change', async () => {
     const f = audioInput.files?.[0];
     audioInput.value = '';
@@ -1059,10 +1204,17 @@ function buildTemplate() {
 
   <!-- preview central -->
   <div class="be-preview-area">
-    <div class="be-preview-frame">
+    <div class="be-preview-frame" id="beFrame">
       <video id="beVideo" playsinline preload="auto"></video>
       <video id="beVideo2" playsinline preload="auto" muted class="be-buffering"></video>
       <div id="beOverlay"></div>
+      <!-- barra de controle no FULLSCREEN (tecla F) -->
+      <div id="beFsBar" class="be-fs-bar">
+        <button id="beFsPlay" class="be-fs-play">▶</button>
+        <div id="beFsProgress" class="be-fs-progress"><div id="beFsFill"></div></div>
+        <span id="beFsTime" class="be-fs-time">0:00 / 0:00</span>
+        <button id="beFsExit" class="be-fs-exit" title="Sair (Esc / F)">⤢</button>
+      </div>
     </div>
     <audio id="beAudio" preload="auto"></audio>
     <div class="be-transport">
@@ -1096,6 +1248,21 @@ function buildTemplate() {
       <div class="be-sep"></div>
       <div class="be-side-title">Transições</div>
       <div id="beTransitions" class="be-transitions"></div>
+    </div>
+
+    <!-- BIBLIOTECA DE ÁUDIO (Músicas / Efeitos / Favoritos) -->
+    <div id="bePropsAudioLib" class="be-props-stack" style="display:none">
+      <div class="be-side-title">♪ Áudio <button id="beAudioLibClose" class="be-tool-btn" style="float:right;padding:1px 8px">✕</button></div>
+      <div class="be-cfg-subtabs" id="beAudioLibTabs">
+        <button data-atab="musicas" class="be-cfg-subtab active">Músicas</button>
+        <button data-atab="efeitos" class="be-cfg-subtab">Efeitos</button>
+        <button data-atab="favoritos" class="be-cfg-subtab">Favoritos</button>
+      </div>
+      <input id="beAudioLibSearch" class="be-select" placeholder="🔎 Buscar…" style="width:100%"/>
+      <div id="beAudioLibResults" class="be-audio-lib"></div>
+      <div class="be-sep"></div>
+      <button id="beAudioLibImport" class="be-tool-btn">＋ Importar seu áudio</button>
+      <div class="be-dim">Narração/música própria (MP3, WAV, M4A).</div>
     </div>
 
     <!-- PAINEL DEDICADO DE LEGENDAS (escolhe estilo ANTES de transcrever) -->
@@ -1204,8 +1371,15 @@ function buildTemplate() {
     </div>
 
     <div id="bePropsOverlay" class="be-props-stack" style="display:none">
-      <div class="be-side-title">⧉ Camada (overlay)</div>
-      <div class="be-dim">Arraste a camada direto no preview pra posicionar. Scroll em cima dela = tamanho. Arraste as bordas na timeline pra cortar.</div>
+      <div class="be-side-title">⧉ Camada</div>
+      <div class="be-dim">Arraste no preview pra posicionar · scroll = tamanho · ⟳ acima = girar · bordas na timeline = cortar.</div>
+      <label class="be-slider-label">Velocidade <b id="beOvSpeedVal">1.00x</b>
+        <input id="beOvSpeed" type="range" min="-100" max="200" step="1" value="0"/>
+      </label>
+      <label class="be-slider-label">Girar <b id="beOvRotVal">0°</b>
+        <input id="beOvRot" type="range" min="0" max="359" step="1" value="0"/>
+      </label>
+      <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
       <button id="beOverlayDelete" class="be-danger-btn">🗑 Excluir camada</button>
     </div>
 

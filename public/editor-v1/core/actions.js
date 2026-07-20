@@ -49,6 +49,7 @@ export const A = {
   SELECT_ALL: 'SELECT_ALL',
   SET_MULTI_SELECT: 'SET_MULTI_SELECT',
   DELETE_MULTI: 'DELETE_MULTI',
+  MOVE_MULTI: 'MOVE_MULTI',
   SET_CAPTIONS: 'SET_CAPTIONS',
   CREATE_COMPOUND: 'CREATE_COMPOUND',
   UNGROUP_COMPOUND: 'UNGROUP_COMPOUND',
@@ -110,6 +111,7 @@ export const UNDOABLE = {
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
   [A.DELETE_MULTI]: U, // apaga a multi-selecao inteira = 1 undo step
+  [A.MOVE_MULTI]: U,   // arrasta a multi-selecao inteira junto
   [A.SET_CAPTIONS]: U, // geracao de legendas inteira = 1 undo step
   [A.ADD_MEDIA_CLIP]: U,
   [A.ADD_IMAGE_OVERLAY]: U,
@@ -169,6 +171,8 @@ export const selectAll = () => ({ type: A.SELECT_ALL });
 export const setMultiSelect = (items) => ({ type: A.SET_MULTI_SELECT, items });
 // Delete com multi-selecao ativa: apaga tudo que esta selecionado
 export const deleteMulti = () => ({ type: A.DELETE_MULTI });
+// arrasta TODAS as faixas selecionadas juntas por delta segundos
+export const moveMulti = (delta) => ({ type: A.MOVE_MULTI, delta });
 // caps: [{content,start_sec,end_sec,font,size,color,y_pct,...}] — substitui
 // TODAS as legendas num unico dispatch (nao rouba selecao, 1 undo)
 export const setCaptions = (caps) => ({ type: A.SET_CAPTIONS, caps });

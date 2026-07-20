@@ -24,6 +24,8 @@ export const clipTimelineDur = (c) =>
   c.frozen ? (c.freeze_dur || 3) : (c.source_out - c.source_in) / clipSpeed(c);
 /** duracao NA TIMELINE de um clip de audio */
 export const audioTimelineDur = (a) => (a.source_out - a.source_in) / clipSpeed(a);
+/** duracao NA TIMELINE de uma camada (overlay) — respeita a velocidade dela */
+export const overlayTimelineDur = (o) => (o.source_out - o.source_in) / clipSpeed(o);
 
 /** Duracao REPRODUZIVEL da timeline: video OU audio, o que terminar depois.
  *  Sem isso, projeto so-audio (ou com a faixa de video excluida) tinha
@@ -39,29 +41,34 @@ export function playableDuration(state) {
 /** Segmentos da timeline: cada clip ativo com seu offset acumulado no tempo
  *  virtual. [{ clip, tStart, tEnd }] onde t* e tempo virtual. */
 export function timelineSegments(state) {
-  // EXPANDIDO (player/export): compostos viram seus sub-clips reais
+  // EXPANDIDO (player/export): compostos viram seus sub-clips reais.
+  // seg.effSpeed = velocidade EFETIVA (velocidade do sub × velocidade do
+  // composto) — acelerar o composto acelera tudo dentro (user 2026-07-20).
   const segs = [];
   let t = 0;
   for (const clip of effectiveClips(state)) {
     if (clip.compound_id) {
       const comp = (state.compounds || []).find(k => k.id === clip.compound_id);
+      const cs = clipSpeed(clip);                     // velocidade do BLOCO composto
       const t0 = t;
       for (const sub of (comp?.clips || []).filter(x => x.active !== false)) {
-        const dur = clipTimelineDur(sub);
-        segs.push({ clip: sub, tStart: t, tEnd: t + dur, compoundId: clip.compound_id });
+        const dur = clipTimelineDur(sub) / cs;
+        segs.push({ clip: sub, tStart: t, tEnd: t + dur, compoundId: clip.compound_id, effSpeed: clipSpeed(sub) * cs });
         t += dur;
       }
-      // composto pode ser MAIOR que o video interno (so-audio/texto):
-      // o bloco ocupa a duracao total — o trecho sem video toca preto+audio
-      t = t0 + compoundDuration(comp);
+      // composto pode ser MAIOR que o video interno (so-audio/texto)
+      t = t0 + compoundDuration(comp) / cs;
     } else {
       const dur = clipTimelineDur(clip);
-      segs.push({ clip, tStart: t, tEnd: t + dur });
+      segs.push({ clip, tStart: t, tEnd: t + dur, effSpeed: clipSpeed(clip) });
       t += dur;
     }
   }
   return segs;
 }
+
+/** velocidade efetiva de um seg (composto multiplica a velocidade interna). */
+export const segSpeed = (seg) => seg.effSpeed || clipSpeed(seg.clip);
 
 /** Duracao INTERNA de um composto: video em sequencia OU o fim do ultimo
  *  audio/texto/camada — o que terminar depois. Compostos sem video (so
@@ -77,15 +84,16 @@ export function compoundDuration(comp) {
     total = Math.max(total, x.end_sec);
   }
   for (const o of (comp.overlays || []).filter(x => x.active !== false)) {
-    total = Math.max(total, o.start + (o.source_out - o.source_in));
+    total = Math.max(total, o.start + overlayTimelineDur(o));
   }
   return total;
 }
 
-/** Duracao de um clip da main (compound = duracao interna total). */
+/** Duracao de um clip da main (compound = duracao interna / velocidade dele). */
 export function clipDuration(state, c) {
   if (c.compound_id) {
-    return compoundDuration((state.compounds || []).find(k => k.id === c.compound_id));
+    const comp = (state.compounds || []).find(k => k.id === c.compound_id);
+    return compoundDuration(comp) / clipSpeed(c);
   }
   return clipTimelineDur(c);
 }
@@ -111,29 +119,38 @@ export function compoundOffsets(state) {
   return map;
 }
 
-/** Textos efetivos (soltos + dos compostos, offsets absolutos). */
+/** velocidade do BLOCO composto (pra acelerar o conteudo interno junto). */
+export function compoundSpeedOf(state, compId) {
+  const c = (state.clips || []).find(k => k.compound_id === compId);
+  return c ? clipSpeed(c) : 1;
+}
+
+/** Textos efetivos (soltos + dos compostos, offsets absolutos + velocidade). */
 export function effectiveTexts(state) {
   const out = (state.texts || []).filter(t => t.active !== false).map(t => ({ ...t }));
   const offs = compoundOffsets(state);
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);
     if (off == null) continue;
+    const cs = compoundSpeedOf(state, comp.id);
     for (const t of (comp.texts || []).filter(x => x.active !== false)) {
-      out.push({ ...t, id: 'c' + comp.id + '_' + t.id, start_sec: t.start_sec + off, end_sec: t.end_sec + off, _compound: true });
+      out.push({ ...t, id: 'c' + comp.id + '_' + t.id, start_sec: off + t.start_sec / cs, end_sec: off + t.end_sec / cs, _compound: true });
     }
   }
   return out;
 }
 
-/** Audios efetivos (soltos + dos compostos, offsets absolutos). */
+/** Audios efetivos (soltos + dos compostos, offsets + velocidade do bloco). */
 export function effectiveAudioClips(state) {
   const out = (state.audio_clips || []).filter(a => a.active !== false).map(a => ({ ...a }));
   const offs = compoundOffsets(state);
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);
     if (off == null) continue;
+    const cs = compoundSpeedOf(state, comp.id);
     for (const a of (comp.audio_clips || []).filter(x => x.active !== false)) {
-      out.push({ ...a, id: 'c' + comp.id + '_' + a.id, start: a.start + off, _compound: true });
+      // velocidade do composto acelera o audio interno junto (user 2026-07-20)
+      out.push({ ...a, id: 'c' + comp.id + '_' + a.id, start: off + a.start / cs, speed: clipSpeed(a) * cs, _compound: true });
     }
   }
   return out;
@@ -146,8 +163,9 @@ export function effectiveOverlays(state) {
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);
     if (off == null) continue;
+    const cs = compoundSpeedOf(state, comp.id);
     for (const o of (comp.overlays || []).filter(x => x.active !== false)) {
-      out.push({ ...o, id: 'c' + comp.id + '_' + o.id, start: o.start + off, _compound: true });
+      out.push({ ...o, id: 'c' + comp.id + '_' + o.id, start: off + o.start / cs, _compound: true });
     }
   }
   return out;
@@ -211,7 +229,7 @@ export function timelineToSource(state, t) {
     if (t >= seg.tStart && t < seg.tEnd + 1e-9) {
       const c = seg.clip;
       if (c.frozen) return c.freeze_src || 0;         // cena congelada = 1 frame
-      const off = (t - seg.tStart) * clipSpeed(c);
+      const off = (t - seg.tStart) * segSpeed(seg);
       // Reverso: a timeline anda pra frente, o arquivo anda pra TRÁS
       return c.reversed ? Math.max(c.source_in, c.source_out - off)
                         : c.source_in + off;
@@ -225,7 +243,7 @@ export function timelineToSource(state, t) {
 export function sourceToTimeline(state, s) {
   for (const seg of timelineSegments(state)) {
     if (s >= seg.clip.source_in - 1e-9 && s <= seg.clip.source_out + 1e-9) {
-      return seg.tStart + (s - seg.clip.source_in) / clipSpeed(seg.clip);
+      return seg.tStart + (s - seg.clip.source_in) / segSpeed(seg);
     }
   }
   return null;
@@ -318,6 +336,8 @@ export function exportPayload(state) {
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),
       scale: Math.round(o.scale * 100) / 100,
+      speed: Math.round(clipSpeed(o) * 1000) / 1000,
+      ...(o.rotation ? { rotation: Math.round(o.rotation) } : {}),
       lane: o.lane || 1, // ordem de composicao
     })),
     transitions: state.transitions || [],

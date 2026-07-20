@@ -89,7 +89,7 @@ export function hitTest(layout, x, y, opts = {}) {
   }
 
   // 7. Area da track de video vazia (scrub tambem — CapCut permite)
-  if (y >= layout.yVideo && y < layout.yVideo + METRICS.VIDEO_TRACK_H) {
+  if (y >= layout.yVideo && y < layout.yVideo + (layout.videoTrackH || METRICS.VIDEO_TRACK_H)) {
     return { type: 'track-empty' };
   }
 

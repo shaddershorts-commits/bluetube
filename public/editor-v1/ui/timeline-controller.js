@@ -45,6 +45,8 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       snapEnabled: true,
       videoDuration: state.video?.duration || 0,
       clipMaxOut,
+      // chaves da multi-selecao (pra detectar group drag)
+      multiIds: new Set((state.multi_selected || []).map(x => x.type + ':' + x.id)),
     };
   }
   function draw() {
@@ -187,8 +189,47 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       store.dispatch(act.selectClip(hit.clipId)); // menu age no clip clicado
       draw();
       showClipMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'overlay-body') {
+      store.dispatch(act.selectOverlay(hit.overlayId));
+      draw();
+      showOverlayMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'audio-body') {
+      store.dispatch(act.selectAudioClip(hit.audioId));
+      draw();
+      showAudioMenu(e.clientX, e.clientY, hit);
     }
   });
+
+  // menu da CAMADA (overlay) — mesma editabilidade que o clip
+  function showOverlayMenu(x, y, hit) {
+    const st = store.getState();
+    const ov = st.overlays.find(o => o.id === hit.overlayId);
+    buildMenu(x, y, [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteOverlay(hit.overlayId)) },
+      { sep: true },
+      ...(ov?.kind === 'image' ? [
+        { label: '↺ Resetar giro', fn: () => store.dispatch(act.setOverlayTransform(hit.overlayId, { rotation: 0 })) },
+      ] : []),
+      { label: 'Trazer pra frente', fn: () => bumpLane(hit.overlayId, +1) },
+      { label: 'Mandar pra trás', fn: () => bumpLane(hit.overlayId, -1) },
+    ]);
+  }
+  function bumpLane(id, dir) {
+    const o = store.getState().overlays.find(x => x.id === id);
+    if (o) store.dispatch(act.setItemLane('overlay', id, (o.lane || 1) + dir));
+  }
+
+  // menu do ÁUDIO
+  function showAudioMenu(x, y, hit) {
+    buildMenu(x, y, [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Dividir no cursor', hint: 'Ctrl B', fn: () => store.dispatch(act.splitAudioAt(player.getTime())) },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteAudioClip(hit.audioId)) },
+    ]);
+  }
 
   function showClipMenu(x, y, hit) {
     const atT = player.getTime();
@@ -391,6 +432,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   return {
     draw,
     getViewport: () => vp,
+    getLayout: () => layoutNow(),  // E2E: coords reais (auto-altura muda posições)
     zoomFit() {
       if (vp.width < 50) { pendingFit = true; return; }
       doFit();

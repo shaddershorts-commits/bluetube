@@ -150,12 +150,19 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'toggle-multi', itemType: 'clip', id: hit.clipId });
           return { next: fsm, effects: fx };
         }
+        // se o item JA esta na multi-selecao, mantem (drag = mover o grupo)
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
+        }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       if (hit.type === 'text-block') {
         if (ev.ctrlKey) {
           fx.push({ do: 'toggle-multi', itemType: 'text', id: hit.textId });
           return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
         }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
@@ -177,6 +184,9 @@ export function transition(fsm, ev, ctx) {
         if (ev.ctrlKey) {
           fx.push({ do: 'toggle-multi', itemType: 'overlay', id: hit.overlayId });
           return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
         }
         fx.push({ do: 'select-overlay', overlayId: hit.overlayId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
@@ -200,6 +210,9 @@ export function transition(fsm, ev, ctx) {
         if (ev.ctrlKey) {
           fx.push({ do: 'toggle-multi', itemType: 'audio', id: hit.audioId });
           return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
         }
         fx.push({ do: 'select-audio-clip', audioId: hit.audioId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
@@ -254,6 +267,11 @@ export function transition(fsm, ev, ctx) {
         const dist = Math.hypot(ev.x - fsm.x0, ev.y - fsm.y0);
         const threshold = fsm.touch ? DRAG_THRESHOLD_TOUCH : DRAG_THRESHOLD_MOUSE;
         if (dist < threshold) return { next: fsm, effects: fx };
+        // GROUP DRAG: item ja na multi-selecao -> arrasta o grupo inteiro junto
+        if (fsm.group) {
+          const t0 = xToTime(ctx.layout.vp, fsm.x0);
+          return { next: { name: 'dragging-multi', lastT: t0, gestureId: newGestureId() }, effects: fx };
+        }
         // passou o threshold:
         if (fsm.touch) {
           // touch antes do long-press = pan da timeline (scroll)
@@ -386,6 +404,21 @@ export function transition(fsm, ev, ctx) {
         }
         fx.push({ do: 'show-snap', active: false });
         fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'dragging-multi': {
+      // move TODA a multi-selecao junto (delta incremental coalescido = 1 undo)
+      if (ev.kind === 'move') {
+        const t = xToTime(ctx.layout.vp, ev.x);
+        fx.push({ do: 'dispatch', action: { ...act.moveMulti(t - fsm.lastT), gestureId: fsm.gestureId } });
+        fx.push({ do: 'autoscroll-edge', x: ev.x });
+        return { next: { ...fsm, lastT: t }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'end-gesture' });
         return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };
@@ -585,6 +618,18 @@ export function transition(fsm, ev, ctx) {
 
 function pinchStart(ev, ctx) {
   return { name: 'pinching', d0: ev.d || 1, pxPerSec0: ctx.layout.vp.pxPerSec, cx: ev.cx ?? ev.x };
+}
+
+// chave multi-selecao de um hit (bate com ctx.multiIds do controller)
+function hitMultiKey(hit) {
+  if (hit.type === 'clip-body') return 'clip:' + hit.clipId;
+  if (hit.type === 'audio-body') return 'audio:' + hit.audioId;
+  if (hit.type === 'text-block') return 'text:' + hit.textId;
+  if (hit.type === 'overlay-body') return 'overlay:' + hit.overlayId;
+  return null;
+}
+function inMulti(ctx, key) {
+  return !!(key && ctx.multiIds && ctx.multiIds.size > 1 && ctx.multiIds.has(key));
 }
 
 function rectOf(m) {

@@ -2223,19 +2223,25 @@ async function processEditV0(jobId, p) {
       const nextL = `base${k + 1}`;
       if (op.kind === 'ov') {
         const { idx, o, isImage } = op.ov;
+        const sp = Number(o.speed) > 0 ? Number(o.speed) : 1;
         const dur = o.source_out - o.source_in;
+        const tlDur = dur / sp;                       // duração NA timeline (com velocidade)
         const scaled = `ovs${k}`;
         const scaleW = Math.round((p.output_width || 1080) * (o.scale ?? 0.5));
         const xExpr = `${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2`;
         const yExpr = `${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2`;
-        const enable = `between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur).toFixed(3)})`;
+        const enable = `between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + tlDur).toFixed(3)})`;
         if (isImage) {
-          // IMAGEM: escala preservando alpha; overlay estático na janela de tempo
-          fc.push(`[${idx}:v]scale=${scaleW}:-1[${scaled}]`);
+          // IMAGEM: escala preservando alpha (+ rotação opcional); overlay
+          // estático na janela de tempo
+          const deg = Number(o.rotation) || 0;
+          const rotF = deg ? `,rotate=${deg}*PI/180:c=none:ow=rotw(${deg}*PI/180):oh=roth(${deg}*PI/180)` : '';
+          fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF}[${scaled}]`);
           fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
         } else {
-          // escala relativa a LARGURA do output + posicao central em pct
-          fc.push(`[${idx}:v]scale=${scaleW}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
+          // escala + velocidade (setpts/sp) + posição central em pct
+          const spF = sp !== 1 ? `/${sp}` : '';
+          fc.push(`[${idx}:v]scale=${scaleW}:-2,setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
           fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
         }
       } else {

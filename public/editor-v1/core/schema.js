@@ -163,9 +163,11 @@ export function normalizeLoadedState(raw) {
       id: o.id, source_in: o.source_in, source_out: o.source_out,
       ...(o.media_id != null && mediaIds.has(o.media_id) ? { media_id: o.media_id } : {}),
       ...(o.kind === 'image' && o.url ? { kind: 'image', url: o.url, img_w: o.img_w || 0, img_h: o.img_h || 0 } : {}),
+      ...(typeof o.speed === 'number' ? { speed: clamp(o.speed, 0.1, 100) } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
+      ...(typeof o.rotation === 'number' ? { rotation: ((o.rotation % 360) + 360) % 360 } : {}),
       lane: clampLane(o.lane, OVERLAY_DEFAULT_LANE),
       active: o.active !== false,
     })) : [];

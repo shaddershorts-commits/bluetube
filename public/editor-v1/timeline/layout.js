@@ -3,7 +3,7 @@
 // Modulo puro: sem DOM/canvas. Toda posicao visual nasce aqui — render e
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
-import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur } from '../core/selectors.js';
+import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur } from '../core/selectors.js';
 
 export const METRICS = {
   PAD_LEFT: 16,          // margem esquerda em px antes de t=0
@@ -47,24 +47,48 @@ export function computeLayout(state, vp) {
     ...ovsAtivas.map(o => o.lane || 1),
     ...textosAtivos.map(t => t.lane || 4),
   ])].sort((a, b) => b - a); // desc: topo primeiro
-  const LANE_H = Math.round(METRICS.VIDEO_TRACK_H * 0.7);
+
+  // ── AUTO-ALTURA (user 2026-07-20): quando a timeline tem altura sobrando,
+  // as faixas CRESCEM juntas pra preencher (arrastar o divisor pra cima =
+  // faixas mais altas). trackScale >= 1. Packing de audio é scale-independent.
+  const nLanes = lanesUsadas.length;
+  const _audioSorted = (state.audio_clips || []).filter(a => a.active !== false)
+    .slice().sort((a, b) => a.start - b.start);
+  const _lanesEnd = [];
+  for (const a of _audioSorted) {
+    const d = audioTimelineDur(a);
+    let l = _lanesEnd.findIndex(e => a.start >= e - 1e-6);
+    if (l < 0) { l = _lanesEnd.length; _lanesEnd.push(a.start + d); } else _lanesEnd[l] = a.start + d;
+  }
+  const audioLaneCount = Math.max(1, _lanesEnd.length);
+  const baseLaneH = METRICS.VIDEO_TRACK_H * 0.7;
+  const naturalH = METRICS.RULER_H + METRICS.TRACK_GAP + nLanes * (baseLaneH + 4)
+    + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP
+    + audioLaneCount * (METRICS.AUDIO_TRACK_H + 2) + METRICS.TRACK_GAP + 6;
+  const trackScale = vp.height > 60 ? Math.min(2.4, Math.max(1, (vp.height - 4) / naturalH)) : 1;
+  const VH = Math.round(METRICS.VIDEO_TRACK_H * trackScale);
+  const AH = Math.round(METRICS.AUDIO_TRACK_H * trackScale);
+  const TH = Math.round(METRICS.TEXT_TRACK_H * trackScale);
+  const GAP = Math.round(METRICS.TRACK_GAP * trackScale);
+  const LANE_H = Math.round(baseLaneH * trackScale);
+
   const laneRows = []; // [{lane, y, h}] na ordem visual (topo -> base)
-  let yCursor = METRICS.RULER_H + METRICS.TRACK_GAP;
+  let yCursor = METRICS.RULER_H + GAP;
   for (const lane of lanesUsadas) {
     laneRows.push({ lane, y: yCursor, h: LANE_H });
     yCursor += LANE_H + 4;
   }
   const laneY = new Map(laneRows.map(r => [r.lane, r.y]));
   const hasOverlays = ovsAtivas.length > 0;
-  const yOverlay = laneRows.length ? laneRows[0].y : (METRICS.RULER_H + METRICS.TRACK_GAP);
-  const yVideo = yCursor + (laneRows.length ? METRICS.TRACK_GAP - 4 : 0);
-  const yAudio = yVideo + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP;
-  const contentH = yAudio + METRICS.AUDIO_TRACK_H + METRICS.TRACK_GAP;
+  const yOverlay = laneRows.length ? laneRows[0].y : (METRICS.RULER_H + GAP);
+  const yVideo = yCursor + (laneRows.length ? GAP - 4 : 0);
+  const yAudio = yVideo + VH + GAP;
+  const contentH = yAudio + AH + GAP;
   // compat: yText aponta pra row de texto mais comum (paineis antigos)
   const yText = laneRows.length ? laneRows[0].y : yVideo;
 
   const overlayItems = ovsAtivas.map(o => {
-    const dur = o.source_out - o.source_in;
+    const dur = overlayTimelineDur(o);   // largura reflete a velocidade da camada
     return {
       overlayId: o.id, lane: o.lane || 1,
       mediaId: o.media_id ?? null,  // camada de take usa a miniatura DELE
@@ -72,7 +96,7 @@ export function computeLayout(state, vp) {
       x: timeToX(vp, o.start), y: laneY.get(o.lane || 1) ?? yOverlay,
       w: dur * vp.pxPerSec, h: LANE_H,
       tStart: o.start, tEnd: o.start + dur,
-      srcIn: o.source_in, srcOut: o.source_out,
+      srcIn: o.source_in, srcOut: o.source_out, speed: o.speed > 0 ? o.speed : 1,
       selected: state.selected_overlay_id === o.id,
       multi: multiKeys.has('overlay:' + o.id),
     };
@@ -101,7 +125,7 @@ export function computeLayout(state, vp) {
       sourceOut: it.isCompound ? (firstSub?.source_out ?? 1) : it.clip.source_out,
       frozen: !!it.clip.frozen,             // cena congelada: resize por freeze_dur
       reversed: !!it.clip.reversed, mirrored: !!it.clip.mirrored,
-      x, y: yVideo, w, h: METRICS.VIDEO_TRACK_H,
+      x, y: yVideo, w, h: VH,
       selected: state.selected_clip_id === it.clip.id,
       multi: multiKeys.has('clip:' + it.clip.id),
     };
@@ -116,7 +140,7 @@ export function computeLayout(state, vp) {
     const g = {
       clipId: c.id,
       x: timeToX(vp, ghostT), y: yVideo,
-      w: dur * vp.pxPerSec, h: METRICS.VIDEO_TRACK_H,
+      w: dur * vp.pxPerSec, h: VH,
       selected: state.selected_clip_id === c.id,
     };
     ghostT += dur + 0.5;
@@ -129,9 +153,9 @@ export function computeLayout(state, vp) {
     return {
       textId: t.id, lane: t.lane || 4,
       x: timeToX(vp, t.start_sec),
-      y: rowY + Math.max(0, (LANE_H - METRICS.TEXT_TRACK_H) / 2),
+      y: rowY + Math.max(0, (LANE_H - TH) / 2),
       w: Math.max(6, (t.end_sec - t.start_sec) * vp.pxPerSec),
-      h: METRICS.TEXT_TRACK_H,
+      h: TH,
       selected: state.selected_text_id === t.id,
       multi: multiKeys.has('text:' + t.id),
       content: t.content,
@@ -158,8 +182,8 @@ export function computeLayout(state, vp) {
       return {
         audioId: a.id, kind: a.kind, url: a.url || null,
         x: timeToX(vp, a.start),
-        y: yAudio + lane * (METRICS.AUDIO_TRACK_H + 2),
-        w: dur * vp.pxPerSec, h: METRICS.AUDIO_TRACK_H,
+        y: yAudio + lane * (AH + 2),
+        w: dur * vp.pxPerSec, h: AH,
         tStart: a.start, tEnd: end,
         srcIn: a.source_in, srcOut: a.source_out,
         selected: state.selected_audio_id === a.id,
@@ -168,7 +192,7 @@ export function computeLayout(state, vp) {
       };
     });
   const audioLanes = Math.max(1, lanes.length);
-  const contentHFinal = yAudio + audioLanes * (METRICS.AUDIO_TRACK_H + 2) + METRICS.TRACK_GAP;
+  const contentHFinal = yAudio + audioLanes * (AH + 2) + GAP;
 
   return {
     vp, total, segs, clips, ghosts, texts, audioItems, audioLanes,
@@ -178,6 +202,7 @@ export function computeLayout(state, vp) {
     // strip NAO volta — audio agora vive (ou viveu) na track propria.
     clipWaveform: !state.audio_detached,
     yRuler, yVideo, yText, yAudio,
+    videoTrackH: VH, audioTrackH: AH, trackScale,  // alturas ESCALADAS (auto-altura)
     contentH: Math.max(contentH, contentHFinal),
   };
 }

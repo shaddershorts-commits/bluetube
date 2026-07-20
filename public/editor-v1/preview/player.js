@@ -5,7 +5,7 @@
 //   um swap instantâneo — sem a tela preta de load() (user 2026-07-20).
 // - cada audio_clip ganha um Audio() próprio, agendado por start/source_in/out.
 
-import { timelineToSource, totalDuration, playableDuration, segmentAt, timelineSegments, effectiveAudioClips, mediaUrlFor, clipSpeed, audioTimelineDur } from '../core/selectors.js';
+import { timelineToSource, totalDuration, playableDuration, segmentAt, timelineSegments, effectiveAudioClips, mediaUrlFor, clipSpeed, segSpeed, audioTimelineDur } from '../core/selectors.js';
 
 // opts.primaryUrl(): url preferida do video PRINCIPAL. opts.bufferEl: 2º <video>.
 export function createPlayer(videoEl, opts, store) {
@@ -45,7 +45,7 @@ export function createPlayer(videoEl, opts, store) {
   function srcForSeg(seg, tv) {
     const c = seg.clip;
     if (c.frozen) return c.freeze_src || 0;
-    const off = (tv - seg.tStart) * clipSpeed(c);
+    const off = (tv - seg.tStart) * segSpeed(seg);
     return c.reversed ? Math.max(c.source_in, c.source_out - off) : c.source_in + off;
   }
 
@@ -58,7 +58,7 @@ export function createPlayer(videoEl, opts, store) {
     // Sem clip ativo (faixa excluída/gap): esconde (preto) até voltar conteúdo.
     d.style.visibility = src == null ? 'hidden' : '';
     if (src == null) return;
-    d.playbackRate = clipSpeed(seg.clip);
+    d.playbackRate = segSpeed(seg);
     const url = urlForClip(state, seg.clip);
     const atual = d.currentSrc || d.src || '';
     if (url && atual !== url) {
@@ -72,7 +72,7 @@ export function createPlayer(videoEl, opts, store) {
         nd.style.visibility = '';
         nd.muted = !!state.audio_detached;
         nd.volume = Math.min(1, state.volumes?.video ?? 1);
-        nd.playbackRate = clipSpeed(seg.clip);
+        nd.playbackRate = segSpeed(seg);
         try { nd.currentTime = src; } catch {}
         if (playing) nd.play().catch(() => {});
         buf().pause();
@@ -86,6 +86,21 @@ export function createPlayer(videoEl, opts, store) {
     if (seekVideo && d._pendingSeek == null && Math.abs(d.currentTime - src) > 0.06) {
       d.currentTime = src;
     }
+  }
+
+  // próximo segmento CONTÍGUO na mesma fonte (o vídeo pode tocar direto pra
+  // dentro dele, sem seek). Ex: um vídeo cortado em 2, ou os sub-clips de um
+  // composto que vieram do mesmo arquivo.
+  function nextContiguous(state, seg) {
+    const segs = timelineSegments(state);
+    const nx = segs.find(s => s.tStart >= seg.tEnd - 1e-6);
+    if (!nx) return null;
+    const c = seg.clip, n = nx.clip;
+    if (n.frozen || n.reversed || c.frozen || c.reversed) return null;
+    if (urlForClip(state, n) !== urlForClip(state, c)) return null;   // fonte diferente
+    if (Math.abs(segSpeed(nx) - segSpeed(seg)) > 1e-3) return null;   // velocidade diferente
+    if (Math.abs(n.source_in - c.source_out) > 0.12) return null;    // não colado no arquivo
+    return nx;
   }
 
   // pré-carrega a PRÓXIMA fonte no buffer (só durante playback, só se a fonte
@@ -185,16 +200,26 @@ export function createPlayer(videoEl, opts, store) {
     }
     if (seg) {
       if (d.paused) d.play().catch(() => {});
-      d.playbackRate = clipSpeed(seg.clip);
+      // garante que o elemento EM EXIBIÇÃO nunca fica mudo (o buffer é mutado
+      // no preload; sem isso o áudio sumia às vezes após um swap — user #6)
+      d.muted = !!state.audio_detached;
+      d.volume = Math.min(1, state.volumes?.video ?? 1);
+      d.playbackRate = segSpeed(seg);
       preloadNext(state); // aquece o buffer com a próxima fonte
       const vSrc = d.currentTime;
-      if (vSrc >= seg.clip.source_in - 0.05 && vSrc <= seg.clip.source_out + 0.05) {
-        virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in) / clipSpeed(seg.clip);
+      if (vSrc >= seg.clip.source_in - 0.08 && vSrc <= seg.clip.source_out + 0.2) {
+        virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in) / segSpeed(seg);
         if (vSrc >= seg.clip.source_out - 0.03) {
-          const nextT = seg.tEnd + 0.001;
-          if (nextT >= total) { pause(); virtualTime = total; emit(); return; }
-          virtualTime = nextT;
-          syncVideoToVirtual();
+          // fim do clip: se o próximo é CONTÍGUO na mesma fonte (split simples,
+          // inclusive dentro do composto), DEIXA FLUIR — o <video> continua
+          // tocando pra dentro do próximo, sem seek. Isso mata a tela preta e o
+          // áudio repetindo a palavra (user 2026-07-20).
+          if (!nextContiguous(state, seg)) {
+            const nextT = seg.tEnd + 0.001;
+            if (nextT >= total) { pause(); virtualTime = total; emit(); return; }
+            virtualTime = nextT;
+            syncVideoToVirtual();
+          }
         }
       } else {
         syncVideoToVirtual();

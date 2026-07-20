@@ -114,6 +114,13 @@ export function reduce(state, action) {
         audio_clips[idx] = { ...audio_clips[idx], speed };
         return touch({ ...state, audio_clips });
       }
+      if (action.target === 'overlay') {
+        const idx = state.overlays.findIndex(o => o.id === action.id);
+        if (idx < 0) return state;
+        const overlays = state.overlays.slice();
+        overlays[idx] = { ...overlays[idx], speed };
+        return touch({ ...state, overlays });
+      }
       const idx = state.clips.findIndex(c => c.id === action.id);
       if (idx < 0) return state;
       const clips = state.clips.slice();
@@ -618,13 +625,15 @@ export function reduce(state, action) {
       if (idx < 0) return state;
       const o = state.overlays[idx];
       const p = action.patch || {};
+      const rot = p.rotation != null ? (((p.rotation % 360) + 360) % 360) : (o.rotation || 0);
       const next = {
         ...o,
         x_pct: p.x_pct != null ? clamp01(p.x_pct) : o.x_pct,
         y_pct: p.y_pct != null ? clamp01(p.y_pct) : o.y_pct,
         scale: p.scale != null ? clamp(p.scale, 0.1, 2) : o.scale,
+        rotation: rot,
       };
-      if (next.x_pct === o.x_pct && next.y_pct === o.y_pct && next.scale === o.scale) return state;
+      if (next.x_pct === o.x_pct && next.y_pct === o.y_pct && next.scale === o.scale && next.rotation === (o.rotation || 0)) return state;
       const overlays = state.overlays.slice();
       overlays[idx] = next;
       return touch({ ...state, overlays });
@@ -715,6 +724,27 @@ export function reduce(state, action) {
         selected_text_id: textIds.has(state.selected_text_id) ? null : state.selected_text_id,
         selected_audio_id: audioIds.has(state.selected_audio_id) ? null : state.selected_audio_id,
         selected_overlay_id: ovIds.has(state.selected_overlay_id) ? null : state.selected_overlay_id,
+      });
+    }
+
+    case A.MOVE_MULTI: {
+      // arrasta TODA a multi-selecao junto (audio/texto/camada — clips da main
+      // sao empacotados, nao movem livre). Clampa pra ninguem passar do 0.
+      const sel = state.multi_selected || [];
+      if (!sel.length) return state;
+      const has = (tipo, id) => sel.some(x => x.type === tipo && x.id === id);
+      let minStart = Infinity;
+      for (const a of state.audio_clips) if (has('audio', a.id)) minStart = Math.min(minStart, a.start);
+      for (const t of state.texts) if (has('text', t.id)) minStart = Math.min(minStart, t.start_sec);
+      for (const o of state.overlays) if (has('overlay', o.id)) minStart = Math.min(minStart, o.start);
+      let delta = action.delta;
+      if (minStart !== Infinity && minStart + delta < 0) delta = -minStart;
+      if (!(Math.abs(delta) > 1e-6)) return state;
+      return touch({
+        ...state,
+        audio_clips: state.audio_clips.map(a => has('audio', a.id) ? { ...a, start: Math.max(0, a.start + delta) } : a),
+        texts: state.texts.map(t => has('text', t.id) ? { ...t, start_sec: Math.max(0, t.start_sec + delta), end_sec: Math.max(0.1, t.end_sec + delta) } : t),
+        overlays: state.overlays.map(o => has('overlay', o.id) ? { ...o, start: Math.max(0, o.start + delta) } : o),
       });
     }
 

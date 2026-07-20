@@ -6,7 +6,7 @@
 // por scroll (a selecionada).
 
 import * as act from '../core/actions.js';
-import { effectiveOverlays, mediaUrlFor } from '../core/selectors.js';
+import { effectiveOverlays, mediaUrlFor, overlayTimelineDur, clipSpeed } from '../core/selectors.js';
 
 export function createPip(container, videoSrcEl, store, player) {
   const pool = new Map(); // overlay.id -> <video>
@@ -19,7 +19,7 @@ export function createPip(container, videoSrcEl, store, player) {
     if (kind !== 'image') { el.muted = true; el.playsInline = true; el.preload = 'auto'; }
     el.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;' +
       'border:1.5px dashed rgba(169,127,238,0);border-radius:6px;object-fit:contain;' +
-      'transform:translate(-50%,-50%);touch-action:none;';
+      'transform-origin:center;touch-action:none;';
     el.dataset.ovId = ovId;
     el.dataset.kind = kind || 'video';
     wireGestures(el);
@@ -27,9 +27,44 @@ export function createPip(container, videoSrcEl, store, player) {
     return el;
   }
 
+  // alça de GIRAR (bolinha acima do overlay selecionado). Arrastar = rotaciona.
+  let rotHandle = null;
+  function ensureRotHandle() {
+    if (rotHandle) return rotHandle;
+    rotHandle = document.createElement('div');
+    rotHandle.style.cssText = 'position:absolute;width:18px;height:18px;border-radius:50%;' +
+      'background:#a97fee;border:2px solid #fff;cursor:grab;z-index:999;display:none;' +
+      'transform:translate(-50%,-50%);box-shadow:0 1px 4px rgba(0,0,0,.4);touch-action:none;';
+    rotHandle.title = 'Girar';
+    rotHandle.innerHTML = '<span style="font-size:11px;position:absolute;top:2px;left:3px">⟳</span>';
+    wireRotate(rotHandle);
+    container.appendChild(rotHandle);
+    return rotHandle;
+  }
+  function wireRotate(h) {
+    let rot = null;
+    h.addEventListener('pointerdown', (e) => {
+      const id = store.getState().selected_overlay_id;
+      const ov = store.getState().overlays.find(o => o.id === id);
+      if (!ov) return;
+      e.preventDefault(); e.stopPropagation();
+      h.setPointerCapture(e.pointerId);
+      const box = container.getBoundingClientRect();
+      rot = { id, cx: box.left + ov.x_pct * box.width, cy: box.top + ov.y_pct * box.height, g: 'rot' + (gestureSeq++) };
+    });
+    h.addEventListener('pointermove', (e) => {
+      if (!rot) return;
+      const ang = Math.atan2(e.clientY - rot.cy, e.clientX - rot.cx) * 180 / Math.PI + 90;
+      store.dispatch({ ...act.setOverlayTransform(rot.id, { rotation: ang }), gestureId: rot.g });
+    });
+    const end = () => { if (rot) { rot = null; store.endGesture(); } };
+    h.addEventListener('pointerup', end);
+    h.addEventListener('pointercancel', end);
+  }
+
   function activeOverlays(state, t) {
     return effectiveOverlays(state).filter(o =>
-      t >= o.start - 1e-6 && t < o.start + (o.source_out - o.source_in));
+      t >= o.start - 1e-6 && t < o.start + overlayTimelineDur(o));
   }
 
   function render() {
@@ -57,13 +92,27 @@ export function createPip(container, videoSrcEl, store, player) {
       el.style.left = (ov.x_pct * 100) + '%';
       el.style.top = (ov.y_pct * 100) + '%';
       el.style.width = (ov.scale * 100) + '%';
+      el.style.transform = `translate(-50%,-50%) rotate(${ov.rotation || 0}deg)`;
       // z compartilhado com os textos do overlay.js: lane MAIOR = na frente
       el.style.zIndex = String(10 + (ov.lane || 1));
-      el.style.borderColor = state.selected_overlay_id === ov.id
-        ? 'rgba(169,127,238,.95)' : 'rgba(169,127,238,0)';
+      const sel = state.selected_overlay_id === ov.id;
+      el.style.borderColor = sel ? 'rgba(169,127,238,.95)' : 'rgba(169,127,238,0)';
+      if (sel) {
+        // alça de girar acima da imagem/camada
+        const h = ensureRotHandle();
+        const box = container.getBoundingClientRect();
+        const cx = ov.x_pct * box.width;
+        const topY = ov.y_pct * box.height - (el.offsetHeight / 2) - 22;
+        h.style.left = cx + 'px';
+        h.style.top = Math.max(10, topY) + 'px';
+        h.style.zIndex = String(10 + (ov.lane || 1) + 1);
+        h.style.display = 'block';
+      }
       if (kind === 'video') {
-        const local = ov.source_in + (t - ov.start);
-        if (Math.abs(el.currentTime - local) > 0.2) {
+        const sp = clipSpeed(ov);
+        el.playbackRate = sp;                          // camada acelerada
+        const local = ov.source_in + (t - ov.start) * sp;
+        if (Math.abs(el.currentTime - local) > 0.2 * sp) {
           try { el.currentTime = local; } catch {}
         }
         if (player.isPlaying() && el.paused) el.play().catch(() => {});
@@ -75,6 +124,10 @@ export function createPip(container, videoSrcEl, store, player) {
       if (!vistos.has(id)) {
         if (el.style.display !== 'none') { el.pause?.(); el.style.display = 'none'; }
       }
+    }
+    // alça de girar: só quando o overlay selecionado está ativo agora
+    if (rotHandle && !vistos.has(String(state.selected_overlay_id))) {
+      rotHandle.style.display = 'none';
     }
   }
 
@@ -141,6 +194,7 @@ export function createPip(container, videoSrcEl, store, player) {
     destroy() {
       unsub(); unsubP();
       for (const [, el] of pool) { el.pause?.(); el.remove(); }
+      rotHandle?.remove();
       pool.clear();
     },
   };

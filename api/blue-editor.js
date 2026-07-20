@@ -313,6 +313,80 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── audio-search: biblioteca CURADA (você adiciona manualmente por categoria
+  // no /blueeditor-audio). Lê a tabela editor_audio_library. ──
+  if (action === 'audio-search') {
+    const q = String(req.body?.query || '').trim();
+    const kind = req.body?.kind === 'sfx' ? 'sfx' : 'music';
+    if (!SU) return res.status(200).json({ results: [], message: 'Biblioteca indisponível' });
+    try {
+      let url = `${SU}/rest/v1/editor_audio_library?kind=eq.${kind}&order=category.asc,name.asc&limit=200`;
+      if (q) url += `&or=(name.ilike.*${encodeURIComponent(q)}*,category.ilike.*${encodeURIComponent(q)}*)`;
+      const r = await fetch(url, { headers: { apikey: AK, Authorization: 'Bearer ' + AK } });
+      const rows = r.ok ? await r.json() : [];
+      const results = (rows || []).map(x => ({
+        name: x.name, category: x.category, duration: x.duration || null,
+        url: x.url, preview: x.url,
+      }));
+      const message = results.length ? undefined : 'Nada aqui ainda — adicione em /blueeditor-audio';
+      return res.status(200).json({ results, message });
+    } catch (e) {
+      return res.status(200).json({ results: [], message: 'Falha na busca: ' + e.message });
+    }
+  }
+
+  // ── biblioteca curada: admin (add/list/delete/sign) — gated por ADMIN_SECRET ──
+  if (action === 'audio-lib-list' || action === 'audio-lib-add' || action === 'audio-lib-delete' || action === 'audio-lib-sign') {
+    if ((req.body?.admin_secret || '') !== process.env.ADMIN_SECRET || !process.env.ADMIN_SECRET) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (!SU || !SK) return res.status(503).json({ error: 'Supabase não configurado' });
+    const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      // upload de arquivo do PC: gera URL assinada pro admin subir direto
+      if (action === 'audio-lib-sign') {
+        const ext = (req.body?.ext || 'mp3').replace(/[^a-z0-9]/gi, '').slice(0, 5).toLowerCase() || 'mp3';
+        const filePath = `editor/audio-lib/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const bucket = 'blue-videos';
+        const signR = await fetch(`${SU}/storage/v1/object/upload/sign/${bucket}/${filePath}`, {
+          method: 'POST', headers: H, body: JSON.stringify({ expiresIn: 900 }),
+        });
+        if (!signR.ok) return res.status(502).json({ error: 'Falha ao assinar upload: ' + (await signR.text()).slice(0, 150) });
+        const signD = await signR.json();
+        const relUrl = signD.url || '';
+        const upload_url = relUrl.startsWith('http') ? relUrl : `${SU}/storage/v1${relUrl.startsWith('/') ? relUrl : '/' + relUrl}`;
+        const public_url = `${SU}/storage/v1/object/public/${bucket}/${filePath}`;
+        return res.status(200).json({ upload_url, public_url });
+      }
+      if (action === 'audio-lib-list') {
+        const r = await fetch(`${SU}/rest/v1/editor_audio_library?order=kind.asc,category.asc,name.asc&limit=500`, { headers: H });
+        return res.status(200).json({ items: r.ok ? await r.json() : [] });
+      }
+      if (action === 'audio-lib-add') {
+        const b = req.body || {};
+        if (!b.url || !b.name) return res.status(400).json({ error: 'name e url obrigatórios' });
+        const row = {
+          kind: b.kind === 'sfx' ? 'sfx' : 'music',
+          category: String(b.category || 'Geral').slice(0, 60),
+          name: String(b.name).slice(0, 120),
+          url: b.url, duration: b.duration || null,
+        };
+        const r = await fetch(`${SU}/rest/v1/editor_audio_library`, {
+          method: 'POST', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(row),
+        });
+        if (!r.ok) return res.status(502).json({ error: 'Falha ao salvar: ' + (await r.text()).slice(0, 150) });
+        return res.status(200).json({ ok: true, item: (await r.json())[0] });
+      }
+      // delete
+      const id = req.body?.id;
+      if (!id) return res.status(400).json({ error: 'id obrigatório' });
+      await fetch(`${SU}/rest/v1/editor_audio_library?id=eq.${id}`, { method: 'DELETE', headers: H });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── save-project: cria ou atualiza projeto em edicao (status='editing') ──
   // Body: { project_id?, project_state: {...}, nome_projeto?, video_url? }
   // - Sem project_id → cria novo

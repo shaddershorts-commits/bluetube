@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan } from '../../public/editor-v1/core/selectors.js';
+import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
 
 function storeWithVideo(duration = 60) {
   const store = createStore();
@@ -771,4 +771,65 @@ test('múltiplas imagens empilham em lanes crescentes (uma na frente da outra)',
   store.dispatch(act.addImageOverlay({ url: 'https://x/b.png', width: 100, height: 100 }, 0));
   const [a, b] = store.getState().overlays;
   assert.ok(b.lane > a.lane, '2ª imagem fica numa lane acima (na frente)');
+});
+
+// ── rodada 2026-07-20 (6): group drag, rotação, velocidade composto, áudio no composto ──
+
+test('MOVE_MULTI arrasta a multi-seleção junto e clampa no 0', () => {
+  const store = storeWithVideo(20);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'a.mp3', filename: 'a', duration: 5 } });
+  store.dispatch(act.moveAudio(store.getState().audio_clips[0].id, 3));
+  store.dispatch(act.addText({ content: 'oi', start_sec: 4, end_sec: 6 }));
+  const aid = store.getState().audio_clips[0].id, tid = store.getState().texts[0].id;
+  store.dispatch(act.setMultiSelect([{ type: 'audio', id: aid }, { type: 'text', id: tid }]));
+  store.dispatch(act.moveMulti(2));
+  let s = store.getState();
+  assert.equal(s.audio_clips[0].start, 5);
+  assert.equal(s.texts[0].start_sec, 6);
+  assert.equal(s.texts[0].end_sec, 8);      // preserva duração
+  store.dispatch(act.moveMulti(-10));        // clampa: o mais cedo (5) vai a 0
+  s = store.getState();
+  assert.equal(s.audio_clips[0].start, 0);
+  assert.equal(s.texts[0].start_sec, 1);     // mantém o offset relativo
+});
+
+test('SET_OVERLAY_TRANSFORM gira a imagem (normaliza 0-360)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addImageOverlay({ url: 'https://x/i.png', width: 100, height: 100 }, 1));
+  const id = store.getState().overlays[0].id;
+  store.dispatch(act.setOverlayTransform(id, { rotation: 45 }));
+  assert.equal(store.getState().overlays[0].rotation, 45);
+  store.dispatch(act.setOverlayTransform(id, { rotation: 400 }));
+  assert.equal(store.getState().overlays[0].rotation, 40);  // wrap
+  store.dispatch(act.setOverlayTransform(id, { rotation: -90 }));
+  assert.equal(store.getState().overlays[0].rotation, 270);
+});
+
+test('velocidade do COMPOSTO acelera tudo dentro (vídeo + áudio)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'a.mp3', filename: 'a', duration: 6 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setMultiSelect([{ type: 'clip', id: store.getState().clips[0].id }, { type: 'audio', id: aid }]));
+  store.dispatch(act.createCompound());
+  const comp = store.getState().clips.find(c => c.compound_id);
+  assert.equal(clipDuration(store.getState(), comp), 10);      // 1x
+  store.dispatch(act.setSpeed('clip', comp.id, 2));
+  const s = store.getState();
+  const compAfter = s.clips.find(c => c.compound_id);
+  assert.equal(clipDuration(s, compAfter), 5);                 // 2x = metade
+  assert.equal(totalDuration(s), 5);
+  const innerAudio = effectiveAudioClips(s).find(a => a._compound);
+  assert.equal(innerAudio.speed, 2);                           // áudio interno acelerou junto
+});
+
+test('áudio dentro do composto continua editável (presente + com id)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'a.mp3', filename: 'narração', duration: 4 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setMultiSelect([{ type: 'clip', id: store.getState().clips[0].id }, { type: 'audio', id: aid }]));
+  store.dispatch(act.createCompound());
+  const comp = store.getState().compounds[0];
+  assert.equal(comp.audio_clips.length, 1);                    // áudio foi pro composto
+  assert.ok(comp.audio_clips[0].id != null);                   // tem id (selecionável)
+  assert.equal(store.getState().audio_clips.length, 0);        // saiu da faixa solta
 });

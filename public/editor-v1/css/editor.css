@@ -152,6 +152,23 @@ body {
 }
 /* o buffer (pré-carregando o próximo take) fica escondido até o swap */
 .be-preview-frame video.be-buffering { visibility: hidden; }
+
+/* ── FULLSCREEN (tecla F): barra de tempo/controle ── */
+.be-fs-bar { display: none; }
+.be-preview-frame:fullscreen { aspect-ratio: auto; width: 100vw; height: 100vh; border-radius: 0; }
+.be-preview-frame:fullscreen video { object-fit: contain; }
+.be-preview-frame:fullscreen .be-fs-bar {
+  display: flex; align-items: center; gap: 14px; z-index: 100;
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 16px 24px; background: linear-gradient(transparent, rgba(0,0,0,.7));
+}
+.be-fs-play, .be-fs-exit {
+  background: rgba(255,255,255,.15); border: none; color: #fff; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%; font-size: 15px; flex: none;
+}
+.be-fs-progress { flex: 1; height: 6px; background: rgba(255,255,255,.25); border-radius: 3px; cursor: pointer; }
+.be-fs-fill, #beFsFill { height: 100%; width: 0; background: var(--neon); border-radius: 3px; }
+.be-fs-time { color: #fff; font-family: var(--mono); font-size: 13px; min-width: 96px; text-align: right; }
 .be-transport { display: flex; align-items: center; gap: 12px; }
 .be-play-btn {
   width: 40px; height: 40px; border-radius: 50%;
@@ -268,6 +285,16 @@ body {
 .be-transcript-row.active { background: rgba(0, 170, 255, .14); border-color: var(--neon); }
 .be-transcript-n { color: var(--text-sec); font-family: var(--mono); font-size: 11px; min-width: 18px; text-align: right; }
 .be-transcript-tx { flex: 1; line-height: 1.35; }
+
+/* ── biblioteca de áudio (Músicas/Efeitos/Favoritos) ── */
+.be-audio-lib { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; min-height: 40px; }
+.be-audio-lib-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 12px; }
+.be-audiolib-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.be-audiolib-play, .be-audiolib-star {
+  background: rgba(2,8,23,.6); border: 1px solid var(--blue-border); color: var(--text-sec);
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 11px; flex: none;
+}
+.be-audiolib-star { color: #ffd32a; border-color: transparent; background: none; }
 
 .be-transitions { display: flex; flex-direction: column; gap: 6px; }
 .be-trans-item { font-size: 11px; color: var(--text-sec); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -424,11 +451,19 @@ body {
   border-radius: 4px; transition: background .15s;
 }
 .be-gutter-v:hover, .be-gutter-v:active { background: rgba(0,170,255,.35); }
+/* divisa da timeline: barra AGARRÁVEL e visível (arraste pra cima = timeline
+   mais alta, encolhe os painéis de cima) — user 2026-07-20 */
 .be-gutter-h {
-  height: 8px; margin: -4px 0; cursor: row-resize; z-index: 30;
-  border-radius: 4px; transition: background .15s;
+  height: 10px; margin: -5px 0 1px; cursor: row-resize; z-index: 30;
+  border-radius: 5px; transition: background .15s;
+  display: flex; align-items: center; justify-content: center;
 }
-.be-gutter-h:hover, .be-gutter-h:active { background: rgba(0,170,255,.35); }
+.be-gutter-h::after {
+  content: ''; width: 46px; height: 4px; border-radius: 3px;
+  background: var(--blue-border); transition: background .15s;
+}
+.be-gutter-h:hover, .be-gutter-h:active { background: rgba(0,170,255,.12); }
+.be-gutter-h:hover::after, .be-gutter-h:active::after { background: var(--neon); }
 
 @media (max-width: 860px) {
   .be-gutter-v, .be-gutter-h { display: none; }
