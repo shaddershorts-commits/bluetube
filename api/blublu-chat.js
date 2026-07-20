@@ -426,6 +426,7 @@ REGRAS DO CHAT:
 - Respostas CURTAS (1-4 frases). É chat, não palestra.
 - Pedido de vídeos = chame buscar_videos. Conversa = responda direto, no personagem.
 - BUSCA PRIMEIRO, NÃO INTERROGATÓRIO: se o pedido tem QUALQUER assunto/entidade buscável (um nome, um bicho, um tema — "oliver tree", "fails", "tigre", "Tesla"), chame buscar_videos DIRETO — os próprios resultados clareiam e você refina DEPOIS. Só pergunte ANTES de buscar quando de fato não há nada buscável: categoria larga sem entidade ("pop", "artistas famosos", "algo engraçado"). Cada pergunta de esclarecimento custa uma ida-e-volta que o usuário odeia — na dúvida entre perguntar e buscar, BUSQUE.
+- REGRA SAGRADA (jamais quebre): NUNCA afirme que ACHOU/ENTREGOU vídeos — nem números ("87 vídeos", "entreguei 30", "tem mais 57 no banco") — sem ter chamado buscar_videos NESTA MESMA resposta. Os cards vêm SÓ da ferramenta; se você não buscou, NÃO EXISTE card, e prometer resultado é MENTIRA que quebra a confiança. Se o usuário disser "manda todos"/"todos que achar"/"continuar" e for continuação de um tema, CHAME buscar_videos com esse tema — nunca finja que já buscou.
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
 - CAMPOS DA BUSCA: tema NUNCA null quando o pedido tem assunto/pessoa/canal. nucleos = SÓ o núcleo e traduções; verbos/adjetivos/contexto vão SEMPRE em qualificadores (misturar destrói a precisão — regra dura).
@@ -453,11 +454,13 @@ REGRA DE OURO: JAMAIS recomende ferramenta de FORA (yt-dlp, snaptik, savefrom, s
 PLATAFORMA: YouTube Shorts é a prioridade da casa nas entregas; TikTok só protagoniza se o usuário pedir.
 CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobre X", "só do youtube"), monte a busca juntando com o contexto da conversa — não trate como papo.`;
 
-  const anthropicCall = async (messages) => {
+  const anthropicCall = async (messages, toolChoice) => {
+    const body = { model: MODEL, max_tokens: 700, system, tools, messages };
+    if (toolChoice) body.tool_choice = toolChoice;
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': ANTHROPIC, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 700, system, tools, messages }),
+      body: JSON.stringify(body),
     });
     const d = await r.json();
     if (!r.ok) throw new Error('ia: ' + JSON.stringify(d).slice(0, 160));
@@ -503,8 +506,38 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       msgs.push({ role: 'user', content: toolResults });
       resp = await anthropicCall(msgs);
     }
-    const reply = (resp.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim()
+    let reply = (resp.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim()
       || 'Fala de novo aí — me distraí contando views. 👀';
+
+    // ── BLINDAGEM ANTI-ALUCINAÇÃO (2026-07-20) ────────────────────────────────
+    // Haiku às vezes AFIRMA que achou vídeos ("achei 87, entreguei 30, tem mais
+    // 57 no banco") SEM ter chamado buscar_videos → o texto promete cards que
+    // não existem (videos=[]) e o usuário vê "não chegou os vídeos". Estrutural:
+    // se a resposta ALEGA resultado mas NENHUMA busca rodou, FORÇO a busca de
+    // verdade (tool_choice) e regenero o texto — nunca mais promete o que não tem.
+    // sinais FORTES de "já achei" (evita falso-positivo com conversa normal):
+    // "achei 87", "entreguei os 30", "87 vídeos", "57 no banco".
+    const alegaResultado = /achei\s+\**\d+|entreguei\s+(os\s+)?\d+|\d+\s*v[ií]deos?\b|\d+\s+no banco/i.test(reply);
+    if (!resultado && alegaResultado) {
+      try {
+        const forced = await anthropicCall(msgs, { type: 'tool', name: 'buscar_videos' });
+        const tu = (forced.content || []).find((b) => b.type === 'tool_use' && b.name === 'buscar_videos');
+        if (tu) {
+          resultado = await executarBusca(tu.input || {});
+          resultado._input = tu.input || {};
+          msgs.push({ role: 'assistant', content: forced.content });
+          msgs.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado.resumo) }] });
+          const final = await anthropicCall(msgs);
+          const t2 = (final.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
+          if (t2) reply = t2;
+        } else if (resultado == null) {
+          // não deu pra buscar: não deixa o texto mentindo cards inexistentes
+          reply = 'Peraí que eu buguei aqui — manda o pedido de novo que eu busco de verdade. 👀';
+        }
+      } catch (e) {
+        reply = 'Deu um tilt na minha busca agora. Manda de novo que eu acho certinho. 👀';
+      }
+    }
 
     // primeira conversa sem apelido: marca que a pergunta já foi feita
     if (!perfil.apelido && !apelidoFinal && !perfil.memoria?.perguntou_nome) {
