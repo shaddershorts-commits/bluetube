@@ -38,7 +38,13 @@ const BUDGET_TRANSC_MS = 20000; // orçamento de tempo da confirmação
 // (buscar "styles" traz "hairstyles", "grande" traz "grande"=big). Distintivos
 // (Haaland, Yamal, Eilish) ficam de fora e podem buscar sozinhos — é o que
 // destrava o volume de nome próprio sem quebrar a precisão.
-const SOBRENOME_COMUM = new Set(['styles', 'grande', 'brown', 'white', 'black', 'green', 'west', 'king', 'young', 'hall', 'park', 'wood', 'stone', 'snow', 'love', 'price', 'banks', 'fields', 'winter', 'summer', 'cook', 'baker', 'smith', 'jones', 'gray', 'grey', 'bell', 'hill', 'lake', 'moon', 'star', 'rose', 'silva', 'santos', 'costa', 'souza', 'sousa', 'lima', 'rocha', 'dias', 'ramos', 'campos', 'gomes', 'neves', 'pinto', 'cruz', 'reis', 'melo', 'lopes', 'martins', 'day', 'best', 'long', 'rich', 'wise', 'ford']);
+const SOBRENOME_COMUM = new Set(['styles', 'grande', 'brown', 'white', 'black', 'green', 'west', 'king', 'young', 'hall', 'park', 'wood', 'stone', 'snow', 'love', 'price', 'banks', 'fields', 'winter', 'summer', 'cook', 'baker', 'smith', 'jones', 'gray', 'grey', 'bell', 'hill', 'lake', 'moon', 'star', 'rose', 'silva', 'santos', 'costa', 'souza', 'sousa', 'lima', 'rocha', 'dias', 'ramos', 'campos', 'gomes', 'neves', 'pinto', 'cruz', 'reis', 'melo', 'lopes', 'martins', 'day', 'best', 'long', 'rich', 'wise', 'ford',
+  // sobrenomes comuns 6+ letras (senão o gate "distintivo" os liberaria solo e
+  // pescariam homônimo — bug 2026-07-20 "Whindersson Nunes"→"chris2nunes")
+  'nunes', 'ferreira', 'oliveira', 'rodrigues', 'almeida', 'pereira', 'carvalho', 'barbosa', 'ribeiro', 'monteiro', 'cardoso', 'teixeira', 'correia', 'mendes', 'moreira', 'freitas', 'araujo', 'fernandes', 'vieira', 'nascimento', 'andrade', 'batista', 'castro', 'fonseca', 'borges', 'garcia', 'gonzalez', 'hernandez', 'martinez', 'sanchez', 'morales', 'gomez', 'williams', 'johnson', 'jackson', 'walker', 'wright', 'roberts', 'phillips', 'campbell', 'mitchell', 'richardson', 'morris', 'murphy', 'cooper', 'peterson', 'wilson', 'taylor', 'thomas', 'moore', 'martin', 'harris', 'clark', 'lewis', 'young']);
+// primeiros nomes comuns (6+ letras) — ambíguos solo (Michael acha Michael
+// Jordan, Gabriel acha qualquer um); só valem dentro do nome completo.
+const PRIMEIRO_NOME_COMUM = new Set(['michael', 'gabriel', 'rafael', 'rafaela', 'ricardo', 'fernando', 'fernanda', 'patricia', 'rodrigo', 'roberto', 'eduardo', 'leonardo', 'gustavo', 'matheus', 'mateus', 'thiago', 'felipe', 'marcelo', 'marcela', 'mariana', 'juliana', 'camila', 'amanda', 'larissa', 'vinicius', 'guilherme', 'leandro', 'anderson', 'wesley', 'henrique', 'augusto', 'sabrina', 'priscila', 'bianca', 'carolina', 'beatriz', 'leticia', 'natalia', 'william', 'richard', 'robert', 'joseph', 'matthew', 'anthony', 'charles', 'daniel', 'andrew', 'joshua', 'jessica', 'jennifer', 'ashley', 'brandon', 'samantha', 'isabella', 'gabriela', 'antonio', 'roberta']);
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -133,9 +139,27 @@ module.exports = async function handler(req, res) {
     // min_views gigante → 1 vídeo). min_views só vale se o USUÁRIO falou
     // número/quantia; dias só com referência temporal explícita.
     const falouQuantia = /\d|\b(mil|milh[aã]o|milh[oõ]es|k\b|m\b)\b/i.test(message);
-    const falouTempo = /\d|\b(dia|dias|semana|semanas|m[eê]s|meses|hoje|ontem|recente|últim)\w*/i.test(message);
+    const falouTempo = /\d|\b(hora|horas|dia|dias|semana|semanas|m[eê]s|meses|hoje|ontem|recente|últim)\w*/i.test(message);
     const minViews = falouQuantia ? Math.max(0, parseInt(inp.min_views) || 0) : 0;
-    const dias = falouTempo ? Math.max(0, parseInt(inp.dias) || 0) : 0;
+    // JANELA DE TEMPO DETERMINÍSTICA (bug 2026-07-20: "12 horas" virava dias=1 ou
+    // sumia → vídeo de 1 ano). O LLM erra a conversão hora↔dia e parseInt(0.5)=0;
+    // extraímos direto do texto do usuário e só caímos no valor do modelo quando
+    // não há número claro. Tudo em ms, sem arredondar pra dia inteiro.
+    let janelaMs = 0;
+    if (falouTempo) {
+      const mlow = String(message).toLowerCase();
+      const grab = (re) => { const x = mlow.match(re); return x ? parseFloat(x[1].replace(',', '.')) : 0; };
+      janelaMs = grab(/(\d+(?:[.,]\d+)?)\s*h(?:oras?|rs?)?\b/) * 3600000
+        + grab(/(\d+(?:[.,]\d+)?)\s*dias?\b/) * 86400000
+        + grab(/(\d+(?:[.,]\d+)?)\s*semanas?\b/) * 7 * 86400000
+        + grab(/(\d+(?:[.,]\d+)?)\s*(?:m[eê]s|meses)\b/) * 30 * 86400000;
+      if (!janelaMs) {
+        if (/\bhoje\b/.test(mlow)) janelaMs = 86400000;
+        else if (/\bontem\b/.test(mlow)) janelaMs = 2 * 86400000;
+        else janelaMs = (parseFloat(inp.horas) || 0) * 3600000 + (parseFloat(inp.dias) || 0) * 86400000;
+      }
+    }
+    const desdeISO = janelaMs ? new Date(Date.now() - janelaMs).toISOString() : null;
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
     const ordem = inp.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
     const plat = inp.plataforma === 'tiktok' ? 'tiktok' : (inp.plataforma === 'youtube' ? 'youtube' : null);
@@ -144,7 +168,7 @@ module.exports = async function handler(req, res) {
 
     const parts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em,nicho'];
     if (minViews) parts.push(`views=gte.${minViews}`);
-    if (dias) parts.push(`publicado_em=gte.${new Date(Date.now() - dias * 86400000).toISOString()}`);
+    if (desdeISO) parts.push(`publicado_em=gte.${desdeISO}`);
     if (nicho) parts.push(`nicho=eq.${encodeURIComponent(nicho)}`);
 
     let candidatos = [];
@@ -161,14 +185,20 @@ module.exports = async function handler(req, res) {
     // é palavra comum (Styles→hairstyles) fica de fora — precisão primeiro.
     if (inp.tipo_tema === 'nome_proprio' && tema && tema.trim().includes(' ')) {
       const temaN = norm(clean(tema));
-      const partes = temaN.split(' ');
-      const sobrenome = partes[partes.length - 1];
-      const sobrenomeVale = sobrenome.length >= 5 && !SOBRENOME_COMUM.has(sobrenome);
+      const partes = temaN.split(' ').filter(Boolean);
+      // TOKEN DISTINTIVO pode buscar solo — seja PRIMEIRO nome (Whindersson) ou
+      // SOBRENOME (Haaland). Distintivo = 6+ letras e não é nome/sobrenome banal.
+      // Tokens curtos/comuns (Nunes, Harry, Michael) só valem na frase completa,
+      // senão pescam homônimo (bug 2026-07-20: "Whindersson Nunes"→"chris2nunes":
+      // o código antigo jogava fora "whindersson" e mantinha "nunes"). Isso
+      // destrava volume do nome único E blinda a precisão do sobrenome comum.
+      const distintivo = (w) => w.length >= 6 && !SOBRENOME_COMUM.has(w) && !PRIMEIRO_NOME_COMUM.has(w);
+      const solos = partes.filter(distintivo);
       termosOk = termosOk.filter((t) => {
         const tn = norm(t);
-        return tn.includes(' ') || !partes.includes(tn) || (sobrenomeVale && tn === sobrenome);
+        return tn.includes(' ') || !partes.includes(tn) || solos.includes(tn);
       });
-      if (sobrenomeVale && !termosOk.some((t) => norm(t) === sobrenome)) termosOk.push(sobrenome);
+      for (const s of solos) if (!termosOk.some((t) => norm(t) === s)) termosOk.push(s);
       if (!termosOk.length) termosOk = [clean(tema)];
     }
     // rede de segurança: se o modelo só mandou frases compostas de ASSUNTO
@@ -179,10 +209,10 @@ module.exports = async function handler(req, res) {
     }
     const secParts = ['select=youtube_id,titulo,thumbnail_url,url,canal_nome,views,publicado_em'];
     if (minViews) secParts.push(`views=gte.${minViews}`);
-    if (dias) secParts.push(`publicado_em=gte.${new Date(Date.now() - dias * 86400000).toISOString()}`);
+    if (desdeISO) secParts.push(`publicado_em=gte.${desdeISO}`);
     const tkBase = ['select=tiktok_video_id,video_url,thumbnail_url,caption,author_name,views_count,tiktok_created_at', 'status=eq.active'];
     if (minViews) tkBase.push(`views_count=gte.${minViews}`);
-    if (dias) tkBase.push(`tiktok_created_at=gte.${new Date(Date.now() - dias * 86400000).toISOString()}`);
+    if (desdeISO) tkBase.push(`tiktok_created_at=gte.${desdeISO}`);
     const mapTk = (v) => ({
       youtube_id: null, _tiktok_id: v.tiktok_video_id, titulo: (v.caption || '').slice(0, 200) || 'TikTok de ' + (v.author_name || ''),
       thumbnail_url: v.thumbnail_url, url: v.video_url, canal_nome: v.author_name, views: v.views_count, publicado_em: v.tiktok_created_at, _tiktok: true,
@@ -215,7 +245,7 @@ module.exports = async function handler(req, res) {
           const ed = await er.json();
           const emb = ed?.data?.[0]?.embedding;
           if (emb) {
-            const rr = await fetch(`${SU}/rest/v1/rpc/blublu_match_videos`, { method: 'POST', headers: H, body: JSON.stringify({ query_embedding: emb, match_count: MAX_CANDIDATOS, min_views: minViews, desde: dias ? new Date(Date.now() - dias * 86400000).toISOString() : null }) });
+            const rr = await fetch(`${SU}/rest/v1/rpc/blublu_match_videos`, { method: 'POST', headers: H, body: JSON.stringify({ query_embedding: emb, match_count: MAX_CANDIDATOS, min_views: minViews, desde: desdeISO }) });
             if (rr.ok) {
               const ids = (await rr.json()).filter((m) => m.similarity > 0.45).map((m) => m.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id)).slice(0, MAX_CANDIDATOS - candidatos.length);
               if (ids.length) {
@@ -230,7 +260,7 @@ module.exports = async function handler(req, res) {
       // só filtros: SQL direto no acervo completo — MAS só quando há filtro
       // REAL. Sem tema, sem termos E sem filtro = pedido sem critério: devolve
       // vazio pro modelo pedir esclarecimento (jamais despejar top views).
-      const temFiltroReal = !!(minViews || dias || nicho || plat || inp.ordem);
+      const temFiltroReal = !!(minViews || janelaMs || nicho || plat || inp.ordem);
       if (!temFiltroReal) {
         return { videos: [], temMais: false, verificadosIds: [], resumo: { erro: 'pedido_sem_criterio', instrucao: 'Nenhum tema nem filtro identificado. Pergunte ao usuário o que ele quer (tema, canal ou filtro) — NÃO invente resultados.' } };
       }
@@ -252,6 +282,15 @@ module.exports = async function handler(req, res) {
     // confirmação por transcrição (YouTube; TikTok confirma por caption/autor)
     const termosN = termosOk.map(norm);
     const qualifN = (Array.isArray(inp.qualificadores) ? inp.qualificadores : []).map((q) => norm(clean(String(q)))).filter((q) => q.length >= 3).slice(0, 16);
+    // MATCH POR PALAVRA em token único ASCII (bug 2026-07-20: "nunes" casava
+    // "chris2nunes", "ney" casaria "disney"). Frase composta / termo não-ASCII
+    // (cirílico etc.) seguem substring, que já é específico o bastante.
+    const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const soPalavra = (t) => t && !t.includes(' ') && /^[\x00-\x7f]+$/.test(t);
+    const reBate = termosN.map((t) => soPalavra(t) ? new RegExp('\\b' + escRe(t) + '\\b') : null);
+    const reConta = termosN.map((t) => soPalavra(t) ? new RegExp('\\b' + escRe(t) + '\\b', 'g') : null);
+    const bateAlgum = (texto) => termosN.some((t, i) => reBate[i] ? reBate[i].test(texto) : (t ? texto.includes(t) : false));
+    const contaTotal = (texto) => termosN.reduce((n, t, i) => n + (reConta[i] ? (texto.match(reConta[i]) || []).length : (t ? texto.split(t).length - 1 : 0)), 0);
     let videos = [], temMais = false, verificadosIds = [];
     if (tema && candidatos.length) {
       const ids = candidatos.filter((c) => c.youtube_id).map((c) => c.youtube_id);
@@ -282,8 +321,8 @@ module.exports = async function handler(req, res) {
         temMais = temMais || fila.length > 0;
       }
       for (const c of candidatos) {
-        const tituloBate = termosN.some((t) => norm(c.titulo).includes(t));
-        const canalBate = termosN.some((t) => norm(c.canal_nome).includes(t));
+        const tituloBate = bateAlgum(norm(c.titulo));
+        const canalBate = bateAlgum(norm(c.canal_nome));
         const tc = c.youtube_id ? cacheMap.get(c.youtube_id) : null;
         let citadoEm = null, falaBate = false;
         if (tc && tc.transcript && !tc.sem_legenda) {
@@ -291,12 +330,12 @@ module.exports = async function handler(req, res) {
           // MENÇÃO DE PASSAGEM NÃO CONTA (video infantil cantando "tiger" 1x
           // entrava como confirmado — user pegou). Fala só confirma sozinha se
           // o termo aparece 2+ vezes; 1 menção precisa do título junto.
-          const occ = termosN.reduce((n, t) => n + (t ? txt.split(t).length - 1 : 0), 0);
+          const occ = contaTotal(txt);
           falaBate = occ >= 2 || (occ >= 1 && tituloBate);
           if (falaBate && Array.isArray(tc.segments)) {
             for (let i = 0; i < tc.segments.length; i++) {
               const seg = norm(tc.segments[i].x) + ' ' + norm(tc.segments[i + 1]?.x || '');
-              if (termosN.some((t) => seg.includes(t))) { citadoEm = tc.segments[i].t; break; }
+              if (bateAlgum(seg)) { citadoEm = tc.segments[i].t; break; }
             }
           }
         }
@@ -381,7 +420,7 @@ module.exports = async function handler(req, res) {
       cortados_por_limite: cortados,            // tinha mais, não coube na quantidade pedida
       amostra: videos.slice(0, 6).map((v) => ({ titulo: (v.titulo || '').slice(0, 70), canal: v.canal_nome, views: v.views, confirmado_por: v.confirmado_por, bateu_qualificadores: (v._score || 0) > 0 })),
     };
-    return { videos, temMais, verificadosIds, resumo };
+    return { videos, temMais, verificadosIds, resumo, janela_h: +(janelaMs / 3600000).toFixed(2) };
   }
 
   // ── FERRAMENTAS (o modelo decide) ──────────────────────────────────────────
@@ -396,8 +435,9 @@ module.exports = async function handler(req, res) {
           tipo_tema: { type: ['string', 'null'], description: '"nome_proprio" (pessoa, artista, canal, marca — ex: Harry Styles, Billie Eilish) ou "assunto" (conceito comum — ex: tigre, futebol)' },
           nucleos: { type: 'array', items: { type: 'string' }, description: 'APENAS o substantivo-núcleo e suas traduções/apelidos. nome_proprio → nome COMPLETO intacto + grafias ("harry styles","harrystyles"), JAMAIS separar palavras. assunto → traduções nos idiomas do acervo. PROIBIDO verbos, adjetivos ou o resto do pedido aqui — isso vai em qualificadores. EXEMPLO pedido "tigre subindo em árvore": nucleos=["tigre","tiger","тигр","虎"] (SÓ o bicho!), qualificadores=["subindo","escalando","climbing","árvore","tree","árbol"].' },
           qualificadores: { type: 'array', items: { type: 'string' }, description: 'SÓ características do CONTEÚDO além do núcleo (ação, objeto, contexto), pt+en+es — servem pra ORDENAR os melhores primeiro, nunca excluem ninguém. PROIBIDO palavra de formato/plataforma ("shorts","video","youtube","tiktok","viral") — isso NÃO é qualificador. Vazio na dúvida.' },
-          min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu' },
-          dias: { type: ['number', 'null'], description: 'janela em dias se o usuário pediu ("últimas 2 semanas" = 14)' },
+          min_views: { type: ['number', 'null'], description: 'views mínimas se o usuário pediu. CONVERSÃO EXATA (nunca confunda): "mil" = 1000, "5 mil" = 5000, "500 mil" = 500000; "milhão"/"milhões"/"mi"/"M" = 1000000, "2 milhões" = 2000000; "k" = 1000. "500 mil" JAMAIS é 500000000.' },
+          dias: { type: ['number', 'null'], description: 'janela em DIAS ("últimas 2 semanas" = 14, "3 dias" = 3). Se o pedido for em HORAS use o campo horas — NUNCA arredonde horas pra dias.' },
+          horas: { type: ['number', 'null'], description: 'janela em HORAS quando o pedido é em horas ("últimas 12 horas" = 12, "nas últimas 6h" = 6). Use ISTO em vez de dias pra janelas menores que um dia.' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
           ordem: { type: ['string', 'null'], description: '"views" (padrão) ou "recentes". OBRIGATÓRIO "recentes" quando o usuário falar "mais recente", "último", "novo", "essa semana" etc.' },
           plataforma: { type: ['string', 'null'], description: '"youtube" ou "tiktok" quando o usuário restringir ("só TikTok", "sem YouTube"). null = todas' },
@@ -554,7 +594,7 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       tema: resultado?._input?.tema || null,
       termos: resultado?._input?.nucleos || resultado?._input?.termos || null,
       qualificadores: resultado?._input?.qualificadores || null,
-      filtros: resultado ? { min_views: resultado._input?.min_views, dias: resultado._input?.dias, nicho: resultado._input?.nicho, ordem: resultado._input?.ordem, plataforma: resultado._input?.plataforma, quantidade: resultado._input?.quantidade } : null,
+      filtros: resultado ? { min_views: resultado._input?.min_views, dias: resultado._input?.dias, horas: resultado._input?.horas, janela_h: resultado.janela_h, nicho: resultado._input?.nicho, ordem: resultado._input?.ordem, plataforma: resultado._input?.plataforma, quantidade: resultado._input?.quantidade } : null,
       entregues: resultado ? resultado.videos.length : null,
       confirmados_fala: resultado ? resultado.videos.filter((v) => v.confirmado_por === 'fala').length : null,
       com_relevancia: resultado ? resultado.videos.filter((v) => (v._score || 0) > 0).length : null,
