@@ -13,15 +13,15 @@ export function createPip(container, videoSrcEl, store, player) {
   let dragging = null;
   let gestureSeq = 1;
 
-  function makeEl(ovId) {
-    const el = document.createElement('video');
-    el.muted = true;            // audio da camada nao toca no preview (v1)
-    el.playsInline = true;
-    el.preload = 'auto';
+  function makeEl(ovId, kind) {
+    // imagem (PNG/sticker com transparência) usa <img>; camada de vídeo usa <video>
+    const el = document.createElement(kind === 'image' ? 'img' : 'video');
+    if (kind !== 'image') { el.muted = true; el.playsInline = true; el.preload = 'auto'; }
     el.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;' +
       'border:1.5px dashed rgba(169,127,238,0);border-radius:6px;object-fit:contain;' +
       'transform:translate(-50%,-50%);touch-action:none;';
     el.dataset.ovId = ovId;
+    el.dataset.kind = kind || 'video';
     wireGestures(el);
     container.appendChild(el);
     return el;
@@ -39,14 +39,19 @@ export function createPip(container, videoSrcEl, store, player) {
     const vistos = new Set();
     for (const ov of ativos) {
       vistos.add(String(ov.id));
+      const kind = ov.kind === 'image' ? 'image' : 'video';
       let el = pool.get(String(ov.id));
-      if (!el) { el = makeEl(String(ov.id)); pool.set(String(ov.id), el); }
-      // multi-take: camada de take usa a midia DELA; camada do principal usa
-      // a escolha do shell (blob local > CDN) — nunca o src atual do player,
-      // que pode estar num take
-      const src = ov.media_id != null
-        ? mediaUrlFor(state, ov)
-        : (videoSrcEl.dataset.primaryChoice || videoSrcEl.currentSrc || videoSrcEl.src);
+      if (!el || el.dataset.kind !== kind) {
+        if (el) { el.remove(); }
+        el = makeEl(String(ov.id), kind);
+        pool.set(String(ov.id), el);
+      }
+      const src = kind === 'image'
+        ? ov.url
+        // multi-take: camada de take usa a midia DELA; camada do principal usa
+        // a escolha do shell (blob local > CDN)
+        : (ov.media_id != null ? mediaUrlFor(state, ov)
+           : (videoSrcEl.dataset.primaryChoice || videoSrcEl.currentSrc || videoSrcEl.src));
       if (src && el.dataset.src !== src) { el.src = src; el.dataset.src = src; }
       el.style.display = 'block';
       el.style.left = (ov.x_pct * 100) + '%';
@@ -56,17 +61,19 @@ export function createPip(container, videoSrcEl, store, player) {
       el.style.zIndex = String(10 + (ov.lane || 1));
       el.style.borderColor = state.selected_overlay_id === ov.id
         ? 'rgba(169,127,238,.95)' : 'rgba(169,127,238,0)';
-      const local = ov.source_in + (t - ov.start);
-      if (Math.abs(el.currentTime - local) > 0.2) {
-        try { el.currentTime = local; } catch {}
+      if (kind === 'video') {
+        const local = ov.source_in + (t - ov.start);
+        if (Math.abs(el.currentTime - local) > 0.2) {
+          try { el.currentTime = local; } catch {}
+        }
+        if (player.isPlaying() && el.paused) el.play().catch(() => {});
+        if (!player.isPlaying() && !el.paused) el.pause();
       }
-      if (player.isPlaying() && el.paused) el.play().catch(() => {});
-      if (!player.isPlaying() && !el.paused) el.pause();
     }
     // esconde/limpa os que sairam do tempo
     for (const [id, el] of pool) {
       if (!vistos.has(id)) {
-        if (el.style.display !== 'none') { el.pause(); el.style.display = 'none'; }
+        if (el.style.display !== 'none') { el.pause?.(); el.style.display = 'none'; }
       }
     }
   }
@@ -133,7 +140,7 @@ export function createPip(container, videoSrcEl, store, player) {
   return {
     destroy() {
       unsub(); unsubP();
-      for (const [, el] of pool) { el.pause(); el.remove(); }
+      for (const [, el] of pool) { el.pause?.(); el.remove(); }
       pool.clear();
     },
   };

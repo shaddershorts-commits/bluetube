@@ -3,8 +3,9 @@
 
 import * as act from '../core/actions.js';
 import {
-  segmentAt, timelineSegments, effectiveTexts, effectiveAudioClips, effectiveOverlays,
+  segmentAt, timelineSegments, effectiveTexts, effectiveAudioClips, effectiveOverlays, audioTimelineDur,
 } from '../core/selectors.js';
+import { copySel, cutSel, pasteAt } from './clipboard.js';
 
 /** Split CapCut: corta a FAIXA selecionada no cursor.
  *  Texto/audio/camada selecionado -> divide essa faixa; clip -> video;
@@ -37,7 +38,7 @@ export function splitAllAt(store, t) {
   // SPLIT_AUDIO/SPLIT_OVERLAY cortam 1 por dispatch: repete enquanto houver
   // faixa inteira sob o ponteiro (as metades novas nao batem mais no filtro)
   const nAud = s.audio_clips.filter(a => a.active !== false &&
-    t > a.start + EPS && t < a.start + spanAudio(a) - EPS).length;
+    t > a.start + EPS && t < a.start + audioTimelineDur(a) - EPS).length;
   for (let i = 0; i < nAud; i++) store.dispatch({ ...act.splitAudioAt(t), gestureId });
   const nOv = s.overlays.filter(o => o.active !== false &&
     t > o.start + EPS && t < o.start + spanAudio(o) - EPS).length;
@@ -51,7 +52,7 @@ function trackSpans(state) {
   const spans = [];
   for (const s of timelineSegments(state)) spans.push({ start: s.tStart, end: s.tEnd });
   for (const x of effectiveTexts(state)) spans.push({ start: x.start_sec, end: x.end_sec });
-  for (const a of effectiveAudioClips(state)) spans.push({ start: a.start, end: a.start + spanAudio(a) });
+  for (const a of effectiveAudioClips(state)) spans.push({ start: a.start, end: a.start + audioTimelineDur(a) });
   for (const o of effectiveOverlays(state)) spans.push({ start: o.start, end: o.start + spanAudio(o) });
   return spans;
 }
@@ -102,9 +103,17 @@ export function attachShortcuts({ store, player, timeline }) {
       return;
     }
     if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); store.dispatch(act.selectAll()); return; }
+    // Copiar / Recortar / Colar (Ctrl+C/X/V). ANTES ficava sem tratamento e o
+    // Ctrl+V caía no 'v' (toggle) — "some + restaurar". Agora clipboard real.
+    if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); copySel(store); return; }
+    if (mod && e.key.toLowerCase() === 'x') { e.preventDefault(); cutSel(store); return; }
+    if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteAt(store, t); return; }
     // Zoom
     if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); timeline.zoomBy(1.25); return; }
     if (mod && e.key === '-') { e.preventDefault(); timeline.zoomBy(1 / 1.25); return; }
+    // qualquer outro atalho com Ctrl/Cmd NÃO deve cair nas teclas soltas abaixo
+    // (senão Ctrl+V viraria toggle 'v', Ctrl+Q apagaria, etc)
+    if (mod) return;
 
     switch (e.key) {
       case ' ':
@@ -112,9 +121,15 @@ export function attachShortcuts({ store, player, timeline }) {
         player.toggle();
         break;
       case 'q': case 'Q': {
+        // CAMADA (overlay) selecionada: Q remove a parte ANTES do playhead
+        // (funciona no vídeo arrastado pra criar camada — user 2026-07-20)
+        const ov = state.overlays.find(o => o.id === state.selected_overlay_id);
+        if (ov) {
+          const dur = ov.source_out - ov.source_in;
+          if (t > ov.start && t < ov.start + dur) store.dispatch(act.trimOverlay(ov.id, 'in', t));
+          break;
+        }
         // age SÓ no clip selecionado (ou o sob o playhead) — reducer garante.
-        // Pós-corte o conteúdo que estava no playhead recua pro início do
-        // clip alvo: seek pra lá (CapCut).
         const segsQ = timelineSegments(state);
         const alvoQ = state.selected_clip_id != null
           ? segsQ.find(s => s.clip.id === state.selected_clip_id)
@@ -123,9 +138,19 @@ export function attachShortcuts({ store, player, timeline }) {
         if (alvoQ && t > alvoQ.tStart && t < alvoQ.tEnd) player.seek(alvoQ.tStart);
         break;
       }
-      case 'w': case 'W':
+      case 'w': case 'W': {
+        const ov = state.overlays.find(o => o.id === state.selected_overlay_id);
+        if (ov) {
+          // remove a parte DEPOIS do playhead (source_out = ponto atual)
+          const dur = ov.source_out - ov.source_in;
+          if (t > ov.start && t < ov.start + dur) {
+            store.dispatch(act.trimOverlay(ov.id, 'out', ov.source_in + (t - ov.start)));
+          }
+          break;
+        }
         store.dispatch(act.deleteRangeRight(t));
         break;
+      }
       case 'v': case 'V': {
         if (state.selected_clip_id != null) {
           store.dispatch(act.toggleClip(state.selected_clip_id));

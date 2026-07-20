@@ -3,7 +3,7 @@
 // Modulo puro: sem DOM/canvas. Toda posicao visual nasce aqui — render e
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
-import { timelineSegments, totalDuration, mainTrackItems } from '../core/selectors.js';
+import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur } from '../core/selectors.js';
 
 export const METRICS = {
   PAD_LEFT: 16,          // margem esquerda em px antes de t=0
@@ -67,6 +67,8 @@ export function computeLayout(state, vp) {
     const dur = o.source_out - o.source_in;
     return {
       overlayId: o.id, lane: o.lane || 1,
+      mediaId: o.media_id ?? null,  // camada de take usa a miniatura DELE
+      isImage: o.kind === 'image', imageUrl: o.kind === 'image' ? o.url : null,
       x: timeToX(vp, o.start), y: laneY.get(o.lane || 1) ?? yOverlay,
       w: dur * vp.pxPerSec, h: LANE_H,
       tStart: o.start, tEnd: o.start + dur,
@@ -97,6 +99,8 @@ export function computeLayout(state, vp) {
       tEnd: it.tEnd,
       sourceIn: it.isCompound ? (firstSub?.source_in ?? 0) : it.clip.source_in,
       sourceOut: it.isCompound ? (firstSub?.source_out ?? 1) : it.clip.source_out,
+      frozen: !!it.clip.frozen,             // cena congelada: resize por freeze_dur
+      reversed: !!it.clip.reversed, mirrored: !!it.clip.mirrored,
       x, y: yVideo, w, h: METRICS.VIDEO_TRACK_H,
       selected: state.selected_clip_id === it.clip.id,
       multi: multiKeys.has('clip:' + it.clip.id),
@@ -146,7 +150,7 @@ export function computeLayout(state, vp) {
     .slice()
     .sort((a, b) => a.start - b.start)
     .map(a => {
-      const dur = a.source_out - a.source_in;
+      const dur = audioTimelineDur(a);  // largura reflete a velocidade
       const end = a.start + dur;
       let lane = lanes.findIndex(le => a.start >= le - 1e-6);
       if (lane < 0) { lane = lanes.length; lanes.push(end); }

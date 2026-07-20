@@ -6,10 +6,11 @@
 import { computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline/layout.js';
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
-import { createRenderer } from '../timeline/render.js';
+import { createRenderer, setImageRedraw } from '../timeline/render.js';
 import { cutPoints, totalDuration } from '../core/selectors.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
+import * as clip from './clipboard.js';
 
 export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
@@ -22,6 +23,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   let longPressTimer = 0;
   const pointers = new Map(); // pointerId -> {x,y}
   const renderer = createRenderer(canvas);
+  setImageRedraw(() => draw()); // redesenha quando o thumbnail de imagem carrega
 
   // ── render pipeline ──
   function layoutNow() {
@@ -175,37 +177,105 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   }
 
   // long-press em touch dispara contextmenu nativo -> cancelaria o gesto.
-  // Botao DIREITO em clipe composto: menu "Desfazer" (user 2026-07-20)
+  // Botao DIREITO em clip de video: menu CapCut (Copiar/Cortar/Excluir/
+  // Compor/Editar>Congelar,Reverso,Espelhar) — user 2026-07-20.
   canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const p = evFrom(e);
     const hit = hitTest(layoutNow(), p.x, p.y);
-    if (hit.type === 'clip-body' && hit.compoundId) {
-      showCompoundMenu(e.clientX, e.clientY, hit.compoundId);
+    if (hit.type === 'clip-body') {
+      store.dispatch(act.selectClip(hit.clipId)); // menu age no clip clicado
+      draw();
+      showClipMenu(e.clientX, e.clientY, hit);
     }
   });
 
-  function showCompoundMenu(x, y, compoundId) {
-    document.getElementById('beCtxMenu')?.remove();
+  function showClipMenu(x, y, hit) {
+    const atT = player.getTime();
+    const items = [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Copiar/colar atributos', sub: [
+        { label: 'Copiar atributos', fn: () => clip.copyAttrs(store) },
+        { label: 'Colar atributos', disabled: !clip.hasAttrs(), fn: () => clip.pasteAttrs(store) },
+      ] },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteClip(hit.clipId)) },
+      { sep: true },
+      { label: '⧉ Criar clipe composto', fn: () => store.dispatch(act.createCompound()) },
+      ...(hit.compoundId ? [{ label: '⧉ Desfazer clipe composto', fn: () => store.dispatch(act.ungroupCompound(hit.compoundId)) }] : []),
+      { label: 'Editar', sub: [
+        { label: '❄ Congelar', fn: () => store.dispatch(act.freezeFrame(hit.clipId, atT)) },
+        { label: '◀ Reverso', fn: () => toggleFx(hit.clipId, 'reversed') },
+        { label: '⇄ Espelhar', fn: () => toggleFx(hit.clipId, 'mirrored') },
+      ] },
+    ];
+    buildMenu(x, y, items);
+  }
+
+  function toggleFx(clipId, key) {
+    const c = store.getState().clips.find(k => k.id === clipId);
+    if (c) store.dispatch(act.setClipFx(clipId, { [key]: !c[key] }));
+  }
+
+  function buildMenu(x, y, items, parent) {
+    if (!parent) document.getElementById('beCtxMenu')?.remove();
     const m = document.createElement('div');
-    m.id = 'beCtxMenu';
+    m.className = 'be-ctx-menu';
+    if (!parent) m.id = 'beCtxMenu';
     m.style.cssText = 'position:fixed;z-index:1000;background:#0b1526;border:1px solid #1e3a5f;' +
-      'border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);font:13px Syne,sans-serif';
-    const btn = document.createElement('button');
-    btn.textContent = '⧉ Desfazer clipe composto';
-    btn.style.cssText = 'all:unset;display:block;padding:8px 12px;color:#dfe9ff;cursor:pointer;border-radius:6px';
-    btn.onmouseenter = () => { btn.style.background = 'rgba(0,170,255,.15)'; };
-    btn.onmouseleave = () => { btn.style.background = ''; };
-    btn.onclick = () => { store.dispatch(act.ungroupCompound(compoundId)); m.remove(); };
-    m.appendChild(btn);
+      'border-radius:8px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.6);min-width:190px;' +
+      'font:13px Syne,system-ui,sans-serif';
+    for (const it of items) {
+      if (it.sep) {
+        const s = document.createElement('div');
+        s.style.cssText = 'height:1px;background:#1e3a5f;margin:4px 6px;';
+        m.appendChild(s); continue;
+      }
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;justify-content:space-between;' +
+        'padding:7px 10px;border-radius:6px;cursor:' + (it.disabled ? 'default' : 'pointer') +
+        ';color:' + (it.disabled ? '#5b6b82' : '#dfe9ff') + ';';
+      const left = document.createElement('span'); left.textContent = it.label; row.appendChild(left);
+      const right = document.createElement('span');
+      right.style.cssText = 'color:#5b7599;font-size:11px;';
+      right.textContent = it.sub ? '›' : (it.hint || '');
+      row.appendChild(right);
+      let subMenu = null;
+      if (!it.disabled) {
+        row.onmouseenter = () => {
+          row.style.background = 'rgba(0,170,255,.15)';
+          m.querySelectorAll(':scope > .be-ctx-menu').forEach(el => el.remove());
+          if (it.sub) {
+            const r = row.getBoundingClientRect();
+            subMenu = buildMenu(r.right - 4, r.top - 4, it.sub, m);
+            m.appendChild(subMenu);
+          }
+        };
+        row.onmouseleave = () => { row.style.background = ''; };
+        if (it.fn) row.onclick = () => { it.fn(); closeMenu(); };
+      }
+      m.appendChild(row);
+    }
     m.style.left = x + 'px'; m.style.top = y + 'px';
-    document.body.appendChild(m);
-    setTimeout(() => {
-      const close = (ev) => {
-        if (!m.contains(ev.target)) { m.remove(); window.removeEventListener('pointerdown', close, true); }
-      };
-      window.addEventListener('pointerdown', close, true);
-    }, 0);
+    if (!parent) {
+      document.body.appendChild(m);
+      // reposiciona se sair da tela
+      requestAnimationFrame(() => {
+        const r = m.getBoundingClientRect();
+        if (r.right > innerWidth) m.style.left = (x - r.width) + 'px';
+        if (r.bottom > innerHeight) m.style.top = Math.max(4, innerHeight - r.height - 4) + 'px';
+      });
+      setTimeout(() => {
+        const close = (ev) => { if (!m.contains(ev.target)) closeMenu(); };
+        window.addEventListener('pointerdown', close, true);
+        m._close = () => window.removeEventListener('pointerdown', close, true);
+      }, 0);
+    }
+    return m;
+  }
+  function closeMenu() {
+    const m = document.getElementById('beCtxMenu');
+    if (m) { m._close?.(); m.remove(); }
   }
 
   // deteccao de DUPLO-clique propria: e.detail no pointerdown e nao-confiavel

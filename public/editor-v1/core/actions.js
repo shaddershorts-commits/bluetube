@@ -55,8 +55,18 @@ export const A = {
   UPDATE_COMPOUND: 'UPDATE_COMPOUND',
   // multi-midia (takes)
   ADD_MEDIA_CLIP: 'ADD_MEDIA_CLIP',
+  // imagem (PNG/sticker com transparência) como camada sobre o vídeo
+  ADD_IMAGE_OVERLAY: 'ADD_IMAGE_OVERLAY',
   // transform da cena (aba Vídeo > Básico: escala + opacidade)
   SET_CLIP_TRANSFORM: 'SET_CLIP_TRANSFORM',
+  // velocidade da faixa selecionada (aba Velocidade) — clip OU audio
+  SET_SPEED: 'SET_SPEED',
+  // copiar/colar faixa (Ctrl+C/X/V)
+  PASTE: 'PASTE',
+  // editar (menu botao direito): congelar frame / reverso / espelhar
+  FREEZE_FRAME: 'FREEZE_FRAME',
+  SET_CLIP_FX: 'SET_CLIP_FX',
+  SET_FREEZE_DUR: 'SET_FREEZE_DUR',
   // meta
   SET_PROJECT_ID: 'SET_PROJECT_ID',
 };
@@ -102,7 +112,13 @@ export const UNDOABLE = {
   [A.DELETE_MULTI]: U, // apaga a multi-selecao inteira = 1 undo step
   [A.SET_CAPTIONS]: U, // geracao de legendas inteira = 1 undo step
   [A.ADD_MEDIA_CLIP]: U,
+  [A.ADD_IMAGE_OVERLAY]: U,
   [A.SET_CLIP_TRANSFORM]: U,
+  [A.SET_SPEED]: U,
+  [A.PASTE]: U,
+  [A.FREEZE_FRAME]: U,
+  [A.SET_CLIP_FX]: U,
+  [A.SET_FREEZE_DUR]: U,
 };
 
 // ── creators ────────────────────────────────────────────────────────────────
@@ -161,8 +177,20 @@ export const setCaptions = (caps) => ({ type: A.SET_CAPTIONS, caps });
 export const addMediaClip = (media) => ({ type: A.ADD_MEDIA_CLIP, media });
 // reusa uma midia JA no pool (painel Midia: "+ adicionar de novo")
 export const addClipFromMedia = (mediaId) => ({ type: A.ADD_MEDIA_CLIP, mediaId });
+// imagem (PNG com transparência) vira camada no playhead. media = {url, width, height}
+export const addImageOverlay = (media, atT) => ({ type: A.ADD_IMAGE_OVERLAY, media, atT });
 // patch = { scale?, opacity? } — aba Vídeo > Básico
 export const setClipTransform = (clipId, patch) => ({ type: A.SET_CLIP_TRANSFORM, clipId, patch });
+// target 'clip'|'audio', speed 0.1..100 — aba Velocidade (só a faixa selecionada)
+export const setSpeed = (target, id, speed) => ({ type: A.SET_SPEED, target, id, speed });
+// colar item do clipboard: kind 'clip'|'audio'|'text'|'overlay', data = cópia, atT = playhead
+export const paste = (kind, data, atT) => ({ type: A.PASTE, kind, data, atT });
+// Congelar: frame do clip vira imagem esticável (freeze_sec = duração inicial)
+export const freezeFrame = (clipId, atT) => ({ type: A.FREEZE_FRAME, clipId, atT });
+// efeitos do menu Editar: patch { reversed?, mirrored? } no clip
+export const setClipFx = (clipId, patch) => ({ type: A.SET_CLIP_FX, clipId, patch });
+// estica/encolhe a cena congelada (arrastar borda) — dur em segundos
+export const setFreezeDur = (clipId, dur) => ({ type: A.SET_FREEZE_DUR, clipId, dur });
 export const createCompound = () => ({ type: A.CREATE_COMPOUND });
 export const ungroupCompound = (compoundId) => ({ type: A.UNGROUP_COMPOUND, compoundId });
 export const updateCompound = (compoundId, doc) => ({ type: A.UPDATE_COMPOUND, compoundId, doc });

@@ -1,68 +1,121 @@
 // editor-v1/preview/player.js
-// Transporte com TEMPO VIRTUAL + mixer multi-audio.
-// - <video> principal segue os clips ativos (pula trechos removidos)
-// - cada audio_clip ganha um Audio() proprio (Audio decodifica a trilha de
-//   audio de arquivos de VIDEO tambem), agendado por start/source_in/out
+// Transporte com TEMPO VIRTUAL + mixer multi-audio + DOUBLE BUFFER de vídeo.
+// - dois <video> empilhados: o ativo mostra a cena atual, o buffer PRÉ-CARREGA
+//   a próxima fonte (take). Ao cruzar a fronteira entre fontes diferentes, faz
+//   um swap instantâneo — sem a tela preta de load() (user 2026-07-20).
+// - cada audio_clip ganha um Audio() próprio, agendado por start/source_in/out.
 
-import { timelineToSource, totalDuration, playableDuration, segmentAt, effectiveAudioClips, mediaUrlFor } from '../core/selectors.js';
+import { timelineToSource, totalDuration, playableDuration, segmentAt, timelineSegments, effectiveAudioClips, mediaUrlFor, clipSpeed, audioTimelineDur } from '../core/selectors.js';
 
-// opts.primaryUrl(): url preferida do video PRINCIPAL (shell injeta o
-// objectURL local quando disponivel). Takes extras usam a url do pool.
+// opts.primaryUrl(): url preferida do video PRINCIPAL. opts.bufferEl: 2º <video>.
 export function createPlayer(videoEl, opts, store) {
   let virtualTime = 0;
   let playing = false;
   let rafId = 0;
   let lastTick = 0;
-  let pendingSeek = null; // seek agendado pra depois do loadedmetadata (troca de take)
   const listeners = new Set();
   const pool = new Map(); // audio_clip.id -> { el, url }
 
-  function emit() { for (const fn of listeners) fn(); }
+  // double buffer: els[active] mostra, els[1-active] pré-carrega
+  const els = [videoEl, opts?.bufferEl].filter(Boolean);
+  let active = 0;
+  const disp = () => els[active];
+  const buf = () => (els.length > 1 ? els[1 - active] : null);
 
-  function primaryUrl() {
-    return opts?.primaryUrl?.() || store.getState().video?.url || null;
+  function emit() { for (const fn of listeners) fn(); }
+  function primaryUrl() { return opts?.primaryUrl?.() || store.getState().video?.url || null; }
+  function urlForClip(state, clip) {
+    return clip.media_id != null ? mediaUrlFor(state, clip) : primaryUrl();
+  }
+  function applyVisibility() {
+    els.forEach((el, i) => el.classList.toggle('be-buffering', i !== active));
   }
 
-  // troca de src (multi-take) termina o seek quando a midia carrega
-  videoEl.addEventListener('loadedmetadata', () => {
-    if (pendingSeek == null) return;
-    try { videoEl.currentTime = pendingSeek; } catch {}
-    pendingSeek = null;
-    if (playing) videoEl.play().catch(() => {});
+  // cada elemento aplica seu próprio seek pendente quando a mídia carrega
+  els.forEach((el) => {
+    el.addEventListener('loadedmetadata', () => {
+      if (el._pendingSeek == null) return;
+      try { el.currentTime = el._pendingSeek; } catch {}
+      el._pendingSeek = null;
+      if (playing && el === disp()) el.play().catch(() => {});
+    });
   });
+
+  // tempo no arquivo pro instante virtual, considerando velocidade/reverso/frozen
+  function srcForSeg(seg, tv) {
+    const c = seg.clip;
+    if (c.frozen) return c.freeze_src || 0;
+    const off = (tv - seg.tStart) * clipSpeed(c);
+    return c.reversed ? Math.max(c.source_in, c.source_out - off) : c.source_in + off;
+  }
 
   function syncVideoToVirtual(seekVideo = true) {
     const state = store.getState();
     const tClamped = Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001));
     const seg = segmentAt(state, tClamped);
-    const src = seg ? seg.clip.source_in + (tClamped - seg.tStart) : null;
-    // Sem clip de vídeo ativo neste instante (faixa excluída/vazia): o <video>
-    // congelava no último frame decodificado — esconde (preto) até voltar a
-    // haver conteúdo. Fix do "excluí a faixa mas a imagem continuou".
-    videoEl.style.visibility = src == null ? 'hidden' : '';
+    const src = seg ? srcForSeg(seg, tClamped) : null;
+    const d = disp();
+    // Sem clip ativo (faixa excluída/gap): esconde (preto) até voltar conteúdo.
+    d.style.visibility = src == null ? 'hidden' : '';
     if (src == null) return;
-    // multi-take: cada clip pode vir de uma midia diferente — troca o src
-    const url = seg.clip.media_id != null ? mediaUrlFor(state, seg.clip) : primaryUrl();
-    const atual = videoEl.currentSrc || videoEl.src || '';
+    d.playbackRate = clipSpeed(seg.clip);
+    const url = urlForClip(state, seg.clip);
+    const atual = d.currentSrc || d.src || '';
     if (url && atual !== url) {
-      videoEl.src = url;
-      videoEl.load();
-      pendingSeek = src;
+      const b = buf();
+      if (b && b.dataset.loadedUrl === url && b.readyState >= 2) {
+        // SWAP instantâneo: o buffer já tem esse take decodificado
+        active = 1 - active;
+        applyVisibility();
+        const nd = disp();
+        nd._pendingSeek = null;
+        nd.style.visibility = '';
+        nd.muted = !!state.audio_detached;
+        nd.volume = Math.min(1, state.volumes?.video ?? 1);
+        nd.playbackRate = clipSpeed(seg.clip);
+        try { nd.currentTime = src; } catch {}
+        if (playing) nd.play().catch(() => {});
+        buf().pause();
+        buf().dataset.loadedUrl = '';
+        return;
+      }
+      // fallback (sem buffer pronto): carrega no próprio display (pode piscar)
+      d.src = url; d.load(); d._pendingSeek = src;
       return;
     }
-    if (seekVideo && pendingSeek == null && Math.abs(videoEl.currentTime - src) > 0.06) {
-      videoEl.currentTime = src;
+    if (seekVideo && d._pendingSeek == null && Math.abs(d.currentTime - src) > 0.06) {
+      d.currentTime = src;
     }
   }
 
-  /** cria/atualiza os Audio() do pool conforme audio_clips */
+  // pré-carrega a PRÓXIMA fonte no buffer (só durante playback, só se a fonte
+  // muda — clips do mesmo arquivo não precisam de swap)
+  function preloadNext(state) {
+    const b = buf();
+    if (!b) return;
+    const cur = segmentAt(state, virtualTime);
+    if (!cur) return;
+    const segs = timelineSegments(state);
+    const idx = segs.indexOf(cur);
+    const nx = idx >= 0 ? segs[idx + 1] : null;
+    if (!nx || nx.clip.frozen || nx.clip.reversed) return;
+    const nurl = urlForClip(state, nx.clip);
+    const curUrl = urlForClip(state, cur.clip);
+    if (!nurl || nurl === curUrl) return;        // mesma fonte: sem flash mesmo
+    if (b.dataset.loadedUrl === nurl) return;    // já pré-carregado
+    b.dataset.loadedUrl = nurl;
+    b._pendingSeek = nx.clip.reversed ? nx.clip.source_out : nx.clip.source_in;
+    b.muted = true;
+    b.src = nurl;
+    b.load();
+  }
+
   function syncPool() {
     const state = store.getState();
     const clips = effectiveAudioClips(state);
     const seen = new Set();
     for (const a of clips) {
       seen.add(a.id);
-      // kind 'video' = audio destacado do PRINCIPAL — nunca o take ativo
       const url = a.kind === 'video' ? primaryUrl() : a.url;
       if (!url) continue;
       let entry = pool.get(a.id);
@@ -80,19 +133,20 @@ export function createPlayer(videoEl, opts, store) {
     }
   }
 
-  /** agenda cada audio clip pro tempo virtual t */
   function syncAudios(t) {
     const state = store.getState();
     for (const a of effectiveAudioClips(state)) {
       const entry = pool.get(a.id);
       if (!entry) continue;
       const el = entry.el;
-      const dur = a.source_out - a.source_in;
+      const sp = clipSpeed(a);
+      const dur = audioTimelineDur(a);
       const inside = t >= a.start - 0.02 && t < a.start + dur;
       el.volume = Math.min(1, a.volume ?? 1);
+      el.playbackRate = sp;
       if (inside) {
-        const local = a.source_in + (t - a.start);
-        if (Math.abs(el.currentTime - local) > 0.25) {
+        const local = a.source_in + (t - a.start) * sp;
+        if (Math.abs(el.currentTime - local) > 0.25 * sp) {
           try { el.currentTime = local; } catch {}
         }
         if (playing && el.paused) el.play().catch(() => {});
@@ -106,24 +160,36 @@ export function createPlayer(videoEl, opts, store) {
   function tick(ts) {
     if (!playing) return;
     const state = store.getState();
-    // total REPRODUZIVEL: audio alem do video conta (projeto so-audio toca)
     const total = playableDuration(state);
     const dt = lastTick ? (ts - lastTick) / 1000 : 0;
     lastTick = ts;
+    const d = disp();
 
     const seg = segmentAt(state, virtualTime);
-    if (seg && pendingSeek != null) {
-      // trocando de take (src carregando): segura o relogio — o currentTime
-      // ainda e da midia ANTIGA e enganaria o clock
+    if (seg && d._pendingSeek != null) {
+      // trocando de fonte (load em andamento): segura o relógio
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+    if (seg && (seg.clip.frozen || seg.clip.reversed)) {
+      // congelado (1 frame) ou reverso (scrub pra trás): relógio por rAF
+      if (!d.paused) d.pause();
+      virtualTime += dt;
+      if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
+      if (virtualTime >= seg.tEnd - 1e-3) virtualTime = seg.tEnd + 0.001;
+      syncVideoToVirtual();
+      syncAudios(virtualTime);
+      emit();
       rafId = requestAnimationFrame(tick);
       return;
     }
     if (seg) {
-      // voltou pra um trecho COM video (ex: depois de um gap so-audio)
-      if (videoEl.paused) videoEl.play().catch(() => {});
-      const vSrc = videoEl.currentTime;
+      if (d.paused) d.play().catch(() => {});
+      d.playbackRate = clipSpeed(seg.clip);
+      preloadNext(state); // aquece o buffer com a próxima fonte
+      const vSrc = d.currentTime;
       if (vSrc >= seg.clip.source_in - 0.05 && vSrc <= seg.clip.source_out + 0.05) {
-        virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in);
+        virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in) / clipSpeed(seg.clip);
         if (vSrc >= seg.clip.source_out - 0.03) {
           const nextT = seg.tEnd + 0.001;
           if (nextT >= total) { pause(); virtualTime = total; emit(); return; }
@@ -134,10 +200,8 @@ export function createPlayer(videoEl, opts, store) {
         syncVideoToVirtual();
       }
     } else {
-      // gap sem video (projeto so-audio ou audio alem do fim do video):
-      // relogio anda por rAF e o <video> PAUSA — senao o som dele vazava
-      // por tras do preto enquanto so o audio devia tocar
-      if (!videoEl.paused) videoEl.pause();
+      // gap sem video (só-audio / audio além do fim): <video> pausa
+      if (!d.paused) d.pause();
       virtualTime += dt;
       if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
       syncVideoToVirtual();
@@ -154,12 +218,12 @@ export function createPlayer(videoEl, opts, store) {
     if (virtualTime >= total - 0.01) virtualTime = 0;
     syncPool();
     syncVideoToVirtual();
-    // video mudo quando o audio foi destacado (vive nos audio_clips agora)
-    videoEl.muted = !!state.audio_detached;
-    videoEl.volume = Math.min(1, state.volumes?.video ?? 1);
+    const d = disp();
+    d.muted = !!state.audio_detached;
+    d.volume = Math.min(1, state.volumes?.video ?? 1);
     playing = true;
     lastTick = 0;
-    if (segmentAt(state, virtualTime)) videoEl.play().catch(() => {});
+    if (segmentAt(state, virtualTime)) d.play().catch(() => {});
     syncAudios(virtualTime);
     rafId = requestAnimationFrame(tick);
     emit();
@@ -168,7 +232,7 @@ export function createPlayer(videoEl, opts, store) {
   function pause() {
     playing = false;
     cancelAnimationFrame(rafId);
-    videoEl.pause();
+    els.forEach((el) => el.pause());
     for (const [, entry] of pool) entry.el.pause();
     emit();
   }
@@ -191,7 +255,7 @@ export function createPlayer(videoEl, opts, store) {
     const state = store.getState();
     const total = playableDuration(state);
     if (virtualTime > total) { virtualTime = total; emit(); }
-    videoEl.muted = !!state.audio_detached;
+    disp().muted = !!state.audio_detached;
     if (!playing) syncVideoToVirtual();
     syncPool();
   });
@@ -203,6 +267,7 @@ export function createPlayer(videoEl, opts, store) {
     getTime: () => virtualTime,
     getDuration: () => playableDuration(store.getState()),
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
+    getDisplayEl: () => disp(),           // shell aplica transform no elemento ativo
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     destroy() {
       pause();

@@ -2178,13 +2178,24 @@ async function processEditV0(jobId, p) {
     const fc = [];                                   // filter_complex parts
     let inputIdx = 1;
 
-    // ── OVERLAYS v2: trim de cada camada (arquivo pronto pro chain) ──
+    // ── OVERLAYS v2: cada camada vira input pro chain ──
+    // vídeo: trima o trecho. IMAGEM (PNG/sticker com transparência): baixa o
+    // arquivo e entra como input estático (alpha preservado no overlay).
     const overlays = Array.isArray(p.overlays) ? p.overlays : [];
     const ovInputs = [];
     for (let i = 0; i < overlays.length; i++) {
       const o = overlays[i];
       const dur = o.source_out - o.source_in;
       if (dur < 0.05) continue;
+      if (o.kind === 'image' && o.image_url) {
+        const imgPath = path.join(dir, `ovimg_${i}` + (o.image_url.match(/\.(png|jpg|jpeg|webp|gif)/i)?.[0] || '.png'));
+        try { await downloadFile(o.image_url, imgPath); }
+        catch (e) { console.log('[edit-v0] imagem overlay falhou, pulando:', e.message); continue; }
+        ovInputs.push({ idx: inputIdx, o, file: imgPath, isImage: true });
+        args.push('-i', imgPath);
+        inputIdx++;
+        continue;
+      }
       const out = path.join(dir, `ov_${i}.mp4`);
       await run('ffmpeg', [
         '-y', '-ss', String(o.source_in), '-t', String(dur),
@@ -2211,12 +2222,22 @@ async function processEditV0(jobId, p) {
     ops.forEach((op, k) => {
       const nextL = `base${k + 1}`;
       if (op.kind === 'ov') {
-        const { idx, o } = op.ov;
+        const { idx, o, isImage } = op.ov;
         const dur = o.source_out - o.source_in;
         const scaled = `ovs${k}`;
-        // escala relativa a LARGURA do output + posicao central em pct
-        fc.push(`[${idx}:v]scale=${Math.round((p.output_width || 1080) * (o.scale ?? 0.5))}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
-        fc.push(`[${vLabel}][${scaled}]overlay=x=${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2:y=${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2:enable='between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur).toFixed(3)})'[${nextL}]`);
+        const scaleW = Math.round((p.output_width || 1080) * (o.scale ?? 0.5));
+        const xExpr = `${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2`;
+        const yExpr = `${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2`;
+        const enable = `between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur).toFixed(3)})`;
+        if (isImage) {
+          // IMAGEM: escala preservando alpha; overlay estático na janela de tempo
+          fc.push(`[${idx}:v]scale=${scaleW}:-1[${scaled}]`);
+          fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
+        } else {
+          // escala relativa a LARGURA do output + posicao central em pct
+          fc.push(`[${idx}:v]scale=${scaleW}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
+          fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
+        }
       } else {
         const t = op.t;
         const fs_px = Math.round(sizePct(t.size) * OUT_W);

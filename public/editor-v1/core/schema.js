@@ -104,6 +104,10 @@ export function normalizeLoadedState(raw) {
       ...(c.media_id != null && mediaIds.has(c.media_id) ? { media_id: c.media_id } : {}),
       ...(typeof c.scale === 'number' ? { scale: clamp(c.scale, 0.1, 3) } : {}),
       ...(typeof c.opacity === 'number' ? { opacity: clamp01(c.opacity) } : {}),
+      ...(typeof c.speed === 'number' ? { speed: clamp(c.speed, 0.1, 100) } : {}),
+      ...(c.frozen ? { frozen: true, freeze_src: Math.max(0, c.freeze_src || 0), freeze_dur: Math.max(0.1, c.freeze_dur || 3) } : {}),
+      ...(c.reversed ? { reversed: true } : {}),
+      ...(c.mirrored ? { mirrored: true } : {}),
     })) : [];
   s.texts = Array.isArray(raw.texts) ? raw.texts
     .filter(t => t && typeof t.content === 'string')
@@ -135,6 +139,7 @@ export function normalizeLoadedState(raw) {
       start: Math.max(0, a.start || 0),
       source_in: a.source_in, source_out: a.source_out,
       volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
+      ...(typeof a.speed === 'number' ? { speed: clamp(a.speed, 0.1, 100) } : {}),
       active: a.active !== false,
     })) : [];
   if (!s.audio_clips.length && raw.audio_extra?.url && raw.audio_extra?.duration > 0) {
@@ -157,6 +162,7 @@ export function normalizeLoadedState(raw) {
     .map(o => ({
       id: o.id, source_in: o.source_in, source_out: o.source_out,
       ...(o.media_id != null && mediaIds.has(o.media_id) ? { media_id: o.media_id } : {}),
+      ...(o.kind === 'image' && o.url ? { kind: 'image', url: o.url, img_w: o.img_w || 0, img_h: o.img_h || 0 } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),

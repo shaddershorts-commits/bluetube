@@ -6,8 +6,8 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
-import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE } from './schema.js';
-import { timelineSegments, segmentAt, mainTrackItems } from './selectors.js';
+import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE } from './schema.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, audioTimelineDur } from './selectors.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -62,6 +62,33 @@ export function reduce(state, action) {
       });
     }
 
+    case A.ADD_IMAGE_OVERLAY: {
+      // imagem (PNG com transparência) vira CAMADA sobre o vídeo, no topo,
+      // 3s por padrão (esticável arrastando a borda), centrada.
+      const m = action.media;
+      if (!m?.url) return state;
+      const usadas = (state.overlays || []).filter(o => o.active !== false).map(o => o.lane || 1);
+      const lane = Math.min(MAX_LANE, (usadas.length ? Math.max(...usadas) : 0) + 1);
+      // escala inicial: imagem larga cabe ~40% do quadro
+      const scale = m.width && m.height ? Math.min(0.6, 0.4) : 0.4;
+      const overlay = {
+        id: state.next_overlay_id, kind: 'image', url: m.url,
+        img_w: m.width || 0, img_h: m.height || 0,
+        source_in: 0, source_out: 3,            // 3s na timeline (esticável)
+        start: Math.max(0, action.atT || 0),
+        x_pct: 0.5, y_pct: 0.5, scale,
+        lane: clampLane(lane, OVERLAY_DEFAULT_LANE),
+        active: true,
+      };
+      return touch({
+        ...state,
+        overlays: [...state.overlays, overlay],
+        next_overlay_id: state.next_overlay_id + 1,
+        selected_overlay_id: overlay.id,
+        selected_clip_id: null, selected_text_id: null, selected_audio_id: null,
+      });
+    }
+
     case A.SET_CLIP_TRANSFORM: {
       // escala + opacidade da cena (aba Vídeo > Básico). Aplica em clip da
       // main (inclui composto). Missing = 1.0 (retrocompat).
@@ -73,6 +100,115 @@ export function reduce(state, action) {
       if (!Object.keys(patch).length) return state;
       const clips = state.clips.slice();
       clips[idx] = { ...clips[idx], ...patch };
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_SPEED: {
+      // velocidade da faixa SELECIONADA (clip ou audio). Muda a duracao na
+      // timeline (selectors dividem o span pela velocidade). clamp 0.1-100.
+      const speed = clamp(action.speed, 0.1, 100);
+      if (action.target === 'audio') {
+        const idx = state.audio_clips.findIndex(a => a.id === action.id);
+        if (idx < 0) return state;
+        const audio_clips = state.audio_clips.slice();
+        audio_clips[idx] = { ...audio_clips[idx], speed };
+        return touch({ ...state, audio_clips });
+      }
+      const idx = state.clips.findIndex(c => c.id === action.id);
+      if (idx < 0) return state;
+      const clips = state.clips.slice();
+      clips[idx] = { ...clips[idx], speed };
+      return touch({ ...state, clips });
+    }
+
+    case A.PASTE: {
+      // cola uma CÓPIA do item copiado (Ctrl+C/X → Ctrl+V). Nunca mexe no
+      // original — o "some + restaurar" era o Ctrl+V caindo no toggle 'v'.
+      const { kind, data } = action;
+      const atT = Math.max(0, action.atT || 0);
+      if (!data) return state;
+      if (kind === 'clip') {
+        if (data.compound_id) {
+          // duplica o composto inteiro
+          const src = (state.compounds || []).find(k => k.id === data.compound_id);
+          if (!src) return state;
+          const newComp = {
+            ...src, id: state.next_compound_id, name: (src.name || 'Composto') + ' (cópia)',
+            clips: (src.clips || []).map(x => ({ ...x })),
+            texts: (src.texts || []).map(x => ({ ...x })),
+            audio_clips: (src.audio_clips || []).map(x => ({ ...x })),
+            overlays: (src.overlays || []).map(x => ({ ...x })),
+          };
+          const clip = { id: state.next_clip_id, compound_id: newComp.id, active: true };
+          return touch({
+            ...state, clips: [...state.clips, clip], compounds: [...state.compounds, newComp],
+            next_clip_id: state.next_clip_id + 1, next_compound_id: state.next_compound_id + 1,
+            selected_clip_id: clip.id,
+          });
+        }
+        const clip = { ...data, id: state.next_clip_id, active: true };
+        return touch({ ...state, clips: [...state.clips, clip], next_clip_id: state.next_clip_id + 1, selected_clip_id: clip.id, selected_audio_id: null, selected_text_id: null, selected_overlay_id: null });
+      }
+      if (kind === 'audio') {
+        const a = { ...data, id: state.next_audio_id, start: atT, active: true };
+        return touch({ ...state, audio_clips: [...state.audio_clips, a], next_audio_id: state.next_audio_id + 1, selected_audio_id: a.id, selected_clip_id: null, selected_text_id: null, selected_overlay_id: null });
+      }
+      if (kind === 'text') {
+        const dur = Math.max(0.3, (data.end_sec - data.start_sec) || 2);
+        const tx = buildText({ ...data, start_sec: atT, end_sec: atT + dur }, state.next_text_id);
+        return touch({ ...state, texts: [...state.texts, tx], next_text_id: state.next_text_id + 1, selected_text_id: tx.id, selected_clip_id: null, selected_audio_id: null, selected_overlay_id: null });
+      }
+      if (kind === 'overlay') {
+        const o = { ...data, id: state.next_overlay_id, start: atT, active: true };
+        return touch({ ...state, overlays: [...state.overlays, o], next_overlay_id: state.next_overlay_id + 1, selected_overlay_id: o.id, selected_clip_id: null });
+      }
+      return state;
+    }
+
+    case A.FREEZE_FRAME: {
+      // Congelar (CapCut): o frame no playhead vira uma "cena imagem" de 3s
+      // esticável, inserida no ponto. Divide o clip e enfia o congelado.
+      const seg = segmentAt(state, action.atT);
+      if (!seg) return state;
+      const idx = state.clips.findIndex(c => c.id === seg.clip.id);
+      if (idx < 0) return state; // sub-clip de composto
+      const srcAt = seg.clip.source_in + (action.atT - seg.tStart) * clipSpeed(seg.clip);
+      const fs = Math.max(0, srcAt);
+      const frozen = {
+        id: state.next_clip_id,
+        ...(seg.clip.media_id != null ? { media_id: seg.clip.media_id } : {}),
+        frozen: true, freeze_src: fs, freeze_dur: 3,
+        source_in: fs, source_out: fs, // range degenerado (evita NaN em export)
+        active: true,
+      };
+      const pieces = [];
+      // esquerda (se sobra >= min)
+      if (srcAt - seg.clip.source_in >= MIN_CLIP_DURATION) pieces.push({ ...seg.clip, source_out: srcAt });
+      pieces.push(frozen);
+      // direita (se sobra >= min)
+      if (seg.clip.source_out - srcAt >= MIN_CLIP_DURATION) {
+        pieces.push({ ...seg.clip, id: state.next_clip_id + 1, source_in: srcAt });
+      }
+      const clips = [...state.clips.slice(0, idx), ...pieces, ...state.clips.slice(idx + 1)];
+      return touch({ ...state, clips, next_clip_id: state.next_clip_id + 2, selected_clip_id: frozen.id });
+    }
+
+    case A.SET_CLIP_FX: {
+      // Reverso / Espelhar (toggle). Aplica no clip da main.
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const clips = state.clips.slice();
+      clips[idx] = { ...clips[idx], ...action.patch };
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_FREEZE_DUR: {
+      // estica/encolhe a cena congelada na timeline (0.1s a 60s)
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0 || !state.clips[idx].frozen) return state;
+      const dur = clamp(action.dur, MIN_CLIP_DURATION, 60);
+      const clips = state.clips.slice();
+      clips[idx] = { ...clips[idx], freeze_dur: dur };
       return touch({ ...state, clips });
     }
 
@@ -88,16 +224,19 @@ export function reduce(state, action) {
     // ── clips ────────────────────────────────────────────────────────────
 
     case A.SPLIT_CLIP: {
-      // Divide o clip sob o tempo virtual t em dois.
+      // Divide o clip sob o tempo virtual t em dois. velocidade: 1s de
+      // timeline = speed s do arquivo.
       const seg = segmentAt(state, action.t);
       if (!seg) return state;
-      const srcSplit = seg.clip.source_in + (action.t - seg.tStart);
+      const srcSplit = seg.clip.source_in + (action.t - seg.tStart) * clipSpeed(seg.clip);
       // Nao cria fatia menor que o minimo
       if (srcSplit - seg.clip.source_in < MIN_CLIP_DURATION) return state;
       if (seg.clip.source_out - srcSplit < MIN_CLIP_DURATION) return state;
       const idx = state.clips.findIndex(c => c.id === seg.clip.id);
+      if (idx < 0) return state; // sub-clip de composto: split acontece dentro dele
+      // ambas as metades preservam media_id/scale/opacity/speed (spread)
       const left = { ...seg.clip, source_out: srcSplit };
-      const right = { id: state.next_clip_id, source_in: srcSplit, source_out: seg.clip.source_out, active: true };
+      const right = { ...seg.clip, id: state.next_clip_id, source_in: srcSplit, source_out: seg.clip.source_out, active: true };
       const clips = [...state.clips.slice(0, idx), left, right, ...state.clips.slice(idx + 1)];
       return touch({ ...state, clips, next_clip_id: state.next_clip_id + 1, selected_clip_id: right.id });
     }
@@ -315,16 +454,16 @@ export function reduce(state, action) {
     }
 
     case A.SPLIT_AUDIO: {
-      // corta o clip de audio sob o tempo virtual t (selecionado tem prioridade)
+      // corta o clip de audio sob o tempo virtual t (selecionado tem prioridade).
+      // velocidade: a janela na timeline = span/speed; splitSrc mapeia por speed.
       const t = action.t;
       const hitClip = (a) => a.active !== false &&
         t > a.start + MIN_CLIP_DURATION &&
-        t < a.start + (a.source_out - a.source_in) - MIN_CLIP_DURATION;
+        t < a.start + audioTimelineDur(a) - MIN_CLIP_DURATION;
       let target = state.audio_clips.find(a => a.id === state.selected_audio_id && hitClip(a));
       if (!target) target = state.audio_clips.find(hitClip);
       if (!target) return state;
-      const offset = t - target.start;
-      const splitSrc = target.source_in + offset;
+      const splitSrc = target.source_in + (t - target.start) * clipSpeed(target);
       const left = { ...target, source_out: splitSrc };
       const right = {
         ...target, id: state.next_audio_id,
@@ -440,14 +579,22 @@ export function reduce(state, action) {
       const o = state.overlays[idx];
       let { start, source_in, source_out } = o;
       if (action.edge === 'in') {
-        const delta = clamp(action.value - o.start,
-          -o.source_in, (o.source_out - o.source_in) - MIN_CLIP_DURATION);
-        start = Math.max(0, o.start + delta);
-        source_in = o.source_in + delta;
+        // imagem: a borda esquerda só encurta a duração (source_in fica em 0)
+        if (o.kind === 'image') {
+          start = Math.max(0, Math.min(action.value, o.start + (o.source_out - o.source_in) - MIN_CLIP_DURATION));
+          source_out = o.source_out - (start - o.start);
+        } else {
+          const delta = clamp(action.value - o.start,
+            -o.source_in, (o.source_out - o.source_in) - MIN_CLIP_DURATION);
+          start = Math.max(0, o.start + delta);
+          source_in = o.source_in + delta;
+        }
       } else {
-        const maxOut = o.media_id != null
-          ? ((state.media || []).find(m => m.id === o.media_id)?.duration || Infinity)
-          : (state.video?.duration || Infinity);
+        // imagem: duração livre até 60s (não tem "arquivo" limitando)
+        const maxOut = o.kind === 'image' ? 60
+          : o.media_id != null
+            ? ((state.media || []).find(m => m.id === o.media_id)?.duration || Infinity)
+            : (state.video?.duration || Infinity);
         source_out = clamp(action.value, o.source_in + MIN_CLIP_DURATION, maxOut);
       }
       if (start === o.start && source_in === o.source_in && source_out === o.source_out) return state;

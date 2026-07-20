@@ -200,7 +200,7 @@ test('exportPayload espelha contrato edit-v0', () => {
   store.dispatch(act.addText({ content: 'X', start_sec: 1, end_sec: 3 }));
   const p = exportPayload(store.getState());
   assert.equal(p.clips.length, 1);
-  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null, scale: 1, opacity: 1 });
+  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null, scale: 1, opacity: 1, speed: 1 });
   assert.equal(p.texts.length, 1);
   assert.ok(p.texts[0].x_pct >= 0 && p.texts[0].x_pct <= 1);
   assert.ok(canExport(store.getState()));
@@ -616,4 +616,159 @@ test('captionAudioPlan mapeia áudio próprio pra timeline pela posição do cli
   assert.equal(p.url, 'https://x/voz.mp3');
   assert.equal(p.segments[0].tStart, 2);      // fala do arquivo aparece a partir de t=2
   assert.equal(p.segments[0].fileIn, 0);
+});
+
+// ── rodada 2026-07-20 (3): velocidade por faixa + registries por fonte ──
+
+test('SET_SPEED muda a duração do clip na timeline (2x = metade) com clamp', () => {
+  const store = storeWithVideo(10);
+  const id = store.getState().clips[0].id;
+  store.dispatch(act.setSpeed('clip', id, 2));
+  assert.equal(store.getState().clips[0].speed, 2);
+  assert.equal(totalDuration(store.getState()), 5);       // 10s a 2x = 5s
+  store.dispatch(act.setSpeed('clip', id, 0.5));
+  assert.equal(totalDuration(store.getState()), 20);      // 10s a 0.5x = 20s
+  store.dispatch(act.setSpeed('clip', id, 999));
+  assert.equal(store.getState().clips[0].speed, 100);     // clamp máx
+  store.dispatch(act.setSpeed('clip', id, 0.01));
+  assert.equal(store.getState().clips[0].speed, 0.1);     // clamp mín
+  store.undo();
+  assert.equal(store.getState().clips[0].speed, 100);
+});
+
+test('SET_SPEED só afeta a FAIXA selecionada, não as vizinhas', () => {
+  const store = storeWithVideo(20);
+  store.dispatch(act.splitClipAt(10));
+  const [a, b] = store.getState().clips;
+  store.dispatch(act.setSpeed('clip', b.id, 4));
+  const s = store.getState();
+  assert.equal(s.clips[0].speed ?? 1, 1);   // vizinho intacto
+  assert.equal(s.clips[1].speed, 4);
+  assert.equal(totalDuration(s), 10 + 2.5); // 1o 10s + 2o (10s/4)
+});
+
+test('SET_SPEED audio muda a duração do áudio na timeline', () => {
+  const store = storeWithVideo(5);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'a.mp3', filename: 'a', duration: 12 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setSpeed('audio', aid, 2));
+  assert.equal(store.getState().audio_clips[0].speed, 2);
+  assert.equal(playableDuration(store.getState()), 6);   // 12s a 2x = 6s
+});
+
+test('timelineToSource/sourceToTimeline respeitam velocidade', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.setSpeed('clip', store.getState().clips[0].id, 2));
+  const s = store.getState();
+  assert.equal(timelineToSource(s, 2.5), 5);   // t=2.5 na timeline = 5s do arquivo
+  assert.equal(sourceToTimeline(s, 5), 2.5);
+});
+
+test('SPLIT_CLIP de take preserva media_id + speed nas duas metades', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addMediaClip({ url: 'https://x/take.mp4', duration: 8 }));
+  const takeId = store.getState().clips.at(-1).id;
+  store.dispatch(act.setSpeed('clip', takeId, 2));  // take dura 4s na timeline
+  store.dispatch(act.selectClip(takeId));
+  // playhead no meio do take: principal=10s, take começa em 10, dura 4 -> t=12
+  store.dispatch(act.splitClipAt(12));
+  const takes = store.getState().clips.filter(c => c.media_id != null);
+  assert.equal(takes.length, 2);
+  assert.ok(takes.every(c => c.speed === 2), 'ambas as metades speed 2');
+  assert.ok(takes.every(c => c.media_id === takes[0].media_id), 'ambas com o media_id');
+});
+
+// ── rodada 2026-07-20 (4): copiar/colar, menu Editar (congelar/reverso/espelho) ──
+
+test('PASTE clip cria CÓPIA (Ctrl+C/V) sem mexer no original', () => {
+  const store = storeWithVideo(10);
+  const c0 = { ...store.getState().clips[0] };
+  store.dispatch(act.paste('clip', c0, 0));
+  const s = store.getState();
+  assert.equal(s.clips.length, 2);
+  assert.equal(s.clips[0].id, c0.id);        // original intacto
+  assert.notEqual(s.clips[1].id, c0.id);     // cópia com novo id
+  assert.equal(s.clips[1].source_out, c0.source_out);
+});
+
+test('PASTE audio cola no playhead', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'a.mp3', filename: 'a', duration: 4 } });
+  const a0 = { ...store.getState().audio_clips[0] };
+  store.dispatch(act.paste('audio', a0, 5));
+  const s = store.getState();
+  assert.equal(s.audio_clips.length, 2);
+  assert.equal(s.audio_clips[1].start, 5);
+});
+
+test('SET_CLIP_FX toggla reverso e espelho', () => {
+  const store = storeWithVideo(10);
+  const id = store.getState().clips[0].id;
+  store.dispatch(act.setClipFx(id, { reversed: true }));
+  assert.equal(store.getState().clips[0].reversed, true);
+  store.dispatch(act.setClipFx(id, { mirrored: true }));
+  assert.equal(store.getState().clips[0].mirrored, true);
+  assert.equal(store.getState().clips[0].reversed, true); // não perde o outro
+});
+
+test('FREEZE_FRAME divide e insere cena congelada de 3s; estica com SET_FREEZE_DUR', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.freezeFrame(store.getState().clips[0].id, 4));
+  let s = store.getState();
+  assert.equal(s.clips.length, 3);                 // left + frozen + right
+  const fr = s.clips.find(c => c.frozen);
+  assert.ok(fr);
+  assert.equal(fr.freeze_src, 4);
+  assert.equal(clipDuration(s, fr), 3);            // duração inicial 3s
+  assert.equal(totalDuration(s), 13);              // 10 + 3
+  // estica pra 8s
+  store.dispatch(act.setFreezeDur(fr.id, 8));
+  assert.equal(clipDuration(store.getState(), store.getState().clips.find(c => c.frozen)), 8);
+  // clamp 60
+  store.dispatch(act.setFreezeDur(fr.id, 999));
+  assert.equal(store.getState().clips.find(c => c.frozen).freeze_dur, 60);
+});
+
+test('reverso mapeia timeline->source ao contrário', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.setClipFx(store.getState().clips[0].id, { reversed: true }));
+  const s = store.getState();
+  assert.equal(timelineToSource(s, 0), 10);   // início da timeline = fim do arquivo
+  assert.equal(timelineToSource(s, 3), 7);
+});
+
+// ── rodada 2026-07-20 (5): imagens (PNG/sticker com transparência) ──
+
+test('ADD_IMAGE_OVERLAY cria camada de imagem no topo, 3s, no playhead', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addImageOverlay({ url: 'https://x/circulo.png', width: 300, height: 300 }, 4));
+  const s = store.getState();
+  assert.equal(s.overlays.length, 1);
+  const o = s.overlays[0];
+  assert.equal(o.kind, 'image');
+  assert.equal(o.url, 'https://x/circulo.png');
+  assert.equal(o.start, 4);
+  assert.equal(o.source_out - o.source_in, 3);   // 3s de duração inicial
+  assert.equal(s.selected_overlay_id, o.id);
+});
+
+test('imagem exporta com kind/image_url e trim vai até 60s (sem arquivo limitando)', () => {
+  const store = storeWithVideo(5);
+  store.dispatch(act.addImageOverlay({ url: 'https://x/seta.png', width: 400, height: 100 }, 1));
+  const oid = store.getState().overlays[0].id;
+  const pay = exportPayload(store.getState());
+  assert.equal(pay.overlays[0].kind, 'image');
+  assert.equal(pay.overlays[0].image_url, 'https://x/seta.png');
+  store.dispatch(act.trimOverlay(oid, 'out', 40));  // estica além do vídeo (5s)
+  assert.equal(store.getState().overlays[0].source_out, 40);
+  store.dispatch(act.trimOverlay(oid, 'out', 999)); // clamp 60
+  assert.equal(store.getState().overlays[0].source_out, 60);
+});
+
+test('múltiplas imagens empilham em lanes crescentes (uma na frente da outra)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addImageOverlay({ url: 'https://x/a.png', width: 100, height: 100 }, 0));
+  store.dispatch(act.addImageOverlay({ url: 'https://x/b.png', width: 100, height: 100 }, 0));
+  const [a, b] = store.getState().overlays;
+  assert.ok(b.lane > a.lane, '2ª imagem fica numa lane acima (na frente)');
 });

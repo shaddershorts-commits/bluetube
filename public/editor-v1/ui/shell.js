@@ -25,9 +25,11 @@ export function mountEditor(root, store) {
   const $ = (sel) => root.querySelector(sel);
 
   const videoEl = $('#beVideo');
+  const videoEl2 = $('#beVideo2');
   // primaryUrl: o player troca o src por take (multi-midia); pro PRINCIPAL a
   // url preferida e o objectURL local (instantaneo, pre-CDN) quando existir
   const player = createPlayer(videoEl, {
+    bufferEl: videoEl2,  // double-buffer: pré-carrega o próximo take (sem tela preta)
     primaryUrl: () => {
       const v = store.getState().video;
       if (!v) return null;
@@ -50,13 +52,18 @@ export function mountEditor(root, store) {
   });
   const detachShortcuts = attachShortcuts({ store, player, timeline });
 
-  let thumbs = null;
-  let wave = null;
-  let videoWave = null;
+  // thumbnails/waveforms vivem em registries POR FONTE (ver setupThumbsAndWave)
   // preview local do arquivo recem-enviado (playback instantaneo pre-CDN)
   const localPreview = { url: null, for: null };
-  let mediaPanelOpen = false; // painel 🎞 Mídia (pool do projeto)
+  let captionsPanelOpen = false; // painel 💬 Legendas (escolher estilo antes)
+  let capChosenPreset = 'classico'; // estilo escolhido pra aplicar ao gerar
   let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
+  let filledAudioId = null;
+  // mapeamento log do slider de velocidade: value -100..200 -> 0.10x..100x,
+  // 0 = 1.00x (controle fino perto de 1x)
+  const sliderToSpeed = (v) => Math.min(100, Math.max(0.1, Math.pow(10, v / 100)));
+  const speedToSlider = (s) => Math.round(Math.log10(s > 0 ? s : 1) * 100);
+  const fmtSpeed = (s) => s.toFixed(2) + 'x';
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
@@ -80,9 +87,10 @@ export function mountEditor(root, store) {
       ? state.audio_clips.length + ' áudio(s) na timeline'
       : 'Nenhum áudio adicional';
     $('#beAspect').value = state.aspect_strategy;
-    // WYSIWYG do formato: letterbox = video inteiro com barras (contain)
-    videoEl.style.objectFit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
-    // audio destacado = video mudo (o audio vive nos audio_clips)
+    // WYSIWYG do formato: letterbox = video inteiro com barras (contain).
+    // aplica nos DOIS elementos do double-buffer.
+    const fit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
+    videoEl.style.objectFit = fit; videoEl2.style.objectFit = fit;
     videoEl.muted = !!state.audio_detached;
     // video source: usa preview local (objectURL) quando disponivel —
     // instantaneo e imune a atraso de propagacao do CDN
@@ -97,6 +105,8 @@ export function mountEditor(root, store) {
       videoEl.load();
       setupThumbsAndWave(state);
     }
+    // takes importados depois: garante miniatura+waveform deles (idempotente)
+    if (has) syncMediaRegistries(state);
 
     renderTransitionsRow(state);
     syncPropsPanel(state);
@@ -121,10 +131,13 @@ export function mountEditor(root, store) {
     const clip = it?.clip;
     const scale = clip?.scale ?? 1;
     const opacity = clip?.opacity ?? 1;
-    const tf = scale !== 1 ? `scale(${scale})` : '';
-    if (videoEl.style.transform !== tf) videoEl.style.transform = tf;
+    const sx = clip?.mirrored ? -scale : scale;   // Espelhar = inverte no eixo X
+    const tf = (scale !== 1 || clip?.mirrored) ? `scale(${sx}, ${scale})` : '';
+    // aplica no elemento ATIVO do double-buffer (pode ter trocado no swap)
+    const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
+    if (el.style.transform !== tf) el.style.transform = tf;
     const op = String(opacity);
-    if (videoEl.style.opacity !== op) videoEl.style.opacity = op;
+    if (el.style.opacity !== op) el.style.opacity = op;
   }
 
   // ── painel de propriedades CONTEXTUAL (estilo CapCut) ──
@@ -136,14 +149,14 @@ export function mountEditor(root, store) {
     const showAudio = !showText && !showOv && state.selected_audio_id != null;
     const showClip = !showText && !showOv && !showAudio && state.selected_clip_id != null;
     const nadaSel = !showText && !showOv && !showAudio && !showClip;
-    const showMedia = mediaPanelOpen && nadaSel;
+    const showCaptions = captionsPanelOpen && nadaSel;
     $('#beTextPanel').style.display = showText ? 'flex' : 'none';
     $('#bePropsAudio').style.display = showAudio ? 'flex' : 'none';
     $('#bePropsOverlay').style.display = showOv ? 'flex' : 'none';
     $('#bePropsClip').style.display = showClip ? 'flex' : 'none';
-    $('#bePropsMedia').style.display = showMedia ? 'flex' : 'none';
-    $('#bePropsProject').style.display = (nadaSel && !showMedia) ? 'flex' : 'none';
-    if (showMedia) renderMediaPanel();
+    $('#bePropsCaptions').style.display = showCaptions ? 'flex' : 'none';
+    $('#bePropsProject').style.display = (nadaSel && !showCaptions) ? 'flex' : 'none';
+    renderMediaPanel(); // biblioteca (coluna 1) sempre atualizada
     if (showText) fillTextPanel(state);
     if (showAudio) {
       const ac = state.audio_clips.find(a => a.id === state.selected_audio_id);
@@ -151,8 +164,13 @@ export function mountEditor(root, store) {
         $('#beAudioPanelTitle').textContent = '♪ ' + (ac.filename || 'áudio');
         $('#beVolSelected').value = ac.volume ?? 1;
         $('#beAudioClipDur').textContent = (ac.source_out - ac.source_in).toFixed(1) + 's';
+        if (filledAudioId !== ac.id) {
+          filledAudioId = ac.id;
+          const sp = ac.speed ?? 1;
+          $('#beAudioSpeed').value = speedToSlider(sp); $('#beAudioSpeedVal').textContent = fmtSpeed(sp);
+        }
       }
-    }
+    } else { filledAudioId = null; }
     if (showClip) {
       const clip = state.clips.find(c => c.id === state.selected_clip_id);
       if (clip) {
@@ -168,6 +186,8 @@ export function mountEditor(root, store) {
           const op = Math.round((clip.opacity ?? 1) * 100);
           $('#beClipScale').value = sc; $('#beClipScaleVal').textContent = sc + '%';
           $('#beClipOpacity').value = op; $('#beClipOpacityVal').textContent = op + '%';
+          const sp = clip.speed ?? 1;
+          $('#beClipSpeed').value = speedToSlider(sp); $('#beClipSpeedVal').textContent = fmtSpeed(sp);
         }
       }
     } else {
@@ -177,18 +197,37 @@ export function mountEditor(root, store) {
     $('#beDetachAudio').style.display = state.audio_detached ? 'none' : 'block';
   }
 
+  // registries POR FONTE de midia: cada vídeo (principal + takes) tem sua
+  // própria miniatura e waveform, senão o take importado vinha sem thumbnail
+  // e sem forma de onda (user 2026-07-20). Chave: 'main' ou media.id.
+  const thumbsRegistry = new Map();
+  const videoWaveRegistry = new Map();
+
   function setupThumbsAndWave(state) {
-    thumbs?.destroy();
-    thumbs = createThumbnails(videoEl, state.video.duration, () => timeline.draw());
-    timeline.setThumbs(thumbs);
-    // waveform do audio DO VIDEO (strip no clip, estilo CapCut). Usa o mesmo
-    // src do player (objectURL local quando disponivel = zero rede).
-    videoWave?.destroy();
-    const waveSrc = (localPreview.for === state.video.url && localPreview.url)
+    // (re)cria a fonte PRINCIPAL ('main')
+    thumbsRegistry.get('main')?.destroy();
+    videoWaveRegistry.get('main')?.destroy();
+    const mainSrc = (localPreview.for === state.video.url && localPreview.url)
       ? localPreview.url : state.video.url;
-    videoWave = createWaveform(waveSrc, () => timeline.draw(), { color: 'rgba(34,197,94,.9)' });
-    timeline.setVideoWave(videoWave);
+    thumbsRegistry.set('main', createThumbnails(mainSrc, state.video.duration, () => timeline.draw()));
+    videoWaveRegistry.set('main', createWaveform(mainSrc, () => timeline.draw(), { color: 'rgba(34,197,94,.9)' }));
+    // lookups por chave (o render escolhe pela midia de cada clip)
+    timeline.setThumbs({ get: (k) => thumbsRegistry.get(k == null ? 'main' : k) });
+    timeline.setVideoWave({ get: (k) => videoWaveRegistry.get(k == null ? 'main' : k) });
+    syncMediaRegistries(state);
     syncWaveRegistry(state);
+  }
+
+  // garante miniatura + waveform pra cada TAKE do pool (idempotente)
+  function syncMediaRegistries(state) {
+    for (const m of (state.media || [])) {
+      if (!thumbsRegistry.has(m.id)) {
+        thumbsRegistry.set(m.id, createThumbnails(m.url, m.duration, () => timeline.draw()));
+      }
+      if (!videoWaveRegistry.has(m.id)) {
+        videoWaveRegistry.set(m.id, createWaveform(m.url, () => timeline.draw(), { color: 'rgba(34,197,94,.9)' }));
+      }
+    }
   }
 
   // ── upload de video ──
@@ -216,6 +255,7 @@ export function mountEditor(root, store) {
 
   const isVideoFile = (f) => /^video\//.test(f.type) || /\.(mp4|mov|webm)$/i.test(f.name);
   const isAudioFile = (f) => /^audio\//.test(f.type) || /\.(mp3|wav|m4a|aac)$/i.test(f.name);
+  const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpg|jpeg|webp|gif)$/i.test(f.name);
 
   /** Importa QUALQUER quantidade de midias. 1º video de projeto vazio =
    *  principal; demais videos = takes ACRESCENTADOS no fim da timeline;
@@ -240,8 +280,11 @@ export function mountEditor(root, store) {
           store.dispatch(act.addAudioClip(media));
           syncWaveRegistry(store.getState());
           ok++;
-        } else if (/^image\//.test(file.type)) {
-          toast('Imagens na timeline: em breve — por enquanto vídeo e áudio', true);
+        } else if (isImageFile(file)) {
+          toast(`Enviando imagem ${file.name}…`);
+          const media = await uploadMedia(file, 'image', () => {});
+          store.dispatch(act.addImageOverlay(media, player.getTime()));
+          ok++;
         } else {
           toast(`Formato não suportado: ${file.name}`, true);
         }
@@ -282,16 +325,12 @@ export function mountEditor(root, store) {
     }
   }
 
-  // ── painel Mídia (pool de midias do projeto) ──
-  $('#beAddMedia').addEventListener('click', () => {
-    mediaPanelOpen = !mediaPanelOpen;
-    if (mediaPanelOpen) store.dispatch(act.selectClip(null)); // painel contextual libera
-    renderMediaPanel();
-    sync();
-  });
+  // ── biblioteca de mídia (coluna 1, sempre visível) ──
+  // "Mídia" e "＋ Importar" abrem o seletor de arquivos
+  $('#beAddMedia').addEventListener('click', () => fileInput.click());
   $('#beMediaImport')?.addEventListener('click', () => fileInput.click());
-  $('#beMediaClose')?.addEventListener('click', () => { mediaPanelOpen = false; sync(); });
 
+  let _mediaSig = null;
   function renderMediaPanel() {
     const list = $('#beMediaList');
     if (!list) return;
@@ -309,6 +348,16 @@ export function mountEditor(root, store) {
       audUrls.add(a.url);
       rows.push({ icon: '🎵', name: a.filename || 'áudio', dur: a.media_duration, tag: 'áudio' });
     }
+    const imgUrls = new Set();
+    for (const o of (s.overlays || []).filter(o => o.kind === 'image' && o.url)) {
+      if (imgUrls.has(o.url)) continue;
+      imgUrls.add(o.url);
+      rows.push({ icon: '🖼', name: (o.url.split('/').pop() || 'imagem'), tag: 'imagem' });
+    }
+    // guard: só reconstrói a lista quando o conjunto de mídias muda (sem flicker)
+    const sig = rows.map(r => r.icon + r.name + r.tag).join('|');
+    if (sig === _mediaSig) return;
+    _mediaSig = sig;
     list.innerHTML = rows.length ? '' : '<div class="be-dim">Nenhuma mídia importada ainda</div>';
     for (const r of rows) {
       const row = document.createElement('div');
@@ -384,6 +433,31 @@ export function mountEditor(root, store) {
   bindClipSlider('#beClipScale', '#beClipScaleVal', 'scale', v => v / 100, v => v + '%');
   bindClipSlider('#beClipOpacity', '#beClipOpacityVal', 'opacity', v => v / 100, v => v + '%');
 
+  // Velocidade (aba Velocidade do clip). Aplica só na CENA selecionada.
+  $('#beClipSpeed').addEventListener('input', (e) => {
+    const id = store.getState().selected_clip_id;
+    if (id == null) return;
+    const sp = sliderToSpeed(parseInt(e.target.value, 10));
+    $('#beClipSpeedVal').textContent = fmtSpeed(sp);
+    store.dispatch({ ...act.setSpeed('clip', id, sp), gestureId: 'clipspeed-' + id });
+  });
+  $('#beClipSpeed').addEventListener('change', () => store.endGesture());
+  $('#beClipSpeedReset').addEventListener('click', () => {
+    const id = store.getState().selected_clip_id;
+    if (id == null) return;
+    store.dispatch(act.setSpeed('clip', id, 1));
+    $('#beClipSpeed').value = 0; $('#beClipSpeedVal').textContent = '1.00x';
+  });
+  // Velocidade do ÁUDIO selecionado (painel de áudio)
+  $('#beAudioSpeed').addEventListener('input', (e) => {
+    const id = store.getState().selected_audio_id;
+    if (id == null) return;
+    const sp = sliderToSpeed(parseInt(e.target.value, 10));
+    $('#beAudioSpeedVal').textContent = fmtSpeed(sp);
+    store.dispatch({ ...act.setSpeed('audio', id, sp), gestureId: 'audiospeed-' + id });
+  });
+  $('#beAudioSpeed').addEventListener('change', () => store.endGesture());
+
   $('#beZoomIn').addEventListener('click', () => timeline.zoomBy(1.25));
   $('#beZoomOut').addEventListener('click', () => timeline.zoomBy(1 / 1.25));
   $('#beZoomFit').addEventListener('click', () => timeline.zoomFit());
@@ -397,14 +471,24 @@ export function mountEditor(root, store) {
 
   // ── painel de texto (inline no painel de propriedades) ──
   let editingTextId = null;
+  const isCaption = (t) => !!(t && t.caption);
+  const posOf = (y) => Math.abs(y - 0.15) < 0.15 ? '0.15' : Math.abs(y - 0.5) < 0.2 ? '0.5' : '0.82';
   function fillTextPanel(state) {
     const txt = state.texts.find(x => x.id === state.selected_text_id);
-    if (!txt || editingTextId === txt.id) return; // nao sobrescreve enquanto digita
+    if (!txt) return;
+    // caixa "Aplicar a todas as legendas" só faz sentido em legenda
+    $('#beCapApplyAllRow').style.display = isCaption(txt) ? 'flex' : 'none';
+    // sub-aba Legendas (transcrição) só quando há legendas
+    const temCaptions = state.texts.some(t => t.caption);
+    $('#beTextTabCap').style.display = temCaptions ? '' : 'none';
+    if (temCaptions) renderTranscript(state);
+    if (editingTextId === txt.id) return; // nao sobrescreve enquanto digita
     editingTextId = txt.id;
     $('#beTextContent').value = txt.content;
     $('#beTextFont').value = txt.font;
     $('#beTextSize').value = txt.size;
     $('#beTextColor').value = txt.color;
+    $('#beTextPos').value = posOf(txt.y_pct ?? 0.82);
     $('#beTextStart').value = txt.start_sec.toFixed(1);
     $('#beTextEnd').value = txt.end_sec.toFixed(1);
   }
@@ -422,11 +506,29 @@ export function mountEditor(root, store) {
     if (s.selected_text_id != null) store.dispatch(act.deleteText(s.selected_text_id));
     editingTextId = null;
   });
+  // sub-abas Texto | Legendas
+  $('#beTextTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.be-cfg-tab'); if (!btn) return;
+    const tab = btn.dataset.ttab;
+    $('#beTextTabs').querySelectorAll('.be-cfg-tab').forEach(b => b.classList.toggle('active', b === btn));
+    $('#beTextPanel').querySelectorAll('.be-text-tab').forEach(p =>
+      p.style.display = p.dataset.ttab === tab ? 'flex' : 'none');
+    if (tab === 'legendas') renderTranscript(store.getState());
+  });
+
+  // aplica um patch de ESTILO respeitando "Aplicar a todas as legendas"
+  function applyTextStyle(patch) {
+    const s = store.getState();
+    const txt = s.texts.find(x => x.id === s.selected_text_id);
+    if (!txt) return;
+    const all = isCaption(txt) && $('#beCapApplyAll').checked;
+    const targets = all ? s.texts.filter(t => t.caption) : [txt];
+    for (const t of targets) store.dispatch({ ...act.updateText(t.id, patch), gestureId: 'textstyle' });
+    store.endGesture();
+  }
+  // content/start/end são SEMPRE por-faixa (cada legenda tem seu texto/tempo)
   for (const [sel, field, parse] of [
     ['#beTextContent', 'content', v => v],
-    ['#beTextFont', 'font', v => v],
-    ['#beTextSize', 'size', v => v],
-    ['#beTextColor', 'color', v => v],
     ['#beTextStart', 'start_sec', v => parseFloat(v) || 0],
     ['#beTextEnd', 'end_sec', v => parseFloat(v) || 0],
   ]) {
@@ -436,6 +538,54 @@ export function mountEditor(root, store) {
       store.dispatch({ ...act.updateText(s.selected_text_id, { [field]: parse(e.target.value) }), gestureId: 'textpanel-' + s.selected_text_id + '-' + field });
     });
     $(sel).addEventListener('change', () => store.endGesture());
+  }
+  // fonte/tamanho/cor/posição = ESTILO (respeita "aplicar a todas")
+  $('#beTextFont').addEventListener('change', (e) => applyTextStyle({ font: e.target.value }));
+  $('#beTextSize').addEventListener('change', (e) => applyTextStyle({ size: e.target.value }));
+  $('#beTextColor').addEventListener('input', (e) => applyTextStyle({ color: e.target.value }));
+  $('#beTextPos').addEventListener('change', (e) => applyTextStyle({ y_pct: parseFloat(e.target.value) }));
+  // Caixa (TT/tt/Tt): transforma o conteúdo (respeita "aplicar a todas")
+  const caseFns = {
+    upper: (s) => s.toUpperCase(),
+    lower: (s) => s.toLowerCase(),
+    title: (s) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()),
+  };
+  $('#beTextPanel').querySelectorAll('[data-case]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const fn = caseFns[btn.dataset.case];
+      const s = store.getState();
+      const txt = s.texts.find(x => x.id === s.selected_text_id);
+      if (!txt || !fn) return;
+      const all = isCaption(txt) && $('#beCapApplyAll').checked;
+      const targets = all ? s.texts.filter(t => t.caption) : [txt];
+      for (const t of targets) store.dispatch({ ...act.updateText(t.id, { content: fn(t.content) }), gestureId: 'textcase' });
+      store.endGesture();
+      editingTextId = null; // força refill do textarea
+    });
+  });
+
+  // ── transcrição completa (aba Legendas): lista clicável ──
+  function renderTranscript(state) {
+    const list = $('#beTranscriptList');
+    if (!list) return;
+    const caps = state.texts.filter(t => t.caption).slice().sort((a, b) => a.start_sec - b.start_sec);
+    if (!caps.length) { list.innerHTML = '<div class="be-dim">Gere as legendas primeiro (💬 Legendas).</div>'; return; }
+    list.innerHTML = '';
+    caps.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'be-transcript-row' + (t.id === state.selected_text_id ? ' active' : '');
+      const n = document.createElement('span'); n.className = 'be-transcript-n'; n.textContent = (i + 1);
+      const tx = document.createElement('span'); tx.className = 'be-transcript-tx'; tx.textContent = t.content;
+      row.appendChild(n); row.appendChild(tx);
+      row.addEventListener('click', () => {
+        editingTextId = null;
+        store.dispatch(act.selectText(t.id));   // seleciona pra editar
+        player.seek(t.start_sec + 0.01);          // pula pro ponto da fala
+        // volta pra aba Texto pra editar aquele ponto
+        $('#beTextTabs').querySelector('[data-ttab="texto"]').click();
+      });
+      list.appendChild(row);
+    });
   }
 
   // ── audio extra ──
@@ -670,11 +820,14 @@ export function mountEditor(root, store) {
     }
     if (!caps.length) return 0;
 
-    // preserva o estilo atual (se o user ja tinha legendas estilizadas)
+    // usa o estilo ESCOLHIDO no painel (ou preserva o atual se já estilizado)
     const atual = store.getState().texts.find(t => t.caption);
+    const preset = CAP_PRESETS[capChosenPreset] || {};
     const estilo = {
-      font: atual?.font || 'Anton', size: atual?.size || 'medium',
-      color: atual?.color || '#ffffff', y_pct: atual?.y_pct ?? 0.82,
+      font: atual?.font || preset.font || 'Anton',
+      size: atual?.size || preset.size || 'medium',
+      color: atual?.color || preset.color || '#ffffff',
+      y_pct: atual?.y_pct ?? 0.82,
     };
     // UM dispatch: nao rouba a selecao (painel fica), 1 undo, sem freeze
     // com videos longos (300+ palavras = 300 dispatches na versao antiga)
@@ -718,8 +871,22 @@ export function mountEditor(root, store) {
       toast('Legendas: ' + msg, true);
     }
   }
-  $('#beAutoCaptions').addEventListener('click', generateCaptions);
+  // rail "Legendas": ABRE o painel dedicado (escolher estilo ANTES de gerar)
+  $('#beAutoCaptions').addEventListener('click', () => {
+    captionsPanelOpen = !captionsPanelOpen;
+    if (captionsPanelOpen) { store.dispatch(act.selectClip(null)); }
+    sync();
+  });
+  $('#beCapClose').addEventListener('click', () => { captionsPanelOpen = false; sync(); });
   $('#beAutoCaptions2').addEventListener('click', generateCaptions);
+  // cards de MODO (Multilinha / Palavra por palavra) com preview animado
+  $('#beCapModeCards').addEventListener('click', (e) => {
+    const card = e.target.closest('.be-cap-card'); if (!card) return;
+    const mode = card.dataset.mode;
+    $('#beCapModeCards').querySelectorAll('.be-cap-card').forEach(c => c.classList.toggle('active', c === card));
+    $('#beCapMode').value = mode;
+    $('#beCapMode').dispatchEvent(new Event('change'));
+  });
   // trocar o modo REGENERA na hora (sem nova transcricao) se ja ha legendas
   $('#beCapMode').addEventListener('change', () => {
     if (lastCaptionWords && lastCaptionPlan && store.getState().texts.some(t => t.caption)) {
@@ -740,15 +907,48 @@ export function mountEditor(root, store) {
     lima:     { font: 'Bebas Neue', color: '#a3e635', size: 'medium' },
     pop:      { font: 'Anton',      color: '#ff6b9d', size: 'medium' },
   };
-  $('#beCapPreset').addEventListener('change', (e) => {
-    const p = CAP_PRESETS[e.target.value];
-    if (!p) return;
-    applyCapStyle(p);
-    // espelha nos controles individuais
-    $('#beCapSize').value = p.size;
-    $('#beCapColor').value = p.color;
-    toast('Estilo aplicado em todas as legendas ✓');
-  });
+  // grid de estilos com PREVIEW animado (constrói dos presets)
+  const CAP_LABELS = {
+    classico: 'Aa', amarelo: 'Aa', impacto: 'Aa', oswald: 'Aa',
+    neon: 'Aa', lima: 'Aa', pop: 'Aa',
+  };
+  const CAP_NAMES = {
+    classico: 'Clássico', amarelo: 'Amarelo', impacto: 'Impacto', oswald: 'Oswald',
+    neon: 'Neon', lima: 'Lima', pop: 'Pop',
+  };
+  function buildCapStyleGrid() {
+    const grid = $('#beCapStyleGrid');
+    grid.innerHTML = '';
+    for (const [key, p] of Object.entries(CAP_PRESETS)) {
+      const card = document.createElement('button');
+      card.className = 'be-cap-style' + (key === capChosenPreset ? ' active' : '');
+      card.dataset.preset = key;
+      card.title = CAP_NAMES[key];
+      const b = document.createElement('b');
+      b.textContent = CAP_NAMES[key];
+      b.style.color = p.color;
+      b.style.fontFamily = `'${p.font}', 'Anton', Impact, sans-serif`;
+      card.appendChild(b);
+      card.addEventListener('click', () => selectCapPreset(key));
+      grid.appendChild(card);
+    }
+  }
+  function selectCapPreset(key) {
+    capChosenPreset = key;
+    $('#beCapStyleGrid').querySelectorAll('.be-cap-style').forEach(c =>
+      c.classList.toggle('active', c.dataset.preset === key));
+    const p = CAP_PRESETS[key];
+    if (p) {
+      $('#beCapSize').value = p.size;
+      $('#beCapColor').value = p.color;
+      // se já há legendas, aplica na hora
+      if (store.getState().texts.some(t => t.caption)) {
+        applyCapStyle(p);
+        toast('Estilo aplicado ✓');
+      }
+    }
+  }
+  buildCapStyleGrid();
 
   // estilo GLOBAL das legendas: muda uma vez, aplica em todas (CapCut)
   function applyCapStyle(patchObj) {
@@ -802,7 +1002,9 @@ export function mountEditor(root, store) {
       document.removeEventListener('visibilitychange', flushOnHide);
       player.destroy(); overlay.destroy(); pip.destroy(); timeline.destroy();
       autosave.destroy(); exporter.destroy();
-      thumbs?.destroy(); wave?.destroy(); videoWave?.destroy();
+      for (const t of thumbsRegistry.values()) t.destroy();
+      for (const w of videoWaveRegistry.values()) w.destroy();
+      for (const w of waveRegistry.values()) w.destroy();
       if (localPreview.url) URL.revokeObjectURL(localPreview.url);
     },
   };
@@ -835,23 +1037,31 @@ function buildTemplate() {
     <div class="be-dim">MP4, MOV ou WebM · máx 500MB</div>
     <div id="beDropProgress" class="be-progress" style="display:none"><i></i></div>
   </div>
-  <input type="file" id="beFile" multiple accept="video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac" hidden/>
+  <input type="file" id="beFile" multiple accept="video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4,image/png,image/jpeg,image/webp,image/gif,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac,.png,.jpg,.jpeg,.webp,.gif" hidden/>
 </div>
 
 <div id="beWorkspace" class="be-workspace" style="display:none">
 
-  <!-- rail de acoes (CapCut: Midia / Texto / Audio) -->
-  <div class="be-rail">
-    <button id="beAddMedia" class="be-rail-btn" title="Mídias do projeto — importar e ver vídeos/áudios (Ctrl+O importa direto)"><span>🎞</span>Mídia</button>
-    <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
-    <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
-    <button id="beAutoCaptions" class="be-rail-btn" title="Gerar legendas automáticas (IA)"><span>💬</span>Legendas</button>
+  <!-- BIBLIOTECA DE MÍDIA (coluna 1, esquerda — o "vermelho" do CapCut) -->
+  <div class="be-library">
+    <div class="be-rail">
+      <button id="beAddMedia" class="be-rail-btn" title="Importar mídias (Ctrl+O)"><span>🎞</span>Mídia</button>
+      <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
+      <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
+      <button id="beAutoCaptions" class="be-rail-btn" title="Gerar legendas automáticas (IA)"><span>💬</span>Legendas</button>
+    </div>
+    <div class="be-library-body">
+      <button id="beMediaImport" class="be-tool-btn">＋ Importar mídias</button>
+      <div class="be-dim">Vídeos viram takes · áudios entram na faixa · imagens (PNG) viram camada. Arraste aqui ou selecione vários.</div>
+      <div id="beMediaList" class="be-library-list"></div>
+    </div>
   </div>
 
   <!-- preview central -->
   <div class="be-preview-area">
     <div class="be-preview-frame">
       <video id="beVideo" playsinline preload="auto"></video>
+      <video id="beVideo2" playsinline preload="auto" muted class="be-buffering"></video>
       <div id="beOverlay"></div>
     </div>
     <audio id="beAudio" preload="auto"></audio>
@@ -861,15 +1071,8 @@ function buildTemplate() {
     </div>
   </div>
 
-  <!-- painel de propriedades contextual (CapCut right panel) -->
+  <!-- CONFIGURAÇÕES DAS FAIXAS (coluna 2, meio — o "amarelo" do CapCut) -->
   <div class="be-props">
-
-    <div id="bePropsMedia" class="be-props-stack" style="display:none">
-      <div class="be-side-title">🎞 Mídia do projeto <button id="beMediaClose" class="be-tool-btn" style="float:right;padding:1px 8px">✕</button></div>
-      <button id="beMediaImport" class="be-tool-btn">＋ Importar mídias (Ctrl+O)</button>
-      <div class="be-dim">Vídeos viram takes no fim da timeline; áudios entram na faixa de áudio. Pode selecionar vários de uma vez ou arrastar aqui.</div>
-      <div id="beMediaList"></div>
-    </div>
 
     <div id="bePropsProject" class="be-props-stack">
       <div class="be-side-title">Projeto</div>
@@ -889,32 +1092,39 @@ function buildTemplate() {
       <button id="beDetachAudio" class="be-tool-btn" title="Ctrl+Shift+S">🔀 Separar áudio do vídeo</button>
       <div class="be-sep"></div>
       <div class="be-side-title">Legendas</div>
-      <label class="be-dim" style="display:flex;flex-direction:column;gap:3px">Modo
-        <select id="beCapMode">
-          <option value="frase" selected>Frase (multilinha)</option>
-          <option value="palavra">Palavra por palavra (acompanha a fala)</option>
-        </select>
-      </label>
-      <button id="beAutoCaptions2" class="be-tool-btn">💬 Gerar legendas automáticas</button>
-      <div id="beCapStyleRow" style="display:none;flex-direction:column;gap:6px">
-        <label class="be-dim" style="display:flex;flex-direction:column;gap:3px">Estilo
-          <select id="beCapPreset">
-            <option value="">— escolher estilo —</option>
-            <optgroup label="Clássicos">
-              <option value="classico">Branco clássico</option>
-              <option value="amarelo">Amarelo destaque</option>
-            </optgroup>
-            <optgroup label="Impacto">
-              <option value="impacto">Bebas grande</option>
-              <option value="oswald">Oswald forte</option>
-            </optgroup>
-            <optgroup label="Coloridos">
-              <option value="neon">Ciano neon</option>
-              <option value="lima">Verde lima</option>
-              <option value="pop">Rosa pop</option>
-            </optgroup>
-          </select>
-        </label>
+      <div class="be-dim">Abra <b>💬 Legendas</b> na barra lateral pra escolher o estilo e gerar.</div>
+      <div class="be-sep"></div>
+      <div class="be-side-title">Transições</div>
+      <div id="beTransitions" class="be-transitions"></div>
+    </div>
+
+    <!-- PAINEL DEDICADO DE LEGENDAS (escolhe estilo ANTES de transcrever) -->
+    <div id="bePropsCaptions" class="be-props-stack" style="display:none">
+      <div class="be-side-title">💬 Legendas <button id="beCapClose" class="be-tool-btn" style="float:right;padding:1px 8px">✕</button></div>
+      <div class="be-dim">Escolha o modelo, depois gere. A legenda acompanha a fala do seu áudio (o áudio que você gravou tem prioridade).</div>
+
+      <div class="be-side-sub">Modo</div>
+      <div class="be-cap-modes" id="beCapModeCards">
+        <button class="be-cap-card" data-mode="frase">
+          <div class="be-cap-demo demo-multi"><span>sua fala</span><span>em multilinha</span></div>
+          <div class="be-cap-name">Multilinha</div>
+        </button>
+        <button class="be-cap-card active" data-mode="palavra">
+          <div class="be-cap-demo demo-word"><i>palavra</i><i>por</i><i>palavra</i></div>
+          <div class="be-cap-name">Palavra por palavra</div>
+        </button>
+      </div>
+      <select id="beCapMode" style="display:none"><option value="frase">frase</option><option value="palavra" selected>palavra</option></select>
+
+      <div class="be-side-sub">Estilo</div>
+      <div class="be-cap-styles" id="beCapStyleGrid"></div>
+
+      <button id="beAutoCaptions2" class="be-tool-btn be-cap-generate">✨ Gerar legendas automáticas</button>
+
+      <div id="beCapStyleRow" style="display:none;flex-direction:column;gap:8px">
+        <div class="be-sep"></div>
+        <div class="be-side-sub">Ajuste fino</div>
+        <select id="beCapPreset" style="display:none"><option value=""></option></select>
         <div class="be-panel-row">
           <label>Tamanho <select id="beCapSize">
             <option value="small">Pequeno</option>
@@ -930,9 +1140,6 @@ function buildTemplate() {
         </div>
         <button id="beCapDeleteAll" class="be-danger-btn">🗑 Remover todas as legendas</button>
       </div>
-      <div class="be-sep"></div>
-      <div class="be-side-title">Transições</div>
-      <div id="beTransitions" class="be-transitions"></div>
     </div>
 
     <div id="bePropsClip" class="be-props-stack" style="display:none">
@@ -982,7 +1189,11 @@ function buildTemplate() {
         <div class="be-dim">🔊 Volume e efeitos de áudio desta cena — <b>em breve</b>. (Por ora, separe o áudio com Ctrl+Shift+S pra editar na faixa.)</div>
       </div>
       <div class="be-cfg-panel" data-panel="velocidade" style="display:none">
-        <div class="be-dim">⏱ Controle de velocidade (câmera lenta / rápida) — <b>em breve</b>.</div>
+        <label class="be-slider-label">Velocidade <b id="beClipSpeedVal">1.00x</b>
+          <input id="beClipSpeed" type="range" min="-100" max="200" step="1" value="0"/>
+        </label>
+        <div class="be-dim">Arraste pra desacelerar (até 0.10x) ou acelerar (até 100x). Afeta só esta cena — a duração na timeline muda junto.</div>
+        <button id="beClipSpeedReset" class="be-tool-btn">↺ Voltar pra 1.00x</button>
       </div>
       <div class="be-cfg-panel" data-panel="animacao" style="display:none">
         <div class="be-dim">🎬 Animações de entrada/saída — <b>em breve</b>.</div>
@@ -1002,24 +1213,59 @@ function buildTemplate() {
       <div class="be-side-title" id="beAudioPanelTitle">♪ Áudio</div>
       <div class="be-dim">Duração: <span id="beAudioClipDur">–</span> · corte com ✂, arraste pra mover</div>
       <label class="be-slider-label">Volume <input id="beVolSelected" type="range" min="0" max="2" step="0.05" value="1"/></label>
+      <label class="be-slider-label">Velocidade <b id="beAudioSpeedVal">1.00x</b>
+        <input id="beAudioSpeed" type="range" min="-100" max="200" step="1" value="0"/>
+      </label>
       <button id="beAudioItemDelete" class="be-danger-btn">🗑 Excluir áudio</button>
       <div class="be-dim">Delete/Backspace também exclui o item selecionado</div>
     </div>
 
     <div id="beTextPanel" class="be-props-stack" style="display:none">
       <div class="be-panel-head">Texto <button id="beTextClose" class="be-icon-btn">✕</button></div>
-      <textarea id="beTextContent" rows="2" maxlength="200" placeholder="Digite o texto…"></textarea>
-      <div class="be-panel-row">
-        <label>Fonte <select id="beTextFont">${TEXT_FONTS.map(f => `<option>${f}</option>`).join('')}</select></label>
-        <label>Tamanho <select id="beTextSize">${TEXT_SIZES.map(s => `<option value="${s}">${({ small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Gigante' })[s]}</option>`).join('')}</select></label>
+      <!-- sub-abas: Legendas (transcrição) | Texto (formatação) -->
+      <div class="be-cfg-tabs" id="beTextTabs">
+        <button data-ttab="texto" class="be-cfg-tab active">Texto</button>
+        <button data-ttab="legendas" class="be-cfg-tab" id="beTextTabCap">Legendas</button>
       </div>
-      <div class="be-panel-row">
-        <label>Cor <input id="beTextColor" type="color" value="#ffffff"/></label>
-        <label>Início (s) <input id="beTextStart" type="number" min="0" step="0.1"/></label>
-        <label>Fim (s) <input id="beTextEnd" type="number" min="0" step="0.1"/></label>
+
+      <!-- ABA TEXTO: formatação -->
+      <div class="be-text-tab" data-ttab="texto">
+        <label class="be-cap-applyall" id="beCapApplyAllRow" style="display:none">
+          <input type="checkbox" id="beCapApplyAll" checked/> Aplicar a todas as legendas
+        </label>
+        <textarea id="beTextContent" rows="2" maxlength="200" placeholder="Digite o texto…"></textarea>
+        <div class="be-panel-row">
+          <label>Fonte <select id="beTextFont">${TEXT_FONTS.map(f => `<option>${f}</option>`).join('')}</select></label>
+          <label>Tamanho <select id="beTextSize">${TEXT_SIZES.map(s => `<option value="${s}">${({ small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Gigante' })[s]}</option>`).join('')}</select></label>
+        </div>
+        <div class="be-panel-row">
+          <label>Cor <input id="beTextColor" type="color" value="#ffffff"/></label>
+          <label>Caixa
+            <span class="be-btn-group">
+              <button type="button" data-case="upper" title="MAIÚSCULAS">TT</button>
+              <button type="button" data-case="lower" title="minúsculas">tt</button>
+              <button type="button" data-case="title" title="Primeira Maiúscula">Tt</button>
+            </span>
+          </label>
+        </div>
+        <div class="be-panel-row">
+          <label>Posição <select id="beTextPos">
+            <option value="0.82">Embaixo</option>
+            <option value="0.5">Centro</option>
+            <option value="0.15">Em cima</option>
+          </select></label>
+          <label>Início (s) <input id="beTextStart" type="number" min="0" step="0.1"/></label>
+          <label>Fim (s) <input id="beTextEnd" type="number" min="0" step="0.1"/></label>
+        </div>
+        <button id="beTextDelete" class="be-danger-btn">Excluir texto</button>
+        <div class="be-dim">Arraste o texto direto no preview pra posicionar</div>
       </div>
-      <button id="beTextDelete" class="be-danger-btn">Excluir texto</button>
-      <div class="be-dim">Arraste o texto direto no preview pra posicionar</div>
+
+      <!-- ABA LEGENDAS: transcrição completa clicável -->
+      <div class="be-text-tab" data-ttab="legendas" style="display:none">
+        <div class="be-dim">Transcrição completa — clique numa linha pra editar aquele ponto.</div>
+        <div id="beTranscriptList" class="be-transcript"></div>
+      </div>
     </div>
 
   </div>

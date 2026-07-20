@@ -83,6 +83,45 @@ test.describe('upload + documento @smoke', () => {
     expect(pay.clips.at(-1).media_url).toContain('mock-storage');
     expect(pay.clips[0].media_url).toBe(null);         // principal
   });
+
+  test('soltar imagem PNG cria camada de imagem e renderiza <img> no preview', async ({ page }) => {
+    await bootWithVideo(page, { seconds: 2 });
+    // 1x1 PNG transparente (data URL) — rota mock devolve os bytes
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    await page.route('**/mock-storage.test/public/**', (r) => {
+      // serve imagem quando a url tiver .png; senão cai no vídeo (webm) do mock padrão
+      if (r.request().url().includes('.png')) {
+        return r.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'image/png', body: Buffer.from(PNG_B64, 'base64') });
+      }
+      return r.fallback();
+    });
+    // upload-url pra png
+    await page.route('**/api/blue-editor', async (route) => {
+      const body = route.request().postDataJSON() || {};
+      if (body.action === 'upload-url' && body.ext === 'png') {
+        return route.fulfill({ json: { upload_url: 'https://mock-storage.test/upload/img', public_url: 'https://mock-storage.test/public/seta.png', path: 'p/seta.png', bucket: 'blue-videos', expires_in: 900 } });
+      }
+      return route.fallback();
+    });
+    await page.route('**/mock-storage.test/upload/img', (r) => r.fulfill({ status: 200, body: '' }));
+
+    await page.evaluate(async (b64) => {
+      const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const file = new File([bytes], 'seta.png', { type: 'image/png' });
+      const dt = new DataTransfer(); dt.items.add(file);
+      document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }, PNG_B64);
+
+    await expect.poll(async () => (await getState(page)).overlays.length, { timeout: 20000 }).toBe(1);
+    const s = await getState(page);
+    expect(s.overlays[0].kind).toBe('image');
+    expect(s.overlays[0].url).toContain('seta.png');
+    // preview renderiza um <img> dentro do container de overlay
+    await expect.poll(async () =>
+      await page.evaluate(() => document.querySelectorAll('.be-preview-frame img[data-kind="image"]').length)
+    ).toBeGreaterThan(0);
+  });
 });
 
 test.describe('edicao via teclado @smoke', () => {
@@ -450,7 +489,11 @@ test.describe('legendas automaticas @smoke', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
-    await page.selectOption('#beCapMode', 'palavra');
+    // abre o painel dedicado de Legendas (novo fluxo: escolher estilo ANTES)
+    await page.click('#beAutoCaptions');
+    await expect(page.locator('#bePropsCaptions')).toBeVisible();
+    // escolhe o modo "Palavra por palavra" pelo card
+    await page.click('.be-cap-card[data-mode="palavra"]');
     await page.click('#beAutoCaptions2');
 
     await expect.poll(async () => {
@@ -465,13 +508,59 @@ test.describe('legendas automaticas @smoke', () => {
     expect(caps[1].start_sec).toBeCloseTo(0.6, 2);  // acompanha a fala
     expect(errors).toEqual([]);
 
-    // trocar modo pra FRASE regenera SEM nova transcricao
-    await page.selectOption('#beCapMode', 'frase');
+    // trocar modo pra Multilinha (frase) regenera SEM nova transcricao
+    await page.click('.be-cap-card[data-mode="frase"]');
     await expect.poll(async () => {
       const s2 = await getState(page);
       return s2.texts.filter(t => t.caption).length;
     }).toBe(1);
     expect(errors).toEqual([]);
+  });
+
+  test('transcrição clicável seleciona a legenda; "Aplicar a todas" muda cor de TODAS', async ({ page }) => {
+    await bootWithVideo(page, { seconds: 2 });
+    await mockCaptions(page);
+    await page.click('#beAutoCaptions');
+    await page.click('.be-cap-card[data-mode="palavra"]');
+    await page.click('#beAutoCaptions2');
+    await expect.poll(async () => (await getState(page)).texts.filter(t => t.caption).length, { timeout: 10000 }).toBe(3);
+
+    // seleciona a 1ª legenda pra abrir o painel de texto
+    await page.evaluate(() => {
+      const caps = window.__BE__.getState().texts.filter(t => t.caption).sort((a, b) => a.start_sec - b.start_sec);
+      window.__BE__.store.dispatch({ type: 'SELECT_TEXT', textId: caps[0].id });
+    });
+    await expect(page.locator('#beTextPanel')).toBeVisible();
+    await expect(page.locator('#beCapApplyAllRow')).toBeVisible(); // só aparece em legenda
+
+    // aba Legendas mostra a transcrição completa e clicar seleciona a 2ª
+    await page.click('#beTextTabs [data-ttab="legendas"]');
+    const rows = page.locator('.be-transcript-row');
+    await expect(rows).toHaveCount(3);
+    await rows.nth(1).click();
+    let s = await getState(page);
+    const caps = s.texts.filter(t => t.caption).sort((a, b) => a.start_sec - b.start_sec);
+    expect(s.selected_text_id).toBe(caps[1].id); // clicou → selecionou a 2ª
+
+    // "Aplicar a todas" MARCADO: mudar a cor aplica em TODAS as legendas
+    await page.evaluate(() => { document.getElementById('beCapApplyAll').checked = true; });
+    await page.evaluate(() => {
+      const el = document.getElementById('beTextColor');
+      el.value = '#ff0000'; el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    s = await getState(page);
+    const allRed = s.texts.filter(t => t.caption).every(t => t.color === '#ff0000');
+    expect(allRed).toBe(true);
+
+    // DESMARCADO: muda só a selecionada
+    await page.evaluate(() => { document.getElementById('beCapApplyAll').checked = false; });
+    await page.evaluate(() => {
+      const el = document.getElementById('beTextColor');
+      el.value = '#00ff00'; el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    s = await getState(page);
+    const greens = s.texts.filter(t => t.caption && t.color === '#00ff00');
+    expect(greens.length).toBe(1); // só a selecionada
   });
 });
 
@@ -517,5 +606,40 @@ test.describe('agulha + config abas @smoke', () => {
     await page.locator('#beCfgTabs .be-cfg-tab[data-tab="audio"]').click();
     await expect(page.locator('.be-cfg-panel[data-panel="audio"]')).toBeVisible();
     await expect(page.locator('.be-cfg-panel[data-panel="video"]')).toBeHidden();
+  });
+});
+
+test.describe('velocidade @smoke', () => {
+  test('aba Velocidade acelera SÓ a cena selecionada; duração da timeline muda', async ({ page }) => {
+    await bootWithVideo(page, { seconds: 3 });
+    const durAntes = await page.evaluate(() => window.__BE__.player.getDuration());
+
+    await page.evaluate(() => {
+      const st = window.__BE__.getState();
+      window.__BE__.store.dispatch({ type: 'SELECT_CLIP', clipId: st.clips[0].id });
+    });
+    // abre a aba Velocidade
+    await page.locator('#beCfgTabs .be-cfg-tab[data-tab="velocidade"]').click();
+    await expect(page.locator('#beClipSpeed')).toBeVisible();
+
+    // acelera pra 2x (slider log: value 100 -> 10^1 = 10x; value ~30 -> 2x)
+    // usa a API pra precisão do valor e valida o efeito no estado/duração
+    await page.evaluate(() => {
+      const id = window.__BE__.getState().clips[0].id;
+      window.__BE__.store.dispatch({ type: 'SET_SPEED', target: 'clip', id, speed: 2 });
+    });
+    const clip = await page.evaluate(() => window.__BE__.getState().clips[0]);
+    expect(clip.speed).toBe(2);
+    const durDepois = await page.evaluate(() => window.__BE__.player.getDuration());
+    expect(durDepois).toBeLessThan(durAntes - 0.5); // ficou mais curto
+
+    // o slider reflete a velocidade ao reabrir a seleção
+    await page.evaluate(() => window.__BE__.store.dispatch({ type: 'SELECT_CLIP', clipId: null }));
+    await page.evaluate(() => {
+      const id = window.__BE__.getState().clips[0].id;
+      window.__BE__.store.dispatch({ type: 'SELECT_CLIP', clipId: id });
+    });
+    const label = await page.locator('#beClipSpeedVal').textContent();
+    expect(label).toBe('2.00x');
   });
 });

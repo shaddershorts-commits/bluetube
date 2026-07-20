@@ -25,8 +25,9 @@ export function attachResizers(root, onResize) {
     sizes.propsW = Math.min(maxProps, Math.max(220, sizes.propsW));
     sizes.tlH = Math.min(maxTl, Math.max(120, sizes.tlH));
     if (isDesktop()) {
-      // inline SO no desktop — no mobile sobrescreveria o media query
-      ws.style.gridTemplateColumns = `64px ${sizes.propsW}px minmax(0, 1fr)`;
+      // inline SO no desktop — no mobile sobrescreveria o media query.
+      // col1 = biblioteca de mídia (232px), col2 = config (ajustável), col3 = preview
+      ws.style.gridTemplateColumns = `232px ${sizes.propsW}px minmax(0, 1fr)`;
       timelineWrap.style.height = sizes.tlH + 'px';
     } else {
       ws.style.gridTemplateColumns = '';

@@ -4,20 +4,23 @@
 
 const THUMB_W = 64, THUMB_H = 56;
 
-export function createThumbnails(videoEl, duration, onReady) {
+export function createThumbnails(src, duration, onReady) {
   const frames = new Map(); // sec(int) -> canvas
   const strips = new Map(); // cacheKey -> canvas
   let cancelled = false;
+  // aceita URL direto (multi-take) OU um <video> (compat). Cada fonte de midia
+  // tem sua propria instancia, entao o take mostra os frames DELE.
+  const url = typeof src === 'string' ? src : (src?.currentSrc || src?.src);
 
   async function extract() {
-    if (!videoEl || !duration) return;
+    if (!url || !duration) return;
     // 1 frame a cada ~2s, max 60 frames
     const step = Math.max(2, duration / 60);
     const grabber = document.createElement('video');
     grabber.crossOrigin = 'anonymous';
     grabber.muted = true;
     grabber.preload = 'auto';
-    grabber.src = videoEl.currentSrc || videoEl.src;
+    grabber.src = url;
     try {
       await once(grabber, 'loadedmetadata', 15000);
       for (let t = 0.1; t < duration && !cancelled; t += step) {

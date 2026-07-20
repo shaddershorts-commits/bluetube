@@ -13,13 +13,25 @@ export function totalDuration(state) {
   return effectiveClips(state).reduce((acc, c) => acc + clipDuration(state, c), 0);
 }
 
+// ── VELOCIDADE (user 2026-07-20): faixa acelerada/desacelerada ocupa menos/
+// mais tempo na timeline. speed=2 => metade da duracao; speed=0.5 => dobro.
+// Missing = 1.0 (retrocompat). Toda conversao tempo virtual<->arquivo passa
+// por aqui, entao velocidade fica consistente em player/render/export.
+export const clipSpeed = (c) => (c && c.speed > 0 ? c.speed : 1);
+/** duracao NA TIMELINE de um clip de video (span do arquivo / velocidade).
+ *  Cena CONGELADA (Congelar): duracao livre (freeze_dur), independe do arquivo. */
+export const clipTimelineDur = (c) =>
+  c.frozen ? (c.freeze_dur || 3) : (c.source_out - c.source_in) / clipSpeed(c);
+/** duracao NA TIMELINE de um clip de audio */
+export const audioTimelineDur = (a) => (a.source_out - a.source_in) / clipSpeed(a);
+
 /** Duracao REPRODUZIVEL da timeline: video OU audio, o que terminar depois.
  *  Sem isso, projeto so-audio (ou com a faixa de video excluida) tinha
  *  duracao 0 e o play nunca andava (bug user 2026-07-20). */
 export function playableDuration(state) {
   let total = totalDuration(state);
   for (const a of effectiveAudioClips(state)) {
-    total = Math.max(total, a.start + (a.source_out - a.source_in));
+    total = Math.max(total, a.start + audioTimelineDur(a));
   }
   return total;
 }
@@ -35,7 +47,7 @@ export function timelineSegments(state) {
       const comp = (state.compounds || []).find(k => k.id === clip.compound_id);
       const t0 = t;
       for (const sub of (comp?.clips || []).filter(x => x.active !== false)) {
-        const dur = sub.source_out - sub.source_in;
+        const dur = clipTimelineDur(sub);
         segs.push({ clip: sub, tStart: t, tEnd: t + dur, compoundId: clip.compound_id });
         t += dur;
       }
@@ -43,7 +55,7 @@ export function timelineSegments(state) {
       // o bloco ocupa a duracao total — o trecho sem video toca preto+audio
       t = t0 + compoundDuration(comp);
     } else {
-      const dur = clip.source_out - clip.source_in;
+      const dur = clipTimelineDur(clip);
       segs.push({ clip, tStart: t, tEnd: t + dur });
       t += dur;
     }
@@ -57,9 +69,9 @@ export function timelineSegments(state) {
 export function compoundDuration(comp) {
   if (!comp) return 0;
   let total = (comp.clips || []).filter(x => x.active !== false)
-    .reduce((a, x) => a + (x.source_out - x.source_in), 0);
+    .reduce((a, x) => a + clipTimelineDur(x), 0);
   for (const a of (comp.audio_clips || []).filter(x => x.active !== false)) {
-    total = Math.max(total, a.start + (a.source_out - a.source_in));
+    total = Math.max(total, a.start + audioTimelineDur(a));
   }
   for (const x of (comp.texts || []).filter(x => x.active !== false)) {
     total = Math.max(total, x.end_sec);
@@ -75,7 +87,7 @@ export function clipDuration(state, c) {
   if (c.compound_id) {
     return compoundDuration((state.compounds || []).find(k => k.id === c.compound_id));
   }
-  return c.source_out - c.source_in;
+  return clipTimelineDur(c);
 }
 
 /** Itens da MAIN track pro layout/render: compound = 1 bloco. */
@@ -197,7 +209,12 @@ export function mediaUrlFor(state, item) {
 export function timelineToSource(state, t) {
   for (const seg of timelineSegments(state)) {
     if (t >= seg.tStart && t < seg.tEnd + 1e-9) {
-      return seg.clip.source_in + (t - seg.tStart);
+      const c = seg.clip;
+      if (c.frozen) return c.freeze_src || 0;         // cena congelada = 1 frame
+      const off = (t - seg.tStart) * clipSpeed(c);
+      // Reverso: a timeline anda pra frente, o arquivo anda pra TRÁS
+      return c.reversed ? Math.max(c.source_in, c.source_out - off)
+                        : c.source_in + off;
     }
   }
   return null;
@@ -208,7 +225,7 @@ export function timelineToSource(state, t) {
 export function sourceToTimeline(state, s) {
   for (const seg of timelineSegments(state)) {
     if (s >= seg.clip.source_in - 1e-9 && s <= seg.clip.source_out + 1e-9) {
-      return seg.tStart + (s - seg.clip.source_in);
+      return seg.tStart + (s - seg.clip.source_in) / clipSpeed(seg.clip);
     }
   }
   return null;
@@ -259,6 +276,11 @@ export function exportPayload(state) {
     // aba Vídeo > Básico (escala/opacidade da cena) — Railway aplica no render
     scale: Math.round((seg.clip.scale ?? 1) * 100) / 100,
     opacity: Math.round((seg.clip.opacity ?? 1) * 100) / 100,
+    speed: Math.round(clipSpeed(seg.clip) * 1000) / 1000, // aba Velocidade
+    // menu Editar: congelar / reverso / espelhar (Railway aplica no render)
+    ...(seg.clip.frozen ? { frozen: true, freeze_src: round3(seg.clip.freeze_src || 0), freeze_dur: round3(clipTimelineDur(seg.clip)) } : {}),
+    ...(seg.clip.reversed ? { reversed: true } : {}),
+    ...(seg.clip.mirrored ? { mirrored: true } : {}),
   }));
   return {
     version: 1,
@@ -285,10 +307,13 @@ export function exportPayload(state) {
       source_in: round3(a.source_in),
       source_out: round3(a.source_out),
       volume: a.volume ?? 1,
+      speed: Math.round(clipSpeed(a) * 1000) / 1000, // atempo no Railway
     })),
     // camadas overlay (render: filter overlay + scale + enable window)
     overlays: effectiveOverlays(state).map(o => ({
       source_in: round3(o.source_in), source_out: round3(o.source_out),
+      // imagem PNG (sticker/seta/círculo com transparência) vs camada de vídeo
+      ...(o.kind === 'image' ? { kind: 'image', image_url: o.url } : {}),
       media_url: o.media_id != null ? mediaUrlFor(state, o) : null,
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),

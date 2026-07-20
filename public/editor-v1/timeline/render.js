@@ -26,6 +26,25 @@ const COLORS = {
   audioBorder: 'rgba(34,197,94,.5)',
 };
 
+// cache de <img> das camadas de imagem (thumbnail na timeline). Só pra
+// DISPLAY (canvas pode ficar "tainted" — nunca lemos os pixels de volta).
+const _imgCache = new Map(); // url -> { img, loaded }
+let _imgRedraw = null;
+export function setImageRedraw(fn) { _imgRedraw = fn; }
+function imageThumb(url) {
+  if (!url) return null;
+  let e = _imgCache.get(url);
+  if (!e) {
+    const img = new Image();
+    e = { img, loaded: false };
+    img.onload = () => { e.loaded = true; _imgRedraw?.(); };
+    img.onerror = () => {};
+    img.src = url;
+    _imgCache.set(url, e);
+  }
+  return e.loaded ? e.img : null;
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   let raf = 0;
@@ -88,6 +107,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
     // Preview de trim (estilo CapCut): a borda arrastada segue o cursor.
     // Nada foi comitado no store ainda — só geometria visual deste frame.
+    const isFrozenResize = fsm?.name === 'resizing-frozen' && fsm.clipId === c.clipId;
     let cx0 = c.x, cw = c.w, srcIn = c.sourceIn, srcOut = c.sourceOut;
     if (isTrimming) {
       const pps = layout.vp.pxPerSec;
@@ -102,6 +122,11 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
         srcOut = fsm.previewSource;
       }
     }
+    if (isFrozenResize) {
+      const pps = layout.vp.pxPerSec;
+      if (fsm.edge === 'out') cw = fsm.previewDur * pps;
+      else { cx0 = c.x + (c.w - fsm.previewDur * pps); cw = fsm.previewDur * pps; }
+    }
     if (cx0 + cw < 0 || cx0 > W) continue;
 
     roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -109,14 +134,15 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.fill();
 
     // CapCut-style: thumbnails em cima + strip de waveform do audio DO VIDEO
-    // embaixo (some quando o audio foi destacado com Ctrl+Shift+S)
-    const waveH = (layout.clipWaveform && videoWave?.ready()) ? 14 : 0;
+    // embaixo. Cada clip usa a miniatura/waveform DA SUA fonte (principal OU
+    // take importado) — lookup por c.mediaId (null = 'main').
+    const th = thumbs?.get ? thumbs.get(c.mediaId) : thumbs;
+    const vw = videoWave?.get ? videoWave.get(c.mediaId) : videoWave;
+    const waveH = (layout.clipWaveform && vw?.ready?.()) ? 14 : 0;
     const thumbH = c.h - waveH;
 
-    // thumbnails (bitmap cacheado por clip) — takes extras nao usam os thumbs
-    // do video principal (seria o frame errado); ganham slab com o nome
-    if (thumbs && c.mediaId == null) {
-      const strip = thumbs.getStrip(srcIn, srcOut, cw, thumbH);
+    if (th) {
+      const strip = th.getStrip(srcIn, srcOut, cw, thumbH);
       if (strip) {
         ctx.save();
         roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -128,7 +154,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
     if (waveH > 0) {
-      const wbmp = videoWave.getSlice(srcIn, srcOut, cw, waveH);
+      const wbmp = vw.getSlice(srcIn, srcOut, cw, waveH);
       if (wbmp) {
         ctx.save();
         roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -141,15 +167,31 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
 
     if (c.mediaId != null) {
-      // take extra: slab colorido + nome do arquivo
+      // take importado: tag do nome no topo (a miniatura já mostra os frames)
       ctx.save();
       roundRect(ctx, cx0, c.y, cw, c.h, 6);
       ctx.clip();
-      ctx.fillStyle = 'rgba(30, 120, 90, .45)';
-      ctx.fillRect(cx0, c.y, cw, c.h);
+      ctx.fillStyle = 'rgba(10, 40, 30, .7)';
+      ctx.fillRect(cx0, c.y, cw, 13);
       ctx.fillStyle = '#dff5ec';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText('🎞 ' + (c.mediaName || 'take'), cx0 + 6, c.y + 4);
+      ctx.fillText('🎞 ' + (c.mediaName || 'take'), cx0 + 5, c.y + 3);
+      ctx.restore();
+    }
+    if (c.frozen || c.reversed || c.mirrored) {
+      // badges dos efeitos do menu Editar
+      const badges = [];
+      if (c.frozen) badges.push('❄ congelado');
+      if (c.reversed) badges.push('◀ reverso');
+      if (c.mirrored) badges.push('⇄ espelho');
+      ctx.save();
+      roundRect(ctx, cx0, c.y, cw, c.h, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.fillRect(cx0, c.y + c.h - 13, cw, 13);
+      ctx.fillStyle = '#cfe8ff';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText(badges.join('  '), cx0 + 5, c.y + c.h - 11);
       ctx.restore();
     }
     if (c.isCompound) {
@@ -181,6 +223,34 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(`${dur.toFixed(1)}s`, cx0 + 6, c.y + c.h - 12);
     }
+  }
+
+  // ── FANTASMA da nova camada (arrastando clip pra cima pra criar overlay) ──
+  if (fsm?.name === 'dragging-clip' && fsm.lifting && fsm.liftX != null) {
+    const c = layout.clips.find(k => k.clipId === fsm.clipId);
+    const gw = c ? c.w : 80;
+    const gx = fsm.liftX - gw / 2;
+    // encaixa na row de lane sob o cursor (ou logo acima do topo)
+    const rows = layout.laneRows || [];
+    let gy = fsm.liftY - (c ? c.h : 40) / 2;
+    let laneLabel = 'nova camada';
+    for (const r of rows) {
+      if (fsm.liftY >= r.y - 6 && fsm.liftY <= r.y + r.h + 6) { gy = r.y; laneLabel = 'camada ' + r.lane; break; }
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    roundRect(ctx, gx, gy, gw, (c ? c.h : 40), 6);
+    ctx.fillStyle = 'rgba(120, 90, 200, .5)';
+    ctx.fill();
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = '#a97fee';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.fillText('⬆ ' + laneLabel, gx + 6, gy + 5);
+    ctx.restore();
   }
 
   // ── ghosts (desativados) ──
@@ -238,14 +308,27 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
     if (ox + ow < 0 || ox > W) continue;
     roundRect(ctx, ox, o.y, ow, o.h, 5);
-    ctx.fillStyle = '#3b2a63';
+    ctx.fillStyle = o.isImage ? '#2a3b63' : '#3b2a63';
     ctx.fill();
-    if (thumbs) {
-      const strip = thumbs.getStrip(sI, sO, ow, o.h);
-      if (strip) {
+    if (o.isImage) {
+      // camada de IMAGEM: thumbnail do PNG (cacheado por url)
+      const bmp = imageThumb(o.imageUrl);
+      if (bmp) {
         ctx.save(); roundRect(ctx, ox, o.y, ow, o.h, 5); ctx.clip();
-        ctx.globalAlpha = 0.8; ctx.drawImage(strip, ox, o.y, ow, o.h);
+        // desenha a imagem repetida/contida (mostra que é sticker)
+        const iw = Math.min(ow, o.h * (bmp.width / bmp.height || 1));
+        ctx.globalAlpha = 0.9; ctx.drawImage(bmp, ox + 2, o.y + 2, Math.max(8, iw - 4), o.h - 4);
         ctx.globalAlpha = 1; ctx.restore();
+      }
+    } else {
+      const ovTh = thumbs?.get ? thumbs.get(o.mediaId) : thumbs;
+      if (ovTh) {
+        const strip = ovTh.getStrip(sI, sO, ow, o.h);
+        if (strip) {
+          ctx.save(); roundRect(ctx, ox, o.y, ow, o.h, 5); ctx.clip();
+          ctx.globalAlpha = 0.8; ctx.drawImage(strip, ox, o.y, ow, o.h);
+          ctx.globalAlpha = 1; ctx.restore();
+        }
       }
     }
     roundRect(ctx, ox, o.y, ow, o.h, 5);
@@ -259,7 +342,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     if (ow > 50) {
       ctx.fillStyle = 'rgba(232,244,255,.8)';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText('⧉ camada ' + (o.lane || 1), ox + 6, o.y + 3);
+      ctx.fillText((o.isImage ? '🖼 imagem ' : '⧉ camada ') + (o.lane || 1), ox + 6, o.y + 3);
     }
   }
 

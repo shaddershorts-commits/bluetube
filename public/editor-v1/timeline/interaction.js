@@ -119,6 +119,18 @@ export function transition(fsm, ev, ctx) {
         const c = ctx.layout.clips.find(k => k.clipId === hit.clipId);
         if (!c) return { next: fsm, effects: fx };
         fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        // cena CONGELADA: arrastar a borda estica/encolhe a duração (freeze_dur),
+        // não corta o arquivo (é 1 frame). Estado dedicado.
+        if (c.frozen) {
+          return {
+            next: {
+              name: 'resizing-frozen', clipId: hit.clipId,
+              edge: hit.type === 'trim-in' ? 'in' : 'out',
+              tStart: c.tStart, tEnd: c.tEnd, previewDur: c.tEnd - c.tStart,
+            },
+            effects: fx,
+          };
+        }
         const edge = hit.type === 'trim-in' ? 'in' : 'out';
         return {
           next: {
@@ -313,24 +325,29 @@ export function transition(fsm, ev, ctx) {
     case 'dragging-clip': {
       if (ev.kind === 'move') {
         // arrastar pra CIMA da track principal = criar camada (CapCut).
-        // A ALTURA do drop decide a lane (row existente ou nova acima do topo)
-        if (ev.y != null && ctx.layout.yVideo - ev.y > 30) {
-          const atT = Math.max(0, xToTime(ctx.layout.vp, ev.x));
-          fx.push({ do: 'end-gesture' });
-          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT, y: ev.y });
-          fx.push({ do: 'set-cursor', cursor: 'default' });
-          return { next: idle(), effects: fx };
+        // FLUIDO: NÃO converte no meio do arrasto — mostra um FANTASMA da nova
+        // camada seguindo o cursor; a conversão acontece só ao SOLTAR (user
+        // 2026-07-20: "quero ver a faixa sendo criada na hora que arrasto").
+        const lifting = ev.y != null && ctx.layout.yVideo - ev.y > 24;
+        if (lifting) {
+          fx.push({ do: 'set-cursor', cursor: 'grabbing' });
+          return { next: { ...fsm, lifting: true, liftX: ev.x, liftY: ev.y }, effects: fx };
         }
-        // live reorder: calcula indice alvo e dispatcha MOVE_CLIP coalescido
+        // de volta na track principal: reordena (MOVE_CLIP coalescido) + ghost
         const target = dropIndexAt(ctx.layout, ev.x, fsm.clipId);
         if (target != null) {
           fx.push({ do: 'dispatch', action: { ...act.moveClip(fsm.clipId, target.arrayIndex), gestureId: fsm.gestureId } });
         }
         fx.push({ do: 'autoscroll-edge', x: ev.x });
-        return { next: fsm, effects: fx };
+        return { next: { ...fsm, lifting: false, liftX: ev.x, liftY: ev.y }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'end-gesture' });
+        if (fsm.lifting) {
+          // solta em cima = cria a camada na posição/altura do drop
+          const atT = Math.max(0, xToTime(ctx.layout.vp, fsm.liftX ?? ev.x));
+          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT, y: fsm.liftY ?? ev.y });
+        }
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };
       }
@@ -368,6 +385,23 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'dispatch', action: act.trimClip(fsm.clipId, fsm.edge, fsm.previewSource) });
         }
         fx.push({ do: 'show-snap', active: false });
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'resizing-frozen': {
+      if (ev.kind === 'move') {
+        const vpT = xToTime(ctx.layout.vp, ev.x);
+        let dur;
+        if (fsm.edge === 'out') dur = vpT - fsm.tStart;          // borda direita
+        else dur = fsm.tEnd - vpT;                                // borda esquerda
+        dur = Math.max(MIN_CLIP_DURATION, Math.min(60, dur));
+        return { next: { ...fsm, previewDur: dur }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'dispatch', action: act.setFreezeDur(fsm.clipId, fsm.previewDur) });
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };
       }
