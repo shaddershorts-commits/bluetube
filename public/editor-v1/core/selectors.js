@@ -141,6 +141,49 @@ export function effectiveOverlays(state) {
   return out;
 }
 
+/** Plano de transcricao pra legendas automaticas: escolhe a fonte de audio
+ *  REAL do projeto e devolve { url, segments:[{tStart,fileIn,fileOut}] } onde
+ *  tStart e tempo VIRTUAL e fileIn/fileOut sao tempos DENTRO do arquivo (url).
+ *  Prioridade (user 2026-07-20):
+ *   1) audio proprio do editor (kind 'extra') — a narracao gravada por ele
+ *   2) audio do video, SE nao foi separado/removido
+ *   3) audio do video ja separado (kind 'video'), se ainda existe
+ *   null = nao ha voz pra transcrever (nunca gera "legenda fantasma"). */
+export function captionAudioPlan(state) {
+  const audios = effectiveAudioClips(state);
+  const extras = audios.filter(a => a.kind !== 'video' && a.url);
+  const detachedVid = audios.filter(a => a.kind === 'video');
+
+  const planFor = (list, urlOf) => {
+    const byUrl = new Map();
+    for (const a of list) {
+      const url = urlOf(a);
+      if (!url) continue;
+      if (!byUrl.has(url)) byUrl.set(url, []);
+      byUrl.get(url).push({ tStart: a.start, fileIn: a.source_in, fileOut: a.source_out });
+    }
+    let best = null, bestCov = -1;
+    for (const [url, segments] of byUrl) {
+      const cov = segments.reduce((s, x) => s + (x.fileOut - x.fileIn), 0);
+      if (cov > bestCov) { bestCov = cov; best = { url, segments }; }
+    }
+    return best;
+  };
+
+  // 1) narracao propria do editor tem prioridade
+  if (extras.length) return planFor(extras, a => a.url);
+  // 2) audio do video principal (nao separado) — segmentos = clips do principal
+  if (!state.audio_detached && state.video?.url) {
+    const segs = timelineSegments(state)
+      .filter(s => s.clip.media_id == null)  // takes tem audio proprio, fora do escopo
+      .map(s => ({ tStart: s.tStart, fileIn: s.clip.source_in, fileOut: s.clip.source_out }));
+    return segs.length ? { url: state.video.url, segments: segs } : null;
+  }
+  // 3) audio do video ja separado mas ainda presente
+  if (detachedVid.length && state.video?.url) return planFor(detachedVid, () => state.video.url);
+  return null;
+}
+
 /** URL da midia de um clip/overlay: media_id -> pool; sem media_id -> video
  *  principal. null se nao resolver (pool corrompido). */
 export function mediaUrlFor(state, item) {
@@ -213,6 +256,9 @@ export function exportPayload(state) {
     source_out: round3(seg.clip.source_out),
     // multi-take: Railway baixa cada fonte distinta (null = video principal)
     media_url: seg.clip.media_id != null ? mediaUrlFor(state, seg.clip) : null,
+    // aba Vídeo > Básico (escala/opacidade da cena) — Railway aplica no render
+    scale: Math.round((seg.clip.scale ?? 1) * 100) / 100,
+    opacity: Math.round((seg.clip.opacity ?? 1) * 100) / 100,
   }));
   return {
     version: 1,

@@ -99,15 +99,16 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'clear-selection' });
           return { next: { name: 'panning', x0: ev.x, scrollX0: ctx.layout.vp.scrollX }, effects: fx };
         }
-        if ((ev.detail || 1) >= 2) {
-          // DUPLO clique no vazio segurando: o ponteiro SEGUE o mouse
+        if (ev.double || (ev.detail || 1) >= 2) {
+          // DUPLO clique no vazio segurando: a agulha vai pro mouse e SEGUE
           // enquanto o botao estiver pressionado (user 2026-07-20)
           fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
           return { next: { name: 'scrubbing' }, effects: fx };
         }
-        // Mouse no vazio: CLIQUE = seek+desseleciona (decidido no up);
-        // ARRASTO = seletor retangular (marquee, como a area de trabalho do
-        // Windows) — user 2026-07-20.
+        // Mouse no vazio: CLIQUE (1x) = a agulha vai pro mouse na hora
+        // (decidido no up); ARRASTO = seletor retangular (marquee).
+        // Seek IMEDIATO no down tambem, pra resposta instantanea.
+        fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
         return { next: { name: 'armed-empty', x0: ev.x, y0: ev.y }, effects: fx };
       }
       if (hit.type === 'ghost') {

@@ -4,7 +4,7 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, sourceToTimeline } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
 import { formatTime, METRICS } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
@@ -56,6 +56,7 @@ export function mountEditor(root, store) {
   // preview local do arquivo recem-enviado (playback instantaneo pre-CDN)
   const localPreview = { url: null, for: null };
   let mediaPanelOpen = false; // painel 🎞 Mídia (pool do projeto)
+  let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
@@ -99,6 +100,7 @@ export function mountEditor(root, store) {
 
     renderTransitionsRow(state);
     syncPropsPanel(state);
+    applyClipTransform();
     $('#beCapStyleRow').style.display = state.texts.some(t => t.caption) ? 'flex' : 'none';
   }
   store.subscribe(sync);
@@ -107,7 +109,23 @@ export function mountEditor(root, store) {
     $('#beTimeLabel').textContent = `${formatTime(player.getTime())} / ${formatTime(totalDuration(state))}`;
     $('#bePlayBtn').textContent = player.isPlaying() ? '⏸' : '▶';
     if (player.isPlaying()) timeline.followPlayhead();
+    applyClipTransform();
   });
+
+  // WYSIWYG da aba Vídeo > Básico: aplica escala + opacidade da cena SOB o
+  // playhead no <video> do preview (compound = transform do bloco inteiro).
+  function applyClipTransform() {
+    const state = store.getState();
+    const t = player.getTime();
+    const it = mainTrackItems(state).find(x => t >= x.tStart && t < x.tEnd);
+    const clip = it?.clip;
+    const scale = clip?.scale ?? 1;
+    const opacity = clip?.opacity ?? 1;
+    const tf = scale !== 1 ? `scale(${scale})` : '';
+    if (videoEl.style.transform !== tf) videoEl.style.transform = tf;
+    const op = String(opacity);
+    if (videoEl.style.opacity !== op) videoEl.style.opacity = op;
+  }
 
   // ── painel de propriedades CONTEXTUAL (estilo CapCut) ──
   // nada selecionado -> propriedades do projeto
@@ -138,9 +156,22 @@ export function mountEditor(root, store) {
     if (showClip) {
       const clip = state.clips.find(c => c.id === state.selected_clip_id);
       if (clip) {
-        $('#beClipDur').textContent = `${(clip.source_out - clip.source_in).toFixed(1)}s`;
+        const it = mainTrackItems(state).find(x => x.clip.id === clip.id);
+        const dur = it ? it.tEnd - it.tStart : (clip.source_out - clip.source_in);
+        $('#beClipDur').textContent = `${dur.toFixed(1)}s`;
         $('#beToggleClip2').textContent = clip.active === false ? '◉ Reativar cena' : '◌ Desativar cena';
+        // sliders da aba Vídeo>Básico: só refila ao TROCAR de cena (não
+        // sobrescreve enquanto o user arrasta o slider)
+        if (filledClipId !== clip.id) {
+          filledClipId = clip.id;
+          const sc = Math.round((clip.scale ?? 1) * 100);
+          const op = Math.round((clip.opacity ?? 1) * 100);
+          $('#beClipScale').value = sc; $('#beClipScaleVal').textContent = sc + '%';
+          $('#beClipOpacity').value = op; $('#beClipOpacityVal').textContent = op + '%';
+        }
       }
+    } else {
+      filledClipId = null;
     }
     // botao "separar audio" so faz sentido antes do detach
     $('#beDetachAudio').style.display = state.audio_detached ? 'none' : 'block';
@@ -320,6 +351,39 @@ export function mountEditor(root, store) {
   $('#beDelClip').addEventListener('click', doDeleteClip);
   $('#beToggleClip2').addEventListener('click', doToggleClip);
   $('#beDelClip2').addEventListener('click', doDeleteClip);
+
+  // ── painel de config com abas (Vídeo>Básico: Escala + Opacidade) ──
+  // troca de aba de topo (Vídeo/Áudio/Velocidade/Animação/Ajuste)
+  $('#beCfgTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.be-cfg-tab'); if (!btn) return;
+    const tab = btn.dataset.tab;
+    $('#beCfgTabs').querySelectorAll('.be-cfg-tab').forEach(b => b.classList.toggle('active', b === btn));
+    $('#bePropsClip').querySelectorAll('.be-cfg-panel').forEach(p =>
+      p.style.display = p.dataset.panel === tab ? 'flex' : 'none');
+  });
+  // troca de sub-aba dentro de Vídeo (Básico/Remover fundo/Mascarar/Retoque)
+  $('#beCfgSubtabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.be-cfg-subtab'); if (!btn) return;
+    const sub = btn.dataset.sub;
+    $('#beCfgSubtabs').querySelectorAll('.be-cfg-subtab').forEach(b => b.classList.toggle('active', b === btn));
+    $('#bePropsClip').querySelectorAll('.be-cfg-sub').forEach(p =>
+      p.style.display = p.dataset.sub === sub ? 'flex' : 'none');
+  });
+  // Escala + Opacidade: coalesce por gesto (1 undo por arraste), aplica ao vivo
+  const bindClipSlider = (sel, valSel, field, toModel, toLabel) => {
+    $(sel).addEventListener('input', (e) => {
+      const id = store.getState().selected_clip_id;
+      if (id == null) return;
+      const raw = parseInt(e.target.value, 10);
+      $(valSel).textContent = toLabel(raw);
+      store.dispatch({ ...act.setClipTransform(id, { [field]: toModel(raw) }), gestureId: 'clip-' + field + '-' + id });
+      applyClipTransform();
+    });
+    $(sel).addEventListener('change', () => store.endGesture());
+  };
+  bindClipSlider('#beClipScale', '#beClipScaleVal', 'scale', v => v / 100, v => v + '%');
+  bindClipSlider('#beClipOpacity', '#beClipOpacityVal', 'opacity', v => v / 100, v => v + '%');
+
   $('#beZoomIn').addEventListener('click', () => timeline.zoomBy(1.25));
   $('#beZoomOut').addEventListener('click', () => timeline.zoomBy(1 / 1.25));
   $('#beZoomFit').addEventListener('click', () => timeline.zoomFit());
@@ -558,13 +622,29 @@ export function mountEditor(root, store) {
   $('#beCompoundExit').addEventListener('click', exitCompound);
 
   // ── legendas automaticas (CapCut auto captions) ──
-  // words da ultima transcricao ficam em memoria: trocar o MODO nao paga
-  // nova transcricao (regenera local a partir das palavras).
+  // words da ultima transcricao + o PLANO de audio usado (qual fonte e como
+  // mapear file-time -> timeline) ficam em memoria: trocar o MODO nao paga
+  // nova transcricao.
   let lastCaptionWords = null;
   let lastCaptionPhrases = null;
+  let lastCaptionPlan = null;   // { url, segments:[{tStart,fileIn,fileOut}] }
+  let lastCaptionKey = null;    // url transcrita (invalidar quando a fonte muda)
+
+  // file-time (dentro do arquivo transcrito) -> tempo VIRTUAL da timeline,
+  // via os segmentos do plano. null se a fala caiu num trecho cortado.
+  function fileToTimeline(ft, segments) {
+    for (const s of segments) {
+      if (ft >= s.fileIn - 1e-6 && ft <= s.fileOut + 1e-6) {
+        return s.tStart + (ft - s.fileIn);
+      }
+    }
+    return null;
+  }
 
   function aplicarLegendas(mode) {
     const words = lastCaptionWords || [];
+    const segments = lastCaptionPlan?.segments || [];
+    if (!segments.length) return 0;
     const brutos = mode === 'palavra'
       // PALAVRA POR PALAVRA: cada palavra com o timestamp REAL da fala —
       // a legenda acompanha a narração exatamente (pedido do user)
@@ -577,22 +657,21 @@ export function mountEditor(root, store) {
       : (lastCaptionPhrases || []);
     if (!brutos.length) return 0;
 
-    const state = store.getState();
-    // Whisper devolve tempos do ARQUIVO original; a timeline pode ter cortes/
-    // reordenacao. Mapear fonte->timeline mantem a legenda em cima da fala
-    // mesmo depois de editar (palavras em trechos cortados somem).
+    // Whisper devolve tempos DO ARQUIVO transcrito; mapeia pra timeline pelo
+    // plano (funciona pra audio proprio do editor OU audio do video, e
+    // respeita cortes — fala num trecho removido some).
     const caps = [];
     for (const c of brutos) {
-      const ts = sourceToTimeline(state, c.start);
-      if (ts == null) continue; // fala num trecho removido
-      const te = sourceToTimeline(state, c.end);
+      const ts = fileToTimeline(c.start, segments);
+      if (ts == null) continue;
+      const te = fileToTimeline(c.end, segments);
       const dur = te != null && te > ts ? te - ts : Math.max(0.25, c.end - c.start);
       caps.push({ text: c.text, start: ts, end: ts + dur });
     }
     if (!caps.length) return 0;
 
     // preserva o estilo atual (se o user ja tinha legendas estilizadas)
-    const atual = state.texts.find(t => t.caption);
+    const atual = store.getState().texts.find(t => t.caption);
     const estilo = {
       font: atual?.font || 'Anton', size: atual?.size || 'medium',
       color: atual?.color || '#ffffff', y_pct: atual?.y_pct ?? 0.82,
@@ -608,25 +687,33 @@ export function mountEditor(root, store) {
 
   async function generateCaptions() {
     const state = store.getState();
-    if (!state.video?.url) return toast('Envie um vídeo primeiro', true);
     const mode = $('#beCapMode')?.value || 'frase';
+    // escolhe a fonte de audio REAL (voz do editor > audio do video; nunca
+    // o audio fantasma de um video mudo) — user 2026-07-20
+    const plan = captionAudioPlan(state);
+    if (!plan) {
+      return toast('Nenhum áudio com voz pra transcrever. Adicione seu áudio (aba Áudio) ou reative o áudio do vídeo.', true);
+    }
     try {
-      if (!lastCaptionWords) {
+      // re-transcreve se a FONTE mudou (trocou/adicionou áudio próprio etc)
+      if (!lastCaptionWords || lastCaptionKey !== plan.url) {
         toast('Transcrevendo áudio… (pode levar ~1min)');
-        const r = await api.autoCaptions(state.video.url);
+        const r = await api.autoCaptions(plan.url);
         lastCaptionPhrases = r.captions || [];
         lastCaptionWords = r.words || [];
+        lastCaptionKey = plan.url;
         if (!lastCaptionPhrases.length && !lastCaptionWords.length) {
           return toast('Nenhuma fala detectada no áudio', true);
         }
       }
+      lastCaptionPlan = plan; // mapa file->timeline atual (cortes podem ter mudado)
       const n = aplicarLegendas(mode);
-      if (!n) return toast('Nenhuma fala detectada no áudio', true);
+      if (!n) return toast('Nenhuma fala detectada no trecho ativo', true);
       $('#beCapStyleRow').style.display = 'flex';
       toast(n + (mode === 'palavra' ? ' palavras' : ' legendas') + ' geradas ✓ — sincronizadas com a fala');
     } catch (e) {
       const msg = (e.status === 504 || /timeout|timed out|HTTP 50/i.test(e.message || ''))
-        ? 'A transcrição demorou demais — tente um vídeo mais curto'
+        ? 'A transcrição demorou demais — tente um áudio mais curto'
         : e.message;
       toast('Legendas: ' + msg, true);
     }
@@ -635,16 +722,10 @@ export function mountEditor(root, store) {
   $('#beAutoCaptions2').addEventListener('click', generateCaptions);
   // trocar o modo REGENERA na hora (sem nova transcricao) se ja ha legendas
   $('#beCapMode').addEventListener('change', () => {
-    if (lastCaptionWords && store.getState().texts.some(t => t.caption)) {
+    if (lastCaptionWords && lastCaptionPlan && store.getState().texts.some(t => t.caption)) {
       const n = aplicarLegendas($('#beCapMode').value);
       if (n) toast('Legendas regeneradas: ' + n + ' blocos');
     }
-  });
-  // limpar words se trocar de video
-  let lastVideoUrl = store.getState().video?.url || null;
-  store.subscribe(() => {
-    const u = store.getState().video?.url || null;
-    if (u !== lastVideoUrl) { lastVideoUrl = u; lastCaptionWords = null; lastCaptionPhrases = null; }
   });
 
   // ── ESTILOS DE LEGENDA por categoria (presets CapCut-like) ──
@@ -855,12 +936,60 @@ function buildTemplate() {
     </div>
 
     <div id="bePropsClip" class="be-props-stack" style="display:none">
-      <div class="be-side-title">Cena selecionada</div>
-      <div class="be-dim">Duração: <span id="beClipDur">–</span></div>
-      <div class="be-dim">Arraste as bordas azuis na timeline pra ajustar o corte. Arraste o corpo pra reordenar.</div>
-      <button id="beToggleClip2" class="be-tool-btn">◌ Desativar cena</button>
-      <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
-      <div class="be-dim">Atalhos: V liga/desliga · Delete exclui · Ctrl+B divide no cursor</div>
+      <div class="be-side-title">Cena selecionada <span class="be-dim" style="font-weight:400">· <span id="beClipDur">–</span></span></div>
+      <!-- ABAS estilo CapCut -->
+      <div class="be-cfg-tabs" id="beCfgTabs">
+        <button data-tab="video" class="be-cfg-tab active">Vídeo</button>
+        <button data-tab="audio" class="be-cfg-tab">Áudio</button>
+        <button data-tab="velocidade" class="be-cfg-tab">Velocidade</button>
+        <button data-tab="animacao" class="be-cfg-tab">Animação</button>
+        <button data-tab="ajuste" class="be-cfg-tab">Ajuste</button>
+      </div>
+
+      <!-- ABA VÍDEO -->
+      <div class="be-cfg-panel" data-panel="video">
+        <div class="be-cfg-subtabs" id="beCfgSubtabs">
+          <button data-sub="basico" class="be-cfg-subtab active">Básico</button>
+          <button data-sub="fundo" class="be-cfg-subtab">Remover fundo</button>
+          <button data-sub="mascarar" class="be-cfg-subtab">Mascarar</button>
+          <button data-sub="retoque" class="be-cfg-subtab">Retoque</button>
+        </div>
+        <div class="be-cfg-sub" data-sub="basico">
+          <label class="be-slider-label">Escala <b id="beClipScaleVal">100%</b>
+            <input id="beClipScale" type="range" min="10" max="200" step="1" value="100"/>
+          </label>
+          <label class="be-slider-label">Opacidade <b id="beClipOpacityVal">100%</b>
+            <input id="beClipOpacity" type="range" min="0" max="100" step="1" value="100"/>
+          </label>
+          <div class="be-sep"></div>
+          <button id="beToggleClip2" class="be-tool-btn">◌ Desativar cena</button>
+          <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
+          <div class="be-dim">Arraste as bordas azuis na timeline pra cortar · V liga/desliga · Ctrl+B divide</div>
+        </div>
+        <div class="be-cfg-sub" data-sub="fundo" style="display:none">
+          <div class="be-dim">🪄 Remoção de plano de fundo por IA — <b>em breve</b>.</div>
+        </div>
+        <div class="be-cfg-sub" data-sub="mascarar" style="display:none">
+          <div class="be-dim">⬭ Máscaras (formas, recorte) — <b>em breve</b>.</div>
+        </div>
+        <div class="be-cfg-sub" data-sub="retoque" style="display:none">
+          <div class="be-dim">✨ Retoque facial e ajustes de pele — <b>em breve</b>.</div>
+        </div>
+      </div>
+
+      <!-- demais abas (placeholder até implementarmos) -->
+      <div class="be-cfg-panel" data-panel="audio" style="display:none">
+        <div class="be-dim">🔊 Volume e efeitos de áudio desta cena — <b>em breve</b>. (Por ora, separe o áudio com Ctrl+Shift+S pra editar na faixa.)</div>
+      </div>
+      <div class="be-cfg-panel" data-panel="velocidade" style="display:none">
+        <div class="be-dim">⏱ Controle de velocidade (câmera lenta / rápida) — <b>em breve</b>.</div>
+      </div>
+      <div class="be-cfg-panel" data-panel="animacao" style="display:none">
+        <div class="be-dim">🎬 Animações de entrada/saída — <b>em breve</b>.</div>
+      </div>
+      <div class="be-cfg-panel" data-panel="ajuste" style="display:none">
+        <div class="be-dim">🎚 Brilho, contraste, saturação, temperatura — <b>em breve</b>.</div>
+      </div>
     </div>
 
     <div id="bePropsOverlay" class="be-props-stack" style="display:none">

@@ -62,6 +62,20 @@ export function reduce(state, action) {
       });
     }
 
+    case A.SET_CLIP_TRANSFORM: {
+      // escala + opacidade da cena (aba Vídeo > Básico). Aplica em clip da
+      // main (inclui composto). Missing = 1.0 (retrocompat).
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const patch = {};
+      if (action.patch.scale != null) patch.scale = clamp(action.patch.scale, 0.1, 3);
+      if (action.patch.opacity != null) patch.opacity = clamp01(action.patch.opacity);
+      if (!Object.keys(patch).length) return state;
+      const clips = state.clips.slice();
+      clips[idx] = { ...clips[idx], ...patch };
+      return touch({ ...state, clips });
+    }
+
     case A.RENAME_PROJECT: {
       const nome = String(action.nome || '').slice(0, 120).trim();
       if (!nome) return state;

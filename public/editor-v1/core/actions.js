@@ -55,6 +55,8 @@ export const A = {
   UPDATE_COMPOUND: 'UPDATE_COMPOUND',
   // multi-midia (takes)
   ADD_MEDIA_CLIP: 'ADD_MEDIA_CLIP',
+  // transform da cena (aba Vídeo > Básico: escala + opacidade)
+  SET_CLIP_TRANSFORM: 'SET_CLIP_TRANSFORM',
   // meta
   SET_PROJECT_ID: 'SET_PROJECT_ID',
 };
@@ -100,6 +102,7 @@ export const UNDOABLE = {
   [A.DELETE_MULTI]: U, // apaga a multi-selecao inteira = 1 undo step
   [A.SET_CAPTIONS]: U, // geracao de legendas inteira = 1 undo step
   [A.ADD_MEDIA_CLIP]: U,
+  [A.SET_CLIP_TRANSFORM]: U,
 };
 
 // ── creators ────────────────────────────────────────────────────────────────
@@ -158,6 +161,8 @@ export const setCaptions = (caps) => ({ type: A.SET_CAPTIONS, caps });
 export const addMediaClip = (media) => ({ type: A.ADD_MEDIA_CLIP, media });
 // reusa uma midia JA no pool (painel Midia: "+ adicionar de novo")
 export const addClipFromMedia = (mediaId) => ({ type: A.ADD_MEDIA_CLIP, mediaId });
+// patch = { scale?, opacity? } — aba Vídeo > Básico
+export const setClipTransform = (clipId, patch) => ({ type: A.SET_CLIP_TRANSFORM, clipId, patch });
 export const createCompound = () => ({ type: A.CREATE_COMPOUND });
 export const ungroupCompound = (compoundId) => ({ type: A.UNGROUP_COMPOUND, compoundId });
 export const updateCompound = (compoundId, doc) => ({ type: A.UPDATE_COMPOUND, compoundId, doc });

@@ -474,3 +474,48 @@ test.describe('legendas automaticas @smoke', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('agulha + config abas @smoke', () => {
+  test('#1 clique 1x no vazio move a agulha; #3 Escala/Opacidade aplicam no preview', async ({ page }) => {
+    await bootWithVideo(page, { seconds: 3 });
+
+    // #1 — clique 1x na régua/timeline move a agulha pro ponto (via seek do down)
+    const canvas = page.locator('#beTimeline');
+    const box = await canvas.boundingBox();
+    await page.evaluate(() => window.__BE__.player.seek(0));
+    // clica no meio horizontal da timeline (área da régua, y perto do topo)
+    await page.mouse.click(box.x + box.width * 0.45, box.y + 10);
+    const t1 = await page.evaluate(() => window.__BE__.player.getTime());
+    expect(t1).toBeGreaterThan(0.2); // agulha andou
+
+    // #3 — seleciona a cena e mexe nos sliders da aba Vídeo>Básico
+    await page.evaluate(() => {
+      const st = window.__BE__.getState();
+      window.__BE__.store.dispatch({ type: 'SELECT_CLIP', clipId: st.clips[0].id });
+    });
+    await expect(page.locator('#bePropsClip')).toBeVisible();
+    await expect(page.locator('#beClipScale')).toBeVisible();
+
+    // Escala 100 -> 70
+    await page.locator('#beClipScale').fill('70');
+    await page.locator('#beClipScale').dispatchEvent('input');
+    let clip = await page.evaluate(() => window.__BE__.getState().clips[0]);
+    expect(clip.scale).toBeCloseTo(0.7, 2);
+    // o <video> do preview recebeu o transform
+    const tf = await page.evaluate(() => document.getElementById('beVideo').style.transform);
+    expect(tf).toContain('scale');
+
+    // Opacidade 100 -> 40
+    await page.locator('#beClipOpacity').fill('40');
+    await page.locator('#beClipOpacity').dispatchEvent('input');
+    clip = await page.evaluate(() => window.__BE__.getState().clips[0]);
+    expect(clip.opacity).toBeCloseTo(0.4, 2);
+    const op = await page.evaluate(() => document.getElementById('beVideo').style.opacity);
+    expect(parseFloat(op)).toBeCloseTo(0.4, 1);
+
+    // troca de aba: Áudio mostra placeholder, Vídeo esconde
+    await page.locator('#beCfgTabs .be-cfg-tab[data-tab="audio"]').click();
+    await expect(page.locator('.be-cfg-panel[data-panel="audio"]')).toBeVisible();
+    await expect(page.locator('.be-cfg-panel[data-panel="video"]')).toBeHidden();
+  });
+});

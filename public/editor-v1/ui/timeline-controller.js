@@ -208,6 +208,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     }, 0);
   }
 
+  // deteccao de DUPLO-clique propria: e.detail no pointerdown e nao-confiavel
+  // (varia entre browsers, as vezes fica 0). Rastreia tempo+posicao do down.
+  let lastDownT = 0, lastDownX = -999, lastDownY = -999;
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
@@ -220,12 +223,15 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       step({ kind: 'second-down', x: p.x, y: p.y, d: dist(p1, p2), cx: (p1.x + p2.x) / 2 });
       return;
     }
+    const now = performance.now();
+    const isDouble = (now - lastDownT < 350) && Math.hypot(p.x - lastDownX, p.y - lastDownY) < 12;
+    lastDownT = now; lastDownX = p.x; lastDownY = p.y;
     const hit = hitTest(layoutNow(), p.x, p.y, { touch: p.touch });
     clearTimeout(longPressTimer);
     if (p.touch) {
       longPressTimer = setTimeout(() => step({ kind: 'longpress' }), LONG_PRESS_MS);
     }
-    step({ kind: 'down', ...p, hit, button: e.button, detail: e.detail, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
+    step({ kind: 'down', ...p, hit, button: e.button, detail: e.detail, double: isDouble, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
   });
 
   canvas.addEventListener('pointermove', (e) => {

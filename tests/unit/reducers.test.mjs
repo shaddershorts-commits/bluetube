@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration } from '../../public/editor-v1/core/selectors.js';
+import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan } from '../../public/editor-v1/core/selectors.js';
 
 function storeWithVideo(duration = 60) {
   const store = createStore();
@@ -200,7 +200,7 @@ test('exportPayload espelha contrato edit-v0', () => {
   store.dispatch(act.addText({ content: 'X', start_sec: 1, end_sec: 3 }));
   const p = exportPayload(store.getState());
   assert.equal(p.clips.length, 1);
-  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null });
+  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null, scale: 1, opacity: 1 });
   assert.equal(p.texts.length, 1);
   assert.ok(p.texts[0].x_pct >= 0 && p.texts[0].x_pct <= 1);
   assert.ok(canExport(store.getState()));
@@ -560,4 +560,60 @@ test('playableDuration cobre projeto com audio alem do video (e so-audio toca)',
   store.dispatch(act.deleteClip(store.getState().clips[0].id));
   assert.equal(totalDuration(store.getState()), 0);
   assert.equal(playableDuration(store.getState()), 12);
+});
+
+// ── rodada 2026-07-20 (2): transform da cena + plano de legenda por áudio real ──
+
+test('SET_CLIP_TRANSFORM aplica escala/opacidade com clamp e undo', () => {
+  const store = storeWithVideo(10);
+  const id = store.getState().clips[0].id;
+  store.dispatch(act.setClipTransform(id, { scale: 0.9, opacity: 0.4 }));
+  let c = store.getState().clips[0];
+  assert.equal(c.scale, 0.9);
+  assert.equal(c.opacity, 0.4);
+  store.dispatch(act.setClipTransform(id, { scale: 99 }));   // clamp <=3
+  assert.equal(store.getState().clips[0].scale, 3);
+  store.dispatch(act.setClipTransform(id, { opacity: -5 })); // clamp >=0
+  assert.equal(store.getState().clips[0].opacity, 0);
+  store.undo();
+  assert.equal(store.getState().clips[0].opacity, 0.4);
+});
+
+test('exportPayload leva scale/opacity por clip', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.setClipTransform(store.getState().clips[0].id, { scale: 0.8, opacity: 0.5 }));
+  const p = exportPayload(store.getState());
+  assert.equal(p.clips[0].scale, 0.8);
+  assert.equal(p.clips[0].opacity, 0.5);
+});
+
+test('captionAudioPlan escolhe a fonte de áudio REAL (voz > vídeo > nada)', () => {
+  const store = storeWithVideo(10);
+  // vídeo intacto -> plano do vídeo
+  let p = captionAudioPlan(store.getState());
+  assert.equal(p.url, 'https://x/video.mp4');
+  assert.ok(p.segments.length >= 1);
+
+  // separa o áudio do vídeo E remove -> sem voz -> null (não gera fantasma)
+  store.dispatch(act.detachAudio());
+  for (const a of [...store.getState().audio_clips]) store.dispatch(act.deleteAudioClip(a.id));
+  p = captionAudioPlan(store.getState());
+  assert.equal(p, null);
+
+  // editor sobe o próprio áudio (narração) -> plano usa ele
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/narracao.mp3', filename: 'voz', duration: 6 } });
+  p = captionAudioPlan(store.getState());
+  assert.equal(p.url, 'https://x/narracao.mp3');
+});
+
+test('captionAudioPlan mapeia áudio próprio pra timeline pela posição do clip', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/voz.mp3', filename: 'voz', duration: 5 } });
+  // move o áudio pra começar em t=2 (posição na timeline)
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.moveAudio(aid, 2));
+  const p = captionAudioPlan(store.getState());
+  assert.equal(p.url, 'https://x/voz.mp3');
+  assert.equal(p.segments[0].tStart, 2);      // fala do arquivo aparece a partir de t=2
+  assert.equal(p.segments[0].fileIn, 0);
 });

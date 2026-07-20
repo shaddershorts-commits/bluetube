@@ -102,6 +102,8 @@ export function normalizeLoadedState(raw) {
     .map(c => ({
       id: c.id, source_in: c.source_in, source_out: c.source_out, active: c.active !== false,
       ...(c.media_id != null && mediaIds.has(c.media_id) ? { media_id: c.media_id } : {}),
+      ...(typeof c.scale === 'number' ? { scale: clamp(c.scale, 0.1, 3) } : {}),
+      ...(typeof c.opacity === 'number' ? { opacity: clamp01(c.opacity) } : {}),
     })) : [];
   s.texts = Array.isArray(raw.texts) ? raw.texts
     .filter(t => t && typeof t.content === 'string')
