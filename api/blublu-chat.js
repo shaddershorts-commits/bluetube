@@ -356,6 +356,10 @@ module.exports = async function handler(req, res) {
     // são poucos, o modelo AVISA em vez de fingir fartura.
     const diretos = videos.filter((v) => ['fala', 'titulo', 'canal'].includes(v.confirmado_por)).length;
     const buscaTematica = !!(tema && termosOk.length);
+    // ESTRATÉGIA que trouxe os resultados — pra auditoria de precisão/cobertura:
+    // 'tematica' = casou no tema (deve ser preciso); 'filtro' = só filtro numérico
+    // (top views, sem tema); 'vazio' = nada. total_no_banco/cortados medem cobertura.
+    const estrategia = buscaTematica ? (diretos > 0 ? 'tematica' : 'tematica_sem_direto') : (videos.length ? 'filtro' : 'vazio');
     // resumo pro MODELO comentar com propriedade (os cards o front renderiza)
     const resumo = {
       total_entregue: videos.length,
@@ -371,6 +375,10 @@ module.exports = async function handler(req, res) {
       ha_candidatos_ainda_nao_verificados: temMais,
       com_relevancia_exata: videos.filter((v) => (v._score || 0) > 0).length,
       idolos_no_resultado: idolosNoResultado,
+      // AUDITORIA DE COBERTURA (regra de ouro: precisão > quantidade)
+      estrategia,
+      total_no_banco: candidatos.length,       // quantos casaram o critério no acervo
+      cortados_por_limite: cortados,            // tinha mais, não coube na quantidade pedida
       amostra: videos.slice(0, 6).map((v) => ({ titulo: (v.titulo || '').slice(0, 70), canal: v.canal_nome, views: v.views, confirmado_por: v.confirmado_por, bateu_qualificadores: (v._score || 0) > 0 })),
     };
     return { videos, temMais, verificadosIds, resumo };
@@ -417,6 +425,7 @@ Chat "Falar com o Blublu" dentro da ferramenta Virais do BlueTube. Sua função:
 REGRAS DO CHAT:
 - Respostas CURTAS (1-4 frases). É chat, não palestra.
 - Pedido de vídeos = chame buscar_videos. Conversa = responda direto, no personagem.
+- BUSCA PRIMEIRO, NÃO INTERROGATÓRIO: se o pedido tem QUALQUER assunto/entidade buscável (um nome, um bicho, um tema — "oliver tree", "fails", "tigre", "Tesla"), chame buscar_videos DIRETO — os próprios resultados clareiam e você refina DEPOIS. Só pergunte ANTES de buscar quando de fato não há nada buscável: categoria larga sem entidade ("pop", "artistas famosos", "algo engraçado"). Cada pergunta de esclarecimento custa uma ida-e-volta que o usuário odeia — na dúvida entre perguntar e buscar, BUSQUE.
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
 - QUANTIDADE: NUNCA escolha quantidade por conta própria — deixe null e a busca entrega TODOS os certeiros (até ${QTD_PADRAO}). Só preencha quantidade se o USUÁRIO falou um número. Se sobrar mais (tinha_mais_alem_do_entregue / ha_candidatos_ainda_nao_verificados), avise que é só pedir.
 - CAMPOS DA BUSCA: tema NUNCA null quando o pedido tem assunto/pessoa/canal. nucleos = SÓ o núcleo e traduções; verbos/adjetivos/contexto vão SEMPRE em qualificadores (misturar destrói a precisão — regra dura).
@@ -518,9 +527,24 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       com_relevancia: resultado ? resultado.videos.filter((v) => (v._score || 0) > 0).length : null,
       usou_busca: !!resultado,
     };
+    // AUDITORIA vídeo-a-vídeo (regra de ouro do user): guarda o TÍTULO/canal/
+    // confirmação de CADA vídeo entregue (pra julgar relevância um a um) + a
+    // cobertura (tinha mais no banco? por quê não foi?). Resiliente: se as
+    // colunas novas não existem (rodar sql/blublu_auditoria.sql), cai no log
+    // atual (com resposta) e depois no mínimo — nunca regride.
+    const logRico = {
+      resposta: reply.slice(0, 2000),
+      cobertura_fina: resultado?.resumo?.cobertura_fina ?? null,
+      estrategia: resultado?.resumo?.estrategia ?? null,
+      diretos: resultado?.resumo?.diretos_do_tema ?? null,
+      relacionados: resultado?.resumo?.relacionados_complemento ?? null,
+      total_no_banco: resultado?.resumo?.total_no_banco ?? null,
+      cortados_por_limite: resultado?.resumo?.cortados_por_limite ?? null,
+      itens_entregues: resultado ? resultado.videos.slice(0, 24).map((v) => ({ t: (v.titulo || '').slice(0, 100), c: v.canal_nome, v: v.views, por: v.confirmado_por })) : null,
+    };
     const gravarLog = (obj) => fetch(`${SU}/rest/v1/blublu_chat_logs`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(obj) });
-    gravarLog({ ...logBase, resposta: reply.slice(0, 2000), cobertura_fina: resultado?.resumo?.cobertura_fina ?? null })
-      .then((r) => { if (r && !r.ok) gravarLog(logBase).catch(() => {}); })
+    gravarLog({ ...logBase, ...logRico })
+      .then((r) => { if (r && !r.ok) gravarLog({ ...logBase, resposta: logRico.resposta, cobertura_fina: logRico.cobertura_fina }).catch(() => gravarLog(logBase).catch(() => {})); })
       .catch(() => { gravarLog(logBase).catch(() => {}); });
 
     await bump();
