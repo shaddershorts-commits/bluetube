@@ -35,30 +35,48 @@ export function computeLayout(state, vp) {
   const total = totalDuration(state);
 
   const yRuler = 0;
-  // Track de OVERLAY adaptativa (CapCut): so existe quando ha camadas —
-  // aparece ACIMA da principal (camada de cima renderiza na frente).
-  const hasOverlays = (state.overlays || []).some(o => o.active !== false);
-  const yOverlay = METRICS.RULER_H + METRICS.TRACK_GAP;
-  const overlayH = hasOverlays ? METRICS.VIDEO_TRACK_H * 0.7 + METRICS.TRACK_GAP : 0;
-  const yVideo = yOverlay + overlayH;
-  const yText = yVideo + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP;
-  const yAudio = yText + METRICS.TEXT_TRACK_H + METRICS.TRACK_GAP;
-  const contentH = yAudio + METRICS.AUDIO_TRACK_H + METRICS.TRACK_GAP;
+  const multiKeys = new Set((state.multi_selected || []).map(m => m.type + ':' + m.id));
 
-  const overlayItems = (state.overlays || []).filter(o => o.active !== false).map(o => {
+  // ── CAMADAS (CapCut): rows empilhadas ACIMA da principal ──
+  // Cada lane em uso vira uma row; lane MAIOR fica mais ACIMA na timeline e
+  // renderiza NA FRENTE no video. Textos e overlays compartilham as lanes
+  // (a regra do user: texto abaixo de uma camada de video fica ATRAS dela).
+  const ovsAtivas = (state.overlays || []).filter(o => o.active !== false);
+  const textosAtivos = (state.texts || []).filter(t => t.active !== false);
+  const lanesUsadas = [...new Set([
+    ...ovsAtivas.map(o => o.lane || 1),
+    ...textosAtivos.map(t => t.lane || 4),
+  ])].sort((a, b) => b - a); // desc: topo primeiro
+  const LANE_H = Math.round(METRICS.VIDEO_TRACK_H * 0.7);
+  const laneRows = []; // [{lane, y, h}] na ordem visual (topo -> base)
+  let yCursor = METRICS.RULER_H + METRICS.TRACK_GAP;
+  for (const lane of lanesUsadas) {
+    laneRows.push({ lane, y: yCursor, h: LANE_H });
+    yCursor += LANE_H + 4;
+  }
+  const laneY = new Map(laneRows.map(r => [r.lane, r.y]));
+  const hasOverlays = ovsAtivas.length > 0;
+  const yOverlay = laneRows.length ? laneRows[0].y : (METRICS.RULER_H + METRICS.TRACK_GAP);
+  const yVideo = yCursor + (laneRows.length ? METRICS.TRACK_GAP - 4 : 0);
+  const yAudio = yVideo + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP;
+  const contentH = yAudio + METRICS.AUDIO_TRACK_H + METRICS.TRACK_GAP;
+  // compat: yText aponta pra row de texto mais comum (paineis antigos)
+  const yText = laneRows.length ? laneRows[0].y : yVideo;
+
+  const overlayItems = ovsAtivas.map(o => {
     const dur = o.source_out - o.source_in;
     return {
-      overlayId: o.id,
-      x: timeToX(vp, o.start), y: yOverlay,
-      w: dur * vp.pxPerSec, h: METRICS.VIDEO_TRACK_H * 0.7,
+      overlayId: o.id, lane: o.lane || 1,
+      x: timeToX(vp, o.start), y: laneY.get(o.lane || 1) ?? yOverlay,
+      w: dur * vp.pxPerSec, h: LANE_H,
       tStart: o.start, tEnd: o.start + dur,
       srcIn: o.source_in, srcOut: o.source_out,
       selected: state.selected_overlay_id === o.id,
+      multi: multiKeys.has('overlay:' + o.id),
     };
   });
 
   // Itens da track principal (compound = 1 bloco; nao expande aqui)
-  const multiKeys = new Set((state.multi_selected || []).map(m => m.type + ':' + m.id));
   const clips = mainTrackItems(state).map(it => {
     const x = timeToX(vp, it.tStart);
     const w = (it.tEnd - it.tStart) * vp.pxPerSec;
@@ -96,16 +114,20 @@ export function computeLayout(state, vp) {
     return g;
   });
 
-  // Blocos de texto (na track de texto)
-  const texts = (state.texts || []).filter(t => t.active !== false).map(t => ({
-    textId: t.id,
-    x: timeToX(vp, t.start_sec),
-    y: yText,
-    w: Math.max(6, (t.end_sec - t.start_sec) * vp.pxPerSec),
-    h: METRICS.TEXT_TRACK_H,
-    selected: state.selected_text_id === t.id,
-    content: t.content,
-  }));
+  // Blocos de texto: vivem na ROW da sua lane (centralizados na altura)
+  const texts = textosAtivos.map(t => {
+    const rowY = laneY.get(t.lane || 4) ?? yText;
+    return {
+      textId: t.id, lane: t.lane || 4,
+      x: timeToX(vp, t.start_sec),
+      y: rowY + Math.max(0, (LANE_H - METRICS.TEXT_TRACK_H) / 2),
+      w: Math.max(6, (t.end_sec - t.start_sec) * vp.pxPerSec),
+      h: METRICS.TEXT_TRACK_H,
+      selected: state.selected_text_id === t.id,
+      multi: multiKeys.has('text:' + t.id),
+      content: t.content,
+    };
+  });
 
   // Track de audio: itens selecionaveis.
   // - 'video': audio destacado do video (Ctrl+Shift+S) — cobre a timeline,
@@ -132,6 +154,7 @@ export function computeLayout(state, vp) {
         tStart: a.start, tEnd: end,
         srcIn: a.source_in, srcOut: a.source_out,
         selected: state.selected_audio_id === a.id,
+        multi: multiKeys.has('audio:' + a.id),
         label: '♪ ' + (a.filename || 'áudio'),
       };
     });
@@ -140,7 +163,7 @@ export function computeLayout(state, vp) {
 
   return {
     vp, total, segs, clips, ghosts, texts, audioItems, audioLanes,
-    overlayItems, yOverlay, hasOverlays,
+    overlayItems, yOverlay, hasOverlays, laneRows,
     // strip de waveform DENTRO do clip: so enquanto o audio esta embutido.
     // Fix waveform fantasma: apos detach (mesmo com clips deletados) a
     // strip NAO volta — audio agora vive (ou viveu) na track propria.
@@ -187,6 +210,24 @@ export function zoomAt(vp, factor, anchorX) {
   // scrollX tal que tAnchor continua no mesmo x
   const scrollX = METRICS.PAD_LEFT + tAnchor * pxPerSec - anchorX;
   return { pxPerSec, scrollX: Math.max(-METRICS.PAD_LEFT, scrollX) };
+}
+
+/** Lane alvo pra um y do canvas (drop do arrasto vertical).
+ *  - dentro de uma row existente -> a lane dela
+ *  - ACIMA da row do topo -> topo+1 (cria camada nova acima, CapCut)
+ *  - abaixo das rows (main/audio) -> null (mantem a lane atual) */
+export function laneForY(layout, y) {
+  const rows = layout.laneRows || [];
+  if (!rows.length) {
+    // sem rows ainda: qualquer y acima da main = lane 1
+    return y < layout.yVideo - 8 ? 1 : null;
+  }
+  const topo = rows[0];
+  if (y < topo.y - 4) return Math.min(5, topo.lane + 1);
+  for (const r of rows) {
+    if (y >= r.y - 4 && y <= r.y + r.h + 4) return r.lane;
+  }
+  return null;
 }
 
 /** Zoom pra caber tudo. */

@@ -66,11 +66,15 @@ export function transition(fsm, ev, ctx) {
 
     case 'idle': {
       if (ev.kind === 'wheel') {
-        if (ev.ctrlKey) {
-          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.2 : 1 / 1.2, ev.x);
-          fx.push({ do: 'zoom', ...z });
+        // Rolar = ZOOM ancorado no cursor (pedido do user: aproximar/afastar
+        // a visão das faixas direto no scroll). Shift ou scroll horizontal
+        // de trackpad = rolagem da timeline. Ctrl também zooma (hábito).
+        const horizontal = Math.abs(ev.deltaX) > Math.abs(ev.deltaY);
+        if (ev.shiftKey || horizontal) {
+          fx.push({ do: 'scroll', scrollX: ctx.layout.vp.scrollX + (horizontal ? ev.deltaX : ev.deltaY) });
         } else {
-          fx.push({ do: 'scroll', scrollX: ctx.layout.vp.scrollX + (ev.deltaY + ev.deltaX) });
+          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.18 : 1 / 1.18, ev.x);
+          fx.push({ do: 'zoom', ...z });
         }
         return { next: fsm, effects: fx };
       }
@@ -90,14 +94,15 @@ export function transition(fsm, ev, ctx) {
         return { next: { name: 'scrubbing' }, effects: fx };
       }
       if (hit.type === 'track-empty' || hit.type === 'empty') {
-        fx.push({ do: 'clear-selection' });
         if (ev.touch) {
           // Touch em area vazia: PAN (CapCut mobile — navega a timeline)
+          fx.push({ do: 'clear-selection' });
           return { next: { name: 'panning', x0: ev.x, scrollX0: ctx.layout.vp.scrollX }, effects: fx };
         }
-        // Mouse: scrub (CapCut desktop)
-        fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
-        return { next: { name: 'scrubbing' }, effects: fx };
+        // Mouse no vazio: CLIQUE = seek+desseleciona (decidido no up);
+        // ARRASTO = seletor retangular (marquee, como a area de trabalho do
+        // Windows) — user 2026-07-20.
+        return { next: { name: 'armed-empty', x0: ev.x, y0: ev.y }, effects: fx };
       }
       if (hit.type === 'ghost') {
         // Click em ghost reativa o clip (decidido no up — armed)
@@ -129,6 +134,10 @@ export function transition(fsm, ev, ctx) {
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       if (hit.type === 'text-block') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'text', id: hit.textId });
+          return { next: fsm, effects: fx };
+        }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       if (hit.type === 'overlay-trim-in' || hit.type === 'overlay-trim-out') {
@@ -146,6 +155,10 @@ export function transition(fsm, ev, ctx) {
         };
       }
       if (hit.type === 'overlay-body') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'overlay', id: hit.overlayId });
+          return { next: fsm, effects: fx };
+        }
         fx.push({ do: 'select-overlay', overlayId: hit.overlayId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
@@ -165,8 +178,42 @@ export function transition(fsm, ev, ctx) {
         };
       }
       if (hit.type === 'audio-body') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'audio', id: hit.audioId });
+          return { next: fsm, effects: fx };
+        }
         fx.push({ do: 'select-audio-clip', audioId: hit.audioId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'armed-empty': {
+      // mouse desceu no vazio: clique = seek+limpa; arrasto = marquee
+      if (ev.kind === 'move') {
+        const dist = Math.hypot(ev.x - fsm.x0, ev.y - fsm.y0);
+        if (dist < DRAG_THRESHOLD_MOUSE) return { next: fsm, effects: fx };
+        return { next: { name: 'marquee', x0: fsm.x0, y0: fsm.y0, x1: ev.x, y1: ev.y }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'clear-selection' });
+        fx.push({ do: 'clear-multi' });
+        fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, fsm.x0), ctx) });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'marquee': {
+      // seletor retangular (área de trabalho do Windows): seleciona ao vivo
+      if (ev.kind === 'move') {
+        const next = { ...fsm, x1: ev.x, y1: ev.y };
+        fx.push({ do: 'marquee-live', rect: rectOf(next) });
+        return { next, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'marquee-apply', rect: rectOf(fsm) });
+        return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };
     }
@@ -258,11 +305,12 @@ export function transition(fsm, ev, ctx) {
 
     case 'dragging-clip': {
       if (ev.kind === 'move') {
-        // arrastar pra CIMA da track principal = criar camada overlay (CapCut)
+        // arrastar pra CIMA da track principal = criar camada (CapCut).
+        // A ALTURA do drop decide a lane (row existente ou nova acima do topo)
         if (ev.y != null && ctx.layout.yVideo - ev.y > 30) {
           const atT = Math.max(0, xToTime(ctx.layout.vp, ev.x));
           fx.push({ do: 'end-gesture' });
-          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT });
+          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT, y: ev.y });
           fx.push({ do: 'set-cursor', cursor: 'default' });
           return { next: idle(), effects: fx };
         }
@@ -417,10 +465,13 @@ export function transition(fsm, ev, ctx) {
           : { t, snapped: false };
         const previewStart = Math.max(0, snapped.t);
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
-        return { next: { ...fsm, previewStart }, effects: fx };
+        return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'dispatch', action: act.moveOverlay(fsm.overlayId, fsm.previewStart) });
+        // arrasto VERTICAL muda a camada (row sob o cursor no drop)
+        const dropY = ev.y ?? fsm.lastY;
+        if (dropY != null) fx.push({ do: 'drop-lane', itemType: 'overlay', id: fsm.overlayId, y: dropY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
@@ -438,10 +489,13 @@ export function transition(fsm, ev, ctx) {
           do: 'dispatch',
           action: { ...act.updateText(fsm.textId, { start_sec: start, end_sec: start + fsm.duration }), gestureId: fsm.gestureId },
         });
-        return { next: fsm, effects: fx };
+        return { next: { ...fsm, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'end-gesture' });
+        // arrasto vertical: texto muda de camada (pode ficar ATRAS de video)
+        const dropY = ev.y ?? fsm.lastY;
+        if (dropY != null) fx.push({ do: 'drop-lane', itemType: 'text', id: fsm.textId, y: dropY });
         return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };
@@ -489,6 +543,13 @@ export function transition(fsm, ev, ctx) {
 
 function pinchStart(ev, ctx) {
   return { name: 'pinching', d0: ev.d || 1, pxPerSec0: ctx.layout.vp.pxPerSec, cx: ev.cx ?? ev.x };
+}
+
+function rectOf(m) {
+  return {
+    x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1),
+    w: Math.abs(m.x1 - m.x0), h: Math.abs(m.y1 - m.y0),
+  };
 }
 
 function clampT(t, ctx) {

@@ -62,6 +62,9 @@ export function createOverlay(container, store, player, onEditRequest) {
       el.style.fontFamily = fontFamilyFor(txt.font);
       el.style.fontSize = fsPx + 'px';
       el.style.color = txt.color;
+      // z compartilhado com as camadas de video (pip): lane maior = na frente.
+      // Texto em lane menor que um overlay fica ATRAS do video dele (CapCut).
+      el.style.zIndex = String(10 + (txt.lane || 4));
       el.style.outline = state.selected_text_id === txt.id ? '2px dashed rgba(169,127,238,.9)' : 'none';
       el.style.outlineOffset = '4px';
     }

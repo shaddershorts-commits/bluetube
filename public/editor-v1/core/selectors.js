@@ -187,6 +187,7 @@ export function exportPayload(state) {
       y_pct: round4(t.y_pct),
       start_sec: round3(t.start_sec),
       end_sec: round3(t.end_sec),
+      lane: t.lane || 4, // ordem de composicao (CapCut: lane maior = frente)
     })),
     // clips de audio pro mixer do render (adelay/atrim no Railway)
     audio_clips: effectiveAudioClips(state).map(a => ({
@@ -203,6 +204,7 @@ export function exportPayload(state) {
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),
       scale: Math.round(o.scale * 100) / 100,
+      lane: o.lane || 1, // ordem de composicao
     })),
     transitions: state.transitions || [],
     // com audio destacado o video renderiza MUDO (audio vem dos clips)

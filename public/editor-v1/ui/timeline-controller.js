@@ -3,7 +3,7 @@
 // Converte eventos -> FSM pura -> executa effects. Nenhuma logica de negocio
 // aqui: so traducao evento<->efeito.
 
-import { computeLayout, zoomAt, zoomToFit, METRICS } from '../timeline/layout.js';
+import { computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline/layout.js';
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
 import { createRenderer } from '../timeline/render.js';
@@ -66,7 +66,22 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         case 'clear-selection': store.dispatch(act.selectClip(null)); break;
         case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
         case 'select-overlay': store.dispatch(act.selectOverlay(e.overlayId)); break;
-        case 'convert-to-overlay': store.dispatch(act.convertToOverlay(e.clipId, e.atT)); break;
+        case 'convert-to-overlay': {
+          // altura do drop decide a lane (row existente ou nova acima do topo)
+          const lane = e.y != null ? (laneForY(layoutNow(), e.y) ?? 1) : 1;
+          store.dispatch(act.convertToOverlay(e.clipId, e.atT, lane));
+          break;
+        }
+        case 'drop-lane': {
+          const lane = laneForY(layoutNow(), e.y);
+          if (lane == null) break; // soltou na main/audio: mantem a camada
+          const st = store.getState();
+          const atual = e.itemType === 'overlay'
+            ? st.overlays.find(o => o.id === e.id)?.lane
+            : st.texts.find(t => t.id === e.id)?.lane;
+          if (atual !== lane) store.dispatch(act.setItemLane(e.itemType, e.id, lane));
+          break;
+        }
         case 'toggle-multi': store.dispatch(act.toggleMultiSelect(e.itemType, e.id)); break;
         case 'open-compound': onOpenCompound?.(e.compoundId); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
@@ -78,6 +93,12 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         case 'open-text-editor': onEditText?.(e.textId); break;
         case 'haptic': try { navigator.vibrate?.(30); } catch {} break;
         case 'autoscroll-edge': autoscroll(e.x); break;
+        case 'clear-multi': store.dispatch(act.setMultiSelect([])); break;
+        case 'marquee-live': case 'marquee-apply': {
+          // seleciona tudo que INTERSECTA o retangulo (video/texto/audio/camada)
+          store.dispatch(act.setMultiSelect(itemsInRect(layoutNow(), e.rect)));
+          break;
+        }
       }
     }
   }
@@ -101,6 +122,17 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     }
     // reducer faz splice(from,1) + splice(to,0): to é indice no array pos-remocao
     return { ...action, toIndex: arrayIndex };
+  }
+
+  /** Itens do layout que intersectam o retangulo do marquee. */
+  function itemsInRect(layout, r) {
+    const hits = [];
+    const inter = (b) => b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + b.h > r.y;
+    for (const c of layout.clips) if (inter(c)) hits.push({ type: 'clip', id: c.clipId });
+    for (const t of layout.texts) if (inter(t)) hits.push({ type: 'text', id: t.textId });
+    for (const a of layout.audioItems || []) if (inter(a)) hits.push({ type: 'audio', id: a.audioId });
+    for (const o of layout.overlayItems || []) if (inter(o)) hits.push({ type: 'overlay', id: o.overlayId });
+    return hits;
   }
 
   function autoscroll(x) {

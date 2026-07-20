@@ -91,24 +91,41 @@ test('TOGGLE_CLIP tira clip do corte efetivo', () => {
   assert.equal(totalDuration(store.getState()), 60);
 });
 
-test('DELETE_RANGE_LEFT (tecla Q) trima antes do playhead', () => {
+test('DELETE_RANGE_LEFT (Q) trima SÓ o clip sob o playhead — vizinhos intactos', () => {
   const store = storeWithVideo(60);
   store.dispatch(act.splitClipAt(20));
-  store.dispatch(act.deleteRangeLeft(30)); // playhead em t=30 (dentro do 2o clip)
+  store.dispatch(act.selectClip(null)); // sem seleção: age no clip sob o playhead
+  store.dispatch(act.deleteRangeLeft(30)); // t=30 dentro do 2o clip (20-60)
   const s = store.getState();
-  assert.equal(s.clips.length, 1);
-  assert.equal(s.clips[0].source_in, 30);
-  assert.equal(totalDuration(s), 30);
+  assert.equal(s.clips.length, 2);               // NADA é deletado (fix: user perdia o projeto)
+  assert.equal(s.clips[0].source_out, 20);       // 1o clip intacto
+  assert.equal(s.clips[1].source_in, 30);        // 2o clip trimado até o playhead
+  assert.equal(totalDuration(s), 20 + 30);
 });
 
-test('DELETE_RANGE_RIGHT (tecla W) trima depois do playhead', () => {
+test('DELETE_RANGE_LEFT (Q) respeita a SELEÇÃO: playhead fora do clip selecionado = no-op', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(20));
+  const firstId = store.getState().clips[0].id;
+  store.dispatch(act.selectClip(firstId));       // seleciona o 1o (0-20)
+  store.dispatch(act.deleteRangeLeft(30));       // playhead no 2o → não mexe
+  assert.equal(totalDuration(store.getState()), 60);
+  store.dispatch(act.deleteRangeLeft(10));       // playhead DENTRO do selecionado
+  const s = store.getState();
+  assert.equal(s.clips[0].source_in, 10);        // trimou só o selecionado
+  assert.equal(s.clips[1].source_in, 20);        // vizinho intacto
+});
+
+test('DELETE_RANGE_RIGHT (W) trima SÓ o clip alvo depois do playhead', () => {
   const store = storeWithVideo(60);
   store.dispatch(act.splitClipAt(40));
-  store.dispatch(act.deleteRangeRight(20));
+  store.dispatch(act.selectClip(null));
+  store.dispatch(act.deleteRangeRight(20)); // t=20 dentro do 1o clip (0-40)
   const s = store.getState();
-  assert.equal(s.clips.length, 1);
-  assert.equal(s.clips[0].source_out, 20);
-  assert.equal(totalDuration(s), 20);
+  assert.equal(s.clips.length, 2);          // 2o clip NÃO some
+  assert.equal(s.clips[0].source_out, 20);  // 1o trimado no playhead
+  assert.equal(s.clips[1].source_in, 40);   // 2o intacto
+  assert.equal(totalDuration(s), 20 + 20);
 });
 
 test('tempo virtual <-> source com clip inativo no meio', () => {
@@ -381,4 +398,34 @@ test('F4: Alt+G cria composto (offsets relativos) e Shift+Alt+G desfaz', () => {
   assert.equal(s.texts.length, 1);
   assert.equal(s.texts[0].start_sec, 25);
   assert.equal(totalDuration(s), 60);
+});
+
+// ── CAMADAS (CapCut lanes) ──
+test('CONVERT_TO_OVERLAY: lane do drop + scale 1.0 (camada cheia)', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(30));
+  const id = store.getState().clips[0].id;
+  store.dispatch(act.convertToOverlay(id, 5, 2));
+  const s = store.getState();
+  assert.equal(s.overlays.length, 1);
+  assert.equal(s.overlays[0].lane, 2);
+  assert.equal(s.overlays[0].scale, 1);
+  assert.equal(s.clips.length, 1); // saiu da main
+});
+
+test('SET_ITEM_LANE muda camada de overlay e texto (com clamp)', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.splitClipAt(30));
+  store.dispatch(act.convertToOverlay(store.getState().clips[0].id, 0, 1));
+  store.dispatch(act.addText({ content: 'oi', start_sec: 0, end_sec: 3 }));
+  const ovId = store.getState().overlays[0].id;
+  const txId = store.getState().texts[0].id;
+  assert.equal(store.getState().texts[0].lane, 4); // default topo
+  store.dispatch(act.setItemLane('overlay', ovId, 3));
+  store.dispatch(act.setItemLane('text', txId, 1)); // texto DESCE pra tras do video
+  const s = store.getState();
+  assert.equal(s.overlays[0].lane, 3);
+  assert.equal(s.texts[0].lane, 1);
+  store.dispatch(act.setItemLane('text', txId, 99)); // clamp em MAX_LANE
+  assert.equal(store.getState().texts[0].lane, 5);
 });

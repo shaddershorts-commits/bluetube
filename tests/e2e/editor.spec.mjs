@@ -58,11 +58,15 @@ test.describe('edicao via teclado @smoke', () => {
     expect(s.clips).toHaveLength(2);
     expect(s.clips[0].source_out).toBeCloseTo(1.0, 1);
 
-    // Q apaga antes do playhead
+    // Q trima SÓ o clip sob o playhead (contrato novo 2026-07-20: nunca varre
+    // a timeline — user perdia o projeto). Split deixou o clip DIREITO
+    // selecionado; limpa a seleção pra agir no clip sob o playhead (o 1º).
+    await page.evaluate(() => window.__BE__.store.dispatch({ type: 'SELECT_CLIP', clipId: null }));
     await page.evaluate(() => window.__BE__.player.seek(0.5));
     await page.keyboard.press('q');
     s = await getState(page);
-    expect(s.clips[0].source_in).toBeGreaterThan(0.3);
+    expect(s.clips[0].source_in).toBeGreaterThan(0.3); // 1º trimado no playhead
+    expect(s.clips).toHaveLength(2);                    // 2º clip INTACTO
 
     // undo restaura
     await page.keyboard.press('Control+z');

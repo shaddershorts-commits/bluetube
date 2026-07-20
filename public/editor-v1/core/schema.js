@@ -17,6 +17,20 @@ export const TRANSITION_TYPES = ['cut', 'fade'];
 export const MIN_CLIP_DURATION = 0.1; // segundos — reducers nunca deixam menor
 export const MAX_UNDO = 100;
 
+// ── CAMADAS (CapCut): lane = prioridade de composicao ──
+// main video = base. lane 1..MAX_LANE empilham ACIMA: lane MAIOR renderiza NA
+// FRENTE (o que esta por cima na timeline aparece por cima no video).
+// Textos e overlays COMPARTILHAM o espaco de lanes — texto em lane 1 fica
+// ATRAS de um overlay em lane 2 (regra pedida pelo user 2026-07-20).
+export const MAX_LANE = 5;
+export const TEXT_DEFAULT_LANE = 4;   // texto nasce no topo (padrao CapCut)
+export const OVERLAY_DEFAULT_LANE = 1;
+export function clampLane(v, fallback) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(MAX_LANE, Math.max(1, n));
+}
+
 /** @returns {object} estado inicial completo do documento */
 export function createInitialState() {
   return {
@@ -89,6 +103,7 @@ export function normalizeLoadedState(raw) {
       start_sec: Math.max(0, t.start_sec || 0),
       end_sec: Math.max(0, t.end_sec || 0),
       caption: t.caption === true,
+      lane: clampLane(t.lane, TEXT_DEFAULT_LANE),
       active: t.active !== false,
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
@@ -129,6 +144,7 @@ export function normalizeLoadedState(raw) {
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
+      lane: clampLane(o.lane, OVERLAY_DEFAULT_LANE),
       active: o.active !== false,
     })) : [];
   s.compounds = Array.isArray(raw.compounds) ? raw.compounds : [];

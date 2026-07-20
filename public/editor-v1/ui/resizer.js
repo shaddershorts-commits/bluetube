@@ -18,8 +18,12 @@ export function attachResizers(root, onResize) {
   apply();
 
   function apply() {
-    sizes.propsW = Math.min(520, Math.max(220, sizes.propsW));
-    sizes.tlH = Math.min(420, Math.max(120, sizes.tlH));
+    // tetos PROPORCIONAIS à janela (user: "preciso poder expandir a barra de
+    // edição") — antes travava em 420px de timeline / 520px de painel.
+    const maxTl = Math.max(420, Math.round(window.innerHeight * 0.72));
+    const maxProps = Math.max(520, Math.round(window.innerWidth * 0.42));
+    sizes.propsW = Math.min(maxProps, Math.max(220, sizes.propsW));
+    sizes.tlH = Math.min(maxTl, Math.max(120, sizes.tlH));
     if (isDesktop()) {
       // inline SO no desktop — no mobile sobrescreveria o media query
       ws.style.gridTemplateColumns = `64px ${sizes.propsW}px minmax(0, 1fr)`;

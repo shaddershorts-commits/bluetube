@@ -34,6 +34,7 @@ export const A = {
   SELECT_AUDIO_CLIP: 'SELECT_AUDIO_CLIP',
   // camadas (overlays)
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
+  SET_ITEM_LANE: 'SET_ITEM_LANE',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
   MOVE_OVERLAY: 'MOVE_OVERLAY',
   SET_OVERLAY_TRANSFORM: 'SET_OVERLAY_TRANSFORM',
@@ -45,6 +46,8 @@ export const A = {
   // compostos (CapCut Alt+G)
   TOGGLE_MULTI_SELECT: 'TOGGLE_MULTI_SELECT',
   SELECT_ALL: 'SELECT_ALL',
+  SET_MULTI_SELECT: 'SET_MULTI_SELECT',
+  DELETE_MULTI: 'DELETE_MULTI',
   CREATE_COMPOUND: 'CREATE_COMPOUND',
   UNGROUP_COMPOUND: 'UNGROUP_COMPOUND',
   UPDATE_COMPOUND: 'UPDATE_COMPOUND',
@@ -81,6 +84,7 @@ export const UNDOABLE = {
   [A.TRIM_OVERLAY]: U,
   [A.MOVE_OVERLAY]: U,
   [A.SET_OVERLAY_TRANSFORM]: U,
+  [A.SET_ITEM_LANE]: U,
   [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
@@ -88,6 +92,7 @@ export const UNDOABLE = {
   [A.CREATE_COMPOUND]: U,
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
+  [A.DELETE_MULTI]: U, // apaga a multi-selecao inteira = 1 undo step
 };
 
 // ── creators ────────────────────────────────────────────────────────────────
@@ -119,7 +124,9 @@ export const moveAudio = (audioId, start) => ({ type: A.MOVE_AUDIO, audioId, sta
 export const deleteAudioClip = (audioId) => ({ type: A.DELETE_AUDIO_CLIP, audioId });
 export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, audioId, value });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
-export const convertToOverlay = (clipId, atT) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT });
+export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
+// muda a camada (z) de um overlay/texto — arrasto vertical na timeline
+export const setItemLane = (itemType, id, lane) => ({ type: A.SET_ITEM_LANE, itemType, id, lane });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
 export const moveOverlay = (overlayId, start) => ({ type: A.MOVE_OVERLAY, overlayId, start });
 export const setOverlayTransform = (overlayId, patch) => ({ type: A.SET_OVERLAY_TRANSFORM, overlayId, patch });
@@ -131,6 +138,10 @@ export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
 export const selectAll = () => ({ type: A.SELECT_ALL });
+// marquee (arrastar no vazio) define a multi-selecao inteira de uma vez
+export const setMultiSelect = (items) => ({ type: A.SET_MULTI_SELECT, items });
+// Delete com multi-selecao ativa: apaga tudo que esta selecionado
+export const deleteMulti = () => ({ type: A.DELETE_MULTI });
 export const createCompound = () => ({ type: A.CREATE_COMPOUND });
 export const ungroupCompound = (compoundId) => ({ type: A.UNGROUP_COMPOUND, compoundId });
 export const updateCompound = (compoundId, doc) => ({ type: A.UPDATE_COMPOUND, compoundId, doc });

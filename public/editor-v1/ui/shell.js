@@ -452,36 +452,104 @@ export function mountEditor(root, store) {
   $('#beCompoundExit').addEventListener('click', exitCompound);
 
   // ── legendas automaticas (CapCut auto captions) ──
+  // words da ultima transcricao ficam em memoria: trocar o MODO nao paga
+  // nova transcricao (regenera local a partir das palavras).
+  let lastCaptionWords = null;
+  let lastCaptionPhrases = null;
+
+  function aplicarLegendas(mode) {
+    const words = lastCaptionWords || [];
+    const caps = mode === 'palavra'
+      // PALAVRA POR PALAVRA: cada palavra com o timestamp REAL da fala —
+      // a legenda acompanha a narração exatamente (pedido do user)
+      ? words.map((w, i) => ({
+          text: w.word,
+          start: w.start,
+          // fica na tela ate a proxima palavra (sem buraco), min 0.25s
+          end: Math.max(w.end, (words[i + 1]?.start ?? w.end + 0.4) - 0.02, w.start + 0.25),
+        }))
+      : (lastCaptionPhrases || []);
+    if (!caps.length) return 0;
+    // preserva o estilo atual (se o user ja tinha legendas estilizadas)
+    const atual = store.getState().texts.find(t => t.caption);
+    const estilo = {
+      font: atual?.font || 'Anton', size: atual?.size || 'medium',
+      color: atual?.color || '#ffffff', y_pct: atual?.y_pct ?? 0.82,
+    };
+    for (const t of store.getState().texts.filter(t => t.caption)) {
+      store.dispatch({ ...act.deleteText(t.id), gestureId: 'caps' });
+    }
+    for (const c of caps) {
+      store.dispatch({
+        ...act.addText({
+          content: c.text, caption: true,
+          start_sec: c.start, end_sec: c.end,
+          x_pct: 0.5, ...estilo,
+        }),
+        gestureId: 'caps',
+      });
+    }
+    store.endGesture(); // 1 undo desfaz a geracao inteira
+    return caps.length;
+  }
+
   async function generateCaptions() {
     const state = store.getState();
     if (!state.video?.url) return toast('Envie um vídeo primeiro', true);
-    toast('Transcrevendo áudio… (pode levar ~1min)');
+    const mode = $('#beCapMode')?.value || 'frase';
     try {
-      const r = await api.autoCaptions(state.video.url);
-      const caps = r.captions || [];
-      if (!caps.length) return toast('Nenhuma fala detectada no áudio', true);
-      // remove legendas antigas antes de aplicar as novas
-      for (const t of store.getState().texts.filter(t => t.caption)) {
-        store.dispatch({ ...act.deleteText(t.id), gestureId: 'caps' });
+      if (!lastCaptionWords) {
+        toast('Transcrevendo áudio… (pode levar ~1min)');
+        const r = await api.autoCaptions(state.video.url);
+        lastCaptionPhrases = r.captions || [];
+        lastCaptionWords = r.words || [];
+        if (!lastCaptionPhrases.length && !lastCaptionWords.length) {
+          return toast('Nenhuma fala detectada no áudio', true);
+        }
       }
-      for (const c of caps) {
-        store.dispatch({
-          ...act.addText({
-            content: c.text, caption: true,
-            start_sec: c.start, end_sec: c.end,
-            font: 'Anton', size: 'medium', color: '#ffffff',
-            x_pct: 0.5, y_pct: 0.82,
-          }),
-          gestureId: 'caps',
-        });
-      }
-      store.endGesture(); // 1 undo desfaz a geracao inteira
+      const n = aplicarLegendas(mode);
+      if (!n) return toast('Nenhuma fala detectada no áudio', true);
       $('#beCapStyleRow').style.display = 'flex';
-      toast(caps.length + ' legendas geradas ✓ — clique numa pra editar o texto');
+      toast(n + (mode === 'palavra' ? ' palavras' : ' legendas') + ' geradas ✓ — sincronizadas com a fala');
     } catch (e) { toast('Legendas: ' + e.message, true); }
   }
   $('#beAutoCaptions').addEventListener('click', generateCaptions);
   $('#beAutoCaptions2').addEventListener('click', generateCaptions);
+  // trocar o modo REGENERA na hora (sem nova transcricao) se ja ha legendas
+  $('#beCapMode').addEventListener('change', () => {
+    if (lastCaptionWords && store.getState().texts.some(t => t.caption)) {
+      const n = aplicarLegendas($('#beCapMode').value);
+      if (n) toast('Legendas regeneradas: ' + n + ' blocos');
+    }
+  });
+  // limpar words se trocar de video
+  let lastVideoUrl = store.getState().video?.url || null;
+  store.subscribe(() => {
+    const u = store.getState().video?.url || null;
+    if (u !== lastVideoUrl) { lastVideoUrl = u; lastCaptionWords = null; lastCaptionPhrases = null; }
+  });
+
+  // ── ESTILOS DE LEGENDA por categoria (presets CapCut-like) ──
+  // Limitados ao que o render REAL suporta (fontes com TTF no Railway +
+  // cor/tamanho/posição) — WYSIWYG honesto: o que se vê é o que exporta.
+  const CAP_PRESETS = {
+    classico: { font: 'Anton',      color: '#ffffff', size: 'medium' },
+    amarelo:  { font: 'Anton',      color: '#ffd32a', size: 'medium' },
+    impacto:  { font: 'Bebas Neue', color: '#ffffff', size: 'large' },
+    oswald:   { font: 'Oswald',     color: '#f5f5f5', size: 'large' },
+    neon:     { font: 'Anton',      color: '#00d4ff', size: 'medium' },
+    lima:     { font: 'Bebas Neue', color: '#a3e635', size: 'medium' },
+    pop:      { font: 'Anton',      color: '#ff6b9d', size: 'medium' },
+  };
+  $('#beCapPreset').addEventListener('change', (e) => {
+    const p = CAP_PRESETS[e.target.value];
+    if (!p) return;
+    applyCapStyle(p);
+    // espelha nos controles individuais
+    $('#beCapSize').value = p.size;
+    $('#beCapColor').value = p.color;
+    toast('Estilo aplicado em todas as legendas ✓');
+  });
 
   // estilo GLOBAL das legendas: muda uma vez, aplica em todas (CapCut)
   function applyCapStyle(patchObj) {
@@ -608,8 +676,32 @@ function buildTemplate() {
       <button id="beDetachAudio" class="be-tool-btn" title="Ctrl+Shift+S">🔀 Separar áudio do vídeo</button>
       <div class="be-sep"></div>
       <div class="be-side-title">Legendas</div>
+      <label class="be-dim" style="display:flex;flex-direction:column;gap:3px">Modo
+        <select id="beCapMode">
+          <option value="frase" selected>Frase (multilinha)</option>
+          <option value="palavra">Palavra por palavra (acompanha a fala)</option>
+        </select>
+      </label>
       <button id="beAutoCaptions2" class="be-tool-btn">💬 Gerar legendas automáticas</button>
       <div id="beCapStyleRow" style="display:none;flex-direction:column;gap:6px">
+        <label class="be-dim" style="display:flex;flex-direction:column;gap:3px">Estilo
+          <select id="beCapPreset">
+            <option value="">— escolher estilo —</option>
+            <optgroup label="Clássicos">
+              <option value="classico">Branco clássico</option>
+              <option value="amarelo">Amarelo destaque</option>
+            </optgroup>
+            <optgroup label="Impacto">
+              <option value="impacto">Bebas grande</option>
+              <option value="oswald">Oswald forte</option>
+            </optgroup>
+            <optgroup label="Coloridos">
+              <option value="neon">Ciano neon</option>
+              <option value="lima">Verde lima</option>
+              <option value="pop">Rosa pop</option>
+            </optgroup>
+          </select>
+        </label>
         <div class="be-panel-row">
           <label>Tamanho <select id="beCapSize">
             <option value="small">Pequeno</option>

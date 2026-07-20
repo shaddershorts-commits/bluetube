@@ -2,7 +2,7 @@
 // Atalhos CapCut. Ignora quando o foco esta em input/textarea/contenteditable.
 
 import * as act from '../core/actions.js';
-import { segmentAt } from '../core/selectors.js';
+import { segmentAt, timelineSegments } from '../core/selectors.js';
 
 /** Split CapCut: corta a FAIXA selecionada no cursor.
  *  texto selecionado -> divide texto; audio -> divide audio; senao video. */
@@ -62,10 +62,18 @@ export function attachShortcuts({ store, player, timeline }) {
         e.preventDefault();
         player.toggle();
         break;
-      case 'q': case 'Q':
+      case 'q': case 'Q': {
+        // age SÓ no clip selecionado (ou o sob o playhead) — reducer garante.
+        // Pós-corte o conteúdo que estava no playhead recua pro início do
+        // clip alvo: seek pra lá (CapCut).
+        const segsQ = timelineSegments(state);
+        const alvoQ = state.selected_clip_id != null
+          ? segsQ.find(s => s.clip.id === state.selected_clip_id)
+          : segmentAt(state, t);
         store.dispatch(act.deleteRangeLeft(t));
-        player.seek(0.001);
+        if (alvoQ && t > alvoQ.tStart && t < alvoQ.tEnd) player.seek(alvoQ.tStart);
         break;
+      }
       case 'w': case 'W':
         store.dispatch(act.deleteRangeRight(t));
         break;
@@ -79,6 +87,11 @@ export function attachShortcuts({ store, player, timeline }) {
         break;
       }
       case 'Delete': case 'Backspace': {
+        // multi-selecao (Ctrl+A / marquee / ctrl+click): apaga TUDO selecionado
+        if (state.multi_selected?.length) {
+          store.dispatch(act.deleteMulti());
+          break;
+        }
         if (state.selected_text_id != null) {
           store.dispatch(act.deleteText(state.selected_text_id));
         } else if (state.selected_overlay_id != null) {
@@ -96,6 +109,9 @@ export function attachShortcuts({ store, player, timeline }) {
       case 'End': e.preventDefault(); player.seek(player.getDuration()); break;
       case 'z': case 'Z':
         if (e.shiftKey) timeline.zoomFit();
+        break;
+      case 'Escape':
+        if (state.multi_selected?.length) store.dispatch(act.setMultiSelect([]));
         break;
     }
   }

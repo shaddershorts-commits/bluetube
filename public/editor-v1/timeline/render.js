@@ -75,6 +75,12 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
   }
 
+  // ── rows de camada (fundos sutis; topo = frente no video) ──
+  for (const r of layout.laneRows || []) {
+    ctx.fillStyle = 'rgba(120,150,220,.05)';
+    ctx.fillRect(0, r.y, W, r.h);
+  }
+
   // ── clips ativos ──
   for (const c of layout.clips) {
     const isDragging = fsm?.name === 'dragging-clip' && fsm.clipId === c.clipId;
@@ -188,8 +194,8 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     roundRect(ctx, t.x, t.y, t.w, t.h, 4);
     ctx.fillStyle = COLORS.textBlock;
     ctx.fill();
-    if (t.selected) {
-      ctx.strokeStyle = COLORS.textBlockBorder;
+    if (t.selected || t.multi) {
+      ctx.strokeStyle = t.multi ? COLORS.snap : COLORS.textBlockBorder;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -230,8 +236,8 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
     roundRect(ctx, ox, o.y, ow, o.h, 5);
-    ctx.strokeStyle = o.selected ? '#a97fee' : 'rgba(169,127,238,.45)';
-    ctx.lineWidth = o.selected ? 2 : 1;
+    ctx.strokeStyle = o.multi ? COLORS.snap : (o.selected ? '#a97fee' : 'rgba(169,127,238,.45)');
+    ctx.lineWidth = (o.selected || o.multi) ? 2 : 1;
     ctx.stroke();
     if (o.selected) {
       drawHandle(ctx, ox, o.y, o.h, 'left');
@@ -240,7 +246,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     if (ow > 50) {
       ctx.fillStyle = 'rgba(232,244,255,.8)';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText('⧉ camada', ox + 6, o.y + 3);
+      ctx.fillText('⧉ camada ' + (o.lane || 1), ox + 6, o.y + 3);
     }
   }
 
@@ -265,8 +271,8 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.fillStyle = COLORS.audio;
     ctx.fill();
-    ctx.strokeStyle = a.selected ? '#22c55e' : COLORS.audioBorder;
-    ctx.lineWidth = a.selected ? 2 : 1;
+    ctx.strokeStyle = a.multi ? COLORS.snap : (a.selected ? '#22c55e' : COLORS.audioBorder);
+    ctx.lineWidth = (a.selected || a.multi) ? 2 : 1;
     ctx.stroke();
 
     ctx.save();
@@ -289,6 +295,19 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(a.label, ax + 6, a.y + 3);
     }
+  }
+
+  // ── marquee (seletor retangular no vazio) ──
+  if (fsm?.name === 'marquee') {
+    const mx = Math.min(fsm.x0, fsm.x1), my = Math.min(fsm.y0, fsm.y1);
+    const mw = Math.abs(fsm.x1 - fsm.x0), mh = Math.abs(fsm.y1 - fsm.y0);
+    ctx.fillStyle = 'rgba(0,170,255,.12)';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle = 'rgba(0,170,255,.7)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(mx, my, mw, mh);
+    ctx.setLineDash([]);
   }
 
   // ── linha de snap ──

@@ -293,7 +293,9 @@ module.exports = async function handler(req, res) {
       // duracao minima legivel de 0.7s
       for (const c of captions) if (c.end - c.start < 0.7) c.end = c.start + 0.7;
 
-      return res.status(200).json({ ok: true, captions, language: wd.language || null });
+      // words: timestamps POR PALAVRA (modo "palavra por palavra" do editor —
+      // a legenda acompanha a narração exatamente como falada)
+      return res.status(200).json({ ok: true, captions, words, language: wd.language || null });
     } catch (e) {
       console.error('[auto-captions]', e.message);
       return res.status(500).json({ error: e.message });

@@ -19,6 +19,10 @@ export function createPlayer(videoEl, _audioElUnused, store) {
   function syncVideoToVirtual(seekVideo = true) {
     const state = store.getState();
     const src = timelineToSource(state, Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001)));
+    // Sem clip de vídeo ativo neste instante (faixa excluída/vazia): o <video>
+    // congelava no último frame decodificado — esconde (preto) até voltar a
+    // haver conteúdo. Fix do "excluí a faixa mas a imagem continuou".
+    videoEl.style.visibility = src == null ? 'hidden' : '';
     if (src != null && seekVideo && Math.abs(videoEl.currentTime - src) > 0.06) {
       videoEl.currentTime = src;
     }

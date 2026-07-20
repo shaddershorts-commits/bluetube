@@ -2146,18 +2146,7 @@ async function processEditV0(jobId, p) {
     } else {
       vf = `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1`;
     }
-    // drawtext pra cada texto ativo. Source_w/source_h em pct -> px do output
     const texts = p.texts || [];
-    let textFilters = '';
-    for (const t of texts) {
-      const fs_px = Math.round(sizePct(t.size) * OUT_W);
-      const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
-      const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
-      const txt = escapeDrawText(t.content || '');
-      const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
-      textFilters += `,drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${Math.max(2, Math.round(fs_px*0.06))}:bordercolor=0x000000:x=${x_px}:y=${y_px}:enable='${enable}'`;
-    }
-    vf += textFilters;
 
     // Volumes
     const volV = p.volumes?.video ?? 1;
@@ -2168,7 +2157,7 @@ async function processEditV0(jobId, p) {
     const fc = [];                                   // filter_complex parts
     let inputIdx = 1;
 
-    // ── OVERLAYS v2 (camadas PiP): trim de cada camada + overlay chain ──
+    // ── OVERLAYS v2: trim de cada camada (arquivo pronto pro chain) ──
     const overlays = Array.isArray(p.overlays) ? p.overlays : [];
     const ovInputs = [];
     for (let i = 0; i < overlays.length; i++) {
@@ -2185,19 +2174,39 @@ async function processEditV0(jobId, p) {
       args.push('-i', out);
       inputIdx++;
     }
-    // video chain: [0:v] vf base -> overlays em cadeia (ordem = z-order)
+
+    // ── COMPOSIÇÃO POR LANE (v3, CapCut): overlays E textos entram na MESMA
+    // ordem de camadas — lane MAIOR aplica por ÚLTIMO = fica NA FRENTE.
+    // Texto em lane menor que um overlay fica ATRÁS do vídeo dele (regra do
+    // user). Retrocompat: payload sem lane → overlays lane 1, textos lane 4
+    // (texto na frente, default CapCut).
+    const ops = [
+      ...ovInputs.map((ov) => ({ kind: 'ov', lane: Number(ov.o.lane) || 1, ov })),
+      ...texts.map((t) => ({ kind: 'text', lane: Number(t.lane) || 4, t })),
+    ].sort((a, b) => a.lane - b.lane);
+
     let vLabel = 'base0';
     fc.push(`[0:v]${vf}[${vLabel}]`);
-    ovInputs.forEach((ov, k) => {
-      const { idx, o } = ov;
-      const scaled = `ovs${k}`;
+    ops.forEach((op, k) => {
       const nextL = `base${k + 1}`;
-      // escala relativa a LARGURA do output + posicao central em pct
-      fc.push(`[${idx}:v]scale=${Math.round((p.output_width || 1080) * (o.scale ?? 0.5))}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
-      fc.push(`[${vLabel}][${scaled}]overlay=x=${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2:y=${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2:enable='between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur0(o)).toFixed(3)})'[${nextL}]`);
+      if (op.kind === 'ov') {
+        const { idx, o } = op.ov;
+        const dur = o.source_out - o.source_in;
+        const scaled = `ovs${k}`;
+        // escala relativa a LARGURA do output + posicao central em pct
+        fc.push(`[${idx}:v]scale=${Math.round((p.output_width || 1080) * (o.scale ?? 0.5))}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
+        fc.push(`[${vLabel}][${scaled}]overlay=x=${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2:y=${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2:enable='between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur).toFixed(3)})'[${nextL}]`);
+      } else {
+        const t = op.t;
+        const fs_px = Math.round(sizePct(t.size) * OUT_W);
+        const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
+        const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
+        const txt = escapeDrawText(t.content || '');
+        const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
+        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${Math.max(2, Math.round(fs_px*0.06))}:bordercolor=0x000000:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
+      }
       vLabel = nextL;
     });
-    function dur0(o) { return o.source_out - o.source_in; }
 
     // ── AUDIO v2: mixer de audio_clips (posicao/trim/volume por clip) ──
     const audioClips = Array.isArray(p.audio_clips) ? p.audio_clips : [];

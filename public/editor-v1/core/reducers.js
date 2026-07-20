@@ -6,7 +6,7 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
-import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES } from './schema.js';
+import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE } from './schema.js';
 import { timelineSegments, segmentAt, mainTrackItems } from './selectors.js';
 
 export function reduce(state, action) {
@@ -103,41 +103,37 @@ export function reduce(state, action) {
       return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
 
     case A.DELETE_RANGE_LEFT: {
-      // Remove tudo antes do tempo virtual t (CapCut "Q"): trima o clip sob t
-      // e deleta os anteriores.
-      const seg = segmentAt(state, action.t);
-      if (!seg) return state;
-      const srcCut = seg.clip.source_in + (action.t - seg.tStart);
-      if (srcCut - seg.clip.source_in < MIN_CLIP_DURATION) {
-        // playhead praticamente no inicio do clip — só deleta anteriores
-        const before = timelineSegments(state).filter(s2 => s2.tEnd <= seg.tStart + 1e-9).map(s2 => s2.clip.id);
-        if (!before.length) return state;
-        const clips = state.clips.filter(c => !before.includes(c.id));
-        return touch({ ...state, clips });
-      }
+      // CapCut "Q" (fix 2026-07-20): age SÓ no clip SELECIONADO — trima a
+      // parte à ESQUERDA do playhead DENTRO dele. O comportamento antigo
+      // (varrer a timeline inteira e deletar tudo antes do playhead) apagava
+      // o projeto — user pegou. Sem seleção: trima só o clip sob o playhead.
       const segs = timelineSegments(state);
-      const beforeIds = segs.filter(s2 => s2.tEnd <= seg.tStart + 1e-9).map(s2 => s2.clip.id);
-      const clips = state.clips
-        .filter(c => !beforeIds.includes(c.id))
-        .map(c => c.id === seg.clip.id ? { ...c, source_in: srcCut } : c);
+      const alvo = state.selected_clip_id != null
+        ? segs.find(s2 => s2.clip.id === state.selected_clip_id)
+        : segmentAt(state, action.t);
+      if (!alvo) return state;
+      // playhead fora do clip alvo: nada a trimar
+      if (action.t <= alvo.tStart + 1e-9 || action.t >= alvo.tEnd - 1e-9) return state;
+      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart);
+      if (srcCut - alvo.clip.source_in < MIN_CLIP_DURATION) return state;
+      if (alvo.clip.source_out - srcCut < MIN_CLIP_DURATION) return state;
+      const clips = state.clips.map(c => c.id === alvo.clip.id ? { ...c, source_in: srcCut } : c);
       return touch({ ...state, clips });
     }
 
     case A.DELETE_RANGE_RIGHT: {
-      const seg = segmentAt(state, action.t);
-      if (!seg) return state;
-      const srcCut = seg.clip.source_in + (action.t - seg.tStart);
-      if (seg.clip.source_out - srcCut < MIN_CLIP_DURATION) {
-        const after = timelineSegments(state).filter(s2 => s2.tStart >= seg.tEnd - 1e-9).map(s2 => s2.clip.id);
-        if (!after.length) return state;
-        const clips = state.clips.filter(c => !after.includes(c.id));
-        return touch({ ...state, clips });
-      }
+      // CapCut "W": espelho do Q — trima a parte à DIREITA do playhead
+      // dentro do clip selecionado (ou o sob o playhead, sem seleção).
       const segs = timelineSegments(state);
-      const afterIds = segs.filter(s2 => s2.tStart >= seg.tEnd - 1e-9).map(s2 => s2.clip.id);
-      const clips = state.clips
-        .filter(c => !afterIds.includes(c.id))
-        .map(c => c.id === seg.clip.id ? { ...c, source_out: srcCut } : c);
+      const alvo = state.selected_clip_id != null
+        ? segs.find(s2 => s2.clip.id === state.selected_clip_id)
+        : segmentAt(state, action.t);
+      if (!alvo) return state;
+      if (action.t <= alvo.tStart + 1e-9 || action.t >= alvo.tEnd - 1e-9) return state;
+      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart);
+      if (alvo.clip.source_out - srcCut < MIN_CLIP_DURATION) return state;
+      if (srcCut - alvo.clip.source_in < MIN_CLIP_DURATION) return state;
+      const clips = state.clips.map(c => c.id === alvo.clip.id ? { ...c, source_out: srcCut } : c);
       return touch({ ...state, clips });
     }
 
@@ -156,6 +152,7 @@ export function reduce(state, action) {
         start_sec: Math.max(0, p.start_sec ?? 0),
         end_sec: Math.max(0, p.end_sec ?? 3),
         caption: p.caption === true,
+        lane: clampLane(p.lane, TEXT_DEFAULT_LANE),
         active: true,
       };
       if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;
@@ -345,8 +342,10 @@ export function reduce(state, action) {
     // ── camadas overlay (CapCut: arrastar clip pra cima) ────────────────
 
     case A.CONVERT_TO_OVERLAY: {
-      // remove o clip da track principal e vira overlay na posicao atT.
+      // remove o clip da track principal e vira CAMADA na posicao atT.
       // Regra CapCut: nao esvazia a principal (ultimo clip nao sobe).
+      // scale 1.0 = camada cobre o quadro inteiro (CapCut) — o PiP menor é
+      // opcao do usuario depois (arrasta/escala no preview).
       const clip = state.clips.find(c => c.id === action.clipId);
       if (!clip) return state;
       const remaining = state.clips.filter(c => c.id !== action.clipId && c.active !== false);
@@ -355,7 +354,8 @@ export function reduce(state, action) {
         id: state.next_overlay_id,
         source_in: clip.source_in, source_out: clip.source_out,
         start: Math.max(0, action.atT || 0),
-        x_pct: 0.5, y_pct: 0.5, scale: 0.5,
+        x_pct: 0.5, y_pct: 0.5, scale: 1,
+        lane: clampLane(action.lane, OVERLAY_DEFAULT_LANE),
         active: true,
       };
       return touch({
@@ -422,6 +422,28 @@ export function reduce(state, action) {
       return touch({ ...state, overlays, selected_overlay_id: sel });
     }
 
+    case A.SET_ITEM_LANE: {
+      // arrasto vertical na timeline: muda a camada (z) de overlay/texto.
+      // Camada MAIOR = mais acima na timeline = NA FRENTE no video (CapCut).
+      const lane = clampLane(action.lane, null);
+      if (lane == null) return state;
+      if (action.itemType === 'overlay') {
+        const idx = state.overlays.findIndex(o => o.id === action.id);
+        if (idx < 0 || state.overlays[idx].lane === lane) return state;
+        const overlays = state.overlays.slice();
+        overlays[idx] = { ...overlays[idx], lane };
+        return touch({ ...state, overlays });
+      }
+      if (action.itemType === 'text') {
+        const idx = state.texts.findIndex(t => t.id === action.id);
+        if (idx < 0 || state.texts[idx].lane === lane) return state;
+        const texts = state.texts.slice();
+        texts[idx] = { ...texts[idx], lane };
+        return touch({ ...state, texts });
+      }
+      return state;
+    }
+
     case A.SELECT_OVERLAY: {
       if (state.selected_overlay_id === action.overlayId) return state;
       return {
@@ -450,6 +472,35 @@ export function reduce(state, action) {
         ...state.overlays.filter(o => o.active !== false).map(o => ({ type: 'overlay', id: o.id })),
       ];
       return { ...state, multi_selected };
+    }
+
+    case A.SET_MULTI_SELECT: {
+      // marquee: substitui a multi-selecao inteira (lista ja validada pelo
+      // controller — so ids que existem no layout)
+      const items = Array.isArray(action.items) ? action.items
+        .filter(x => x && ['clip', 'text', 'audio', 'overlay'].includes(x.type) && x.id != null)
+        .map(x => ({ type: x.type, id: x.id })) : [];
+      return { ...state, multi_selected: items };
+    }
+
+    case A.DELETE_MULTI: {
+      // Delete com multi-selecao: apaga TUDO que esta selecionado, de todas
+      // as faixas, num unico undo step.
+      if (!state.multi_selected.length) return state;
+      const ids = (tipo) => new Set(state.multi_selected.filter(x => x.type === tipo).map(x => x.id));
+      const clipIds = ids('clip'), textIds = ids('text'), audioIds = ids('audio'), ovIds = ids('overlay');
+      return touch({
+        ...state,
+        clips: state.clips.filter(c => !clipIds.has(c.id)),
+        texts: state.texts.filter(t => !textIds.has(t.id)),
+        audio_clips: state.audio_clips.filter(a => !audioIds.has(a.id)),
+        overlays: state.overlays.filter(o => !ovIds.has(o.id)),
+        multi_selected: [],
+        selected_clip_id: clipIds.has(state.selected_clip_id) ? null : state.selected_clip_id,
+        selected_text_id: textIds.has(state.selected_text_id) ? null : state.selected_text_id,
+        selected_audio_id: audioIds.has(state.selected_audio_id) ? null : state.selected_audio_id,
+        selected_overlay_id: ovIds.has(state.selected_overlay_id) ? null : state.selected_overlay_id,
+      });
     }
 
     case A.CREATE_COMPOUND: {
