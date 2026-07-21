@@ -1588,7 +1588,10 @@ Responda APENAS em JSON válido sem markdown:
       });
       console.log('[auth] OTP cache save:', saveR.status);
 
-      // Envia OTP via Resend
+      // Envia OTP via Resend. Link mágico = confirma em 1 toque (abre o navegador
+      // de verdade, escapando do webless in-app do IG/FB onde o código quebrava).
+      const _site = process.env.SITE_URL || 'https://www.bluetubeviral.com';
+      const _magic = `${_site}/?otpc=1&e=${encodeURIComponent(email)}&c=${otp}`;
       const RESEND = process.env.RESEND_API_KEY;
       if (RESEND) {
         const emailR = await fetch('https://api.resend.com/emails', {
@@ -1599,8 +1602,10 @@ Responda APENAS em JSON válido sem markdown:
             subject: otp + ' — Seu código de verificação BlueTube',
             html: `<div style="background:#020817;color:#e8f4ff;font-family:-apple-system,sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px;border:1px solid rgba(0,170,255,.2)">
               <div style="text-align:center;margin-bottom:20px"><span style="font-size:24px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></span></div>
-              <p style="font-size:16px;text-align:center">Seu código de verificação:</p>
-              <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:28px;text-align:center;margin:20px 0">
+              <p style="font-size:16px;text-align:center">Confirme seu email pra terminar o cadastro:</p>
+              <div style="text-align:center;margin:24px 0"><a href="${_magic}" style="display:inline-block;background:#00aaff;color:#020817;font-weight:800;text-decoration:none;padding:15px 32px;border-radius:10px;font-size:16px">Confirmar meu email &rarr;</a></div>
+              <p style="font-size:13px;text-align:center;color:rgba(200,225,255,0.6)">Ou digite este código no site:</p>
+              <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:28px;text-align:center;margin:12px 0">
                 <span style="font-size:44px;font-weight:800;letter-spacing:14px;color:#00aaff">${otp}</span>
               </div>
               <p style="color:rgba(200,225,255,0.5);font-size:13px;text-align:center">Este código expira em 10 minutos.</p>
@@ -1693,14 +1698,16 @@ Responda APENAS em JSON válido sem markdown:
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
 
       // Generate and send custom OTP via Resend
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      let otp = String(Math.floor(100000 + Math.random() * 900000));
       // Save to cache
       if (SUPA_URL && SUPA_KEY) {
-        // Get stored password from existing OTP cache (if resending)
+        // Reenvio: REUSA o código válido existente (o usuário pode digitar
+        // qualquer email recebido — acaba a confusão de "código rotacionado")
+        // e preserva a senha guardada no signup.
         let storedPwd = '';
         try {
-          const old = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&select=value`, { headers: supaH });
-          if (old.ok) { const od = await old.json(); storedPwd = od?.[0]?.value?.password || ''; }
+          const old = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: supaH });
+          if (old.ok) { const od = await old.json(); if (od?.[0]?.value?.code) otp = od[0].value.code; storedPwd = od?.[0]?.value?.password || ''; }
         } catch(e) {}
         await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
         await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
@@ -1708,6 +1715,8 @@ Responda APENAS em JSON válido sem markdown:
           body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password: storedPwd }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
         }).catch(() => {});
       }
+      const _site = process.env.SITE_URL || 'https://www.bluetubeviral.com';
+      const _magic = `${_site}/?otpc=1&e=${encodeURIComponent(email)}&c=${otp}`;
       const RESEND = process.env.RESEND_API_KEY;
       if (RESEND) {
         await fetch('https://api.resend.com/emails', {
@@ -1716,7 +1725,7 @@ Responda APENAS em JSON válido sem markdown:
           body: JSON.stringify({
             from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
             subject: otp + ' — Seu código de verificação BlueTube',
-            html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código de verificação:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
+            html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Confirme seu email pra terminar o cadastro:</p><div style="text-align:center;margin:24px 0"><a href="${_magic}" style="display:inline-block;background:#00aaff;color:#020817;font-weight:800;text-decoration:none;padding:15px 32px;border-radius:10px;font-size:16px">Confirmar meu email &rarr;</a></div><p style="font-size:13px;color:rgba(200,225,255,0.6)">Ou digite este código no site:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:12px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
           })
         });
       }

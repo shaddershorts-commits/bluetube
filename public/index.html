@@ -2658,6 +2658,9 @@ function setAuthMsg(msg,ok){
 }
 function showOTPForm(email){
   pendingOTPEmail=email;
+  // Persiste o estado do OTP: se o webview (in-app do IG/FB) recarregar quando o
+  // usuário troca pro app de email, restauramos esta tela no load (não some).
+  try{ localStorage.setItem('bt_pending_otp', JSON.stringify({email, ts: Date.now()})); }catch(e){}
   document.getElementById('otpEmailDisplay').textContent=email;
   document.getElementById('authLoginForm').style.display='none';
   document.getElementById('authSignupForm').style.display='none';
@@ -2738,6 +2741,7 @@ async function submitOTPCode(){
     // (Supabase + subscribers têm unique no email) — só evita o estado travado.
     if(!d.session?.access_token){
       const emailExistente=pendingOTPEmail;
+      try{ localStorage.removeItem('bt_pending_otp'); }catch(e){}
       pendingOTPPassword=''; // descarta a senha nova (errada) pra não salvar como cred
       fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:emailExistente})}).catch(()=>{});
       switchAuthTab('login');
@@ -2804,6 +2808,7 @@ async function submitOTPCode(){
       _btSaveCred(pendingOTPEmail, pendingOTPPassword);
       pendingOTPPassword = '';
     }
+    try{ localStorage.removeItem('bt_pending_otp'); }catch(e){}
     statusEl.innerHTML='<span style="color:var(--green)">✅ Verificado!</span>';
     sendWelcomeEmail(pendingOTPEmail);
     setTimeout(()=>{closeAuthModal();checkSession();_maybeAutoDispatchPendingTranscription();},1200);
@@ -2881,6 +2886,12 @@ async function handleEmailSignup(){
   if(!email||!password||!confirm){setAuthMsg('Preencha todos os campos.','');return;}
   if(password.length<6){setAuthMsg('Senha mínima de 6 caracteres.','');return;}
   if(password!==confirm){setAuthMsg('As senhas não coincidem.','');return;}
+  // Guarda contra typo de domínio (gmail.comt/gmail.con etc) — evita bounce do
+  // email + código queimado (caso real: thiago recebeu bounce em @gmail.comt).
+  const _emailLow=email.toLowerCase();
+  const _dom=_emailLow.split('@')[1]||'';
+  const _domFix={'gmail.comt':'gmail.com','gmail.con':'gmail.com','gmail.co':'gmail.com','gmail.om':'gmail.com','gmail.cm':'gmail.com','gmail.vom':'gmail.com','gmail.xom':'gmail.com','gmail.clm':'gmail.com','gmial.com':'gmail.com','gmai.com':'gmail.com','gnail.com':'gmail.com','gamil.com':'gmail.com','hotmail.con':'hotmail.com','hotmail.comt':'hotmail.com','hotmial.com':'hotmail.com','outlook.con':'outlook.com','outlook.comt':'outlook.com','yahoo.con':'yahoo.com','yahoo.comt':'yahoo.com'};
+  if(_domFix[_dom]){setAuthMsg('Confere o email — talvez seja '+_emailLow.replace('@'+_dom,'@'+_domFix[_dom])+'?','');return;}
   // Fix 6 (Gap 5): age 16+ obrigatorio
   const _age16 = document.getElementById('signupAge16');
   if(!_age16 || !_age16.checked){setAuthMsg('Você precisa ter 16 anos ou mais para criar conta.','');return;}
@@ -5097,6 +5108,36 @@ document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='E
 document.getElementById('urlInput').addEventListener('input', function(){
   _save('bt_url', this.value);
 });
+
+// ── OTP RESILIENTE: link mágico (?otpc) + restauração após reload ───────────
+// Fecha a sangria de cadastros travados no webview do IG/FB (usuário troca pro
+// app de email e o webview recarrega). Roda ANTES do checkSession.
+(function handleOTPResilience(){
+  try{
+    const p = new URLSearchParams(location.search);
+    // 1) LINK MÁGICO: ?otpc=1&e=<email>&c=<código> → confirma em 1 toque
+    if(p.get('otpc')==='1' && p.get('e') && p.get('c')){
+      const e = p.get('e');
+      const c = (p.get('c')||'').replace(/\D/g,'').slice(0,6);
+      history.replaceState({}, document.title, location.pathname); // tira o código da URL na hora
+      if(c.length===6){
+        try{ openAuthModal(); showOTPForm(e); }catch(err){}
+        const inputs = document.querySelectorAll('.otp-digit');
+        c.split('').forEach((d,j)=>{ if(inputs[j]){ inputs[j].value=d; inputs[j].classList.add('filled'); }});
+        setTimeout(()=>{ try{ submitOTPCode(); }catch(err){} }, 200);
+      }
+      return;
+    }
+    // 2) RESTAURAÇÃO: reload no meio do OTP → reabre a tela do código já enviado
+    const raw = localStorage.getItem('bt_pending_otp');
+    if(raw){
+      const st = JSON.parse(raw);
+      if(st && st.email && (Date.now()-(st.ts||0)) < 10*60*1000){
+        try{ openAuthModal(); showOTPForm(st.email); }catch(err){}
+      }else{ try{ localStorage.removeItem('bt_pending_otp'); }catch(e){} }
+    }
+  }catch(e){}
+})();
 
 // Handle OAuth callback first, then check existing session
 handleOAuthCallback().then(wasCallback => {
