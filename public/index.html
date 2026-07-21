@@ -2447,6 +2447,7 @@ async function goToCheckout(plan, billing, paymentMethod){
 // ── AUTH MODAL ─────────────────────────────────────────────────────────────
 let pendingOTPEmail='';
 let pendingOTPPassword='';
+let _otpSubmitting=false; // guarda contra duplo-disparo do verify (auto-submit + re-digitação) → 2 welcomes
 
 // ── CRED STORAGE (UTF-8 safe) ───────────────────────────────────────────────
 // btoa/atob puros quebram com caracteres fora de Latin1 (ex: senha com acento).
@@ -2726,6 +2727,8 @@ function setupOTPInputs(){
 async function submitOTPCode(){
   const code=[...document.querySelectorAll('.otp-digit')].map(d=>d.value).join('');
   if(code.length!==6){document.getElementById('otpStatus').innerHTML='<span style="color:var(--text-dim)">Digite os 6 dígitos</span>';return;}
+  if(_otpSubmitting)return; // já tem um verify em voo — evita 2ª chamada (2 welcomes / 2 conversões)
+  _otpSubmitting=true;
   const statusEl=document.getElementById('otpStatus');
   const btn=document.getElementById('otpSubmitBtn');
   statusEl.innerHTML='<span style="color:var(--neon)">Verificando…</span>';
@@ -2749,6 +2752,7 @@ async function submitOTPCode(){
       const le=document.getElementById('loginEmail');if(le)le.value=emailExistente;
       const lp=document.getElementById('loginPassword');if(lp)lp.value=''; // limpa senha pré-preenchida (pode ser de outra conta)
       setAuthMsg('Esse email já tem conta no BlueTube! Enviamos um link de redefinição de senha pro seu email — ou, se você lembra a senha, entre abaixo.','');
+      _otpSubmitting=false;
       if(btn)btn.disabled=false;
       return;
     }
@@ -2814,6 +2818,8 @@ async function submitOTPCode(){
     sendWelcomeEmail(pendingOTPEmail);
     setTimeout(()=>{closeAuthModal();checkSession();_maybeAutoDispatchPendingTranscription();},1200);
   }catch(e){
+    _otpSubmitting=false; // erro → libera nova tentativa
+    if(btn)btn.disabled=false;
     statusEl.innerHTML='<span style="color:#ff7a5a">'+e.message+'</span>';
     document.querySelectorAll('.otp-digit').forEach(d=>{d.value='';d.classList.remove('filled');});
     document.querySelector('.otp-digit')?.focus();
@@ -2899,7 +2905,10 @@ async function handleEmailSignup(){
   setAuthMsg('Criando conta…','ok');
   try{
     const _refSignup = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:_refSignup})});
+    // Envia o UTM JÁ NO SIGNUP (mesmo navegador, tem os dados) → cacheado no
+    // servidor → aplicado no verify mesmo se completar por link mágico noutro navegador.
+    const _attrSignup = (typeof window.getMarketingAttribution === 'function') ? window.getMarketingAttribution() : null;
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:_refSignup,attribution:_attrSignup})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
 
