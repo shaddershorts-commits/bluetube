@@ -11,6 +11,22 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
+// Acha o id do auth user pelo email (subscribers NÃO guarda user_id). Pagina a
+// admin API (o filtro ?email= não é confiável). Necessário pra apagar auth.users.
+async function findAuthUserId(SUPABASE_URL, headers, email) {
+  const low = String(email || '').toLowerCase();
+  for (let page = 1; page <= 30; page++) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=200`, { headers });
+    if (!r.ok) break;
+    const j = await r.json();
+    const users = j.users || [];
+    const u = users.find(x => String(x.email || '').toLowerCase() === low);
+    if (u) return u.id;
+    if (users.length < 200) break;
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1222,10 +1238,14 @@ export default async function handler(req, res) {
     if (!targetEmail) return res.status(400).json({ error: 'Missing email' });
     const h2 = { ...headers, 'Content-Type': 'application/json' };
 
-    // Cancel Stripe if exists
-    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(targetEmail)}&select=stripe_customer_id,user_id`, { headers });
+    const enc = encodeURIComponent(targetEmail);
+    // id do auth pelo email — subscribers NÃO tem coluna user_id (o select antigo
+    // pedia user_id → 400 → sub=null → Stripe NUNCA cancelava, blue_* nunca apagava).
+    const uid = await findAuthUserId(SUPABASE_URL, headers, targetEmail);
+
+    // Cancel Stripe if exists (select corrigido — só stripe_customer_id)
+    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${enc}&select=stripe_customer_id`, { headers });
     const sub = subRes.ok ? (await subRes.json())[0] : null;
-    const uid = sub?.user_id;
     const stripeId = sub?.stripe_customer_id;
     if (stripeId && process.env.STRIPE_SECRET_KEY) {
       try {
@@ -1236,13 +1256,18 @@ export default async function handler(req, res) {
       } catch(e) {}
     }
 
-    // Delete from all tables
-    const tables = ['subscribers','user_feedback','roteiro_exemplos','reactivation_emails'];
-    for (const t of tables) { await fetch(`${SUPABASE_URL}/rest/v1/${t}?email=eq.${encodeURIComponent(targetEmail)}`, { method:'DELETE', headers }).catch(()=>{}); }
+    // Delete from tables (por email) + limpa OTP pendente (pra re-signup limpo)
+    const tables = ['subscribers','user_feedback','roteiro_exemplos','reactivation_emails','email_marketing'];
+    for (const t of tables) { await fetch(`${SUPABASE_URL}/rest/v1/${t}?email=eq.${enc}`, { method:'DELETE', headers }).catch(()=>{}); }
+    await fetch(`${SUPABASE_URL}/rest/v1/api_cache?cache_key=eq.otp_${enc}`, { method:'DELETE', headers }).catch(()=>{});
     if (uid) {
       const uidTables = ['blue_profiles','blue_videos','blue_comments','blue_interactions','blue_notifications','blue_reports'];
       for (const t of uidTables) { await fetch(`${SUPABASE_URL}/rest/v1/${t}?user_id=eq.${uid}`, { method:'DELETE', headers }).catch(()=>{}); }
     }
+
+    // APAGA A CONTA DE AUTH (o que faltava). Sem isso, re-signup via "user already
+    // registered" → cai no fallback "conta já existe", NÃO é slate limpo.
+    if (uid) { await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers }).catch(() => {}); }
 
     // Log action
     await fetch(`${SUPABASE_URL}/rest/v1/admin_actions`, {
