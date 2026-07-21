@@ -20,7 +20,7 @@ import { createExporter } from '../services/exporter.js';
 import { api } from '../services/api.js';
 import { attachResizers } from './resizer.js';
 
-export function mountEditor(root, store) {
+export function mountEditor(root, store, opts = {}) {
   root.innerHTML = buildTemplate();
   const $ = (sel) => root.querySelector(sel);
 
@@ -276,35 +276,59 @@ export function mountEditor(root, store) {
   /** Importa QUALQUER quantidade de midias. 1º video de projeto vazio =
    *  principal; demais videos = takes ACRESCENTADOS no fim da timeline;
    *  audios = faixa de audio. Nunca reseta o que ja esta em edicao. */
+  // popup de carregamento (dentro do editor) durante o import
+  const importModal = () => $('#beImportModal');
+  function importProg(pct) {
+    const p = Math.max(0, Math.min(100, pct || 0));
+    const bar = $('#beImportBar'); if (bar) bar.style.width = p + '%';
+    const lbl = $('#beImportPct'); if (lbl) lbl.textContent = Math.round(p) + '%';
+    const title = $('#beImportTitle');
+    if (title && p >= 100) title.textContent = 'Processando…';
+  }
+  function importShow(name, idx, total) {
+    $('#beImportTitle').textContent = total > 1 ? `Enviando ${idx} de ${total}…` : 'Enviando mídia…';
+    $('#beImportName').textContent = name || '';
+    importProg(0);
+    importModal().style.display = 'flex';
+  }
+
   async function importFiles(fileList) {
     const files = [...(fileList || [])];
     if (!files.length) return;
-    let ok = 0;
-    for (const file of files) {
-      try {
-        if (isVideoFile(file)) {
-          if (!store.getState().video) await uploadPrimary(file);
-          else {
-            toast(`Enviando ${file.name}…`);
-            const media = await uploadMedia(file, 'video', () => {});
-            store.dispatch(act.addMediaClip(media));
+    let ok = 0, idx = 0;
+    const total = files.length;
+    try {
+      for (const file of files) {
+        idx++;
+        try {
+          if (isVideoFile(file)) {
+            // 1º vídeo de projeto vazio usa a barra da tela de entrada; takes
+            // (editor já aberto) mostram o popup de carregamento
+            if (!store.getState().video) { await uploadPrimary(file); }
+            else {
+              importShow(file.name, idx, total);
+              const media = await uploadMedia(file, 'video', importProg);
+              store.dispatch(act.addMediaClip(media));
+            }
+            ok++;
+          } else if (isAudioFile(file)) {
+            importShow(file.name, idx, total);
+            const media = await uploadMedia(file, 'audio', importProg);
+            store.dispatch(act.addAudioClip(media));
+            syncWaveRegistry(store.getState());
+            ok++;
+          } else if (isImageFile(file)) {
+            importShow(file.name, idx, total);
+            const media = await uploadMedia(file, 'image', importProg);
+            store.dispatch(act.addImageOverlay(media, player.getTime()));
+            ok++;
+          } else {
+            toast(`Formato não suportado: ${file.name}`, true);
           }
-          ok++;
-        } else if (isAudioFile(file)) {
-          toast(`Enviando áudio ${file.name}…`);
-          const media = await uploadMedia(file, 'audio', () => {});
-          store.dispatch(act.addAudioClip(media));
-          syncWaveRegistry(store.getState());
-          ok++;
-        } else if (isImageFile(file)) {
-          toast(`Enviando imagem ${file.name}…`);
-          const media = await uploadMedia(file, 'image', () => {});
-          store.dispatch(act.addImageOverlay(media, player.getTime()));
-          ok++;
-        } else {
-          toast(`Formato não suportado: ${file.name}`, true);
-        }
-      } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+        } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+      }
+    } finally {
+      importModal().style.display = 'none';
     }
     if (ok > 1) toast(`${ok} mídias adicionadas à timeline ✓`);
     else if (ok === 1) toast('Mídia adicionada ✓');
@@ -346,6 +370,42 @@ export function mountEditor(root, store) {
   $('#beAddMedia').addEventListener('click', () => fileInput.click());
   $('#beMediaImport')?.addEventListener('click', () => fileInput.click());
 
+  // ── mini-thumbnails do painel de mídia (estilo CapCut) ──
+  // cache url→dataURL do 1º frame do vídeo. Imagem usa a própria url. Falha de
+  // CORS/decode cai graciosamente no emoji (marca '' pra não re-tentar).
+  const _mediaThumbs = new Map();
+  const _thumbPending = new Set();
+  function ensureThumb(url, kind) {
+    if (!url || _mediaThumbs.has(url) || _thumbPending.has(url)) return;
+    if (kind === 'image') { _mediaThumbs.set(url, url); return; }
+    if (kind !== 'video') return; // áudio não tem thumbnail visual
+    _thumbPending.add(url);
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous'; v.muted = true; v.preload = 'metadata'; v.playsInline = true;
+    let settled = false;
+    const done = (dataUrl) => {
+      if (settled) return; settled = true;
+      _thumbPending.delete(url);
+      _mediaThumbs.set(url, dataUrl || ''); // '' = falhou, não re-tenta
+      try { v.src = ''; v.load?.(); } catch {}
+      _mediaSig = null; renderMediaPanel();
+    };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch { done(null); } };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = 64; c.height = 40;
+        const g = c.getContext('2d');
+        const vw = v.videoWidth || 16, vh = v.videoHeight || 9;
+        const sc = Math.max(c.width / vw, c.height / vh);
+        g.drawImage(v, (c.width - vw * sc) / 2, (c.height - vh * sc) / 2, vw * sc, vh * sc);
+        done(c.toDataURL('image/jpeg', 0.6));
+      } catch { done(null); }
+    };
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 8000);
+    v.src = url;
+  }
+
   let _mediaSig = null;
   function renderMediaPanel() {
     const list = $('#beMediaList');
@@ -353,42 +413,81 @@ export function mountEditor(root, store) {
     const s = store.getState();
     const rows = [];
     if (s.video) {
-      rows.push({ icon: '🎬', name: s.video.filename || 'vídeo principal', dur: s.video.duration, tag: 'principal' });
+      rows.push({ icon: '🎬', kind: 'video', url: s.video.url, name: s.video.filename || 'vídeo principal', dur: s.video.duration, tag: 'principal', added: true, base: true });
     }
     for (const m of (s.media || [])) {
-      rows.push({ icon: '🎞', name: m.filename, dur: m.duration, mediaId: m.id, tag: 'take' });
+      const added = (s.clips || []).some(c => c.media_id === m.id);
+      rows.push({ icon: '🎞', kind: 'video', url: m.url, name: m.filename, dur: m.duration, mediaId: m.id, tag: 'take', added });
     }
     const audUrls = new Set();
     for (const a of (s.audio_clips || []).filter(a => a.kind !== 'video' && a.url)) {
       if (audUrls.has(a.url)) continue;
       audUrls.add(a.url);
-      rows.push({ icon: '🎵', name: a.filename || 'áudio', dur: a.media_duration, tag: 'áudio' });
+      rows.push({ icon: '🎵', kind: 'audio', url: a.url, name: a.filename || 'áudio', dur: a.media_duration, tag: 'áudio', added: true });
     }
     const imgUrls = new Set();
     for (const o of (s.overlays || []).filter(o => o.kind === 'image' && o.url)) {
       if (imgUrls.has(o.url)) continue;
       imgUrls.add(o.url);
-      rows.push({ icon: '🖼', name: (o.url.split('/').pop() || 'imagem'), tag: 'imagem' });
+      rows.push({ icon: '🖼', kind: 'image', url: o.url, name: (o.url.split('/').pop() || 'imagem'), tag: 'imagem', added: true });
     }
-    // guard: só reconstrói a lista quando o conjunto de mídias muda (sem flicker)
-    const sig = rows.map(r => r.icon + r.name + r.tag).join('|');
+    // dispara geração dos thumbs que faltam (não bloqueia o render)
+    for (const r of rows) ensureThumb(r.url, r.kind);
+    // guard: só reconstrói quando muda o conjunto, o estado "adicionada" ou os thumbs
+    const sig = rows.map(r => r.icon + r.name + r.tag + (r.added ? '1' : '0') + (_mediaThumbs.has(r.url) ? 't' : '')).join('|');
     if (sig === _mediaSig) return;
     _mediaSig = sig;
     list.innerHTML = rows.length ? '' : '<div class="be-dim">Nenhuma mídia importada ainda</div>';
     for (const r of rows) {
       const row = document.createElement('div');
       row.className = 'be-media-row';
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06)';
+      // thumbnail (mini-visualização) ou emoji de fallback
+      const thumb = _mediaThumbs.get(r.url);
+      const thumbHtml = (thumb && r.kind !== 'audio')
+        ? `<img class="be-media-thumb" src="${thumb}" alt="">`
+        : `<span class="be-media-thumb be-media-thumb-ph">${r.icon}</span>`;
       const secs = r.dur ? Math.round(r.dur) + 's' : '';
-      row.innerHTML = `<span>${r.icon}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</span><span class="be-dim">${secs} · ${r.tag}</span>`;
+      // etiqueta "na timeline" só faz sentido pros takes (podem sair e voltar)
+      const badge = r.mediaId != null
+        ? (r.added ? '<span class="be-media-badge on">● na timeline</span>'
+                   : '<span class="be-media-badge off">○ fora</span>')
+        : '';
+      row.innerHTML =
+        `${thumbHtml}` +
+        `<div class="be-media-info">` +
+          `<span class="be-media-name" title="${r.name}">${r.name}</span>` +
+          `<span class="be-dim be-media-meta">${secs ? secs + ' · ' : ''}${r.tag}${badge ? ' ' : ''}</span>` +
+          `${badge}` +
+        `</div>` +
+        `<div class="be-media-actions"></div>`;
+      const actions = row.querySelector('.be-media-actions');
+      // ＋ re-adicionar take na timeline (só takes fora/na timeline)
       if (r.mediaId != null) {
-        const btn = document.createElement('button');
-        btn.className = 'be-tool-btn';
-        btn.style.cssText = 'padding:2px 8px;font-size:11px';
-        btn.textContent = '＋';
-        btn.title = 'Adicionar de novo na timeline';
-        btn.addEventListener('click', () => { store.dispatch(act.addClipFromMedia(r.mediaId)); toast('Take adicionado ✓'); });
-        row.appendChild(btn);
+        const add = document.createElement('button');
+        add.className = 'be-tool-btn be-media-btn';
+        add.textContent = '＋';
+        add.title = r.added ? 'Adicionar de novo na timeline' : 'Adicionar na timeline';
+        add.addEventListener('click', () => { store.dispatch(act.addClipFromMedia(r.mediaId)); toast('Take adicionado ✓'); });
+        actions.appendChild(add);
+      }
+      // 🗑 excluir (não no vídeo principal — é a base do projeto)
+      if (!r.base) {
+        const del = document.createElement('button');
+        del.className = 'be-tool-btn be-media-btn be-media-del';
+        del.textContent = '🗑';
+        del.title = 'Excluir da biblioteca e da timeline';
+        del.addEventListener('click', () => {
+          const st = store.getState();
+          if (r.mediaId != null) {
+            store.dispatch(act.removeMedia(r.mediaId));
+          } else if (r.kind === 'audio') {
+            for (const a of (st.audio_clips || []).filter(a => a.url === r.url)) store.dispatch(act.deleteAudioClip(a.id));
+          } else if (r.kind === 'image') {
+            for (const o of (st.overlays || []).filter(o => o.kind === 'image' && o.url === r.url)) store.dispatch(act.deleteOverlay(o.id));
+          }
+          toast('Mídia removida');
+        });
+        actions.appendChild(del);
       }
       list.appendChild(row);
     }
@@ -433,6 +532,12 @@ export function mountEditor(root, store) {
   // ── transporte ──
   $('#bePlayBtn').addEventListener('click', () => player.toggle());
   $('#beProjectName').addEventListener('change', (e) => store.dispatch(act.renameProject(e.target.value)));
+  // ← voltar pra tela inicial (projetos): garante o salvamento antes de sair
+  $('#beBackHome')?.addEventListener('click', () => {
+    try { autosave.flush(); } catch {}
+    if (opts.onExit) opts.onExit();
+    else location.href = '/blueEditor';
+  });
   $('#beUndo').addEventListener('click', () => store.undo());
   $('#beRedo').addEventListener('click', () => store.redo());
 
@@ -668,7 +773,7 @@ export function mountEditor(root, store) {
   });
   $('#beAddAudio2').addEventListener('click', pickAudio); // botão do painel de projeto = importar
   $('#beAudioLibClose')?.addEventListener('click', () => { audioLibOpen = false; sync(); });
-  $('#beAudioLibImport')?.addEventListener('click', pickAudio);
+  // Import de áudio próprio removido do painel (usuário baixa e arrasta pra timeline).
   // sub-abas da biblioteca (Músicas / Efeitos / Favoritos)
   $('#beAudioLibTabs')?.addEventListener('click', (e) => {
     const b = e.target.closest('.be-cfg-subtab'); if (!b) return;
@@ -688,8 +793,10 @@ export function mountEditor(root, store) {
       favs.forEach(f => box.appendChild(audioResultRow(f, true)));
       return;
     }
-    if (!q) { box.innerHTML = '<div class="be-dim">Digite pra buscar ' + (audioLibTab === 'efeitos' ? 'efeitos sonoros' : 'músicas') + '.</div>'; return; }
-    box.innerHTML = '<div class="be-dim">Buscando…</div>';
+    // Sem busca = mostra a biblioteca curada inteira (o backend lista tudo quando
+    // query é vazia). Buscar só filtra. O usuário não importa áudio aqui — baixa
+    // e arrasta pra timeline (ou usa "＋ Importar mídias").
+    box.innerHTML = '<div class="be-dim">' + (q ? 'Buscando…' : 'Carregando biblioteca…') + '</div>';
     try {
       const r = await api.audioSearch(q, audioLibTab === 'efeitos' ? 'sfx' : 'music');
       const items = r.results || [];
@@ -816,62 +923,78 @@ export function mountEditor(root, store) {
 
   // ── export ──
   const exportModal = $('#beExportModal');
+  // mostra UM dos passos do modal: opções | progresso | pronto | erro
+  const showExportStep = (which) => {
+    for (const id of ['beExportOptions', 'beExportProgress', 'beExportDone', 'beExportError']) {
+      const el = $('#' + id); if (el) el.style.display = (id === which) ? 'block' : 'none';
+    }
+  };
+  // baixa direto pra pasta de Downloads com o nome escolhido (blob = força o
+  // nome mesmo cross-origin; se CORS bloquear, o link manual do passo "Pronto"
+  // continua valendo)
+  async function downloadAs(url, filename) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('fetch ' + resp.status);
+      const blob = await resp.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 15000);
+    } catch { /* fallback = link visível "⬇ Baixar vídeo" */ }
+  }
+  // 1) clicar em Exportar abre as OPÇÕES (nome/resolução/formato) — CapCut
   $('#beExportBtn').addEventListener('click', () => {
+    const st = store.getState();
+    if (!canExport(st)) { toast('Adicione um vídeo com pelo menos 0,5s pra exportar.', true); return; }
+    $('#beExportName').value = (st.nome_projeto || '').trim() || 'meu-video';
+    const prev = $('#beExportOptPreview');
+    if (prev && st.video?.url) {
+      prev.src = (localPreview.for === st.video.url && localPreview.url) ? localPreview.url : (st.video.url + '#t=0.5');
+    }
+    const dur = totalDuration(st);
+    $('#beExportEst').textContent = `Duração: ${Math.floor(dur / 60)}m ${Math.round(dur % 60)}s`;
+    showExportStep('beExportOptions');
     exportModal.classList.add('open');
-    $('#beExportProgress').style.display = 'block';
-    $('#beExportDone').style.display = 'none';
-    $('#beExportError').style.display = 'none';
+  });
+  // 2) confirmar dispara a exportação com as opções + baixa ao terminar
+  $('#beExportStart').addEventListener('click', () => {
+    const res = parseInt($('#beExportRes').value, 10) || 1080;
+    const dims = res === 720 ? { w: 720, h: 1280 } : { w: 1080, h: 1920 };
+    const fname = (($('#beExportName').value || 'meu-video').trim() || 'meu-video')
+      .replace(/[\/\\:*?"<>|]+/g, '_').slice(0, 80);
+    showExportStep('beExportProgress');
+    $('#beExportBar').style.width = '0%';
+    $('#beExportLabel').textContent = 'Preparando…';
     exporter.start({
+      output_width: dims.w, output_height: dims.h,
       onProgress: (pct, label) => {
         $('#beExportBar').style.width = pct + '%';
         $('#beExportLabel').textContent = `${label} ${pct}%`;
       },
       onDone: (url) => {
-        $('#beExportProgress').style.display = 'none';
-        $('#beExportDone').style.display = 'block';
-        $('#beExportLink').href = url;
+        showExportStep('beExportDone');
         $('#beExportPreview').src = url;
+        const link = $('#beExportLink');
+        link.href = url; link.setAttribute('download', fname + '.mp4');
+        downloadAs(url, fname + '.mp4'); // já cai na pasta de Downloads
       },
       onError: (msg) => {
-        $('#beExportProgress').style.display = 'none';
-        $('#beExportError').style.display = 'block';
+        showExportStep('beExportError');
         $('#beExportErrorMsg').textContent = msg;
       },
     });
   });
+  $('#beExportOptCancel').addEventListener('click', () => exportModal.classList.remove('open'));
   $('#beExportCancel').addEventListener('click', async () => {
     await exporter.cancel();
     exportModal.classList.remove('open');
   });
   $('#beExportClose').addEventListener('click', () => exportModal.classList.remove('open'));
 
-  // ── projetos ──
-  async function showProjects() {
-    try {
-      const { projects } = await api.listProjects();
-      if (!projects?.length) return;
-      const box = $('#beProjects');
-      box.innerHTML = '<div class="be-projects-title">Continuar de onde parou:</div>' + projects.map(p =>
-        `<button class="be-project-item" data-id="${p.id}">📁 ${escapeHtml(p.nome_projeto || 'Sem título')} <span>${new Date(p.updated_at).toLocaleDateString('pt-BR')}</span></button>`
-      ).join('');
-      box.style.display = 'block';
-      box.querySelectorAll('.be-project-item').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          try {
-            const { project } = await api.loadProject(btn.dataset.id);
-            if (project?.project_state) {
-              store.replaceState((await import('../core/schema.js')).normalizeLoadedState({ ...project.project_state, project_id: project.id }));
-              store.dispatch(act.setProjectId(project.id));
-              box.style.display = 'none';
-              requestAnimationFrame(() => requestAnimationFrame(() => timeline.zoomFit()));
-              toast('Projeto restaurado ✓');
-            }
-          } catch (e) { toast('Falha ao carregar: ' + e.message, true); }
-        });
-      });
-    } catch { /* sem projetos, segue */ }
-  }
-  showProjects();
+  // (a lista de projetos "Continuar de onde parou" saiu daqui: agora é a TELA
+  //  INICIAL estilo CapCut — public/editor-v1/ui/home.js, orquestrada no main.js)
 
   // ── clipe composto: entrar/sair (CapCut) ──
   // Ao ENTRAR: o editor passa a mostrar SO o conteudo interno do composto.
@@ -965,20 +1088,15 @@ export function mountEditor(root, store) {
     }
     if (!caps.length) return 0;
 
-    // usa o estilo ESCOLHIDO no painel (ou preserva o atual se já estilizado)
+    // usa o TEMPLATE escolhido na galeria — cor/tarja POR PALAVRA (estilo CapCut)
     const atual = store.getState().texts.find(t => t.caption);
-    const preset = CAP_PRESETS[capChosenPreset] || {};
-    const estilo = {
-      font: atual?.font || preset.font || 'Anton',
-      size: atual?.size || preset.size || 'medium',
-      color: atual?.color || preset.color || '#ffffff',
-      y_pct: atual?.y_pct ?? 0.82,
-    };
+    const tpl = CAP_TEMPLATES[capChosenPreset] || CAP_TEMPLATES.classico;
+    const y_pct = atual?.y_pct ?? 0.82;
     // UM dispatch: nao rouba a selecao (painel fica), 1 undo, sem freeze
     // com videos longos (300+ palavras = 300 dispatches na versao antiga)
-    store.dispatch(act.setCaptions(caps.map(c => ({
+    store.dispatch(act.setCaptions(caps.map((c, i) => ({
       content: c.text, start_sec: c.start, end_sec: c.end,
-      x_pct: 0.5, ...estilo,
+      x_pct: 0.5, y_pct, ...capStyleForIndex(tpl, i),
     }))));
     return caps.length;
   }
@@ -1040,58 +1158,97 @@ export function mountEditor(root, store) {
     }
   });
 
-  // ── ESTILOS DE LEGENDA por categoria (presets CapCut-like) ──
-  // Limitados ao que o render REAL suporta (fontes com TTF no Railway +
-  // cor/tamanho/posição) — WYSIWYG honesto: o que se vê é o que exporta.
-  const CAP_PRESETS = {
-    classico: { font: 'Anton',      color: '#ffffff', size: 'medium' },
-    amarelo:  { font: 'Anton',      color: '#ffd32a', size: 'medium' },
-    impacto:  { font: 'Bebas Neue', color: '#ffffff', size: 'large' },
-    oswald:   { font: 'Oswald',     color: '#f5f5f5', size: 'large' },
-    neon:     { font: 'Anton',      color: '#00d4ff', size: 'medium' },
-    lima:     { font: 'Bebas Neue', color: '#a3e635', size: 'medium' },
-    pop:      { font: 'Anton',      color: '#ff6b9d', size: 'medium' },
+  // ── GALERIA DE ESTILOS DE LEGENDA (estilo CapCut: várias opções) ──
+  // Todas POR PALAVRA (uma palavra por vez no tempo real da fala). colorMode:
+  //  'single'   = cor fixa
+  //  'rotate'   = a cor troca a cada palavra (paleta)
+  //  'highlight'= tarja colorida atrás (box=1 do drawtext)
+  // Limitado ao que o render REAL faz (fontes TTF no Railway + cor + tarja) —
+  // WYSIWYG honesto: o que se vê no preview é o que exporta.
+  const CAP_TEMPLATES = {
+    classico:    { name: 'Clássico',  font: 'Anton',      size: 'medium', colorMode: 'single', color: '#ffffff' },
+    amarelo:     { name: 'Amarelo',   font: 'Anton',      size: 'medium', colorMode: 'single', color: '#ffd32a' },
+    lima:        { name: 'Lima',      font: 'Bebas Neue', size: 'medium', colorMode: 'single', color: '#a3e635' },
+    impacto:     { name: 'Impacto',   font: 'Bebas Neue', size: 'large',  colorMode: 'single', color: '#ffffff' },
+    pop:         { name: 'Pop',       font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#ffffff', '#ffd32a', '#4ade80', '#ff6b9d', '#38bdf8'] },
+    neon:        { name: 'Neon',      font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#00e5ff', '#a3e635', '#ff4dff'] },
+    fogo:        { name: 'Fogo',      font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#ffd32a', '#ff7a00', '#ff2d55'] },
+    caixaVerde:  { name: 'Verde',     font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#06210f', box: '#22c55e' },
+    caixaRosa:   { name: 'Rosa',      font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#ffffff', box: '#ff2d78' },
+    caixaAmarela:{ name: 'Amarela',   font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#1a1200', box: '#ffd32a' },
   };
-  // grid de estilos com PREVIEW animado (constrói dos presets)
-  const CAP_LABELS = {
-    classico: 'Aa', amarelo: 'Aa', impacto: 'Aa', oswald: 'Aa',
-    neon: 'Aa', lima: 'Aa', pop: 'Aa',
-  };
-  const CAP_NAMES = {
-    classico: 'Clássico', amarelo: 'Amarelo', impacto: 'Impacto', oswald: 'Oswald',
-    neon: 'Neon', lima: 'Lima', pop: 'Pop',
-  };
+  // estilo de UMA palavra (índice i) segundo o template — cor/tarja por palavra
+  function capStyleForIndex(tpl, i) {
+    const base = { font: tpl.font, size: tpl.size };
+    if (tpl.colorMode === 'rotate') {
+      return { ...base, color: tpl.palette[i % tpl.palette.length], box: null };
+    }
+    if (tpl.colorMode === 'highlight') {
+      return { ...base, color: tpl.color, box: tpl.box };
+    }
+    return { ...base, color: tpl.color, box: null };
+  }
   function buildCapStyleGrid() {
     const grid = $('#beCapStyleGrid');
     grid.innerHTML = '';
-    for (const [key, p] of Object.entries(CAP_PRESETS)) {
+    for (const [key, tpl] of Object.entries(CAP_TEMPLATES)) {
       const card = document.createElement('button');
       card.className = 'be-cap-style' + (key === capChosenPreset ? ' active' : '');
       card.dataset.preset = key;
-      card.title = CAP_NAMES[key];
+      card.title = tpl.name;
       const b = document.createElement('b');
-      b.textContent = CAP_NAMES[key];
-      b.style.color = p.color;
-      b.style.fontFamily = `'${p.font}', 'Anton', Impact, sans-serif`;
+      b.style.fontFamily = `'${tpl.font}', 'Anton', Impact, sans-serif`;
+      if (tpl.colorMode === 'rotate') {
+        // preview multicolor: cada letra numa cor da paleta
+        [...tpl.name].forEach((ch, i) => {
+          const sp = document.createElement('span');
+          sp.textContent = ch;
+          sp.style.color = tpl.palette[i % tpl.palette.length];
+          b.appendChild(sp);
+        });
+      } else if (tpl.colorMode === 'highlight') {
+        b.textContent = tpl.name;
+        b.style.color = tpl.color;
+        b.style.background = tpl.box;
+        b.style.padding = '1px 6px';
+        b.style.borderRadius = '4px';
+      } else {
+        b.textContent = tpl.name;
+        b.style.color = tpl.color;
+      }
       card.appendChild(b);
-      card.addEventListener('click', () => selectCapPreset(key));
+      card.addEventListener('click', () => selectCapTemplate(key));
       grid.appendChild(card);
     }
   }
-  function selectCapPreset(key) {
+  // re-estiliza as legendas EXISTENTES pelo template (por índice = por palavra)
+  function applyCapTemplate(tpl) {
+    const caps = store.getState().texts.filter(t => t.caption)
+      .slice().sort((a, b) => a.start_sec - b.start_sec);
+    caps.forEach((t, i) => {
+      store.dispatch({ ...act.updateText(t.id, capStyleForIndex(tpl, i)), gestureId: 'capstyle' });
+    });
+    store.endGesture();
+  }
+  function selectCapTemplate(key) {
     capChosenPreset = key;
+    const tpl = CAP_TEMPLATES[key]; if (!tpl) return;
     $('#beCapStyleGrid').querySelectorAll('.be-cap-style').forEach(c =>
       c.classList.toggle('active', c.dataset.preset === key));
-    const p = CAP_PRESETS[key];
-    if (p) {
-      $('#beCapSize').value = p.size;
-      $('#beCapColor').value = p.color;
-      // se já há legendas, aplica na hora
-      if (store.getState().texts.some(t => t.caption)) {
-        applyCapStyle(p);
-        toast('Estilo aplicado ✓');
-      }
+    // reflete nos inputs manuais (tamanho/cor base)
+    if ($('#beCapSize')) $('#beCapSize').value = tpl.size;
+    if ($('#beCapColor') && tpl.colorMode !== 'rotate') $('#beCapColor').value = tpl.color || '#ffffff';
+    if (!store.getState().texts.some(t => t.caption)) return; // sem legendas ainda: só guarda a escolha
+    // com as palavras em cache dá pra regenerar (respeita o modo atual);
+    // senão re-estiliza os blocos existentes por índice
+    if (lastCaptionWords && lastCaptionPlan) {
+      const mode = $('#beCapMode')?.value || 'palavra';
+      const n = aplicarLegendas(mode);
+      if (!n) applyCapTemplate(tpl);
+    } else {
+      applyCapTemplate(tpl);
     }
+    toast('Estilo aplicado ✓');
   }
   buildCapStyleGrid();
 
@@ -1155,16 +1312,12 @@ export function mountEditor(root, store) {
   };
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 // Track headers espelham as alturas do layout do canvas (fonte unica: METRICS)
 function buildTemplate() {
   const M = METRICS;
   return `
 <header class="be-header">
-  <a href="/blueEditor" class="be-back">←</a>
+  <button type="button" id="beBackHome" class="be-back" title="Voltar aos projetos">←</button>
   <span class="be-logo">Blue<b>Editor</b></span>
   <input id="beProjectName" class="be-project-name" maxlength="120" placeholder="Nome do projeto"/>
   <span id="beSaveStatus" class="be-save-status"></span>
@@ -1205,9 +1358,13 @@ function buildTemplate() {
   <!-- preview central -->
   <div class="be-preview-area">
     <div class="be-preview-frame" id="beFrame">
-      <video id="beVideo" playsinline preload="auto"></video>
-      <video id="beVideo2" playsinline preload="auto" muted class="be-buffering"></video>
-      <div id="beOverlay"></div>
+      <!-- palco 9:16: mantém vídeo + camadas juntos e no formato certo,
+           inclusive em tela cheia (centralizado, resto da tela preto) -->
+      <div class="be-stage" id="beStage">
+        <video id="beVideo" playsinline preload="auto"></video>
+        <video id="beVideo2" playsinline preload="auto" muted class="be-buffering"></video>
+        <div id="beOverlay"></div>
+      </div>
       <!-- barra de controle no FULLSCREEN (tecla F) -->
       <div id="beFsBar" class="be-fs-bar">
         <button id="beFsPlay" class="be-fs-play">▶</button>
@@ -1260,9 +1417,6 @@ function buildTemplate() {
       </div>
       <input id="beAudioLibSearch" class="be-select" placeholder="🔎 Buscar…" style="width:100%"/>
       <div id="beAudioLibResults" class="be-audio-lib"></div>
-      <div class="be-sep"></div>
-      <button id="beAudioLibImport" class="be-tool-btn">＋ Importar seu áudio</button>
-      <div class="be-dim">Narração/música própria (MP3, WAV, M4A).</div>
     </div>
 
     <!-- PAINEL DEDICADO DE LEGENDAS (escolhe estilo ANTES de transcrever) -->
@@ -1483,7 +1637,38 @@ function buildTemplate() {
 
 <div id="beExportModal" class="be-modal">
   <div class="be-modal-box">
-    <div id="beExportProgress">
+    <div id="beExportOptions">
+      <div class="be-modal-title">Exportar vídeo</div>
+      <div class="be-export-opts">
+        <div class="be-export-optthumb-wrap">
+          <video id="beExportOptPreview" class="be-export-optthumb" muted playsinline preload="metadata"></video>
+        </div>
+        <div class="be-export-fields">
+          <label class="be-export-field">Nome
+            <input id="beExportName" type="text" maxlength="80" placeholder="Nome do arquivo"/>
+          </label>
+          <label class="be-export-field">Resolução
+            <select id="beExportRes">
+              <option value="1080">1080p (Full HD) · 1080×1920</option>
+              <option value="720">720p · 720×1280</option>
+            </select>
+          </label>
+          <label class="be-export-field">Formato
+            <select disabled><option>MP4 · H.264</option></select>
+          </label>
+          <label class="be-export-field">Taxa de quadros
+            <select disabled><option>30 fps</option></select>
+          </label>
+          <div class="be-dim" id="beExportEst"></div>
+          <div class="be-dim">O arquivo baixa direto pra sua pasta de Downloads.</div>
+        </div>
+      </div>
+      <div class="be-export-actions">
+        <button id="beExportStart" class="be-export-btn">⬇ Exportar e baixar</button>
+        <button id="beExportOptCancel" class="be-tool-btn">Cancelar</button>
+      </div>
+    </div>
+    <div id="beExportProgress" style="display:none">
       <div class="be-modal-title">Exportando seu vídeo…</div>
       <div class="be-progress"><i id="beExportBar"></i></div>
       <div id="beExportLabel" class="be-dim">Preparando…</div>
@@ -1503,7 +1688,15 @@ function buildTemplate() {
   </div>
 </div>
 
-<div id="beProjects" class="be-projects" style="display:none"></div>
+<div id="beImportModal" class="be-import-modal" style="display:none">
+  <div class="be-import-card">
+    <div class="be-import-spin"></div>
+    <div class="be-import-title" id="beImportTitle">Enviando mídia…</div>
+    <div class="be-import-name" id="beImportName"></div>
+    <div class="be-progress"><i id="beImportBar"></i></div>
+    <div class="be-import-pct" id="beImportPct">0%</div>
+  </div>
+</div>
 <div id="beToast" class="be-toast"></div>
 `;
 }

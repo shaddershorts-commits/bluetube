@@ -62,6 +62,18 @@ export function createOverlay(container, store, player, onEditRequest) {
       el.style.fontFamily = fontFamilyFor(txt.font);
       el.style.fontSize = fsPx + 'px';
       el.style.color = txt.color;
+      // tarja colorida atrás (CapCut) — espelha o box=1 do drawtext no export
+      if (txt.box) {
+        el.style.background = txt.box;
+        el.style.padding = '0.04em 0.28em';
+        el.style.borderRadius = '0.1em';
+        el.style.textShadow = 'none';
+      } else {
+        el.style.background = 'transparent';
+        el.style.padding = '0';
+        el.style.borderRadius = '0';
+        el.style.textShadow = '0 0 4px rgba(0,0,0,.9), 2px 2px 2px rgba(0,0,0,.8)';
+      }
       // z compartilhado com as camadas de video (pip): lane maior = na frente.
       // Texto em lane menor que um overlay fica ATRAS do video dele (CapCut).
       el.style.zIndex = String(10 + (txt.lane || 4));
@@ -99,10 +111,16 @@ export function createOverlay(container, store, player, onEditRequest) {
       const dy = (e.clientY - dragging.startY) / box.height;
       if (!dragging.moved && Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) < 3) return;
       dragging.moved = true;
-      store.dispatch({
-        ...act.moveText(textId, dragging.x0 + dx, dragging.y0 + dy),
-        gestureId: dragging.gestureId,
-      });
+      const nx = dragging.x0 + dx, ny = dragging.y0 + dy;
+      // "Aplicar a todas as legendas": arrastar UMA legenda reposiciona TODAS
+      // (posição uniforme). Só vale pra legendas (caption) com a caixa marcada.
+      const st = store.getState();
+      const dragged = st.texts.find(x => x.id === textId);
+      const applyAll = dragged?.caption && document.getElementById('beCapApplyAll')?.checked;
+      const targets = applyAll ? st.texts.filter(x => x.caption).map(x => x.id) : [textId];
+      for (const id of targets) {
+        store.dispatch({ ...act.moveText(id, nx, ny), gestureId: dragging.gestureId });
+      }
     });
     const finish = (e) => {
       if (!dragging || dragging.pointerId !== e.pointerId) return;

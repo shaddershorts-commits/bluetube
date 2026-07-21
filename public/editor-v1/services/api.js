@@ -31,6 +31,7 @@ export const api = {
   loadProject: (project_id) => post({ action: 'load-project', project_id }),
   listProjects: () => post({ action: 'list-projects' }),
   deleteProject: (project_id) => post({ action: 'delete-project', project_id }),
+  renameProject: (project_id, nome_projeto) => post({ action: 'rename-project', project_id, nome_projeto }),
   exportV0: (project_id, project_state) => post({ action: 'edit-v0', project_id, project_state }),
   autoCaptions: (video_url) => post({ action: 'auto-captions', video_url }),
   // biblioteca de audio (Musicas/Efeitos) — proxy pro provedor no backend

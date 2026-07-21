@@ -311,6 +311,7 @@ export function exportPayload(state) {
       font: t.font,
       size: t.size,
       color: t.color,
+      ...(t.box ? { box: t.box } : {}), // tarja colorida atrás (estilo CapCut)
       x_pct: round4(t.x_pct),
       y_pct: round4(t.y_pct),
       start_sec: round3(t.start_sec),

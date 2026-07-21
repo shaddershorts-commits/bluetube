@@ -290,6 +290,13 @@ export function createTimelineController({ canvas, store, player, onEditText, on
             const r = row.getBoundingClientRect();
             subMenu = buildMenu(r.right - 4, r.top - 4, it.sub, m);
             m.appendChild(subMenu);
+            // reposiciona o submenu se sair da tela (bug: 'Editar' abria pra
+            // fora do monitor embaixo/à direita e não dava pra clicar)
+            requestAnimationFrame(() => {
+              const sr = subMenu.getBoundingClientRect();
+              if (sr.right > innerWidth) subMenu.style.left = Math.max(4, r.left - sr.width + 4) + 'px';
+              if (sr.bottom > innerHeight) subMenu.style.top = Math.max(4, innerHeight - sr.height - 4) + 'px';
+            });
           }
         };
         row.onmouseleave = () => { row.style.background = ''; };

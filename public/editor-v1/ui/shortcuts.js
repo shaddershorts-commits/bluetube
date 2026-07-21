@@ -129,6 +129,9 @@ export function attachShortcuts({ store, player, timeline }) {
           if (t > ov.start && t < ov.start + dur) store.dispatch(act.trimOverlay(ov.id, 'in', t));
           break;
         }
+        // FAIXA DE ÁUDIO selecionada: reducer trima a esquerda; playhead já
+        // está no ponto do corte, não faz o seek de vídeo abaixo.
+        if (state.selected_audio_id != null) { store.dispatch(act.deleteRangeLeft(t)); break; }
         // age SÓ no clip selecionado (ou o sob o playhead) — reducer garante.
         const segsQ = timelineSegments(state);
         const alvoQ = state.selected_clip_id != null

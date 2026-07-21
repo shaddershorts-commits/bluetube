@@ -189,6 +189,7 @@ export function computeLayout(state, vp) {
         selected: state.selected_audio_id === a.id,
         multi: multiKeys.has('audio:' + a.id),
         label: '♪ ' + (a.filename || 'áudio'),
+        volume: a.volume == null ? 1 : a.volume,
       };
     });
   const audioLanes = Math.max(1, lanes.length);

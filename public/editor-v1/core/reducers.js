@@ -62,6 +62,21 @@ export function reduce(state, action) {
       });
     }
 
+    case A.REMOVE_MEDIA: {
+      // exclui um take da biblioteca: tira do pool E remove todos os clips que
+      // apontam pra ele (o video principal — sem media_id — nunca é afetado).
+      const pool = (state.media || []).filter(m => m.id !== action.mediaId);
+      if (pool.length === (state.media || []).length) return state;
+      const clips = state.clips.filter(c => c.media_id !== action.mediaId);
+      const stillSel = clips.some(c => c.id === state.selected_clip_id);
+      return touch({
+        ...state,
+        media: pool,
+        clips,
+        selected_clip_id: stillSel ? state.selected_clip_id : null,
+      });
+    }
+
     case A.ADD_IMAGE_OVERLAY: {
       // imagem (PNG com transparência) vira CAMADA sobre o vídeo, no topo,
       // 3s por padrão (esticável arrastando a borda), centrada.
@@ -300,6 +315,9 @@ export function reduce(state, action) {
       return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
 
     case A.DELETE_RANGE_LEFT: {
+      // ÁUDIO selecionado: Q trima a parte à ESQUERDA do playhead dentro dele
+      // (fix 2026-07-21: antes só funcionava em vídeo — user pegou).
+      if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'left');
       // CapCut "Q" (fix 2026-07-20): age SÓ no clip SELECIONADO — trima a
       // parte à ESQUERDA do playhead DENTRO dele. O comportamento antigo
       // (varrer a timeline inteira e deletar tudo antes do playhead) apagava
@@ -319,6 +337,8 @@ export function reduce(state, action) {
     }
 
     case A.DELETE_RANGE_RIGHT: {
+      // ÁUDIO selecionado: W trima a parte à DIREITA do playhead dentro dele
+      if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'right');
       // CapCut "W": espelho do Q — trima a parte à DIREITA do playhead
       // dentro do clip selecionado (ou o sob o playhead, sem seleção).
       const segs = timelineSegments(state);
@@ -367,6 +387,8 @@ export function reduce(state, action) {
       if (patch.font && !TEXT_FONTS.includes(patch.font)) delete patch.font;
       if (patch.size && !TEXT_SIZES.includes(patch.size)) delete patch.size;
       if (patch.color && !/^#[0-9a-fA-F]{6}$/.test(patch.color)) delete patch.color;
+      // box: hex ativa a tarja; null (explícito) remove; inválido = ignora
+      if (patch.box !== undefined && patch.box !== null && !/^#[0-9a-fA-F]{6}$/.test(patch.box)) delete patch.box;
       if (patch.content != null) patch.content = String(patch.content).slice(0, 200);
       if (patch.x_pct != null) patch.x_pct = clamp01(patch.x_pct);
       if (patch.y_pct != null) patch.y_pct = clamp01(patch.y_pct);
@@ -883,6 +905,28 @@ function touch(state) {
   return { ...state, updated_at: new Date().toISOString() };
 }
 
+/** Q/W numa FAIXA DE ÁUDIO selecionada: trima a parte à esquerda ('left') ou à
+ *  direita ('right') do playhead DENTRO do próprio áudio (espelha o Q/W do
+ *  vídeo). Respeita a velocidade do áudio no mapeamento timeline↔arquivo. */
+function trimAudioRange(state, t, side) {
+  const a = (state.audio_clips || []).find(x => x.id === state.selected_audio_id);
+  if (!a) return state;
+  const sp = a.speed && a.speed > 0 ? a.speed : 1;
+  const tStart = a.start;
+  const tEnd = a.start + (a.source_out - a.source_in) / sp;
+  if (t <= tStart + 1e-9 || t >= tEnd - 1e-9) return state; // playhead fora: nada
+  const srcCut = a.source_in + (t - tStart) * sp;
+  if (srcCut - a.source_in < MIN_CLIP_DURATION) return state;
+  if (a.source_out - srcCut < MIN_CLIP_DURATION) return state;
+  const audio_clips = state.audio_clips.map(x => {
+    if (x.id !== a.id) return x;
+    return side === 'left'
+      ? { ...x, source_in: srcCut, start: t } // corta o começo, encosta no playhead
+      : { ...x, source_out: srcCut };         // corta o fim
+  });
+  return touch({ ...state, audio_clips });
+}
+
 /** Texto validado/normalizado — unica fonte (ADD_TEXT e SET_CAPTIONS). */
 function buildText(p, id) {
   const text = {
@@ -891,6 +935,7 @@ function buildText(p, id) {
     font: TEXT_FONTS.includes(p.font) ? p.font : 'Anton',
     size: TEXT_SIZES.includes(p.size) ? p.size : 'medium',
     color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ffffff',
+    box: /^#[0-9a-fA-F]{6}$/.test(p.box || '') ? p.box : null,
     x_pct: clamp01(p.x_pct ?? 0.5),
     y_pct: clamp01(p.y_pct ?? 0.35),
     start_sec: Math.max(0, p.start_sec ?? 0),

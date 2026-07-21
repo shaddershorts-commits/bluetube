@@ -4,8 +4,8 @@
 import { createStore } from './core/store.js';
 import { normalizeLoadedState } from './core/schema.js';
 import { bootstrapGate, api, getToken } from './services/api.js';
-import { readSessionFallback } from './services/autosave.js';
 import { mountEditor } from './ui/shell.js';
+import { mountHome } from './ui/home.js';
 
 const root = document.getElementById('beRoot');
 
@@ -41,23 +41,32 @@ async function boot() {
     return;
   }
 
-  // estado inicial: backend > sessionStorage > vazio
-  const store = createStore();
-  let restored = false;
-  try {
-    const { project } = await api.loadProject(null);
-    if (project?.project_state) {
-      store.replaceState(normalizeLoadedState({ ...project.project_state, project_id: project.id }));
-      restored = true;
-    }
-  } catch { /* segue */ }
-  if (!restored) {
-    const ss = readSessionFallback();
-    if (ss?.video) store.replaceState(normalizeLoadedState(ss));
-  }
+  // CapCut-like: abre na TELA INICIAL (grid de projetos salvos + "Criar
+  // projeto"). Só entra no editor ao escolher um projeto ou criar do zero.
+  showHome();
+}
 
+// tela inicial ↔ editor
+function showHome() {
   root.innerHTML = '';
-  mountEditor(root, store);
+  mountHome(root, { onOpen: enterEditor });
+}
+
+async function enterEditor(projectId) {
+  const store = createStore();
+  if (projectId) {
+    try {
+      const { project } = await api.loadProject(projectId);
+      if (project?.project_state) {
+        store.replaceState(normalizeLoadedState({ ...project.project_state, project_id: project.id }));
+      }
+    } catch (e) {
+      console.warn('[main] load-project falhou:', e.message);
+    }
+  }
+  root.innerHTML = '';
+  // onExit volta pra tela inicial (autosave já persistiu o projeto)
+  mountEditor(root, store, { onExit: showHome });
 }
 
 boot().catch(e => {

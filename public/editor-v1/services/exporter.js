@@ -10,7 +10,7 @@ export function createExporter(store) {
   let polling = 0;
   let active = false;
 
-  async function start({ onProgress, onDone, onError }) {
+  async function start({ onProgress, onDone, onError, output_width, output_height } = {}) {
     const state = store.getState();
     if (!canExport(state)) { onError?.('Adicione um vídeo com pelo menos 0,5s de duração.'); return; }
     if (active) return;
@@ -22,7 +22,13 @@ export function createExporter(store) {
       if (!projectId) throw new Error('Não consegui salvar o projeto antes do export');
 
       // payload EXPANDIDO (compostos achatados, audio_clips, overlays)
-      const r = await api.exportV0(projectId, exportPayload(store.getState()));
+      const payload = exportPayload(store.getState());
+      // resolução escolhida no modal de export (Railway usa output_width/height)
+      if (output_width > 0 && output_height > 0) {
+        payload.output_width = output_width;
+        payload.output_height = output_height;
+      }
+      const r = await api.exportV0(projectId, payload);
       if (!r.ok) throw new Error(r.error || 'Falha ao iniciar export');
       onProgress?.(2, 'Na fila…');
 

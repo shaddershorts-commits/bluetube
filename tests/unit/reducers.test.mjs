@@ -459,6 +459,31 @@ test('ADD_MEDIA_CLIP com mediaId reusa o pool sem duplicar', () => {
   assert.equal(s.clips[2].media_id, mid);
 });
 
+test('REMOVE_MEDIA tira o take do pool E remove todos os clips que o usam', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 3 }));
+  const mid = store.getState().media[0].id;
+  store.dispatch(act.addClipFromMedia(mid)); // 2 clips do mesmo take
+  const principalClips = store.getState().clips.filter(c => c.media_id == null).length;
+  store.dispatch(act.removeMedia(mid));
+  const s = store.getState();
+  assert.equal(s.media.length, 0);                                  // saiu do pool
+  assert.equal(s.clips.filter(c => c.media_id === mid).length, 0);  // clips do take sumiram
+  assert.equal(s.clips.filter(c => c.media_id == null).length, principalClips); // principal intacto
+  // undo restaura pool + clips do take
+  store.undo();
+  assert.equal(store.getState().media.length, 1);
+  assert.equal(store.getState().clips.filter(c => c.media_id === mid).length, 2);
+});
+
+test('REMOVE_MEDIA com id inexistente é no-op (nao muda o state)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 3 }));
+  const antes = store.getState();
+  store.dispatch(act.removeMedia(9999));
+  assert.equal(store.getState(), antes); // mesma referencia = state inalterado
+});
+
 test('TRIM_CLIP de take respeita a duracao da PROPRIA midia', () => {
   const store = storeWithVideo(60);
   store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 4 }));
@@ -490,6 +515,28 @@ test('CREATE_COMPOUND aceita SO AUDIO (any-type) e conta na duracao', () => {
   assert.ok(bloco, 'composto vira bloco na main');
   assert.equal(clipDuration(s, bloco), 8);               // duracao = audio interno
   assert.equal(playableDuration(s), 18);                 // 10 video + 8 do bloco
+});
+
+test('Q/W trima a FAIXA DE ÁUDIO selecionada (não só vídeo)', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 8 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.selectAudioClip(aid));
+  // W corta a DIREITA do playhead (t=5) dentro do áudio [0..8]
+  store.dispatch(act.deleteRangeRight(5));
+  let a = store.getState().audio_clips[0];
+  assert.equal(a.source_out, 5);
+  assert.equal(a.start, 0);
+  // Q corta a ESQUERDA do playhead (t=2) e encosta o áudio no playhead
+  store.dispatch(act.deleteRangeLeft(2));
+  a = store.getState().audio_clips[0];
+  assert.equal(a.source_in, 2);
+  assert.equal(a.source_out, 5);
+  assert.equal(a.start, 2);
+  // playhead FORA do áudio = no-op (não mexe em vídeo por engano)
+  const antes = store.getState();
+  store.dispatch(act.deleteRangeRight(9));
+  assert.equal(store.getState(), antes);
 });
 
 test('CREATE_COMPOUND respeita o maximo de 4 compostos', () => {
@@ -550,6 +597,32 @@ test('SET_CAPTIONS troca todas as legendas em 1 dispatch sem roubar selecao', ()
   // 1 undo volta as 2
   store.undo();
   assert.equal(store.getState().texts.filter(t => t.caption).length, 2);
+});
+
+test('legenda com tarja (box): cor por palavra sobrevive e sai no exportPayload', () => {
+  const store = storeWithVideo(10);
+  // template "highlight": cada palavra com tarja colorida + cor própria
+  store.dispatch(act.setCaptions([
+    { content: 'isso', start_sec: 0.2, end_sec: 0.6, color: '#ffffff', box: '#22c55e' },
+    { content: 'vai',  start_sec: 0.6, end_sec: 1.0, color: '#ffd32a', box: null },
+  ]));
+  const caps = store.getState().texts.filter(t => t.caption).sort((a, b) => a.start_sec - b.start_sec);
+  assert.equal(caps[0].box, '#22c55e');   // tarja preservada
+  assert.equal(caps[0].color, '#ffffff');
+  assert.equal(caps[1].box, null);        // sem tarja
+  assert.equal(caps[1].color, '#ffd32a'); // cor por palavra (rotate)
+  // box inválido vira null (nunca vaza lixo pro render)
+  store.dispatch(act.setCaptions([{ content: 'x', start_sec: 0, end_sec: 1, box: 'verde' }]));
+  assert.equal(store.getState().texts.find(t => t.caption).box, null);
+  // exportPayload leva o box só quando existe
+  store.dispatch(act.setCaptions([
+    { content: 'a', start_sec: 0, end_sec: 1, box: '#ff2d78' },
+    { content: 'b', start_sec: 1, end_sec: 2 },
+  ]));
+  const pay = exportPayload(store.getState());
+  const byTxt = pay.texts.reduce((m, t) => { m[t.content] = t; return m; }, {});
+  assert.equal(byTxt.a.box, '#ff2d78');
+  assert.equal('box' in byTxt.b, false);  // sem box = campo ausente no payload
 });
 
 test('playableDuration cobre projeto com audio alem do video (e so-audio toca)', () => {

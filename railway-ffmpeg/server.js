@@ -2125,23 +2125,42 @@ async function processEditV0(jobId, p) {
       ]);
     }
 
-    // 5. Trilha de áudio v0 (fallback): so quando NAO ha audio_clips v2
+    // 5. Trilha de áudio ORIGINAL (principal + takes): extrai o audio de CADA
+    // clip da SUA PROPRIA fonte (srcFor respeita o media_url dos takes) na ordem
+    // da timeline. Clip sem trilha de audio vira silêncio do mesmo tamanho pra
+    // NÃO desalinhar os seguintes.
+    // Fix 2026-07-21: antes esse loop só rodava quando NÃO havia audio_clips v2
+    // — por isso o áudio do vídeo (e o áudio original dos takes importados)
+    // sumia assim que o usuário adicionava música. Agora SEMPRE monta o
+    // sourceAudioPath; o mixer decide o volume (0 = mudo, ex.: audio destacado).
     update('audio', 55);
     const hasAudioClipsV2 = Array.isArray(p.audio_clips) && p.audio_clips.length > 0;
     const audioClipFiles = [];
-    if (!hasAudioClipsV2)
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
       const out = path.join(dir, `audio_${i}.aac`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
+      let ok = false;
       try {
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
           '-i', srcFor(c), '-vn', '-c:a', 'aac', '-b:a', '128k', out,
         ]);
-        audioClipFiles.push(out);
-      } catch(e) { /* video pode nao ter audio */ }
+        ok = fs.existsSync(out);
+      } catch(e) { ok = false; /* fonte pode nao ter trilha de audio */ }
+      if (!ok) {
+        // silêncio do mesmo tamanho: mantém o áudio dos próximos clips no lugar
+        try {
+          await run('ffmpeg', [
+            '-y', '-f', 'lavfi', '-t', String(dur),
+            '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-c:a', 'aac', '-b:a', '128k', out,
+          ]);
+          ok = fs.existsSync(out);
+        } catch(e) { ok = false; }
+      }
+      if (ok) audioClipFiles.push(out);
     }
     let sourceAudioPath = null;
     if (audioClipFiles.length === 1) {
@@ -2251,7 +2270,14 @@ async function processEditV0(jobId, p) {
         const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
         const txt = escapeDrawText(t.content || '');
         const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
-        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${Math.max(2, Math.round(fs_px*0.06))}:bordercolor=0x000000:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
+        // tarja/caixa colorida atrás (estilo CapCut): box=1 + boxcolor + padding.
+        // com tarja NÃO usa contorno no texto (fica limpo, igual ao preview).
+        const hasBox = /^#[0-9a-fA-F]{6}$/.test(t.box || '');
+        const boxPart = hasBox
+          ? `:box=1:boxcolor=${hexToFfmpeg(t.box)}@0.92:boxborderw=${Math.max(10, Math.round(fs_px * 0.22))}`
+          : '';
+        const bw = hasBox ? 0 : Math.max(2, Math.round(fs_px * 0.06));
+        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=0x000000${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
       }
       vLabel = nextL;
     });
@@ -2277,10 +2303,15 @@ async function processEditV0(jobId, p) {
         aLabels.push(lbl);
         inputIdx++;
       }
-      // trilha do proprio video (se nao mudo) entra no mix tambem
-      if (volV > 0.001) {
-        fc.push(`[0:a]volume=${volV}[acv]`);
+      // trilha original do video (principal + takes) entra no mix — vem do
+      // sourceAudioPath como INPUT próprio, pois o concat é -an e [0:a] não
+      // existe. Fix 2026-07-21: era `[0:a]` (stream inexistente) → o áudio
+      // original do vídeo sumia sempre que havia música (audio_clips v2).
+      if (sourceAudioPath && volV > 0.001) {
+        args.push('-i', sourceAudioPath);
+        fc.push(`[${inputIdx}:a]volume=${volV.toFixed(2)}[acv]`);
         aLabels.push('acv');
+        inputIdx++;
       }
     } else {
       // fallback v0: trilha source + audio extra fixo

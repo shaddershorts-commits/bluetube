@@ -13,28 +13,28 @@ export function attachResizers(root, onResize) {
   const isDesktop = () => window.matchMedia('(min-width: 861px)').matches;
 
   // restaura tamanhos salvos
-  let sizes = { propsW: 300, tlH: 190 };
+  let sizes = { previewW: 440, tlH: 200 };
   try { sizes = { ...sizes, ...(JSON.parse(localStorage.getItem(LS_KEY)) || {}) }; } catch {}
-  apply();
 
   function apply() {
-    // tetos PROPORCIONAIS à janela (user: "preciso poder expandir a barra de
-    // edição") — antes travava em 420px de timeline / 520px de painel.
-    const maxTl = Math.max(420, Math.round(window.innerHeight * 0.72));
-    const maxProps = Math.max(520, Math.round(window.innerWidth * 0.42));
-    sizes.propsW = Math.min(maxProps, Math.max(220, sizes.propsW));
-    sizes.tlH = Math.min(maxTl, Math.max(120, sizes.tlH));
+    // Tetos PROPORCIONAIS à janela (user pediu VÁRIAS vezes "poder expandir a
+    // barra de edição"). A ALTURA da timeline agora é via grid-template-rows
+    // (robusto) — antes setava height do .be-timeline-wrap, que tem flex:1 e
+    // ignorava. col1 = biblioteca (232) | col2 = config (flexível) | col3 = preview.
+    const maxTl = Math.max(420, Math.round(window.innerHeight * 0.78));
+    const maxPrev = Math.max(560, Math.round(window.innerWidth * 0.5));
+    sizes.previewW = Math.min(maxPrev, Math.max(300, sizes.previewW || 440));
+    sizes.tlH = Math.min(maxTl, Math.max(120, sizes.tlH || 200));
     if (isDesktop()) {
-      // inline SO no desktop — no mobile sobrescreveria o media query.
-      // col1 = biblioteca de mídia (232px), col2 = config (ajustável), col3 = preview
-      ws.style.gridTemplateColumns = `232px ${sizes.propsW}px minmax(0, 1fr)`;
-      timelineWrap.style.height = sizes.tlH + 'px';
+      ws.style.gridTemplateColumns = `232px minmax(0, 1fr) ${sizes.previewW}px`;
+      ws.style.gridTemplateRows = `minmax(0, 1fr) ${sizes.tlH}px`;
     } else {
       ws.style.gridTemplateColumns = '';
-      timelineWrap.style.height = '';
+      ws.style.gridTemplateRows = '';
     }
     onResize?.();
   }
+  apply();
   window.addEventListener('resize', apply);
   function save() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(sizes)); } catch {}
@@ -44,10 +44,12 @@ export function attachResizers(root, onResize) {
   const gv = document.createElement('div');
   gv.className = 'be-gutter-v';
   ws.appendChild(gv);
-  // gutter horizontal: acima da timeline (divisa preview/timeline)
+  // gutter horizontal: no TOPO da área da timeline = a divisa arrastável entre
+  // os painéis de cima e a timeline (arrasta ⬆ = timeline maior).
   const gh = document.createElement('div');
   gh.className = 'be-gutter-h';
-  timelineWrap.parentElement.insertBefore(gh, timelineWrap);
+  const tlArea = timelineWrap.closest('.be-timeline-area') || timelineWrap.parentElement;
+  tlArea.insertBefore(gh, tlArea.firstChild);
 
   function drag(el, onMove) {
     el.addEventListener('pointerdown', (e) => {
@@ -65,8 +67,8 @@ export function attachResizers(root, onResize) {
       el.addEventListener('pointerup', up);
     });
   }
-  drag(gv, (s0, dx) => { sizes.propsW = s0.propsW + dx; });
-  drag(gh, (s0, _dx, dy) => { sizes.tlH = s0.tlH - dy; });
+  drag(gv, (s0, dx) => { sizes.previewW = s0.previewW - dx; }); // arrasta ⬅ = preview mais largo
+  drag(gh, (s0, _dx, dy) => { sizes.tlH = s0.tlH - dy; });      // arrasta ⬆ = timeline mais alta
 
   return () => { gv.remove(); gh.remove(); };
 }

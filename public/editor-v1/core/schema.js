@@ -117,6 +117,8 @@ export function normalizeLoadedState(raw) {
       font: TEXT_FONTS.includes(t.font) ? t.font : 'Anton',
       size: TEXT_SIZES.includes(t.size) ? t.size : 'medium',
       color: /^#[0-9a-fA-F]{6}$/.test(t.color || '') ? t.color : '#ffffff',
+      // tarja/caixa colorida atrás da legenda (estilo CapCut) — null = sem caixa
+      box: /^#[0-9a-fA-F]{6}$/.test(t.box || '') ? t.box : null,
       x_pct: clamp01(t.x_pct ?? 0.5),
       y_pct: clamp01(t.y_pct ?? 0.5),
       start_sec: Math.max(0, t.start_sec || 0),

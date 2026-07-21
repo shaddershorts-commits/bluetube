@@ -377,7 +377,20 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     const wf = a.kind === 'video' ? videoWave : wave?.get?.(a.url);
     if (wf?.ready?.()) {
       const bmp = wf.getSlice(srcI, srcO, aw, a.h);
-      if (bmp) { ctx.globalAlpha = 0.85; ctx.drawImage(bmp, ax, a.y, aw, a.h); }
+      if (bmp) {
+        ctx.globalAlpha = 0.85;
+        // amplitude adaptativa ao volume (CapCut): baixar o volume encolhe as
+        // ondas visualmente. O waveform é desenhado centralizado (mid = h/2),
+        // então escalar a altura mantém a onda centrada. vol>1 = ondas maiores
+        // (o clip() já corta o excesso). vol=0 (mudo) = nada.
+        const vol = a.volume == null ? 1 : Math.max(0, Math.min(2, a.volume));
+        if (vol === 1) {
+          ctx.drawImage(bmp, ax, a.y, aw, a.h);
+        } else if (vol > 0) {
+          const dh = a.h * vol;
+          ctx.drawImage(bmp, ax, a.y + (a.h - dh) / 2, aw, dh);
+        }
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();

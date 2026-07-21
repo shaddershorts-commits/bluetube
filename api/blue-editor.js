@@ -478,6 +478,25 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── rename-project: renomeia um projeto em edicao ────────────────────────
+  // Body: { project_id, nome_projeto }
+  if (action === 'rename-project') {
+    const projectId = req.body?.project_id;
+    const nome = (req.body?.nome_projeto || '').slice(0, 120).trim();
+    if (!projectId || !nome) return res.status(400).json({ error: 'project_id e nome_projeto obrigatórios' });
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+        { method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' }, body: JSON.stringify({ nome_projeto: nome }) }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'rename_failed' });
+      return res.status(200).json({ ok: true, nome_projeto: nome });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── delete-project: apaga projeto em edicao ──────────────────────────────
   if (action === 'delete-project') {
     const projectId = req.body?.project_id;
@@ -519,7 +538,9 @@ module.exports = async function handler(req, res) {
       if (dur <= 0) return res.status(400).json({ error: 'duracao invalida' });
       effectiveClips = [{ source_in: inT, source_out: outT }];
     }
-    effectiveClips.sort((a, b) => a.source_in - b.source_in);
+    // NÃO reordenar por source_in: o exportPayload já entrega os clips na ORDEM
+    // DA TIMELINE. Ordenar por source_in embaralhava takes (source_in é relativo
+    // a CADA fonte) e ignorava a reordenação de clips feita pelo usuário.
     const totalDur = effectiveClips.reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
     if (totalDur < 0.5) return res.status(400).json({ error: 'duracao total muito curta' });
 
@@ -546,12 +567,16 @@ module.exports = async function handler(req, res) {
       source_width: projectState.video.width || 1080,
       source_height: projectState.video.height || 1920,
       aspect_strategy: projectState.aspect_strategy || 'crop_center',
-      clips: effectiveClips.map(c => ({ source_in: c.source_in, source_out: c.source_out })),
+      // preserva TODOS os campos do clip (media_url dos takes, scale, opacity,
+      // speed, frozen/reversed/mirrored) — antes só ia source_in/out e o Railway
+      // renderizava take do vídeo principal, sem escala/velocidade/efeitos.
+      clips: effectiveClips.map(c => ({ ...c })),
       transitions: projectState.transitions || [],
       texts: (projectState.texts || []).filter(t => t.active !== false),
       volumes: projectState.volumes || { video: 1, audio_extra: 1 },
-      output_width: 1080,
-      output_height: 1920,
+      // resolução escolhida no modal de export (fallback 1080×1920)
+      output_width: projectState.output_width || 1080,
+      output_height: projectState.output_height || 1920,
       supabase_url: SU,
       supabase_key: SK,
     };
