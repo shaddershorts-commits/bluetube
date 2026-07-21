@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     // 2. Busca plano na tabela subscribers
     const subRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual,cancel_at_period_end`,
+      `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(user.email)}&select=plan,plan_expires_at,is_manual,cancel_at_period_end,created_at`,
       { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     );
 
@@ -63,12 +63,20 @@ export default async function handler(req, res) {
       }
     }
 
+    // is_new: subscriber criado nos últimos 5min → sinaliza signup REAL
+    // (usado no OAuth pra disparar CompleteRegistration só em cadastro novo,
+    // não em login recorrente). Fail-safe: sem created_at válido = false.
+    const isNew = sub?.created_at
+      ? (Date.now() - new Date(sub.created_at).getTime() < 5 * 60 * 1000)
+      : false;
+
     return res.status(200).json({
       plan,
       email: user.email,
       plan_expires_at: sub?.plan_expires_at || null,
       is_manual: sub?.is_manual || false,
-      cancel_at_period_end: sub?.cancel_at_period_end === true
+      cancel_at_period_end: sub?.cancel_at_period_end === true,
+      is_new: isNew
     });
 
   } catch (err) {

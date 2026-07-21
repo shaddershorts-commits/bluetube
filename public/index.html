@@ -2763,6 +2763,27 @@ async function submitOTPCode(){
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + d.session.access_token },
       }).catch(()=>{});
+      // ── TRACKING — CompleteRegistration (signup email/OTP) ──────────────────
+      // ESTE é o momento canônico de "cadastro concluído": verify_otp só devolve
+      // access_token DEPOIS do Supabase criar a conta. O Lead antigo (handleEmailSignup
+      // ~2897) está morto num branch inalcançável do fluxo OTP. Dedup por email hash.
+      // Tudo dentro do try (inclusive btoa) pra NUNCA quebrar o cadastro.
+      try {
+        const emailHash = btoa(pendingOTPEmail || '').replace(/=/g, '');
+        const dedupKey = 'bt_reg_tracked_' + emailHash;
+        if (!localStorage.getItem(dedupKey)) {
+          if (typeof fbq !== 'undefined') {
+            fbq('track', 'CompleteRegistration', { content_name: 'signup_email', status: true });
+          }
+          if (typeof gtag !== 'undefined') {
+            gtag('event', 'conversion', { send_to: 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9', event_callback: function(){} });
+          }
+          if (typeof window.dataLayer !== 'undefined') {
+            window.dataLayer.push({ event: 'sign_up', method: 'email' });
+          }
+          localStorage.setItem(dedupKey, '1');
+        }
+      } catch(e) { console.warn('[tracking] CompleteRegistration failed:', e); }
     }
     // Salva cred se a senha foi capturada no login/signup que originou o OTP
     if (pendingOTPEmail && pendingOTPPassword) {
@@ -4225,29 +4246,9 @@ async function handleOAuthCallback(){
 
       // ── NORMAL OAUTH LOGIN ──────────────────────────────────────────────
       localStorage.setItem('bt_token', accessToken);
-      // ── TRACKING UNIFICADO — Lead (signup OAuth Google) ────────
-      if (!localStorage.getItem('bt_oauth_tracked')) {
-        try {
-          // Meta Pixel — Lead OAuth (dispara pra ambos pixels init no head)
-          if (typeof fbq !== 'undefined') {
-            fbq('track', 'Lead', {
-              content_name: 'signup_google'
-            });
-          }
-          if (typeof gtag !== 'undefined') {
-            gtag('event', 'conversion', {
-              'send_to': 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9',
-              'event_callback': function(){}
-            });
-          }
-          window.dataLayer = window.dataLayer || [];
-          window.dataLayer.push({
-            event: 'sign_up',
-            method: 'google'
-          });
-          localStorage.setItem('bt_oauth_tracked', '1');
-        } catch(e) { console.warn('[tracking signup oauth]', e && e.message); }
-      }
+      // Lead OAuth antigo REMOVIDO: disparava em todo callback (login incluso) e
+      // antes do get-plan. Agora CompleteRegistration dispara abaixo, só quando
+      // get-plan confirma is_new (signup real). Dedup bt_oauth_tracked por device.
       try{
         const planRes = await fetch('/api/get-plan', {
           method: 'POST',
@@ -4258,6 +4259,23 @@ async function handleOAuthCallback(){
         userPlan = planData.plan || 'free';
         localStorage.setItem('bt_plan', userPlan);
         currentUserEmail = planData.email;
+        // ── TRACKING — CompleteRegistration (signup OAuth Google) ──────────────
+        // Só em cadastro NOVO: planData.is_new = subscriber criado <5min (get-plan.js).
+        // Login recorrente não dispara. Dedup por device (bt_oauth_tracked) de backup.
+        if (planData.is_new === true && !localStorage.getItem('bt_oauth_tracked')) {
+          try {
+            if (typeof fbq !== 'undefined') {
+              fbq('track', 'CompleteRegistration', { content_name: 'signup_google', status: true });
+            }
+            if (typeof gtag !== 'undefined') {
+              gtag('event', 'conversion', { send_to: 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9', event_callback: function(){} });
+            }
+            if (typeof window.dataLayer !== 'undefined') {
+              window.dataLayer.push({ event: 'sign_up', method: 'google' });
+            }
+            localStorage.setItem('bt_oauth_tracked', '1');
+          } catch(e) { console.warn('[tracking] CompleteRegistration oauth failed:', e); }
+        }
         if(planData.plan_expires_at) localStorage.setItem('bt_plan_expiry', new Date(planData.plan_expires_at).getTime().toString());
         localStorage.setItem('bt_cancel_scheduled', planData.cancel_at_period_end === true ? '1' : '0');
         // Fire-and-forget: grava UTM/fbclid em subscribers via OAuth Google.
