@@ -3201,7 +3201,7 @@ function exportCSV(){
 }
 
 // ── REALTIME: novos cadastros + cancelamentos ────────────────────────────────
-let _lastTotal=0, _lastCancelEmail=null, _rtInt=null;
+let _lastTotal=0, _lastPaying=0, _lastCancelEmail=null, _rtInt=null;
 function startRealtimeWatch(){
   if(_rtInt) clearInterval(_rtInt);
   _rtInt = setInterval(async()=>{
@@ -3219,6 +3219,13 @@ function startRealtimeWatch(){
         nextRefreshSecs=0; // força refresh imediato no próximo tick
       }
       _lastTotal = newTotal;
+      // 💰 NOVA ASSINATURA PAGA (full/master) → celebração completa (confete + som + banner)
+      const newPaying = d.paying || 0;
+      if(_lastPaying > 0 && newPaying > _lastPaying){
+        celebrarAssinatura(d.latest_paying_plan, d.latest_paying_email);
+        nextRefreshSecs=0;
+      }
+      _lastPaying = newPaying;
       // Cancelamento
       const cancelEmail = d.latest_cancel_email;
       if(cancelEmail && cancelEmail !== _lastCancelEmail){
@@ -3241,6 +3248,61 @@ function showAdminToast(title, sub, color, border){
   document.body.appendChild(el);
   setTimeout(()=>el.remove(),6000);
 }
+
+// ── 💰 CELEBRAÇÃO DE NOVA ASSINATURA (confete + som de caixa + banner) ───────
+function celebrarAssinatura(plan, email){
+  try{ somCash(); }catch(e){}
+  try{ dispararConfete(); }catch(e){}
+  try{ bannerAssinatura(plan, email); }catch(e){}
+}
+function somCash(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    const ctx=new AC(), now=ctx.currentTime;
+    // "cha-ching" — 3 notas ascendentes tipo caixa registradora
+    [[1318.5,0],[1760,0.09],[2637,0.09]].forEach(([f,dt])=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='triangle'; o.frequency.value=f; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, now+dt);
+      g.gain.exponentialRampToValueAtTime(0.22, now+dt+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0008, now+dt+0.55);
+      o.start(now+dt); o.stop(now+dt+0.6);
+    });
+  }catch(e){}
+}
+function dispararConfete(){
+  const c=document.createElement('canvas');
+  c.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:99998';
+  c.width=innerWidth; c.height=innerHeight; document.body.appendChild(c);
+  const ctx=c.getContext('2d');
+  const cores=['#00aaff','#10b981','#fbbf24','#f472b6','#a78bfa','#ffffff'];
+  const parts=[]; const N=190;
+  for(let i=0;i<N;i++)parts.push({x:innerWidth/2+(Math.random()-.5)*260,y:innerHeight/3,vx:(Math.random()-.5)*15,vy:Math.random()*-17-4,g:.34+Math.random()*.22,s:6+Math.random()*8,cor:cores[i%cores.length],rot:Math.random()*6.28,vr:(Math.random()-.5)*.45,a:1});
+  let t=0;
+  (function frame(){
+    ctx.clearRect(0,0,c.width,c.height); let alive=false;
+    for(const p of parts){
+      p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; p.a-=0.0055;
+      if(p.a>0 && p.y<c.height+30){ alive=true; ctx.save(); ctx.globalAlpha=Math.max(0,p.a); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.cor; ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.62); ctx.restore(); }
+    }
+    if(alive && ++t<320) requestAnimationFrame(frame); else c.remove();
+  })();
+}
+function bannerAssinatura(plan, email){
+  const isMaster = plan==='master';
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;display:flex;justify-content:center;pointer-events:none';
+  const card=document.createElement('div');
+  card.style.cssText='margin-top:26px;background:linear-gradient(135deg,'+(isMaster?'#7c3aed,#f59e0b':'#0ea5e9,#10b981')+');color:#fff;font-family:var(--mono,monospace);padding:18px 36px;border-radius:16px;box-shadow:0 14px 55px rgba(0,0,0,.55);text-align:center;transform:scale(0);transition:transform .55s cubic-bezier(.2,1.5,.4,1)';
+  card.innerHTML='<div style="font-size:12px;letter-spacing:2px;opacity:.92">'+(isMaster?'👑 NOVO MASTER':'⚡ NOVO FULL')+'</div>'
+    +'<div style="font-size:27px;font-weight:900;margin:5px 0">+ R$ '+(isMaster?'89,99':'29,99')+'/mês 💰</div>'
+    +'<div style="font-size:12px;opacity:.85">'+(email||'nova assinatura')+'</div>';
+  el.appendChild(card); document.body.appendChild(el);
+  requestAnimationFrame(()=>{ card.style.transform='scale(1)'; });
+  setTimeout(()=>{ card.style.transition='transform .4s, opacity .5s'; card.style.opacity='0'; card.style.transform='scale(.9)'; setTimeout(()=>el.remove(),500); }, 5200);
+}
+// Teste manual no console do admin: __testCelebra('master') ou __testCelebra('full')
+window.__testCelebra=(p)=>celebrarAssinatura(p||'master','teste@exemplo.com');
 
 // ── SAQUES PANEL (admin) ────────────────────────────────────────────────────
 async function loadSaquesAdminPanel(){
