@@ -1572,6 +1572,10 @@ Responda APENAS em JSON válido sem markdown:
 
       // Verificação de duplicata acontece no verify_otp quando tentar criar a conta
       const refCode = req.body?.ref_code || null;
+      // UTM cacheado NO SIGNUP (mesmo navegador, tem os dados) → viaja pro
+      // verify_otp junto do ref de afiliado. Assim campanha+afiliado ficam
+      // browser-independentes (link mágico noutro navegador NÃO perde atribuição).
+      const attribution = (req.body?.attribution && typeof req.body.attribution === 'object') ? req.body.attribution : null;
       const otp = String(Math.floor(100000 + Math.random() * 900000));
       console.log('[auth] Signup OTP for:', email, 'code:', otp);
 
@@ -1581,7 +1585,7 @@ Responda APENAS em JSON válido sem markdown:
         method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           cache_key: 'otp_' + email,
-          value: { code: otp, password, ref_code: refCode },
+          value: { code: otp, password, ref_code: refCode, attribution },
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 600000).toISOString()
         })
@@ -1602,13 +1606,12 @@ Responda APENAS em JSON válido sem markdown:
             subject: otp + ' — Seu código de verificação BlueTube',
             html: `<div style="background:#020817;color:#e8f4ff;font-family:-apple-system,sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px;border:1px solid rgba(0,170,255,.2)">
               <div style="text-align:center;margin-bottom:20px"><span style="font-size:24px;font-weight:800;color:#fff">Blue<span style="color:#00aaff">Tube</span></span></div>
-              <p style="font-size:16px;text-align:center">Confirme seu email pra terminar o cadastro:</p>
-              <div style="text-align:center;margin:24px 0"><a href="${_magic}" style="display:inline-block;background:#00aaff;color:#020817;font-weight:800;text-decoration:none;padding:15px 32px;border-radius:10px;font-size:16px">Confirmar meu email &rarr;</a></div>
-              <p style="font-size:13px;text-align:center;color:rgba(200,225,255,0.6)">Ou digite este código no site:</p>
-              <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:28px;text-align:center;margin:12px 0">
+              <p style="font-size:16px;text-align:center">Seu código de verificação:</p>
+              <div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:28px;text-align:center;margin:20px 0">
                 <span style="font-size:44px;font-weight:800;letter-spacing:14px;color:#00aaff">${otp}</span>
               </div>
-              <p style="color:rgba(200,225,255,0.5);font-size:13px;text-align:center">Este código expira em 10 minutos.</p>
+              <p style="color:rgba(200,225,255,0.5);font-size:13px;text-align:center">Digite no site. Expira em 10 minutos.</p>
+              <p style="font-size:12px;text-align:center;color:rgba(200,225,255,0.35);margin-top:18px">Não consegue digitar? <a href="${_magic}" style="color:#00aaff;text-decoration:underline">Confirmar pelo link</a>.</p>
               <p style="color:rgba(200,225,255,0.3);font-size:12px;text-align:center;margin-top:16px">Se não foi você, ignore este email.</p>
             </div>`
           })
@@ -1702,17 +1705,19 @@ Responda APENAS em JSON válido sem markdown:
       // Save to cache
       if (SUPA_URL && SUPA_KEY) {
         // Reenvio: REUSA o código válido existente (o usuário pode digitar
-        // qualquer email recebido — acaba a confusão de "código rotacionado")
-        // e preserva a senha guardada no signup.
-        let storedPwd = '';
+        // qualquer email recebido — acaba a confusão de "código rotacionado") e
+        // preserva TODO o cache do signup (senha + ref de afiliado + UTM). Antes
+        // só guardava a senha → reenvio zerava ref/UTM e quebrava atribuição.
+        let storedVal = {};
         try {
           const old = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: supaH });
-          if (old.ok) { const od = await old.json(); if (od?.[0]?.value?.code) otp = od[0].value.code; storedPwd = od?.[0]?.value?.password || ''; }
+          if (old.ok) { const od = await old.json(); if (od?.[0]?.value && typeof od[0].value === 'object') storedVal = od[0].value; }
         } catch(e) {}
+        if (storedVal.code) otp = storedVal.code;
         await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
         await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
           method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password: storedPwd }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
+          body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password: storedVal.password || '', ref_code: storedVal.ref_code || null, attribution: storedVal.attribution || null }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
         }).catch(() => {});
       }
       const _site = process.env.SITE_URL || 'https://www.bluetubeviral.com';
@@ -1725,7 +1730,7 @@ Responda APENAS em JSON válido sem markdown:
           body: JSON.stringify({
             from: 'BlueTube <noreply@bluetubeviral.com>', to: [email],
             subject: otp + ' — Seu código de verificação BlueTube',
-            html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Confirme seu email pra terminar o cadastro:</p><div style="text-align:center;margin:24px 0"><a href="${_magic}" style="display:inline-block;background:#00aaff;color:#020817;font-weight:800;text-decoration:none;padding:15px 32px;border-radius:10px;font-size:16px">Confirmar meu email &rarr;</a></div><p style="font-size:13px;color:rgba(200,225,255,0.6)">Ou digite este código no site:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:12px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Expira em 10 minutos.</p></div>`
+            html: `<div style="background:#020817;color:#e8f4ff;font-family:sans-serif;padding:40px;max-width:480px;margin:0 auto;border-radius:16px"><h1 style="color:#00aaff">BlueTube</h1><p>Seu código de verificação:</p><div style="background:#0a1628;border:1px solid #1a6bff;border-radius:12px;padding:24px;text-align:center;margin:20px 0"><span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00aaff">${otp}</span></div><p style="color:rgba(200,225,255,0.55);font-size:13px">Digite no site. Expira em 10 minutos.</p><p style="font-size:12px;color:rgba(200,225,255,0.35);margin-top:18px">Não consegue digitar? <a href="${_magic}" style="color:#00aaff;text-decoration:underline">Confirmar pelo link</a>.</p></div>`
           })
         });
       }
@@ -1765,12 +1770,27 @@ Responda APENAS em JSON válido sem markdown:
           if (loginR.ok) session = await loginR.json();
         }
 
-        // Registra na tabela subscribers + email_marketing
-        fetch(`${SUPA_URL}/rest/v1/subscribers`, {
+        // Registra na tabela subscribers + email_marketing. AWAIT pra o PATCH de
+        // UTM abaixo não correr antes do insert existir (senão 0 rows atualizadas).
+        await fetch(`${SUPA_URL}/rest/v1/subscribers`, {
           method: 'POST',
           headers: { ...supaH, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
           body: JSON.stringify({ email, plan: 'free', is_manual: false, affiliate_ref: stored.ref_code || null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         }).catch(() => {});
+        // UTM cacheado no signup → persiste no subscriber. Cobre o LINK MÁGICO
+        // (outro navegador, sem localStorage do original) → campanha não se perde.
+        // Separado e fire-and-forget: NUNCA quebra a criação da conta.
+        if (stored.attribution && typeof stored.attribution === 'object') {
+          const a = stored.attribution, up = {};
+          for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id', 'fbclid', 'gclid', 'landing_page', 'referrer']) {
+            if (typeof a[k] === 'string' && a[k].trim()) up[k] = a[k].trim().slice(0, 500);
+          }
+          if (Object.keys(up).length) {
+            fetch(`${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`, {
+              method: 'PATCH', headers: { ...supaH, 'Prefer': 'return=minimal' }, body: JSON.stringify(up)
+            }).catch(() => {});
+          }
+        }
         fetch(`${SUPA_URL}/rest/v1/email_marketing`, {
           method: 'POST', headers: { ...supaH, 'Prefer': 'resolution=ignore,return=minimal' },
           body: JSON.stringify({ email, sequence_position: 0, total_sent: 0, unsubscribed: false, created_at: new Date().toISOString() })
