@@ -105,6 +105,22 @@ async function rlReset(SUPA_URL, supaH, key) {
   try { await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.${encodeURIComponent('rl_' + key)}`, { method: 'DELETE', headers: supaH }); } catch (e) {}
 }
 function clientIP(req) { return (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim(); }
+// Cloudflare Turnstile: verifica o token do widget. GATED no TURNSTILE_SECRET
+// (sem a env → não bloqueia nada). FAIL-OPEN se o Cloudflare estiver fora do ar
+// (netfail) — só rejeita token ausente ou inválido (bot). Token é uso único.
+async function verifyTurnstile(token, ip) {
+  const secret = process.env.TURNSTILE_SECRET;
+  if (!secret) return { ok: true, skipped: true };
+  if (!token) return { ok: false, reason: 'missing-token' };
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: String(token), ...(ip ? { remoteip: ip } : {}) })
+    });
+    const d = await r.json();
+    return { ok: !!d.success, reason: (d['error-codes'] || []).join(',') };
+  } catch (e) { return { ok: true, netfail: true }; }
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1622,6 +1638,10 @@ Responda APENAS em JSON válido sem markdown:
     if (action === 'signup') {
       if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter mínimo 6 caracteres' });
+
+      // Bot protection (Cloudflare Turnstile) — barra bots antes de qualquer trabalho.
+      const _ts = await verifyTurnstile(req.body?.turnstile_token, clientIP(req));
+      if (!_ts.ok) return res.status(400).json({ error: 'Verificação de segurança falhou. Recarregue a página e tente de novo.', turnstile: true });
 
       // Rate-limit anti-abuso: por EMAIL (barra email-bombing de vítima) + por IP
       // (barra spam em massa). Limite de IP generoso pra não pegar NAT móvel.

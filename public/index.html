@@ -38,6 +38,8 @@ fbq('track', 'PageView');
 src="https://www.facebook.com/tr?id=1445793886789248&ev=PageView&noscript=1"/>
 </noscript>
 <!-- End Meta Pixel Code -->
+<!-- Cloudflare Turnstile (bot protection no cadastro) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 <!-- UTM/fbclid/gclid tracker — carrega DEPOIS do Pixel pra nao quebrar (IIFE try/catch) -->
 <script src="/_utm-tracker.js" defer></script>
@@ -912,6 +914,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <input type="checkbox" id="signupAge16" style="width:16px;height:16px;cursor:pointer;accent-color:var(--neon)"/>
         <span>Tenho 16 anos ou mais</span>
       </label>
+      <!-- Cloudflare Turnstile (bot protection, invisível/managed) -->
+      <div id="signupTurnstile" class="cf-turnstile" data-sitekey="0x4AAAAAAD6hdHudaq6aWeIx" data-theme="dark" style="margin-bottom:10px"></div>
       <button type="submit" class="auth-submit">Criar conta →</button>
       </form>
     </div>
@@ -2902,13 +2906,19 @@ async function handleEmailSignup(){
   // Fix 6 (Gap 5): age 16+ obrigatorio
   const _age16 = document.getElementById('signupAge16');
   if(!_age16 || !_age16.checked){setAuthMsg('Você precisa ter 16 anos ou mais para criar conta.','');return;}
+  // Bot protection (Turnstile): pega o token do widget. Se carregou mas ainda não
+  // resolveu, pede pra tentar de novo (resolve em 1-2s). Se o script nem carregou
+  // (adblock), manda vazio e o servidor decide (gated no TURNSTILE_SECRET).
+  let _tsToken='';
+  try{ if(typeof turnstile!=='undefined' && turnstile.getResponse) _tsToken=turnstile.getResponse()||''; }catch(e){}
+  if(typeof turnstile!=='undefined' && !_tsToken){ setAuthMsg('Só um instante — confirmando que você não é um robô. Toque em "Criar conta" de novo.',''); try{turnstile.reset();}catch(e){} return; }
   setAuthMsg('Criando conta…','ok');
   try{
     const _refSignup = (typeof window.getRefAfiliado === 'function') ? window.getRefAfiliado() : null;
     // Envia o UTM JÁ NO SIGNUP (mesmo navegador, tem os dados) → cacheado no
     // servidor → aplicado no verify mesmo se completar por link mágico noutro navegador.
     const _attrSignup = (typeof window.getMarketingAttribution === 'function') ? window.getMarketingAttribution() : null;
-    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:_refSignup,attribution:_attrSignup})});
+    const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'signup',email,password,ref_code:_refSignup,attribution:_attrSignup,turnstile_token:_tsToken})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Erro ao criar conta');
 
@@ -2990,7 +3000,7 @@ async function handleEmailSignup(){
     pendingOTPPassword = password;
     setAuthMsg('','ok');
     showOTPForm(email);
-  }catch(e){setAuthMsg(e.message,'');}
+  }catch(e){ setAuthMsg(e.message,''); try{ if(typeof turnstile!=='undefined') turnstile.reset(); }catch(_){} }
 }
 // Old OTP handlers replaced by submitOTPCode() and resendOTPCode() above
 async function handleOTPVerify(){ submitOTPCode(); }
