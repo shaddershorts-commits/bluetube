@@ -1936,6 +1936,12 @@ Responda APENAS em JSON válido sem markdown:
     // ── RESET PASSWORD (sends email link) ─────────────────────────────────────
     if (action === 'reset_password') {
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
+      // Rate-limit anti-bombardeio de email de reset. SILENCIOSO: retorna sent:true
+      // mesmo bloqueado (não vaza enumeração nem que houve limite). Por vítima
+      // (4/h) + por IP (compartilha o teto de 100/h com signup/resend).
+      if (await rlHit(SUPA_URL, supaH, 'reset_' + String(email).toLowerCase(), 4, 3600000)) return res.status(200).json({ sent: true });
+      const _rip = clientIP(req);
+      if (_rip && await rlHit(SUPA_URL, supaH, 'sendip_' + _rip, 100, 3600000)) return res.status(200).json({ sent: true });
       const redirectTo = `${process.env.SITE_URL || 'https://bluetubeviral.com'}/`;
       const r = await fetch(`${authBase}/recover`, {
         method: 'POST',
