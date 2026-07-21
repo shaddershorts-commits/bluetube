@@ -837,7 +837,7 @@ function renderDash(data){
   document.getElementById('mConv').textContent=(stats.totalClicks>0?((stats.totalFree+stats.totalPaying)/stats.totalClicks*100).toFixed(1):0)+'%';
   // Receita
   document.getElementById('rMrr').textContent=fm(stats.mrrAffiliate);
-  document.getElementById('rPending').textContent=fm(stats.pendingAmount);
+  document.getElementById('rPending').textContent=fm(stats.mrrAffiliate); // "A receber" = MRR (modelo mensal recorrente, não soma pending)
   document.getElementById('rPaid').textContent=fm(stats.paidAmount);
   document.getElementById('rTotal').textContent=fm(stats.totalEarnings);
   // Chart

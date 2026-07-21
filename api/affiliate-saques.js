@@ -11,6 +11,7 @@
 // read antes de mascarar/exibir/enviar pra ASAAS. Helper em _helpers/crypto.js.
 
 const { encryptValue, decryptSafe } = require('./_helpers/crypto');
+const { computeAffiliateMRR } = require('./_helpers/affiliate-mrr');
 
 const DIA_SAQUE = 22;
 const VALOR_MINIMO = 50;
@@ -180,21 +181,10 @@ module.exports = async function handler(req, res) {
 
 // ── HANDLERS ────────────────────────────────────────────────────────────────
 async function statusAction(res, { h, SU, afiliado }) {
-  const saldo = parseFloat(afiliado.saldo_disponivel || 0);
-  // Se saldo_disponivel ainda nao foi populado, calcular on-the-fly a partir
-  // das commissions pending (nao cancelled / nao paid / nao flagged):
-  let saldoCalculado = saldo;
-  try {
-    const cR = await fetch(
-      `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=commission_amount`,
-      { headers: h }
-    );
-    if (cR.ok) {
-      const rows = await cR.json();
-      const soma = rows.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
-      if (soma > saldoCalculado) saldoCalculado = soma;
-    }
-  } catch (e) {}
+  // Saldo = MRR AO VIVO (assinantes ativos × preço × taxa) — modelo mensal
+  // recorrente (Opção A, 2026-07-21). Mesmo número do dashboard e do botão Pix
+  // do admin. NÃO é mais soma das linhas pending (que divergia).
+  const { mrr: saldoCalculado } = await computeAffiliateMRR(SU, h, afiliado);
 
   const hoje = new Date();
   const isDia22 = hoje.getDate() === DIA_SAQUE;
@@ -233,16 +223,18 @@ async function solicitarSaque(res, { SU, h, afiliado }) {
     return res.status(400).json({ error: 'sem_chave', mensagem: 'Cadastre uma chave Pix antes de solicitar saque.' });
   }
 
-  // Calcular saldo real (sum das commissions pending NAO flaggadas)
-  const cR = await fetch(
-    `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=id,commission_amount`,
-    { headers: h }
-  );
-  const pendings = cR.ok ? await cR.json() : [];
-  const valorSaque = +pendings.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0).toFixed(2);
+  // Valor = MRR AO VIVO (assinantes ativos × preço × taxa) — mesmo número do
+  // painel e do botão do admin. As linhas pending NÃO somam o valor (viram
+  // histórico) — buscamos só pra marcar 'paid' depois do Pix.
+  const { mrr: valorSaque } = await computeAffiliateMRR(SU, h, afiliado);
   if (valorSaque < VALOR_MINIMO) {
     return res.status(400).json({ error: 'saldo_insuficiente', mensagem: `Saldo minimo de R$${VALOR_MINIMO} pra sacar. Atual: R$${valorSaque.toFixed(2)}.` });
   }
+  const cR = await fetch(
+    `${SU}/rest/v1/affiliate_commissions?affiliate_id=eq.${afiliado.id}&status=eq.pending&or=(flagged.eq.false,admin_decision.eq.approved)&select=id`,
+    { headers: h }
+  );
+  const pendings = cR.ok ? await cR.json() : [];
 
   // Cria o registro do saque em status 'processando' (ou 'pendente_manual' se sem ASAAS)
   const statusInicial = ASAAS_KEY ? 'processando' : 'pendente_manual';
