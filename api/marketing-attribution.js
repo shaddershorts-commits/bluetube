@@ -43,6 +43,7 @@ const FIELD_LIMITS = {
   utm_campaign: 200,
   utm_content: 200,
   utm_term: 200,
+  utm_id: 100,    // {{ad.id}} do Meta — chave estável (coluna via sql/add_utm_id_to_subscribers.sql)
   fbclid: 500,
   gclid: 500,
   landing_page: 500,
@@ -147,9 +148,27 @@ module.exports = async function handler(req, res) {
       return ok({ skipped: 'patch_failed', status: patchR.status });
     }
 
+    // 4b. utm_id ({{ad.id}}) em PATCH SEPARADO e RESILIENTE: a coluna pode ainda
+    // não existir (rodar sql/add_utm_id_to_subscribers.sql). Se falhar, NÃO afeta
+    // o save principal acima — só loga. Assim utm_source persiste sempre, e utm_id
+    // passa a persistir assim que a migration rodar, sem redeploy.
+    const utmId = sanitize(attribution.utm_id, FIELD_LIMITS.utm_id);
+    let utm_id_saved = false;
+    if (utmId) {
+      try {
+        const idR = await fetch(
+          `${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}`,
+          { method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' }, body: JSON.stringify({ utm_id: utmId }) }
+        );
+        utm_id_saved = idR.ok;
+        if (!idR.ok) console.warn('[marketing-attr] utm_id_patch_skip (coluna existe? rode a migration):', idR.status);
+      } catch (e) { console.warn('[marketing-attr] utm_id_patch_erro:', e.message); }
+    }
+
     return ok({
       saved: true,
       fields_set: Object.keys(utm).filter(k => utm[k] !== null).length,
+      utm_id_saved,
     });
   } catch (e) {
     console.error('[marketing-attr] erro inesperado:', e.message);
