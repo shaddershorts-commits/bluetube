@@ -2784,6 +2784,20 @@ async function submitOTPCode(){
           localStorage.setItem(dedupKey, '1');
         }
       } catch(e) { console.warn('[tracking] CompleteRegistration failed:', e); }
+      // ── ATRIBUIÇÃO DE MARKETING (UTM/fbclid) — persiste no subscriber ────────
+      // Mesmo bug do Lead: a chamada original ficou no branch morto if(d.session)
+      // do handleEmailSignup, então cadastro por OTP NUNCA salvava UTM (0/62 no
+      // banco). ESTE é o ponto real do cadastro. Fire-and-forget, não bloqueia UX.
+      try {
+        const _attr = (typeof window.getMarketingAttribution === 'function') ? window.getMarketingAttribution() : null;
+        if (_attr) {
+          fetch('/api/marketing-attribution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: d.session.access_token, email: (pendingOTPEmail || '').trim().toLowerCase(), attribution: _attr }),
+          }).catch(()=>{});
+        }
+      } catch(e) { /* silent — atribuição nunca quebra cadastro */ }
     }
     // Salva cred se a senha foi capturada no login/signup que originou o OTP
     if (pendingOTPEmail && pendingOTPPassword) {

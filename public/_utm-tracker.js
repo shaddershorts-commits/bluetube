@@ -18,9 +18,11 @@
     var TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 dias
 
     // Param names a capturar
+    // utm_id = {{ad.id}} do Meta — chave ESTÁVEL pro cruzamento com a Marketing
+    // API (nome do anúncio pode mudar, id não). utm_content = {{ad.name}} legível.
     var TRACKING_PARAMS = [
       'utm_source', 'utm_medium', 'utm_campaign',
-      'utm_content', 'utm_term',
+      'utm_content', 'utm_term', 'utm_id',
       'fbclid', 'gclid'
     ];
 
@@ -71,6 +73,7 @@
         utm_campaign: params.get('utm_campaign') || null,
         utm_content:  params.get('utm_content')  || null,
         utm_term:     params.get('utm_term')     || null,
+        utm_id:       params.get('utm_id')       || null,
         fbclid:       params.get('fbclid')       || null,
         gclid:        params.get('gclid')        || null,
         referrer:     (document.referrer || '').slice(0, 500) || null,
