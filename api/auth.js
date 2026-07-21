@@ -53,6 +53,59 @@ const TRANSLATIONS = {
   ko:{hero_1:'당신의 다음 영상',hero_2:'수백만 조회수와 함께',hero_3:'지금 시작됩니다.',hero_badge:'무료 · 하루 2개 스크립트 · 가입 불필요',hero_sub:'YouTube Shorts 링크를 붙여넣고, 언어를 선택하고, 트랜스크립트 + 바이럴 스크립트 2개를 받으세요.',btn_go:'트랜스크립트 + 스크립트 ↗',tab_transcript:'📝 트랜스크립트',tab_casual:'💬 캐주얼',tab_appeal:'🔥 임팩트',copy:'📋 복사',copied:'✓ 복사됨!',new_short:'새 Short',l1:'Short 검색 중…',l2:'오디오 분석 중…',l3:'음성 처리 중…',l4:'트랜스크립트 생성 중…',l5:'거의 완료…',generating:'다음 바이럴 스크립트 생성 중…',err_empty:'계속하려면 YouTube Shorts 링크를 붙여넣으세요.',err_invalid:'잘못된 링크입니다. 사용: youtube.com/shorts/...',placeholder:'https://www.youtube.com/shorts/...',nav_enter:'로그인',nav_upgrade:'⚡ 업그레이드',nav_community:'커뮤니티',nav_logout:'로그아웃',auth_title:'계정 만들기 또는 로그인',tab_login:'로그인',tab_signup:'계정 만들기',email_ph:'이메일@email.com',pwd_ph:'비밀번호',pwd_min:'비밀번호 만들기 (최소 6자)',confirm_ph:'비밀번호 확인',btn_login:'로그인 →',btn_signup:'계정 만들기 →',forgot:'비밀번호를 잊었습니다',forgot_btn:'재설정 링크 보내기 →',back_login:'← 로그인으로 돌아가기',sending:'링크 전송 중…',link_sent:'✓ 링크 전송됨! 이메일을 확인하세요.',signing_in:'로그인 중…',welcome:'환영합니다! 🎉',creating:'계정 만드는 중…',up_live:'명이 지금 스크립트를 생성 중입니다',up_timer:'한도가 재설정될 때까지',up_cta:'지금 이용하기 →',up_or:'또는 무료 계정을 만드세요',up_email_btn:'이메일로 계정 만들기',plan_monthly:'월간',plan_annual:'연간',plan_save:'25% 절약',plan_popular:'가장 인기',plan_monthly_label:'월간 청구',plan_annual_label:'연간 청구',plan_full_btn:'Full 구독 →',plan_master_btn:'Master 구독 →',price_increase:'다음 달부터 Full은 $10, Master는 $20 인상됩니다.',plans_eye:'플랜',plans_title:'플랜을 선택하세요.',footer_copy:'© 2025 BlueTube · 바이럴 크리에이터',new_pwd:'새 비밀번호 만들기',new_pwd_sub:'새 비밀번호를 입력하고 확인하세요.',pwd_new_ph:'새 비밀번호 (최소 6자)',pwd_confirm_new:'새 비밀번호 확인',save_pwd:'새 비밀번호 저장 →',fomo_censored:'크리에이터 요청으로 이름 검열됨',fomo_protected:'신원 보호됨',fomo_anon:'크리에이터가 익명을 선호합니다',comm_title:'BlueTube 커뮤니티',comm_sub:'구독자 전용',comm_btn:'WhatsApp 커뮤니티 참여',comm_joined:'✓ 커뮤니티',cancel_blublu:'안돼요! 실수로 클릭한 거죠? 떠나지 마세요! 😢',cancel_give_chance:'한 번 더 기회를! 💙',cancel_confirm:'취소 확인',cancel_accept:'제안 수락 💙',cancel_proceed:'구독 취소',cancel_bye:'함께한 시간이 그리울 거예요!',cancel_close:'닫기',blublu_hello:'안녕하세요! 저는 <strong>BluBlu</strong>예요 🤖<br>경험은 어떠신가요?',blublu_ph:'피드백을 남겨주세요…',blublu_send:'피드백 보내기 →',blublu_thanks:'메시지를 전달하고 있습니다, 감사합니다! 🚀',faq_title:'자주 묻는 질문.',faq_eye:'자주 묻는 질문'},
 };
 
+// ── SEGURANÇA OTP: cifra da senha em repouso + rate-limit ───────────────────
+// A senha fica CIFRADA (AES-256-GCM) no api_cache durante a janela do OTP. Se a
+// tabela vazar (RLS mal configurada), sai cifrada, não em texto puro. Chave
+// derivada do SERVICE_KEY (server-only; quem tiver ela já é dono do banco).
+function _otpKey() { return crypto.createHash('sha256').update(String(process.env.SUPABASE_SERVICE_KEY || '') + '|otp-cache-v1').digest(); }
+function encPwd(plain) {
+  if (!plain) return '';
+  try {
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', _otpKey(), iv);
+    const ct = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+    return 'enc1:' + Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64');
+  } catch (e) { return String(plain); } // fail-open: nunca trava o cadastro
+}
+function decPwd(stored) {
+  if (typeof stored !== 'string') return '';
+  if (!stored.startsWith('enc1:')) return stored; // compat: cache antigo/plaintext
+  try {
+    const b = Buffer.from(stored.slice(5), 'base64');
+    const d = crypto.createDecipheriv('aes-256-gcm', _otpKey(), b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
+  } catch (e) { return ''; }
+}
+// Rate-limit por janela fixa via api_cache (contador). Aproximado (read+write não
+// atômico) — suficiente pra barrar abuso sem Redis. FAIL-OPEN: erro de infra não
+// bloqueia usuário legítimo. Retorna true se JÁ estourou o limite.
+async function rlHit(SUPA_URL, supaH, key, max, windowMs) {
+  const ck = 'rl_' + key, nowIso = new Date().toISOString();
+  let n = 0, expires = null;
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.${encodeURIComponent(ck)}&expires_at=gt.${nowIso}&select=value,expires_at`, { headers: supaH });
+    if (r.ok) { const d = await r.json(); if (d[0]) { n = Number(d[0].value?.n) || 0; expires = d[0].expires_at; } }
+  } catch (e) { return false; }
+  if (n >= max) return true;
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.${encodeURIComponent(ck)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
+    await fetch(`${SUPA_URL}/rest/v1/api_cache`, { method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' }, body: JSON.stringify({ cache_key: ck, value: { n: n + 1 }, created_at: nowIso, expires_at: expires || new Date(Date.now() + windowMs).toISOString() }) }).catch(() => {});
+  } catch (e) {}
+  return false;
+}
+async function rlCount(SUPA_URL, supaH, key) {
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.${encodeURIComponent('rl_' + key)}&expires_at=gt.${new Date().toISOString()}&select=value`, { headers: supaH });
+    if (r.ok) { const d = await r.json(); return Number(d[0]?.value?.n) || 0; }
+  } catch (e) {}
+  return 0;
+}
+async function rlReset(SUPA_URL, supaH, key) {
+  try { await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.${encodeURIComponent('rl_' + key)}`, { method: 'DELETE', headers: supaH }); } catch (e) {}
+}
+function clientIP(req) { return (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim(); }
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -1570,6 +1623,12 @@ Responda APENAS em JSON válido sem markdown:
       if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter mínimo 6 caracteres' });
 
+      // Rate-limit anti-abuso: por EMAIL (barra email-bombing de vítima) + por IP
+      // (barra spam em massa). Limite de IP generoso pra não pegar NAT móvel.
+      if (await rlHit(SUPA_URL, supaH, 'send_' + String(email).toLowerCase(), 6, 3600000)) return res.status(429).json({ error: 'Muitos códigos pedidos pra esse email. Espere alguns minutos e tente de novo.' });
+      const _sip = clientIP(req);
+      if (_sip && await rlHit(SUPA_URL, supaH, 'sendip_' + _sip, 100, 3600000)) return res.status(429).json({ error: 'Muitas tentativas. Espere alguns minutos e tente de novo.' });
+
       // Verificação de duplicata acontece no verify_otp quando tentar criar a conta
       const refCode = req.body?.ref_code || null;
       // UTM cacheado NO SIGNUP (mesmo navegador, tem os dados) → viaja pro
@@ -1585,7 +1644,7 @@ Responda APENAS em JSON válido sem markdown:
         method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           cache_key: 'otp_' + email,
-          value: { code: otp, password, ref_code: refCode, attribution },
+          value: { code: otp, password: encPwd(password), ref_code: refCode, attribution },
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 600000).toISOString()
         })
@@ -1652,7 +1711,7 @@ Responda APENAS em JSON válido sem markdown:
             await fetch(`${SUPA_URL}/rest/v1/api_cache?cache_key=eq.otp_${encodeURIComponent(email)}`, { method: 'DELETE', headers: supaH }).catch(() => {});
             await fetch(`${SUPA_URL}/rest/v1/api_cache`, {
               method: 'POST', headers: { ...supaH, 'Prefer': 'return=minimal' },
-              body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
+              body: JSON.stringify({ cache_key: 'otp_' + email, value: { code: otp, password: encPwd(password) }, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })
             }).catch(() => {});
           }
           const RESEND = process.env.RESEND_API_KEY;
@@ -1699,6 +1758,9 @@ Responda APENAS em JSON válido sem markdown:
     // ── RESEND CONFIRMATION EMAIL ─────────────────────────────────────────────
     if (action === 'send_otp') {
       if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
+      // Rate-limit compartilhado com o signup (mesma chave por email) — reenvio
+      // conta no mesmo teto; barra email-bombing via loop de "reenviar".
+      if (await rlHit(SUPA_URL, supaH, 'send_' + String(email).toLowerCase(), 6, 3600000)) return res.status(429).json({ error: 'Muitos códigos pedidos. Espere alguns minutos.' });
 
       // Generate and send custom OTP via Resend
       let otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -1741,6 +1803,10 @@ Responda APENAS em JSON válido sem markdown:
     // ── VERIFY OTP ────────────────────────────────────────────────────────────
     if (action === 'verify_otp') {
       if (!email || !otp) return res.status(400).json({ error: 'Email e código são obrigatórios' });
+      // Trava anti-brute-force: 10 códigos errados / 15min por email → bloqueia
+      // (força-bruta de 6 dígitos = 1M combinações → inviável). Reseta no sucesso.
+      const _vk = 'vfail_' + String(email).toLowerCase();
+      if (await rlCount(SUPA_URL, supaH, _vk) >= 10) return res.status(429).json({ error: 'Muitas tentativas erradas. Peça um novo código e tente de novo em alguns minutos.' });
 
       // Check custom OTP from cache
       try {
@@ -1749,14 +1815,17 @@ Responda APENAS em JSON válido sem markdown:
         const cd = await cr.json();
         const stored = cd?.[0]?.value;
         if (!stored || stored.code !== otp) {
+          await rlHit(SUPA_URL, supaH, _vk, 10, 900000); // conta a tentativa errada
           return res.status(400).json({ error: 'Código incorreto. Verifique e tente novamente.' });
         }
+        const _pwd = decPwd(stored.password); // decifra a senha só agora, em memória
+        rlReset(SUPA_URL, supaH, _vk).catch(() => {}); // código certo → zera as tentativas
 
         // OTP CORRETO → AGORA criar conta no Supabase Auth
         console.log('[auth] OTP verified for:', email, '— creating account');
         const signupR = await fetch(`${authBase}/signup`, {
           method: 'POST', headers,
-          body: JSON.stringify({ email, password: stored.password })
+          body: JSON.stringify({ email, password: _pwd })
         });
         const signupD = await signupR.json();
 
@@ -1765,7 +1834,7 @@ Responda APENAS em JSON válido sem markdown:
         if (!session) {
           const loginR = await fetch(`${authBase}/token?grant_type=password`, {
             method: 'POST', headers,
-            body: JSON.stringify({ email, password: stored.password })
+            body: JSON.stringify({ email, password: _pwd })
           });
           if (loginR.ok) session = await loginR.json();
         }
