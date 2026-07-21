@@ -38,6 +38,16 @@ fbq('track', 'PageView');
 src="https://www.facebook.com/tr?id=1445793886789248&ev=PageView&noscript=1"/>
 </noscript>
 <!-- End Meta Pixel Code -->
+<!-- TikTok Pixel Code -->
+<script>
+!function (w, d, t) {
+  w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{},n=document.createElement("script");n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+
+  ttq.load('D9FR313C77U79CKF8RUG');
+  ttq.page();
+}(window, document, 'ttq');
+</script>
+<!-- End TikTok Pixel Code -->
 <!-- Cloudflare Turnstile (bot protection no cadastro) -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
@@ -2789,6 +2799,12 @@ async function submitOTPCode(){
           if (typeof fbq !== 'undefined') {
             fbq('track', 'CompleteRegistration', { content_name: 'signup_email', status: true });
           }
+          // TikTok Pixel — mesmo gatilho do Meta. identify (AAM: TikTok hasheia
+          // o email client-side) ANTES do track pra melhorar a atribuição.
+          if (typeof ttq !== 'undefined') {
+            if (pendingOTPEmail) ttq.identify({ email: pendingOTPEmail });
+            ttq.track('CompleteRegistration', { content_name: 'signup_email', status: true });
+          }
           if (typeof gtag !== 'undefined') {
             gtag('event', 'conversion', { send_to: 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9', event_callback: function(){} });
           }
@@ -4312,6 +4328,12 @@ async function handleOAuthCallback(){
           try {
             if (typeof fbq !== 'undefined') {
               fbq('track', 'CompleteRegistration', { content_name: 'signup_google', status: true });
+            }
+            // TikTok Pixel — mesmo gatilho do Meta (só cadastro novo). identify
+            // (AAM) com o email do get-plan ANTES do track.
+            if (typeof ttq !== 'undefined') {
+              if (planData.email) ttq.identify({ email: planData.email });
+              ttq.track('CompleteRegistration', { content_name: 'signup_google', status: true });
             }
             if (typeof gtag !== 'undefined') {
               gtag('event', 'conversion', { send_to: 'AW-16524939504/P_XBCM3SsaIcEPCh2sc9', event_callback: function(){} });
