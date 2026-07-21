@@ -2052,12 +2052,12 @@ async function pagarAfiliadoPixAction(req, res, { SUPABASE_URL, headers }) {
     //    sao mantidos em tempo real pelo webhook + cron). Pendings ainda
     //    existem como historico de cada cobranca Stripe, mas o pagamento
     //    paga UMA mensalidade × rate (snapshot atual), igual o painel mostra.
-    const rate = (typeof afiliado.comissao_percentual === 'number' && afiliado.comissao_percentual > 0)
-      ? afiliado.comissao_percentual / 100
-      : 0.30;
-    const totalFull = afiliado.total_full || 0;
-    const totalMaster = afiliado.total_master || 0;
-    const valorSaque = +(totalFull * PLAN_AMOUNTS_PIX.full * rate + totalMaster * PLAN_AMOUNTS_PIX.master * rate).toFixed(2);
+    // Valor = MRR AO VIVO (assinantes ativos × preço × taxa) — FONTE ÚNICA,
+    // idêntica ao painel e ao auto-saque do afiliado. Antes usava o contador
+    // (total_full/master) que podia dessincronizar; ao vivo é preciso e imune
+    // a case-sensitivity de email (conta por affiliate_ref, não por email).
+    const { computeAffiliateMRR } = require('./_helpers/affiliate-mrr');
+    const { mrr: valorSaque } = await computeAffiliateMRR(SUPABASE_URL, headers, afiliado);
     if (valorSaque < VALOR_MINIMO) {
       return res.status(400).json({
         error: 'saldo_insuficiente',

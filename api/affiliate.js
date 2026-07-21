@@ -316,8 +316,11 @@ export default async function handler(req, res) {
       const paidCommissions = commissions.filter(c => c.status === 'paid');
       const pendingAmount = pendingCommissions.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
       const paidAmount = paidCommissions.reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
-      const mrrAffiliate = (affiliate.total_full || 0) * PLAN_AMOUNTS.full * rate +
-                           (affiliate.total_master || 0) * PLAN_AMOUNTS.master * rate;
+      // Comissão mensal (= "a receber") = MRR AO VIVO: assinantes ativos × preço
+      // × taxa. FONTE ÚNICA (helper) — idêntico ao card de saque e ao botão do
+      // admin. Não é mais o contador × preço (podia dessincronizar).
+      const { computeAffiliateMRR } = require('./_helpers/affiliate-mrr');
+      const { mrr: mrrAffiliate } = await computeAffiliateMRR(SUPA_URL, supaH, affiliate);
 
       // Próximo nível
       const nextLevelInfo = level === 'bronze'
