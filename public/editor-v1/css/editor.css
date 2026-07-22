@@ -265,18 +265,25 @@ body {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 0;
 }
+/* CapCut: o frame é o PAINEL ESCURO que preenche a coluna do preview; o palco
+   (vídeo + camadas) fica 9:16 CENTRALIZADO dentro dele. Antes o frame era o
+   próprio 9:16 flutuando — agora o painel enche o lado direito como no CapCut.
+   (mesma abordagem do fullscreen, já validada). */
 .be-preview-frame {
   position: relative;
+  width: 100%;
   height: calc(100% - 44px);
-  aspect-ratio: 9 / 16;
-  max-width: 100%;
   background: #000;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--blue-border);
+  display: flex; align-items: center; justify-content: center;
 }
-/* palco: mantém as camadas (vídeo + overlay) juntas; preenche o frame 9:16 */
-.be-stage { position: absolute; inset: 0; }
+/* palco: mantém as camadas (vídeo + overlay) juntas, no formato 9:16 do vídeo */
+.be-stage {
+  position: relative;
+  height: 100%; width: auto; aspect-ratio: 9 / 16; max-width: 100%;
+}
 .be-preview-frame video {
   position: absolute; inset: 0;   /* double-buffer: 2 vídeos empilhados */
   width: 100%; height: 100%;
@@ -456,7 +463,7 @@ body {
 .be-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .be-toolbar-sep { width: 1px; height: 20px; background: var(--blue-border); margin: 0 4px; }
 .be-toolbar-spacer { flex: 1; }
-.be-timeline-row { display: flex; gap: 0; }
+.be-timeline-row { display: flex; gap: 0; flex: 1; min-height: 0; }
 .be-track-headers {
   width: 36px; flex-shrink: 0;
   background: rgba(4, 16, 31, .8);
@@ -472,10 +479,15 @@ body {
   border-top: 1px solid rgba(0, 170, 255, .06);
 }
 .be-timeline-wrap {
-  flex: 1; min-width: 0;
+  flex: 1; min-width: 0; min-height: 0;
   background: #04101f; border: 1px solid var(--blue-border);
   border-radius: 0 12px 12px 0;
-  height: 190px; overflow: hidden; position: relative;
+  /* SEM height fixa: preenche a área da timeline (que o divisor redimensiona).
+     Antes travava em 190px → redimensionar só criava espaço vazio embaixo e a
+     timeline não crescia. Agora o canvas usa toda a altura (o ResizeObserver
+     recalcula → mais espaço pras camadas). */
+  align-self: stretch;
+  overflow: hidden; position: relative;
 }
 #beTimeline {
   width: 100%; height: 100%; display: block;
@@ -524,22 +536,27 @@ body {
 }
 .be-export-video { width: 100%; max-height: 300px; border-radius: 10px; background: #000; }
 
-/* ── modal de EXPORTAÇÃO: passo de opções (nome/resolução) estilo CapCut ── */
+/* ── modal de EXPORTAÇÃO: passo de opções (estilo CapCut: vídeo à ESQUERDA,
+   infos à DIREITA). O modal fica LARGO só neste passo. ── */
+#beExportModal .be-modal-box.be-modal-wide { width: 640px; }
 #beExportOptions { text-align: left; }
-.be-export-opts { flex-direction: row !important; align-items: flex-start; gap: 16px !important; }
+/* display:flex era o que faltava — sem ele o flex-direction:row não fazia nada
+   e o thumb (aspect 9/16 em bloco) virava width:100% = vídeo gigante em cima. */
+.be-export-opts { display: flex; flex-direction: row; align-items: stretch; gap: 18px; }
 .be-export-optthumb-wrap {
-  flex: 0 0 118px; aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden;
+  flex: 0 0 clamp(180px, 34%, 240px); align-self: start;
+  aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden;
   background: #000; border: 1px solid var(--blue-border);
 }
 .be-export-optthumb { width: 100%; height: 100%; object-fit: cover; display: block; }
-.be-export-fields { flex: 1; display: flex; flex-direction: column; gap: 10px !important; min-width: 0; }
+.be-export-fields { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
 .be-export-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-sec); font-weight: 600; }
 .be-export-field input, .be-export-field select {
   background: rgba(2, 8, 23, .6); border: 1px solid var(--blue-border); border-radius: 8px;
-  color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 10px; width: 100%;
+  color: var(--text); font-family: var(--font); font-size: 13px; padding: 9px 11px; width: 100%;
 }
 .be-export-field select:disabled { opacity: .55; }
-.be-export-actions { flex-direction: row !important; gap: 10px !important; }
+.be-export-actions { display: flex; flex-direction: row; gap: 10px; margin-top: 4px; }
 .be-export-actions .be-export-btn { flex: 1; }
 
 /* ── projetos ── */
@@ -579,6 +596,15 @@ body {
 
 /* ── texto overlay (classe usada pelo overlay.js) ── */
 .be-text-overlay { font-weight: 700; }
+/* entrada suave da legenda (aparece com fade+pop de 0.18s em vez de piscar seco).
+   Só toca UMA vez, quando o elemento nasce — no "palavra por palavra" cada
+   palavra ganha o próprio pop ao surgir. */
+.be-text-overlay { animation: beCapIn .18s ease-out; }
+@keyframes beCapIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.86); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .be-text-overlay { animation: none; } }
 
 /* ── mobile (CapCut mobile: preview em cima, timeline, props em sheet) ── */
 @media (max-width: 860px) {

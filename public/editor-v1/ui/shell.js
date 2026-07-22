@@ -662,6 +662,7 @@ export function mountEditor(root, store, opts = {}) {
     $('#beTextFont').value = txt.font;
     $('#beTextSize').value = txt.size;
     $('#beTextColor').value = txt.color;
+    $('#beTextStroke').value = /^#[0-9a-fA-F]{6}$/.test(txt.stroke || '') ? txt.stroke : '#000000';
     $('#beTextPos').value = posOf(txt.y_pct ?? 0.82);
     $('#beTextStart').value = txt.start_sec.toFixed(1);
     $('#beTextEnd').value = txt.end_sec.toFixed(1);
@@ -717,6 +718,7 @@ export function mountEditor(root, store, opts = {}) {
   $('#beTextFont').addEventListener('change', (e) => applyTextStyle({ font: e.target.value }));
   $('#beTextSize').addEventListener('change', (e) => applyTextStyle({ size: e.target.value }));
   $('#beTextColor').addEventListener('input', (e) => applyTextStyle({ color: e.target.value }));
+  $('#beTextStroke').addEventListener('input', (e) => applyTextStyle({ stroke: e.target.value }));
   $('#beTextPos').addEventListener('change', (e) => applyTextStyle({ y_pct: parseFloat(e.target.value) }));
   // Caixa (TT/tt/Tt): transforma o conteúdo (respeita "aplicar a todas")
   const caseFns = {
@@ -928,6 +930,8 @@ export function mountEditor(root, store, opts = {}) {
     for (const id of ['beExportOptions', 'beExportProgress', 'beExportDone', 'beExportError']) {
       const el = $('#' + id); if (el) el.style.display = (id === which) ? 'block' : 'none';
     }
+    // modal largo (2 colunas) só no passo de opções
+    exportModal.querySelector('.be-modal-box')?.classList.toggle('be-modal-wide', which === 'beExportOptions');
   };
   // baixa direto pra pasta de Downloads com o nome escolhido (blob = força o
   // nome mesmo cross-origin; se CORS bloquear, o link manual do passo "Pronto"
@@ -1568,6 +1572,7 @@ function buildTemplate() {
         </div>
         <div class="be-panel-row">
           <label>Cor <input id="beTextColor" type="color" value="#ffffff"/></label>
+          <label>Traçado <input id="beTextStroke" type="color" value="#000000" title="Borda em volta da letra"/></label>
           <label>Caixa
             <span class="be-btn-group">
               <button type="button" data-case="upper" title="MAIÚSCULAS">TT</button>

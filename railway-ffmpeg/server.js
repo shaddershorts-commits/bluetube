@@ -2277,7 +2277,9 @@ async function processEditV0(jobId, p) {
           ? `:box=1:boxcolor=${hexToFfmpeg(t.box)}@0.92:boxborderw=${Math.max(10, Math.round(fs_px * 0.22))}`
           : '';
         const bw = hasBox ? 0 : Math.max(2, Math.round(fs_px * 0.06));
-        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=0x000000${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
+        // traçado/borda da letra: cor escolhível (padrão preto). box tira o traçado.
+        const strokeCol = /^#[0-9a-fA-F]{6}$/.test(t.stroke || '') ? hexToFfmpeg(t.stroke) : '0x000000';
+        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
       }
       vLabel = nextL;
     });

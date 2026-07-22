@@ -69,6 +69,7 @@ export function createPlayer(videoEl, opts, store) {
         applyVisibility();
         const nd = disp();
         nd._pendingSeek = null;
+        nd._swapTo = null;
         nd.style.visibility = '';
         nd.muted = !!state.audio_detached;
         nd.volume = Math.min(1, state.volumes?.video ?? 1);
@@ -79,7 +80,24 @@ export function createPlayer(videoEl, opts, store) {
         buf().dataset.loadedUrl = '';
         return;
       }
-      // fallback (sem buffer pronto): carrega no próprio display (pode piscar)
+      // SEM buffer pronto. DURANTE PLAYBACK: NUNCA faz load() no display (isso
+      // apaga = "tela preta" entre takes) — garante o buffer carregando essa
+      // fonte e marca a troca pendente; o tick segura o ÚLTIMO FRAME congelado
+      // e troca quando o buffer decodifica. PAUSADO (scrub): não há tick pra
+      // dirigir a troca, então load direto (pisca uma vez, aceitável no scrub).
+      const bb = buf();
+      if (bb && playing) {
+        if (bb.dataset.loadedUrl !== url) {
+          bb.dataset.loadedUrl = url;
+          bb._pendingSeek = src;
+          bb.muted = true;
+          bb.src = url;
+          bb.load();
+        }
+        d._swapTo = { url, src, t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()) };
+        return;
+      }
+      d._swapTo = null;
       d.src = url; d.load(); d._pendingSeek = src;
       return;
     }
@@ -179,6 +197,41 @@ export function createPlayer(videoEl, opts, store) {
     const dt = lastTick ? (ts - lastTick) / 1000 : 0;
     lastTick = ts;
     const d = disp();
+
+    // TROCA PENDENTE pra fonte nova (take seguinte): mantém o último frame no
+    // lugar do preto e troca assim que o buffer decodifica — playback fluido.
+    if (d._swapTo) {
+      const bb = buf();
+      const ready = bb && bb.dataset.loadedUrl === d._swapTo.url && bb.readyState >= 2;
+      if (ready) {
+        const tgt = d._swapTo.src;
+        active = 1 - active;
+        applyVisibility();
+        const nd = disp();
+        nd._swapTo = null; nd._pendingSeek = null; nd.style.visibility = '';
+        nd.muted = !!state.audio_detached;
+        nd.volume = Math.min(1, state.volumes?.video ?? 1);
+        const s2 = segmentAt(state, virtualTime);
+        nd.playbackRate = s2 ? segSpeed(s2) : 1;
+        try { nd.currentTime = tgt; } catch {}
+        if (playing) nd.play().catch(() => {});
+        buf().pause();
+        buf().dataset.loadedUrl = '';
+      } else {
+        const espera = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - (d._swapTo.t0 || 0);
+        if (espera > 4000) {
+          // buffer não veio em 4s (rede ruim): aceita o load (pisca uma vez, mas
+          // não trava pra sempre)
+          const u = d._swapTo.url, s = d._swapTo.src; d._swapTo = null;
+          d.src = u; d.load(); d._pendingSeek = s;
+        } else {
+          // ainda decodificando: congela o último frame (sem preto) e espera
+          if (!d.paused) d.pause();
+        }
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+    }
 
     const seg = segmentAt(state, virtualTime);
     if (seg && d._pendingSeek != null) {

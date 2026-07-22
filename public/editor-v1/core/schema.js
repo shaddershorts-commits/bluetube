@@ -119,6 +119,7 @@ export function normalizeLoadedState(raw) {
       color: /^#[0-9a-fA-F]{6}$/.test(t.color || '') ? t.color : '#ffffff',
       // tarja/caixa colorida atrás da legenda (estilo CapCut) — null = sem caixa
       box: /^#[0-9a-fA-F]{6}$/.test(t.box || '') ? t.box : null,
+      stroke: /^#[0-9a-fA-F]{6}$/.test(t.stroke || '') ? t.stroke : null,
       x_pct: clamp01(t.x_pct ?? 0.5),
       y_pct: clamp01(t.y_pct ?? 0.5),
       start_sec: Math.max(0, t.start_sec || 0),

@@ -14,6 +14,7 @@ export const A = {
   DELETE_CLIP: 'DELETE_CLIP',
   TOGGLE_CLIP: 'TOGGLE_CLIP',
   SELECT_CLIP: 'SELECT_CLIP',
+  CLEAR_SELECTION: 'CLEAR_SELECTION',
   DELETE_RANGE_LEFT: 'DELETE_RANGE_LEFT',
   DELETE_RANGE_RIGHT: 'DELETE_RANGE_RIGHT',
   // textos
@@ -137,6 +138,7 @@ export const moveClip = (clipId, toIndex) => ({ type: A.MOVE_CLIP, clipId, toInd
 export const deleteClip = (clipId) => ({ type: A.DELETE_CLIP, clipId });
 export const toggleClip = (clipId) => ({ type: A.TOGGLE_CLIP, clipId });
 export const selectClip = (clipId) => ({ type: A.SELECT_CLIP, clipId });
+export const clearSelection = () => ({ type: A.CLEAR_SELECTION });
 export const deleteRangeLeft = (t) => ({ type: A.DELETE_RANGE_LEFT, t });
 export const deleteRangeRight = (t) => ({ type: A.DELETE_RANGE_RIGHT, t });
 

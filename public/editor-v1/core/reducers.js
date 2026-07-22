@@ -314,6 +314,15 @@ export function reduce(state, action) {
       if (state.selected_clip_id === action.clipId) return state;
       return { ...state, selected_clip_id: action.clipId, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
 
+    case A.CLEAR_SELECTION: {
+      // limpa QUALQUER seleção (clip/texto/áudio/overlay). Antes o clique no
+      // vazio chamava selectClip(null), que dava no-op quando o selecionado era
+      // texto/overlay (selected_clip_id já era null) — a camada não desmarcava.
+      if (state.selected_clip_id == null && state.selected_text_id == null &&
+          state.selected_audio_id == null && state.selected_overlay_id == null) return state;
+      return { ...state, selected_clip_id: null, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
+    }
+
     case A.DELETE_RANGE_LEFT: {
       // ÁUDIO selecionado: Q trima a parte à ESQUERDA do playhead dentro dele
       // (fix 2026-07-21: antes só funcionava em vídeo — user pegou).
@@ -389,6 +398,7 @@ export function reduce(state, action) {
       if (patch.color && !/^#[0-9a-fA-F]{6}$/.test(patch.color)) delete patch.color;
       // box: hex ativa a tarja; null (explícito) remove; inválido = ignora
       if (patch.box !== undefined && patch.box !== null && !/^#[0-9a-fA-F]{6}$/.test(patch.box)) delete patch.box;
+      if (patch.stroke !== undefined && patch.stroke !== null && !/^#[0-9a-fA-F]{6}$/.test(patch.stroke)) delete patch.stroke;
       if (patch.content != null) patch.content = String(patch.content).slice(0, 200);
       if (patch.x_pct != null) patch.x_pct = clamp01(patch.x_pct);
       if (patch.y_pct != null) patch.y_pct = clamp01(patch.y_pct);
@@ -791,6 +801,42 @@ export function reduce(state, action) {
         state.audio_clips.some(a => audioIds.includes(a.id)) ||
         state.overlays.some(o => ovIds.includes(o.id));
       if (!temAlgo) return state;
+      // FIX #6: se a seleção já inclui um COMPOSTO existente (ex.: criou o
+      // composto do vídeo, gerou legendas e re-selecionou tudo pra agrupar),
+      // AGREGA os itens soltos (legendas/áudio/overlay) DENTRO dele — antes o
+      // vídeo (já composto, filtrado por !c.compound_id) ficava de fora e as
+      // legendas viravam um composto separado no fim, descolando do vídeo.
+      // Não cria composto novo, então roda ANTES do limite de 4.
+      const compClipSel = state.clips.find(c => clipIds.includes(c.id) && c.compound_id != null);
+      const temSolto = state.texts.some(t => textIds.includes(t.id)) ||
+        state.audio_clips.some(a => audioIds.includes(a.id)) ||
+        state.overlays.some(o => ovIds.includes(o.id));
+      if (compClipSel && temSolto) {
+        const alvo = (state.compounds || []).find(k => k.id === compClipSel.compound_id);
+        if (alvo) {
+          const it0 = mainTrackItems(state).find(x => x.clip.id === compClipSel.id);
+          const base0 = it0 ? it0.tStart : 0;
+          const merged = {
+            ...alvo,
+            texts: [...(alvo.texts || []), ...state.texts.filter(t => textIds.includes(t.id))
+              .map(t => ({ ...t, start_sec: Math.max(0, t.start_sec - base0), end_sec: Math.max(0.1, t.end_sec - base0) }))],
+            audio_clips: [...(alvo.audio_clips || []), ...state.audio_clips.filter(a => audioIds.includes(a.id))
+              .map(a => ({ ...a, start: Math.max(0, a.start - base0) }))],
+            overlays: [...(alvo.overlays || []), ...state.overlays.filter(o => ovIds.includes(o.id))
+              .map(o => ({ ...o, start: Math.max(0, o.start - base0) }))],
+          };
+          return touch({
+            ...state,
+            compounds: state.compounds.map(k => k.id === alvo.id ? merged : k),
+            texts: state.texts.filter(t => !textIds.includes(t.id)),
+            audio_clips: state.audio_clips.filter(a => !audioIds.includes(a.id)),
+            overlays: state.overlays.filter(o => !ovIds.includes(o.id)),
+            multi_selected: [],
+            selected_clip_id: compClipSel.id,
+            selected_text_id: null, selected_audio_id: null, selected_overlay_id: null,
+          });
+        }
+      }
       if ((state.compounds || []).length >= 4) return state; // shell mostra o aviso
       const items = mainTrackItems(state);
       const firstIt = items.find(it => clipIds.includes(it.clip.id));
@@ -936,6 +982,7 @@ function buildText(p, id) {
     size: TEXT_SIZES.includes(p.size) ? p.size : 'medium',
     color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ffffff',
     box: /^#[0-9a-fA-F]{6}$/.test(p.box || '') ? p.box : null,
+    stroke: /^#[0-9a-fA-F]{6}$/.test(p.stroke || '') ? p.stroke : null,
     x_pct: clamp01(p.x_pct ?? 0.5),
     y_pct: clamp01(p.y_pct ?? 0.35),
     start_sec: Math.max(0, p.start_sec ?? 0),

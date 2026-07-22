@@ -75,7 +75,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         case 'seek': player.seek(e.t); break;
         case 'select-clip': store.dispatch(act.selectClip(e.clipId)); break;
         case 'select-text': store.dispatch(act.selectText(e.textId)); break;
-        case 'clear-selection': store.dispatch(act.selectClip(null)); break;
+        case 'clear-selection': store.dispatch(act.clearSelection()); break;
         case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
         case 'select-overlay': store.dispatch(act.selectOverlay(e.overlayId)); break;
         case 'convert-to-overlay': {

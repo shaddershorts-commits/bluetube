@@ -62,17 +62,24 @@ export function createOverlay(container, store, player, onEditRequest) {
       el.style.fontFamily = fontFamilyFor(txt.font);
       el.style.fontSize = fsPx + 'px';
       el.style.color = txt.color;
+      // traçado/borda da letra: espelha o borderw+bordercolor do drawtext.
+      // Cor escolhível (txt.stroke), padrão preto. paint-order deixa o traçado
+      // ATRÁS do preenchimento (não come a letra). box tira o traçado.
+      const strokeW = Math.max(1, fsPx * 0.055);
       // tarja colorida atrás (CapCut) — espelha o box=1 do drawtext no export
       if (txt.box) {
         el.style.background = txt.box;
         el.style.padding = '0.04em 0.28em';
         el.style.borderRadius = '0.1em';
         el.style.textShadow = 'none';
+        el.style.webkitTextStroke = '0';
       } else {
         el.style.background = 'transparent';
         el.style.padding = '0';
         el.style.borderRadius = '0';
-        el.style.textShadow = '0 0 4px rgba(0,0,0,.9), 2px 2px 2px rgba(0,0,0,.8)';
+        el.style.textShadow = 'none';
+        el.style.webkitTextStroke = strokeW + 'px ' + (txt.stroke || '#000000');
+        el.style.paintOrder = 'stroke fill';
       }
       // z compartilhado com as camadas de video (pip): lane maior = na frente.
       // Texto em lane menor que um overlay fica ATRAS do video dele (CapCut).
