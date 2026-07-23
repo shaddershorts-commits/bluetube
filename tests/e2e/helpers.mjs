@@ -110,6 +110,10 @@ export async function uploadVideoViaDrop(page, videoB64) {
 export async function bootWithVideo(page, opts = {}) {
   const saved = await mockBackend(page, opts);
   await page.goto('/blueEditor-app');
+  // v1.9: o editor abre na TELA INICIAL (grid de projetos) — entra em
+  // "Criar projeto" antes de esperar o dropzone
+  const home = page.locator('#beHomeCreate');
+  try { await home.waitFor({ state: 'visible', timeout: 8000 }); await home.click(); } catch {}
   await expect(page.locator('#beDrop')).toBeVisible({ timeout: 15000 });
   const vid = await makeSyntheticVideo(page, opts.seconds || 2);
   await routeUploadedVideo(page, vid);

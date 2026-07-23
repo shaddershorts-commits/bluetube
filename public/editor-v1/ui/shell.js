@@ -1297,11 +1297,13 @@ export function mountEditor(root, store, opts = {}) {
   document.addEventListener('visibilitychange', flushOnHide);
   window.addEventListener('pagehide', () => autosave.flush());
 
-  const detachResizers = attachResizers(root, () => { timeline.draw(); syncTrackHeaders(); });
-
   // ── headers das faixas com OLHINHO por camada (CapCut, user 2026-07-22) ──
   // Reconstruídos do layout REAL (rows dinâmicas de camada/áudio). Olhinho
   // esconde a camada do preview/export; áudio escondido = mudo.
+  // ⚠️ Este bloco fica ANTES do attachResizers: o resizer chama
+  // syncTrackHeaders() SINCRONAMENTE no mount — com o `let` depois dava TDZ
+  // ("Cannot access before initialization") e ABORTAVA o mountEditor inteiro
+  // (sem divisores, sem olhinho — bug pego pela sonda 2026-07-23).
   let _headersSig = null;
   function syncTrackHeaders() {
     const box = $('#beTrackHeaders');
@@ -1347,6 +1349,8 @@ export function mountEditor(root, store, opts = {}) {
   }
   store.subscribe(syncTrackHeaders);
   requestAnimationFrame(() => requestAnimationFrame(syncTrackHeaders));
+
+  const detachResizers = attachResizers(root, () => { timeline.draw(); syncTrackHeaders(); });
 
   sync();
 
