@@ -289,7 +289,11 @@ module.exports = async function handler(req, res) {
     const soPalavra = (t) => t && !t.includes(' ') && /^[\x00-\x7f]+$/.test(t);
     const reBate = termosN.map((t) => soPalavra(t) ? new RegExp('\\b' + escRe(t) + '\\b') : null);
     const reConta = termosN.map((t) => soPalavra(t) ? new RegExp('\\b' + escRe(t) + '\\b', 'g') : null);
-    const bateAlgum = (texto) => termosN.some((t, i) => reBate[i] ? reBate[i].test(texto) : (t ? texto.includes(t) : false));
+    // frase composta também casa na forma COLADA de hashtag/handle ("oliver
+    // tree" → "#olivertree"): fã-content real caía pra mero 'relacionado'
+    // (análise 2026-07-23, caso Oliver Tree)
+    const concatN = termosN.map((t) => (t && t.includes(' ')) ? t.replace(/ /g, '') : null);
+    const bateAlgum = (texto) => termosN.some((t, i) => reBate[i] ? reBate[i].test(texto) : (t ? (texto.includes(t) || (concatN[i] && texto.includes(concatN[i]))) : false));
     const contaTotal = (texto) => termosN.reduce((n, t, i) => n + (reConta[i] ? (texto.match(reConta[i]) || []).length : (t ? texto.split(t).length - 1 : 0)), 0);
     let videos = [], temMais = false, verificadosIds = [];
     if (tema && candidatos.length) {
@@ -364,7 +368,13 @@ module.exports = async function handler(req, res) {
       // tema (recall/semântica) marcados 'relacionado', por views.
       if (videos.length < qtd) {
         const jaTem = new Set(videos.map((v) => v.youtube_id || v.url));
+        // PRECISÃO-PRIMEIRO (user 2026-07-23): em busca de NOME PRÓPRIO o fill
+        // NÃO admite candidato que não cita o nome de verdade — o recall por
+        // substring trazia lixo ("@swennoliver"/"OliverVisualFX" na busca
+        // "Oliver Tree") e o card saía como 'relacionado'. Nome próprio sem
+        // match real = fora. Tema comum mantém o fill por views (VOLUME).
         const resto = candidatos.filter((c) => !jaTem.has(c.youtube_id || c.url))
+          .filter((c) => inp.tipo_tema !== 'nome_proprio' || bateAlgum(norm(c.titulo) + ' ' + norm(c.canal_nome)))
           .sort((a, b) => ((plat !== 'tiktok' && a._tiktok) ? 1 : 0) - ((plat !== 'tiktok' && b._tiktok) ? 1 : 0) || (b.views || 0) - (a.views || 0))
           .slice(0, qtd - videos.length)
           .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
@@ -469,7 +479,7 @@ REGRAS DO CHAT:
   Ordem mental toda vez: primeiro filtra pelo que é REALMENTE do tema, DEPOIS entrega tudo que sobrou. Precisão é o portão; volume é o que passa por ele.
 - Respostas CURTAS (1-4 frases). É chat, não palestra.
 - Pedido de vídeos = chame buscar_videos. Conversa = responda direto, no personagem.
-- BUSCA PRIMEIRO, NÃO INTERROGATÓRIO: se o pedido tem QUALQUER assunto/entidade buscável (um nome, um bicho, um tema — "oliver tree", "fails", "tigre", "Tesla"), chame buscar_videos DIRETO — os próprios resultados clareiam e você refina DEPOIS. Só pergunte ANTES de buscar quando de fato não há nada buscável: categoria larga sem entidade ("pop", "artistas famosos", "algo engraçado"). Cada pergunta de esclarecimento custa uma ida-e-volta que o usuário odeia — na dúvida entre perguntar e buscar, BUSQUE.
+- BUSCA PRIMEIRO, NÃO INTERROGATÓRIO: se o pedido tem QUALQUER assunto/entidade buscável (um nome, um bicho, um tema — "oliver tree", "fails", "tigre", "Tesla"), chame buscar_videos DIRETO — os próprios resultados clareiam e você refina DEPOIS. NICHO AMPLO NOMEADO TAMBÉM É BUSCÁVEL ("futebol", "games", "pop", "animais", "curiosidades", "artistas"): busca DIRETO com ordem por views e oferece afunilar DEPOIS de entregar — caso real: usuário mandou "Futebol", levou interrogatório e ABANDONOU o chat sem voltar. Só pergunte antes quando NÃO existe substantivo nenhum pra buscar ("me ajuda", "algo legal", "sei lá"). Cada pergunta de esclarecimento custa uma ida-e-volta que o usuário odeia — na dúvida entre perguntar e buscar, BUSQUE.
 - PEDIDO DE INSPIRAÇÃO SEM TEMA ("quero viralizar", "o que tá bombando", "me dá ideia pra estudar", "vídeos pra eu crescer") = NÃO INTERROGUE. Entrega JÁ um default forte na hora — busca os MEGA-VIRAIS / os mais em alta do acervo (ordem por views ou recentes) — e SÓ DEPOIS oferece afunilar por nicho. Uma pergunta de refino no MÁXIMO, e mesmo assim só se ele não topou o default. Deixar o cara sem nada nas mãos enquanto você pergunta "qual nicho?" duas vezes é o pior atendimento — dá material primeiro, refina em cima.
 - REGRA SAGRADA (jamais quebre): NUNCA afirme que ACHOU/ENTREGOU vídeos — nem números ("87 vídeos", "entreguei 30", "tem mais 57 no banco") — sem ter chamado buscar_videos NESTA MESMA resposta. Os cards vêm SÓ da ferramenta; se você não buscou, NÃO EXISTE card, e prometer resultado é MENTIRA que quebra a confiança. Se o usuário disser "manda todos"/"todos que achar"/"continuar" e for continuação de um tema, CHAME buscar_videos com esse tema — nunca finja que já buscou.
 - Os vídeos aparecem em CARDS abaixo da sua fala — NUNCA liste vídeos no texto.
@@ -481,6 +491,7 @@ REGRAS DO CHAT:
 - IDIOMAS: o acervo é GLOBAL (pt, en, es, fr, de, it, ja, ko, zh, ru). Sempre inclua nos termos o núcleo traduzido pro inglês e espanhol no mínimo. Só filtre nicho se o usuário pedir explicitamente.
 - HONESTIDADE DE ACERVO: NUNCA afirme que o acervo tem ou não tem um assunto sem ter BUSCADO esse assunto. Nada de inventar inventário ("tenho leão, crocodilo…") — se quiser sugerir alternativas, diga que pode buscar, não que "tem".
 - COBERTURA FINA (precisão > volume): se resumo.cobertura_fina=true, o acervo tem POUCOS vídeos DIRETOS sobre o tema (resumo.diretos_do_tema). Seja HONESTO no personagem: diga o número real que achou de certeiro ("achei só 3 cravados sobre o Haaland — o forte do acervo é outro") e ofereça ampliar ("quero que eu traga relacionados/parecidos?" ou sugira tema vizinho). JAMAIS finja fartura mandando o card cheio de "relacionado" como se fossem todos do tema. Melhor 3 certos e avisar, do que 30 e enrolar — é a regra do usuário: precisão primeiro.
+- NÚMEROS HONESTOS SEMPRE (não só na cobertura fina): "cravado" é SÓ quem a busca CONFIRMOU (resumo.confirmados_na_fala + título/canal). Se resumo.relacionados_complemento>0, fala a conta REAL separada ("6 no alvo + 3 parecidos vindo junto") — NUNCA some tudo e chame de cravado (caso real: 9 anunciados como "cravados" quando 6 eram do tema; os cards mostram e a confiança quebra).
 - Confirmação/PROVA: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). É teu diferencial, mas só EXISTE quando confirmados_na_fala>0. Se for 0 (comum em conteúdo VISUAL — um short de tigre não fala "tigre"), NÃO prometa nem invente "prova na fala"/"te digo o minuto" — apoie no título/canal/relevância com naturalidade. Ostenta a prova SÓ quando ela é real.
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
 - ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
