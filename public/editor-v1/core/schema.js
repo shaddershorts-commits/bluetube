@@ -51,9 +51,17 @@ export function createInitialState() {
     // clips de audio EDITAVEIS (CapCut): posicionaveis (start), cortaveis,
     // com volume proprio. kind 'extra' = arquivo enviado (url);
     // kind 'video' = trecho do audio do proprio video (pos-detach).
-    audio_clips: [],      // [{id, kind, url?, filename, media_duration, start, source_in, source_out, volume, active}]
+    audio_clips: [],      // [{id, kind, url?, filename, media_duration, start, source_in, source_out, volume, active, lane?}]
     next_audio_id: 1,
     selected_audio_id: null,
+    // camadas EXTRAS vazias (botão direito no vazio: "Criar camada …") — viram
+    // rows visíveis na timeline pra soltar faixas (fluidez CapCut)
+    extra_overlay_lanes: 0,
+    extra_audio_lanes: 0,
+    // olhinho por camada: lane escondida sai do PREVIEW e do EXPORT (áudio da
+    // lane fica mudo) — a row continua na timeline, esmaecida
+    hidden_overlay_lanes: [],   // [lane, ...] (overlays E textos da lane)
+    hidden_audio_lanes: [],     // [laneIndex, ...]
     audio_detached: false,      // Ctrl+Shift+S: video fica mudo, audio vira clips
     // camadas de video (CapCut): arrastar clip pra CIMA cria overlay.
     // Posicionamento livre (start) + transform no preview (PiP).
@@ -130,6 +138,10 @@ export function normalizeLoadedState(raw) {
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
   s.volumes = { video: 1, audio_extra: 1, ...(raw.volumes || {}) };
+  s.extra_overlay_lanes = Number.isInteger(raw.extra_overlay_lanes) ? Math.max(0, Math.min(4, raw.extra_overlay_lanes)) : 0;
+  s.extra_audio_lanes = Number.isInteger(raw.extra_audio_lanes) ? Math.max(0, Math.min(4, raw.extra_audio_lanes)) : 0;
+  s.hidden_overlay_lanes = Array.isArray(raw.hidden_overlay_lanes) ? raw.hidden_overlay_lanes.filter(Number.isInteger) : [];
+  s.hidden_audio_lanes = Array.isArray(raw.hidden_audio_lanes) ? raw.hidden_audio_lanes.filter(Number.isInteger) : [];
   s.audio_detached = raw.audio_detached === true;
   s.selected_audio_id = null;
   // audio_clips (modelo novo) + migracao dos formatos legados
@@ -143,6 +155,7 @@ export function normalizeLoadedState(raw) {
       source_in: a.source_in, source_out: a.source_out,
       volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
       ...(typeof a.speed === 'number' ? { speed: clamp(a.speed, 0.1, 100) } : {}),
+      lane: Number.isInteger(a.lane) && a.lane >= 0 ? Math.min(7, a.lane) : null,
       active: a.active !== false,
     })) : [];
   if (!s.audio_clips.length && raw.audio_extra?.url && raw.audio_extra?.duration > 0) {

@@ -99,6 +99,11 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.fillStyle = 'rgba(120,150,220,.05)';
     ctx.fillRect(0, r.y, W, r.h);
   }
+  // rows de ÁUDIO (inclui lanes extras vazias criadas pelo menu — alvo de drop)
+  for (const r of layout.audioLaneRows || []) {
+    ctx.fillStyle = 'rgba(34,197,94,.04)';
+    ctx.fillRect(0, r.y, W, r.h);
+  }
 
   // ── clips ativos ──
   for (const c of layout.clips) {
@@ -292,6 +297,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
   // ── camadas overlay (acima da principal — CapCut) ──
   for (const o of layout.overlayItems || []) {
+    ctx.globalAlpha = o.hidden ? 0.35 : 1; // camada com olhinho fechado
     let ox = o.x, ow = o.w, sI = o.srcIn, sO = o.srcOut;
     if (fsm?.name === 'trimming-overlay' && fsm.overlayId === o.overlayId) {
       const pps = layout.vp.pxPerSec;
@@ -345,9 +351,11 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       ctx.fillText((o.isImage ? '🖼 imagem ' : '⧉ camada ') + (o.lane || 1), ox + 6, o.y + 3);
     }
   }
+  ctx.globalAlpha = 1;
 
   // ── clips de audio (cada um editavel; preview de gesto igual video) ──
   for (const a of layout.audioItems || []) {
+    ctx.globalAlpha = a.hidden ? 0.35 : 1; // lane de áudio com olhinho fechado
     let ax = a.x, aw = a.w, srcI = a.srcIn, srcO = a.srcOut;
     if (fsm?.name === 'trimming-audio' && fsm.audioId === a.audioId) {
       const pps = layout.vp.pxPerSec;
@@ -400,11 +408,19 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       drawHandle(ctx, ax + aw, a.y, a.h, 'right');
     }
     if (aw > 60) {
+      // rótulo CONFINADO à própria faixa: nome longo (ex. ElevenLabs_...) não
+      // pinta por cima dos clips vizinhos ao cortar (user 2026-07-23)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ax + 2, a.y, Math.max(0, aw - 10), a.h);
+      ctx.clip();
       ctx.fillStyle = 'rgba(232,244,255,.75)';
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(a.label, ax + 6, a.y + 3);
+      ctx.restore();
     }
   }
+  ctx.globalAlpha = 1;
 
   // ── marquee (seletor retangular no vazio) ──
   if (fsm?.name === 'marquee') {

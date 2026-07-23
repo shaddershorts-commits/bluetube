@@ -476,6 +476,58 @@ test('REMOVE_MEDIA tira o take do pool E remove todos os clips que o usam', () =
   assert.equal(store.getState().clips.filter(c => c.media_id === mid).length, 2);
 });
 
+test('OVERLAY_TO_CLIP: camada de vídeo volta pra faixa principal na posição do drop', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.splitClipAt(5));
+  const rightId = store.getState().selected_clip_id;      // clip 5..10
+  store.dispatch(act.convertToOverlay(rightId, 8, 1));    // vira camada em t=8
+  let s = store.getState();
+  assert.equal(s.overlays.length, 1);
+  assert.equal(s.clips.length, 1);                        // main ficou só com 0..5
+  const ovId = s.overlays[0].id;
+  // #2: a agulha/playback enxergam a extensão REAL (main 5 + camada 8..13)
+  assert.equal(playableDuration(s), 13);
+  // volta pra principal (drop na main)
+  store.dispatch(act.overlayToClip(ovId, 10));
+  s = store.getState();
+  assert.equal(s.overlays.length, 0);
+  assert.equal(s.clips.length, 2);                        // voltou pro fim da main
+  assert.equal(s.clips[1].source_in, 5);
+  assert.equal(s.clips[1].source_out, 10);
+  assert.equal(playableDuration(s), 10);                  // timeline volta a 10s
+});
+
+test('olhinho (TOGGLE_LANE_VIS): camada some do export/preview e volta', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.splitClipAt(5));
+  store.dispatch(act.convertToOverlay(store.getState().selected_clip_id, 0, 2));
+  // esconde a lane 2 → overlay fora do payload (preview e export)
+  store.dispatch(act.toggleLaneVisibility('overlay', 2));
+  assert.equal(exportPayload(store.getState()).overlays.length, 0);
+  store.dispatch(act.toggleLaneVisibility('overlay', 2));
+  assert.equal(exportPayload(store.getState()).overlays.length, 1);
+  // áudio: lane 0 escondida = mudo/fora, como se não estivesse na timeline
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 4 } });
+  store.dispatch(act.toggleLaneVisibility('audio', 0));
+  assert.equal(effectiveAudioClips(store.getState()).length, 0);
+  assert.equal(exportPayload(store.getState()).audio_clips.length, 0);
+  store.dispatch(act.toggleLaneVisibility('audio', 0));
+  assert.equal(effectiveAudioClips(store.getState()).length, 1);
+});
+
+test('SET_AUDIO_LANE fixa a lane manual e ADD_EXTRA_LANE respeita o cap', () => {
+  const store = storeWithVideo(10);
+  store.dispatch({ type: 'ADD_AUDIO_CLIP', media: { url: 'https://x/a.mp3', filename: 'a', duration: 4 } });
+  const aid = store.getState().audio_clips[0].id;
+  store.dispatch(act.setAudioLane(aid, 2));               // drop 2 rows abaixo
+  assert.equal(store.getState().audio_clips[0].lane, 2);
+  // camadas extras vazias (menu do botão direito no vazio): cap em 4
+  for (let i = 0; i < 6; i++) store.dispatch(act.addExtraLane('video'));
+  for (let i = 0; i < 6; i++) store.dispatch(act.addExtraLane('audio'));
+  assert.equal(store.getState().extra_overlay_lanes, 4);
+  assert.equal(store.getState().extra_audio_lanes, 4);
+});
+
 test('REMOVE_MEDIA com id inexistente é no-op (nao muda o state)', () => {
   const store = storeWithVideo(10);
   store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 3 }));

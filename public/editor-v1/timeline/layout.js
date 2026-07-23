@@ -3,7 +3,7 @@
 // Modulo puro: sem DOM/canvas. Toda posicao visual nasce aqui — render e
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
-import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur } from '../core/selectors.js';
+import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur, audioLaneMap, playableDuration } from '../core/selectors.js';
 
 export const METRICS = {
   PAD_LEFT: 16,          // margem esquerda em px antes de t=0
@@ -43,10 +43,19 @@ export function computeLayout(state, vp) {
   // (a regra do user: texto abaixo de uma camada de video fica ATRAS dela).
   const ovsAtivas = (state.overlays || []).filter(o => o.active !== false);
   const textosAtivos = (state.texts || []).filter(t => t.active !== false);
-  const lanesUsadas = [...new Set([
+  const usadasSet = new Set([
     ...ovsAtivas.map(o => o.lane || 1),
     ...textosAtivos.map(t => t.lane || 4),
-  ])].sort((a, b) => b - a); // desc: topo primeiro
+  ]);
+  // camadas EXTRAS vazias (menu "Criar camada de vídeo"): rows acima do topo
+  // em uso, prontas pra receber um arrasto (fluidez CapCut). Cap na lane 5.
+  const maxUsada = usadasSet.size ? Math.max(...usadasSet) : 0;
+  for (let i = 0; i < (state.extra_overlay_lanes || 0); i++) {
+    const l = maxUsada + 1 + i;
+    if (l <= 5) usadasSet.add(l);
+  }
+  const lanesUsadas = [...usadasSet].sort((a, b) => b - a); // desc: topo primeiro
+  const hidOv = state.hidden_overlay_lanes || [];
 
   // ── ALTURA DAS FAIXAS (user 2026-07-22): as camadas NÃO esticam mais.
   // Agora que a timeline é redimensionável de verdade, expandir = MAIS ESPAÇO
@@ -61,10 +70,10 @@ export function computeLayout(state, vp) {
   const GAP = Math.round(METRICS.TRACK_GAP * trackScale);
   const LANE_H = Math.round(baseLaneH * trackScale);
 
-  const laneRows = []; // [{lane, y, h}] na ordem visual (topo -> base)
+  const laneRows = []; // [{lane, y, h, hidden}] na ordem visual (topo -> base)
   let yCursor = METRICS.RULER_H + GAP;
   for (const lane of lanesUsadas) {
-    laneRows.push({ lane, y: yCursor, h: LANE_H });
+    laneRows.push({ lane, y: yCursor, h: LANE_H, hidden: hidOv.includes(lane) });
     yCursor += LANE_H + 4;
   }
   const laneY = new Map(laneRows.map(r => [r.lane, r.y]));
@@ -88,6 +97,7 @@ export function computeLayout(state, vp) {
       srcIn: o.source_in, srcOut: o.source_out, speed: o.speed > 0 ? o.speed : 1,
       selected: state.selected_overlay_id === o.id,
       multi: multiKeys.has('overlay:' + o.id),
+      hidden: hidOv.includes(o.lane || 1),
     };
   });
 
@@ -158,16 +168,16 @@ export function computeLayout(state, vp) {
   // Clips de audio: cada um posicionavel (start). Lanes automaticas quando
   // sobrepoe (CapCut empilha). Track de audio cresce com as lanes.
   const activeAudio = (state.audio_clips || []).filter(a => a.active !== false);
-  const lanes = []; // laneIndex -> ultimo end
+  // lane RESOLVIDA vem do selector (fonte única: manual vence, resto empacota)
+  const laneOf = audioLaneMap(state);
+  const hidAu = state.hidden_audio_lanes || [];
   const audioItems = activeAudio
     .slice()
     .sort((a, b) => a.start - b.start)
     .map(a => {
       const dur = audioTimelineDur(a);  // largura reflete a velocidade
       const end = a.start + dur;
-      let lane = lanes.findIndex(le => a.start >= le - 1e-6);
-      if (lane < 0) { lane = lanes.length; lanes.push(end); }
-      else lanes[lane] = end;
+      const lane = laneOf.get(a.id) ?? 0;
       return {
         audioId: a.id, kind: a.kind, url: a.url || null,
         x: timeToX(vp, a.start),
@@ -179,13 +189,20 @@ export function computeLayout(state, vp) {
         multi: multiKeys.has('audio:' + a.id),
         label: '♪ ' + (a.filename || 'áudio'),
         volume: a.volume == null ? 1 : a.volume,
+        lane, hidden: hidAu.includes(lane),
       };
     });
-  const audioLanes = Math.max(1, lanes.length);
+  const maxAudioLane = audioItems.length ? Math.max(...audioItems.map(i => i.lane)) : -1;
+  // lanes extras vazias EMBAIXO (menu "Criar camada de áudio" / drop abaixo)
+  const audioLanes = Math.max(1, maxAudioLane + 1) + (state.extra_audio_lanes || 0);
+  const audioLaneRows = [];
+  for (let i = 0; i < audioLanes; i++) {
+    audioLaneRows.push({ lane: i, y: yAudio + i * (AH + 2), h: AH, hidden: hidAu.includes(i) });
+  }
   const contentHFinal = yAudio + audioLanes * (AH + 2) + GAP;
 
   return {
-    vp, total, segs, clips, ghosts, texts, audioItems, audioLanes,
+    vp, total, extent: playableDuration(state), segs, clips, ghosts, texts, audioItems, audioLanes, audioLaneRows,
     overlayItems, yOverlay, hasOverlays, laneRows,
     // strip de waveform DENTRO do clip: so enquanto o audio esta embutido.
     // Fix waveform fantasma: apos detach (mesmo com clips deletados) a

@@ -488,10 +488,13 @@ export function transition(fsm, ev, ctx) {
           : { t, snapped: false };
         const previewStart = Math.max(0, snapped.t);
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
-        return { next: { ...fsm, previewStart }, effects: fx };
+        return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'dispatch', action: act.moveAudio(fsm.audioId, fsm.previewStart) });
+        // arrasto VERTICAL: muda a lane do áudio (acima/abaixo, cria embaixo)
+        const dropY = ev.y ?? fsm.lastY;
+        if (dropY != null) fx.push({ do: 'drop-audio-lane', id: fsm.audioId, y: dropY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
@@ -640,7 +643,9 @@ function rectOf(m) {
 }
 
 function clampT(t, ctx) {
-  const total = ctx.layout.total;
+  // agulha LIVRE por toda a timeline: o limite é a extensão REAL (main +
+  // áudios + camadas), não só a faixa principal (user 2026-07-22).
+  const total = Math.max(ctx.layout.total, ctx.layout.extent || 0);
   return Math.min(Math.max(0, t), Math.max(0, total));
 }
 

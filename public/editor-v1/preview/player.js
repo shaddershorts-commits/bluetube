@@ -49,6 +49,14 @@ export function createPlayer(videoEl, opts, store) {
     return c.reversed ? Math.max(c.source_in, c.source_out - off) : c.source_in + off;
   }
 
+  // Mudo do <video>: audio_detached vale SÓ pro vídeo PRINCIPAL (a trilha
+  // destacada dele toca pelo pool). Takes importados depois têm áudio PRÓPRIO
+  // — nunca herdam o mudo (user 2026-07-22: "importo mais videos e vem sem
+  // audio"; o flag global mutava o elemento pra TODAS as fontes).
+  function vidMuted(state, seg) {
+    return !!state.audio_detached && (!seg || seg.clip.media_id == null);
+  }
+
   function syncVideoToVirtual(seekVideo = true) {
     const state = store.getState();
     const tClamped = Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001));
@@ -72,7 +80,7 @@ export function createPlayer(videoEl, opts, store) {
         nd._pendingSeek = null;
         nd._swapTo = null;
         nd.style.visibility = '';
-        nd.muted = !!state.audio_detached;
+        nd.muted = vidMuted(state, seg);
         nd.volume = Math.min(1, state.volumes?.video ?? 1);
         nd.playbackRate = segSpeed(seg);
         try { nd.currentTime = src; } catch {}
@@ -214,10 +222,10 @@ export function createPlayer(videoEl, opts, store) {
         active = 1 - active;
         applyVisibility();
         const nd = disp();
-        nd._swapTo = null; nd._pendingSeek = null; nd.style.visibility = '';
-        nd.muted = !!state.audio_detached;
-        nd.volume = Math.min(1, state.volumes?.video ?? 1);
         const s2 = segmentAt(state, virtualTime);
+        nd._swapTo = null; nd._pendingSeek = null; nd.style.visibility = '';
+        nd.muted = vidMuted(state, s2);
+        nd.volume = Math.min(1, state.volumes?.video ?? 1);
         nd.playbackRate = s2 ? segSpeed(s2) : 1;
         try { nd.currentTime = tgt; } catch {}
         if (playing) nd.play().catch(() => {});
@@ -273,7 +281,7 @@ export function createPlayer(videoEl, opts, store) {
       if (d.paused) d.play().catch(() => {});
       // garante que o elemento EM EXIBIÇÃO nunca fica mudo (o buffer é mutado
       // no preload; sem isso o áudio sumia às vezes após um swap — user #6)
-      d.muted = !!state.audio_detached;
+      d.muted = vidMuted(state, seg);
       d.volume = Math.min(1, state.volumes?.video ?? 1);
       d.playbackRate = segSpeed(seg);
       preloadNext(state); // aquece o buffer com a próxima fonte
@@ -315,7 +323,7 @@ export function createPlayer(videoEl, opts, store) {
     syncPool();
     syncVideoToVirtual();
     const d = disp();
-    d.muted = !!state.audio_detached;
+    d.muted = vidMuted(state, segmentAt(state, virtualTime));
     d.volume = Math.min(1, state.volumes?.video ?? 1);
     playing = true;
     lastTick = 0;
@@ -351,7 +359,7 @@ export function createPlayer(videoEl, opts, store) {
     const state = store.getState();
     const total = playableDuration(state);
     if (virtualTime > total) { virtualTime = total; emit(); }
-    disp().muted = !!state.audio_detached;
+    disp().muted = vidMuted(state, segmentAt(state, virtualTime));
     if (!playing) syncVideoToVirtual();
     syncPool();
   });

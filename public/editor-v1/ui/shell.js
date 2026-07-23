@@ -6,7 +6,7 @@
 import * as act from '../core/actions.js';
 import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
-import { formatTime, METRICS } from '../timeline/layout.js';
+import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createPip } from '../preview/pip.js';
@@ -1297,7 +1297,56 @@ export function mountEditor(root, store, opts = {}) {
   document.addEventListener('visibilitychange', flushOnHide);
   window.addEventListener('pagehide', () => autosave.flush());
 
-  const detachResizers = attachResizers(root, () => timeline.draw());
+  const detachResizers = attachResizers(root, () => { timeline.draw(); syncTrackHeaders(); });
+
+  // ── headers das faixas com OLHINHO por camada (CapCut, user 2026-07-22) ──
+  // Reconstruídos do layout REAL (rows dinâmicas de camada/áudio). Olhinho
+  // esconde a camada do preview/export; áudio escondido = mudo.
+  let _headersSig = null;
+  function syncTrackHeaders() {
+    const box = $('#beTrackHeaders');
+    if (!box) return;
+    const lay = timeline.getLayout?.();
+    if (!lay) return;
+    const st = store.getState();
+    const rows = [];
+    for (const r of (lay.laneRows || [])) {
+      rows.push({ y: r.y, h: r.h, icon: '🎬', title: 'Camada ' + r.lane, kind: 'overlay', lane: r.lane, hidden: r.hidden, eye: true });
+    }
+    rows.push({ y: lay.yVideo, h: lay.videoTrackH, icon: '🎞', title: 'Vídeo principal', eye: false });
+    for (const r of (lay.audioLaneRows || [])) {
+      rows.push({ y: r.y, h: r.h, icon: '♪', title: 'Áudio ' + (r.lane + 1), kind: 'audio', lane: r.lane, hidden: r.hidden, eye: true });
+    }
+    const sig = rows.map(r => `${r.y}|${r.h}|${r.icon}|${r.hidden ? 1 : 0}`).join(';');
+    if (sig === _headersSig) return;
+    _headersSig = sig;
+    box.innerHTML = '';
+    for (const r of rows) {
+      const el = document.createElement('div');
+      el.className = 'be-track-h' + (r.hidden ? ' be-track-hidden' : '');
+      el.style.top = r.y + 'px';
+      el.style.height = r.h + 'px';
+      el.title = r.title;
+      const ic = document.createElement('span');
+      ic.className = 'be-track-ic';
+      ic.textContent = r.icon;
+      el.appendChild(ic);
+      if (r.eye) {
+        const eye = document.createElement('button');
+        eye.className = 'be-track-eye';
+        eye.textContent = r.hidden ? '🚫' : '👁';
+        eye.title = r.hidden ? 'Mostrar camada' : 'Ocultar camada (some do vídeo; áudio fica mudo)';
+        eye.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          store.dispatch(act.toggleLaneVisibility(r.kind, r.lane));
+        });
+        el.appendChild(eye);
+      }
+      box.appendChild(el);
+    }
+  }
+  store.subscribe(syncTrackHeaders);
+  requestAnimationFrame(() => requestAnimationFrame(syncTrackHeaders));
 
   sync();
 
@@ -1316,9 +1365,8 @@ export function mountEditor(root, store, opts = {}) {
   };
 }
 
-// Track headers espelham as alturas do layout do canvas (fonte unica: METRICS)
+// Track headers agora são DINÂMICOS (syncTrackHeaders lê o layout real)
 function buildTemplate() {
-  const M = METRICS;
   return `
 <header class="be-header">
   <button type="button" id="beBackHome" class="be-back" title="Voltar aos projetos">←</button>
@@ -1624,14 +1672,7 @@ function buildTemplate() {
       <button id="beZoomIn" class="be-icon-btn" title="Zoom + (Ctrl +)">＋</button>
     </div>
     <div class="be-timeline-row">
-      <div class="be-track-headers" aria-hidden="true">
-        <div style="height:${M.RULER_H + M.TRACK_GAP}px"></div>
-        <div class="be-track-h" style="height:${M.VIDEO_TRACK_H}px" title="Vídeo">🎞</div>
-        <div style="height:${M.TRACK_GAP}px"></div>
-        <div class="be-track-h" style="height:${M.TEXT_TRACK_H}px" title="Textos">T</div>
-        <div style="height:${M.TRACK_GAP}px"></div>
-        <div class="be-track-h" style="height:${M.AUDIO_TRACK_H}px" title="Áudio">♪</div>
-      </div>
+      <div class="be-track-headers" id="beTrackHeaders"></div>
       <div class="be-timeline-wrap">
         <canvas id="beTimeline"></canvas>
       </div>

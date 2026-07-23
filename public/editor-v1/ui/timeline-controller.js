@@ -7,7 +7,7 @@ import { computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
 import { createRenderer, setImageRedraw } from '../timeline/render.js';
-import { cutPoints, totalDuration } from '../core/selectors.js';
+import { cutPoints, totalDuration, audioLaneMap } from '../core/selectors.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 import * as clip from './clipboard.js';
@@ -85,13 +85,37 @@ export function createTimelineController({ canvas, store, player, onEditText, on
           break;
         }
         case 'drop-lane': {
-          const lane = laneForY(layoutNow(), e.y);
-          if (lane == null) break; // soltou na main/audio: mantem a camada
+          const lay = layoutNow();
           const st = store.getState();
+          // camada de VÍDEO solta NA FAIXA PRINCIPAL: volta a ser clip da main
+          // (inverso do drag-up — user 2026-07-22 "não volta mais"). Imagem não.
+          if (e.itemType === 'overlay' &&
+              e.y >= lay.yVideo - 4 && e.y <= lay.yVideo + lay.videoTrackH + 4) {
+            const ov = st.overlays.find(o => o.id === e.id);
+            if (ov && ov.kind !== 'image') {
+              store.dispatch(act.overlayToClip(e.id, ov.start));
+              break;
+            }
+          }
+          const lane = laneForY(lay, e.y);
+          if (lane == null) break; // soltou na main/audio: mantem a camada
           const atual = e.itemType === 'overlay'
             ? st.overlays.find(o => o.id === e.id)?.lane
             : st.texts.find(t => t.id === e.id)?.lane;
           if (atual !== lane) store.dispatch(act.setItemLane(e.itemType, e.id, lane));
+          break;
+        }
+        case 'drop-audio-lane': {
+          // arrasto vertical de áudio: row sob o cursor decide a lane; abaixo
+          // da última row = cria lane nova embaixo. Acima da área de áudio =
+          // mantém onde está.
+          const lay = layoutNow();
+          if (e.y < lay.yAudio - 6) break;
+          const rowH = lay.audioTrackH + 2;
+          const lane = Math.max(0, Math.min(lay.audioLanes, Math.floor((e.y - lay.yAudio) / rowH)));
+          const st = store.getState();
+          const cur = audioLaneMap(st).get(e.id);
+          if (cur !== lane) store.dispatch(act.setAudioLane(e.id, lane));
           break;
         }
         case 'toggle-multi': store.dispatch(act.toggleMultiSelect(e.itemType, e.id)); break;
@@ -197,6 +221,13 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       store.dispatch(act.selectAudioClip(hit.audioId));
       draw();
       showAudioMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'track-empty' || hit.type === 'empty') {
+      // VAZIO da timeline: criar camadas extras (rows vazias pra arrastar
+      // faixas pra dentro — fluidez CapCut, user 2026-07-22)
+      buildMenu(e.clientX, e.clientY, [
+        { label: '🎬 Criar camada de vídeo', fn: () => store.dispatch(act.addExtraLane('video')) },
+        { label: '♪ Criar camada de áudio', fn: () => store.dispatch(act.addExtraLane('audio')) },
+      ]);
     }
   });
 

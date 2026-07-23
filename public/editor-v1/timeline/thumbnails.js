@@ -47,20 +47,26 @@ export function createThumbnails(src, duration, onReady) {
   extract();
 
   return {
-    /** Strip do trecho [sIn, sOut] com largura w. Cacheado. */
+    /** Strip do trecho [sIn, sOut] com largura w e altura h. Cacheado POR
+     *  ALTURA (main e camadas têm rows diferentes — compartilhar o cache
+     *  esticava o strip no draw). Tile na PROPORÇÃO do frame: largura escala
+     *  junto com a altura (antes era fixa em THUMB_W → rosto achatado/esticado
+     *  nas rows de camada — user 2026-07-23). */
     getStrip(sIn, sOut, w, h) {
       if (!frames.size || w < 8) return null;
-      const key = `${Math.round(sIn)}_${Math.round(sOut)}_${Math.round(w / 32)}`;
+      const hh = Math.max(8, Math.round(h));
+      const key = `${Math.round(sIn)}_${Math.round(sOut)}_${Math.round(w / 32)}_${hh}`;
       if (strips.has(key)) return strips.get(key);
       const c = document.createElement('canvas');
       c.width = Math.max(8, Math.round(w));
-      c.height = h;
+      c.height = hh;
       const g = c.getContext('2d');
-      const n = Math.max(1, Math.ceil(w / THUMB_W));
+      const tw = Math.max(8, Math.round(THUMB_W * (hh / THUMB_H))); // aspecto preservado
+      const n = Math.max(1, Math.ceil(w / tw));
       for (let i = 0; i < n; i++) {
         const t = sIn + ((i + 0.5) / n) * (sOut - sIn);
         const f = nearestFrame(frames, t);
-        if (f) g.drawImage(f, i * THUMB_W, 0, THUMB_W, h);
+        if (f) g.drawImage(f, i * tw, 0, tw, hh);
       }
       strips.set(key, c);
       if (strips.size > 200) strips.clear(); // bound de memoria

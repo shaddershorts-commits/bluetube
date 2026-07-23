@@ -31,9 +31,18 @@ export const overlayTimelineDur = (o) => (o.source_out - o.source_in) / clipSpee
  *  Sem isso, projeto so-audio (ou com a faixa de video excluida) tinha
  *  duracao 0 e o play nunca andava (bug user 2026-07-20). */
 export function playableDuration(state) {
+  // extensão REAL da timeline: main + áudios + CAMADAS (vídeo/texto). A agulha
+  // e o playback vão até onde QUALQUER faixa termina (user 2026-07-22: camada
+  // além da principal reproduzia mas a agulha não clicava lá).
   let total = totalDuration(state);
   for (const a of effectiveAudioClips(state)) {
     total = Math.max(total, a.start + audioTimelineDur(a));
+  }
+  for (const o of effectiveOverlays(state)) {
+    total = Math.max(total, o.start + overlayTimelineDur(o));
+  }
+  for (const t of effectiveTexts(state)) {
+    total = Math.max(total, t.end_sec || 0);
   }
   return total;
 }
@@ -125,9 +134,35 @@ export function compoundSpeedOf(state, compId) {
   return c ? clipSpeed(c) : 1;
 }
 
-/** Textos efetivos (soltos + dos compostos, offsets absolutos + velocidade). */
+/** Lane RESOLVIDA de cada audio_clip solto (Map id → laneIndex). Fonte única
+ *  usada pelo layout (posição da row) e pelo olhinho (esconder lane): lane
+ *  explícita (arrasto vertical) vence; sem lane = empacota na primeira row
+ *  livre (comportamento CapCut de sempre). */
+export function audioLaneMap(state) {
+  const map = new Map();
+  const laneEnds = []; // laneIndex -> fim do último clip na lane
+  const ativos = (state.audio_clips || []).filter(a => a.active !== false)
+    .slice().sort((a, b) => a.start - b.start);
+  for (const a of ativos) {
+    const end = a.start + audioTimelineDur(a);
+    let lane;
+    if (Number.isInteger(a.lane) && a.lane >= 0) {
+      lane = a.lane;
+    } else {
+      lane = laneEnds.findIndex(le => a.start >= (le ?? -Infinity) - 1e-6);
+      if (lane < 0) lane = laneEnds.length;
+    }
+    laneEnds[lane] = Math.max(laneEnds[lane] ?? -Infinity, end);
+    map.set(a.id, lane);
+  }
+  return map;
+}
+
+/** Textos efetivos (soltos + dos compostos, offsets absolutos + velocidade).
+ *  Lanes escondidas (olhinho) ficam FORA — preview e export. */
 export function effectiveTexts(state) {
-  const out = (state.texts || []).filter(t => t.active !== false).map(t => ({ ...t }));
+  const hid = state.hidden_overlay_lanes || [];
+  const out = (state.texts || []).filter(t => t.active !== false && !hid.includes(t.lane || 4)).map(t => ({ ...t }));
   const offs = compoundOffsets(state);
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);
@@ -140,9 +175,15 @@ export function effectiveTexts(state) {
   return out;
 }
 
-/** Audios efetivos (soltos + dos compostos, offsets + velocidade do bloco). */
+/** Audios efetivos (soltos + dos compostos, offsets + velocidade do bloco).
+ *  Lane de áudio escondida (olhinho) = mudo/fora, como se não estivesse na
+ *  timeline (preview e export). */
 export function effectiveAudioClips(state) {
-  const out = (state.audio_clips || []).filter(a => a.active !== false).map(a => ({ ...a }));
+  const hidA = state.hidden_audio_lanes || [];
+  const laneOf = hidA.length ? audioLaneMap(state) : null;
+  const out = (state.audio_clips || [])
+    .filter(a => a.active !== false && !(laneOf && hidA.includes(laneOf.get(a.id))))
+    .map(a => ({ ...a }));
   const offs = compoundOffsets(state);
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);
@@ -156,9 +197,11 @@ export function effectiveAudioClips(state) {
   return out;
 }
 
-/** Overlays efetivos (soltos + dos compostos, offsets absolutos). */
+/** Overlays efetivos (soltos + dos compostos, offsets absolutos).
+ *  Lanes escondidas (olhinho) ficam FORA — preview e export. */
 export function effectiveOverlays(state) {
-  const out = (state.overlays || []).filter(o => o.active !== false).map(o => ({ ...o }));
+  const hid = state.hidden_overlay_lanes || [];
+  const out = (state.overlays || []).filter(o => o.active !== false && !hid.includes(o.lane || 1)).map(o => ({ ...o }));
   const offs = compoundOffsets(state);
   for (const comp of (state.compounds || [])) {
     const off = offs.get(comp.id);

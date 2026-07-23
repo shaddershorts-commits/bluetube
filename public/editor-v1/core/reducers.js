@@ -700,6 +700,81 @@ export function reduce(state, action) {
       return state;
     }
 
+    case A.SET_AUDIO_LANE: {
+      // arrasto VERTICAL de faixa de áudio: fixa a lane manualmente (0..7).
+      // Soltar abaixo da última row cria uma lane nova embaixo (CapCut).
+      const lane = Number.isInteger(action.lane) ? Math.max(0, Math.min(7, action.lane)) : null;
+      if (lane == null) return state;
+      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      if (idx < 0 || state.audio_clips[idx].lane === lane) return state;
+      const audio_clips = state.audio_clips.slice();
+      audio_clips[idx] = { ...audio_clips[idx], lane };
+      return touch({ ...state, audio_clips });
+    }
+
+    case A.ADD_EXTRA_LANE: {
+      // botão direito no VAZIO: "Criar camada de vídeo/áudio" — row vazia
+      // visível pra arrastar faixas pra dentro (fluidez CapCut). Máx 4 extras.
+      if (action.kind === 'video') {
+        const n = Math.min(4, (state.extra_overlay_lanes || 0) + 1);
+        if (n === state.extra_overlay_lanes) return state;
+        return touch({ ...state, extra_overlay_lanes: n });
+      }
+      if (action.kind === 'audio') {
+        const n = Math.min(4, (state.extra_audio_lanes || 0) + 1);
+        if (n === state.extra_audio_lanes) return state;
+        return touch({ ...state, extra_audio_lanes: n });
+      }
+      return state;
+    }
+
+    case A.TOGGLE_LANE_VIS: {
+      // olhinho da camada: esconde do preview/export (áudio = mudo). A row
+      // continua na timeline (esmaecida) — igual CapCut.
+      const lane = action.lane;
+      if (!Number.isInteger(lane)) return state;
+      const key = action.kind === 'audio' ? 'hidden_audio_lanes' : 'hidden_overlay_lanes';
+      const cur = state[key] || [];
+      const next = cur.includes(lane) ? cur.filter(l => l !== lane) : [...cur, lane];
+      return touch({ ...state, [key]: next });
+    }
+
+    case A.OVERLAY_TO_CLIP: {
+      // arrastar a camada de vídeo DE VOLTA pra faixa principal (inverso do
+      // CONVERT_TO_OVERLAY — user 2026-07-22: "não volta mais"). Insere na
+      // ordem da timeline pela posição do drop; imagem não vira clip.
+      const ov = state.overlays.find(o => o.id === action.overlayId);
+      if (!ov || ov.kind === 'image') return state;
+      const clip = {
+        id: state.next_clip_id,
+        ...(ov.media_id != null ? { media_id: ov.media_id } : {}),
+        source_in: ov.source_in, source_out: ov.source_out,
+        ...(ov.speed > 0 && ov.speed !== 1 ? { speed: ov.speed } : {}),
+        active: true,
+      };
+      const atT = Math.max(0, action.atT || ov.start || 0);
+      // índice de inserção em state.clips: antes do primeiro item cujo MEIO
+      // fica depois do drop (mesma régua do drag horizontal de clips)
+      const items = mainTrackItems(state);
+      let insertIdx = state.clips.length;
+      for (const it of items) {
+        if (atT < (it.tStart + it.tEnd) / 2) {
+          insertIdx = state.clips.findIndex(c => c.id === it.clip.id);
+          break;
+        }
+      }
+      if (insertIdx < 0) insertIdx = state.clips.length;
+      const clips = [...state.clips.slice(0, insertIdx), clip, ...state.clips.slice(insertIdx)];
+      return touch({
+        ...state,
+        clips,
+        next_clip_id: state.next_clip_id + 1,
+        overlays: state.overlays.filter(o => o.id !== action.overlayId),
+        selected_clip_id: clip.id,
+        selected_overlay_id: null, selected_text_id: null, selected_audio_id: null,
+      });
+    }
+
     case A.SELECT_OVERLAY: {
       if (state.selected_overlay_id === action.overlayId) return state;
       return {

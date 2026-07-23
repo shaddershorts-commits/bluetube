@@ -36,6 +36,12 @@ export const A = {
   // camadas (overlays)
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
   SET_ITEM_LANE: 'SET_ITEM_LANE',
+  // fluidez de camadas (2026-07-22): lane manual de áudio, camada extra vazia
+  // (botão direito no vazio), olhinho por lane, camada de vídeo -> principal
+  SET_AUDIO_LANE: 'SET_AUDIO_LANE',
+  ADD_EXTRA_LANE: 'ADD_EXTRA_LANE',
+  TOGGLE_LANE_VIS: 'TOGGLE_LANE_VIS',
+  OVERLAY_TO_CLIP: 'OVERLAY_TO_CLIP',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
   SPLIT_OVERLAY: 'SPLIT_OVERLAY',
   MOVE_OVERLAY: 'MOVE_OVERLAY',
@@ -106,6 +112,10 @@ export const UNDOABLE = {
   [A.MOVE_OVERLAY]: U,
   [A.SET_OVERLAY_TRANSFORM]: U,
   [A.SET_ITEM_LANE]: U,
+  [A.SET_AUDIO_LANE]: U,
+  [A.ADD_EXTRA_LANE]: U,
+  [A.TOGGLE_LANE_VIS]: U,
+  [A.OVERLAY_TO_CLIP]: U,
   [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
@@ -160,6 +170,10 @@ export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioI
 export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline
 export const setItemLane = (itemType, id, lane) => ({ type: A.SET_ITEM_LANE, itemType, id, lane });
+export const setAudioLane = (audioId, lane) => ({ type: A.SET_AUDIO_LANE, audioId, lane });
+export const addExtraLane = (kind) => ({ type: A.ADD_EXTRA_LANE, kind }); // 'video' | 'audio'
+export const toggleLaneVisibility = (kind, lane) => ({ type: A.TOGGLE_LANE_VIS, kind, lane }); // 'overlay' | 'audio'
+export const overlayToClip = (overlayId, atT) => ({ type: A.OVERLAY_TO_CLIP, overlayId, atT });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
 export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });
 export const moveOverlay = (overlayId, start) => ({ type: A.MOVE_OVERLAY, overlayId, start });
