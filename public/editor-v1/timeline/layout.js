@@ -48,24 +48,13 @@ export function computeLayout(state, vp) {
     ...textosAtivos.map(t => t.lane || 4),
   ])].sort((a, b) => b - a); // desc: topo primeiro
 
-  // ── AUTO-ALTURA (user 2026-07-20): quando a timeline tem altura sobrando,
-  // as faixas CRESCEM juntas pra preencher (arrastar o divisor pra cima =
-  // faixas mais altas). trackScale >= 1. Packing de audio é scale-independent.
-  const nLanes = lanesUsadas.length;
-  const _audioSorted = (state.audio_clips || []).filter(a => a.active !== false)
-    .slice().sort((a, b) => a.start - b.start);
-  const _lanesEnd = [];
-  for (const a of _audioSorted) {
-    const d = audioTimelineDur(a);
-    let l = _lanesEnd.findIndex(e => a.start >= e - 1e-6);
-    if (l < 0) { l = _lanesEnd.length; _lanesEnd.push(a.start + d); } else _lanesEnd[l] = a.start + d;
-  }
-  const audioLaneCount = Math.max(1, _lanesEnd.length);
+  // ── ALTURA DAS FAIXAS (user 2026-07-22): as camadas NÃO esticam mais.
+  // Agora que a timeline é redimensionável de verdade, expandir = MAIS ESPAÇO
+  // visível pra camadas (CapCut), com cada faixa na altura natural. O auto-
+  // altura antigo (trackScale até 2.4) era pra época da timeline fixa de 190px
+  // — esticava tudo junto e o user rejeitou ("as camadas não é pra esticar").
   const baseLaneH = METRICS.VIDEO_TRACK_H * 0.7;
-  const naturalH = METRICS.RULER_H + METRICS.TRACK_GAP + nLanes * (baseLaneH + 4)
-    + METRICS.VIDEO_TRACK_H + METRICS.TRACK_GAP
-    + audioLaneCount * (METRICS.AUDIO_TRACK_H + 2) + METRICS.TRACK_GAP + 6;
-  const trackScale = vp.height > 60 ? Math.min(2.4, Math.max(1, (vp.height - 4) / naturalH)) : 1;
+  const trackScale = 1; // fixo: faixas na altura natural
   const VH = Math.round(METRICS.VIDEO_TRACK_H * trackScale);
   const AH = Math.round(METRICS.AUDIO_TRACK_H * trackScale);
   const TH = Math.round(METRICS.TEXT_TRACK_H * trackScale);

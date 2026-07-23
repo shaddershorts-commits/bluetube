@@ -65,6 +65,7 @@ export function createPlayer(videoEl, opts, store) {
       const b = buf();
       if (b && b.dataset.loadedUrl === url && b.readyState >= 2) {
         // SWAP instantâneo: o buffer já tem esse take decodificado
+        d._swapTo = null; // limpa troca pendente do elemento que sai de cena
         active = 1 - active;
         applyVisibility();
         const nd = disp();
@@ -101,6 +102,9 @@ export function createPlayer(videoEl, opts, store) {
       d.src = url; d.load(); d._pendingSeek = src;
       return;
     }
+    // fonte atual segue valendo: qualquer troca pendente ficou obsoleta
+    // (ex.: seek de volta pro clip atual com swap agendado — não pode disparar)
+    if (d._swapTo) d._swapTo = null;
     if (seekVideo && d._pendingSeek == null && Math.abs(d.currentTime - src) > 0.06) {
       d.currentTime = src;
     }
@@ -205,6 +209,8 @@ export function createPlayer(videoEl, opts, store) {
       const ready = bb && bb.dataset.loadedUrl === d._swapTo.url && bb.readyState >= 2;
       if (ready) {
         const tgt = d._swapTo.src;
+        d._swapTo = null;          // limpa no elemento ANTIGO (senão re-dispara)
+        d.pause();
         active = 1 - active;
         applyVisibility();
         const nd = disp();
@@ -215,8 +221,16 @@ export function createPlayer(videoEl, opts, store) {
         nd.playbackRate = s2 ? segSpeed(s2) : 1;
         try { nd.currentTime = tgt; } catch {}
         if (playing) nd.play().catch(() => {});
-        buf().pause();
         buf().dataset.loadedUrl = '';
+        // FIM DO FRAME AQUI (fix 2026-07-22): o resto do tick usa `d`, que
+        // ainda aponta pro elemento ANTIGO — seguir em frente lia o currentTime
+        // dele, pulava o relógio virtual (ponteiro reiniciava, áudio voltava,
+        // e se o pulo caía num gap a tela ficava PRETA). Fecha o frame limpo;
+        // o próximo tick pega disp() novo e segue normal.
+        syncAudios(virtualTime);
+        emit();
+        rafId = requestAnimationFrame(tick);
+        return;
       } else {
         const espera = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - (d._swapTo.t0 || 0);
         if (espera > 4000) {
@@ -225,8 +239,12 @@ export function createPlayer(videoEl, opts, store) {
           const u = d._swapTo.url, s = d._swapTo.src; d._swapTo = null;
           d.src = u; d.load(); d._pendingSeek = s;
         } else {
-          // ainda decodificando: congela o último frame (sem preto) e espera
+          // ainda decodificando: congela o último frame (sem preto) e espera.
+          // Pausa TAMBÉM os áudios do pool — o relógio está segurado; se eles
+          // continuassem, ficariam na frente e no resume o sync os puxava pra
+          // trás ("o áudio volta").
           if (!d.paused) d.pause();
+          for (const [, entry] of pool) { if (!entry.el.paused) entry.el.pause(); }
         }
         rafId = requestAnimationFrame(tick);
         return;
