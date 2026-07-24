@@ -116,6 +116,14 @@ export function normalizeLoadedState(raw) {
       ...(c.frozen ? { frozen: true, freeze_src: Math.max(0, c.freeze_src || 0), freeze_dur: Math.max(0.1, c.freeze_dur || 3) } : {}),
       ...(c.reversed ? { reversed: true } : {}),
       ...(c.mirrored ? { mirrored: true } : {}),
+      ...(c.muted ? { muted: true } : {}),  // áudio removido SÓ desta cena
+      // máscara da cena (CapCut: círculo/retângulo + suavizar + cantos)
+      ...(c.mask && ['circle', 'rect'].includes(c.mask.shape) ? { mask: {
+        shape: c.mask.shape,
+        x_pct: clamp01(c.mask.x_pct ?? 0.5), y_pct: clamp01(c.mask.y_pct ?? 0.5),
+        w_pct: clamp(c.mask.w_pct ?? 0.6, 0.05, 1), h_pct: clamp(c.mask.h_pct ?? 0.6, 0.05, 1),
+        feather: clamp(c.mask.feather ?? 0, 0, 100), radius: clamp(c.mask.radius ?? 0, 0, 100),
+      } } : {}),
     })) : [];
   s.texts = Array.isArray(raw.texts) ? raw.texts
     .filter(t => t && typeof t.content === 'string')

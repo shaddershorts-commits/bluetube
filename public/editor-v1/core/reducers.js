@@ -216,11 +216,35 @@ export function reduce(state, action) {
     }
 
     case A.SET_CLIP_FX: {
-      // Reverso / Espelhar (toggle). Aplica no clip da main.
+      // Reverso / Espelhar / Mudo (toggle). Aplica no clip da main.
       const idx = state.clips.findIndex(c => c.id === action.clipId);
       if (idx < 0) return state;
       const clips = state.clips.slice();
       clips[idx] = { ...clips[idx], ...action.patch };
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_CLIP_MASK: {
+      // Máscara da cena (CapCut): patch faz merge (cria com defaults se não
+      // existe); null remove. Clamps aqui — a UI manda valores crus.
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const clips = state.clips.slice();
+      if (action.patch === null) {
+        if (!clips[idx].mask) return state;
+        const { mask, ...resto } = clips[idx];
+        clips[idx] = resto;
+        return touch({ ...state, clips });
+      }
+      const cur = clips[idx].mask || { shape: 'rect', x_pct: 0.5, y_pct: 0.5, w_pct: 0.6, h_pct: 0.6, feather: 0, radius: 0 };
+      const p = action.patch || {};
+      const m = {
+        shape: ['circle', 'rect'].includes(p.shape) ? p.shape : cur.shape,
+        x_pct: clamp01(p.x_pct ?? cur.x_pct), y_pct: clamp01(p.y_pct ?? cur.y_pct),
+        w_pct: clamp(p.w_pct ?? cur.w_pct, 0.05, 1), h_pct: clamp(p.h_pct ?? cur.h_pct, 0.05, 1),
+        feather: clamp(p.feather ?? cur.feather, 0, 100), radius: clamp(p.radius ?? cur.radius, 0, 100),
+      };
+      clips[idx] = { ...clips[idx], mask: m };
       return touch({ ...state, clips });
     }
 

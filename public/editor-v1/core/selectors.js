@@ -342,6 +342,8 @@ export function exportPayload(state) {
     ...(seg.clip.frozen ? { frozen: true, freeze_src: round3(seg.clip.freeze_src || 0), freeze_dur: round3(clipTimelineDur(seg.clip)) } : {}),
     ...(seg.clip.reversed ? { reversed: true } : {}),
     ...(seg.clip.mirrored ? { mirrored: true } : {}),
+    ...(seg.clip.muted ? { muted: true } : {}),          // áudio removido da cena
+    ...(seg.clip.mask ? { mask: seg.clip.mask } : {}),    // máscara (Railway aplica)
   }));
   return {
     version: 1,

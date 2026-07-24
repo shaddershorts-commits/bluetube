@@ -528,6 +528,46 @@ test('SET_AUDIO_LANE fixa a lane manual e ADD_EXTRA_LANE respeita o cap', () => 
   assert.equal(store.getState().extra_audio_lanes, 4);
 });
 
+test('mudo POR CENA (muted): só o clip selecionado, sobrevive e sai no payload', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.splitClipAt(5));
+  const c0 = store.getState().clips[0].id;
+  store.dispatch(act.setClipFx(c0, { muted: true }));
+  const s = store.getState();
+  assert.equal(s.clips[0].muted, true);
+  assert.equal(!!s.clips[1].muted, false);          // a OUTRA cena não muda
+  const pay = exportPayload(s);
+  assert.equal(pay.clips[0].muted, true);
+  assert.equal('muted' in pay.clips[1], false);
+  // undo restaura
+  store.undo();
+  assert.equal(!!store.getState().clips[0].muted, false);
+});
+
+test('SET_CLIP_MASK: cria com defaults, faz merge com clamps, null remove', () => {
+  const store = storeWithVideo(10);
+  const id = store.getState().clips[0].id;
+  store.dispatch(act.setClipMask(id, { shape: 'rect' }));
+  let m = store.getState().clips[0].mask;
+  assert.equal(m.shape, 'rect');
+  assert.equal(m.x_pct, 0.5);                        // defaults centrados
+  store.dispatch(act.setClipMask(id, { feather: 250, w_pct: 3, radius: -5 }));
+  m = store.getState().clips[0].mask;
+  assert.equal(m.feather, 100);                      // clamp 0-100
+  assert.equal(m.w_pct, 1);                          // clamp 0.05-1
+  assert.equal(m.radius, 0);                         // clamp 0-100
+  assert.equal(m.shape, 'rect');                     // merge preserva o resto
+  // sai no payload do export
+  assert.equal(exportPayload(store.getState()).clips[0].mask.shape, 'rect');
+  // trocar de forma preserva geometria
+  store.dispatch(act.setClipMask(id, { shape: 'circle' }));
+  assert.equal(store.getState().clips[0].mask.shape, 'circle');
+  // null remove
+  store.dispatch(act.setClipMask(id, null));
+  assert.equal(store.getState().clips[0].mask, undefined);
+  assert.equal('mask' in exportPayload(store.getState()).clips[0], false);
+});
+
 test('REMOVE_MEDIA com id inexistente é no-op (nao muda o state)', () => {
   const store = storeWithVideo(10);
   store.dispatch(act.addMediaClip({ url: 'https://x/t.mp4', duration: 3 }));

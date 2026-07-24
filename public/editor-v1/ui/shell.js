@@ -142,6 +142,37 @@ export function mountEditor(root, store, opts = {}) {
     if (el.style.transform !== tf) el.style.transform = tf;
     const op = String(opacity);
     if (el.style.opacity !== op) el.style.opacity = op;
+    // MÁSCARA da cena (WYSIWYG — o Railway aplica igual no export):
+    // círculo = radial-gradient (suavizar nativo); retângulo = SVG com rx
+    // (cantos) + feGaussianBlur (suavizar). Coordenadas em % do quadro.
+    const maskCss = maskCssFor(clip?.mask);
+    if (el.style.webkitMaskImage !== maskCss) {
+      el.style.webkitMaskImage = maskCss;
+      el.style.maskImage = maskCss;
+      el.style.webkitMaskRepeat = maskCss ? 'no-repeat' : '';
+      el.style.maskRepeat = maskCss ? 'no-repeat' : '';
+      el.style.webkitMaskSize = maskCss ? '100% 100%' : '';
+      el.style.maskSize = maskCss ? '100% 100%' : '';
+    }
+  }
+
+  function maskCssFor(m) {
+    if (!m) return '';
+    const x = (m.x_pct * 100).toFixed(1), y = (m.y_pct * 100).toFixed(1);
+    const hw = (m.w_pct * 50).toFixed(1), hh = (m.h_pct * 50).toFixed(1);
+    if (m.shape === 'circle') {
+      // borda dura em (100-feather)% do raio → feather = mescla suave
+      const solid = Math.max(0, 100 - (m.feather || 0));
+      return `radial-gradient(ellipse ${hw}% ${hh}% at ${x}% ${y}%, #000 ${solid}%, transparent 100%)`;
+    }
+    // retângulo: SVG viewBox 0-100 esticado no quadro; rx = cantos; blur = suavizar
+    const rw = m.w_pct * 100, rh = m.h_pct * 100;
+    const rx = ((m.radius || 0) / 100) * Math.min(rw, rh) / 2;
+    const std = ((m.feather || 0) / 100) * 12;
+    const blurDef = std > 0 ? `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${std.toFixed(2)}"/></filter>` : '';
+    const rect = `<rect x="${(m.x_pct * 100 - rw / 2).toFixed(2)}" y="${(m.y_pct * 100 - rh / 2).toFixed(2)}" width="${rw.toFixed(2)}" height="${rh.toFixed(2)}" rx="${rx.toFixed(2)}" fill="white"${std > 0 ? ' filter="url(#f)"' : ''}/>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${blurDef}${rect}</svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
   // ── painel de propriedades CONTEXTUAL (estilo CapCut) ──
@@ -204,7 +235,23 @@ export function mountEditor(root, store, opts = {}) {
           $('#beClipOpacity').value = op; $('#beClipOpacityVal').textContent = op + '%';
           const sp = clip.speed ?? 1;
           $('#beClipSpeed').value = speedToSlider(sp); $('#beClipSpeedVal').textContent = fmtSpeed(sp);
+          // máscara: refila os controles ao trocar de cena
+          const m = clip.mask;
+          $('#beMaskShapes').querySelectorAll('button').forEach(b =>
+            b.classList.toggle('active', (m ? m.shape : 'none') === b.dataset.mask));
+          $('#beMaskCtrls').style.display = m ? 'flex' : 'none';
+          if (m) {
+            $('#beMaskX').value = Math.round(m.x_pct * 100);
+            $('#beMaskY').value = Math.round(m.y_pct * 100);
+            $('#beMaskW').value = Math.round(m.w_pct * 100);
+            $('#beMaskH').value = Math.round(m.h_pct * 100);
+            $('#beMaskFeather').value = Math.round(m.feather);
+            $('#beMaskRadius').value = Math.round(m.radius);
+            $('#beMaskRadiusRow').style.display = m.shape === 'rect' ? '' : 'none';
+          }
         }
+        // 🔇 mudo por cena: label reflete o estado sempre (toggle barato)
+        $('#beClipMute').textContent = clip.muted ? '🔊 Restaurar áudio desta cena' : '🔇 Remover áudio desta cena';
       }
     } else {
       filledClipId = null;
@@ -589,6 +636,41 @@ export function mountEditor(root, store, opts = {}) {
   };
   bindClipSlider('#beClipScale', '#beClipScaleVal', 'scale', v => v / 100, v => v + '%');
   bindClipSlider('#beClipOpacity', '#beClipOpacityVal', 'opacity', v => v / 100, v => v + '%');
+
+  // 🔇 remover/restaurar áudio SÓ da cena selecionada (user 2026-07-24: o
+  // detach global tirava o áudio de TODAS as faixas de vídeo)
+  $('#beClipMute').addEventListener('click', () => {
+    const s = store.getState();
+    const clip = s.clips.find(c => c.id === s.selected_clip_id);
+    if (!clip) return;
+    store.dispatch(act.setClipFx(clip.id, { muted: !clip.muted }));
+    toast(clip.muted ? 'Áudio da cena restaurado ✓' : 'Áudio removido só desta cena ✓');
+  });
+
+  // ── MÁSCARA da cena (CapCut: círculo/retângulo + suavizar + cantos) ──
+  $('#beMaskShapes').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mask]'); if (!btn) return;
+    const s = store.getState();
+    const id = s.selected_clip_id; if (id == null) return;
+    filledClipId = null; // força refill dos controles (mostra/esconde sliders)
+    store.dispatch(act.setClipMask(id, btn.dataset.mask === 'none' ? null : { shape: btn.dataset.mask }));
+    applyClipTransform();
+  });
+  const bindMaskSlider = (sel, field, toModel) => {
+    $(sel).addEventListener('input', (e) => {
+      const s = store.getState();
+      const id = s.selected_clip_id; if (id == null) return;
+      store.dispatch({ ...act.setClipMask(id, { [field]: toModel(parseInt(e.target.value, 10)) }), gestureId: 'mask-' + id });
+      applyClipTransform();
+    });
+    $(sel).addEventListener('change', () => store.endGesture());
+  };
+  bindMaskSlider('#beMaskX', 'x_pct', v => v / 100);
+  bindMaskSlider('#beMaskY', 'y_pct', v => v / 100);
+  bindMaskSlider('#beMaskW', 'w_pct', v => v / 100);
+  bindMaskSlider('#beMaskH', 'h_pct', v => v / 100);
+  bindMaskSlider('#beMaskFeather', 'feather', v => v);
+  bindMaskSlider('#beMaskRadius', 'radius', v => v);
 
   // Velocidade (aba Velocidade do clip). Aplica só na CENA selecionada.
   $('#beClipSpeed').addEventListener('input', (e) => {
@@ -1554,7 +1636,20 @@ function buildTemplate() {
           <div class="be-dim">🪄 Remoção de plano de fundo por IA — <b>em breve</b>.</div>
         </div>
         <div class="be-cfg-sub" data-sub="mascarar" style="display:none">
-          <div class="be-dim">⬭ Máscaras (formas, recorte) — <b>em breve</b>.</div>
+          <div class="be-btn-group" id="beMaskShapes">
+            <button type="button" data-mask="none" class="active">Nenhuma</button>
+            <button type="button" data-mask="rect">▭ Retângulo</button>
+            <button type="button" data-mask="circle">◯ Círculo</button>
+          </div>
+          <div id="beMaskCtrls" style="display:none;flex-direction:column;gap:8px">
+            <label class="be-slider-label">Posição X <input id="beMaskX" type="range" min="0" max="100" step="1" value="50"/></label>
+            <label class="be-slider-label">Posição Y <input id="beMaskY" type="range" min="0" max="100" step="1" value="50"/></label>
+            <label class="be-slider-label">Largura <input id="beMaskW" type="range" min="5" max="100" step="1" value="60"/></label>
+            <label class="be-slider-label">Altura <input id="beMaskH" type="range" min="5" max="100" step="1" value="60"/></label>
+            <label class="be-slider-label">Suavizar <input id="beMaskFeather" type="range" min="0" max="100" step="1" value="0"/></label>
+            <label class="be-slider-label" id="beMaskRadiusRow">Cantos arredondados <input id="beMaskRadius" type="range" min="0" max="100" step="1" value="0"/></label>
+          </div>
+          <div class="be-dim">A máscara recorta a cena na forma escolhida. Suavizar mescla a borda; cantos só valem pro retângulo.</div>
         </div>
         <div class="be-cfg-sub" data-sub="retoque" style="display:none">
           <div class="be-dim">✨ Retoque facial e ajustes de pele — <b>em breve</b>.</div>
@@ -1563,7 +1658,8 @@ function buildTemplate() {
 
       <!-- demais abas (placeholder até implementarmos) -->
       <div class="be-cfg-panel" data-panel="audio" style="display:none">
-        <div class="be-dim">🔊 Volume e efeitos de áudio desta cena — <b>em breve</b>. (Por ora, separe o áudio com Ctrl+Shift+S pra editar na faixa.)</div>
+        <button id="beClipMute" class="be-tool-btn">🔇 Remover áudio desta cena</button>
+        <div class="be-dim">Vale SÓ pra cena selecionada — as outras faixas continuam com o áudio delas. Pra editar o áudio na faixa própria, use Separar áudio (Ctrl+Shift+S).</div>
       </div>
       <div class="be-cfg-panel" data-panel="velocidade" style="display:none">
         <label class="be-slider-label">Velocidade <b id="beClipSpeedVal">1.00x</b>

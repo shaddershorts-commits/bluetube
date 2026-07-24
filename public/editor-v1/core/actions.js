@@ -76,6 +76,7 @@ export const A = {
   // editar (menu botao direito): congelar frame / reverso / espelhar
   FREEZE_FRAME: 'FREEZE_FRAME',
   SET_CLIP_FX: 'SET_CLIP_FX',
+  SET_CLIP_MASK: 'SET_CLIP_MASK',
   SET_FREEZE_DUR: 'SET_FREEZE_DUR',
   // meta
   SET_PROJECT_ID: 'SET_PROJECT_ID',
@@ -134,6 +135,7 @@ export const UNDOABLE = {
   [A.PASTE]: U,
   [A.FREEZE_FRAME]: U,
   [A.SET_CLIP_FX]: U,
+  [A.SET_CLIP_MASK]: U,
   [A.SET_FREEZE_DUR]: U,
 };
 
@@ -213,6 +215,8 @@ export const paste = (kind, data, atT) => ({ type: A.PASTE, kind, data, atT });
 export const freezeFrame = (clipId, atT) => ({ type: A.FREEZE_FRAME, clipId, atT });
 // efeitos do menu Editar: patch { reversed?, mirrored? } no clip
 export const setClipFx = (clipId, patch) => ({ type: A.SET_CLIP_FX, clipId, patch });
+// patch = merge no mask atual (cria com defaults se não existe); null = remove
+export const setClipMask = (clipId, patch) => ({ type: A.SET_CLIP_MASK, clipId, patch });
 // estica/encolhe a cena congelada (arrastar borda) — dur em segundos
 export const setFreezeDur = (clipId, dur) => ({ type: A.SET_FREEZE_DUR, clipId, dur });
 export const createCompound = () => ({ type: A.CREATE_COMPOUND });

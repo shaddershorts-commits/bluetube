@@ -2142,7 +2142,9 @@ async function processEditV0(jobId, p) {
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
       let ok = false;
-      try {
+      // cena com áudio REMOVIDO (c.muted, "Remover áudio desta cena"): não
+      // extrai — cai direto no silêncio do mesmo tamanho (mantém alinhamento)
+      if (!c.muted) try {
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
           '-i', srcFor(c), '-vn', '-c:a', 'aac', '-b:a', '128k', out,
@@ -2238,6 +2240,52 @@ async function processEditV0(jobId, p) {
 
     let vLabel = 'base0';
     fc.push(`[0:v]${vf}[${vLabel}]`);
+
+    // ── MÁSCARAS por cena (CapCut: círculo/retângulo + suavizar + cantos) ──
+    // Técnica: pra cada clip com mask, gera um PNG "invertido" (preto opaco
+    // FORA da forma, transparente dentro; borda com blur = suavizar) e faz
+    // overlay dele na janela de tempo do clip — recorta a cena sobre preto.
+    // Coordenadas em % do quadro FINAL (igual ao preview = WYSIWYG).
+    {
+      let mAcc = 0;
+      let mIdx = 0;
+      for (const c of (p.clips || [])) {
+        const cdur = c.source_out - c.source_in;
+        if (cdur < 0.05) continue;
+        const t0 = mAcc; mAcc += cdur;
+        const m = c.mask;
+        if (!m || !['circle', 'rect'].includes(m.shape)) continue;
+        const cx = Math.round(OUT_W * (m.x_pct ?? 0.5));
+        const cy = Math.round(OUT_H * (m.y_pct ?? 0.5));
+        const hw = Math.max(8, Math.round(OUT_W * (m.w_pct ?? 0.6) / 2));
+        const hh = Math.max(8, Math.round(OUT_H * (m.h_pct ?? 0.6) / 2));
+        const blur = Math.min(200, Math.round(((m.feather || 0) / 100) * Math.min(OUT_W, OUT_H) / 8));
+        let formula;
+        if (m.shape === 'circle') {
+          formula = `if(lte(pow((X-${cx})/${hw},2)+pow((Y-${cy})/${hh},2),1),0,255)`;
+        } else {
+          // SDF de retângulo arredondado: dx/dy = distância além do miolo reto
+          const r = Math.round(((m.radius || 0) / 100) * Math.min(hw, hh));
+          formula = `st(0,max(abs(X-${cx})-${hw - r},0));st(1,max(abs(Y-${cy})-${hh - r},0));if(lte(sqrt(ld(0)*ld(0)+ld(1)*ld(1)),${r}),0,255)`;
+        }
+        const maskPng = path.join(dir, `mask_${mIdx}.png`);
+        try {
+          await run('ffmpeg', [
+            '-y', '-f', 'lavfi', '-i', `color=c=black:s=${OUT_W}x${OUT_H}`,
+            '-frames:v', '1',
+            '-vf', `format=rgba,geq=r=0:g=0:b=0:a='${formula}'${blur > 0 ? `,boxblur=0:0:0:0:${blur}:2` : ''}`,
+            maskPng,
+          ]);
+        } catch (e) { console.log('[edit-v0] mask falhou, cena sem máscara:', e.message); continue; }
+        args.push('-i', maskPng);
+        const nextL = `mk${mIdx}`;
+        fc.push(`[${vLabel}][${inputIdx}:v]overlay=0:0:enable='between(t,${t0.toFixed(3)},${mAcc.toFixed(3)})'[${nextL}]`);
+        vLabel = nextL;
+        inputIdx++;
+        mIdx++;
+      }
+    }
+
     ops.forEach((op, k) => {
       const nextL = `base${k + 1}`;
       if (op.kind === 'ov') {

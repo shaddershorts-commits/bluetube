@@ -54,6 +54,7 @@ export function createPlayer(videoEl, opts, store) {
   // — nunca herdam o mudo (user 2026-07-22: "importo mais videos e vem sem
   // audio"; o flag global mutava o elemento pra TODAS as fontes).
   function vidMuted(state, seg) {
+    if (seg?.clip?.muted) return true; // "remover áudio" SÓ desta cena (user 2026-07-24)
     return !!state.audio_detached && (!seg || seg.clip.media_id == null);
   }
 
