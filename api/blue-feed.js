@@ -704,6 +704,82 @@ module.exports = async function handler(req, res) {
   }
 
   // ── FEED SEGUINDO (tab "Seguindo" — simples, cronologico, so seguidos) ──
+  // ── FEED-INICIAL (home do APP, user 2026-07-24 — estilo TikTok) ──────────
+  // Receita: 1) vídeos de quem o usuário SEGUE, dos mais vistos pros menos;
+  // 2) a cada 4º slot, uma DESCOBERTA — vídeo de quem ele NÃO segue com 80+
+  // views (validado pelo público). Sem seguidos/esgotou → descoberta pura.
+  // Cursor próprio "fi:<offSeguidos>:<offDescoberta>" (isolado do feed web).
+  // Quando TUDO esgota, recicla do zero = feed infinito (retenção TikTok).
+  if (action === 'feed-inicial') {
+    const tk = req.query.token;
+    const fLimit = Math.min(parseInt(req.query.limit) || 10, 30);
+    let segOff = 0, expOff = 0;
+    const mCur = String(req.query.cursor || '').match(/^fi:(\d+):(\d+)$/);
+    if (mCur) { segOff = parseInt(mCur[1]); expOff = parseInt(mCur[2]); }
+    try {
+      const AKf = process.env.SUPABASE_ANON_KEY || SK;
+      let uid = null;
+      if (tk) {
+        const uR = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AKf, Authorization: 'Bearer ' + tk } });
+        if (uR.ok) uid = (await uR.json())?.id || null;
+      }
+      const [fR, blkR] = await Promise.all([
+        uid ? fetch(`${SU}/rest/v1/blue_follows?follower_id=eq.${uid}&select=following_id`, { headers: h }) : null,
+        uid ? fetch(`${SU}/rest/v1/blue_bloqueios?user_id=eq.${uid}&select=bloqueado_id`, { headers: h }) : null,
+      ]);
+      const following = fR?.ok ? (await fR.json()).map(f => f.following_id).filter(Boolean) : [];
+      const blocked = blkR?.ok ? (await blkR.json()).map(b => b.bloqueado_id).filter(Boolean) : [];
+      const F2 = 'id,user_id,title,thumbnail_url,video_url,duration,views,likes,comments,saves,score,nichos,views_24h,created_at';
+      const nSeg = Math.ceil(fLimit * 3 / 4);   // 3 de cada 4 slots = seguidos
+      // 1) seguidos por views (mais vistos primeiro)
+      let segVids = [], segHasMore = false;
+      if (following.length) {
+        const sR = await fetch(`${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null&user_id=in.(${following.join(',')})${uid ? `&user_id=neq.${uid}` : ''}&order=views.desc.nullslast,created_at.desc&limit=${nSeg + 1}&offset=${segOff}&select=${F2}`, { headers: h });
+        segVids = sR.ok ? await sR.json() : [];
+        segHasMore = segVids.length > nSeg;
+        segVids = segVids.slice(0, nSeg);
+      }
+      // 2) descoberta: NÃO seguidos com 80+ views (score primeiro = qualidade)
+      const excl = [...new Set([...following, ...blocked, ...(uid ? [uid] : [])])];
+      const notIn = excl.length ? `&user_id=not.in.(${excl.join(',')})` : '';
+      const wantExp = Math.max(fLimit - segVids.length, fLimit - nSeg);
+      const eR = await fetch(`${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${notIn}&views=gte.80&order=score.desc.nullslast,views.desc.nullslast&limit=${wantExp + 1}&offset=${expOff}&select=${F2}`, { headers: h });
+      let expVids = eR.ok ? await eR.json() : [];
+      const expHasMore = expVids.length > wantExp;
+      expVids = expVids.slice(0, wantExp);
+      if (blocked.length) segVids = segVids.filter(v => !blocked.includes(v.user_id));
+      // INTERLEAVE: posições 4, 8, 12… = descoberta; resto = seguidos
+      const out = [];
+      let si = 0, ei = 0;
+      for (let pos = 1; out.length < fLimit && (si < segVids.length || ei < expVids.length); pos++) {
+        let pick = null;
+        if (pos % 4 === 0 && ei < expVids.length) pick = expVids[ei++];
+        else if (si < segVids.length) pick = segVids[si++];
+        else if (ei < expVids.length) pick = expVids[ei++];
+        if (pick) out.push(pick);
+      }
+      // enrich criador + CDN
+      const uids2 = [...new Set(out.map(v => v.user_id).filter(Boolean))];
+      const profs2 = {};
+      if (uids2.length) {
+        const pR2 = await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${uids2.join(',')})&select=user_id,username,display_name,avatar_url,verificado`, { headers: h });
+        if (pR2.ok) (await pR2.json()).forEach(p => { profs2[p.user_id] = p; });
+      }
+      const enriched = out.map(v => ({ ...v, video_url: applyCDN(v.video_url), thumbnail_url: applyCDN(v.thumbnail_url), creator: profs2[v.user_id] || null }));
+      const esgotou = !segHasMore && !expHasMore;
+      return res.status(200).json({
+        videos: await markMine(enriched, uid),
+        // esgotou tudo → recicla do zero (feed nunca acaba); página vazia após
+        // reset = para de verdade (acervo pequeno demais)
+        has_more: out.length > 0,
+        next_cursor: esgotou ? 'fi:0:0' : `fi:${segOff + si}:${expOff + ei}`,
+        feed_mode: 'inicial',
+      });
+    } catch (e) {
+      return res.status(200).json({ videos: [], has_more: false, error: e.message });
+    }
+  }
+
   if (action === 'feed-seguindo') {
     const seguindoToken = req.query.token;
     if (!seguindoToken) return res.status(401).json({ error: 'token obrigatorio' });
@@ -1060,7 +1136,11 @@ module.exports = async function handler(req, res) {
     // ═══════════════════════════════════════════════════════════════════════
     // BRANCH FRESH (caminho padrao — comportamento existente)
     // ═══════════════════════════════════════════════════════════════════════
-    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
+    // min_views (opcional): o Descobrir do app manda 100 — só vídeo validado
+    // aparece na vitrine (user 2026-07-24). Sem o param, feed normal intacto.
+    const minViews = parseInt(req.query.min_views) || 0;
+    const minViewsQ = minViews > 0 ? `&views=gte.${minViews}` : '';
+    let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}${minViewsQ}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
     if (cur.ts) {
       // encodeURIComponent obrigatorio: created_at vem do banco com +00:00 e
       // o '+' cru em query string vira ESPACO no PostgREST → 400 → pagina 2
