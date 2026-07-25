@@ -162,7 +162,7 @@ module.exports = async function handler(req, res) {
     const desdeISO = janelaMs ? new Date(Date.now() - janelaMs).toISOString() : null;
     const nicho = ['curiosidades', 'games', 'ia', 'animais', 'artistas', 'pessoas_blogs', 'culinaria'].includes(inp.nicho) ? inp.nicho : null;
     const ordem = inp.ordem === 'recentes' ? 'publicado_em.desc' : 'views.desc';
-    const plat = inp.plataforma === 'tiktok' ? 'tiktok' : (inp.plataforma === 'youtube' ? 'youtube' : null);
+    const plat = inp.plataforma === 'tiktok' ? 'tiktok' : inp.plataforma === 'instagram' ? 'instagram' : (inp.plataforma === 'youtube' ? 'youtube' : null);
     let termos = nucleosIn.map((t) => String(t).trim()).filter((t) => t.length >= 2).slice(0, 8);
     if (tema && !termos.length) termos = [tema];
 
@@ -217,20 +217,34 @@ module.exports = async function handler(req, res) {
       youtube_id: null, _tiktok_id: v.tiktok_video_id, titulo: (v.caption || '').slice(0, 200) || 'TikTok de ' + (v.author_name || ''),
       thumbnail_url: v.thumbnail_url, url: v.video_url, canal_nome: v.author_name, views: v.views_count, publicado_em: v.tiktok_created_at, _tiktok: true,
     });
+    // Instagram Virais (2026-07-25): mesmo desenho do TikTok — acervo curado
+    // em instagram_virais, busca por caption/autor, views reais (play_count)
+    const igBase = ['select=shortcode,video_url,thumbnail_url,caption,author_name,author_handle,views_count,ig_created_at', 'status=eq.active'];
+    if (minViews) igBase.push(`views_count=gte.${minViews}`);
+    if (desdeISO) igBase.push(`ig_created_at=gte.${desdeISO}`);
+    const mapIg = (v) => ({
+      youtube_id: null, _ig_id: v.shortcode, titulo: (v.caption || '').slice(0, 200) || 'Reel de ' + (v.author_name || v.author_handle || ''),
+      thumbnail_url: v.thumbnail_url, url: v.video_url, canal_nome: v.author_name || v.author_handle, views: v.views_count, publicado_em: v.ig_created_at, _instagram: true,
+    });
 
     if (tema && termosOk.length) {
       // título E canal ("vídeos do Luiz Stubbe" = canal), termo a termo encodado
       const orExpr = 'or=(' + termosOk.map((t) => `titulo.ilike.*${encodeURIComponent(t)}*,canal_nome.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
-      if (plat !== 'tiktok') {
+      if (plat !== 'tiktok' && plat !== 'instagram') {
         const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&${orExpr}&order=${ordem}&limit=${MAX_CANDIDATOS}`, { headers: H });
         if (r1.ok) candidatos = await r1.json();
         // NICHO SECRETO FORA da busca do Blublu (ordem do user 2026-07-18):
         // acervo do chat = Virais (banco principal + TikTok), secretos só no filtro da página.
       }
-      if (plat !== 'youtube') try {
+      if (plat !== 'youtube' && plat !== 'instagram') try {
         const tkOr = 'or=(' + termosOk.map((t) => `caption.ilike.*${encodeURIComponent(t)}*,author_name.ilike.*${encodeURIComponent(t)}*,author_handle.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
         const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&${tkOr}&order=views_count.desc&limit=${plat === 'tiktok' ? 40 : 15}`, { headers: H });
         if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
+      } catch (e) {}
+      if (plat !== 'youtube' && plat !== 'tiktok') try {
+        const igOr = 'or=(' + termosOk.map((t) => `caption.ilike.*${encodeURIComponent(t)}*,author_name.ilike.*${encodeURIComponent(t)}*,author_handle.ilike.*${encodeURIComponent(t)}*`).join(',') + ')';
+        const ri = await fetch(`${SU}/rest/v1/instagram_virais?${igBase.join('&')}&${igOr}&order=views_count.desc&limit=${plat === 'instagram' ? 40 : 15}`, { headers: H });
+        if (ri.ok) candidatos = candidatos.concat((await ri.json()).map(mapIg));
       } catch (e) {}
       // REMOVIDO (2026-07-18): a busca direta no cache de transcrições era
       // VENENO de precisão — re-injetava como candidato qualquer vídeo que
@@ -239,7 +253,7 @@ module.exports = async function handler(req, res) {
       // antigas). Transcrição agora faz o papel original do desenho do user:
       // CONFIRMAR candidatos achados por tema — nunca ser fonte de candidato.
       // semântica opcional (completa candidatos com títulos que não citam o termo)
-      if (OPENAI && plat !== 'tiktok' && candidatos.length < MAX_CANDIDATOS) {
+      if (OPENAI && plat !== 'tiktok' && plat !== 'instagram' && candidatos.length < MAX_CANDIDATOS) {
         try {
           const er = await fetch('https://api.openai.com/v1/embeddings', { method: 'POST', headers: { Authorization: 'Bearer ' + OPENAI, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'text-embedding-3-small', input: tema }) });
           const ed = await er.json();
@@ -264,17 +278,21 @@ module.exports = async function handler(req, res) {
       if (!temFiltroReal) {
         return { videos: [], temMais: false, verificadosIds: [], resumo: { erro: 'pedido_sem_criterio', instrucao: 'Nenhum tema nem filtro identificado. Pergunte ao usuário o que ele quer (tema, canal ou filtro) — NÃO invente resultados.' } };
       }
-      if (plat !== 'tiktok') {
+      if (plat !== 'tiktok' && plat !== 'instagram') {
         const r1 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&order=${ordem}&limit=30`, { headers: H });
         if (r1.ok) candidatos = await r1.json();
       }
       try {
         // (nicho secreto fora — ordem do user)
-        if (!nicho && plat !== 'youtube') {
+        if (!nicho && plat !== 'youtube' && plat !== 'instagram') {
           const rt = await fetch(`${SU}/rest/v1/tiktok_virais?${tkBase.join('&')}&order=views_count.desc&limit=${plat === 'tiktok' ? 30 : 15}`, { headers: H });
           if (rt.ok) candidatos = candidatos.concat((await rt.json()).map(mapTk));
         }
-        const pTk = (v) => (plat !== 'tiktok' && v._tiktok) ? 1 : 0; // YouTube primeiro
+        if (!nicho && plat !== 'youtube' && plat !== 'tiktok') {
+          const ri = await fetch(`${SU}/rest/v1/instagram_virais?${igBase.join('&')}&order=views_count.desc&limit=${plat === 'instagram' ? 30 : 15}`, { headers: H });
+          if (ri.ok) candidatos = candidatos.concat((await ri.json()).map(mapIg));
+        }
+        const pTk = (v) => ((plat !== 'tiktok' && v._tiktok) || (plat !== 'instagram' && v._instagram)) ? 1 : 0; // YouTube primeiro
         candidatos.sort((a, b) => pTk(a) - pTk(b) || (ordem === 'publicado_em.desc' ? new Date(b.publicado_em || 0) - new Date(a.publicado_em || 0) : (b.views || 0) - (a.views || 0)));
       } catch (e) {}
     }
@@ -350,14 +368,14 @@ module.exports = async function handler(req, res) {
           let score = 0;
           const alvo = norm(c.titulo) + ' ' + (tc && tc.transcript ? norm(tc.transcript).slice(0, 4000) : '');
           for (const q of qualifN) if (q && alvo.includes(q)) score++;
-          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : (canalBate ? 'canal' : 'titulo'), plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto, _score: score });
+          videos.push({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: citadoEm, confirmado_por: falaBate ? 'fala' : (canalBate ? 'canal' : 'titulo'), plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto, _score: score });
         }
       }
       const peso = { fala: 0, canal: 1, titulo: 2 };
       // PRIORIDADE YOUTUBE (user 2026-07-18): YouTube Shorts sempre na frente —
       // TikTok tem views absurdas e dominava o sort; só lidera se o usuário
       // pedir TikTok explicitamente (plat === 'tiktok').
-      const pPlat = (v) => (plat !== 'tiktok' && v.plataforma === 'tiktok') ? 1 : 0;
+      const pPlat = (v) => ((plat !== 'tiktok' && v.plataforma === 'tiktok') || (plat !== 'instagram' && v.plataforma === 'instagram')) ? 1 : 0;
       videos.sort((a, b) => pPlat(a) - pPlat(b) || (b._score || 0) - (a._score || 0) || (peso[a.confirmado_por] ?? 3) - (peso[b.confirmado_por] ?? 3) || (b.views || 0) - (a.views || 0));
       // NOVA DIRETRIZ (user 2026-07-18): VOLUME MÁXIMO do tema. Qualificador
       // ORDENA (quem bate sobe), NUNCA exclui — o portão antigo cortava tudo
@@ -375,14 +393,14 @@ module.exports = async function handler(req, res) {
         // match real = fora. Tema comum mantém o fill por views (VOLUME).
         const resto = candidatos.filter((c) => !jaTem.has(c.youtube_id || c.url))
           .filter((c) => inp.tipo_tema !== 'nome_proprio' || bateAlgum(norm(c.titulo) + ' ' + norm(c.canal_nome)))
-          .sort((a, b) => ((plat !== 'tiktok' && a._tiktok) ? 1 : 0) - ((plat !== 'tiktok' && b._tiktok) ? 1 : 0) || (b.views || 0) - (a.views || 0))
+          .sort((a, b) => (((plat !== 'tiktok' && a._tiktok) || (plat !== 'instagram' && a._instagram)) ? 1 : 0) - (((plat !== 'tiktok' && b._tiktok) || (plat !== 'instagram' && b._instagram)) ? 1 : 0) || (b.views || 0) - (a.views || 0))
           .slice(0, qtd - videos.length)
-          .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
+          .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
         videos = videos.concat(resto);
       }
       verificadosIds = candidatos.filter((c) => c.youtube_id && cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
-      videos = candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
+      videos = candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
     }
     const cortados = Math.max(0, videos.length - qtd);
     videos = videos.slice(0, qtd);
@@ -450,7 +468,7 @@ module.exports = async function handler(req, res) {
           horas: { type: ['number', 'null'], description: 'janela em HORAS quando o pedido é em horas ("últimas 12 horas" = 12, "nas últimas 6h" = 6). Use ISTO em vez de dias pra janelas menores que um dia.' },
           nicho: { type: ['string', 'null'], description: 'um de: curiosidades, games, ia, animais, artistas, pessoas_blogs, culinaria' },
           ordem: { type: ['string', 'null'], description: '"views" (padrão) ou "recentes". OBRIGATÓRIO "recentes" quando o usuário falar "mais recente", "último", "novo", "essa semana" etc.' },
-          plataforma: { type: ['string', 'null'], description: '"youtube" ou "tiktok" quando o usuário restringir ("só TikTok", "sem YouTube"). null = todas' },
+          plataforma: { type: ['string', 'null'], description: '"youtube", "tiktok" ou "instagram" quando o usuário restringir ("só TikTok", "reels do Instagram", "sem YouTube"). null = todas' },
           quantidade: { type: ['number', 'null'], description: 'SÓ se o usuário pediu número exato de vídeos. null = padrão saudável' },
         },
       },

@@ -1,0 +1,34 @@
+name: Instagram Virais — Atualizar métricas (4x/dia)
+
+# Refresh de views/likes/comentários dos Reels mais desatualizados do acervo
+# instagram_virais, em lotes pequenos e espaçados (anti-flag da conta
+# descartável). Blindagem: falha NUNCA esconde vídeo já coletado — no pior
+# caso as métricas ficam paradas e o admin vê no health.
+#
+# Cadência */6h (sweet spot GH Actions ≥1h; minuto não-redondo pra fugir do
+# pico de fila do GitHub).
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Dispara atualização de métricas
+        run: |
+          echo "Iniciando às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP_CODE=$(curl -sS --max-time 300 \
+            -w "%{http_code}" \
+            -o /tmp/resp.json \
+            "https://bluetube-ten.vercel.app/api/instagram-virais?action=atualizar-metricas&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Refresh falhou com HTTP $HTTP_CODE"
+            cat /tmp/resp.json | head -c 500
+            exit 1
+          fi
+          node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log('✓ atualizados:',d.atualizados,'| falhas:',d.falhas,'| 429?',d.abortado_429||false,'| motivo:',d.motivo||'-')"

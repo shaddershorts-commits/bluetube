@@ -124,6 +124,9 @@
     },
     "api/virais-ml.js": {
       "maxDuration": 300
+    },
+    "api/instagram-virais.js": {
+      "maxDuration": 300
     }
   },
   "crons": [

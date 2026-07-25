@@ -336,6 +336,40 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .tk-fomo-cta{display:block;width:100%;padding:16px;background:linear-gradient(135deg,#ff4d2e 0%,#ff8c00 50%,#ffd700 100%);color:#000;border:none;border-radius:10px;font-size:15px;font-weight:900;text-decoration:none;cursor:pointer;margin-bottom:8px;letter-spacing:.02em}
 .tk-fomo-close{display:block;width:100%;padding:10px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer}
 
+/* ── INSTAGRAM BUTTON + VIEW (2026-07-25) — rosa claro brilhante ─────────── */
+.ig-btn{
+  position:relative;display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--font);font-size:12px;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,#ff3d9e 0%,#ff77c0 50%,#ffaadb 100%);
+  border:none;border-radius:8px;padding:8px 14px;cursor:pointer;
+  box-shadow:0 0 12px rgba(255,61,158,.5),0 0 24px rgba(255,119,192,.3);
+  animation:igPinkGlow 1.5s ease-in-out infinite alternate;
+  overflow:hidden;letter-spacing:.02em;text-transform:uppercase;
+  text-shadow:0 1px 2px rgba(120,0,60,.35);
+}
+.ig-btn::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 0%,rgba(255,255,255,.28) 50%,transparent 100%);
+  animation:tkFireShimmer 2s ease-in-out infinite;pointer-events:none;
+}
+.ig-btn:hover{transform:translateY(-1px);box-shadow:0 0 18px rgba(255,61,158,.7),0 0 32px rgba(255,119,192,.5)}
+.ig-btn .tk-fire{display:inline-block;animation:tkFireFlicker .35s ease-in-out infinite alternate;filter:drop-shadow(0 0 4px rgba(255,150,210,.9))}
+@keyframes igPinkGlow{
+  0%{box-shadow:0 0 12px rgba(255,61,158,.5),0 0 24px rgba(255,119,192,.3)}
+  100%{box-shadow:0 0 18px rgba(255,61,158,.8),0 0 36px rgba(255,119,192,.6),0 0 50px rgba(255,170,219,.3)}
+}
+#igView{display:none}
+#igView.active{display:block}
+#igView .tk-card:hover{border-color:rgba(255,119,192,.45)}
+.ig-card-btn-ver{background:linear-gradient(135deg,#ff3d9e,#c2255f);color:#fff}
+.ig-card-btn-ver:hover{background:linear-gradient(135deg,#f0308f,#a91e52)}
+.ig-sort-btn{padding:6px 12px;border:none;background:transparent;color:#cbd5e1;border-radius:6px;cursor:pointer}
+.ig-sort-btn.on{background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff}
+.ig-fomo-modal{border-color:rgba(255,119,192,.4)!important;box-shadow:0 30px 80px rgba(255,61,158,.25)!important}
+.ig-fomo-modal h2 span{background:linear-gradient(135deg,#ff3d9e,#ffaadb);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.ig-fomo-modal li{background:rgba(255,61,158,.08)!important;border-left-color:#ff77c0!important}
+.ig-fomo-cta{display:block;width:100%;padding:16px;background:linear-gradient(135deg,#ff3d9e 0%,#ff77c0 50%,#ffaadb 100%);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:900;text-decoration:none;cursor:pointer;margin-bottom:8px;letter-spacing:.02em;text-shadow:0 1px 2px rgba(120,0,60,.35)}
+
 @media(max-width:600px){
   .tk-fomo-modal{padding:28px 22px}
   .tk-fomo-modal h2{font-size:20px}
@@ -390,6 +424,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       <!-- Botão TikTok (Master) / YouTube (volta) — animação fogo -->
       <button class="tk-btn" id="tkToggleBtn" onclick="tkToggleView(event)" title="Vídeos virais do TikTok com 800k+ likes — exclusivo Master">
         <span class="tk-fire">🔥</span><span id="tkToggleLabel">TikTok</span>
+      </button>
+
+      <!-- Botão Instagram (Master) — rosa claro brilhante, mesma animação -->
+      <button class="ig-btn" id="igToggleBtn" onclick="igToggleView(event)" title="Reels virais do Instagram com views reais — exclusivo Master">
+        <span class="tk-fire">🔥</span><span id="igToggleLabel">Instagram</span>
       </button>
 
       <!-- Idioma agrupado: 1 opcao por lingua. Backend agrega US/GB/AU em "English" etc. -->
@@ -627,6 +666,47 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       </ul>
       <a href="/?upgrade=master" class="tk-fomo-cta">Virar Master agora — R$ 89,99/mês</a>
       <button class="tk-fomo-close" onclick="tkFomoClose(event)">Continuar só com YouTube (você está perdendo tempo)</button>
+    </div>
+  </div>
+
+  <!-- ── VIEW INSTAGRAM (oculta por padrão; ativa via igToggleView) ─────────── -->
+  <div id="igView">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;color:#ff77c0;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase">
+        <span style="font-size:18px">🔥</span>
+        <span id="igHeaderInfo">Instagram Virais · Reels com views reais</span>
+      </div>
+      <!-- Ordenação: Recentes (padrão — TODOS os coletados) / Likes / Views -->
+      <div style="display:inline-flex;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px;font-family:var(--font);font-size:12px;font-weight:700">
+        <button id="igSortRecent" class="ig-sort-btn on" onclick="igSetSort('recent',event)">🕐 Recentes</button>
+        <button id="igSortLikes" class="ig-sort-btn" onclick="igSetSort('likes',event)">❤ Likes</button>
+        <button id="igSortViews" class="ig-sort-btn" onclick="igSetSort('views',event)">▶ Views</button>
+      </div>
+    </div>
+    <div class="shorts-grid" id="igGrid"></div>
+    <div id="igPaginacao" style="display:none;justify-content:center;align-items:center;gap:8px;margin-top:24px">
+      <button id="igCarregarMais" onclick="igLoadMore()" style="padding:10px 22px;border-radius:10px;background:rgba(255,61,158,0.10);border:1px solid rgba(255,119,192,0.30);color:#ff77c0;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600">⬇ Carregar mais</button>
+      <span id="igPaginaInfo" style="padding:8px 16px;color:rgba(255,255,255,0.4);font-size:11px;font-family:var(--mono)"></span>
+    </div>
+    <div id="igEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-dim);font-size:14px">
+      Nenhum Reel coletado ainda. Os primeiros virais chegam em breve.
+    </div>
+  </div>
+
+  <!-- ── POPUP FOMO INSTAGRAM PRA FULL ──────────────────────────────────────── -->
+  <div id="igFomoOverlay" style="position:fixed;inset:0;background:rgba(2,8,23,.88);backdrop-filter:blur(14px);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px" onclick="igFomoClose(event)">
+    <div class="tk-fomo-modal ig-fomo-modal" onclick="event.stopPropagation()">
+      <div class="tk-fomo-fire">🔥</div>
+      <h2>Os Reels que <span>explodiram no Instagram</span>, na sua mão</h2>
+      <p class="tk-fomo-lead">Curadoria de Reels virais com números reais de views — o formato que estourou lá é o roteiro pronto do seu próximo Short.</p>
+      <ul>
+        <li><strong>Views reais</strong> — cada Reel entra com play count verdadeiro, atualizado automaticamente.</li>
+        <li><strong>Curadoria + perfis monitorados</strong> — os criadores que mais estouram, vigiados de perto.</li>
+        <li><strong>Baixe direto</strong> no BaixaBlue sem sair da plataforma.</li>
+        <li><strong>YouTube + TikTok + Instagram</strong> — o mapa completo do que está viralizando.</li>
+      </ul>
+      <a href="/?upgrade=master" class="ig-fomo-cta">Virar Master agora — R$ 89,99/mês</a>
+      <button class="tk-fomo-close" onclick="igFomoClose(event)">Continuar sem ver o Instagram</button>
     </div>
   </div>
 
@@ -1799,6 +1879,234 @@ function tkFomoClose(e){
   document.body.style.overflow = '';
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM VIRAIS (2026-07-25) — espelho do bloco TikTok, rosa
+// Padrão (decisão do user): mostra TODOS os coletados (period=all) ordenados
+// por mais recentes — sem filtro de likes/views pré-selecionado.
+// ════════════════════════════════════════════════════════════════════════════
+let _igMode = false;
+let _igPeriod = 'all';     // 'all' (padrão) | '24h' | '7d' | '30d'
+let _igSort = 'recent';    // 'recent' (padrão) | 'likes' | 'views'
+let _igOffset = 0;
+let _igTotal = 0;
+const _igPageSize = 100;
+
+function igSetSort(s, e){
+  if(e) e.preventDefault();
+  if(s === _igSort) return;
+  _igSort = s;
+  ['Recent','Likes','Views'].forEach(k => {
+    const b = document.getElementById('igSort'+k);
+    if(b) b.classList.toggle('on', k.toLowerCase() === (s === 'recent' ? 'recent' : s));
+  });
+  igListar();
+}
+
+function igToggleView(e){
+  if(e) e.preventDefault();
+  if(_igMode){ igExitToYouTube(); return; }
+  if(!tkIsMaster()){ igFomoShow(); return; }
+  // Se está na view TikTok, sai dela primeiro (views são exclusivas)
+  if(_tkMode) tkExitToYouTube();
+  igEnterInstagram();
+}
+
+// Botão "Todos" temporário no grupo de períodos (só existe em modo Instagram)
+function igEnsureTodosBtn(){
+  let btn = document.getElementById('igPeriodTodos');
+  if(btn) return btn;
+  const grupo = document.querySelector('.filter-group');
+  if(!grupo) return null;
+  btn = document.createElement('button');
+  btn.className = 'filter-btn';
+  btn.id = 'igPeriodTodos';
+  btn.dataset.period = 'all';
+  btn.textContent = 'Todos';
+  btn.style.display = 'none';
+  btn.onclick = function(){ if(_igMode) window.setPeriod('all', btn); };
+  grupo.insertBefore(btn, grupo.firstChild);
+  return btn;
+}
+
+let _igPrevPeriodBtn = '7d'; // período ativo do YouTube antes de entrar no IG
+function igEnterInstagram(){
+  _igMode = true;
+  _igPeriod = 'all';
+  const atual = document.querySelector('.filter-btn.active[data-period]');
+  if(atual) _igPrevPeriodBtn = atual.dataset.period;
+  // Esconde elementos YouTube (mesma lista do TikTok)
+  ['grid','historico-paginacao','dateFilterWarn','btnDailyAlert','btnNichosSecretos'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display = 'none';
+  });
+  const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = 'none';
+  const nichoSel = document.getElementById('nichoSelect'); if(nichoSel) nichoSel.style.display = 'none';
+  document.querySelectorAll('.filter-btn[data-period="5h"]').forEach(b => b.style.display = 'none');
+  // Mostra o botão "Todos" e marca ele como ativo (padrão = todos os coletados)
+  const todosBtn = igEnsureTodosBtn();
+  if(todosBtn) todosBtn.style.display = '';
+  document.querySelectorAll('.filter-btn[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === 'all'));
+  // Mostra view Instagram
+  const v = document.getElementById('igView'); if(v) v.classList.add('active');
+  const lbl = document.getElementById('igToggleLabel'); if(lbl) lbl.textContent = 'YouTube';
+  document.getElementById('igToggleBtn').title = 'Voltar pros virais do YouTube';
+  igListar();
+}
+
+function igExitToYouTube(){
+  _igMode = false;
+  ['grid','historico-paginacao','btnDailyAlert','btnNichosSecretos'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display = '';
+  });
+  const regionSel = document.getElementById('regionSelect'); if(regionSel) regionSel.style.display = '';
+  const nichoSel = document.getElementById('nichoSelect'); if(nichoSel) nichoSel.style.display = '';
+  document.querySelectorAll('.filter-btn[data-period="5h"]').forEach(b => b.style.display = '');
+  const todosBtn = document.getElementById('igPeriodTodos'); if(todosBtn) todosBtn.style.display = 'none';
+  // Restaura o período que estava ativo no YouTube antes de entrar
+  document.querySelectorAll('.filter-btn[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === _igPrevPeriodBtn));
+  const v = document.getElementById('igView'); if(v) v.classList.remove('active');
+  const lbl = document.getElementById('igToggleLabel'); if(lbl) lbl.textContent = 'Instagram';
+  document.getElementById('igToggleBtn').title = 'Reels virais do Instagram com views reais — exclusivo Master';
+}
+
+// Encadeia no override de setPeriod (que já passa pelo wrapper do TikTok)
+const _tkWrappedSetPeriod = window.setPeriod;
+if(_tkWrappedSetPeriod){
+  window.setPeriod = function(period, btn){
+    if(_igMode){
+      _igPeriod = period;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      if(btn) btn.classList.add('active');
+      igListar();
+      return;
+    }
+    return _tkWrappedSetPeriod(period, btn);
+  };
+}
+
+// Se o user clicar no botão TikTok estando na view Instagram, sai do IG antes
+const _origTkToggleView = tkToggleView;
+window.tkToggleView = function(e){
+  if(_igMode) igExitToYouTube();
+  return _origTkToggleView(e);
+};
+
+async function igListar(){
+  const grid = document.getElementById('igGrid');
+  const empty = document.getElementById('igEmpty');
+  const pag = document.getElementById('igPaginacao');
+  if(!grid) return;
+  _igOffset = 0;
+  if(pag) pag.style.display = 'none';
+  grid.innerHTML = Array(8).fill(0).map(()=>`
+    <div style="aspect-ratio:9/16;background:rgba(255,255,255,.04);border-radius:12px;animation:pulse 1.5s ease-in-out infinite"></div>
+  `).join('');
+  empty.style.display = 'none';
+  try{
+    const r = await fetch(`/api/instagram-virais?action=listar&period=${_igPeriod}&sort=${_igSort}&limit=${_igPageSize}&offset=0`);
+    if(!r.ok) throw new Error('API ' + r.status);
+    const d = await r.json();
+    const items = d.items || [];
+    _igTotal = d.total || 0;
+    const info = document.getElementById('igHeaderInfo');
+    if(info) info.textContent = `Instagram Virais · ${_igTotal} Reels no acervo`;
+    if(!items.length){
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    grid.innerHTML = items.map((v, i) => igMkCard(v, i + 1)).join('');
+    _igOffset = items.length;
+    igAtualizarPaginacao(d.has_more);
+  }catch(e){
+    console.error('[igListar]', e);
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;font-size:13px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+async function igLoadMore(){
+  const grid = document.getElementById('igGrid');
+  const btn = document.getElementById('igCarregarMais');
+  if(!grid || !btn) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Carregando...';
+  try{
+    const r = await fetch(`/api/instagram-virais?action=listar&period=${_igPeriod}&sort=${_igSort}&limit=${_igPageSize}&offset=${_igOffset}`);
+    if(!r.ok) throw new Error('API ' + r.status);
+    const d = await r.json();
+    const items = d.items || [];
+    if(items.length){
+      grid.insertAdjacentHTML('beforeend', items.map((v, i) => igMkCard(v, _igOffset + i + 1)).join(''));
+      _igOffset += items.length;
+    }
+    igAtualizarPaginacao(d.has_more);
+  }catch(e){
+    console.error('[igLoadMore]', e);
+    btn.textContent = '✗ Erro — tentar de novo';
+    setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2500);
+    return;
+  }
+  btn.textContent = origText;
+  btn.disabled = false;
+}
+
+function igAtualizarPaginacao(hasMore){
+  const pag = document.getElementById('igPaginacao');
+  const info = document.getElementById('igPaginaInfo');
+  if(!pag) return;
+  if(hasMore){
+    pag.style.display = 'flex';
+    if(info) info.textContent = `${_igOffset} de ${_igTotal}`;
+  } else if(_igOffset > 0 && _igTotal > _igPageSize){
+    pag.style.display = 'flex';
+    if(info) info.textContent = `${_igOffset} de ${_igTotal} — fim`;
+    const btn = document.getElementById('igCarregarMais');
+    if(btn) btn.style.display = 'none';
+  } else {
+    pag.style.display = 'none';
+  }
+}
+
+function igMkCard(v, rank){
+  const rankLabel = rank === 1 ? '🥇 #1' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
+  const isTop3 = rank <= 3;
+  const caption = tkEsc((v.caption || '').slice(0, 80));
+  const handle = tkEsc(v.author_handle || 'instagram');
+  const name = tkEsc(v.author_name || handle);
+  const quando = v.ig_created_at || v.collected_at;
+  const metricaSort = _igSort === 'views' ? `▶ ${tkFmt(v.views_count)}` : `❤ ${tkFmt(v.likes_count)}`;
+  return `
+    <div class="tk-card">
+      <div class="tk-card-thumb">
+        <img src="${tkEsc(v.thumbnail_url||'')}" alt="" loading="lazy" onerror="this.style.display='none';const p=this.parentElement;if(p&&!p.querySelector('.tk-fallback')){const d=document.createElement('div');d.className='tk-fallback';d.innerHTML='<div class=\\'tk-fb-inner\\'><div class=\\'tk-fb-icon\\'>📸</div><div class=\\'tk-fb-caption\\'>${tkEsc((v.caption||'').slice(0,40)).replace(/'/g,'&#39;')}</div></div>';p.appendChild(d);}"/>
+        <div class="tk-card-flag">📸</div>
+        <div class="tk-card-rank ${isTop3?'top3':''}">${rankLabel}</div>
+        <div class="tk-card-views">▶ ${tkFmt(v.views_count)}</div>
+      </div>
+      <div class="tk-card-info">
+        <div class="tk-card-caption">${caption || '<em style="color:#475569">sem legenda</em>'}</div>
+        <div class="tk-card-author">@${handle} · ${name}</div>
+        <div class="tk-card-stats">
+          <span class="tk-card-likes">${metricaSort}</span>
+          <span>${tkTimeAgo(quando)} atrás</span>
+        </div>
+        <a class="tk-card-btn ig-card-btn-ver" href="${tkEsc(v.video_url)}" target="_blank" rel="noopener">↗ Ver no Instagram</a>
+        <button class="tk-card-btn secondary" onclick="tkBaixar(event, '${tkEsc(v.video_url)}')">⬇ Baixar no BaixaBlue</button>
+      </div>
+    </div>
+  `;
+}
+
+function igFomoShow(){
+  document.getElementById('igFomoOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function igFomoClose(e){
+  if(e) e.stopPropagation();
+  document.getElementById('igFomoOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
 </script>
 <script>
 // ═══════════════ FALAR COM O BLUBLU + NICHO SECRETO NO DROPDOWN ═══════════════
@@ -1983,6 +2291,7 @@ function tkFomoClose(e){
               ${(v.plataforma!=='tiktok'&&vid) ? `<span class="bb-cit" style="color:#a78bfa;border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.08)" onclick="event.preventDefault();event.stopPropagation();window.open('/bluetendencias?rx=${vid}','_blank')">🔬 Analisar</span><span class="bb-cit" style="color:#5cffd0;border-color:rgba(92,255,208,.35);background:rgba(92,255,208,.07)" onclick="useShort(event,'${vid}','')">📝 Roteiro</span>` : ''}
               ${v.citado_em_s != null ? `<span class="bb-cit" onclick="event.preventDefault();event.stopPropagation();window.open('https://youtube.com/watch?v=${vid}&t=${cit}s','_blank')">🗣️ citado aos ${bbMMSS(cit)}</span>` : (v.confirmado_por==='canal' ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">📺 do canal</span>' : v.confirmado_por==='titulo' ? '<span class="bb-cit" style="color:#7fd4ff;border-color:rgba(127,212,255,.3);background:rgba(127,212,255,.07)">📌 no título</span>' : '')}
               ${v.plataforma==='tiktok' ? '<span class="bb-cit" style="color:#ff5c8a;border-color:rgba(255,92,138,.35);background:rgba(255,92,138,.07)">🎵 TikTok</span>' : ''}
+              ${v.plataforma==='instagram' ? '<span class="bb-cit" style="color:#ff77c0;border-color:rgba(255,119,192,.35);background:rgba(255,119,192,.08)">📸 Instagram</span>' : ''}
               ${v.secreto ? '<span class="bb-cit" style="color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.07)">🔮 secreto</span>' : ''}
             </div>
           </div>

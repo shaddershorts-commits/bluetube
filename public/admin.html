@@ -1047,6 +1047,42 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- INSTAGRAM VIRAIS — acervo de Reels da ferramenta Virais -->
+    <div class="section" id="igViraisSection">
+      <div class="section-header">
+        <div class="section-title">🔥 Instagram Virais <span class="section-subtitle">— Reels da ferramenta Virais (botão rosa)</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="action-btn" onclick="igvLoad()">↻ Atualizar</button>
+          <button class="action-btn" onclick="igvColetarAgora()" title="Coleta agora os Reels recentes dos perfis monitorados">📥 Coletar perfis agora</button>
+          <button class="action-btn" onclick="igvRefreshMetricas()" title="Atualiza views/likes dos vídeos mais desatualizados">📊 Atualizar métricas</button>
+        </div>
+      </div>
+      <div id="igvHealth" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px;min-height:14px">Carregando status…</div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Adicionar Reel (vídeo a vídeo)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="igvNewUrl" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://www.instagram.com/reel/CODIGO/"/>
+          <button class="action-btn" style="background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff;font-weight:700;border:none" onclick="igvAddReel()">+ Adicionar Reel</button>
+        </div>
+        <div id="igvAddMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+      </div>
+      <div style="margin-bottom:14px;padding-top:12px;border-top:1px solid var(--blue-border)">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Monitorar perfil (coleta automática dos Reels recentes)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="igvNewPerfil" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://www.instagram.com/nomedoperfil/"/>
+          <button class="action-btn" style="background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff;font-weight:700;border:none" onclick="igvAddPerfil()">+ Monitorar perfil</button>
+        </div>
+        <div id="igvPerfilMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Perfis monitorados</div>
+      <div class="table-wrap" id="igvPerfisTable" style="margin-bottom:14px"><div class="loading-txt">Carregando…</div></div>
+      <div style="font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Últimos Reels no acervo</div>
+      <div class="table-wrap" id="igvVideosTable"><div class="loading-txt">Carregando…</div></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;line-height:1.5">
+        💡 Blindagem: o banco é a fonte da verdade — se a conta descartável cair, os Reels já coletados continuam aparecendo normalmente pro usuário; só as métricas param de atualizar (o status acima avisa). Cookies via env <code>IG_COOKIES_B64</code>.
+      </div>
+    </div>
+
     <!-- EMAIL MARKETING -->
     <div class="section" id="emailMarketingSection">
       <div class="section-header">
@@ -1640,6 +1676,7 @@ async function loadData(){
     loadBaixaBlueHealth();
     loadInstagramAdminPosts();
     loadInstagramProfilePhoto();
+    igvLoad();
     loadPopupStats();
     loadVerificacoes();
     loadBackups();
@@ -2081,6 +2118,141 @@ async function moveIgPost(id, direction){
     if(!r.ok){ toast('Erro ao reordenar'); return; }
     loadInstagramAdminPosts();
   }catch(e){ toast('Erro: '+e.message); }
+}
+
+// ── INSTAGRAM VIRAIS (ferramenta Virais) — admin ─────────────────────────────
+function igvApi(action){ return `/api/instagram-virais?action=${action}&admin_secret=${encodeURIComponent(adminKey)}`; }
+function igvFmt(n){ n=parseInt(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
+
+async function igvLoad(){
+  igvLoadHealth(); igvLoadPerfis(); igvLoadVideos();
+}
+
+async function igvLoadHealth(){
+  const el=document.getElementById('igvHealth'); if(!el) return;
+  try{
+    const r=await fetch('/api/instagram-virais?action=health');
+    const d=await r.json();
+    const cor = d.status==='OK' ? 'var(--green)' : 'var(--red)';
+    el.innerHTML = `Status: <b style="color:${cor}">${d.status}</b> · ${d.total_videos} Reels no acervo · ${d.perfis_ativos} perfis ativos · métricas atrasadas (48h+): ${d.metricas_atrasadas_48h} · cookies: ${d.cookies_configurados?'✓':'✗ FALTANDO'}`;
+  }catch(e){ el.textContent='Erro ao carregar status: '+e.message; }
+}
+
+async function igvAddReel(){
+  const inp=document.getElementById('igvNewUrl'); const msg=document.getElementById('igvAddMsg');
+  const url=(inp.value||'').trim();
+  if(!url){ msg.style.color='var(--red)'; msg.textContent='Cole a URL do Reel primeiro.'; return; }
+  msg.style.color='var(--dim)'; msg.textContent='Consultando o Instagram…';
+  try{
+    const r=await fetch(igvApi('adicionar'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    const d=await r.json();
+    if(!r.ok||!d.ok){ msg.style.color='var(--red)'; msg.textContent='✗ '+(d.error||('HTTP '+r.status)); return; }
+    msg.style.color='var(--green)';
+    msg.textContent=`✓ @${d.video.author_handle} — ${igvFmt(d.video.views_count)} views · ${igvFmt(d.video.likes_count)} likes`;
+    inp.value='';
+    igvLoadVideos(); igvLoadHealth();
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+}
+
+async function igvAddPerfil(){
+  const inp=document.getElementById('igvNewPerfil'); const msg=document.getElementById('igvPerfilMsg');
+  const url=(inp.value||'').trim();
+  if(!url){ msg.style.color='var(--red)'; msg.textContent='Cole o link do perfil primeiro.'; return; }
+  msg.style.color='var(--dim)'; msg.textContent='Resolvendo perfil e coletando os primeiros Reels…';
+  try{
+    const r=await fetch(igvApi('adicionar-perfil'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    const d=await r.json();
+    if(r.status===429){
+      // Rate limit na resolução de username — pede um Reel do perfil como apoio
+      const reel=prompt((d.error||'Instagram limitou agora.')+'\n\nCole aqui a URL de um Reel qualquer desse perfil (resolvo por ela):');
+      if(!reel){ msg.style.color='var(--red)'; msg.textContent='✗ Cancelado — tente de novo em ~10min.'; return; }
+      const r2=await fetch(igvApi('adicionar-perfil'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,reel_url:reel.trim()})});
+      const d2=await r2.json();
+      if(!r2.ok||!d2.ok){ msg.style.color='var(--red)'; msg.textContent='✗ '+(d2.error||('HTTP '+r2.status)); return; }
+      msg.style.color='var(--green)'; msg.textContent=`✓ @${d2.perfil.username} monitorado — ${d2.coletados} Reels coletados${d2.aviso?' · '+d2.aviso:''}`;
+    } else if(!r.ok||!d.ok){
+      msg.style.color='var(--red)'; msg.textContent='✗ '+(d.error||('HTTP '+r.status)); return;
+    } else {
+      msg.style.color='var(--green)'; msg.textContent=`✓ @${d.perfil.username} monitorado — ${d.coletados} Reels coletados${d.aviso?' · '+d.aviso:''}`;
+    }
+    inp.value='';
+    igvLoadPerfis(); igvLoadVideos(); igvLoadHealth();
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+}
+
+async function igvLoadPerfis(){
+  const el=document.getElementById('igvPerfisTable'); if(!el) return;
+  try{
+    const r=await fetch(igvApi('listar-perfis'));
+    const d=await r.json();
+    const perfis=d.perfis||[];
+    if(!perfis.length){ el.innerHTML='<div class="empty-state">Nenhum perfil monitorado ainda.</div>'; return; }
+    el.innerHTML='<table><thead><tr><th>Perfil</th><th>Ativo</th><th>Última coleta</th><th>Erro</th><th></th></tr></thead><tbody>'+
+      perfis.map(p=>`<tr>
+        <td><a href="https://www.instagram.com/${p.username}/" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">@${p.username}</a>${p.full_name?' <span style="color:var(--dim);font-size:11px">'+p.full_name+'</span>':''}</td>
+        <td>${p.active?'✅':'⏸️'}</td>
+        <td style="font-family:var(--mono);font-size:11px">${p.last_collected_at?new Date(p.last_collected_at).toLocaleString('pt-BR'):'nunca'}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--red);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.last_error||''}</td>
+        <td><button class="action-btn" onclick="igvTogglePerfil('${p.username}',${p.active?'false':'true'})">${p.active?'Pausar':'Reativar'}</button></td>
+      </tr>`).join('')+'</tbody></table>';
+  }catch(e){ el.innerHTML='<div class="empty-state">Erro: '+e.message+'</div>'; }
+}
+
+async function igvTogglePerfil(username,active){
+  try{
+    await fetch(igvApi('toggle-perfil'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,active:active==='true'||active===true})});
+    igvLoadPerfis();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function igvLoadVideos(){
+  const el=document.getElementById('igvVideosTable'); if(!el) return;
+  try{
+    const r=await fetch('/api/instagram-virais?action=listar&sort=recent&limit=15');
+    const d=await r.json();
+    const items=d.items||[];
+    if(!items.length){ el.innerHTML='<div class="empty-state">Nenhum Reel no acervo ainda. Cole uma URL acima pra começar.</div>'; return; }
+    el.innerHTML='<table><thead><tr><th>Reel</th><th>Autor</th><th>Views</th><th>Likes</th><th>Fonte</th><th></th></tr></thead><tbody>'+
+      items.map(v=>`<tr>
+        <td style="font-family:var(--mono);font-size:11px"><a href="${v.video_url}" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">${v.shortcode}</a></td>
+        <td style="font-size:12px">@${v.author_handle||'?'}</td>
+        <td style="font-family:var(--mono)">${igvFmt(v.views_count)}</td>
+        <td style="font-family:var(--mono)">${igvFmt(v.likes_count)}</td>
+        <td style="font-size:11px;color:var(--dim)">${v.fonte==='perfil'?'📥 @'+(v.source_profile||''):'✋ manual'}</td>
+        <td><button class="action-btn" style="color:var(--red)" onclick="igvRemover('${v.shortcode}')">🗑</button></td>
+      </tr>`).join('')+'</tbody></table>'+
+      `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px">${d.total} no total — mostrando os 15 mais recentes</div>`;
+  }catch(e){ el.innerHTML='<div class="empty-state">Erro: '+e.message+'</div>'; }
+}
+
+async function igvRemover(shortcode){
+  if(!confirm('Remover o Reel '+shortcode+' do acervo?')) return;
+  try{
+    await fetch(igvApi('remover'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shortcode})});
+    igvLoadVideos(); igvLoadHealth();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function igvColetarAgora(){
+  const el=document.getElementById('igvHealth');
+  el.textContent='📥 Coletando perfis… (pode levar ~1min)';
+  try{
+    const r=await fetch(igvApi('coletar-perfis'));
+    const d=await r.json();
+    toast(d.ok?`Coleta ok — ${d.inseridos} Reels de ${d.perfis} perfis`:('Coleta falhou: '+(d.motivo||d.error||'')));
+    igvLoad();
+  }catch(e){ toast('Erro: '+e.message); igvLoadHealth(); }
+}
+
+async function igvRefreshMetricas(){
+  const el=document.getElementById('igvHealth');
+  el.textContent='📊 Atualizando métricas… (pode levar ~1min)';
+  try{
+    const r=await fetch(igvApi('atualizar-metricas'));
+    const d=await r.json();
+    toast(d.ok?`Métricas: ${d.atualizados}/${d.processados} atualizadas${d.abortado_429?' (Instagram pediu calma — 429)':''}`:('Falhou: '+(d.motivo||d.error||'')));
+    igvLoad();
+  }catch(e){ toast('Erro: '+e.message); igvLoadHealth(); }
 }
 
 async function loadBaixaBlueHealth(){
