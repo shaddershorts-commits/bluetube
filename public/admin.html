@@ -2148,7 +2148,7 @@ async function igvAddReel(){
     const d=await r.json();
     if(!r.ok||!d.ok){ msg.style.color='var(--red)'; msg.textContent='✗ '+(d.error||('HTTP '+r.status)); return; }
     msg.style.color='var(--green)';
-    msg.textContent=`✓ @${d.video.author_handle} — ${igvFmt(d.video.views_count)} views · ${igvFmt(d.video.likes_count)} likes`;
+    msg.textContent=`✓ @${d.video.author_handle} — ${igvFmt(d.video.views_count)} views · ${igvFmt(d.video.likes_count)} likes${d.abaixo_da_regua?' ⚠ abaixo da régua (3M views / 1M likes) — entrou porque foi manual':''}`;
     inp.value='';
     igvLoadVideos(); igvLoadHealth();
   }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }

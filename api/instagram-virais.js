@@ -26,6 +26,12 @@ const REFRESH_BATCH = 20;          // vídeos por rodada de atualizar-metricas
 const REFRESH_SPACING_MS = 1500;   // pausa entre chamadas ao IG (anti-flag)
 const PERFIS_POR_RODADA = 3;       // perfis coletados por rodada do cron
 const PERFIL_PAGE_SIZE = 12;       // Reels por perfil por rodada (1 página)
+// Régua de qualidade da coleta AUTOMÁTICA (decisão do user 2026-07-25):
+// só mega virais entram sozinhos — 3M+ views E 1M+ likes. Ajustável por env.
+// Adição MANUAL (admin cola URL) ignora a régua: decisão explícita do admin.
+const MIN_VIEWS_AUTO = parseInt(process.env.IG_MIN_VIEWS, 10) || 3_000_000;
+const MIN_LIKES_AUTO = parseInt(process.env.IG_MIN_LIKES, 10) || 1_000_000;
+const passaRegua = (m) => (m.views_count || 0) >= MIN_VIEWS_AUTO && (m.likes_count || 0) >= MIN_LIKES_AUTO;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -200,7 +206,8 @@ async function adicionar(req, res, { SU, SK, h }) {
   // deixando o default do banco no insert e o valor antigo no update)
   const ok = await upsertRows([row], { SU, h });
   if (!ok) return res.status(500).json({ error: 'Falha ao salvar no banco' });
-  return res.status(200).json({ ok: true, video: row });
+  // Manual entra mesmo abaixo da régua (decisão do admin), mas avisamos
+  return res.status(200).json({ ok: true, video: row, abaixo_da_regua: !passaRegua(m) });
 }
 
 // ── ADICIONAR PERFIL (admin cola link de perfil) ─────────────────────────────
@@ -251,10 +258,12 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
   if (!upP.ok) return res.status(500).json({ error: 'Falha ao salvar perfil' });
 
   // 1ª coleta imediata (página 1) — admin já vê resultado na hora
-  let coletados = 0;
+  let coletados = 0, avaliados = 0;
   try {
     const page = await ig.clipsDoPerfil(perfil.user_pk, { pageSize: PERFIL_PAGE_SIZE });
-    const videos = page.items.filter((m) => m.is_video && m.shortcode);
+    const candidatos = page.items.filter((m) => m.is_video && m.shortcode);
+    avaliados = candidatos.length;
+    const videos = candidatos.filter(passaRegua);
     const rows = [];
     for (const m of videos) rows.push(await mediaParaRow(m, { SU, SK }, { fonte: 'perfil', source_profile: perfil.username }));
     if (await upsertRows(rows, { SU, h })) coletados = rows.length;
@@ -264,7 +273,10 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
   } catch (e) {
     aviso = 'Perfil salvo, mas a 1ª coleta falhou (' + e.message + ') — o cron tenta de novo sozinho.';
   }
-  return res.status(200).json({ ok: true, perfil, coletados, aviso });
+  if (!aviso && avaliados > coletados) {
+    aviso = `${avaliados - coletados} Reels do perfil ficaram FORA da régua (${(MIN_VIEWS_AUTO / 1e6)}M+ views e ${(MIN_LIKES_AUTO / 1e6)}M+ likes).`;
+  }
+  return res.status(200).json({ ok: true, perfil, coletados, avaliados, aviso });
 }
 
 // ── COLETAR PERFIS (cron) ────────────────────────────────────────────────────
@@ -277,12 +289,15 @@ async function coletarPerfis(req, res, { SU, SK, h }) {
   );
   if (!r.ok) return res.status(500).json({ error: 'query_perfis_failed' });
   const perfis = await r.json();
-  const resultado = { ok: true, perfis: perfis.length, inseridos: 0, falhas: [] };
+  const resultado = { ok: true, perfis: perfis.length, inseridos: 0, avaliados: 0, fora_da_regua: 0, falhas: [] };
 
   for (const p of perfis) {
     try {
       const page = await ig.clipsDoPerfil(p.user_pk, { pageSize: PERFIL_PAGE_SIZE });
-      const videos = page.items.filter((m) => m.is_video && m.shortcode);
+      const candidatos = page.items.filter((m) => m.is_video && m.shortcode);
+      resultado.avaliados += candidatos.length;
+      const videos = candidatos.filter(passaRegua);
+      resultado.fora_da_regua += candidatos.length - videos.length;
       const rows = [];
       for (const m of videos) rows.push(await mediaParaRow(m, { SU, SK }, { fonte: 'perfil', source_profile: p.username }));
       if (await upsertRows(rows, { SU, h })) resultado.inseridos += rows.length;
