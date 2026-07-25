@@ -1068,7 +1068,8 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   </div>
 </div>
 <!-- PWA install banner -->
-<div class="pwa-banner" id="pwaBanner">📱 Instale o Blue como app <button onclick="installPWA()">Instalar</button> <span onclick="dismissPWA()" style="cursor:pointer;opacity:.5;font-size:18px;margin-left:4px">✕</span></div>
+<!-- Banner PWA removido (user 2026-07-25): o app REAL está na Play Store —
+     quem promove agora é o #appBanner (Android-only, link da loja) no fim da página. -->
 
 
 <!-- ═══════════════════════════════ LIVES BAR ════════════════════════════════ -->
@@ -4872,28 +4873,11 @@ async function handleDeepLink(){
   return false;
 }
 
-// ── P10: PWA INSTALL ─────────────────────────────────────────────────────────
-let _deferredPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();
-  _deferredPrompt=e;
-  if(!localStorage.getItem('bl_pwa_dismissed')){
-    document.getElementById('pwaBanner').style.display='flex';
-  }
-});
-function installPWA(){
-  if(!_deferredPrompt)return;
-  _deferredPrompt.prompt();
-  _deferredPrompt.userChoice.then(r=>{
-    document.getElementById('pwaBanner').style.display='none';
-    if(r.outcome==='accepted')toast('📱 App instalado!');
-    _deferredPrompt=null;
-  });
-}
-function dismissPWA(){
-  document.getElementById('pwaBanner').style.display='none';
-  localStorage.setItem('bl_pwa_dismissed','1');
-}
+// ── P10: PWA INSTALL — DESATIVADO (user 2026-07-25) ──────────────────────────
+// O app de verdade está na Play Store; o banner que promove é o #appBanner
+// (Android-only). Mantemos o preventDefault pro Chrome NÃO mostrar o prompt
+// nativo de "instalar como app" por conta própria.
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); });
 // Service Worker with auto-update
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/blue-sw.js').then(reg=>{
