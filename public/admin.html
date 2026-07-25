@@ -1074,6 +1074,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </div>
         <div id="igvPerfilMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
       </div>
+      <div style="margin-bottom:14px;padding-top:12px;border-top:1px solid var(--blue-border)">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">🔑 Cookies da conta descartável (self-service)</label>
+        <textarea id="igvCookiesTxt" class="plan-input" rows="3" style="width:100%;font-family:var(--mono);font-size:10px;resize:vertical" placeholder="Cole aqui o conteúdo do cookies.txt (extensão 'Get cookies.txt LOCALLY' com a conta descartável logada no instagram.com)"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button class="action-btn" style="background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff;font-weight:700;border:none" onclick="igvSalvarCookies()">💾 Salvar cookies</button>
+          <button class="action-btn" onclick="igvTestarConexao()">🧪 Testar conexão</button>
+        </div>
+        <div id="igvCookiesMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+      </div>
       <div style="font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Perfis monitorados</div>
       <div class="table-wrap" id="igvPerfisTable" style="margin-bottom:14px"><div class="loading-txt">Carregando…</div></div>
       <div style="font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Últimos Reels no acervo</div>
@@ -2234,6 +2243,34 @@ async function igvRemover(shortcode){
     await fetch(igvApi('remover'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shortcode})});
     igvLoadVideos(); igvLoadHealth();
   }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function igvSalvarCookies(){
+  const ta=document.getElementById('igvCookiesTxt'); const msg=document.getElementById('igvCookiesMsg');
+  const txt=(ta.value||'').trim();
+  if(!txt){ msg.style.color='var(--red)'; msg.textContent='Cole o conteúdo do cookies.txt primeiro.'; return; }
+  msg.style.color='var(--dim)'; msg.textContent='Salvando e testando a sessão…';
+  try{
+    const r=await fetch(igvApi('salvar-cookies'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies_txt:txt})});
+    const d=await r.json();
+    if(!r.ok||!d.ok){ msg.style.color='var(--red)'; msg.textContent='✗ '+(d.error||('HTTP '+r.status)); return; }
+    const s=d.sessao||{};
+    msg.style.color=s.ok?'var(--green)':'#fbbf24';
+    msg.textContent=(s.ok?'✓ Cookies salvos e sessão FUNCIONANDO — ':'✓ Cookies salvos. Estado da sessão: '+(s.estado||'?')+' — ')+(s.detalhe||'');
+    ta.value='';
+    igvLoadHealth();
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+}
+
+async function igvTestarConexao(){
+  const msg=document.getElementById('igvCookiesMsg');
+  msg.style.color='var(--dim)'; msg.textContent='Testando…';
+  try{
+    const r=await fetch(igvApi('testar-conexao'));
+    const d=await r.json();
+    msg.style.color=d.ok?'var(--green)':'#fbbf24';
+    msg.textContent=(d.ok?'✓ ':'⚠ ')+'Sessão: '+(d.estado||'?')+' — '+(d.detalhe||'');
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
 }
 
 async function igvColetarAgora(){

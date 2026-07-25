@@ -69,6 +69,8 @@ module.exports = async function handler(req, res) {
     if (action === 'remover') return await remover(req, res, { SU, h });
     if (action === 'toggle-perfil') return await togglePerfil(req, res, { SU, h });
     if (action === 'listar-perfis') return await listarPerfis(req, res, { SU, h });
+    if (action === 'salvar-cookies') return await salvarCookies(req, res, { SU, h });
+    if (action === 'testar-conexao') return res.status(200).json(await ig.validarSessao());
     return res.status(400).json({ error: 'action_invalida' });
   } catch (e) {
     console.error('[instagram-virais fatal]', e && e.message);
@@ -182,7 +184,7 @@ async function adicionar(req, res, { SU, SK, h }) {
   const url = (req.body && req.body.url) || req.query.url;
   const shortcode = ig.parseShortcode(url);
   if (!shortcode) return res.status(400).json({ error: 'URL inválida — use instagram.com/reel/CODIGO/ ou /p/CODIGO/' });
-  if (!ig.temCookies()) return res.status(500).json({ error: 'IG_COOKIES_B64 não configurado' });
+  if (!(await ig.temCookies())) return res.status(500).json({ error: 'Cookies não configurados — salve no painel (campo Cookies da conta)' });
 
   let m;
   try {
@@ -218,7 +220,7 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
   const body = req.body || {};
   const username = ig.parseUsernameDePerfil(body.url || '') || String(body.username || '').replace(/^@/, '').toLowerCase() || null;
   if (!username) return res.status(400).json({ error: 'Cole o link do perfil (instagram.com/nomedoperfil)' });
-  if (!ig.temCookies()) return res.status(500).json({ error: 'IG_COOKIES_B64 não configurado' });
+  if (!(await ig.temCookies())) return res.status(500).json({ error: 'Cookies não configurados — salve no painel (campo Cookies da conta)' });
 
   let perfil = null;
   let aviso = null;
@@ -281,7 +283,7 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
 
 // ── COLETAR PERFIS (cron) ────────────────────────────────────────────────────
 async function coletarPerfis(req, res, { SU, SK, h }) {
-  if (!ig.temCookies()) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
+  if (!(await ig.temCookies())) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
   const limit = Math.min(10, parseInt(req.query.limit, 10) || PERFIS_POR_RODADA);
   const r = await fetch(
     `${SU}/rest/v1/instagram_perfis?active=eq.true&user_pk=not.is.null&order=last_collected_at.asc.nullsfirst&limit=${limit}&select=username,user_pk`,
@@ -320,7 +322,7 @@ async function coletarPerfis(req, res, { SU, SK, h }) {
 // Pega os N com metrics_updated_at mais antigo e re-consulta views/likes.
 // Falha NUNCA esconde o vídeo — só registra last_error e segue a vida.
 async function atualizarMetricas(req, res, { SU, h }) {
-  if (!ig.temCookies()) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
+  if (!(await ig.temCookies())) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
   const limit = Math.min(50, parseInt(req.query.limit, 10) || REFRESH_BATCH);
   const r = await fetch(
     `${SU}/rest/v1/instagram_virais?status=eq.active&order=metrics_updated_at.asc.nullsfirst&limit=${limit}&select=shortcode`,
@@ -421,6 +423,28 @@ async function listarPerfis(req, res, { SU, h }) {
   return res.status(200).json({ ok: true, perfis: await r.json() });
 }
 
+// ── SALVAR COOKIES (admin, self-service) ─────────────────────────────────────
+// Admin cola o cookies.txt no painel → validamos, salvamos em site_kv (sem
+// redeploy) e testamos a sessão na hora. A env IG_COOKIES_B64 vira só fallback.
+async function salvarCookies(req, res, { SU, h }) {
+  const txt = (req.body && req.body.cookies_txt) || '';
+  if (!txt.trim()) return res.status(400).json({ error: 'Cole o conteúdo do cookies.txt' });
+  const b64 = Buffer.from(txt, 'utf8').toString('base64');
+  const jar = ig.parseCookiesB64(b64);
+  if (!jar || !jar.sessionid) {
+    return res.status(400).json({ error: 'Cookies inválidos — precisa ser o cookies.txt exportado LOGADO (tem que conter "sessionid")' });
+  }
+  const upR = await fetch(`${SU}/rest/v1/site_kv?on_conflict=key`, {
+    method: 'POST',
+    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify([{ key: 'ig_cookies_b64', value: b64 }]),
+  });
+  if (!upR.ok) return res.status(500).json({ error: 'Falha ao salvar no banco: ' + upR.status });
+  ig.limparCacheCookies();
+  const teste = await ig.validarSessao();
+  return res.status(200).json({ ok: true, salvo: true, sessao: teste });
+}
+
 // ── HEALTH (público, agregado) ───────────────────────────────────────────────
 async function health(req, res, { SU, h }) {
   const doisDias = new Date(Date.now() - 2 * 86400000).toISOString();
@@ -434,10 +458,11 @@ async function health(req, res, { SU, h }) {
   const totalVideos = count(totalR);
   const metricasVelhas = count(staleR);
   const comErro = count(errR);
+  const temCk = await ig.temCookies();
   return res.status(200).json({
     ok: true,
     timestamp: new Date().toISOString(),
-    cookies_configurados: ig.temCookies(),
+    cookies_configurados: temCk,
     total_videos: totalVideos,
     perfis_ativos: count(perfisR),
     metricas_atrasadas_48h: metricasVelhas,
@@ -447,7 +472,7 @@ async function health(req, res, { SU, h }) {
     // mas falha — sessão morta/checkpoint; o refresh renova metrics_updated_at
     // até em falha, então SÓ o erro detecta isso) e métricas atrasadas
     // (cron parou de rodar).
-    status: !ig.temCookies() ? 'SEM_COOKIES'
+    status: !temCk ? 'SEM_COOKIES'
       : totalVideos >= 5 && comErro / totalVideos > 0.3 ? 'DEGRADED_REFRESH_FALHANDO'
       : totalVideos > 0 && metricasVelhas / totalVideos > 0.5 ? 'DEGRADED_METRICAS_PARADAS'
       : 'OK',

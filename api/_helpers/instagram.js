@@ -26,11 +26,12 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const TIMEOUT_MS = 15000;
 
 // ── Cookies ──────────────────────────────────────────────────────────────────
-function parseCookiesEnv() {
-  const b64 = process.env.IG_COOKIES_B64 || '';
+// Fonte primária: site_kv (chave 'ig_cookies_b64') — o ADMIN atualiza sozinho
+// pelo painel, sem redeploy. Fallback: env IG_COOKIES_B64 (bootstrap).
+function parseCookiesB64(b64) {
   if (!b64) return null;
   let raw;
-  try { raw = Buffer.from(b64, 'base64').toString('utf8'); } catch (e) { return null; }
+  try { raw = Buffer.from(String(b64), 'base64').toString('utf8'); } catch (e) { return null; }
   const jar = {};
   if (raw.includes('\t')) {
     // Formato Netscape: domínio \t flag \t path \t secure \t expiry \t nome \t valor
@@ -49,8 +50,29 @@ function parseCookiesEnv() {
   return Object.keys(jar).length ? jar : null;
 }
 
-function igHeaders(referer) {
-  const jar = parseCookiesEnv();
+let _jarCache = { at: 0, jar: null };
+function limparCacheCookies() { _jarCache = { at: 0, jar: null }; }
+
+async function obterJar() {
+  if (_jarCache.jar && Date.now() - _jarCache.at < 60000) return _jarCache.jar;
+  let b64 = null;
+  const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
+  if (SU && SK) {
+    try {
+      const r = await fetch(`${SU}/rest/v1/site_kv?key=eq.ig_cookies_b64&select=value`, {
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK },
+      });
+      if (r.ok) { const rows = await r.json(); b64 = (rows[0] && rows[0].value) || null; }
+    } catch (e) {}
+  }
+  if (!b64) b64 = process.env.IG_COOKIES_B64 || null;
+  const jar = parseCookiesB64(b64);
+  if (jar) _jarCache = { at: Date.now(), jar };
+  return jar;
+}
+
+async function igHeaders(referer) {
+  const jar = await obterJar();
   if (!jar) return null; // sem cookies configurados
   return {
     'Cookie': Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; '),
@@ -62,7 +84,7 @@ function igHeaders(referer) {
   };
 }
 
-function temCookies() { return !!parseCookiesEnv(); }
+async function temCookies() { return !!(await obterJar()); }
 
 // ── Shortcode ────────────────────────────────────────────────────────────────
 // URL aceita: instagram.com/p/CODE, /reel/CODE, /reels/CODE, /tv/CODE
@@ -85,7 +107,7 @@ function shortcodeToPk(shortcode) {
 
 // ── Fetch com timeout + erro estruturado ────────────────────────────────────
 async function igFetch(url, opts = {}) {
-  const H = igHeaders(opts.referer);
+  const H = await igHeaders(opts.referer);
   if (!H) { const e = new Error('cookies_nao_configurados'); e.status = 0; throw e; }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -95,6 +117,7 @@ async function igFetch(url, opts = {}) {
       method: opts.method || 'GET',
       headers: opts.body ? { ...H, 'Content-Type': 'application/x-www-form-urlencoded' } : H,
       body: opts.body || undefined,
+      redirect: 'manual',
       signal: ctrl.signal,
     });
   } catch (e) {
@@ -104,6 +127,14 @@ async function igFetch(url, opts = {}) {
     throw err;
   }
   clearTimeout(timer);
+  // API redirecionando = Instagram cortou a superfície de API dessa sessão
+  // (castigo temporário pós-atividade OU sessão morta). Diagnóstico 2026-07-25:
+  // /accounts/edit 200 (logado) mas api/v1 302 → soft-block, solta em ~24h.
+  if (r.status >= 300 && r.status < 400) {
+    const err = new Error('api_bloqueada (Instagram redirecionou a chamada — castigo temporário da conta ou sessão caiu; costuma soltar em ~24h)');
+    err.status = 302;
+    throw err;
+  }
   const text = await r.text();
   if (!r.ok) {
     const err = new Error(`instagram_http_${r.status}`);
@@ -198,8 +229,26 @@ function parseUsernameDePerfil(url) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// Teste de sessão: 1 chamada de media info num Reel estável (spreen, no acervo
+// desde o dia 1). Retorna o estado legível pro admin.
+const REEL_REFERENCIA = 'C_jLRtTv5o-';
+async function validarSessao() {
+  if (!(await temCookies())) return { ok: false, estado: 'sem_cookies', detalhe: 'Nenhum cookie salvo (painel ou env).' };
+  try {
+    const m = await mediaInfo(REEL_REFERENCIA);
+    return { ok: true, estado: 'ok', detalhe: `Sessão funcionando — Reel de referência retornou ${(m.views_count || 0).toLocaleString('pt-BR')} views.` };
+  } catch (e) {
+    if (e.status === 302) return { ok: false, estado: 'bloqueada', detalhe: 'Conta logada mas com a API em castigo temporário (costuma soltar em ~24h). Não precisa trocar cookies ainda.' };
+    if (e.status === 429) return { ok: false, estado: 'rate_limit', detalhe: 'Instagram pediu calma (429) — tente de novo em alguns minutos.' };
+    return { ok: false, estado: 'erro', detalhe: e.message };
+  }
+}
+
 module.exports = {
   temCookies,
+  limparCacheCookies,
+  parseCookiesB64,
+  validarSessao,
   parseShortcode,
   shortcodeToPk,
   parseUsernameDePerfil,
