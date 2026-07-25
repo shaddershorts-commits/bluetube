@@ -234,12 +234,13 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
 }
 
 // ── LISTAR (frontend GET) ────────────────────────────────────────────────────
-// Params: period=24h|7d|30d, country=all|us|br|..., sort=likes|views, limit, offset
+// Params: period=24h|7d|30d, country=all|us|br|..., sort=likes|views|recent, limit, offset
 async function listar(req, res, { SU, h }) {
   const period = req.query.period || '24h';
   const country = req.query.country || 'all';
   const sortParam = req.query.sort || 'likes';
-  const sort = sortParam === 'views' ? 'views_count' : 'likes_count';
+  // 2026-07-25: sort=recent (paridade com a view Instagram) — mais novos primeiro
+  const sort = sortParam === 'views' ? 'views_count' : sortParam === 'recent' ? 'collected_at' : 'likes_count';
   const limit = Math.min(parseInt(req.query.limit) || 20, 100);
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
 

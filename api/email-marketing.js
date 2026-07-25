@@ -181,12 +181,32 @@ module.exports = async function handler(req, res) {
 };
 
 // ── EMAIL TEMPLATES ──────────────────────────────────────────────────────────
-// IMPORTANTE: o primeiro template e o de LANCAMENTO da BlueTendencias.
-// Pra garantir que todos os users recebam ele primeiro na proxima rodada,
-// pode resetar sequence_position=0 via SQL:
+// 2026-07-25: os DOIS primeiros templates sao o LANCAMENTO do Instagram Virais.
+// sequence_position foi resetado pra 0 em toda a base (via PostgREST) — todo
+// mundo recebe os 2 anuncios primeiro (terca + sexta), depois a rotacao segue.
+// Pra repetir a manobra num proximo lancamento:
 //   UPDATE email_marketing SET sequence_position = 0 WHERE unsubscribed = false;
-// Se nao resetar, quem ja esta em posicao >0 vai ver esse template no loop.
 const TEMPLATES = [
+  {
+    subject: '📸 O Instagram abriu o jogo: os Reels que explodiram, com views REAIS',
+    hero: 'Chegou o Instagram Virais — a vitrine dos Reels que o mundo inteiro está assistindo',
+    stat: 'Só entra Reel com 3M+ views e 1M+ likes. Zero ruído.',
+    body: `<p>A ferramenta Virais do BlueTube acaba de ganhar uma nova dimensão: <strong>Reels virais do Instagram com o número REAL de views</strong> — aquele número que o Instagram esconde de todo mundo.</p>
+      <p>No acervo de estreia: vídeos com <strong>até 1,6 BILHÃO de views</strong>, curadoria dos maiores virais da história e perfis gigantes monitorados 24/7. O que explode lá é o roteiro pronto do seu próximo Short.</p>
+      <p style="color:#fbbf24;font-weight:700">YouTube + TikTok + Instagram no mesmo painel. O mapa completo do que está viralizando — exclusivo Master.</p>`,
+    cta: 'Ver os Reels que explodiram →',
+    url: 'https://bluetubeviral.com/virais'
+  },
+  {
+    subject: '🔥 1.600.000.000 de views num vídeo só. E você ainda procurando ideia?',
+    hero: 'Enquanto você pensa no que postar, a resposta já explodiu no Instagram',
+    stat: 'Tendência viaja de plataforma: o que estoura lá, estoura no Shorts dias depois',
+    body: `<p>O novo <strong>Instagram Virais</strong> te entrega os Reels que passaram de <strong>3 milhões de views e 1 milhão de likes</strong> — com métrica verdadeira, atualizada automaticamente.</p>
+      <p>✦ Curadoria dos maiores virais da história<br>✦ Perfis que mais estouram, vigiados de perto<br>✦ Baixe qualquer Reel direto no BaixaBlue<br>✦ Peça pro Blublu: "me traz virais do Instagram"</p>
+      <p style="color:#fbbf24;font-weight:700">Criador que enxerga a tendência antes, publica antes. Botão rosa, dentro da Virais.</p>`,
+    cta: 'Abrir o Instagram Virais agora →',
+    url: 'https://bluetubeviral.com/virais'
+  },
   {
     subject: '🔮 Blublu nasceu pra criadores como você',
     hero: 'A primeira IA brasileira treinada exclusivamente em virais',

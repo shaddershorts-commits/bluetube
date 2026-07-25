@@ -456,7 +456,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="artistas">🎤 Artistas, shows e famosos</option>
         <option value="pessoas_blogs">👤 Pessoas e blogs</option>
         <option value="culinaria">🍳 Culinária</option>
-        <option value="__secreto" id="optNichoSecreto">🔮 Nicho Secreto</option>
+        <option value="__secreto" id="optNichoSecreto" style="color:#fbbf24;font-weight:800">🔮 Nicho Secreto</option>
       </select>
 
       <!-- Botão Notificar diário (Master toggle / Free+Full modal upgrade) -->
@@ -635,10 +635,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <span style="font-size:18px">🔥</span>
         <span>TikTok Virais · 800k+ likes · 8 países</span>
       </div>
-      <!-- Toggle ordenação: Likes (default) ou Views -->
+      <!-- Toggle ordenação: Likes (default), Views ou Recentes -->
       <div style="display:inline-flex;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px;font-family:var(--font);font-size:12px;font-weight:700">
         <button id="tkSortLikes" onclick="tkSetSort('likes',event)" style="padding:6px 12px;border:none;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border-radius:6px;cursor:pointer">❤ Likes</button>
         <button id="tkSortViews" onclick="tkSetSort('views',event)" style="padding:6px 12px;border:none;background:transparent;color:#cbd5e1;border-radius:6px;cursor:pointer">▶ Views</button>
+        <button id="tkSortRecent" onclick="tkSetSort('recent',event)" style="padding:6px 12px;border:none;background:transparent;color:#cbd5e1;border-radius:6px;cursor:pointer">🕐 Recentes</button>
       </div>
     </div>
     <div class="shorts-grid" id="tkGrid"></div>
@@ -1628,21 +1629,17 @@ function tkSetSort(s, e){
   if(e) e.preventDefault();
   if(s === _tkSort) return;
   _tkSort = s;
-  // Atualiza UI dos botões
-  const lk = document.getElementById('tkSortLikes');
-  const vw = document.getElementById('tkSortViews');
-  if(lk && vw){
-    if(s === 'likes'){
-      lk.style.background = 'linear-gradient(135deg,#fbbf24,#f59e0b)';
-      lk.style.color = '#000';
-      vw.style.background = 'transparent';
-      vw.style.color = '#cbd5e1';
-    } else {
-      vw.style.background = 'linear-gradient(135deg,#3b82f6,#1d4ed8)';
-      vw.style.color = '#fff';
-      lk.style.background = 'transparent';
-      lk.style.color = '#cbd5e1';
-    }
+  // Atualiza UI dos botões (3 estados: likes dourado, views azul, recentes verde)
+  const btns = {
+    likes:  { el: document.getElementById('tkSortLikes'),  bg: 'linear-gradient(135deg,#fbbf24,#f59e0b)', fg: '#000' },
+    views:  { el: document.getElementById('tkSortViews'),  bg: 'linear-gradient(135deg,#3b82f6,#1d4ed8)', fg: '#fff' },
+    recent: { el: document.getElementById('tkSortRecent'), bg: 'linear-gradient(135deg,#22c55e,#15803d)', fg: '#fff' },
+  };
+  for(const k in btns){
+    const b = btns[k];
+    if(!b.el) continue;
+    if(k === s){ b.el.style.background = b.bg; b.el.style.color = b.fg; }
+    else { b.el.style.background = 'transparent'; b.el.style.color = '#cbd5e1'; }
   }
   tkListar();
 }
@@ -2187,10 +2184,27 @@ function igFomoClose(e){
   document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('btnBlubluFrase');
     if (el) el.textContent = fraseBlublu();
-    // cadeado na opção Nicho Secreto pra quem não é Master
-    if (planB() !== 'master') {
-      const opt = document.getElementById('optNichoSecreto');
-      if (opt) opt.textContent = '🔒 Nicho Secreto (Master)';
+    // Nicho Secreto DOURADO + piscando (user 2026-07-25): destaque entre as
+    // opções. Cor de <option> funciona em Chromium (maioria); animação CSS não
+    // roda dentro do popup nativo, então o "piscar" é troca de texto via JS —
+    // alterna as sparkles a cada 700ms (reflete no popup aberto em Chromium).
+    // Full/Free mantém o cadeado (clique já abre o popup do Master — código
+    // existente em onNichoChange).
+    const optSec = document.getElementById('optNichoSecreto');
+    if (optSec) {
+      const master = planB() === 'master';
+      const frames = master
+        ? ['✨ 🔮 Nicho Secreto ✨', '🔮 Nicho Secreto']
+        : ['✨ 🔒 Nicho Secreto (Master) ✨', '🔒 Nicho Secreto (Master)'];
+      let fi = 0;
+      optSec.textContent = frames[0];
+      setInterval(() => {
+        // não mexe no texto enquanto ele é a opção selecionada (evita "pulo" no select fechado)
+        const sel = document.getElementById('nichoSelect');
+        if (sel && sel.value === '__secreto') return;
+        fi = 1 - fi;
+        optSec.textContent = frames[fi];
+      }, 700);
     }
   });
 
