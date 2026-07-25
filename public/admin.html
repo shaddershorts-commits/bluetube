@@ -2134,7 +2134,7 @@ async function igvLoadHealth(){
     const r=await fetch('/api/instagram-virais?action=health');
     const d=await r.json();
     const cor = d.status==='OK' ? 'var(--green)' : 'var(--red)';
-    el.innerHTML = `Status: <b style="color:${cor}">${d.status}</b> · ${d.total_videos} Reels no acervo · ${d.perfis_ativos} perfis ativos · métricas atrasadas (48h+): ${d.metricas_atrasadas_48h} · cookies: ${d.cookies_configurados?'✓':'✗ FALTANDO'}`;
+    el.innerHTML = `Status: <b style="color:${cor}">${d.status}</b> · ${d.total_videos} Reels no acervo · ${d.perfis_ativos} perfis ativos · métricas atrasadas (48h+): ${d.metricas_atrasadas_48h} · erros de refresh: ${d.videos_com_erro_recente} · cookies: ${d.cookies_configurados?'✓':'✗ FALTANDO'}`;
   }catch(e){ el.textContent='Erro ao carregar status: '+e.message; }
 }
 
@@ -2188,13 +2188,16 @@ async function igvLoadPerfis(){
     const perfis=d.perfis||[];
     if(!perfis.length){ el.innerHTML='<div class="empty-state">Nenhum perfil monitorado ainda.</div>'; return; }
     el.innerHTML='<table><thead><tr><th>Perfil</th><th>Ativo</th><th>Última coleta</th><th>Erro</th><th></th></tr></thead><tbody>'+
-      perfis.map(p=>`<tr>
-        <td><a href="https://www.instagram.com/${p.username}/" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">@${p.username}</a>${p.full_name?' <span style="color:var(--dim);font-size:11px">'+p.full_name+'</span>':''}</td>
+      perfis.map(p=>{
+        // full_name/last_error são texto de TERCEIRO (dono do perfil IG) — escapar SEMPRE (XSS)
+        const u=escapeHtml(p.username);
+        return `<tr>
+        <td><a href="https://www.instagram.com/${encodeURIComponent(p.username||'')}/" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">@${u}</a>${p.full_name?' <span style="color:var(--dim);font-size:11px">'+escapeHtml(p.full_name)+'</span>':''}</td>
         <td>${p.active?'✅':'⏸️'}</td>
         <td style="font-family:var(--mono);font-size:11px">${p.last_collected_at?new Date(p.last_collected_at).toLocaleString('pt-BR'):'nunca'}</td>
-        <td style="font-family:var(--mono);font-size:10px;color:var(--red);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.last_error||''}</td>
-        <td><button class="action-btn" onclick="igvTogglePerfil('${p.username}',${p.active?'false':'true'})">${p.active?'Pausar':'Reativar'}</button></td>
-      </tr>`).join('')+'</tbody></table>';
+        <td style="font-family:var(--mono);font-size:10px;color:var(--red);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.last_error||'')}</td>
+        <td><button class="action-btn" onclick="igvTogglePerfil('${u.replace(/'/g,'')}',${p.active?'false':'true'})">${p.active?'Pausar':'Reativar'}</button></td>
+      </tr>`;}).join('')+'</tbody></table>';
   }catch(e){ el.innerHTML='<div class="empty-state">Erro: '+e.message+'</div>'; }
 }
 

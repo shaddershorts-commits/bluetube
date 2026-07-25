@@ -46,13 +46,20 @@ module.exports = async function handler(req, res) {
     if (action === 'listar') return await listar(req, res, { SU, h });
     if (action === 'health') return await health(req, res, { SU, h });
 
-    // Daqui pra baixo: cron ou admin
-    if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
+    // Crons (GH Actions com admin_secret; header x-vercel-cron aceito por
+    // compatibilidade) — só ações de coleta, que nunca destroem nada
+    if (action === 'coletar-perfis' || action === 'atualizar-metricas') {
+      if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
+      if (action === 'coletar-perfis') return await coletarPerfis(req, res, { SU, SK, h });
+      return await atualizarMetricas(req, res, { SU, h });
+    }
+
+    // Daqui pra baixo: SÓ admin explícito (header de cron NÃO basta — 'remover'
+    // deleta acervo; blindagem exige que nada externo consiga apagar vídeo)
+    if (!isAdmin) return res.status(401).json({ error: 'unauthorized' });
 
     if (action === 'adicionar') return await adicionar(req, res, { SU, SK, h });
     if (action === 'adicionar-perfil') return await adicionarPerfil(req, res, { SU, SK, h });
-    if (action === 'coletar-perfis') return await coletarPerfis(req, res, { SU, SK, h });
-    if (action === 'atualizar-metricas') return await atualizarMetricas(req, res, { SU, h });
     if (action === 'remover') return await remover(req, res, { SU, h });
     if (action === 'toggle-perfil') return await togglePerfil(req, res, { SU, h });
     if (action === 'listar-perfis') return await listarPerfis(req, res, { SU, h });
@@ -124,12 +131,17 @@ async function mediaParaRow(m, { SU, SK }, extras = {}) {
     author_handle: m.author_handle,
     author_name: m.author_name,
     author_pk: m.author_pk,
-    views_count: m.views_count || 0,
-    likes_count: m.likes_count || 0,
-    comments_count: m.comments_count || 0,
     duration_sec: m.duration_sec,
     ig_created_at: m.ig_created_at,
-    status: 'active',
+    // Métrica zerada NÃO entra no row: se o IG esconder play_count numa
+    // resposta 200 (payload degenerado), o upsert preservaria o valor bom já
+    // salvo em vez de zerar. No insert, o default 0 do banco cobre.
+    ...(m.views_count > 0 ? { views_count: m.views_count } : {}),
+    ...(m.likes_count > 0 ? { likes_count: m.likes_count } : {}),
+    ...(m.comments_count > 0 ? { comments_count: m.comments_count } : {}),
+    // status NUNCA vai no upsert: insert usa o default 'active' do banco, e
+    // update PRESERVA o valor atual — Reel removido pelo admin (tombstone
+    // status='removed') não ressuscita quando o coletor re-encontra ele.
     last_error: null,
     metrics_updated_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
@@ -139,13 +151,24 @@ async function mediaParaRow(m, { SU, SK }, extras = {}) {
 
 async function upsertRows(rows, { SU, h }) {
   if (!rows.length) return true;
-  const r = await fetch(`${SU}/rest/v1/instagram_virais?on_conflict=shortcode`, {
-    method: 'POST',
-    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows),
-  });
-  if (!r.ok) console.error('[ig-virais upsert]', r.status, (await r.text()).slice(0, 200));
-  return r.ok;
+  // PostgREST exige chaves uniformes por lote; como métricas zeradas ficam de
+  // fora do row (guarda anti-zeramento), agrupamos por assinatura de chaves.
+  const grupos = new Map();
+  for (const row of rows) {
+    const sig = Object.keys(row).sort().join(',');
+    if (!grupos.has(sig)) grupos.set(sig, []);
+    grupos.get(sig).push(row);
+  }
+  let ok = true;
+  for (const lote of grupos.values()) {
+    const r = await fetch(`${SU}/rest/v1/instagram_virais?on_conflict=shortcode`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(lote),
+    });
+    if (!r.ok) { console.error('[ig-virais upsert]', r.status, (await r.text()).slice(0, 200)); ok = false; }
+  }
+  return ok;
 }
 
 // ── ADICIONAR (admin cola URL de Reel) ───────────────────────────────────────
@@ -164,9 +187,14 @@ async function adicionar(req, res, { SU, SK, h }) {
       : 'Falha ao consultar o Instagram.';
     return res.status(502).json({ error: dica, detalhe: e.message });
   }
-  if (m.media_type === 1) return res.status(400).json({ error: 'Esse post é uma FOTO — a Virais só aceita vídeos/Reels.' });
+  if (!m.is_video) {
+    const tipo = m.media_type === 8 ? 'um CARROSSEL' : 'uma FOTO';
+    return res.status(400).json({ error: `Esse post é ${tipo} — a Virais só aceita vídeos/Reels.` });
+  }
 
-  const row = await mediaParaRow(m, { SU, SK }, { fonte: 'manual' });
+  // status:'active' explícito AQUI (e só aqui): admin colar a URL de novo é
+  // intenção clara de reativar um Reel que estava com tombstone 'removed'
+  const row = await mediaParaRow(m, { SU, SK }, { fonte: 'manual', status: 'active' });
   // collected_at só no INSERT (upsert não sobrescreve por não estar no body? PostgREST
   // merge-duplicates sobrescreve TODAS as colunas enviadas — então NÃO enviamos collected_at,
   // deixando o default do banco no insert e o valor antigo no update)
@@ -196,6 +224,11 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
         const m = await ig.mediaInfo(body.reel_url);
         if (m.author_handle && m.author_handle.toLowerCase() !== username) {
           return res.status(400).json({ error: `O Reel enviado é de @${m.author_handle}, não de @${username}` });
+        }
+        if (!m.author_pk) {
+          // Sem user_pk o coletor nunca conseguiria buscar esse perfil —
+          // melhor falhar claro agora do que salvar um perfil morto
+          return res.status(502).json({ error: 'O Instagram não retornou o id do autor nesse Reel — tente outro Reel do mesmo perfil.' });
         }
         perfil = { user_pk: m.author_pk, username: m.author_handle || username, full_name: m.author_name };
       } catch (e2) {
@@ -237,7 +270,7 @@ async function adicionarPerfil(req, res, { SU, SK, h }) {
 // ── COLETAR PERFIS (cron) ────────────────────────────────────────────────────
 async function coletarPerfis(req, res, { SU, SK, h }) {
   if (!ig.temCookies()) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
-  const limit = Math.min(10, parseInt(req.query.limit || String(PERFIS_POR_RODADA), 10));
+  const limit = Math.min(10, parseInt(req.query.limit, 10) || PERFIS_POR_RODADA);
   const r = await fetch(
     `${SU}/rest/v1/instagram_perfis?active=eq.true&user_pk=not.is.null&order=last_collected_at.asc.nullsfirst&limit=${limit}&select=username,user_pk`,
     { headers: h }
@@ -273,7 +306,7 @@ async function coletarPerfis(req, res, { SU, SK, h }) {
 // Falha NUNCA esconde o vídeo — só registra last_error e segue a vida.
 async function atualizarMetricas(req, res, { SU, h }) {
   if (!ig.temCookies()) return res.status(200).json({ ok: false, motivo: 'sem_cookies' });
-  const limit = Math.min(50, parseInt(req.query.limit || String(REFRESH_BATCH), 10));
+  const limit = Math.min(50, parseInt(req.query.limit, 10) || REFRESH_BATCH);
   const r = await fetch(
     `${SU}/rest/v1/instagram_virais?status=eq.active&order=metrics_updated_at.asc.nullsfirst&limit=${limit}&select=shortcode`,
     { headers: h }
@@ -286,16 +319,18 @@ async function atualizarMetricas(req, res, { SU, h }) {
     resultado.processados++;
     try {
       const m = await ig.mediaInfo(row.shortcode);
+      // Guarda anti-zeramento: métrica que veio 0 numa resposta 200 não
+      // sobrescreve o valor bom já salvo (IG às vezes esconde play_count)
+      const body = {
+        metrics_updated_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+        last_error: null,
+      };
+      if (m.views_count > 0) body.views_count = m.views_count;
+      if (m.likes_count > 0) body.likes_count = m.likes_count;
+      if (m.comments_count > 0) body.comments_count = m.comments_count;
       await fetch(`${SU}/rest/v1/instagram_virais?shortcode=eq.${encodeURIComponent(row.shortcode)}`, {
-        method: 'PATCH', headers: h,
-        body: JSON.stringify({
-          views_count: m.views_count || 0,
-          likes_count: m.likes_count || 0,
-          comments_count: m.comments_count || 0,
-          metrics_updated_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString(),
-          last_error: null,
-        }),
+        method: 'PATCH', headers: h, body: JSON.stringify(body),
       });
       resultado.atualizados++;
     } catch (e) {
@@ -343,11 +378,14 @@ async function listar(req, res, { SU, h }) {
 }
 
 // ── REMOVER (admin) ──────────────────────────────────────────────────────────
+// Tombstone em vez de DELETE: status='removed' tira da vitrine/Blublu mas a
+// linha fica — o coletor de perfis pode re-encontrar o shortcode e o upsert
+// (que não envia status) preserva a remoção. DELETE físico ressuscitava.
 async function remover(req, res, { SU, h }) {
   const shortcode = (req.body && req.body.shortcode) || req.query.shortcode;
   if (!shortcode) return res.status(400).json({ error: 'shortcode obrigatorio' });
   const r = await fetch(`${SU}/rest/v1/instagram_virais?shortcode=eq.${encodeURIComponent(shortcode)}`, {
-    method: 'DELETE', headers: h,
+    method: 'PATCH', headers: h, body: JSON.stringify({ status: 'removed' }),
   });
   return res.status(r.ok ? 200 : 500).json({ ok: r.ok });
 }
@@ -389,9 +427,13 @@ async function health(req, res, { SU, h }) {
     perfis_ativos: count(perfisR),
     metricas_atrasadas_48h: metricasVelhas,
     videos_com_erro_recente: comErro,
-    // Conta caiu? Vídeos continuam no ar (banco = fonte da verdade); o sinal
-    // de problema é metricas_atrasadas subindo + videos_com_erro subindo.
+    // Conta caiu? Vídeos continuam no ar (banco = fonte da verdade). Dois
+    // sinais de problema independentes: last_error acumulando (refresh RODA
+    // mas falha — sessão morta/checkpoint; o refresh renova metrics_updated_at
+    // até em falha, então SÓ o erro detecta isso) e métricas atrasadas
+    // (cron parou de rodar).
     status: !ig.temCookies() ? 'SEM_COOKIES'
+      : totalVideos >= 5 && comErro / totalVideos > 0.3 ? 'DEGRADED_REFRESH_FALHANDO'
       : totalVideos > 0 && metricasVelhas / totalVideos > 0.5 ? 'DEGRADED_METRICAS_PARADAS'
       : 'OK',
   });
