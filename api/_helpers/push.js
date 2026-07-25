@@ -62,4 +62,49 @@ async function sendPushToUser(userId, { title, body, data, sound, priority } = {
   }
 }
 
-module.exports = { sendPushToUser };
+// Envio em LOTE (fan-out: "criador que você segue postou"). 1 query pega os
+// tokens de TODOS os userIds; Expo aceita até 100 mensagens por request.
+async function sendPushToUsers(userIds, { title, body, data, sound, priority } = {}) {
+  const SU = process.env.SUPABASE_URL;
+  const SK = process.env.SUPABASE_SERVICE_KEY;
+  if (!SU || !SK || !Array.isArray(userIds) || !userIds.length) return { ok: false, sent: 0 };
+  const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+  const ids = userIds.slice(0, 1000).map(encodeURIComponent).join(',');
+  const tR = await fetch(`${SU}/rest/v1/user_push_tokens?user_id=in.(${ids})&select=expo_push_token`, { headers: h });
+  if (!tR.ok) return { ok: false, error: 'db_fail' };
+  const tokens = (await tR.json())
+    .map((r) => r.expo_push_token)
+    .filter((t) => typeof t === 'string' && t.startsWith('ExponentPushToken'));
+  if (!tokens.length) return { ok: true, sent: 0 };
+  let sent = 0;
+  for (let i = 0; i < tokens.length; i += 100) {
+    const messages = tokens.slice(i, i + 100).map((to) => ({
+      to, sound: sound || 'default', title: title || 'BlueTube', body: body || '',
+      data: data || {}, priority: priority || 'high',
+    }));
+    try {
+      const r = await fetch(EXPO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(messages),
+      });
+      const d = await r.json().catch(() => ({}));
+      const invalid = [];
+      if (Array.isArray(d.data)) {
+        d.data.forEach((receipt, k) => {
+          if (receipt.status === 'error' && receipt.details && receipt.details.error === 'DeviceNotRegistered') {
+            invalid.push(messages[k].to);
+          }
+        });
+      }
+      if (invalid.length) {
+        const inList = invalid.map((t) => `"${t}"`).join(',');
+        await fetch(`${SU}/rest/v1/user_push_tokens?expo_push_token=in.(${inList})`, { method: 'DELETE', headers: h }).catch(() => {});
+      }
+      sent += messages.length - invalid.length;
+    } catch (e) { /* chunk falhou: segue os próximos */ }
+  }
+  return { ok: true, sent };
+}
+
+module.exports = { sendPushToUser, sendPushToUsers };

@@ -165,6 +165,33 @@ module.exports = async function handler(req, res) {
     const vData = await vR.json();
     const video = Array.isArray(vData) ? vData[0] : vData;
 
+    // ── NOTIFICA SEGUIDORES: "criador que você segue postou" (estilo
+    // Instagram, user 2026-07-24). AWAITED (fire-and-forget morre no
+    // serverless); push em LOTE (1 query de tokens + chunks de 100 na Expo)
+    // e inbox em 1 INSERT de array. Cap 1000 seguidores. Fail-soft total.
+    try {
+      const fR = await fetch(`${SU}/rest/v1/blue_follows?following_id=eq.${userId}&select=follower_id&limit=1000`, { headers: h });
+      const seguidores = fR.ok ? (await fR.json()).map((x) => x.follower_id).filter(Boolean) : [];
+      if (seguidores.length) {
+        const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
+        const quem = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
+        const titulo = '🎬 Novo vídeo';
+        const mensagem = `@${quem} postou: "${String(cleanTitle || '').slice(0, 50)}${(cleanTitle || '').length > 50 ? '…' : ''}"`;
+        await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify(seguidores.map((uid) => ({
+            user_id: uid, tipo: 'new_post', titulo, mensagem,
+            dados: { from_user_id: userId, video_id: videoId },
+          }))),
+        }).catch(() => null);
+        const { sendPushToUsers } = require('./_helpers/push.js');
+        await sendPushToUsers(seguidores, {
+          title: titulo, body: mensagem,
+          data: { tipo: 'new_post', from_user_id: userId, video_id: videoId, url: '/blue' },
+        }).catch(() => null);
+      }
+    } catch (e) { /* fail-soft: fan-out nunca quebra o upload */ }
+
     // ── LEGENDAS AUTOMÁTICAS (assíncrona) ────────────────────────────────
     const SITE = process.env.SITE_URL || 'https://bluetubeviral.com';
     fetch(`${SITE}/api/blue-legendas`, {

@@ -275,6 +275,42 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // ── MARCOS "seu vídeo tá indo bem" (estilo Instagram, user 2026-07-24) ──
+    // Dispara UMA vez quando o contador CRUZA o degrau (old < T <= new) —
+    // como o incremento é +1 por evento, cada degrau notifica só uma vez.
+    // AWAITED (fire-and-forget morre no serverless) e raro (só no cruzamento).
+    try {
+      const fmtN = (n) => n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + ' mi' : n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + ' mil' : String(n);
+      const marcos = [];
+      if (patch.views !== undefined) {
+        for (const T of [100, 1000, 10000, 50000, 100000, 500000, 1000000]) {
+          if ((v.views || 0) < T && patch.views >= T) marcos.push({ metric: 'views', T, titulo: '🚀 Seu vídeo tá voando!', msg: `Passou de ${fmtN(T)} visualizações` });
+        }
+      }
+      if (patch.likes !== undefined && type === 'like') {
+        for (const T of [10, 50, 100, 500, 1000, 5000, 10000]) {
+          if ((v.likes || 0) < T && patch.likes >= T) marcos.push({ metric: 'likes', T, titulo: '❤️ Seu vídeo tá bombando!', msg: `Bateu ${fmtN(T)} curtidas` });
+        }
+      }
+      for (const m of marcos) {
+        if (!v.user_id) break;
+        await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+          method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            user_id: v.user_id, tipo: 'milestone', titulo: m.titulo, mensagem: m.msg,
+            dados: { video_id, metric: m.metric, valor: m.T },
+          }),
+        }).catch(() => null);
+        try {
+          const { sendPushToUser } = require('./_helpers/push.js');
+          await sendPushToUser(v.user_id, {
+            title: m.titulo, body: m.msg,
+            data: { tipo: 'milestone', video_id, url: '/blue' },
+          }).catch(() => null);
+        } catch (e) {}
+      }
+    } catch (e) { /* fail-soft: marco nunca quebra a interação */ }
+
     return res.status(200).json({ ok: true, score: patch.score });
   } catch(err) {
     console.error('blue-interact error:', err.message);

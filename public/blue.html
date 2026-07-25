@@ -6259,5 +6259,31 @@ setProfileHeader = function(p,isOwn){
 
 </script>
 
+<!-- ── Banner "Baixe o app" — SÓ Android (iOS entra quando a Apple aprovar) ── -->
+<div id="appBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:9500;background:linear-gradient(135deg,#07182e,#0a2440);border:1px solid rgba(0,170,255,.45);border-radius:16px;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.55);align-items:center;gap:12px">
+  <span style="font-size:26px">📱</span>
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:800;font-size:13.5px;color:#e8f4ff">Blue no seu celular</div>
+    <div style="font-size:11px;color:rgba(200,225,255,.65)">Feed, chat e notificações — melhor no app</div>
+  </div>
+  <a id="appBannerGo" href="https://play.google.com/store/apps/details?id=com.bluetube.app" target="_blank" rel="noopener" style="flex-shrink:0;background:linear-gradient(135deg,#00aaff,#0077ff);color:#fff;font-weight:800;font-size:12.5px;padding:9px 16px;border-radius:10px;text-decoration:none">Baixar</a>
+  <button id="appBannerX" style="flex-shrink:0;background:none;border:none;color:rgba(200,225,255,.5);font-size:16px;cursor:pointer;padding:4px" aria-label="Fechar">✕</button>
+</div>
+<script>
+(function(){
+  try {
+    var ua = navigator.userAgent || '';
+    if (!/Android/i.test(ua)) return;                       // só Android (por ora)
+    if (localStorage.getItem('bt_app_banner_off')) return;  // já dispensou
+    var b = document.getElementById('appBanner');
+    b.style.display = 'flex';
+    document.getElementById('appBannerX').addEventListener('click', function(){
+      b.style.display = 'none';
+      try { localStorage.setItem('bt_app_banner_off', '1'); } catch(e) {}
+    });
+  } catch(e) {}
+})();
+</script>
+
 </body>
 </html>

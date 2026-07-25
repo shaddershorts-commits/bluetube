@@ -68,9 +68,10 @@ module.exports = async function handler(req, res) {
       // Ja curtiu? (unique comment_id+user_id)
       const exR = await fetch(`${SU}/rest/v1/blue_comment_likes?comment_id=eq.${comment_id}&user_id=eq.${userId}&select=id`, { headers: h });
       const existing = exR.ok ? await exR.json() : [];
-      // Contador atual
-      const cR = await fetch(`${SU}/rest/v1/blue_comments?id=eq.${comment_id}&select=likes`, { headers: h });
-      const cur = cR.ok ? (await cR.json())?.[0]?.likes || 0 : 0;
+      // Contador atual (+ autor e texto pro push de curtida)
+      const cR = await fetch(`${SU}/rest/v1/blue_comments?id=eq.${comment_id}&select=likes,user_id,text,video_id`, { headers: h });
+      const com = cR.ok ? (await cR.json())?.[0] : null;
+      const cur = com?.likes || 0;
 
       let liked, likes;
       if (existing.length) {
@@ -88,6 +89,28 @@ module.exports = async function handler(req, res) {
         method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
         body: JSON.stringify({ likes }),
       }).catch(() => null);
+      // ── notifica o AUTOR do comentário (só na curtida, não no descurtir;
+      //    estilo Instagram "curtiu seu comentário" — user 2026-07-24) ──
+      if (liked && com?.user_id && com.user_id !== userId) {
+        try {
+          const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
+          const uname = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
+          const trecho = String(com.text || '').slice(0, 40);
+          const mensagem = `@${uname} curtiu seu comentário${trecho ? `: "${trecho}${(com.text || '').length > 40 ? '…' : ''}"` : ''}`;
+          await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+            method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+            body: JSON.stringify({
+              user_id: com.user_id, tipo: 'comment_like', titulo: 'Curtida no comentário', mensagem,
+              dados: { from_user_id: userId, video_id: com.video_id, comment_id },
+            }),
+          }).catch(() => null);
+          const { sendPushToUser } = require('./_helpers/push.js');
+          await sendPushToUser(com.user_id, {
+            title: 'Curtida no comentário', body: mensagem,
+            data: { tipo: 'comment_like', from_user_id: userId, video_id: com.video_id, url: '/blue' },
+          }).catch(() => null);
+        } catch (e) { /* fail-soft */ }
+      }
       return res.status(200).json({ ok: true, liked, likes });
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
@@ -165,6 +188,7 @@ module.exports = async function handler(req, res) {
       // Removida tentativa de INSERT em blue_notifications (tabela LEGACY
       // que NÃO existe — confirmado PGRST205, dead code silencioso). Mantida
       // apenas a tabela ativa blue_notificacoes (lida por blue-interact action=notificacoes).
+      const jaNotificados = new Set([userId]); // dedupe: menção não repete notif
       try {
         // Resposta → notifica o autor do comentário-pai; raiz → dono do vídeo
         let targetId = null;
@@ -177,6 +201,7 @@ module.exports = async function handler(req, res) {
         }
         {
           const ownerId = targetId;
+          if (ownerId) jaNotificados.add(ownerId);
           if (ownerId && ownerId !== userId) {
             const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
             const username = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
@@ -202,6 +227,40 @@ module.exports = async function handler(req, res) {
           }
         }
       } catch(e) {}
+
+      // ── MENÇÕES @usuario no comentário (estilo Instagram, user 2026-07-24) ──
+      // Até 3 menções; não repete quem já foi notificado acima.
+      try {
+        const handles = [...new Set(
+          [...cleanText.matchAll(/@([a-z0-9_.]{3,30})/gi)].map((m) => m[1].toLowerCase())
+        )].slice(0, 3);
+        if (handles.length) {
+          const inList = handles.map((u) => `"${u}"`).join(',');
+          const mR = await fetch(`${SU}/rest/v1/blue_profiles?username=in.(${inList})&select=user_id,username`, { headers: h });
+          const alvos = mR.ok ? await mR.json() : [];
+          if (alvos.length) {
+            const pr = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${userId}&select=username`, { headers: h });
+            const quem = pr.ok ? (await pr.json())?.[0]?.username || 'alguém' : 'alguém';
+            const { sendPushToUser } = require('./_helpers/push.js');
+            for (const alvo of alvos) {
+              if (!alvo.user_id || jaNotificados.has(alvo.user_id)) continue;
+              jaNotificados.add(alvo.user_id);
+              const mensagem = `@${quem} mencionou você em um comentário`;
+              await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+                method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+                body: JSON.stringify({
+                  user_id: alvo.user_id, tipo: 'mention', titulo: 'Você foi mencionado', mensagem,
+                  dados: { from_user_id: userId, video_id, comment_id: comment?.id || null },
+                }),
+              }).catch(() => null);
+              await sendPushToUser(alvo.user_id, {
+                title: 'Você foi mencionado', body: mensagem,
+                data: { tipo: 'mention', from_user_id: userId, video_id, url: '/blue' },
+              }).catch(() => null);
+            }
+          }
+        }
+      } catch (e) { /* fail-soft */ }
 
       return res.status(200).json({ comment });
     } catch(e) { return res.status(500).json({ error: e.message }); }
