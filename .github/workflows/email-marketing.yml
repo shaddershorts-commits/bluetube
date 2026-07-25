@@ -1,0 +1,39 @@
+name: Email Marketing — Sequência automática (ter/sex)
+
+# Religa a sequência de email marketing (desligada no corte Resend Free de
+# julho; Resend agora é PRO 50k/mês — verificado no painel 2026-07-25).
+#
+# Como funciona (api/email-marketing.js):
+#   - Só FREE users (pagantes/cancelados nunca recebem marketing)
+#   - Conta precisa ter 3+ dias; 1 email a cada 10+ dias por pessoa
+#   - Rotação de 10 templates (2 primeiros = lançamento Instagram Virais)
+#   - Cap 200 envios/rodada; respeita unsubscribe e recovery pendente
+#   - Ciclo completo por usuário ≈ 100 dias, e depois recomeça — roda pra sempre
+#
+# Volume: ~450 contas hoje × ~3 emails/mês ≈ 1.400/mês — folga enorme no Pro.
+
+on:
+  schedule:
+    # Terças e sextas 13:17 UTC (10:17 BRT) — minuto não-redondo (fila GH)
+    - cron: '17 13 * * 2,5'
+  workflow_dispatch: {}
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Dispara rodada de email marketing
+        run: |
+          echo "Iniciando às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP_CODE=$(curl -sS --max-time 300 \
+            -w "%{http_code}" \
+            -o /tmp/resp.json \
+            "https://bluetube-ten.vercel.app/api/email-marketing?admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Rodada falhou com HTTP $HTTP_CODE"
+            cat /tmp/resp.json | head -c 500
+            exit 1
+          fi
+          node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log('✓ enviados:',d.sent,'| elegíveis:',d.eligible,'| sync novos:',d.synced,'| erros:',d.errors)"

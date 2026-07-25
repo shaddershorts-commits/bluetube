@@ -14,6 +14,13 @@ module.exports = async function handler(req, res) {
   const RESEND = process.env.RESEND_API_KEY;
   if (!SU || !SK || !RESEND) return res.status(200).json({ ok: false, error: 'Missing env' });
 
+  // Auth (2026-07-25): endpoint era público — qualquer um podia disparar
+  // rodadas ou usar test_emails como canhão de spam. Cron GH passa admin_secret;
+  // header x-vercel-cron aceito por compatibilidade com o cron Vercel antigo.
+  const isCron = !!req.headers['x-vercel-cron'];
+  const isAdmin = (req.query.admin_secret || (req.body && req.body.admin_secret)) === process.env.ADMIN_SECRET;
+  if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
+
   const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
   const now = new Date();
   const results = { synced: 0, sent: 0, skipped: 0, errors: 0 };
