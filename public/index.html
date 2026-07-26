@@ -4525,7 +4525,9 @@ function applyLocalPrices(){
       const m = el.textContent.match(/R\$\s*([\d,.]+)/);
       if(m){
         const val = parseFloat(m[1].replace('.','').replace(',','.'));
-        if(val > 0) el.innerHTML = localPrice(val) + '<span>/mês</span>';
+        // sufixo traduzido: applyLocalPrices roda DEPOIS do applyTranslations e
+        // re-injetava '/mês' hardcoded por cima da tradução (auditoria 2026-07-25)
+        if(val > 0) el.innerHTML = localPrice(val) + '<span>' + (siteLang === 'en' ? '/mo' : '/mês') + '</span>';
       }
     }
   });
@@ -4705,6 +4707,54 @@ function applyTranslations(){
   };
   const _adaptHintEl = document.getElementById('adaptHint');
   if(_adaptHintEl && _adaptHints[siteLang]) _adaptHintEl.textContent = _adaptHints[siteLang];
+
+  // ── HERO CONCEITO ATUAL (2026-07-25) ─────────────────────────────────────
+  // O hero pivotou pra "Hub de ferramentas" mas hero_1/hero_2 do dicionário
+  // antigo sobrescreviam com o título da era anterior. Chaves novas
+  // (hero_plain/hero_gradient/hero_sub_html) vencem quando existem — hoje só
+  // o EN tem (via EN_OVERRIDES); os demais idiomas mantêm o comportamento.
+  if(s.hero_plain || s.hero_gradient){
+    const tp = document.querySelector('.hero-title .title-plain, #heroTitle1');
+    const tg = document.querySelector('.hero-title .title-gradient, #heroTitle2');
+    if(tp && s.hero_plain) tp.textContent = s.hero_plain;
+    if(tg && s.hero_gradient) tg.textContent = s.hero_gradient;
+  }
+  if(s.hero_sub_html) setQHTML('.hero-sub', s.hero_sub_html);
+  if(s.page_title) document.title = s.page_title;
+  if(s.page_meta){
+    const md = document.querySelector('meta[name="description"]');
+    if(md) md.setAttribute('content', s.page_meta);
+  }
+
+  // ── PASSE GENÉRICO EN (2026-07-25) ───────────────────────────────────────
+  // Auditoria com IP dos EUA achou 260+ textos PT vazando (ferramentas,
+  // planos, FAQ, modais — tudo que nasceu depois do Sprint 2 de i18n).
+  // EN_TEXT_MAP (translations-en-overrides.js) mapeia texto exato PT→EN e um
+  // tree-walk troca cada nó. norm remove variation selectors (emoji ⚠️/✏️
+  // variam) e colapsa espaços. Sonda: _scripts/en_leak_probe.mjs.
+  if(siteLang === 'en' && window.EN_TEXT_MAP){
+    try{
+      const norm = (t) => t.normalize('NFC').replace(/[︎️​-‍]/g,'').replace(/\s+/g,' ').trim();
+      const mapa = {};
+      for(const k in window.EN_TEXT_MAP) mapa[norm(k)] = window.EN_TEXT_MAP[k];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while((node = walker.nextNode())){
+        const p = node.parentElement;
+        if(!p) continue;
+        const tag = p.tagName;
+        if(tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+        const tr = mapa[norm(node.textContent || '')];
+        if(tr) node.textContent = tr;
+      }
+      if(window.EN_PH_MAP){
+        for(const id in window.EN_PH_MAP){
+          const el = document.getElementById(id);
+          if(el) el.placeholder = window.EN_PH_MAP[id];
+        }
+      }
+    }catch(e){ console.warn('[i18n EN pass]', e && e.message); }
+  }
 
   console.log(`🌍 Site fully translated to: ${siteLang} (${Object.keys(s).length} strings)`);
 }
