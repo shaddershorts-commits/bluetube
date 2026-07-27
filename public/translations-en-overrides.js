@@ -348,6 +348,7 @@ window.EN_TEXT_MAP = {
   '↪ Sair': '↪ Log out',
 
   // ── Oferta de Ativação (popup pós-cadastro) ──
+  '⚠️ Não feche essa página': "⚠️ Don't close this page",
   'Oferta de boas-vindas —': 'Welcome offer —',
   'só nesta tela': 'this screen only',
   'Master por': 'Master at',
