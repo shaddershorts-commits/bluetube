@@ -5191,7 +5191,10 @@ function toggleBlublu(){
   bubble.classList.toggle('on');
 }
 function showBlublu(){
-  if(blubluShown)return;
+  // Já mandou feedback alguma vez? NUNCA mais aparece (user 2026-07-27) —
+  // flag persistente gravada no sendBluBluFeedback. Vale pra todo plano
+  // (Master incluído — era o caso mais irritante).
+  if(blubluShown || localStorage.getItem('bt_blublu_fb_done'))return;
   blubluShown=true;
   const container=document.getElementById('blubluContainer');
   container.style.display='block';
@@ -5208,6 +5211,8 @@ async function sendBluBluFeedback(){
       body:JSON.stringify({email:currentUserEmail||'anônimo',plan:userPlan,message:msg,type:'feedback',token:localStorage.getItem('bt_token')})
     });
   }catch(e){}
+  // Respondeu 1 vez = nunca mais pergunta (flag lida no showBlublu)
+  try{ localStorage.setItem('bt_blublu_fb_done','1'); }catch(e){}
   document.getElementById('blubluInput').value='';
   document.getElementById('blubluMsg').innerHTML='Estou levando sua mensagem para meu dono, obrigado pelo seu feedback! 🚀';
   document.getElementById('blubluChat').style.display='none';
