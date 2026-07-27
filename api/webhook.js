@@ -474,6 +474,18 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       return;
     }
 
+    // ── OFERTA DE ATIVAÇÃO (2026-07-27): marca conversão no funil ──────────
+    // Fail-soft e fire-and-forget: NUNCA interfere no fluxo de pagamento.
+    if (session.metadata?.activation_offer === '1') {
+      try {
+        fetch(`${SUPABASE_URL}/rest/v1/activation_offers?email=eq.${encodeURIComponent(String(email).toLowerCase().trim())}`, {
+          method: 'PATCH',
+          headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'converted', decided_at: new Date().toISOString(), checkout_session_id: session.id }),
+        }).catch(() => {});
+      } catch (e) { /* silencioso — funil nunca quebra pagamento */ }
+    }
+
     // ── PIX MODE detection (2026-06-25): pagamento avulso 13 meses ─────────
     // Pix Stripe = mode=payment (one-time). Sem subscription_id, sem renovação
     // automática. Bonus: 13 meses (396 dias) pelo preço de 12 — alinha com a

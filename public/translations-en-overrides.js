@@ -346,6 +346,27 @@ window.EN_TEXT_MAP = {
   '↓ .TXT': '↓ .TXT',
   'Informações da conta': 'Account details',
   '↪ Sair': '↪ Log out',
+
+  // ── Oferta de Ativação (popup pós-cadastro) ──
+  'Oferta de boas-vindas —': 'Welcome offer —',
+  'só nesta tela': 'this screen only',
+  'Master por': 'Master at',
+  'R$ 44,99/mês nos seus 2 primeiros meses': '50% off your first 2 months',
+  '— depois volta ao preço normal.': '— then back to full price.',
+  '🔥 Virais': '🔥 Virals',
+  '— os vídeos explodindo AGORA no TikTok, YouTube e Instagram, com views reais': '— the videos blowing up RIGHT NOW on TikTok, YouTube and Instagram, with real views',
+  '— a IA limpa o vídeo: remove legendas, setas e marcas d\'água sozinha': '— AI cleans the video: removes captions, arrows and watermarks on its own',
+  '— baixe em HD de todas as plataformas, sem anúncio e com metadados limpos': '— download in HD from every platform, ad-free, with clean metadata',
+  '⏳ Expira em': '⏳ Expires in',
+  '· essa oferta não se repete — nem amanhã, nem no upgrade': "· this offer won't repeat — not tomorrow, not at upgrade",
+  '👑 Ativar meu Master com 50% →': '👑 Activate my Master at 50% off →',
+  'Prefiro pagar preço cheio depois': "I'd rather pay full price later",
+  'Tem certeza?': 'Are you sure?',
+  'Essa oferta': 'This offer',
+  'não volta': 'never comes back',
+  '. Fechando agora, o Master fica R$ 89,99/mês pra sempre.': '. Close it now and Master stays full price forever.',
+  '← Voltar pra oferta': '← Back to the offer',
+  'Perder a oferta pra sempre': 'Lose the offer forever',
 };
 
 // Placeholders PT → EN (inputs/textareas por id)

@@ -125,7 +125,7 @@ export default async function handler(req, res) {
   const i18nMod = await import('./_helpers/i18n.js');
   const { t } = i18nMod.default || i18nMod;
 
-  const { plan, billing, token, ref, currency: rawCurrency, lang } = req.body || {};
+  const { plan, billing, token, ref, currency: rawCurrency, lang, activation_offer } = req.body || {};
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
   const SITE_URL      = process.env.SITE_URL || 'https://bluetubeviral.com';
   const SUPABASE_URL  = process.env.SUPABASE_URL;
@@ -204,6 +204,42 @@ export default async function handler(req, res) {
   // dashboard que nao foi liberada). Frontend agora chama /api/asaas-create-pix
   // em vez deste endpoint quando paga via Pix. Este endpoint trata so cartao.
 
+  // ── OFERTA DE ATIVAÇÃO (2026-07-27): Master mensal 50% x2 meses ──────────
+  // O front pede activation_offer:true, mas quem DECIDE é o banco: revalida
+  // a janela na activation_offers (status shown/accepted e não expirada).
+  // Parâmetro forjado no console sem elegibilidade = checkout normal negado
+  // com mensagem clara. Cupom percent_off funciona em todas as moedas.
+  let activationOfferOk = false;
+  if (activation_offer === true) {
+    if (plan !== 'master' || billingKey !== 'monthly') {
+      return res.status(400).json({ error: lang === 'en' ? 'This offer is Master monthly only.' : 'Essa oferta é só pro Master mensal.' });
+    }
+    if (!customerEmail) {
+      return res.status(401).json({ error: lang === 'en' ? 'Sign in to use this offer.' : 'Entre na sua conta pra usar a oferta.' });
+    }
+    try {
+      const SK = process.env.SUPABASE_SERVICE_KEY;
+      const offR = await fetch(
+        `${SUPABASE_URL}/rest/v1/activation_offers?email=eq.${encodeURIComponent(customerEmail.toLowerCase().trim())}&select=status,expires_at`,
+        { headers: { apikey: SK, Authorization: 'Bearer ' + SK } }
+      );
+      const off = offR.ok ? (await offR.json())[0] : null;
+      const janelaAberta = off && ['shown', 'accepted'].includes(off.status) && new Date(off.expires_at) > new Date();
+      if (!janelaAberta) {
+        return res.status(400).json({ error: lang === 'en' ? 'This offer has expired.' : 'Essa oferta expirou.' });
+      }
+      activationOfferOk = true;
+      // marca accepted (não bloqueia se falhar — o webhook marca converted no pagamento)
+      fetch(`${SUPABASE_URL}/rest/v1/activation_offers?email=eq.${encodeURIComponent(customerEmail.toLowerCase().trim())}`, {
+        method: 'PATCH',
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'accepted', decided_at: new Date().toISOString() }),
+      }).catch(() => {});
+    } catch (e) {
+      return res.status(400).json({ error: lang === 'en' ? 'Could not validate the offer. Try again.' : 'Não consegui validar a oferta. Tenta de novo.' });
+    }
+  }
+
   try {
     const params = new URLSearchParams({
       'mode': 'subscription',
@@ -211,12 +247,20 @@ export default async function handler(req, res) {
       'line_items[0][quantity]': '1',
       'success_url': `${SITE_URL}?payment=success&plan=${plan}`,
       'cancel_url':  `${SITE_URL}?payment=cancelled`,
-      'allow_promotion_codes': 'true',
       'metadata[plan]': plan,
       'metadata[billing]': billing || 'monthly',
       'metadata[currency]': currency,
       'metadata[payment_type]': 'card',
     });
+    if (activationOfferOk) {
+      // Cupom pré-aplicado: 50% por 2 meses (duration repeating). Stripe NÃO
+      // permite discounts + allow_promotion_codes juntos — e é o comportamento
+      // certo: ninguém empilha outro código por cima da oferta.
+      params.set('discounts[0][coupon]', process.env.ACTIVATION_COUPON_ID || 'master-ativacao-50x2');
+      params.set('metadata[activation_offer]', '1');
+    } else {
+      params.set('allow_promotion_codes', 'true');
+    }
     if (useFallback) {
       // Fallback BRL: price_data inline (compat lógica antiga)
       const amount = FALLBACK_BRL_AMOUNTS[plan][billingKey];
