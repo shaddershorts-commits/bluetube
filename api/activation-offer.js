@@ -17,7 +17,6 @@
 // tabela). Quem marca 'converted' é o webhook (pagamento confirmado).
 
 const OFFER_WINDOW_MIN = 15;            // contador honesto: 15min server-side
-const SIGNUP_MAX_AGE_H = 48;            // só conta recém-criada
 
 async function resolverUsuario(token, { SU, ANON }) {
   if (!token) return null;
@@ -112,10 +111,9 @@ module.exports = async function handler(req, res) {
       if (sub && sub.plan && sub.plan !== 'free') {
         return res.status(200).json({ eligible: false, status: 'paid' });
       }
-      // Conta velha demais? Oferta é de ATIVAÇÃO (pós-cadastro)
-      if (sub && sub.created_at && Date.now() - new Date(sub.created_at).getTime() > SIGNUP_MAX_AGE_H * 3600000) {
-        return res.status(200).json({ eligible: false, status: 'too_old' });
-      }
+      // SEM trava de idade da conta (decisão do user no lançamento 2026-07-27):
+      // a base free EXISTENTE também vê a oferta — uma única vez, no próximo
+      // uso. A garantia de unicidade continua sendo a PK da tabela.
 
       // Elegível → cria a janela (INSERT; conflito = corrida entre 2 abas,
       // re-lê e devolve o estado real)

@@ -5693,7 +5693,7 @@ function exportScriptAsImage(scriptId){
       if(ms<=0){
         clearInterval(timerInt);timerInt=null;
         el.textContent='00:00';
-        try{localStorage.removeItem('bt_act_offer');}catch(e){}
+        try{localStorage.removeItem('bt_act_offer');localStorage.setItem('bt_act_offer_done','1');}catch(e){}
         track('Expired');
         fechar();
         return;
@@ -5715,7 +5715,8 @@ function exportScriptAsImage(scriptId){
         expiresAt=d.expires_at;
         abrir();
       }else{
-        try{localStorage.removeItem('bt_act_offer');}catch(e){}
+        // resposta terminal (afiliado/pagante/já viu/expirou): nunca mais consulta
+        try{localStorage.removeItem('bt_act_offer');localStorage.setItem('bt_act_offer_done','1');}catch(e){}
       }
     }catch(e){}
   }
@@ -5729,9 +5730,19 @@ function exportScriptAsImage(scriptId){
     setTimeout(function(){if(localStorage.getItem('bt_act_offer')==='pending'){localStorage.setItem('bt_act_offer','fired');checarEMostrar();}},90000);
   };
   window.actOfferOnResults=function(){
-    if(localStorage.getItem('bt_act_offer')==='pending'){
+    var hint=localStorage.getItem('bt_act_offer');
+    if(hint==='pending'){
       localStorage.setItem('bt_act_offer','fired');
       setTimeout(checarEMostrar,2500); // deixa a pessoa VER o roteiro primeiro
+      return;
+    }
+    // BASE EXISTENTE (user, lançamento 2026-07-27): free antigo logado também
+    // vê a oferta no próximo uso real (roteiro gerado). 1 consulta por
+    // navegador — resposta terminal grava bt_act_offer_done e nunca repete.
+    // Afiliado/pagante/já-visto: o backend responde not-eligible na 1ª vez.
+    if(!hint && !localStorage.getItem('bt_act_offer_done') && localStorage.getItem('bt_token')){
+      localStorage.setItem('bt_act_offer','fired');
+      setTimeout(checarEMostrar,2500);
     }
   };
   window.actOfferAccept=function(){
@@ -5749,7 +5760,7 @@ function exportScriptAsImage(scriptId){
   };
   window.actOfferDecline=function(){
     track('Declined');
-    try{localStorage.removeItem('bt_act_offer');}catch(e){}
+    try{localStorage.removeItem('bt_act_offer');localStorage.setItem('bt_act_offer_done','1');}catch(e){}
     document.getElementById('actOfferConfirm').style.display='none';
     fechar();
     if(PREVIEW)return;
