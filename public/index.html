@@ -5652,9 +5652,15 @@ function exportScriptAsImage(scriptId){
     <div style="font-family:monospace;font-size:13px;color:#fbbf24;margin-bottom:14px">⏳ Expira em <strong id="actOfferTimer" style="font-size:16px">15:00</strong> · essa oferta não se repete — nem amanhã, nem no upgrade</div>
     <button onclick="actOfferAccept()" style="display:block;width:100%;padding:16px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1020;border:none;border-radius:12px;font-size:15px;font-weight:900;cursor:pointer;letter-spacing:.01em;box-shadow:0 6px 24px rgba(251,191,36,.3)">👑 Ativar meu Master com 50% →</button>
     <button onclick="actOfferAskDecline()" style="display:block;width:100%;padding:10px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer;margin-top:6px">Prefiro pagar preço cheio depois</button>
-    <div id="actOfferConfirm" style="display:none;position:absolute;inset:0;background:rgba(10,16,32,.97);border-radius:20px;padding:34px 28px;flex-direction:column;align-items:center;justify-content:center;gap:14px">
-      <div style="font-size:34px">⚠️</div>
-      <div style="color:#fff;font-weight:800;font-size:17px">Tem certeza?</div>
+    <div id="actOfferConfirm" style="display:none;position:absolute;inset:0;background:rgba(10,16,32,.97);border-radius:20px;padding:26px 24px;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+      <!-- Vídeo do Blublu = o "tem certeza?" (toca com som — veio de clique).
+           Botões SEMPRE visíveis desde o 1º segundo (ninguém é refém do vídeo).
+           Se o vídeo falhar, o fallback ⚠️ de texto assume no onerror. -->
+      <video id="actOfferVideo" preload="none" playsinline style="width:100%;max-height:240px;border-radius:14px;background:#000;border:1px solid rgba(251,191,36,.35)"
+        onerror="this.style.display='none';var f=document.getElementById('actOfferVidFallback');if(f)f.style.display='block';">
+        <source src="/blublu-ultima-chance.mp4" type="video/mp4"/>
+      </video>
+      <div id="actOfferVidFallback" style="display:none;font-size:34px">⚠️</div>
       <div style="color:#cbd5e1;font-size:13px;text-align:center;line-height:1.5">Essa oferta <strong style="color:#fbbf24">não volta</strong>. Fechando agora, o Master fica R$ 89,99/mês pra sempre.</div>
       <button onclick="actOfferBack()" style="width:100%;padding:13px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1020;border:none;border-radius:10px;font-weight:900;font-size:14px;cursor:pointer">← Voltar pra oferta</button>
       <button onclick="actOfferDecline()" style="width:100%;padding:9px;background:transparent;color:#64748b;border:1px solid rgba(100,116,139,.3);border-radius:10px;font-size:12px;cursor:pointer">Perder a oferta pra sempre</button>
@@ -5684,6 +5690,7 @@ function exportScriptAsImage(scriptId){
     document.getElementById('actOfferOverlay').style.display='none';
     window.__btActOfferAtiva=false;
     if(timerInt){clearInterval(timerInt);timerInt=null;}
+    try{var v=document.getElementById('actOfferVideo');if(v)v.pause();}catch(e){}
   }
   function startTimer(){
     var el=document.getElementById('actOfferTimer');
@@ -5754,9 +5761,16 @@ function exportScriptAsImage(scriptId){
   };
   window.actOfferAskDecline=function(){
     var c=document.getElementById('actOfferConfirm');c.style.display='flex';
+    // Blublu fala COM SOM (permitido: veio de um clique). Falha = fallback texto.
+    try{
+      var v=document.getElementById('actOfferVideo');
+      if(v&&v.style.display!=='none'){v.currentTime=0;var p=v.play();if(p&&p.catch)p.catch(function(){});}
+      track('VideoShown');
+    }catch(e){}
   };
   window.actOfferBack=function(){
     document.getElementById('actOfferConfirm').style.display='none';
+    try{var v=document.getElementById('actOfferVideo');if(v)v.pause();}catch(e){}
   };
   window.actOfferDecline=function(){
     track('Declined');
