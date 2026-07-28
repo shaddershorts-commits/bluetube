@@ -249,3 +249,58 @@ if ('serviceWorker' in navigator) {
   // Refresh every 15 minutes
   setInterval(_btRefreshToken, 15 * 60 * 1000);
 })();
+
+// ── AVISO DE ATUALIZAÇÃO (2026-07-28) ───────────────────────────────────────
+// Quem está com a aba aberta quando sai um deploy fica com a versão velha em
+// memória (e às vezes vê bug que já foi corrigido). Aqui a página compara o
+// build servido com o que ela carregou; mudou, oferece recarregar. Nunca
+// recarrega sozinho — o usuário decide (pode estar no meio de um roteiro).
+(function avisoDeAtualizacao() {
+  var MEU_BUILD = null;
+  var INTERVALO = 5 * 60 * 1000; // 5 min
+
+  function lerBuild() {
+    return fetch('/api/build-version', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return d && d.build ? d.build : null; })
+      .catch(function () { return null; });
+  }
+
+  function mostrarAviso() {
+    if (document.getElementById('btUpdateToast')) return;
+    var d = document.createElement('div');
+    d.id = 'btUpdateToast';
+    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:99999;background:linear-gradient(135deg,#0a2240,#071a30);border:1px solid rgba(0,170,255,.45);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 14px 44px rgba(0,0,0,.55);font-family:system-ui,-apple-system,sans-serif;max-width:calc(100vw - 24px)';
+    d.innerHTML = '<span style="font-size:20px">✨</span>' +
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#e8f4ff">Nova versão disponível</div>' +
+      '<div style="font-size:11px;color:rgba(200,225,255,.7);margin-top:2px">Atualize para pegar as novidades e correções</div></div>' +
+      '<button id="btUpdateGo" style="flex-shrink:0;background:linear-gradient(135deg,#00aaff,#0077ff);color:#fff;border:none;border-radius:9px;padding:9px 15px;font-size:12.5px;font-weight:800;cursor:pointer">Atualizar</button>' +
+      '<button id="btUpdateX" style="flex-shrink:0;background:none;border:none;color:rgba(200,225,255,.45);font-size:15px;cursor:pointer" aria-label="Depois">✕</button>';
+    document.body.appendChild(d);
+    document.getElementById('btUpdateGo').onclick = function () { location.reload(true); };
+    document.getElementById('btUpdateX').onclick = function () {
+      d.remove();
+      // silencia por 1h — não vira insistência
+      try { sessionStorage.setItem('bt_update_snooze', String(Date.now() + 3600000)); } catch (e) {}
+    };
+  }
+
+  function checar() {
+    try {
+      var s = sessionStorage.getItem('bt_update_snooze');
+      if (s && Date.now() < parseInt(s, 10)) return;
+    } catch (e) {}
+    lerBuild().then(function (b) {
+      if (!b) return;
+      if (!MEU_BUILD) { MEU_BUILD = b; return; }
+      if (b !== MEU_BUILD) mostrarAviso();
+    });
+  }
+
+  checar();
+  setInterval(checar, INTERVALO);
+  // volta pra aba depois de um tempo? confere na hora
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') checar();
+  });
+})();

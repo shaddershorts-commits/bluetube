@@ -700,7 +700,9 @@ function rowToVoice(v, isCommunity = false) {
   // Se o DB já tem metadados reais do ElevenLabs, usa eles; senão usa fallback genérico
   const langCode  = v.lang_code  || null;
   const langLabel = v.idioma_real || (langCode ? langCode : 'Idioma não detectado');
-  const flag      = v.lang_flag  || (langCode ? (LANG_FLAGS[langCode] || '🌐') : (isCommunity ? '🌐' : '⭐'));
+  // Sem idioma detectado usa 🎙️ (antes era ⭐, que o usuário lia como
+  // "favoritada" — a estrela de favorito fica só no botão ☆/★)
+  const flag      = v.lang_flag  || (langCode ? (LANG_FLAGS[langCode] || '🌐') : (isCommunity ? '🌐' : '🎙️'));
   // BUG CORRIGIDO 2026-07-28: era `v.genero || 'Masculino'` — quando o
   // ElevenLabs não informa gênero o backend grava '', que virava MASCULINO.
   // Resultado: toda voz feminina importada sem metadado sumia do filtro
@@ -808,6 +810,18 @@ async function loadCustomVoices() {
         updated++;
       } else {
         VOICES.push(fresh);
+        added++;
+      }
+    });
+    // Vozes OFICIAIS (2026-07-28): acervo padrão da casa — entram como voz do
+    // BlueVoice, não como "comunidade"
+    (d.official || []).forEach(v => {
+      const vid = v.voice_id || v.id;
+      if (vid && !VOICES.find(x => x.id === vid)) {
+        const voz = rowToVoice(v, false);
+        voz.community = false; voz.oficial = true; voz.custom = false;
+        voz.desc = v.descricao || 'Voz oficial do BlueVoice';
+        VOICES.push(voz);
         added++;
       }
     });
@@ -971,9 +985,10 @@ function renderVoices() {
   }
 
   // Separação em seções
-  const myVoices         = filtered.filter(v => v.custom && !v.community);
-  const communityVoices  = filtered.filter(v => v.custom && v.community);
-  const preferred        = filtered.filter(v => !v.custom && v.langCode === preferredCode);
+  const myVoices         = filtered.filter(v => v.custom && !v.community && !v.oficial);
+  const oficiais         = filtered.filter(v => v.oficial);
+  const communityVoices  = filtered.filter(v => v.custom && v.community && !v.oficial);
+  const preferred        = filtered.filter(v => !v.custom && !v.oficial && v.langCode === preferredCode);
   const multilingualOnly = filtered.filter(v => !v.custom && v.langCode !== preferredCode && v.multilingual);
   const others           = filtered.filter(v => !v.custom && v.langCode !== preferredCode && !v.multilingual);
 
@@ -994,7 +1009,7 @@ function renderVoices() {
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
         ${favorites.has(v.id) ? '★' : '☆'}
       </button>
-      <div class="vi-flag">${v.flag}</div>
+      <div class="vi-flag">${bandeiraHTML(v)}</div>
       <div class="vi-info">
         <div class="vi-name">${v.name}${warnIcon}</div>
         <div class="vi-meta">${v.langLabel || 'Idioma não detectado'}${editLangBtn}${editGenderBtn} · ${v.desc || ''}</div>
@@ -1022,6 +1037,7 @@ function renderVoices() {
   // Ordem: Minhas > Preferred (idioma do roteiro) > Multilingual > Outros > Comunidade
   let html = '';
   html += section('⭐ Minhas vozes', myVoices, 'rgba(0,170,255,.7)');
+  html += section('🎙️ Vozes BlueVoice', oficiais, 'rgba(0,170,255,.8)');
   html += section(`${LANG_FLAGS[preferredCode] || ''} Vozes em ${currentScriptLang}`, preferred, 'rgba(34,197,94,.8)');
   html += section('🌍 Vozes Multilingual', multilingualOnly, 'rgba(167,139,250,.7)');
   html += section('Outros idiomas', others, 'var(--text-dim)');
@@ -1253,15 +1269,29 @@ async function previewVoice(id, event) {
 
   // 3. Gera prévia via TTS (mesmo endpoint usado para narração — funciona com qualquer voz)
   if (btn) { btn.innerHTML = `<span style="opacity:.6">Gerando prévia…</span>`; btn.disabled = true; }
+  // Prévia SEMPRE no idioma da voz (2026-07-28): voz em inglês falava em
+  // português porque o mapa só tinha 6 idiomas e o fallback era 'pt'. Agora
+  // cobre os 20 idiomas suportados e resolve por langCode antes de lang.
   const previewTexts = {
     pt: 'Olá! Essa é uma prévia da minha voz.',
     en: 'Hey! This is a quick preview of my voice.',
-    es: 'Hola! Esta es una muestra de mi voz.',
-    fr: 'Salut! Voici un aperçu de ma voix.',
+    es: '¡Hola! Esta es una muestra de mi voz.',
+    fr: 'Salut ! Voici un aperçu de ma voix.',
     de: 'Hallo! Das ist eine Vorschau meiner Stimme.',
-    it: 'Ciao! Questa è un\'anteprima della mia voce.'
+    it: "Ciao! Questa è un'anteprima della mia voce.",
+    ja: 'こんにちは！これは私の声のプレビューです。',
+    ko: '안녕하세요! 제 목소리 미리듣기입니다.',
+    zh: '你好！这是我的声音预览。',
+    ar: 'مرحبا! هذه معاينة لصوتي.',
+    hi: 'नमस्ते! यह मेरी आवाज़ का नमूना है।',
+    tr: 'Merhaba! Bu sesimin bir önizlemesi.',
+    id: 'Halo! Ini adalah pratinjau suara saya.',
+    nl: 'Hallo! Dit is een voorbeeld van mijn stem.',
+    ru: 'Привет! Это пример моего голоса.',
+    pl: 'Cześć! To jest próbka mojego głosu.',
   };
-  const sampleText = previewTexts[voice?.lang] || previewTexts.pt;
+  const codigoVoz = (voice?.langCode || voice?.lang || '').toLowerCase().split('-')[0];
+  const sampleText = previewTexts[codigoVoz] || previewTexts.en;
 
   try {
     const r = await fetch('/api/auth', {
@@ -1541,6 +1571,24 @@ async function carregarStatusClone() {
 }
 
 function escClone(s) { return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// ── BANDEIRA COMO IMAGEM (2026-07-28) ───────────────────────────────────────
+// Emoji de bandeira é feito de "indicadores regionais" (B+R). O Windows não
+// tem esse glifo e mostra as LETRAS — por isso aparecia "US"/"BR" no lugar da
+// bandeirinha. Imagem resolve em todo sistema; se a imagem falhar, o emoji
+// original volta como reserva (que funciona em Mac/celular).
+const PAIS_POR_LANG = {
+  'pt-BR': 'br', 'pt-PT': 'pt', 'en-US': 'us', 'en-GB': 'gb', 'en-AU': 'au',
+  'es-ES': 'es', 'es-MX': 'mx', 'fr-FR': 'fr', 'de-DE': 'de', 'it-IT': 'it',
+  'ja-JP': 'jp', 'ko-KR': 'kr', 'zh-CN': 'cn', 'ar': 'sa', 'hi': 'in',
+  'tr': 'tr', 'id': 'id', 'nl-NL': 'nl', 'ru-RU': 'ru', 'pl-PL': 'pl',
+};
+function bandeiraHTML(v) {
+  const pais = PAIS_POR_LANG[v.langCode];
+  if (!pais) return v.flag || '🎙️';
+  const alt = escClone(v.langLabel || v.langCode || '');
+  return `<img src="https://flagcdn.com/${pais}.svg" alt="${alt}" title="${alt}" loading="lazy" style="width:22px;height:16px;object-fit:cover;border-radius:3px;box-shadow:0 0 0 1px rgba(255,255,255,.12)" onerror="this.outerHTML='${(v.flag || '🌐').replace(/'/g, '')}'"/>`;
+}
 
 async function alternarGravacao() {
   const btn = document.getElementById('btnRec');

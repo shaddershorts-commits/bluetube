@@ -451,6 +451,22 @@ module.exports = async function handler(req, res) {
       const myVoices = r.ok ? await r.json() : [];
       const myIds = new Set(myVoices.map(v => v.voice_id));
 
+      // VOZES OFICIAIS (2026-07-28): as vozes do dono da plataforma viram
+      // acervo PADRÃO do BlueVoice — aparecem pra todo mundo como voz da casa,
+      // não como "voz da comunidade". Marcadas com metadata->>oficial=true.
+      let officialVoices = [];
+      try {
+        const orR = await fetch(
+          `${SU}/rest/v1/blue_custom_voices?metadata->>oficial=eq.true&is_clone=is.null&order=created_at.asc&limit=60&select=*`,
+          { headers: h }
+        );
+        if (orR.ok) {
+          const todas = await orR.json();
+          officialVoices = todas.filter((v) => !myIds.has(v.voice_id)).map((v) => ({ ...v, oficial: true }));
+        }
+      } catch (e) {}
+      const oficiaisIds = new Set(officialVoices.map((v) => v.voice_id));
+
       let communityVoices = [];
       try {
         // PRIVACIDADE (2026-07-28): voz CLONADA é dado biométrico do usuário —
@@ -464,14 +480,15 @@ module.exports = async function handler(req, res) {
           const all = await cr.json();
           const seen = new Set();
           communityVoices = all.filter(v => {
-            if (myIds.has(v.voice_id) || seen.has(v.voice_id)) return false;
+            // oficiais já vão na própria seção — não duplicar na comunidade
+            if (myIds.has(v.voice_id) || oficiaisIds.has(v.voice_id) || seen.has(v.voice_id)) return false;
             seen.add(v.voice_id);
             return true;
           }).map(v => ({ ...v, community: true }));
         }
       } catch (e) {}
 
-      return res.status(200).json({ voices: myVoices, community: communityVoices });
+      return res.status(200).json({ voices: myVoices, official: officialVoices, community: communityVoices });
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 

@@ -194,6 +194,40 @@ module.exports = async function handler(req, res) {
 // Pra repetir a manobra num proximo lancamento:
 //   UPDATE email_marketing SET sequence_position = 0 WHERE unsubscribed = false;
 const TEMPLATES = [
+  // ── LANÇAMENTO BLUEVOICE (2026-07-28) — narrados pelo BluBlu ─────────────
+  {
+    subject: '🎙️ Eu clonei minha voz. Agora é a sua vez (literalmente)',
+    hero: 'O BlueVoice cresceu — e agora ele fala com a SUA voz',
+    stat: 'Grave 1 minuto. Narre para sempre. Exclusivo Master.',
+    body: `<p>Oi, aqui é o <strong>BluBlu</strong>. Sim, eu escrevo emails agora. Meu contrato é elástico.</p>
+      <p>O <strong>BlueVoice</strong> acabou de ganhar <strong>clonagem de voz</strong>: você grava 1 minuto falando qualquer coisa e, em segundos, tem uma voz idêntica à sua pronta pra narrar todos os seus Shorts. Sem estúdio, sem microfone caro, sem gravar de novo às 2 da manhã porque o cachorro latiu no melhor take.</p>
+      <p>✦ Grave direto no site (nada de instalar programa)<br>✦ Sua voz fica <strong>privada</strong> — ninguém mais vê ou usa<br>✦ Narrações ilimitadas com ela, quando quiser</p>
+      <p style="color:#fbbf24;font-weight:700">Sua cara no vídeo é opcional. Sua voz, agora, é infinita.</p>`,
+    cta: 'Clonar minha voz agora →',
+    url: 'https://bluetubeviral.com/blueVoice'
+  },
+  {
+    subject: '🎛️ Sua narração estava no piloto automático (eu consertei isso)',
+    hero: 'Velocidade, emoção, estilo — agora quem manda é você',
+    stat: 'Do sussurro dramático ao hype de Short viral, no mesmo painel',
+    body: `<p>Confissão rápida: até semana passada, toda narração do BlueVoice saía do mesmo jeitinho. Eu tentei avisar. Ninguém me escuta — o que é irônico, considerando meu ramo.</p>
+      <p>Agora você tem <strong>controle total</strong> sobre como a voz soa:</p>
+      <p>✦ <strong>Velocidade</strong> — mais pausado pra storytelling, mais acelerado pra viral<br>✦ <strong>Estabilidade</strong> — do criativo (cheio de emoção) ao robusto (previsível)<br>✦ <strong>Exagero de estilo</strong> — do sussurro ao grito de narrador de luta livre<br>✦ <strong>Atalhos prontos</strong>: Narração · Viral · Calmo</p>
+      <p style="color:#fbbf24;font-weight:700">E tudo isso em qualidade de estúdio, com áudio mais nítido que a maioria dos podcasts que você ouve.</p>`,
+    cta: 'Testar os controles novos →',
+    url: 'https://bluetubeviral.com/blueVoice'
+  },
+  {
+    subject: '🤔 "Mas eu odeio minha voz" — ótimo, temos 20 idiomas e dezenas de vozes',
+    hero: 'Não quer usar a sua voz? Escolhe uma melhor. Sem ressentimentos.',
+    stat: 'Português, inglês, espanhol, japonês… e mais 16',
+    body: `<p>Nem todo mundo quer ouvir a própria voz. Eu entendo — eu ouço a minha o dia inteiro e já pedi demissão três vezes.</p>
+      <p>Por isso o <strong>BlueVoice</strong> tem um acervo pronto: vozes masculinas e femininas, jovens e maduras, de narração séria a energia de Short viral — filtráveis por gênero, idade, estilo e idioma.</p>
+      <p>✦ Quer dark channel em inglês? Tem voz nativa.<br>✦ Quer testar o mesmo roteiro em 3 vozes? São 2 versões por geração.<br>✦ Achou uma voz sua no ElevenLabs? Importa e usa aqui.</p>
+      <p style="color:#fbbf24;font-weight:700">Sua identidade sonora não precisa ser a sua garganta.</p>`,
+    cta: 'Ouvir as vozes disponíveis →',
+    url: 'https://bluetubeviral.com/blueVoice'
+  },
   {
     subject: '📸 O Instagram abriu o jogo: os Reels que explodiram, com views REAIS',
     hero: 'Chegou o Instagram Virais — a vitrine dos Reels que o mundo inteiro está assistindo',

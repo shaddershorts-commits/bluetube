@@ -184,7 +184,11 @@ module.exports = async function handler(req, res) {
   const voiceSettings = { stability, similarity_boost: similarity, style, use_speaker_boost: true };
   if (speed != null && speed !== 1) voiceSettings.speed = speed;
 
-  const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+  // 192 kbps (2026-07-28): o plano Creator já paga por essa qualidade e a
+  // narração saía em 128. Custo em créditos é IDÊNTICO — a cobrança é por
+  // caractere, não por bitrate (medido: mesmo texto, mesmo consumo; arquivo
+  // 56% maior). Se o formato for recusado, cai no padrão da conta.
+  const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`;
   const payload = JSON.stringify({ text, model_id: modelId, voice_settings: voiceSettings });
   const headersFor = (key) => ({ 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' });
 
