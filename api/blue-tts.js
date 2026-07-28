@@ -16,47 +16,65 @@
 
 const LIMITE_CARACTERES = 3000;
 
-// ── PROTEÇÃO DE QUOTA (2026-07-28) ──────────────────────────────────────────
-// O plano ElevenLabs tem teto MENSAL de créditos (1 crédito ≈ 1 caractere).
-// "Ilimitado pro Master" sem freio = fatura estourada / feature fora do ar pra
-// todo mundo. Dois freios, ambos ajustáveis por env:
-//   1. teto DIÁRIO por usuário  (uso normal nem encosta)
-//   2. reserva GLOBAL da conta  (trava novas gerações antes de zerar a quota)
-const LIMITE_DIARIO_CHARS = parseInt(process.env.BLUEVOICE_DAILY_CHARS, 10) || 6000;
-const RESERVA_GLOBAL_PCT = 0.05; // guarda os últimos 5% da quota do mês
+// ── ANTI-FLOOD (2026-07-28) ─────────────────────────────────────────────────
+// O BlueVoice É ILIMITADO pro Master — e continua sendo. Isto aqui NÃO é cota:
+// é um respiro contra uso automatizado/abusivo (script disparando geração em
+// loop). Os números são propositalmente ABSURDOS: quem escreve roteiro e ouve
+// o resultado JAMAIS encosta neles. Quem encosta, não é gente digitando.
+//
+// Quando dispara, o BluBlu pede uma pausa curta — e a fala dele NUNCA menciona
+// limite/cota, porque não é isso: é ele indo tomar uma água.
+const RAJADA_JANELA_MIN = parseInt(process.env.BLUEVOICE_BURST_MIN, 10) || 15;
+const RAJADA_MAX = parseInt(process.env.BLUEVOICE_BURST_MAX, 10) || 60;      // gerações na janela
+const TETO_DIARIO_ABSURDO = parseInt(process.env.BLUEVOICE_DAILY_MAX, 10) || 400; // só trava robô
 
-// Recados do BluBlu — ácidos, mas sempre dizendo o que fazer em seguida
-const RECADOS_LIMITE = [
-  'Opa. Você torrou seus {limite} caracteres de hoje. Eu narraria a noite toda, mas minhas cordas vocais são alugadas — e o senhorio cobra por caractere. Volta amanhã que eu tô aqui. Não é como se eu tivesse vida social. 🎙️',
-  'Fim da cota diária, campeão. Sim, eu também acho pouco. Não, eu não posso fazer nada — sou uma IA com síndrome de estagiário: muita vontade, orçamento nenhum. Amanhã a gente continua. 💅',
-  'Seus {limite} caracteres de hoje viraram áudio. Todos eles. Eu tô impressionado e levemente preocupado. Descansa esse roteiro — amanhã tem mais. 🔥',
+// Recados do BluBlu — pausa, não limite. Sem citar motor/fornecedor.
+const RECADOS_PAUSA = [
+  'Calma aí, paizão! Vai devagar nessas gerações. Vou ali tomar uma água e já volto em {min} minutos, beleza? 💧',
+  'Opa, opa! Segura essa onda um pouquinho. Minha garganta tá pedindo arrego — {min} minutinhos e eu tô de volta na ativa. 🎙️',
+  'Uau, você tá com a mão pesada hoje! Deixa eu respirar {min} minutos e a gente volta a todo vapor. 😅',
+  'Ei, maratonista! Nem eu narro nesse ritmo. Me dá {min} minutos pra molhar a garganta e seguimos. 🏃',
 ];
 const RECADOS_GLOBAL = [
-  'Notícia ruim: a reserva de voz da casa tá no vermelho esse mês. Não é você, sou eu — mais especificamente, minha conta de luz. Volta quando a quota renovar que eu narro até guia telefônica. ⚡',
-  'A quota mensal do estúdio acabou. Eu avisei que aquele roteiro de 3 mil caracteres sobre pinguins ia custar caro. Ninguém me escuta. Literalmente. 🐧',
+  'Meu estúdio entrou em manutenção rapidinho. Não é você, sou eu — literalmente. Tenta de novo daqui a pouco que eu volto afinado. 🔧',
+  'Pausa técnica no estúdio! Volto já já pra narrar até bula de remédio se você quiser. ⚡',
 ];
 const sorteia = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// Uso do dia (por usuário). Sem token identificado, o freio diário não se
-// aplica — a reserva global continua protegendo a conta.
+// Uso do dia + rajada recente (por usuário). O registro serve TAMBÉM pra
+// medição de consumo, que antes não existia em lugar nenhum.
 async function lerUso(SU, SK, userId) {
   const dia = new Date().toISOString().slice(0, 10);
+  const vazio = { geracoes: 0, caracteres: 0, dia, rajada: 0 };
   try {
-    const r = await fetch(`${SU}/rest/v1/blue_voice_usage?user_id=eq.${encodeURIComponent(userId)}&dia=eq.${dia}&select=geracoes,caracteres`, {
-      headers: { apikey: SK, Authorization: 'Bearer ' + SK },
-    });
-    if (!r.ok) return { geracoes: 0, caracteres: 0, dia };
-    const row = (await r.json())[0];
-    return { geracoes: row?.geracoes || 0, caracteres: row?.caracteres || 0, dia };
-  } catch (e) { return { geracoes: 0, caracteres: 0, dia }; }
+    const [dR, rR] = await Promise.all([
+      fetch(`${SU}/rest/v1/blue_voice_usage?user_id=eq.${encodeURIComponent(userId)}&dia=eq.${dia}&select=geracoes,caracteres`, {
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK },
+      }),
+      // gerações na janela recente (anti-flood)
+      fetch(`${SU}/rest/v1/blue_voice_events?user_id=eq.${encodeURIComponent(userId)}&criado_em=gte.${new Date(Date.now() - RAJADA_JANELA_MIN * 60000).toISOString()}&select=id`, {
+        headers: { apikey: SK, Authorization: 'Bearer ' + SK, Prefer: 'count=exact' },
+      }),
+    ]);
+    const row = dR.ok ? (await dR.json())[0] : null;
+    const rajada = parseInt((rR.headers.get('content-range') || '').split('/')[1] || '0', 10) || 0;
+    return { geracoes: row?.geracoes || 0, caracteres: row?.caracteres || 0, dia, rajada };
+  } catch (e) { return vazio; }
 }
 
 function registrarUso(SU, SK, userId, dia, uso, chars) {
   if (!userId) return;
+  const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+  // acumulado do dia (medição de consumo)
   fetch(`${SU}/rest/v1/blue_voice_usage?on_conflict=user_id,dia`, {
     method: 'POST',
-    headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify([{ user_id: userId, dia, geracoes: (uso.geracoes || 0) + 1, caracteres: (uso.caracteres || 0) + chars, updated_at: new Date().toISOString() }]),
+  }).catch(() => {});
+  // evento individual (alimenta a janela do anti-flood)
+  fetch(`${SU}/rest/v1/blue_voice_events`, {
+    method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+    body: JSON.stringify({ user_id: userId, caracteres: chars }),
   }).catch(() => {});
 }
 
@@ -136,13 +154,19 @@ module.exports = async function handler(req, res) {
     }
     if (userId) {
       uso = await lerUso(SU, SK, userId);
-      if (uso.caracteres + chars > LIMITE_DIARIO_CHARS) {
+      // Rajada: muitas gerações em poucos minutos = automação, não pessoa.
+      // Pausa curta, sem falar em cota (o plano continua ilimitado).
+      if (uso.rajada >= RAJADA_MAX) {
         return res.status(429).json({
-          error: sorteia(RECADOS_LIMITE).replace('{limite}', LIMITE_DIARIO_CHARS.toLocaleString('pt-BR')),
-          motivo: 'limite_diario',
-          usado_hoje: uso.caracteres,
-          limite_diario: LIMITE_DIARIO_CHARS,
-          blublu: true,
+          error: sorteia(RECADOS_PAUSA).replace('{min}', String(RAJADA_JANELA_MIN)),
+          motivo: 'pausa', pausa_min: RAJADA_JANELA_MIN, blublu: true,
+        });
+      }
+      // Teto diário deliberadamente absurdo — só um robô rodando a noite toda chega lá
+      if (uso.geracoes >= TETO_DIARIO_ABSURDO) {
+        return res.status(429).json({
+          error: sorteia(RECADOS_PAUSA).replace('{min}', '30'),
+          motivo: 'pausa', pausa_min: 30, blublu: true,
         });
       }
     }
@@ -193,11 +217,9 @@ module.exports = async function handler(req, res) {
     const buf = await r.arrayBuffer();
     marcarUsoDeClone(voiceId); // alimenta a hibernação (fire-and-forget)
     if (uso && userId) registrarUso(SU, SK, userId, uso.dia, uso, chars);
-    return res.status(200).json({
-      audio: Buffer.from(buf).toString('base64'), format: 'mp3', model: modelId,
-      usado_hoje: uso ? uso.caracteres + chars : null,
-      limite_diario: uso ? LIMITE_DIARIO_CHARS : null,
-    });
+    // Sem devolver contador de uso: o plano é ilimitado e nada na tela deve
+    // sugerir cota. A medição fica só no banco, pro admin.
+    return res.status(200).json({ audio: Buffer.from(buf).toString('base64'), format: 'mp3', model: modelId });
   } catch (e) {
     console.error('[blue-tts]', e && e.message);
     return res.status(500).json({ error: 'Falha ao gerar narração. Tente novamente.' });

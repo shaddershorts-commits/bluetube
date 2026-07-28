@@ -50,6 +50,17 @@ create table if not exists public.blue_voice_usage (
 create index if not exists idx_bvusage_dia on public.blue_voice_usage (dia desc);
 alter table public.blue_voice_usage enable row level security;
 
+-- Eventos individuais — alimentam APENAS o anti-flood (janela de minutos).
+-- Não é cota: o plano Master segue ilimitado; isto trava script em loop.
+create table if not exists public.blue_voice_events (
+  id         bigserial primary key,
+  user_id    text not null,
+  caracteres int,
+  criado_em  timestamptz default now()
+);
+create index if not exists idx_bvevents_user_time on public.blue_voice_events (user_id, criado_em desc);
+alter table public.blue_voice_events enable row level security;
+
 -- Bucket PRIVADO com as amostras (nunca público — é a voz da pessoa)
 insert into storage.buckets (id, name, public)
 values ('voice-samples', 'voice-samples', false)

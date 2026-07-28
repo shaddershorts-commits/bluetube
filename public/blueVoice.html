@@ -1375,21 +1375,32 @@ function mostrarRecadoBlublu(texto, info) {
   document.getElementById('blubluLimiteCard')?.remove();
   const card = document.createElement('div');
   card.id = 'blubluLimiteCard';
-  const barra = (info && info.limite_diario)
-    ? `<div style="margin-top:10px"><div style="height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.min(100, Math.round(((info.usado_hoje || info.limite_diario) / info.limite_diario) * 100))}%;background:linear-gradient(90deg,#a78bfa,#7c3aed)"></div></div>
-       <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:4px">${(info.usado_hoje || 0).toLocaleString('pt-BR')} de ${info.limite_diario.toLocaleString('pt-BR')} caracteres hoje · renova à meia-noite</div></div>` : '';
+  // Contagem regressiva da pausa — some sozinha quando o tempo acaba.
+  // NADA de barra de consumo/cota: o plano é ilimitado, isso aqui é só um
+  // respiro do BluBlu contra uso automatizado.
+  const min = (info && info.pausa_min) ? info.pausa_min : 15;
   card.style.cssText = 'margin:14px 0;padding:16px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.35);border-radius:14px;display:flex;gap:12px;align-items:flex-start';
   card.innerHTML = `
-    <img src="/blublu-sad.png" alt="BluBlu" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"/>
+    <img src="/blublu-happy.png" alt="BluBlu" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"/>
     <div style="flex:1">
       <div style="font-size:12px;font-weight:800;color:#a78bfa;margin-bottom:4px">BluBlu</div>
       <div style="font-size:13px;color:var(--text);line-height:1.55">${escClone(texto)}</div>
-      ${barra}
+      <div id="blubluPausaTimer" style="font-family:var(--mono);font-size:11px;color:#a78bfa;margin-top:8px"></div>
     </div>
     <button onclick="this.closest('#blubluLimiteCard').remove()" style="background:none;border:none;color:var(--text-dim);font-size:15px;cursor:pointer" aria-label="Fechar">✕</button>`;
   const alvo = document.querySelector('.main-card') || document.body;
   alvo.appendChild(card);
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  let restante = min * 60;
+  const el = card.querySelector('#blubluPausaTimer');
+  const tick = () => {
+    if (restante <= 0) { card.remove(); return; }
+    const m = Math.floor(restante / 60), s = restante % 60;
+    if (el) el.textContent = `volto em ${m}:${String(s).padStart(2, '0')}`;
+    restante--;
+  };
+  tick();
+  const iv = setInterval(() => { if (!document.body.contains(card)) { clearInterval(iv); return; } tick(); }, 1000);
 }
 
 // ── PERSONALIZAÇÃO DA NARRAÇÃO (2026-07-28) ─────────────────────────────────
