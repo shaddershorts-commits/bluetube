@@ -1012,6 +1012,13 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-card"><div class="stat-label">youtube-media</div><div class="stat-value" id="bbhYoutubeMedia">—</div><div class="stat-sub" id="bbhYoutubeMediaSub">—</div></div>
         <div class="stat-card"><div class="stat-label">Invidious</div><div class="stat-value" id="bbhInvidious">—</div><div class="stat-sub" id="bbhInvidiousSub">—</div></div>
       </div>
+      <!-- Cadeia do TikTok (2026-07-27): antes só descobríamos que caiu quando
+           o user reclamava. Agora o painel testa a cadeia e mostra QUEM está
+           atendendo — se sair do tikwm, já é sinal de degradação. -->
+      <div class="stats-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">TikTok — cadeia</div><div class="stat-value" id="bbhTiktok">—</div><div class="stat-sub" id="bbhTiktokSub">clique em Testar agora</div></div>
+        <div class="stat-card"><div class="stat-label">TikTok — provedor ativo</div><div class="stat-value" id="bbhTiktokProv" style="font-size:15px">—</div><div class="stat-sub" id="bbhTiktokProvSub">—</div></div>
+      </div>
       <div id="bbhSummary" style="font-family:var(--mono);font-size:11px;color:var(--dim);padding:8px 0"></div>
     </div>
 
@@ -2342,9 +2349,30 @@ function renderBaixaBlueHealth(d){
   $('bbhSummary').textContent=`${ok} ok · ${fail} falha · ${skip} skip · último check: ${ts} · vídeo teste: ${d.test_video_id||'dQw4w9WgXcQ'}`;
 }
 
+// Cadeia do TikTok: testa e mostra QUEM está atendendo (tikwm = saudável;
+// qualquer outro = os anteriores caíram; DOWN = todos caíram)
+async function testTiktokChain(){
+  const v=document.getElementById('bbhTiktok'), s=document.getElementById('bbhTiktokSub');
+  const p=document.getElementById('bbhTiktokProv'), ps=document.getElementById('bbhTiktokProvSub');
+  if(!v) return;
+  v.textContent='⏳'; s.textContent='testando…';
+  try{
+    const r=await fetch(`/api/baixa-tiktok?action=health&admin_secret=${encodeURIComponent(adminKey)}`);
+    const d=await r.json();
+    const bom=d.ok&&d.status==='OK';
+    v.textContent=d.ok?(bom?'✓ OK':'⚠ DEGRADADO'):'✗ DOWN';
+    v.style.color=bom?'var(--green)':(d.ok?'#fbbf24':'var(--red)');
+    s.textContent=(d.ms||0)+'ms';
+    p.textContent=d.provider_ativo||'nenhum';
+    p.style.color=d.provider_ativo==='tikwm'?'var(--green)':(d.provider_ativo?'#fbbf24':'var(--red)');
+    ps.textContent=(d.falhas_antes&&d.falhas_antes.length)?('falharam: '+d.falhas_antes.join(', ')):'1ª tentativa — cadeia intacta';
+  }catch(e){ v.textContent='✗'; v.style.color='var(--red)'; s.textContent=e.message.slice(0,30); }
+}
+
 async function testBaixaBlueAgora(){
   const summary=document.getElementById('bbhSummary');
   summary.textContent='⏳ Rodando teste em todos providers (~30s)...';
+  testTiktokChain();
   try{
     const r=await fetch('/api/audit-baixablue',{headers:{'Authorization':`Bearer ${adminKey}`}});
     const d=await r.json();
