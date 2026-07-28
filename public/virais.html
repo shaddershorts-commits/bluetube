@@ -268,6 +268,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .save-mark.on svg{fill:#0a1020;stroke:#0a1020}
 /* cards do TikTok/Instagram já usam o canto direito pro rank — desloca o marcador */
 .tk-card .save-mark,#igGrid .save-mark{top:8px;right:8px}
+.short-card{position:relative}
+.short-card .save-mark{top:10px;right:10px;z-index:5}
 .tk-card .tk-card-rank,#igGrid .tk-card-rank{right:44px}
 
 /* ── TIKTOK BUTTON + ANIMACAO FOGO (2026-06-24) ─────────────────────────── */
@@ -445,7 +447,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
       </button>
 
       <!-- Idioma agrupado: 1 opcao por lingua. Backend agrega US/GB/AU em "English" etc. -->
-      <select class="filter-select" id="regionSelect" onchange="carregarHistorico(1); atualizarBadgeBanco();">
+      <select class="filter-select" id="regionSelect" style="display:none" onchange="carregarHistorico(1); atualizarBadgeBanco();">
         <option value="" selected>🌐 Todos os idiomas</option>
         <option value="pt">🇧🇷 Português</option>
         <option value="en">🇺🇸 English</option>
@@ -458,6 +460,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
         <option value="zh">🇨🇳 中文</option>
         <option value="ru">🇷🇺 Русский</option>
       </select>
+      <!-- Seletor de idioma com bandeira REAL (2026-07-28): <option> não
+           aceita imagem, então o nativo fica escondido e este assume. -->
+      <div id="langPicker" style="position:relative;display:inline-block">
+        <button type="button" onclick="toggleLangPicker(event)" class="filter-select" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;border:1px solid rgba(0,170,255,.18);background:rgba(0,170,255,.05)">
+          <span id="langPickerAtual" style="display:inline-flex;align-items:center;gap:7px">🌐 Todos os idiomas</span>
+          <span style="opacity:.6;font-size:10px">▾</span>
+        </button>
+        <div id="langPickerMenu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:60;background:#0a1628;border:1px solid rgba(0,170,255,.25);border-radius:10px;padding:6px;min-width:200px;max-height:340px;overflow-y:auto;box-shadow:0 16px 44px rgba(0,0,0,.6)"></div>
+      </div>
 
       <!-- Nicho -->
       <select class="filter-select" id="nichoSelect" onchange="onNichoChange()">
@@ -1260,6 +1271,7 @@ async function carregarHistorico(pagina){
             <div class="card-overlay"><span class="card-views">${viewsFormatted} views</span></div>
             <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
             <div class="card-rank">#${rank}</div>
+            ${marcadorSalvar('youtube', v.youtube_id, { title: title, thumbnail: thumb, channel: channel, views: views, video_url: url })}
           </div>
           <div class="card-info">
             <div class="card-title">${escHtml(title)}</div>
@@ -1657,6 +1669,15 @@ function tkSetSort(s, e){
   }
   tkListar();
 }
+// ── BANDEIRA COMO IMAGEM (2026-07-28) ─────────────────────────────────────
+// Emoji de bandeira usa "indicadores regionais" (B+R) e o Windows não tem
+// esse desenho — mostrava as letras. Imagem funciona em todo sistema; se a
+// imagem falhar, o emoji volta como reserva.
+function bandeiraImg(codigoPais, titulo) {
+  if (!codigoPais) return "🌐";
+  var t = (titulo || codigoPais).toString().replace(/"/g, "");
+  return '<img src="https://flagcdn.com/' + codigoPais + '.svg" alt="' + t + '" title="' + t + '" loading="lazy" style="width:20px;height:14px;object-fit:cover;border-radius:3px;vertical-align:middle;box-shadow:0 0 0 1px rgba(255,255,255,.15)"/>';
+}
 const _tkCountryFlag = { us:'🇺🇸', br:'🇧🇷', mx:'🇲🇽', es:'🇪🇸', jp:'🇯🇵', kr:'🇰🇷', id:'🇮🇩', fr:'🇫🇷' };
 
 function tkIsMaster(){
@@ -1844,7 +1865,7 @@ function tkEsc(s){
 
 function tkMkCard(v, rank){
   const _plataformaCard = 'tiktok', _idCard = v.tiktok_video_id;
-  const flag = _tkCountryFlag[v.country] || '🌐';
+  const flag = bandeiraImg(v.country, v.country ? v.country.toUpperCase() : '');
   const rankLabel = rank === 1 ? '🥇 #1' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
   const isTop3 = rank <= 3;
   const caption = tkEsc((v.caption || '').slice(0, 80));
@@ -2513,6 +2534,7 @@ function igFomoClose(e){
             <div class="card-overlay"><span class="card-views">${vf} views</span></div>
             <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
             <div class="card-rank" style="background:linear-gradient(135deg,#92400e,#fbbf24)">🔮 #${i+1}</div>
+            ${marcadorSalvar('youtube', v.youtube_id, { title: v.titulo, thumbnail: v.thumbnail_url, channel: v.canal_nome, views: v.views, video_url: url })}
           </div>
           <div class="card-info">
             <div class="card-title">${escHtml(v.titulo||'')}</div>
@@ -2529,6 +2551,43 @@ function igFomoClose(e){
 
 <script>
 // ══════════════════════════════════════════════════════════════════════════
+
+// ── SELETOR DE IDIOMA COM BANDEIRA REAL (2026-07-28) ──────────────────────
+// <option> só renderiza texto: no Windows a bandeira virava "BR"/"US".
+// Este seletor usa <img>, então funciona em qualquer sistema. O <select>
+// original segue no DOM (escondido) como fonte do valor + onchange.
+const LANG_PICKER = [["","","Todos os idiomas"],["pt","br","Português"],["en","us","English"],["es","es","Español"],["fr","fr","Français"],["de","de","Deutsch"],["it","it","Italiano"],["ja","jp","日本語"],["ko","kr","한국어"],["zh","cn","中文"],["ru","ru","Русский"]];
+function bandeiraIdioma(pais) {
+  if (!pais) return '<span style="font-size:13px">🌐</span>';
+  return '<img src="https://flagcdn.com/' + pais + '.svg" alt="" loading="lazy" style="width:20px;height:14px;object-fit:cover;border-radius:3px;box-shadow:0 0 0 1px rgba(255,255,255,.15)"/>';
+}
+function toggleLangPicker(ev) {
+  if (ev) ev.stopPropagation();
+  var m = document.getElementById("langPickerMenu");
+  if (!m) return;
+  if (m.style.display === "block") { m.style.display = "none"; return; }
+  var atual = (document.getElementById("regionSelect") || {}).value || "";
+  m.innerHTML = LANG_PICKER.map(function (l) {
+    var ativo = l[0] === atual;
+    return '<div onclick="escolherIdioma(\'' + l[0] + '\')" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;font-family:var(--mono);font-size:12px;color:' + (ativo ? "#00aaff" : "#cbd5e1") + ';background:' + (ativo ? "rgba(0,170,255,.12)" : "transparent") + '" onmouseover="this.style.background=\'rgba(255,255,255,.06)\'" onmouseout="this.style.background=\'' + (ativo ? "rgba(0,170,255,.12)" : "transparent") + '\'">' + bandeiraIdioma(l[1]) + '<span>' + l[2] + '</span></div>';
+  }).join("");
+  m.style.display = "block";
+}
+function escolherIdioma(codigo) {
+  var sel = document.getElementById("regionSelect");
+  var menu = document.getElementById("langPickerMenu");
+  if (menu) menu.style.display = "none";
+  if (!sel) return;
+  sel.value = codigo;
+  var l = LANG_PICKER.find(function (x) { return x[0] === codigo; }) || LANG_PICKER[0];
+  var atual = document.getElementById("langPickerAtual");
+  if (atual) atual.innerHTML = bandeiraIdioma(l[1]) + " " + l[2];
+  sel.dispatchEvent(new Event("change"));
+}
+document.addEventListener("click", function () {
+  var m = document.getElementById("langPickerMenu");
+  if (m) m.style.display = "none";
+});
 // VÍDEOS SALVOS (2026-07-28) — marcador dourado no card, consulta no perfil
 // Vazado = não salvo · preenchido = salvo. Fica no canto oposto ao número
 // da posição. A lista aparece em Perfil → Vídeos Salvos (home).
