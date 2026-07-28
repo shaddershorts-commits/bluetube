@@ -255,6 +255,19 @@ function normalizeVoice(v) {
     }
   }
 
+  // ── CORRECAO_POR_ISO (2026-07-28) ────────────────────────────────────────
+  // `language` é DECLARAÇÃO; accent só refina a variante. Se o LANG_MAP
+  // contradiz o idioma declarado (caso real: accent "latin american" fez uma
+  // voz ESPANHOLA virar English), o declarado vence.
+  {
+    const decl = porIsoPuro(labels.language, labels.locale, labels.lang);
+    if (decl && langCode && langCode.split("-")[0] !== decl[0].split("-")[0]) {
+      console.warn("[blue-voices] idioma corrigido:", langCode, "->", decl[0], "(language declarado)");
+      langCode = decl[0]; langFlag = decl[1]; langLabel = decl[2];
+      langSource = "auto_iso_corrigido";
+    }
+  }
+
   // Gênero
   const g = (labels.gender || '').toLowerCase();
   const genero = g.includes('female') || g.includes('fem') ? 'Feminino'
