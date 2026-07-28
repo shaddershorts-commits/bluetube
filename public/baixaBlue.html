@@ -882,8 +882,14 @@ async function startDownload(){
       return;
     }
 
+    // TikTok tem endpoint PRÓPRIO desde 2026-07-27: cadeia de provedores
+    // gratuitos (TikWM → Cobalt → Railway yt-dlp → RapidAPI). O caminho antigo
+    // dependia só das 2 APIs pagas do RapidAPI e caiu inteiro quando a cota
+    // mensal delas acabou.
     const endpoint = (isReddit || isFacebook || isTwitter)
       ? `/api/baixa-social?url=${encodeURIComponent(url)}`
+      : isTiktok
+      ? `/api/baixa-tiktok?url=${encodeURIComponent(url)}`
       : isMainPlatform
       ? `/api/auth?action=download&url=${encodeURIComponent(url)}`
       : `/api/baixa-generic?url=${encodeURIComponent(url)}`;
