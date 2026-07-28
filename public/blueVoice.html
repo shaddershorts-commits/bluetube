@@ -301,6 +301,23 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
           </div>
         </div>
 
+        <!-- ── CLONAR MINHA VOZ (2026-07-28) ────────────────────────────────
+             Grava/envia pelo nosso site, clona no motor do ElevenLabs e fica
+             salva aqui. Exclusivo Master · 1 por conta · SEMPRE PRIVADA. -->
+        <div id="cloneCard" style="margin:12px 0 12px;padding:14px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.25);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="toggleClonePanel()">
+            <div style="font-size:22px">🎤</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700;color:#a78bfa">Clonar minha voz</div>
+              <div id="cloneStatusLine" style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Grave 1 minuto e narre com a sua própria voz</div>
+            </div>
+            <div id="cloneChevron" style="font-family:var(--mono);font-size:12px;color:#a78bfa;transition:transform .2s">›</div>
+          </div>
+          <div id="clonePanel" style="display:none;margin-top:12px;border-top:1px solid rgba(167,139,250,.15);padding-top:12px">
+            <div id="cloneBody"></div>
+          </div>
+        </div>
+
         <!-- IMPORT VOICE -->
         <div style="margin:12px 0 16px;padding:14px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.15);border-radius:12px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="showAddVoicePanel();document.getElementById('voicePanel').scrollIntoView({behavior:'smooth'})">
           <div style="font-size:22px">⭐</div>
@@ -309,6 +326,74 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
             <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Cole o Voice ID para usar sua própria voz</div>
           </div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--gold)">+ Importar →</div>
+        </div>
+
+        <!-- ── PERSONALIZAÇÃO DA NARRAÇÃO (2026-07-28) ──────────────────────
+             Espelha os controles do ElevenLabs: modelo, velocidade,
+             estabilidade, similaridade e exageiro de estilo. Recolhido por
+             padrão (quem só quer gerar não vê complexidade); os valores vão
+             direto pro payload do TTS. -->
+        <div style="margin:0 0 16px;border:1px solid rgba(0,170,255,.15);border-radius:12px;background:rgba(0,170,255,.03);overflow:hidden">
+          <div onclick="toggleTuning()" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none">
+            <div style="font-size:16px">🎛️</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700;color:var(--text)">Personalizar narração</div>
+              <div id="tuningResumo" style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Eleven v3 · velocidade normal · equilibrado</div>
+            </div>
+            <div id="tuningChevron" style="font-family:var(--mono);font-size:12px;color:var(--neon);transition:transform .2s">›</div>
+          </div>
+          <div id="tuningBody" style="display:none;padding:0 14px 14px;border-top:1px solid rgba(0,170,255,.08)">
+            <!-- MODELO -->
+            <div style="margin-top:12px">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Modelo</div>
+              <select id="ttsModel" onchange="onTuningChange()" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none">
+                <option value="eleven_v3">V3 · Eleven v3 — mais expressivo e natural</option>
+                <option value="eleven_multilingual_v2">V2 · Multilingual v2 — mais estável e previsível</option>
+              </select>
+            </div>
+            <!-- VELOCIDADE (só v2 — a v3 não aceita speed) -->
+            <div id="rowSpeed" style="margin-top:14px">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-bottom:4px">
+                <span>Velocidade</span><span id="valSpeed" style="color:var(--neon)">normal</span>
+              </div>
+              <input type="range" id="ttsSpeed" min="0.7" max="1.2" step="0.05" value="1" oninput="onTuningChange()" style="width:100%;accent-color:var(--neon)"/>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim)"><span>Mais devagar</span><span>Mais rápido</span></div>
+            </div>
+            <!-- ESTABILIDADE -->
+            <div style="margin-top:14px">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-bottom:4px">
+                <span>Estabilidade</span><span id="valStability" style="color:var(--neon)">equilibrado</span>
+              </div>
+              <input type="range" id="ttsStability" min="0" max="1" step="0.05" value="0.5" oninput="onTuningChange()" style="width:100%;accent-color:var(--neon)"/>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim)"><span>Criativo (mais emoção)</span><span>Robusto (mais previsível)</span></div>
+            </div>
+            <!-- SIMILARIDADE -->
+            <div style="margin-top:14px">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-bottom:4px">
+                <span>Similaridade com a voz</span><span id="valSimilarity" style="color:var(--neon)">alta</span>
+              </div>
+              <input type="range" id="ttsSimilarity" min="0" max="1" step="0.05" value="0.75" oninput="onTuningChange()" style="width:100%;accent-color:var(--neon)"/>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim)"><span>Baixa</span><span>Alta</span></div>
+            </div>
+            <!-- EXAGERO DE ESTILO -->
+            <div style="margin-top:14px">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-bottom:4px">
+                <span>Exagero de estilo</span><span id="valStyle" style="color:var(--neon)">leve</span>
+              </div>
+              <input type="range" id="ttsStyle" min="0" max="1" step="0.05" value="0.4" oninput="onTuningChange()" style="width:100%;accent-color:var(--neon)"/>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim)"><span>Nenhum</span><span>Exagerado</span></div>
+            </div>
+            <!-- PRESETS -->
+            <div style="margin-top:16px">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Atalhos</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button type="button" class="vf-chip" onclick="aplicarPreset('narracao')">🎙️ Narração</button>
+                <button type="button" class="vf-chip" onclick="aplicarPreset('viral')">🔥 Viral/Energético</button>
+                <button type="button" class="vf-chip" onclick="aplicarPreset('calmo')">🌙 Calmo</button>
+                <button type="button" class="vf-chip" onclick="aplicarPreset('padrao')">↺ Padrão</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- GENERATE BUTTON -->
@@ -398,8 +483,23 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
 
     <!-- RIGHT: VOICE PANEL -->
     <div class="voice-panel" id="voicePanel">
+      <!-- SELETOR ESTILO ELEVENLABS (2026-07-28): a voz atual vira um campo
+           clicável; clicando, abre embaixo os filtros + a lista completa.
+           Fechado por padrão no mobile pra não empurrar o resto da página. -->
+      <div onclick="toggleVoicePicker()" id="voicePickerToggle" style="display:flex;align-items:center;gap:10px;padding:14px 20px;cursor:pointer;user-select:none;border-bottom:1px solid rgba(0,170,255,.08)">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Voz</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="pickerFlag" style="font-size:16px">🎙️</span>
+            <span id="pickerName" style="font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Escolher voz</span>
+          </div>
+          <div id="pickerTags" style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:3px">Clique para ver todas as vozes</div>
+        </div>
+        <div id="pickerChevron" style="font-family:var(--mono);font-size:14px;color:var(--neon);transition:transform .2s">›</div>
+      </div>
+
+      <div id="voicePickerBody">
       <div class="vp-header">
-        <div class="vp-title">Escolher voz</div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
           <input class="vp-search" id="voiceSearch" type="text" placeholder="Buscar por nome…" oninput="filterVoices()" style="flex:1;margin-bottom:0"/>
           <button onclick="showAddVoicePanel()" title="Adicionar voz do ElevenLabs" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--neon);cursor:pointer;white-space:nowrap;flex-shrink:0">+ Adicionar</button>
@@ -458,6 +558,7 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
       <div id="langCompatBanner" style="display:none;margin:0 14px 10px;padding:12px 14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;font-family:var(--mono);font-size:11px;color:#fbbf24;line-height:1.5"></div>
 
       <div class="vp-list" id="voiceList"></div>
+      </div><!-- end voicePickerBody -->
     </div>
 
   </div><!-- end cols -->
@@ -594,7 +695,12 @@ function rowToVoice(v, isCommunity = false) {
   const langCode  = v.lang_code  || null;
   const langLabel = v.idioma_real || (langCode ? langCode : 'Idioma não detectado');
   const flag      = v.lang_flag  || (langCode ? (LANG_FLAGS[langCode] || '🌐') : (isCommunity ? '🌐' : '⭐'));
-  const gender    = v.genero     || 'Masculino';
+  // BUG CORRIGIDO 2026-07-28: era `v.genero || 'Masculino'` — quando o
+  // ElevenLabs não informa gênero o backend grava '', que virava MASCULINO.
+  // Resultado: toda voz feminina importada sem metadado sumia do filtro
+  // "Feminino". Agora fica 'Não definido' (aparece só em "Todos") e o usuário
+  // pode marcar o gênero no import ou corrigir depois pelo botão ⚧.
+  const gender    = v.genero     || 'Não definido';
   const age       = v.idade      || 'Adulto';
   const style     = v.estilo     || 'Narração';
   const desc      = v.descricao  || (isCommunity ? 'Voz importada pela comunidade' : 'Minha voz do ElevenLabs');
@@ -717,6 +823,7 @@ async function addCustomVoice() {
   const name = document.getElementById('customVoiceName')?.value?.trim() || 'Voz personalizada';
   const userXiKey = document.getElementById('customApiKey')?.value?.trim();
   const langOverride = document.getElementById('customVoiceLang')?.value || ''; // Camada 4
+  const genderOverride = document.getElementById('customVoiceGender')?.value || ''; // gênero manual (2026-07-28)
   const langSelect = document.getElementById('customVoiceLang');
   const msg = document.getElementById('addVoiceMsg');
   if (!voiceId) { if(msg) msg.textContent = 'Cole o Voice ID do ElevenLabs'; return; }
@@ -736,6 +843,7 @@ async function addCustomVoice() {
       body: JSON.stringify({
         token, voice_id: voiceId, name, user_xi_key: userXiKey,
         lang_override: langOverride || undefined,
+        gender_override: genderOverride || undefined, // escolha manual vence auto-detect
       })
     });
     const d = await r.json();
@@ -871,6 +979,10 @@ function renderVoices() {
     // Botao "editar idioma" Camada 6: apenas em Minhas vozes (nao premade/community)
     const canEditLang = v.custom && !v.community;
     const editLangBtn = canEditLang ? `<button onclick="openEditLang('${v.id}', event)" title="Editar idioma desta voz" style="background:none;border:none;color:var(--text-dim);font-size:11px;padding:0 4px;cursor:pointer;line-height:1" aria-label="Editar idioma">✎</button>` : '';
+    // Corrigir gênero (2026-07-28): destacado quando está 'Não definido',
+    // que é o estado real de voz importada sem metadado do ElevenLabs
+    const semGenero = v.gender === 'Não definido';
+    const editGenderBtn = canEditLang ? `<button onclick="openEditGender('${v.id}', event)" title="${semGenero ? 'Defina o gênero — sem isso a voz não aparece nos filtros ♀/♂' : 'Corrigir gênero desta voz'}" style="background:none;border:none;color:${semGenero ? '#fbbf24' : 'var(--text-dim)'};font-size:11px;padding:0 4px;cursor:pointer;line-height:1" aria-label="Editar gênero">⚧</button>` : '';
     return `
     <div class="voice-item ${selectedVoice?.id === v.id ? 'active' : ''}${isIncompat ? ' voice-incompat' : ''}" onclick="selectVoice('${v.id}')">
       <button class="btn-fav ${favorites.has(v.id) ? 'faved' : ''}" onclick="toggleFav('${v.id}', event)" title="Favoritar voz">
@@ -879,7 +991,7 @@ function renderVoices() {
       <div class="vi-flag">${v.flag}</div>
       <div class="vi-info">
         <div class="vi-name">${v.name}${warnIcon}</div>
-        <div class="vi-meta">${v.langLabel || 'Idioma não detectado'}${editLangBtn} · ${v.desc || ''}</div>
+        <div class="vi-meta">${v.langLabel || 'Idioma não detectado'}${editLangBtn}${editGenderBtn} · ${v.desc || ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
@@ -952,6 +1064,15 @@ function selectVoice(id) {
   document.getElementById('selName').textContent = selectedVoice.name;
   document.getElementById('selTags').textContent = `${(selectedVoice.langLabel || selectedVoice.lang || '').toString()} · ${selectedVoice.gender} · ${selectedVoice.age} · ${selectedVoice.style}`;
   document.getElementById('selWave').style.opacity = '1';
+  // Cabeçalho do seletor (estilo ElevenLabs) reflete a voz escolhida e o
+  // painel fecha sozinho — como um dropdown de verdade
+  const pf = document.getElementById('pickerFlag');
+  const pn = document.getElementById('pickerName');
+  const pt = document.getElementById('pickerTags');
+  if (pf) pf.textContent = selectedVoice.flag;
+  if (pn) pn.textContent = selectedVoice.name;
+  if (pt) pt.textContent = `${(selectedVoice.langLabel || selectedVoice.lang || '')} · ${selectedVoice.gender} · ${selectedVoice.style}`;
+  if (window.innerWidth <= 900) setVoicePicker(false);
   // Persist selection
   try { localStorage.setItem('bt_state_voice_selected', id); } catch(e) {}
   updateLangCompatBanner();
@@ -1016,6 +1137,7 @@ function filterByLang(langCode) {
 }
 
 function focusVoicePanel() {
+  setVoicePicker(true); // garante que a lista está aberta ao clicar em "Trocar voz"
   document.getElementById('voicePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.getElementById('voiceSearch').focus();
 }
@@ -1032,6 +1154,11 @@ function showAddVoicePanel() {
     <div style="font-family:var(--mono);font-size:10px;color:var(--neon);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">Importar voz do ElevenLabs</div>
     <input id="customVoiceId" type="text" placeholder="Cole o Voice ID do ElevenLabs" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
     <input id="customVoiceName" type="text" placeholder="Nome da voz (opcional)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
+    <select id="customVoiceGender" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px">
+      <option value="">🤖 Auto-detectar gênero</option>
+      <option value="Feminino">♀ Feminino</option>
+      <option value="Masculino">♂ Masculino</option>
+    </select>
     <select id="customVoiceLang" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px">
       <option value="">🤖 Auto-detectar idioma</option>
       <option value="pt-BR">🇧🇷 Português (Brasil)</option>
@@ -1186,10 +1313,17 @@ async function generateVoice(isFreeRegen = false) {
   document.getElementById('resultsSection').style.display = 'none';
 
   try {
-    // 2 versões em paralelo — variações sutis de estabilidade
+    // 2 versões em paralelo. A = exatamente o que o usuário configurou nos
+    // controles; B = variação mais expressiva em cima da MESMA base (antes os
+    // dois valores eram fixos e ignoravam qualquer personalização).
+    const t = lerTuning();
     const [r1, r2] = await Promise.all([
-      callTTS(selectedVoice.id, text, 0.5, 0.75),   // Versão A: balanceada
-      callTTS(selectedVoice.id, text, 0.3, 0.88),   // Versão B: mais expressiva
+      callTTS(selectedVoice.id, text, t),                                            // A: sua configuração
+      callTTS(selectedVoice.id, text, {                                              // B: +emoção
+        ...t,
+        stability: Math.max(0, +(t.stability - 0.2).toFixed(2)),
+        similarity: Math.min(1, +(t.similarity + 0.13).toFixed(2)),
+      }),
     ]);
 
     if (r1.error) throw new Error(r1.error);
@@ -1222,16 +1356,351 @@ async function generateVoice(isFreeRegen = false) {
   }
 }
 
-async function callTTS(voiceId, text, stability, similarity) {
-  const r = await fetch('/api/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'tts', voiceId, text,
-      stability, similarity,
-      model: 'eleven_v3'  // Modelo v3 — mais natural
-    })
+// ── PERSONALIZAÇÃO DA NARRAÇÃO (2026-07-28) ─────────────────────────────────
+// Lê os controles da UI. Tudo tem default seguro: se o painel não existir
+// (ou o usuário nunca abrir), cai nos valores que já eram usados antes.
+function lerTuning() {
+  const num = (id, def) => {
+    const el = document.getElementById(id);
+    const v = el ? parseFloat(el.value) : NaN;
+    return Number.isFinite(v) ? v : def;
+  };
+  const model = document.getElementById('ttsModel')?.value || 'eleven_v3';
+  return {
+    model,
+    stability: num('ttsStability', 0.5),
+    similarity: num('ttsSimilarity', 0.75),
+    style: num('ttsStyle', 0.4),
+    // v3 não aceita speed — mandar mesmo assim faz o ElevenLabs recusar
+    speed: model === 'eleven_v3' ? null : num('ttsSpeed', 1),
+  };
+}
+
+const _rotulos = {
+  speed: (v) => v <= 0.8 ? 'bem devagar' : v < 0.95 ? 'devagar' : v <= 1.05 ? 'normal' : v < 1.15 ? 'rápido' : 'bem rápido',
+  stability: (v) => v <= 0.25 ? 'muito criativo' : v < 0.45 ? 'criativo' : v <= 0.6 ? 'equilibrado' : v < 0.8 ? 'estável' : 'robusto',
+  similarity: (v) => v < 0.4 ? 'baixa' : v < 0.7 ? 'média' : 'alta',
+  style: (v) => v === 0 ? 'nenhum' : v < 0.35 ? 'sutil' : v < 0.6 ? 'leve' : v < 0.8 ? 'marcante' : 'exagerado',
+};
+
+function onTuningChange() {
+  const t = lerTuning();
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  set('valStability', _rotulos.stability(t.stability));
+  set('valSimilarity', _rotulos.similarity(t.similarity));
+  set('valStyle', _rotulos.style(t.style));
+  set('valSpeed', t.speed == null ? '—' : _rotulos.speed(t.speed));
+  // Velocidade só existe na v2 — some na v3 pra não prometer o que não faz
+  const rowSpeed = document.getElementById('rowSpeed');
+  if (rowSpeed) rowSpeed.style.display = (t.model === 'eleven_v3') ? 'none' : '';
+  const modelo = t.model === 'eleven_v3' ? 'Eleven v3' : 'Multilingual v2';
+  const vel = t.speed == null ? '' : ' · ' + _rotulos.speed(t.speed);
+  set('tuningResumo', `${modelo}${vel} · ${_rotulos.stability(t.stability)}`);
+  try { localStorage.setItem('bv_tuning', JSON.stringify(t)); } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CLONAGEM DE VOZ (2026-07-28) — grava aqui, clona no motor do ElevenLabs,
+// fica salva no BlueVoice. Master · 1 por conta · SEMPRE PRIVADA (nunca vai
+// pra vitrine da comunidade). Clone parado hiberna e pode ser reativado.
+// ══════════════════════════════════════════════════════════════════════════
+let _cloneEstado = null, _mediaRec = null, _chunks = [], _blobGravado = null, _recTimer = null;
+
+function toggleClonePanel() {
+  const p = document.getElementById('clonePanel');
+  const c = document.getElementById('cloneChevron');
+  if (!p) return;
+  const abrir = p.style.display === 'none';
+  p.style.display = abrir ? 'block' : 'none';
+  if (c) c.style.transform = abrir ? 'rotate(90deg)' : '';
+  if (abrir) carregarStatusClone();
+}
+
+async function carregarStatusClone() {
+  const body = document.getElementById('cloneBody');
+  const linha = document.getElementById('cloneStatusLine');
+  const token = localStorage.getItem('bt_token');
+  if (!token) { body.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">Faça login para clonar sua voz.</div>'; return; }
+  body.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-sec)">Carregando…</div>';
+  try {
+    const r = await fetch('/api/blue-voice-clone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'status', token }),
+    });
+    const d = await r.json();
+    _cloneEstado = d;
+    if (d.tem_clone && d.clone) {
+      const ativa = d.clone.status === 'active';
+      if (linha) linha.textContent = ativa ? `✓ ${d.clone.name} — pronta para uso` : `💤 ${d.clone.name} — hibernada (reative com 1 clique)`;
+      body.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(2,8,23,.5);border-radius:10px;margin-bottom:10px">
+          <div style="font-size:20px">${ativa ? '🎙️' : '💤'}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${escClone(d.clone.name)}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec)">${ativa ? 'Ativa · aparece na sua lista de vozes' : 'Hibernada · sua gravação está guardada'}</div>
+          </div>
+        </div>
+        ${ativa ? '' : `<button onclick="reativarClone()" id="btnReativarClone" style="width:100%;padding:11px;background:linear-gradient(135deg,#a78bfa,#7c3aed);border:none;border-radius:9px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px">⚡ Reativar minha voz</button>`}
+        <button onclick="removerClone()" style="width:100%;padding:9px;background:transparent;border:1px solid rgba(255,122,90,.3);border-radius:9px;font-family:var(--mono);font-size:11px;color:#ff7a5a;cursor:pointer">Remover voz clonada</button>
+        <div id="cloneMsg" style="font-family:var(--mono);font-size:11px;margin-top:8px;min-height:14px"></div>
+        <div style="font-family:var(--mono);font-size:9.5px;color:var(--text-dim);margin-top:8px;line-height:1.5">🔒 Sua voz é privada — só você a vê e usa. Limite de 1 clone por conta: para outras vozes, crie no ElevenLabs e use "+ Adicionar".</div>`;
+    } else {
+      const semVaga = d.vagas_livres !== null && d.vagas_livres <= 0;
+      if (linha) linha.textContent = 'Grave 1 minuto e narre com a sua própria voz';
+      body.innerHTML = `
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-sec);line-height:1.6;margin-bottom:10px">
+          Grave <b style="color:var(--text)">1 a 2 minutos</b> falando naturalmente, num lugar silencioso. Quanto melhor o áudio, melhor a clonagem.
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button id="btnRec" onclick="alternarGravacao()" style="flex:1;padding:11px;background:linear-gradient(135deg,#a78bfa,#7c3aed);border:none;border-radius:9px;font-size:13px;font-weight:700;color:#fff;cursor:pointer">● Gravar</button>
+          <label style="flex:1;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;font-size:12px;color:var(--text);cursor:pointer;text-align:center">
+            📁 Enviar áudio<input type="file" accept="audio/*" onchange="arquivoClone(event)" style="display:none"/>
+          </label>
+        </div>
+        <div id="recInfo" style="font-family:var(--mono);font-size:11px;color:#a78bfa;min-height:16px;margin-bottom:8px"></div>
+        <audio id="clonePreview" controls style="width:100%;display:none;margin-bottom:8px"></audio>
+        <input id="cloneNome" type="text" placeholder="Nome da voz (ex: Minha voz)" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(167,139,250,.2);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:8px"/>
+        <select id="cloneGenero" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(167,139,250,.2);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;margin-bottom:10px">
+          <option value="">Gênero da voz (opcional)</option>
+          <option value="Feminino">♀ Feminino</option>
+          <option value="Masculino">♂ Masculino</option>
+        </select>
+        <button id="btnClonar" onclick="enviarClone()" disabled style="width:100%;padding:12px;background:rgba(167,139,250,.25);border:none;border-radius:9px;font-size:13px;font-weight:700;color:#fff;cursor:not-allowed;opacity:.6">Grave ou envie um áudio primeiro</button>
+        <div id="cloneMsg" style="font-family:var(--mono);font-size:11px;margin-top:8px;min-height:14px"></div>
+        ${semVaga ? '<div style="font-family:var(--mono);font-size:10px;color:#fbbf24;margin-top:8px">⚠ As vagas de clonagem estão cheias agora. Vagas de quem não usa há um tempo são liberadas automaticamente.</div>' : ''}
+        <div style="font-family:var(--mono);font-size:9.5px;color:var(--text-dim);margin-top:8px;line-height:1.5">🔒 Sua voz fica <b>privada</b> — nunca aparece pra outros usuários. Clone apenas a sua própria voz ou uma que você tenha autorização para usar.<br>Limite de <b>1 clone por conta</b>: precisando de mais vozes, crie no ElevenLabs e traga pelo botão "+ Adicionar".</div>`;
+    }
+  } catch (e) {
+    body.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:#ff7a5a">Erro ao carregar. Tente de novo.</div>';
+  }
+}
+
+function escClone(s) { return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+async function alternarGravacao() {
+  const btn = document.getElementById('btnRec');
+  const info = document.getElementById('recInfo');
+  if (_mediaRec && _mediaRec.state === 'recording') {
+    _mediaRec.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    _chunks = [];
+    _mediaRec = new MediaRecorder(stream);
+    _mediaRec.ondataavailable = (e) => { if (e.data.size) _chunks.push(e.data); };
+    _mediaRec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      clearInterval(_recTimer);
+      _blobGravado = new Blob(_chunks, { type: _chunks[0]?.type || 'audio/webm' });
+      const prev = document.getElementById('clonePreview');
+      prev.src = URL.createObjectURL(_blobGravado); prev.style.display = 'block';
+      btn.textContent = '● Gravar de novo';
+      btn.style.background = 'linear-gradient(135deg,#a78bfa,#7c3aed)';
+      const seg = Math.round(_blobGravado.size / 16000);
+      info.textContent = `Gravação pronta (~${Math.round(_blobGravado.size / 1024)} KB)`;
+      liberarBotaoClonar();
+    };
+    _mediaRec.start();
+    let s = 0;
+    _recTimer = setInterval(() => {
+      s++;
+      info.textContent = `● Gravando… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` + (s < 30 ? ' (fale pelo menos 30s)' : ' ✓ já dá pra clonar');
+      if (s >= 180) _mediaRec.stop(); // teto de 3min
+    }, 1000);
+    btn.textContent = '■ Parar gravação';
+    btn.style.background = 'linear-gradient(135deg,#ef4444,#b91c1c)';
+  } catch (e) {
+    info.textContent = 'Não consegui acessar o microfone. Autorize no navegador ou envie um arquivo.';
+  }
+}
+
+function arquivoClone(ev) {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  if (f.size > 12 * 1024 * 1024) { document.getElementById('recInfo').textContent = 'Arquivo muito grande (máx. 12 MB).'; return; }
+  _blobGravado = f;
+  const prev = document.getElementById('clonePreview');
+  prev.src = URL.createObjectURL(f); prev.style.display = 'block';
+  document.getElementById('recInfo').textContent = `Arquivo selecionado: ${f.name}`;
+  liberarBotaoClonar();
+}
+
+function liberarBotaoClonar() {
+  const b = document.getElementById('btnClonar');
+  if (!b) return;
+  b.disabled = false;
+  b.style.cursor = 'pointer'; b.style.opacity = '1';
+  b.style.background = 'linear-gradient(135deg,#a78bfa,#7c3aed)';
+  b.textContent = '🎤 Clonar minha voz';
+}
+
+async function enviarClone() {
+  const msg = document.getElementById('cloneMsg');
+  const btn = document.getElementById('btnClonar');
+  const token = localStorage.getItem('bt_token');
+  if (!_blobGravado) { msg.style.color = '#ff7a5a'; msg.textContent = 'Grave ou envie um áudio primeiro.'; return; }
+  if (!token) { msg.style.color = '#ff7a5a'; msg.textContent = 'Faça login.'; return; }
+  btn.disabled = true; btn.textContent = 'Preparando envio…';
+  msg.style.color = '#a78bfa'; msg.textContent = '';
+  try {
+    // 1) URL assinada (sobe direto pro storage — desvia do limite da Vercel)
+    const r1 = await fetch('/api/blue-voice-clone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upload-url', token }),
+    });
+    const d1 = await r1.json();
+    if (!r1.ok || !d1.upload_url) throw new Error(d1.error || 'Falha ao preparar upload');
+    btn.textContent = 'Enviando áudio…';
+    const up = await fetch(d1.upload_url, { method: 'PUT', headers: { 'Content-Type': _blobGravado.type || 'audio/mpeg' }, body: _blobGravado });
+    if (!up.ok) throw new Error('Falha ao enviar o áudio. Tente de novo.');
+    // 2) clona no ElevenLabs
+    btn.textContent = 'Clonando sua voz… (alguns segundos)';
+    const r2 = await fetch('/api/blue-voice-clone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'criar', token, sample_path: d1.path,
+        name: document.getElementById('cloneNome')?.value?.trim() || 'Minha voz',
+        genero: document.getElementById('cloneGenero')?.value || undefined,
+      }),
+    });
+    const d2 = await r2.json();
+    if (!r2.ok || !d2.ok) throw new Error(d2.error || 'Não consegui clonar.');
+    msg.style.color = 'var(--green)';
+    msg.textContent = '✓ Voz clonada! Já está na sua lista de vozes.';
+    _blobGravado = null;
+    if (typeof loadCustomVoices === 'function') await loadCustomVoices();
+    setTimeout(carregarStatusClone, 900);
+  } catch (e) {
+    msg.style.color = '#ff7a5a'; msg.textContent = e.message;
+    btn.disabled = false; btn.textContent = '🎤 Tentar de novo';
+  }
+}
+
+async function reativarClone() {
+  const msg = document.getElementById('cloneMsg');
+  const btn = document.getElementById('btnReativarClone');
+  const token = localStorage.getItem('bt_token');
+  if (btn) { btn.disabled = true; btn.textContent = 'Reativando…'; }
+  try {
+    const r = await fetch('/api/blue-voice-clone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reativar', token }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Falha ao reativar.');
+    if (msg) { msg.style.color = 'var(--green)'; msg.textContent = '✓ Voz reativada!'; }
+    if (typeof loadCustomVoices === 'function') await loadCustomVoices();
+    setTimeout(carregarStatusClone, 900);
+  } catch (e) {
+    if (msg) { msg.style.color = '#ff7a5a'; msg.textContent = e.message; }
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Reativar minha voz'; }
+  }
+}
+
+async function removerClone() {
+  if (!confirm('Remover sua voz clonada? A gravação também será apagada e essa ação não pode ser desfeita.')) return;
+  const msg = document.getElementById('cloneMsg');
+  const token = localStorage.getItem('bt_token');
+  try {
+    const r = await fetch('/api/blue-voice-clone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remover', token }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Falha ao remover.');
+    if (typeof loadCustomVoices === 'function') await loadCustomVoices();
+    carregarStatusClone();
+  } catch (e) { if (msg) { msg.style.color = '#ff7a5a'; msg.textContent = e.message; } }
+}
+
+// ── SELETOR DE VOZ estilo ElevenLabs (2026-07-28) ──────────────────────────
+// No desktop começa ABERTO (a lista é o conteúdo principal da coluna); no
+// mobile começa fechado pra não empurrar o botão de gerar pra fora da tela.
+function setVoicePicker(abrir) {
+  const body = document.getElementById('voicePickerBody');
+  const chev = document.getElementById('pickerChevron');
+  if (!body) return;
+  body.style.display = abrir ? 'block' : 'none';
+  if (chev) chev.style.transform = abrir ? 'rotate(90deg)' : '';
+}
+function toggleVoicePicker() {
+  const body = document.getElementById('voicePickerBody');
+  if (!body) return;
+  setVoicePicker(body.style.display === 'none');
+}
+(function initVoicePicker(){
+  const aplicar = () => setVoicePicker(window.innerWidth > 900);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aplicar);
+  else aplicar();
+})();
+
+function toggleTuning() {
+  const body = document.getElementById('tuningBody');
+  const chev = document.getElementById('tuningChevron');
+  if (!body) return;
+  const abrir = body.style.display === 'none';
+  body.style.display = abrir ? 'block' : 'none';
+  if (chev) chev.style.transform = abrir ? 'rotate(90deg)' : '';
+}
+
+const PRESETS = {
+  narracao: { model: 'eleven_v3', stability: 0.65, similarity: 0.8,  style: 0.25, speed: 0.95 },
+  viral:    { model: 'eleven_v3', stability: 0.3,  similarity: 0.85, style: 0.75, speed: 1.1  },
+  calmo:    { model: 'eleven_multilingual_v2', stability: 0.8, similarity: 0.75, style: 0.1, speed: 0.85 },
+  padrao:   { model: 'eleven_v3', stability: 0.5,  similarity: 0.75, style: 0.4,  speed: 1    },
+};
+function aplicarPreset(nome) {
+  const p = PRESETS[nome]; if (!p) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('ttsModel', p.model); set('ttsStability', p.stability);
+  set('ttsSimilarity', p.similarity); set('ttsStyle', p.style); set('ttsSpeed', p.speed);
+  onTuningChange();
+}
+
+// Restaura a última configuração do usuário (e sincroniza os rótulos)
+(function initTuning() {
+  const aplicar = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem('bv_tuning') || 'null');
+      if (s) {
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        set('ttsModel', s.model); set('ttsStability', s.stability);
+        set('ttsSimilarity', s.similarity); set('ttsStyle', s.style);
+        if (s.speed != null) set('ttsSpeed', s.speed);
+      }
+    } catch (e) {}
+    onTuningChange();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aplicar);
+  else aplicar();
+})();
+
+async function callTTS(voiceId, text, tuning) {
+  const t = tuning || lerTuning();
+  const body = {
+    action: 'tts', voiceId, text,
+    stability: t.stability,
+    similarity: t.similarity,
+    style: t.style,
+    model: t.model,
+  };
+  if (t.speed != null) body.speed = t.speed; // v2 apenas
+  const xi = localStorage.getItem('bt_xi_key');
+  if (xi) body.user_xi_key = xi;
+  // Endpoint próprio (2026-07-28): aceita style/speed/modelo. O /api/auth
+  // antigo continua de pé como rede de segurança se este falhar.
+  let r = await fetch('/api/blue-tts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   });
+  if (r.status === 404 || r.status === 500) {
+    const legado = await fetch('/api/auth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'tts', voiceId, text, stability: t.stability, similarity: t.similarity, model: t.model })
+    });
+    if (legado.ok) return legado.json();
+  }
   return r.json();
 }
 
@@ -1512,6 +1981,72 @@ if (prefillLang) {
     </div>
   </div>
 </div>
+
+<!-- Corrigir gênero de voz salva (2026-07-28) — o ElevenLabs não informa
+     gênero em muitas vozes clonadas; sem isso a voz some dos filtros ♀/♂ -->
+<div id="editGenderModal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(2,8,23,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:rgba(10,22,40,0.98);border:1px solid rgba(0,170,255,0.25);border-radius:18px;padding:24px;width:100%;max-width:380px;position:relative">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(0,170,255,0.5),transparent);border-radius:18px 18px 0 0"></div>
+    <button onclick="closeEditGender()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#7d92b8;font-size:18px;cursor:pointer">✕</button>
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:#fff">⚧ Gênero da voz</div>
+    <div id="editGenderVoiceName" style="font-family:monospace;font-size:11px;color:#7d92b8;margin-bottom:14px">—</div>
+    <select id="editGenderSelect" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:13px;color:#fff;outline:none;margin-bottom:12px">
+      <option value="Feminino">♀ Feminino</option>
+      <option value="Masculino">♂ Masculino</option>
+    </select>
+    <div id="editGenderMsg" style="font-family:monospace;font-size:11px;color:#7d92b8;margin-bottom:12px;min-height:14px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeEditGender()" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;font-family:monospace;font-size:12px;color:#fff;cursor:pointer">Cancelar</button>
+      <button onclick="saveEditGender()" id="editGenderSaveBtn" style="background:linear-gradient(135deg,#1a6bff,#00aaff);border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Corrigir gênero de voz já salva (espelha o fluxo de idioma)
+let _editingGenderVoiceId = null;
+function openEditGender(voiceId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  const v = (typeof VOICES !== 'undefined') ? VOICES.find(x => x.id === voiceId) : null;
+  if (!v) return;
+  _editingGenderVoiceId = voiceId;
+  document.getElementById('editGenderVoiceName').textContent = v.name + ' (atual: ' + (v.gender || 'não definido') + ')';
+  const sel = document.getElementById('editGenderSelect');
+  sel.value = (v.gender === 'Masculino') ? 'Masculino' : 'Feminino';
+  document.getElementById('editGenderMsg').textContent = '';
+  document.getElementById('editGenderModal').style.display = 'flex';
+}
+function closeEditGender() {
+  document.getElementById('editGenderModal').style.display = 'none';
+  _editingGenderVoiceId = null;
+}
+async function saveEditGender() {
+  if (!_editingGenderVoiceId) return;
+  const genero = document.getElementById('editGenderSelect').value;
+  const msg = document.getElementById('editGenderMsg');
+  const btn = document.getElementById('editGenderSaveBtn');
+  const token = localStorage.getItem('bt_token');
+  if (!token) { msg.style.color = '#ff7a5a'; msg.textContent = 'Faça login.'; return; }
+  msg.style.color = '#7d92b8'; msg.textContent = 'Salvando…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/blue-voices?action=update-gender', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, voice_id: _editingGenderVoiceId, genero }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      const v = (typeof VOICES !== 'undefined') ? VOICES.find(x => x.id === _editingGenderVoiceId) : null;
+      if (v) v.gender = d.genero;
+      msg.style.color = 'var(--green)'; msg.textContent = '✓ Gênero atualizado!';
+      if (typeof renderVoices === 'function') renderVoices();
+      setTimeout(closeEditGender, 700);
+    } else {
+      msg.style.color = '#ff7a5a'; msg.textContent = d.error || 'Erro ao salvar.';
+    }
+  } catch (e) { msg.style.color = '#ff7a5a'; msg.textContent = 'Erro de conexão.'; }
+  finally { btn.disabled = false; }
+}
+</script>
 
 <script>
 // Camada 6: editar idioma de voz ja salva (Minhas vozes)

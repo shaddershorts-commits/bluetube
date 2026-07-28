@@ -436,6 +436,63 @@ function detectSource(url){
   return {name:'Vídeo',emoji:'🎬'};
 }
 
+// ── VALIDAÇÃO DE LINK POR PLATAFORMA (2026-07-27) ───────────────────────────
+// Motivo: colar só o domínio (tiktok.com/) devolvia o erro genérico "não foi
+// possível extrair", que parece falha NOSSA. Agora dizemos exatamente o que
+// falta e mostramos um exemplo do formato certo.
+//
+// REGRA DE OURO — na dúvida, DEIXA PASSAR. Só bloqueia quando é comprovadamente
+// um link SEM vídeo (home, perfil, busca). Link estranho mas plausível vai pro
+// backend tentar: falso negativo (barrar link bom) é MUITO pior que deixar o
+// backend responder. Por isso a checagem é por padrão conhecido de "não-vídeo",
+// nunca por lista fechada de "formatos aceitos".
+function validarLinkVideo(url){
+  let u;
+  try { u = new URL(url); } catch (e) {
+    return { ok:false, msg:'Esse link não parece válido. Copie o link completo do vídeo (começa com https://).' };
+  }
+  const host = u.hostname.replace(/^www\./,'').toLowerCase();
+  const caminho = u.pathname.replace(/\/+$/,''); // sem barra final
+  const vazio = caminho === '' || caminho === '/';
+
+  // Domínio puro (sem caminho): NUNCA é um vídeo, em nenhuma plataforma
+  if (vazio) {
+    const p = detectSource(url);
+    const exemplos = {
+      'TikTok':    'https://www.tiktok.com/@usuario/video/123456789',
+      'YouTube':   'https://www.youtube.com/watch?v=CODIGO  (ou /shorts/CODIGO)',
+      'Instagram': 'https://www.instagram.com/reel/CODIGO/',
+      'Twitter/X': 'https://x.com/usuario/status/123456789',
+      'Facebook':  'https://www.facebook.com/watch?v=123456789',
+      'Reddit':    'https://www.reddit.com/r/nome/comments/abc/titulo/',
+      'Kwai':      'https://www.kwai.com/@usuario/video/123456789',
+      'Snapchat':  'https://www.snapchat.com/spotlight/CODIGO',
+      'Threads':   'https://www.threads.net/@usuario/post/CODIGO',
+      'Douyin':    'https://www.douyin.com/video/123456789',
+    };
+    const ex = exemplos[p.name];
+    return { ok:false, msg:`Você colou só o endereço do ${p.name}, sem o vídeo. Abra o vídeo, toque em Compartilhar → Copiar link e cole aqui.` + (ex ? `\nExemplo: ${ex}` : '') };
+  }
+
+  // Padrões de "não-vídeo" por plataforma (perfil, busca, explorar, hashtag).
+  // Só entram casos INEQUÍVOCOS — qualquer coisa fora daqui passa direto.
+  const naoVideo = [
+    { host:/tiktok\.com$/,    re:/^\/@[^/]+$/,                 oq:'o perfil de um usuário', dica:'Abra um vídeo específico desse perfil e copie o link dele.' },
+    { host:/tiktok\.com$/,    re:/^\/(explore|search|foryou|following|live)\b/, oq:'uma página de navegação do TikTok', dica:'Abra o vídeo que você quer e use Compartilhar → Copiar link.' },
+    { host:/instagram\.com$/, re:/^\/[^/]+$/,                  oq:'um perfil do Instagram', dica:'Abra o Reel ou post que você quer baixar e copie o link dele.', excecao:/^\/(p|reel|reels|tv|stories)\b/ },
+    { host:/instagram\.com$/, re:/^\/(explore|direct|accounts)\b/, oq:'uma página de navegação do Instagram', dica:'Abra o Reel específico e copie o link.' },
+    { host:/youtube\.com$/,   re:/^\/(@[^/]+|c|channel|user)\b/, oq:'um canal do YouTube', dica:'Abra o vídeo ou Short que você quer e copie o link.', excecao:/\/(watch|shorts|live)\b/ },
+    { host:/youtube\.com$/,   re:/^\/(results|feed|playlist)\b/, oq:'uma página de busca/lista do YouTube', dica:'Abra o vídeo específico e copie o link dele.' },
+    { host:/kwai\.com$/,      re:/^\/@[^/]+$/,                 oq:'um perfil do Kwai', dica:'Abra o vídeo e copie o link.' },
+  ];
+  for (const n of naoVideo){
+    if (n.host.test(host) && n.re.test(caminho) && !(n.excecao && n.excecao.test(caminho))){
+      return { ok:false, msg:`Esse link é ${n.oq}, não um vídeo. ${n.dica}` };
+    }
+  }
+  return { ok:true };
+}
+
 // Pre-preenche o input via query string ?url=YYYY (vindo de Nichos Secretos
 // ou outras ferramentas que querem mandar URL pra baixar). Dispara 'input'
 // pra ativar badge + auto-detect de source. Limpa parametro da URL apos
@@ -849,7 +906,13 @@ async function startDownload(){
     return;
   }
   if(!url.startsWith('http')){
-    showError('Link inválido. Certifique-se de copiar o link completo do vídeo.');
+    showError('Link inválido. Certifique-se de copiar o link completo do vídeo (começa com https://).');
+    return;
+  }
+  // Checagem específica por plataforma (só barra link comprovadamente sem vídeo)
+  const v = validarLinkVideo(url);
+  if(!v.ok){
+    showError(v.msg);
     return;
   }
 

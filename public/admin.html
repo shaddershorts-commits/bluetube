@@ -1012,6 +1012,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         <div class="stat-card"><div class="stat-label">youtube-media</div><div class="stat-value" id="bbhYoutubeMedia">—</div><div class="stat-sub" id="bbhYoutubeMediaSub">—</div></div>
         <div class="stat-card"><div class="stat-label">Invidious</div><div class="stat-value" id="bbhInvidious">—</div><div class="stat-sub" id="bbhInvidiousSub">—</div></div>
       </div>
+      <!-- Vagas de clonagem de voz (2026-07-28): o plano Creator dá 30 vagas
+           na conta INTEIRA. Quando encher, ninguém mais clona — então o teto
+           precisa ser visível ANTES de bater. -->
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+        <div class="stat-card"><div class="stat-label">Vagas de voz (ElevenLabs)</div><div class="stat-value" id="bvcSlots">—</div><div class="stat-sub" id="bvcSlotsSub">clique em Testar agora</div></div>
+        <div class="stat-card"><div class="stat-label">Clones ativos</div><div class="stat-value" id="bvcAtivos">—</div><div class="stat-sub">ocupando vaga</div></div>
+        <div class="stat-card"><div class="stat-label">Clones hibernados</div><div class="stat-value" id="bvcHib">—</div><div class="stat-sub">áudio guardado · reativável</div></div>
+      </div>
+
       <!-- Cadeia do TikTok (2026-07-27): antes só descobríamos que caiu quando
            o user reclamava. Agora o painel testa a cadeia e mostra QUEM está
            atendendo — se sair do tikwm, já é sinal de degradação. -->
@@ -2369,10 +2378,32 @@ async function testTiktokChain(){
   }catch(e){ v.textContent='✗'; v.style.color='var(--red)'; s.textContent=e.message.slice(0,30); }
 }
 
+// Vagas de clonagem de voz — o teto do plano Creator (30) precisa ser visível
+// antes de encher, senão a feature morre silenciosamente pro usuário 31.
+async function loadVoiceClones(){
+  const s=document.getElementById('bvcSlots'), sub=document.getElementById('bvcSlotsSub');
+  const a=document.getElementById('bvcAtivos'), hb=document.getElementById('bvcHib');
+  if(!s) return;
+  try{
+    const r=await fetch(`/api/blue-voice-clone?action=slots&admin_secret=${encodeURIComponent(adminKey)}`);
+    const d=await r.json();
+    if(!d.ok){ s.textContent='—'; sub.textContent=d.error||'sem dados'; return; }
+    const el=d.elevenlabs;
+    if(el){
+      s.textContent=`${el.usados}/${el.limite}`;
+      const pct=el.limite?el.usados/el.limite:0;
+      s.style.color=pct>=0.9?'var(--red)':pct>=0.7?'#fbbf24':'var(--green)';
+      sub.textContent=`${el.livres} livres pra novos clones`;
+    }
+    a.textContent=d.clones_ativos; hb.textContent=d.clones_hibernados;
+  }catch(e){ s.textContent='✗'; sub.textContent=e.message.slice(0,30); }
+}
+
 async function testBaixaBlueAgora(){
   const summary=document.getElementById('bbhSummary');
   summary.textContent='⏳ Rodando teste em todos providers (~30s)...';
   testTiktokChain();
+  loadVoiceClones();
   try{
     const r=await fetch('/api/audit-baixablue',{headers:{'Authorization':`Bearer ${adminKey}`}});
     const d=await r.json();

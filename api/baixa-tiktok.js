@@ -52,6 +52,25 @@ module.exports = async function handler(req, res) {
   if (!URL_VALIDA.test(url)) {
     return res.status(400).json({ error: 'Link inválido. Use um link do TikTok (tiktok.com/@usuario/video/...).' });
   }
+  // Só o domínio ou um perfil = não é vídeo. Mensagem específica em vez do
+  // genérico "não foi possível extrair" (que parece falha nossa).
+  try {
+    const caminho = new URL(url).pathname.replace(/\/+$/, '');
+    if (!caminho || caminho === '/') {
+      return res.status(400).json({
+        error: 'Você colou só o endereço do TikTok, sem o vídeo. Abra o vídeo, toque em Compartilhar → Copiar link e cole aqui.',
+        exemplo: 'https://www.tiktok.com/@usuario/video/123456789',
+        platform: 'tiktok',
+      });
+    }
+    if (/^\/@[^/]+$/.test(caminho)) {
+      return res.status(400).json({
+        error: 'Esse link é o perfil de um usuário, não um vídeo. Abra um vídeo desse perfil e copie o link dele.',
+        exemplo: 'https://www.tiktok.com/@usuario/video/123456789',
+        platform: 'tiktok',
+      });
+    }
+  } catch (e) { /* URL exótica: deixa passar — o backend tenta */ }
 
   try {
     const r = await baixarTiktok(url);

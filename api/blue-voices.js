@@ -453,8 +453,11 @@ module.exports = async function handler(req, res) {
 
       let communityVoices = [];
       try {
+        // PRIVACIDADE (2026-07-28): voz CLONADA é dado biométrico do usuário —
+        // nunca entra na vitrine da comunidade. `is_clone=is.null` cobre as
+        // vozes antigas (coluna ausente) e exclui as marcadas como clone.
         const cr = await fetch(
-          `${SU}/rest/v1/blue_custom_voices?user_id=neq.${userId}&order=created_at.desc&limit=50&select=*`,
+          `${SU}/rest/v1/blue_custom_voices?user_id=neq.${userId}&is_clone=is.null&order=created_at.desc&limit=50&select=*`,
           { headers: h }
         );
         if (cr.ok) {
@@ -477,7 +480,7 @@ module.exports = async function handler(req, res) {
   // lang_override: code valido de LANG_LIST (Camada 4 manual). Se vier, vence
   // qualquer auto-detect e marca lang_source='manual'.
   if (req.method === 'POST') {
-    const { voice_id, name, user_xi_key, lang_override } = req.body || {};
+    const { voice_id, name, user_xi_key, lang_override, gender_override } = req.body || {};
     if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
 
     const finalName = name || 'Voz personalizada';
@@ -542,6 +545,15 @@ module.exports = async function handler(req, res) {
       meta.lang_source = 'manual';
     }
 
+    // ── GÊNERO MANUAL (2026-07-28) — vence auto-detect ────────────────────
+    // O ElevenLabs não informa gênero em boa parte das vozes clonadas: antes
+    // isso virava '' e o frontend rotulava como Masculino, sumindo do filtro
+    // Feminino. Agora o usuário escolhe no import (e pode corrigir depois).
+    if (gender_override === 'Feminino' || gender_override === 'Masculino') {
+      meta = meta || {};
+      meta.genero = gender_override;
+    }
+
     // ── CAMADA 5: bloqueio se ainda nao tem lang_code ─────────────────────
     // Frontend recebe needs_manual_language=true e abre dropdown forcado.
     if (!meta || !meta.lang_code) {
@@ -602,6 +614,29 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: 'patch_failed', detail: txt.slice(0, 200) });
       }
       return res.status(200).json({ ok: true, lang_code: m.code, idioma_real: m.label });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── PATCH ?action=update-gender — corrige gênero de voz já salva ────────
+  // Espelha o update-lang. Necessário porque o ElevenLabs não informa gênero
+  // em muitas vozes clonadas e o rótulo errado esconde a voz do filtro.
+  if (req.method === 'PATCH' && req.query.action === 'update-gender') {
+    const { voice_id, genero } = req.body || {};
+    if (!voice_id) return res.status(400).json({ error: 'voice_id obrigatório' });
+    if (genero !== 'Feminino' && genero !== 'Masculino') {
+      return res.status(400).json({ error: 'genero inválido', valid: ['Feminino', 'Masculino'] });
+    }
+    try {
+      const pr = await fetch(`${SU}/rest/v1/blue_custom_voices?user_id=eq.${userId}&voice_id=eq.${voice_id}`, {
+        method: 'PATCH',
+        headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({ genero }),
+      });
+      if (!pr.ok) {
+        const txt = await pr.text().catch(() => '');
+        return res.status(500).json({ error: 'patch_failed', detail: txt.slice(0, 200) });
+      }
+      return res.status(200).json({ ok: true, genero });
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 

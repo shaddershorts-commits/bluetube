@@ -1,0 +1,33 @@
+name: BlueVoice — Hibernar clones parados (diário)
+
+# Libera vagas de clonagem no ElevenLabs (o plano Creator dá 30 no total):
+# clone sem uso há 30+ dias sai de lá, MAS a gravação original fica guardada
+# no nosso storage — o dono reativa com 1 clique quando voltar.
+#
+# Sem isso, 30 usuários travariam a feature pra sempre, inclusive os que
+# clonaram, usaram uma vez e nunca mais voltaram.
+
+on:
+  schedule:
+    - cron: '37 5 * * *'   # 05:37 UTC — minuto não-redondo (fila do GitHub)
+  workflow_dispatch: {}
+
+jobs:
+  hibernar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Libera vagas de clones inativos
+        run: |
+          echo "Iniciando às $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP_CODE=$(curl -sS --max-time 240 \
+            -w "%{http_code}" \
+            -o /tmp/resp.json \
+            "https://bluetube-ten.vercel.app/api/blue-voice-clone?action=hibernar&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Hibernação falhou com HTTP $HTTP_CODE"
+            cat /tmp/resp.json | head -c 400
+            exit 1
+          fi
+          node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log('✓ avaliados:',d.avaliados,'| hibernados:',d.hibernados,'| falhas:',d.falhas,'| motivo:',d.motivo||'-')"
