@@ -283,51 +283,6 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
 
         <!-- SELECTED VOICE -->
         <div style="margin:18px 0 0">
-          <div class="section-label">Voz selecionada <span></span></div>
-          <div class="selected-voice" id="selectedVoiceStrip" onclick="focusVoicePanel()">
-            <div class="sel-flag" id="selFlag">🇧🇷</div>
-            <div class="sel-info">
-              <div class="sel-name" id="selName">Escolha uma voz →</div>
-              <div class="sel-tags" id="selTags">Clique para selecionar no painel ao lado</div>
-            </div>
-            <div class="sel-wave" id="selWave" style="opacity:0">
-              <div class="wave-bar" style="height:40%"></div>
-              <div class="wave-bar" style="height:70%"></div>
-              <div class="wave-bar" style="height:100%"></div>
-              <div class="wave-bar" style="height:55%"></div>
-              <div class="wave-bar" style="height:80%"></div>
-            </div>
-            <div class="sel-change">Trocar voz ›</div>
-          </div>
-        </div>
-
-        <!-- ── CLONAR MINHA VOZ (2026-07-28) ────────────────────────────────
-             Grava/envia pelo nosso site, clona no motor do ElevenLabs e fica
-             salva aqui. Exclusivo Master · 1 por conta · SEMPRE PRIVADA. -->
-        <div id="cloneCard" style="margin:12px 0 12px;padding:14px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.25);border-radius:12px">
-          <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="toggleClonePanel()">
-            <div style="font-size:22px">🎤</div>
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:700;color:#a78bfa">Clonar minha voz</div>
-              <div id="cloneStatusLine" style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Grave 1 minuto e narre com a sua própria voz</div>
-            </div>
-            <div id="cloneChevron" style="font-family:var(--mono);font-size:12px;color:#a78bfa;transition:transform .2s">›</div>
-          </div>
-          <div id="clonePanel" style="display:none;margin-top:12px;border-top:1px solid rgba(167,139,250,.15);padding-top:12px">
-            <div id="cloneBody"></div>
-          </div>
-        </div>
-
-        <!-- IMPORT VOICE -->
-        <div style="margin:12px 0 16px;padding:14px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.15);border-radius:12px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="showAddVoicePanel();document.getElementById('voicePanel').scrollIntoView({behavior:'smooth'})">
-          <div style="font-size:22px">⭐</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:700;color:#fbbf24">Importar voz do ElevenLabs</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Cole o Voice ID para usar sua própria voz</div>
-          </div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--gold)">+ Importar →</div>
-        </div>
-
         <!-- ── PERSONALIZAÇÃO DA NARRAÇÃO (2026-07-28) ──────────────────────
              Espelha os controles do ElevenLabs: modelo, velocidade,
              estabilidade, similaridade e exageiro de estilo. Recolhido por
@@ -347,8 +302,8 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
             <div style="margin-top:12px">
               <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Modelo</div>
               <select id="ttsModel" onchange="onTuningChange()" style="width:100%;background:rgba(2,8,23,.7);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none">
-                <option value="eleven_v3">V3 · Eleven v3 — mais expressivo e natural</option>
-                <option value="eleven_multilingual_v2">V2 · Multilingual v2 — mais estável e previsível</option>
+                <option value="eleven_v3">BlueVoice V3 — mais expressivo e natural</option>
+                <option value="eleven_multilingual_v2">BlueVoice V2 — mais estável e previsível</option>
               </select>
             </div>
             <!-- VELOCIDADE (só v2 — a v3 não aceita speed) -->
@@ -393,6 +348,24 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
                 <button type="button" class="vf-chip" onclick="aplicarPreset('padrao')">↺ Padrão</button>
               </div>
             </div>
+          </div>
+        </div>
+
+          <div class="section-label">Voz selecionada <span></span></div>
+          <div class="selected-voice" id="selectedVoiceStrip" onclick="focusVoicePanel()">
+            <div class="sel-flag" id="selFlag">🇧🇷</div>
+            <div class="sel-info">
+              <div class="sel-name" id="selName">Escolha uma voz →</div>
+              <div class="sel-tags" id="selTags">Clique para selecionar no painel ao lado</div>
+            </div>
+            <div class="sel-wave" id="selWave" style="opacity:0">
+              <div class="wave-bar" style="height:40%"></div>
+              <div class="wave-bar" style="height:70%"></div>
+              <div class="wave-bar" style="height:100%"></div>
+              <div class="wave-bar" style="height:55%"></div>
+              <div class="wave-bar" style="height:80%"></div>
+            </div>
+            <div class="sel-change">Trocar voz ›</div>
           </div>
         </div>
 
@@ -498,11 +471,44 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         <div id="pickerChevron" style="font-family:var(--mono);font-size:14px;color:var(--neon);transition:transform .2s">›</div>
       </div>
 
+      <!-- Menu do "+ Adicionar" (2026-07-28): dois caminhos pra ter voz nova -->
+      <div id="menuAdicionar" style="display:none;margin:0 20px 10px;background:rgba(2,8,23,.9);border:1px solid rgba(0,170,255,.25);border-radius:12px;overflow:hidden">
+        <div onclick="escolherAdicionar('importar')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid rgba(0,170,255,.1)">
+          <div style="font-size:18px">⭐</div>
+          <div style="flex:1">
+            <div style="font-size:12.5px;font-weight:700;color:#fbbf24">Importar do ElevenLabs</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:1px">Já tem uma voz lá? Cole o Voice ID</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">›</div>
+        </div>
+        <div onclick="escolherAdicionar('clonar')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer">
+          <div style="font-size:18px">🎤</div>
+          <div style="flex:1">
+            <div style="font-size:12.5px;font-weight:700;color:#a78bfa">Clonar minha voz</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:1px">Grave aqui mesmo · exclusivo Master</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">›</div>
+        </div>
+      </div>
+
+      <!-- Painel de clonagem (aberto pelo menu acima) -->
+      <div id="cloneCard" style="display:none;margin:0 20px 12px;padding:14px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.25);border-radius:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:20px">🎤</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:#a78bfa">Clonar minha voz</div>
+            <div id="cloneStatusLine" style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:2px">Grave 1 minuto e narre com a sua própria voz</div>
+          </div>
+          <button onclick="fecharClone()" style="background:none;border:none;color:var(--text-dim);font-size:16px;cursor:pointer" aria-label="Fechar">✕</button>
+        </div>
+        <div id="clonePanel"><div id="cloneBody"></div></div>
+      </div>
+
       <div id="voicePickerBody">
       <div class="vp-header">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
           <input class="vp-search" id="voiceSearch" type="text" placeholder="Buscar por nome…" oninput="filterVoices()" style="flex:1;margin-bottom:0"/>
-          <button onclick="showAddVoicePanel()" title="Adicionar voz do ElevenLabs" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--neon);cursor:pointer;white-space:nowrap;flex-shrink:0">+ Adicionar</button>
+          <button onclick="abrirMenuAdicionar(event)" title="Adicionar voz" style="background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.2);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--neon);cursor:pointer;white-space:nowrap;flex-shrink:0">+ Adicionar</button>
         </div>
       </div>
 
@@ -1326,6 +1332,12 @@ async function generateVoice(isFreeRegen = false) {
       }),
     ]);
 
+    // Limite de uso: o BluBlu dá o recado com cara dele, não com erro seco
+    if (r1.blublu || r2.blublu) {
+      const rec = r1.blublu ? r1 : r2;
+      mostrarRecadoBlublu(rec.error, rec);
+      throw new Error('__blublu__');
+    }
     if (r1.error) throw new Error(r1.error);
     if (r2.error) throw new Error(r2.error);
 
@@ -1348,12 +1360,36 @@ async function generateVoice(isFreeRegen = false) {
 
     showToast('✓ 2 versões geradas!');
   } catch(e) {
-    showToast('⚠ Falha ao gerar narração. Tente novamente.');
+    // '__blublu__' = o recado de limite já foi mostrado no card do BluBlu
+    if (e.message !== '__blublu__') showToast('⚠ Falha ao gerar narração. Tente novamente.');
   } finally {
     btn.disabled = false;
     document.getElementById('btnIcon').outerHTML = `<svg id="btnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
     btnLabel.textContent = 'Gerar narração';
   }
+}
+
+// Recado do BluBlu quando o uso bate no teto — card com a cara dele em vez
+// de um erro seco. Diz o que aconteceu E o que dá pra fazer agora.
+function mostrarRecadoBlublu(texto, info) {
+  document.getElementById('blubluLimiteCard')?.remove();
+  const card = document.createElement('div');
+  card.id = 'blubluLimiteCard';
+  const barra = (info && info.limite_diario)
+    ? `<div style="margin-top:10px"><div style="height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.min(100, Math.round(((info.usado_hoje || info.limite_diario) / info.limite_diario) * 100))}%;background:linear-gradient(90deg,#a78bfa,#7c3aed)"></div></div>
+       <div style="font-family:var(--mono);font-size:10px;color:var(--text-sec);margin-top:4px">${(info.usado_hoje || 0).toLocaleString('pt-BR')} de ${info.limite_diario.toLocaleString('pt-BR')} caracteres hoje · renova à meia-noite</div></div>` : '';
+  card.style.cssText = 'margin:14px 0;padding:16px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.35);border-radius:14px;display:flex;gap:12px;align-items:flex-start';
+  card.innerHTML = `
+    <img src="/blublu-sad.png" alt="BluBlu" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"/>
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:800;color:#a78bfa;margin-bottom:4px">BluBlu</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.55">${escClone(texto)}</div>
+      ${barra}
+    </div>
+    <button onclick="this.closest('#blubluLimiteCard').remove()" style="background:none;border:none;color:var(--text-dim);font-size:15px;cursor:pointer" aria-label="Fechar">✕</button>`;
+  const alvo = document.querySelector('.main-card') || document.body;
+  alvo.appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ── PERSONALIZAÇÃO DA NARRAÇÃO (2026-07-28) ─────────────────────────────────
@@ -1393,7 +1429,7 @@ function onTuningChange() {
   // Velocidade só existe na v2 — some na v3 pra não prometer o que não faz
   const rowSpeed = document.getElementById('rowSpeed');
   if (rowSpeed) rowSpeed.style.display = (t.model === 'eleven_v3') ? 'none' : '';
-  const modelo = t.model === 'eleven_v3' ? 'Eleven v3' : 'Multilingual v2';
+  const modelo = t.model === 'eleven_v3' ? 'BlueVoice V3' : 'BlueVoice V2';
   const vel = t.speed == null ? '' : ' · ' + _rotulos.speed(t.speed);
   set('tuningResumo', `${modelo}${vel} · ${_rotulos.stability(t.stability)}`);
   try { localStorage.setItem('bv_tuning', JSON.stringify(t)); } catch (e) {}
@@ -1406,15 +1442,33 @@ function onTuningChange() {
 // ══════════════════════════════════════════════════════════════════════════
 let _cloneEstado = null, _mediaRec = null, _chunks = [], _blobGravado = null, _recTimer = null;
 
-function toggleClonePanel() {
-  const p = document.getElementById('clonePanel');
-  const c = document.getElementById('cloneChevron');
-  if (!p) return;
-  const abrir = p.style.display === 'none';
-  p.style.display = abrir ? 'block' : 'none';
-  if (c) c.style.transform = abrir ? 'rotate(90deg)' : '';
-  if (abrir) carregarStatusClone();
+// "+ Adicionar" abre um menu com os 2 caminhos (importar do ElevenLabs ou
+// clonar aqui). Antes o botão ia direto pro import e a clonagem vivia num
+// card solto na coluna esquerda.
+function abrirMenuAdicionar(ev) {
+  if (ev) ev.stopPropagation();
+  const m = document.getElementById('menuAdicionar');
+  if (!m) return;
+  const abrir = m.style.display === 'none';
+  m.style.display = abrir ? 'block' : 'none';
+  if (abrir) { setVoicePicker(true); document.getElementById('cloneCard').style.display = 'none'; document.getElementById('addVoicePanel')?.remove(); }
 }
+function escolherAdicionar(qual) {
+  document.getElementById('menuAdicionar').style.display = 'none';
+  if (qual === 'importar') {
+    document.getElementById('cloneCard').style.display = 'none';
+    showAddVoicePanel();
+  } else {
+    document.getElementById('addVoicePanel')?.remove();
+    document.getElementById('cloneCard').style.display = 'block';
+    carregarStatusClone();
+  }
+}
+function fecharClone() {
+  document.getElementById('cloneCard').style.display = 'none';
+}
+// compat: chamadas antigas continuam funcionando
+function toggleClonePanel() { escolherAdicionar('clonar'); }
 
 async function carregarStatusClone() {
   const body = document.getElementById('cloneBody');
@@ -1688,6 +1742,9 @@ async function callTTS(voiceId, text, tuning) {
   if (t.speed != null) body.speed = t.speed; // v2 apenas
   const xi = localStorage.getItem('bt_xi_key');
   if (xi) body.user_xi_key = xi;
+  // token identifica o usuário pro controle de uso diário (protege a quota)
+  const tk = localStorage.getItem('bt_token');
+  if (tk) body.token = tk;
   // Endpoint próprio (2026-07-28): aceita style/speed/modelo. O /api/auth
   // antigo continua de pé como rede de segurança se este falhar.
   let r = await fetch('/api/blue-tts', {

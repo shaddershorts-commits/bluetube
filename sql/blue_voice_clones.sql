@@ -35,6 +35,21 @@ alter table public.blue_custom_voices
 
 create index if not exists idx_custom_voices_clone on public.blue_custom_voices (is_clone);
 
+-- ── USO DIÁRIO (2026-07-28) ────────────────────────────────────────────────
+-- Protege a quota do ElevenLabs (o plano tem teto mensal de créditos) E dá
+-- visibilidade de consumo, que hoje não existe: ninguém sabia quanto o
+-- BlueVoice gasta até a fatura chegar.
+create table if not exists public.blue_voice_usage (
+  user_id     text not null,
+  dia         date not null,
+  geracoes    int  default 0,
+  caracteres  int  default 0,
+  updated_at  timestamptz default now(),
+  primary key (user_id, dia)
+);
+create index if not exists idx_bvusage_dia on public.blue_voice_usage (dia desc);
+alter table public.blue_voice_usage enable row level security;
+
 -- Bucket PRIVADO com as amostras (nunca público — é a voz da pessoa)
 insert into storage.buckets (id, name, public)
 values ('voice-samples', 'voice-samples', false)
