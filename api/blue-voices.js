@@ -331,7 +331,7 @@ async function fetchElevenMetadata(voiceId, xiKey) {
 // resposta vinha 200 com o erro DENTRO, fazendo o site achar que salvou.
 async function gravarVozResiliente(SU, h, payload) {
   const tentar = async (corpo) => {
-    const r = await fetch(SU + "/rest/v1/blue_custom_voices", {
+    const r = await fetch(SU + "/rest/v1/blue_custom_voices?on_conflict=user_id,voice_id", {
       method: "POST",
       headers: Object.assign({}, h, { Prefer: "resolution=merge-duplicates,return=representation" }),
       body: JSON.stringify(corpo),
@@ -654,6 +654,32 @@ module.exports = async function handler(req, res) {
       meta.genero = gender_override;
     }
 
+    // ── CHECAGEM_DUPLICATA (2026-07-28) ───────────────────────────────────
+    // Sem isto, importar a mesma voz criava entrada repetida na lista.
+    // Regras: já é sua → atualiza (não duplica); já está no acervo oficial
+    // do BlueVoice → recusa e explica que a voz já está disponível.
+    try {
+      const dupR = await fetch(
+        `${SU}/rest/v1/blue_custom_voices?voice_id=eq.${encodeURIComponent(voice_id)}&select=user_id,name,metadata,is_clone`,
+        { headers: h }
+      );
+      if (dupR.ok) {
+        const linhas = await dupR.json();
+        const minha = linhas.find((x) => x.user_id === userId);
+        const oficial = linhas.find((x) => x.metadata && x.metadata.oficial);
+        if (oficial && !minha) {
+          return res.status(200).json({
+            ok: false,
+            duplicada: true,
+            error: `Essa voz já faz parte do acervo do BlueVoice como "${oficial.name}" — é só procurar por ela na lista de vozes.`,
+          });
+        }
+        if (minha) {
+          // deixa seguir: o upsert atualiza a MESMA linha (nome/idioma novos)
+          console.log("[blue-voices] reimport da própria voz — atualizando:", voice_id);
+        }
+      }
+    } catch (e) { /* checagem é best-effort: nunca impede o import */ }
     // ── CAMADA 5: bloqueio se ainda nao tem lang_code ─────────────────────
     // Frontend recebe needs_manual_language=true e abre dropdown forcado.
     if (!meta || !meta.lang_code) {
@@ -670,7 +696,7 @@ module.exports = async function handler(req, res) {
       const payload = {
         user_id: userId,
         voice_id,
-        name: realName || finalName,
+        name: finalName || realName, // o nome digitado pelo usuário manda
         ...(meta || {})
       };
       const tentativa = await gravarVozResiliente(SU, h, payload);

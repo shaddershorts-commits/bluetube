@@ -556,6 +556,15 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
           <button class="vf-chip" data-f="lang" data-v="de-DE" onclick="setFilter('lang','de-DE',this)">🇩🇪 DE</button>
           <button class="vf-chip" data-f="lang" data-v="it-IT" onclick="setFilter('lang','it-IT',this)">🇮🇹 IT</button>
           <button class="vf-chip" data-f="lang" data-v="ja-JP" onclick="setFilter('lang','ja-JP',this)">🇯🇵 JA</button>
+          <button class="vf-chip" data-f="lang" data-v="ko-KR" onclick="setFilter('lang','ko-KR',this)"><span style="opacity:.55;font-size:9px">KR</span> 한국어</button>
+          <button class="vf-chip" data-f="lang" data-v="zh-CN" onclick="setFilter('lang','zh-CN',this)"><span style="opacity:.55;font-size:9px">CN</span> 中文</button>
+          <button class="vf-chip" data-f="lang" data-v="ru-RU" onclick="setFilter('lang','ru-RU',this)"><span style="opacity:.55;font-size:9px">RU</span> Русский</button>
+          <button class="vf-chip" data-f="lang" data-v="tr" onclick="setFilter('lang','tr',this)"><span style="opacity:.55;font-size:9px">TR</span> Türkçe</button>
+          <button class="vf-chip" data-f="lang" data-v="ar" onclick="setFilter('lang','ar',this)"><span style="opacity:.55;font-size:9px">SA</span> العربية</button>
+          <button class="vf-chip" data-f="lang" data-v="hi" onclick="setFilter('lang','hi',this)"><span style="opacity:.55;font-size:9px">IN</span> हिन्दी</button>
+          <button class="vf-chip" data-f="lang" data-v="id" onclick="setFilter('lang','id',this)"><span style="opacity:.55;font-size:9px">ID</span> Bahasa</button>
+          <button class="vf-chip" data-f="lang" data-v="nl-NL" onclick="setFilter('lang','nl-NL',this)"><span style="opacity:.55;font-size:9px">NL</span> Nederlands</button>
+          <button class="vf-chip" data-f="lang" data-v="pl-PL" onclick="setFilter('lang','pl-PL',this)"><span style="opacity:.55;font-size:9px">PL</span> Polski</button>
           <button class="vf-chip" data-f="lang" data-v="multilingual" onclick="setFilter('lang','multilingual',this)">🌍 Multilingual</button>
         </div>
       </div>
@@ -951,7 +960,24 @@ function checkReady() {
 }
 
 // ── VOICE FILTER & RENDER ────────────────────────────────────────────────────
+
+// ── FILTROS DE IDIOMA QUE ACOMPANHAM O ACERVO (2026-07-28) ────────────────
+// A lista de chips cobre os 20 idiomas aceitos no import; aqui escondemos os
+// que não têm nenhuma voz, pra não oferecer filtro que devolve lista vazia.
+function ajustarFiltrosIdioma() {
+  try {
+    if (typeof VOICES === "undefined" || !VOICES.length) return;
+    var comVoz = new Set();
+    VOICES.forEach(function (v) { if (v.langCode) comVoz.add(v.langCode); });
+    document.querySelectorAll('[data-f="lang"]').forEach(function (b) {
+      var v = b.dataset.v;
+      if (!v || v === "multilingual") return;
+      b.style.display = comVoz.has(v) ? "" : "none";
+    });
+  } catch (e) {}
+}
 function renderVoices() {
+  ajustarFiltrosIdioma();
   const search = document.getElementById('voiceSearch').value.toLowerCase();
   const list = document.getElementById('voiceList');
   const preferredCode = currentScriptLangCode();
