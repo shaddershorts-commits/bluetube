@@ -66,6 +66,36 @@ const LANG_MAP = [
   [/polish|polski|polonês/, 'pl-PL', '🇵🇱', 'Polski'],
 ];
 
+// Código ISO puro de 2 letras — o ElevenLabs manda assim em muitas vozes
+// (language: "fr"). Usado como REDE quando os padrões acima não casam.
+const ISO_PURO = {
+  pt: ['pt-BR', '\u{1F1E7}\u{1F1F7}', 'Português (Brasil)'],
+  en: ['en-US', '\u{1F1FA}\u{1F1F8}', 'English (US)'],
+  es: ['es-ES', '\u{1F1EA}\u{1F1F8}', 'Español (España)'],
+  fr: ['fr-FR', '\u{1F1EB}\u{1F1F7}', 'Français'],
+  de: ['de-DE', '\u{1F1E9}\u{1F1EA}', 'Deutsch'],
+  it: ['it-IT', '\u{1F1EE}\u{1F1F9}', 'Italiano'],
+  ja: ['ja-JP', '\u{1F1EF}\u{1F1F5}', '日本語'],
+  ko: ['ko-KR', '\u{1F1F0}\u{1F1F7}', '한국어'],
+  zh: ['zh-CN', '\u{1F1E8}\u{1F1F3}', '中文'],
+  ar: ['ar', '\u{1F1F8}\u{1F1E6}', 'العربية'],
+  hi: ['hi', '\u{1F1EE}\u{1F1F3}', 'हिन्दी'],
+  tr: ['tr', '\u{1F1F9}\u{1F1F7}', 'Türkçe'],
+  id: ['id', '\u{1F1EE}\u{1F1E9}', 'Bahasa Indonesia'],
+  nl: ['nl-NL', '\u{1F1F3}\u{1F1F1}', 'Nederlands'],
+  ru: ['ru-RU', '\u{1F1F7}\u{1F1FA}', 'Русский'],
+  pl: ['pl-PL', '\u{1F1F5}\u{1F1F1}', 'Polski'],
+};
+// Procura um código ISO puro em qualquer campo de idioma da voz.
+function porIsoPuro(...valores) {
+  for (const v of valores) {
+    const t = String(v || '').trim().toLowerCase();
+    if (/^[a-z]{2}$/.test(t) && ISO_PURO[t]) return ISO_PURO[t];
+  }
+  return null;
+}
+
+
 // ── CAMADA 2: dicionario de nomes -> idioma (lowercase, sem acento) ────────
 // Quando regex em labels falha, tenta inferir pelo PRIMEIRO nome da voz.
 // Cobertura aprox: nomes mais comuns por cultura. Falsos positivos sao OK
@@ -206,6 +236,22 @@ function normalizeVoice(v) {
       const meta = lookupLang(codeFromName);
       langCode = meta.code; langFlag = meta.flag; langLabel = meta.label;
       langSource = 'auto_name';
+    }
+  }
+
+  // ── CAMADA 2.5: código ISO puro (2026-07-28) ─────────────────────────────
+  // O ElevenLabs manda `language: "fr"` em muitas vozes — código de 2 letras
+  // que os padrões acima não reconhecem (esperam "fr-FR" ou "french"). Sem
+  // isto a voz caía na Camada 5 e o import era RECUSADO ("não consegui
+  // detectar o idioma"): aparecia na tela e sumia ao recarregar.
+  if (!langCode) {
+    const isoCand = [labels.language, labels.locale, labels.lang].concat(
+      verified.map(function (x) { return typeof x === "string" ? x : ((x && (x.language || x.locale)) || ""); })
+    );
+    const iso = porIsoPuro.apply(null, isoCand);
+    if (iso) {
+      langCode = iso[0]; langFlag = iso[1]; langLabel = iso[2];
+      langSource = "auto_iso";
     }
   }
 
