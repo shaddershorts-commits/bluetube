@@ -312,6 +312,30 @@ async function fetchElevenMetadata(voiceId, xiKey) {
   } catch (e) { return null; }
 }
 
+
+// Grava a voz tolerando colunas que não existem no schema (ex.: lang_source).
+// Sem isto, um campo extra derruba o import inteiro com PGRST204 — e a
+// resposta vinha 200 com o erro DENTRO, fazendo o site achar que salvou.
+async function gravarVozResiliente(SU, h, payload) {
+  const tentar = async (corpo) => {
+    const r = await fetch(SU + "/rest/v1/blue_custom_voices", {
+      method: "POST",
+      headers: Object.assign({}, h, { Prefer: "resolution=merge-duplicates,return=representation" }),
+      body: JSON.stringify(corpo),
+    });
+    const body = await r.json().catch(() => null);
+    const erroColuna = !!(body && body.code === "PGRST204" && /column/i.test(body.message || ""));
+    const m = erroColuna ? String(body.message).match(/'([a-zA-Z_]+)' column/) : null;
+    return { ok: r.ok && !erroColuna, body: body, erroColuna: erroColuna, faltante: m ? m[1] : null };
+  };
+  let t = await tentar(payload);
+  for (let i = 0; i < 4 && t.erroColuna && t.faltante; i++) {
+    console.warn("[blue-voices] coluna inexistente, removendo do payload:", t.faltante);
+    delete payload[t.faltante];
+    t = await tentar(payload);
+  }
+  return t;
+}
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -636,12 +660,16 @@ module.exports = async function handler(req, res) {
         name: realName || finalName,
         ...(meta || {})
       };
-      const r = await fetch(`${SU}/rest/v1/blue_custom_voices`, {
-        method: 'POST',
-        headers: { ...h, Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify(payload)
-      });
-      const saved = await r.json();
+      const tentativa = await gravarVozResiliente(SU, h, payload);
+      if (!tentativa.ok) {
+        console.error("[blue-voices] falha ao salvar:", JSON.stringify(tentativa.body).slice(0, 200));
+        return res.status(500).json({
+          ok: false,
+          error: "Não consegui salvar a voz. Tente de novo — se persistir, me avise.",
+          detalhe: String((tentativa.body && tentativa.body.message) || "").slice(0, 160),
+        });
+      }
+      const saved = tentativa.body;
       return res.status(200).json({
         ok: true,
         voice: Array.isArray(saved) ? saved[0] : saved,
