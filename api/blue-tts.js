@@ -32,6 +32,11 @@ const RAJADA_JANELA_MIN = parseInt(process.env.BLUEVOICE_BURST_MIN, 10) || 15;
 const RAJADA_MAX = parseInt(process.env.BLUEVOICE_BURST_MAX, 10) || 60;      // gerações na janela
 const TETO_DIARIO_ABSURDO = parseInt(process.env.BLUEVOICE_DAILY_MAX, 10) || 400; // só trava robô
 
+// Fatia da cota mensal do ElevenLabs que fica guardada. Encostou nela, a
+// geração para com recado do BluBlu em vez de deixar a conta zerar no dia 20 e
+// derrubar a narração de todo mundo até a virada do mês.
+const RESERVA_GLOBAL_PCT = parseFloat(process.env.BLUEVOICE_RESERVA_PCT) || 0.05;
+
 // Recados do BluBlu — pausa, não limite. Sem citar motor/fornecedor.
 const RECADOS_PAUSA = [
   'Calma aí, paizão! Vai devagar nessas gerações. Vou ali tomar uma água e já volto em {min} minutos, beleza? 💧',
@@ -115,22 +120,29 @@ function marcarUsoDeClone(voiceId) {
   } catch (e) { /* silencioso */ }
 }
 
-// Master ativo? Mesma checagem do api/videos-salvos.js — e-mail pela sessão,
-// plano pela tabela de assinantes, com validade conferida.
-async function ehMaster(userId, SU, SK) {
+// Plano do usuário — e-mail pela sessão, plano pela tabela de assinantes.
+// Devolve 'master' | 'outro' | 'indefinido'.
+//
+// 'indefinido' existe de propósito: se a CONSULTA falha (rede, permissão,
+// Supabase fora), não dá pra concluir que a pessoa não é Master. Tratar isso
+// como "não é" derrubaria a narração de TODOS os pagantes ao mesmo tempo por
+// um problema que não é deles. Quem decide o que fazer com a dúvida é o
+// chamador — aqui só não se inventa resposta.
+async function planoDoUsuario(userId, SU, SK) {
   const h = { apikey: SK, Authorization: 'Bearer ' + SK };
   try {
     const ur = await fetch(`${SU}/auth/v1/admin/users/${userId}`, { headers: h });
-    if (!ur.ok) return false;
+    if (!ur.ok) return 'indefinido';
     const email = String((await ur.json()).email || '').toLowerCase();
-    if (!email) return false;
+    if (!email) return 'indefinido';
     const sr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at`, { headers: h });
-    if (!sr.ok) return false;
+    if (!sr.ok) return 'indefinido';
     const s = (await sr.json())[0];
-    if (!s || s.plan !== 'master') return false;
-    if (s.plan_expires_at && new Date(s.plan_expires_at) < new Date()) return false;
-    return true;
-  } catch (e) { return false; }
+    if (!s) return 'outro'; // consulta OK e sem assinatura = resposta de verdade
+    if (s.plan !== 'master') return 'outro';
+    if (s.plan_expires_at && new Date(s.plan_expires_at) < new Date()) return 'outro';
+    return 'master';
+  } catch (e) { return 'indefinido'; }
 }
 
 module.exports = async function handler(req, res) {
@@ -177,7 +189,10 @@ module.exports = async function handler(req, res) {
     if (!userId) {
       return res.status(401).json({ error: 'Faça login para gerar narração.', motivo: 'sem_sessao' });
     }
-    if (usandoChaveDaCasa && !(await ehMaster(userId, SU, SK))) {
+    // Só barra quando a resposta é clara. Na dúvida a geração segue: o buraco
+    // que importava (POST anônimo queimando crédito) já fechou no passo acima,
+    // e os freios de uso por usuário continuam valendo.
+    if (usandoChaveDaCasa && (await planoDoUsuario(userId, SU, SK)) === 'outro') {
       return res.status(403).json({ error: 'A narração do BlueVoice é exclusiva do plano Master.', motivo: 'plano' });
     }
   }
