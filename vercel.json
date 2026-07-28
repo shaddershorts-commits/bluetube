@@ -294,7 +294,6 @@
       ]
     },
     {
-      "comment": "BlueVoice precisa do microfone pra clonagem de voz. A politica global bloqueia mic em TODO o site (seguranca) — aqui liberamos APENAS nesta pagina, so pra propria origem.",
       "source": "/blueVoice",
       "headers": [
         {
