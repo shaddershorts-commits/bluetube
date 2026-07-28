@@ -2273,7 +2273,11 @@ async function processEditV0(jobId, p) {
 //
 // NÃO funciona pra googlevideo.com que é IP-bound (pra YouTube use /youtube-hq).
 const PROXY_ALLOWED_HOSTS = [
-  'tokcdn.com', 'tiktokcdn.com', 'tiktokv.com',
+  // 2026-07-27: TikWM (cadeia gratuita do TikTok) entrega em variantes
+  // REGIONAIS do CDN — tiktokcdn-us.com, -eu.com etc. O sufixo faz o
+  // endsWith('tiktokcdn.com') falhar. Sem elas o download dava 403 no proxy.
+  'tokcdn.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'tiktokcdn-eu.com', 'tiktokv.com',
+  'tikwm.com', 'muscdn.com', 'byteoversea.com',
   'cdninstagram.com', 'fbcdn.net', 'fbsbx.com',
   'twimg.com', 'twitter.com', 'x.com',
   'redditmedia.com', 'redd.it', 'reddit.com',
