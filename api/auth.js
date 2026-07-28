@@ -1975,6 +1975,14 @@ Responda APENAS em JSON válido sem markdown:
   // ══════════════════════════════════════════════════════════════════════════
   // Usa as vars globais SUPA_URL, SUPA_KEY, ANON_KEY, supaH declaradas no topo
   const COMMISSION_RATES = { bronze: 0.35, silver: 0.40, gold: 0.58 };
+  // Taxa efetiva: override manual do admin (comissao_percentual) vence o
+  // nível calculado. Sem isto, afiliado com percentual especial recebia
+  // comissão calculada pela tabela padrão (caso real: 58% virando 35%).
+  const taxaEfetivaAff = (aff, totalPaying) => (
+    aff && typeof aff.comissao_percentual === "number" && aff.comissao_percentual > 0
+      ? aff.comissao_percentual / 100
+      : COMMISSION_RATES[getAffLevel(totalPaying)]
+  );
   const PLAN_AMOUNTS = { full: 29.99, master: 89.99 };
   const getAffLevel = (p) => p >= 1000 ? 'gold' : p >= 380 ? 'silver' : 'bronze';
   const genRefCode = (email) => {
@@ -2158,7 +2166,7 @@ Responda APENAS em JSON válido sem markdown:
       // Calcula stats
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
       const level = getAffLevel(totalPaying);
-      const rate = COMMISSION_RATES[level];
+      const rate = taxaEfetivaAff(affiliate, totalPaying); // respeita override do admin
 
       const pendingCommissions = commissions.filter(c => c.status === 'pending');
       const paidCommissions = commissions.filter(c => c.status === 'paid');
@@ -2274,7 +2282,7 @@ Responda APENAS em JSON válido sem markdown:
         if (plan === 'full' || plan === 'master') {
           const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0) + 1;
           const level = getAffLevel(totalPaying);
-          const rate = COMMISSION_RATES[level];
+          const rate = taxaEfetivaAff(affiliate, totalPaying); // respeita override do admin
           const planAmount = PLAN_AMOUNTS[plan];
           const commissionAmount = planAmount * rate;
 
@@ -2349,7 +2357,7 @@ Responda APENAS em JSON válido sem markdown:
 
       const totalPaying = (affiliate.total_full || 0) + (affiliate.total_master || 0);
       const level = getAffLevel(totalPaying);
-      const rate = COMMISSION_RATES[level];
+      const rate = taxaEfetivaAff(affiliate, totalPaying); // respeita override do admin
       const planAmount = PLAN_AMOUNTS[plan] || 0;
       const commissionAmount = planAmount * rate;
 

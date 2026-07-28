@@ -49,30 +49,54 @@ function generateRefCode(email) {
 // ser parceiro BlueTube (pedido do user 2026-07-18). Chamada AWAITED no fluxo
 // da conversao: fire-and-forget morre quando a function responde (bug classe
 // ja conhecida do runtime).
-function variacoesComissao(nomeAff, valorFmt, planLabel) {
-  return [
+// VARIACOES_V2 (2026-07-28): + tons motivador/inspirador e uma variação do
+// BluBlu que só entra quando a conversão é MASTER (humor ácido, quebra a
+// quarta parede). `ehMaster` decide se a fala do BluBlu entra no sorteio.
+function variacoesComissao(nomeAff, valorFmt, planLabel, ehMaster) {
+  const base = [
     {
-      assunto: `💙 ${valorFmt} — obrigado por construir isso com a gente, ${nomeAff}`,
       badge: '💙 PARCEIRO BLUETUBE',
+      assunto: `💙 ${valorFmt} — obrigado por construir isso com a gente, ${nomeAff}`,
       titulo: `Isso aqui é obra sua, ${nomeAff}.`,
       texto: `Mais um criador acabou de entrar pro BlueTube <b style="color:#fff;">pela SUA indicação</b> — e a sua comissão de <b style="color:#10b981;">${valorFmt}</b> já está no seu saldo.<br/><br/>A gente só chega em quem confia em nós porque pessoas como você emprestam a própria credibilidade pra isso. Não é pouca coisa — é a parte mais valiosa que alguém pode dar. <b style="color:#fff;">Obrigado de verdade por fazer parte dos parceiros BlueTube.</b> 💙`,
     },
     {
-      assunto: `🚀 +${valorFmt} — teu link tá trabalhando por você, ${nomeAff}`,
-      badge: '🚀 SEU LINK EM AÇÃO',
-      titulo: `Enquanto você vivia sua vida… caiu mais uma.`,
-      texto: `É disso que a gente fala quando fala de renda que trabalha por você: <b style="color:#fff;">nova assinatura ${planLabel}</b> pelo seu link, <b style="color:#10b981;">${valorFmt}</b> de comissão no seu saldo.<br/><br/>Cada indicação tua é prova de que o seu público confia no que você recomenda — e essa confiança está virando resultado. Que orgulho ter você no time de parceiros BlueTube. <b style="color:#fff;">Segue o jogo, que o momentum é seu.</b> 🚀`,
+      badge: '🚀 MAIS UM NO TIME',
+      assunto: `🚀 ${nomeAff}, mais ${valorFmt} no seu saldo`,
+      titulo: 'Você acabou de mudar o dia de alguém.',
+      texto: `Tem um criador que hoje vai gravar melhor, publicar mais rápido e crescer com ferramenta de gente grande — <b style="color:#fff;">porque você indicou</b>. Sua comissão de <b style="color:#10b981;">${valorFmt}</b> entrou.<br/><br/>Indicação boa não é sorte: é reputação. E a sua está trabalhando por você.`,
     },
     {
-      assunto: `🌱 ${valorFmt} plantados — sua rede tá crescendo, ${nomeAff}`,
-      badge: '🌱 SEMENTE PLANTADA',
-      titulo: `Cada indicação é uma semente. Essa germinou.`,
-      texto: `Nova assinatura ${planLabel} pelo seu link — <b style="color:#10b981;">${valorFmt}</b> direto pro seu saldo.<br/><br/>O que você está construindo não é só comissão: é uma rede de criadores que entraram porque VOCÊ mostrou o caminho. Isso se acumula, mês após mês. A gente vê o seu trabalho, e é uma honra ter você como parceiro BlueTube. <b style="color:#fff;">Continua plantando — a colheita é sua.</b> 🌱`,
+      badge: '🔥 CONSTÂNCIA PAGA',
+      assunto: `🔥 ${valorFmt} — sua constância está virando resultado`,
+      titulo: 'Não foi coincidência. Foi consistência.',
+      texto: `Mais uma conversão pela sua indicação: <b style="color:#10b981;">${valorFmt}</b> no saldo.<br/><br/>A maioria desiste antes da terceira indicação. Você não. E é exatamente por isso que os números começam a aparecer — <b style="color:#fff;">quem aparece todo dia, colhe todo mês</b>.`,
+    },
+    {
+      badge: '💡 REPUTAÇÃO EM AÇÃO',
+      assunto: `💡 ${nomeAff}, alguém confiou na sua palavra (+${valorFmt})`,
+      titulo: 'Sua recomendação vale dinheiro. Literalmente.',
+      texto: `Nova assinatura ${planLabel} pela sua indicação — comissão de <b style="color:#10b981;">${valorFmt}</b> creditada.<br/><br/>Pensa comigo: essa pessoa tinha mil opções e escolheu a sua indicação. <b style="color:#fff;">Isso é autoridade construída.</b> Continua mostrando o que a ferramenta faz por você — o resto acontece sozinho.`,
+    },
+    {
+      badge: '🌱 EFEITO COMPOSTO',
+      assunto: `🌱 +${valorFmt} — e isso aqui se acumula, ${nomeAff}`,
+      titulo: 'Cada indicação empilha na próxima.',
+      texto: `Comissão de <b style="color:#10b981;">${valorFmt}</b> entrando no saldo.<br/><br/>O detalhe que quase ninguém percebe: comissão de assinatura <b style="color:#fff;">se repete todo mês enquanto a pessoa ficar</b>. Você não ganhou uma vez — você plantou uma renda. Faz de novo amanhã.`,
     },
   ];
+  if (ehMaster) {
+    base.push({
+      badge: '🤖 BLUBLU SAIU DO LABORATÓRIO',
+      assunto: `🤖 ${nomeAff}, eu precisei vir aqui pessoalmente falar com você`,
+      titulo: 'Cara… você tá exagerando (e eu amei).',
+      texto: `Oi, é o <b style="color:#fff;">BluBlu</b>. Sim, EU. A inteligência artificial que deveria estar analisando viral e não escrevendo email.<br/><br/>Acontece que você trouxe mais um <b style="color:#fbbf24;">MASTER</b> — o plano caro, o topo da montanha — e aqui dentro tocou aquele alarme de "alguém está levando isso a sério demais". Aí me mandaram vir agradecer. Pessoalmente. Eu, que nem tenho pernas.<br/><br/>Sua comissão: <b style="color:#10b981;">${valorFmt}</b>. Já tá no saldo, pode conferir — eu esperaria você conferir, mas não tenho paciência, tenho processador.<br/><br/>Continua assim que uma hora eles me obrigam a fazer uma live com você. 🎤`,
+    });
+  }
+  return base;
 }
 
-async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, commission_amount }) {
+async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, commission_amount, commission_rate }) {
   const RESEND = process.env.RESEND_API_KEY;
   if (!RESEND || !affiliate?.email) return;
   const maskEmail = (e) => {
@@ -83,7 +107,14 @@ async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, comm
   const planLabel = plan === 'master' ? '👑 Master' : '⚡ Full';
   const valorFmt = 'R$ ' + Number(commission_amount || 0).toFixed(2).replace('.', ',');
   const nomeAff = (affiliate.name || affiliate.email.split('@')[0]).split(' ')[0];
-  const vars = variacoesComissao(nomeAff, valorFmt, planLabel);
+  // Nível/percentual REAIS — o afiliado precisa ver de onde saiu o valor.
+  // Usa a taxa efetivamente gravada na comissão (respeita override do admin).
+  const pct = typeof commission_rate === "number" && commission_rate > 0
+    ? Math.round(commission_rate * 100)
+    : (typeof affiliate.comissao_percentual === "number" && affiliate.comissao_percentual > 0 ? affiliate.comissao_percentual : null);
+  const nivelNome = { gold: "Ouro", silver: "Prata", bronze: "Bronze" }[affiliate.level] || null;
+  const txtTaxa = pct ? ` · ${nivelNome ? nivelNome.toUpperCase() + " " : ""}${pct}%` : "";
+  const vars = variacoesComissao(nomeAff, valorFmt, planLabel, plan === "master");
   const v = vars[((affiliate.total_full || 0) + (affiliate.total_master || 0)) % vars.length];
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;background:#020817;color:#e8f4ff;padding:40px 28px;border-radius:14px">
@@ -93,7 +124,7 @@ async function notificarAfiliadoNovaComissao(affiliate, { subscriber, plan, comm
     <h1 style="font-size:24px;font-weight:800;margin:0 0 12px;color:#fff">${v.titulo}</h1>
     <p style="font-size:15px;line-height:1.6;color:rgba(200,220,240,.85);margin:0 0 24px">${v.texto}</p>
     <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:20px;margin:20px 0">
-      <div style="font-size:11px;color:rgba(200,220,240,.6);letter-spacing:2px;margin-bottom:8px;font-family:monospace">COMISSÃO GERADA</div>
+      <div style="font-size:11px;color:rgba(200,220,240,.6);letter-spacing:2px;margin-bottom:8px;font-family:monospace">COMISSÃO GERADA${txtTaxa}</div>
       <div style="font-size:32px;font-weight:800;color:#10b981">${valorFmt}</div>
     </div>
     <table style="width:100%;margin:20px 0;border-collapse:collapse">
@@ -467,7 +498,7 @@ export default async function handler(req, res) {
 
             // Email de notificação pro afiliado (fire-and-forget, nao bloqueia)
             // AWAITED: fire-and-forget morre quando a function responde (Vercel)
-            await notificarAfiliadoNovaComissao(affiliate, { subscriber: email, plan, commission_amount: commissionAmount }).catch(()=>{});
+            await notificarAfiliadoNovaComissao(affiliate, { subscriber: email, plan, commission_amount: commissionAmount, commission_rate: rate }).catch(()=>{});
           }
         } else if (plan === 'free') {
           // Incrementa total_free

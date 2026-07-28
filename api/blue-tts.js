@@ -14,6 +14,10 @@
 // O auth.js segue funcionando pra qualquer consumidor antigo; este endpoint é
 // o caminho novo do BlueVoice.
 
+// Marcações de emoção: o usuário escreve [rindo]/[sussurrando] e aqui viram
+// as tags em inglês que o V3 entende (ver api/_helpers/tags-emocao.js).
+const { traduzirTags } = require('./_helpers/tags-emocao');
+
 const LIMITE_CARACTERES = 3000;
 
 // ── ANTI-FLOOD (2026-07-28) ─────────────────────────────────────────────────
@@ -111,6 +115,24 @@ function marcarUsoDeClone(voiceId) {
   } catch (e) { /* silencioso */ }
 }
 
+// Master ativo? Mesma checagem do api/videos-salvos.js — e-mail pela sessão,
+// plano pela tabela de assinantes, com validade conferida.
+async function ehMaster(userId, SU, SK) {
+  const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+  try {
+    const ur = await fetch(`${SU}/auth/v1/admin/users/${userId}`, { headers: h });
+    if (!ur.ok) return false;
+    const email = String((await ur.json()).email || '').toLowerCase();
+    if (!email) return false;
+    const sr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at`, { headers: h });
+    if (!sr.ok) return false;
+    const s = (await sr.json())[0];
+    if (!s || s.plan !== 'master') return false;
+    if (s.plan_expires_at && new Date(s.plan_expires_at) < new Date()) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -131,19 +153,19 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: `Texto excede ${LIMITE_CARACTERES} caracteres` });
   }
 
-  // ── FREIOS DE QUOTA ───────────────────────────────────────────────────────
-  // Só valem quando a geração usa a chave DA CASA. Quem trouxe a própria chave
-  // do ElevenLabs gasta a quota dele — não faz sentido limitar.
   const SU = process.env.SUPABASE_URL, SK = process.env.SUPABASE_SERVICE_KEY;
   const usandoChaveDaCasa = XI_KEY === sysKey;
   let uso = null, userId = null;
-  if (usandoChaveDaCasa && SU && SK) {
-    // 1) reserva global: protege a conta de zerar no meio do mês
-    const q = await quotaGlobal(XI_KEY);
-    if (q.limite && q.restante != null && q.restante < Math.max(2000, q.limite * RESERVA_GLOBAL_PCT)) {
-      return res.status(429).json({ error: sorteia(RECADOS_GLOBAL), motivo: 'quota_mensal', blublu: true });
-    }
-    // 2) teto diário por usuário
+
+  // ── QUEM PODE GERAR ───────────────────────────────────────────────────────
+  // Sem trava, qualquer um POSTA aqui e queima os créditos do ElevenLabs da
+  // casa — o endpoint não exige nada além de voiceId e texto. Os freios de
+  // uso lá embaixo só valem por usuário identificado, então sem identificar
+  // ninguém eles não protegem nada.
+  //
+  // Quem traz a própria chave gasta a quota dele: continua precisando estar
+  // logado, mas não precisa ser Master.
+  if (SU && SK) {
     if (body.token) {
       try {
         const ur = await fetch(`${SU}/auth/v1/user`, {
@@ -151,6 +173,23 @@ module.exports = async function handler(req, res) {
         });
         if (ur.ok) userId = (await ur.json()).id || null;
       } catch (e) {}
+    }
+    if (!userId) {
+      return res.status(401).json({ error: 'Faça login para gerar narração.', motivo: 'sem_sessao' });
+    }
+    if (usandoChaveDaCasa && !(await ehMaster(userId, SU, SK))) {
+      return res.status(403).json({ error: 'A narração do BlueVoice é exclusiva do plano Master.', motivo: 'plano' });
+    }
+  }
+
+  // ── FREIOS DE QUOTA ───────────────────────────────────────────────────────
+  // Só valem quando a geração usa a chave DA CASA. Quem trouxe a própria chave
+  // do ElevenLabs gasta a quota dele — não faz sentido limitar.
+  if (usandoChaveDaCasa && SU && SK) {
+    // 1) reserva global: protege a conta de zerar no meio do mês
+    const q = await quotaGlobal(XI_KEY);
+    if (q.limite && q.restante != null && q.restante < Math.max(2000, q.limite * RESERVA_GLOBAL_PCT)) {
+      return res.status(429).json({ error: sorteia(RECADOS_GLOBAL), motivo: 'quota_mensal', blublu: true });
     }
     if (userId) {
       uso = await lerUso(SU, SK, userId);
@@ -188,8 +227,22 @@ module.exports = async function handler(req, res) {
   // narração saía em 128. Custo em créditos é IDÊNTICO — a cobrança é por
   // caractere, não por bitrate (medido: mesmo texto, mesmo consumo; arquivo
   // 56% maior). Se o formato for recusado, cai no padrão da conta.
+  // Marcações de emoção (2026-07-28): [rindo] → [laughs]. Marcação que o
+  // modelo não reconhece seria LIDA em voz alta no meio da narração, então
+  // paramos ANTES de gastar crédito e devolvemos opções pro usuário trocar.
+  const tags = traduzirTags(text, modelId);
+  if (tags.desconhecidas.length) {
+    return res.status(422).json({
+      error: tags.desconhecidas.length === 1
+        ? `Não reconheci a marcação [${tags.desconhecidas[0].escrita}] — do jeito que está, a voz ia falar isso em voz alta.`
+        : 'Não reconheci algumas marcações — do jeito que estão, a voz ia falar elas em voz alta.',
+      motivo: 'tags_desconhecidas',
+      desconhecidas: tags.desconhecidas,
+    });
+  }
+
   const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`;
-  const payload = JSON.stringify({ text, model_id: modelId, voice_settings: voiceSettings });
+  const payload = JSON.stringify({ text: tags.texto, model_id: modelId, voice_settings: voiceSettings });
   const headersFor = (key) => ({ 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' });
 
   try {

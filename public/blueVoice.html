@@ -279,6 +279,15 @@ Exemplo: Você sabia que 90% das pessoas não sabem respirar corretamente? Hoje 
         <div class="char-counter">
           <div class="char-count" id="charCount">0 / 3.000 caracteres</div>
           <div class="char-hint">Cada caractere = 1 crédito</div>
+        <!-- TAGS DE EMOÇÃO (2026-07-28): recurso do modelo V3 — a voz
+             interpreta marcações escritas no texto. -->
+        <div id="tagsEmocao" style="margin-top:10px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.06em">🎭 Emoções na fala</span>
+            <span id="tagsAviso" style="font-family:var(--mono);font-size:9.5px;color:var(--text-dim)">clique pra inserir no texto</span>
+          </div>
+          <div id="tagsLista" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
         </div>
 
         <!-- SELECTED VOICE -->
@@ -1394,6 +1403,11 @@ async function generateVoice(isFreeRegen = false) {
       mostrarRecadoBlublu(rec.error, rec);
       throw new Error('__blublu__');
     }
+    // Marcação não reconhecida: nada foi gerado nem cobrado — o usuário
+    // escolhe a troca e gera de novo.
+    const ruim = r1.motivo === "tags_desconhecidas" ? r1 : (r2.motivo === "tags_desconhecidas" ? r2 : null);
+    if (ruim) { abrirTrocaTags(ruim.desconhecidas); throw new Error("__tags__"); }
+
     if (r1.error) throw new Error(r1.error);
     if (r2.error) throw new Error(r2.error);
 
@@ -1417,7 +1431,8 @@ async function generateVoice(isFreeRegen = false) {
     showToast('✓ 2 versões geradas!');
   } catch(e) {
     // '__blublu__' = o recado de limite já foi mostrado no card do BluBlu
-    if (e.message !== '__blublu__') showToast('⚠ Falha ao gerar narração. Tente novamente.');
+    // '__tags__' = o card de troca de marcação já está na tela
+    if (e.message !== '__blublu__' && e.message !== '__tags__') showToast('⚠ Falha ao gerar narração. Tente novamente.');
   } finally {
     btn.disabled = false;
     document.getElementById('btnIcon').outerHTML = `<svg id="btnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
@@ -1500,6 +1515,7 @@ function onTuningChange() {
   const vel = t.speed == null ? '' : ' · ' + _rotulos.speed(t.speed);
   set('tuningResumo', `${modelo}${vel} · ${_rotulos.stability(t.stability)}`);
   try { localStorage.setItem('bv_tuning', JSON.stringify(t)); } catch (e) {}
+  if (typeof renderTagsEmocao === 'function') renderTagsEmocao(); // V2 não aceita marcação
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1774,6 +1790,97 @@ function toggleVoicePicker() {
   else aplicar();
 })();
 
+
+// ── TAGS DE EMOÇÃO (2026-07-28) ───────────────────────────────────────────
+// O modelo V3 interpreta marcações no meio do texto ([ri], [sussurra]…) e
+// muda a entrega. Recurso existia no motor e o BlueVoice não expunha.
+// Só aparecem com o V3 selecionado — no V2 a marcação seria LIDA em voz alta.
+// O usuário escreve e lê em português; o backend traduz pra tag do
+// ElevenLabs. Estes são os atalhos — dá pra digitar qualquer outra
+// ([chorando], [gritando]…) que o backend reconhece ou sugere a troca.
+const TAGS_EMOCAO = [
+  "rindo", "gargalhando", "sussurrando", "suspiro", "chorando", "animado",
+  "curioso", "surpreso", "triste", "sarcástico", "gritando", "nervoso",
+  "calmo", "pausa", "pigarro", "cansado",
+];
+function renderTagsEmocao() {
+  var lista = document.getElementById("tagsLista");
+  var aviso = document.getElementById("tagsAviso");
+  var box = document.getElementById("tagsEmocao");
+  if (!lista || !box) return;
+  var t = (typeof lerTuning === "function") ? lerTuning() : { model: "eleven_v3" };
+  var v3 = t.model === "eleven_v3";
+  box.style.opacity = v3 ? "1" : ".45";
+  if (aviso) aviso.textContent = v3 ? "clique pra inserir — ou digite [do seu jeito]" : "só no BlueVoice V3 — troque o modelo";
+  lista.innerHTML = TAGS_EMOCAO.map(function (p) {
+    return '<button type="button" onclick="inserirTag(\'' + p + '\')" ' + (v3 ? "" : "disabled ") +
+      'style="background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.28);border-radius:7px;padding:5px 9px;font-family:var(--mono);font-size:10.5px;color:#c4b5fd;cursor:' + (v3 ? "pointer" : "not-allowed") + '">[' + p + "]</button>";
+  }).join("");
+}
+function inserirTag(tag) {
+  var ta = document.getElementById("scriptText");
+  if (!ta) return;
+  var marca = "[" + tag + "] ";
+  var ini = ta.selectionStart || 0, fim = ta.selectionEnd || 0;
+  ta.value = ta.value.slice(0, ini) + marca + ta.value.slice(fim);
+  var pos = ini + marca.length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+  ta.dispatchEvent(new Event("input"));
+}
+(function initTags() {
+  var aplicar = function () { renderTagsEmocao(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", aplicar);
+  else aplicar();
+})();
+
+// O backend não reconheceu alguma marcação. Em vez de adivinhar (chute
+// errado no meio da narração é pior) ou apagar escondido, ele para antes de
+// gerar e manda opções — aqui a troca é um clique.
+function abrirTrocaTags(desconhecidas) {
+  document.getElementById("cardTrocaTags")?.remove();
+  const card = document.createElement("div");
+  card.id = "cardTrocaTags";
+  card.style.cssText = "margin:14px 0;padding:16px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.32);border-radius:14px";
+  const linhas = desconhecidas.map(function (d, i) {
+    const ops = d.sugestoes.map(function (sg) {
+      return '<button type="button" onclick="trocarTag(' + i + ', \'' + escClone(sg.rotulo).replace(/[^ -~À-ÿ\u00a0-\uffff]/g, "") + '\')" ' +
+        'style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:7px;padding:5px 10px;font-size:11.5px;color:#fbbf24;cursor:pointer">' + escClone(sg.rotulo) + "</button>";
+    }).join("");
+    return '<div style="margin-top:10px" data-troca="' + i + '" data-escrita="' + escClone(d.escrita) + '">' +
+      '<div style="font-family:var(--mono);font-size:11.5px;color:var(--text-sec);margin-bottom:6px">[' + escClone(d.escrita) + '] — trocar por:</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + ops +
+      '<button type="button" onclick="trocarTag(' + i + ', null)" style="background:transparent;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--text-dim);cursor:pointer">apagar</button></div></div>';
+  }).join("");
+  card.innerHTML =
+    '<div style="font-size:13px;color:var(--text);line-height:1.5">' +
+    (desconhecidas.length === 1 ? "Não reconheci essa marcação." : "Não reconheci essas marcações.") +
+    ' Do jeito que está, a voz ia <b>falar em voz alta</b> no meio da narração.</div>' + linhas;
+  const alvo = document.getElementById("scriptText");
+  if (alvo && alvo.parentNode) alvo.parentNode.insertBefore(card, alvo.nextSibling);
+  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Troca a marcação escrita pelo rótulo escolhido (ou apaga). O texto do
+// usuário continua em português — a conversão é do backend.
+function trocarTag(indice, rotulo) {
+  const bloco = document.querySelector('[data-troca="' + indice + '"]');
+  const ta = document.getElementById("scriptText");
+  if (!bloco || !ta) return;
+  const escrita = bloco.getAttribute("data-escrita");
+  // rótulo vem como "😄 rindo" — só a palavra entra no texto
+  const palavra = rotulo ? String(rotulo).replace(/^[^a-zA-ZÀ-ÿ]+/, "").trim() : null;
+  const alvo = "[" + escrita + "]";
+  ta.value = ta.value.split(alvo).join(palavra ? "[" + palavra + "]" : "");
+  ta.value = ta.value.replace(/[ \t]{2,}/g, " ").replace(/ +([,.!?;:])/g, "$1");
+  ta.dispatchEvent(new Event("input"));
+  bloco.remove();
+  const card = document.getElementById("cardTrocaTags");
+  if (card && !card.querySelector("[data-troca]")) {
+    card.remove();
+    if (typeof showToast === "function") showToast("✓ Marcações ajustadas — pode gerar");
+  }
+}
 function toggleTuning() {
   const body = document.getElementById('tuningBody');
   const chev = document.getElementById('tuningChevron');
@@ -1839,7 +1946,8 @@ async function callTTS(voiceId, text, tuning) {
   if (r.status === 404 || r.status === 500) {
     const legado = await fetch('/api/auth', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'tts', voiceId, text, stability: t.stability, similarity: t.similarity, model: t.model })
+      // o endpoint antigo não traduz marcação — sem tirar, a voz leria em voz alta
+      body: JSON.stringify({ action: 'tts', voiceId, text: text.replace(/\[[^\]\n]{1,40}\]/g, '').replace(/[ \t]{2,}/g, ' ').trim(), stability: t.stability, similarity: t.similarity, model: t.model })
     });
     if (legado.ok) return legado.json();
   }
