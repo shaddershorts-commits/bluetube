@@ -13,20 +13,44 @@ export function attachResizers(root, onResize) {
   const isDesktop = () => window.matchMedia('(min-width: 861px)').matches;
 
   // restaura tamanhos salvos
-  let sizes = { previewW: 440, tlH: 200 };
+  let sizes = { libW: 232, previewW: 440, tlH: 200 };
   try { sizes = { ...sizes, ...(JSON.parse(localStorage.getItem(LS_KEY)) || {}) }; } catch {}
+
+  // larguras minimas de cada coluna pra ela continuar UTIL
+  const MIN_LIB = 170;    // rail dos ícones + nome do arquivo legível
+  const MIN_CFG = 250;    // painel de configuração sem quebrar os campos
+  const MIN_PREV = 300;   // player em 9:16 ainda enxergável
 
   function apply() {
     // Tetos PROPORCIONAIS à janela (user pediu VÁRIAS vezes "poder expandir a
     // barra de edição"). A ALTURA da timeline agora é via grid-template-rows
     // (robusto) — antes setava height do .be-timeline-wrap, que tem flex:1 e
-    // ignorava. col1 = biblioteca (232) | col2 = config (flexível) | col3 = preview.
+    // ignorava. col1 = biblioteca | col2 = config (flexível) | col3 = preview.
     const maxTl = Math.max(420, Math.round(window.innerHeight * 0.78));
     const maxPrev = Math.max(560, Math.round(window.innerWidth * 0.5));
-    sizes.previewW = Math.min(maxPrev, Math.max(300, sizes.previewW || 440));
+    const maxLib = Math.max(320, Math.round(window.innerWidth * 0.32));
+    sizes.libW = Math.min(maxLib, Math.max(MIN_LIB, sizes.libW || 232));
+    sizes.previewW = Math.min(maxPrev, Math.max(MIN_PREV, sizes.previewW || 440));
     sizes.tlH = Math.min(maxTl, Math.max(120, sizes.tlH || 200));
+
+    // ENQUADRAMENTO: as duas colunas de largura fixa não podem espremer a do
+    // meio até sumir. Em tela estreita (ou depois de arrastar demais) o excesso
+    // é devolvido — primeiro do preview, que é quem tem mais folga.
     if (isDesktop()) {
-      ws.style.gridTemplateColumns = `232px minmax(0, 1fr) ${sizes.previewW}px`;
+      // o espaço REAL das colunas desconta padding e os vãos entre elas —
+      // sem isso a conta sobra ~50px e a coluna do meio fica menor que o mínimo
+      const cs = getComputedStyle(ws);
+      const vao = parseFloat(cs.columnGap) || 0;
+      const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      const disponivel = (ws.clientWidth || window.innerWidth) - padX - vao * 2;
+      let excesso = (sizes.libW + sizes.previewW + MIN_CFG) - disponivel;
+      if (excesso > 0) {
+        const cortePrev = Math.min(excesso, sizes.previewW - MIN_PREV);
+        sizes.previewW -= cortePrev;
+        excesso -= cortePrev;
+        if (excesso > 0) sizes.libW = Math.max(MIN_LIB, sizes.libW - excesso);
+      }
+      ws.style.gridTemplateColumns = `${sizes.libW}px minmax(0, 1fr) ${sizes.previewW}px`;
       ws.style.gridTemplateRows = `minmax(0, 1fr) ${sizes.tlH}px`;
     } else {
       ws.style.gridTemplateColumns = '';
@@ -40,6 +64,13 @@ export function attachResizers(root, onResize) {
     try { localStorage.setItem(LS_KEY, JSON.stringify(sizes)); } catch {}
   }
 
+  // gutter da BIBLIOTECA: entre o painel de ferramentas (Mídia/Texto/Áudio) e
+  // o de configurações. Era a única divisa que faltava — a coluna 1 vivia
+  // travada em 232px (pedido do user 2026-07-29).
+  const gl = document.createElement('div');
+  gl.className = 'be-gutter-lib';
+  gl.title = 'Arraste pra ajustar a largura do painel de ferramentas';
+  ws.appendChild(gl);
   // gutter vertical: entre props e preview
   const gv = document.createElement('div');
   gv.className = 'be-gutter-v';
@@ -67,8 +98,9 @@ export function attachResizers(root, onResize) {
       el.addEventListener('pointerup', up);
     });
   }
+  drag(gl, (s0, dx) => { sizes.libW = s0.libW + dx; });         // arrasta ➡ = ferramentas mais largo
   drag(gv, (s0, dx) => { sizes.previewW = s0.previewW - dx; }); // arrasta ⬅ = preview mais largo
   drag(gh, (s0, _dx, dy) => { sizes.tlH = s0.tlH - dy; });      // arrasta ⬆ = timeline mais alta
 
-  return () => { gv.remove(); gh.remove(); };
+  return () => { gl.remove(); gv.remove(); gh.remove(); };
 }
