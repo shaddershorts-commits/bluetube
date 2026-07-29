@@ -203,14 +203,22 @@ async function historicoAction(req, res) {
   //   Original (lançamento):    5h=60k    24h=300k   7d=2M    30d=8M
   //   2026-06-25 (user):        5h=40k    24h=180k   7d=900k  30d=3M
   //   2026-06-29 (user):        5h=30k    24h=100k   7d=500k  30d=1M
-  //   2026-07-29 (user, atual): 5h=25k    24h=100k   7d=500k  30d=1M
+  //   2026-07-29 (user):        5h=25k    24h=100k   7d=500k  30d=1M
+//   2026-07-29 (user, ATUAL): 5h=8k     24h=40k    7d=250k  30d=500k
+//     Recalibrado por RITMO, nao por numero solto. Os pisos antigos exigiam
+//     velocidades incoerentes entre si: 8,3 mil views/h no filtro de 5h contra
+//     2,1 mil/h no de 30 dias — o filtro premium era o mais rigoroso, e por isso
+//     mostrava 6 videos. Como o piso e em views ABSOLUTAS dentro de uma faixa que
+//     dura horas ou dias, ele punia quem chegava cedo na faixa: um video com 999k
+//     em 8,7 dias (4,8 mil/h) ficava oculto por 883 views. Agora todos os filtros
+//     miram ~2,5 mil views/hora. Medido no banco: 2.237 -> 3.578 videos exibidos.
   // Banco legacy abaixo desses thresholds não aparece — comportamento intencional.
   // Cada ajuste pra baixo expõe vídeos já coletados que estavam ocultos
   // (não precisa re-coleta — o banco já tem o conteúdo).
-  if (periodo === '5h')       parts.push('views=gte.25000');
-  else if (periodo === '24h') parts.push('views=gte.100000');
-  else if (periodo === '7d')  parts.push('views=gte.500000');
-  else if (periodo === '30d') parts.push('views=gte.1000000');
+  if (periodo === '5h')       parts.push('views=gte.8000');
+  else if (periodo === '24h') parts.push('views=gte.40000');
+  else if (periodo === '7d')  parts.push('views=gte.250000');
+  else if (periodo === '30d') parts.push('views=gte.500000');
 
   // Hard limit de duracao: so Shorts ≤90s (sempre)
   parts.push('duracao_segundos=lte.90');
