@@ -49,6 +49,9 @@ export function mountEditor(root, store, opts = {}) {
     onOpenCompound: enterCompound,
     // clique no marcador da timeline abre/fecha os parametros da transicao
     onSelectTransition: (between) => selecionarJuncao(between),
+    // camada fantasma do arrasto: redesenha os cabecalhos SEM passar pelo store
+    // (lambda de proposito — syncTrackHeaders so existe mais abaixo no arquivo)
+    onLanesChanged: () => syncTrackHeaders(),
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
@@ -1745,12 +1748,15 @@ export function mountEditor(root, store, opts = {}) {
   // ("Cannot access before initialization") e ABORTAVA o mountEditor inteiro
   // (sem divisores, sem olhinho — bug pego pela sonda 2026-07-23).
   let _headersSig = null;
+  // trava o rebuild enquanto o olhinho esta sendo arrastado: syncTrackHeaders
+  // faz innerHTML='' e destruiria o proprio elemento que esta no gesto
+  let _arrastandoCamada = false;
   function syncTrackHeaders() {
+    if (_arrastandoCamada) return;
     const box = $('#beTrackHeaders');
     if (!box) return;
     const lay = timeline.getLayout?.();
     if (!lay) return;
-    const st = store.getState();
     const rows = [];
     for (const r of (lay.laneRows || [])) {
       rows.push({ y: r.y, h: r.h, icon: '🎬', title: 'Camada ' + r.lane, kind: 'overlay', lane: r.lane, hidden: r.hidden, eye: true });
@@ -1759,7 +1765,10 @@ export function mountEditor(root, store, opts = {}) {
     for (const r of (lay.audioLaneRows || [])) {
       rows.push({ y: r.y, h: r.h, icon: '♪', title: 'Áudio ' + (r.lane + 1), kind: 'audio', lane: r.lane, hidden: r.hidden, eye: true });
     }
-    const sig = rows.map(r => `${r.y}|${r.h}|${r.icon}|${r.hidden ? 1 : 0}`).join(';');
+    // ⚠️ kind+lane PRECISAM entrar na assinatura: reordenar camadas troca os
+    // NUMEROS sem mexer em y/h — sem isso o sync saia cedo e o olhinho ficava
+    // com a camada antiga presa no closure (escondia a camada errada).
+    const sig = rows.map(r => `${r.y}|${r.h}|${r.icon}|${r.hidden ? 1 : 0}|${r.kind || ''}|${r.lane ?? ''}`).join(';');
     if (sig === _headersSig) return;
     _headersSig = sig;
     box.innerHTML = '';
@@ -1769,6 +1778,7 @@ export function mountEditor(root, store, opts = {}) {
       el.style.top = r.y + 'px';
       el.style.height = r.h + 'px';
       el.title = r.title;
+      if (r.kind) { el.dataset.kind = r.kind; el.dataset.lane = String(r.lane); }
       const ic = document.createElement('span');
       ic.className = 'be-track-ic';
       ic.textContent = r.icon;
@@ -1777,15 +1787,83 @@ export function mountEditor(root, store, opts = {}) {
         const eye = document.createElement('button');
         eye.className = 'be-track-eye';
         eye.textContent = r.hidden ? '🚫' : '👁';
-        eye.title = r.hidden ? 'Mostrar camada' : 'Ocultar camada (some do vídeo; áudio fica mudo)';
+        eye.title = r.hidden
+          ? 'Mostrar camada (arraste pra reordenar)'
+          : 'Ocultar camada (some do vídeo; áudio fica mudo) — arraste pra reordenar';
         eye.addEventListener('click', (ev) => {
           ev.stopPropagation();
+          if (eye._pulouClique) return;   // o gesto foi arrasto, nao clique
           store.dispatch(act.toggleLaneVisibility(r.kind, r.lane));
         });
+        ligarArrastoDeCamada(eye, r, box);
         el.appendChild(eye);
       }
       box.appendChild(el);
     }
+  }
+
+  /** ARRASTAR O OLHINHO REORDENA AS CAMADAS (user 2026-07-29).
+   *  Clique parado continua ligando/desligando a camada; so vira reordenacao
+   *  depois de 5px de movimento vertical. So troca com camada do MESMO tipo
+   *  (video com video, audio com audio) — audio nunca sobe pra cima do video. */
+  function ligarArrastoDeCamada(eye, r, box) {
+    eye.addEventListener('pointerdown', (ev) => {
+      if (!r.kind || ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const y0 = ev.clientY;
+      let arrastou = false;
+      try { eye.setPointerCapture(ev.pointerId); } catch {}
+
+      const alvoEmY = (clientY) => {
+        for (const el of box.children) {
+          if (el.dataset?.kind !== r.kind) continue;
+          const b = el.getBoundingClientRect();
+          if (clientY >= b.top && clientY <= b.bottom) return Number(el.dataset.lane);
+        }
+        return null;
+      };
+      const marcar = (clientY) => {
+        for (const el of box.children) el.classList.remove('be-track-alvo');
+        const lane = alvoEmY(clientY);
+        if (lane == null || lane === r.lane) return;
+        for (const el of box.children) {
+          if (el.dataset?.kind === r.kind && Number(el.dataset.lane) === lane) el.classList.add('be-track-alvo');
+        }
+      };
+      const mover = (e2) => {
+        if (!arrastou) {
+          if (Math.abs(e2.clientY - y0) < 5) return;
+          arrastou = true;
+          _arrastandoCamada = true;
+          eye.classList.add('be-track-eye-drag');
+        }
+        marcar(e2.clientY);
+      };
+      const soltar = (e2) => {
+        window.removeEventListener('pointermove', mover);
+        window.removeEventListener('pointerup', soltar);
+        window.removeEventListener('pointercancel', soltar);
+        eye.classList.remove('be-track-eye-drag');
+        _arrastandoCamada = false;   // destrava SEMPRE, mesmo se nao houve arrasto
+        for (const el of box.children) el.classList.remove('be-track-alvo');
+        if (!arrastou) return;
+        const destino = alvoEmY(e2.clientY);
+        if (destino != null && destino !== r.lane) {
+          store.dispatch(act.reorderLanes(r.kind, r.lane, destino));
+        }
+        _headersSig = null;      // numeracao mudou: forca o rebuild
+        syncTrackHeaders();
+        eye._pulouClique = true; // segura o click que vem logo depois do up
+        setTimeout(() => { eye._pulouClique = false; }, 0);
+      };
+      // listeners na JANELA (nao no botao): se o setPointerCapture falhar, o
+      // pointerup pode nao chegar no olhinho — e ai _arrastandoCamada ficaria
+      // preso em true e os cabecalhos parariam de se redesenhar pra sempre.
+      window.addEventListener('pointermove', mover);
+      window.addEventListener('pointerup', soltar);
+      window.addEventListener('pointercancel', soltar);
+    });
   }
   store.subscribe(syncTrackHeaders);
   requestAnimationFrame(() => requestAnimationFrame(syncTrackHeaders));

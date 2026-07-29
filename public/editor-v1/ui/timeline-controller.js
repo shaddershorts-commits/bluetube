@@ -8,11 +8,12 @@ import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
 import { createRenderer, setImageRedraw } from '../timeline/render.js';
 import { cutPoints, totalDuration, audioLaneMap } from '../core/selectors.js';
+import { MAX_LANE } from '../core/schema.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 import * as clip from './clipboard.js';
 
-export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
@@ -28,9 +29,49 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   const renderer = createRenderer(canvas);
   setImageRedraw(() => draw()); // redesenha quando o thumbnail de imagem carrega
 
+  // ── camada FANTASMA (user 2026-07-29: "arrastar take cria camada NA HORA") ──
+  // Enquanto o gesto sobe acima da camada do topo (ou desce abaixo da ultima
+  // faixa de audio), a row nova ja aparece — o usuario ve onde vai soltar em
+  // vez de descobrir depois. Ela some sozinha se o gesto voltar.
+  let laneFantasma = null;        // camada de video/texto nascendo (1..MAX_LANE)
+  let laneAudioFantasma = null;   // camada de audio nascendo (>=0)
+
   // ── render pipeline ──
   function layoutNow() {
-    return computeLayout(store.getState(), vp);
+    return computeLayout(store.getState(), vp,
+      (laneFantasma != null || laneAudioFantasma != null)
+        ? { laneExtra: laneFantasma, laneAudioExtra: laneAudioFantasma }
+        : null);
+  }
+
+  /** Decide a camada fantasma do frame. A decisao usa o layout SEM fantasma:
+   *  se olhasse pro layout com ela, a row nova mudaria a propria condicao que a
+   *  criou e a faixa piscaria a cada frame. */
+  function atualizarFantasma(ev) {
+    const y = ev && ev.y != null ? ev.y : null;
+    const nome = fsm?.name;
+    let nv = null, na = null;
+    if (y != null) {
+      const lay = computeLayout(store.getState(), vp);   // sem fantasma
+      const rows = lay.laneRows || [];
+      const topo = rows.length ? rows[0] : null;
+      const acimaDoTopo = topo ? y < topo.y - 4 : y < lay.yVideo - 8;
+      // cena da faixa principal subindo, ou camada/texto ja em cima subindo mais
+      if ((nome === 'dragging-clip' && fsm.lifting) ||
+          nome === 'dragging-overlay' || nome === 'dragging-text') {
+        if (acimaDoTopo) nv = Math.min(MAX_LANE, (topo ? topo.lane : 0) + 1);
+      } else if (nome === 'dragging-audio') {
+        const fimAudio = lay.yAudio + lay.audioLanes * (lay.audioTrackH + 2);
+        if (y > fimAudio - 6) na = lay.audioLanes;       // row nova embaixo
+      }
+    }
+    const mudou = nv !== laneFantasma || na !== laneAudioFantasma;
+    laneFantasma = nv;
+    laneAudioFantasma = na;
+    // os cabecalhos das faixas so se redesenham quando o STORE muda — e a
+    // camada fantasma de proposito nao mexe no store. Sem este aviso, a row
+    // nova aparecia no canvas mas o cabecalho dela so vinha depois do drop.
+    if (mudou) onLanesChanged?.();
   }
   function ctxNow() {
     const state = store.getState();
@@ -202,6 +243,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   function step(ev) {
     const r = transition(fsm, ev, ctxNow());
     fsm = r.next;
+    // ANTES dos effects: o drop (laneForY) tem que enxergar a mesma camada
+    // fantasma que o usuario esta vendo na tela.
+    atualizarFantasma(ev);
     runEffects(r.effects);
     draw();
   }

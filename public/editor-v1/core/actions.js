@@ -41,6 +41,8 @@ export const A = {
   SET_AUDIO_LANE: 'SET_AUDIO_LANE',
   ADD_EXTRA_LANE: 'ADD_EXTRA_LANE',
   TOGGLE_LANE_VIS: 'TOGGLE_LANE_VIS',
+  // arrastar o cabecalho/olhinho da camada reordena as camadas (2026-07-29)
+  REORDER_LANES: 'REORDER_LANES',
   OVERLAY_TO_CLIP: 'OVERLAY_TO_CLIP',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
   SPLIT_OVERLAY: 'SPLIT_OVERLAY',
@@ -118,6 +120,7 @@ export const UNDOABLE = {
   [A.SET_AUDIO_LANE]: U,
   [A.ADD_EXTRA_LANE]: U,
   [A.TOGGLE_LANE_VIS]: U,
+  [A.REORDER_LANES]: U,
   [A.OVERLAY_TO_CLIP]: U,
   [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
@@ -179,6 +182,8 @@ export const setItemLane = (itemType, id, lane) => ({ type: A.SET_ITEM_LANE, ite
 export const setAudioLane = (audioId, lane) => ({ type: A.SET_AUDIO_LANE, audioId, lane });
 export const addExtraLane = (kind) => ({ type: A.ADD_EXTRA_LANE, kind }); // 'video' | 'audio'
 export const toggleLaneVisibility = (kind, lane) => ({ type: A.TOGGLE_LANE_VIS, kind, lane }); // 'overlay' | 'audio'
+// arrasto do cabecalho: leva a camada `de` pra posicao da camada `para`
+export const reorderLanes = (kind, de, para) => ({ type: A.REORDER_LANES, kind, de, para });
 export const overlayToClip = (overlayId, atT) => ({ type: A.OVERLAY_TO_CLIP, overlayId, atT });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
 export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });

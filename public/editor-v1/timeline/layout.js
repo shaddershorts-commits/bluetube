@@ -29,8 +29,13 @@ export function xToTime(vp, x) {
   return (x - METRICS.PAD_LEFT + vp.scrollX) / vp.pxPerSec;
 }
 
-/** Layout completo de um frame. */
-export function computeLayout(state, vp) {
+/** Layout completo de um frame.
+ *  `hint` (opcional) desenha camadas que ainda NAO existem no estado — e como
+ *  a faixa nova aparece NA HORA em que o usuario arrasta uma cena pra cima
+ *  (user 2026-07-29: "arrastar take cria camada nova na hora"), antes do drop.
+ *  { laneExtra:1..5 } = row de video/texto fantasma
+ *  { laneAudioExtra:>=0 } = row de audio fantasma */
+export function computeLayout(state, vp, hint = null) {
   const segs = timelineSegments(state);
   const total = totalDuration(state);
 
@@ -54,6 +59,9 @@ export function computeLayout(state, vp) {
     const l = maxUsada + 1 + i;
     if (l <= 5) usadasSet.add(l);
   }
+  // camada FANTASMA do arrasto em curso (nasce na hora, some se o gesto voltar)
+  const laneFantasma = hint && Number.isInteger(hint.laneExtra) ? hint.laneExtra : null;
+  if (laneFantasma != null && laneFantasma >= 1 && laneFantasma <= 5) usadasSet.add(laneFantasma);
   const lanesUsadas = [...usadasSet].sort((a, b) => b - a); // desc: topo primeiro
   const hidOv = state.hidden_overlay_lanes || [];
 
@@ -194,7 +202,11 @@ export function computeLayout(state, vp) {
     });
   const maxAudioLane = audioItems.length ? Math.max(...audioItems.map(i => i.lane)) : -1;
   // lanes extras vazias EMBAIXO (menu "Criar camada de áudio" / drop abaixo)
-  const audioLanes = Math.max(1, maxAudioLane + 1) + (state.extra_audio_lanes || 0);
+  const laneAudioFantasma = hint && Number.isInteger(hint.laneAudioExtra) ? hint.laneAudioExtra : null;
+  const audioLanes = Math.max(
+    Math.max(1, maxAudioLane + 1) + (state.extra_audio_lanes || 0),
+    laneAudioFantasma != null ? laneAudioFantasma + 1 : 0,
+  );
   const audioLaneRows = [];
   for (let i = 0; i < audioLanes; i++) {
     audioLaneRows.push({ lane: i, y: yAudio + i * (AH + 2), h: AH, hidden: hidAu.includes(i) });

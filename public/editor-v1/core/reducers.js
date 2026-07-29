@@ -8,7 +8,11 @@
 import { A } from './actions.js';
 import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE } from './schema.js';
 import { transicaoPorId } from './transitions.js';
-import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur } from './selectors.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur } from './selectors.js';
+// REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
+// nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
+// na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
+import { laneDestino, repelirStart, reordenarLanes } from './lanes.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -121,16 +125,24 @@ export function reduce(state, action) {
       const m = action.media;
       if (!m?.url) return state;
       const usadas = (state.overlays || []).filter(o => o.active !== false).map(o => o.lane || 1);
-      const lane = Math.min(MAX_LANE, (usadas.length ? Math.max(...usadas) : 0) + 1);
+      const desejada = Math.min(MAX_LANE, (usadas.length ? Math.max(...usadas) : 0) + 1);
       // escala inicial: imagem larga cabe ~40% do quadro
       const scale = m.width && m.height ? Math.min(0.6, 0.4) : 0.4;
+      const inicioImg = Math.max(0, action.atT || 0);
+      // a conta acima olha SO pras camadas de vídeo — sem isto a imagem nascia
+      // exatamente em cima de uma legenda (camada de texto)
+      const laneImg = laneDestino(state, {
+        tipo: 'overlay', id: state.next_overlay_id, laneAlvo: desejada,
+        start: inicioImg, end: inicioImg + 3,
+      });
+      if (laneImg == null) return state;   // sem camada livre: nao cria
       const overlay = {
         id: state.next_overlay_id, kind: 'image', url: m.url,
         img_w: m.width || 0, img_h: m.height || 0,
         source_in: 0, source_out: 3,            // 3s na timeline (esticável)
-        start: Math.max(0, action.atT || 0),
+        start: inicioImg,
         x_pct: 0.5, y_pct: 0.5, scale,
-        lane: clampLane(lane, OVERLAY_DEFAULT_LANE),
+        lane: laneImg,
         active: true,
       };
       return touch({
@@ -240,11 +252,21 @@ export function reduce(state, action) {
       }
       if (kind === 'text') {
         const dur = Math.max(0.3, (data.end_sec - data.start_sec) || 2);
-        const tx = buildText({ ...data, start_sec: atT, end_sec: atT + dur }, state.next_text_id);
+        // colar em cima do original sobreporia na mesma camada: sobe uma camada
+        const lane = laneDestino(state, {
+          tipo: 'text', id: state.next_text_id, laneAlvo: clampLane(data.lane, TEXT_DEFAULT_LANE),
+          start: atT, end: atT + dur, legenda: data.caption === true,
+        }) ?? clampLane(data.lane, TEXT_DEFAULT_LANE);
+        const tx = buildText({ ...data, lane, start_sec: atT, end_sec: atT + dur }, state.next_text_id);
         return touch({ ...state, texts: [...state.texts, tx], next_text_id: state.next_text_id + 1, selected_text_id: tx.id, selected_clip_id: null, selected_audio_id: null, selected_overlay_id: null });
       }
       if (kind === 'overlay') {
-        const o = { ...data, id: state.next_overlay_id, start: atT, active: true };
+        const oBase = { ...data, id: state.next_overlay_id, start: atT, active: true };
+        const lane = laneDestino(state, {
+          tipo: 'overlay', id: oBase.id, laneAlvo: clampLane(data.lane, OVERLAY_DEFAULT_LANE),
+          start: atT, end: atT + overlayTimelineDur(oBase),
+        }) ?? clampLane(data.lane, OVERLAY_DEFAULT_LANE);
+        const o = { ...oBase, lane };
         return touch({ ...state, overlays: [...state.overlays, o], next_overlay_id: state.next_overlay_id + 1, selected_overlay_id: o.id, selected_clip_id: null });
       }
       return state;
@@ -512,6 +534,18 @@ export function reduce(state, action) {
       if (patch.end_sec != null) patch.end_sec = Math.max(0, patch.end_sec);
       const next = { ...cur, ...patch };
       if (next.end_sec <= next.start_sec) next.end_sec = next.start_sec + 0.5;
+      // REPELIR no arrasto horizontal do texto (legenda e isenta: sao centenas
+      // de blocos gerados em lote, encostados de proposito)
+      if (patch.start_sec != null && cur.caption !== true) {
+        const dur = Math.max(0.1, next.end_sec - next.start_sec);
+        const s = repelirStart(state, {
+          tipo: 'text', id: cur.id, lane: cur.lane || TEXT_DEFAULT_LANE,
+          start: next.start_sec, dur,
+        });
+        if (Math.abs(s - next.start_sec) > 1e-9) { next.start_sec = s; next.end_sec = s + dur; }
+      }
+      if (next.start_sec === cur.start_sec && next.end_sec === cur.end_sec &&
+          Object.keys(patch).every(k => next[k] === cur[k])) return state;
       const texts = state.texts.slice();
       texts[idx] = next;
       return touch({ ...state, texts });
@@ -683,13 +717,22 @@ export function reduce(state, action) {
       if (!clip) return state;
       const remaining = state.clips.filter(c => c.id !== action.clipId && c.active !== false);
       if (remaining.length === 0) return state;
+      const inicio = Math.max(0, action.atT || 0);
+      const duracao = Math.max(0, clip.source_out - clip.source_in);
+      // a camada pedida pelo drop e a intencao; as regras decidem a final
+      const laneFinal = laneDestino(state, {
+        tipo: 'overlay', id: state.next_overlay_id,
+        laneAlvo: clampLane(action.lane, OVERLAY_DEFAULT_LANE),
+        start: inicio, end: inicio + duracao,
+      });
+      if (laneFinal == null) return state;  // nenhuma camada livre: nao converte
       const overlay = {
         id: state.next_overlay_id,
         source_in: clip.source_in, source_out: clip.source_out,
         ...(clip.media_id != null ? { media_id: clip.media_id } : {}),
-        start: Math.max(0, action.atT || 0),
+        start: inicio,
         x_pct: 0.5, y_pct: 0.5, scale: 1,
-        lane: clampLane(action.lane, OVERLAY_DEFAULT_LANE),
+        lane: laneFinal,
         active: true,
       };
       return touch({
@@ -751,7 +794,13 @@ export function reduce(state, action) {
     case A.MOVE_OVERLAY: {
       const idx = state.overlays.findIndex(o => o.id === action.overlayId);
       if (idx < 0) return state;
-      const start = Math.max(0, Number(action.start) || 0);
+      const ov0 = state.overlays[idx];
+      // REPELIR: dentro da camada os itens nao se sobrepoem — o arrasto encosta
+      // no vizinho em vez de entrar por cima dele.
+      const start = repelirStart(state, {
+        tipo: 'overlay', id: ov0.id, lane: ov0.lane || OVERLAY_DEFAULT_LANE,
+        start: Math.max(0, Number(action.start) || 0), dur: overlayTimelineDur(ov0),
+      });
       if (state.overlays[idx].start === start) return state;
       const overlays = state.overlays.slice();
       overlays[idx] = { ...overlays[idx], start };
@@ -787,23 +836,46 @@ export function reduce(state, action) {
     case A.SET_ITEM_LANE: {
       // arrasto vertical na timeline: muda a camada (z) de overlay/texto.
       // Camada MAIOR = mais acima na timeline = NA FRENTE no video (CapCut).
-      const lane = clampLane(action.lane, null);
-      if (lane == null) return state;
+      // A camada pedida e so a INTENCAO: laneDestino aplica as regras (faixa de
+      // texto nao recebe video; sobrepor sobe pra camada de cima) e devolve a
+      // camada final — ou null quando nao ha nenhuma possivel (movimento negado).
+      const alvo = clampLane(action.lane, null);
+      if (alvo == null) return state;
       if (action.itemType === 'overlay') {
         const idx = state.overlays.findIndex(o => o.id === action.id);
-        if (idx < 0 || state.overlays[idx].lane === lane) return state;
+        if (idx < 0) return state;
+        const ov = state.overlays[idx];
+        const start = ov.start || 0;
+        const lane = laneDestino(state, {
+          tipo: 'overlay', id: ov.id, laneAlvo: alvo,
+          start, end: start + overlayTimelineDur(ov),
+        });
+        if (lane == null || ov.lane === lane) return state;
         const overlays = state.overlays.slice();
         overlays[idx] = { ...overlays[idx], lane };
         return touch({ ...state, overlays });
       }
       if (action.itemType === 'text') {
         const idx = state.texts.findIndex(t => t.id === action.id);
-        if (idx < 0 || state.texts[idx].lane === lane) return state;
+        if (idx < 0) return state;
+        const tx = state.texts[idx];
+        const lane = laneDestino(state, {
+          tipo: 'text', id: tx.id, laneAlvo: alvo,
+          start: tx.start_sec, end: tx.end_sec, legenda: tx.caption === true,
+        });
+        if (lane == null || tx.lane === lane) return state;
         const texts = state.texts.slice();
         texts[idx] = { ...texts[idx], lane };
         return touch({ ...state, texts });
       }
       return state;
+    }
+
+    case A.REORDER_LANES: {
+      // arrastar o cabecalho/olhinho de uma camada pra posicao de outra.
+      // reordenarLanes devolve o MESMO state quando nada muda (sem undo fantasma).
+      const next = reordenarLanes(state, { kind: action.kind, de: action.de, para: action.para });
+      return next === state ? state : touch(next);
     }
 
     case A.SET_AUDIO_LANE: {

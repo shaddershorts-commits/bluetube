@@ -3,7 +3,7 @@
 // transport, fsm). Nunca mutacao incremental. Camadas pesadas (thumbnails,
 // waveform) vem cacheadas dos modulos proprios como bitmaps.
 
-import { METRICS, rulerTicks, timeToX } from './layout.js';
+import { METRICS, rulerTicks, timeToX, laneForY } from './layout.js';
 
 const COLORS = {
   bg: '#04101f',
@@ -235,12 +235,18 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     const c = layout.clips.find(k => k.clipId === fsm.clipId);
     const gw = c ? c.w : 80;
     const gx = fsm.liftX - gw / 2;
-    // encaixa na row de lane sob o cursor (ou logo acima do topo)
+    // encaixa na row sob o cursor. A camada vem de laneForY — a MESMA funcao
+    // que o drop usa. Antes o desenho tinha tolerancia propria (+-6 contra +-4)
+    // e existia uma faixa de 2px em que a camada destacada nao era a que
+    // recebia o clipe.
     const rows = layout.laneRows || [];
     let gy = fsm.liftY - (c ? c.h : 40) / 2;
     let laneLabel = 'nova camada';
-    for (const r of rows) {
-      if (fsm.liftY >= r.y - 6 && fsm.liftY <= r.y + r.h + 6) { gy = r.y; laneLabel = 'camada ' + r.lane; break; }
+    const laneSob = laneForY(layout, fsm.liftY);
+    if (laneSob != null) {
+      const r = rows.find(k => k.lane === laneSob);
+      if (r) { gy = r.y; laneLabel = 'camada ' + r.lane; }
+      else laneLabel = 'camada ' + laneSob;
     }
     ctx.save();
     ctx.globalAlpha = 0.8;
