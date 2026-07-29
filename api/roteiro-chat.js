@@ -9,13 +9,14 @@
 //
 // F0: portão de sanidade, registro, cota, portão de cadastro.  ✔
 // F1: voz do Blublu nas mensagens + ângulo da aba no prompt.    ✔
-// F2: memória (histórico das últimas trocas).                   pendente
-// F3: discernimento (ordem / pergunta / vago / fora de escopo). pendente
+// F2: memória (histórico das últimas trocas).                   ✔
+// F3: discernimento (ordem/pergunta/vago/fora-escopo/elogio/desfazer). ✔
 //
 // REGRAS DE ACESSO (definidas pelo user em 29/07):
-//   sem conta            → 401 needs_account  (front abre popup de cadastro)
-//   free com conta       → 5 ajustes por dia
-//   full / master        → ilimitado
+//   sem conta       → 2 ajustes de teste; na 3ª vez, convite pra CRIAR CONTA
+//                     (sem falar em pagar — ele nem usou direito ainda)
+//   free com conta  → 5 por dia; ao estourar, aí sim a conversa de plano
+//   full / master   → ilimitado
 
 import { avaliar } from './_helpers/roteiro-sanidade.js';
 import { falar, JULGAMENTO, anguloDe } from './_helpers/blublu-roteiro-voz.js';
@@ -123,6 +124,38 @@ async function ipAbusando(ip) {
     }
     return passou;
   } catch { return false; }
+}
+
+// ── cota do ANÔNIMO (sem conta) ─────────────────────────────────────────────
+// Regra do user (29/07): quem não tem conta experimenta 2 vezes. Na 3ª aparece
+// o convite pra CRIAR CONTA — sem falar em pagar, porque ele nem usou direito
+// ainda. Só depois, já logado e estourando os 5, é que entra a conversa de plano.
+//
+// Contado por IP na tabela rate_limits (que já existe) — nada de SQL novo.
+// Dá pra burlar trocando de IP; é friction de funil, não segurança.
+export const LIVRE_SEM_CONTA = 2;
+const CHAVE_ANON = '/api/roteiro-chat#anon';
+
+async function usoAnonimo(ip) {
+  const { URL: SUPABASE_URL, SERVICE: SERVICE_KEY } = cfg();
+  if (!ip || !SUPABASE_URL || !SERVICE_KEY) return 0;
+  try {
+    const desde = new Date(Date.now() - 86400000).toISOString();
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/rate_limits?ip=eq.${encodeURIComponent(ip)}&endpoint=eq.${encodeURIComponent(CHAVE_ANON)}&window_start=gte.${desde}&select=count`,
+      { headers: H(), signal: AbortSignal.timeout(4000) }
+    );
+    return r.ok ? ((await r.json())?.length || 0) : 0;
+  } catch { return 0; }
+}
+
+function consumirAnonimo(ip) {
+  const { URL: SUPABASE_URL, SERVICE: SERVICE_KEY } = cfg();
+  if (!ip || !SUPABASE_URL || !SERVICE_KEY) return;
+  fetch(`${SUPABASE_URL}/rest/v1/rate_limits`, {
+    method: 'POST', headers: { ...H(), Prefer: 'return=minimal' },
+    body: JSON.stringify({ ip, endpoint: CHAVE_ANON, count: 1, window_start: new Date().toISOString() }),
+  }).catch(() => {});
 }
 
 // ── registro (nunca derruba a resposta) ─────────────────────────────────────
@@ -256,19 +289,28 @@ export default async function handler(req, res) {
 
   // ── PORTÃO 1: precisa de conta ────────────────────────────────────────────
   const user = await identificar(token);
+
+  // SEM CONTA: experimenta 2 vezes antes de qualquer convite.
+  let anonimo = false, usadoAnon = 0;
   if (!user) {
-    return res.status(401).json({
-      error: 'needs_account',
-      needs_account: true,
-      limite_free: LIMITE_FREE_DIA,
-      mensagem: `Cria tua conta pra falar comigo. No plano grátis são ${LIMITE_FREE_DIA} ajustes por dia — no Full e no Master, à vontade.`,
-    });
+    usadoAnon = await usoAnonimo(ip);
+    if (usadoAnon >= LIVRE_SEM_CONTA) {
+      return res.status(401).json({
+        error: 'needs_account',
+        needs_account: true,
+        limite_free: LIMITE_FREE_DIA,
+        usado: usadoAnon,
+        // Nada de plano aqui: ele ainda nem tem conta. Só cadastro.
+        mensagem: `Você já usou seus ${LIVRE_SEM_CONTA} ajustes de teste. Cria tua conta — é de graça — e passa a ter ${LIMITE_FREE_DIA} por dia comigo.`,
+      });
+    }
+    anonimo = true;
   }
 
-  // ── PORTÃO 2: cota diária do free ─────────────────────────────────────────
-  const ilimitado = user.plano === 'full' || user.plano === 'master';
+  // ── PORTÃO 2: cota diária do free (só quem tem conta) ─────────────────────
+  const ilimitado = !anonimo && (user.plano === 'full' || user.plano === 'master');
   let usado = 0;
-  if (!ilimitado) {
+  if (!anonimo && !ilimitado) {
     usado = await usoHoje(user.id);
     if (usado >= LIMITE_FREE_DIA) {
       return res.status(429).json({
@@ -277,19 +319,45 @@ export default async function handler(req, res) {
         plano: user.plano,
         usado,
         limite: LIMITE_FREE_DIA,
-        mensagem: `Você usou seus ${LIMITE_FREE_DIA} ajustes de hoje. No Full e no Master eu fico à disposição sem limite.`,
+        mensagem: `Você usou seus ${LIMITE_FREE_DIA} ajustes de hoje. Nos planos pagos eu fico à disposição sem limite — ou volta daqui 24 horas.`,
       });
     }
   }
 
   const giro = instrucao.length + roteiro.length;
   const intencao = classificar(instrucao);
-  const base = { user_id: user.id, email: user.email, plano: user.plano, versao, idioma, instrucao, roteiro_antes: roteiro, intencao };
+  const base = {
+    user_id: anonimo ? null : user.id,
+    email:   anonimo ? null : user.email,
+    plano:   anonimo ? 'anon' : user.plano,
+    versao, idioma, instrucao, roteiro_antes: roteiro, intencao,
+  };
+  // quantos ajustes ainda sobram pra mostrar na bolha do chat
+  const sobra = (jaConsumiu) =>
+    ilimitado ? null
+    : anonimo  ? Math.max(0, LIVRE_SEM_CONTA - usadoAnon - (jaConsumiu ? 1 : 0))
+    :            Math.max(0, LIMITE_FREE_DIA - usado - (jaConsumiu ? 1 : 0));
+  const cobrar = async () => {
+    if (anonimo) consumirAnonimo(ip);
+    else if (!ilimitado) await consumir(user.id, usado);
+  };
 
   // ── DISCERNIMENTO (F3): saber quando NÃO agir ─────────────────────────────
   // 'vago' e 'fora_escopo' são resolvidos aqui, SEM gastar chamada de IA e sem
   // consumir ajuste do usuário. Antes, os dois viravam reescrita — e o
   // fora_escopo chegava a colar a frase do usuário dentro do roteiro.
+  // "volta pro original" é o botão Desfazer, não edição. Antes virava chamada
+  // de IA que devolvia texto curto e era barrada por encolhimento.
+  if (intencao === 'desfazer') {
+    registrar({ ...base, mudou: false, latencia_ms: Date.now() - t0 });
+    return res.status(200).json({
+      ok: true, aplicado: false, intencao: 'desfazer', desfazer: true,
+      mensagem: 'Voltei pra versão anterior.',
+      texto: roteiro,
+      restantes: sobra(false),
+    });
+  }
+
   const pronta = respostaPronta(intencao, giro);
   if (pronta) {
     registrar({ ...base, mudou: false, latencia_ms: Date.now() - t0 });
@@ -297,7 +365,7 @@ export default async function handler(req, res) {
       ok: true, aplicado: false, intencao,
       mensagem: pronta,
       texto: roteiro,
-      restantes: ilimitado ? null : LIMITE_FREE_DIA - usado,
+      restantes: sobra(false),
     });
   }
 
@@ -317,13 +385,13 @@ export default async function handler(req, res) {
       const resposta = String(r?.result || '').replace(/\s+/g, ' ').trim();
       if (!resposta) throw new Error('resposta vazia');
       // gastou IA, então conta como uso — mas o roteiro fica intocado
-      if (!ilimitado) await consumir(user.id, usado);
+      await cobrar();
       registrar({ ...base, roteiro_depois: null, mudou: false, latencia_ms: Date.now() - t0 });
       return res.status(200).json({
         ok: true, aplicado: false, intencao: 'pergunta',
         mensagem: resposta.slice(0, 700),
         texto: roteiro,
-        restantes: ilimitado ? null : LIMITE_FREE_DIA - usado - 1,
+        restantes: sobra(true),
       });
     } catch (e) {
       const cod = classificarErro(e?.message);
@@ -358,7 +426,7 @@ export default async function handler(req, res) {
       ok: false, aplicado: false, motivo: v.motivo,
       mensagem: falar(v.motivo, giro),
       texto: roteiro,   // roteiro do usuário preservado
-      restantes: ilimitado ? null : LIMITE_FREE_DIA - usado,
+      restantes: sobra(false),
     });
   }
 
@@ -368,20 +436,20 @@ export default async function handler(req, res) {
       ok: true, aplicado: false, motivo: 'sem_mudanca',
       mensagem: falar('sem_mudanca', giro),
       texto: roteiro,
-      restantes: ilimitado ? null : LIMITE_FREE_DIA - usado,
+      restantes: sobra(false),
     });
   }
 
   // ── sucesso: só AQUI a cota é consumida ───────────────────────────────────
   // Falha de IA ou reprovação do portão não podem queimar ajuste do usuário.
-  if (!ilimitado) await consumir(user.id, usado);
+  await cobrar();
   registrar({ ...base, roteiro_depois: v.texto, mudou: true, latencia_ms: Date.now() - t0 });
 
   return res.status(200).json({
     ok: true, aplicado: true,
     texto: v.texto,
     mensagem: falar('aplicado', giro),
-    restantes: ilimitado ? null : LIMITE_FREE_DIA - usado - 1,
+    restantes: sobra(true),
     ilimitado,
   });
 }

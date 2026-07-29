@@ -8,7 +8,7 @@
 // roteiro do usuário pode ser perdido.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { classificarErro, montarPrompt, LIMITE_FREE_DIA } from '../../api/roteiro-chat.js';
+import handler, { classificarErro, montarPrompt, LIMITE_FREE_DIA, LIVRE_SEM_CONTA } from '../../api/roteiro-chat.js';
 
 const ROTEIRO = 'Uma garota decidiu sacudir a ponte ao máximo para desestabilizar os outros competidores. O desafio era ficar de pé até o final, mas ela não derrubou ninguém e acabou desistindo.';
 
@@ -22,8 +22,9 @@ function resFalso() {
   return r;
 }
 
-// cenario: quem é o usuário e quanto já usou hoje
-function dublarFetch({ user = null, plano = 'free', usado = 0 } = {}) {
+// cenario: quem é o usuário, quanto já usou hoje, e quantas vezes esse IP já
+// experimentou sem conta
+function dublarFetch({ user = null, plano = 'free', usado = 0, anonUsado = 0 } = {}) {
   return async (url, opts) => {
     const u = String(url);
     if (u.includes('/auth/v1/user')) {
@@ -37,7 +38,10 @@ function dublarFetch({ user = null, plano = 'free', usado = 0 } = {}) {
     if (u.includes('roteiro_chat_usage') && (!opts || opts.method === undefined)) {
       return { ok: true, json: async () => (usado ? [{ count: usado }] : []) };
     }
-    // POST/PATCH de uso e log
+    if (u.includes('rate_limits') && u.includes('%23anon') && (!opts || opts.method === undefined)) {
+      return { ok: true, json: async () => Array.from({ length: anonUsado }, () => ({ count: 1 })) };
+    }
+    // POST/PATCH de uso, freio por IP e log
     return { ok: true, json: async () => ({}) };
   };
 }
@@ -59,7 +63,7 @@ afterEach(() => { globalThis.fetch = ORIGINAL_FETCH; process.env = { ...ORIGINAL
 const chamar = async (body, cenario) => {
   globalThis.fetch = dublarFetch(cenario);
   const res = resFalso();
-  await handler({ method: 'POST', body, headers: {}, socket: {} }, res);
+  await handler({ method: 'POST', body, headers: { 'x-forwarded-for': '203.0.113.7' }, socket: {} }, res);
   return res;
 };
 
@@ -67,18 +71,37 @@ const chamar = async (body, cenario) => {
 // PORTÃO 1 — precisa de conta
 // ════════════════════════════════════════════════════════════════════════════
 
-test('sem token → 401 needs_account, com o limite do free na mensagem', async () => {
-  const r = await chamar({ transcript: ROTEIRO, instruction: 'encurta' }, { user: null });
+// Regra do user (29/07): sem conta a pessoa EXPERIMENTA 2 vezes. Só na 3ª
+// aparece o convite — e falando de cadastro, nunca de pagamento.
+test('sem conta, a 1ª e a 2ª vez PASSAM (ninguém é barrado antes de usar)', async () => {
+  for (const jaUsou of [0, 1]) {
+    const r = await chamar({ transcript: ROTEIRO, instruction: 'encurta' }, { user: null, anonUsado: jaUsou });
+    assert.notEqual(r._status, 401, `barrou no uso nº ${jaUsou + 1}`);
+  }
+});
+
+test('na 3ª vez sem conta → convite pra CRIAR CONTA', async () => {
+  const r = await chamar({ transcript: ROTEIRO, instruction: 'encurta' }, { user: null, anonUsado: LIVRE_SEM_CONTA });
   assert.equal(r._status, 401);
   assert.equal(r._json.needs_account, true);
   assert.equal(r._json.limite_free, LIMITE_FREE_DIA);
-  assert.match(r._json.mensagem, /5 ajustes/);
 });
 
-test('token inválido cai no mesmo portão (não vaza erro interno)', async () => {
-  const r = await chamar({ token: 'lixo', transcript: ROTEIRO, instruction: 'encurta' }, { user: null });
+test('o convite de cadastro NÃO fala em pagar (ele nem usou direito ainda)', async () => {
+  const r = await chamar({ transcript: ROTEIRO, instruction: 'encurta' }, { user: null, anonUsado: LIVRE_SEM_CONTA });
+  const m = r._json.mensagem;
+  assert.match(m, /de graça|gratuit/i, 'não deixa claro que é grátis: ' + m);
+  assert.match(m, /5 por dia|5 ajustes/, 'não diz o que ele ganha: ' + m);
+  assert.equal(/plano|assin|pag|upgrade|full|master|R\$/i.test(m), false,
+    'está empurrando plano pra quem nem tem conta: ' + m);
+});
+
+test('token inválido é tratado como sem conta (não vaza erro interno)', async () => {
+  const r = await chamar({ token: 'lixo', transcript: ROTEIRO, instruction: 'encurta' },
+    { user: null, anonUsado: LIVRE_SEM_CONTA });
   assert.equal(r._status, 401);
   assert.equal(r._json.needs_account, true);
+  assert.equal(/stack|jwt|supabase/i.test(JSON.stringify(r._json)), false);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -91,7 +114,7 @@ test('free que já usou 5 → 429 com convite pro upgrade', async () => {
   assert.equal(r._status, 429);
   assert.equal(r._json.limit_reached, true);
   assert.equal(r._json.limite, 5);
-  assert.match(r._json.mensagem, /Full e no Master/);
+  assert.match(r._json.mensagem, /planos pagos|24 horas/);
 });
 
 test('free no 5º pedido (usou 4) ainda PASSA do portão', async () => {

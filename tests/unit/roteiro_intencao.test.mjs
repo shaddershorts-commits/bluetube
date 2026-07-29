@@ -59,7 +59,7 @@ test('perguntas de opinião são reconhecidas', () => {
 // ── VAGO: sem direção ───────────────────────────────────────────────────────
 test('reclamação e saudação sem direção viram vago', () => {
   for (const v of ['não gostei', 'nao gostei', 'ruim', 'péssimo', 'não', 'oi', 'olá',
-                   'blz', 'top', 'gostei', 'valeu', 'teste', 'hummm', 'ok']) {
+                   'blz', 'teste', 'hummm', 'ok', 'nada a ver']) {
     assert.equal(cl(v), 'vago', `virou ${cl(v)}: "${v}"`);
   }
 });
@@ -140,4 +140,34 @@ test('histórico é limitado e cada fala é cortada', () => {
 
 test('histórico corrompido não derruba', () => {
   assert.doesNotThrow(() => montarHistorico(['string solta', 42, null, { texto: null }]));
+});
+
+// ── ELOGIO e DESFAZER — reportados pelo user em 29/07 ───────────────────────
+test('elogio no fim da conversa NÃO vira reescrita (caso "parabéns")', () => {
+  const elogios = ['parabéns', 'parabens!', 'mandou bem', 'ficou ótimo', 'muito bom',
+                   'arrasou', 'adorei', 'show de bola', 'perfeito', 'valeu!', 'obrigado'];
+  for (const e of elogios) assert.equal(cl(e), 'elogio', `virou ${cl(e)}: "${e}"`);
+});
+
+test('elogio tem resposta pronta e não gasta IA', () => {
+  const r = respostaPronta('elogio', 0);
+  assert.ok(r && r.length > 20, 'sem resposta pro elogio');
+  assert.deepEqual(temPalavraProibida(r), []);
+});
+
+test('"volta pro original" é DESFAZER, não ordem de edição', () => {
+  const voltas = ['volta pro original', 'volta ao original', 'volta pra versão anterior',
+                  'desfaz', 'desfazer', 'volta', 'cancela isso', 'volta como estava',
+                  'quero o original', 'reverte'];
+  for (const v of voltas) assert.equal(cl(v), 'desfazer', `virou ${cl(v)}: "${v}"`);
+});
+
+test('desfazer NÃO rouba ordens que só parecem ("volta o nome pro começo")', () => {
+  assert.equal(cl('volta o nome dela pro começo do roteiro'), 'ordem');
+  assert.equal(cl('cancela a pergunta do final e poe uma afirmação'), 'ordem');
+});
+
+test('elogio e desfazer não roubam ordem legítima', () => {
+  assert.equal(cl('ficou ótimo mas encurta o final'), 'ordem');
+  assert.equal(cl('parabéns, agora deixa mais curto'), 'ordem');
 });

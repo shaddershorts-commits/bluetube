@@ -147,45 +147,90 @@
   // há token, já mostra sozinho os botões de criar conta. A gente só troca o
   // texto DEPOIS da chamada — assim não precisa editar o <script> inline da
   // index.html, que é onde mora o pixel.
-  var CONVITE = {
-    sem_conta: {
-      titulo: 'Fala com o <span>Blublu</span>',
-      sub: 'Cria tua conta e o Blublu ajusta teu roteiro.<br><strong>5 ajustes por dia no grátis</strong> — no Full e no Master, sem limite.',
-    },
-    acabou: {
-      titulo: 'Seus <span>5 ajustes</span> de hoje acabaram',
-      sub: 'No Full e no Master o Blublu fica à disposição sem limite nenhum.<br>Volta amanhã ou desbloqueia agora.',
-    },
-  };
-
-  function convidar(tipo) {
-    var c = CONVITE[tipo];
-    if (typeof window.openUpgradeModal !== 'function') {
-      if (typeof window.openAuthModal === 'function') window.openAuthModal();
-      return;
+  // Dois convites BEM diferentes, e a ordem importa:
+  //  1) sem conta  → modal de CADASTRO puro. Zero menção a pagar: a pessoa
+  //     acabou de experimentar, cobrar agora espanta.
+  //  2) free estourou os 5 → aí sim o modal de planos, ou voltar em 24h.
+  function convidarCadastro() {
+    if (typeof window.openAuthModal !== 'function') return;
+    window.openAuthModal();
+    try { if (typeof window.switchAuthTab === 'function') window.switchAuthTab('signup'); } catch (e) {}
+    // troca o subtítulo do modal pra explicar o ganho, sem falar de plano
+    var box = document.querySelector('#authModal .auth-modal-box');
+    if (!box) return;
+    var sub = box.children[2];   // <div>Crie sua conta ou entre</div>
+    if (sub && !sub.dataset.blublu) {
+      sub.dataset.blublu = '1';
+      sub.innerHTML = 'Cria tua conta <strong style="color:#e8f4ff">de graça</strong> e o Blublu te dá <strong style="color:var(--neon,#00aaff)">5 ajustes de roteiro por dia</strong>.';
+      sub.style.fontSize = '12.5px';
+      sub.style.lineHeight = '1.55';
     }
-    window.openUpgradeModal(tipo === 'sem_conta' ? 'adjust_no_account' : 'adjust_limit_free', 'full');
-    // sobrescreve o texto genérico com o nosso, já com o modal na tela
+  }
+
+  function convidarPlano() {
+    if (typeof window.openUpgradeModal !== 'function') return;
+    window.openUpgradeModal('adjust_limit_free', 'full');
     var t = $('upgradeModalTitle'), s = $('upgradeModalSub');
-    if (t && c) t.innerHTML = c.titulo;
-    if (s && c) s.innerHTML = c.sub;
+    if (t) t.innerHTML = 'Seus <span>5 ajustes</span> de hoje acabaram';
+    if (s) s.innerHTML = 'Nos planos pagos o Blublu fica sem limite nenhum.<br>Ou volta daqui 24 horas que teus 5 renovam.';
+  }
+
+  // ── posicionamento: AO LADO do roteiro, não por cima ──────────────────────
+  // No print de 29/07 o painel cobria a tela e escurecia o fundo — o usuário
+  // não via o roteiro mudando e tinha que fechar o chat pra conferir. Em tela
+  // larga o painel vira coluna lateral e o escurecimento some. Em celular não
+  // tem espaço pra isso: continua como folha embaixo, com o fundo escuro.
+  var LARGO = 900;
+  function ehTelaLarga() { return window.innerWidth >= LARGO; }
+
+  function posicionar() {
+    var p = $('adjustPanel'), f = $('adjustBackdrop');
+    if (!p) return;
+    if (ehTelaLarga()) {
+      p.style.cssText =
+        'display:flex;position:fixed;right:22px;top:50%;transform:translateY(-50%);' +
+        'left:auto;bottom:auto;width:370px;max-width:calc(100vw - 44px);z-index:900;' +
+        'background:rgba(2,8,23,0.97);border:1px solid rgba(0,170,255,.22);' +
+        'border-radius:18px;backdrop-filter:blur(20px);' +
+        'box-shadow:0 12px 48px rgba(0,20,60,.55);flex-direction:column;max-height:74vh';
+      if (f) f.style.display = 'none';           // roteiro visível o tempo todo
+    } else {
+      p.style.cssText =
+        'display:flex;position:fixed;bottom:0;left:50%;transform:translateX(-50%);' +
+        'right:auto;top:auto;width:100%;max-width:520px;z-index:900;' +
+        'background:rgba(2,8,23,0.97);border:1px solid rgba(0,170,255,.2);border-bottom:none;' +
+        'border-radius:20px 20px 0 0;backdrop-filter:blur(20px);' +
+        'box-shadow:0 -8px 40px rgba(0,50,160,.3);flex-direction:column;max-height:60vh';
+      if (f) f.style.display = 'block';
+    }
+  }
+  window.addEventListener('resize', function () {
+    var p = $('adjustPanel');
+    if (p && p.style.display === 'flex') posicionar();
+  });
+
+  // Pisca o roteiro quando ele muda, pra o olho achar a alteração sozinho.
+  function piscarRoteiro(el) {
+    if (!el) return;
+    var cx = el.parentElement || el;
+    var antes = cx.style.boxShadow;
+    cx.style.transition = 'box-shadow .35s ease';
+    cx.style.boxShadow = 'inset 0 0 0 2px rgba(0,190,255,.55)';
+    setTimeout(function () { cx.style.boxShadow = antes || ''; }, 900);
   }
 
   // ── abrir / fechar ────────────────────────────────────────────────────────
   function abrir(versao) {
     versaoAtual = versao || 'V1';
-
-    // PORTÃO DE CADASTRO: sem conta não abre o chat — abre o convite.
-    if (!token()) { convidar('sem_conta'); return; }
+    // Sem conta o chat ABRE: a pessoa tem 2 ajustes de teste. O convite só
+    // aparece quando o servidor disser que acabaram.
 
     var alvo = $('adjustTarget');
     if (alvo) alvo.textContent = NOME_ABA[versaoBase(versaoAtual)] || 'Casual';
     marcarCabecalho();
     garantirBarraDesfazer();
 
-    var fundo = $('adjustBackdrop'), painel = $('adjustPanel');
-    if (fundo) fundo.style.display = 'block';
-    if (painel) painel.style.display = 'flex';
+    posicionar();
 
     try { historico = JSON.parse(localStorage.getItem('bt_adjust_' + versaoAtual) || '[]').slice(-6); } catch (e) { historico = []; }
     desenhar();
@@ -252,16 +297,22 @@
       });
       var d = await r.json().catch(function () { return {}; });
 
-      // sem conta (token expirou no meio) → convite
+      // acabaram os 2 de teste → convite pra CRIAR CONTA (sem falar de plano)
       if (r.status === 401 || d.needs_account) {
-        falaBlublu(d.mensagem || 'Cria tua conta pra falar comigo.', 'normal');
-        convidar('sem_conta');
+        falaBlublu(d.mensagem || 'Cria tua conta pra continuar comigo.', 'normal');
+        convidarCadastro();
         return;
       }
-      // acabou a cota do dia → convite pro upgrade
+      // já tem conta e estourou os 5 → aí sim a conversa de plano
       if (r.status === 429 || d.limit_reached) {
         falaBlublu(d.mensagem || 'Você usou seus ajustes de hoje.', 'triste');
-        convidar('acabou');
+        if (d.limit_reached) convidarPlano();
+        return;
+      }
+      // ele entendeu "volta pro original" como o botão Desfazer
+      if (d.desfazer) {
+        if (pilhaDesfazer.length) desfazer();
+        else falaBlublu('Não tenho versão anterior guardada ainda — esse é o original.', 'normal');
         return;
       }
       // erro de entrada
@@ -273,6 +324,7 @@
         pilhaDesfazer.push({ versao: versaoAtual, texto: atual });
         if (pilhaDesfazer.length > MAX_DESFAZER) pilhaDesfazer.shift();
         el.textContent = d.texto;
+        piscarRoteiro(el);   // o painel agora fica ao lado: dá pra ver mudando
         if (typeof window._saveRoteiroState === 'function') window._saveRoteiroState();
         var sobra = (d.restantes != null && d.restantes >= 0)
           ? ' (te sobram ' + d.restantes + ' hoje)' : '';
@@ -292,6 +344,56 @@
       // NÃO fecha sozinho: antes fechava em 1,5s e o usuário nem lia a resposta.
     }
   }
+
+  // ── o botão: dourado, com o Blublu flutuando do lado ──────────────────────
+  // Feito daqui e não na index.html de propósito: assim o HTML não é tocado e
+  // o bloco inline do pixel fica intacto.
+  function estilizarBotoes() {
+    var botoes = document.querySelectorAll('[onclick*="openAdjustChat"]');
+    for (var i = 0; i < botoes.length; i++) {
+      var b = botoes[i];
+      if (b.dataset.blubluOuro === '1') continue;
+      b.dataset.blubluOuro = '1';
+
+      b.style.background = 'linear-gradient(135deg,#c9962f,#f7d67a 45%,#b8862b)';
+      b.style.border = '1px solid rgba(255,225,150,.55)';
+      b.style.color = '#2a1e05';
+      b.style.fontWeight = '700';
+      b.style.boxShadow = '0 4px 18px rgba(200,150,40,.3)';
+      b.style.position = 'relative';
+      b.style.overflow = 'visible';
+      b.style.paddingLeft = '30px';
+
+      // tira o ✏️ do rótulo — quem anuncia agora é a cara dele
+      b.innerHTML = b.innerHTML.replace(/✏️\s*/, '');
+
+      var img = document.createElement('img');
+      img.src = CARA.normal;
+      img.alt = 'Blublu';
+      img.className = 'blublu-flutua';
+      img.style.cssText =
+        'position:absolute;left:-20px;top:50%;width:44px;height:44px;object-fit:contain;' +
+        'pointer-events:none;filter:drop-shadow(0 3px 8px rgba(0,120,200,.55))';
+      b.appendChild(img);
+    }
+  }
+
+  // flutuação do avatar (respeita quem pediu menos animação no sistema)
+  (function () {
+    if (document.getElementById('blubluFlutuaCss')) return;
+    var st = document.createElement('style');
+    st.id = 'blubluFlutuaCss';
+    st.textContent =
+      '@keyframes blubluFlutua{0%,100%{transform:translateY(-50%)}50%{transform:translateY(-64%)}}' +
+      '.blublu-flutua{animation:blubluFlutua 3.2s ease-in-out infinite;transform:translateY(-50%)}' +
+      '@media (prefers-reduced-motion:reduce){.blublu-flutua{animation:none}}';
+    document.head.appendChild(st);
+  })();
+
+  // os botões nascem escondidos e só aparecem quando o roteiro é gerado
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', estilizarBotoes);
+  else estilizarBotoes();
+  setInterval(estilizarBotoes, 1500);
 
   // ── assume o controle ─────────────────────────────────────────────────────
   // defer garante que isto roda DEPOIS do inline, então sobrescreve.
