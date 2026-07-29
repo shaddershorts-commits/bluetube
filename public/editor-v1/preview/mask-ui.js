@@ -31,6 +31,7 @@ export function createMaskUI(stageEl, store) {
   stageEl.appendChild(root);
   const shape = root.querySelector('.be-mask-shape');
 
+  let ativo = false;   // a shell liga/desliga conforme a sub-aba aberta
   let gesto = null;
 
   function clipSelecionado() {
@@ -42,7 +43,7 @@ export function createMaskUI(stageEl, store) {
   function sync() {
     const clip = clipSelecionado();
     const m = clip?.mask;
-    if (!m) { root.style.display = 'none'; return; }
+    if (!ativo || !m) { root.style.display = 'none'; return; }
     root.style.display = 'block';
     const box = stageEl.getBoundingClientRect();
     const circulo = m.shape === 'circle';
@@ -61,7 +62,7 @@ export function createMaskUI(stageEl, store) {
 
   function onDown(e) {
     const alvo = e.target.closest('[data-parte]');
-    if (!alvo) return;
+    if (!ativo || !alvo) return;
     const clip = clipSelecionado();
     if (!clip?.mask) return;
     e.preventDefault(); e.stopPropagation();
@@ -116,6 +117,8 @@ export function createMaskUI(stageEl, store) {
 
   return {
     sync,
+    /** a shell liga isto só quando a sub-aba "Mascarar" está aberta */
+    setAtivo(v) { ativo = !!v; sync(); },
     destroy() {
       unsub?.();
       window.removeEventListener('resize', onResize);

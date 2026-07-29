@@ -67,7 +67,21 @@ async function enterEditor(projectId) {
         store.replaceState(normalizeLoadedState({ ...project.project_state, project_id: project.id }));
       }
     } catch (e) {
+      // NÃO ABRIR VAZIO EM SILÊNCIO (fix 2026-07-29): a falha era só um
+      // console.warn e o editor abria em branco — indistinguível de "perdi meu
+      // projeto". Com a sessão vencida isso acontecia toda vez que o usuário
+      // saía e voltava. Melhor parar e dizer o que houve do que fingir que o
+      // projeto está vazio.
       console.warn('[main] load-project falhou:', e.message);
+      if (e.sessaoExpirada) {
+        gateScreen('🔒', 'Sua sessão expirou',
+          'Entre de novo pra continuar de onde parou. Seu projeto está salvo.',
+          '<a class="be-export-btn" href="/?login=1&next=/blueEditor-app">Fazer login</a>');
+      } else {
+        gateScreen('⚠️', 'Não consegui abrir o projeto', e.message || 'Tenta de novo em instantes.',
+          '<button class="be-export-btn" onclick="location.reload()">Tentar de novo</button>');
+      }
+      return;
     }
   }
   try { editorAtivo?.destroy(); } catch (e) {}

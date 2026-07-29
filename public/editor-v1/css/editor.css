@@ -716,3 +716,179 @@ body {
 .be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="ne"] { right: 8%; top: 8% }
 .be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="sw"] { left: 8%; bottom: 8% }
 .be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="se"] { right: 8%; bottom: 8% }
+
+/* ── MOLDURA DO VÍDEO NO PLAYER (2026-07-29) ────────────────────────────────
+   Aparece quando a sub-aba NÃO é "Mascarar": move e escala a cena dentro do
+   quadro, como no CapCut. Um marcador por vez — máscara e vídeo nunca juntos. */
+.be-frameui { position: absolute; inset: 0; z-index: 8; pointer-events: none }
+.be-frame-box {
+  position: absolute; cursor: move; pointer-events: auto;
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 0 0 1px rgba(2, 8, 23, .5);
+}
+.be-frame-h {
+  position: absolute; width: 12px; height: 12px; pointer-events: auto;
+  background: #fff; border: 2px solid rgba(2, 8, 23, .55); border-radius: 3px;
+}
+.be-frame-h[data-parte="nw"] { left: -6px; top: -6px; cursor: nwse-resize }
+.be-frame-h[data-parte="ne"] { right: -6px; top: -6px; cursor: nesw-resize }
+.be-frame-h[data-parte="sw"] { left: -6px; bottom: -6px; cursor: nesw-resize }
+.be-frame-h[data-parte="se"] { right: -6px; bottom: -6px; cursor: nwse-resize }
+/* guias de terços: só durante o gesto (referência ajuda a enquadrar, mas
+   referência fixa polui o preview) */
+.be-frame-guias {
+  position: absolute; inset: 0; opacity: 0; transition: opacity .12s;
+  background:
+    linear-gradient(to right, transparent 33.2%, rgba(255,255,255,.28) 33.3%, rgba(255,255,255,.28) 33.5%, transparent 33.6%),
+    linear-gradient(to right, transparent 66.2%, rgba(255,255,255,.28) 66.3%, rgba(255,255,255,.28) 66.5%, transparent 66.6%),
+    linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,.28) 33.3%, rgba(255,255,255,.28) 33.5%, transparent 33.6%),
+    linear-gradient(to bottom, transparent 66.2%, rgba(255,255,255,.28) 66.3%, rgba(255,255,255,.28) 66.5%, transparent 66.6%);
+}
+
+/* ── PAINEL DE RETOQUE / correção de cor (2026-07-29) ───────────────────────
+   Trilhas coloridas nos controles de cor: a cor indica pra onde o valor puxa,
+   igual ao CapCut (frio↔quente, verde↔magenta, cinza↔saturado). */
+.be-grade-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px }
+.be-grade-campos { display: flex; flex-direction: column; gap: 7px }
+.be-grade-grupo {
+  font-family: var(--mono, monospace); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: #5d7290; margin: 8px 0 1px;
+}
+.be-grade-linha { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 8px }
+.be-grade-linha label { font-size: 12px; color: #b8c9e0 }
+.be-grade-linha output {
+  font-family: var(--mono, monospace); font-size: 11px; color: #8299bd; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.be-grade-linha input[type="range"] { width: 100%; accent-color: var(--neon) }
+.be-grade-trilha-temp { background: linear-gradient(to right, #2f6fd0, #d9d9d9, #e8c33a); border-radius: 3px }
+.be-grade-trilha-matiz { background: linear-gradient(to right, #2fbf6f, #d9d9d9, #c04fd0); border-radius: 3px }
+.be-grade-trilha-sat { background: linear-gradient(to right, #8a8a8a, #d94b4b); border-radius: 3px }
+
+/* ── ABA DE TRANSIÇÕES (2026-07-29) — layout do CapCut ──────────────────────
+   Categorias à esquerda, grade à direita, busca em cima. A miniatura de cada
+   card ANIMA o próprio efeito no hover: duas camadas com transform/opacity,
+   compostas pela GPU. 18 cards animando não custam CPU. */
+.be-trans-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px }
+.be-trans-busca { display: flex; gap: 6px; align-items: center }
+.be-trans-busca input {
+  flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--border, #1e2f4a);
+  color: #eaf3ff; font-size: 12.5px;
+}
+.be-trans-corpo { display: grid; grid-template-columns: 92px 1fr; gap: 8px; flex: 1; min-height: 0 }
+.be-trans-cats { display: flex; flex-direction: column; gap: 2px; overflow-y: auto }
+.be-trans-cat {
+  text-align: left; padding: 6px 8px; border-radius: 7px; cursor: pointer;
+  background: transparent; border: none; color: #8299bd; font-size: 12px;
+}
+.be-trans-cat:hover { background: rgba(255,255,255,.05); color: #eaf3ff }
+.be-trans-cat.active { background: rgba(0,170,255,.14); color: var(--neon) }
+.be-trans-cat.fav { color: #fbbf24 }
+.be-trans-grade {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px; overflow-y: auto; align-content: start; padding-right: 2px;
+}
+.be-trans-vazio { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; padding: 10px 2px }
+.be-trans-card { position: relative; cursor: grab; user-select: none }
+.be-trans-card:active { cursor: grabbing }
+.be-trans-nome {
+  font-size: 10.5px; color: #b8c9e0; margin-top: 3px; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.be-trans-star {
+  position: absolute; top: 3px; right: 3px; z-index: 2; width: 20px; height: 20px;
+  border: none; border-radius: 50%; cursor: pointer; font-size: 11px; line-height: 1;
+  background: rgba(2,8,23,.65); color: #64748b;
+}
+.be-trans-star.on { color: #fbbf24 }
+.be-trans-star:hover { color: #fbbf24 }
+
+/* miniatura: duas camadas que se trocam com o efeito da transição */
+.be-trans-mini {
+  position: relative; width: 100%; aspect-ratio: 1; border-radius: 8px;
+  overflow: hidden; background: #0b1524; border: 1px solid var(--border, #1e2f4a);
+}
+.be-trans-mini span { position: absolute; inset: 0; will-change: transform, opacity, filter }
+.be-trans-a { background: linear-gradient(135deg, #1d4ed8, #06b6d4) }
+.be-trans-b { background: linear-gradient(135deg, #f59e0b, #ef4444) }
+.be-trans-card:hover .be-trans-mini span { animation-duration: 1.5s; animation-iteration-count: infinite }
+
+/* cada tipo de prévia = um par de animações */
+.be-fx-cross    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-cross .be-trans-b { animation-name: beFxFade }
+.be-fx-flash    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-flash .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-flash .be-trans-a { animation-name: beFxFlash }
+.be-fx-slide    .be-trans-b { transform: translateY(100%) }
+.be-trans-card:hover .be-fx-slide .be-trans-b { animation-name: beFxSlideY }
+.be-fx-wipe     .be-trans-b { clip-path: inset(100% 0 0 0) }
+.be-trans-card:hover .be-fx-wipe .be-trans-b { animation-name: beFxWipe }
+.be-fx-radial   .be-trans-b { clip-path: circle(0% at 50% 50%) }
+.be-trans-card:hover .be-fx-radial .be-trans-b { animation-name: beFxCircle }
+.be-fx-circulo  .be-trans-b { clip-path: circle(0% at 50% 50%) }
+.be-trans-card:hover .be-fx-circulo .be-trans-b { animation-name: beFxCircle }
+.be-fx-blur     .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-blur .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-blur .be-trans-a { animation-name: beFxBlur }
+.be-fx-glitch   .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-glitch .be-trans-b { animation-name: beFxGlitch }
+.be-fx-pixel    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-pixel .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-pixel .be-trans-a { animation-name: beFxPixel }
+.be-fx-zoom     .be-trans-b { opacity: 0; transform: scale(1.6) }
+.be-trans-card:hover .be-fx-zoom .be-trans-b { animation-name: beFxZoom }
+.be-fx-shake    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-shake .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-shake .be-trans-a { animation-name: beFxShake }
+
+@keyframes beFxFade   { 0%,15% { opacity: 0 } 60%,100% { opacity: 1 } }
+@keyframes beFxFlash  { 0%,15% { filter: brightness(1) } 35% { filter: brightness(4) } 60%,100% { filter: brightness(1) } }
+@keyframes beFxSlideY { 0%,15% { transform: translateY(100%) } 70%,100% { transform: translateY(0) } }
+@keyframes beFxWipe   { 0%,15% { clip-path: inset(100% 0 0 0) } 70%,100% { clip-path: inset(0 0 0 0) } }
+@keyframes beFxCircle { 0%,15% { clip-path: circle(0% at 50% 50%) } 70%,100% { clip-path: circle(75% at 50% 50%) } }
+@keyframes beFxBlur   { 0%,15% { filter: blur(0) } 40% { filter: blur(7px) } 70%,100% { filter: blur(0) } }
+@keyframes beFxZoom   { 0%,15% { opacity: 0; transform: scale(1.6) } 70%,100% { opacity: 1; transform: scale(1) } }
+@keyframes beFxPixel  { 0%,15% { filter: contrast(1) } 40% { filter: contrast(2.4) saturate(1.8) } 70%,100% { filter: contrast(1) } }
+@keyframes beFxShake  { 0%,15% { transform: translateX(0) } 25% { transform: translateX(-9%) } 35% { transform: translateX(8%) } 45% { transform: translateX(-5%) } 60%,100% { transform: translateX(0) } }
+@keyframes beFxGlitch {
+  0%,15% { opacity: 0; clip-path: inset(0 0 0 0) }
+  30% { opacity: 1; clip-path: inset(0 0 62% 0) }
+  45% { opacity: 1; clip-path: inset(48% 0 22% 0) }
+  60% { opacity: 1; clip-path: inset(72% 0 0 0) }
+  70%,100% { opacity: 1; clip-path: inset(0 0 0 0) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .be-trans-card:hover .be-trans-mini span { animation: none }
+}
+
+/* ── TRANSIÇÃO RODANDO NO PLAYER (2026-07-29) ───────────────────────────────
+   O JS escreve só --p (progresso 0..1) e --forca; o resto é derivado aqui.
+   Tudo em transform/opacity/filter/clip-path = composição na GPU, sem repintar
+   a cada frame. É o que segura a fluidez com o vídeo tocando junto. */
+.be-trans-fx {
+  position: absolute; inset: 0; z-index: 7; pointer-events: none;
+  --p: 0; --forca: .5;
+}
+/* dissolver/desfoque: escurece e clareia no meio do caminho */
+.be-fxp-cross  { background: #000; opacity: calc((0.5 - abs(var(--p) - 0.5)) * 0.9) }
+/* flash: branco/preto forte no miolo */
+.be-fxp-flash  { background: #fff; opacity: calc((0.5 - abs(var(--p) - 0.5)) * 2 * (0.6 + var(--forca) * 0.4)) }
+/* varredura radial */
+.be-fxp-radial { background: #fff; opacity: calc(0.5 - abs(var(--p) - 0.5)); clip-path: circle(calc(var(--p) * 120%) at 50% 50%) }
+.be-fxp-circulo{ background: #000; opacity: calc((0.5 - abs(var(--p) - 0.5)) * 1.6); clip-path: circle(calc((1 - var(--p)) * 90%) at 50% 50%) }
+/* deslizar/varrer: faixa escura correndo pelo quadro */
+.be-fxp-slide  { background: linear-gradient(180deg, rgba(0,0,0,.85), transparent); transform: translateY(calc((var(--p) - 1) * 100%)) }
+.be-fxp-wipe   { background: rgba(0,0,0,.8); clip-path: inset(calc(var(--p) * 100%) 0 0 0) }
+/* pixel/glitch: bandas horizontais que saltam */
+.be-fxp-pixel  { background: repeating-linear-gradient(0deg, rgba(0,0,0,.5) 0 3px, transparent 3px 6px); opacity: calc((0.5 - abs(var(--p) - 0.5)) * 1.8) }
+.be-fxp-glitch {
+  background: repeating-linear-gradient(0deg, rgba(255,0,80,.35) 0 6px, rgba(0,220,255,.3) 6px 12px);
+  opacity: calc((0.5 - abs(var(--p) - 0.5)) * 2);
+  transform: translateX(calc(sin(var(--p) * 40rad) * 2%));
+}
+/* zoom e agitação: o efeito vive no próprio vídeo */
+.be-fxp-zoom, .be-fxp-shake, .be-fxp-blur { background: transparent }
+.be-preview-frame video.be-em-transicao-zoom  { transform: scale(calc(1 + (0.5 - abs(var(--p, 0) - 0.5)) * 0.5)) }
+.be-preview-frame video.be-em-transicao-blur  { filter: blur(calc((0.5 - abs(var(--p, 0) - 0.5)) * 14px)) }
+@media (prefers-reduced-motion: reduce) { .be-trans-fx { display: none !important } }

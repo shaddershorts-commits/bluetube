@@ -11,6 +11,11 @@ import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createPip } from '../preview/pip.js';
 import { createMaskUI } from '../preview/mask-ui.js';
+import { createFrameUI } from '../preview/frame-ui.js';
+import { createTransitionsPanel } from './transitions-panel.js';
+import { createTransitionFx } from '../preview/transition-fx.js';
+import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
+import { CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste } from '../preview/color-grade.js';
 import { createTimelineController } from './timeline-controller.js';
 import { attachShortcuts, splitSelectedAt } from './shortcuts.js';
 import { createThumbnails } from '../timeline/thumbnails.js';
@@ -47,6 +52,11 @@ export function mountEditor(root, store, opts = {}) {
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
   // marcador da máscara: arrastar/redimensionar direto no vídeo
   const maskUI = createMaskUI($('#beStage'), store);
+  // moldura do vídeo (mover/escalar a cena) — alterna com a máscara pela sub-aba
+  const frameUI = createFrameUI($('#beStage'), store, player);
+  // efeito da transicao rodando no player (progresso vem do relogio do player)
+  const fxTransicao = createTransitionFx($('#beStage'), store, player);
+  fxTransicao.registrarCatalogo(TRANSICOES);
   const exporter = createExporter(store);
   const autosave = createAutosave(store, (s, detail) => {
     // O save é assíncrono e pode terminar DEPOIS do editor ser desmontado
@@ -66,6 +76,8 @@ export function mountEditor(root, store, opts = {}) {
   let captionsPanelOpen = false; // painel 💬 Legendas (escolher estilo antes)
   let capChosenPreset = 'classico'; // estilo escolhido pra aplicar ao gerar
   let audioLibOpen = false;      // painel ♪ Áudio (biblioteca)
+  let transOpen = false;         // painel ⧓ Transições
+  let transArrastando = null;    // id sendo arrastado pra timeline
   let audioLibTab = 'musicas';   // musicas | efeitos | favoritos
   let audioLibQuery = '';
   let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
@@ -154,6 +166,14 @@ export function mountEditor(root, store, opts = {}) {
   // WYSIWYG da aba Vídeo > Básico: aplica escala + opacidade da cena SOB o
   // playhead no <video> do preview (compound = transform do bloco inteiro).
   function applyClipTransform() {
+    aplicarGrade();
+    // Efeito da transição: o progresso vem do RELÓGIO DO PLAYER, não de um
+    // timer próprio — assim ele acompanha play, pause, scrub e velocidade sem
+    // dessincronizar do vídeo.
+    try {
+      const st0 = store.getState();
+      fxTransicao.tick(player.getTime(), mainTrackItems(st0), st0.transitions || []);
+    } catch (e) {}
     const state = store.getState();
     const t = player.getTime();
     const it = mainTrackItems(state).find(x => t >= x.tStart && t < x.tEnd);
@@ -161,7 +181,11 @@ export function mountEditor(root, store, opts = {}) {
     const scale = clip?.scale ?? 1;
     const opacity = clip?.opacity ?? 1;
     const sx = clip?.mirrored ? -scale : scale;   // Espelhar = inverte no eixo X
-    const tf = (scale !== 1 || clip?.mirrored) ? `scale(${sx}, ${scale})` : '';
+    // POSIÇÃO da cena no quadro (mover o vídeo, como no CapCut) — fração do
+    // próprio quadro a partir do centro
+    const px = (clip?.pos_x ?? 0) * 100, py = (clip?.pos_y ?? 0) * 100;
+    const mover = (px || py) ? `translate(${px.toFixed(2)}%, ${py.toFixed(2)}%) ` : '';
+    const tf = (scale !== 1 || clip?.mirrored || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
     // aplica no elemento ATIVO do double-buffer (pode ter trocado no swap)
     const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
     if (el.style.transform !== tf) el.style.transform = tf;
@@ -181,12 +205,19 @@ export function mountEditor(root, store, opts = {}) {
     }
   }
 
-  // Proporção real do quadro. Tudo da máscara é desenhado NESSE espaço — sem
-  // isso o desenho é esticado e nada fecha (ver comentário em maskCssFor).
+  // Proporção da CAIXA onde a máscara é aplicada — não a do arquivo de vídeo.
+  //
+  // Esta distinção é a diferença entre círculo e oval: o SVG da máscara é
+  // esticado até preencher o elemento (preserveAspectRatio="none"), e o palco
+  // é sempre 9:16. Usar a proporção INTRÍNSECA do vídeo (o que esta função
+  // fazia antes) deformava tudo sempre que a fonte não fosse 9:16 — vídeo em
+  // paisagem virava oval deitado. O teste não pegou porque usava fonte 1080x1920,
+  // que por coincidência batia com o palco.
   function frameAR() {
-    const st = store.getState();
-    const w = st.video?.width || 1080, h = st.video?.height || 1920;
-    return (w > 0 && h > 0) ? w / h : 9 / 16;
+    const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
+    const w = el?.clientWidth || 0, h = el?.clientHeight || 0;
+    if (w > 0 && h > 0) return w / h;
+    return 9 / 16; // antes da primeira medida do layout
   }
 
   function maskCssFor(m) {
@@ -223,10 +254,238 @@ export function mountEditor(root, store, opts = {}) {
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
+
+  // ── RETOQUE: correção de cor da cena (2026-07-29) ────────────────────────
+  // O filtro vive num <svg> escondido e é referenciado por url(#id). Um <svg>
+  // por editor, reescrito quando o ajuste muda — recriar nó a cada frame
+  // causaria piscada.
+  let _gradeSig = null;
+  function aplicarGrade() {
+    const state = store.getState();
+    const t = player.getTime();
+    const it = mainTrackItems(state).find(x => t >= x.tStart && t < x.tEnd);
+    const g = it?.clip?.grade;
+    const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
+    const sig = JSON.stringify(g || null);
+    if (sig !== _gradeSig) {
+      _gradeSig = sig;
+      let defs = $('#beGradeDefs');
+      if (!defs) {
+        defs = document.createElement('div');
+        defs.id = 'beGradeDefs';
+        defs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+        root.appendChild(defs);
+      }
+      const svg = svgDoGrade(g, 'beGradeF');
+      defs.innerHTML = svg ? '<svg xmlns="http://www.w3.org/2000/svg">' + svg + '</svg>' : '';
+    }
+    const usaFiltro = temAjuste(g);
+    const filtro = usaFiltro ? 'url(#beGradeF)' : '';
+    if (videoEl.style.filter !== filtro) { videoEl.style.filter = filtro; videoEl2.style.filter = filtro; }
+    // vinheta é sombra POR CIMA (não é cor) — vai no palco
+    const vin = vinhetaCss(g);
+    const palco = $('#beStage');
+    let camada = $('#beVinheta');
+    if (vin && !camada) {
+      camada = document.createElement('div');
+      camada.id = 'beVinheta';
+      camada.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6';
+      palco.appendChild(camada);
+    }
+    if (camada) camada.style.background = vin;
+  }
+
+  // controles montados a partir da lista — painel e comportamento não podem
+  // sair de sincronia
+  function montarPainelGrade() {
+    const box = $('#beGradeCampos');
+    if (!box || box.dataset.pronto) return;
+    box.dataset.pronto = '1';
+    let grupoAtual = null;
+    for (const c of CAMPOS_COR) {
+      if (c.grupo !== grupoAtual) {
+        grupoAtual = c.grupo;
+        const h = document.createElement('div');
+        h.className = 'be-grade-grupo';
+        h.textContent = c.grupo;
+        box.appendChild(h);
+      }
+      const linha = document.createElement('div');
+      linha.className = 'be-grade-linha';
+      const min = c.min != null ? c.min : -100;
+      linha.innerHTML =
+        '<label>' + c.rotulo + '</label>' +
+        '<input type="range" min="' + min + '" max="100" step="1" value="0" data-grade="' + c.id + '"' +
+        (c.trilha ? ' class="be-grade-trilha-' + c.trilha + '"' : '') + '/>' +
+        '<output data-grade-val="' + c.id + '">0</output>';
+      box.appendChild(linha);
+    }
+    // um listener só pro painel inteiro
+    box.addEventListener('input', (e) => {
+      const inp = e.target.closest('[data-grade]'); if (!inp) return;
+      const st = store.getState();
+      const id = st.selected_clip_id; if (id == null) return;
+      const campo = inp.dataset.grade;
+      const v = parseInt(inp.value, 10) || 0;
+      const saida = box.querySelector('[data-grade-val="' + campo + '"]');
+      if (saida) saida.textContent = v;
+      // gestureId por campo = 1 undo por arraste
+      store.dispatch({ ...act.setClipGrade(id, { [campo]: v }), gestureId: 'grade-' + id + '-' + campo });
+      aplicarGrade();
+    });
+    $('#beGradeReset')?.addEventListener('click', () => {
+      const st = store.getState();
+      if (st.selected_clip_id == null) return;
+      store.dispatch(act.setClipGrade(st.selected_clip_id, null));
+      preencherPainelGrade(store.getState());
+      aplicarGrade();
+      toast('Retoque redefinido ✓');
+    });
+  }
+
+  // reflete o estado nos controles (troca de cena, undo)
+  function preencherPainelGrade(state) {
+    const box = $('#beGradeCampos'); if (!box) return;
+    const clip = state.clips.find(c => c.id === state.selected_clip_id);
+    const g = clip?.grade || {};
+    for (const c of CAMPOS_COR) {
+      const inp = box.querySelector('[data-grade="' + c.id + '"]');
+      const out = box.querySelector('[data-grade-val="' + c.id + '"]');
+      const v = Math.round(Number(g[c.id]) || 0);
+      if (inp && document.activeElement !== inp) inp.value = v;
+      if (out) out.textContent = v;
+    }
+  }
+
+
+  // ── ABA DE TRANSIÇÕES (2026-07-29) ───────────────────────────────────────
+  const transPanel = createTransitionsPanel(root, {
+    // clique = PRÉVIA, não aplica (regra do user). Toca o trecho em volta da
+    // emenda mais próxima com o efeito aplicado, e volta pro ponto de origem.
+    onPreview: (id) => previewTransicao(id),
+    onDragStart: (id) => { transArrastando = id; timeline.setDropTransicao?.(id); },
+  });
+
+  function abrirTransicoes(abrir) {
+    transOpen = abrir;
+    if (abrir) { audioLibOpen = false; captionsPanelOpen = false; }
+    $('#beTransPanel').style.display = abrir ? 'flex' : 'none';
+    $('#beMediaPanel') && ($('#beMediaPanel').style.display = abrir ? 'none' : '');
+    if (abrir) transPanel.render();
+  }
+  $('#beAbrirTransicoes')?.addEventListener('click', () => abrirTransicoes(!transOpen));
+  $('#beTransFechar')?.addEventListener('click', () => abrirTransicoes(false));
+
+  // Emendas da timeline: onde uma cena termina e a próxima começa.
+  function juncoes() {
+    const itens = mainTrackItems(store.getState());
+    const js = [];
+    for (let i = 0; i < itens.length - 1; i++) js.push({ indice: i, t: itens[i].tEnd });
+    return js;
+  }
+
+  // PRÉVIA: leva a agulha pra pouco antes da emenda mais próxima e toca por
+  // cima dela com o efeito. Não grava nada no projeto.
+  let previewTimer = null;
+  function previewTransicao(id) {
+    const def = transicaoPorId(id);
+    const js = juncoes();
+    if (!def || !js.length) { toast('Corte a cena em duas pra usar transição', true); return; }
+    const t = player.getTime();
+    const alvo = js.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
+    const dur = 0.7;
+    clearTimeout(previewTimer);
+    fxTransicao.tocar(def, alvo.t, dur);
+    player.seek(Math.max(0, alvo.t - dur));
+    player.play();
+    previewTimer = setTimeout(() => player.pause(), (dur * 2) * 1000);
+    toast('Prévia: ' + def.nome + ' · arraste até a emenda pra aplicar');
+  }
+
+  // Soltar na timeline = aplicar na emenda mais próxima do ponto do drop.
+  $('#beTimeline')?.addEventListener('dragover', (e) => {
+    if (!transArrastando) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  $('#beTimeline')?.addEventListener('drop', (e) => {
+    const id = transArrastando ||
+      (e.dataTransfer.getData('text/be-transicao') ||
+       (e.dataTransfer.getData('text/plain') || '').replace('be-transicao:', ''));
+    transArrastando = null;
+    timeline.setDropTransicao?.(null);
+    const def = transicaoPorId(id);
+    if (!def) return;
+    e.preventDefault();
+    const js = juncoes();
+    if (!js.length) { toast('Precisa de duas cenas pra ter emenda', true); return; }
+    const tDrop = timeline.tempoDoX ? timeline.tempoDoX(e.offsetX) : player.getTime();
+    const alvo = js.reduce((a, b) => (Math.abs(b.t - tDrop) < Math.abs(a.t - tDrop) ? b : a));
+    // longe demais da emenda: o usuário provavelmente errou o alvo
+    if (Math.abs(alvo.t - tDrop) > 1.2) { toast('Solte em cima da emenda entre duas cenas', true); return; }
+    store.dispatch(act.setTransition(alvo.indice, def.id, 0.5, 50));
+    selecionarJuncao(alvo.indice);
+    toast(def.nome + ' aplicada ✓');
+  });
+
+
+  // ── PARÂMETROS DA TRANSIÇÃO ──────────────────────────────────────────────
+  // Qual emenda está sendo editada. Vive na UI e não no projeto: é seleção,
+  // não conteúdo — some ao recarregar sem sujar o autosave.
+  let juncaoSelecionada = null;
+
+  function selecionarJuncao(indice) {
+    juncaoSelecionada = indice;
+    if (indice != null) store.dispatch(act.clearSelection());
+    sync();
+  }
+
+  function syncPainelTransicao(state) {
+    const painel = $('#bePropsTrans');
+    if (!painel) return false;
+    const tr = juncaoSelecionada == null ? null
+      : (state.transitions || []).find(x => x.between === juncaoSelecionada);
+    if (!tr) { painel.style.display = 'none'; return false; }
+    const def = transicaoPorId(tr.type);
+    painel.style.display = 'flex';
+    $('#beTransNome').textContent = def ? def.nome : tr.type;
+    if (document.activeElement !== $('#beTransDur')) $('#beTransDur').value = Math.round(tr.duration * 100);
+    $('#beTransDurVal').textContent = tr.duration.toFixed(2).replace('.', ',') + 's';
+    if (document.activeElement !== $('#beTransInt')) $('#beTransInt').value = Math.round(tr.intensity ?? 50);
+    $('#beTransIntVal').textContent = Math.round(tr.intensity ?? 50) + '%';
+    return true;
+  }
+
+  const mexerTransicao = (patch) => {
+    const st = store.getState();
+    const tr = (st.transitions || []).find(x => x.between === juncaoSelecionada);
+    if (!tr) return;
+    store.dispatch({
+      ...act.setTransition(tr.between, tr.type, patch.duration ?? tr.duration, patch.intensity ?? tr.intensity),
+      gestureId: 'trans-' + tr.between + '-' + Object.keys(patch)[0],
+    });
+  };
+  $('#beTransDur')?.addEventListener('input', (e) => mexerTransicao({ duration: (parseInt(e.target.value, 10) || 50) / 100 }));
+  $('#beTransInt')?.addEventListener('input', (e) => mexerTransicao({ intensity: parseInt(e.target.value, 10) || 0 }));
+  $('#beTransRemover')?.addEventListener('click', () => {
+    if (juncaoSelecionada == null) return;
+    store.dispatch(act.setTransition(juncaoSelecionada, 'cut'));
+    juncaoSelecionada = null;
+    toast('Transição removida ✓');
+    sync();
+  });
+
   // ── painel de propriedades CONTEXTUAL (estilo CapCut) ──
   // nada selecionado -> propriedades do projeto
   // clip selecionado -> acoes do clip | texto selecionado -> editor de texto
   function syncPropsPanel(state) {
+    // emenda selecionada manda: os parâmetros da transição tomam a coluna
+    if (syncPainelTransicao(state)) {
+      for (const id of ['#beTextPanel', '#bePropsAudio', '#bePropsOverlay', '#bePropsClip', '#bePropsCaptions', '#bePropsProject']) {
+        const el = $(id); if (el) el.style.display = 'none';
+      }
+      return;
+    }
     const showText = state.selected_text_id != null;
     const showOv = !showText && state.selected_overlay_id != null;
     const showAudio = !showText && !showOv && state.selected_audio_id != null;
@@ -313,6 +572,8 @@ export function mountEditor(root, store, opts = {}) {
         }
         // 🔇 mudo por cena: label reflete o estado sempre (toggle barato)
         $('#beClipMute').textContent = clip.muted ? '🔊 Restaurar áudio desta cena' : '🔇 Remover áudio desta cena';
+        montarPainelGrade();
+        preencherPainelGrade(state);
       }
     } else {
       filledClipId = null;
@@ -700,7 +961,20 @@ export function mountEditor(root, store, opts = {}) {
     $('#beCfgSubtabs').querySelectorAll('.be-cfg-subtab').forEach(b => b.classList.toggle('active', b === btn));
     $('#bePropsClip').querySelectorAll('.be-cfg-sub').forEach(p =>
       p.style.display = p.dataset.sub === sub ? 'flex' : 'none');
+    aplicarModoPreview(sub);
   });
+
+  // ── UM MARCADOR POR VEZ NO PREVIEW (2026-07-29) ──────────────────────────
+  // Antes o marcador da máscara ficava sobre o vídeo o tempo todo: saía-se da
+  // aba "Mascarar" e continuava editando a máscara sem querer, sem jeito de
+  // mexer no vídeo em si. Agora a sub-aba escolhe QUEM está sendo editado:
+  //   Mascarar → alças da máscara
+  //   qualquer outra → moldura do vídeo (mover/escalar a cena)
+  function aplicarModoPreview(sub) {
+    const naMascara = sub === 'mascarar';
+    maskUI.setAtivo(naMascara);
+    frameUI.setAtivo(!naMascara);
+  }
   // Escala + Opacidade: coalesce por gesto (1 undo por arraste), aplica ao vivo
   const bindClipSlider = (sel, valSel, field, toModel, toLabel) => {
     $(sel).addEventListener('input', (e) => {
@@ -1514,6 +1788,9 @@ export function mountEditor(root, store, opts = {}) {
   const detachResizers = attachResizers(root, () => { timeline.draw(); syncTrackHeaders(); });
 
   sync();
+  // modo inicial do preview: a sub-aba padrão é "Básico", então quem aparece é
+  // a moldura do vídeo (a máscara só entra quando a aba dela abre)
+  aplicarModoPreview($('#beCfgSubtabs .be-cfg-subtab.active')?.dataset.sub || 'basico');
 
   // Desmonte de verdade. Sair pra home NUNCA chamava isto: o autosave seguia
   // assinado depois do DOM ser apagado. Idempotente porque agora existem dois
@@ -1525,7 +1802,7 @@ export function mountEditor(root, store, opts = {}) {
     detachResizers();
     detachShortcuts();
     document.removeEventListener('visibilitychange', flushOnHide);
-    player.destroy(); overlay.destroy(); pip.destroy(); maskUI.destroy(); timeline.destroy();
+    player.destroy(); overlay.destroy(); pip.destroy(); maskUI.destroy(); frameUI.destroy(); fxTransicao.destroy(); transPanel.destroy(); clearTimeout(previewTimer); timeline.destroy();
     autosave.destroy(); exporter.destroy();
     for (const t of thumbsRegistry.values()) t.destroy();
     for (const w of videoWaveRegistry.values()) w.destroy();
@@ -1570,6 +1847,23 @@ function buildTemplate() {
       <button id="beAddText" class="be-rail-btn" title="Adicionar texto"><span>T</span>Texto</button>
       <button id="beAddAudio" class="be-rail-btn" title="Adicionar música/narração"><span>♪</span>Áudio</button>
       <button id="beAutoCaptions" class="be-rail-btn" title="Gerar legendas automáticas (IA)"><span>💬</span>Legendas</button>
+      <button id="beAbrirTransicoes" class="be-rail-btn" title="Transições entre cenas"><span>⧓</span>Transições</button>
+    </div>
+
+    <!-- BIBLIOTECA DE TRANSIÇÕES (2026-07-29) — layout do CapCut: categorias
+         à esquerda, grade com prévia à direita, busca em cima.
+         Clicar 1x = PRÉVIA no player (não aplica).
+         Aplicar = ARRASTAR o card até a junção de duas cenas na timeline. -->
+    <div id="beTransPanel" class="be-trans-panel" style="display:none">
+      <div class="be-trans-busca">
+        <input id="beTransBusca" type="search" placeholder="Buscar transição…" autocomplete="off"/>
+        <button id="beTransFechar" class="be-tool-btn" title="Fechar">✕</button>
+      </div>
+      <div class="be-trans-corpo">
+        <div id="beTransCats" class="be-trans-cats"></div>
+        <div id="beTransGrade" class="be-trans-grade"></div>
+      </div>
+      <div class="be-trans-dica">Clique pra ver a prévia · arraste até a emenda de duas cenas pra aplicar</div>
     </div>
     <div class="be-library-body">
       <button id="beMediaImport" class="be-tool-btn">＋ Importar mídias</button>
@@ -1616,6 +1910,20 @@ function buildTemplate() {
 
   <!-- CONFIGURAÇÕES DAS FAIXAS (coluna 2, meio — o "amarelo" do CapCut) -->
   <div class="be-props">
+
+    <!-- PARÂMETROS DA TRANSIÇÃO (2026-07-29) — abre ao selecionar a emenda,
+         como no print: nome, duração e intensidade. -->
+    <div id="bePropsTrans" class="be-props-stack" style="display:none">
+      <div class="be-side-title">Transição</div>
+      <div class="be-trans-param-nome">Nome <b id="beTransNome">—</b></div>
+      <label class="be-slider-label">Duração <b id="beTransDurVal">0,5s</b>
+        <input id="beTransDur" type="range" min="10" max="300" step="5" value="50"/>
+      </label>
+      <label class="be-slider-label">Intensidade <b id="beTransIntVal">50%</b>
+        <input id="beTransInt" type="range" min="0" max="100" step="1" value="50"/>
+      </label>
+      <button id="beTransRemover" class="be-tool-btn">🗑 Remover transição</button>
+    </div>
 
     <div id="bePropsProject" class="be-props-stack">
       <div class="be-side-title">Projeto</div>
@@ -1747,8 +2055,16 @@ function buildTemplate() {
           </div>
           <div class="be-dim">A máscara recorta a cena na forma escolhida. Suavizar mescla a borda; cantos só valem pro retângulo.</div>
         </div>
+        <!-- RETOQUE = correção de cor da cena (2026-07-29). Era placeholder;
+             agora os controles mexem na imagem de verdade (filtro SVG). Os
+             grupos e nomes seguem o padrão do CapCut. Montado em JS a partir
+             de CAMPOS_COR pra lista e comportamento não saírem de sincronia. -->
         <div class="be-cfg-sub" data-sub="retoque" style="display:none">
-          <div class="be-dim">✨ Retoque facial e ajustes de pele — <b>em breve</b>.</div>
+          <div class="be-grade-topo">
+            <span class="be-dim">Ajustes desta cena</span>
+            <button type="button" id="beGradeReset" class="be-tool-btn" title="Voltar tudo ao neutro">↺ Redefinir</button>
+          </div>
+          <div id="beGradeCampos" class="be-grade-campos"></div>
         </div>
       </div>
 

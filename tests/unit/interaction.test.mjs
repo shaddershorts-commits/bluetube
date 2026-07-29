@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { computeLayout, METRICS, timeToX } from '../../public/editor-v1/timeline/layout.js';
+import { computeLayout, METRICS, timeToX, xToTime } from '../../public/editor-v1/timeline/layout.js';
 import { hitTest } from '../../public/editor-v1/timeline/hittest.js';
 import { transition, idle, DRAG_THRESHOLD_MOUSE } from '../../public/editor-v1/timeline/interaction.js';
 import { cutPoints } from '../../public/editor-v1/core/selectors.js';
@@ -302,4 +302,35 @@ test('fuzz: 200 eventos aleatorios nunca quebram e Esc sempre reseta', () => {
   }
   const final = transition(fsm, { kind: 'esc' }, ctxFor(store));
   assert.equal(final.next.name, 'idle');
+});
+
+// ── ZOOM ANCORADO NA AGULHA (2026-07-29) ───────────────────────────────────
+// Antes o zoom ancorava no CURSOR: o ponto de edição fugia da tela justamente
+// quando se aproximava pra trabalhar nele. O que está sob a agulha tem que
+// ficar parado.
+test('wheel: o zoom mantem a AGULHA no mesmo x da tela', () => {
+  const vp = { width: 800, height: 300, scrollX: 0, pxPerSec: 40 };
+  const ctx = { layout: { vp, clips: [], texts: [] }, playhead: 5, cutPoints: [], snapEnabled: true };
+  const xAgulhaAntes = timeToX(vp, ctx.playhead);
+
+  // cursor BEM longe da agulha: se ancorasse nele, a agulha se deslocaria
+  const r = transition(idle(), { kind: 'wheel', x: 760, deltaY: -100, deltaX: 0 }, ctx);
+  const z = r.effects.find(e => e.do === 'zoom');
+  assert.ok(z, 'zoomou');
+  assert.ok(z.pxPerSec > vp.pxPerSec, 'aproximou');
+
+  const xAgulhaDepois = timeToX({ ...vp, ...z }, ctx.playhead);
+  assert.ok(Math.abs(xAgulhaDepois - xAgulhaAntes) < 1,
+    `agulha saiu do lugar: ${xAgulhaAntes.toFixed(1)} -> ${xAgulhaDepois.toFixed(1)}`);
+});
+
+test('wheel: agulha fora da vista volta a ancorar no cursor', () => {
+  // agulha em t=200s com a vista no comeco: nao da pra ancorar no que nao se ve
+  const vp = { width: 800, height: 300, scrollX: 0, pxPerSec: 40 };
+  const ctx = { layout: { vp, clips: [], texts: [] }, playhead: 200, cutPoints: [], snapEnabled: true };
+  const r = transition(idle(), { kind: 'wheel', x: 300, deltaY: -100, deltaX: 0 }, ctx);
+  const z = r.effects.find(e => e.do === 'zoom');
+  const tSobCursorAntes = xToTime(vp, 300);
+  const tSobCursorDepois = xToTime({ ...vp, ...z }, 300);
+  assert.ok(Math.abs(tSobCursorDepois - tSobCursorAntes) < 0.05, 'ancorou no cursor');
 });

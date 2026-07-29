@@ -60,9 +60,16 @@ export function createPlayer(videoEl, opts, store) {
 
   function syncVideoToVirtual(seekVideo = true) {
     const state = store.getState();
-    const tClamped = Math.min(virtualTime, Math.max(0, totalDuration(state) - 0.001));
-    const seg = segmentAt(state, tClamped);
-    const src = seg ? srcForSeg(seg, tClamped) : null;
+    const dur = totalDuration(state);
+    // ALÉM DO FIM DO VÍDEO = PRETO (fix 2026-07-29). O clamp abaixo existe pra
+    // não piscar no último frame (t == dur), mas ele era aplicado SEMPRE — e aí
+    // uma legenda/áudio que passa do fim do vídeo deixava a agulha numa região
+    // sem imagem exibindo o último frame congelado, como se ainda houvesse
+    // vídeo ali. Dentro do vídeo, clampa; fora dele, deixa passar pra
+    // segmentAt devolver null e o quadro apagar.
+    const tSeg = virtualTime <= dur ? Math.min(virtualTime, Math.max(0, dur - 0.001)) : virtualTime;
+    const seg = segmentAt(state, tSeg);
+    const src = seg ? srcForSeg(seg, tSeg) : null;
     const d = disp();
     // Sem clip ativo (faixa excluída/gap): esconde (preto) até voltar conteúdo.
     d.style.visibility = src == null ? 'hidden' : '';

@@ -23,7 +23,7 @@
 //   down / move / up / cancel / longpress / second-down / pinch-move /
 //   esc / dblclick / wheel
 
-import { xToTime, zoomAt, METRICS } from './layout.js';
+import { xToTime, timeToX, zoomAt, METRICS } from './layout.js';
 import { snapTime, defaultSnapPoints } from './snap.js';
 import { MIN_CLIP_DURATION } from '../core/schema.js';
 import * as act from '../core/actions.js';
@@ -66,14 +66,21 @@ export function transition(fsm, ev, ctx) {
 
     case 'idle': {
       if (ev.kind === 'wheel') {
-        // Rolar = ZOOM ancorado no cursor (pedido do user: aproximar/afastar
-        // a visão das faixas direto no scroll). Shift ou scroll horizontal
-        // de trackpad = rolagem da timeline. Ctrl também zooma (hábito).
+        // Rolar = ZOOM ancorado na AGULHA (pedido do user 2026-07-29). Antes
+        // ancorava no cursor, e o ponto de edição fugia da tela justamente
+        // quando você aproximava pra trabalhar nele. Ancorando no playhead,
+        // o que está sob a agulha fica parado e a timeline abre em volta.
+        // Shift ou scroll horizontal de trackpad = rolagem.
         const horizontal = Math.abs(ev.deltaX) > Math.abs(ev.deltaY);
         if (ev.shiftKey || horizontal) {
           fx.push({ do: 'scroll', scrollX: ctx.layout.vp.scrollX + (horizontal ? ev.deltaX : ev.deltaY) });
         } else {
-          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.18 : 1 / 1.18, ev.x);
+          // x da agulha na tela; se ela estiver fora da área visível, ancora no
+          // cursor (senão o zoom "puxaria" a vista pra um ponto que não se vê)
+          const xAgulha = timeToX(ctx.layout.vp, ctx.playhead || 0);
+          const visivel = xAgulha >= METRICS.PAD_LEFT && xAgulha <= ctx.layout.vp.width;
+          const ancora = visivel ? xAgulha : ev.x;
+          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.18 : 1 / 1.18, ancora);
           fx.push({ do: 'zoom', ...z });
         }
         return { next: fsm, effects: fx };

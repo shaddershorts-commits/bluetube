@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { mediaUrlFor, effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
+import { mainTrackItems, mediaUrlFor, effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
 
 function storeWithVideo(duration = 60) {
   const store = createStore();
@@ -1066,4 +1066,108 @@ test('audio importado entra na timeline mesmo sem video no projeto', () => {
   assert.equal(s.audio_clips.length, 1);
   assert.equal(s.audio_clips[0].url, 'https://x/a.mp3');
   assert.equal(s.audio_clips[0].kind, 'extra');
+});
+
+// ── ALÉM DO FIM DO VÍDEO NÃO EXISTE IMAGEM (2026-07-29) ────────────────────
+// Legenda/áudio podem passar do fim do vídeo. Nessa região não há segmento —
+// o preview tem que apagar, não congelar o último frame.
+test('segmentAt devolve null depois do fim do video', () => {
+  const store = storeWithVideo(30);
+  const s = store.getState();
+  assert.ok(segmentAt(s, 15), 'dentro do video tem segmento');
+  assert.equal(segmentAt(s, 31), null, 'depois do fim, nada');
+});
+
+test('audio que passa do video estica a duracao TOCAVEL, nao a de video', () => {
+  const store = storeWithVideo(10);
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 25 }));
+  const s = store.getState();
+  assert.equal(totalDuration(s), 10, 'a faixa de VIDEO continua com 10s');
+  assert.ok(playableDuration(s) >= 25, 'mas da pra navegar ate o fim do audio');
+  assert.equal(segmentAt(s, 20), null, 'e la nao ha imagem nenhuma');
+});
+
+// ── Q/W: COMPOSTO E MULTI-SELEÇÃO (2026-07-29) ─────────────────────────────
+// Relato do user: "apaguei clipe composto com o W e não foi" e "selecionei
+// todas as camadas e só a última foi cortada".
+
+function storeComComposto() {
+  const store = storeWithVideo(60);
+  const s0 = store.getState();
+  store.dispatch(act.splitClipAt(20));
+  store.dispatch(act.toggleMultiSelect('clip', store.getState().clips[0].id));
+  store.dispatch(act.createCompound());
+  return store;
+}
+
+test('W corta CENA COMPOSTA (antes nao achava o alvo e nao fazia nada)', () => {
+  const store = storeComComposto();
+  const s = store.getState();
+  const comp = s.clips.find(c => c.compound_id != null);
+  assert.ok(comp, 'existe um composto na timeline');
+  store.dispatch(act.selectClip(comp.id));
+  // o composto NAO tem source_out proprio (a duracao vem do conteudo interno),
+  // entao a prova de que foi cortado e o BLOCO encolher na timeline
+  const bloco = () => {
+    const it = mainTrackItems(store.getState()).find(i => i.clip.id === comp.id);
+    return it ? it.tEnd - it.tStart : 0;
+  };
+  const antes = bloco();
+  store.dispatch(act.deleteRangeRight(10));
+  const depois = bloco();
+  assert.ok(depois < antes, `composto nao encolheu: ${antes} -> ${depois}`);
+  assert.ok(Math.abs(depois - 10) < 0.5, `deveria terminar em ~10s, ficou ${depois}`);
+});
+
+test('W com VARIAS faixas selecionadas corta TODAS, nao so a ultima', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 40 }));
+  store.dispatch(act.addText({ content: 'oi', start_sec: 0, end_sec: 30 }));
+  const s = store.getState();
+  store.dispatch(act.toggleMultiSelect('clip', s.clips[0].id));
+  store.dispatch(act.toggleMultiSelect('audio', s.audio_clips[0].id));
+  store.dispatch(act.toggleMultiSelect('text', s.texts[0].id));
+
+  store.dispatch(act.deleteRangeRight(12));
+  const d = store.getState();
+  assert.equal(d.clips[0].source_out, 12, 'video cortado em 12');
+  assert.equal(d.audio_clips[0].source_out, 12, 'audio cortado em 12');
+  assert.equal(d.texts[0].end_sec, 12, 'texto cortado em 12');
+});
+
+test('Q com varias faixas tambem corta todas (espelho do W)', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 40 }));
+  const s = store.getState();
+  store.dispatch(act.toggleMultiSelect('clip', s.clips[0].id));
+  store.dispatch(act.toggleMultiSelect('audio', s.audio_clips[0].id));
+  store.dispatch(act.deleteRangeLeft(8));
+  const d = store.getState();
+  assert.equal(d.clips[0].source_in, 8);
+  assert.equal(d.audio_clips[0].source_in, 8);
+});
+
+test('faixa que a agulha nao atravessa fica INTACTA', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 5 }));
+  const s = store.getState();
+  store.dispatch(act.toggleMultiSelect('clip', s.clips[0].id));
+  store.dispatch(act.toggleMultiSelect('audio', s.audio_clips[0].id));
+  store.dispatch(act.deleteRangeRight(20));  // audio termina em 5s
+  const d = store.getState();
+  assert.equal(d.clips[0].source_out, 20, 'video cortado');
+  assert.equal(d.audio_clips[0].source_out, 5, 'audio intocado');
+});
+
+test('Q/W multi e UM passo de undo', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 40 }));
+  const s = store.getState();
+  store.dispatch(act.toggleMultiSelect('clip', s.clips[0].id));
+  store.dispatch(act.toggleMultiSelect('audio', s.audio_clips[0].id));
+  store.dispatch(act.deleteRangeRight(12));
+  store.undo();
+  const d = store.getState();
+  assert.equal(d.clips[0].source_out, 60);
+  assert.equal(d.audio_clips[0].source_out, 40);
 });

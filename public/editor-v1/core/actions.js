@@ -70,6 +70,7 @@ export const A = {
   ADD_IMAGE_OVERLAY: 'ADD_IMAGE_OVERLAY',
   // transform da cena (aba Vídeo > Básico: escala + opacidade)
   SET_CLIP_TRANSFORM: 'SET_CLIP_TRANSFORM',
+  SET_CLIP_GRADE: 'SET_CLIP_GRADE',
   // velocidade da faixa selecionada (aba Velocidade) — clip OU audio
   SET_SPEED: 'SET_SPEED',
   // copiar/colar faixa (Ctrl+C/X/V)
@@ -133,6 +134,7 @@ export const UNDOABLE = {
   [A.REMOVE_PRIMARY]: U,
   [A.ADD_IMAGE_OVERLAY]: U,
   [A.SET_CLIP_TRANSFORM]: U,
+  [A.SET_CLIP_GRADE]: U,
   [A.SET_SPEED]: U,
   [A.PASTE]: U,
   [A.FREEZE_FRAME]: U,
@@ -185,7 +187,8 @@ export const setOverlayTransform = (overlayId, patch) => ({ type: A.SET_OVERLAY_
 export const deleteOverlay = (overlayId) => ({ type: A.DELETE_OVERLAY, overlayId });
 export const selectOverlay = (overlayId) => ({ type: A.SELECT_OVERLAY, overlayId });
 export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value });
-export const setTransition = (between, ttype, duration) => ({ type: A.SET_TRANSITION, between, ttype, duration });
+// ttype = id do catalogo (core/transitions.js) ou null/cut pra remover
+export const setTransition = (between, ttype, duration, intensity) => ({ type: A.SET_TRANSITION, between, ttype, duration, intensity });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
@@ -211,6 +214,8 @@ export const removePrimary = () => ({ type: A.REMOVE_PRIMARY });
 export const addImageOverlay = (media, atT) => ({ type: A.ADD_IMAGE_OVERLAY, media, atT });
 // patch = { scale?, opacity? } — aba Vídeo > Básico
 export const setClipTransform = (clipId, patch) => ({ type: A.SET_CLIP_TRANSFORM, clipId, patch });
+// correcao de cor da cena; patch parcial, null = redefinir
+export const setClipGrade = (clipId, patch) => ({ type: A.SET_CLIP_GRADE, clipId, patch });
 // target 'clip'|'audio', speed 0.1..100 — aba Velocidade (só a faixa selecionada)
 export const setSpeed = (target, id, speed) => ({ type: A.SET_SPEED, target, id, speed });
 // colar item do clipboard: kind 'clip'|'audio'|'text'|'overlay', data = cópia, atT = playhead

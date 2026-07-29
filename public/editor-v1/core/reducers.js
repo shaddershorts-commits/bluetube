@@ -7,7 +7,8 @@
 
 import { A } from './actions.js';
 import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE } from './schema.js';
-import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, audioTimelineDur } from './selectors.js';
+import { transicaoPorId } from './transitions.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur } from './selectors.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -149,9 +150,34 @@ export function reduce(state, action) {
       const patch = {};
       if (action.patch.scale != null) patch.scale = clamp(action.patch.scale, 0.1, 3);
       if (action.patch.opacity != null) patch.opacity = clamp01(action.patch.opacity);
+      // POSIÇÃO da cena no quadro (2026-07-29): mover o vídeo dentro do frame,
+      // como no CapCut. Fração do quadro a partir do centro; 0 = centralizado.
+      if (action.patch.pos_x != null) patch.pos_x = clamp(action.patch.pos_x, -1.5, 1.5);
+      if (action.patch.pos_y != null) patch.pos_y = clamp(action.patch.pos_y, -1.5, 1.5);
       if (!Object.keys(patch).length) return state;
       const clips = state.clips.slice();
       clips[idx] = { ...clips[idx], ...patch };
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_CLIP_GRADE: {
+      // Correção de cor da cena (aba Vídeo > Retoque). Merge parcial: a UI
+      // manda só o campo mexido. null = volta tudo ao neutro (botão redefinir).
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const clips = state.clips.slice();
+      if (action.patch === null) {
+        if (!clips[idx].grade) return state;
+        const { grade, ...resto } = clips[idx];
+        clips[idx] = resto;
+        return touch({ ...state, clips });
+      }
+      const atual = clips[idx].grade || {};
+      const novo = { ...atual };
+      for (const [k, v] of Object.entries(action.patch || {})) {
+        novo[k] = clamp(Number(v) || 0, -100, 100);
+      }
+      clips[idx] = { ...clips[idx], grade: novo };
       return touch({ ...state, clips });
     }
 
@@ -387,19 +413,25 @@ export function reduce(state, action) {
     case A.DELETE_RANGE_LEFT: {
       // ÁUDIO selecionado: Q trima a parte à ESQUERDA do playhead dentro dele
       // (fix 2026-07-21: antes só funcionava em vídeo — user pegou).
+      // multi-seleção: corta TUDO que estiver selecionado (mesma correção do W)
+      if (state.multi_selected?.length) return trimMultiRange(state, action.t, 'left');
       if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'left');
       // CapCut "Q" (fix 2026-07-20): age SÓ no clip SELECIONADO — trima a
       // parte à ESQUERDA do playhead DENTRO dele. O comportamento antigo
       // (varrer a timeline inteira e deletar tudo antes do playhead) apagava
       // o projeto — user pegou. Sem seleção: trima só o clip sob o playhead.
-      const segs = timelineSegments(state);
+      //
+      // mainTrackItems e não timelineSegments: o segundo achata composto em
+      // sub-clips e o id do composto nunca aparece (ver DELETE_RANGE_RIGHT).
+      const itensQ = mainTrackItems(state);
       const alvo = state.selected_clip_id != null
-        ? segs.find(s2 => s2.clip.id === state.selected_clip_id)
-        : segmentAt(state, action.t);
+        ? itensQ.find(s2 => s2.clip.id === state.selected_clip_id)
+        : itensQ.find(s2 => action.t >= s2.tStart && action.t < s2.tEnd);
       if (!alvo) return state;
       // playhead fora do clip alvo: nada a trimar
       if (action.t <= alvo.tStart + 1e-9 || action.t >= alvo.tEnd - 1e-9) return state;
-      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart);
+      if (alvo.clip.compound_id != null) return trimCompound(state, alvo.clip.compound_id, action.t - alvo.tStart, 'left');
+      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart) * clipSpeed(alvo.clip);
       if (srcCut - alvo.clip.source_in < MIN_CLIP_DURATION) return state;
       if (alvo.clip.source_out - srcCut < MIN_CLIP_DURATION) return state;
       const clips = state.clips.map(c => c.id === alvo.clip.id ? { ...c, source_in: srcCut } : c);
@@ -407,17 +439,30 @@ export function reduce(state, action) {
     }
 
     case A.DELETE_RANGE_RIGHT: {
+      // ── MULTI-SELEÇÃO: corta TUDO que estiver selecionado (2026-07-29) ────
+      // Antes o W ignorava `multi_selected` e usava só `selected_clip_id` —
+      // que guarda o ÚLTIMO item clicado. Resultado: selecionava várias
+      // camadas, apertava W e só a última era cortada.
+      if (state.multi_selected?.length) return trimMultiRange(state, action.t, 'right');
       // ÁUDIO selecionado: W trima a parte à DIREITA do playhead dentro dele
       if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'right');
       // CapCut "W": espelho do Q — trima a parte à DIREITA do playhead
       // dentro do clip selecionado (ou o sob o playhead, sem seleção).
-      const segs = timelineSegments(state);
+      //
+      // mainTrackItems, NÃO timelineSegments: este último ACHATA o composto em
+      // sub-clips, cujos ids não são o do composto. Procurar por
+      // selected_clip_id ali nunca achava nada e o W não fazia nada em cena
+      // composta — era o relato do user.
+      const itens = mainTrackItems(state);
       const alvo = state.selected_clip_id != null
-        ? segs.find(s2 => s2.clip.id === state.selected_clip_id)
-        : segmentAt(state, action.t);
+        ? itens.find(s2 => s2.clip.id === state.selected_clip_id)
+        : itens.find(s2 => action.t >= s2.tStart && action.t < s2.tEnd);
       if (!alvo) return state;
       if (action.t <= alvo.tStart + 1e-9 || action.t >= alvo.tEnd - 1e-9) return state;
-      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart);
+      // COMPOSTO: nao tem source_in/out — o corte acontece no conteudo interno
+      if (alvo.clip.compound_id != null) return trimCompound(state, alvo.clip.compound_id, action.t - alvo.tStart, 'right');
+      const vel = clipSpeed(alvo.clip);
+      const srcCut = alvo.clip.source_in + (action.t - alvo.tStart) * vel;
       if (alvo.clip.source_out - srcCut < MIN_CLIP_DURATION) return state;
       if (srcCut - alvo.clip.source_in < MIN_CLIP_DURATION) return state;
       const clips = state.clips.map(c => c.id === alvo.clip.id ? { ...c, source_out: srcCut } : c);
@@ -1064,11 +1109,19 @@ export function reduce(state, action) {
     }
 
     case A.SET_TRANSITION: {
+      // Transição na junção `between` (índice do clip da ESQUERDA).
+      // 2026-07-29: aceitava só 'fade'|'cut'. Agora aceita qualquer id do
+      // catálogo — e SÓ do catálogo, porque cada um precisa ter um xfade real
+      // do ffmpeg pro export sair igual ao preview.
       const between = action.between | 0;
-      const ttype = action.ttype === 'fade' ? 'fade' : 'cut';
-      const duration = clamp(Number(action.duration) || 0.3, 0.1, 2);
       const transitions = (state.transitions || []).filter(tr => tr.between !== between);
-      if (ttype !== 'cut') transitions.push({ between, type: ttype, duration });
+      const id = action.ttype;
+      if (!id || id === 'cut' || id === 'none') return touch({ ...state, transitions });
+      const def = transicaoPorId(id) || (id === 'fade' ? transicaoPorId('dissolver') : null);
+      if (!def) return state;                      // id desconhecido: ignora
+      const duration = clamp(Number(action.duration) || 0.5, 0.1, 3);
+      const intensidade = action.intensity != null ? clamp(Number(action.intensity), 0, 100) : 50;
+      transitions.push({ between, type: def.id, xfade: def.xfade, duration, intensity: intensidade });
       return touch({ ...state, transitions });
     }
 
@@ -1090,6 +1143,146 @@ function touch(state) {
 /** Q/W numa FAIXA DE ÁUDIO selecionada: trima a parte à esquerda ('left') ou à
  *  direita ('right') do playhead DENTRO do próprio áudio (espelha o Q/W do
  *  vídeo). Respeita a velocidade do áudio no mapeamento timeline↔arquivo. */
+// ── Q/W COM VÁRIAS FAIXAS SELECIONADAS (2026-07-29) ─────────────────────────
+// O user selecionou todas as camadas, apertou W esperando cortar todas a
+// partir da agulha, e só a última foi. O motivo: Q/W liam apenas
+// `selected_clip_id`, que guarda o ÚLTIMO item clicado — a lista
+// `multi_selected` era ignorada.
+//
+// Aqui cada item selecionado é cortado no MESMO instante t, cada um na sua
+// própria régua de tempo. Quem não é atravessado pela agulha fica intacto (não
+// faz sentido "cortar" quem nem passa por ali), e uma ação só = um undo.
+// Cortar um COMPOSTO não é como cortar um clip: ele não tem source_in/out
+// próprios — a duração dele vem do conteúdo interno (ver compoundDuration).
+// Então "cortar do playhead pra frente" significa cortar TUDO que está dentro,
+// no tempo relativo ao início do bloco.
+function trimCompound(state, compoundId, tRel, side) {
+  const comps = state.compounds || [];
+  const idx = comps.findIndex(k => k.id === compoundId);
+  if (idx < 0) return state;
+  const c = comps[idx];
+  const dir = side === 'left' ? 'left' : 'right';
+
+  // clips internos são sequenciais dentro do bloco
+  let acc = 0;
+  const clips = [];
+  for (const k of (c.clips || [])) {
+    const dur = clipTimelineDur(k);
+    const ini = acc, fim = acc + dur;
+    acc = fim;
+    if (dir === 'right') {
+      if (ini >= tRel - 1e-9) continue;                    // começa depois do corte: sai
+      if (fim > tRel) {
+        const corte = k.source_in + (tRel - ini) * clipSpeed(k);
+        if (corte - k.source_in >= MIN_CLIP_DURATION) { clips.push({ ...k, source_out: corte }); continue; }
+        continue;
+      }
+      clips.push(k);
+    } else {
+      if (fim <= tRel + 1e-9) continue;                    // termina antes do corte: sai
+      if (ini < tRel) {
+        const corte = k.source_in + (tRel - ini) * clipSpeed(k);
+        if (k.source_out - corte >= MIN_CLIP_DURATION) { clips.push({ ...k, source_in: corte }); continue; }
+        continue;
+      }
+      clips.push(k);
+    }
+  }
+
+  const cortaFaixa = (lista, campoIni, durDe) => (lista || []).flatMap((x) => {
+    const ini = x[campoIni] ?? 0, fim = ini + durDe(x);
+    if (dir === 'right') {
+      if (ini >= tRel - 1e-9) return [];
+      if (fim > tRel) return [{ ...x, source_out: (x.source_in ?? 0) + (tRel - ini) }];
+      return [x];
+    }
+    if (fim <= tRel + 1e-9) return [];
+    if (ini < tRel) return [{ ...x, source_in: (x.source_in ?? 0) + (tRel - ini), [campoIni]: 0 }];
+    return [{ ...x, [campoIni]: ini - tRel }];
+  });
+
+  const novo = {
+    ...c,
+    clips,
+    audio_clips: cortaFaixa(c.audio_clips, 'start', audioTimelineDur),
+    overlays: cortaFaixa(c.overlays, 'start', (o) => o.source_out - o.source_in),
+    texts: (c.texts || []).flatMap((x) => {
+      if (dir === 'right') {
+        if (x.start_sec >= tRel - 1e-9) return [];
+        return [{ ...x, end_sec: Math.min(x.end_sec, tRel) }];
+      }
+      if (x.end_sec <= tRel + 1e-9) return [];
+      return [{ ...x, start_sec: Math.max(0, x.start_sec - tRel), end_sec: x.end_sec - tRel }];
+    }),
+  };
+  if (JSON.stringify(novo) === JSON.stringify(c)) return state;
+  const compounds = comps.slice();
+  compounds[idx] = novo;
+  return touch({ ...state, compounds });
+}
+
+function trimMultiRange(state, t, side) {
+  const sel = state.multi_selected || [];
+  if (!sel.length) return state;
+  const dir = side === 'left' ? 'left' : 'right';
+  const itens = mainTrackItems(state);
+
+  const clips = state.clips.slice();
+  let mexeu = false;
+
+  // vídeo (inclui composto: mainTrackItems trata como unidade)
+  for (const s of sel.filter(x => x.type === 'clip')) {
+    const it = itens.find(i => i.clip.id === s.id);
+    if (!it || t <= it.tStart + 1e-9 || t >= it.tEnd - 1e-9) continue;
+    if (it.clip.compound_id != null) { const r = trimCompound(state, it.clip.compound_id, t - it.tStart, dir); if (r !== state) { state = r; mexeu = true; } continue; }
+    const corte = it.clip.source_in + (t - it.tStart) * clipSpeed(it.clip);
+    if (corte - it.clip.source_in < MIN_CLIP_DURATION) continue;
+    if (it.clip.source_out - corte < MIN_CLIP_DURATION) continue;
+    const idx = clips.findIndex(c => c.id === it.clip.id);
+    if (idx < 0) continue;
+    clips[idx] = dir === 'left' ? { ...clips[idx], source_in: corte } : { ...clips[idx], source_out: corte };
+    mexeu = true;
+  }
+
+  // áudio: régua própria (start na timeline + velocidade)
+  const audio_clips = (state.audio_clips || []).map((a) => {
+    if (!sel.some(x => x.type === 'audio' && x.id === a.id)) return a;
+    const sp = a.speed && a.speed > 0 ? a.speed : 1;
+    const dur = (a.source_out - a.source_in) / sp;
+    if (t <= a.start + 1e-9 || t >= a.start + dur - 1e-9) return a;
+    const corte = a.source_in + (t - a.start) * sp;
+    if (corte - a.source_in < MIN_CLIP_DURATION) return a;
+    if (a.source_out - corte < MIN_CLIP_DURATION) return a;
+    mexeu = true;
+    return dir === 'left'
+      ? { ...a, source_in: corte, start: t }
+      : { ...a, source_out: corte };
+  });
+
+  // camadas de vídeo/imagem
+  const overlays = (state.overlays || []).map((o) => {
+    if (!sel.some(x => x.type === 'overlay' && x.id === o.id)) return o;
+    const dur = o.source_out - o.source_in;
+    if (t <= o.start + 1e-9 || t >= o.start + dur - 1e-9) return o;
+    const corte = o.source_in + (t - o.start);
+    if (corte - o.source_in < MIN_CLIP_DURATION) return o;
+    if (o.source_out - corte < MIN_CLIP_DURATION) return o;
+    mexeu = true;
+    return dir === 'left' ? { ...o, source_in: corte, start: t } : { ...o, source_out: corte };
+  });
+
+  // textos/legendas: só começo e fim
+  const texts = (state.texts || []).map((tx) => {
+    if (!sel.some(x => x.type === 'text' && x.id === tx.id)) return tx;
+    if (t <= tx.start_sec + 1e-9 || t >= tx.end_sec - 1e-9) return tx;
+    mexeu = true;
+    return dir === 'left' ? { ...tx, start_sec: t } : { ...tx, end_sec: t };
+  });
+
+  if (!mexeu) return state;
+  return touch({ ...state, clips, audio_clips, overlays, texts });
+}
+
 function trimAudioRange(state, t, side) {
   const a = (state.audio_clips || []).find(x => x.id === state.selected_audio_id);
   if (!a) return state;

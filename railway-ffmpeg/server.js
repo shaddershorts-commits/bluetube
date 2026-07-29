@@ -2117,12 +2117,65 @@ async function processEditV0(jobId, p) {
       // Concat via demuxer. Paths RELATIVOS ao .txt (demuxer resolve assim) —
       // absolutos quebram no Windows (dev local) e relativos funcionam igual
       // no Linux porque clips e concat.txt vivem no mesmo dir.
-      const listFile = path.join(dir, 'concat.txt');
-      fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
-      await run('ffmpeg', [
-        '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
-        '-c:v', 'copy', concatPath,
-      ]);
+      // ── TRANSIÇÕES (2026-07-29) ─────────────────────────────────────────
+      // Até aqui o concat era SEMPRE `-c copy` = corte seco, e o array
+      // `transitions` do projeto nunca chegava no ffmpeg. Quem escolhia "Fade"
+      // via o efeito no preview e recebia corte seco no arquivo.
+      //
+      // Agora, havendo transição, monta uma cadeia de xfade: cada junção
+      // sobrepõe os dois clipes por `duration` segundos. O offset é o tempo
+      // ACUMULADO menos as sobreposições anteriores — errar isso desalinha
+      // tudo depois da primeira transição.
+      const trans = Array.isArray(p.transitions) ? p.transitions : [];
+      const temTransicao = trans.length > 0 && clipFiles.length > 1;
+
+      if (!temTransicao) {
+        const listFile = path.join(dir, 'concat.txt');
+        fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
+        await run('ffmpeg', [
+          '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
+          '-c:v', 'copy', concatPath,
+        ]);
+      } else {
+        const porJuncao = new Map();
+        for (const t of trans) {
+          if (!t || t.between == null) continue;
+          const dur = Math.max(0.1, Math.min(3, Number(t.duration) || 0.5));
+          // aceita o nome do ffmpeg direto (t.xfade) ou cai no fade
+          const nome = typeof t.xfade === 'string' && /^[a-z]+$/.test(t.xfade) ? t.xfade : 'fade';
+          porJuncao.set(t.between | 0, { dur, nome });
+        }
+        const args = ['-y'];
+        for (const c of clipFiles) args.push('-i', c.path);
+
+        const fc = [];
+        let rotulo = '0:v';
+        let acumulado = clipFiles[0].duration;   // duração da cadeia montada até aqui
+        for (let i = 1; i < clipFiles.length; i++) {
+          const tr = porJuncao.get(i - 1);
+          const saida = (i === clipFiles.length - 1) ? 'vout' : `vx${i}`;
+          if (tr) {
+            const dur = Math.min(tr.dur, clipFiles[i - 1].duration - 0.05, clipFiles[i].duration - 0.05);
+            if (dur > 0.05) {
+              const offset = Math.max(0, acumulado - dur);
+              fc.push(`[${rotulo}][${i}:v]xfade=transition=${tr.nome}:duration=${dur.toFixed(3)}:offset=${offset.toFixed(3)}[${saida}]`);
+              acumulado = acumulado + clipFiles[i].duration - dur;   // sobreposição encurta o total
+              rotulo = saida;
+              continue;
+            }
+          }
+          // sem transição nessa junção: emenda seca dentro da mesma cadeia
+          fc.push(`[${rotulo}][${i}:v]xfade=transition=fade:duration=0.04:offset=${Math.max(0, acumulado - 0.04).toFixed(3)}[${saida}]`);
+          acumulado = acumulado + clipFiles[i].duration - 0.04;
+          rotulo = saida;
+        }
+        await run('ffmpeg', [
+          ...args, '-filter_complex', fc.join(';'),
+          '-map', `[${rotulo}]`, '-an',
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+          concatPath,
+        ]);
+      }
     }
 
     // 5. Trilha de áudio ORIGINAL (principal + takes): extrai o audio de CADA

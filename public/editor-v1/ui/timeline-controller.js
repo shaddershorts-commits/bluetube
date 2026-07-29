@@ -3,7 +3,7 @@
 // Converte eventos -> FSM pura -> executa effects. Nenhuma logica de negocio
 // aqui: so traducao evento<->efeito.
 
-import { computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline/layout.js';
+import { xToTime, computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline/layout.js';
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
 import { createRenderer, setImageRedraw } from '../timeline/render.js';
@@ -471,6 +471,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     draw,
     getViewport: () => vp,
     getLayout: () => layoutNow(),  // E2E: coords reais (auto-altura muda posições)
+    // x do canvas -> tempo. Usado pelo drop de transição: sem isto o alvo seria
+    // a posição da agulha, não o lugar onde o usuário soltou o card.
+    tempoDoX: (x) => xToTime(vp, x),
     zoomFit() {
       if (vp.width < 50) { pendingFit = true; return; }
       doFit();
