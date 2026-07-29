@@ -146,17 +146,52 @@ module.exports = async function handler(req, res) {
     const user = await getUser(token);
     if (!user) return res.status(401).json({ error: 'Token inválido' });
     try {
-      for (const uid of (user_ids || [])) {
+      const alvos = (user_ids || []).filter((uid) => uid && uid !== user.id);
+      for (const uid of alvos) {
         await fetch(`${SU}/rest/v1/blue_follows`, {
           method: 'POST', headers: { ...h, 'Prefer': 'resolution=ignore,return=minimal' },
           body: JSON.stringify({ follower_id: user.id, following_id: uid })
         });
       }
+
+      // ── "Novo seguidor" TAMBÉM aqui (fix 2026-07-29) ─────────────────────
+      // Este endpoint inseria em blue_follows direto, sem passar pelo
+      // action=follow do blue-follow.js — que é quem cria a notificação. Como
+      // a esmagadora maioria dos follows nasce nesta tela (87 dos 102
+      // seguidores da conta oficial vieram até 2 min depois do cadastro), o
+      // criador NUNCA era avisado de quase nenhum seguidor novo: a caixa de
+      // notificações ficava só com "compartilhou seu vídeo" e parecia quebrada.
+      // Falha aqui não pode derrubar o onboarding — tudo em try/catch.
+      if (alvos.length) {
+        try {
+          const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user.id}&select=username`, { headers: h });
+          const [eu] = pR.ok ? await pR.json() : [];
+          const uname = eu?.username || 'alguém';
+          const titulo = 'Novo seguidor';
+          const mensagem = `@${uname} começou a te seguir`;
+
+          // Uma única inserção com todas as linhas (PostgREST aceita array)
+          await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+            method: 'POST', headers: { ...h, 'Prefer': 'return=minimal' },
+            body: JSON.stringify(alvos.map((uid) => ({
+              user_id: uid, tipo: 'follow', titulo, mensagem,
+              dados: { from_user_id: user.id },
+            }))),
+          }).catch(() => null);
+
+          const { sendPushToUser } = require('./_helpers/push.js');
+          await Promise.all(alvos.map((uid) => sendPushToUser(uid, {
+            title: titulo, body: mensagem,
+            data: { tipo: 'follow', from_user_id: user.id, url: '/blue' },
+          }).catch(() => null)));
+        } catch (e) { /* fail-soft */ }
+      }
+
       await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${user.id}`, {
         method: 'PATCH', headers: { ...h, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ onboarding_step: 2 })
       });
-      return res.status(200).json({ ok: true, seguindo: (user_ids || []).length });
+      return res.status(200).json({ ok: true, seguindo: alvos.length });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 

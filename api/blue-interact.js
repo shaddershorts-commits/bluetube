@@ -218,7 +218,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, skipped: 'already_liked' });
       }
       patch.likes = Math.max(0, (v.likes || 0) + 1);
-      _notifyOwner(SU, h, actorId, v.user_id, video_id, {
+      await _notifyOwner(SU, h, actorId, v.user_id, video_id, {
         tipo: 'like', titulo: 'Nova curtida',
         msgFn: (uname) => `@${uname} curtiu seu vídeo`,
       });
@@ -234,7 +234,7 @@ module.exports = async function handler(req, res) {
       patch.likes = Math.max(0, (v.likes || 0) - 1);
     } else if (type === 'save') {
       patch.saves = Math.max(0, (v.saves || 0) + 1);
-      _notifyOwner(SU, h, user_id, v.user_id, video_id, {
+      await _notifyOwner(SU, h, actorId, v.user_id, video_id, {
         tipo: 'save', titulo: 'Vídeo salvo',
         msgFn: (uname) => `@${uname} salvou seu vídeo`,
       });
@@ -242,7 +242,7 @@ module.exports = async function handler(req, res) {
     } else if (type === 'share') {
       // Conta no insight do criador (coluna shares — sql/status_bluechat_v1.sql)
       patch.shares = (v.shares || 0) + 1;
-      _notifyOwner(SU, h, actorId, v.user_id, video_id, {
+      await _notifyOwner(SU, h, actorId, v.user_id, video_id, {
         tipo: 'share', titulo: 'Vídeo compartilhado',
         msgFn: (uname) => `@${uname} compartilhou seu vídeo`,
       });
@@ -320,28 +320,59 @@ module.exports = async function handler(req, res) {
 
 // Helper: cria notif no banco + dispara push pro celular do dono do video.
 // Fail-soft em todas as etapas — nunca quebra o flow principal de interacao.
-function _notifyOwner(SU, h, fromUserId, ownerId, videoId, opts) {
+// IMPORTANTE: é `async` e os chamadores usam AWAIT.
+// Antes era fire-and-forget com .then(): em função serverless da Vercel, a
+// promise pendente é DESCARTADA quando o handler responde — o mesmo bug que já
+// tinha derrubado as notificações de follow/comentário (fix 2026-05-17 em
+// blue-follow.js). Aqui sobreviviam só as que davam sorte de completar antes
+// do encerramento, o que explica o número de notificações não bater com os
+// contadores dos vídeos.
+//
+// DEDUP (2026-07-29): compartilhar o mesmo vídeo várias vezes (um envio por
+// conversa no share sheet, + stories, + status) gerava uma notificação por
+// envio — a caixa do criador enchia com "@fulano compartilhou seu vídeo"
+// repetido, às vezes o mesmo par pessoa+vídeo com 150 ms de diferença. Agora
+// o mesmo (dono, tipo, quem, vídeo) só notifica 1x a cada 24h. Os CONTADORES
+// do vídeo continuam somando cada compartilhamento — muda só o aviso.
+const JANELA_DEDUP_MS = 24 * 60 * 60 * 1000;
+
+async function _notifyOwner(SU, h, fromUserId, ownerId, videoId, opts) {
   if (!fromUserId || !ownerId || ownerId === fromUserId) return;
   const { tipo, titulo, msgFn } = opts || {};
-  fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${fromUserId}&select=username`, { headers: h })
-    .then(r => r.ok ? r.json() : []).then(p => {
-      const uname = p?.[0]?.username || 'alguém';
-      const mensagem = msgFn ? msgFn(uname) : `@${uname} interagiu com seu vídeo`;
-      // 1) Notif persistente no banco (aparece na inbox)
-      fetch(`${SU}/rest/v1/blue_notificacoes`, {
-        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          user_id: ownerId, tipo, titulo, mensagem,
-          dados: { from_user_id: fromUserId, video_id: videoId },
-        }),
-      }).catch(() => {});
-      // 2) Push mobile via Expo (chega no celular)
-      try {
-        const { sendPushToUser } = require('./_helpers/push.js');
-        sendPushToUser(ownerId, {
-          title: titulo, body: mensagem,
-          data: { tipo, from_user_id: fromUserId, video_id: videoId, url: '/blue' },
-        }).catch(() => {});
-      } catch(e) {}
+  try {
+    const desde = new Date(Date.now() - JANELA_DEDUP_MS).toISOString();
+    const jaR = await fetch(
+      `${SU}/rest/v1/blue_notificacoes?user_id=eq.${ownerId}&tipo=eq.${tipo}` +
+      `&dados->>from_user_id=eq.${fromUserId}&dados->>video_id=eq.${videoId}` +
+      `&created_at=gte.${desde}&select=id&limit=1`,
+      { headers: h }
+    );
+    if (jaR.ok) {
+      const ja = await jaR.json().catch(() => []);
+      if (Array.isArray(ja) && ja.length) return; // já avisou nas últimas 24h
+    }
+
+    const pR = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${fromUserId}&select=username`, { headers: h });
+    const p = pR.ok ? await pR.json().catch(() => []) : [];
+    const uname = p?.[0]?.username || 'alguém';
+    const mensagem = msgFn ? msgFn(uname) : `@${uname} interagiu com seu vídeo`;
+
+    // 1) Notif persistente no banco (aparece na inbox)
+    await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+      method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        user_id: ownerId, tipo, titulo, mensagem,
+        dados: { from_user_id: fromUserId, video_id: videoId },
+      }),
     }).catch(() => {});
+
+    // 2) Push mobile via Expo (chega no celular)
+    try {
+      const { sendPushToUser } = require('./_helpers/push.js');
+      await sendPushToUser(ownerId, {
+        title: titulo, body: mensagem,
+        data: { tipo, from_user_id: fromUserId, video_id: videoId, url: '/blue' },
+      }).catch(() => null);
+    } catch(e) {}
+  } catch (e) { /* fail-soft: notificação nunca derruba a interação */ }
 }
