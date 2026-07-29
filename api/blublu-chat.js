@@ -56,7 +56,16 @@ module.exports = async function handler(req, res) {
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const AK = process.env.SUPABASE_ANON_KEY || SK;
-  const ANTHROPIC = process.env.ANTHROPIC_API_KEY_STUDIO || process.env.ANTHROPIC_API_KEY;
+  // Duas chaves: a do estúdio é a preferida (budget separado) e a principal é
+  // a reserva. Isto já era a intenção do `||` original — só que escolher na
+  // inicialização não cobre o caso que aconteceu em 29/07/2026: a chave do
+  // estúdio EXISTIA e foi REJEITADA (401). Com a escolha feita antes da
+  // chamada, a reserva nunca entrava e o Blublu ficava mudo.
+  // A troca acontece só em 401/403 e é registrada no log (ver anthropicCall).
+  // NÃO vale pra api/bluetendencias.js — lá o isolamento de budget é regra.
+  const CHAVE_ESTUDIO = process.env.ANTHROPIC_API_KEY_STUDIO || '';
+  const CHAVE_RESERVA = process.env.ANTHROPIC_API_KEY || '';
+  const ANTHROPIC = CHAVE_ESTUDIO || CHAVE_RESERVA;
   const OPENAI = process.env.OPENAI_API_KEY || '';
   const RW = (process.env.RAILWAY_FFMPEG_URL || '').replace(/\/$/, '');
   if (!SU || !SK || !ANTHROPIC) return res.status(500).json({ error: 'config' });
@@ -539,16 +548,32 @@ REGRA DE OURO: JAMAIS recomende ferramenta de FORA (yt-dlp, snaptik, savefrom, s
 PLATAFORMA: YouTube Shorts é a prioridade da casa nas entregas; TikTok só protagoniza se o usuário pedir.
 CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobre X", "só do youtube"), monte a busca juntando com o contexto da conversa — não trate como papo.`;
 
+  // chave em uso nesta requisição — troca pra reserva se a preferida for
+  // rejeitada, e as chamadas seguintes já nascem na reserva
+  let chaveAtual = ANTHROPIC;
   const anthropicCall = async (messages, toolChoice) => {
     const body = { model: MODEL, max_tokens: 700, system, tools, messages };
     if (toolChoice) body.tool_choice = toolChoice;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
+    const disparar = (chave) => fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': ANTHROPIC, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      headers: { 'x-api-key': chave, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+
+    let r = await disparar(chaveAtual);
+    if ((r.status === 401 || r.status === 403) && CHAVE_RESERVA && chaveAtual !== CHAVE_RESERVA) {
+      // Chave rejeitada não melhora sozinha: uma feature paga não pode ficar
+      // muda esperando alguém perceber. Cai pra reserva e GRITA no log — o
+      // health também acusa (anthropic_studio), então isso não passa batido.
+      console.error('[blublu-chat] chave do estúdio REJEITADA (' + r.status + ') — usando a reserva. Gerar nova em console.anthropic.com e atualizar ANTHROPIC_API_KEY_STUDIO.');
+      chaveAtual = CHAVE_RESERVA;
+      r = await disparar(chaveAtual);
+    }
     const d = await r.json();
-    if (!r.ok) throw new Error('ia: ' + JSON.stringify(d).slice(0, 160));
+    // o STATUS entra na mensagem: sem ele o catch lá embaixo não distingue
+    // chave rejeitada (401) de sobrecarga (429/529) e todo mundo virava
+    // "tenta de novo" — inclusive o que nunca ia funcionar tentando de novo
+    if (!r.ok) throw new Error('ia: ' + r.status + ' ' + JSON.stringify(d).slice(0, 160));
     return d;
   };
 
@@ -675,7 +700,35 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       usage: { used: used + 1, limit: DAILY_LIMIT },
     });
   } catch (e) {
-    console.error('[blublu-chat]', e.message);
-    return res.status(500).json({ error: 'Deu um curto aqui no laboratório. Tenta de novo? ⚡', detail: e.message.slice(0, 100) });
+    // ── DIAGNÓSTICO (2026-07-29) ─────────────────────────────────────────────
+    // Antes TODA falha virava o mesmo "curto no laboratório", sem rastro: com
+    // a chave do estúdio rejeitada (401) o usuário via um erro que sugeria
+    // "tenta de novo" — e tentar de novo nunca ia funcionar. Agora o tipo de
+    // falha decide a mensagem E fica um código curto que o usuário consegue
+    // repetir pra mim.
+    const msg = String(e?.message || e || '');
+    const chaveRejeitada = /\b(401|403)\b/.test(msg) && /ia:|authentication|x-api-key|permission/i.test(msg);
+    const semCredito = /credit|quota|billing|insufficient/i.test(msg);
+    const sobrecarga = /\b(429|529|overloaded|rate.?limit)\b/i.test(msg);
+    const codigo = chaveRejeitada ? 'IA-AUTH' : semCredito ? 'IA-CREDITO' : sobrecarga ? 'IA-FILA' : 'GERAL';
+
+    // log estruturado: dá pra achar por tag no runtime da Vercel
+    console.error('[blublu-chat] FALHA', JSON.stringify({
+      codigo, user: userId, msg: msg.slice(0, 300),
+      pergunta: String(message || '').slice(0, 120),
+    }));
+
+    // Erro de configuração NÃO é culpa de quem digitou — não peça pra tentar
+    // de novo, e não cobre a mensagem do dia do usuário por isso.
+    if (chaveRejeitada || semCredito) {
+      return res.status(503).json({
+        error: 'Meu laboratório tá em manutenção — não é você, é a fiação daqui. Já avisei a equipe; volta daqui a pouco. 🔧',
+        codigo, manutencao: true,
+      });
+    }
+    if (sobrecarga) {
+      return res.status(503).json({ error: 'Tô com fila gigante agora. Respira 10 segundos e me chama de novo. ⏳', codigo });
+    }
+    return res.status(500).json({ error: 'Deu um curto aqui no laboratório. Tenta de novo? ⚡', codigo, detail: msg.slice(0, 100) });
   }
 };

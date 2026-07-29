@@ -6,6 +6,13 @@ const CRITICAL_SERVICES = ['supabase', 'stripe']; // se qualquer um cair → sta
 // Serviços com fallback gracioso — flagam no painel mas NÃO contam pro alerta
 // de "degraded" (não vale acordar ninguém por blip de Redis que tem fallback).
 const NON_ALERTING_SERVICES = ['upstash_redis'];
+// Serviço que, sozinho, MATA uma feature paga. A regra de 'degraded' exige 3+
+// quedas simultâneas — o que faz uma única chave morta virar 'partial', e
+// 'partial' NÃO alerta. Foi assim que a chave do estúdio ficou 401 sem ninguém
+// saber (29/07/2026): Blublu da Virais e BlueTendências fora do ar, painel
+// verde. Aqui a queda de UM destes já leva a 'degraded' — que ainda passa pelo
+// debounce de 2 checagens, então blip não acorda ninguém.
+const FEATURE_KILLERS = ['anthropic', 'anthropic_studio', 'elevenlabs'];
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -78,6 +85,32 @@ module.exports = async function handler(req, res) {
         }),
         signal,
       });
+      if (!r.ok) throw new Error(`status ${r.status}`);
+    }, 10000),
+
+    // A chave do ESTÚDIO é OUTRA (isolamento de budget da BlueTendências) e
+    // precisa de teste PRÓPRIO. Sem isto o painel ficava verde com ela morta:
+    // em 29/07/2026 ela estava 401 (invalid x-api-key) derrubando o Blublu da
+    // Virais e a BlueTendências inteira, e o health seguia dizendo
+    // "anthropic: ok" porque só provava a chave principal.
+    check('anthropic_studio', async (signal) => {
+      if (!process.env.ANTHROPIC_API_KEY_STUDIO) throw new Error('não configurado');
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY_STUDIO,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
+        signal,
+      });
+      // 401/403 = chave revogada/trocada: não adianta esperar passar
+      if (r.status === 401 || r.status === 403) throw new Error('chave rejeitada (401/403) — gerar nova em console.anthropic.com e atualizar ANTHROPIC_API_KEY_STUDIO');
       if (!r.ok) throw new Error(`status ${r.status}`);
     }, 10000),
 
@@ -164,9 +197,14 @@ module.exports = async function handler(req, res) {
   const alertingDown = Object.entries(checks)
     .filter(([name, v]) => v.status === 'error' && !NON_ALERTING_SERVICES.includes(name)).length;
 
+  // chave/serviço que sozinho derruba uma feature paga
+  const featureKillersDown = Object.entries(checks)
+    .filter(([name, v]) => v.status === 'error' && FEATURE_KILLERS.includes(name))
+    .map(([name]) => name);
+
   const status =
     criticalDown.length > 0 ? 'critical' :
-    alertingDown > 2 ? 'degraded' :
+    (alertingDown > 2 || featureKillersDown.length > 0) ? 'degraded' :
     totalDown > 0 ? 'partial' : 'ok';
 
   const response = {
@@ -179,6 +217,7 @@ module.exports = async function handler(req, res) {
       ok: services.filter((s) => s.status === 'ok').length,
       error: totalDown,
       critical_down: criticalDown,
+      feature_killers_down: featureKillersDown, // derruba feature paga sozinho
     },
     version: '2.0.0',
   };
