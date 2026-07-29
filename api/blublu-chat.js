@@ -18,8 +18,18 @@
 const { BLUBLU_MANIFESTO_V3 } = require('./_helpers/blublu-personality.js');
 
 const MODEL = 'claude-haiku-4-5-20251001';
+// A PRIMEIRA chamada é a que DECIDE: buscar ou não, qual tema, quais núcleos.
+// É onde os erros caros aconteceram — tema nulo virando despejo do acervo
+// (#125), e pedido claro que não virou busca ("Sobre peixe", "Futebol").
+// Julgamento vale modelo melhor; a prosa depois segue no Haiku, que já dá
+// conta do recado e é barato. Trocável por env se o custo incomodar.
+const MODEL_DECISAO = process.env.BLUBLU_MODEL_DECISAO || 'claude-sonnet-4-6';
 const DAILY_LIMIT = 60;
-const QTD_PADRAO = 30;          // VOLUME: sem pedido explícito = tudo do tema (teto do grid)
+const QTD_PADRAO = 30;          // teto do material FRACO (fill por views / só filtro)
+// Teto de sanidade da entrega: só existe pra não estourar o payload. Fica bem
+// acima do que o acervo devolve (maior caso real observado: 115 candidatos).
+// Vídeo que passou no portão de precisão NÃO fica retido esperando vaga.
+const TETO_ENTREGA = parseInt(process.env.BLUBLU_TETO_ENTREGA, 10) || 200;
 
 // Ídolos oficiais do Blublu (mesmo easter egg da BlueTendências): quando o
 // canal aparece no resultado, ele vira fã histérico — lore do produto.
@@ -95,9 +105,33 @@ module.exports = async function handler(req, res) {
   if (req.body?.action === 'evento') {
     const tipo = ['clique', 'enquete'].includes(req.body.tipo) ? req.body.tipo : null;
     if (!tipo) return res.status(400).json({ error: 'tipo' });
+    const alvoEv = String(req.body.alvo || '').slice(0, 120);
+    const valorEv = String(req.body.valor || '').slice(0, 40);
     await fetch(`${SU}/rest/v1/blublu_eventos`, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({
-      user_id: userId, tipo, alvo: String(req.body.alvo || '').slice(0, 120), valor: String(req.body.valor || '').slice(0, 40),
+      user_id: userId, tipo, alvo: alvoEv, valor: valorEv,
     }) }).catch(() => {});
+
+    // ── O FEEDBACK PRECISA ENSINAR (2026-07-29) ──────────────────────────────
+    // "Cravou / Quase / Viajou" era gravado e só alimentava painel: o Blublu
+    // nunca ficava melhor por causa dele. Agora o veredito entra na MEMÓRIA do
+    // usuário e volta no prompt da próxima conversa — tema que cravou vira
+    // referência do gosto dele; tema que viajou faz ele fechar o cerco.
+    if (tipo === 'enquete' && alvoEv && ['cravou', 'viajou'].includes(valorEv)) {
+      try {
+        const pr = await fetch(`${SU}/rest/v1/blublu_perfil?user_id=eq.${userId}&select=memoria`, { headers: H });
+        const memAtual = (pr.ok ? (await pr.json())[0]?.memoria : null) || {};
+        const campo = valorEv === 'cravou' ? 'cravou' : 'errou';
+        const oposto = valorEv === 'cravou' ? 'errou' : 'cravou';
+        const lista = [alvoEv, ...(Array.isArray(memAtual[campo]) ? memAtual[campo] : []).filter((t) => t !== alvoEv)].slice(0, 10);
+        // o mesmo tema não pode viver nas duas listas: o veredito mais novo manda
+        const listaOposta = (Array.isArray(memAtual[oposto]) ? memAtual[oposto] : []).filter((t) => t !== alvoEv).slice(0, 10);
+        await fetch(`${SU}/rest/v1/blublu_perfil`, {
+          method: 'POST',
+          headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ user_id: userId, memoria: { ...memAtual, [campo]: lista, [oposto]: listaOposta }, atualizado_em: new Date().toISOString() }),
+        });
+      } catch (e) { /* feedback nunca pode quebrar a resposta */ }
+    }
     return res.status(200).json({ ok: true });
   }
 
@@ -111,7 +145,13 @@ module.exports = async function handler(req, res) {
 
   const message = String(req.body?.message || '').slice(0, 600).trim();
   const nome = String(req.body?.nome || '').replace(/[^\p{L} ]/gu, '').trim().slice(0, 30);
-  let history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
+  // JANELA DE CONTEXTO (2026-07-29): eram 8 turnos cortados em 400 caracteres
+  // — ele esquecia o pedido de três mensagens atrás e tratava complemento como
+  // assunto novo. Com o cache de prompt pagando o input repetido, dá pra
+  // segurar bem mais conversa sem doer no custo.
+  const HIST_TURNOS = parseInt(process.env.BLUBLU_HIST_TURNOS, 10) || 20;
+  const HIST_CHARS = parseInt(process.env.BLUBLU_HIST_CHARS, 10) || 1200;
+  let history = Array.isArray(req.body?.history) ? req.body.history.slice(-HIST_TURNOS) : [];
   while (history.length && history[0].role !== 'user') history.shift();
   const skipIds = new Set((Array.isArray(req.body?.skip_ids) ? req.body.skip_ids : []).slice(0, 300).map(String));
   if (!message) return res.status(400).json({ error: 'mensagem vazia' });
@@ -273,7 +313,10 @@ module.exports = async function handler(req, res) {
               const ids = (await rr.json()).filter((m) => m.similarity > 0.45).map((m) => m.youtube_id).filter((id) => !candidatos.some((c) => c.youtube_id === id)).slice(0, MAX_CANDIDATOS - candidatos.length);
               if (ids.length) {
                 const r2 = await fetch(`${SU}/rest/v1/virais_banco?${parts.join('&')}&youtube_id=in.(${ids.map(encodeURIComponent).join(',')})&order=${ordem}`, { headers: H });
-                if (r2.ok) candidatos = candidatos.concat(await r2.json());
+                // marca a origem: candidato vindo de embedding é parente do
+                // tema mesmo sem casar palavra — o fill precisa saber disso
+                // pra não confundir com quem só bateu no nome do canal
+                if (r2.ok) candidatos = candidatos.concat((await r2.json()).map((c) => ({ ...c, _semantico: true })));
               }
             }
           }
@@ -353,7 +396,14 @@ module.exports = async function handler(req, res) {
       }
       for (const c of candidatos) {
         const tituloBate = bateAlgum(norm(c.titulo));
-        const canalBate = bateAlgum(norm(c.canal_nome));
+        // NOME DO CANAL SÓ VALE PRA NOME PRÓPRIO (forense 2026-07-29).
+        // Buscar "curiosidades da Disney" casava com canais chamados "A2 Facts
+        // Forid", "Facts Xpose" — e o usuário recebia 30 vídeos de carro na
+        // chuva e pegadinha de futebol, zero Disney (log #120, relevância 0).
+        // Já em "Oliver Tree" o canal é o identificador MAIS confiável que
+        // existe (log #127). Então: identifica pessoa/criador → conta; é tema
+        // → é só coincidência de palavra no nome do canal, não conta.
+        const canalBate = inp.tipo_tema === 'nome_proprio' && bateAlgum(norm(c.canal_nome));
         const tc = c.youtube_id ? cacheMap.get(c.youtube_id) : null;
         let citadoEm = null, falaBate = false;
         if (tc && tc.transcript && !tc.sem_legenda) {
@@ -401,7 +451,15 @@ module.exports = async function handler(req, res) {
         // "Oliver Tree") e o card saía como 'relacionado'. Nome próprio sem
         // match real = fora. Tema comum mantém o fill por views (VOLUME).
         const resto = candidatos.filter((c) => !jaTem.has(c.youtube_id || c.url))
-          .filter((c) => inp.tipo_tema !== 'nome_proprio' || bateAlgum(norm(c.titulo) + ' ' + norm(c.canal_nome)))
+          // O FILL TAMBÉM PRECISA DE PRECISÃO (forense 2026-07-29): tirar o
+          // canal da camada forte não bastou — os mesmos vídeos voltavam aqui
+          // como 'relacionado', porque a consulta SQL casa título OU canal.
+          // Quem entrou só pelo nome do canal num pedido TEMÁTICO é ruído e
+          // fica fora. Candidato vindo de embedding (_semantico) passa: ele é
+          // parente do tema mesmo sem repetir a palavra.
+          .filter((c) => (inp.tipo_tema === 'nome_proprio'
+            ? bateAlgum(norm(c.titulo) + ' ' + norm(c.canal_nome))
+            : (c._semantico || bateAlgum(norm(c.titulo)))))
           .sort((a, b) => (((plat !== 'tiktok' && a._tiktok) || (plat !== 'instagram' && a._instagram)) ? 1 : 0) - (((plat !== 'tiktok' && b._tiktok) || (plat !== 'instagram' && b._instagram)) ? 1 : 0) || (b.views || 0) - (a.views || 0))
           .slice(0, qtd - videos.length)
           .map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'relacionado', plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: false, _score: 0 }));
@@ -409,15 +467,54 @@ module.exports = async function handler(req, res) {
       }
       verificadosIds = candidatos.filter((c) => c.youtube_id && cacheMap.has(c.youtube_id)).map((c) => c.youtube_id);
     } else {
-      videos = candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }));
+      // SEM TEMA: só entrega se o usuário deu um critério DE VERDADE (views,
+      // janela de tempo, nicho ou plataforma). "Mega viral" e "top 3 do seu
+      // acervo" (logs #125/#115) não são critério — caíam aqui e despejavam o
+      // topo do acervo por views, sem relação nenhuma com o pedido. Sem
+      // critério, devolve vazio e o modelo PERGUNTA em vez de fingir entrega.
+      const temCriterioReal = !!(minViews || desdeISO || nicho || plat);
+      videos = temCriterioReal
+        ? candidatos.map((c) => ({ youtube_id: c.youtube_id, titulo: c.titulo, thumbnail_url: c.thumbnail_url, url: c.url, canal_nome: c.canal_nome, views: c.views, publicado_em: c.publicado_em, citado_em_s: null, confirmado_por: 'filtro', plataforma: c._instagram ? 'instagram' : c._tiktok ? 'tiktok' : 'youtube', secreto: !!c._secreto }))
+        : [];
     }
-    const cortados = Math.max(0, videos.length - qtd);
-    videos = videos.slice(0, qtd);
+    // ── REGRA DE OURO: precisão primeiro, e aí TODO o volume preciso ─────────
+    // O teto fixo de 30 segurava vídeo BOM na base: 579 vídeos que casaram o
+    // critério ficaram retidos em 11 buscas (pior caso: 115 no banco, 30
+    // entregues). Agora quem passou no portão de precisão vai INTEIRO; o teto
+    // continua valendo só pro material fraco (fill por views / só filtro).
+    // Se o usuário pediu um número ("top 3"), o número dele manda — sempre.
+    const FORTE = new Set(['fala', 'titulo', 'canal']); // canal aqui já é nome próprio
+    const fortes = videos.filter((v) => FORTE.has(v.confirmado_por));
+    const fracos = videos.filter((v) => !FORTE.has(v.confirmado_por));
+    let cortados = 0;
+    if (userFalouNumero) {
+      cortados = Math.max(0, videos.length - qtd);
+      videos = videos.slice(0, qtd);
+    } else {
+      // teto de sanidade só pra não estourar payload — fica MUITO acima do que
+      // o acervo devolve hoje (maior caso observado: 115)
+      const fracosCabem = Math.max(0, qtd - fortes.length);
+      const escolhidos = fortes.concat(fracos.slice(0, fracosCabem)).slice(0, TETO_ENTREGA);
+      cortados = Math.max(0, videos.length - escolhidos.length);
+      videos = escolhidos;
+    }
 
     // memória de temas
     if (tema) {
       const temasNovos = [tema, ...memoTemas.filter((t) => t !== tema)].slice(0, 5);
-      await salvarPerfil({ memoria: { ...perfil.memoria, perguntou_nome: true, temas: temasNovos, buscas: (perfil.memoria?.buscas || 0) + 1 } });
+      // preferência revelada pelo uso: o nicho/plataforma que ele mais pede
+      // vira contexto do prompt (ver contextoUser)
+      const contN = { ...(perfil.memoria?.cont_nicho || {}) };
+      if (nicho) contN[nicho] = (contN[nicho] || 0) + 1;
+      const contP = { ...(perfil.memoria?.cont_plat || {}) };
+      if (plat) contP[plat] = (contP[plat] || 0) + 1;
+      const topo = (o) => Object.entries(o).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      await salvarPerfil({ memoria: {
+        ...perfil.memoria, perguntou_nome: true, temas: temasNovos,
+        buscas: (perfil.memoria?.buscas || 0) + 1,
+        cont_nicho: contN, cont_plat: contP,
+        nicho_preferido: topo(contN), plataforma_preferida: topo(contP),
+      } });
     }
 
     // ídolo no resultado? (easter egg fã histérico — mesmo lore da BlueTendências)
@@ -489,15 +586,26 @@ module.exports = async function handler(req, res) {
     },
   ];
 
+  // ── MEMÓRIA DO USUÁRIO (2026-07-29) ───────────────────────────────────────
+  // Antes eram duas linhas: apelido + 5 temas. Agora ele lembra do que o
+  // usuário GOSTOU (feedback "cravou"), do que REJEITOU, do nicho e da
+  // plataforma preferida — é o que separa um buscador de um chat com contexto.
+  // Este bloco NÃO entra no cache (muda por pessoa); o manifesto entra.
+  const mem = perfil.memoria || {};
+  const listar = (a, n) => (Array.isArray(a) ? a.slice(0, n).join(', ') : '');
   const contextoUser = [
     chamarDe ? `O usuário atende por "${chamarDe}" — usa o nome dele de vez em quando, natural.` : 'Você AINDA NÃO SABE como chamar o usuário — pergunta como ele prefere ser chamado (do seu jeito), na primeira oportunidade natural.',
-    memoTemas.length ? `Temas que ele já buscou contigo: ${memoTemas.join(', ')} (${perfil.memoria?.buscas || 0} buscas no total). Use isso como contexto quando fizer sentido.` : 'Primeira vez dele no teu chat de buscas.',
-  ].join(' ');
+    memoTemas.length ? `Temas que ele já buscou contigo: ${memoTemas.join(', ')} (${mem.buscas || 0} buscas no total).` : 'Primeira vez dele no teu chat de buscas.',
+    listar(mem.cravou, 6) ? `ELE JÁ DISSE QUE CRAVOU nestes temas: ${listar(mem.cravou, 6)}. Esse é o gosto dele — quando o pedido for parecido, siga o mesmo caminho que deu certo.` : '',
+    listar(mem.errou, 6) ? `ELE RECLAMOU do resultado nestes temas: ${listar(mem.errou, 6)}. Aí você fecha o cerco: seja mais literal, exija o termo no título, e prefira mandar menos e certo.` : '',
+    mem.nicho_preferido ? `Nicho que ele mais busca: ${mem.nicho_preferido}.` : '',
+    mem.plataforma_preferida ? `Plataforma preferida dele: ${mem.plataforma_preferida}.` : '',
+  ].filter(Boolean).join(' ');
 
   const system = `${BLUBLU_MANIFESTO_V3}
 
 ─── ONDE VOCÊ ESTÁ AGORA ───
-Chat "Falar com o Blublu" dentro da ferramenta Virais do BlueTube. Sua função: conversar E achar vídeos no SEU acervo de virais usando a ferramenta buscar_videos. ${contextoUser}
+Chat "Falar com o Blublu" dentro da ferramenta Virais do BlueTube. Sua função: conversar E achar vídeos no SEU acervo de virais usando a ferramenta buscar_videos.
 
 REGRAS DO CHAT:
 - ★ REGRA SAGRADA DA ENTREGA — PRECISÃO, DEPOIS VOLUME (nessa ordem, sem inverter JAMAIS):
@@ -551,8 +659,26 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
   // chave em uso nesta requisição — troca pra reserva se a preferida for
   // rejeitada, e as chamadas seguintes já nascem na reserva
   let chaveAtual = ANTHROPIC;
-  const anthropicCall = async (messages, toolChoice) => {
-    const body = { model: MODEL, max_tokens: 700, system, tools, messages };
+  const anthropicCall = async (messages, toolChoice, modelo) => {
+    // CACHE DE PROMPT (2026-07-29): manifesto + ferramentas somam ~3.800 tokens
+    // reenviados a CADA chamada — e são idênticos sempre. Marcados como cache,
+    // o input repetido cai de preço e sobra orçamento pra histórico maior e
+    // prompt mais rico. O marcador vai no ÚLTIMO bloco estável: tudo acima
+    // dele entra no cache.
+    // DOIS BLOCOS, de propósito: o manifesto é IGUAL pra todo mundo e vai no
+    // cache (acerta entre usuários e entre mensagens); a memória do usuário
+    // muda por pessoa e fica FORA — se entrasse junto, cada usuário teria seu
+    // próprio cache e a economia praticamente sumiria.
+    const body = {
+      model: modelo || MODEL,
+      max_tokens: 700,
+      system: [
+        { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: '─── QUEM É ESTE USUÁRIO ───\n' + contextoUser },
+      ],
+      tools: tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t)),
+      messages,
+    };
     if (toolChoice) body.tool_choice = toolChoice;
     const disparar = (chave) => fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -587,12 +713,12 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
 
     // ── LOOP DE FERRAMENTAS: o modelo conduz ─────────────────────────────────
     const msgs = [
-      ...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, 400) })),
+      ...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, HIST_CHARS) })),
       { role: 'user', content: message },
     ];
     let resultado = null; // última busca executada (vira os cards)
     let apelidoFinal = perfil.apelido || null;
-    let resp = await anthropicCall(msgs);
+    let resp = await anthropicCall(msgs, null, MODEL_DECISAO);
     for (let volta = 0; volta < 3 && resp.stop_reason === 'tool_use'; volta++) {
       const toolResults = [];
       for (const bloco of resp.content) {

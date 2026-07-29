@@ -1,0 +1,52 @@
+name: Virais — transcrever acervo em background
+
+# POR QUE: o Blublu confirma "vídeo onde SE FALA de X" lendo transcrição, mas
+# transcrevia na hora da pergunta (teto de 10 vídeos em 20s contra ~100
+# candidatos). Medido nos logs: só 6% das entregas eram confirmadas por fala.
+#
+# Aqui a transcrição acontece por fora, continuamente. Na conversa o chat só
+# consulta o que já está pronto — a confirmação por fala vira instantânea.
+#
+# Idempotente: quem já tem transcrição (ou já foi marcado sem legenda) sai da
+# fila. Quando o acervo está em dia a rodada devolve "acervo em dia" e sai.
+#
+# Cadência de 2h: cron do GitHub é best-effort, não SLA — abaixo de 1h a taxa
+# de disparo despenca (ver feedback_gh_actions_cron_sweet_spot). Minuto
+# não-redondo pra escapar do pico de fila.
+
+on:
+  schedule:
+    - cron: '23 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      lote:
+        description: 'Quantos vídeos nesta rodada (padrão 60, máx 200)'
+        required: false
+        default: '60'
+
+jobs:
+  transcrever:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Transcreve o próximo lote do acervo
+        run: |
+          LOTE="${{ github.event.inputs.lote || '60' }}"
+          echo "Rodada às $(date -u +'%Y-%m-%d %H:%M:%S') UTC — lote $LOTE"
+          HTTP_CODE=$(curl -sS --max-time 290 \
+            -w "%{http_code}" \
+            -o /tmp/resp.json \
+            "https://bluetube-ten.vercel.app/api/virais-transcrever?admin_secret=${{ secrets.ADMIN_SECRET }}&lote=$LOTE")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Rodada falhou com HTTP $HTTP_CODE"
+            head -c 500 /tmp/resp.json
+            exit 1
+          fi
+          node -e "
+            const d = JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));
+            if (d.nota) { console.log('✓', d.nota); process.exit(0); }
+            console.log('✓ transcritos:', d.transcritos, '| sem legenda:', d.sem_legenda,
+                        '| falhas (voltam pra fila):', d.falhas, '| já no cache:', d.ja_no_cache);
+            if (d.restam_no_lote) console.log('⏱ orçamento estourou com', d.restam_no_lote, 'do lote — seguem na próxima');
+          "
