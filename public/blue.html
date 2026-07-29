@@ -2801,10 +2801,17 @@ async function trocarSgTab(tab, primeiraVez){
   if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px">Carregando…</div>';
   try {
     const action = tab === 'seguindo' ? 'lista-seguindo' : 'lista-seguidores';
-    const r = await fetch(`/api/blue-follow?action=${action}&user_id=${encodeURIComponent(_sgUserId)}&pagina=1`);
+    // token obrigatorio desde 2026-07-29: a lista de OUTRA pessoa so aparece
+    // pra quem ela adicionou nos contatos do BlueChat (a minha eu sempre vejo).
+    const _tkSg = (typeof getValidToken === 'function' ? getValidToken() : null) || localStorage.getItem('bt_token') || '';
+    const r = await fetch(`/api/blue-follow?action=${action}&user_id=${encodeURIComponent(_sgUserId)}&pagina=1&token=${encodeURIComponent(_tkSg)}`);
     if (!r.ok) { if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:#f87171;font-size:13px">Erro ao carregar</div>'; return; }
     const d = await r.json();
     const total = d.total || 0;
+    if (d.bloqueado) {
+      if (body) body.innerHTML = '<div style="text-align:center;padding:32px;color:rgba(255,255,255,.5);font-size:13px">🔒 Só quem essa pessoa adicionou no BlueChat pode ver essa lista.</div>';
+      return;
+    }
     // Atualiza badges nas tabs
     if (tab === 'seguidores' && document.getElementById('sgCntSeguidores')) {
       document.getElementById('sgCntSeguidores').textContent = total ? '· ' + fmt(total) : '';

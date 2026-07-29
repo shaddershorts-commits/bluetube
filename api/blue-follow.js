@@ -27,6 +27,25 @@ module.exports = async function handler(req, res) {
     } catch(e) { return null; }
   }
 
+  // Privacidade das listas de seguidores/seguindo (2026-07-29):
+  // as MINHAS listas eu sempre vejo; a lista de OUTRA pessoa só aparece se ela
+  // me adicionou nos contatos do BlueChat. Mesma regra que o `presence` do
+  // blue-chat já usa (só vê quem TE adicionou) — a checagem é idêntica:
+  // existe linha em blue_contatos com user_id = dono da lista e contato_id = eu.
+  async function podeVerListaDe(donoId, token) {
+    if (!donoId) return false;
+    const eu = await getUser(token);
+    if (!eu) return false;
+    if (eu === donoId) return true; // minhas próprias listas
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/blue_contatos?user_id=eq.${encodeURIComponent(donoId)}&contato_id=eq.${encodeURIComponent(eu)}&select=contato_id&limit=1`,
+        { headers: h }
+      );
+      return r.ok && (await r.json()).length > 0;
+    } catch (e) { return false; }
+  }
+
   // ── GET ────────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const { action, user_id, token } = req.query;
@@ -72,6 +91,12 @@ module.exports = async function handler(req, res) {
         const cr = fr.headers.get('content-range') || '';
         const m = cr.match(/\/(\d+)$/);
         const total = m ? parseInt(m[1], 10) : rows.length;
+        // O TOTAL continua público (é o contador do perfil). Só a identidade de
+        // quem segue é que exige ser contato — daí a checagem vir depois da
+        // contagem, e não antes.
+        if (!(await podeVerListaDe(user_id, token))) {
+          return res.status(200).json({ usuarios: [], total, pagina, total_paginas: Math.max(1, Math.ceil(total / limite)), bloqueado: true, motivo: 'contato' });
+        }
         const ids = [...new Set(rows.map(r => r.follower_id))];
         let perfis = [];
         if (ids.length) {
@@ -104,6 +129,10 @@ module.exports = async function handler(req, res) {
         const cr = fr.headers.get('content-range') || '';
         const m = cr.match(/\/(\d+)$/);
         const total = m ? parseInt(m[1], 10) : rows.length;
+        // Total público (contador do perfil); identidade só pra contato.
+        if (!(await podeVerListaDe(user_id, token))) {
+          return res.status(200).json({ usuarios: [], total, pagina, total_paginas: Math.max(1, Math.ceil(total / limite)), bloqueado: true, motivo: 'contato' });
+        }
         const ids = [...new Set(rows.map(r => r.following_id))];
         let perfis = [];
         if (ids.length) {
