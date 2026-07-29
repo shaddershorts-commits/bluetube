@@ -145,3 +145,67 @@ test('junção SEM transição não desalinha as seguintes', () => {
   const r = cadeiaXfade([10, 10, 10], [{ between: 1, duration: 1, xfade: 'fade' }]);
   assert.ok(Math.abs(r.total - (30 - 0.04 - 1)) < 0.001, 'total: ' + r.total);
 });
+
+// ── MARCADOR NA TIMELINE (2026-07-29) ──────────────────────────────────────
+// Sem marcador a transicao era invisivel na timeline: o user aplicava e nao
+// tinha como ver onde estava nem clicar pra ajustar.
+import { computeLayout, timeToX } from '../../public/editor-v1/timeline/layout.js';
+import { hitTest } from '../../public/editor-v1/timeline/hittest.js';
+import { transition as fsmStep, idle as fsmIdle } from '../../public/editor-v1/timeline/interaction.js';
+
+const VP = { width: 900, height: 320, scrollX: 0, pxPerSec: 40 };
+
+test('a transicao vira um marcador na EMENDA das duas cenas', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'deslizar_baixo', 0.6));
+  const lay = computeLayout(store.getState(), VP);
+  assert.equal(lay.transMarks.length, 1);
+  // a emenda esta em t=10 (video de 20s cortado no meio)
+  const esperado = timeToX(VP, 10);   // a funcao real, nao um numero chutado
+  assert.ok(Math.abs(lay.transMarks[0].x - esperado) < 2,
+    `marcador fora da emenda: ${lay.transMarks[0].x} vs ${esperado}`);
+});
+
+test('sem transicao nao ha marcador', () => {
+  const lay = computeLayout(storeCom2Clips().getState(), VP);
+  assert.equal((lay.transMarks || []).length, 0);
+});
+
+test('clicar no marcador ACHA a transicao (e nao o trim do clip)', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  const lay = computeLayout(store.getState(), VP);
+  const m = lay.transMarks[0];
+  const hit = hitTest(lay, m.x, m.y);
+  assert.equal(hit.type, 'transition', 'pegou: ' + hit.type);
+  assert.equal(hit.between, 0);
+});
+
+test('clicar no marcador SELECIONA a emenda', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  const lay = computeLayout(store.getState(), VP);
+  const m = lay.transMarks[0];
+  const r = fsmStep(fsmIdle(), { kind: 'down', x: m.x, y: m.y, hit: hitTest(lay, m.x, m.y) },
+    { layout: lay, playhead: 0, cutPoints: [], snapEnabled: true });
+  const ef = r.effects.find(e => e.do === 'select-transition');
+  assert.ok(ef && ef.between === 0, JSON.stringify(r.effects));
+});
+
+test('clicar FORA fecha os parametros (user: "clico fora e fecha")', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  const lay = computeLayout(store.getState(), VP);
+  const r = fsmStep(fsmIdle(), { kind: 'down', x: 600, y: lay.yVideo + 5, hit: hitTest(lay, 600, lay.yVideo + 5) },
+    { layout: lay, playhead: 0, cutPoints: [], snapEnabled: true });
+  const ef = r.effects.find(e => e.do === 'select-transition');
+  assert.ok(ef && ef.between === null, 'deveria limpar a selecao');
+});
+
+test('marcador selecionado fica aceso (o desenho distingue)', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  const st = store.getState();
+  assert.equal(computeLayout(st, VP).transMarks[0].selected, false);
+  assert.equal(computeLayout({ ...st, _juncao_sel: 0 }, VP).transMarks[0].selected, true);
+});

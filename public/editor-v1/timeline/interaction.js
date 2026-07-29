@@ -95,6 +95,14 @@ export function transition(fsm, ev, ctx) {
       if (ev.kind !== 'down') return { next: fsm, effects: fx };
 
       const hit = ev.hit;
+      // marcador de transição: seleciona a emenda e abre os parâmetros
+      if (hit.type === 'transition') {
+        fx.push({ do: 'select-transition', between: hit.between });
+        return { next: fsm, effects: fx };
+      }
+      // qualquer outro clique FECHA os parâmetros (pedido do user: "se eu
+      // clico fora, ela fica menos visível e fecha a janela de configuração")
+      fx.push({ do: 'select-transition', between: null });
       if (hit.type === 'ruler') {
         // Regua: scrub imediato (mouse E touch — CapCut)
         fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });

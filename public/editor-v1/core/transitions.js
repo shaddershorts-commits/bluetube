@@ -36,6 +36,7 @@ export const TRANSICOES = [
   { id: 'deslizar_baixo', nome: 'Deslizar baixo', cat: 'deslizar', xfade: 'slidedown', preview: 'slide', eixo: 'y', sinal: 1 },
   { id: 'deslizar_cima', nome: 'Deslizar cima', cat: 'deslizar', xfade: 'slideup', preview: 'slide', eixo: 'y', sinal: -1 },
   { id: 'deslizar_esq', nome: 'Deslizar esquerda', cat: 'deslizar', xfade: 'slideleft', preview: 'slide', eixo: 'x', sinal: -1 },
+  { id: 'desvanecer_baixo', nome: 'Desvanecer baixo', cat: 'deslizar', xfade: 'smoothdown', preview: 'wipe', eixo: 'y', sinal: 1, suave: true },
   { id: 'varrer_baixo', nome: 'Varredura baixo', cat: 'deslizar', xfade: 'wipedown', preview: 'wipe', eixo: 'y', sinal: 1 },
 
   // ── Luz ──────────────────────────────────────────────────────────────────

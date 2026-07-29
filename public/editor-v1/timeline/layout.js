@@ -201,9 +201,29 @@ export function computeLayout(state, vp) {
   }
   const contentHFinal = yAudio + audioLanes * (AH + 2) + GAP;
 
+  // ── MARCADORES DE TRANSIÇÃO (2026-07-29) ──────────────────────────────────
+  // Ficam NA EMENDA de duas cenas da mesma faixa, como no CapCut: um losango
+  // sobre o corte. Sem isso a transição era invisível na timeline — o usuário
+  // aplicava e não tinha como ver onde estava, nem clicar pra ajustar.
+  const transMarks = [];
+  {
+    const itens = mainTrackItems(state);
+    for (const tr of state.transitions || []) {
+      const saindo = itens[tr.between];
+      if (!saindo) continue;
+      const x = timeToX(vp, saindo.tEnd);
+      if (x < -20 || x > vp.width + 20) continue;   // fora da vista
+      transMarks.push({
+        between: tr.between, t: saindo.tEnd, type: tr.type,
+        x, y: yVideo + VH / 2, r: 11,
+        selected: state._juncao_sel === tr.between,
+      });
+    }
+  }
+
   return {
     vp, total, extent: playableDuration(state), segs, clips, ghosts, texts, audioItems, audioLanes, audioLaneRows,
-    overlayItems, yOverlay, hasOverlays, laneRows,
+    overlayItems, yOverlay, hasOverlays, laneRows, transMarks,
     // strip de waveform DENTRO do clip: so enquanto o audio esta embutido.
     // Fix waveform fantasma: apos detach (mesmo com clips deletados) a
     // strip NAO volta — audio agora vive (ou viveu) na track propria.

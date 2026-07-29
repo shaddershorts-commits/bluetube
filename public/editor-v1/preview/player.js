@@ -19,6 +19,9 @@ export function createPlayer(videoEl, opts, store) {
   // double buffer: els[active] mostra, els[1-active] pré-carrega
   const els = [videoEl, opts?.bufferEl].filter(Boolean);
   let active = 0;
+  // enquanto uma transicao roda, o buffer mostra a cena que ENTRA — o player
+  // nao pode reaproveitar ele pra pre-carregar outra fonte no meio disso
+  let travaBuffer = false;
   const disp = () => els[active];
   const buf = () => (els.length > 1 ? els[1 - active] : null);
 
@@ -102,7 +105,9 @@ export function createPlayer(videoEl, opts, store) {
       // fonte e marca a troca pendente; o tick segura o ÚLTIMO FRAME congelado
       // e troca quando o buffer decodifica. PAUSADO (scrub): não há tick pra
       // dirigir a troca, então load direto (pisca uma vez, aceitável no scrub).
-      const bb = buf();
+      // durante uma transição o buffer está mostrando a cena que ENTRA — não
+      // pode ser requisitado pra pré-carregar outra fonte no meio do efeito
+      const bb = travaBuffer ? null : buf();
       if (bb && playing) {
         if (bb.dataset.loadedUrl !== url) {
           bb.dataset.loadedUrl = url;
@@ -144,6 +149,7 @@ export function createPlayer(videoEl, opts, store) {
   // pré-carrega a PRÓXIMA fonte no buffer (só durante playback, só se a fonte
   // muda — clips do mesmo arquivo não precisam de swap)
   function preloadNext(state) {
+    if (travaBuffer) return;   // buffer ocupado mostrando a cena que ENTRA
     const b = buf();
     if (!b) return;
     const cur = segmentAt(state, virtualTime);
@@ -380,6 +386,39 @@ export function createPlayer(videoEl, opts, store) {
     getDuration: () => playableDuration(store.getState()),
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
     getDisplayEl: () => disp(),           // shell aplica transform no elemento ativo
+    // ── TRANSIÇÃO DE VERDADE (2026-07-29) ──────────────────────────────────
+    // A primeira versão desenhava uma camada POR CIMA do vídeo: dava pra ver
+    // um brilho ou uma tarja, mas "Deslizar" não deslizava nada — o vídeo que
+    // entra nunca aparecia. Transição de verdade precisa dos DOIS vídeos na
+    // tela ao mesmo tempo.
+    //
+    // O elemento de buffer (que já existe pro double-buffer) passa a mostrar a
+    // cena que ENTRA, no tempo certo dela, enquanto o ativo segue tocando a que
+    // sai. O CSS move/mistura os dois. Enquanto isso o player não mexe no
+    // buffer por conta própria — daí a trava.
+    getBufferEl: () => buf(),
+    prepararEntrada(url, srcTime) {
+      const b = buf();
+      if (!b || !url) return false;
+      travaBuffer = true;
+      if (b.dataset.loadedUrl !== url) {
+        b.dataset.loadedUrl = url;
+        b.src = url;
+        b._pendingSeek = srcTime;
+        b.load();
+      } else {
+        try { if (Math.abs(b.currentTime - srcTime) > 0.12) b.currentTime = srcTime; } catch {}
+      }
+      b.muted = true;                    // o áudio da cena que entra só vale depois
+      if (playing) b.play().catch(() => {});
+      else b.pause();
+      return true;
+    },
+    liberarEntrada() {
+      travaBuffer = false;
+      const b = buf();
+      if (b) { b.pause(); }
+    },
     // Reaplica o mudo no elemento QUE ESTÁ EM EXIBIÇÃO. O player é o único dono
     // dessa decisão (ele conhece o segmento sob o playhead, o mudo por cena e
     // qual dos dois elementos do double-buffer está visível). A shell chama

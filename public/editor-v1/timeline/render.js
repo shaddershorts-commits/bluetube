@@ -445,6 +445,32 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.setLineDash([]);
   }
 
+  // ── MARCADOR DE TRANSIÇÃO (2026-07-29) ──────────────────────────────────
+  // Losango sobre a emenda das duas cenas, como no CapCut. Selecionado fica
+  // aceso; fora de foco fica discreto — foi o pedido do user ("se eu clico
+  // fora, ela fica menos visível").
+  for (const m of layout.transMarks || []) {
+    const r = m.r;
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = m.selected ? 'rgba(0,170,255,.95)' : 'rgba(10,22,40,.85)';
+    ctx.strokeStyle = m.selected ? '#eaf3ff' : 'rgba(0,170,255,.55)';
+    ctx.lineWidth = m.selected ? 2 : 1.5;
+    const s = r * 0.72;
+    ctx.beginPath();
+    ctx.rect(-s, -s, s * 2, s * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    // duas setas encontrando: lê como "transição" sem precisar de legenda
+    ctx.fillStyle = m.selected ? '#04121f' : 'rgba(0,170,255,.9)';
+    ctx.beginPath();
+    ctx.moveTo(m.x - 4.5, m.y - 4); ctx.lineTo(m.x - 0.8, m.y); ctx.lineTo(m.x - 4.5, m.y + 4);
+    ctx.moveTo(m.x + 4.5, m.y - 4); ctx.lineTo(m.x + 0.8, m.y); ctx.lineTo(m.x + 4.5, m.y + 4);
+    ctx.fill();
+  }
+
   // ── playhead ──
   if (playhead != null) {
     const x = timeToX(layout.vp, playhead);

@@ -47,6 +47,8 @@ export function mountEditor(root, store, opts = {}) {
     store, player,
     onEditText: openTextPanel,
     onOpenCompound: enterCompound,
+    // clique no marcador da timeline abre/fecha os parametros da transicao
+    onSelectTransition: (between) => selecionarJuncao(between),
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
@@ -435,7 +437,10 @@ export function mountEditor(root, store, opts = {}) {
   let juncaoSelecionada = null;
 
   function selecionarJuncao(indice) {
+    if (juncaoSelecionada === indice) return;
     juncaoSelecionada = indice;
+    // o desenho do marcador le isto pra saber qual esta aceso
+    timeline.setJuncaoSelecionada?.(indice);
     if (indice != null) store.dispatch(act.clearSelection());
     sync();
   }

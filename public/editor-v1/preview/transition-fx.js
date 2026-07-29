@@ -1,101 +1,128 @@
 // editor-v1/preview/transition-fx.js
-// O efeito da transição RODANDO no player (2026-07-29).
+// A transição RODANDO no player — com os DOIS vídeos na tela (2026-07-29).
 //
-// FLUIDEZ é o requisito aqui. Duas decisões cuidam disso:
+// A primeira versão desenhava uma camada por cima do vídeo. Dava pra ver um
+// brilho, uma tarja — mas "Deslizar" não deslizava nada, porque a cena que
+// entra nunca aparecia. O user pegou na hora: "fica parecendo mais um efeito
+// por cima do vídeo".
 //
-// 1. Nada é desenhado por JavaScript quadro a quadro. O efeito é uma camada
-//    com transform/opacity/clip-path/filter, propriedades que o compositor da
-//    GPU anima sozinho. O JS só escreve o PROGRESSO (0..1) numa custom
-//    property; o resto acontece fora da thread principal.
-// 2. O progresso vem do relógio do player, não de um timer próprio — assim a
-//    transição acompanha play, pause, scrub e velocidade sem dessincronizar.
+// Agora o elemento de buffer (que já existia pro double-buffer) mostra a cena
+// que ENTRA, no tempo certo dela, enquanto o ativo segue tocando a que sai. O
+// CSS move e mistura os dois de verdade.
 //
-// O que se vê aqui é aproximação do xfade do ffmpeg. Não é o mesmo pixel, mas
-// é o mesmo GESTO — e cada efeito só existe aqui porque existe lá.
+// FLUIDEZ: o JS escreve UMA variável por frame (--p, o progresso 0..1) e o CSS
+// deriva transform/opacity/clip-path a partir dela. Quem anima é o compositor
+// da GPU — nada é redesenhado na thread principal.
 
 const CLAMP = (v) => Math.max(0, Math.min(1, v));
 
 export function createTransitionFx(stageEl, store, player) {
-  if (!stageEl) return { destroy() {}, tick() {}, tocar() {} };
+  if (!stageEl) return { destroy() {}, tick() {}, tocar() {}, registrarCatalogo() {} };
 
-  const camada = document.createElement('div');
-  camada.className = 'be-trans-fx';
-  camada.style.display = 'none';
-  stageEl.appendChild(camada);
+  let mapa = new Map();          // id -> definição do catálogo
+  let previa = null;             // prévia disparada pelo clique no card
+  let ativoAgora = null;         // chave do efeito aplicado (evita mexer no DOM à toa)
 
-  let previa = null;   // { def, t, dur } — prévia disparada pelo clique no card
+  function registrarCatalogo(lista) {
+    mapa = new Map(lista.map((x) => [x.id, x]));
+  }
 
-  /** Transição ativa no instante t, olhando o projeto. */
-  function ativaEm(t, itens, transicoes) {
-    for (const tr of transicoes || []) {
-      const it = itens[tr.between];
-      if (!it) continue;
+  /** Qual transição está acontecendo em t, e em que ponto dela. */
+  function acharAtiva(state, t) {
+    const itens = itensDaMain(state);
+    for (const tr of state.transitions || []) {
+      const saindo = itens[tr.between];
+      const entrando = itens[tr.between + 1];
+      if (!saindo || !entrando) continue;
       const dur = Math.max(0.1, Math.min(3, Number(tr.duration) || 0.5));
-      const ini = it.tEnd - dur / 2;
+      const ini = saindo.tEnd - dur / 2;
       if (t >= ini && t <= ini + dur) {
-        return { tr, progresso: CLAMP((t - ini) / dur) };
+        return { tr, entrando, prog: CLAMP((t - ini) / dur) };
       }
     }
     return null;
   }
 
+  // evita importar selectors aqui: a shell passa a lista pronta no tick
+  let itensCache = [];
+  const itensDaMain = () => itensCache;
+
+  function limpar() {
+    if (!ativoAgora) return;
+    ativoAgora = null;
+    stageEl.classList.remove('be-em-transicao');
+    stageEl.removeAttribute('data-fx');
+    const b = player.getBufferEl?.();
+    if (b) b.classList.remove('be-trans-entrando');
+    const d = player.getDisplayEl?.();
+    if (d) d.classList.remove('be-trans-saindo');
+    player.liberarEntrada?.();
+  }
+
   /**
-   * Chamado pelo player a cada frame. Mantém o custo baixo: só toca no DOM
-   * quando o efeito ATIVO muda ou o progresso anda de verdade.
+   * Chamado a cada frame pela shell. `itens` = mainTrackItems(state).
    */
-  let ultimo = '';
   function tick(t, itens, transicoes) {
-    let def = null, progresso = 0;
+    itensCache = itens || [];
+    const state = store.getState();
+
+    let def = null, prog = 0, entrando = null;
 
     if (previa) {
       const ini = previa.t - previa.dur / 2;
       if (t >= ini && t <= ini + previa.dur) {
-        def = previa.def;
-        progresso = CLAMP((t - ini) / previa.dur);
-      } else if (t > ini + previa.dur) {
-        previa = null;   // acabou
-      }
+        def = previa.def; prog = CLAMP((t - ini) / previa.dur);
+        entrando = itensCache.find((x) => Math.abs(x.tStart - previa.t) < 0.001) || null;
+      } else if (t > ini + previa.dur) previa = null;
     }
 
     if (!def) {
-      const a = ativaEm(t, itens, transicoes);
+      const a = acharAtiva({ ...state, transitions: transicoes || [] }, t);
       if (a) {
-        def = { preview: a.tr.preview || previewDe(a.tr), nome: a.tr.type, intensity: a.tr.intensity };
-        progresso = a.progresso;
+        def = mapa.get(a.tr.type) || null;
+        prog = a.prog;
+        entrando = a.entrando;
       }
     }
 
-    const chave = def ? def.preview + ':' + (def.intensity ?? 50) : '';
-    if (chave !== ultimo) {
-      ultimo = chave;
-      camada.className = 'be-trans-fx' + (def ? ' be-fxp-' + def.preview : '');
-      camada.style.display = def ? 'block' : 'none';
+    if (!def) { limpar(); return; }
+
+    // a cena que ENTRA vai pro buffer, no tempo dela
+    if (entrando) {
+      const url = urlDoItem(state, entrando.clip);
+      const src = entrando.clip.source_in || 0;
+      if (url) player.prepararEntrada?.(url, src);
     }
-    if (def) {
-      // uma escrita só por frame; o CSS deriva tudo daqui
-      camada.style.setProperty('--p', progresso.toFixed(4));
-      camada.style.setProperty('--forca', ((def.intensity ?? 50) / 100).toFixed(3));
+
+    const chave = def.preview;
+    if (chave !== ativoAgora) {
+      ativoAgora = chave;
+      stageEl.classList.add('be-em-transicao');
+      stageEl.dataset.fx = chave;
+      const b = player.getBufferEl?.();
+      if (b) b.classList.add('be-trans-entrando');
+      const d = player.getDisplayEl?.();
+      if (d) d.classList.add('be-trans-saindo');
     }
+    // uma escrita por frame — o CSS faz o resto
+    stageEl.style.setProperty('--p', prog.toFixed(4));
   }
 
-  // o estado guarda o id do catálogo; o tipo de prévia mora no catálogo
-  let mapaPreview = null;
-  function previewDe(tr) {
-    if (!mapaPreview) return 'cross';
-    return mapaPreview.get(tr.type) || 'cross';
-  }
-  function registrarCatalogo(lista) {
-    mapaPreview = new Map(lista.map((x) => [x.id, x.preview]));
+  function urlDoItem(state, clip) {
+    if (clip.media_id != null) {
+      return (state.media || []).find((m) => m.id === clip.media_id)?.url || null;
+    }
+    return state.video?.url || null;
   }
 
-  /** Prévia avulsa (clique no card): não mexe no projeto. */
+  /** Prévia avulsa (clique no card): não grava nada no projeto. */
   function tocar(def, tJuncao, dur) {
-    previa = { def: { preview: def.preview, nome: def.nome, intensity: 50 }, t: tJuncao, dur };
-    ultimo = '';
+    previa = { def, t: tJuncao, dur };
+    ativoAgora = null;
   }
 
   return {
     tick, tocar, registrarCatalogo,
-    destroy() { camada.remove(); },
+    destroy() { limpar(); },
   };
 }

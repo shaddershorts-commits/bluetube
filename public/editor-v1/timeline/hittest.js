@@ -18,6 +18,16 @@ export function hitTest(layout, x, y, opts = {}) {
   const extra = opts.touch ? METRICS.TOUCH_EXTRA : 0;
   const handleW = METRICS.HANDLE_HIT_W + extra;
 
+  // 0. MARCADOR DE TRANSIÇÃO — antes de tudo. Ele fica EM CIMA da emenda, ou
+  // seja, sobre a borda de dois clips: se o teste de trim viesse primeiro, o
+  // clique viraria um trim e a transição nunca abriria.
+  for (const m of layout.transMarks || []) {
+    const raio = m.r + extra;
+    if (Math.abs(x - m.x) <= raio && Math.abs(y - m.y) <= raio) {
+      return { type: 'transition', between: m.between, t: m.t };
+    }
+  }
+
   // 1. Trim handles — só do clip SELECIONADO (evita gordura de hit em toda borda,
   //    que na v0 fazia cliques virarem trims acidentais)
   const sel = layout.clips.find(c => c.selected);

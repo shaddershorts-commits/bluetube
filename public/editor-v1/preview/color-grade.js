@@ -28,6 +28,8 @@ export const CAMPOS_COR = [
   { id: 'pretos', rotulo: 'Pretos', grupo: 'Claridade' },
   { id: 'brilho', rotulo: 'Brilho', grupo: 'Claridade' },
   { id: 'nitidez', rotulo: 'Aumentar a nitidez', grupo: 'Efeitos', min: 0 },
+  { id: 'brilho_efeito', rotulo: 'Brilho', grupo: 'Efeitos', min: 0 },
+  { id: 'particulas', rotulo: 'Partículas', grupo: 'Efeitos', min: 0 },
   { id: 'fade', rotulo: 'Fade', grupo: 'Efeitos', min: 0 },
   { id: 'vinheta', rotulo: 'Vinheta', grupo: 'Efeitos', min: 0 },
 ];
@@ -118,6 +120,37 @@ export function svgDoGrade(g, id) {
     partes.push(
       `<feConvolveMatrix order="3" preserveAlpha="true" divisor="1" ` +
       `kernelMatrix="0 ${(-k).toFixed(3)} 0 ${(-k).toFixed(3)} ${centro} ${(-k).toFixed(3)} 0 ${(-k).toFixed(3)} 0"/>`
+    );
+  }
+
+  // 5) BRILHO (Efeitos) — é o "glow" do CapCut, diferente do Brilho de
+  //    Claridade: em vez de clarear tudo, espalha luz a partir das ALTAS.
+  //    Borra uma cópia, corta as sombras dela e soma por cima.
+  const glow = Math.max(0, n(g.brilho_efeito));
+  if (glow > 0.01) {
+    partes.push(
+      `<feColorMatrix type="matrix" result="fonte" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0"/>` +
+      // isola as altas: joga o preto pra baixo e mantém o topo
+      `<feComponentTransfer in="fonte" result="altas">` +
+      `<feFuncR type="linear" slope="${(1 + glow).toFixed(2)}" intercept="-0.45"/>` +
+      `<feFuncG type="linear" slope="${(1 + glow).toFixed(2)}" intercept="-0.45"/>` +
+      `<feFuncB type="linear" slope="${(1 + glow).toFixed(2)}" intercept="-0.45"/>` +
+      `</feComponentTransfer>` +
+      `<feGaussianBlur in="altas" stdDeviation="${(glow * 9).toFixed(1)}" result="brilho"/>` +
+      `<feComposite in="brilho" in2="fonte" operator="arithmetic" k1="0" k2="${(glow * 0.9).toFixed(2)}" k3="1" k4="0"/>`
+    );
+  }
+
+  // 6) PARTÍCULAS — grão/poeira luminosa. Ruído do próprio SVG, recortado nas
+  //    altas pra virar poeira em vez de chuvisco uniforme, somado por cima.
+  const part = Math.max(0, n(g.particulas));
+  if (part > 0.01) {
+    partes.push(
+      `<feTurbulence type="fractalNoise" baseFrequency="${(0.7 + part * 0.5).toFixed(2)}" numOctaves="2" seed="7" result="ruido"/>` +
+      `<feColorMatrix in="ruido" type="matrix" result="poeira" values="` +
+      `0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  ${(part * 1.6).toFixed(2)} 0 0 0 ${(-part * 0.55).toFixed(2)}"/>` +
+      `<feComposite in="poeira" in2="SourceGraphic" operator="atop" result="poeiraCortada"/>` +
+      `<feBlend mode="screen" in2="poeiraCortada"/>`
     );
   }
 

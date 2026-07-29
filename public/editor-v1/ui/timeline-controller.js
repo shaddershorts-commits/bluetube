@@ -12,10 +12,13 @@ import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 import * as clip from './clipboard.js';
 
-export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
+  // emenda selecionada — so afeta o DESENHO do marcador, nao e conteudo do
+  // projeto (por isso nao vai pro store nem pro autosave)
+  let juncaoSel = null;
   let snapIndicator = { active: false, t: null };
   let thumbs = null;
   let wave = null;
@@ -120,6 +123,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         }
         case 'toggle-multi': store.dispatch(act.toggleMultiSelect(e.itemType, e.id)); break;
         case 'open-compound': onOpenCompound?.(e.compoundId); break;
+        case 'select-transition': onSelectTransition?.(e.between); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;
@@ -474,6 +478,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     // x do canvas -> tempo. Usado pelo drop de transição: sem isto o alvo seria
     // a posição da agulha, não o lugar onde o usuário soltou o card.
     tempoDoX: (x) => xToTime(vp, x),
+    setJuncaoSelecionada(i) { juncaoSel = i; draw(); },
     zoomFit() {
       if (vp.width < 50) { pendingFit = true; return; }
       doFit();
