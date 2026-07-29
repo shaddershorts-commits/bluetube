@@ -22,7 +22,7 @@
 // Elas ainda DEFINEM o tipo da camada (camada com legenda e camada de texto,
 // entao video nao entra nela).
 
-import { MAX_LANE, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE } from './schema.js';
+import { MAX_LANE, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_AUDIO_LANE } from './schema.js';
 import { overlayTimelineDur, audioTimelineDur, audioLaneMap } from './selectors.js';
 
 const EPS = 1e-6;
@@ -100,15 +100,10 @@ export function laneDestino(state, { tipo, id, laneAlvo, start, end, legenda = f
   return null;
 }
 
-/** Intervalos ocupados de uma camada (sem o proprio item, sem legendas),
- *  unidos quando se tocam. */
-function ocupacao(state, lane, tipo, id) {
-  const brutos = itensDaLane(state, lane)
-    .filter(it => !it.legenda && !(it.tipo === tipo && it.id === id))
-    .map(it => [it.start, it.end])
-    .sort((a, b) => a[0] - b[0]);
+/** Une intervalos que se tocam/cruzam. */
+function unir(brutos) {
   const uni = [];
-  for (const [ini, fim] of brutos) {
+  for (const [ini, fim] of brutos.slice().sort((a, b) => a[0] - b[0])) {
     const ult = uni[uni.length - 1];
     if (ult && ini <= ult[1] + EPS) ult[1] = Math.max(ult[1], fim);
     else uni.push([ini, fim]);
@@ -116,17 +111,19 @@ function ocupacao(state, lane, tipo, id) {
   return uni;
 }
 
-/** REPELIR: start mais proximo do desejado que NAO sobrepoe ninguem na camada.
- *  E o que da a sensacao de "os dois se repelem" no arrasto horizontal —
- *  o item encosta no vizinho em vez de entrar por cima dele. */
-export function repelirStart(state, { tipo, id, lane, start, dur }) {
-  const ocup = ocupacao(state, lane, tipo, id);
-  if (!ocup.length) return Math.max(0, start);
-  const desejado = Math.max(0, start);
-  // ja cabe onde quer?
+/** Intervalos ocupados de uma camada (sem o proprio item, sem legendas). */
+function ocupacao(state, lane, tipo, id) {
+  return unir(itensDaLane(state, lane)
+    .filter(it => !it.legenda && !(it.tipo === tipo && it.id === id))
+    .map(it => [it.start, it.end]));
+}
+
+/** Start livre mais proximo do desejado dada a ocupacao da camada. */
+function encaixar(ocup, desejado0, dur) {
+  const desejado = Math.max(0, desejado0);
+  if (!ocup.length) return desejado;
   if (!ocup.some(([ini, fim]) => sobrepoe(desejado, desejado + dur, ini, fim))) return desejado;
 
-  // vaos livres: antes do primeiro, entre pares, depois do ultimo (infinito)
   const vaos = [];
   if (ocup[0][0] > 0) vaos.push([0, ocup[0][0]]);
   for (let i = 0; i < ocup.length - 1; i++) vaos.push([ocup[i][1], ocup[i + 1][0]]);
@@ -135,13 +132,63 @@ export function repelirStart(state, { tipo, id, lane, start, dur }) {
   let melhor = null, menorDist = Infinity;
   for (const [ini, fim] of vaos) {
     if (fim - ini < dur - EPS) continue;          // nao cabe nesse vao
-    // teto do vao: o item inteiro tem que caber DENTRO dele
     const teto = fim === Infinity ? Infinity : fim - dur;
     const cand = Math.min(Math.max(desejado, ini), teto);
     const dist = Math.abs(cand - desejado);
     if (dist < menorDist) { menorDist = dist; melhor = cand; }
   }
   return melhor == null ? desejado : Math.max(0, melhor);
+}
+
+// ── AUDIO: espaco de camadas PROPRIO (0..MAX_AUDIO_LANE, crescendo pra BAIXO).
+// A regra do usuario vale igual aqui: dois audios nao podem ficar um por cima
+// do outro na mesma faixa. A diferenca e que "camada nova" no audio nasce
+// ABAIXO (o espaco cresce pro outro lado).
+
+/** Itens de audio de uma faixa, com a lane ja RESOLVIDA (manual ou automatica). */
+export function itensDaLaneAudio(state, lane) {
+  const mapa = audioLaneMap(state);
+  const out = [];
+  for (const a of state.audio_clips || []) {
+    if (a.active === false || mapa.get(a.id) !== lane) continue;
+    out.push({ tipo: 'audio', id: a.id, start: a.start, end: a.start + audioTimelineDur(a) });
+  }
+  return out.sort((x, y) => x.start - y.start);
+}
+
+export function laneAceitaAudio(state, lane, { id, start, end }) {
+  if (!Number.isInteger(lane) || lane < 0 || lane > MAX_AUDIO_LANE) return false;
+  for (const it of itensDaLaneAudio(state, lane)) {
+    if (it.id === id) continue;
+    if (sobrepoe(start, end, it.start, it.end)) return false;
+  }
+  return true;
+}
+
+/** Faixa de audio final: a do drop se aceitar, senao a primeira ABAIXO que
+ *  aceite. null = nao ha nenhuma (o chamador recusa em vez de sobrepor). */
+export function laneDestinoAudio(state, { id, laneAlvo, start, end }) {
+  let alvo = Number.isFinite(laneAlvo) ? Math.round(laneAlvo) : 0;
+  alvo = Math.min(MAX_AUDIO_LANE, Math.max(0, alvo));
+  for (let l = alvo; l <= MAX_AUDIO_LANE; l++) {
+    if (laneAceitaAudio(state, l, { id, start, end })) return l;
+  }
+  return null;
+}
+
+/** REPELIR no audio: encosta no vizinho da MESMA faixa em vez de sobrepor. */
+export function repelirStartAudio(state, { id, lane, start, dur }) {
+  const ocup = unir(itensDaLaneAudio(state, lane)
+    .filter(it => it.id !== id)
+    .map(it => [it.start, it.end]));
+  return encaixar(ocup, start, dur);
+}
+
+/** REPELIR: start mais proximo do desejado que NAO sobrepoe ninguem na camada.
+ *  E o que da a sensacao de "os dois se repelem" no arrasto horizontal —
+ *  o item encosta no vizinho em vez de entrar por cima dele. */
+export function repelirStart(state, { tipo, id, lane, start, dur }) {
+  return encaixar(ocupacao(state, lane, tipo, id), start, dur);
 }
 
 /** Camadas em uso (com item ou reservadas como extras), de baixo pra cima. */

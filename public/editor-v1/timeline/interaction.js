@@ -506,10 +506,10 @@ export function transition(fsm, ev, ctx) {
         return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
-        fx.push({ do: 'dispatch', action: act.moveAudio(fsm.audioId, fsm.previewStart) });
-        // arrasto VERTICAL: muda a lane do áudio (acima/abaixo, cria embaixo)
-        const dropY = ev.y ?? fsm.lastY;
-        if (dropY != null) fx.push({ do: 'drop-audio-lane', id: fsm.audioId, y: dropY });
+        // igual ao video/texto: tempo e faixa num dispatch so, senao o repelir
+        // olha a faixa que o audio esta DEIXANDO
+        fx.push({ do: 'commit-move', itemType: 'audio', id: fsm.audioId,
+                  start: fsm.previewStart, y: ev.y ?? fsm.lastY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }

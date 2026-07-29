@@ -129,9 +129,19 @@ export function createTimelineController({ canvas, store, player, onEditText, on
           break;
         }
         case 'commit-move': {
-          // fecho do arrasto de camada/texto: UM dispatch com tempo + camada
+          // fecho do arrasto de camada/texto/audio: UM dispatch com tempo + faixa
           const lay = layoutNow();
           const st = store.getState();
+          if (e.itemType === 'audio') {
+            // faixa de audio pelo y do drop; acima da area de audio = mantem
+            let laneA = null;
+            if (e.y != null && e.y >= lay.yAudio - 6) {
+              const rowH = lay.audioTrackH + 2;
+              laneA = Math.max(0, Math.min(lay.audioLanes, Math.floor((e.y - lay.yAudio) / rowH)));
+            }
+            store.dispatch(act.moveItemTo('audio', e.id, e.start, laneA));
+            break;
+          }
           // camada de VÍDEO solta NA FAIXA PRINCIPAL: volta a ser clip da main
           // (inverso do drag-up — user 2026-07-22 "não volta mais"). Imagem não.
           if (e.itemType === 'overlay' && e.y != null &&

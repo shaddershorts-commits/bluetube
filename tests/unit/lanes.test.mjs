@@ -575,6 +575,108 @@ test('soltar fora das faixas de camada mantem a camada atual', () => {
   assert.equal(dep.start, 8);
 });
 
+// ── R1 no NASCIMENTO do texto (bug relatado pelo user com print) ──
+// "fui adicionar um texto e olha o que aconteceu, entrou na parte de camada de
+// video, E ERRADO". O texto nascia SEMPRE na camada padrao, sem olhar quem
+// estava la.
+
+test('texto NOVO nao nasce em cima de uma camada de video', () => {
+  const store = base();
+  comOverlay(store, { lane: TEXT_DEFAULT_LANE, start: 0, dur: 10 }); // video ocupa a padrao
+  store.dispatch(act.addText({ content: 'oi', start_sec: 0, end_sec: 3 }));
+  const tx = store.getState().texts[0];
+  assert.notEqual(tx.lane, TEXT_DEFAULT_LANE, 'nao pode entrar na camada do video');
+  assert.equal(laneKind(store.getState(), tx.lane), 'texto');
+});
+
+test('texto novo cai numa camada que ja e de texto (nao cria uma toa)', () => {
+  const store = base();
+  comOverlay(store, { lane: TEXT_DEFAULT_LANE, start: 0, dur: 10 });
+  store.dispatch(act.addText({ content: 'a', start_sec: 0, end_sec: 3 }));
+  const lane1 = store.getState().texts[0].lane;
+  store.dispatch(act.addText({ content: 'b', start_sec: 20, end_sec: 23 }));
+  assert.equal(store.getState().texts[1].lane, lane1, 'os dois textos dividem a camada');
+});
+
+test('LEGENDA gerada tambem foge da camada de video', () => {
+  const store = base();
+  comOverlay(store, { lane: TEXT_DEFAULT_LANE, start: 0, dur: 30 });
+  store.dispatch(act.setCaptions([
+    { content: 'a', start_sec: 0, end_sec: 1 },
+    { content: 'b', start_sec: 1, end_sec: 2 },
+  ]));
+  const caps = store.getState().texts.filter(t => t.caption);
+  const lanes = new Set(caps.map(c => c.lane));
+  assert.equal(lanes.size, 1, 'a legenda inteira numa camada so');
+  assert.notEqual([...lanes][0], TEXT_DEFAULT_LANE, 'e nao na do video');
+});
+
+// ── REPELIR NO AUDIO (user: "a camada de audio nao ta se repelindo") ──
+
+function comAudio(store, { start = 0, dur = 10, lane = null } = {}) {
+  store.dispatch(act.addAudioClip({ url: `a${start}.mp3`, filename: 'a' + start, duration: dur }));
+  const st = store.getState();
+  const a = st.audio_clips[st.audio_clips.length - 1];
+  const patch = { ...a, start, ...(lane != null ? { lane } : {}) };
+  store.replaceState({ ...st, audio_clips: st.audio_clips.map(x => x.id === a.id ? patch : x) });
+  return patch;
+}
+
+test('audio arrastado por cima de outro ENCOSTA (nao fica por cima)', () => {
+  const store = base();
+  comAudio(store, { start: 0, dur: 10, lane: 0 });
+  const b = comAudio(store, { start: 20, dur: 5, lane: 0 });
+  store.dispatch(act.moveAudio(b.id, 3));            // tenta 3..8, em cima do 1o
+  const dep = store.getState().audio_clips.find(a => a.id === b.id);
+  assert.equal(dep.start, 10, 'encostou no fim do vizinho');
+});
+
+test('audio: soltar em OUTRA faixa ocupada desce mais uma', () => {
+  const store = base();
+  comAudio(store, { start: 0, dur: 10, lane: 0 });
+  comAudio(store, { start: 0, dur: 10, lane: 1 });
+  const c = comAudio(store, { start: 30, dur: 5, lane: 2 });
+  store.dispatch(act.moveItemTo('audio', c.id, 2, 1));  // mira a faixa 1, ocupada
+  const dep = store.getState().audio_clips.find(a => a.id === c.id);
+  assert.equal(dep.lane, 2, 'camada nova nasce ABAIXO no espaco do audio');
+  assert.equal(dep.start, 2, 'e o tempo do drop e respeitado');
+});
+
+test('audio: arrasto diagonal pra faixa VAZIA pousa no tempo do drop', () => {
+  const store = base();
+  comAudio(store, { start: 0, dur: 10, lane: 0 });
+  const b = comAudio(store, { start: 20, dur: 5, lane: 0 });
+  store.dispatch(act.moveItemTo('audio', b.id, 2, 1));   // faixa 1 vazia
+  const dep = store.getState().audio_clips.find(a => a.id === b.id);
+  assert.equal(dep.lane, 1);
+  assert.equal(dep.start, 2, 'nao foi repelido pelo vizinho da faixa velha');
+});
+
+test('audio: dois clipes nunca ficam sobrepostos na mesma faixa', () => {
+  const store = base();
+  comAudio(store, { start: 0, dur: 10, lane: 0 });
+  const b = comAudio(store, { start: 20, dur: 5, lane: 0 });
+  for (const alvo of [1, 3, 5, 7, 9, 0]) {
+    store.dispatch(act.moveAudio(b.id, alvo));
+    const st = store.getState();
+    const mapa = audioLaneMap(st);
+    const porLane = new Map();
+    for (const a of st.audio_clips) {
+      const l = mapa.get(a.id);
+      const lista = porLane.get(l) || [];
+      lista.push([a.start, a.start + (a.source_out - a.source_in)]);
+      porLane.set(l, lista);
+    }
+    for (const [, lista] of porLane) {
+      lista.sort((x, y) => x[0] - y[0]);
+      for (let i = 1; i < lista.length; i++) {
+        assert.ok(lista[i][0] >= lista[i - 1][1] - 1e-6,
+          `sobreposicao ao tentar start=${alvo}: ${JSON.stringify(lista)}`);
+      }
+    }
+  }
+});
+
 // ── nenhum caminho de CRIACAO pode sumir com o arquivo do usuario ──
 
 test('imagem entra mesmo com todas as camadas ocupadas (anda no tempo)', () => {

@@ -8,11 +8,11 @@
 import { A } from './actions.js';
 import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
-import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur } from './selectors.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap } from './selectors.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
-import { laneDestino, repelirStart, reordenarLanes } from './lanes.js';
+import { laneDestino, repelirStart, reordenarLanes, laneKind, laneDestinoAudio, repelirStartAudio } from './lanes.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -509,7 +509,17 @@ export function reduce(state, action) {
     // ── textos ───────────────────────────────────────────────────────────
 
     case A.ADD_TEXT: {
-      const text = buildText(action.props || {}, state.next_text_id);
+      const base = buildText(action.props || {}, state.next_text_id);
+      // ⚠️ o texto nascia SEMPRE na camada padrao — se ja tivesse video la, ele
+      // sentava em cima (user 2026-07-29: "entrou na parte de camada de video,
+      // E ERRADO"). A camada pedida agora e so a intencao; laneDestino manda.
+      const durTx = Math.max(0.1, base.end_sec - base.start_sec);
+      const laneTx = laneDestino(state, {
+        tipo: 'text', id: base.id, laneAlvo: base.lane,
+        start: base.start_sec, end: base.end_sec, legenda: base.caption === true,
+      }) ?? base.lane;
+      const iniTx = repelirStart(state, { tipo: 'text', id: base.id, lane: laneTx, start: base.start_sec, dur: durTx });
+      const text = { ...base, lane: laneTx, start_sec: iniTx, end_sec: iniTx + durTx };
       return touch({
         ...state,
         texts: [...state.texts, text],
@@ -523,8 +533,22 @@ export function reduce(state, action) {
     case A.SET_CAPTIONS: {
       const texts = state.texts.filter(t => !t.caption);
       let id = state.next_text_id;
+      // a legenda inteira vai pra UMA camada só — e ela nao pode ser uma camada
+      // de video (mesma regra do texto avulso). Procura a partir da padrao.
+      const semLegendas = { ...state, texts };
+      let laneLeg = TEXT_DEFAULT_LANE;
+      for (let l = TEXT_DEFAULT_LANE; l <= MAX_LANE; l++) {
+        const k = laneKind(semLegendas, l);
+        if (k === 'texto' || k === 'livre') { laneLeg = l; break; }
+      }
+      if (laneKind(semLegendas, laneLeg) === 'video') {
+        for (let l = TEXT_DEFAULT_LANE - 1; l >= 1; l--) {
+          const k = laneKind(semLegendas, l);
+          if (k === 'texto' || k === 'livre') { laneLeg = l; break; }
+        }
+      }
       for (const c of (action.caps || [])) {
-        texts.push(buildText({ ...c, caption: true }, id++));
+        texts.push(buildText({ ...c, caption: true, lane: laneLeg }, id++));
       }
       const sel = state.texts.some(t => t.id === state.selected_text_id && t.caption)
         ? null : state.selected_text_id;
@@ -695,10 +719,18 @@ export function reduce(state, action) {
     case A.MOVE_AUDIO: {
       const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
       if (idx < 0) return state;
-      const start = Math.max(0, Number(action.start) || 0);
-      if (state.audio_clips[idx].start === start) return state;
+      const aud = state.audio_clips[idx];
+      // REPELIR tambem no audio (user 2026-07-29: "a camada de audio nao ta se
+      // repelindo, ta ficando por cima"). A faixa e a RESOLVIDA — audio sem
+      // faixa manual e empacotado automaticamente pelo selector.
+      const lane = audioLaneMap(state).get(aud.id) ?? 0;
+      const start = repelirStartAudio(state, {
+        id: aud.id, lane,
+        start: Math.max(0, Number(action.start) || 0), dur: audioTimelineDur(aud),
+      });
+      if (aud.start === start) return state;
       const audio_clips = state.audio_clips.slice();
-      audio_clips[idx] = { ...audio_clips[idx], start };
+      audio_clips[idx] = { ...aud, start };
       return touch({ ...state, audio_clips });
     }
 
@@ -895,6 +927,26 @@ export function reduce(state, action) {
       // rodava contra a camada de ORIGEM — arrastar na diagonal pra uma camada
       // vazia jogava o item pro fim do vizinho da camada velha.
       const tipo = action.itemType;
+      // ── AUDIO: espaco de faixas proprio, camada nova nasce ABAIXO ──
+      if (tipo === 'audio') {
+        const iA = state.audio_clips.findIndex(a => a.id === action.id);
+        if (iA < 0) return state;
+        const aud = state.audio_clips[iA];
+        const durA = audioTimelineDur(aud);
+        const laneAtualA = audioLaneMap(state).get(aud.id) ?? 0;
+        const desejadoA = Math.max(0, Number(action.start) || 0);
+        const alvoA = Number.isInteger(action.laneAlvo) ? action.laneAlvo : laneAtualA;
+        const laneFinalA = alvoA === laneAtualA ? laneAtualA : (laneDestinoAudio(state, {
+          id: aud.id, laneAlvo: alvoA, start: desejadoA, end: desejadoA + durA,
+        }) ?? laneAtualA);
+        const inicioA = repelirStartAudio(state, { id: aud.id, lane: laneFinalA, start: desejadoA, dur: durA });
+        if (aud.start === inicioA && laneAtualA === laneFinalA && Number.isInteger(aud.lane)) return state;
+        const audio_clips = state.audio_clips.slice();
+        // grava a faixa EXPLICITA: sem isso o empacotamento automatico poderia
+        // devolver o clipe pra outra linha no proximo calculo
+        audio_clips[iA] = { ...aud, start: inicioA, lane: laneFinalA };
+        return touch({ ...state, audio_clips });
+      }
       const idx = tipo === 'overlay'
         ? state.overlays.findIndex(o => o.id === action.id)
         : state.texts.findIndex(t => t.id === action.id);
