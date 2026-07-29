@@ -14,6 +14,9 @@ import {
   quebrarLinhas, layoutTexto, prenderNoQuadro, layoutDoTexto,
   LARGURA_SEGURA, MAX_LINHAS,
 } from '../../public/editor-v1/core/text-layout.js';
+import {
+  estadoAnim, exprFfmpeg, duracaoAnim, animValida,
+} from '../../public/editor-v1/core/text-anim.js';
 
 // medicao de teste: cada caractere ocupa metade da fonte (deterministica)
 const medir = (s, f) => String(s).length * f * 0.5;
@@ -124,6 +127,76 @@ test('o payload leva a posicao JA presa no quadro', () => {
   const t = exportPayload(store.getState()).texts[0];
   assert.ok(t.x_pct < 0.99, `x_pct ${t.x_pct} tem que ter sido puxado pra dentro`);
   assert.ok(t.y_pct < 0.99, `y_pct ${t.y_pct} tem que ter sido puxado pra dentro`);
+});
+
+// ── ANIMACAO (antes so existia como CSS das miniaturas do painel) ──
+
+test('sem animacao, o texto fica cheio o tempo todo', () => {
+  for (const u of [0, 0.1, 1, 2.9]) {
+    const e = estadoAnim('nenhuma', u, 3);
+    assert.equal(e.opacidade, 1);
+    assert.equal(e.escala, 1);
+  }
+});
+
+test('fade: entra do zero, fica cheio no meio e sai no fim', () => {
+  const ini = estadoAnim('fade', 0, 3);
+  const meio = estadoAnim('fade', 1.5, 3);
+  const fim = estadoAnim('fade', 3, 3);
+  assert.equal(ini.opacidade, 0);
+  assert.equal(meio.opacidade, 1);
+  assert.equal(fim.opacidade, 0);
+});
+
+test('pop: comeca menor, passa de 1 (o salto) e assenta em 1', () => {
+  const ini = estadoAnim('pop', 0, 3);
+  const d = duracaoAnim(3);
+  const salto = estadoAnim('pop', d * 0.6, 3);
+  const parado = estadoAnim('pop', 1.5, 3);
+  assert.ok(ini.escala < 1, 'entra menor');
+  assert.ok(salto.escala > 1, 'passa de 1 no meio da entrada');
+  assert.equal(parado.escala, 1, 'e assenta');
+});
+
+test('subir: entra deslocado e assenta no lugar', () => {
+  assert.ok(estadoAnim('subir', 0, 3).deslocY > 0);
+  assert.equal(estadoAnim('subir', 2, 3).deslocY, 0);
+});
+
+test('a animacao nunca come mais que um quarto de um bloco curto', () => {
+  assert.ok(duracaoAnim(0.4) <= 0.4 / 4 + 1e-9, 'legenda de palavra nao fica so animando');
+  assert.equal(duracaoAnim(10), 0.35, 'e tem teto em blocos longos');
+});
+
+test('animacao invalida cai no padrao (nao quebra projeto antigo)', () => {
+  assert.equal(animValida('inexistente'), 'nenhuma');
+  assert.equal(animValida(undefined), 'nenhuma');
+  assert.equal(animValida('pop'), 'pop');
+});
+
+test('as expressoes de ffmpeg saem so pra quem anima', () => {
+  assert.equal(exprFfmpeg('nenhuma', 0, 3).alpha, null, 'sem animacao = filtro limpo');
+  assert.ok(exprFfmpeg('fade', 0, 3).alpha.includes('min('));
+  assert.equal(exprFfmpeg('fade', 0, 3).escala, null, 'fade nao mexe no tamanho');
+  assert.ok(exprFfmpeg('pop', 0, 3).escala.includes('if('), 'pop anima o tamanho');
+  assert.ok(exprFfmpeg('subir', 0, 3).deslocY.includes('1-'), 'subir anima a posicao');
+});
+
+test('as virgulas das expressoes vao ESCAPADAS (senao viram outro filtro)', () => {
+  const e = exprFfmpeg('pop', 0, 3);
+  // toda virgula dentro da expressao precisa de \ — sem isso o ffmpeg entende
+  // como separador de filtro e o comando inteiro quebra
+  for (const s of [e.alpha, e.escala]) {
+    const cruas = (s.match(/(^|[^\\]),/g) || []).length;
+    assert.equal(cruas, 0, 'virgula sem escape em: ' + s);
+  }
+});
+
+test('o payload leva a animacao escolhida (e omite quando nao ha)', () => {
+  const a = storeComTexto('oi', { anim: 'pop' });
+  assert.equal(exportPayload(a.getState()).texts[0].anim, 'pop');
+  const b = storeComTexto('oi');
+  assert.equal(exportPayload(b.getState()).texts[0].anim, undefined);
 });
 
 test('texto curto e centralizado atravessa o payload sem mexer', () => {

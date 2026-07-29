@@ -6,6 +6,7 @@
 import * as act from '../core/actions.js';
 import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
+import { ANIMACOES } from '../core/text-anim.js';
 import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
@@ -1102,6 +1103,7 @@ export function mountEditor(root, store, opts = {}) {
     if (editingTextId === txt.id) return; // nao sobrescreve enquanto digita
     editingTextId = txt.id;
     $('#beTextContent').value = txt.content;
+    if ($('#beTextAnim')) $('#beTextAnim').value = txt.anim || 'nenhuma';
     $('#beTextFont').value = txt.font;
     $('#beTextSize').value = txt.size;
     $('#beTextColor').value = txt.color;
@@ -1163,6 +1165,8 @@ export function mountEditor(root, store, opts = {}) {
   $('#beTextColor').addEventListener('input', (e) => applyTextStyle({ color: e.target.value }));
   $('#beTextStroke').addEventListener('input', (e) => applyTextStyle({ stroke: e.target.value }));
   $('#beTextPos').addEventListener('change', (e) => applyTextStyle({ y_pct: parseFloat(e.target.value) }));
+  // animação de entrada/saída: estilo (com "aplicar a todas", muda a legenda inteira)
+  $('#beTextAnim').addEventListener('change', (e) => applyTextStyle({ anim: e.target.value }));
   // Caixa (TT/tt/Tt): transforma o conteúdo (respeita "aplicar a todas")
   const caseFns = {
     upper: (s) => s.toUpperCase(),
@@ -2280,6 +2284,11 @@ function buildTemplate() {
               <button type="button" data-case="title" title="Primeira Maiúscula">Tt</button>
             </span>
           </label>
+        </div>
+        <div class="be-panel-row">
+          <label>Animação <select id="beTextAnim" title="Entrada e saída — vale no preview E no vídeo exportado">
+            ${ANIMACOES.map(a => `<option value="${a.id}" title="${a.dica}">${a.nome}</option>`).join('')}
+          </select></label>
         </div>
         <div class="be-panel-row">
           <label>Posição <select id="beTextPos">

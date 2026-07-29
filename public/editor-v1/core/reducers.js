@@ -13,6 +13,7 @@ import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
 import { laneDestino, repelirStart, reordenarLanes, laneKind, laneDestinoAudio, repelirStartAudio } from './lanes.js';
+import { animValida } from './text-anim.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -566,6 +567,7 @@ export function reduce(state, action) {
       // box: hex ativa a tarja; null (explícito) remove; inválido = ignora
       if (patch.box !== undefined && patch.box !== null && !/^#[0-9a-fA-F]{6}$/.test(patch.box)) delete patch.box;
       if (patch.stroke !== undefined && patch.stroke !== null && !/^#[0-9a-fA-F]{6}$/.test(patch.stroke)) delete patch.stroke;
+      if (patch.anim !== undefined) patch.anim = animValida(patch.anim);
       if (patch.content != null) patch.content = String(patch.content).slice(0, 200);
       if (patch.x_pct != null) patch.x_pct = clamp01(patch.x_pct);
       if (patch.y_pct != null) patch.y_pct = clamp01(patch.y_pct);
@@ -1503,6 +1505,7 @@ function buildText(p, id) {
     start_sec: Math.max(0, p.start_sec ?? 0),
     end_sec: Math.max(0, p.end_sec ?? 3),
     caption: p.caption === true,
+    anim: animValida(p.anim),        // entrada/saida (preview E render)
     lane: clampLane(p.lane, TEXT_DEFAULT_LANE),
     active: true,
   };

@@ -8,6 +8,7 @@ import { TEXT_SIZE_PCT } from '../core/schema.js';
 import * as act from '../core/actions.js';
 import { textsAt } from '../core/selectors.js';
 import { layoutDoTexto, familiaDaFonte } from '../core/text-layout.js';
+import { estadoAnim } from '../core/text-anim.js';
 
 export function createOverlay(container, store, player, onEditRequest) {
   let els = new Map(); // textId -> div
@@ -87,6 +88,14 @@ export function createOverlay(container, store, player, onEditRequest) {
         el.style.webkitTextStroke = strokeW + 'px ' + (txt.stroke || '#000000');
         el.style.paintOrder = 'stroke fill';
       }
+      // ── ANIMACAO de entrada/saida ──
+      // Calculada do RELOGIO (nao com @keyframes do CSS): assim ela obedece o
+      // scrub, o pause e a velocidade — e usa a mesma conta que vira expressao
+      // de ffmpeg no arquivo final.
+      const est = estadoAnim(txt.anim, t - txt.start_sec, txt.end_sec - txt.start_sec);
+      el.style.opacity = String(est.opacidade);
+      const desloc = est.deslocY ? (est.deslocY * fsPx * 1.12) : 0;
+      el.style.transform = `translate(-50%, -50%) translateY(${desloc.toFixed(2)}px) scale(${est.escala.toFixed(4)})`;
       // z compartilhado com as camadas de video (pip): lane maior = na frente.
       // Texto em lane menor que um overlay fica ATRAS do video dele (CapCut).
       el.style.zIndex = String(10 + (txt.lane || 4));

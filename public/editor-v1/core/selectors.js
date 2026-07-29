@@ -366,6 +366,7 @@ export function exportPayload(state) {
       font: t.font,
       size: t.size,
       color: t.color,
+      ...(t.anim && t.anim !== 'nenhuma' ? { anim: t.anim } : {}), // entrada/saida
       ...(t.box ? { box: t.box } : {}), // tarja colorida atrás (estilo CapCut)
       ...(t.stroke ? { stroke: t.stroke } : {}), // traçado/borda da letra
       x_pct: round4(lay.xPct),

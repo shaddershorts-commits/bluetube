@@ -2036,6 +2036,30 @@ function fontFile(fontName) {
 function sizePct(size) {
   return ({ small: 0.04, medium: 0.06, large: 0.09, xlarge: 0.13 })[size] || 0.06;
 }
+// ── ANIMACAO DO TEXTO ────────────────────────────────────────────────────────
+// Porte fiel de public/editor-v1/core/text-anim.js (exprFfmpeg) — LA e a fonte
+// da verdade; este arquivo roda em outro processo (CommonJS no Railway) e nao
+// consegue importar o modulo ES. Mudou la, muda aqui: os numeros (0.35 de teto,
+// 25% do bloco, overshoot 1.08, 0.7 de deslocamento) tem que bater, senao o
+// arquivo exportado anima diferente do que o usuario viu na tela.
+function animExpr(anim, startSec, endSec) {
+  const vazio = { alpha: null, escala: null, deslocY: null };
+  const ids = ['fade', 'pop', 'subir'];
+  if (!ids.includes(anim)) return vazio;
+  const dur = Math.max(0, (endSec || 0) - (startSec || 0));
+  const d = Math.min(0.35, Math.max(0.06, dur * 0.25));
+  const S = Number(startSec || 0).toFixed(3), E = Number(endSec || 0).toFixed(3), D = d.toFixed(3);
+  const ent = `min(1\\,max(0\\,(t-${S})/${D}))`;
+  const sai = `min(1\\,max(0\\,(${E}-t)/${D}))`;
+  const alpha = `min(${ent}\\,${sai})`;
+  if (anim === 'fade') return { alpha, escala: null, deslocY: null };
+  if (anim === 'subir') return { alpha, escala: null, deslocY: `(1-${ent})*0.7` };
+  const escala =
+    `if(gte(${ent}\\,1)\\,1\\,` +
+    `if(lt(${ent}\\,0.6)\\,0.6+(${ent}/0.6)*0.480\\,` +
+    `1.08-((${ent}-0.6)/0.4)*0.080))`;
+  return { alpha, escala, deslocY: null };
+}
 function hexToFfmpeg(hex) {
   // FFmpeg cor: 0xRRGGBB
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '#ffffff');
@@ -2389,15 +2413,24 @@ async function processEditV0(jobId, p) {
         const bw = hasBox ? 0 : Math.max(2, Math.round(fs_px * 0.06));
         // traçado/borda da letra: cor escolhível (padrão preto). box tira o traçado.
         const strokeCol = /^#[0-9a-fA-F]{6}$/.test(t.stroke || '') ? hexToFfmpeg(t.stroke) : '0x000000';
+        // ── ANIMACAO de entrada/saida (2026-07-29) ────────────────────────
+        // Ate agora capfade/cappop so existiam como CSS das miniaturas do
+        // painel: no arquivo a legenda aparecia de estalo. O drawtext aceita
+        // EXPRESSAO com `t` em alpha e fontsize (verificado no proprio ffmpeg),
+        // entao a mesma conta do preview vira filtro aqui.
+        const anim = animExpr(t.anim, t.start_sec, t.end_sec);
+        const alphaPart = anim.alpha ? `:alpha='${anim.alpha}'` : '';
+        const fsExpr = anim.escala ? `'(${fs_px})*(${anim.escala})'` : String(fs_px);
         // uma passada de drawtext POR LINHA, empilhadas em volta do centro
         // (mesma entrelinha 1.12 do preview)
         linhas.forEach((linha, iL) => {
           const desloc = -alturaBloco / 2 + iL * alturaLinha + alturaLinha / 2;
           const sinal = desloc >= 0 ? '+' : '-';
-          const y_px = `(h*${t.y_pct.toFixed(4)}${sinal}${Math.abs(desloc).toFixed(2)}-text_h/2)`;
+          const subir = anim.deslocY ? `+(${anim.deslocY})*${alturaLinha.toFixed(2)}` : '';
+          const y_px = `(h*${t.y_pct.toFixed(4)}${sinal}${Math.abs(desloc).toFixed(2)}${subir}-text_h/2)`;
           const alvo = iL === linhas.length - 1 ? nextL : `${nextL}l${iL}`;
           const origem = iL === 0 ? vLabel : `${nextL}l${iL - 1}`;
-          fc.push(`[${origem}]drawtext=fontfile=${fontFile(t.font)}:text='${escapeDrawText(linha)}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${alvo}]`);
+          fc.push(`[${origem}]drawtext=fontfile=${fontFile(t.font)}:text='${escapeDrawText(linha)}':fontsize=${fsExpr}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}${alphaPart}:enable='${enable}'[${alvo}]`);
         });
       }
       vLabel = nextL;
