@@ -669,3 +669,50 @@ body {
 @media (max-width: 860px) {
   .be-gutter-v, .be-gutter-h { display: none; }
 }
+
+/* ── ESTADO VAZIO DENTRO DO PALCO (2026-07-29) ──────────────────────────────
+   Antes, projeto sem mídia abria uma tela de importação em cima de tudo e o
+   usuário não via o editor. Agora o convite vive dentro do preview e o resto
+   da ferramenta fica visível e utilizável em volta. */
+.be-vazio {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+  background: rgba(2, 8, 23, .72); backdrop-filter: blur(2px);
+  border: 1.5px dashed rgba(0, 170, 255, .28); border-radius: 10px;
+  text-align: center; padding: 18px; z-index: 5;
+}
+.be-vazio-ico { font-size: 40px; opacity: .9 }
+.be-vazio-tit { font-size: 15px; font-weight: 700; color: #eaf3ff }
+.be-vazio-sub { font-size: 12.5px; color: #8299bd; line-height: 1.5; max-width: 260px }
+.be-vazio-btn {
+  margin-top: 4px; padding: 9px 18px; border-radius: 9px; cursor: pointer;
+  background: var(--neon); color: #04121f; border: none;
+  font-size: 13px; font-weight: 700;
+}
+.be-vazio-btn:hover { filter: brightness(1.08) }
+.be-vazio-dim { font-family: var(--mono, monospace); font-size: 10.5px; color: #5d7290 }
+
+/* ── MARCADOR DA MÁSCARA NO PLAYER (2026-07-29) ─────────────────────────────
+   Antes a máscara só tinha sliders: o usuário ajustava no escuro. Agora a
+   forma aparece por cima do vídeo e é o próprio controle. */
+.be-maskui { position: absolute; inset: 0; z-index: 9; pointer-events: none }
+.be-mask-shape {
+  position: absolute; cursor: move; pointer-events: auto;
+  border: 1.5px solid rgba(0, 170, 255, .95);
+  box-shadow: 0 0 0 1px rgba(2, 8, 23, .55), 0 0 14px rgba(0, 170, 255, .3);
+  background: rgba(0, 170, 255, .05);
+}
+.be-mask-h {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--neon); pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+.be-mask-h[data-parte="nw"] { left: -7px; top: -7px; cursor: nwse-resize }
+.be-mask-h[data-parte="ne"] { right: -7px; top: -7px; cursor: nesw-resize }
+.be-mask-h[data-parte="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize }
+.be-mask-h[data-parte="se"] { right: -7px; bottom: -7px; cursor: nwse-resize }
+/* no círculo os cantos ficam sobre a borda da forma, não do quadrado */
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="nw"] { left: 8%; top: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="ne"] { right: 8%; top: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="sw"] { left: 8%; bottom: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="se"] { right: 8%; bottom: 8% }

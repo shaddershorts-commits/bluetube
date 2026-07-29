@@ -62,6 +62,43 @@ export function reduce(state, action) {
       });
     }
 
+    case A.REMOVE_PRIMARY: {
+      // Excluir o vídeo PRINCIPAL da biblioteca (2026-07-29). Antes ele não
+      // tinha botão de excluir — quem importava o arquivo errado primeiro
+      // ficava preso com ele pro resto do projeto.
+      //
+      // Se existir take no pool, o primeiro é PROMOVIDO a principal: os clips
+      // dele passam a resolver por `state.video` (media_id null, ver
+      // mediaUrlFor), então a timeline continua tocando. Sem take, o projeto
+      // volta a ficar vazio — o que agora é um estado válido, porque o editor
+      // abre sem mídia nenhuma.
+      if (!state.video) return state;
+      const pool = state.media || [];
+      const promovido = pool[0] || null;
+      // clips do principal (sem media_id) saem junto com ele
+      let clips = state.clips.filter((c) => c.media_id != null);
+      let media = pool;
+      let video = null;
+      if (promovido) {
+        video = {
+          url: promovido.url, filename: promovido.filename, duration: promovido.duration,
+          width: promovido.width, height: promovido.height,
+        };
+        media = pool.filter((m) => m.id !== promovido.id);
+        clips = clips.map((c) => (c.media_id === promovido.id ? { ...c, media_id: null } : c));
+      }
+      // trilha destacada do principal (kind 'video') não faz mais sentido
+      const audio_clips = (state.audio_clips || []).filter((a) => a.kind !== 'video');
+      const aindaSel = clips.some((c) => c.id === state.selected_clip_id);
+      return touch({
+        ...state,
+        video, media, clips, audio_clips,
+        audio_detached: false,
+        video_audio_removed: false,
+        selected_clip_id: aindaSel ? state.selected_clip_id : null,
+      });
+    }
+
     case A.REMOVE_MEDIA: {
       // exclui um take da biblioteca: tira do pool E remove todos os clips que
       // apontam pra ele (o video principal — sem media_id — nunca é afetado).

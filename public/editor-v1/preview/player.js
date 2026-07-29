@@ -373,6 +373,16 @@ export function createPlayer(videoEl, opts, store) {
     getDuration: () => playableDuration(store.getState()),
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
     getDisplayEl: () => disp(),           // shell aplica transform no elemento ativo
+    // Reaplica o mudo no elemento QUE ESTÁ EM EXIBIÇÃO. O player é o único dono
+    // dessa decisão (ele conhece o segmento sob o playhead, o mudo por cena e
+    // qual dos dois elementos do double-buffer está visível). A shell chama
+    // isto quando o estado muda com o vídeo pausado — aí não há tick pra
+    // reaplicar sozinho.
+    refreshMute() {
+      const state = store.getState();
+      disp().muted = vidMuted(state, segmentAt(state, virtualTime));
+      disp().volume = Math.min(1, state.volumes?.video ?? 1);
+    },
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     destroy() {
       pause();

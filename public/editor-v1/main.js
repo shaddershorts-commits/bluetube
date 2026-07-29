@@ -47,7 +47,13 @@ async function boot() {
 }
 
 // tela inicial ↔ editor
+// Guarda o editor montado: trocar de tela sem desmontar deixava o autosave
+// assinado escrevendo num DOM que já foi apagado.
+let editorAtivo = null;
+
 function showHome() {
+  try { editorAtivo?.destroy(); } catch (e) {}
+  editorAtivo = null;
   root.innerHTML = '';
   mountHome(root, { onOpen: enterEditor });
 }
@@ -64,9 +70,10 @@ async function enterEditor(projectId) {
       console.warn('[main] load-project falhou:', e.message);
     }
   }
+  try { editorAtivo?.destroy(); } catch (e) {}
   root.innerHTML = '';
   // onExit volta pra tela inicial (autosave já persistiu o projeto)
-  mountEditor(root, store, { onExit: showHome });
+  editorAtivo = mountEditor(root, store, { onExit: showHome });
 }
 
 boot().catch(e => {

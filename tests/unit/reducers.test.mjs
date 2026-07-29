@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
+import { mediaUrlFor, effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
 
 function storeWithVideo(duration = 60) {
   const store = createStore();
@@ -997,4 +997,73 @@ test('áudio dentro do composto continua editável (presente + com id)', () => {
   assert.equal(comp.audio_clips.length, 1);                    // áudio foi pro composto
   assert.ok(comp.audio_clips[0].id != null);                   // tem id (selecionável)
   assert.equal(store.getState().audio_clips.length, 0);        // saiu da faixa solta
+});
+
+// ── EXCLUIR O VÍDEO PRINCIPAL (2026-07-29) ─────────────────────────────────
+// Antes o principal era o único item da biblioteca sem botão de excluir: quem
+// importava o arquivo errado primeiro ficava preso com ele. Aqui garantimos
+// que dá pra tirar E que a timeline não fica apontando pro vazio.
+
+test('REMOVE_PRIMARY sem takes: projeto volta a ficar vazio', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.removePrimary());
+  const s = store.getState();
+  assert.equal(s.video, null);
+  assert.equal(s.clips.length, 0, 'clips do principal saem junto');
+});
+
+test('REMOVE_PRIMARY com take: o take VIRA o principal e continua tocando', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.addMediaClip({
+    url: 'https://x/take.mp4', filename: 'take.mp4', duration: 30, width: 1080, height: 1920,
+  }));
+  const antes = store.getState();
+  assert.equal(antes.media.length, 1);
+  assert.equal(antes.clips.length, 2, 'principal + take na timeline');
+
+  store.dispatch(act.removePrimary());
+  const s = store.getState();
+  assert.equal(s.video.url, 'https://x/take.mp4', 'take promovido a principal');
+  assert.equal(s.media.length, 0, 'e sai do pool (virou o principal)');
+  assert.equal(s.clips.length, 1, 'sobra o clip do take');
+  assert.equal(s.clips[0].media_id, null, 'clip passa a resolver pelo principal');
+  // o que importa de verdade: a fonte do clip resolve pra uma URL válida
+  assert.equal(mediaUrlFor(s, s.clips[0]), 'https://x/take.mp4');
+});
+
+test('REMOVE_PRIMARY leva junto a trilha destacada do principal', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.detachAudio());
+  assert.ok(store.getState().audio_clips.some(a => a.kind === 'video'), 'destacou');
+  store.dispatch(act.removePrimary());
+  const s = store.getState();
+  assert.equal(s.audio_clips.filter(a => a.kind === 'video').length, 0,
+    'áudio do vídeo que não existe mais nao pode sobrar na timeline');
+  assert.equal(s.audio_detached, false);
+});
+
+test('REMOVE_PRIMARY é desfazível (Ctrl+Z devolve o vídeo)', () => {
+  const store = storeWithVideo(60);
+  store.dispatch(act.removePrimary());
+  assert.equal(store.getState().video, null);
+  store.undo();
+  assert.equal(store.getState().video.url, 'https://x/video.mp4');
+  assert.equal(store.getState().clips.length, 1);
+});
+
+test('REMOVE_PRIMARY em projeto vazio nao quebra', () => {
+  const store = createStore();
+  store.dispatch(act.removePrimary());
+  assert.equal(store.getState().video, null);
+});
+
+test('audio importado entra na timeline mesmo sem video no projeto', () => {
+  // o user relatou "audio nao aparece em Midias": em projeto vazio a tela de
+  // importacao cobria o editor. O estado sempre aceitou — provamos aqui.
+  const store = createStore();
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.mp3', filename: 'a.mp3', duration: 12 }));
+  const s = store.getState();
+  assert.equal(s.audio_clips.length, 1);
+  assert.equal(s.audio_clips[0].url, 'https://x/a.mp3');
+  assert.equal(s.audio_clips[0].kind, 'extra');
 });

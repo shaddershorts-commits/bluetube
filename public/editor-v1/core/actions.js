@@ -65,6 +65,7 @@ export const A = {
   ADD_MEDIA_CLIP: 'ADD_MEDIA_CLIP',
   // remove um take da biblioteca (pool) + todos os clips que o usam
   REMOVE_MEDIA: 'REMOVE_MEDIA',
+  REMOVE_PRIMARY: 'REMOVE_PRIMARY',
   // imagem (PNG/sticker com transparência) como camada sobre o vídeo
   ADD_IMAGE_OVERLAY: 'ADD_IMAGE_OVERLAY',
   // transform da cena (aba Vídeo > Básico: escala + opacidade)
@@ -129,6 +130,7 @@ export const UNDOABLE = {
   [A.SET_CAPTIONS]: U, // geracao de legendas inteira = 1 undo step
   [A.ADD_MEDIA_CLIP]: U,
   [A.REMOVE_MEDIA]: U,
+  [A.REMOVE_PRIMARY]: U,
   [A.ADD_IMAGE_OVERLAY]: U,
   [A.SET_CLIP_TRANSFORM]: U,
   [A.SET_SPEED]: U,
@@ -203,6 +205,8 @@ export const addMediaClip = (media) => ({ type: A.ADD_MEDIA_CLIP, media });
 // reusa uma midia JA no pool (painel Midia: "+ adicionar de novo")
 export const addClipFromMedia = (mediaId) => ({ type: A.ADD_MEDIA_CLIP, mediaId });
 export const removeMedia = (mediaId) => ({ type: A.REMOVE_MEDIA, mediaId });
+// exclui o video principal; promove o 1o take a principal se houver
+export const removePrimary = () => ({ type: A.REMOVE_PRIMARY });
 // imagem (PNG com transparência) vira camada no playhead. media = {url, width, height}
 export const addImageOverlay = (media, atT) => ({ type: A.ADD_IMAGE_OVERLAY, media, atT });
 // patch = { scale?, opacity? } — aba Vídeo > Básico

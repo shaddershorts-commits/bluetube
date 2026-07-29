@@ -10,6 +10,7 @@ import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createPip } from '../preview/pip.js';
+import { createMaskUI } from '../preview/mask-ui.js';
 import { createTimelineController } from './timeline-controller.js';
 import { attachShortcuts, splitSelectedAt } from './shortcuts.js';
 import { createThumbnails } from '../timeline/thumbnails.js';
@@ -44,9 +45,16 @@ export function mountEditor(root, store, opts = {}) {
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
+  // marcador da máscara: arrastar/redimensionar direto no vídeo
+  const maskUI = createMaskUI($('#beStage'), store);
   const exporter = createExporter(store);
   const autosave = createAutosave(store, (s, detail) => {
+    // O save é assíncrono e pode terminar DEPOIS do editor ser desmontado
+    // (voltar pra home, fechar a aba). Sem esta guarda o callback escrevia num
+    // elemento que não existe mais — "Cannot set properties of null" dentro de
+    // uma promise, barulho no console que escondia erro de verdade.
     const el = $('#beSaveStatus');
+    if (!el) return;
     el.textContent = s === 'saving' ? '◌ salvando…' : s === 'saved' ? '✓ salvo' : s === 'error' ? '⚠ ' + (detail || 'erro ao salvar') : '';
     el.className = 'be-save-status ' + s;
   });
@@ -78,8 +86,17 @@ export function mountEditor(root, store, opts = {}) {
   function sync() {
     const state = store.getState();
     const has = !!state.video;
-    $('#beDrop').style.display = has ? 'none' : 'flex';
-    $('#beWorkspace').style.display = has ? 'grid' : 'none';
+    // ENTRA DIRETO NO EDITOR (2026-07-29): antes, projeto sem vídeo abria uma
+    // tela de importação em cima de tudo — o usuário era obrigado a escolher
+    // arquivo ANTES de ver a ferramenta. Agora o editor aparece sempre, e a
+    // importação acontece por dentro (rail 🎞 Mídia, Ctrl+O ou arrastar).
+    // O #beDrop continua existindo escondido: ele guarda o <input type=file>
+    // e a barra de progresso que o fluxo de upload usa.
+    $('#beDrop').style.display = 'none';
+    $('#beWorkspace').style.display = 'grid';
+    // convite discreto no palco enquanto não há mídia nenhuma
+    const vazio = $('#beVazio');
+    if (vazio) vazio.style.display = (has || state.media?.length || state.audio_clips?.length) ? 'none' : 'flex';
     $('#beProjectName').value = state.nome_projeto || '';
     $('#beTimeLabel').textContent = `${formatTime(player.getTime())} / ${formatTime(totalDuration(state))}`;
     $('#bePlayBtn').textContent = player.isPlaying() ? '⏸' : '▶';
@@ -95,7 +112,15 @@ export function mountEditor(root, store, opts = {}) {
     // aplica nos DOIS elementos do double-buffer.
     const fit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
     videoEl.style.objectFit = fit; videoEl2.style.objectFit = fit;
-    videoEl.muted = !!state.audio_detached;
+    // O MUDO É DO PLAYER, NÃO DA SHELL (bug 2026-07-29). Aqui havia
+    // `videoEl.muted = !!state.audio_detached`, e isso rodava a CADA mudança
+    // de estado — ou seja, a cada edição. Dois estragos:
+    //   1. ignorava o mudo POR CENA (clip.muted): quem removia o áudio de uma
+    //      cena via o som VOLTAR sozinho no próximo ajuste que fizesse;
+    //   2. escrevia sempre em #beVideo, mas depois de uma troca de take quem
+    //      está em exibição pode ser #beVideo2 — mutava o elemento errado.
+    // O player conhece o segmento sob o playhead e qual elemento está visível.
+    player.refreshMute();
     // video source: usa preview local (objectURL) quando disponivel —
     // instantaneo e imune a atraso de propagacao do CDN
     if (has) {
@@ -156,22 +181,45 @@ export function mountEditor(root, store, opts = {}) {
     }
   }
 
+  // Proporção real do quadro. Tudo da máscara é desenhado NESSE espaço — sem
+  // isso o desenho é esticado e nada fecha (ver comentário em maskCssFor).
+  function frameAR() {
+    const st = store.getState();
+    const w = st.video?.width || 1080, h = st.video?.height || 1920;
+    return (w > 0 && h > 0) ? w / h : 9 / 16;
+  }
+
   function maskCssFor(m) {
     if (!m) return '';
-    const x = (m.x_pct * 100).toFixed(1), y = (m.y_pct * 100).toFixed(1);
-    const hw = (m.w_pct * 50).toFixed(1), hh = (m.h_pct * 50).toFixed(1);
+    // ── ESPAÇO DE COORDENADAS COM A PROPORÇÃO DO QUADRO (fix 2026-07-29) ────
+    // Antes o SVG usava viewBox 0 0 100 100 com preserveAspectRatio="none",
+    // esticado num quadro 9:16. Consequência: TUDO deformava — o círculo saía
+    // oval e o canto arredondado virava elipse ("arredondou o vídeo todo").
+    // Agora o viewBox tem a mesma proporção do vídeo, então 1 unidade vale o
+    // mesmo na horizontal e na vertical e o desenho sai do jeito que se vê.
+    const ar = frameAR();
+    const W = 1000, H = Math.round(W / ar);           // ex.: 1000 x 1778 (9:16)
+    const cx = m.x_pct * W, cy = m.y_pct * H;
+    const std = ((m.feather || 0) / 100) * (Math.min(W, H) * 0.12);
+    const blurDef = std > 0
+      ? `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${std.toFixed(1)}"/></filter>`
+      : '';
+    const filtro = std > 0 ? ' filter="url(#f)"' : '';
+
+    let forma;
     if (m.shape === 'circle') {
-      // borda dura em (100-feather)% do raio → feather = mescla suave
-      const solid = Math.max(0, 100 - (m.feather || 0));
-      return `radial-gradient(ellipse ${hw}% ${hh}% at ${x}% ${y}%, #000 ${solid}%, transparent 100%)`;
+      // CÍRCULO É CÍRCULO: um raio só, em unidades reais. A altura deixa de
+      // deformar a forma (o painel esconde o controle de altura no círculo).
+      const r = (m.w_pct * W) / 2;
+      forma = `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="white"${filtro}/>`;
+    } else {
+      const rw = m.w_pct * W, rh = m.h_pct * H;
+      // raio do canto em unidades reais → canto redondo de verdade, e no
+      // máximo vira um "stadium", nunca uma elipse deformada
+      const rx = ((m.radius || 0) / 100) * (Math.min(rw, rh) / 2);
+      forma = `<rect x="${(cx - rw / 2).toFixed(1)}" y="${(cy - rh / 2).toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${rx.toFixed(1)}" fill="white"${filtro}/>`;
     }
-    // retângulo: SVG viewBox 0-100 esticado no quadro; rx = cantos; blur = suavizar
-    const rw = m.w_pct * 100, rh = m.h_pct * 100;
-    const rx = ((m.radius || 0) / 100) * Math.min(rw, rh) / 2;
-    const std = ((m.feather || 0) / 100) * 12;
-    const blurDef = std > 0 ? `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${std.toFixed(2)}"/></filter>` : '';
-    const rect = `<rect x="${(m.x_pct * 100 - rw / 2).toFixed(2)}" y="${(m.y_pct * 100 - rh / 2).toFixed(2)}" width="${rw.toFixed(2)}" height="${rh.toFixed(2)}" rx="${rx.toFixed(2)}" fill="white"${std > 0 ? ' filter="url(#f)"' : ''}/>`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${blurDef}${rect}</svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${blurDef}${forma}</svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
@@ -235,11 +283,8 @@ export function mountEditor(root, store, opts = {}) {
           $('#beClipOpacity').value = op; $('#beClipOpacityVal').textContent = op + '%';
           const sp = clip.speed ?? 1;
           $('#beClipSpeed').value = speedToSlider(sp); $('#beClipSpeedVal').textContent = fmtSpeed(sp);
-          // máscara: refila os controles ao trocar de cena
+          // máscara: refila os VALORES dos sliders ao trocar de cena
           const m = clip.mask;
-          $('#beMaskShapes').querySelectorAll('button').forEach(b =>
-            b.classList.toggle('active', (m ? m.shape : 'none') === b.dataset.mask));
-          $('#beMaskCtrls').style.display = m ? 'flex' : 'none';
           if (m) {
             $('#beMaskX').value = Math.round(m.x_pct * 100);
             $('#beMaskY').value = Math.round(m.y_pct * 100);
@@ -247,8 +292,24 @@ export function mountEditor(root, store, opts = {}) {
             $('#beMaskH').value = Math.round(m.h_pct * 100);
             $('#beMaskFeather').value = Math.round(m.feather);
             $('#beMaskRadius').value = Math.round(m.radius);
-            $('#beMaskRadiusRow').style.display = m.shape === 'rect' ? '' : 'none';
           }
+        }
+        // ── VISIBILIDADE QUE DEPENDE DA FORMA — SEMPRE (fix 2026-07-29) ─────
+        // Isto vivia dentro do `if (filledClipId !== clip.id)`, que só roda ao
+        // TROCAR de cena. Resultado: trocar círculo↔retângulo na mesma cena não
+        // atualizava nada — a linha do raio já sofria disso antes da altura.
+        // Alternar visibilidade não corre o risco de atropelar slider em
+        // arrasto, então não precisa estar sob aquela trava.
+        {
+          const mk = clip.mask;
+          $('#beMaskShapes').querySelectorAll('button').forEach(b =>
+            b.classList.toggle('active', (mk ? mk.shape : 'none') === b.dataset.mask));
+          $('#beMaskCtrls').style.display = mk ? 'flex' : 'none';
+          // círculo tem UM raio: altura não faz sentido e só confundia
+          const wrapH = root.querySelector('[data-mask-campo="h"]');
+          if (wrapH) wrapH.style.display = (mk && mk.shape === 'circle') ? 'none' : '';
+          const rowR = $('#beMaskRadiusRow');
+          if (rowR) rowR.style.display = (mk && mk.shape === 'rect') ? '' : 'none';
         }
         // 🔇 mudo por cena: label reflete o estado sempre (toggle barato)
         $('#beClipMute').textContent = clip.muted ? '🔊 Restaurar áudio desta cena' : '🔇 Remover áudio desta cena';
@@ -416,6 +477,7 @@ export function mountEditor(root, store, opts = {}) {
   // "Mídia" e "＋ Importar" abrem o seletor de arquivos
   $('#beAddMedia').addEventListener('click', () => fileInput.click());
   $('#beMediaImport')?.addEventListener('click', () => fileInput.click());
+  $('#beVazioBtn')?.addEventListener('click', () => fileInput.click());
 
   // ── mini-thumbnails do painel de mídia (estilo CapCut) ──
   // cache url→dataURL do 1º frame do vídeo. Imagem usa a própria url. Falha de
@@ -517,14 +579,28 @@ export function mountEditor(root, store, opts = {}) {
         add.addEventListener('click', () => { store.dispatch(act.addClipFromMedia(r.mediaId)); toast('Take adicionado ✓'); });
         actions.appendChild(add);
       }
-      // 🗑 excluir (não no vídeo principal — é a base do projeto)
-      if (!r.base) {
+      // 🗑 excluir — AGORA TAMBÉM o vídeo principal (2026-07-29). Antes ele
+      // era o único sem botão: quem importava o arquivo errado primeiro ficava
+      // preso com ele pro resto do projeto.
+      {
         const del = document.createElement('button');
         del.className = 'be-tool-btn be-media-btn be-media-del';
         del.textContent = '🗑';
-        del.title = 'Excluir da biblioteca e da timeline';
+        del.title = r.base
+          ? 'Excluir o vídeo principal do projeto'
+          : 'Excluir da biblioteca e da timeline';
         del.addEventListener('click', () => {
           const st = store.getState();
+          if (r.base) {
+            const temTake = (st.media || []).length > 0;
+            const aviso = temTake
+              ? 'Excluir o vídeo principal? O próximo take assume o lugar dele.'
+              : 'Excluir o vídeo principal? O projeto fica vazio (dá pra desfazer com Ctrl+Z).';
+            if (!confirm(aviso)) return;
+            store.dispatch(act.removePrimary());
+            toast(temTake ? 'Principal trocado ✓' : 'Projeto esvaziado ✓');
+            return;
+          }
           if (r.mediaId != null) {
             store.dispatch(act.removeMedia(r.mediaId));
           } else if (r.kind === 'audio') {
@@ -582,6 +658,9 @@ export function mountEditor(root, store, opts = {}) {
   // ← voltar pra tela inicial (projetos): garante o salvamento antes de sair
   $('#beBackHome')?.addEventListener('click', () => {
     try { autosave.flush(); } catch {}
+    // desmonta ANTES de trocar de tela: o DOM some logo em seguida e qualquer
+    // assinatura viva passa a escrever no vazio
+    desmontar();
     if (opts.onExit) opts.onExit();
     else location.href = '/blueEditor';
   });
@@ -1436,19 +1515,25 @@ export function mountEditor(root, store, opts = {}) {
 
   sync();
 
-  return {
-    destroy() {
-      detachResizers();
-      detachShortcuts();
-      document.removeEventListener('visibilitychange', flushOnHide);
-      player.destroy(); overlay.destroy(); pip.destroy(); timeline.destroy();
-      autosave.destroy(); exporter.destroy();
-      for (const t of thumbsRegistry.values()) t.destroy();
-      for (const w of videoWaveRegistry.values()) w.destroy();
-      for (const w of waveRegistry.values()) w.destroy();
-      if (localPreview.url) URL.revokeObjectURL(localPreview.url);
-    },
-  };
+  // Desmonte de verdade. Sair pra home NUNCA chamava isto: o autosave seguia
+  // assinado depois do DOM ser apagado. Idempotente porque agora existem dois
+  // caminhos de saída (botão ← e destroy() de fora).
+  let desmontado = false;
+  function desmontar() {
+    if (desmontado) return;
+    desmontado = true;
+    detachResizers();
+    detachShortcuts();
+    document.removeEventListener('visibilitychange', flushOnHide);
+    player.destroy(); overlay.destroy(); pip.destroy(); maskUI.destroy(); timeline.destroy();
+    autosave.destroy(); exporter.destroy();
+    for (const t of thumbsRegistry.values()) t.destroy();
+    for (const w of videoWaveRegistry.values()) w.destroy();
+    for (const w of waveRegistry.values()) w.destroy();
+    if (localPreview.url) URL.revokeObjectURL(localPreview.url);
+  }
+
+  return { destroy: desmontar };
 }
 
 // Track headers agora são DINÂMICOS (syncTrackHeaders lê o layout real)
@@ -1503,6 +1588,17 @@ function buildTemplate() {
         <video id="beVideo2" playsinline preload="auto" muted class="be-buffering"></video>
         <div id="beOverlay"></div>
       </div>
+      <!-- Convite de importação DENTRO do palco (2026-07-29): substitui a
+           antiga tela cheia que barrava a entrada no editor. Some assim que
+           entra qualquer mídia. -->
+      <div id="beVazio" class="be-vazio">
+        <div class="be-vazio-ico">🎬</div>
+        <div class="be-vazio-tit">Seu projeto está vazio</div>
+        <div class="be-vazio-sub">Arraste um arquivo aqui, ou use <b>🎞 Mídia</b> na barra lateral</div>
+        <button id="beVazioBtn" class="be-vazio-btn">Escolher arquivo</button>
+        <div class="be-vazio-dim">vídeo, áudio ou imagem · máx 500MB</div>
+      </div>
+
       <!-- barra de controle no FULLSCREEN (tecla F) -->
       <div id="beFsBar" class="be-fs-bar">
         <button id="beFsPlay" class="be-fs-play">▶</button>
@@ -1645,7 +1741,7 @@ function buildTemplate() {
             <label class="be-slider-label">Posição X <input id="beMaskX" type="range" min="0" max="100" step="1" value="50"/></label>
             <label class="be-slider-label">Posição Y <input id="beMaskY" type="range" min="0" max="100" step="1" value="50"/></label>
             <label class="be-slider-label">Largura <input id="beMaskW" type="range" min="5" max="100" step="1" value="60"/></label>
-            <label class="be-slider-label">Altura <input id="beMaskH" type="range" min="5" max="100" step="1" value="60"/></label>
+            <label class="be-slider-label" data-mask-campo="h">Altura <input id="beMaskH" type="range" min="5" max="100" step="1" value="60"/></label>
             <label class="be-slider-label">Suavizar <input id="beMaskFeather" type="range" min="0" max="100" step="1" value="0"/></label>
             <label class="be-slider-label" id="beMaskRadiusRow">Cantos arredondados <input id="beMaskRadius" type="range" min="0" max="100" step="1" value="0"/></label>
           </div>
