@@ -165,24 +165,49 @@ async function historicoAction(req, res) {
   const MS_HOUR = 3600000;
   const MS_24H = 86400000;
   const agora = Date.now();
-  let desdeMs;
-  if (periodo === '5h')         desdeMs = 5 * MS_HOUR;
-  else if (periodo === '24h')   desdeMs = 1 * MS_24H;
-  else if (periodo === '7d')    desdeMs = 7 * MS_24H;
-  else                          desdeMs = 30 * MS_24H; // 30d | todos
-  const desde = new Date(agora - desdeMs).toISOString();
-  parts.push(`publicado_em=gte.${desde}`);
+
+  // ── FAIXAS, NÃO JANELAS ACUMULADAS (2026-07-29) ──────────────────────────
+  // Antes cada filtro era "publicado nos últimos X" — cumulativo. Resultado:
+  // um vídeo de 3 horas satisfazia TODOS os filtros ao mesmo tempo, e aparecia
+  // no de 24h junto com o de 5h. Como o 5h é exclusivo do Master, a
+  // exclusividade não existia na prática: quem não era Master via o mesmo
+  // vídeo fresco na aba de 24h.
+  //
+  // Agora cada filtro é uma FAIXA fechada, e o vídeo só sai dela depois de uma
+  // FOLGA (some do 5h com 6h de vida, do 24h com 26h, do 7d com 8 dias, do 30d
+  // com 31). A folga existe pra ninguém "cair no vão" na virada da janela.
+  //
+  // Efeito colateral bom: como cada faixa termina depois do nome que carrega,
+  // a regra nova é MAIS permissiva em toda idade — vídeo de 7,5 dias com 600k
+  // era invisível (passava do 7d e não alcançava o piso do 30d) e agora aparece.
+  const FAIXAS = {
+    '5h':  { de: 6 * MS_HOUR,  ate: 0 },
+    '24h': { de: 26 * MS_HOUR, ate: 6 * MS_HOUR },
+    '7d':  { de: 8 * MS_24H,   ate: 26 * MS_HOUR },
+    '30d': { de: 31 * MS_24H,  ate: 8 * MS_24H },
+  };
+  const faixa = FAIXAS[periodo];
+  if (faixa) {
+    parts.push(`publicado_em=gte.${new Date(agora - faixa.de).toISOString()}`);
+    // o mais novo da faixa: o 5h não tem teto (é o topo da escada)
+    if (faixa.ate) parts.push(`publicado_em=lt.${new Date(agora - faixa.ate).toISOString()}`);
+  } else {
+    // 'todos' segue cumulativo de propósito: é a válvula de escape pra ver o
+    // acervo inteiro do mês sem piso de views.
+    parts.push(`publicado_em=gte.${new Date(agora - 31 * MS_24H).toISOString()}`);
+  }
 
   // ── THRESHOLDS DE VIEWS POR JANELA — APLICADO SEMPRE.
   // "Respeitar filtro": cada janela exige views minimas REAIS de viral.
   // Histórico de calibrações:
   //   Original (lançamento):    5h=60k    24h=300k   7d=2M    30d=8M
   //   2026-06-25 (user):        5h=40k    24h=180k   7d=900k  30d=3M
-  //   2026-06-29 (user, atual): 5h=30k    24h=100k   7d=500k  30d=1M
+  //   2026-06-29 (user):        5h=30k    24h=100k   7d=500k  30d=1M
+  //   2026-07-29 (user, atual): 5h=25k    24h=100k   7d=500k  30d=1M
   // Banco legacy abaixo desses thresholds não aparece — comportamento intencional.
   // Cada ajuste pra baixo expõe vídeos já coletados que estavam ocultos
   // (não precisa re-coleta — o banco já tem o conteúdo).
-  if (periodo === '5h')       parts.push('views=gte.30000');
+  if (periodo === '5h')       parts.push('views=gte.25000');
   else if (periodo === '24h') parts.push('views=gte.100000');
   else if (periodo === '7d')  parts.push('views=gte.500000');
   else if (periodo === '30d') parts.push('views=gte.1000000');
@@ -243,6 +268,11 @@ async function historicoAction(req, res) {
     total_paginas,
     tem_mais: offset + limite < total,
     periodo_aplicado: periodo,
-    limite_horas: Math.round(desdeMs / 3600000),
+    // bordas da faixa em horas de idade do vídeo (o mais novo e o mais velho
+    // que este filtro aceita) — antes era um número só, quando a janela ainda
+    // era cumulativa
+    faixa_horas: faixa
+      ? { entra_com: Math.round(faixa.ate / 3600000), sai_com: Math.round(faixa.de / 3600000) }
+      : { entra_com: 0, sai_com: 31 * 24 },
   });
 }
