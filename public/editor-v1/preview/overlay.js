@@ -9,6 +9,7 @@ import * as act from '../core/actions.js';
 import { textsAt } from '../core/selectors.js';
 import { layoutDoTexto, familiaDaFonte } from '../core/text-layout.js';
 import { estadoAnim } from '../core/text-anim.js';
+import { textoEhRTL } from '../core/idioma.js';
 
 export function createOverlay(container, store, player, onEditRequest) {
   let els = new Map(); // textId -> div
@@ -68,6 +69,9 @@ export function createOverlay(container, store, player, onEditRequest) {
       el.style.fontSize = fsPx + 'px';
       el.style.maxWidth = 'none';   // a quebra e nossa, nao do CSS
       el.style.whiteSpace = 'pre';
+      // arabe/hebraico correm da direita pra esquerda — sem isto a legenda
+      // sai com a pontuacao no lado errado
+      el.style.direction = textoEhRTL(txt.content) ? 'rtl' : 'ltr';
       el.style.color = txt.color;
       // traçado/borda da letra: espelha o borderw+bordercolor do drawtext.
       // Cor escolhível (txt.stroke), padrão preto. paint-order deixa o traçado

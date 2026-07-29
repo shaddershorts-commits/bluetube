@@ -7,6 +7,7 @@ import * as act from '../core/actions.js';
 import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
+import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
 import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
@@ -1100,6 +1101,13 @@ export function mountEditor(root, store, opts = {}) {
     const temCaptions = state.texts.some(t => t.caption);
     $('#beTextTabCap').style.display = temCaptions ? '' : 'none';
     if (temCaptions) renderTranscript(state);
+    // MAIÚSCULAS/minúsculas só faz sentido em escrita que tem caixa: em CJK,
+    // árabe, hebraico e tailandês os botões não fariam nada
+    const comCaixa = podeMudarCaixa(txt.content);
+    $('#beTextPanel').querySelectorAll('[data-case]').forEach((b) => {
+      b.disabled = !comCaixa;
+      b.title = comCaixa ? b.title.replace(/ \(.*\)$/, '') : 'Esta escrita não tem maiúscula/minúscula';
+    });
     if (editingTextId === txt.id) return; // nao sobrescreve enquanto digita
     editingTextId = txt.id;
     $('#beTextContent').value = txt.content;
@@ -1498,6 +1506,7 @@ export function mountEditor(root, store, opts = {}) {
   let lastCaptionPhrases = null;
   let lastCaptionPlan = null;   // { url, segments:[{tStart,fileIn,fileOut}] }
   let lastCaptionKey = null;    // url transcrita (invalidar quando a fonte muda)
+  let lastCaptionLang = '';     // idioma detectado pelo Whisper (regras de escrita)
 
   // file-time (dentro do arquivo transcrito) -> tempo VIRTUAL da timeline,
   // via os segmentos do plano. null se a fala caiu num trecho cortado.
@@ -1566,8 +1575,15 @@ export function mountEditor(root, store, opts = {}) {
       if (!lastCaptionWords || lastCaptionKey !== plan.url) {
         toast('Transcrevendo áudio… (pode levar ~1min)');
         const r = await api.autoCaptions(plan.url);
-        lastCaptionPhrases = r.captions || [];
         lastCaptionWords = r.words || [];
+        // IDIOMA: o Whisper devolve qual é, e agora a gente USA. O agrupamento
+        // em frases passou a ser feito aqui (e não no endpoint) justamente
+        // porque depende do idioma — japonês não leva espaço entre palavras,
+        // ideograma ocupa o dobro da linha, e o fim de frase muda de escrita.
+        lastCaptionLang = normalizarIdioma(r.language);
+        lastCaptionPhrases = lastCaptionWords.length
+          ? agruparFrases(lastCaptionWords, lastCaptionLang)
+          : (r.captions || []);
         lastCaptionKey = plan.url;
         if (!lastCaptionPhrases.length && !lastCaptionWords.length) {
           return toast('Nenhuma fala detectada no áudio', true);
