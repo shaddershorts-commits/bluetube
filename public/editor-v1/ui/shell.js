@@ -8,6 +8,8 @@ import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrack
 import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
+import { modeloPorId, estiloDaPalavra } from '../core/caption-styles.js';
+import { createCaptionsPanel } from './captions-panel.js';
 import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
@@ -1550,13 +1552,13 @@ export function mountEditor(root, store, opts = {}) {
 
     // usa o TEMPLATE escolhido na galeria — cor/tarja POR PALAVRA (estilo CapCut)
     const atual = store.getState().texts.find(t => t.caption);
-    const tpl = CAP_TEMPLATES[capChosenPreset] || CAP_TEMPLATES.classico;
+    const tpl = modeloPorId(capChosenPreset);
     const y_pct = atual?.y_pct ?? 0.82;
     // UM dispatch: nao rouba a selecao (painel fica), 1 undo, sem freeze
     // com videos longos (300+ palavras = 300 dispatches na versao antiga)
     store.dispatch(act.setCaptions(caps.map((c, i) => ({
       content: c.text, start_sec: c.start, end_sec: c.end,
-      x_pct: 0.5, y_pct, ...capStyleForIndex(tpl, i),
+      x_pct: 0.5, y_pct, ...estiloDaPalavra(tpl, i),
     }))));
     return caps.length;
   }
@@ -1632,76 +1634,28 @@ export function mountEditor(root, store, opts = {}) {
   //  'highlight'= tarja colorida atrás (box=1 do drawtext)
   // Limitado ao que o render REAL faz (fontes TTF no Railway + cor + tarja) —
   // WYSIWYG honesto: o que se vê no preview é o que exporta.
-  const CAP_TEMPLATES = {
-    classico:    { name: 'Clássico',  font: 'Anton',      size: 'medium', colorMode: 'single', color: '#ffffff' },
-    amarelo:     { name: 'Amarelo',   font: 'Anton',      size: 'medium', colorMode: 'single', color: '#ffd32a' },
-    lima:        { name: 'Lima',      font: 'Bebas Neue', size: 'medium', colorMode: 'single', color: '#a3e635' },
-    impacto:     { name: 'Impacto',   font: 'Bebas Neue', size: 'large',  colorMode: 'single', color: '#ffffff' },
-    pop:         { name: 'Pop',       font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#ffffff', '#ffd32a', '#4ade80', '#ff6b9d', '#38bdf8'] },
-    neon:        { name: 'Neon',      font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#00e5ff', '#a3e635', '#ff4dff'] },
-    fogo:        { name: 'Fogo',      font: 'Anton',      size: 'medium', colorMode: 'rotate', palette: ['#ffd32a', '#ff7a00', '#ff2d55'] },
-    caixaVerde:  { name: 'Verde',     font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#06210f', box: '#22c55e' },
-    caixaRosa:   { name: 'Rosa',      font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#ffffff', box: '#ff2d78' },
-    caixaAmarela:{ name: 'Amarela',   font: 'Anton',      size: 'medium', colorMode: 'highlight', color: '#1a1200', box: '#ffd32a' },
-  };
-  // estilo de UMA palavra (índice i) segundo o template — cor/tarja por palavra
-  function capStyleForIndex(tpl, i) {
-    const base = { font: tpl.font, size: tpl.size };
-    if (tpl.colorMode === 'rotate') {
-      return { ...base, color: tpl.palette[i % tpl.palette.length], box: null };
-    }
-    if (tpl.colorMode === 'highlight') {
-      return { ...base, color: tpl.color, box: tpl.box };
-    }
-    return { ...base, color: tpl.color, box: null };
-  }
-  function buildCapStyleGrid() {
-    const grid = $('#beCapStyleGrid');
-    grid.innerHTML = '';
-    for (const [key, tpl] of Object.entries(CAP_TEMPLATES)) {
-      const card = document.createElement('button');
-      card.className = 'be-cap-style' + (key === capChosenPreset ? ' active' : '');
-      card.dataset.preset = key;
-      card.title = tpl.name;
-      const b = document.createElement('b');
-      b.style.fontFamily = `'${tpl.font}', 'Anton', Impact, sans-serif`;
-      if (tpl.colorMode === 'rotate') {
-        // preview multicolor: cada letra numa cor da paleta
-        [...tpl.name].forEach((ch, i) => {
-          const sp = document.createElement('span');
-          sp.textContent = ch;
-          sp.style.color = tpl.palette[i % tpl.palette.length];
-          b.appendChild(sp);
-        });
-      } else if (tpl.colorMode === 'highlight') {
-        b.textContent = tpl.name;
-        b.style.color = tpl.color;
-        b.style.background = tpl.box;
-        b.style.padding = '1px 6px';
-        b.style.borderRadius = '4px';
-      } else {
-        b.textContent = tpl.name;
-        b.style.color = tpl.color;
-      }
-      card.appendChild(b);
-      card.addEventListener('click', () => selectCapTemplate(key));
-      grid.appendChild(card);
-    }
-  }
+  // Os modelos viraram DADO em core/caption-styles.js (com categoria, busca,
+  // favoritos e a animação de cada um) — o painel novo precisa deles como
+  // catálogo, não como markup montado aqui dentro.
+  // galeria de modelos: categorias na lateral, busca, favoritos e prévia no
+  // hover (mesmo desenho do painel de Transições)
+  const capPanel = createCaptionsPanel($('#bePropsCaptions'), {
+    onEscolher: (id) => selectCapTemplate(id),
+    getEscolhido: () => capChosenPreset,
+  });
   // re-estiliza as legendas EXISTENTES pelo template (por índice = por palavra)
   function applyCapTemplate(tpl) {
     const caps = store.getState().texts.filter(t => t.caption)
       .slice().sort((a, b) => a.start_sec - b.start_sec);
     caps.forEach((t, i) => {
-      store.dispatch({ ...act.updateText(t.id, capStyleForIndex(tpl, i)), gestureId: 'capstyle' });
+      store.dispatch({ ...act.updateText(t.id, estiloDaPalavra(tpl, i)), gestureId: 'capstyle' });
     });
     store.endGesture();
   }
   function selectCapTemplate(key) {
-    capChosenPreset = key;
-    const tpl = CAP_TEMPLATES[key]; if (!tpl) return;
-    $('#beCapStyleGrid').querySelectorAll('.be-cap-style').forEach(c =>
-      c.classList.toggle('active', c.dataset.preset === key));
+    const tpl = modeloPorId(key); if (!tpl) return;
+    capChosenPreset = tpl.id;
+    capPanel.render();
     // reflete nos inputs manuais (tamanho/cor base)
     if ($('#beCapSize')) $('#beCapSize').value = tpl.size;
     if ($('#beCapColor') && tpl.colorMode !== 'rotate') $('#beCapColor').value = tpl.color || '#ffffff';
@@ -1717,7 +1671,6 @@ export function mountEditor(root, store, opts = {}) {
     }
     toast('Estilo aplicado ✓');
   }
-  buildCapStyleGrid();
 
   // estilo GLOBAL das legendas: muda uma vez, aplica em todas (CapCut)
   function applyCapStyle(patchObj) {
@@ -2139,8 +2092,13 @@ function buildTemplate() {
       </div>
       <select id="beCapMode" style="display:none"><option value="frase">frase</option><option value="palavra" selected>palavra</option></select>
 
-      <div class="be-side-sub">Estilo</div>
-      <div class="be-cap-styles" id="beCapStyleGrid"></div>
+      <div class="be-side-sub">Modelo</div>
+      <input id="beCapBusca" class="be-cap-busca" type="search" placeholder="Buscar modelo…" autocomplete="off"/>
+      <div class="be-cap-galeria">
+        <div class="be-cap-cats" id="beCapCats"></div>
+        <div class="be-cap-grade" id="beCapGrade"></div>
+      </div>
+      <div class="be-dim be-cap-hint">Passe o mouse num modelo pra ver a animação · ★ guarda nos favoritos</div>
 
       <button id="beAutoCaptions2" class="be-tool-btn be-cap-generate">✨ Gerar legendas automáticas</button>
 
