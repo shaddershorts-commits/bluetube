@@ -7,6 +7,7 @@
 import { TEXT_SIZE_PCT } from '../core/schema.js';
 import * as act from '../core/actions.js';
 import { textsAt } from '../core/selectors.js';
+import { layoutDoTexto, familiaDaFonte } from '../core/text-layout.js';
 
 export function createOverlay(container, store, player, onEditRequest) {
   let els = new Map(); // textId -> div
@@ -54,13 +55,18 @@ export function createOverlay(container, store, player, onEditRequest) {
         container.appendChild(el);
         els.set(txt.id, el);
       }
-      // WYSIWYG: fontsize proporcional a LARGURA do preview (Railway usa OUT_W)
-      const fsPx = TEXT_SIZE_PCT[txt.size] * box.width;
-      el.textContent = txt.content;
-      el.style.left = (txt.x_pct * 100) + '%';
-      el.style.top = (txt.y_pct * 100) + '%';
-      el.style.fontFamily = fontFamilyFor(txt.font);
+      // ── o texto NAO pode passar da borda do quadro ──
+      // Mesma funcao que o exportPayload usa: as linhas e a posicao presa no
+      // quadro sao IDENTICAS na tela e no arquivo (nao ha dois algoritmos).
+      const lay = layoutDoTexto(txt, TEXT_SIZE_PCT[txt.size]);
+      const fsPx = lay.fontePct * box.width;
+      el.textContent = lay.linhas.join('\n');
+      el.style.left = (lay.xPct * 100) + '%';
+      el.style.top = (lay.yPct * 100) + '%';
+      el.style.fontFamily = familiaDaFonte(txt.font);
       el.style.fontSize = fsPx + 'px';
+      el.style.maxWidth = 'none';   // a quebra e nossa, nao do CSS
+      el.style.whiteSpace = 'pre';
       el.style.color = txt.color;
       // traçado/borda da letra: espelha o borderw+bordercolor do drawtext.
       // Cor escolhível (txt.stroke), padrão preto. paint-order deixa o traçado

@@ -2366,10 +2366,19 @@ async function processEditV0(jobId, p) {
         }
       } else {
         const t = op.t;
-        const fs_px = Math.round(sizePct(t.size) * OUT_W);
+        // ── QUEBRA DE LINHA (2026-07-29) ──────────────────────────────────
+        // O drawtext NAO quebra linha sozinho: um texto comprido virava UMA
+        // linha atravessando o quadro inteiro (o "texto sai do video"). O
+        // editor manda as linhas JA quebradas (t.lines) e a fonte final
+        // (t.font_pct), calculadas com a mesma funcao que desenha o preview —
+        // assim nao existem dois algoritmos pra discordar.
+        // Retrocompat: payload antigo (sem lines) cai no texto de uma linha so.
+        const fs_px = Math.round((t.font_pct > 0 ? t.font_pct : sizePct(t.size)) * OUT_W);
+        const linhas = Array.isArray(t.lines) && t.lines.length
+          ? t.lines : [t.content || ''];
+        const alturaLinha = fs_px * 1.12;
+        const alturaBloco = linhas.length * alturaLinha;
         const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
-        const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
-        const txt = escapeDrawText(t.content || '');
         const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
         // tarja/caixa colorida atrás (estilo CapCut): box=1 + boxcolor + padding.
         // com tarja NÃO usa contorno no texto (fica limpo, igual ao preview).
@@ -2380,7 +2389,16 @@ async function processEditV0(jobId, p) {
         const bw = hasBox ? 0 : Math.max(2, Math.round(fs_px * 0.06));
         // traçado/borda da letra: cor escolhível (padrão preto). box tira o traçado.
         const strokeCol = /^#[0-9a-fA-F]{6}$/.test(t.stroke || '') ? hexToFfmpeg(t.stroke) : '0x000000';
-        fc.push(`[${vLabel}]drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${nextL}]`);
+        // uma passada de drawtext POR LINHA, empilhadas em volta do centro
+        // (mesma entrelinha 1.12 do preview)
+        linhas.forEach((linha, iL) => {
+          const desloc = -alturaBloco / 2 + iL * alturaLinha + alturaLinha / 2;
+          const sinal = desloc >= 0 ? '+' : '-';
+          const y_px = `(h*${t.y_pct.toFixed(4)}${sinal}${Math.abs(desloc).toFixed(2)}-text_h/2)`;
+          const alvo = iL === linhas.length - 1 ? nextL : `${nextL}l${iL}`;
+          const origem = iL === 0 ? vLabel : `${nextL}l${iL - 1}`;
+          fc.push(`[${origem}]drawtext=fontfile=${fontFile(t.font)}:text='${escapeDrawText(linha)}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}:enable='${enable}'[${alvo}]`);
+        });
       }
       vLabel = nextL;
     });

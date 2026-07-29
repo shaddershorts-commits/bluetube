@@ -2,6 +2,9 @@
 // Consultas derivadas do estado. UNICO lugar com o mapeamento tempo
 // virtual (timeline) <-> tempo source (arquivo). Modulo puro.
 
+import { TEXT_SIZE_PCT } from './schema.js';
+import { layoutDoTexto } from './text-layout.js';
+
 /** Clips efetivos: ativos, na ordem do array (ordem visual da timeline).
  *  Espelha a logica do backend edit-v0 (filter active !== false). */
 export function effectiveClips(state) {
@@ -351,19 +354,27 @@ export function exportPayload(state) {
     nome_projeto: state.nome_projeto,
     video: state.video,
     clips,
-    texts: effectiveTexts(state).map(t => ({
+    texts: effectiveTexts(state).map(t => {
+      // quebra de linha + posicao presa no quadro decididas AQUI e enviadas
+      // prontas: o drawtext do ffmpeg nao quebra linha sozinho, entao sem isto
+      // a legenda sai do quadro no arquivo final (bug 2026-07-29)
+      const lay = layoutDoTexto(t, TEXT_SIZE_PCT[t.size]);
+      return {
       content: t.content,
+      lines: lay.linhas,          // o render desenha ESTAS linhas
+      font_pct: round4(lay.fontePct), // fonte final (encolhe se virou paredao)
       font: t.font,
       size: t.size,
       color: t.color,
       ...(t.box ? { box: t.box } : {}), // tarja colorida atrás (estilo CapCut)
       ...(t.stroke ? { stroke: t.stroke } : {}), // traçado/borda da letra
-      x_pct: round4(t.x_pct),
-      y_pct: round4(t.y_pct),
+      x_pct: round4(lay.xPct),
+      y_pct: round4(lay.yPct),
       start_sec: round3(t.start_sec),
       end_sec: round3(t.end_sec),
       lane: t.lane || 4, // ordem de composicao (CapCut: lane maior = frente)
-    })),
+      };
+    }),
     // clips de audio pro mixer do render (adelay/atrim no Railway)
     audio_clips: effectiveAudioClips(state).map(a => ({
       kind: a.kind,                 // 'video' usa o proprio source do video
