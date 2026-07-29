@@ -187,9 +187,10 @@
     var p = $('adjustPanel'), f = $('adjustBackdrop');
     if (!p) return;
     if (ehTelaLarga()) {
+      // ESQUERDA (pedido do user em 29/07): o roteiro fica à direita, livre.
       p.style.cssText =
-        'display:flex;position:fixed;right:22px;top:50%;transform:translateY(-50%);' +
-        'left:auto;bottom:auto;width:370px;max-width:calc(100vw - 44px);z-index:900;' +
+        'display:flex;position:fixed;left:22px;top:50%;transform:translateY(-50%);' +
+        'right:auto;bottom:auto;width:370px;max-width:calc(100vw - 44px);z-index:900;' +
         'background:rgba(2,8,23,0.97);border:1px solid rgba(0,170,255,.22);' +
         'border-radius:18px;backdrop-filter:blur(20px);' +
         'box-shadow:0 12px 48px rgba(0,20,60,.55);flex-direction:column;max-height:74vh';
@@ -355,14 +356,12 @@
       if (b.dataset.blubluOuro === '1') continue;
       b.dataset.blubluOuro = '1';
 
-      b.style.background = 'linear-gradient(135deg,#c9962f,#f7d67a 45%,#b8862b)';
-      b.style.border = '1px solid rgba(255,225,150,.55)';
-      b.style.color = '#2a1e05';
-      b.style.fontWeight = '700';
-      b.style.boxShadow = '0 4px 18px rgba(200,150,40,.3)';
+      // o visual vem da classe (com !important): o botão já tem style inline no
+      // HTML, e inline ganha de classe sem isso
+      b.classList.add('blublu-btn-ouro');
       b.style.position = 'relative';
-      b.style.overflow = 'visible';
-      b.style.paddingLeft = '30px';
+      b.style.overflow = 'visible';   // a foto dele fica pra FORA do botão
+      b.style.paddingLeft = '34px';
 
       // tira o ✏️ do rótulo — quem anuncia agora é a cara dele
       b.innerHTML = b.innerHTML.replace(/✏️\s*/, '');
@@ -383,10 +382,38 @@
     if (document.getElementById('blubluFlutuaCss')) return;
     var st = document.createElement('style');
     st.id = 'blubluFlutuaCss';
-    st.textContent =
-      '@keyframes blubluFlutua{0%,100%{transform:translateY(-50%)}50%{transform:translateY(-64%)}}' +
-      '.blublu-flutua{animation:blubluFlutua 3.2s ease-in-out infinite;transform:translateY(-50%)}' +
-      '@media (prefers-reduced-motion:reduce){.blublu-flutua{animation:none}}';
+    st.textContent = [
+      '@keyframes blubluFlutua{0%,100%{transform:translateY(-50%)}50%{transform:translateY(-64%)}}',
+      '.blublu-flutua{animation:blubluFlutua 3.2s ease-in-out infinite;transform:translateY(-50%)}',
+
+      // OURO. O brilho é uma faixa de luz que atravessa o PRÓPRIO fundo —
+      // nada de ::after com overflow:hidden, que cortaria a foto do Blublu
+      // (ela fica pra fora da borda do botão de propósito).
+      '.blublu-btn-ouro{',
+      '  background-image:',
+      '    linear-gradient(100deg,transparent 36%,rgba(255,255,255,.62) 48%,transparent 61%),',
+      '    linear-gradient(160deg,#ffe9a3 0%,#f0cd68 16%,#d4a63a 46%,#b3841f 70%,#f2d489 100%) !important;',
+      '  background-size:230% 100%,100% 100% !important;',
+      '  background-position:210% 0,0 0;',
+      '  background-repeat:no-repeat !important;',
+      '  border:1px solid rgba(255,240,190,.9) !important;',
+      // texto quase preto + realce claro por baixo: é o que fica legível sobre
+      // ouro. O tom escuro anterior sumia no meio do gradiente.
+      '  color:#1c1201 !important;',
+      '  font-weight:800 !important;',
+      '  letter-spacing:.35px !important;',
+      '  text-shadow:0 1px 0 rgba(255,248,215,.75) !important;',
+      '  box-shadow:0 0 0 1px rgba(120,80,10,.4),0 4px 10px rgba(0,0,0,.25),',
+      '    0 8px 30px rgba(226,175,60,.55),inset 0 1px 0 rgba(255,255,255,.8),',
+      '    inset 0 -3px 8px rgba(120,80,10,.4) !important;',
+      '  animation:blubluBrilho 3.8s ease-in-out infinite;',
+      '}',
+      '@keyframes blubluBrilho{0%,64%{background-position:210% 0,0 0}100%{background-position:-70% 0,0 0}}',
+      '@media (prefers-reduced-motion:reduce){',
+      '  .blublu-flutua{animation:none}',
+      '  .blublu-btn-ouro{animation:none;background-position:-70% 0,0 0}',
+      '}',
+    ].join('');
     document.head.appendChild(st);
   })();
 
