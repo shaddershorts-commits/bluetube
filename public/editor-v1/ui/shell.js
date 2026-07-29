@@ -1752,6 +1752,7 @@ export function mountEditor(root, store, opts = {}) {
   // faz innerHTML='' e destruiria o proprio elemento que esta no gesto
   let _arrastandoCamada = false;
   function syncTrackHeaders() {
+    syncBarraRolagem();
     if (_arrastandoCamada) return;
     const box = $('#beTrackHeaders');
     if (!box) return;
@@ -1865,6 +1866,62 @@ export function mountEditor(root, store, opts = {}) {
       window.addEventListener('pointercancel', soltar);
     });
   }
+  // ── ROLAGEM VERTICAL DAS FAIXAS (2026-07-29) ────────────────────────────
+  // Com ate 9 camadas de video, 9 de texto e 9 de audio, o conteudo nao cabe
+  // mais na altura da timeline. A barra existe pra isso ser DESCOBRIVEL — sem
+  // ela o usuario criaria a camada 9 e acharia que sumiu.
+  let barraY = null, polegar = null;
+  function montarBarraRolagem() {
+    const wrap = $('#beTimeline')?.parentElement;
+    if (!wrap || barraY) return;
+    barraY = document.createElement('div');
+    barraY.className = 'be-vscroll';
+    polegar = document.createElement('div');
+    polegar.className = 'be-vscroll-thumb';
+    barraY.appendChild(polegar);
+    wrap.appendChild(barraY);
+
+    polegar.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const y0 = ev.clientY;
+      const s0 = timeline.getScrollY();
+      const max = timeline.getMaxScrollY();
+      const alturaBarra = barraY.getBoundingClientRect().height;
+      const alturaPolegar = polegar.getBoundingClientRect().height;
+      const curso = Math.max(1, alturaBarra - alturaPolegar);
+      const mover = (e2) => timeline.setScrollY(s0 + ((e2.clientY - y0) / curso) * max);
+      const soltar = () => {
+        window.removeEventListener('pointermove', mover);
+        window.removeEventListener('pointerup', soltar);
+        window.removeEventListener('pointercancel', soltar);
+        polegar.classList.remove('be-vscroll-drag');
+      };
+      polegar.classList.add('be-vscroll-drag');
+      window.addEventListener('pointermove', mover);
+      window.addEventListener('pointerup', soltar);
+      window.addEventListener('pointercancel', soltar);
+    });
+
+    // roda do mouse sobre a COLUNA DOS CABECALHOS rola as faixas (a roda sobre
+    // o canvas continua sendo zoom; la a rolagem e Alt+roda)
+    $('#beTrackHeaders')?.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      timeline.rolarY(e.deltaY);
+    }, { passive: false });
+  }
+  function syncBarraRolagem() {
+    montarBarraRolagem();
+    if (!barraY || !timeline.getMaxScrollY) return;
+    const max = timeline.getMaxScrollY();
+    const h = $('#beTimeline')?.getBoundingClientRect().height || 0;
+    if (max <= 1 || h <= 0) { barraY.style.display = 'none'; return; }
+    barraY.style.display = 'block';
+    const alt = Math.max(30, Math.round(h * (h / (max + h))));
+    const topo = Math.round((timeline.getScrollY() / max) * (h - alt));
+    polegar.style.height = alt + 'px';
+    polegar.style.top = topo + 'px';
+  }
+
   store.subscribe(syncTrackHeaders);
   requestAnimationFrame(() => requestAnimationFrame(syncTrackHeaders));
 

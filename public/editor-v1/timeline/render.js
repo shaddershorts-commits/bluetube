@@ -65,20 +65,12 @@ export function createRenderer(canvas) {
   return { draw, destroy };
 }
 
-function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, videoWave, dpr }) {
-  const W = layout.vp.width, H = Math.max(layout.contentH, layout.vp.height);
-  // resolucao fisica (retina)
-  const scale = dpr || 1;
-  if (canvas.width !== Math.round(W * scale) || canvas.height !== Math.round(H * scale)) {
-    canvas.width = Math.round(W * scale);
-    canvas.height = Math.round(H * scale);
-  }
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.clearRect(0, 0, W, H);
+/** Regua fixa no topo: fundo opaco + ticks. Fica por cima porque as faixas
+ *  rolam por baixo dela (antes da rolagem ela podia ser desenhada primeiro). */
+function desenharRegua(ctx, layout, W) {
+  ctx.save();
   ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // ── regua ──
+  ctx.fillRect(0, 0, W, METRICS.RULER_H);
   ctx.font = '10px "JetBrains Mono", monospace';
   ctx.textBaseline = 'top';
   for (const tick of rulerTicks(layout)) {
@@ -93,6 +85,31 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       line(ctx, tick.x, METRICS.RULER_H - 5, tick.x, METRICS.RULER_H);
     }
   }
+  ctx.restore();
+}
+
+function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, videoWave, dpr }) {
+  // A altura do BITMAP tem que ser a altura do ELEMENTO. Quando o conteudo
+  // passava disso, o canvas era desenhado mais alto e o navegador ESPREMIA a
+  // imagem pra caber — tudo aparecia achatado e o clique caia deslocado do que
+  // se via (era por isso que a faixa de audio nao respondia com a timeline
+  // baixa). O que nao cabe agora sai pela rolagem (vp.scrollY), nao pelo esticao.
+  const W = layout.vp.width, H = Math.max(1, layout.vp.height || 0);
+  // resolucao fisica (retina)
+  const scale = dpr || 1;
+  if (canvas.width !== Math.round(W * scale) || canvas.height !== Math.round(H * scale)) {
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
+  }
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = '10px "JetBrains Mono", monospace';
+  ctx.textBaseline = 'top';
+  // a regua e desenhada DEPOIS das faixas (ver desenharRegua mais abaixo): com
+  // rolagem vertical as faixas passam por baixo dela e a cobririam.
 
   // ── rows de camada (fundos sutis; topo = frente no video) ──
   for (const r of layout.laneRows || []) {
@@ -440,6 +457,9 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.strokeRect(mx, my, mw, mh);
     ctx.setLineDash([]);
   }
+
+  // ── regua POR CIMA das faixas (a rolagem passa conteudo por baixo dela) ──
+  desenharRegua(ctx, layout, W);
 
   // ── linha de snap ──
   if (snapIndicator?.active && snapIndicator.t != null) {

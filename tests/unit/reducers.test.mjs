@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
-import { createInitialState, MIN_CLIP_DURATION } from '../../public/editor-v1/core/schema.js';
+import { createInitialState, MIN_CLIP_DURATION, MAX_LANE, MAX_EXTRA_LANES } from '../../public/editor-v1/core/schema.js';
 import * as act from '../../public/editor-v1/core/actions.js';
 import { mainTrackItems, mediaUrlFor, effectiveClips, totalDuration, timelineToSource, sourceToTimeline, exportPayload, canExport, segmentAt, playableDuration, clipDuration, captionAudioPlan, effectiveAudioClips } from '../../public/editor-v1/core/selectors.js';
 
@@ -427,7 +427,7 @@ test('SET_ITEM_LANE muda camada de overlay e texto (com clamp)', () => {
   assert.equal(s.overlays[0].lane, 3);
   assert.equal(s.texts[0].lane, 1);
   store.dispatch(act.setItemLane('text', txId, 99)); // clamp em MAX_LANE
-  assert.equal(store.getState().texts[0].lane, 5);
+  assert.equal(store.getState().texts[0].lane, MAX_LANE);
 });
 
 // ── rodada 2026-07-20: multi-midia, compostos any-type, split geral, legendas ──
@@ -521,11 +521,11 @@ test('SET_AUDIO_LANE fixa a lane manual e ADD_EXTRA_LANE respeita o cap', () => 
   const aid = store.getState().audio_clips[0].id;
   store.dispatch(act.setAudioLane(aid, 2));               // drop 2 rows abaixo
   assert.equal(store.getState().audio_clips[0].lane, 2);
-  // camadas extras vazias (menu do botão direito no vazio): cap em 4
-  for (let i = 0; i < 6; i++) store.dispatch(act.addExtraLane('video'));
-  for (let i = 0; i < 6; i++) store.dispatch(act.addExtraLane('audio'));
-  assert.equal(store.getState().extra_overlay_lanes, 4);
-  assert.equal(store.getState().extra_audio_lanes, 4);
+  // camadas extras vazias (menu do botão direito no vazio): cap em MAX_EXTRA_LANES
+  for (let i = 0; i < MAX_EXTRA_LANES + 4; i++) store.dispatch(act.addExtraLane('video'));
+  for (let i = 0; i < MAX_EXTRA_LANES + 4; i++) store.dispatch(act.addExtraLane('audio'));
+  assert.equal(store.getState().extra_overlay_lanes, MAX_EXTRA_LANES);
+  assert.equal(store.getState().extra_audio_lanes, MAX_EXTRA_LANES);
 });
 
 test('mudo POR CENA (muted): só o clip selecionado, sobrevive e sai no payload', () => {

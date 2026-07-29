@@ -128,25 +128,23 @@ export function createTimelineController({ canvas, store, player, onEditText, on
           store.dispatch(act.convertToOverlay(e.clipId, e.atT, lane));
           break;
         }
-        case 'drop-lane': {
+        case 'commit-move': {
+          // fecho do arrasto de camada/texto: UM dispatch com tempo + camada
           const lay = layoutNow();
           const st = store.getState();
           // camada de VÍDEO solta NA FAIXA PRINCIPAL: volta a ser clip da main
           // (inverso do drag-up — user 2026-07-22 "não volta mais"). Imagem não.
-          if (e.itemType === 'overlay' &&
+          if (e.itemType === 'overlay' && e.y != null &&
               e.y >= lay.yVideo - 4 && e.y <= lay.yVideo + lay.videoTrackH + 4) {
             const ov = st.overlays.find(o => o.id === e.id);
             if (ov && ov.kind !== 'image') {
-              store.dispatch(act.overlayToClip(e.id, ov.start));
+              store.dispatch(act.overlayToClip(e.id, e.start ?? ov.start));
               break;
             }
           }
-          const lane = laneForY(lay, e.y);
-          if (lane == null) break; // soltou na main/audio: mantem a camada
-          const atual = e.itemType === 'overlay'
-            ? st.overlays.find(o => o.id === e.id)?.lane
-            : st.texts.find(t => t.id === e.id)?.lane;
-          if (atual !== lane) store.dispatch(act.setItemLane(e.itemType, e.id, lane));
+          // null = soltou fora das rows de camada: mantém a camada atual
+          const lane = e.y != null ? laneForY(lay, e.y) : null;
+          store.dispatch(act.moveItemTo(e.itemType, e.id, e.start, lane));
           break;
         }
         case 'drop-audio-lane': {
@@ -222,6 +220,26 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     else if (x > vp.width - EDGE) { vp = { ...vp, scrollX: clampScroll(vp.scrollX + SPEED, vp.pxPerSec) }; draw(); }
   }
 
+  /** Rolagem VERTICAL das faixas. Nao mexe em nada do eixo X nem no zoom. */
+  function rolarY(delta) {
+    const atual = vp.scrollY || 0;
+    const novo = Math.max(0, Math.min(layoutNow().maxScrollY, atual + delta));
+    if (novo === atual) return;
+    vp = { ...vp, scrollY: novo };
+    onLanesChanged?.();   // os cabecalhos das faixas acompanham a rolagem
+    draw();
+  }
+
+  const ARRASTANDO = new Set(['dragging-clip', 'dragging-overlay', 'dragging-text', 'dragging-audio', 'dragging-multi']);
+  /** Arrastar encostando no topo/base rola sozinho — sem isso nao da pra levar
+   *  uma faixa ate uma camada que esta fora da vista. */
+  function autoscrollVertical(ev) {
+    if (!ev || ev.y == null || !ARRASTANDO.has(fsm.name)) return;
+    const BORDA = 28, VEL = 12;
+    if (ev.y < BORDA) rolarY(-VEL);
+    else if (ev.y > (vp.height || 0) - BORDA) rolarY(VEL);
+  }
+
   /** Scroll nunca deixa o conteudo 100% fora da tela: clamp entre -PAD_LEFT
    *  e (fim do conteudo - 20% da largura visivel). Ghosts contam no range. */
   function clampScroll(scrollX, pxPerSec) {
@@ -246,6 +264,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     // ANTES dos effects: o drop (laneForY) tem que enxergar a mesma camada
     // fantasma que o usuario esta vendo na tela.
     atualizarFantasma(ev);
+    autoscrollVertical(ev);
     runEffects(r.effects);
     draw();
   }
@@ -473,6 +492,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const p = evFrom(e);
+    // Alt+roda = ROLAR as faixas (a roda sozinha continua sendo zoom, como o
+    // usuario aprovou). Sem isto, camada 9 existiria mas ficaria inalcancavel.
+    if (e.altKey) { rolarY(e.deltaY); return; }
     step({ kind: 'wheel', ...p, deltaY: e.deltaY, deltaX: e.deltaX, ctrlKey: e.ctrlKey || e.metaKey });
   }, { passive: false });
 
@@ -505,6 +527,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       return;
     }
     if (widthChanged) vp = { ...vp, scrollX: clampScroll(vp.scrollX, vp.pxPerSec) };
+    // redimensionar a timeline (divisor) pode deixar a rolagem alem do fim
+    const maxY = layoutNow().maxScrollY;
+    if ((vp.scrollY || 0) > maxY) { vp = { ...vp, scrollY: maxY }; onLanesChanged?.(); }
     draw();
   });
   ro.observe(canvas.parentElement || canvas);
@@ -523,6 +548,11 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     // a posição da agulha, não o lugar onde o usuário soltou o card.
     tempoDoX: (x) => xToTime(vp, x),
     setJuncaoSelecionada(i) { juncaoSel = i; draw(); },
+    // rolagem vertical das faixas (barra e roda ficam na shell)
+    rolarY,
+    getScrollY: () => vp.scrollY || 0,
+    getMaxScrollY: () => layoutNow().maxScrollY,
+    setScrollY(v) { rolarY(Math.max(0, v) - (vp.scrollY || 0)); },
     zoomFit() {
       if (vp.width < 50) { pendingFit = true; return; }
       doFit();

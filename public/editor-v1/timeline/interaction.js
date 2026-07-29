@@ -561,10 +561,10 @@ export function transition(fsm, ev, ctx) {
         return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
-        fx.push({ do: 'dispatch', action: act.moveOverlay(fsm.overlayId, fsm.previewStart) });
-        // arrasto VERTICAL muda a camada (row sob o cursor no drop)
-        const dropY = ev.y ?? fsm.lastY;
-        if (dropY != null) fx.push({ do: 'drop-lane', itemType: 'overlay', id: fsm.overlayId, y: dropY });
+        // UM efeito so: tempo e camada tem que ser decididos juntos. Separados,
+        // o repelir olhava a camada de ORIGEM e o item pousava no tempo errado.
+        fx.push({ do: 'commit-move', itemType: 'overlay', id: fsm.overlayId,
+                  start: fsm.previewStart, y: ev.y ?? fsm.lastY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
@@ -582,13 +582,15 @@ export function transition(fsm, ev, ctx) {
           do: 'dispatch',
           action: { ...act.updateText(fsm.textId, { start_sec: start, end_sec: start + fsm.duration }), gestureId: fsm.gestureId },
         });
-        return { next: { ...fsm, lastY: ev.y ?? fsm.lastY }, effects: fx };
+        return { next: { ...fsm, lastY: ev.y ?? fsm.lastY, lastStart: start }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'end-gesture' });
-        // arrasto vertical: texto muda de camada (pode ficar ATRAS de video)
-        const dropY = ev.y ?? fsm.lastY;
-        if (dropY != null) fx.push({ do: 'drop-lane', itemType: 'text', id: fsm.textId, y: dropY });
+        // mesmo fecho do overlay: tempo + camada num dispatch so
+        if (fsm.lastStart != null) {
+          fx.push({ do: 'commit-move', itemType: 'text', id: fsm.textId,
+                    start: fsm.lastStart, y: ev.y ?? fsm.lastY });
+        }
         return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };

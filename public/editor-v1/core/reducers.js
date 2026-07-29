@@ -6,7 +6,7 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
-import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE } from './schema.js';
+import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
 import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur } from './selectors.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
@@ -135,14 +135,20 @@ export function reduce(state, action) {
         tipo: 'overlay', id: state.next_overlay_id, laneAlvo: desejada,
         start: inicioImg, end: inicioImg + 3,
       });
-      if (laneImg == null) return state;   // sem camada livre: nao cria
+      // NUNCA recusar aqui: o arquivo ja foi enviado e a interface ja avisou
+      // "midia adicionada". Sem camada livre, entra na de cima e ANDA NO TEMPO
+      // ate achar espaco — sumir com a imagem em silencio seria pior.
+      const laneFinalImg = laneImg ?? clampLane(desejada, OVERLAY_DEFAULT_LANE);
+      const startImg = laneImg != null ? inicioImg : repelirStart(state, {
+        tipo: 'overlay', id: state.next_overlay_id, lane: laneFinalImg, start: inicioImg, dur: 3,
+      });
       const overlay = {
         id: state.next_overlay_id, kind: 'image', url: m.url,
         img_w: m.width || 0, img_h: m.height || 0,
         source_in: 0, source_out: 3,            // 3s na timeline (esticável)
-        start: inicioImg,
+        start: startImg,
         x_pct: 0.5, y_pct: 0.5, scale,
-        lane: laneImg,
+        lane: laneFinalImg,
         active: true,
       };
       return touch({
@@ -253,20 +259,29 @@ export function reduce(state, action) {
       if (kind === 'text') {
         const dur = Math.max(0.3, (data.end_sec - data.start_sec) || 2);
         // colar em cima do original sobreporia na mesma camada: sobe uma camada
-        const lane = laneDestino(state, {
-          tipo: 'text', id: state.next_text_id, laneAlvo: clampLane(data.lane, TEXT_DEFAULT_LANE),
+        const laneQuer = clampLane(data.lane, TEXT_DEFAULT_LANE);
+        const laneOk = laneDestino(state, {
+          tipo: 'text', id: state.next_text_id, laneAlvo: laneQuer,
           start: atT, end: atT + dur, legenda: data.caption === true,
-        }) ?? clampLane(data.lane, TEXT_DEFAULT_LANE);
-        const tx = buildText({ ...data, lane, start_sec: atT, end_sec: atT + dur }, state.next_text_id);
+        });
+        // sem camada livre: cola na mesma e anda no tempo (nunca em cima)
+        const lane = laneOk ?? laneQuer;
+        const inicio = laneOk != null ? atT
+          : repelirStart(state, { tipo: 'text', id: state.next_text_id, lane, start: atT, dur });
+        const tx = buildText({ ...data, lane, start_sec: inicio, end_sec: inicio + dur }, state.next_text_id);
         return touch({ ...state, texts: [...state.texts, tx], next_text_id: state.next_text_id + 1, selected_text_id: tx.id, selected_clip_id: null, selected_audio_id: null, selected_overlay_id: null });
       }
       if (kind === 'overlay') {
         const oBase = { ...data, id: state.next_overlay_id, start: atT, active: true };
-        const lane = laneDestino(state, {
-          tipo: 'overlay', id: oBase.id, laneAlvo: clampLane(data.lane, OVERLAY_DEFAULT_LANE),
-          start: atT, end: atT + overlayTimelineDur(oBase),
-        }) ?? clampLane(data.lane, OVERLAY_DEFAULT_LANE);
-        const o = { ...oBase, lane };
+        const durOv = overlayTimelineDur(oBase);
+        const laneQuerOv = clampLane(data.lane, OVERLAY_DEFAULT_LANE);
+        const laneOkOv = laneDestino(state, {
+          tipo: 'overlay', id: oBase.id, laneAlvo: laneQuerOv, start: atT, end: atT + durOv,
+        });
+        const lane = laneOkOv ?? laneQuerOv;
+        const inicioOv = laneOkOv != null ? atT
+          : repelirStart(state, { tipo: 'overlay', id: oBase.id, lane, start: atT, dur: durOv });
+        const o = { ...oBase, lane, start: inicioOv };
         return touch({ ...state, overlays: [...state.overlays, o], next_overlay_id: state.next_overlay_id + 1, selected_overlay_id: o.id, selected_clip_id: null });
       }
       return state;
@@ -535,8 +550,11 @@ export function reduce(state, action) {
       const next = { ...cur, ...patch };
       if (next.end_sec <= next.start_sec) next.end_sec = next.start_sec + 0.5;
       // REPELIR no arrasto horizontal do texto (legenda e isenta: sao centenas
-      // de blocos gerados em lote, encostados de proposito)
-      if (patch.start_sec != null && cur.caption !== true) {
+      // de blocos gerados em lote, encostados de proposito).
+      // DURANTE o arrasto (action.gestureId) NAO repele: o texto ainda pode
+      // estar subindo de camada, e repelir contra a camada de origem deixava
+      // ele grudado. Quem fecha a conta e o MOVE_ITEM_TO no fim do gesto.
+      if (patch.start_sec != null && cur.caption !== true && !action.gestureId) {
         const dur = Math.max(0.1, next.end_sec - next.start_sec);
         const s = repelirStart(state, {
           tipo: 'text', id: cur.id, lane: cur.lane || TEXT_DEFAULT_LANE,
@@ -871,6 +889,50 @@ export function reduce(state, action) {
       return state;
     }
 
+    case A.MOVE_ITEM_TO: {
+      // FIM do arrasto de uma camada/texto: tempo e camada decididos JUNTOS.
+      // Antes eram dois dispatches (mover, depois trocar de camada) e o repelir
+      // rodava contra a camada de ORIGEM — arrastar na diagonal pra uma camada
+      // vazia jogava o item pro fim do vizinho da camada velha.
+      const tipo = action.itemType;
+      const idx = tipo === 'overlay'
+        ? state.overlays.findIndex(o => o.id === action.id)
+        : state.texts.findIndex(t => t.id === action.id);
+      if (idx < 0) return state;
+      const item = tipo === 'overlay' ? state.overlays[idx] : state.texts[idx];
+      const dur = tipo === 'overlay'
+        ? overlayTimelineDur(item)
+        : Math.max(0.1, item.end_sec - item.start_sec);
+      const laneAtual = tipo === 'overlay'
+        ? (item.lane || OVERLAY_DEFAULT_LANE) : (item.lane || TEXT_DEFAULT_LANE);
+      const desejado = Math.max(0, Number(action.start) || 0);
+      const legenda = tipo === 'text' && item.caption === true;
+      // 1) camada final. As duas metades da regra do usuario sao coisas
+      //    DIFERENTES e dependem da intencao do gesto:
+      //    - solto na MESMA camada (arrasto horizontal) -> os itens SE REPELEM,
+      //      o item fica na camada dele e escorrega pro espaco livre;
+      //    - solto em OUTRA camada ja ocupada -> "tentar sobrepor cria camada
+      //      nova acima", entao sobe.
+      //    Sem essa distincao, arrastar de lado por cima do vizinho fazia o
+      //    item PULAR DE CAMADA sozinho.
+      const alvo = Number.isInteger(action.laneAlvo) ? action.laneAlvo : laneAtual;
+      const laneFinal = alvo === laneAtual ? laneAtual : (laneDestino(state, {
+        tipo, id: item.id, laneAlvo: alvo, start: desejado, end: desejado + dur, legenda,
+      }) ?? laneAtual);
+      // 2) so ENTAO repele, ja dentro da camada de destino
+      const inicio = repelirStart(state, { tipo, id: item.id, lane: laneFinal, start: desejado, dur });
+      if (tipo === 'overlay') {
+        if (item.start === inicio && (item.lane || OVERLAY_DEFAULT_LANE) === laneFinal) return state;
+        const overlays = state.overlays.slice();
+        overlays[idx] = { ...item, start: inicio, lane: laneFinal };
+        return touch({ ...state, overlays });
+      }
+      if (item.start_sec === inicio && (item.lane || TEXT_DEFAULT_LANE) === laneFinal) return state;
+      const texts = state.texts.slice();
+      texts[idx] = { ...item, start_sec: inicio, end_sec: inicio + dur, lane: laneFinal };
+      return touch({ ...state, texts });
+    }
+
     case A.REORDER_LANES: {
       // arrastar o cabecalho/olhinho de uma camada pra posicao de outra.
       // reordenarLanes devolve o MESMO state quando nada muda (sem undo fantasma).
@@ -881,7 +943,7 @@ export function reduce(state, action) {
     case A.SET_AUDIO_LANE: {
       // arrasto VERTICAL de faixa de áudio: fixa a lane manualmente (0..7).
       // Soltar abaixo da última row cria uma lane nova embaixo (CapCut).
-      const lane = Number.isInteger(action.lane) ? Math.max(0, Math.min(7, action.lane)) : null;
+      const lane = Number.isInteger(action.lane) ? Math.max(0, Math.min(MAX_AUDIO_LANE, action.lane)) : null;
       if (lane == null) return state;
       const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
       if (idx < 0 || state.audio_clips[idx].lane === lane) return state;
@@ -894,12 +956,12 @@ export function reduce(state, action) {
       // botão direito no VAZIO: "Criar camada de vídeo/áudio" — row vazia
       // visível pra arrastar faixas pra dentro (fluidez CapCut). Máx 4 extras.
       if (action.kind === 'video') {
-        const n = Math.min(4, (state.extra_overlay_lanes || 0) + 1);
+        const n = Math.min(MAX_EXTRA_LANES, (state.extra_overlay_lanes || 0) + 1);
         if (n === state.extra_overlay_lanes) return state;
         return touch({ ...state, extra_overlay_lanes: n });
       }
       if (action.kind === 'audio') {
-        const n = Math.min(4, (state.extra_audio_lanes || 0) + 1);
+        const n = Math.min(MAX_EXTRA_LANES, (state.extra_audio_lanes || 0) + 1);
         if (n === state.extra_audio_lanes) return state;
         return touch({ ...state, extra_audio_lanes: n });
       }

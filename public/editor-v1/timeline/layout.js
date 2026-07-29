@@ -4,6 +4,7 @@
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
 import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur, audioLaneMap, playableDuration } from '../core/selectors.js';
+import { MAX_LANE } from '../core/schema.js';
 
 export const METRICS = {
   PAD_LEFT: 16,          // margem esquerda em px antes de t=0
@@ -57,11 +58,11 @@ export function computeLayout(state, vp, hint = null) {
   const maxUsada = usadasSet.size ? Math.max(...usadasSet) : 0;
   for (let i = 0; i < (state.extra_overlay_lanes || 0); i++) {
     const l = maxUsada + 1 + i;
-    if (l <= 5) usadasSet.add(l);
+    if (l <= MAX_LANE) usadasSet.add(l);
   }
   // camada FANTASMA do arrasto em curso (nasce na hora, some se o gesto voltar)
   const laneFantasma = hint && Number.isInteger(hint.laneExtra) ? hint.laneExtra : null;
-  if (laneFantasma != null && laneFantasma >= 1 && laneFantasma <= 5) usadasSet.add(laneFantasma);
+  if (laneFantasma != null && laneFantasma >= 1 && laneFantasma <= MAX_LANE) usadasSet.add(laneFantasma);
   const lanesUsadas = [...usadasSet].sort((a, b) => b - a); // desc: topo primeiro
   const hidOv = state.hidden_overlay_lanes || [];
 
@@ -79,7 +80,12 @@ export function computeLayout(state, vp, hint = null) {
   const LANE_H = Math.round(baseLaneH * trackScale);
 
   const laneRows = []; // [{lane, y, h, hidden}] na ordem visual (topo -> base)
-  let yCursor = METRICS.RULER_H + GAP;
+  // ROLAGEM VERTICAL (2026-07-29): com ate 18 camadas + 9 de audio o conteudo
+  // passa da altura visivel. scrollY desloca TUDO que vem depois da regua —
+  // como render e hittest bebem do mesmo layout, o que se ve continua sendo o
+  // que se clica, sem tocar em nenhuma conta do eixo X.
+  const scrollY = Math.max(0, vp.scrollY || 0);
+  let yCursor = METRICS.RULER_H + GAP - scrollY;
   for (const lane of lanesUsadas) {
     laneRows.push({ lane, y: yCursor, h: LANE_H, hidden: hidOv.includes(lane) });
     yCursor += LANE_H + 4;
@@ -240,9 +246,12 @@ export function computeLayout(state, vp, hint = null) {
     // Fix waveform fantasma: apos detach (mesmo com clips deletados) a
     // strip NAO volta — audio agora vive (ou viveu) na track propria.
     clipWaveform: !state.audio_detached,
-    yRuler, yVideo, yText, yAudio,
+    yRuler, yVideo, yText, yAudio, scrollY,
     videoTrackH: VH, audioTrackH: AH, trackScale,  // alturas ESCALADAS (auto-altura)
-    contentH: Math.max(contentH, contentHFinal),
+    // altura REAL do conteudo (soma o scroll de volta): e a regua do quanto da
+    // pra rolar. Sem somar, rolar encolheria o proprio limite e travaria no meio.
+    contentH: Math.max(contentH, contentHFinal) + scrollY,
+    maxScrollY: Math.max(0, Math.max(contentH, contentHFinal) + scrollY - (vp.height || 0)),
   };
 }
 
@@ -296,7 +305,7 @@ export function laneForY(layout, y) {
     return y < layout.yVideo - 8 ? 1 : null;
   }
   const topo = rows[0];
-  if (y < topo.y - 4) return Math.min(5, topo.lane + 1);
+  if (y < topo.y - 4) return Math.min(MAX_LANE, topo.lane + 1);
   for (const r of rows) {
     if (y >= r.y - 4 && y <= r.y + r.h + 4) return r.lane;
   }

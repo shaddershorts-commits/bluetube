@@ -43,6 +43,8 @@ export const A = {
   TOGGLE_LANE_VIS: 'TOGGLE_LANE_VIS',
   // arrastar o cabecalho/olhinho da camada reordena as camadas (2026-07-29)
   REORDER_LANES: 'REORDER_LANES',
+  // arrasto diagonal: tempo E camada num dispatch so (ver reducer)
+  MOVE_ITEM_TO: 'MOVE_ITEM_TO',
   OVERLAY_TO_CLIP: 'OVERLAY_TO_CLIP',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
   SPLIT_OVERLAY: 'SPLIT_OVERLAY',
@@ -121,6 +123,7 @@ export const UNDOABLE = {
   [A.ADD_EXTRA_LANE]: U,
   [A.TOGGLE_LANE_VIS]: U,
   [A.REORDER_LANES]: U,
+  [A.MOVE_ITEM_TO]: U,
   [A.OVERLAY_TO_CLIP]: U,
   [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
@@ -184,6 +187,10 @@ export const addExtraLane = (kind) => ({ type: A.ADD_EXTRA_LANE, kind }); // 'vi
 export const toggleLaneVisibility = (kind, lane) => ({ type: A.TOGGLE_LANE_VIS, kind, lane }); // 'overlay' | 'audio'
 // arrasto do cabecalho: leva a camada `de` pra posicao da camada `para`
 export const reorderLanes = (kind, de, para) => ({ type: A.REORDER_LANES, kind, de, para });
+// fim do arrasto de camada/texto: grava TEMPO e CAMADA juntos. Separado (mover
+// + trocar de camada) o repelir olhava a camada que o item estava DEIXANDO e
+// jogava o item pra um tempo errado. laneAlvo null = mantem a camada atual.
+export const moveItemTo = (itemType, id, start, laneAlvo) => ({ type: A.MOVE_ITEM_TO, itemType, id, start, laneAlvo });
 export const overlayToClip = (overlayId, atT) => ({ type: A.OVERLAY_TO_CLIP, overlayId, atT });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
 export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });

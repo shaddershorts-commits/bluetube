@@ -18,7 +18,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { MAX_LANE, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE } from '../../public/editor-v1/core/schema.js';
+import { MAX_LANE, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, LANES_POR_TIPO, MAX_AUDIO_LANE } from '../../public/editor-v1/core/schema.js';
+import { hitTest } from '../../public/editor-v1/timeline/hittest.js';
 import {
   laneKind, itensDaLane, laneAceita, laneDestino, repelirStart, reordenarLanes,
 } from '../../public/editor-v1/core/lanes.js';
@@ -295,6 +296,105 @@ test('OVERLAY_DEFAULT_LANE e TEXT_DEFAULT_LANE nao colidem (nasce separado)', ()
   assert.notEqual(OVERLAY_DEFAULT_LANE, TEXT_DEFAULT_LANE);
 });
 
+// ── CAPACIDADE: 9 de video + 9 de texto + 9 de audio (user 2026-07-29) ──
+
+test('cabem 9 camadas de VIDEO e 9 de TEXTO ao mesmo tempo', () => {
+  const store = base();
+  for (let i = 0; i < LANES_POR_TIPO; i++) comOverlay(store, { lane: i + 1, start: 0, dur: 2 });
+  for (let i = 0; i < LANES_POR_TIPO; i++) comTexto(store, { lane: LANES_POR_TIPO + i + 1, start: 0, end: 2 });
+  const st = store.getState();
+  const lanesVideo = new Set(st.overlays.map(o => o.lane));
+  const lanesTexto = new Set(st.texts.map(t => t.lane));
+  assert.equal(lanesVideo.size, 9, 'nove camadas de video');
+  assert.equal(lanesTexto.size, 9, 'nove camadas de texto');
+  assert.equal([...lanesVideo].filter(l => lanesTexto.has(l)).length, 0, 'nenhuma camada mistura os dois');
+  for (const l of [...lanesVideo, ...lanesTexto]) assert.ok(l >= 1 && l <= MAX_LANE);
+});
+
+test('as 18 camadas viram 18 faixas no desenho', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  const lay = computeLayout(store.getState(), VP);
+  assert.equal(lay.laneRows.length, MAX_LANE);
+});
+
+test('cabem 9 camadas de AUDIO', () => {
+  const store = base();
+  for (let i = 0; i < 9; i++) {
+    store.dispatch(act.addAudioClip({ url: `a${i}.mp3`, filename: 'a' + i, duration: 5 }));
+    const st = store.getState();
+    store.dispatch(act.setAudioLane(st.audio_clips[st.audio_clips.length - 1].id, i));
+  }
+  const lanes = new Set(audioLaneMap(store.getState()).values());
+  assert.equal(lanes.size, 9, [...lanes].join(','));
+  assert.equal(Math.max(...lanes), MAX_AUDIO_LANE);
+});
+
+test('a camada de audio 9 nao e engolida pelo clamp', () => {
+  const store = base();
+  store.dispatch(act.addAudioClip({ url: 'a.mp3', filename: 'a', duration: 5 }));
+  const id = store.getState().audio_clips[0].id;
+  store.dispatch(act.setAudioLane(id, MAX_AUDIO_LANE));
+  assert.equal(store.getState().audio_clips[0].lane, MAX_AUDIO_LANE);
+});
+
+// ── ROLAGEM VERTICAL: sem ela a camada 9 existe mas fica inalcancavel ──
+
+test('com muitas faixas, o conteudo passa da altura e da pra rolar', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  const vpBaixo = { ...VP, height: 200 };
+  const lay = computeLayout(store.getState(), vpBaixo);
+  assert.ok(lay.contentH > vpBaixo.height, 'conteudo maior que a janela');
+  assert.ok(lay.maxScrollY > 0, 'existe rolagem disponivel');
+});
+
+test('rolar desloca as faixas mas NAO mexe na regua nem no eixo do tempo', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  const vp0 = { ...VP, height: 200 };
+  const a = computeLayout(store.getState(), vp0);
+  const b = computeLayout(store.getState(), { ...vp0, scrollY: 100 });
+  assert.equal(b.laneRows[0].y, a.laneRows[0].y - 100, 'as faixas sobem 100px');
+  assert.equal(b.yVideo, a.yVideo - 100);
+  assert.equal(b.yRuler, a.yRuler, 'a regua fica no lugar');
+  assert.equal(b.clips[0].x, a.clips[0].x, 'o eixo do tempo nao se mexe');
+  assert.equal(b.vp.pxPerSec, a.vp.pxPerSec, 'o zoom nao se mexe');
+});
+
+test('o limite de rolagem nao encolhe conforme se rola (nao trava no meio)', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  const vp0 = { ...VP, height: 200 };
+  const a = computeLayout(store.getState(), vp0);
+  const b = computeLayout(store.getState(), { ...vp0, scrollY: a.maxScrollY });
+  assert.equal(b.maxScrollY, a.maxScrollY, 'o fim da rolagem e o mesmo');
+  assert.equal(b.contentH, a.contentH);
+});
+
+test('rolado ate o fim, a ultima faixa de audio fica dentro da vista', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  store.dispatch(act.addAudioClip({ url: 'a.mp3', filename: 'a', duration: 5 }));
+  const vp0 = { ...VP, height: 200 };
+  const max = computeLayout(store.getState(), vp0).maxScrollY;
+  const lay = computeLayout(store.getState(), { ...vp0, scrollY: max });
+  const ultima = lay.audioLaneRows[lay.audioLaneRows.length - 1];
+  assert.ok(ultima.y + ultima.h <= vp0.height + 1, `fim da ultima faixa ${ultima.y + ultima.h} > janela ${vp0.height}`);
+});
+
+test('clique acerta a faixa certa DEPOIS de rolar (ver = clicar)', () => {
+  const store = base();
+  for (let i = 1; i <= MAX_LANE; i++) comOverlay(store, { lane: i, start: 0, dur: 2 });
+  const vp0 = { ...VP, height: 200, scrollY: 120 };
+  const lay = computeLayout(store.getState(), vp0);
+  const visivel = lay.overlayItems.find(o => o.y >= 0 && o.y + o.h <= vp0.height);
+  assert.ok(visivel, 'ha camada visivel apos rolar');
+  const hit = hitTest(lay, visivel.x + visivel.w / 2, visivel.y + visivel.h / 2);
+  assert.equal(hit.type, 'overlay-body');
+  assert.equal(hit.overlayId, visivel.overlayId);
+});
+
 // ───────────── R3: a camada nova aparece NA HORA (row fantasma) ─────────────
 
 test('R3 o layout desenha a camada fantasma que ainda nao existe no projeto', () => {
@@ -405,6 +505,104 @@ test('REORDER_LANES pelo dispatch troca as camadas e mantem 1 undo', () => {
   assert.equal(store.getState().overlays.find(o => o.id === b.id).lane, 1);
   store.undo();
   assert.equal(store.getState().overlays.find(o => o.id === a.id).lane, 1, 'um undo desfaz a reordenacao inteira');
+});
+
+// ── ARRASTO DIAGONAL (bug pego pela revisao adversarial) ──
+// Mover no tempo E trocar de camada eram dois dispatches: o repelir olhava a
+// camada de ORIGEM e o item pousava no tempo do vizinho que ele estava DEIXANDO.
+
+test('arrasto diagonal pousa no tempo do drop, nao no do vizinho da camada velha', () => {
+  const store = base();
+  comOverlay(store, { lane: 1, start: 0, dur: 10 });          // A ocupa 0..10 na 1
+  const b = comOverlay(store, { lane: 1, start: 12, dur: 3 }); // B vem de 12s
+  store.dispatch(act.moveItemTo('overlay', b.id, 2, 2));       // sobe pra 2 em t=2
+  const dep = store.getState().overlays.find(o => o.id === b.id);
+  assert.equal(dep.lane, 2, 'foi pra camada 2');
+  assert.equal(dep.start, 2, 'e ficou EM 2s (a camada 2 estava vazia)');
+});
+
+test('soltar em OUTRA camada ja ocupada sobe mais uma (nao sobrepoe)', () => {
+  const store = base();
+  comOverlay(store, { lane: 2, start: 0, dur: 10 });           // ocupa a 2
+  const b = comOverlay(store, { lane: 1, start: 12, dur: 3 });
+  store.dispatch(act.moveItemTo('overlay', b.id, 2, 2));       // mira a 2, ocupada
+  const dep = store.getState().overlays.find(o => o.id === b.id);
+  assert.equal(dep.lane, 3, 'a regra "sobrepor cria camada acima" vale aqui');
+  assert.equal(dep.start, 2, 'e o tempo do drop e respeitado');
+});
+
+test('arrastar de lado na MESMA camada repele (nao pula de camada sozinho)', () => {
+  const store = base();
+  comOverlay(store, { lane: 2, start: 0, dur: 10 });
+  const b = comOverlay(store, { lane: 2, start: 12, dur: 3 });
+  store.dispatch(act.moveItemTo('overlay', b.id, 2, 2));       // mesma camada
+  const dep = store.getState().overlays.find(o => o.id === b.id);
+  assert.equal(dep.lane, 2, 'continua na camada dele');
+  assert.equal(dep.start, 10, 'encostou no vizinho');
+});
+
+test('texto tambem pousa no tempo certo ao subir de camada', () => {
+  const store = base();
+  comTexto(store, { lane: 4, start: 0, end: 10 });
+  const t2 = comTexto(store, { lane: 4, start: 12, end: 15 });
+  store.dispatch(act.moveItemTo('text', t2.id, 2, 5));
+  const dep = store.getState().texts.find(t => t.id === t2.id);
+  assert.equal(dep.lane, 5);
+  assert.equal(dep.start_sec, 2);
+  assert.equal(dep.end_sec, 5, 'a duracao vai junto');
+});
+
+test('durante o arrasto o texto NAO e repelido (so no fim do gesto)', () => {
+  const store = base();
+  comTexto(store, { lane: 4, start: 0, end: 10 });
+  const t2 = comTexto(store, { lane: 4, start: 12, end: 15 });
+  // dispatch com gestureId = quadro do meio do arrasto
+  store.dispatch({ ...act.updateText(t2.id, { start_sec: 2, end_sec: 5 }), gestureId: 'g1' });
+  const meio = store.getState().texts.find(t => t.id === t2.id);
+  assert.equal(meio.start_sec, 2, 'segue o cursor livremente enquanto arrasta');
+  // e o fecho do gesto acerta a posicao final
+  store.dispatch(act.moveItemTo('text', t2.id, 2, 4));
+  const fim = store.getState().texts.find(t => t.id === t2.id);
+  assert.equal(fim.start_sec, 10, 'ao soltar na MESMA camada, encosta no vizinho');
+});
+
+test('soltar fora das faixas de camada mantem a camada atual', () => {
+  const store = base();
+  const ov = comOverlay(store, { lane: 3, start: 5, dur: 2 });
+  store.dispatch(act.moveItemTo('overlay', ov.id, 8, null));
+  const dep = store.getState().overlays.find(o => o.id === ov.id);
+  assert.equal(dep.lane, 3);
+  assert.equal(dep.start, 8);
+});
+
+// ── nenhum caminho de CRIACAO pode sumir com o arquivo do usuario ──
+
+test('imagem entra mesmo com todas as camadas ocupadas (anda no tempo)', () => {
+  const store = base();
+  for (let l = 1; l <= MAX_LANE; l++) comOverlay(store, { lane: l, start: 0, dur: 10 });
+  const antes = store.getState().overlays.length;
+  store.dispatch(act.addImageOverlay({ url: 'i.png', width: 10, height: 10 }, 0));
+  const st = store.getState();
+  assert.equal(st.overlays.length, antes + 1, 'a imagem NAO pode sumir em silencio');
+  const img = st.overlays.find(o => o.kind === 'image');
+  assert.ok(img.start >= 10, `entrou depois do vizinho (start=${img.start})`);
+});
+
+test('colar com tudo ocupado tambem entra, sem sobrepor', () => {
+  const store = base();
+  for (let l = 1; l <= MAX_LANE; l++) comOverlay(store, { lane: l, start: 0, dur: 10 });
+  const modelo = store.getState().overlays[0];
+  const antes = store.getState().overlays.length;
+  store.dispatch(act.paste('overlay', { ...modelo }, 2));
+  const st = store.getState();
+  assert.equal(st.overlays.length, antes + 1);
+  const novo = st.overlays[st.overlays.length - 1];
+  const vizinhos = st.overlays.filter(o => o.id !== novo.id && (o.lane || 1) === (novo.lane || 1));
+  for (const v of vizinhos) {
+    const fimV = v.start + (v.source_out - v.source_in);
+    const fimN = novo.start + (novo.source_out - novo.source_in);
+    assert.ok(novo.start >= fimV - 1e-6 || fimN <= v.start + 1e-6, 'nao sobrepoe ninguem');
+  }
 });
 
 test('a faixa principal NUNCA ganha campo lane', () => {

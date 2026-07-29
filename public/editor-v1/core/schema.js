@@ -22,7 +22,15 @@ export const MAX_UNDO = 100;
 // FRENTE (o que esta por cima na timeline aparece por cima no video).
 // Textos e overlays COMPARTILHAM o espaco de lanes — texto em lane 1 fica
 // ATRAS de um overlay em lane 2 (regra pedida pelo user 2026-07-20).
-export const MAX_LANE = 5;
+// 2026-07-29: teto subiu de 5 pra 18 a pedido do user ("pelo menos 9 de video
+// e 9 de texto"). Como video e texto dividem a MESMA numeracao, 18 garante os
+// dois lados ao mesmo tempo. O numero da lane e contrato com o render do
+// Railway (ops ordenadas por lane) — subir o teto NAO muda o significado, so a
+// faixa, entao projeto salvo antigo continua valendo sem migracao.
+export const MAX_LANE = 18;
+export const LANES_POR_TIPO = 9;      // a garantia pedida: 9 de video + 9 de texto
+export const MAX_AUDIO_LANE = 8;      // indices 0..8 = 9 faixas de audio
+export const MAX_EXTRA_LANES = 8;     // camadas vazias criaveis pelo menu
 export const TEXT_DEFAULT_LANE = 4;   // texto nasce no topo (padrao CapCut)
 export const OVERLAY_DEFAULT_LANE = 1;
 export function clampLane(v, fallback) {
@@ -146,8 +154,8 @@ export function normalizeLoadedState(raw) {
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
   s.volumes = { video: 1, audio_extra: 1, ...(raw.volumes || {}) };
-  s.extra_overlay_lanes = Number.isInteger(raw.extra_overlay_lanes) ? Math.max(0, Math.min(4, raw.extra_overlay_lanes)) : 0;
-  s.extra_audio_lanes = Number.isInteger(raw.extra_audio_lanes) ? Math.max(0, Math.min(4, raw.extra_audio_lanes)) : 0;
+  s.extra_overlay_lanes = Number.isInteger(raw.extra_overlay_lanes) ? Math.max(0, Math.min(MAX_EXTRA_LANES, raw.extra_overlay_lanes)) : 0;
+  s.extra_audio_lanes = Number.isInteger(raw.extra_audio_lanes) ? Math.max(0, Math.min(MAX_EXTRA_LANES, raw.extra_audio_lanes)) : 0;
   s.hidden_overlay_lanes = Array.isArray(raw.hidden_overlay_lanes) ? raw.hidden_overlay_lanes.filter(Number.isInteger) : [];
   s.hidden_audio_lanes = Array.isArray(raw.hidden_audio_lanes) ? raw.hidden_audio_lanes.filter(Number.isInteger) : [];
   s.audio_detached = raw.audio_detached === true;
@@ -163,7 +171,7 @@ export function normalizeLoadedState(raw) {
       source_in: a.source_in, source_out: a.source_out,
       volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
       ...(typeof a.speed === 'number' ? { speed: clamp(a.speed, 0.1, 100) } : {}),
-      lane: Number.isInteger(a.lane) && a.lane >= 0 ? Math.min(7, a.lane) : null,
+      lane: Number.isInteger(a.lane) && a.lane >= 0 ? Math.min(MAX_AUDIO_LANE, a.lane) : null,
       active: a.active !== false,
     })) : [];
   if (!s.audio_clips.length && raw.audio_extra?.url && raw.audio_extra?.duration > 0) {
