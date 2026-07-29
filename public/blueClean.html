@@ -105,6 +105,12 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(6,16,38,.97);border:1px solid rgba(0,212,255,.35);border-radius:12px;padding:11px 20px;font-size:13px;z-index:999;opacity:0;transition:all .3s}.toast.on{opacity:1}
 .upgrade{text-align:center;padding:70px 20px;display:none}
+/* ferramenta visível por baixo do convite, mas intocável */
+.bc-travado{filter:blur(7px) saturate(.65);pointer-events:none;user-select:none;opacity:.8}
+#bcMasterWall{position:fixed;inset:0;z-index:10001;background:rgba(2,8,23,.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+#bcMasterWall .box{background:linear-gradient(180deg,#0f172a,#020817);border:1px solid rgba(251,191,36,.4);border-radius:18px;max-width:470px;width:100%;padding:32px 26px;text-align:center;box-shadow:0 30px 80px rgba(251,191,36,.22);margin:auto}
+#bcMasterWall .cta{display:block;width:100%;padding:15px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#0a1020;border-radius:11px;font-size:14.5px;font-weight:900;text-decoration:none;box-sizing:border-box}
+#bcMasterWall .sec{display:inline-block;margin-top:12px;color:#64748b;font-size:12px;text-decoration:none}
 .upgrade .ic{font-size:60px;margin-bottom:14px}
 .upgrade h2{font-size:26px;font-weight:800;letter-spacing:-.02em}
 @media(max-width:640px){.editor-layout{flex-direction:column}.toolbar{width:100%;flex-direction:row;flex-wrap:wrap;gap:6px}.toolbar>*{flex:1;min-width:70px}}
@@ -233,20 +239,47 @@ function toast(m){const e=document.getElementById('toast');e.textContent=m;e.cla
 function dlHref(url,name){if(!url)return url;return url+(url.includes('?')?'&':'?')+'download='+encodeURIComponent(name||'blueclean.mp4');}
 function show(id){['stepUpload','stepEditor','stepProcessing','stepResult'].forEach(s=>document.getElementById(s).style.display=s===id?'block':'none');}
 
+
+// Convite do Master. `logado` muda só a chamada: quem não entrou ainda
+// precisa de conta antes de assinar.
+function bcMostrarMuro(logado){
+  if(document.getElementById("bcMasterWall"))return;
+  var m=document.getElementById("main");
+  if(m){m.style.display="block";m.classList.add("bc-travado");m.setAttribute("aria-hidden","true");}
+  var ov=document.createElement("div");
+  ov.id="bcMasterWall";
+  ov.innerHTML='<div class="box">'+
+    '<div style="font-size:44px;margin-bottom:10px">🪄</div>'+
+    '<h2 style="margin:0 0 10px;color:#fff;font-size:22px;font-weight:900;line-height:1.25">Legenda queimada no vídeo?<br><span style="background:linear-gradient(135deg,#fbbf24,#f59e0b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">A BlueClean apaga.</span></h2>'+
+    '<p style="color:#cbd5e1;font-size:14px;line-height:1.6;margin:0 0 18px">Aquele viral perfeito que você não podia usar porque tinha legenda, seta, círculo ou marca d\'água em cima? Cola o link. Ela detecta tudo, apaga e <b style="color:#fff">reconstrói o fundo quadro a quadro</b> — como se nunca tivesse existido.</p>'+
+    '<div style="text-align:left;background:rgba(251,191,36,.07);border-left:3px solid #fbbf24;border-radius:8px;padding:13px 15px;margin-bottom:18px;color:#e5e7eb;font-size:13px;line-height:1.7">'+
+      '✦ Legenda queimada, marca d\'água, seta e círculo<br>'+
+      '✦ Fundo reconstruído, sem borrão nem tarja preta<br>'+
+      '✦ Sai pronto pra repostar, sem rastro<br>'+
+      '✦ 10 limpezas por mês, sem editor e sem plugin'+
+    '</div>'+
+    '<div style="font-family:var(--mono);font-size:11px;color:#fbbf24;margin-bottom:14px">👑 Exclusivo do plano Master</div>'+
+    (logado
+      ? '<a href="/?upgrade=master" class="cta">👑 Virar Master e limpar meus vídeos</a>'
+      : '<a href="/?login=1" class="cta">Entrar na minha conta</a>')+
+    '<a href="/" class="sec">← Voltar ao BlueTube</a>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
 // Init
 (async()=>{
-  if(!TOKEN){document.getElementById('upgradeWall').style.display='block';return;}
+  if(!TOKEN){bcMostrarMuro(false);return;}
   try{
     const r=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'get-upload-url',token:TOKEN})});
     const d=await r.json();
-    if(r.status===403){document.getElementById('upgradeWall').style.display='block';return;}
+    if(r.status===403){bcMostrarMuro(true);return;}   // free/full: backend já barrou
     supaConfig=d;
     document.getElementById('main').style.display='block';
     const ur=await fetch('/api/blueclean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'usage',token:TOKEN})});
     const ud=await ur.json();
     updateUsage(ud);
     loadHistory();
-  }catch(e){document.getElementById('upgradeWall').style.display='block';}
+  }catch(e){bcMostrarMuro(!!TOKEN);}
 })();
 
 let usageState={used:0,limit:10,remaining:10,renova:null,max_seconds:35};
