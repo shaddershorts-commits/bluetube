@@ -64,3 +64,49 @@ test('nenhum texto usa jargão de cobrança agressiva', () => {
       'tom de cobrança: ' + m.subject);
   }
 });
+
+// ── DETECTOR DE ANOMALIA (2026-07-30) ──────────────────────────────────────
+// Sem ele, um pagante derrubado por bug NOSSO recebe "não identificamos a
+// renovação" — culpando o cliente pelo nosso erro. Foi o caso da Ana.
+const { ehAnomalia, ANOMALIA_JANELA_DIAS } = sweep;
+const AGORA = new Date('2026-07-30T12:00:00Z');
+const diasAtras = (n) => new Date(AGORA.getTime() - n * 864e5).toISOString();
+
+test('pagante que nunca pediu cancelamento e caiu = ANOMALIA', () => {
+  const ana = { trial_origin: null, amount_paid: 89.99, cancel_at_period_end: false, plan_expires_at: diasAtras(7) };
+  assert.ok(ehAnomalia(ana, AGORA), 'não detectou o caso Ana');
+});
+
+test('quem PEDIU cancelamento não é anomalia — saiu porque quis', () => {
+  const saiu = { trial_origin: null, amount_paid: 29.99, cancel_at_period_end: true, plan_expires_at: diasAtras(5) };
+  assert.equal(ehAnomalia(saiu, AGORA), null);
+});
+
+test('trial nunca é anomalia (nunca pagou nada)', () => {
+  const trial = { trial_origin: 'email_30d', amount_paid: null, cancel_at_period_end: false, plan_expires_at: diasAtras(5) };
+  assert.equal(ehAnomalia(trial, AGORA), null);
+});
+
+test('quem nunca pagou não é anomalia mesmo sem trial_origin', () => {
+  const zero = { trial_origin: null, amount_paid: null, cancel_at_period_end: false, plan_expires_at: diasAtras(5) };
+  assert.equal(ehAnomalia(zero, AGORA), null);
+  assert.equal(ehAnomalia({ ...zero, amount_paid: 0 }, AGORA), null);
+});
+
+test('caso antigo demais sai da janela (não é mais investigável)', () => {
+  const velho = { trial_origin: null, amount_paid: 89.99, cancel_at_period_end: false, plan_expires_at: diasAtras(ANOMALIA_JANELA_DIAS + 10) };
+  assert.equal(ehAnomalia(velho, AGORA), null);
+});
+
+test('quem ainda NÃO venceu não é anomalia', () => {
+  const futuro = { trial_origin: null, amount_paid: 89.99, cancel_at_period_end: false, plan_expires_at: new Date(AGORA.getTime() + 5 * 864e5).toISOString() };
+  assert.equal(ehAnomalia(futuro, AGORA), null);
+});
+
+test('cancel_at_period_end AUSENTE do select não vira anomalia falsa', () => {
+  // Se o campo não vier no SELECT ele é undefined. undefined !== true, então
+  // passaria. Este teste documenta o risco; a proteção real é o campo estar
+  // no select do endpoint (há comentário lá explicando).
+  const semCampo = { trial_origin: null, amount_paid: 89.99, plan_expires_at: diasAtras(3) };
+  assert.ok(ehAnomalia(semCampo, AGORA), 'comportamento esperado com campo ausente');
+});

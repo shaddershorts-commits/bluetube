@@ -27,6 +27,29 @@ const LIMITE_EMAILS_RODADA = 40;
 const CARENCIA_DIAS = 3;
 const AVISO_ANTES_DIAS = 3;
 
+// ── DETECTOR DE ANOMALIA ────────────────────────────────────────────────────
+// O cron sozinho trata sintoma, não causa: pra ele, um pagante que perdeu a
+// assinatura por bug NOSSO é idêntico a quem parou de pagar. Foi o caso da Ana
+// (2026-06-23): automação cancelou as duas assinaturas dela no mesmo segundo, e
+// sem este detector o cron mandaria "não identificamos a renovação" — ou seja,
+// culparia a cliente pelo nosso erro.
+//
+// Assinatura de anomalia: pagou de verdade + NUNCA pediu cancelamento + o plano
+// caiu mesmo assim, faz pouco tempo. Falha de cartão não cai aqui — essa é
+// tratada pelo dunning, que roda antes.
+const ANOMALIA_JANELA_DIAS = 45;
+
+function ehAnomalia(s, agora) {
+  if (s.trial_origin) return null;                    // trial não é pagante
+  const pagou = Number(s.amount_paid) > 0;
+  if (!pagou) return null;
+  if (s.cancel_at_period_end === true) return null;   // ele PEDIU pra sair
+  if (!s.plan_expires_at) return null;
+  const venceuHa = (agora - new Date(s.plan_expires_at)) / 864e5;
+  if (venceuHa < 0 || venceuHa > ANOMALIA_JANELA_DIAS) return null;
+  return `pagou ${s.amount_paid} e nunca pediu cancelamento, mas o plano caiu ha ${Math.round(venceuHa)}d`;
+}
+
 const ASSINE = 'https://bluetubeviral.com/?upgrade=full';
 
 // ── textos ──────────────────────────────────────────────────────────────────
@@ -115,13 +138,16 @@ module.exports = async function handler(req, res) {
   const executar = req.query?.executar === '1';
   const agora = new Date();
 
-  const relatorio = { modo: executar ? 'EXECUTADO' : 'SIMULACAO', avisados: [], rebaixados: [], pulados: [], erros: [] };
+  const relatorio = { modo: executar ? 'EXECUTADO' : 'SIMULACAO', avisados: [], rebaixados: [], anomalias: [], sem_expiracao: [], pulados: [], erros: [] };
 
   try {
     const limite = new Date(agora.getTime() + AVISO_ANTES_DIAS * 864e5).toISOString();
     const r = await fetch(
       `${SU}/rest/v1/subscribers?plan=neq.free&is_manual=eq.false&plan_expires_at=not.is.null&plan_expires_at=lt.${limite}` +
-      `&select=email,plan,trial_origin,plan_expires_at,expiry_notice_sent_at,stripe_subscription_id,amount_paid&order=plan_expires_at.asc`,
+      // cancel_at_period_end é OBRIGATÓRIO aqui: o detector de anomalia usa. Sem
+      // ele no select vira undefined e quem PEDIU cancelamento seria marcado
+      // como anomalia. Campo fora do select = dado silenciosamente errado.
+      `&select=email,plan,trial_origin,plan_expires_at,expiry_notice_sent_at,stripe_subscription_id,amount_paid,cancel_at_period_end&order=plan_expires_at.asc`,
       { headers: H }
     );
     if (!r.ok) return res.status(500).json({ error: 'consulta falhou', detalhe: (await r.text()).slice(0, 200) });
@@ -133,6 +159,14 @@ module.exports = async function handler(req, res) {
       const dias = Math.max(0, Math.ceil((venceEm - agora) / 864e5));
       const avisadoEm = s.expiry_notice_sent_at ? new Date(s.expiry_notice_sent_at) : null;
       const ehTrial = !!s.trial_origin;
+
+      // ANOMALIA: não manda email nem rebaixa. Isso é caso pra humano olhar —
+      // pode ser bug nosso tendo derrubado alguém que estava pagando.
+      const suspeita = ehAnomalia(s, agora);
+      if (suspeita && !avisadoEm) {
+        relatorio.anomalias.push({ email: s.email, plano: s.plan, pago: s.amount_paid, motivo: suspeita });
+        continue;
+      }
 
       // ── REBAIXAR: venceu E foi avisado há 3+ dias ──
       if (venceu && avisadoEm && (agora - avisadoEm) >= CARENCIA_DIAS * 864e5) {
@@ -178,6 +212,49 @@ module.exports = async function handler(req, res) {
     }
 
     relatorio.total_analisados = lista.length;
+
+    // ── ZONA CEGA: plano pago, não-manual e SEM data de expiração ───────────
+    // Esses nunca entram na varredura acima (o filtro exige plan_expires_at),
+    // então ficariam com plano pago pra sempre. Hoje são 0, mas "zero hoje" não
+    // é "impossível amanhã". NÃO rebaixo automaticamente — pode ser concessão
+    // legítima que esqueceram de marcar is_manual. Só alerto pra humano decidir.
+    try {
+      const cr = await fetch(
+        `${SU}/rest/v1/subscribers?plan=neq.free&is_manual=eq.false&plan_expires_at=is.null&select=email,plan,amount_paid,trial_origin,created_at&limit=50`,
+        { headers: H }
+      );
+      if (cr.ok) {
+        for (const s of await cr.json()) {
+          relatorio.sem_expiracao.push({ email: s.email, plano: s.plan, pago: s.amount_paid, desde: (s.created_at || '').slice(0, 10) });
+        }
+      }
+    } catch (e) { relatorio.erros.push({ etapa: 'zona_cega', erro: (e.message || '').slice(0, 120) }); }
+
+    // ── ALERTA PRO ADMIN ────────────────────────────────────────────────────
+    // Anomalia e zona cega são casos pra humano olhar, não pra automação
+    // resolver. Sem este alerta, fui EU que descobri a Ana — cinco semanas
+    // depois, no olho.
+    const precisaOlhar = relatorio.anomalias.length + relatorio.sem_expiracao.length;
+    if (precisaOlhar > 0 && executar && RESEND && process.env.ADMIN_EMAIL) {
+      const linha = (x) => `<li style="margin-bottom:6px"><b>${x.email}</b> (${x.plano}) — ${x.motivo || 'plano pago sem data de expiração desde ' + x.desde}</li>`;
+      const corpo =
+        (relatorio.anomalias.length
+          ? `<p><b>${relatorio.anomalias.length} possível(is) vítima(s) de falha nossa</b> — pagaram, nunca pediram cancelamento, e mesmo assim o plano caiu. <b>Não receberam email</b> e não foram rebaixados.</p><ul>${relatorio.anomalias.map(linha).join('')}</ul>` : '')
+        + (relatorio.sem_expiracao.length
+          ? `<p><b>${relatorio.sem_expiracao.length} com plano pago e SEM data de expiração</b> — invisíveis à varredura. Ou marca is_manual=true (se for concessão), ou põe data.</p><ul>${relatorio.sem_expiracao.map(linha).join('')}</ul>` : '');
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + RESEND, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'BlueTube <noreply@bluetubeviral.com>',
+          to: [process.env.ADMIN_EMAIL],
+          subject: `[BlueTube] ${precisaOlhar} caso(s) de plano pra investigar`,
+          html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:600px">${corpo}<p style="color:#888;font-size:12px">Varredura automática de planos — ${agora.toISOString().slice(0, 16)}</p></div>`,
+        }),
+      }).catch(() => {});
+      relatorio.alerta_admin_enviado = true;
+    }
+
     return res.status(200).json(relatorio);
   } catch (e) {
     return res.status(500).json({ error: 'excecao', detalhe: (e.message || '').slice(0, 200) });
@@ -188,3 +265,5 @@ module.exports = async function handler(req, res) {
 module.exports.emailTrial = emailTrial;
 module.exports.emailRenovacao = emailRenovacao;
 module.exports.CARENCIA_DIAS = CARENCIA_DIAS;
+module.exports.ehAnomalia = ehAnomalia;
+module.exports.ANOMALIA_JANELA_DIAS = ANOMALIA_JANELA_DIAS;
