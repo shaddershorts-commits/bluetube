@@ -4,6 +4,9 @@
 
 import { TEXT_SIZE_PCT } from './schema.js';
 import { layoutDoTexto } from './text-layout.js';
+// módulo puro (sem DOM), apesar de morar em preview/: é lá que a correção de
+// cor é definida, e o payload precisa dos MESMOS números que desenham a tela
+import { paramsRender } from '../preview/color-grade.js';
 
 /** Clips efetivos: ativos, na ordem do array (ordem visual da timeline).
  *  Espelha a logica do backend edit-v0 (filter active !== false). */
@@ -347,6 +350,11 @@ export function exportPayload(state) {
     ...(seg.clip.mirrored ? { mirrored: true } : {}),
     ...(seg.clip.muted ? { muted: true } : {}),          // áudio removido da cena
     ...(seg.clip.mask ? { mask: seg.clip.mask } : {}),    // máscara (Railway aplica)
+    // CORREÇÃO DE COR: o payload NÃO levava o grade — os 15 controles do
+    // Retoque morriam no preview e o arquivo saía sem nenhum deles. Vai o
+    // estado cru (pra reabrir o projeto) e os números prontos pro render.
+    ...(seg.clip.grade ? { grade: seg.clip.grade } : {}),
+    ...(seg.clip.grade && paramsRender(seg.clip.grade) ? { grade_render: paramsRender(seg.clip.grade) } : {}),
   }));
   return {
     version: 1,

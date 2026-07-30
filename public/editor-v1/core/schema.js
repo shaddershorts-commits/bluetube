@@ -132,6 +132,15 @@ export function normalizeLoadedState(raw) {
         w_pct: clamp(c.mask.w_pct ?? 0.6, 0.05, 1), h_pct: clamp(c.mask.h_pct ?? 0.6, 0.05, 1),
         feather: clamp(c.mask.feather ?? 0, 0, 100), radius: clamp(c.mask.radius ?? 0, 0, 100),
       } } : {}),
+      // ⚠️ CORREÇÃO DE COR: este campo NÃO era copiado aqui — reabrir o projeto
+      // apagava o Retoque inteiro em silêncio. Cada chave é um número -100..100
+      // (o modelo é plano de propósito), então dá pra validar sem lista fixa e
+      // as abas novas (HSL/Curvas/Roda) entram sem migração.
+      ...(c.grade && typeof c.grade === 'object' ? { grade: Object.fromEntries(
+        Object.entries(c.grade)
+          .filter(([k, v]) => /^[a-z_]+$/.test(k) && Number.isFinite(Number(v)))
+          .map(([k, v]) => [k, clamp(Number(v), -100, 100)])
+      ) } : {}),
     })) : [];
   s.texts = Array.isArray(raw.texts) ? raw.texts
     .filter(t => t && typeof t.content === 'string')

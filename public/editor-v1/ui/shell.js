@@ -19,7 +19,10 @@ import { createFrameUI } from '../preview/frame-ui.js';
 import { createTransitionsPanel } from './transitions-panel.js';
 import { createTransitionFx } from '../preview/transition-fx.js';
 import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
-import { CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste } from '../preview/color-grade.js';
+import {
+  CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste, TODAS_CHAVES,
+  FAIXAS_HSL, EIXOS_HSL, CANAIS_CURVA, ANCORAS_CURVA, FAIXAS_RODA, CANAIS_RODA,
+} from '../preview/color-grade.js';
 import { createTimelineController } from './timeline-controller.js';
 import { attachShortcuts, splitSelectedAt } from './shortcuts.js';
 import { createThumbnails } from '../timeline/thumbnails.js';
@@ -350,17 +353,93 @@ export function mountEditor(root, store, opts = {}) {
       aplicarGrade();
       toast('Retoque redefinido ✓');
     });
+
+    // ── as 3 abas novas (HSL, Curvas, Roda) ──────────────────────────────
+    // Mesmo `data-grade` dos sliders do Básico: o listener acima já cuida do
+    // dispatch, e preencherPainelGrade já reflete o estado. Nada de fiação
+    // paralela — foi o que deixou as animações de legenda mortas no painel.
+    const linhaSlider = (chave, rotulo, classe) =>
+      '<div class="be-grade-linha"><label>' + rotulo + '</label>' +
+      '<input type="range" min="-100" max="100" step="1" value="0" data-grade="' + chave + '"' +
+      (classe ? ' class="' + classe + '"' : '') + '/>' +
+      '<output data-grade-val="' + chave + '">0</output></div>';
+
+    const boxHsl = $('#beGradeHsl');
+    if (boxHsl && !boxHsl.dataset.pronto) {
+      boxHsl.dataset.pronto = '1';
+      let html = '<div class="be-dim be-grade-nota">Mexe só na faixa de cor escolhida — o resto da imagem fica.</div>';
+      for (const f of FAIXAS_HSL) {
+        html += '<div class="be-grade-grupo">' + f.rotulo + '</div>';
+        for (const e of EIXOS_HSL) {
+          html += linhaSlider(`hsl_${f.id}_${e.id}`, e.rotulo,
+            e.id === 'h' ? 'be-grade-trilha-matiz' : e.id === 's' ? 'be-grade-trilha-sat' : '');
+        }
+      }
+      boxHsl.innerHTML = html;
+    }
+
+    const boxCur = $('#beGradeCurvas');
+    if (boxCur && !boxCur.dataset.pronto) {
+      boxCur.dataset.pronto = '1';
+      let html = '<div class="be-dim be-grade-nota">Curva tonal: RGB mexe nos três canais juntos; R/G/B, em um só.</div>';
+      for (const c of CANAIS_CURVA) {
+        html += '<div class="be-grade-grupo">' + c.rotulo + '</div>';
+        for (const a of ANCORAS_CURVA) html += linhaSlider(`cur_${c.id}_${a.id}`, a.rotulo);
+      }
+      boxCur.innerHTML = html;
+    }
+
+    const boxRoda = $('#beGradeRoda');
+    if (boxRoda && !boxRoda.dataset.pronto) {
+      boxRoda.dataset.pronto = '1';
+      let html = '<div class="be-dim be-grade-nota">Desloca a cor por faixa de luz: sombras, médios e altas separados.</div>';
+      for (const f of FAIXAS_RODA) {
+        html += '<div class="be-grade-grupo">' + f.rotulo + '</div>';
+        for (const c of CANAIS_RODA) {
+          html += linhaSlider(`roda_${f.id}_${c.id}`, c.rotulo, 'be-grade-canal-' + c.id);
+        }
+      }
+      boxRoda.innerHTML = html;
+    }
+
+    // o listener de input vive no #beGradeCampos; os painéis novos são irmãos,
+    // então cada um ganha o MESMO tratamento (delegação por painel)
+    for (const b of [boxHsl, boxCur, boxRoda]) {
+      b?.addEventListener('input', (e) => {
+        const inp = e.target.closest('[data-grade]'); if (!inp) return;
+        const st = store.getState();
+        const id = st.selected_clip_id; if (id == null) return;
+        const campo = inp.dataset.grade;
+        const v = parseInt(inp.value, 10) || 0;
+        const saida = b.querySelector('[data-grade-val="' + campo + '"]');
+        if (saida) saida.textContent = v;
+        store.dispatch({ ...act.setClipGrade(id, { [campo]: v }), gestureId: 'grade-' + id + '-' + campo });
+        aplicarGrade();
+      });
+    }
+
+    $('#beGradeAbas')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-gaba]'); if (!b) return;
+      const aba = b.dataset.gaba;
+      $('#beGradeAbas').querySelectorAll('[data-gaba]').forEach(x =>
+        x.classList.toggle('active', x === b));
+      for (const p of root.querySelectorAll('[data-gaba-painel]')) {
+        p.style.display = p.dataset.gabaPainel === aba ? '' : 'none';
+      }
+    });
   }
 
-  // reflete o estado nos controles (troca de cena, undo)
+  // reflete o estado nos controles (troca de cena, undo). Varre TODAS as
+  // chaves (Básico + HSL + Curvas + Roda) — uma lista só evita aba que mostra
+  // zero enquanto o valor existe no estado.
   function preencherPainelGrade(state) {
-    const box = $('#beGradeCampos'); if (!box) return;
+    if (!$('#beGradeCampos')) return;
     const clip = state.clips.find(c => c.id === state.selected_clip_id);
     const g = clip?.grade || {};
-    for (const c of CAMPOS_COR) {
-      const inp = box.querySelector('[data-grade="' + c.id + '"]');
-      const out = box.querySelector('[data-grade-val="' + c.id + '"]');
-      const v = Math.round(Number(g[c.id]) || 0);
+    for (const chave of TODAS_CHAVES) {
+      const inp = root.querySelector('[data-grade="' + chave + '"]');
+      const out = root.querySelector('[data-grade-val="' + chave + '"]');
+      const v = Math.round(Number(g[chave]) || 0);
       if (inp && document.activeElement !== inp) inp.value = v;
       if (out) out.textContent = v;
     }
@@ -2182,7 +2261,19 @@ function buildTemplate() {
             <span class="be-dim">Ajustes desta cena</span>
             <button type="button" id="beGradeReset" class="be-tool-btn" title="Voltar tudo ao neutro">↺ Redefinir</button>
           </div>
-          <div id="beGradeCampos" class="be-grade-campos"></div>
+          <!-- as 4 abas do print: Básico | HSL | Curvas | Roda de cores.
+               Todos os controles usam data-grade="<chave plana>", então o
+               listener e o preenchimento já existentes valem pros novos. -->
+          <div class="be-cfg-subtabs be-grade-abas" id="beGradeAbas">
+            <button type="button" data-gaba="basico" class="be-cfg-subtab active">Básico</button>
+            <button type="button" data-gaba="hsl" class="be-cfg-subtab">HSL</button>
+            <button type="button" data-gaba="curvas" class="be-cfg-subtab">Curvas</button>
+            <button type="button" data-gaba="roda" class="be-cfg-subtab">Roda de cores</button>
+          </div>
+          <div id="beGradeCampos" class="be-grade-campos" data-gaba-painel="basico"></div>
+          <div id="beGradeHsl" class="be-grade-campos" data-gaba-painel="hsl" style="display:none"></div>
+          <div id="beGradeCurvas" class="be-grade-campos" data-gaba-painel="curvas" style="display:none"></div>
+          <div id="beGradeRoda" class="be-grade-campos" data-gaba-painel="roda" style="display:none"></div>
         </div>
       </div>
 

@@ -2060,6 +2060,70 @@ function animExpr(anim, startSec, endSec) {
     `1.08-((${ent}-0.6)/0.4)*0.080))`;
   return { alpha, escala, deslocY: null };
 }
+// ── CORREÇÃO DE COR (Retoque) ────────────────────────────────────────────────
+// Ate 29/07 o grade existia SO no preview: o payload nem carregava os valores e
+// o arquivo exportado saia sem nenhum ajuste. Agora o editor manda `grade_render`
+// (SO NUMEROS — string de filtro vinda do cliente seria injecao de comando) e
+// aqui viram filtros de verdade.
+//   curvas  -> curves        (os pontos vem calculados pela MESMA conta do preview)
+//   hsl     -> huesaturation (ajuste por faixa de cor: r/y/g/c/b/m)
+//   temp    -> colortemperature · matiz/saturacao -> hue
+//   nitidez -> unsharp · vinheta -> vignette · grao -> noise
+function filtrosDoGrade(gr) {
+  if (!gr || typeof gr !== 'object') return [];
+  const num = (v, min, max, def = 0) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def;
+  };
+  const out = [];
+
+  if (gr.curvas && typeof gr.curvas === 'object') {
+    const partes = [];
+    for (const canal of ['r', 'g', 'b']) {
+      const pts = gr.curvas[canal];
+      if (!Array.isArray(pts) || pts.length < 2 || pts.length > 12) continue;
+      const s = pts
+        .map((p) => Array.isArray(p) ? `${num(p[0], 0, 1).toFixed(4)}/${num(p[1], 0, 1).toFixed(4)}` : null)
+        .filter(Boolean).join(' ');
+      if (s) partes.push(`${canal}='${s}'`);
+    }
+    if (partes.length) out.push('curves=' + partes.join(':'));
+  }
+
+  if (Array.isArray(gr.hsl)) {
+    const validas = new Set(['r', 'y', 'g', 'c', 'b', 'm']);
+    for (const f of gr.hsl.slice(0, 6)) {
+      if (!f || !validas.has(f.faixa)) continue;
+      out.push(`huesaturation=hue=${num(f.h, -180, 180).toFixed(2)}` +
+               `:saturation=${num(f.s, -1, 1).toFixed(4)}` +
+               `:intensity=${num(f.l, -1, 1).toFixed(4)}` +
+               `:colors=${f.faixa}`);
+    }
+  }
+
+  // temp>0 esquenta: temperatura MENOR em kelvin = imagem mais quente
+  if (gr.temp) out.push(`colortemperature=temperature=${Math.round(6500 - num(gr.temp, -1, 1) * 2500)}`);
+  const hueParts = [];
+  if (gr.matiz) hueParts.push(`h=${num(gr.matiz, -180, 180).toFixed(2)}`);
+  // != null e nao truthy: saturacao ZERO e preto-e-branco, um ajuste legitimo
+  // e comum — testar por verdadeiro/falso fazia o filtro nunca ser aplicado
+  if (gr.saturacao != null) hueParts.push(`s=${num(gr.saturacao, 0, 3, 1).toFixed(4)}`);
+  if (hueParts.length) out.push('hue=' + hueParts.join(':'));
+
+  if (gr.nitidez) out.push(`unsharp=5:5:${(num(gr.nitidez, 0, 1) * 1.5).toFixed(3)}`);
+  if (gr.glow) {
+    // brilho/glow: borra uma copia e soma por cima (mesma ideia do preview)
+    const k = num(gr.glow, 0, 1);
+    out.push(`split[gA][gB];[gB]gblur=sigma=${(k * 12).toFixed(1)}[gBlur];[gA][gBlur]blend=all_mode=screen:all_opacity=${(k * 0.7).toFixed(3)}`);
+  }
+  if (gr.grao) out.push(`noise=alls=${Math.round(num(gr.grao, 0, 1) * 26)}:allf=t+u`);
+  if (gr.vinheta) {
+    // vinheta mais forte = angulo maior (o preview escurece as bordas igual)
+    out.push(`vignette=angle=${(Math.PI / 5 + num(gr.vinheta, 0, 1) * (Math.PI / 4)).toFixed(4)}`);
+  }
+  return out;
+}
+
 function hexToFfmpeg(hex) {
   // FFmpeg cor: 0xRRGGBB
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '#ffffff');
@@ -2115,12 +2179,20 @@ async function processEditV0(jobId, p) {
       const out = path.join(dir, `clip_${i}.mp4`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
+      // CORREÇÃO DE COR da cena: entra AQUI, no trim, porque o grade é POR
+      // CLIPE — depois do concat não dá mais pra saber de quem era o ajuste.
+      // Antes o Retoque não chegava no arquivo de jeito nenhum.
+      const fGrade = filtrosDoGrade(c.grade_render);
+      const vfPartes = [
+        ...(multiSource ? [normVf] : []),
+        ...fGrade,
+      ].filter(Boolean);
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
       await run('ffmpeg', [
         '-y', '-ss', String(c.source_in), '-t', String(dur),
         '-i', srcFor(c),
-        ...(multiSource ? ['-vf', normVf, '-r', '30', '-pix_fmt', 'yuv420p'] : []),
+        ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p'] : []),
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '128k',
         '-force_key_frames', 'expr:gte(t,0)',

@@ -546,6 +546,12 @@ body {
   font-size: 11px; line-height: 1.2; color: var(--text-sec); border-radius: 4px;
 }
 .be-track-eye:hover { background: var(--blue-dim); color: var(--text); }
+/* abas do Retoque (Básico | HSL | Curvas | Roda de cores) */
+.be-grade-abas { margin-bottom: 6px; }
+.be-grade-nota { font-size: 10px; margin-bottom: 4px; }
+.be-grade-canal-r::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #ff4757); }
+.be-grade-canal-g::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #4ade80); }
+.be-grade-canal-b::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #38bdf8); }
 /* arrastar o olhinho reordena as camadas (2026-07-29) */
 .be-track-eye { touch-action: none; }
 .be-track-eye-drag { background: var(--blue-dim); color: var(--text); transform: scale(1.25); }
