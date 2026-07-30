@@ -3,10 +3,19 @@
 
 let redis = null;
 
+// Aceita os DOIS padrões de nome — o antigo (UPSTASH_REDIS_URL) e o atual do
+// pacote @upstash/redis (UPSTASH_REDIS_REST_URL), igual o health.js já fazia.
+//
+// 2026-07-30: a Vercel tinha só as REST_*, e este arquivo procurava só as sem
+// REST. Resultado: getRedis() devolvia null, o cache ficava 100% desligado em
+// silêncio, o banco Upstash recebia ZERO comandos — e foi apagado pela
+// automação deles, que deleta banco gratuito com 14 dias de inatividade.
+// O cache não parou porque o banco morreu; o banco morreu porque o cache
+// nunca conectou. Aceitar os dois nomes evita a próxima versão disso.
 function getRedis() {
   if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
   if (!url || !token) return null;
   try {
     const { Redis } = require('@upstash/redis');
