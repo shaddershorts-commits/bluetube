@@ -22,6 +22,21 @@ module.exports = async function handler(req, res) {
   const checks = {};
   const start = Date.now();
 
+  // /api/health é PÚBLICO. Rede de segurança: nenhum valor de variável de
+  // ambiente pode sair na mensagem de erro. Em 2026-07-30 o token do Upstash
+  // foi servido publicamente porque o fetch falhou e ecoou a URL, que tinha o
+  // token colado junto. Aqui a gente varre TODO segredo de qualquer mensagem,
+  // não só a daquele caso — a próxima checagem a vazar não vai ser essa.
+  function limparSegredos(msg) {
+    let s = String(msg || '');
+    for (const [k, v] of Object.entries(process.env)) {
+      if (!v || String(v).length < 12) continue;                 // curto demais pra ser segredo
+      if (!/KEY|TOKEN|SECRET|PASSWORD|URL|DSN|WEBHOOK/i.test(k)) continue;
+      if (s.includes(v)) s = s.split(v).join(`«${k} omitido»`);
+    }
+    return s.slice(0, 300);
+  }
+
   async function check(name, fn, timeout = 5000) {
     const t0 = Date.now();
     const ctrl = new AbortController();
@@ -35,7 +50,7 @@ module.exports = async function handler(req, res) {
       checks[name] = {
         status: 'error',
         latency_ms: Date.now() - t0,
-        error: e.name === 'AbortError' ? 'timeout' : e.message,
+        error: e.name === 'AbortError' ? 'timeout' : limparSegredos(e.message),
       };
     }
   }
@@ -182,10 +197,19 @@ module.exports = async function handler(req, res) {
       const url = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
       const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
       if (!url || !token) throw new Error('não configurado');
-      const r = await fetch(`${url}/ping`, {
-        headers: { Authorization: 'Bearer ' + token },
-        signal,
-      });
+
+      // ⚠ /api/health é PÚBLICO. Em 2026-07-30 a URL foi salva com as DUAS
+      // linhas do painel da Upstash coladas juntas (url + token). O fetch
+      // falhou com "Failed to parse URL from <valor>" e essa mensagem, que
+      // continha o TOKEN, foi servida publicamente no JSON do health.
+      // Nunca deixar valor de env entrar em mensagem de erro daqui.
+      let alvo;
+      try {
+        alvo = new URL('/ping', url.trim()).toString();
+      } catch {
+        throw new Error('URL mal formada — confira se o valor tem só o host, sem o token junto');
+      }
+      const r = await fetch(alvo, { headers: { Authorization: 'Bearer ' + token }, signal });
       if (!r.ok) throw new Error(`status ${r.status}`);
     }),
   ]);
