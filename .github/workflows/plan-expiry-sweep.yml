@@ -1,0 +1,39 @@
+name: Varredura de planos vencidos (aviso + rebaixamento)
+
+# Cron diario. Avisa quem vence em ate 3 dias (ou ja venceu) e rebaixa pra free
+# quem venceu E ja foi avisado ha 3+ dias. Ninguem e rebaixado sem aviso previo.
+#
+# ATENCAO: o endpoint so age de verdade com ?executar=1. Sem isso ele SIMULA e
+# devolve o relatorio do que faria. Este workflow manda executar=1 — pra ver a
+# previa sem disparar nada, roda o workflow_dispatch com simular=true.
+
+on:
+  schedule:
+    # minuto :23 pra fugir do pico do GH Actions (cron deles e best-effort)
+    - cron: '23 13 * * *'
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: 'Só simular (não envia email nem rebaixa)'
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Dispara varredura
+        run: |
+          MODO="&executar=1"
+          if [ "${{ inputs.simular }}" = "true" ]; then MODO=""; fi
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC  modo=${MODO:-SIMULACAO}"
+          HTTP=$(curl -sS --max-time 300 -o /tmp/resp.json -w "%{http_code}" \
+            "https://www.bluetubeviral.com/api/plan-expiry-sweep?admin_secret=${{ secrets.ADMIN_SECRET }}${MODO}")
+          echo "HTTP: $HTTP"
+          head -c 1200 /tmp/resp.json
+          echo ""
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::HTTP $HTTP"
+            exit 1
+          fi
