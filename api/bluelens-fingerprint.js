@@ -486,6 +486,16 @@ function aplicarPixel(score, minDist, comparacoes) {
   return { score, pixel: null };
 }
 
+// LEI DO FRAME (user, 01/08): na lista "canais que postaram o MESMO vídeo"
+// só entra candidato com quadro CONFIRMADO pixel a pixel. "Quase igual"
+// (provável) não é prova — cena parecida de casamento passava raspando.
+// Quadros do YouTube são sempre públicos, então exigir confirmação não
+// depende de sorte de rede pro caso YT.
+function filtrarMatchesYt(pontuados, max) {
+  const confirmados = pontuados.filter(m => m.pixel === 'confirmado');
+  return { matches: confirmados.slice(0, max), descartados: pontuados.length - confirmados.length };
+}
+
 // Corte de exibição do cross-platform (o Layer 3 que faltava ali): junk de
 // quadro único sem NENHUMA evidência vai pra contagem, não pra lista.
 function cortarWeb(webList) {
@@ -718,8 +728,9 @@ module.exports = async function handler(req, res) {
 
     // Lista vazia honesta vale mais que lista cheia errada (regra de ouro do
     // user no Blublu: primeiro precisão, depois quantidade).
-    const matches = pontuados.filter(m => m.confidence_pct >= PISO_EXIBICAO).slice(0, MAX_CANDIDATES);
-    const descartados = pontuados.length - matches.length;
+    const fx = filtrarMatchesYt(pontuados, MAX_CANDIDATES);
+    const matches = fx.matches;
+    const descartados = fx.descartados;
 
     const corte = cortarWeb(webPontuado);
     const web = corte.mostrar
@@ -745,7 +756,7 @@ module.exports = async function handler(req, res) {
       web_matches_hidden: corte.ocultos,
       engine: 'serpapi_v51_pixel',
       message: matches.length === 0
-        ? 'Nenhum vídeo do YouTube bateu com confiança suficiente. Isso é sinal bom: não achei repost claro — e prefiro lista vazia a chute.'
+        ? 'Nenhum canal do YouTube tem o MESMO quadro do seu vídeo (comparei pixel a pixel). Parecidos não contam — e prefiro lista vazia a chute.'
         : undefined,
       cached: false,
       timing: { total_ms: Date.now() - startTs },
@@ -770,5 +781,6 @@ module.exports.extractTikTokId = extractTikTokId;
 module.exports.PISO_EXIBICAO = PISO_EXIBICAO;
 module.exports.aplicarPixel = aplicarPixel;
 module.exports.cortarWeb = cortarWeb;
+module.exports.filtrarMatchesYt = filtrarMatchesYt;
 module.exports.dhashFromJpeg = dhashFromJpeg;
 module.exports.hamming = hamming;

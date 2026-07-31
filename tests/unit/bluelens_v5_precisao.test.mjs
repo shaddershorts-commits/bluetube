@@ -173,3 +173,35 @@ test('cortarWeb: ninguém com evidência → mostra topo 5, não lista vazia', (
   assert.equal(c.mostrar.length, 5);
   assert.equal(c.ocultos, 7);
 });
+
+// ── LEI DO FRAME (user, 01/08): "A ÚNICA FORMA TEM QUE SER FRAME" ──────────
+// Caso real: "Bouquet dorato" (67%, quadro provável) e 2 "Touching wedding
+// customs" (55%) apareciam como "postaram o mesmo vídeo". Cena parecida de
+// casamento NÃO é o mesmo vídeo. Agora só quadro CONFIRMADO exibe.
+const { filtrarMatchesYt } = require('../../api/bluelens-fingerprint.js');
+
+test('o caso do print: só o confirmado fica; os 3 prováveis somem', () => {
+  const f = filtrarMatchesYt([
+    { pixel: 'confirmado', confidence_pct: 92, title: 'Bride Tapped A Lotus Bud' },
+    { pixel: 'provavel', confidence_pct: 67, title: 'Bouquet dorato' },
+    { pixel: 'provavel', confidence_pct: 55, title: 'Touching wedding customs' },
+    { pixel: 'provavel', confidence_pct: 55, title: 'Touching wedding customs 2' },
+  ], 10);
+  assert.equal(f.matches.length, 1);
+  assert.equal(f.matches[0].confidence_pct, 92);
+  assert.equal(f.descartados, 3);
+});
+
+test('score alto SEM confirmação de quadro não exibe (nem 95% de heurística)', () => {
+  const f = filtrarMatchesYt([{ confidence_pct: 95, frames: 2 }], 10);
+  assert.equal(f.matches.length, 0, 'heurística sozinha não pode mais exibir');
+});
+
+test('zero confirmados = lista vazia honesta (não rebaixa o critério)', () => {
+  const f = filtrarMatchesYt([
+    { pixel: 'provavel', confidence_pct: 80 },
+    { pixel: 'rejeitado', confidence_pct: 20 },
+  ], 10);
+  assert.equal(f.matches.length, 0);
+  assert.equal(f.descartados, 2);
+});

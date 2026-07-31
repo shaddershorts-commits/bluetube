@@ -462,7 +462,7 @@ async function analyze() {
         // v5 (2026-08-01): busca em DOIS quadros do vídeo; só mostra candidato
         // acima do piso de confiança. Lista vazia é sinal bom, não falha.
         reasoning: visualMatches.length > 0
-          ? `Busca em ${fpData.serpapi?.frames_buscados === 2 ? 'dois quadros do vídeo' : 'um quadro'}: ${visualMatches.length} candidato${visualMatches.length>1?'s':''} acima do piso de confiança${fpData.matches_low_confidence ? ` (${fpData.matches_low_confidence} descartado${fpData.matches_low_confidence>1?'s':''} por baixa confiança)` : ''}. Quem apareceu nos dois quadros é quase certeza. Abre cada um pra confirmar.`
+          ? `${visualMatches.length} canal${visualMatches.length>1?'is':''} com o MESMO quadro do seu vídeo, confirmado pixel a pixel${fpData.matches_low_confidence ? ` (${fpData.matches_low_confidence} parecido${fpData.matches_low_confidence>1?'s':''} reprovado${fpData.matches_low_confidence>1?'s':''} na comparação de quadro)` : ''}. Parecido não entra — só quadro igual.`
           : (fpData.message || `Google Lens vasculhou ${fpData.serpapi?.total_visual_matches || 0} imagens e nenhum vídeo passou no piso de confiança. Tá liberado 🚀`),
         patterns: [],
       },
