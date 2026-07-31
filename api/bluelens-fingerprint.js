@@ -32,11 +32,56 @@
 //   { ok, url, video_meta, matches:[{video_id,title,thumbnail,channel,views,duration,
 //     published_at,score,confidence_pct}], web_matches:[...], serpapi:{...}, engine, cached }
 
-const SUPA_URL = process.env.SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
-const YT_KEY = process.env.YOUTUBE_API_KEY_5 || process.env.YOUTUBE_API_KEY_1;
-const SERPAPI_KEY = process.env.SERPAPI_KEY;
-const supaH = SUPA_KEY ? { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } : null;
+// Env lido no momento do uso, não na carga do módulo (mesma lição do
+// roteiro-chat): capturar no import quebra teste e depende de ordem de boot.
+const cfg = () => {
+  const SUPA_URL = process.env.SUPABASE_URL;
+  const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+  return {
+    SUPA_URL, SUPA_KEY,
+    supaH: SUPA_KEY ? { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } : null,
+    SERPAPI_KEY: process.env.SERPAPI_KEY,
+  };
+};
+
+// ── ROTAÇÃO DE CHAVES YOUTUBE (2026-07-30) ──────────────────────────────────
+// Antes: YT_KEY = KEY_5 || KEY_1, fixo. Em 30/07 a KEY_5 estava SUSPENSA e a
+// KEY_1 nem existia — toda análise saía "metadata indisponível" e a heurística
+// perdia duração e canal (os critérios que mais pesam), enquanto a KEY_3 vivia
+// ociosa. Agora:
+//   1º BLUELENS_YT_KEY* — chaves DEDICADAS (pedido do user: sair do balde da
+//      Virais, que já viveu apagão de quota)
+//   2º YOUTUBE_API_KEY* — pool compartilhado, só como fallback
+// ytFetch tenta a partir da última que funcionou; 403/quota pula pra próxima.
+function listYtKeys() {
+  const dedicadas = [], pool = [];
+  for (const [k, v] of Object.entries(process.env)) {
+    if (!v) continue;
+    if (/^BLUELENS_YT_KEY(_\d+)?$/.test(k)) dedicadas.push(v);
+    else if (/^YOUTUBE_API_KEY(_\d+)?$/.test(k)) pool.push(v);
+  }
+  return [...dedicadas.sort(), ...pool.sort()];
+}
+let _ytIdx = 0; // lembra a última chave boa (vive enquanto a função está quente)
+
+async function ytFetch(pathAndQuery, timeoutMs) {
+  const keys = listYtKeys();
+  if (!keys.length) return null;
+  for (let tent = 0; tent < keys.length; tent++) {
+    const key = keys[(_ytIdx + tent) % keys.length];
+    try {
+      const r = await fetch(
+        `https://www.googleapis.com/youtube/v3/${pathAndQuery}&key=${key}`,
+        { signal: AbortSignal.timeout(timeoutMs || 10000) }
+      );
+      if (r.ok) { _ytIdx = (_ytIdx + tent) % keys.length; return r; }
+      // 403 = suspensa/quota, 400 = chave inválida → tenta a próxima
+      if (r.status === 403 || r.status === 400) continue;
+      return r; // outros erros (404, 5xx) não são culpa da chave
+    } catch { continue; }   // timeout/rede: tenta a próxima
+  }
+  return null;
+}
 
 const MAX_CANDIDATES = 10;        // mostra mais agora (sem custo Railway)
 const CACHE_TTL_DAYS = 7;
@@ -66,6 +111,7 @@ function detectPlatform(url) {
 
 // Cache 7d — economiza SerpAPI quota se mesma URL é re-analisada.
 async function getCachedAnalysis(youtubeId) {
+  const { SUPA_URL, supaH } = cfg();
   if (!supaH || !SUPA_URL) return null;
   try {
     const cutoff = new Date(Date.now() - CACHE_TTL_DAYS * 86400 * 1000).toISOString();
@@ -86,6 +132,7 @@ async function getCachedAnalysis(youtubeId) {
 }
 
 async function saveCachedAnalysis(youtubeId, response) {
+  const { SUPA_URL, supaH } = cfg();
   if (!supaH || !SUPA_URL) return { ok: false, error: 'no supabase' };
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/bluelens_cache?on_conflict=youtube_id`, {
@@ -113,13 +160,10 @@ async function saveCachedAnalysis(youtubeId, response) {
 }
 
 async function fetchVideoMeta(videoId) {
-  if (!YT_KEY || !videoId) return null;
+  if (!videoId) return null;
   try {
-    const r = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${YT_KEY}`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    if (!r.ok) return null;
+    const r = await ytFetch(`videos?part=snippet,contentDetails,statistics&id=${videoId}`, 10000);
+    if (!r || !r.ok) return null;
     const d = await r.json();
     const item = d.items?.[0];
     if (!item) return null;
@@ -140,6 +184,7 @@ async function fetchVideoMeta(videoId) {
 // SerpAPI Google Lens com a thumbnail. Retorna {youtube_ids, other_platforms, error}.
 async function getSerpAPICandidates(youtubeId, thumbnailUrl) {
   const empty = { youtube_ids: [], other_platforms: [], total_visual_matches: 0, error: null };
+  const { SERPAPI_KEY } = cfg();
   if (!SERPAPI_KEY) return { ...empty, error: 'SERPAPI_KEY ausente' };
   if (!thumbnailUrl) return { ...empty, error: 'thumbnail ausente' };
   try {
@@ -186,15 +231,12 @@ async function getSerpAPICandidates(youtubeId, thumbnailUrl) {
 
 // Enriquece candidatos com snippet+duration+views via YouTube Data API.
 async function enrichVideoDetails(candidates) {
-  if (!YT_KEY || !candidates.length) return candidates;
+  if (!candidates.length) return candidates;
   const ids = candidates.map(c => c.id).filter(Boolean).join(',');
   if (!ids) return candidates;
   try {
-    const r = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${ids}&key=${YT_KEY}`,
-      { signal: AbortSignal.timeout(15000) }
-    );
-    if (!r.ok) return candidates;
+    const r = await ytFetch(`videos?part=snippet,contentDetails,statistics&id=${ids}`, 15000);
+    if (!r || !r.ok) return candidates;
     const d = await r.json();
     const map = new Map();
     for (const item of (d.items || [])) {
@@ -260,8 +302,49 @@ module.exports = async function handler(req, res) {
 
   const url = req.query?.url;
   if (!url) return res.status(400).json({ error: 'url obrigatorio' });
-  if (!YT_KEY) return res.status(500).json({ error: 'YOUTUBE_API_KEY_5 nao configurada' });
-  if (!SERPAPI_KEY) return res.status(500).json({ error: 'SERPAPI_KEY nao configurada' });
+  if (!cfg().SERPAPI_KEY) return res.status(500).json({ error: 'SERPAPI_KEY nao configurada' });
+  // Sem chave YouTube NÃO é fatal: o safeMeta cobre (desenho v4). Antes isso
+  // devolvia 500 e derrubava a feature inteira por falta do opcional.
+
+  // ── PORTÃO FULL/MASTER (2026-07-30) ─────────────────────────────────────
+  // A página sempre exigiu Full/Master, mas a API aceitava qualquer um com a
+  // URL — e cada chamada queima 1 busca SerpAPI (plano de 250/mês). Sem cota
+  // por usuário (decisão do user): assinante usa à vontade; só fecha a porta
+  // pra quem não é cliente.
+  {
+    const { SUPA_URL, SUPA_KEY, supaH } = cfg();
+    const AK = process.env.SUPABASE_ANON_KEY || SUPA_KEY;
+    const token = (req.headers.authorization || '').replace('Bearer ', '') || req.query?.token;
+    let plano = null;
+    if (token && SUPA_URL) {
+      try {
+        const ur = await fetch(`${SUPA_URL}/auth/v1/user`, {
+          headers: { apikey: AK, Authorization: 'Bearer ' + token },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (ur.ok) {
+          const u = await ur.json();
+          if (u?.email) {
+            const pr = await fetch(
+              `${SUPA_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(u.email)}&select=plan,plan_expires_at,is_manual`,
+              { headers: supaH, signal: AbortSignal.timeout(5000) }
+            );
+            const sub = pr.ok ? (await pr.json())[0] : null;
+            if (sub && (sub.plan === 'full' || sub.plan === 'master')) {
+              const vivo = sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
+              if (vivo) plano = sub.plan;
+            }
+          }
+        }
+      } catch {}
+    }
+    if (!plano) {
+      return res.status(403).json({
+        error: 'O BlueLens é exclusivo dos planos Full e Master.',
+        upgrade: true,
+      });
+    }
+  }
 
   const youtubeId = extractYouTubeId(url);
   if (!youtubeId) return res.status(400).json({ error: 'URL deve ser de Short YouTube — formato: youtube.com/shorts/CODIGO ou watch?v=CODIGO' });
@@ -393,3 +476,8 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message, timing: { total_ms: Date.now() - startTs } });
   }
 };
+
+// exportados pros testes (tests/unit/bluelens_rotacao.test.mjs)
+module.exports.listYtKeys = listYtKeys;
+module.exports.ytFetch = ytFetch;
+module.exports.computeHeuristicScore = computeHeuristicScore;

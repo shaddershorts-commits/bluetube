@@ -411,6 +411,9 @@ async function analyze() {
     const fpReq = fetch(`/api/bluelens-fingerprint?url=${encodeURIComponent(url)}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(60000),
+      // 2026-07-30: a API passou a exigir Full/Master de verdade (antes o
+      // portão era só visual, aqui no front — e dava pra chamar direto)
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('bt_token') || '') },
     });
 
     // Avanca steps visuais conforme tempo passa (~7s tipico)
