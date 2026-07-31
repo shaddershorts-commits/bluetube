@@ -362,15 +362,35 @@ function scoreV5(c, userMeta) {
 // confiança. Com o TikAPI (mesma chave da Virais TikTok) entram na régua.
 // Falhou/sem chave → ficam como antes. Nunca derruba a análise.
 async function enrichTikTok(webList, maxCalls) {
-  const KEY = process.env.TIKAPI_KEY;
-  if (!KEY) return webList;
+  const KEY = process.env.TIKAPI_KEY;   // opcional: só o fallback usa
   const alvos = (webList || [])
     .filter(w => w.platform === 'tiktok' && extractTikTokId(w.url))
     .sort((a, b) => (b.frames - a.frames) || (a.bestRank - b.bestRank))
     .slice(0, maxCalls || 5);
   await Promise.all(alvos.map(async (w) => {
+    const id = extractTikTokId(w.url);
+    // 1º TikWM — GRÁTIS, sem chave (mesma engine que o BaixaBlue usa pra
+    // download). Deixa 100% da cota TikAPI pro coletor da Virais e torna o
+    // BlueLens imune a vencimento de assinatura (aconteceu em 31/07).
     try {
-      const r = await fetch('https://api.tikapi.io/public/video?id=' + extractTikTokId(w.url), {
+      const r = await fetch('https://www.tikwm.com/api/?url=' + encodeURIComponent('https://www.tiktok.com/@v/video/' + id), {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8000),
+      });
+      const d = r.ok ? await r.json() : null;
+      const v = d && d.code === 0 ? d.data : null;
+      if (v && (Number(v.duration) > 0 || v.title)) {
+        if (Number(v.duration) > 0) w.duration = Number(v.duration);
+        if (!w.title && v.title) w.title = v.title;
+        if (Number(v.play_count) > 0) w.views = Number(v.play_count);
+        if (v.author?.unique_id) w.channel = '@' + v.author.unique_id;
+        return;
+      }
+    } catch {}
+    // 2º TikAPI (pago) — só se o TikWM falhar e houver chave ativa
+    if (!KEY) return;
+    try {
+      const r = await fetch('https://api.tikapi.io/public/video?id=' + id, {
         headers: { 'X-API-KEY': KEY, accept: 'application/json' },
         signal: AbortSignal.timeout(8000),
       });
