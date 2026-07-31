@@ -459,9 +459,11 @@ async function analyze() {
       aiAnalysis: {
         verdict: visualMatches.length > 0 ? 'repost' : 'original',
         confidence: visualMatches.length > 0 ? (visualMatches[0].similarity / 100) : 0.95,
+        // v5 (2026-08-01): busca em DOIS quadros do vídeo; só mostra candidato
+        // acima do piso de confiança. Lista vazia é sinal bom, não falha.
         reasoning: visualMatches.length > 0
-          ? `Google Lens encontrou ${visualMatches.length} candidato${visualMatches.length>1?'s':''} visualmente similar${visualMatches.length>1?'es':''}. Ranqueados por duração próxima + ranking Google. Abre cada um pra confirmar se é repost.`
-          : `Google Lens vasculhou ${fpData.serpapi?.total_visual_matches || 0} imagem${(fpData.serpapi?.total_visual_matches||0)===1?'':'ns'} e nenhuma é vídeo YouTube parecido. Tá liberado 🚀`,
+          ? `Busca em ${fpData.serpapi?.frames_buscados === 2 ? 'dois quadros do vídeo' : 'um quadro'}: ${visualMatches.length} candidato${visualMatches.length>1?'s':''} acima do piso de confiança${fpData.matches_low_confidence ? ` (${fpData.matches_low_confidence} descartado${fpData.matches_low_confidence>1?'s':''} por baixa confiança)` : ''}. Quem apareceu nos dois quadros é quase certeza. Abre cada um pra confirmar.`
+          : (fpData.message || `Google Lens vasculhou ${fpData.serpapi?.total_visual_matches || 0} imagens e nenhum vídeo passou no piso de confiança. Tá liberado 🚀`),
         patterns: [],
       },
       results: visualMatches,

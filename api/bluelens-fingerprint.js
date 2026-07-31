@@ -270,28 +270,122 @@ async function enrichVideoDetails(candidates) {
   } catch { return candidates; }
 }
 
-// Heurística pra atribuir score "confiança aparente" sem fingerprint pixel.
-// NÃO é match real — é prioridade visual. Frontend usa pra ordenar/colorir.
-function computeHeuristicScore(candidate, userMeta) {
-  let score = 30; // base mínima
-  // Duração próxima é o sinal mais forte sem fingerprint
-  if (userMeta?.duration && candidate.duration) {
-    const diff = Math.abs(userMeta.duration - candidate.duration) / Math.max(userMeta.duration, candidate.duration);
-    if (diff <= 0.10) score += 35;
-    else if (diff <= 0.20) score += 25;
-    else if (diff <= 0.50) score += 10;
+// ═══ v5 (2026-08-01): PRECISÃO POR INTERSEÇÃO DE DOIS QUADROS ═══════════════
+// Probe de 31/07 no viral VWRvqntRefM: a busca pela CAPA e a busca por um
+// QUADRO REAL do vídeo devolveram 7+7 candidatos SEM UM ÚNICO em comum.
+// Uma imagem sozinha mede "se parece", não "é o mesmo vídeo" — era a origem
+// dos "vídeos aleatórios" reportados pelo user. A v5 busca em dois momentos
+// e trata presença nas DUAS buscas como o sinal forte.
+
+function extractTikTokId(url) {
+  try {
+    const m = String(url).match(/tiktok\.com\/(?:@[^/]+\/video|v|embed\/v2|embed)\/(\d{8,})/);
+    return m?.[1] || null;
+  } catch { return null; }
+}
+
+// chave canônica pra reconhecer o MESMO match web nas duas buscas
+function canonWeb(m) {
+  const tk = extractTikTokId(m.url);
+  if (tk) return 'tiktok:' + tk;
+  try {
+    const u = new URL(m.url);
+    return (u.hostname.replace(/^www\./, '') + u.pathname).toLowerCase().replace(/\/$/, '');
+  } catch { return String(m.url).toLowerCase(); }
+}
+
+// Similaridade de título tolerante a acento/pontuação. É BÔNUS, nunca pena:
+// repost traduzido tem título diferente e não pode ser punido por isso.
+function titleSim(a, b) {
+  const tok = (s) => new Set(
+    String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 3)
+  );
+  const A = tok(a), B = tok(b);
+  if (!A.size || !B.size) return 0;
+  let comum = 0;
+  for (const w of A) if (B.has(w)) comum++;
+  return comum / Math.min(A.size, B.size);
+}
+
+// Funde as duas buscas. frames=2 → apareceu na capa E no quadro real.
+function mergeSerpResults(resA, resB) {
+  const yt = new Map(), web = new Map();
+  const addYt = (ids) => (ids || []).forEach((id, idx) => {
+    const e = yt.get(id) || { id, frames: 0, bestRank: 99 };
+    e.frames += 1; e.bestRank = Math.min(e.bestRank, idx);
+    yt.set(id, e);
+  });
+  const addWeb = (list) => (list || []).forEach((m, idx) => {
+    const k = canonWeb(m);
+    const e = web.get(k) || { ...m, canon: k, frames: 0, bestRank: 99 };
+    e.frames += 1; e.bestRank = Math.min(e.bestRank, idx);
+    if (!e.title && m.title) e.title = m.title;
+    web.set(k, e);
+  });
+  addYt(resA?.youtube_ids); addWeb(resA?.other_platforms);
+  if (resB) { addYt(resB.youtube_ids); addWeb(resB.other_platforms); }
+  return { youtube: [...yt.values()], web: [...web.values()] };
+}
+
+// ── SCORE v5 — interseção pesa, e conflito SUBTRAI ─────────────────────────
+// O random típico (1 quadro, rank bom, canal diferente, duração desconhecida)
+// soma 20+15+5 = 40 e fica ABAIXO do piso de exibição. No v4 ele saía com 60%
+// porque duração conflitante só "deixava de somar" — nunca subtraía.
+const PISO_EXIBICAO = 55;
+
+function scoreV5(c, userMeta) {
+  let s = 20;
+  if ((c.frames || 0) >= 2) s += 40;                       // confirmado nos 2 quadros
+  const dU = userMeta?.duration || 0, dC = c.duration || 0;
+  if (dU > 0 && dC > 0) {
+    const abs = Math.abs(dU - dC);
+    const rel = abs / Math.max(dU, dC);
+    if (abs <= 2) s += 35;                                  // mesma duração = quase prova
+    else if (rel <= 0.10) s += 25;
+    else if (rel <= 0.20) s += 12;
+    else if (rel > 0.50) s -= 25;                           // conflito PUNE
   }
-  // Ranking SerpAPI (top resultados são mais visualmente similares pelo algoritmo do Google)
-  const rank = candidate._serpRank;
-  if (typeof rank === 'number') {
-    if (rank < 3) score += 20;
-    else if (rank < 10) score += 10;
+  const sim = titleSim(userMeta?.title, c.title);
+  if (sim >= 0.5) s += 15;
+  else if (sim >= 0.25) s += 8;
+  if (typeof c.bestRank === 'number') {
+    if (c.bestRank < 3) s += 15;
+    else if (c.bestRank < 10) s += 8;
   }
-  // Canal diferente = mais provável repost (mesmo canal = mais provável outro vídeo da mesma série)
-  if (userMeta?.channel && candidate.channel && userMeta.channel.toLowerCase() !== candidate.channel.toLowerCase()) {
-    score += 10;
-  }
-  return Math.min(95, Math.max(30, score));
+  if (userMeta?.channel && c.channel && userMeta.channel.toLowerCase() !== c.channel.toLowerCase()) s += 5;
+  return Math.min(95, Math.max(5, s));
+}
+
+// ── TikTok: enriquecer via TikAPI pra poder PONTUAR ────────────────────────
+// O Lens já ACHA os links de TikTok; sem duração/título eles saíam crus, sem
+// confiança. Com o TikAPI (mesma chave da Virais TikTok) entram na régua.
+// Falhou/sem chave → ficam como antes. Nunca derruba a análise.
+async function enrichTikTok(webList, maxCalls) {
+  const KEY = process.env.TIKAPI_KEY;
+  if (!KEY) return webList;
+  const alvos = (webList || [])
+    .filter(w => w.platform === 'tiktok' && extractTikTokId(w.url))
+    .sort((a, b) => (b.frames - a.frames) || (a.bestRank - b.bestRank))
+    .slice(0, maxCalls || 5);
+  await Promise.all(alvos.map(async (w) => {
+    try {
+      const r = await fetch('https://api.tikapi.io/public/video?id=' + extractTikTokId(w.url), {
+        headers: { 'X-API-KEY': KEY, accept: 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      const item = d?.itemInfo?.itemStruct || d?.itemStruct || d || {};
+      const dur = Number(item?.video?.duration || 0);
+      if (dur > 0) w.duration = dur;
+      if (!w.title && item?.desc) w.title = item.desc;
+      const plays = Number(item?.stats?.playCount || 0);
+      if (plays > 0) w.views = plays;
+      if (item?.author?.uniqueId) w.channel = '@' + item.author.uniqueId;
+    } catch {}
+  }));
+  return webList;
 }
 
 module.exports = async function handler(req, res) {
@@ -367,12 +461,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+    const capaUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+    const quadroUrl = `https://i.ytimg.com/vi/${youtubeId}/hq2.jpg`;   // quadro REAL do meio do vídeo
 
-    // ── PARALELO: metadata + SerpAPI ────────────────────────────────────────
+    // ── BUSCA 1 (capa) em paralelo com a metadata ───────────────────────────
     const [meta, serpResult] = await Promise.all([
       fetchVideoMeta(youtubeId),
-      getSerpAPICandidates(youtubeId, thumbnailUrl),
+      getSerpAPICandidates(youtubeId, capaUrl),
     ]);
 
     // FALLBACK: meta pode estar null se YouTube Data API tá sem quota.
@@ -417,37 +512,58 @@ module.exports = async function handler(req, res) {
       return res.status(200).json(fallbackResponse);
     }
 
-    // ── Constrói candidatos com rank preservado ─────────────────────────────
-    let candidates = serpResult.youtube_ids.slice(0, MAX_CANDIDATES).map((id, idx) => ({
-      id,
-      url: `https://www.youtube.com/watch?v=${id}`,
-      title: '', channel: '', thumbnail: '', published_at: null,
-      _serpRank: idx,
-    }));
+    // ── BUSCA 2 (quadro real) — ADAPTATIVA ──────────────────────────────────
+    // Só gasta a 2ª busca SerpAPI se a 1ª achou candidato. Análise que não
+    // achou nada não paga confirmação. Se a 2ª falhar, degrada pra 1 quadro
+    // (sem bônus de interseção) em vez de derrubar a análise.
+    let serpB = null;
+    if (serpResult.youtube_ids.length + serpResult.other_platforms.length > 0) {
+      const b = await getSerpAPICandidates(youtubeId, quadroUrl);
+      if (!b.error || b.youtube_ids.length || b.other_platforms.length) serpB = b;
+    }
 
-    // ── Enrich (snippet + duration + views) ─────────────────────────────────
+    const fundido = mergeSerpResults(serpResult, serpB);
+
+    // ── Enrich YouTube (até 15 ids em UMA chamada videos.list) ──────────────
+    let candidates = fundido.youtube.slice(0, 15).map(c => ({
+      ...c,
+      url: `https://www.youtube.com/watch?v=${c.id}`,
+      title: '', channel: '', thumbnail: '', published_at: null,
+    }));
     candidates = await enrichVideoDetails(candidates);
 
-    // ── Heurística score + ordenação por confidence desc ────────────────────
-    const matches = candidates
-      .map(c => {
-        const score = computeHeuristicScore(c, safeMeta);
-        return {
-          url: c.url,
-          video_id: c.id,
-          title: c.title,
-          channel: c.channel,
-          thumbnail: c.thumbnail,
-          published_at: c.published_at,
-          views: c.views,
-          duration: c.duration,
-          score: score / 100,
-          confidence_pct: score,
-          // NÃO retorna: matched_frames, total_frames, temporal_overlap
-          // (frontend ignora gracefully quando undefined)
-        };
-      })
+    // ── Enrich TikTok (o Lens acha; o TikAPI dá duração/título pra pontuar) ─
+    await enrichTikTok(fundido.web, 5);
+
+    // ── Score v5 + CORTE HONESTO ────────────────────────────────────────────
+    const pontuados = candidates
+      .map(c => ({
+        url: c.url,
+        video_id: c.id,
+        title: c.title,
+        channel: c.channel,
+        thumbnail: c.thumbnail,
+        published_at: c.published_at,
+        views: c.views,
+        duration: c.duration,
+        frames_hit: c.frames,
+        confidence_pct: scoreV5(c, safeMeta),
+      }))
+      .map(m => ({ ...m, score: m.confidence_pct / 100 }))
       .sort((a, b) => b.confidence_pct - a.confidence_pct);
+
+    // Lista vazia honesta vale mais que lista cheia errada (regra de ouro do
+    // user no Blublu: primeiro precisão, depois quantidade).
+    const matches = pontuados.filter(m => m.confidence_pct >= PISO_EXIBICAO).slice(0, MAX_CANDIDATES);
+    const descartados = pontuados.length - matches.length;
+
+    // web: pontua quem tem dado pra isso (TikTok enriquecido ou interseção)
+    const web = fundido.web
+      .map(w => {
+        if (w.duration || (w.frames || 0) >= 2) w.confidence_pct = scoreV5(w, safeMeta);
+        return w;
+      })
+      .sort((a, b) => (b.confidence_pct || 0) - (a.confidence_pct || 0) || (b.frames - a.frames));
 
     const finalResponse = {
       ok: true,
@@ -455,15 +571,20 @@ module.exports = async function handler(req, res) {
       youtube_id: youtubeId,
       video_meta: safeMeta,
       serpapi: {
-        total_visual_matches: serpResult.total_visual_matches,
-        youtube_ids_found: serpResult.youtube_ids.length,
-        error: serpResult.error,
+        total_visual_matches: (serpResult.total_visual_matches || 0) + (serpB?.total_visual_matches || 0),
+        youtube_ids_found: fundido.youtube.length,
+        frames_buscados: serpB ? 2 : 1,
+        error: serpResult.error || serpB?.error || null,
       },
-      candidates_searched: serpResult.youtube_ids.length,
+      candidates_searched: fundido.youtube.length,
       candidates_filtered: matches.length,
       matches,
-      web_matches: serpResult.other_platforms,
-      engine: 'serpapi_v4_no_fingerprint',
+      matches_low_confidence: descartados,
+      web_matches: web,
+      engine: 'serpapi_v5_intersect',
+      message: matches.length === 0
+        ? 'Nenhum vídeo do YouTube bateu com confiança suficiente. Isso é sinal bom: não achei repost claro — e prefiro lista vazia a chute.'
+        : undefined,
       cached: false,
       timing: { total_ms: Date.now() - startTs },
     };
@@ -480,4 +601,8 @@ module.exports = async function handler(req, res) {
 // exportados pros testes (tests/unit/bluelens_rotacao.test.mjs)
 module.exports.listYtKeys = listYtKeys;
 module.exports.ytFetch = ytFetch;
-module.exports.computeHeuristicScore = computeHeuristicScore;
+module.exports.scoreV5 = scoreV5;
+module.exports.titleSim = titleSim;
+module.exports.mergeSerpResults = mergeSerpResults;
+module.exports.extractTikTokId = extractTikTokId;
+module.exports.PISO_EXIBICAO = PISO_EXIBICAO;
