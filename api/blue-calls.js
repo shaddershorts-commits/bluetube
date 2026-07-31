@@ -46,10 +46,18 @@ module.exports = async function handler(req, res) {
     const r = await fetch(`${SU}/rest/v1/blue_calls?id=eq.${encodeURIComponent(id)}&select=*&limit=1`, { headers: h });
     return r.ok ? (await r.json())[0] : null;
   };
-  const patchCall = (id, body) =>
-    fetch(`${SU}/rest/v1/blue_calls?id=eq.${encodeURIComponent(id)}`, {
+  // Transição com compare-and-swap: `fromStatus` entra no filtro do PATCH, então
+  // dois pedidos simultâneos (atender vs cancelar) não passam os dois — o
+  // segundo casa 0 linhas. Retorna quantas linhas MUDARAM de verdade.
+  const patchCall = async (id, body, fromStatus) => {
+    const guard = fromStatus ? `&status=eq.${encodeURIComponent(fromStatus)}` : '';
+    const r = await fetch(`${SU}/rest/v1/blue_calls?id=eq.${encodeURIComponent(id)}${guard}`, {
       method: 'PATCH', headers: { ...h, Prefer: 'return=representation' }, body: JSON.stringify(body),
     });
+    if (!r.ok) return 0;
+    const rows = await r.json().catch(() => []);
+    return Array.isArray(rows) ? rows.length : 0;
+  };
   const perfil = async (uid) => {
     const r = await fetch(`${SU}/rest/v1/blue_profiles?user_id=eq.${uid}&select=user_id,username,display_name,avatar_url`, { headers: h });
     return r.ok ? (await r.json())[0] : null;
@@ -105,12 +113,23 @@ module.exports = async function handler(req, res) {
         { headers: h }
       );
       const vivas = bR.ok ? await bR.json() : [];
-      // ringing velho (aparelho que morreu no meio) não pode travar pra sempre
+      // Zumbi não pode travar chamada pra sempre: ringing velho (aparelho que
+      // morreu no toque) e active órfão (os DOIS apps morreram no meio — sem o
+      // teto de 6h esse registro bloqueava os dois usuários ETERNAMENTE).
       const agora = Date.now();
-      const realmenteViva = vivas.find((c) =>
-        c.status === 'active' || (agora - new Date(c.started_at).getTime()) < RING_TIMEOUT_MS + 15000
-      );
+      const MAX_ACTIVE_MS = 6 * 60 * 60 * 1000;
+      const viva = (c) => c.status === 'active'
+        ? (agora - new Date(c.answered_at || c.started_at).getTime()) < MAX_ACTIVE_MS
+        : (agora - new Date(c.started_at).getTime()) < RING_TIMEOUT_MS + 15000;
+      const realmenteViva = vivas.find(viva);
       if (realmenteViva) return res.status(409).json({ error: 'Ocupado — já existe uma chamada em andamento.' });
+      // self-heal: os zumbis que encontramos são marcados agora (com await —
+      // fire-and-forget morre com a função na Vercel)
+      for (const z of vivas.filter((c) => !viva(c))) {
+        await patchCall(z.id, z.status === 'active'
+          ? { status: 'ended', ended_at: new Date().toISOString() }
+          : { status: 'missed', ended_at: new Date().toISOString() }, z.status).catch(() => 0);
+      }
 
       const iR = await fetch(`${SU}/rest/v1/blue_calls`, {
         method: 'POST', headers: { ...h, Prefer: 'return=representation' },
@@ -150,20 +169,25 @@ module.exports = async function handler(req, res) {
       if (action === 'atender') {
         if (call.callee_id !== userId) return res.status(403).json({ error: 'só quem recebe atende' });
         if (call.status !== 'ringing') return res.status(409).json({ error: 'chamada não está tocando', status: call.status });
-        await patchCall(call_id, { status: 'active', answered_at: new Date().toISOString() });
+        // CAS: se o caller cancelou entre o SELECT e este PATCH, muda 0 linhas
+        const mudou = await patchCall(call_id, { status: 'active', answered_at: new Date().toISOString() }, 'ringing');
+        if (!mudou) return res.status(409).json({ error: 'chamada não está mais tocando' });
         return res.status(200).json({ ok: true });
       }
       if (action === 'recusar') {
         if (call.callee_id !== userId) return res.status(403).json({ error: 'só quem recebe recusa' });
         if (call.status !== 'ringing') return res.status(200).json({ ok: true, ja: call.status });
-        await patchCall(call_id, { status: 'declined', ended_at: new Date().toISOString() });
+        await patchCall(call_id, { status: 'declined', ended_at: new Date().toISOString() }, 'ringing');
         return res.status(200).json({ ok: true });
       }
       if (action === 'cancelar') {
         // quem LIGA desiste antes de atenderem → vira chamada perdida do outro
         if (call.caller_id !== userId) return res.status(403).json({ error: 'só quem liga cancela' });
         if (call.status !== 'ringing') return res.status(200).json({ ok: true, ja: call.status });
-        await patchCall(call_id, { status: 'missed', ended_at: new Date().toISOString() });
+        // CAS: se o callee atendeu no meio tempo, muda 0 linhas e NÃO manda
+        // push de "perdida" pra uma chamada que na verdade está ativa
+        const mudou = await patchCall(call_id, { status: 'missed', ended_at: new Date().toISOString() }, 'ringing');
+        if (!mudou) return res.status(200).json({ ok: true, ja: 'atendida' });
         try {
           const eu = await perfil(userId);
           const nome = eu?.display_name || ('@' + (eu?.username || 'alguém'));
@@ -186,9 +210,13 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
       if (action === 'encerrar') {
-        if (call.status === 'ended') return res.status(200).json({ ok: true });
+        // encerrar SÓ transita active→ended. Antes aceitava qualquer status:
+        // chamada em ringing virava 'ended' com duração 0 — apagava o registro
+        // de "perdida/recusada" e corrompia o histórico. Ringing tem donos
+        // certos: cancelar (caller), recusar (callee) e o timeout.
+        if (call.status !== 'active') return res.status(200).json({ ok: true, ja: call.status });
         const dur = call.answered_at ? Math.max(0, Math.round((Date.now() - new Date(call.answered_at).getTime()) / 1000)) : 0;
-        await patchCall(call_id, { status: 'ended', ended_at: new Date().toISOString(), duration_s: dur });
+        await patchCall(call_id, { status: 'ended', ended_at: new Date().toISOString(), duration_s: dur }, 'active');
         return res.status(200).json({ ok: true, duration_s: dur });
       }
     } catch (e) { return res.status(500).json({ error: e.message }); }
