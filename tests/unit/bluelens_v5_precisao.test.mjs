@@ -94,3 +94,82 @@ test('titleSim tolera acento e pontuação; e nunca vira pena no score', () => {
   const com = scoreV5({ frames: 2, bestRank: 0, duration: 34, title: '完全に違うタイトル' }, USER);
   assert.ok(com >= sem, 'título diferente puniu — quebraria repost traduzido');
 });
+
+// ── v5.1: CONFIRMAÇÃO POR QUADRO (2026-08-01) ──────────────────────────────
+// "A única forma mais confiável é por frame" (user). dHash perceptual:
+// mesmo quadro recomprimido tem que bater; quadro diferente tem que divergir.
+const { aplicarPixel, cortarWeb, dhashFromJpeg, hamming } = require('../../api/bluelens-fingerprint.js');
+
+function jpegSintetico(pintar) {
+  const jpeg = require('jpeg-js');
+  const W = 64, H = 48, data = Buffer.alloc(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const [r, g, b] = pintar(x / W, y / H);
+    const i = (y * W + x) * 4;
+    data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+  }
+  return jpeg.encode({ data, width: W, height: H }, 80).data;
+}
+
+test('dHash: mesmo quadro RECOMPRIMIDO bate (o caso real de repost)', () => {
+  const gradiente = (fx, fy) => [Math.round(fx * 255), Math.round(fy * 255), 128];
+  const jpeg = require('jpeg-js');
+  const a = dhashFromJpeg(jpegSintetico(gradiente));
+  // recomprime a mesma imagem em qualidade bem menor (reupload típico)
+  const dec = jpeg.decode(jpegSintetico(gradiente), { useTArray: true });
+  const rec = jpeg.encode({ data: Buffer.from(dec.data), width: dec.width, height: dec.height }, 35).data;
+  const b = dhashFromJpeg(rec);
+  assert.ok(a != null && b != null, 'hash falhou');
+  assert.ok(hamming(a, b) <= 6, 'mesmo quadro divergiu: ' + hamming(a, b));
+});
+
+test('dHash: quadros DIFERENTES divergem (flores vs xadrez)', () => {
+  const flores = (fx, fy) => [200, Math.round(100 + 100 * Math.sin(fx * 20)), 80];
+  const xadrez = (fx, fy) => ((Math.floor(fx * 8) + Math.floor(fy * 6)) % 2 ? [255, 255, 255] : [0, 0, 0]);
+  const d = hamming(dhashFromJpeg(jpegSintetico(flores)), dhashFromJpeg(jpegSintetico(xadrez)));
+  assert.ok(d > 16, 'imagens diferentes ficaram próximas: ' + d);
+});
+
+test('dHash: buffer inválido devolve null, nunca explode', () => {
+  assert.equal(dhashFromJpeg(Buffer.from('nao sou jpeg')), null);
+  assert.equal(dhashFromJpeg(Buffer.alloc(0)), null);
+});
+
+test('aplicarPixel: confirmado sobe pra 92+, rejeitado despenca pra <=35', () => {
+  assert.equal(aplicarPixel(40, 4, 8).pixel, 'confirmado');
+  assert.ok(aplicarPixel(40, 4, 8).score >= 92);
+  assert.equal(aplicarPixel(80, 40, 8).pixel, 'rejeitado');
+  assert.ok(aplicarPixel(80, 40, 8).score <= 35, 'o "parecido" tem que cair abaixo do piso');
+  assert.equal(aplicarPixel(50, 13, 8).pixel, 'provavel');
+});
+
+test('aplicarPixel: sem evidência suficiente é NEUTRO (falha de rede não pune)', () => {
+  assert.equal(aplicarPixel(70, null, 0).pixel, null);
+  assert.equal(aplicarPixel(70, null, 0).score, 70);
+  assert.equal(aplicarPixel(70, 5, 1).pixel, null, 'uma comparação só não é prova');
+});
+
+test('cortarWeb: o caso do user — 1 confirmado + 30 flores aleatórias', () => {
+  const lista = [
+    { pixel: 'confirmado', confidence_pct: 92, frames: 1, platform: 'tiktok' },
+    ...Array.from({ length: 30 }, () => ({ frames: 1, platform: 'instagram' })),
+  ];
+  const c = cortarWeb(lista);
+  assert.equal(c.mostrar.length, 1, 'era pra sobrar SÓ o confirmado');
+  assert.equal(c.ocultos, 30);
+});
+
+test('cortarWeb: rejeitado por pixel NUNCA aparece, mesmo com score alto', () => {
+  const c = cortarWeb([
+    { pixel: 'rejeitado', confidence_pct: 80, frames: 2 },
+    { pixel: 'confirmado', confidence_pct: 92, frames: 1 },
+  ]);
+  assert.equal(c.mostrar.length, 1);
+  assert.equal(c.mostrar[0].pixel, 'confirmado');
+});
+
+test('cortarWeb: ninguém com evidência → mostra topo 5, não lista vazia', () => {
+  const c = cortarWeb(Array.from({ length: 12 }, () => ({ frames: 1 })));
+  assert.equal(c.mostrar.length, 5);
+  assert.equal(c.ocultos, 7);
+});

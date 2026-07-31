@@ -274,7 +274,7 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
         🌍 Detectado em outras plataformas
         <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);font-weight:400" id="webMatchesCount"></span>
       </div>
-      <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:12px;line-height:1.5">Imagem similar achada pelo Google Lens em outras redes. Não validamos frame-by-frame nessas plataformas — clique pra ver.</div>
+      <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:12px;line-height:1.5" id="webMatchesSub">Achados pelo Google Lens e validados quadro a quadro quando a capa está disponível. ✓ verde = mesmo quadro do seu vídeo.</div>
       <div id="webMatchesList"></div>
     </div>
 
@@ -468,6 +468,7 @@ async function analyze() {
       },
       results: visualMatches,
       _webMatches: fpData.web_matches || [],
+      _webHidden: fpData.web_matches_hidden || 0,
       _stats: {
         candidates_searched: fpData.candidates_searched,
         candidates_filtered: fpData.candidates_filtered,
@@ -563,7 +564,8 @@ function renderResults(data) {
   const webMatches = data._webMatches || [];
   if (webMatches.length > 0) {
     document.getElementById('webMatchesCard').style.display = 'block';
-    document.getElementById('webMatchesCount').textContent = webMatches.length + ' encontrado' + (webMatches.length>1?'s':'');
+    const ocultos = data._webHidden || 0;
+    document.getElementById('webMatchesCount').textContent = webMatches.length + ' com evidência' + (ocultos>0 ? ' · '+ocultos+' só "parecidos" ocultados' : '');
     document.getElementById('webMatchesList').innerHTML = webMatches.slice(0, 30).map(buildWebMatchItem).join('');
   } else {
     document.getElementById('webMatchesCard').style.display = 'none';
@@ -692,8 +694,12 @@ function buildWebMatchItem(m) {
     <div class="result-info">
       <div class="result-title">${(m.title||'(sem título)').slice(0,120)}</div>
       <div class="result-meta">${icon} ${(m.platform||'web').toUpperCase()}${m.source?' · '+m.source:''}</div>
-      <div style="margin-top:6px">
-        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.25);font-family:var(--mono);font-size:10px;font-weight:700;color:${color}">🌍 Imagem similar · ${(m.platform||'web').toUpperCase()}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        ${m.pixel==='confirmado'
+          ? '<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);font-family:var(--mono);font-size:10px;font-weight:700;color:#22c55e">✓ CONFIRMADO POR QUADRO'+(m.confidence_pct?' · '+m.confidence_pct+'%':'')+'</div>'
+          : m.pixel==='provavel'
+          ? '<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);font-family:var(--mono);font-size:10px;font-weight:700;color:#fbbf24">≈ QUADRO PROVÁVEL'+(m.confidence_pct?' · '+m.confidence_pct+'%':'')+'</div>'
+          : `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.25);font-family:var(--mono);font-size:10px;font-weight:700;color:${color}">🌍 Imagem similar · ${(m.platform||'web').toUpperCase()}</div>`}
       </div>
     </div>
   </div>`;

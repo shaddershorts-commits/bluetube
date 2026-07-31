@@ -384,6 +384,9 @@ async function enrichTikTok(webList, maxCalls) {
         if (!w.title && v.title) w.title = v.title;
         if (Number(v.play_count) > 0) w.views = Number(v.play_count);
         if (v.author?.unique_id) w.channel = '@' + v.author.unique_id;
+        // capas pro estágio de confirmação por quadro (v5.1)
+        if (v.origin_cover) w._origin_cover = String(v.origin_cover);
+        if (v.cover) w._cover = String(v.cover);
         return;
       }
     } catch {}
@@ -406,6 +409,130 @@ async function enrichTikTok(webList, maxCalls) {
     } catch {}
   }));
   return webList;
+}
+
+// ═══ v5.1 (2026-08-01): CONFIRMAÇÃO POR QUADRO — pixel a pixel ══════════════
+// Feedback do user no teste real (MhTfy53ySyQ): o Lens devolve "parecido", não
+// "igual" — o quadro do meio tinha flores e vieram 30+ vídeos de flores. A
+// única forma confiável é comparar QUADRO contra QUADRO. Sem Railway e sem
+// cookies: os quadros do YouTube (hq0-3) e as capas do TikTok (TikWM) são
+// imagens públicas; baixamos e comparamos com dHash (hash perceptual) aqui
+// mesmo. jpeg-js é JS puro — sem dependência nativa.
+
+const PIXEL_CONFIRMA = 10;   // distância Hamming ≤10 em 64 bits = mesmo quadro
+const PIXEL_PROVAVEL = 16;
+const PIXEL_REJEITA = 26;    // TODAS as comparações acima disso = só "parecido"
+
+// dHash 8x8: reduz pra 9x8 em cinza, compara vizinhos horizontais → 64 bits.
+// Robusto a recompressão/resize (o caso real: mesmo vídeo reupado).
+function dhashFromJpeg(buf) {
+  try {
+    const jpeg = require('jpeg-js');
+    const img = jpeg.decode(buf, { useTArray: true, maxMemoryUsageInMB: 32 });
+    if (!img || !img.width || !img.height) return null;
+    const W = 9, H = 8;
+    const cinza = new Float64Array(W * H);
+    // média de bloco (não nearest): estável a ruído de compressão
+    for (let gy = 0; gy < H; gy++) {
+      for (let gx = 0; gx < W; gx++) {
+        const x0 = Math.floor(gx * img.width / W), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * img.width / W));
+        const y0 = Math.floor(gy * img.height / H), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * img.height / H));
+        let soma = 0, n = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const i = (y * img.width + x) * 4;
+          soma += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+          n++;
+        }
+        cinza[gy * W + gx] = soma / n;
+      }
+    }
+    let hash = 0n;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W - 1; x++) {
+      hash = (hash << 1n) | (cinza[y * W + x] < cinza[y * W + x + 1] ? 1n : 0n);
+    }
+    return hash;
+  } catch { return null; }
+}
+
+function hamming(a, b) {
+  if (a == null || b == null) return 64;
+  let x = a ^ b, n = 0;
+  while (x) { n += Number(x & 1n); x >>= 1n; }
+  return n;
+}
+
+async function hashDeUrl(url) {
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 500) return null;   // placeholder cinza do ytimg é minúsculo
+    return dhashFromJpeg(buf);
+  } catch { return null; }
+}
+
+const quadrosYt = (id) => [0, 1, 2, 3].map(n =>
+  `https://i.ytimg.com/vi/${id}/${n === 0 ? 'hqdefault' : 'hq' + n}.jpg`);
+
+// Decisão pura (testável): o que o veredito de pixel faz com o score.
+function aplicarPixel(score, minDist, comparacoes) {
+  if (comparacoes < 2 || minDist == null) return { score, pixel: null };   // sem evidência: neutro
+  if (minDist <= PIXEL_CONFIRMA) return { score: Math.max(score, 92), pixel: 'confirmado' };
+  if (minDist <= PIXEL_PROVAVEL) return { score: Math.min(95, score + 15), pixel: 'provavel' };
+  if (minDist > PIXEL_REJEITA) return { score: Math.min(score, 35), pixel: 'rejeitado' };
+  return { score, pixel: null };
+}
+
+// Corte de exibição do cross-platform (o Layer 3 que faltava ali): junk de
+// quadro único sem NENHUMA evidência vai pra contagem, não pra lista.
+function cortarWeb(webList) {
+  const evidencia = (w) =>
+    w.pixel === 'confirmado' || w.pixel === 'provavel' ||
+    (w.frames || 0) >= 2 || (w.confidence_pct || 0) >= PISO_EXIBICAO;
+  const rejeitado = (w) => w.pixel === 'rejeitado';
+  const fortes = webList.filter(w => evidencia(w) && !rejeitado(w));
+  if (fortes.length) return { mostrar: fortes, ocultos: webList.length - fortes.length };
+  // ninguém tem evidência: mostra só o topo pra não parecer quebrado
+  const semRejeitados = webList.filter(w => !rejeitado(w));
+  return { mostrar: semRejeitados.slice(0, 5), ocultos: webList.length - Math.min(5, semRejeitados.length) };
+}
+
+// Compara os quadros do USER contra as imagens de cada candidato.
+async function confirmarPorQuadro(userId, candYt, candWeb) {
+  const hashesUser = (await Promise.all(quadrosYt(userId).map(hashDeUrl))).filter(h => h != null);
+  if (hashesUser.length === 0) return;   // sem base de comparação: tudo neutro
+
+  const medir = async (urls) => {
+    const hs = (await Promise.all(urls.map(hashDeUrl))).filter(h => h != null);
+    let min = null;
+    for (const hc of hs) for (const hu of hashesUser) {
+      const d = hamming(hc, hu);
+      if (min == null || d < min) min = d;
+    }
+    return { min, comparacoes: hs.length * hashesUser.length };
+  };
+
+  await Promise.all([
+    // YouTube: os 4 quadros públicos de cada candidato
+    ...candYt.map(async (c) => {
+      const { min, comparacoes } = await medir(quadrosYt(c.video_id));
+      const r = aplicarPixel(c.confidence_pct, min, comparacoes);
+      c.confidence_pct = r.score; c.score = r.score / 100;
+      if (r.pixel) c.pixel = r.pixel;
+    }),
+    // TikTok/web: capa que o TikWM devolveu (guardada no enrich) ou thumbnail do Lens
+    ...candWeb.map(async (w) => {
+      const urls = [w._cover, w._origin_cover, w.thumbnail].filter(Boolean).slice(0, 2);
+      if (!urls.length) return;
+      const { min, comparacoes } = await medir(urls);
+      const base = w.confidence_pct != null ? w.confidence_pct : 30;
+      const r = aplicarPixel(base, min, comparacoes);
+      if (r.pixel) { w.pixel = r.pixel; w.confidence_pct = r.score; }
+    }),
+  ]);
 }
 
 module.exports = async function handler(req, res) {
@@ -572,18 +699,32 @@ module.exports = async function handler(req, res) {
       .map(m => ({ ...m, score: m.confidence_pct / 100 }))
       .sort((a, b) => b.confidence_pct - a.confidence_pct);
 
+    // web: pontua quem tem dado pra isso (TikTok enriquecido ou interseção)
+    const webPontuado = fundido.web.map(w => {
+      if (w.duration || (w.frames || 0) >= 2) w.confidence_pct = scoreV5(w, safeMeta);
+      return w;
+    });
+
+    // ── v5.1: CONFIRMAÇÃO POR QUADRO (pixel a pixel) ────────────────────────
+    // "A única forma confiável é por frame" (user, 01/08 — e tem razão).
+    // Compara os 4 quadros do vídeo do user contra os 4 de cada candidato YT
+    // e contra as capas dos TikToks. Igual = 92+; só "parecido" = despenca.
+    await confirmarPorQuadro(
+      youtubeId,
+      pontuados.slice(0, 8),
+      webPontuado.filter(w => w._cover || w._origin_cover || w.thumbnail).slice(0, 10)
+    );
+    pontuados.sort((a, b) => b.confidence_pct - a.confidence_pct);
+
     // Lista vazia honesta vale mais que lista cheia errada (regra de ouro do
     // user no Blublu: primeiro precisão, depois quantidade).
     const matches = pontuados.filter(m => m.confidence_pct >= PISO_EXIBICAO).slice(0, MAX_CANDIDATES);
     const descartados = pontuados.length - matches.length;
 
-    // web: pontua quem tem dado pra isso (TikTok enriquecido ou interseção)
-    const web = fundido.web
-      .map(w => {
-        if (w.duration || (w.frames || 0) >= 2) w.confidence_pct = scoreV5(w, safeMeta);
-        return w;
-      })
+    const corte = cortarWeb(webPontuado);
+    const web = corte.mostrar
       .sort((a, b) => (b.confidence_pct || 0) - (a.confidence_pct || 0) || (b.frames - a.frames));
+    for (const w of web) { delete w._cover; delete w._origin_cover; }
 
     const finalResponse = {
       ok: true,
@@ -601,7 +742,8 @@ module.exports = async function handler(req, res) {
       matches,
       matches_low_confidence: descartados,
       web_matches: web,
-      engine: 'serpapi_v5_intersect',
+      web_matches_hidden: corte.ocultos,
+      engine: 'serpapi_v51_pixel',
       message: matches.length === 0
         ? 'Nenhum vídeo do YouTube bateu com confiança suficiente. Isso é sinal bom: não achei repost claro — e prefiro lista vazia a chute.'
         : undefined,
@@ -626,3 +768,7 @@ module.exports.titleSim = titleSim;
 module.exports.mergeSerpResults = mergeSerpResults;
 module.exports.extractTikTokId = extractTikTokId;
 module.exports.PISO_EXIBICAO = PISO_EXIBICAO;
+module.exports.aplicarPixel = aplicarPixel;
+module.exports.cortarWeb = cortarWeb;
+module.exports.dhashFromJpeg = dhashFromJpeg;
+module.exports.hamming = hamming;

@@ -12,7 +12,8 @@
     "test:editor": "npm run test:unit && npm run test:e2e"
   },
   "dependencies": {
-    "@upstash/redis": "^1.37.0"
+    "@upstash/redis": "^1.37.0",
+    "jpeg-js": "^0.4.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
