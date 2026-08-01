@@ -662,8 +662,9 @@ function buildResultItem(r, idx) {
     <div class="result-info">
       <div class="result-title">${r.title||'—'}</div>
       <div class="result-meta">${r.channel||'—'}${r.views?' · '+fmtNum(r.views)+' views':''}${r.publishedAt?' · '+fmtDate(r.publishedAt):''}</div>
-      <div style="margin-top:6px">
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:${badgeBg};border:1px solid ${badgeBorder};font-family:var(--mono);font-size:10px;font-weight:700;color:${simColor}">🎯 Match visual ▶ YouTube · ${confLabel}</div>
+        <button onclick="event.stopPropagation();baixarNoBaixaBlue('${r.url}')" style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:100px;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;font-family:var(--mono);font-size:10px;font-weight:800;color:#fff;cursor:pointer;letter-spacing:.03em">⬇ BAIXAR 👑</button>
       </div>
       ${framesInfo}
       ${temporal}
@@ -700,9 +701,20 @@ function buildWebMatchItem(m) {
           : m.pixel==='provavel'
           ? '<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);font-family:var(--mono);font-size:10px;font-weight:700;color:#fbbf24">≈ QUADRO PROVÁVEL'+(m.confidence_pct?' · '+m.confidence_pct+'%':'')+'</div>'
           : `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.25);font-family:var(--mono);font-size:10px;font-weight:700;color:${color}">🌍 Imagem similar · ${(m.platform||'web').toUpperCase()}</div>`}
+        ${['youtube','tiktok','instagram','facebook'].includes(m.platform) ? `<button onclick="event.stopPropagation();baixarNoBaixaBlue('${safeUrl}')" style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:100px;background:linear-gradient(135deg,#92400e,#fbbf24);border:none;font-family:var(--mono);font-size:10px;font-weight:800;color:#fff;cursor:pointer">⬇ BAIXAR 👑</button>` : ''}
       </div>
     </div>
   </div>`;
+}
+
+// Baixar a versão original achada (pedido do user 01/08): fecha o ciclo —
+// achou a versão limpa → BaixaBlue baixa → recria. Exclusivo Master.
+function baixarNoBaixaBlue(url) {
+  if ((localStorage.getItem('bt_plan') || '') === 'master') {
+    window.location.href = '/baixaBlue?url=' + encodeURIComponent(url);
+  } else {
+    window.location.href = '/#plans';
+  }
 }
 
 function handleResultClick(url, videoId) {

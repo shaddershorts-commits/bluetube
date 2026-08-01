@@ -294,20 +294,6 @@ function canonWeb(m) {
   } catch { return String(m.url).toLowerCase(); }
 }
 
-// Similaridade de título tolerante a acento/pontuação. É BÔNUS, nunca pena:
-// repost traduzido tem título diferente e não pode ser punido por isso.
-function titleSim(a, b) {
-  const tok = (s) => new Set(
-    String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 3)
-  );
-  const A = tok(a), B = tok(b);
-  if (!A.size || !B.size) return 0;
-  let comum = 0;
-  for (const w of A) if (B.has(w)) comum++;
-  return comum / Math.min(A.size, B.size);
-}
-
 // Funde as duas buscas. frames=2 → apareceu na capa E no quadro real.
 function mergeSerpResults(resA, resB) {
   const yt = new Map(), web = new Map();
@@ -346,9 +332,7 @@ function scoreV5(c, userMeta) {
     else if (rel <= 0.20) s += 12;
     else if (rel > 0.50) s -= 25;                           // conflito PUNE
   }
-  const sim = titleSim(userMeta?.title, c.title);
-  if (sim >= 0.5) s += 15;
-  else if (sim >= 0.25) s += 8;
+  // (v5.2) TEXTO NÃO PARTICIPA DE NADA — lei do user: só quadro e sinais de vídeo
   if (typeof c.bestRank === 'number') {
     if (c.bestRank < 3) s += 15;
     else if (c.bestRank < 10) s += 8;
@@ -423,35 +407,55 @@ const PIXEL_CONFIRMA = 10;   // distância Hamming ≤10 em 64 bits = mesmo quad
 const PIXEL_PROVAVEL = 16;
 const PIXEL_REJEITA = 26;    // TODAS as comparações acima disso = só "parecido"
 
-// dHash 8x8: reduz pra 9x8 em cinza, compara vizinhos horizontais → 64 bits.
-// Robusto a recompressão/resize (o caso real: mesmo vídeo reupado).
-function dhashFromJpeg(buf) {
+// dHash 8x8 sobre uma REGIÃO fracionária da imagem (média de bloco — estável
+// a ruído de compressão). full = quadro inteiro; centro = miolo 70%, imune a
+// legenda queimada/seta/moldura nas bordas (o caso de uso central do produto).
+function decodeJpeg(buf) {
   try {
     const jpeg = require('jpeg-js');
     const img = jpeg.decode(buf, { useTArray: true, maxMemoryUsageInMB: 32 });
-    if (!img || !img.width || !img.height) return null;
-    const W = 9, H = 8;
-    const cinza = new Float64Array(W * H);
-    // média de bloco (não nearest): estável a ruído de compressão
-    for (let gy = 0; gy < H; gy++) {
-      for (let gx = 0; gx < W; gx++) {
-        const x0 = Math.floor(gx * img.width / W), x1 = Math.max(x0 + 1, Math.floor((gx + 1) * img.width / W));
-        const y0 = Math.floor(gy * img.height / H), y1 = Math.max(y0 + 1, Math.floor((gy + 1) * img.height / H));
-        let soma = 0, n = 0;
-        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-          const i = (y * img.width + x) * 4;
-          soma += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
-          n++;
-        }
-        cinza[gy * W + gx] = soma / n;
-      }
-    }
-    let hash = 0n;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W - 1; x++) {
-      hash = (hash << 1n) | (cinza[y * W + x] < cinza[y * W + x + 1] ? 1n : 0n);
-    }
-    return hash;
+    return (img && img.width && img.height) ? img : null;
   } catch { return null; }
+}
+
+function gridHash(img, f0x, f0y, f1x, f1y) {
+  const W = 9, H = 8;
+  const X0 = Math.floor(img.width * f0x), X1 = Math.ceil(img.width * f1x);
+  const Y0 = Math.floor(img.height * f0y), Y1 = Math.ceil(img.height * f1y);
+  const cinza = new Float64Array(W * H);
+  for (let gy = 0; gy < H; gy++) {
+    for (let gx = 0; gx < W; gx++) {
+      const x0 = X0 + Math.floor(gx * (X1 - X0) / W), x1 = Math.max(x0 + 1, X0 + Math.floor((gx + 1) * (X1 - X0) / W));
+      const y0 = Y0 + Math.floor(gy * (Y1 - Y0) / H), y1 = Math.max(y0 + 1, Y0 + Math.floor((gy + 1) * (Y1 - Y0) / H));
+      let soma = 0, n = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * img.width + x) * 4;
+        soma += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+        n++;
+      }
+      cinza[gy * W + gx] = soma / Math.max(1, n);
+    }
+  }
+  let hash = 0n;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W - 1; x++) {
+    hash = (hash << 1n) | (cinza[y * W + x] < cinza[y * W + x + 1] ? 1n : 0n);
+  }
+  return hash;
+}
+
+function hashesDuplos(buf) {
+  const img = decodeJpeg(buf);
+  if (!img) return null;
+  return {
+    full: gridHash(img, 0, 0, 1, 1),
+    centro: gridHash(img, 0.15, 0.15, 0.85, 0.85),
+  };
+}
+
+// compat: os testes e o histórico usam o hash cheio
+function dhashFromJpeg(buf) {
+  const h = hashesDuplos(buf);
+  return h ? h.full : null;
 }
 
 function hamming(a, b) {
@@ -461,28 +465,40 @@ function hamming(a, b) {
   return n;
 }
 
-async function hashDeUrl(url) {
-  try {
-    const r = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length < 500) return null;   // placeholder cinza do ytimg é minúsculo
-    return dhashFromJpeg(buf);
-  } catch { return null; }
+async function hashesDeUrl(url) {
+  const baixar = async (u) => {
+    try {
+      const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000) });
+      if (!r.ok) return null;
+      const buf = Buffer.from(await r.arrayBuffer());
+      return buf.length < 500 ? null : buf;   // placeholder cinza do ytimg é minúsculo
+    } catch { return null; }
+  };
+  const buf = await baixar(url);
+  let h = buf ? hashesDuplos(buf) : null;
+  if (!h && buf) {
+    // WebP/AVIF (capas de TikTok/IG): transcodifica pra JPEG via weserv
+    // (proxy público de imagem). Falhou = neutro, nunca pune.
+    const b2 = await baixar('https://images.weserv.nl/?url=' + encodeURIComponent(url) + '&output=jpg&w=480');
+    h = b2 ? hashesDuplos(b2) : null;
+  }
+  return h;
 }
 
 const quadrosYt = (id) => [0, 1, 2, 3].map(n =>
   `https://i.ytimg.com/vi/${id}/${n === 0 ? 'hqdefault' : 'hq' + n}.jpg`);
 
-// Decisão pura (testável): o que o veredito de pixel faz com o score.
-function aplicarPixel(score, minDist, comparacoes) {
-  if (comparacoes < 2 || minDist == null) return { score, pixel: null };   // sem evidência: neutro
-  if (minDist <= PIXEL_CONFIRMA) return { score: Math.max(score, 92), pixel: 'confirmado' };
-  if (minDist <= PIXEL_PROVAVEL) return { score: Math.min(95, score + 15), pixel: 'provavel' };
-  if (minDist > PIXEL_REJEITA) return { score: Math.min(score, 35), pixel: 'rejeitado' };
+// Decisão pura (testável). full ≤10 = mesmo quadro. Miolo ≤8 = mesmo quadro
+// COM overlay nas bordas (legenda queimada/seta/moldura — o caso de uso
+// central: achar a versão mais ORIGINAL). O atalho do miolo exige que a
+// duração NÃO conflite: miolo parecido + duração incompatível = coincidência.
+function aplicarPixel(score, ev) {
+  const { minFull = null, minCentro = null, comparacoes = 0, durConflito = false } = ev || {};
+  if (comparacoes < 2) return { score, pixel: null };
+  if (minFull != null && minFull <= PIXEL_CONFIRMA) return { score: Math.max(score, 92), pixel: 'confirmado' };
+  if (minCentro != null && minCentro <= 8 && !durConflito) return { score: Math.max(score, 92), pixel: 'confirmado', via: 'miolo' };
+  if (minFull != null && minFull <= PIXEL_PROVAVEL) return { score: Math.min(95, score + 15), pixel: 'provavel' };
+  if (minFull != null && minFull > PIXEL_REJEITA && (minCentro == null || minCentro > 20)) return { score: Math.min(score, 35), pixel: 'rejeitado' };
   return { score, pixel: null };
 }
 
@@ -510,37 +526,43 @@ function cortarWeb(webList) {
   return { mostrar: semRejeitados.slice(0, 5), ocultos: webList.length - Math.min(5, semRejeitados.length) };
 }
 
-// Compara os quadros do USER contra as imagens de cada candidato.
-async function confirmarPorQuadro(userId, candYt, candWeb) {
-  const hashesUser = (await Promise.all(quadrosYt(userId).map(hashDeUrl))).filter(h => h != null);
-  if (hashesUser.length === 0) return;   // sem base de comparação: tudo neutro
+// Compara os quadros do USER contra as imagens de cada candidato, por região
+// (full×full e miolo×miolo — nunca cruzado).
+async function confirmarPorQuadro(userId, candYt, candWeb, userDur) {
+  const hashesUser = (await Promise.all(quadrosYt(userId).map(hashesDeUrl))).filter(h => h != null);
+  if (hashesUser.length === 0) return;
 
   const medir = async (urls) => {
-    const hs = (await Promise.all(urls.map(hashDeUrl))).filter(h => h != null);
-    let min = null;
+    const hs = (await Promise.all(urls.map(hashesDeUrl))).filter(h => h != null);
+    let minFull = null, minCentro = null;
     for (const hc of hs) for (const hu of hashesUser) {
-      const d = hamming(hc, hu);
-      if (min == null || d < min) min = d;
+      const df = hamming(hc.full, hu.full);
+      const dc = hamming(hc.centro, hu.centro);
+      if (minFull == null || df < minFull) minFull = df;
+      if (minCentro == null || dc < minCentro) minCentro = dc;
     }
-    return { min, comparacoes: hs.length * hashesUser.length };
+    return { minFull, minCentro, comparacoes: hs.length * hashesUser.length };
   };
 
+  const conflita = (dC) => !!(userDur > 0 && dC > 0 && Math.abs(userDur - dC) / Math.max(userDur, dC) > 0.5);
+
   await Promise.all([
-    // YouTube: os 4 quadros públicos de cada candidato
     ...candYt.map(async (c) => {
-      const { min, comparacoes } = await medir(quadrosYt(c.video_id));
-      const r = aplicarPixel(c.confidence_pct, min, comparacoes);
+      const ev = await medir(quadrosYt(c.video_id));
+      ev.durConflito = conflita(c.duration || 0);
+      const r = aplicarPixel(c.confidence_pct, ev);
       c.confidence_pct = r.score; c.score = r.score / 100;
       if (r.pixel) c.pixel = r.pixel;
+      if (r.via) c.pixel_via = r.via;
     }),
-    // TikTok/web: capa que o TikWM devolveu (guardada no enrich) ou thumbnail do Lens
     ...candWeb.map(async (w) => {
       const urls = [w._cover, w._origin_cover, w.thumbnail].filter(Boolean).slice(0, 2);
       if (!urls.length) return;
-      const { min, comparacoes } = await medir(urls);
+      const ev = await medir(urls);
+      ev.durConflito = conflita(w.duration || 0);
       const base = w.confidence_pct != null ? w.confidence_pct : 30;
-      const r = aplicarPixel(base, min, comparacoes);
-      if (r.pixel) { w.pixel = r.pixel; w.confidence_pct = r.score; }
+      const r = aplicarPixel(base, ev);
+      if (r.pixel) { w.pixel = r.pixel; w.confidence_pct = r.score; if (r.via) w.pixel_via = r.via; }
     }),
   ]);
 }
@@ -722,7 +744,8 @@ module.exports = async function handler(req, res) {
     await confirmarPorQuadro(
       youtubeId,
       pontuados.slice(0, 8),
-      webPontuado.filter(w => w._cover || w._origin_cover || w.thumbnail).slice(0, 10)
+      webPontuado.filter(w => w._cover || w._origin_cover || w.thumbnail).slice(0, 10),
+      safeMeta.duration || 0
     );
     pontuados.sort((a, b) => b.confidence_pct - a.confidence_pct);
 
@@ -775,7 +798,6 @@ module.exports = async function handler(req, res) {
 module.exports.listYtKeys = listYtKeys;
 module.exports.ytFetch = ytFetch;
 module.exports.scoreV5 = scoreV5;
-module.exports.titleSim = titleSim;
 module.exports.mergeSerpResults = mergeSerpResults;
 module.exports.extractTikTokId = extractTikTokId;
 module.exports.PISO_EXIBICAO = PISO_EXIBICAO;
@@ -783,4 +805,5 @@ module.exports.aplicarPixel = aplicarPixel;
 module.exports.cortarWeb = cortarWeb;
 module.exports.filtrarMatchesYt = filtrarMatchesYt;
 module.exports.dhashFromJpeg = dhashFromJpeg;
+module.exports.hashesDuplos = hashesDuplos;
 module.exports.hamming = hamming;

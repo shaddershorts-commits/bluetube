@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { scoreV5, titleSim, mergeSerpResults, extractTikTokId, PISO_EXIBICAO } =
+const { scoreV5, mergeSerpResults, extractTikTokId, PISO_EXIBICAO } =
   require('../../api/bluelens-fingerprint.js');
 
 const USER = { title: 'Homem levanta 300kg só com técnica impressionante', channel: 'CanalDoUser', duration: 34 };
@@ -85,15 +85,6 @@ test('extractTikTokId cobre os formatos reais de URL', () => {
   assert.equal(extractTikTokId('https://www.youtube.com/watch?v=abc'), null);
 });
 
-// ── 5. título ──────────────────────────────────────────────────────────────
-test('titleSim tolera acento e pontuação; e nunca vira pena no score', () => {
-  assert.ok(titleSim('Homem levanta 300kg só com TÉCNICA!', 'homem levanta 300kg so com tecnica') >= 0.9);
-  assert.equal(titleSim('', 'qualquer coisa'), 0);
-  // título totalmente diferente NÃO pode reduzir o score (repost traduzido)
-  const sem = scoreV5({ frames: 2, bestRank: 0, duration: 34 }, USER);
-  const com = scoreV5({ frames: 2, bestRank: 0, duration: 34, title: '完全に違うタイトル' }, USER);
-  assert.ok(com >= sem, 'título diferente puniu — quebraria repost traduzido');
-});
 
 // ── v5.1: CONFIRMAÇÃO POR QUADRO (2026-08-01) ──────────────────────────────
 // "A única forma mais confiável é por frame" (user). dHash perceptual:
@@ -136,17 +127,17 @@ test('dHash: buffer inválido devolve null, nunca explode', () => {
 });
 
 test('aplicarPixel: confirmado sobe pra 92+, rejeitado despenca pra <=35', () => {
-  assert.equal(aplicarPixel(40, 4, 8).pixel, 'confirmado');
-  assert.ok(aplicarPixel(40, 4, 8).score >= 92);
-  assert.equal(aplicarPixel(80, 40, 8).pixel, 'rejeitado');
-  assert.ok(aplicarPixel(80, 40, 8).score <= 35, 'o "parecido" tem que cair abaixo do piso');
-  assert.equal(aplicarPixel(50, 13, 8).pixel, 'provavel');
+  assert.equal(aplicarPixel(40, { minFull: 4, comparacoes: 8 }).pixel, 'confirmado');
+  assert.ok(aplicarPixel(40, { minFull: 4, comparacoes: 8 }).score >= 92);
+  assert.equal(aplicarPixel(80, { minFull: 40, minCentro: 38, comparacoes: 8 }).pixel, 'rejeitado');
+  assert.ok(aplicarPixel(80, { minFull: 40, minCentro: 38, comparacoes: 8 }).score <= 35);
+  assert.equal(aplicarPixel(50, { minFull: 13, comparacoes: 8 }).pixel, 'provavel');
 });
 
 test('aplicarPixel: sem evidência suficiente é NEUTRO (falha de rede não pune)', () => {
-  assert.equal(aplicarPixel(70, null, 0).pixel, null);
-  assert.equal(aplicarPixel(70, null, 0).score, 70);
-  assert.equal(aplicarPixel(70, 5, 1).pixel, null, 'uma comparação só não é prova');
+  assert.equal(aplicarPixel(70, { comparacoes: 0 }).pixel, null);
+  assert.equal(aplicarPixel(70, { comparacoes: 0 }).score, 70);
+  assert.equal(aplicarPixel(70, { minFull: 5, comparacoes: 1 }).pixel, null, 'uma comparação só não é prova');
 });
 
 test('cortarWeb: o caso do user — 1 confirmado + 30 flores aleatórias', () => {
@@ -204,4 +195,43 @@ test('zero confirmados = lista vazia honesta (não rebaixa o critério)', () => 
   ], 10);
   assert.equal(f.matches.length, 0);
   assert.equal(f.descartados, 2);
+});
+
+// ── v5.2: MIOLO DO QUADRO (2026-08-01) ─────────────────────────────────────
+// O caso de uso central do produto (user): achar o MESMO vídeo sem as edições
+// — legenda queimada, seta, moldura. O overlay vive nas bordas; o miolo 70%
+// fica intacto. E texto saiu 100% do cérebro.
+const { hashesDuplos } = require('../../api/bluelens-fingerprint.js');
+
+test('LEGENDA QUEIMADA não engana o miolo: full diverge, centro bate', () => {
+  const cena = (fx, fy) => [Math.round(fx * 255), Math.round((1 - fy) * 200), Math.round(fy * 255)];
+  const comLegenda = (fx, fy) => (fy > 0.82 ? [255, 255, 255] : cena(fx, fy));   // faixa branca embaixo
+  const a = hashesDuplos(jpegSintetico(cena));
+  const b = hashesDuplos(jpegSintetico(comLegenda));
+  const dFull = hamming(a.full, b.full), dCentro = hamming(a.centro, b.centro);
+  assert.ok(dCentro <= 6, 'miolo deveria bater (overlay é na borda): ' + dCentro);
+  assert.ok(dCentro < dFull || dFull <= 10, 'o miolo tem que ser mais robusto que o quadro cheio (full=' + dFull + ' centro=' + dCentro + ')');
+});
+
+test('miolo ≤8 confirma QUANDO a duração não conflita', () => {
+  const r = aplicarPixel(45, { minFull: 14, minCentro: 5, comparacoes: 8, durConflito: false });
+  assert.equal(r.pixel, 'confirmado');
+  assert.equal(r.via, 'miolo');
+  assert.ok(r.score >= 92);
+});
+
+test('miolo parecido + duração INCOMPATÍVEL = coincidência, não confirma', () => {
+  const r = aplicarPixel(45, { minFull: 14, minCentro: 5, comparacoes: 8, durConflito: true });
+  assert.notEqual(r.pixel, 'confirmado', 'vídeo de 5min não é repost de Short só porque o miolo parece');
+});
+
+test('quadro cheio ≤10 confirma mesmo com duração conflitante (compilação contém o clipe)', () => {
+  const r = aplicarPixel(45, { minFull: 6, minCentro: 30, comparacoes: 8, durConflito: true });
+  assert.equal(r.pixel, 'confirmado');
+});
+
+test('scoreV5 não tem MAIS nenhum sinal de texto', () => {
+  const sem = scoreV5({ frames: 2, bestRank: 0, duration: 34 }, USER);
+  const com = scoreV5({ frames: 2, bestRank: 0, duration: 34, title: USER.title }, USER);
+  assert.equal(sem, com, 'título idêntico mudou o score — texto ainda participa');
 });
