@@ -17,8 +17,8 @@
   // Afiliados com cupom próprio: o link normal deles já ativa o desconto,
   // então links antigos já distribuídos passam a valer sem retrabalho.
   var REF_CUPONS = {
-    'luizgui238bae5': 'Stubbe50'   // Luiz
-    // Daniel entra aqui quando o ref_code dele for confirmado → 'Daniel50'
+    'luizgui238bae5': 'Stubbe50',  // Luiz  — luiz.gui2@hotmail.com
+    'invectga7e70ad': 'Daniel50'   // Daniel — invectgames@gmail.com
   };
 
   // 1. captura o cupom do link e persiste (sobrevive ao login/OTP no meio)
