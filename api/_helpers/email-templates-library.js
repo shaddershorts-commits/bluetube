@@ -524,6 +524,54 @@ Se não: ignora. Sem ressentimento.</p>`,
     cta_url: 'https://bluetubeviral.com/#plans',
     is_trial: false,
   },
+  {
+    id: 'free_25_bluelens_versao_limpa',
+    category: 'feature_bluelens',
+    subject: 'Aquele vídeo tem uma versão sem legendas',
+    preheader: 'O viral que você viu cheio de legenda e seta existe limpo em outra rede. Achar é o difícil.',
+    body: `<p>Oi, {{nome}}.</p>
+<p>Todo viral que você vê no feed é uma <strong>cópia editada de alguma coisa</strong>: legenda queimada por cima, seta, moldura, marca d'água.</p>
+<p>Em algum lugar — YouTube, TikTok, Instagram, Facebook — existe a versão <strong>original e limpa</strong> desse vídeo. É ela que você quer na mão pra trabalhar.</p>
+<p>Procurar isso manualmente é abrir 40 abas e desistir na décima.</p>
+<p>O BlueLens faz em ~30 segundos: você cola o link do vídeo (de qualquer uma das 4 redes) e ele compara <strong>quadro a quadro, pixel a pixel</strong>, até achar onde mais aquele vídeo existe — inclusive as versões sem edição nenhuma.</p>
+<p>Não é busca por título (título mente). Não é "vídeo parecido" (parecido não serve). É o mesmo vídeo, comprovado no pixel.</p>
+<p><em>(P.S.: quando não existe outra versão, ele fala na cara: "não achei". Odiamos lista cheia de chute tanto quanto você.)</em></p>`,
+    cta_text: 'Rastrear um vídeo agora →',
+    cta_url: 'https://bluetubeviral.com/blueLens',
+    is_trial: false,
+  },
+  {
+    id: 'free_26_bluelens_prova_pixel',
+    category: 'feature_bluelens',
+    subject: '92% de certeza (e a gente mostra o pixel)',
+    preheader: 'Como o BlueLens decide o que te mostrar — e por que a lista às vezes vem vazia.',
+    body: `<p>Oi, {{nome}}.</p>
+<p>Pergunta rápida: de que adianta uma ferramenta te devolver <strong>60 resultados</strong> se 55 não têm nada a ver?</p>
+<p>Você vira o estagiário da ferramenta — conferindo um por um.</p>
+<p>O BlueLens funciona ao contrário. Ele baixa quadros reais do vídeo que você colou e dos candidatos, e compara <strong>pixel a pixel</strong>. Bateu de verdade? Entra na lista com selo verde e percentual. Só "parece"? Vira uma linha discreta: <em>"33 parecidos ocultados"</em>.</p>
+<p>E quando ninguém passa na prova, ele diz: <strong>"não achei repost claro"</strong>. Lista vazia honesta — que, aliás, é ótima notícia: o vídeo tá livre pra você trabalhar nele primeiro.</p>
+<p>Detecta até repost com legenda queimada por cima (comparamos também o miolo do quadro, onde a edição não chega).</p>
+<p><em>(P.S.: disponível nos planos Full e Master. O seu plano atual te mostra essa carta de longe.)</em></p>`,
+    cta_text: 'Ver os planos →',
+    cta_url: 'https://bluetubeviral.com/#plans',
+    is_trial: false,
+  },
+  {
+    id: 'free_27_ciclo_achar_baixar_recriar',
+    category: 'feature_bluelens',
+    subject: 'Achar → baixar → recriar (10 minutos)',
+    preheader: 'O fluxo completo que os Masters estão usando desde essa semana.',
+    body: `<p>Oi, {{nome}}.</p>
+<p>O fluxo que os assinantes Master destravaram essa semana, do início ao fim:</p>
+<p><strong>1. Achar.</strong> Cola no BlueLens o link de um viral (YouTube, TikTok, Instagram ou Facebook). Ele encontra a versão mais original — sem legendas, sem setas — comparando quadro a quadro.</p>
+<p><strong>2. Baixar.</strong> Cada resultado tem um botão ⬇ BAIXAR. Um clique e o vídeo limpo cai no BaixaBlue, pronto.</p>
+<p><strong>3. Recriar.</strong> Transcreve, adapta o roteiro com o Blublu, narra com o BlueVoice — e publica a SUA versão antes do nicho saturar.</p>
+<p>O que era uma tarde de trabalho (caçar fonte limpa, baixar por site duvidoso, reescrever no braço) virou uns 10 minutos dentro de uma aba só.</p>
+<p><em>(P.S.: o passo 2 é exclusivo Master. Os passos 1 e 3 o Full já faz — dá pra começar por aí.)</em></p>`,
+    cta_text: 'Quero esse fluxo →',
+    cta_url: 'https://bluetubeviral.com/#plans',
+    is_trial: false,
+  },
 ];
 
 const FULL_TEMPLATES = [
