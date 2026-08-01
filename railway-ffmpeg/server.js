@@ -473,20 +473,29 @@ app.post('/lens-frames', async (req, res) => {
     // pra interseção e pixel-compare falarem a mesma língua entre plataformas
     const fracoes = [0.2, 0.5, 0.8];
     const frames = [];
+    const debug = [];
     for (let i = 0; i < fracoes.length; i++) {
       const t = duration > 2 ? Math.max(0.5, duration * fracoes[i]) : i * 0.5;
       const out = path.join(dir, `f${i}.jpg`);
       try {
         await run('ffmpeg', ['-ss', String(t), '-i', src, '-frames:v', '1', '-vf', 'scale=480:-2', '-q:v', '4', '-y', out]);
-        if (fs.existsSync(out) && fs.statSync(out).size > 500) {
-          const storagePath = `${p.storage_prefix}/f${i}.jpg`;
-          await uploadToSupabase(out, storagePath, p.supabase_url, p.supabase_key, 'image/jpeg');
-          frames.push(`${p.supabase_url}/storage/v1/object/public/blue-videos/${storagePath}`);
+        if (!fs.existsSync(out) || fs.statSync(out).size <= 500) {
+          debug.push(`f${i}: quadro vazio (t=${t.toFixed(1)})`);
+          continue;
         }
-      } catch (_) {}   // um quadro falhar não derruba os outros
+        const storagePath = `${p.storage_prefix}/f${i}.jpg`;
+        await uploadToSupabase(out, storagePath, p.supabase_url, p.supabase_key, 'image/jpeg');
+        frames.push(`${p.supabase_url}/storage/v1/object/public/blue-videos/${storagePath}`);
+      } catch (e) {
+        // um quadro falhar não derruba os outros — mas o motivo tem que aparecer
+        debug.push(`f${i}: ` + String(e?.response?.status || e?.message || e).slice(0, 160));
+      }
     }
 
-    if (!frames.length) return res.status(500).json({ error: 'nenhum quadro extraido' });
+    if (!frames.length) {
+      const tam = fs.existsSync(src) ? fs.statSync(src).size : 0;
+      return res.status(500).json({ error: 'nenhum quadro extraido', arquivo_bytes: tam, duration, debug });
+    }
     res.json({ ok: true, duration, frames });
   } catch (e) {
     res.status(500).json({ error: (e.message || '').slice(0, 300) });

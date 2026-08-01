@@ -626,12 +626,18 @@ async function prepararEntrada(entrada, urlOriginal) {
     };
   }
 
-  // instagram / facebook: a cadeia do BaixaBlue resolve o arquivo
+  // instagram / facebook: a cadeia do BaixaBlue resolve o arquivo.
+  // Roteamento igual ao do próprio BaixaBlue (baixaBlue.html): Instagram vai
+  // pelo download principal (/api/auth?action=download); Facebook/Reddit/
+  // Twitter vão pelo baixa-social. Errar a porta = "Plataforma não suportada".
   const SITE = process.env.SITE_URL || 'https://www.bluetubeviral.com';
+  const rota = entrada.plataforma === 'instagram'
+    ? '/api/auth?action=download&url='
+    : '/api/baixa-social?url=';
   let resolvido = null;
   try {
-    const r = await fetch(SITE + '/api/baixa-social?url=' + encodeURIComponent(urlOriginal), {
-      signal: AbortSignal.timeout(45000),
+    const r = await fetch(SITE + rota + encodeURIComponent(urlOriginal), {
+      signal: AbortSignal.timeout(60000),
     });
     const d = r.ok ? await r.json() : null;
     if (d && d.url) resolvido = d;
