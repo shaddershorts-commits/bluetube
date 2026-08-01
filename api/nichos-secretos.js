@@ -71,7 +71,8 @@ async function isMaster(token) {
     const notExpired = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
     const planoEfetivo = (sub.plan && sub.plan !== 'free' && (isManual || notExpired)) ? sub.plan : 'free';
     return {
-      ok: planoEfetivo === 'master',
+      // 2026-08-02: Full ganhou os recursos que eram Master na Virais
+      ok: planoEfetivo === 'master' || planoEfetivo === 'full',
       plan: planoEfetivo,
       email: user.email,
       _debug: { raw_plan: sub.plan, is_manual: sub.is_manual, plan_expires_at: sub.plan_expires_at }

@@ -1,6 +1,6 @@
 // api/blublu-emails.js — Campanha de lançamento do "Falar com o Blublu" (Virais).
 // 3 emails, escritos COMO O BLUBLU (voz do personagem, vetor dele no layout).
-// Audiência: master (usar a feature) + full (provocação pra virar Master).
+// Audiência: master + full — AMBOS com a copy de uso (2026-08-02: Full ganhou o chat).
 // Free fica FORA: 298 emails estourariam a cota do Resend Free (100/dia).
 //
 // Actions (admin_secret obrigatório):
@@ -43,7 +43,8 @@ function shell({ vetor, titulo, corpo, ctaTexto, ctaUrl, email }) {
 </td></tr></table></body></html>`;
 }
 
-// ── OS 3 EMAILS (voz do Blublu; master = usar, full = virar Master) ──────────
+// ── OS 3 EMAILS (voz do Blublu). 2026-08-02: Full ganhou o chat, entao TODOS
+// recebem a copy de USO (chave master). A copy full abaixo virou legado.
 const EMAILS = {
   1: {
     master: {
@@ -52,7 +53,7 @@ const EMAILS = {
       titulo: 'Eu ganhei um chat.<br/>Você ganhou um garimpeiro.',
       corpo: `Sim, sou eu. O Blublu. Mandando email. (Uma IA escrevendo email pra você — o futuro é estranho, aceita.)<br/><br/>
 A novidade: dentro da <b style="color:#eaf3ff;">Virais</b> agora existe o botão <b style="color:#00d4ff;">"Falar com o Blublu"</b>. Você me pede em bom português — <i>"vídeos que falam do Michael Jackson"</i>, <i>"os do Luiz Stubbe"</i>, <i>"mais de 5 mi de views em 2 semanas"</i> — e eu viro o acervo INTEIRO de cabeça pra baixo. YouTube, canais secretos, TikTok. Em 10 idiomas.<br/><br/>
-E o meu diferencial que nenhum botão de filtro te dá: eu <b style="color:#eaf3ff;">PROVO</b>. Quando o assunto é citado na fala do vídeo, eu te digo o minuto exato.<br/><br/>Você é Master. Isso já é seu. Vai lá me dar trabalho.`,
+E o meu diferencial que nenhum botão de filtro te dá: eu <b style="color:#eaf3ff;">PROVO</b>. Quando o assunto é citado na fala do vídeo, eu te digo o minuto exato.<br/><br/>Sua assinatura já te dá isso. Vai lá me dar trabalho.`,
       ctaTexto: 'Falar com o Blublu →',
       ctaUrl: `${SITE}/virais`,
     },
@@ -188,7 +189,7 @@ module.exports = async function handler(req, res) {
       const resultados = { enviados: 0, falhas: 0 };
       for (const s of subs) {
         try {
-          const e = render(s.plan === 'full' ? 'full' : 'master', s.email);
+          const e = render('master', s.email); // 2026-08-02: Full ganhou o Blublu — copy única de USO pra todos
           const r = await fetch('https://api.resend.com/emails', {
             method: 'POST', headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ from: 'BlueTube Blublu <noreply@bluetubeviral.com>', to: [s.email], subject: e.assunto, html: e.html }),

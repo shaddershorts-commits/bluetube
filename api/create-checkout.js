@@ -125,7 +125,7 @@ export default async function handler(req, res) {
   const i18nMod = await import('./_helpers/i18n.js');
   const { t } = i18nMod.default || i18nMod;
 
-  const { plan, billing, token, ref, currency: rawCurrency, lang, activation_offer } = req.body || {};
+  const { plan, billing, token, ref, currency: rawCurrency, lang, activation_offer, cupom } = req.body || {};
   const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
   const SITE_URL      = process.env.SITE_URL || 'https://bluetubeviral.com';
   const SUPABASE_URL  = process.env.SUPABASE_URL;
@@ -258,6 +258,31 @@ export default async function handler(req, res) {
       // certo: ninguém empilha outro código por cima da oferta.
       params.set('discounts[0][coupon]', process.env.ACTIVATION_COUPON_ID || 'master-ativacao-50x2');
       params.set('metadata[activation_offer]', '1');
+    } else if (/^[A-Za-z0-9_-]{3,40}$/.test(String(cupom || '').trim())) {
+      // ── CUPOM PRÉ-APLICADO VIA LINK (2026-08-02) ─────────────────────────
+      // Emails/afiliados mandam ?cupom=Blue50 → o checkout já abre com o
+      // desconto na tela, sem a pessoa digitar nada. Valida o promotion code
+      // na Stripe (fonte única de verdade — qualquer código ativo funciona,
+      // mensal OU anual). Código inválido/expirado → checkout normal com o
+      // campo de código aberto, nunca erro. Regex no BACKEND: cupom vazio
+      // numa list da Stripe devolveria TODOS os promos (data[0] = aleatório).
+      // Stripe-Version pinada: a dahlia mudou o shape de promotion_codes.
+      const cupomCode = String(cupom).trim();
+      let promoId = null;
+      try {
+        const pr = await fetch(
+          'https://api.stripe.com/v1/promotion_codes?active=true&code=' + encodeURIComponent(cupomCode),
+          { headers: { Authorization: 'Bearer ' + STRIPE_SECRET, 'Stripe-Version': '2024-06-20' }, signal: AbortSignal.timeout(8000) }
+        );
+        const pd = pr.ok ? await pr.json() : null;
+        promoId = pd?.data?.[0]?.id || null;
+      } catch {}
+      if (promoId) {
+        params.set('discounts[0][promotion_code]', promoId);
+        params.set('metadata[cupom]', cupomCode.slice(0, 40));
+      } else {
+        params.set('allow_promotion_codes', 'true');
+      }
     } else {
       params.set('allow_promotion_codes', 'true');
     }
@@ -287,7 +312,7 @@ export default async function handler(req, res) {
       params.set('customer_email', customerEmail);
     }
 
-    const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    const criarSessao = () => fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${STRIPE_SECRET}`,
@@ -296,7 +321,19 @@ export default async function handler(req, res) {
       body: params
     });
 
-    const session = await r.json();
+    let r = await criarSessao();
+    let session = await r.json();
+    if (!r.ok && params.has('discounts[0][promotion_code]')) {
+      // Promo pré-aplicado recusado na criação da sessão (restrição first-time,
+      // moeda do coupon, applies_to...): NUNCA pode matar a venda. Refaz UMA
+      // vez sem o desconto, com o campo de código aberto pro cliente tentar.
+      console.error('Stripe recusou promo pré-aplicado, refazendo sem desconto:', JSON.stringify(session.error).slice(0, 200));
+      params.delete('discounts[0][promotion_code]');
+      params.delete('metadata[cupom]');
+      params.set('allow_promotion_codes', 'true');
+      r = await criarSessao();
+      session = await r.json();
+    }
     if (!r.ok) {
       console.error('Stripe error:', JSON.stringify(session.error));
       return res.status(400).json({ error: session.error?.message || t('stripe_error', lang) });

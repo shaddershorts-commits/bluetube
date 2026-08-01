@@ -564,12 +564,16 @@ async function toggleDailyAlert(req, res) {
   const sub = await getSubscriberByEmail(user.email);
   if (!sub) return res.status(404).json({ error: 'subscriber_nao_encontrado' });
 
-  // SO Master pode ativar — Free/Full recebem 403 amigavel
-  if (sub.plan !== 'master') {
+  // Assinantes VIVOS (Full ou Master) podem ativar — Free recebe 403 amigavel.
+  // 2026-08-02: Full ganhou os recursos que eram Master na Virais.
+  // Usa resolverPlanoEfetivo (mesma regra do alert-status): plano vencido sem
+  // is_manual vale como free, senão dava pra ligar o alerta com plano expirado.
+  const planoEfetivo = resolverPlanoEfetivo(sub);
+  if (planoEfetivo !== 'master' && planoEfetivo !== 'full') {
     return res.status(403).json({
       error: 'plano_master_necessario',
-      message: 'Recurso exclusivo Master. Faça upgrade pra receber alertas diários.',
-      current_plan: sub.plan,
+      message: 'Recurso exclusivo pra assinantes. Assine pra receber alertas diários.',
+      current_plan: planoEfetivo,
     });
   }
 
@@ -628,10 +632,13 @@ async function dailyAlertMaster(req, res) {
     return res.status(200).json({ ok: true, skipped: 'sem_shorts_qualificados', totals: { shorts: 0, masters: 0, enviados: 0 } });
   }
 
-  // 2. Lista Masters opt-in (sem `name` — coluna pode nao existir; usa email
-  // como fallback no template do email).
+  // 2. Lista assinantes opt-in (Full ou Master — 2026-08-02) que ainda estao
+  // VIVOS: is_manual (eterno) OU sem validade OU validade no futuro. Sem esse
+  // filtro, quem venceu continuava recebendo o email ate a varredura rebaixar.
+  // Sem `name` — coluna pode nao existir; usa email como fallback no template.
+  const agoraISO = new Date().toISOString();
   const mR = await fetch(
-    `${SU}/rest/v1/subscribers?plan=eq.master&virais_daily_alert=eq.true&select=email`,
+    `${SU}/rest/v1/subscribers?plan=in.(master,full)&virais_daily_alert=eq.true&or=(is_manual.is.true,plan_expires_at.is.null,plan_expires_at.gt.${agoraISO})&select=email`,
     { headers: HDR }
   );
   const masters = mR.ok ? await mR.json() : [];

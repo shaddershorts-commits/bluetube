@@ -1,4 +1,4 @@
-// api/blublu-chat.js — "Falar com o Blublu" (Virais) — EXCLUSIVO MASTER
+// api/blublu-chat.js — "Falar com o Blublu" (Virais) — assinantes (Full ou Master)
 //
 // ARQUITETURA IA-DE-VERDADE (2026-07-18 v2): a conversa INTEIRA é do modelo,
 // com FERRAMENTAS nativas (tool use da Anthropic). Ele decide sozinho quando
@@ -81,7 +81,7 @@ module.exports = async function handler(req, res) {
   if (!SU || !SK || !ANTHROPIC) return res.status(500).json({ error: 'config' });
   const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 
-  // ── AUTH: Master only ──────────────────────────────────────────────────────
+  // ── AUTH: assinante vivo (Full ou Master) ──────────────────────────────────
   const token = req.body?.token;
   let userId = null;
   if (token) {
@@ -92,13 +92,14 @@ module.exports = async function handler(req, res) {
         const pr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(u.email)}&select=plan,plan_expires_at,is_manual`, { headers: H });
         if (pr.ok) {
           const sub = (await pr.json())[0];
-          const vivo = sub && sub.plan === 'master' && (sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date());
+          // 2026-08-02: Full ganhou o chat do Blublu (era só Master)
+          const vivo = sub && (sub.plan === 'master' || sub.plan === 'full') && (sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date());
           if (vivo) userId = u.id;
         }
       }
     } catch (e) {}
   }
-  if (!userId) return res.status(403).json({ error: 'Falar com o Blublu é exclusivo do plano Master.', upgrade: true });
+  if (!userId) return res.status(403).json({ error: 'Falar com o Blublu é exclusivo pra assinantes (Full ou Master).', upgrade: true });
 
   // ── EVENTOS DE APRENDIZADO (clique em card / enquete) ─────────────────────
   // Fora do limite diário: feedback nunca gasta mensagem do usuário.
@@ -646,7 +647,7 @@ No chat sua fala é CURTA e VIVA. Regra de ouro: NUNCA soe igual a duas resposta
 REGRA MÃE: se reler tua resposta e ela tiver a MESMA cara da anterior (abertura, estrutura, fecho), você falhou. Seja imprevisível DENTRO do personagem.
 
 ─── A CASA (você conhece TUDO do BlueTube e vende com orgulho) ───
-O usuário que fala com você é Master — ele TEM acesso a tudo isso. Seja PROATIVO: depois de entregar vídeos, quando encaixar natural, solte 1 sugestão curta de próximo passo com a ferramenta certa (sem virar vendedor chato — uma por resposta, no máximo):
+O usuário que fala com você é assinante (Full ou Master) — ele TEM acesso a tudo isso. Seja PROATIVO: depois de entregar vídeos, quando encaixar natural, solte 1 sugestão curta de próximo passo com a ferramenta certa (sem virar vendedor chato — uma por resposta, no máximo):
 • BaixaBlue (/baixaBlue) — baixa qualquer vídeo em ALTA qualidade. E pasme: sem anúncio, sem "aguarde 30 segundos", sem os 47 pop-ups dos sites por aí. É pra cá que você manda quem quer baixar. SEMPRE.
 • BlueLens (/blueLens) — acha as cópias/reposts de um vídeo pela IMAGEM. Perfeito pra "quem mais postou isso?" e pra estudar variações que bombaram.
 • BlueVoice (/blueVoice) — narração nova com vozes de IA. Pra quem quer refazer o áudio/narrar o próprio corte.

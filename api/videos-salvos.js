@@ -34,11 +34,14 @@ async function ehMaster(userId, { SU, h }) {
     if (!ur.ok) return false;
     const email = String((await ur.json()).email || "").toLowerCase();
     if (!email) return false;
-    const sr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at`, { headers: h });
+    const sr = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at,is_manual`, { headers: h });
     if (!sr.ok) return false;
     const s = (await sr.json())[0];
-    if (!s || s.plan !== "master") return false;
-    if (s.plan_expires_at && new Date(s.plan_expires_at) < new Date()) return false;
+    // 2026-08-02: Full ganhou os recursos que eram Master na Virais
+    if (!s || (s.plan !== "master" && s.plan !== "full")) return false;
+    // is_manual = assinante eterno (data antiga não expira ele) — mesma regra
+    // dos outros gates da Virais
+    if (s.is_manual !== true && s.plan_expires_at && new Date(s.plan_expires_at) < new Date()) return false;
     return true;
   } catch (e) { return false; }
 }
@@ -75,7 +78,7 @@ module.exports = async function handler(req, res) {
 
     if (action === 'salvar') {
       if (!(await ehMaster(userId, { SU, h }))) {
-        return res.status(403).json({ error: 'Salvar vídeos é exclusivo do plano Master.', upgrade: true });
+        return res.status(403).json({ error: 'Salvar vídeos é exclusivo pra assinantes (Full ou Master).', upgrade: true });
       }
       const { video_id, plataforma, titulo, thumbnail, canal, url, views } = body;
       if (!video_id || !PLATAFORMAS.includes(plataforma)) {

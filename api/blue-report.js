@@ -146,6 +146,35 @@ module.exports = async function handler(req, res) {
       const histCount = {};
       hist.forEach(h => { histCount[h.alvo_id] = (histCount[h.alvo_id] || 0) + 1; });
 
+      // ── Enriquecimento (2026-08-02): o admin precisa VER o conteúdo pra
+      // avaliar — antes a fila só mostrava o id cortado do alvo.
+      const vidIds = [...new Set(reports.filter(r => r.tipo_alvo === 'video').map(r => r.alvo_id))];
+      const comIds = [...new Set(reports.filter(r => r.tipo_alvo === 'comentario').map(r => r.alvo_id))];
+      const vids = vidIds.length ? await fetch(`${SU}/rest/v1/blue_videos?id=in.(${vidIds.join(',')})&select=id,user_id,title,thumbnail_url,video_url,status,views`, { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []) : [];
+      const coms = comIds.length ? await fetch(`${SU}/rest/v1/blue_comments?id=in.(${comIds.join(',')})&select=id,user_id,text,video_id`, { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []) : [];
+      // perfis dos autores (vídeo/comentário) + alvos do tipo perfil/usuário
+      const autorIds = [...new Set([
+        ...vids.map(v => v.user_id), ...coms.map(c => c.user_id),
+        ...reports.filter(r => r.tipo_alvo !== 'video' && r.tipo_alvo !== 'comentario').map(r => r.alvo_id),
+      ])].filter(Boolean);
+      const perfis = autorIds.length ? await fetch(`${SU}/rest/v1/blue_profiles?user_id=in.(${autorIds.join(',')})&select=user_id,username,display_name`, { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []) : [];
+      const vMap = {}; vids.forEach(v => { vMap[v.id] = v; });
+      const cMap = {}; coms.forEach(c => { cMap[c.id] = c; });
+      const pMap = {}; perfis.forEach(p => { pMap[p.user_id] = p; });
+      const nomeDe = (uid) => { const p = pMap[uid]; return p ? (p.display_name || p.username || uid.slice(0, 8)) : null; };
+      const alvoDe = (r) => {
+        if (r.tipo_alvo === 'video') {
+          const v = vMap[r.alvo_id];
+          return v ? { titulo: v.title, thumb: v.thumbnail_url, url: v.video_url, status: v.status, views: v.views, autor: nomeDe(v.user_id) } : { removido: true };
+        }
+        if (r.tipo_alvo === 'comentario') {
+          const c = cMap[r.alvo_id];
+          return c ? { texto: c.text, autor: nomeDe(c.user_id), video_id: c.video_id } : { removido: true };
+        }
+        const p = pMap[r.alvo_id];
+        return p ? { autor: p.display_name || p.username, username: p.username } : null;
+      };
+
       // Stats
       const [banR, removedR] = await Promise.all([
         fetch(`${SU}/rest/v1/blue_banimentos?or=(expira_em.is.null,expira_em.gt.${new Date().toISOString()})&select=id`, { headers: h }),
@@ -156,7 +185,7 @@ module.exports = async function handler(req, res) {
       const urgent = reports.filter(r => r.motivo === 'nudez' || r.motivo === 'violencia').length;
 
       return res.status(200).json({
-        reports: reports.map(r => ({ ...r, historico_reports: histCount[r.alvo_id] || 0 })),
+        reports: reports.map(r => ({ ...r, historico_reports: histCount[r.alvo_id] || 0, alvo: alvoDe(r) })),
         stats: { pendentes: reports.length, urgentes: urgent, bans_ativos: activeBans, removidos_hoje: removedToday }
       });
     } catch(e) { return res.status(200).json({ reports: [], stats: {} }); }

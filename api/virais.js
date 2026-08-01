@@ -120,10 +120,11 @@ async function historicoAction(req, res) {
       const isManual = sub?.is_manual === true;
       const notExpired = !sub?.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
       const planoEfetivo = (sub?.plan && sub.plan !== 'free' && (isManual || notExpired)) ? sub.plan : 'free';
-      if (planoEfetivo !== 'master') {
+      // 2026-08-02: Full ganhou os recursos que eram Master na Virais
+      if (planoEfetivo !== 'master' && planoEfetivo !== 'full') {
         return res.status(403).json({
           error: 'master_only',
-          message: 'Filtro 5h exclusivo do plano Master',
+          message: 'Filtro 5h exclusivo pra assinantes (Full ou Master)',
           current_plan: planoEfetivo,
         });
       }

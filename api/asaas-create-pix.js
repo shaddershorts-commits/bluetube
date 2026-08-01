@@ -29,7 +29,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
-  const { plan, token, ref, cpfCnpj, name } = req.body || {};
+  const { plan, token, ref, cpfCnpj, name, cupom } = req.body || {};
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const ANON_KEY     = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
   const SITE_URL     = process.env.SITE_URL || 'https://bluetubeviral.com';
@@ -58,6 +58,33 @@ module.exports = async function handler(req, res) {
     const customer = await findOrCreateCustomer({ email: userEmail, name, cpfCnpj: cpfClean });
     if (!customer?.id) return res.status(502).json({ error: 'customer_falhou' });
 
+    // ── CUPOM (2026-08-02): mesmo código do cartão vale no Pix anual ─────
+    // Valida o promotion code na Stripe (fonte única — Stubbe50/Daniel50/
+    // Blue50/futuros). Inválido = segue SEM desconto e avisa no retorno;
+    // Stripe fora do ar = idem (nunca desconta às cegas).
+    // Regras extras do Pix (é UM pagamento de 13 meses, não recorrência):
+    //  - só coupon duration=forever (once/repeating descontaria o ano inteiro)
+    //  - código validado no BACKEND (curl com cupom vazio não pega promo aleatório)
+    //  - piso de R$ 5 (mínimo Asaas): desconto que zera o valor = segue sem desconto
+    let descontoPct = 0, cupomOk = null;
+    const cupomCode = String(cupom || '').trim();
+    if (/^[A-Za-z0-9_-]{3,40}$/.test(cupomCode) && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const pr = await fetch(
+          'https://api.stripe.com/v1/promotion_codes?active=true&code=' + encodeURIComponent(cupomCode),
+          { headers: { Authorization: 'Bearer ' + process.env.STRIPE_SECRET_KEY, 'Stripe-Version': '2024-06-20' }, signal: AbortSignal.timeout(8000) }
+        );
+        const pd = pr.ok ? await pr.json() : null;
+        const pc = pd?.data?.[0];
+        if (pc?.coupon?.percent_off > 0 && pc?.coupon?.duration === 'forever') {
+          descontoPct = pc.coupon.percent_off; cupomOk = pc.code;
+        }
+      } catch {}
+    }
+    let valorFinal = Math.round(PIX_AMOUNTS[plan] * (1 - descontoPct / 100) * 100) / 100;
+    if (valorFinal < 5) { descontoPct = 0; cupomOk = null; valorFinal = PIX_AMOUNTS[plan]; }
+    const descontoValor = Math.round((PIX_AMOUNTS[plan] - valorFinal) * 100) / 100;
+
     // 2. Cria cobranca Pix
     // externalReference codifica metadata pro webhook: plan + email + ref
     const externalRef = JSON.stringify({
@@ -65,6 +92,9 @@ module.exports = async function handler(req, res) {
       email: userEmail.toLowerCase().trim(),
       ref: ref || null,
       kind: 'pix_annual',
+      cupom: cupomOk,
+      desconto: descontoPct,
+      desconto_valor: descontoValor, // em R$ — coupon_discount no subscribers guarda VALOR, não %
     });
 
     const description = plan === 'master'
@@ -73,7 +103,7 @@ module.exports = async function handler(req, res) {
 
     const payment = await createPixPayment({
       customerId: customer.id,
-      value: PIX_AMOUNTS[plan],
+      value: valorFinal,
       description,
       externalReference: externalRef,
       // dueDate default = amanhã. Pix expira em 24h se nao pago.
@@ -96,6 +126,9 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       payment_id: payment.id,
       value: payment.value,
+      valor_original: PIX_AMOUNTS[plan],
+      cupom_aplicado: cupomOk,
+      desconto_pct: descontoPct,
       qr_code_image: qrCode.encodedImage, // base64 PNG
       qr_code_payload: qrCode.payload,    // copia-cola
       expires_at: qrCode.expirationDate || null,

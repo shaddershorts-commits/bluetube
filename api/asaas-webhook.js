@@ -74,8 +74,10 @@ module.exports = async function handler(req, res) {
         cancel_at_period_end: false,
         amount_paid: Number(payment.value || 0),
         currency: 'brl',
-        coupon_applied: false,
-        coupon_discount: 0,
+        coupon_applied: !!meta?.cupom,
+        // coupon_discount guarda VALOR em R$ (mesma semântica do webhook Stripe:
+        // amount_discount/100) — desconto_valor vem calculado do create-pix
+        coupon_discount: Number(meta?.desconto_valor || 0),
         billing_period: 'annual',
         billing_method: 'pix_annual',
         asaas_payment_id: payment.id,
