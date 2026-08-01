@@ -464,10 +464,26 @@ app.post('/lens-frames', async (req, res) => {
     await downloadFile(p.video_url, src);
 
     let duration = 0;
-    try {
-      const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src]);
-      duration = Math.round(parseFloat(stdout) || 0);
-    } catch (_) {}
+    const probeDur = async () => {
+      try {
+        const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src]);
+        return Math.round(parseFloat(stdout) || 0);
+      } catch (_) { return 0; }
+    };
+    duration = await probeDur();
+
+    // CDN do IG/FB às vezes entrega arquivo TRUNCADO (cabeçalho ok, quadros
+    // não): 171KB pra um vídeo de 20s. Se o tamanho não bate com a duração,
+    // re-baixa UMA vez antes de tentar extrair.
+    const bytes = fs.existsSync(src) ? fs.statSync(src).size : 0;
+    const minimoEsperado = Math.max(120000, duration * 15000);
+    if (duration > 0 && bytes < minimoEsperado) {
+      try {
+        fs.rmSync(src, { force: true });
+        await downloadFile(p.video_url, src);
+        duration = await probeDur();
+      } catch (_) {}
+    }
 
     // 3 momentos espalhados (20/50/80%) — mesmas frações dos thumbs do YouTube,
     // pra interseção e pixel-compare falarem a mesma língua entre plataformas
