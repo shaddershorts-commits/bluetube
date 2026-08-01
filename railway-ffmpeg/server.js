@@ -448,6 +448,53 @@ app.post('/blue-thumb', async (req, res) => {
 // Sync alignment: setpts=N/FRAME_RATE/TB nos dois força pareamento por
 // número de frame (o blend do ffmpeg parearia por timestamp, e os re-encodes
 // têm PTS diferente → tudo branco). Sobe a máscara pro Supabase e devolve URL.
+// BlueLens multi-plataforma (2026-08-01): extrai N quadros + duração de um
+// vídeo (Instagram/Facebook via cadeia do BaixaBlue; TikTok se precisar) e
+// sobe pro bucket público — o Lens precisa de URL pública pra busca reversa.
+// Sem cookie de YouTube: YouTube nunca passa por aqui (thumbs públicos).
+app.post('/lens-frames', async (req, res) => {
+  const p = req.body || {};
+  if (!p.video_url || !p.storage_prefix || !p.supabase_url || !p.supabase_key) {
+    return res.status(400).json({ error: 'video_url, storage_prefix e credenciais obrigatorios' });
+  }
+  const dir = path.join('/tmp', 'lensf-' + uuidv4());
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const src = path.join(dir, 'src.mp4');
+    await downloadFile(p.video_url, src);
+
+    let duration = 0;
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src]);
+      duration = Math.round(parseFloat(stdout) || 0);
+    } catch (_) {}
+
+    // 3 momentos espalhados (20/50/80%) — mesmas frações dos thumbs do YouTube,
+    // pra interseção e pixel-compare falarem a mesma língua entre plataformas
+    const fracoes = [0.2, 0.5, 0.8];
+    const frames = [];
+    for (let i = 0; i < fracoes.length; i++) {
+      const t = duration > 2 ? Math.max(0.5, duration * fracoes[i]) : i * 0.5;
+      const out = path.join(dir, `f${i}.jpg`);
+      try {
+        await run('ffmpeg', ['-ss', String(t), '-i', src, '-frames:v', '1', '-vf', 'scale=480:-2', '-q:v', '4', '-y', out]);
+        if (fs.existsSync(out) && fs.statSync(out).size > 500) {
+          const storagePath = `${p.storage_prefix}/f${i}.jpg`;
+          await uploadToSupabase(out, storagePath, p.supabase_url, p.supabase_key, 'image/jpeg');
+          frames.push(`${p.supabase_url}/storage/v1/object/public/blue-videos/${storagePath}`);
+        }
+      } catch (_) {}   // um quadro falhar não derruba os outros
+    }
+
+    if (!frames.length) return res.status(500).json({ error: 'nenhum quadro extraido' });
+    res.json({ ok: true, duration, frames });
+  } catch (e) {
+    res.status(500).json({ error: (e.message || '').slice(0, 300) });
+  } finally {
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }, 5000);
+  }
+});
+
 app.post('/blueclean-mask', (req, res) => {
   const p = req.body || {};
   if (!p.original_url || !p.black_url || !p.supabase_url || !p.supabase_key || !p.output_path) {

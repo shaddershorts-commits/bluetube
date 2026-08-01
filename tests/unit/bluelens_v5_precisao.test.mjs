@@ -235,3 +235,38 @@ test('scoreV5 não tem MAIS nenhum sinal de texto', () => {
   const com = scoreV5({ frames: 2, bestRank: 0, duration: 34, title: USER.title }, USER);
   assert.equal(sem, com, 'título idêntico mudou o score — texto ainda participa');
 });
+
+// ── MULTI-PLATAFORMA (2026-08-01): a entrada aceita qualquer rede ──────────
+const { resolverEntrada } = require('../../api/bluelens-fingerprint.js');
+
+test('resolverEntrada: YouTube mantém chave SEM prefixo (compat cache antigo)', () => {
+  const e = resolverEntrada('https://www.youtube.com/shorts/MhTfy53ySyQ');
+  assert.deepEqual(e, { plataforma: 'youtube', id: 'MhTfy53ySyQ', cacheKey: 'MhTfy53ySyQ' });
+  assert.equal(resolverEntrada('https://youtu.be/abc123def45').plataforma, 'youtube');
+});
+
+test('resolverEntrada: TikTok com id direto e link curto', () => {
+  const e = resolverEntrada('https://www.tiktok.com/@fulano/video/7301234567890123456');
+  assert.equal(e.plataforma, 'tiktok');
+  assert.equal(e.cacheKey, 'tt:7301234567890123456');
+  const curto = resolverEntrada('https://vm.tiktok.com/ZMabcdef/');
+  assert.equal(curto.plataforma, 'tiktok');
+  assert.equal(curto.cacheKey, null, 'link curto resolve depois via TikWM');
+});
+
+test('resolverEntrada: Instagram reel/p/tv', () => {
+  assert.equal(resolverEntrada('https://www.instagram.com/reel/C8xYz12AbCd/').cacheKey, 'ig:C8xYz12AbCd');
+  assert.equal(resolverEntrada('https://instagram.com/p/Xy12345/').plataforma, 'instagram');
+});
+
+test('resolverEntrada: Facebook watch, fb.watch e share', () => {
+  assert.equal(resolverEntrada('https://www.facebook.com/watch?v=123456789012').cacheKey, 'fb:123456789012');
+  assert.equal(resolverEntrada('https://fb.watch/xYz123_/').plataforma, 'facebook');
+  assert.equal(resolverEntrada('https://www.facebook.com/share/v/AbC123xyz/').plataforma, 'facebook');
+});
+
+test('resolverEntrada: lixo devolve null (vira 400 com mensagem nova)', () => {
+  assert.equal(resolverEntrada('https://twitter.com/x/status/1'), null);
+  assert.equal(resolverEntrada('texto qualquer'), null);
+  assert.equal(resolverEntrada(''), null);
+});

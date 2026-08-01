@@ -526,10 +526,137 @@ function cortarWeb(webList) {
   return { mostrar: semRejeitados.slice(0, 5), ocultos: webList.length - Math.min(5, semRejeitados.length) };
 }
 
+// ═══ ENTRADA MULTI-PLATAFORMA (2026-08-01) ═════════════════════════════════
+// O usuário cola link de YouTube, TikTok, Instagram ou Facebook. O pipeline
+// (busca 2 quadros → interseção → pixel → corte) é agnóstico; o que muda é
+// de onde vêm os quadros e a duração DO VÍDEO COLADO:
+//   youtube → thumbs públicos (como sempre; NUNCA baixa — regra dos cookies)
+//   tiktok  → TikWM (capas + play) e quadros reais via Railway quando dá
+//   ig/fb   → cadeia do BaixaBlue resolve o arquivo → Railway extrai quadros
+function resolverEntrada(url) {
+  const u = String(url || '');
+  if (/youtu\.?be/.test(u)) {
+    const id = extractYouTubeId(u);
+    return id ? { plataforma: 'youtube', id, cacheKey: id } : null;  // sem prefixo = compat cache antigo
+  }
+  const tk = extractTikTokId(u);
+  if (tk) return { plataforma: 'tiktok', id: tk, cacheKey: 'tt:' + tk };
+  if (/(vm|vt)\.tiktok\.com\/|tiktok\.com\/t\//.test(u)) {
+    return { plataforma: 'tiktok', id: null, cacheKey: null };       // curto: TikWM resolve
+  }
+  const ig = u.match(/instagram\.com\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]{5,})/);
+  if (ig) return { plataforma: 'instagram', id: ig[1], cacheKey: 'ig:' + ig[1] };
+  if (/instagram\.com\//.test(u)) return { plataforma: 'instagram', id: null, cacheKey: null };
+  if (/facebook\.com|fb\.watch|fb\.com/.test(u)) {
+    const m = u.match(/(?:\/videos\/|[?&]v=)(\d{6,})/) || u.match(/fb\.watch\/([A-Za-z0-9_-]{5,})/) ||
+              u.match(/\/(?:share|reel)\/(?:v\/)?([A-Za-z0-9_-]{5,})/);
+    const id = m ? m[1] : require('crypto').createHash('md5').update(u).digest('hex').slice(0, 16);
+    return { plataforma: 'facebook', id, cacheKey: 'fb:' + id };
+  }
+  return null;
+}
+
+// Railway extrai quadros de um arquivo e sobe pro bucket público (o Lens
+// exige URL pública). Falha = null; quem chama degrada com honestidade.
+async function framesViaRailway(videoUrl, prefixo) {
+  const RW = process.env.RAILWAY_FFMPEG_URL;
+  const { SUPA_URL, SUPA_KEY } = cfg();
+  if (!RW || !SUPA_URL || !SUPA_KEY || !videoUrl) return null;
+  try {
+    const r = await fetch(RW.replace(/\/$/, '') + '/lens-frames', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_url: videoUrl,
+        storage_prefix: 'bluelens/' + prefixo,
+        supabase_url: SUPA_URL,
+        supabase_key: SUPA_KEY,
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d && d.ok && d.frames && d.frames.length) ? { duration: d.duration || 0, frames: d.frames } : null;
+  } catch { return null; }
+}
+
+// Monta a entrada: meta do vídeo colado + URLs pra busca + URLs pra hash.
+async function prepararEntrada(entrada, urlOriginal) {
+  if (entrada.plataforma === 'youtube') {
+    const meta = await fetchVideoMeta(entrada.id);
+    return {
+      ok: true, plataforma: 'youtube', cacheKey: entrada.id, selfCanon: null, selfYtId: entrada.id,
+      meta, thumb: `https://i.ytimg.com/vi/${entrada.id}/hqdefault.jpg`,
+      buscas: [`https://i.ytimg.com/vi/${entrada.id}/hqdefault.jpg`, `https://i.ytimg.com/vi/${entrada.id}/hq2.jpg`],
+      quadrosUser: quadrosYt(entrada.id),
+    };
+  }
+
+  if (entrada.plataforma === 'tiktok') {
+    // TikWM aceita a URL crua (inclusive link curto) e devolve id/capas/play
+    let v = null;
+    try {
+      const r = await fetch('https://www.tikwm.com/api/?url=' + encodeURIComponent(urlOriginal), {
+        headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000),
+      });
+      const d = r.ok ? await r.json() : null;
+      if (d && d.code === 0 && d.data) v = d.data;
+    } catch {}
+    if (!v) return { ok: false, motivo: 'Não consegui ler este TikTok agora. Tenta de novo em instantes.' };
+    const id = String(v.id || entrada.id || '');
+    const capas = [...new Set([v.origin_cover, v.cover].filter(Boolean))];
+    // dois momentos REAIS valem mais que duas capas do mesmo instante
+    const rw = v.play ? await framesViaRailway(v.play, 'tt-' + id) : null;
+    const buscas = rw
+      ? [capas[0] || rw.frames[0], rw.frames[1] || rw.frames[0]]
+      : capas.slice(0, 2);
+    return {
+      ok: true, plataforma: 'tiktok', cacheKey: 'tt:' + id, selfCanon: 'tiktok:' + id, selfYtId: null,
+      meta: {
+        title: v.title || 'Vídeo do TikTok',
+        channel: v.author && v.author.unique_id ? '@' + v.author.unique_id : '—',
+        thumbnail: capas[0] || '',
+        published_at: v.create_time ? new Date(v.create_time * 1000).toISOString() : null,
+        views: Number(v.play_count || 0),
+        duration: Number(v.duration || (rw && rw.duration) || 0),
+      },
+      thumb: capas[0] || '',
+      buscas: buscas.filter(Boolean).slice(0, 2),
+      quadrosUser: [...capas, ...((rw && rw.frames) || [])].slice(0, 5),
+    };
+  }
+
+  // instagram / facebook: a cadeia do BaixaBlue resolve o arquivo
+  const SITE = process.env.SITE_URL || 'https://www.bluetubeviral.com';
+  let resolvido = null;
+  try {
+    const r = await fetch(SITE + '/api/baixa-social?url=' + encodeURIComponent(urlOriginal), {
+      signal: AbortSignal.timeout(45000),
+    });
+    const d = r.ok ? await r.json() : null;
+    if (d && d.url) resolvido = d;
+  } catch {}
+  if (!resolvido) {
+    return { ok: false, motivo: 'Não consegui ler este vídeo agora (a rede de origem dificulta). Tenta de novo — ou cola a versão do YouTube ou TikTok se tiver.' };
+  }
+  const rw = await framesViaRailway(resolvido.url, entrada.plataforma.slice(0, 2) + '-' + entrada.id);
+  if (!rw) return { ok: false, motivo: 'Achei o vídeo mas não consegui ler os quadros dele. Tenta de novo em instantes.' };
+  return {
+    ok: true, plataforma: entrada.plataforma, cacheKey: entrada.cacheKey, selfCanon: null, selfYtId: null,
+    meta: {
+      title: resolvido.title || (entrada.plataforma === 'instagram' ? 'Vídeo do Instagram' : 'Vídeo do Facebook'),
+      channel: '—', thumbnail: rw.frames[0], published_at: null, views: 0, duration: rw.duration,
+    },
+    thumb: rw.frames[0],
+    buscas: [rw.frames[0], rw.frames[2] || rw.frames[1] || rw.frames[0]].slice(0, 2),
+    quadrosUser: rw.frames,
+  };
+}
+
 // Compara os quadros do USER contra as imagens de cada candidato, por região
 // (full×full e miolo×miolo — nunca cruzado).
-async function confirmarPorQuadro(userId, candYt, candWeb, userDur) {
-  const hashesUser = (await Promise.all(quadrosYt(userId).map(hashesDeUrl))).filter(h => h != null);
+async function confirmarPorQuadro(quadrosUserUrls, candYt, candWeb, userDur) {
+  const hashesUser = (await Promise.all((quadrosUserUrls || []).map(hashesDeUrl))).filter(h => h != null);
   if (hashesUser.length === 0) return;
 
   const medir = async (urls) => {
@@ -619,15 +746,15 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const youtubeId = extractYouTubeId(url);
-  if (!youtubeId) return res.status(400).json({ error: 'URL deve ser de Short YouTube — formato: youtube.com/shorts/CODIGO ou watch?v=CODIGO' });
+  const entrada = resolverEntrada(url);
+  if (!entrada) return res.status(400).json({ error: 'Cole um link de vídeo do YouTube, TikTok, Instagram ou Facebook.' });
 
   const startTs = Date.now();
   const skipCache = req.query?.force === 'true';
 
   // ── CACHE CHECK (TTL 7d) ──────────────────────────────────────────────────
-  if (!skipCache) {
-    const cached = await getCachedAnalysis(youtubeId);
+  if (!skipCache && entrada.cacheKey) {
+    const cached = await getCachedAnalysis(entrada.cacheKey);
     if (cached?.response) {
       const cacheAgeDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
       return res.status(200).json({
@@ -640,22 +767,37 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const capaUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
-    const quadroUrl = `https://i.ytimg.com/vi/${youtubeId}/hq2.jpg`;   // quadro REAL do meio do vídeo
+    const prep = await prepararEntrada(entrada, url);
+    if (!prep.ok) {
+      // honestidade: não conseguiu LER o vídeo colado — não é "sem repost"
+      return res.status(200).json({
+        ok: true, url, plataforma: entrada.plataforma,
+        video_meta: { title: 'Vídeo (' + entrada.plataforma + ')', channel: '—', thumbnail: '', published_at: null, views: 0, duration: 0, _meta_unavailable: true },
+        serpapi: { total_visual_matches: 0, youtube_ids_found: 0, error: prep.motivo },
+        candidates_searched: 0, candidates_filtered: 0, matches: [], web_matches: [],
+        engine: 'entrada_indisponivel', message: prep.motivo, cached: false,
+        timing: { total_ms: Date.now() - startTs },
+      });
+    }
+    // link curto resolvido agora: confere o cache com a chave real
+    if (!skipCache && !entrada.cacheKey && prep.cacheKey) {
+      const cached = await getCachedAnalysis(prep.cacheKey);
+      if (cached?.response) {
+        const cacheAgeDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+        return res.status(200).json({ ...cached.response, cached: true, cache_age_days: Math.round(cacheAgeDays * 10) / 10, timing: { total_ms: Date.now() - startTs, source: 'cache' } });
+      }
+    }
 
-    // ── BUSCA 1 (capa) em paralelo com a metadata ───────────────────────────
-    const [meta, serpResult] = await Promise.all([
-      fetchVideoMeta(youtubeId),
-      getSerpAPICandidates(youtubeId, capaUrl),
-    ]);
+    const meta = prep.meta;
+    const serpResult = await getSerpAPICandidates(prep.selfYtId, prep.buscas[0]);
 
     // FALLBACK: meta pode estar null se YouTube Data API tá sem quota.
     // Não bloqueia o flow — segue com metadata mínima e tenta SerpAPI mesmo assim.
     // (Cenário visto em 2026-06-23: todas YT_KEYs com quota_exceeded simultaneamente.)
     const safeMeta = meta && meta.title ? meta : {
-      title: 'Vídeo do YouTube (metadata indisponível)',
+      title: 'Vídeo (metadata indisponível)',
       channel: '—',
-      thumbnail: thumbnailUrl,
+      thumbnail: prep.thumb,
       published_at: null,
       views: 0,
       duration: 0,
@@ -696,12 +838,14 @@ module.exports = async function handler(req, res) {
     // achou nada não paga confirmação. Se a 2ª falhar, degrada pra 1 quadro
     // (sem bônus de interseção) em vez de derrubar a análise.
     let serpB = null;
-    if (serpResult.youtube_ids.length + serpResult.other_platforms.length > 0) {
-      const b = await getSerpAPICandidates(youtubeId, quadroUrl);
+    if (serpResult.youtube_ids.length + serpResult.other_platforms.length > 0
+        && prep.buscas[1] && prep.buscas[1] !== prep.buscas[0]) {
+      const b = await getSerpAPICandidates(prep.selfYtId, prep.buscas[1]);
       if (!b.error || b.youtube_ids.length || b.other_platforms.length) serpB = b;
     }
 
     const fundido = mergeSerpResults(serpResult, serpB);
+    if (prep.selfCanon) fundido.web = fundido.web.filter(w => w.canon !== prep.selfCanon);
 
     // ── Enrich YouTube (até 15 ids em UMA chamada videos.list) ──────────────
     let candidates = fundido.youtube.slice(0, 15).map(c => ({
@@ -742,7 +886,7 @@ module.exports = async function handler(req, res) {
     // Compara os 4 quadros do vídeo do user contra os 4 de cada candidato YT
     // e contra as capas dos TikToks. Igual = 92+; só "parecido" = despenca.
     await confirmarPorQuadro(
-      youtubeId,
+      prep.quadrosUser,
       pontuados.slice(0, 8),
       webPontuado.filter(w => w._cover || w._origin_cover || w.thumbnail).slice(0, 10),
       safeMeta.duration || 0
@@ -763,7 +907,8 @@ module.exports = async function handler(req, res) {
     const finalResponse = {
       ok: true,
       url,
-      youtube_id: youtubeId,
+      plataforma: prep.plataforma,
+      youtube_id: prep.selfYtId || prep.cacheKey,
       video_meta: safeMeta,
       serpapi: {
         total_visual_matches: (serpResult.total_visual_matches || 0) + (serpB?.total_visual_matches || 0),
@@ -785,7 +930,7 @@ module.exports = async function handler(req, res) {
       timing: { total_ms: Date.now() - startTs },
     };
 
-    const saveResult = await saveCachedAnalysis(youtubeId, finalResponse);
+    const saveResult = await saveCachedAnalysis(prep.cacheKey, finalResponse);
     finalResponse.cache_saved = saveResult.ok;
     return res.status(200).json(finalResponse);
   } catch (e) {
@@ -806,4 +951,5 @@ module.exports.cortarWeb = cortarWeb;
 module.exports.filtrarMatchesYt = filtrarMatchesYt;
 module.exports.dhashFromJpeg = dhashFromJpeg;
 module.exports.hashesDuplos = hashesDuplos;
+module.exports.resolverEntrada = resolverEntrada;
 module.exports.hamming = hamming;
