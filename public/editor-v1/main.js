@@ -87,8 +87,41 @@ async function enterEditor(projectId) {
   try { editorAtivo?.destroy(); } catch (e) {}
   root.innerHTML = '';
   // onExit volta pra tela inicial (autosave já persistiu o projeto)
-  editorAtivo = mountEditor(root, store, { onExit: showHome });
+  try {
+    editorAtivo = mountEditor(root, store, { onExit: showHome });
+  } catch (e) {
+    // ⚠️ REDE DE SEGURANÇA (user 2026-07-29: "qualquer função quebrada
+    // compromete MUITO o produto"). Um erro no meio do mount já deixou o
+    // editor meio-montado e morto uma vez (o TDZ do attachResizers) — sem
+    // isto o usuário via a carcaça sem saber o que houve. O projeto dele
+    // está no autosave/servidor; a saída honesta é dizer e oferecer volta.
+    console.error('[main] mountEditor falhou:', e);
+    gateScreen('⚠️', 'O editor não conseguiu abrir',
+      'Deu um erro ao montar a tela. Seu projeto está salvo — nada foi perdido.',
+      '<button class="be-export-btn" onclick="location.reload()">Recarregar</button>' +
+      '<a class="be-export-btn" style="margin-left:8px" href="/blueEditor-app">Meus projetos</a>');
+  }
 }
+
+// ── VIGIA GLOBAL ────────────────────────────────────────────────────────────
+// Erro engolido é o pior modo de falha: a função morre e o usuário acha que o
+// produto "não faz nada". Qualquer exceção não tratada ou promise rejeitada
+// vira um aviso visível UMA vez (sem spam), com o erro inteiro no console.
+let avisoMostrado = false;
+function avisarErroGlobal(e) {
+  console.error('[vigia]', e);
+  if (avisoMostrado) return;
+  avisoMostrado = true;
+  setTimeout(() => { avisoMostrado = false; }, 30000);  // no máx 1 aviso / 30s
+  const t = document.getElementById('beToast');
+  if (t) {
+    t.textContent = '⚠️ Algo deu errado nesta ação. Se notar algo estranho, recarregue a página — seu projeto está salvo.';
+    t.classList.add('show', 'err');
+    setTimeout(() => t.classList.remove('show', 'err'), 6000);
+  }
+}
+window.addEventListener('error', (ev) => avisarErroGlobal(ev.error || ev.message));
+window.addEventListener('unhandledrejection', (ev) => avisarErroGlobal(ev.reason));
 
 boot().catch(e => {
   console.error('[main] boot falhou:', e);

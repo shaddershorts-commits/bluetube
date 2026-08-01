@@ -405,7 +405,12 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.save();
     roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.clip();
-    const wf = a.kind === 'video' ? videoWave : wave?.get?.(a.url);
+    // ⚠️ desde v1.7 videoWave é um LOOKUP {get} por fonte — usar direto dava
+    // wf.ready === undefined e a onda do áudio DESTACADO sumia em silêncio
+    // (null = fonte 'main', que é de onde o detach tira o áudio)
+    const wf = a.kind === 'video'
+      ? (videoWave?.get ? videoWave.get(null) : videoWave)
+      : wave?.get?.(a.url);
     if (wf?.ready?.()) {
       const bmp = wf.getSlice(srcI, srcO, aw, a.h);
       if (bmp) {

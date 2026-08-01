@@ -762,9 +762,14 @@ export function mountEditor(root, store, opts = {}) {
         idx++;
         try {
           if (isVideoFile(file)) {
-            // 1º vídeo de projeto vazio usa a barra da tela de entrada; takes
-            // (editor já aberto) mostram o popup de carregamento
-            if (!store.getState().video) { await uploadPrimary(file); }
+            // ⚠️ o 1º vídeo TAMBÉM mostra o popup: antes ele usava a barra da
+            // tela de importação (#beDropProgress), mas desde "Criar projeto
+            // entra direto no editor" essa tela fica escondida — o progresso ia
+            // pra um elemento invisível e o usuário achava que nada acontecia
+            if (!store.getState().video) {
+              importShow(file.name, idx, total);
+              await uploadPrimary(file, importProg);
+            }
             else {
               importShow(file.name, idx, total);
               const media = await uploadMedia(file, 'video', importProg);
@@ -795,17 +800,22 @@ export function mountEditor(root, store, opts = {}) {
     renderMediaPanel();
   }
 
-  async function uploadPrimary(file) {
+  async function uploadPrimary(file, onProg) {
+    // a barra da tela de importação só é atualizada se ela estiver NA TELA
+    // (hoje o normal é o popup #beImportModal, via onProg)
     const bar = $('#beDropProgress');
     const msg = $('#beDropMsg');
+    const dropVisivel = !!bar && bar.closest('#beDrop')?.style.display !== 'none';
     try {
-      bar.style.display = 'block';
-      msg.textContent = 'Enviando 0%';
+      if (dropVisivel) { bar.style.display = 'block'; msg.textContent = 'Enviando 0%'; }
       const media = await uploadMedia(file, 'video', (pct) => {
-        msg.textContent = `Enviando ${pct}%`;
-        bar.querySelector('i').style.width = pct + '%';
+        onProg?.(pct);
+        if (dropVisivel) {
+          msg.textContent = `Enviando ${pct}%`;
+          bar.querySelector('i').style.width = pct + '%';
+        }
       });
-      msg.textContent = 'Processando…';
+      if (dropVisivel) msg.textContent = 'Processando…';
       if (localPreview.url) URL.revokeObjectURL(localPreview.url);
       localPreview.url = URL.createObjectURL(file);
       localPreview.for = media.url;
@@ -817,11 +827,10 @@ export function mountEditor(root, store, opts = {}) {
       toast('Vídeo carregado ✓');
     } catch (e) {
       toast(e.message, true);
-      msg.textContent = 'Arraste um vídeo ou clique pra escolher';
+      if (msg) msg.textContent = 'Arraste um vídeo ou clique pra escolher';
       throw e;
     } finally {
-      bar.style.display = 'none';
-      bar.querySelector('i').style.width = '0%';
+      if (bar) { bar.style.display = 'none'; bar.querySelector('i').style.width = '0%'; }
     }
   }
 
@@ -968,8 +977,64 @@ export function mountEditor(root, store, opts = {}) {
     }
   }
 
-  // ── fullscreen do preview (tecla F) com barra de tempo ──
+  // ── ZOOM DO PREVIEW (user 2026-07-29, print do CapCut) ────────────────────
+  // Roda do mouse sobre o vídeo aproxima/afasta; aproximado, arrastar o palco
+  // desloca a vista. SÓ VISUAL: transform CSS no #beStage — o projeto, o
+  // autosave e o export não sabem que isso existe. Como todos os overlays
+  // (texto/pip/máscara) medem frações do próprio palco, o transform escala
+  // tudo junto e os arrastos continuam certos.
   const frame = $('#beFrame');
+  let pvZoom = 1, pvPanX = 0, pvPanY = 0;
+  function aplicarZoomPreview() {
+    const palco = $('#beStage'); if (!palco) return;
+    const limX = palco.offsetWidth * (pvZoom - 1) / 2;
+    const limY = palco.offsetHeight * (pvZoom - 1) / 2;
+    pvPanX = Math.max(-limX, Math.min(limX, pvPanX));
+    pvPanY = Math.max(-limY, Math.min(limY, pvPanY));
+    palco.style.transform = (pvZoom === 1 && !pvPanX && !pvPanY) ? '' :
+      `translate(${pvPanX.toFixed(1)}px, ${pvPanY.toFixed(1)}px) scale(${pvZoom.toFixed(3)})`;
+    const val = $('#bePvZoomVal'); if (val) val.textContent = Math.round(pvZoom * 100) + '%';
+    $('#bePvZoom')?.classList.toggle('ativo', Math.abs(pvZoom - 1) > 0.001);
+    if (frame) frame.style.cursor = pvZoom > 1 ? 'grab' : '';
+  }
+  function setZoomPreview(z) {
+    pvZoom = Math.max(0.5, Math.min(3, z));
+    if (Math.abs(pvZoom - 1) < 0.001) { pvZoom = 1; pvPanX = 0; pvPanY = 0; }
+    aplicarZoomPreview();
+  }
+  frame?.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    setZoomPreview(pvZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  }, { passive: false });
+  frame?.addEventListener('pointerdown', (e) => {
+    if (pvZoom <= 1 || e.button !== 0) return;
+    // não rouba o gesto de quem já é interativo (texto, alças do pip, botões)
+    if (e.target.closest('.be-text-overlay, button, input, .be-pvzoom')) return;
+    const x0 = e.clientX, y0 = e.clientY, px0 = pvPanX, py0 = pvPanY;
+    let moveu = false;
+    const mover = (e2) => {
+      if (!moveu && Math.hypot(e2.clientX - x0, e2.clientY - y0) < 4) return;
+      moveu = true;
+      frame.style.cursor = 'grabbing';
+      pvPanX = px0 + (e2.clientX - x0);
+      pvPanY = py0 + (e2.clientY - y0);
+      aplicarZoomPreview();
+    };
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      window.removeEventListener('pointercancel', soltar);
+      frame.style.cursor = pvZoom > 1 ? 'grab' : '';
+    };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', soltar);
+  });
+  $('#bePvZoomIn')?.addEventListener('click', () => setZoomPreview(pvZoom * 1.25));
+  $('#bePvZoomOut')?.addEventListener('click', () => setZoomPreview(pvZoom / 1.25));
+  $('#bePvZoomFit')?.addEventListener('click', () => setZoomPreview(1));
+
+  // ── fullscreen do preview (tecla F) com barra de tempo ──
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen?.();
     else frame.requestFullscreen?.().catch(() => {});
@@ -2083,6 +2148,16 @@ function buildTemplate() {
         <div class="be-vazio-sub">Arraste um arquivo aqui, ou use <b>🎞 Mídia</b> na barra lateral</div>
         <button id="beVazioBtn" class="be-vazio-btn">Escolher arquivo</button>
         <div class="be-vazio-dim">vídeo, áudio ou imagem · máx 500MB</div>
+      </div>
+
+      <!-- ZOOM DO PREVIEW (2026-07-29): roda do mouse sobre o vídeo aproxima;
+           a janelinha no canto controla e volta ao enquadramento. Só VISUAL —
+           não muda nada no projeto nem no arquivo exportado. -->
+      <div id="bePvZoom" class="be-pvzoom" title="Zoom do preview (roda do mouse sobre o vídeo)">
+        <button type="button" id="bePvZoomOut" title="Afastar">−</button>
+        <span id="bePvZoomVal">100%</span>
+        <button type="button" id="bePvZoomIn" title="Aproximar">＋</button>
+        <button type="button" id="bePvZoomFit" title="Ajustar à moldura">⤢</button>
       </div>
 
       <!-- barra de controle no FULLSCREEN (tecla F) -->

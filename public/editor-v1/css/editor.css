@@ -297,6 +297,23 @@ body {
 /* o buffer (pré-carregando o próximo take) fica escondido até o swap */
 .be-preview-frame video.be-buffering { visibility: hidden; }
 
+/* janelinha de zoom do preview (canto inferior direito, como no CapCut) */
+.be-pvzoom {
+  position: absolute; right: 8px; bottom: 8px; z-index: 60;
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(4, 16, 31, .88); border: 1px solid var(--blue-border);
+  border-radius: 8px; padding: 3px 5px;
+  font-size: 11px; font-weight: 800; font-family: var(--mono);
+  color: var(--text-sec); user-select: none;
+}
+.be-pvzoom.ativo { border-color: var(--neon); color: var(--text); }
+.be-pvzoom button {
+  background: none; border: none; color: var(--text-sec); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 2px 5px; border-radius: 5px;
+}
+.be-pvzoom button:hover { background: var(--blue-dim); color: var(--text); }
+.be-pvzoom #bePvZoomVal { min-width: 38px; text-align: center; }
+
 /* ── FULLSCREEN (tecla F): barra de tempo/controle ── */
 .be-fs-bar { display: none; }
 /* O navegador FORÇA o frame a 100%×100% da tela (width/height !important) — não
