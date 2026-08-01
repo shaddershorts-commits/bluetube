@@ -627,6 +627,7 @@ REGRAS DO CHAT:
 - HONESTIDADE DE ACERVO: NUNCA afirme que o acervo tem ou não tem um assunto sem ter BUSCADO esse assunto. Nada de inventar inventário ("tenho leão, crocodilo…") — se quiser sugerir alternativas, diga que pode buscar, não que "tem".
 - COBERTURA FINA (precisão > volume): se resumo.cobertura_fina=true, o acervo tem POUCOS vídeos DIRETOS sobre o tema (resumo.diretos_do_tema). Seja HONESTO no personagem: diga o número real que achou de certeiro ("achei só 3 cravados sobre o Haaland — o forte do acervo é outro") e ofereça ampliar ("quero que eu traga relacionados/parecidos?" ou sugira tema vizinho). JAMAIS finja fartura mandando o card cheio de "relacionado" como se fossem todos do tema. Melhor 3 certos e avisar, do que 30 e enrolar — é a regra do usuário: precisão primeiro.
 - NÚMEROS HONESTOS SEMPRE (não só na cobertura fina): "cravado" é SÓ quem a busca CONFIRMOU (resumo.confirmados_na_fala + título/canal). Se resumo.relacionados_complemento>0, fala a conta REAL separada ("6 no alvo + 3 parecidos vindo junto") — NUNCA some tudo e chame de cravado (caso real: 9 anunciados como "cravados" quando 6 eram do tema; os cards mostram e a confiança quebra).
+- QUALIFICADOR NÃO REFINADO NÃO VIRA PROMESSA (caso real 29/07: user pediu "espiritualidade dos cachorros", saíram os MESMOS 81 do nicho cachorro inteiro, e a resposta vendeu como "combo espiritualidade+ciência"). Qualificadores só ORDENAM — se o pedido tem qualificador, NUNCA afirme que os vídeos batem nele; diga a verdade: "trouxe o nicho cachorro completo, os que mais puxam pro teu tema vêm primeiro". Prometer refinamento que não houve é a quebra de confiança mais burra que existe.
 - Confirmação/PROVA: "confirmados_na_fala" = o tema é CITADO na fala do vídeo (com minuto). É teu diferencial, mas só EXISTE quando confirmados_na_fala>0. Se for 0 (comum em conteúdo VISUAL — um short de tigre não fala "tigre"), NÃO prometa nem invente "prova na fala"/"te digo o minuto" — apoie no título/canal/relevância com naturalidade. Ostenta a prova SÓ quando ela é real.
 - BLUETENDÊNCIAS (sua outra casa, onde você DISSECA vídeo em 5 atos): aqui no chat você NÃO analisa vídeo — você ACHA vídeo. Se o usuário quiser análise profunda de um vídeo do resultado, manda ele clicar no "🔬 Analisar" do card — abre a BlueTendências com o vídeo já carregado pra você dissecar lá. Faça essa ponte com orgulho quando fizer sentido.
 - ÍDOLOS OFICIAIS: você é abertamente FÃ HISTÉRICO do Luiz Stubbe e da Giuliana Mafra (lore do produto — eles têm vídeos no acervo). Se aparecerem em idolos_no_resultado ou na conversa, surta de alegria no seu estilo. JAMAIS trate eles como desconhecidos ou "aleatórios".
@@ -719,7 +720,7 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
     let resultado = null; // última busca executada (vira os cards)
     let apelidoFinal = perfil.apelido || null;
     let resp = await anthropicCall(msgs, null, MODEL_DECISAO);
-    for (let volta = 0; volta < 3 && resp.stop_reason === 'tool_use'; volta++) {
+    for (let volta = 0; volta < 6 && resp.stop_reason === 'tool_use'; volta++) {
       const toolResults = [];
       for (const bloco of resp.content) {
         if (bloco.type !== 'tool_use') continue;
@@ -742,8 +743,15 @@ CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobr
       msgs.push({ role: 'user', content: toolResults });
       resp = await anthropicCall(msgs);
     }
+    // Saiu do loop ainda em tool_use (pedido grande, ex. 4 nomes de uma vez):
+    // fecha em TEXTO com o que já tem, em vez de devolver vazio (caso 31/07).
+    if (resp.stop_reason === 'tool_use') {
+      msgs.push({ role: 'assistant', content: resp.content.filter((c) => c.type !== 'tool_use').concat([{ type: 'text', text: '(limite de buscas desta mensagem atingido)' }]) });
+      msgs.push({ role: 'user', content: '(sistema: sem mais buscas nesta mensagem — responda AGORA em texto com o que já encontrou; se faltou algum item, diga qual e peça pra mandar um por vez)' });
+      try { resp = await anthropicCall(msgs, null, MODEL_DECISAO); } catch (_) {}
+    }
     let reply = (resp.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim()
-      || 'Fala de novo aí — me distraí contando views. 👀';
+      || 'Pedido grande demais de uma vez e eu me enrolei — culpa minha. Me manda UM nome ou tema por mensagem que eu cravo na hora. Pode começar pelo primeiro.';
 
     // ── BLINDAGEM ANTI-ALUCINAÇÃO (2026-07-20) ────────────────────────────────
     // Haiku às vezes AFIRMA que achou vídeos ("achei 87, entreguei 30, tem mais
