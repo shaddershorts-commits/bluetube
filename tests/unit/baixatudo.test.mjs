@@ -12,6 +12,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 
@@ -142,7 +143,15 @@ test('sem channel_url → 400 antes de qualquer consulta', async () => {
   assert.equal(chamadas.length, 0);
 });
 
-// ── 4. tetos ────────────────────────────────────────────────────────────────
+// ── 4. cookies próprios ─────────────────────────────────────────────────────
+test('cookies do BaixaTudo são PRÓPRIOS — não herdam os do BaixaBlue', () => {
+  const fonte = readFileSync(new URL('../../railway-ffmpeg/baixatudo.js', import.meta.url), 'utf8');
+  assert.match(fonte, /process\.env\.BAIXATUDO_COOKIES/, 'deve ler a env própria');
+  assert.doesNotMatch(fonte, /process\.env\.YOUTUBE_COOKIES/,
+    'não pode cair na env do BaixaBlue: cookie do lote queimar não pode derrubar o download avulso');
+});
+
+// ── 5. tetos ────────────────────────────────────────────────────────────────
 test('teto de shorts e de processos simultâneos existem e são sãos', () => {
   assert.ok(_interno.TETO_SHORTS > 0 && _interno.TETO_SHORTS <= 200, 'teto de shorts fora do razoável');
   assert.ok(_interno.TETO_SIMULTANEO >= 1 && _interno.TETO_SIMULTANEO <= 4,

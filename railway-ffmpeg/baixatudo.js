@@ -49,9 +49,14 @@ const POT_ARGS = process.env.BGUTIL_POT_BASE_URL ? ['--plugin-dirs', '/root/.con
 
 // Cookies próprios, gravados POR JOB (arquivo compartilhado entre jobs
 // corrompe: dois yt-dlp escrevendo no mesmo cookies.txt).
+// COOKIES PRÓPRIOS — env BAIXATUDO_COOKIES, NUNCA a YOUTUBE_COOKIES do
+// BaixaBlue (ordem do dono, 03/08). O motivo é concreto: o lote faz muito mais
+// chamada que o download avulso, então é a conta daqui que corre risco de ser
+// sinalizada. Separadas, uma queimar não derruba a outra.
+// Recomendado usar conta DESCARTÁVEL, igual já se faz na coleta do Instagram.
 // O yt-dlp exige o cabeçalho Netscape; sem ele o arquivo é rejeitado inteiro.
 function cookiesDoJob(dir) {
-  const bruto = process.env.YOUTUBE_COOKIES || '';
+  const bruto = process.env.BAIXATUDO_COOKIES || '';
   if (!bruto || bruto.length < 50) return null;
   try {
     let conteudo = bruto.replace(/\r\n?/g, '\n');
@@ -102,6 +107,8 @@ function urlDoCanal(bruto) {
 }
 
 function amigavel(msg) {
+  // Mensagem SEM jargão: quem lê é criador, não operador. O diagnóstico
+  // técnico (cookie expirado etc) vive no /baixatudo-cookies-health.
   if (/Sign in to confirm|not a bot/i.test(msg)) return { status: 503, error: 'bot_check', detail: 'O YouTube pediu verificação agora. Tenta de novo em alguns minutos.' };
   // piso de 720p em todos os degraus do seletor: se não bateu, é porque o
   // YouTube não ofereceu HD pra esse vídeo. Falha explícita > 360p disfarçado.
@@ -122,6 +129,49 @@ const cors = (res) => {
 
 router.options('/baixatudo-list', (req, res) => { cors(res); res.status(204).end(); });
 router.options('/baixatudo-video', (req, res) => { cors(res); res.status(204).end(); });
+
+// ── SAÚDE DOS COOKIES DESTA FEATURE ───────────────────────────────────────
+// Independente do /cookies-health do BaixaBlue: testa a BAIXATUDO_COOKIES e,
+// mais importante, verifica se dá pra chegar em HD de verdade — não basta o
+// YouTube responder, tem que oferecer >=720p (é a promessa da feature).
+router.get('/baixatudo-cookies-health', async (req, res) => {
+  cors(res);
+  const TESTE = 'poUrVmuTt6E'; // short público comum
+  const dir = novoDir('btsaude');
+  try {
+    const cookies = cookiesDoJob(dir);
+    if (!cookies) {
+      limpar(dir);
+      return res.status(200).json({
+        ok: false, reason: 'sem_cookies',
+        detail: 'BAIXATUDO_COOKIES não está configurada no Railway. O BaixaTudo usa cookies PRÓPRIOS — a YOUTUBE_COOKIES do BaixaBlue não serve de reserva de propósito.',
+      });
+    }
+    const args = [
+      ...POT_ARGS,
+      '-f', 'bv*[height>=720]+ba/b[height>=720]',
+      '--skip-download', '--print', '%(width)sx%(height)s',
+      '--no-warnings', '--force-ipv4', '--socket-timeout', '20',
+      '--extractor-args', 'youtube:player_client=web_safari,web,mweb,tv',
+      '--cookies', cookies,
+      `https://www.youtube.com/shorts/${TESTE}`,
+    ];
+    const { saida } = await rodar('yt-dlp', args, { timeoutMs: 60000 });
+    limpar(dir);
+    const res_ = (saida || '').trim().split('\n').pop();
+    return res.status(200).json({ ok: true, hd_disponivel: res_, cookies_bytes: (process.env.BAIXATUDO_COOKIES || '').length });
+  } catch (e) {
+    limpar(dir);
+    const m = String(e.message || '');
+    if (/Sign in to confirm|not a bot/i.test(m)) {
+      return res.status(200).json({ ok: false, reason: 'bot_check', detail: 'Os cookies do BaixaTudo estão expirados ou inválidos — exporte de novo.' });
+    }
+    if (/Requested format/i.test(m)) {
+      return res.status(200).json({ ok: false, reason: 'sem_hd', detail: 'Autenticou, mas o YouTube não ofereceu HD. Cookies de conta sem acesso a formatos altos?' });
+    }
+    return res.status(200).json({ ok: false, reason: 'erro', detail: m.slice(0, 200) });
+  }
+});
 
 // ── LISTAR ────────────────────────────────────────────────────────────────
 // --flat-playlist: só metadata, não baixa vídeo nenhum. Rápido e sem custo.
