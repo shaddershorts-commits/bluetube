@@ -21,7 +21,10 @@ const SU = process.env.SUPABASE_URL;
 const ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
 const SERVICE = process.env.SUPABASE_SERVICE_KEY;
 
-const TETO_SHORTS = 60; // teto duro: canal com 800 shorts não vira job infinito
+// O dono pediu explicitamente TODOS os Shorts do canal ("colei um canal com 76
+// e só pegou 60"). O teto vira só uma rede contra canal gigante virar job
+// infinito — não um corte que o usuário sente no dia a dia.
+const TETO_SHORTS = 1000;
 
 // Mesma regra dos outros portões da casa: is_manual (eterno) OU dentro da
 // validade. Plano vencido conta como free.
@@ -43,7 +46,9 @@ module.exports = async function handler(req, res) {
   const channelUrl = String(src.channel_url || '').trim();
 
   if (!token) return res.status(401).json({ error: 'login_obrigatorio' });
-  if (!channelUrl) return res.status(400).json({ error: 'channel_url_obrigatorio' });
+  // ⚠️ channel_url NÃO pode ser exigido aqui: o action=link manda só o id.
+  // Exigir antes do desvio fazia TODO download morrer em 400 (bug de 03/08,
+  // pego no primeiro teste real do dono — 60 de 60 falharam).
 
   // ── portão: BaixaBlue é Master (o front redireciona, mas o servidor decide)
   let email = null;
@@ -101,6 +106,9 @@ module.exports = async function handler(req, res) {
     console.error('[baixatudo/link]', id, String(ultimo).slice(0, 160));
     return res.status(502).json({ error: 'motor_falhou', detail: 'Não consegui esse Short agora. Os outros seguem normal.' });
   }
+
+  // ── action=listar (padrão): a partir daqui o link do canal é obrigatório
+  if (!channelUrl) return res.status(400).json({ error: 'channel_url_obrigatorio' });
 
   const limite = Math.min(parseInt(src.limite, 10) || TETO_SHORTS, TETO_SHORTS);
 

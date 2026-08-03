@@ -137,10 +137,52 @@ test('master passa e recebe a base de download do Railway', async () => {
   assert.equal(chamadas.filter((c) => c.includes('baixatudo-list')).length, 1);
 });
 
-test('sem channel_url → 400 antes de qualquer consulta', async () => {
+test('listar sem channel_url → 400, sem acionar Railway nem Cobalt', async () => {
   const { res, chamadas } = await chamar({ token: 'tok' });
   assert.equal(res._status, 400);
-  assert.equal(chamadas.length, 0);
+  assert.equal(res._json.error, 'channel_url_obrigatorio');
+  // A autenticação roda antes (o portão precisa decidir), mas nada de trabalho caro
+  assert.equal(chamadas.filter((c) => /baixatudo-list|cobalt/.test(c)).length, 0);
+});
+
+// ── REGRESSÃO 03/08: o bug que fez 60 de 60 downloads falharem ──────────────
+// A validação de channel_url rodava ANTES do desvio de action=link. Como o
+// pedido de link manda só o id, TODO download morria em 400 sem nunca chegar
+// no Cobalt. O curl sem token devolvia 401 e mascarou o bug.
+test('action=link NÃO exige channel_url (só o id)', async () => {
+  const chamadas = [];
+  globalThis.fetch = dublar({ chamadas });
+  const res = resFalso();
+  await vercelHandler(
+    { method: 'GET', headers: { authorization: 'Bearer tok' }, query: { action: 'link', id: 'poUrVmuTt6E' } },
+    res
+  );
+  assert.notEqual(res._status, 400,
+    'action=link não pode ser barrado por falta de channel_url — foi o bug que quebrou o lote inteiro');
+  assert.notEqual(res._json?.error, 'channel_url_obrigatorio');
+});
+
+test('action=link com id inválido → 400 de ID (não de channel_url)', async () => {
+  const chamadas = [];
+  globalThis.fetch = dublar({ chamadas });
+  const res = resFalso();
+  await vercelHandler(
+    { method: 'GET', headers: { authorization: 'Bearer tok' }, query: { action: 'link', id: 'curto' } },
+    res
+  );
+  assert.equal(res._status, 400);
+  assert.equal(res._json.error, 'id_invalido');
+});
+
+test('o teto não corta mais canal de tamanho normal (76 shorts passavam a 60)', () => {
+  const m = FONTE_API.match(/const TETO_SHORTS = (\d+)/);
+  assert.ok(m, 'TETO_SHORTS não encontrado');
+  assert.ok(Number(m[1]) >= 500, `teto ${m[1]} corta canal comum — o dono pediu o canal INTEIRO`);
+});
+
+test('thumbnail usa hqdefault (oardefault não existe pra todo Short)', () => {
+  assert.match(FONTE, /hqdefault\.jpg/, 'oardefault dava 404 em massa no console');
+  assert.doesNotMatch(FONTE, /oardefault\.jpg/);
 });
 
 // ── 4. isolamento e motor ───────────────────────────────────────────────────
@@ -182,8 +224,11 @@ test('o módulo isolado não importa nada do server.js', () => {
 });
 
 // ── 5. tetos ────────────────────────────────────────────────────────────────
-test('teto de shorts e de processos simultâneos existem e são sãos', () => {
-  assert.ok(_interno.TETO_SHORTS > 0 && _interno.TETO_SHORTS <= 200, 'teto de shorts fora do razoável');
+test('teto de shorts é rede de segurança, não corte no uso normal', () => {
+  // O dono pediu o canal INTEIRO. O teto só existe pra canal gigante não virar
+  // job infinito — tem que caber com folga um canal comum (dezenas/centenas).
+  assert.ok(_interno.TETO_SHORTS >= 500, `teto ${_interno.TETO_SHORTS} cortaria canal comum`);
+  assert.ok(_interno.TETO_SHORTS <= 5000, 'sem teto nenhum, um canal gigante trava o job');
   assert.ok(_interno.TETO_SIMULTANEO >= 1 && _interno.TETO_SIMULTANEO <= 4,
     'muitos yt-dlp simultâneos roubariam CPU do download normal');
 });

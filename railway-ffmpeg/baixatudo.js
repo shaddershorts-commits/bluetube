@@ -32,7 +32,10 @@ const crypto = require('crypto');
 
 const router = express.Router();
 
-const TETO_SHORTS = parseInt(process.env.BAIXATUDO_MAX || '60', 10);
+// 1000 = "todos, na prática". O dono pediu o canal INTEIRO — o teto de 60
+// cortava um canal de 76 e ele sentiu no primeiro teste. Aqui é só rede de
+// segurança contra canal gigante virar job infinito.
+const TETO_SHORTS = parseInt(process.env.BAIXATUDO_MAX || '1000', 10);
 // Teto de processos simultâneos SÓ desta feature. Protege o download normal:
 // mesmo que 10 pessoas disparem lotes juntas, o BaixaTudo nunca toma o
 // container inteiro e deixa o /youtube-process sem CPU.
@@ -191,7 +194,9 @@ router.post('/baixatudo-list', async (req, res) => {
         titulo: e.title || 'Short',
         duracao: e.duration || null,
         views: e.view_count || null,
-        thumb: `https://i.ytimg.com/vi/${e.id}/oardefault.jpg`,
+        // hqdefault existe pra TODO vídeo. O oardefault (vertical de Short) só
+        // existe em parte deles — dava dezenas de 404 no console do dono.
+        thumb: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
       }));
 
     limpar(dir);
