@@ -179,10 +179,25 @@ module.exports = async function handler(req, res) {
       // IMPORTANTE: usa AWAIT (era fire-and-forget). Em serverless Vercel,
       // promises não-awaited antes de res.send são DESCARTADAS quando a
       // função encerra. Fix 2026-05-17.
-      await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
-        method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
-        body: JSON.stringify({ comments: 1 })
-      }).catch(() => null);
+      // FIX 03/08/2026: era `{ comments: 1 }` — isso ATRIBUI 1, não soma.
+      // Todo vídeo ficava eternamente com "1 comentário" por mais que
+      // recebesse (o app tem 15 comentários e nenhum vídeo mostrava mais que
+      // 1). PostgREST não faz incremento atômico, então conta a fonte de
+      // verdade (blue_comments) e grava o total.
+      try {
+        const cntR = await fetch(
+          `${SU}/rest/v1/blue_comments?video_id=eq.${encodeURIComponent(video_id)}&select=id`,
+          { headers: { ...h, Prefer: 'count=exact', Range: '0-0' } }
+        );
+        const cr = cntR.headers.get('content-range') || '';
+        const total = parseInt((cr.split('/')[1] || '0'), 10) || 0;
+        if (total > 0) {
+          await fetch(`${SU}/rest/v1/blue_videos?id=eq.${video_id}`, {
+            method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
+            body: JSON.stringify({ comments: total })
+          }).catch(() => null);
+        }
+      } catch (e) { /* contador nunca derruba o comentário */ }
 
       // ── CREATE NOTIFICATION for video owner ────────────────────────────────
       // Removida tentativa de INSERT em blue_notifications (tabela LEGACY

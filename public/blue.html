@@ -1068,8 +1068,7 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   </div>
 </div>
 <!-- PWA install banner -->
-<!-- Banner PWA removido (user 2026-07-25): o app REAL está na Play Store —
-     quem promove agora é o #appBanner (Android-only, link da loja) no fim da página. -->
+<div class="pwa-banner" id="pwaBanner">📱 Instale o Blue como app <button onclick="installPWA()">Instalar</button> <span onclick="dismissPWA()" style="cursor:pointer;opacity:.5;font-size:18px;margin-left:4px">✕</span></div>
 
 
 <!-- ═══════════════════════════════ LIVES BAR ════════════════════════════════ -->
@@ -1819,7 +1818,22 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelect
 function btToast(msg,tipo){tipo=tipo||'info';const icons={success:'✅',error:'❌',warning:'⚠️',info:'ℹ️'};let c=document.getElementById('bt-toast-container');if(!c){c=document.createElement('div');c.id='bt-toast-container';c.className='bt-toast-container';document.body.appendChild(c);}const t=document.createElement('div');t.className='bt-toast '+tipo;t.innerHTML='<span>'+(icons[tipo]||icons.info)+'</span><span>'+String(msg).replace(/</g,'&lt;')+'</span>';c.appendChild(t);setTimeout(()=>{t.style.animation='btToastOut .3s forwards';setTimeout(()=>t.remove(),300);},3000);}
 // Alias retrocompat: toast() antigo agora usa o novo visual
 let _tt; function toast(m){btToast(m,'info');const e=document.getElementById('toast');if(e){e.textContent=m;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),2600);}}
-function ping(type,id){fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,video_id:id,session_id:SID})}).catch(()=>{});}
+function ping(type,id,extra){fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({type,video_id:id,session_id:SID},extra||{}))}).catch(()=>{});}
+// View com TEMPO ASSISTIDO (fix 03/08/2026). Desde 17/07 o backend só valida a
+// view se vier watch_duration>=1s ou completion_pct>=25 — e nem o site nem o
+// app mandavam isso: 0 de 1000 views passavam, e TODO video publicado depois
+// de 17/07 ficou com 0 views. O player daqui ja media o progresso (onTU /
+// st.maxPct); faltava so enviar. Dispara uma vez por video, quando passa de 1s.
+function pingViewAssistida(vid,id){
+  if(!vid||vid._viewEnviada)return;
+  const assistido=Math.floor(vid.currentTime||0);
+  if(assistido<1)return;
+  vid._viewEnviada=true;
+  const dur=Math.floor(vid.duration||0);
+  const st=(typeof _vsGet==='function')?_vsGet(id):null;
+  const pct=st&&st.maxPct?Math.min(100,Math.round(st.maxPct)):(dur>0?Math.min(100,Math.round(assistido/dur*100)):0);
+  ping('view',id,{watch_duration:assistido,video_duration:dur,completion_pct:pct});
+}
 
 async function getValidToken(){
   TOKEN=localStorage.getItem('bt_token');
@@ -2208,6 +2222,8 @@ function mkSlide(v,i){
     const st=_vsGet(_vidId);
     if(pctExact>st.maxPct)st.maxPct=pctExact;
     if(_vid.currentTime<2&&st.maxPct>80)st.replay=true;
+    // view valida assim que passar de 1s assistido (uma vez por video)
+    pingViewAssistida(_vid,_vidId);
     // Analytics: log a cada 10% — agora via batch buffer (sem fetch)
     if(pct>_lastPctLogged&&pct>=10){
       _lastPctLogged=pct;
@@ -2342,7 +2358,9 @@ function setupObs(newSlides){
         });
         const el=document.getElementById('vc-'+sl.dataset.id);
         if(el)el.textContent=fmt((parseInt(el.textContent.replace(/[^0-9]/g,''))||0)+1);
-        ping('view',sl.dataset.id);
+        // a view real e enviada pelo timeupdate assim que passar de 1s
+        // assistido (ver pingViewAssistida) — antes ia aqui, sem tempo, e o
+        // backend descartava 100% delas.
 
         // Preload próximos vídeos — adaptativo pela conexão
         const _conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
@@ -2801,17 +2819,10 @@ async function trocarSgTab(tab, primeiraVez){
   if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:rgba(255,255,255,.4);font-size:13px">Carregando…</div>';
   try {
     const action = tab === 'seguindo' ? 'lista-seguindo' : 'lista-seguidores';
-    // token obrigatorio desde 2026-07-29: a lista de OUTRA pessoa so aparece
-    // pra quem ela adicionou nos contatos do BlueChat (a minha eu sempre vejo).
-    const _tkSg = (typeof getValidToken === 'function' ? getValidToken() : null) || localStorage.getItem('bt_token') || '';
-    const r = await fetch(`/api/blue-follow?action=${action}&user_id=${encodeURIComponent(_sgUserId)}&pagina=1&token=${encodeURIComponent(_tkSg)}`);
+    const r = await fetch(`/api/blue-follow?action=${action}&user_id=${encodeURIComponent(_sgUserId)}&pagina=1`);
     if (!r.ok) { if (body) body.innerHTML = '<div style="text-align:center;padding:24px;color:#f87171;font-size:13px">Erro ao carregar</div>'; return; }
     const d = await r.json();
     const total = d.total || 0;
-    if (d.bloqueado) {
-      if (body) body.innerHTML = '<div style="text-align:center;padding:32px;color:rgba(255,255,255,.5);font-size:13px">🔒 Só quem essa pessoa adicionou no BlueChat pode ver essa lista.</div>';
-      return;
-    }
     // Atualiza badges nas tabs
     if (tab === 'seguidores' && document.getElementById('sgCntSeguidores')) {
       document.getElementById('sgCntSeguidores').textContent = total ? '· ' + fmt(total) : '';
@@ -4880,11 +4891,28 @@ async function handleDeepLink(){
   return false;
 }
 
-// ── P10: PWA INSTALL — DESATIVADO (user 2026-07-25) ──────────────────────────
-// O app de verdade está na Play Store; o banner que promove é o #appBanner
-// (Android-only). Mantemos o preventDefault pro Chrome NÃO mostrar o prompt
-// nativo de "instalar como app" por conta própria.
-window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); });
+// ── P10: PWA INSTALL ─────────────────────────────────────────────────────────
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  _deferredPrompt=e;
+  if(!localStorage.getItem('bl_pwa_dismissed')){
+    document.getElementById('pwaBanner').style.display='flex';
+  }
+});
+function installPWA(){
+  if(!_deferredPrompt)return;
+  _deferredPrompt.prompt();
+  _deferredPrompt.userChoice.then(r=>{
+    document.getElementById('pwaBanner').style.display='none';
+    if(r.outcome==='accepted')toast('📱 App instalado!');
+    _deferredPrompt=null;
+  });
+}
+function dismissPWA(){
+  document.getElementById('pwaBanner').style.display='none';
+  localStorage.setItem('bl_pwa_dismissed','1');
+}
 // Service Worker with auto-update
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/blue-sw.js').then(reg=>{
@@ -6248,32 +6276,6 @@ setProfileHeader = function(p,isOwn){
   if(lojaTab) lojaTab.style.display='';
 };
 
-</script>
-
-<!-- ── Banner "Baixe o app" — SÓ Android (iOS entra quando a Apple aprovar) ── -->
-<div id="appBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:9500;background:linear-gradient(135deg,#07182e,#0a2440);border:1px solid rgba(0,170,255,.45);border-radius:16px;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.55);align-items:center;gap:12px">
-  <span style="font-size:26px">📱</span>
-  <div style="flex:1;min-width:0">
-    <div style="font-weight:800;font-size:13.5px;color:#e8f4ff">Blue no seu celular</div>
-    <div style="font-size:11px;color:rgba(200,225,255,.65)">Feed, chat e notificações — melhor no app</div>
-  </div>
-  <a id="appBannerGo" href="https://play.google.com/store/apps/details?id=com.bluetube.app" target="_blank" rel="noopener" style="flex-shrink:0;background:linear-gradient(135deg,#00aaff,#0077ff);color:#fff;font-weight:800;font-size:12.5px;padding:9px 16px;border-radius:10px;text-decoration:none">Baixar</a>
-  <button id="appBannerX" style="flex-shrink:0;background:none;border:none;color:rgba(200,225,255,.5);font-size:16px;cursor:pointer;padding:4px" aria-label="Fechar">✕</button>
-</div>
-<script>
-(function(){
-  try {
-    var ua = navigator.userAgent || '';
-    if (!/Android/i.test(ua)) return;                       // só Android (por ora)
-    if (localStorage.getItem('bt_app_banner_off')) return;  // já dispensou
-    var b = document.getElementById('appBanner');
-    b.style.display = 'flex';
-    document.getElementById('appBannerX').addEventListener('click', function(){
-      b.style.display = 'none';
-      try { localStorage.setItem('bt_app_banner_off', '1'); } catch(e) {}
-    });
-  } catch(e) {}
-})();
 </script>
 
 </body>
