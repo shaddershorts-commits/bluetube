@@ -163,6 +163,13 @@ function amigavel(msg, plataforma) {
   if (/Requested format is not available|No video formats found/i.test(msg)) {
     return { status: 422, error: 'sem_hd', detail: 'Esse Short não tem versão HD disponível no YouTube.' };
   }
+  // O Instagram NÃO deixa enumerar perfil sem login — medido em 03/08: o
+  // extractor instagram:user devolve "Unable to extract data" quando não há
+  // cookie, e instagram:story diz "You need to log in" na cara. Cai aqui pra
+  // não mentir "não achei esse perfil".
+  if (plataforma === 'instagram' && /Unable to extract data|Unable to extract shared data/i.test(msg)) {
+    return { status: 503, error: 'perfil_bloqueado', detail: 'O Instagram exige uma conta conectada pra listar um perfil. Ainda não configuramos isso — me avisa que eu ligo.' };
+  }
   if (/login required|requested content is not available|rate.?limit reached|Restricted Video|You need to log in/i.test(msg)) {
     return { status: 503, error: 'perfil_bloqueado', detail: (plataforma === 'instagram'
       ? 'O Instagram exigiu login pra ler esse perfil. Perfis públicos costumam funcionar — se persistir, me avisa.'
