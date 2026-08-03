@@ -19,6 +19,12 @@ app.use(express.json({ limit: '2mb' }));
 const PORT = process.env.PORT || 3000;
 const JOBS = new Map(); // jobId → { status, progress, output_url, error }
 
+// Teto de jobs BlueMetadata simultaneos (/youtube-process e /upload-process).
+// Cada um e um re-encode libx264 -preset medium — sem teto, um punhado de
+// downloads simultaneos derruba a CPU do container inteiro.
+const BM_TETO = parseInt(process.env.BLUEMETADATA_CONCURRENCY || '3', 10);
+let bmRodando = 0;
+
 // ── HELPERS ────────────────────────────────────────────────────────────────
 
 function run(cmd, args, opts = {}) {
@@ -2970,13 +2976,31 @@ app.post('/youtube-process', async (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
+  // ── FILA DO BLUEMETADATA (2026-08-03) ──────────────────────────────────
+  // Cada job aqui e um RE-ENCODE libx264 -preset medium: a operacao mais cara
+  // do container. Ate hoje nao havia limite nenhum — 20 pessoas baixando junto
+  // saturavam a CPU e TODO mundo (inclusive quem so queria transcode do feed)
+  // ficava esperando ou tomava timeout.
+  // Contador proprio, sem relacao nenhuma com o do BaixaTudo.
+  if (bmRodando >= BM_TETO) {
+    res.setHeader('Retry-After', '20');
+    return res.status(429).json({
+      error: 'fila_cheia',
+      detail: 'Tem bastante gente baixando agora. Tenta de novo em instantes — seu video nao se perde.',
+    });
+  }
+  bmRodando++;
+  let bmSolto = false;
+  const bmSoltar = () => { if (!bmSolto) { bmSolto = true; bmRodando = Math.max(0, bmRodando - 1); } };
+  res.on('close', bmSoltar);   // rede de seguranca: cliente sumiu no meio
+
   const jobId = uuidv4();
   const dir = path.join('/tmp', jobId);
   fs.mkdirSync(dir, { recursive: true });
   const inFilePattern = path.join(dir, 'in.%(ext)s'); // [H1] yt-dlp pode emitir .mkv etc
   const outFile = path.join(dir, 'out.mp4');
   const jobCookies = writeJobCookies(dir);
-  const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+  const cleanup = () => { bmSoltar(); try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
 
   const log = (msg) => console.log('[youtube-process]', jobId, msg);
 

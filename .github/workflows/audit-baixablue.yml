@@ -1,0 +1,41 @@
+name: Health dos provedores do BaixaBlue (6/6h)
+
+# O endpoint api/audit-baixablue.js existia desde sempre e NUNCA esteve em cron
+# nenhum — nem no vercel.json, nem aqui. Resultado: o ultimo registro em
+# download_health_log era de 10/07, tres semanas de voo cego. Foi por isso que
+# ninguem soube que os cookies do YouTube tinham morrido.
+#
+# Mesmo padrao do caso "virais atualizar-metricas": endpoint operacional sem
+# entry de cron = codigo morto silencioso.
+#
+# Cadencia 6/6h: o audit faz chamada REAL a 5 provedores (cobalt, railway_ytdlp,
+# ytstream, youtube_media, invidious). Mais frequente que isso gasta cota das
+# APIs pagas a toa. Minuto :17 pra fugir do pico do GitHub Actions.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Testa os 5 provedores de download
+        run: |
+          echo "Iniciando $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+          HTTP=$(curl -sS --max-time 300 -o /tmp/resp.json -w "%{http_code}" \
+            "https://www.bluetubeviral.com/api/audit-baixablue")
+          echo "HTTP: $HTTP"
+          head -c 900 /tmp/resp.json
+          echo ""
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::HTTP $HTTP — endpoint de auditoria fora do ar"
+            exit 1
+          fi
+          # Provedor caido nao derruba o job (o proprio endpoint alerta por email
+          # apos 2 falhas seguidas), mas fica visivel no log do Actions.
+          if grep -q '"status":"fail"' /tmp/resp.json; then
+            echo "::warning::Ao menos um provedor de download falhou — ver resposta acima"
+          fi

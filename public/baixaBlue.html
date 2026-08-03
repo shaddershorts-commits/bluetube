@@ -668,6 +668,11 @@ async function processarYoutube(youtubeUrl) {
       friendly = '⚠️ Não foi possível extrair esse vídeo. Verifique se o link está correto e se o vídeo é público.';
     } else if (/private|unavailable|removed/i.test(detail)) {
       friendly = '⚠️ Esse vídeo é privado, foi removido ou está com restrição de idade/região.';
+    } else if (r.status === 429) {
+      // Fila do BlueMetadata cheia (2026-08-03): cada download aqui é um
+      // re-encode, então existe teto. Mensagem própria pra não cair no
+      // genérico "não foi possível baixar", que soa como erro do vídeo.
+      friendly = '⏳ Tem bastante gente baixando agora. Espera uns segundos e tenta de novo — seu vídeo não se perde.';
     } else if (r.status >= 500) {
       friendly = '⚠️ Servidor temporariamente indisponível. Tente novamente em alguns minutos.';
     } else {
