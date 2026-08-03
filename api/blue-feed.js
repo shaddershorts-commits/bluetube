@@ -918,14 +918,31 @@ module.exports = async function handler(req, res) {
     //     no Transparency Center), engajamento entra como confirmação.
     try {
       const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-      const [aR, iR, vR] = await Promise.all([
-        fetch(`${SU}/rest/v1/blue_video_analytics?created_at=gte.${desde}&select=video_id,percentual_assistido&limit=20000`, { headers: h }),
-        fetch(`${SU}/rest/v1/blue_interactions?type=eq.view&created_at=gte.${desde}&completion_pct=gt.0&select=video_id,completion_pct&limit=20000`, { headers: h }),
-        fetch(`${SU}/rest/v1/blue_videos?status=eq.active&select=id,duration,likes,saves,shares,comments,created_at&limit=2000`, { headers: h }),
+
+      // PAGINAÇÃO OBRIGATÓRIA: o PostgREST corta em 1000 linhas por resposta,
+      // independente do `limit` pedido. Sem paginar, o cron via 1000 de 8.365
+      // registros de retenção — amostra parcial e sem ordem garantida, ou
+      // seja, ranking construído sobre um recorte arbitrário. Puxa em páginas
+      // de 1000 via header Range até acabar (teto de segurança em 30k).
+      const puxarTudo = async (path) => {
+        const out = [];
+        for (let ini = 0; ini < 30000; ini += 1000) {
+          const r = await fetch(`${SU}/rest/v1/${path}`, {
+            headers: { ...h, Range: `${ini}-${ini + 999}`, 'Range-Unit': 'items' },
+          });
+          if (!r.ok) break;
+          const lote = await r.json().catch(() => []);
+          out.push(...lote);
+          if (lote.length < 1000) break;
+        }
+        return out;
+      };
+
+      const [analytics, inters, videos] = await Promise.all([
+        puxarTudo(`blue_video_analytics?created_at=gte.${desde}&select=video_id,percentual_assistido&order=created_at.desc`),
+        puxarTudo(`blue_interactions?type=eq.view&created_at=gte.${desde}&completion_pct=gt.0&select=video_id,completion_pct&order=created_at.desc`),
+        puxarTudo('blue_videos?status=eq.active&select=id,duration,likes,saves,shares,comments,created_at&order=created_at.desc'),
       ]);
-      const analytics = aR.ok ? await aR.json() : [];
-      const inters = iR.ok ? await iR.json() : [];
-      const videos = vR.ok ? await vR.json() : [];
       if (!videos.length) return res.status(200).json({ ok: true, videos_atualizados: 0, motivo: 'sem videos' });
 
       // agrega retenção das duas fontes
