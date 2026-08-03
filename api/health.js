@@ -212,6 +212,42 @@ module.exports = async function handler(req, res) {
       const r = await fetch(alvo, { headers: { Authorization: 'Bearer ' + token }, signal });
       if (!r.ok) throw new Error(`status ${r.status}`);
     }),
+
+    // ── views_contando (add 03/08/2026) ──────────────────────────────────
+    // POR QUE ESTE CHECK EXISTE: em 17/07 o backend passou a validar view
+    // (precisa de watch_duration>=1s ou completion_pct>=25) e NEM o app NEM o
+    // site enviavam esses campos. Resultado: durante 17 DIAS nenhuma view foi
+    // contada em lugar nenhum, e todo vídeo publicado no período ficou com 0
+    // views pra sempre. Ninguém percebeu porque o endpoint responde
+    // `200 {ok:true}` mesmo quando DESCARTA a view — falha perfeitamente
+    // silenciosa. Este check torna esse tipo de falha barulhenta: se houve
+    // tráfego de view nas últimas 24h e NENHUMA trouxe tempo assistido, algo
+    // no cliente parou de instrumentar.
+    check('views_contando', async (signal) => {
+      const SU = process.env.SUPABASE_URL;
+      const SK = process.env.SUPABASE_SERVICE_KEY;
+      if (!SU || !SK) throw new Error('não configurado');
+      const h = { apikey: SK, Authorization: 'Bearer ' + SK };
+      const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const total = await fetch(
+        `${SU}/rest/v1/blue_interactions?type=eq.view&created_at=gte.${desde}&select=id`,
+        { headers: { ...h, Prefer: 'count=exact', Range: '0-0' }, signal }
+      );
+      const nTotal = parseInt(((total.headers.get('content-range') || '').split('/')[1] || '0'), 10) || 0;
+      if (nTotal < 20) return; // tráfego baixo demais pra concluir qualquer coisa
+      const comTempo = await fetch(
+        `${SU}/rest/v1/blue_interactions?type=eq.view&created_at=gte.${desde}&watch_duration=gt.0&select=id`,
+        { headers: { ...h, Prefer: 'count=exact', Range: '0-0' }, signal }
+      );
+      const nCom = parseInt(((comTempo.headers.get('content-range') || '').split('/')[1] || '0'), 10) || 0;
+      const pct = (nCom / nTotal) * 100;
+      if (nCom === 0) {
+        throw new Error(`${nTotal} views em 24h e NENHUMA com tempo assistido — cliente parou de mandar watch_duration (view não está sendo contada)`);
+      }
+      if (pct < 25) {
+        throw new Error(`só ${pct.toFixed(0)}% das ${nTotal} views trouxeram tempo assistido — parte dos clientes não está instrumentando`);
+      }
+    }),
   ]);
 
   const services = Object.values(checks);

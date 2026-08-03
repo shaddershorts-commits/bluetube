@@ -257,7 +257,26 @@ module.exports = async function handler(req, res) {
     const engRate     = newViews > 0 ? ((newLikes * 3 + newSaves * 5) / newViews) * 100 : 0;
     const retScore    = compRate * 0.4 + (100 - skipRate) * 0.2;
     const engScore    = Math.min(100, engRate * 2);
-    patch.score       = Math.min(100, Math.max(0, retScore * 0.6 + engScore * 0.4));
+    const bruto       = Math.min(100, Math.max(0, retScore * 0.6 + engScore * 0.4));
+
+    // ── SUAVIZAÇÃO POR AMOSTRA (fix 03/08/2026) ────────────────────────────
+    // Sem isto, UMA única view decidia o destino do vídeo. Caso real observado
+    // em produção hoje, minutos depois da medição voltar a funcionar: alguém
+    // assistiu 3s de um vídeo de 21s (15%), o backend marcou como "skip"
+    // (completion < 20%), o skip_rate virou 100 porque a amostra era n=1, e o
+    // score caiu de 50 pra 3,6. Um espectador desatento condenava o vídeo.
+    // A distribuição confirmava o estrago: 53% dos vídeos a menos de 1 ponto
+    // da mediana — score bimodal (50 = intocado, ~12 = tocado), sem poder de
+    // ordenar nada.
+    // Agora o score observado é misturado a um prior neutro com peso PRIOR_N:
+    // com 1 view o score quase não se move; com 30+ views o dado real domina.
+    // É o mesmo princípio de "média bayesiana" que o IMDb usa pra nota de
+    // filme com poucos votos.
+    const PRIOR_SCORE = 50;   // valor de nascimento do vídeo
+    const PRIOR_N     = 10;   // vale como 10 views de credibilidade
+    patch.score = Math.min(100, Math.max(0,
+      (PRIOR_SCORE * PRIOR_N + bruto * newViews) / (PRIOR_N + newViews)
+    ));
 
     // Sai da fase de teste após 30 views
     if ((v.test_views || 0) >= 30) patch.test_phase = false;
