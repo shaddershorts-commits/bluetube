@@ -86,19 +86,15 @@
     "api/audit-baixablue.js": {
       "maxDuration": 60
     },
-    
     "api/youtube-quota-status.js": {
       "maxDuration": 30
     },
     "api/bluelens-fingerprint.js": {
       "maxDuration": 300
     },
-    
-    
     "api/bluelens-cleanup.js": {
       "maxDuration": 60
     },
-    
     "api/support-chat.js": {
       "maxDuration": 30
     },
@@ -118,6 +114,9 @@
       "maxDuration": 300
     },
     "api/instagram-virais.js": {
+      "maxDuration": 300
+    },
+    "api/baixatudo.js": {
       "maxDuration": 300
     }
   },

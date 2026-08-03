@@ -732,6 +732,15 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       </div>
     </div>
 
+    <!-- BAIXATUDO (2026-08-03) — saúde própria, sem depender do health do BaixaBlue -->
+    <div class="section" id="baixatudoSection">
+      <div class="section-header">
+        <div class="section-title">⚡ BaixaTudo <span class="section-subtitle">— motores, fila e cache</span></div>
+        <button onclick="loadBaixaTudoHealth()" style="font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.2);border-radius:6px;padding:5px 12px;cursor:pointer">Verificar agora</button>
+      </div>
+      <div id="baixatudoHealth" style="font-family:var(--mono);font-size:12px;color:var(--dim);padding:6px 0">Clique em "Verificar agora".</div>
+    </div>
+
     <!-- LEARNING / FEW-SHOT -->
     <!-- BLUE HEALTH -->
     <!-- MODERATION -->
@@ -1931,6 +1940,29 @@ async function triggerEmailMarketing(){
 }
 
 async function loadModeration(){loadModeracaoAvancada();}
+
+// ── BAIXATUDO: saúde própria (não compartilha nada com o health do BaixaBlue)
+async function loadBaixaTudoHealth(){
+  const box=document.getElementById('baixatudoHealth');
+  box.innerHTML='<span style="color:var(--dim)">⏳ testando motores…</span>';
+  try{
+    const r=await fetch('/api/baixatudo?action=health',{headers:{'Authorization':`Bearer ${localStorage.getItem('bt_token')||''}`}});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){box.innerHTML=`<span style="color:var(--red)">✕ ${d.error||r.status}</span>`;return;}
+    const pill=(ok,txt)=>`<span style="color:${ok?'var(--green)':'var(--red)'}">${ok?'✅':'✕'} ${txt}</span>`;
+    const motores=(d.motores||[]).map(m=>`&nbsp;&nbsp;${pill(m.ok,m.motor)} <span style="color:var(--dim)">${m.ms}ms ${m.erro?'· '+String(m.erro).slice(0,50):''}</span>`).join('<br>');
+    const L=d.listagem||{};
+    const fila=L.fila?`${L.fila.rodando}/${L.fila.teto}`:'—';
+    const cache=L.cache?`${L.cache.entradas} perfis · ${L.cache.hits} acertos / ${L.cache.miss} buscas`:'—';
+    const cb=L.disjuntor?Object.entries(L.disjuntor).map(([k,v])=>`${k}:${v==='ok'?'ok':'⏸'}`).join(' · '):'—';
+    box.innerHTML=
+      `<div style="margin-bottom:6px">${pill(!!d.ok,'motor de download')}</div>`+
+      (d.aviso?`<div style="color:var(--yellow);margin-bottom:6px">⚠️ ${d.aviso}</div>`:
+               `<div style="color:var(--green);margin-bottom:6px">🔒 isolado do BaixaBlue (motor dedicado)</div>`)+
+      motores+
+      `<div style="margin-top:8px;color:var(--dim)">fila: ${fila} · cache: ${cache}<br>disjuntor: ${cb} · listagem: ${L.ok?'✅':'✕ '+(L.reason||'?')}</div>`;
+  }catch(e){box.innerHTML=`<span style="color:var(--red)">✕ erro de conexão</span>`;}
+}
 
 async function loadModeracaoAvancada(){
   try{

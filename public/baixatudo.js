@@ -17,7 +17,24 @@
   // (que fala com o Cobalt self-hosted) e o navegador baixa direto do túnel.
   // Assim o container compartilhado do BaixaBlue não vê um byte de mídia.
   var API_LINK = '/api/baixatudo?action=link&url=';
-  var lista = [];        // shorts listados
+  var lista = [];        // itens listados
+  var perfilAtual = '';  // chave da retomada
+
+  // ── RETOMADA (Fase 3) ────────────────────────────────────────────────────
+  // O lote vive no navegador (é o desenho que mantém o servidor fora do
+  // caminho). Se fechar a aba no meio, isto lembra o que já foi baixado —
+  // assim o usuário continua de onde parou em vez de repetir 60 downloads.
+  function chaveFeitos(perfil) { return 'bt_feitos_' + perfil; }
+  function lerFeitos(perfil) {
+    try { return JSON.parse(localStorage.getItem(chaveFeitos(perfil)) || '[]'); } catch (e) { return []; }
+  }
+  function marcarFeito(perfil, id) {
+    try {
+      var f = lerFeitos(perfil);
+      if (f.indexOf(id) === -1) { f.push(id); localStorage.setItem(chaveFeitos(perfil), JSON.stringify(f.slice(-2000))); }
+    } catch (e) {}
+  }
+  function limparFeitos(perfil) { try { localStorage.removeItem(chaveFeitos(perfil)); } catch (e) {} }
   var baixando = false;
   var cancelar = false;
 
@@ -103,14 +120,28 @@
       }
 
       lista = d.shorts || [];
+      perfilAtual = (d.canal_url || url).replace(/[^\w]+/g, '_').slice(0, 60);
       if (!lista.length) {
         status.innerHTML = '<span style="color:#fca5a5">Esse perfil não tem vídeos públicos.</span>';
         return;
       }
 
-      status.innerHTML = '<span style="color:#22c55e">✓ ' + lista.length + ' vídeos encontrados em <strong>' + esc(d.canal) + '</strong></span>' +
+      var jaFeitos = lerFeitos(perfilAtual);
+      var restantes = lista.filter(function (x) { return jaFeitos.indexOf(x.id) === -1; }).length;
+      status.innerHTML = '<span style="color:#22c55e">✓ ' + lista.length + ' vídeos encontrados em <strong>' + esc(d.canal) + '</strong>' +
+        (d.cache ? ' <span style="color:#7d92b8">(da memória)</span>' : '') + '</span>' +
+        (jaFeitos.length && restantes < lista.length
+          ? '<span style="display:block;margin-top:4px;font-size:11px;color:#fbbf24">Você já baixou ' + (lista.length - restantes) + ' desses — deixei só os ' + restantes + ' que faltam marcados. <a href="#" id="btMarcarTudo" style="color:#00aaff">marcar todos</a></span>'
+          : '') +
         (d.teto_atingido ? '<span style="color:#fbbf24;display:block;margin-top:4px;font-size:11px">Mostrando os ' + lista.length + ' mais recentes (teto por lote).</span>' : '');
       render();
+      // "marcar todos" é a saída pra quem quer rebaixar o que já baixou
+      var marcarTudo = el('btMarcarTudo');
+      if (marcarTudo) marcarTudo.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        limparFeitos(perfilAtual);
+        render();
+      });
     } catch (e) {
       status.innerHTML = '<span style="color:#fca5a5">Erro de conexão. Tenta de novo.</span>';
     } finally {
@@ -121,9 +152,11 @@
 
   function render() {
     var box = el('btLista');
+    var feitos = lerFeitos(perfilAtual);
     box.innerHTML = lista.map(function (s, i) {
+      var jaFoi = feitos.indexOf(s.id) !== -1;
       return '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);cursor:pointer">' +
-        '<input type="checkbox" class="bt-check" data-i="' + i + '" checked style="width:16px;height:16px;accent-color:#fbbf24;flex-shrink:0"/>' +
+        '<input type="checkbox" class="bt-check" data-i="' + i + '"' + (jaFoi ? '' : ' checked') + ' style="width:16px;height:16px;accent-color:#fbbf24;flex-shrink:0"/>' +
         '<img src="' + esc(s.thumb) + '" loading="lazy" style="width:34px;height:46px;object-fit:cover;border-radius:5px;flex-shrink:0;background:#0a1020" onerror="this.style.visibility=\'hidden\'"/>' +
         '<span style="flex:1;min-width:0">' +
           '<span style="display:block;font-size:12.5px;color:#e8f4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.titulo) + '</span>' +
@@ -131,7 +164,7 @@
             (s.duracao ? tempo(s.duracao) : '') + (s.views ? ' · ' + nView(s.views) + ' views' : '') +
           '</span>' +
         '</span>' +
-        '<span class="bt-item-status" data-st="' + i + '" style="font-family:monospace;font-size:10px;color:#7d92b8;flex-shrink:0;min-width:58px;text-align:right"></span>' +
+        '<span class="bt-item-status" data-st="' + i + '" style="font-family:monospace;font-size:10px;color:' + (jaFoi ? '#22c55e' : '#7d92b8') + ';flex-shrink:0;min-width:58px;text-align:right">' + (jaFoi ? '✓ já baixado' : '') + '</span>' +
       '</label>';
     }).join('');
     el('btResultado').style.display = '';
@@ -174,7 +207,7 @@
     var prog = el('btProgresso');
     prog.style.display = '';
 
-    var ok = 0, falhou = 0;
+    var ok = 0, falhou = 0, falhasSeguidas = 0, esperasSeguidas = 0;
     for (var k = 0; k < idx.length; k++) {
       if (cancelar) break;
       var i = idx[k];
@@ -185,21 +218,27 @@
       var venceu = false;
       for (var tentativa = 0; tentativa < 3 && !venceu && !cancelar; tentativa++) {
         try {
-          // 1) nossa API pede o link HD ao Cobalt
+          // 1) nossa API escolhe o motor e devolve o link
           var token = localStorage.getItem('bt_token') || '';
           var rl = await fetch(API_LINK + encodeURIComponent(s.url || s.id), {
             headers: { Authorization: 'Bearer ' + token },
           });
           var dl = await rl.json().catch(function () { return {}; });
-          if (rl.status === 429) {
-            statusItem(i, '⏳ fila', '#7d92b8');
-            await new Promise(function (res) { setTimeout(res, 4000); });
+
+          // fila cheia / rede em descanso: espera o que o servidor mandou
+          if (rl.status === 429 || rl.status === 503) {
+            var seg = parseInt(rl.headers.get('Retry-After') || '5', 10);
+            statusItem(i, '⏳ ' + seg + 's', '#7d92b8');
+            await new Promise(function (res) { setTimeout(res, Math.min(seg, 30) * 1000); });
+            tentativa--;                       // esperar não gasta tentativa
+            if (++esperasSeguidas > 8) throw new Error('fila_travada');
             continue;
           }
+          esperasSeguidas = 0;
           if (!rl.ok || !dl.url) throw new Error(dl.error || 'sem link');
 
           // 2) o navegador baixa direto do túnel (nosso servidor fica fora)
-          statusItem(i, '⬇ ' + (dl.qualidade || 'HD') + 'p', '#fbbf24');
+          statusItem(i, '⬇ ' + (dl.qualidade || 'HD'), '#fbbf24');
           var r = await fetch(dl.url);
           if (!r.ok) throw new Error('http ' + r.status);
           var blob = await r.blob();
@@ -214,13 +253,28 @@
           document.body.removeChild(a);
           setTimeout(function (u) { return function () { URL.revokeObjectURL(u); }; }(objUrl), 30000);
 
-          statusItem(i, '✓ ' + (blob.size / 1048576).toFixed(1) + ' MB', '#22c55e');
-          ok++; venceu = true;
+          marcarFeito(perfilAtual, s.id);
+          statusItem(i, '✓ ' + (blob.size / 1048576).toFixed(1) + ' MB' + (dl.degradado ? ' ⚠' : ''), '#22c55e');
+          ok++; venceu = true; falhasSeguidas = 0;
         } catch (e) {
+          if (String(e.message) === 'fila_travada') { venceu = false; break; }
           if (tentativa === 2) { statusItem(i, '✕ falhou', '#fca5a5'); falhou++; }
-          else await new Promise(function (res) { setTimeout(res, 1500); });
+          else await new Promise(function (res) { setTimeout(res, 1500 * (tentativa + 1)); }); // espera progressiva
         }
       }
+
+      // ── DISJUNTOR DE SESSÃO ──
+      // Sem isto, quando o motor cai o usuário vê 60 downloads morrendo um por
+      // um (foi exatamente o que aconteceu no teste do dono). Depois de 5
+      // falhas seguidas a gente para e explica.
+      if (!venceu) {
+        falhasSeguidas++;
+        if (falhasSeguidas >= 5) {
+          prog.innerHTML = '<span style="color:#fca5a5">Parei: ' + falhasSeguidas + ' falhas seguidas. O serviço deve estar instável — tenta de novo daqui a pouco. Os ' + ok + ' já baixados estão salvos.</span>';
+          break;
+        }
+      }
+
       // respiro entre downloads — evita parecer robô pro YouTube
       if (!cancelar && k < idx.length - 1) await new Promise(function (res) { setTimeout(res, 700); });
     }
@@ -228,9 +282,13 @@
     baixando = false;
     el('btCancelarBtn').style.display = 'none';
     atualizarContador();
-    prog.innerHTML = cancelar
-      ? '<span style="color:#fbbf24">Parado. ' + ok + ' baixados.</span>'
-      : '<span style="color:#22c55e"><strong>Pronto!</strong> ' + ok + ' baixados' + (falhou ? ' · ' + falhou + ' falharam' : '') + '.</span>';
+    if (cancelar) {
+      prog.innerHTML = '<span style="color:#fbbf24">Parado. ' + ok + ' baixados — os que faltam continuam marcados.</span>';
+    } else if (falhasSeguidas < 5) {
+      prog.innerHTML = '<span style="color:#22c55e"><strong>Pronto!</strong> ' + ok + ' baixados' + (falhou ? ' · ' + falhou + ' falharam' : '') + '.</span>';
+      // lote 100% completo: zera a retomada pra próxima vez começar limpa
+      if (!falhou) limparFeitos(perfilAtual);
+    }
   }
 
   // ── liga os eventos quando a página estiver pronta ──────────────────────

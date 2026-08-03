@@ -201,7 +201,9 @@ test('master passa e recebe a base de download do Railway', async () => {
   const { res, chamadas } = await chamar({ token: 'tok', channel_url: '@XiroRanks' });
   assert.equal(res._status, 200);
   assert.equal(res._json.total, 2);
-  assert.match(res._json.base_download, /baixatudo-video$/);
+  // base_download não existe mais: o front pede o link por action=link e o
+  // navegador baixa direto do túnel. Nada de rota de mídia no nosso servidor.
+  assert.equal(res._json.base_download, undefined);
   assert.equal(chamadas.filter((c) => c.includes('baixatudo-list')).length, 1);
 });
 
@@ -271,9 +273,12 @@ test('nenhum byte de mídia passa pelo container compartilhado', () => {
 });
 
 test('o DOWNLOAD usa Cobalt, não yt-dlp direto', () => {
-  assert.match(FONTE_API, /COBALT_API_URL/, 'o motor é o Cobalt self-hosted');
-  assert.doesNotMatch(FONTE_API, /yt-dlp/,
-    'yt-dlp direto bate em n-challenge/PO Token nesta imagem e só entrega 360p');
+  assert.match(FONTE_API, /COBALT/, 'o motor é o Cobalt self-hosted');
+  // Precisão: comentário citando yt-dlp (que é o listador) é legítimo. O que
+  // não pode é o caminho de DOWNLOAD executar yt-dlp — ele só dá 360p aqui.
+  const blocoLink = FONTE_API.slice(FONTE_API.indexOf('async function viaCobalt'), FONTE_API.indexOf('COTA_LISTAGENS'));
+  assert.doesNotMatch(blocoLink, /yt-dlp|spawn|child_process/,
+    'o caminho de download não pode executar yt-dlp');
 });
 
 test('pede 1080 antes de 720 e nunca aceita menos', () => {

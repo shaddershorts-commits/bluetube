@@ -42,6 +42,53 @@ const TETO_SHORTS = parseInt(process.env.BAIXATUDO_MAX || '1000', 10);
 const TETO_SIMULTANEO = parseInt(process.env.BAIXATUDO_CONCURRENCY || '2', 10);
 let rodando = 0;
 
+// ── CACHE DE LISTAGEM (em memória, de propósito) ───────────────────────────
+// Não usa Upstash nem nada compartilhado: a regra do dono é isolamento total,
+// e um cache externo seria mais uma peça capaz de quebrar. Em memória o pior
+// caso é perder o cache num deploy — custo zero, risco zero.
+const CACHE_TTL_MS = parseInt(process.env.BAIXATUDO_CACHE_TTL_MS || '900000', 10); // 15 min
+const CACHE_MAX = 120;                       // teto de entradas (poucos KB cada)
+const cache = new Map();                     // chave → { em, dados }
+let cacheHits = 0, cacheMiss = 0;
+
+function cacheLer(chave) {
+  const v = cache.get(chave);
+  if (!v) { cacheMiss++; return null; }
+  if (Date.now() - v.em > CACHE_TTL_MS) { cache.delete(chave); cacheMiss++; return null; }
+  // renova a posição (LRU simples: reinserir manda pro fim do Map)
+  cache.delete(chave); cache.set(chave, v);
+  cacheHits++;
+  return v.dados;
+}
+function cacheGravar(chave, dados) {
+  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value); // remove o mais antigo
+  cache.set(chave, { em: Date.now(), dados });
+}
+
+// ── DISJUNTOR POR REDE ─────────────────────────────────────────────────────
+// Se o YouTube (ou o TikTok) começa a punir, não adianta martelar: cada
+// tentativa piora o castigo. Depois de N falhas seguidas a rede fica em
+// descanso e devolvemos erro na hora, sem gastar processo.
+const DISJUNTOR_FALHAS = parseInt(process.env.BAIXATUDO_CB_FALHAS || '4', 10);
+const DISJUNTOR_PAUSA_MS = parseInt(process.env.BAIXATUDO_CB_PAUSA_MS || '120000', 10); // 2 min
+const disjuntor = { youtube: { falhas: 0, ate: 0 }, tiktok: { falhas: 0, ate: 0 }, instagram: { falhas: 0, ate: 0 } };
+
+function disjuntorAberto(rede) {
+  const d = disjuntor[rede];
+  return !!(d && d.ate > Date.now());
+}
+function registrarFalha(rede) {
+  const d = disjuntor[rede]; if (!d) return;
+  d.falhas++;
+  if (d.falhas >= DISJUNTOR_FALHAS) { d.ate = Date.now() + DISJUNTOR_PAUSA_MS; d.falhas = 0; }
+}
+function registrarSucesso(rede) {
+  const d = disjuntor[rede]; if (!d) return;
+  d.falhas = 0; d.ate = 0;
+}
+
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const TMP = os.tmpdir();
 const novoDir = (prefixo) => {
   const dir = path.join(TMP, `${prefixo}-${crypto.randomUUID()}`);
@@ -191,9 +238,21 @@ router.options('/baixatudo-list', (req, res) => { cors(res); res.status(204).end
 
 // ── SAÚDE DA LISTAGEM ─────────────────────────────────────────────────────
 // Aqui só mora a listagem: o DOWNLOAD é Vercel→Cobalt→navegador e nem passa
-// por este container. Este check diz se o yt-dlp ainda consegue ler um canal.
+// por este container. Além de "funciona?", reporta o estado da contenção.
 router.get('/baixatudo-health', async (req, res) => {
   cors(res);
+  const estado = {
+    papel: 'apenas listagem (download nao passa por aqui)',
+    fila: { rodando, teto: TETO_SIMULTANEO },
+    cache: { entradas: cache.size, ttl_min: Math.round(CACHE_TTL_MS / 60000), hits: cacheHits, miss: cacheMiss },
+    disjuntor: Object.fromEntries(Object.entries(disjuntor).map(([k, v]) => [k, v.ate > Date.now() ? 'EM DESCANSO' : 'ok'])),
+    cookies: {
+      youtube: (process.env.BAIXATUDO_COOKIES || '').length > 50,
+      tiktok: (process.env.BAIXATUDO_TIKTOK_COOKIES || '').length > 50,
+    },
+  };
+  if (req.query.rapido === '1') return res.status(200).json({ ok: true, ...estado });
+
   const dir = novoDir('btsaude');
   try {
     const cookies = cookiesDoJob(dir, 'youtube');
@@ -206,13 +265,13 @@ router.get('/baixatudo-health', async (req, res) => {
     const d = JSON.parse(saida);
     limpar(dir);
     return res.status(200).json({
-      ok: true, papel: 'apenas listagem (download nao passa por aqui)',
+      ok: true, ...estado,
       canal: d.channel || d.title || '?', achou: (d.entries || []).length, ms: Date.now() - t0,
     });
   } catch (e) {
     limpar(dir);
-    const f = amigavel(String(e.message || ''));
-    return res.status(200).json({ ok: false, reason: f.error, detail: f.detail });
+    const f = amigavel(String(e.message || ''), 'youtube');
+    return res.status(200).json({ ok: false, reason: f.error, detail: f.detail, ...estado });
   }
 });
 
@@ -224,16 +283,42 @@ router.post('/baixatudo-list', async (req, res) => {
   if (!alvo) {
     return res.status(400).json({
       error: 'canal_invalido',
-      detail: 'Cole o link do perfil: youtube.com/@canal, tiktok.com/@perfil ou instagram.com/perfil.',
+      detail: 'Cole o link do perfil: youtube.com/@canal ou tiktok.com/@perfil.',
     });
   }
 
   const limite = Math.min(parseInt((req.body && req.body.limite) || TETO_SHORTS, 10) || TETO_SHORTS, TETO_SHORTS);
-  const dir = novoDir('btlist');
-  // ?debug=1 devolve o erro CRU do yt-dlp; ?url_teste= força uma variação de
-  // URL. Serve pra diagnosticar sem gastar um deploy por hipótese.
   const debug = req.body && req.body.debug === 1;
   const urlAlvo = (req.body && req.body.url_teste) || alvo.url;
+  const chave = alvo.plataforma + '|' + urlAlvo + '|' + limite;
+
+  // ── cache: perfil listado de novo não roda yt-dlp ──
+  if (!debug) {
+    const guardado = cacheLer(chave);
+    if (guardado) return res.status(200).json({ ...guardado, cache: true });
+  }
+
+  // ── disjuntor: rede castigada = erro na hora, sem gastar processo ──
+  if (disjuntorAberto(alvo.plataforma)) {
+    res.setHeader('Retry-After', '120');
+    return res.status(503).json({
+      error: 'rede_em_descanso',
+      detail: 'A rede está limitando nossos acessos agora. Dá 2 minutinhos e tenta de novo.',
+      plataforma: alvo.plataforma,
+    });
+  }
+
+  // ── FILA: teto REAL de processos simultâneos ──
+  // Sem isto, 50 pessoas = 50 yt-dlp no container que também roda o BaixaBlue.
+  if (rodando >= TETO_SIMULTANEO) {
+    res.setHeader('Retry-After', '5');
+    return res.status(429).json({ error: 'ocupado', detail: 'Fila cheia — já já é sua vez.' });
+  }
+  rodando++;
+
+  const dir = novoDir('btlist');
+  const soltar = () => { rodando = Math.max(0, rodando - 1); limpar(dir); };
+
   try {
     const cookies = cookiesDoJob(dir, alvo.plataforma);
     const args = [
@@ -246,11 +331,23 @@ router.post('/baixatudo-list', async (req, res) => {
     if (cookies) args.push('--cookies', cookies);
     args.push(urlAlvo);
 
-    // Perfil grande demora mais que canal do YouTube — o dono aceitou abrir mão
-    // de um pouco de tempo em troca de pegar tudo.
-    const { saida } = await rodar('yt-dlp', args, { timeoutMs: 240000 });
-    const dados = JSON.parse(saida);
+    // ── retry com espera progressiva: falha de rede costuma passar sozinha ──
+    let saida = null, ultimo = null;
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      try {
+        const r = await rodar('yt-dlp', args, { timeoutMs: 240000 });
+        saida = r.saida; ultimo = null; break;
+      } catch (e) {
+        ultimo = e;
+        const m = String(e.message || '');
+        // erro definitivo não merece segunda tentativa
+        if (/Unsupported URL|not found|does not exist|Unable to extract data/i.test(m)) break;
+        if (tentativa === 0) await espera(2500);
+      }
+    }
+    if (ultimo) throw ultimo;
 
+    const dados = JSON.parse(saida);
     const itens = (Array.isArray(dados.entries) ? dados.entries : [])
       .filter((e) => e && e.id)
       .map((e) => ({
@@ -263,23 +360,30 @@ router.post('/baixatudo-list', async (req, res) => {
       }))
       .filter((x) => x.url);
 
-    limpar(dir);
-    return res.status(200).json({
+    const resposta = {
       plataforma: alvo.plataforma,
       canal: dados.channel || dados.uploader || dados.title || alvo.perfil,
       canal_url: alvo.url,
       total: itens.length,
       teto_atingido: itens.length >= limite,
       shorts: itens,
-    });
+    };
+    if (!debug && itens.length) cacheGravar(chave, resposta);
+    registrarSucesso(alvo.plataforma);
+    soltar();
+    return res.status(200).json({ ...resposta, cache: false });
   } catch (e) {
-    limpar(dir);
+    soltar();
     const m = String(e.message || '');
     console.error('[baixatudo-list]', alvo.plataforma, m.slice(0, 250));
+    // só conta pro disjuntor o que cheira a punição da rede
+    if (/Sign in to confirm|not a bot|rate.?limit|429|timeout|You need to log in/i.test(m)) {
+      registrarFalha(alvo.plataforma);
+    }
     const f = amigavel(m, alvo.plataforma);
     return res.status(f.status).json({
       error: f.error, detail: f.detail, plataforma: alvo.plataforma,
-      ...(debug ? { cru: m.slice(0, 900), url_usada: urlAlvo, tinha_cookies: !!cookiesDoJob(dir, alvo.plataforma) } : {}),
+      ...(debug ? { cru: m.slice(0, 900), url_usada: urlAlvo } : {}),
     });
   }
 });
@@ -287,4 +391,5 @@ router.post('/baixatudo-list', async (req, res) => {
 module.exports = router;
 // helpers puros expostos pros testes (o router segue sendo o export principal —
 // express Router é função, então pendurar propriedade não afeta o app.use)
-module.exports._interno = { urlDoCanal, resolverPerfil, urlDoVideo, amigavel, TETO_SHORTS, TETO_SIMULTANEO };
+module.exports._interno = { urlDoCanal, resolverPerfil, urlDoVideo, amigavel, TETO_SHORTS, TETO_SIMULTANEO,
+  cacheLer, cacheGravar, disjuntorAberto, registrarFalha, registrarSucesso, disjuntor };
