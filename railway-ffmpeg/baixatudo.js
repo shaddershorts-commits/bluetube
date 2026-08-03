@@ -10,10 +10,13 @@
 //
 // A diferença de propósito também é total:
 //   /youtube-process → yt-dlp + libx264 crf18 preset medium (RE-ENCODE, minutos)
-//   /baixatudo-video → yt-dlp com merge '-c copy' (CÓPIA de stream, segundos)
-// O seletor força avc1+m4a de propósito: são os codecs nativos do mp4, então o
-// merge sai por cópia. Deixar o yt-dlp pegar VP9/opus obrigaria transcode e
-// jogaria fora exatamente a velocidade que é o ponto da feature.
+//   /baixatudo-video → repassa o stream do Cobalt (ZERO processamento, segundos)
+//
+// MOTOR: Cobalt self-hosted (grátis, já roda no Railway, sem assinatura e sem
+// cookie). Escolhido em 03/08 depois que o yt-dlp direto bateu em 2 paredes
+// nesta imagem: 'n challenge solving failed' (falta interpretador JS) e 'GVS PO
+// Token which was not provided'. O Cobalt resolve o n challenge sozinho.
+// Medido no @XiroRanks: 1080x1920 h264 60fps + AAC em ~2s.
 //
 // Rotas (montadas na raiz pelo server.js):
 //   POST /baixatudo-list   { channel_url, limite? } → { canal, total, shorts[] }
@@ -25,6 +28,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { Readable } = require('stream');
 
 const router = express.Router();
 
@@ -49,11 +53,12 @@ const POT_ARGS = process.env.BGUTIL_POT_BASE_URL ? ['--plugin-dirs', '/root/.con
 
 // Cookies próprios, gravados POR JOB (arquivo compartilhado entre jobs
 // corrompe: dois yt-dlp escrevendo no mesmo cookies.txt).
-// COOKIES PRÓPRIOS — env BAIXATUDO_COOKIES, NUNCA a YOUTUBE_COOKIES do
-// BaixaBlue (ordem do dono, 03/08). O motivo é concreto: o lote faz muito mais
-// chamada que o download avulso, então é a conta daqui que corre risco de ser
-// sinalizada. Separadas, uma queimar não derruba a outra.
-// Recomendado usar conta DESCARTÁVEL, igual já se faz na coleta do Instagram.
+// COOKIES — usados SÓ pra listar o canal (yt-dlp --flat-playlist).
+// O DOWNLOAD não usa cookie nenhum: quem baixa é o Cobalt (ver baixarPeloCobalt).
+// Env própria BAIXATUDO_COOKIES, NUNCA a YOUTUBE_COOKIES do BaixaBlue.
+// ⚠️ Lição de 03/08: com cookie presente o yt-dlp DESCARTA os clients
+// android_vr/ios ("does not support cookies") e sobra zero formato. Por isso a
+// listagem tolera cookie ausente — e funciona melhor sem ele.
 // O yt-dlp exige o cabeçalho Netscape; sem ele o arquivo é rejeitado inteiro.
 function cookiesDoJob(dir) {
   const bruto = process.env.BAIXATUDO_COOKIES || '';
@@ -106,10 +111,58 @@ function urlDoCanal(bruto) {
   return null;
 }
 
+// ── MOTOR DE DOWNLOAD: COBALT SELF-HOSTED ─────────────────────────────────
+// Decisão de 03/08, depois do yt-dlp direto bater em 2 paredes (n challenge sem
+// interpretador JS + GVS PO Token ausente): quem baixa é o NOSSO Cobalt, que já
+// roda no Railway e é grátis (self-hosted, sem assinatura, sem cookie).
+// Medido no @XiroRanks: 1080x1920 h264 60fps + AAC em ~2s. O Cobalt resolve o
+// n challenge por conta própria e ainda devolve o título original no filename.
+const COBALT_URL = (process.env.COBALT_API_URL || '').replace(/\/$/, '');
+const COBALT_KEY = process.env.COBALT_API_KEY || '';
+
+// Pede o link ao Cobalt na melhor qualidade h264 (h264 = merge/entrega direta,
+// sem transcode). Devolve { url, filename } ou lança erro tratável.
+async function pedirAoCobalt(id, qualidade) {
+  if (!COBALT_URL) throw new Error('cobalt_nao_configurado');
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (COBALT_KEY) headers.Authorization = 'Api-Key ' + COBALT_KEY;
+  const r = await fetch(COBALT_URL + '/', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      url: `https://www.youtube.com/shorts/${id}`,
+      videoQuality: qualidade,
+      youtubeVideoCodec: 'h264',   // h264 = entrega direta, sem re-encode
+      filenameStyle: 'basic',
+    }),
+    signal: AbortSignal.timeout(90000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.status === 'error') {
+    const cod = d?.error?.code || d?.text || `http_${r.status}`;
+    throw new Error('cobalt: ' + String(cod).slice(0, 120));
+  }
+  if (!d.url) throw new Error('cobalt: resposta sem url (status=' + (d.status || '?') + ')');
+  return { url: d.url, filename: d.filename || '' };
+}
+
 function amigavel(msg) {
   // Mensagem SEM jargão: quem lê é criador, não operador. O diagnóstico
-  // técnico (cookie expirado etc) vive no /baixatudo-cookies-health.
+  // técnico (motor fora, cookie etc) vive no /baixatudo-health.
   if (/Sign in to confirm|not a bot/i.test(msg)) return { status: 503, error: 'bot_check', detail: 'O YouTube pediu verificação agora. Tenta de novo em alguns minutos.' };
+  // ── erros do Cobalt (motor de download) ──
+  if (/cobalt_nao_configurado/i.test(msg)) {
+    return { status: 503, error: 'motor_indisponivel', detail: 'O motor de download não está configurado. Já fomos avisados.' };
+  }
+  if (/cobalt: .*(content\.video\.unavailable|fetch\.empty|content\.video\.private)/i.test(msg)) {
+    return { status: 404, error: 'indisponivel', detail: 'Esse Short está privado, foi removido ou tem restrição.' };
+  }
+  if (/cobalt: .*(fetch\.rate|rate_exceeded)/i.test(msg)) {
+    return { status: 429, error: 'ocupado', detail: 'Muitos downloads ao mesmo tempo. Tenta em instantes.' };
+  }
+  if (/cobalt: |cobalt tunnel/i.test(msg)) {
+    return { status: 502, error: 'motor_falhou', detail: 'O motor de download não conseguiu esse Short. Os outros seguem normal.' };
+  }
   // piso de 720p em todos os degraus do seletor: se não bateu, é porque o
   // YouTube não ofereceu HD pra esse vídeo. Falha explícita > 360p disfarçado.
   if (/Requested format is not available|No video formats found/i.test(msg)) {
@@ -130,46 +183,30 @@ const cors = (res) => {
 router.options('/baixatudo-list', (req, res) => { cors(res); res.status(204).end(); });
 router.options('/baixatudo-video', (req, res) => { cors(res); res.status(204).end(); });
 
-// ── SAÚDE DOS COOKIES DESTA FEATURE ───────────────────────────────────────
-// Independente do /cookies-health do BaixaBlue: testa a BAIXATUDO_COOKIES e,
-// mais importante, verifica se dá pra chegar em HD de verdade — não basta o
-// YouTube responder, tem que oferecer >=720p (é a promessa da feature).
-router.get('/baixatudo-cookies-health', async (req, res) => {
+// ── SAÚDE DO MOTOR ────────────────────────────────────────────────────────
+// Independente do /cookies-health do BaixaBlue. Verifica o que a feature de
+// fato promete: que o Cobalt entrega HD. Não basta responder — tem que vir
+// 1080p (ou 720p no mínimo).
+router.get('/baixatudo-health', async (req, res) => {
   cors(res);
-  const TESTE = 'poUrVmuTt6E'; // short público comum
-  const dir = novoDir('btsaude');
+  const TESTE = 'poUrVmuTt6E'; // short público conhecido
   try {
-    const cookies = cookiesDoJob(dir);
-    if (!cookies) {
-      limpar(dir);
-      return res.status(200).json({
-        ok: false, reason: 'sem_cookies',
-        detail: 'BAIXATUDO_COOKIES não está configurada no Railway. O BaixaTudo usa cookies PRÓPRIOS — a YOUTUBE_COOKIES do BaixaBlue não serve de reserva de propósito.',
-      });
+    if (!COBALT_URL) {
+      return res.status(200).json({ ok: false, reason: 'sem_motor', detail: 'COBALT_API_URL não configurada no Railway.' });
     }
-    const args = [
-      ...POT_ARGS,
-      '-f', 'bv*[height>=720]+ba/b[height>=720]',
-      '--skip-download', '--print', '%(width)sx%(height)s',
-      '--no-warnings', '--force-ipv4', '--socket-timeout', '20',
-      '--extractor-args', 'youtube:player_client=web_safari,web,mweb,tv',
-      '--cookies', cookies,
-      `https://www.youtube.com/shorts/${TESTE}`,
-    ];
-    const { saida } = await rodar('yt-dlp', args, { timeoutMs: 60000 });
-    limpar(dir);
-    const res_ = (saida || '').trim().split('\n').pop();
-    return res.status(200).json({ ok: true, hd_disponivel: res_, cookies_bytes: (process.env.BAIXATUDO_COOKIES || '').length });
+    const t0 = Date.now();
+    const r = await pedirAoCobalt(TESTE, '1080');
+    // o filename do Cobalt carrega a qualidade real entregue: "(1080p, h264)"
+    const q = (r.filename.match(/\((\d+p[^)]*)\)/) || [])[1] || null;
+    return res.status(200).json({
+      ok: true, motor: 'cobalt', qualidade: q,
+      filename: r.filename, ms: Date.now() - t0,
+      cookies_listagem: (process.env.BAIXATUDO_COOKIES || '').length > 50 ? 'configurados' : 'ausentes (ok — a listagem funciona sem)',
+    });
   } catch (e) {
-    limpar(dir);
     const m = String(e.message || '');
-    if (/Sign in to confirm|not a bot/i.test(m)) {
-      return res.status(200).json({ ok: false, reason: 'bot_check', detail: 'Os cookies do BaixaTudo estão expirados ou inválidos — exporte de novo.' });
-    }
-    if (/Requested format/i.test(m)) {
-      return res.status(200).json({ ok: false, reason: 'sem_hd', detail: 'Autenticou, mas o YouTube não ofereceu HD. Cookies de conta sem acesso a formatos altos?' });
-    }
-    return res.status(200).json({ ok: false, reason: 'erro', detail: m.slice(0, 200) });
+    const f = amigavel(m);
+    return res.status(200).json({ ok: false, reason: f.error, detail: f.detail, cru: m.slice(0, 160) });
   }
 });
 
@@ -230,84 +267,44 @@ router.get('/baixatudo-video', async (req, res) => {
   if (!/^[\w-]{11}$/.test(id)) return res.status(400).json({ error: 'id_invalido' });
 
   if (rodando >= TETO_SIMULTANEO) {
-    // 429 explícito: o front espera e tenta de novo, em vez de empilhar
-    // processos e roubar CPU do download normal.
+    // 429 explícito: o front espera e repete, em vez de empilhar downloads e
+    // competir por banda com o download normal.
     res.setHeader('Retry-After', '4');
     return res.status(429).json({ error: 'ocupado', detail: 'Fila cheia, tentando de novo…' });
   }
 
   rodando++;
-  const dir = novoDir('btvid');
-  const soltar = () => { rodando = Math.max(0, rodando - 1); limpar(dir); };
+  const soltar = () => { rodando = Math.max(0, rodando - 1); };
 
   try {
-    const cookies = cookiesDoJob(dir);
-    // HD POR CÓPIA — e HD de verdade.
-    // Lição do smoke de 03/08: forçar player_client=tv_embedded/android_vr
-    // (como o /youtube-process faz) devolve SÓ o format 18 = 360p combinado,
-    // sem streams DASH. O seletor pedia 1080p, não achava, e caía calado no
-    // 360p. Aqui usamos os clients que expõem DASH e o piso de 720p está em
-    // TODOS os degraus: se não tem HD, o yt-dlp falha e o usuário recebe uma
-    // mensagem clara — nunca um 360p disfarçado de HD.
-    const CLIENTS = req.query.clients || 'web_safari,web,mweb,tv';
-    const args = [
-      ...POT_ARGS,
-      '-f', [
-        'bv*[height>=1080][vcodec^=avc1]+ba[ext=m4a]',  // 1080p+ cópia pura
-        'bv*[height>=1080]+ba',                          // 1080p+ (pode remuxar)
-        'bv*[height>=720][vcodec^=avc1]+ba[ext=m4a]',    // 720p cópia pura
-        'bv*[height>=720]+ba',                           // 720p
-        'b[height>=720]',                                // combinado >=720
-      ].join('/'),
-      '--merge-output-format', 'mp4',
-      '--no-playlist', '--no-warnings', '--no-check-certificate', '--force-ipv4',
-      '--socket-timeout', '20',
-      '--extractor-args', `youtube:player_client=${CLIENTS}`,
-      '-o', path.join(dir, 'v.%(ext)s'),
-    ];
-    if (cookies) args.push('--cookies', cookies);
-    args.push(`https://www.youtube.com/shorts/${id}`);
-
-    // ?debug=formatos → devolve o que o YouTube oferece, sem baixar. Usado pra
-    // descobrir qual client entrega DASH quando algum canal sai só em 360p.
-    if (req.query.debug === 'formatos') {
-      // ?sem_cookies=1 isola a variável: se SEM cookie aparecem formatos e COM
-      // cookie só storyboard, o problema é o cookie — não o IP nem o client.
-      const usarCookies = req.query.sem_cookies !== '1' && cookies;
-      const dbg = [...POT_ARGS, '-F', '--force-ipv4',
-        '--extractor-args', `youtube:player_client=${CLIENTS}`];
-      if (usarCookies) dbg.push('--cookies', cookies);
-      dbg.push(`https://www.youtube.com/shorts/${id}`);
-      const { saida, erro } = await rodar('yt-dlp', dbg, { timeoutMs: 90000 });
-      soltar();
-      return res.status(200).json({
-        clients: CLIENTS,
-        com_cookies: !!usarCookies,
-        // avisos do yt-dlp explicam PO token / cookie recusado
-        avisos: (erro || '').split('\n').filter((l) => /WARNING|ERROR|PO Token|pot|cookie/i.test(l)).slice(0, 12),
-        formatos: saida.split('\n').filter(Boolean),
-      });
+    // Cascata de qualidade: tenta 1080 e só então 720. O piso de 720 é a
+    // promessa da feature — abaixo disso preferimos falhar explícito a
+    // entregar 360p disfarçado (erro que já cometemos em 03/08).
+    let escolha = null, ultimoErro = null;
+    for (const q of ['1080', '720']) {
+      try { escolha = await pedirAoCobalt(id, q); break; }
+      catch (e) { ultimoErro = e; }
     }
+    if (!escolha) throw ultimoErro || new Error('cobalt sem resposta');
 
-    await rodar('yt-dlp', args, { timeoutMs: 180000 });
+    const midia = await fetch(escolha.url, { signal: AbortSignal.timeout(180000) });
+    if (!midia.ok || !midia.body) throw new Error('cobalt tunnel http ' + midia.status);
 
-    const achados = fs.readdirSync(dir).filter((f) => f.startsWith('v.'));
-    if (!achados.length) throw new Error('nenhum arquivo baixado');
-    const arquivo = path.join(dir, achados[0]);
-    const stat = fs.statSync(arquivo);
-    if (stat.size < 1024) throw new Error('arquivo vazio');
-
-    // Nome do arquivo = TÍTULO ORIGINAL do short (o front manda em ?nome=)
-    const nome = String(req.query.nome || id).replace(/[^\w\s.()\-À-ÿ]/g, '_').trim().slice(0, 90) || id;
+    // Nome do arquivo = TÍTULO ORIGINAL. O front manda em ?nome=; o filename
+    // que o Cobalt devolve já vem com o título e serve de reserva.
+    const bruto = String(req.query.nome || escolha.filename || id).replace(/\.mp4$/i, '');
+    const nome = bruto.replace(/[^\w\s.()\-À-ÿ]/g, '_').trim().slice(0, 90) || id;
     res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Length', String(stat.size));
-    res.setHeader('Content-Disposition', `attachment; filename="${nome}.mp4"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + nome + '.mp4"');
+    const tam = midia.headers.get('content-length');
+    if (tam) res.setHeader('Content-Length', tam);
 
-    const stream = fs.createReadStream(arquivo);
-    stream.pipe(res);
-    stream.on('close', soltar);
-    stream.on('error', () => { soltar(); try { res.destroy(); } catch (e) {} });
-    req.on('aborted', () => { try { stream.destroy(); } catch (e) {} soltar(); });
+    // Repassa direto pro browser: nada toca o disco do container.
+    const fluxo = Readable.fromWeb(midia.body);
+    fluxo.pipe(res);
+    fluxo.on('close', soltar);
+    fluxo.on('error', () => { soltar(); try { res.destroy(); } catch (e) {} });
+    req.on('aborted', () => { try { fluxo.destroy(); } catch (e) {} soltar(); });
   } catch (e) {
     soltar();
     const m = String(e.message || '');

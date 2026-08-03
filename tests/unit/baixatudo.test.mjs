@@ -143,12 +143,36 @@ test('sem channel_url → 400 antes de qualquer consulta', async () => {
   assert.equal(chamadas.length, 0);
 });
 
-// ── 4. cookies próprios ─────────────────────────────────────────────────────
+// ── 4. isolamento e motor ───────────────────────────────────────────────────
+const FONTE = readFileSync(new URL('../../railway-ffmpeg/baixatudo.js', import.meta.url), 'utf8');
+
 test('cookies do BaixaTudo são PRÓPRIOS — não herdam os do BaixaBlue', () => {
-  const fonte = readFileSync(new URL('../../railway-ffmpeg/baixatudo.js', import.meta.url), 'utf8');
-  assert.match(fonte, /process\.env\.BAIXATUDO_COOKIES/, 'deve ler a env própria');
-  assert.doesNotMatch(fonte, /process\.env\.YOUTUBE_COOKIES/,
+  assert.match(FONTE, /process\.env\.BAIXATUDO_COOKIES/, 'deve ler a env própria');
+  assert.doesNotMatch(FONTE, /process\.env\.YOUTUBE_COOKIES/,
     'não pode cair na env do BaixaBlue: cookie do lote queimar não pode derrubar o download avulso');
+});
+
+test('o DOWNLOAD usa Cobalt, não yt-dlp direto', () => {
+  const trecho = FONTE.slice(FONTE.indexOf("router.get('/baixatudo-video'"));
+  assert.doesNotMatch(trecho, /rodar\('yt-dlp'/,
+    'yt-dlp direto bate em n-challenge/PO Token nesta imagem — o download é do Cobalt');
+  assert.match(trecho, /pedirAoCobalt/, 'deve pedir o link ao Cobalt');
+});
+
+test('pede 1080 antes de 720 e nunca aceita menos', () => {
+  const trecho = FONTE.slice(FONTE.indexOf("router.get('/baixatudo-video'"));
+  const m = trecho.match(/for \(const q of \[([^\]]+)\]/);
+  assert.ok(m, 'cascata de qualidade não encontrada');
+  const qualidades = m[1].replace(/['\s]/g, '').split(',');
+  assert.deepEqual(qualidades, ['1080', '720'], 'a cascata deve ser 1080 → 720, sem degrau abaixo de HD');
+});
+
+test('pede h264 ao Cobalt (entrega direta, sem transcode)', () => {
+  assert.match(FONTE, /youtubeVideoCodec:\s*'h264'/, 'vp9/av1 forçariam transcode e matariam a velocidade');
+});
+
+test('o módulo isolado não importa nada do server.js', () => {
+  assert.doesNotMatch(FONTE, /require\(['"]\.\/server/, 'importar o server.js quebraria o isolamento');
 });
 
 // ── 5. tetos ────────────────────────────────────────────────────────────────
