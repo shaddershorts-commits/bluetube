@@ -75,6 +75,9 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY server.js ./
+# BaixaTudo: modulo isolado montado pelo server.js. Sem esta linha o require
+# falha dentro do try/catch e a rota some em silencio (404).
+COPY baixatudo.js ./
 COPY entrypoint.sh ./
 # Strip CR (caso o arquivo tenha sido salvo com CRLF no Windows) + exec bit
 RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
