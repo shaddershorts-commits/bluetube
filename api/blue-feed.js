@@ -896,31 +896,99 @@ module.exports = async function handler(req, res) {
 
   // ── UPDATE METRICS (cron horario — agrega avg_watch_percent + views_24h) ─
   if (action === 'update-metrics') {
+    // ── RANKING POR RETENÇÃO (03/08/2026) ─────────────────────────────────
+    // Antes: média de % assistido das últimas 24h, gravada em
+    // avg_watch_percent. O `score` que ordena o feed era calculado a cada
+    // interação no blue-interact — com amostra minúscula, então UMA view
+    // decidia o destino do vídeo.
+    //
+    // Agora este cron é o DONO do `score`, calculado sobre 30 dias e as DUAS
+    // fontes de retenção: blue_video_analytics (web, percentual_assistido) e
+    // blue_interactions (app, completion_pct). Motivo da troca: a correlação
+    // medida entre `views` e retenção real é -0,016 — ordenar por views é
+    // ordenar por ruído.
+    //
+    // Três cuidados que a medição exigiu:
+    //  1. NORMALIZAR POR DURAÇÃO: corr(duração, % assistido) = -0,63. Vídeo
+    //     longo SEMPRE tem % menor; comparar cru puniria os longos. Cada
+    //     vídeo é comparado à média da FAIXA de duração dele.
+    //  2. SUAVIZAR POR AMOSTRA: vídeo com 3 amostras não vira campeão por
+    //     sorte nem lixo por azar. Mistura com o prior 50, peso K.
+    //  3. NÃO INVENTAR PESO: retenção domina (é o que a própria TikTok diz
+    //     no Transparency Center), engajamento entra como confirmação.
     try {
-      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-      // Busca analytics das ultimas 24h agrupadas por video
-      const aR = await fetch(
-        `${SU}/rest/v1/blue_video_analytics?created_at=gte.${dayAgo}&select=video_id,percentual_assistido&limit=10000`,
-        { headers: h }
-      );
-      const rows = aR.ok ? await aR.json() : [];
-      const perVideo = {};
-      for (const row of rows) {
-        if (!perVideo[row.video_id]) perVideo[row.video_id] = { sum: 0, count: 0 };
-        perVideo[row.video_id].count++;
-        perVideo[row.video_id].sum += (row.percentual_assistido || 0);
-      }
-      let atualizados = 0;
-      for (const [vid, agg] of Object.entries(perVideo)) {
-        const avg = Math.round(agg.sum / agg.count);
-        await fetch(`${SU}/rest/v1/blue_videos?id=eq.${vid}`, {
-          method: 'PATCH',
-          headers: { ...h, Prefer: 'return=minimal' },
-          body: JSON.stringify({ avg_watch_percent: avg, views_24h: agg.count }),
+      const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const [aR, iR, vR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_video_analytics?created_at=gte.${desde}&select=video_id,percentual_assistido&limit=20000`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_interactions?type=eq.view&created_at=gte.${desde}&completion_pct=gt.0&select=video_id,completion_pct&limit=20000`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_videos?status=eq.active&select=id,duration,likes,saves,shares,comments,created_at&limit=2000`, { headers: h }),
+      ]);
+      const analytics = aR.ok ? await aR.json() : [];
+      const inters = iR.ok ? await iR.json() : [];
+      const videos = vR.ok ? await vR.json() : [];
+      if (!videos.length) return res.status(200).json({ ok: true, videos_atualizados: 0, motivo: 'sem videos' });
+
+      // agrega retenção das duas fontes
+      const agg = {};
+      const add = (vid, pct) => {
+        if (!vid || !(pct >= 0)) return;
+        (agg[vid] = agg[vid] || { soma: 0, n: 0 });
+        agg[vid].soma += Math.min(100, pct); agg[vid].n++;
+      };
+      analytics.forEach((r) => add(r.video_id, Number(r.percentual_assistido) || 0));
+      inters.forEach((r) => add(r.video_id, Number(r.completion_pct) || 0));
+
+      // média por FAIXA de duração (a normalização do item 1)
+      const faixa = (d) => (d <= 15 ? 'a' : d <= 30 ? 'b' : d <= 60 ? 'c' : 'd');
+      const porFaixa = {};
+      videos.forEach((v) => {
+        const g = agg[v.id]; if (!g || g.n < 3) return;
+        const f = faixa(Number(v.duration) || 0);
+        (porFaixa[f] = porFaixa[f] || { soma: 0, n: 0 });
+        porFaixa[f].soma += g.soma / g.n; porFaixa[f].n++;
+      });
+      const mediaFaixa = (f) => (porFaixa[f] && porFaixa[f].n >= 3 ? porFaixa[f].soma / porFaixa[f].n : 35);
+
+      const K = 15;          // peso do prior (em amostras)
+      const PRIOR = 50;
+      let atualizados = 0, comAmostra = 0;
+      for (const v of videos) {
+        const g = agg[v.id];
+        const n = g ? g.n : 0;
+        const patch = {};
+        if (n > 0) {
+          comAmostra++;
+          const pct = g.soma / n;
+          patch.avg_watch_percent = Math.round(pct);
+          patch.views_24h = n;
+
+          // qualidade relativa à faixa: 1,0 = na média da faixa
+          const ref = mediaFaixa(faixa(Number(v.duration) || 0));
+          const razao = ref > 0 ? pct / ref : 1;
+          const retScore = Math.max(0, Math.min(100, 50 * razao));
+
+          // engajamento por amostra, teto de 3% = nota cheia
+          const acoes = (v.likes || 0) + 3 * (v.saves || 0) + 3 * (v.shares || 0) + 2 * (v.comments || 0);
+          const engScore = Math.min(20, (acoes / n / 0.03) * 20);
+
+          // frescor: só desempate, decai depois de 7 dias
+          const dias = (Date.now() - new Date(v.created_at).getTime()) / 86400000;
+          const fresco = dias <= 7 ? 10 : Math.max(0, 10 * Math.exp(-(dias - 7) / 45));
+
+          const bruto = Math.max(0, Math.min(100, retScore + engScore + fresco));
+          patch.score = Math.round(((PRIOR * K + bruto * n) / (K + n)) * 100) / 100;
+        }
+        if (!Object.keys(patch).length) continue;
+        await fetch(`${SU}/rest/v1/blue_videos?id=eq.${v.id}`, {
+          method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' }, body: JSON.stringify(patch),
         }).catch(e => console.error('[blue-feed:metrics-patch]', e?.message));
         atualizados++;
       }
-      return res.status(200).json({ ok: true, videos_atualizados: atualizados });
+      return res.status(200).json({
+        ok: true, videos_atualizados: atualizados, com_amostra: comAmostra,
+        fontes: { analytics: analytics.length, interactions: inters.length },
+        media_por_faixa: Object.fromEntries(Object.entries(porFaixa).map(([f, d]) => [f, Math.round(d.soma / d.n)])),
+      });
     } catch(e) {
       return res.status(200).json({ ok: false, error: e.message });
     }

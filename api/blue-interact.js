@@ -272,11 +272,17 @@ module.exports = async function handler(req, res) {
     // com 1 view o score quase não se move; com 30+ views o dado real domina.
     // É o mesmo princípio de "média bayesiana" que o IMDb usa pra nota de
     // filme com poucos votos.
-    const PRIOR_SCORE = 50;   // valor de nascimento do vídeo
-    const PRIOR_N     = 10;   // vale como 10 views de credibilidade
-    patch.score = Math.min(100, Math.max(0,
-      (PRIOR_SCORE * PRIOR_N + bruto * newViews) / (PRIOR_N + newViews)
-    ));
+    // ── QUEM É O DONO DO SCORE (decisão 03/08/2026) ────────────────────────
+    // O `score` passou a ser calculado pelo cron `update-metrics` (roda de 15
+    // em 15 min), que enxerga 30 DIAS e as duas fontes de retenção. Aqui a
+    // amostra é sempre minúscula — no limite, UMA view — e por isso este
+    // ponto só sabia produzir score instável (chegou a derrubar um vídeo de
+    // 50 pra 3,6 com um único espectador desatento).
+    // Dois donos escrevendo no mesmo campo seria pior que nenhum: um
+    // sobrescreveria o outro a cada interação. Então aqui NÃO se mexe mais no
+    // score — só nos contadores. A suavização bayesiana vive no cron.
+    // `bruto` segue calculado acima só pra telemetria/depuração futura.
+    void bruto;
 
     // Sai da fase de teste após 30 views
     if ((v.test_views || 0) >= 30) patch.test_phase = false;
