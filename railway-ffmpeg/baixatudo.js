@@ -223,6 +223,10 @@ router.post('/baixatudo-list', async (req, res) => {
 
   const limite = Math.min(parseInt((req.body && req.body.limite) || TETO_SHORTS, 10) || TETO_SHORTS, TETO_SHORTS);
   const dir = novoDir('btlist');
+  // ?debug=1 devolve o erro CRU do yt-dlp; ?url_teste= força uma variação de
+  // URL. Serve pra diagnosticar sem gastar um deploy por hipótese.
+  const debug = req.body && req.body.debug === 1;
+  const urlAlvo = (req.body && req.body.url_teste) || alvo.url;
   try {
     const cookies = cookiesDoJob(dir, alvo.plataforma);
     const args = [
@@ -233,7 +237,7 @@ router.post('/baixatudo-list', async (req, res) => {
       '--socket-timeout', '20',
     ];
     if (cookies) args.push('--cookies', cookies);
-    args.push(alvo.url);
+    args.push(urlAlvo);
 
     // Perfil grande demora mais que canal do YouTube — o dono aceitou abrir mão
     // de um pouco de tempo em troca de pegar tudo.
@@ -266,7 +270,10 @@ router.post('/baixatudo-list', async (req, res) => {
     const m = String(e.message || '');
     console.error('[baixatudo-list]', alvo.plataforma, m.slice(0, 250));
     const f = amigavel(m, alvo.plataforma);
-    return res.status(f.status).json({ error: f.error, detail: f.detail, plataforma: alvo.plataforma });
+    return res.status(f.status).json({
+      error: f.error, detail: f.detail, plataforma: alvo.plataforma,
+      ...(debug ? { cru: m.slice(0, 900), url_usada: urlAlvo, tinha_cookies: !!cookiesDoJob(dir, alvo.plataforma) } : {}),
+    });
   }
 });
 
