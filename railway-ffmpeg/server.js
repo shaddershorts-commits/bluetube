@@ -1989,13 +1989,23 @@ async function processBlueTranscode(jobId, p) {
 
     update('transcoding', 40);
     const out = path.join(dir, 'out.mp4');
-    // scale: cap 1080 de largura, mantem aspect, par (h264 exige)
+    // ── PERFIL DE ENTREGA PRA FEED MOBILE (ajustado 03/08/2026) ───────────
+    // Antes: cap de 1080 de largura, CRF 26, maxrate 4M. Isso é perfil de
+    // ARQUIVO, não de feed. Medição em produção mostrou 5 de 10 vídeos acima
+    // de 1200 kbps e um caso de 15,7 MB pra 60s (2193 kbps) — em 4G ruim é
+    // exatamente a demora que o dono relatou.
+    // Agora: 720 de largura (padrão de entrega de vídeo vertical em feed —
+    // 720x1280 numa tela de celular é indistinguível de 1080 a olho nu),
+    // CRF 28 e teto de 1500 kbps. Corta o peso pela metade ou mais.
+    // `min(720,iw)` nunca AUMENTA vídeo pequeno, e o CRF já entrega bitrate
+    // menor que o teto quando a cena é simples — o maxrate só impede picos.
+    // Áudio 96k: em conteúdo de celular, 128k não agrega nada perceptível.
     await run('ffmpeg', [
       '-y', '-i', src,
-      '-vf', "scale='min(1080,iw)':-2",
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26',
-      '-maxrate', '4M', '-bufsize', '8M',
-      '-c:a', 'aac', '-b:a', '128k',
+      '-vf', "scale='min(720,iw)':-2",
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+      '-maxrate', '1500k', '-bufsize', '3000k',
+      '-c:a', 'aac', '-b:a', '96k',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       out,
