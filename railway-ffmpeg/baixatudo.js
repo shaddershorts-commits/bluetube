@@ -271,13 +271,22 @@ router.get('/baixatudo-video', async (req, res) => {
     // ?debug=formatos → devolve o que o YouTube oferece, sem baixar. Usado pra
     // descobrir qual client entrega DASH quando algum canal sai só em 360p.
     if (req.query.debug === 'formatos') {
-      const dbg = [...POT_ARGS, '-F', '--no-warnings', '--force-ipv4',
+      // ?sem_cookies=1 isola a variável: se SEM cookie aparecem formatos e COM
+      // cookie só storyboard, o problema é o cookie — não o IP nem o client.
+      const usarCookies = req.query.sem_cookies !== '1' && cookies;
+      const dbg = [...POT_ARGS, '-F', '--force-ipv4',
         '--extractor-args', `youtube:player_client=${CLIENTS}`];
-      if (cookies) dbg.push('--cookies', cookies);
+      if (usarCookies) dbg.push('--cookies', cookies);
       dbg.push(`https://www.youtube.com/shorts/${id}`);
-      const { saida } = await rodar('yt-dlp', dbg, { timeoutMs: 60000 });
+      const { saida, erro } = await rodar('yt-dlp', dbg, { timeoutMs: 90000 });
       soltar();
-      return res.status(200).json({ clients: CLIENTS, formatos: saida.split('\n').filter(Boolean) });
+      return res.status(200).json({
+        clients: CLIENTS,
+        com_cookies: !!usarCookies,
+        // avisos do yt-dlp explicam PO token / cookie recusado
+        avisos: (erro || '').split('\n').filter((l) => /WARNING|ERROR|PO Token|pot|cookie/i.test(l)).slice(0, 12),
+        formatos: saida.split('\n').filter(Boolean),
+      });
     }
 
     await rodar('yt-dlp', args, { timeoutMs: 180000 });
