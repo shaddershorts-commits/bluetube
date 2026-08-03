@@ -4004,6 +4004,17 @@ app.post('/snapchat-extract', async (req, res) => {
   }
 });
 
+// BaixaTudo (2026-08-03) — modulo ISOLADO em ./baixatudo.js. Nao compartilha
+// helper nenhum com o resto deste arquivo, de proposito: um bug la nao pode
+// afetar o download normal. O try/catch garante que, se o modulo nem carregar,
+// o servico sobe igual — so sem essa feature.
+try {
+  app.use(require('./baixatudo'));
+  console.log('[bluetube-ffmpeg] BaixaTudo montado');
+} catch (e) {
+  console.error('[bluetube-ffmpeg] BaixaTudo NAO carregou (resto do servico segue normal):', e.message);
+}
+
 app.listen(PORT, () => {
   console.log(`[bluetube-ffmpeg] listening on :${PORT}`);
   // Roda em background pra nao atrasar health check do Railway
