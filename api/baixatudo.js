@@ -67,6 +67,41 @@ module.exports = async function handler(req, res) {
     return res.status(403).json({ error: 'plano_master_necessario', current_plan: plano });
   }
 
+  // ── action=link: pede ao Cobalt o link HD de UM Short ───────────────────
+  // O motor é o nosso Cobalt self-hosted (grátis, sem cookie). Ele fica AQUI
+  // na Vercel porque é aqui que vivem COBALT_API_URL/KEY — e assim o container
+  // compartilhado do Railway nunca vê um byte de mídia: o navegador baixa
+  // direto do Cobalt (o túnel manda access-control-allow-origin: *).
+  if (String(src.action || '') === 'link') {
+    const id = String(src.id || '').trim();
+    if (!/^[\w-]{11}$/.test(id)) return res.status(400).json({ error: 'id_invalido' });
+    const COBALT = (process.env.COBALT_API_URL || '').replace(/\/$/, '');
+    if (!COBALT) return res.status(503).json({ error: 'motor_indisponivel' });
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (process.env.COBALT_API_KEY) headers.Authorization = 'Api-Key ' + process.env.COBALT_API_KEY;
+    // 1080 primeiro, 720 só se não houver. Abaixo de HD preferimos falhar.
+    let ultimo = null;
+    for (const q of ['1080', '720']) {
+      try {
+        const r = await fetch(COBALT + '/', {
+          method: 'POST', headers,
+          body: JSON.stringify({
+            url: `https://www.youtube.com/shorts/${id}`,
+            videoQuality: q,
+            youtubeVideoCodec: 'h264',  // h264 = entrega direta, sem transcode
+            filenameStyle: 'basic',
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.url) return res.status(200).json({ url: d.url, filename: d.filename || '', qualidade: q });
+        ultimo = d?.error?.code || d?.status || `http_${r.status}`;
+      } catch (e) { ultimo = e.message; }
+    }
+    console.error('[baixatudo/link]', id, String(ultimo).slice(0, 160));
+    return res.status(502).json({ error: 'motor_falhou', detail: 'Não consegui esse Short agora. Os outros seguem normal.' });
+  }
+
   const limite = Math.min(parseInt(src.limite, 10) || TETO_SHORTS, TETO_SHORTS);
 
   try {
