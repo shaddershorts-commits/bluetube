@@ -103,6 +103,11 @@ function urlDoCanal(bruto) {
 
 function amigavel(msg) {
   if (/Sign in to confirm|not a bot/i.test(msg)) return { status: 503, error: 'bot_check', detail: 'O YouTube pediu verificação agora. Tenta de novo em alguns minutos.' };
+  // piso de 720p em todos os degraus do seletor: se não bateu, é porque o
+  // YouTube não ofereceu HD pra esse vídeo. Falha explícita > 360p disfarçado.
+  if (/Requested format is not available|No video formats found/i.test(msg)) {
+    return { status: 422, error: 'sem_hd', detail: 'Esse Short não tem versão HD disponível no YouTube.' };
+  }
   if (/does not have|not found|Unable to recognize|Unable to download webpage/i.test(msg)) return { status: 404, error: 'canal_nao_encontrado', detail: 'Não achei esse canal — confere o link, ou ele não tem Shorts públicos.' };
   if (/private|unavailable|removed|age.?restricted/i.test(msg)) return { status: 404, error: 'indisponivel', detail: 'Esse vídeo está privado, foi removido ou tem restrição.' };
   if (/timeout/i.test(msg)) return { status: 504, error: 'timeout', detail: 'Demorou demais. Tenta de novo.' };
@@ -187,20 +192,43 @@ router.get('/baixatudo-video', async (req, res) => {
 
   try {
     const cookies = cookiesDoJob(dir);
-    // HD por CÓPIA — a cascata desce de 1080p pro melhor disponível, mas as
-    // 3 primeiras opções são avc1+m4a (merge por cópia). Só o último degrau
-    // aceitaria transcode, e é rede de segurança pra vídeo exótico.
+    // HD POR CÓPIA — e HD de verdade.
+    // Lição do smoke de 03/08: forçar player_client=tv_embedded/android_vr
+    // (como o /youtube-process faz) devolve SÓ o format 18 = 360p combinado,
+    // sem streams DASH. O seletor pedia 1080p, não achava, e caía calado no
+    // 360p. Aqui usamos os clients que expõem DASH e o piso de 720p está em
+    // TODOS os degraus: se não tem HD, o yt-dlp falha e o usuário recebe uma
+    // mensagem clara — nunca um 360p disfarçado de HD.
+    const CLIENTS = req.query.clients || 'web_safari,web,mweb,tv';
     const args = [
       ...POT_ARGS,
-      '-f', 'bv*[height>=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b',
+      '-f', [
+        'bv*[height>=1080][vcodec^=avc1]+ba[ext=m4a]',  // 1080p+ cópia pura
+        'bv*[height>=1080]+ba',                          // 1080p+ (pode remuxar)
+        'bv*[height>=720][vcodec^=avc1]+ba[ext=m4a]',    // 720p cópia pura
+        'bv*[height>=720]+ba',                           // 720p
+        'b[height>=720]',                                // combinado >=720
+      ].join('/'),
       '--merge-output-format', 'mp4',
       '--no-playlist', '--no-warnings', '--no-check-certificate', '--force-ipv4',
       '--socket-timeout', '20',
-      '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+      '--extractor-args', `youtube:player_client=${CLIENTS}`,
       '-o', path.join(dir, 'v.%(ext)s'),
     ];
     if (cookies) args.push('--cookies', cookies);
     args.push(`https://www.youtube.com/shorts/${id}`);
+
+    // ?debug=formatos → devolve o que o YouTube oferece, sem baixar. Usado pra
+    // descobrir qual client entrega DASH quando algum canal sai só em 360p.
+    if (req.query.debug === 'formatos') {
+      const dbg = [...POT_ARGS, '-F', '--no-warnings', '--force-ipv4',
+        '--extractor-args', `youtube:player_client=${CLIENTS}`];
+      if (cookies) dbg.push('--cookies', cookies);
+      dbg.push(`https://www.youtube.com/shorts/${id}`);
+      const { saida } = await rodar('yt-dlp', dbg, { timeoutMs: 60000 });
+      soltar();
+      return res.status(200).json({ clients: CLIENTS, formatos: saida.split('\n').filter(Boolean) });
+    }
 
     await rodar('yt-dlp', args, { timeoutMs: 180000 });
 
