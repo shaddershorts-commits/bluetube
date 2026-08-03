@@ -1,14 +1,14 @@
-/* baixatudo.js — BaixaTudo: baixa TODOS os Shorts de um canal (2026-08-03)
+/* baixatudo.js — BaixaTudo: baixa o perfil inteiro (2026-08-03)
+ * YouTube (Shorts) · TikTok · Instagram
  *
  * ISOLADO de propósito (ordem do dono): este arquivo NÃO chama nenhuma função
  * do baixaBlue.html — nem startDownload, nem processarYoutube, nem switchMode.
- * Ele só mostra/esconde os blocos da página e fala com os endpoints próprios
- * (/api/baixatudo e /baixatudo-video do Railway). Um bug aqui não tem como
- * afetar o download normal.
+ * Ele só mostra/esconde os blocos da página e fala com endpoint próprio
+ * (/api/baixatudo). Um bug aqui não tem como afetar o download normal.
  *
  * Diferença de motor: o BaixaBlue re-encoda cada vídeo pra descaracterizar
- * (minutos). Aqui não existe descaracterização — o merge sai por cópia de
- * stream (segundos). É a feature inteira: velocidade + HD.
+ * (minutos). Aqui não existe descaracterização — o Cobalt entrega o arquivo
+ * pronto e o navegador baixa direto. É a feature inteira: velocidade + qualidade.
  */
 (function () {
   'use strict';
@@ -16,7 +16,7 @@
   // O download NÃO passa pelo nosso servidor: pedimos o link HD à nossa API
   // (que fala com o Cobalt self-hosted) e o navegador baixa direto do túnel.
   // Assim o container compartilhado do BaixaBlue não vê um byte de mídia.
-  var API_LINK = '/api/baixatudo?action=link&id=';
+  var API_LINK = '/api/baixatudo?action=link&url=';
   var lista = [];        // shorts listados
   var baixando = false;
   var cancelar = false;
@@ -76,7 +76,7 @@
 
     btn.disabled = true;
     btn.textContent = 'Procurando…';
-    status.innerHTML = '<span style="color:#7d92b8">🔎 Lendo os Shorts do canal…</span>';
+    status.innerHTML = '<span style="color:#7d92b8">🔎 Lendo o perfil…</span>';
     el('btResultado').style.display = 'none';
 
     try {
@@ -91,9 +91,10 @@
       if (!r.ok) {
         var msgs = {
           plano_master_necessario: 'O BaixaTudo é do plano Master.',
-          canal_invalido: 'Esse link não parece de canal. Use algo como youtube.com/@nomedocanal',
-          canal_nao_encontrado: d.detail || 'Não achei esse canal (ou ele não tem Shorts públicos).',
+          canal_invalido: 'Cole o link do perfil: youtube.com/@canal, tiktok.com/@perfil ou instagram.com/perfil.',
+          canal_nao_encontrado: d.detail || 'Não achei esse perfil (ou ele não tem vídeos públicos).',
           bot_check: 'O YouTube pediu verificação agora. Tenta de novo em alguns minutos.',
+          perfil_bloqueado: d.detail || 'A rede pediu login pra ler esse perfil. Tenta de novo em instantes.',
           timeout: 'Demorou demais pra responder. Tenta de novo.',
           login_obrigatorio: 'Entra na sua conta pra usar.',
         };
@@ -103,18 +104,18 @@
 
       lista = d.shorts || [];
       if (!lista.length) {
-        status.innerHTML = '<span style="color:#fca5a5">Esse canal não tem Shorts públicos.</span>';
+        status.innerHTML = '<span style="color:#fca5a5">Esse perfil não tem vídeos públicos.</span>';
         return;
       }
 
-      status.innerHTML = '<span style="color:#22c55e">✓ ' + lista.length + ' Shorts encontrados em <strong>' + esc(d.canal) + '</strong></span>' +
+      status.innerHTML = '<span style="color:#22c55e">✓ ' + lista.length + ' vídeos encontrados em <strong>' + esc(d.canal) + '</strong></span>' +
         (d.teto_atingido ? '<span style="color:#fbbf24;display:block;margin-top:4px;font-size:11px">Mostrando os ' + lista.length + ' mais recentes (teto por lote).</span>' : '');
       render();
     } catch (e) {
       status.innerHTML = '<span style="color:#fca5a5">Erro de conexão. Tenta de novo.</span>';
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Procurar Shorts';
+      btn.textContent = 'Procurar vídeos';
     }
   }
 
@@ -148,7 +149,7 @@
     var n = selecionados().length;
     var b = el('btBaixarBtn');
     b.disabled = n === 0 || baixando;
-    b.textContent = baixando ? 'Baixando…' : (n ? '⬇ Baixar ' + n + ' Shorts em HD' : 'Selecione ao menos 1');
+    b.textContent = baixando ? 'Baixando…' : (n ? '⬇ Baixar ' + n + ' vídeos na melhor qualidade' : 'Selecione ao menos 1');
   }
 
   function marcarTodos(v) {
@@ -186,7 +187,7 @@
         try {
           // 1) nossa API pede o link HD ao Cobalt
           var token = localStorage.getItem('bt_token') || '';
-          var rl = await fetch(API_LINK + encodeURIComponent(s.id), {
+          var rl = await fetch(API_LINK + encodeURIComponent(s.url || s.id), {
             headers: { Authorization: 'Bearer ' + token },
           });
           var dl = await rl.json().catch(function () { return {}; });

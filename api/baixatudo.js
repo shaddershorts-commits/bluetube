@@ -78,33 +78,58 @@ module.exports = async function handler(req, res) {
   // compartilhado do Railway nunca vê um byte de mídia: o navegador baixa
   // direto do Cobalt (o túnel manda access-control-allow-origin: *).
   if (String(src.action || '') === 'link') {
+    // Aceita a URL completa (multi-plataforma) ou, por compatibilidade, o id de
+    // 11 chars do YouTube. No TikTok o id sozinho NÃO basta: o link carrega o
+    // @perfil, por isso a listagem devolve a url pronta de cada item.
+    const urlBruta = String(src.url || '').trim();
     const id = String(src.id || '').trim();
-    if (!/^[\w-]{11}$/.test(id)) return res.status(400).json({ error: 'id_invalido' });
+    let alvoUrl = null, rede = null;
+
+    if (urlBruta) {
+      const ok = urlBruta.match(/^https:\/\/(?:www\.)?(youtube\.com|youtu\.be|tiktok\.com|instagram\.com)\//i);
+      if (!ok) return res.status(400).json({ error: 'url_invalida' });
+      alvoUrl = urlBruta;
+      rede = /tiktok/i.test(ok[1]) ? 'tiktok' : /instagram/i.test(ok[1]) ? 'instagram' : 'youtube';
+    } else if (/^[\w-]{11}$/.test(id)) {
+      alvoUrl = `https://www.youtube.com/shorts/${id}`;
+      rede = 'youtube';
+    } else {
+      return res.status(400).json({ error: 'id_invalido' });
+    }
+
     const COBALT = (process.env.COBALT_API_URL || '').replace(/\/$/, '');
     if (!COBALT) return res.status(503).json({ error: 'motor_indisponivel' });
     const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
     if (process.env.COBALT_API_KEY) headers.Authorization = 'Api-Key ' + process.env.COBALT_API_KEY;
-    // 1080 primeiro, 720 só se não houver. Abaixo de HD preferimos falhar.
+
+    // CODEC POR REDE (medido em 03/08, não chutado):
+    //  YouTube  → h264 já entrega 1080x1920
+    //  TikTok   → h264 entrega só 576x1024; com H265 sobe pra 1080x1920
+    //  Instagram→ 720x1280 é o teto da plataforma (h265 não muda nada)
+    const tentativas = rede === 'tiktok'
+      ? [{ videoQuality: 'max', allowH265: true }, { videoQuality: 'max' }, { videoQuality: '720' }]
+      : [{ videoQuality: '1080', youtubeVideoCodec: 'h264' }, { videoQuality: '720', youtubeVideoCodec: 'h264' }];
+
     let ultimo = null;
-    for (const q of ['1080', '720']) {
+    for (const extra of tentativas) {
       try {
         const r = await fetch(COBALT + '/', {
           method: 'POST', headers,
-          body: JSON.stringify({
-            url: `https://www.youtube.com/shorts/${id}`,
-            videoQuality: q,
-            youtubeVideoCodec: 'h264',  // h264 = entrega direta, sem transcode
-            filenameStyle: 'basic',
-          }),
+          body: JSON.stringify({ url: alvoUrl, filenameStyle: 'basic', ...extra }),
           signal: AbortSignal.timeout(60000),
         });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && d.url) return res.status(200).json({ url: d.url, filename: d.filename || '', qualidade: q });
+        if (r.ok && d.url) {
+          return res.status(200).json({
+            url: d.url, filename: d.filename || '',
+            qualidade: extra.videoQuality, rede,
+          });
+        }
         ultimo = d?.error?.code || d?.status || `http_${r.status}`;
       } catch (e) { ultimo = e.message; }
     }
-    console.error('[baixatudo/link]', id, String(ultimo).slice(0, 160));
-    return res.status(502).json({ error: 'motor_falhou', detail: 'Não consegui esse Short agora. Os outros seguem normal.' });
+    console.error('[baixatudo/link]', rede, alvoUrl.slice(0, 60), String(ultimo).slice(0, 140));
+    return res.status(502).json({ error: 'motor_falhou', detail: 'Não consegui esse vídeo agora. Os outros seguem normal.' });
   }
 
   // ── action=listar (padrão): a partir daqui o link do canal é obrigatório

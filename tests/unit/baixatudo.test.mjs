@@ -48,11 +48,79 @@ test('reconhece as formas de link de canal e aponta pra aba /shorts', () => {
   }
 });
 
-test('recusa o que não é canal (vídeo avulso, vazio, outro site)', () => {
+test('recusa o que não é perfil (vídeo avulso do YT, vazio, site aleatório)', () => {
   for (const ruim of ['', null, undefined, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-                      'https://www.youtube.com/shorts/BUqlzukB1Mc', 'https://tiktok.com/@alguem', 'texto solto']) {
+                      'https://www.youtube.com/shorts/BUqlzukB1Mc', 'texto solto', 'https://vimeo.com/12345']) {
     assert.equal(_interno.urlDoCanal(ruim), null, `deveria recusar: ${ruim}`);
   }
+});
+
+// ── multi-plataforma (03/08) ────────────────────────────────────────────────
+test('reconhece perfil de TikTok e Instagram', () => {
+  const tt = _interno.resolverPerfil('https://www.tiktok.com/@artthuroficial_');
+  assert.equal(tt.plataforma, 'tiktok');
+  assert.equal(tt.url, 'https://www.tiktok.com/@artthuroficial_');
+  assert.equal(tt.perfil, '@artthuroficial_');
+
+  const ttComVideo = _interno.resolverPerfil('https://www.tiktok.com/@benji.gage/video/7643676827847757086');
+  assert.equal(ttComVideo.plataforma, 'tiktok', 'link de vídeo deve cair no perfil dele');
+  assert.equal(ttComVideo.url, 'https://www.tiktok.com/@benji.gage');
+
+  const ig = _interno.resolverPerfil('https://www.instagram.com/nasa/');
+  assert.equal(ig.plataforma, 'instagram');
+  assert.equal(ig.url, 'https://www.instagram.com/nasa/');
+});
+
+test('não confunde POST do Instagram com PERFIL', () => {
+  for (const post of ['https://www.instagram.com/reel/DZrtF6NNvqZ/',
+                      'https://www.instagram.com/p/ABC123/',
+                      'https://www.instagram.com/reels/XYZ/']) {
+    const r = _interno.resolverPerfil(post);
+    assert.notEqual(r?.perfil, '@reel', `tratou post como perfil: ${post}`);
+    assert.notEqual(r?.perfil, '@p');
+    assert.notEqual(r?.perfil, '@reels');
+  }
+});
+
+test('monta a URL do vídeo certa por plataforma', () => {
+  assert.equal(
+    _interno.urlDoVideo('youtube', { id: 'poUrVmuTt6E' }, '@x'),
+    'https://www.youtube.com/shorts/poUrVmuTt6E');
+  // No TikTok o id sozinho não basta: o link carrega o @perfil
+  assert.equal(
+    _interno.urlDoVideo('tiktok', { id: '7637662127272021269' }, '@artthuroficial_'),
+    'https://www.tiktok.com/@artthuroficial_/video/7637662127272021269');
+  assert.equal(
+    _interno.urlDoVideo('instagram', { id: 'DZrtF6NNvqZ' }, '@nasa'),
+    'https://www.instagram.com/reel/DZrtF6NNvqZ/');
+  // se o yt-dlp já devolveu url pronta, usa ela
+  assert.equal(
+    _interno.urlDoVideo('tiktok', { id: '1', url: 'https://www.tiktok.com/@a/video/9' }, '@b'),
+    'https://www.tiktok.com/@a/video/9');
+});
+
+test('cookies são independentes POR REDE (uma queimar não derruba as outras)', () => {
+  assert.match(FONTE, /BAIXATUDO_TIKTOK_COOKIES/);
+  assert.match(FONTE, /BAIXATUDO_IG_COOKIES/);
+  assert.doesNotMatch(FONTE, /process\.env\.YOUTUBE_COOKIES/, 'nunca a env do BaixaBlue');
+});
+
+test('TikTok pede H265 (é o que destrava 1080p; h264 dá 576x1024)', () => {
+  const bloco = FONTE_API.slice(FONTE_API.indexOf('const tentativas'), FONTE_API.indexOf('let ultimo'));
+  assert.ok(bloco.length > 20, 'bloco de tentativas não encontrado');
+  assert.match(bloco, /rede === 'tiktok'/, 'o codec tem que ser decidido por rede');
+  assert.match(bloco, /allowH265: true/, 'sem H265 o TikTok sai em 576x1024 — medido em 03/08');
+});
+
+test('action=link só aceita as 3 redes (nada de URL arbitrária)', async () => {
+  globalThis.fetch = dublar({ chamadas: [] });
+  const res = resFalso();
+  await vercelHandler(
+    { method: 'GET', headers: { authorization: 'Bearer tok' }, query: { action: 'link', url: 'https://evil.example.com/x' } },
+    res
+  );
+  assert.equal(res._status, 400);
+  assert.equal(res._json.error, 'url_invalida');
 });
 
 // ── 2. erros amigáveis ──────────────────────────────────────────────────────
@@ -209,10 +277,16 @@ test('o DOWNLOAD usa Cobalt, não yt-dlp direto', () => {
 });
 
 test('pede 1080 antes de 720 e nunca aceita menos', () => {
-  const m = FONTE_API.match(/for \(const q of \[([^\]]+)\]/);
-  assert.ok(m, 'cascata de qualidade não encontrada');
-  const qualidades = m[1].replace(/['\s]/g, '').split(',');
-  assert.deepEqual(qualidades, ['1080', '720'], 'a cascata deve ser 1080 → 720, sem degrau abaixo de HD');
+  const bloco = FONTE_API.slice(FONTE_API.indexOf('const tentativas'), FONTE_API.indexOf('let ultimo'));
+  assert.ok(bloco.length > 20, 'cascata de qualidade não encontrada');
+  const ordem = [...bloco.matchAll(/videoQuality: '(\w+)'/g)].map((m) => m[1]);
+  assert.ok(ordem.length >= 2, 'deve haver cascata, não uma tentativa só');
+  assert.ok(!ordem.includes('360') && !ordem.includes('480'),
+    'nenhum degrau abaixo de HD — preferimos falhar a entregar 360p disfarçado');
+  // no caminho não-TikTok a ordem é 1080 → 720
+  assert.ok(bloco.includes("videoQuality: '1080'") && bloco.includes("videoQuality: '720'"));
+  assert.ok(bloco.indexOf("'1080'") < bloco.indexOf("videoQuality: '720', youtubeVideoCodec"),
+    '1080 tem que ser tentado antes de 720');
 });
 
 test('pede h264 ao Cobalt (entrega direta, sem transcode)', () => {

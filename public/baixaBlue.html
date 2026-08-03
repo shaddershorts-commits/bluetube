@@ -216,8 +216,8 @@ footer a{color:var(--neon);text-decoration:none}
         </div>
       </div>
       <div style="flex:1;min-width:0;cursor:pointer" onclick="document.getElementById('btSwitch').click()">
-        <div style="font-family:var(--font);font-weight:800;font-size:13.5px;color:#fbbf24">⚡ BaixaTudo — o canal inteiro de uma vez</div>
-        <div style="font-family:var(--mono);font-size:10.5px;color:var(--text-sec);margin-top:2px">Cola o link do canal e baixa todos os Shorts em HD. Sem descaracterização — muito mais rápido.</div>
+        <div style="font-family:var(--font);font-weight:800;font-size:13.5px;color:#fbbf24">⚡ BaixaTudo — o perfil inteiro de uma vez</div>
+        <div style="font-family:var(--mono);font-size:10.5px;color:var(--text-sec);margin-top:2px">YouTube, TikTok e Instagram. Cola o link do perfil e baixa tudo na melhor qualidade que a rede tem.</div>
       </div>
       <span id="btChipAtivo" style="display:none;align-items:center;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:4px 11px;border-radius:100px;flex-shrink:0">ATIVO</span>
     </div>
@@ -225,8 +225,8 @@ footer a{color:var(--neon);text-decoration:none}
     <!-- MODO BAIXATUDO -->
     <div id="btMode" style="display:none">
       <div class="input-group">
-        <input id="btCanalUrl" type="url" class="url-input" placeholder="Cole o link do canal (ex: youtube.com/@nomedocanal)" autocomplete="off" spellcheck="false"/>
-        <button class="btn-fetch" id="btListarBtn" style="background:linear-gradient(135deg,#92400e,#fbbf24)">Procurar Shorts</button>
+        <input id="btCanalUrl" type="url" class="url-input" placeholder="Cole o link do perfil: youtube.com/@canal · tiktok.com/@perfil · instagram.com/perfil" autocomplete="off" spellcheck="false"/>
+        <button class="btn-fetch" id="btListarBtn" style="background:linear-gradient(135deg,#92400e,#fbbf24)">Procurar vídeos</button>
       </div>
       <div id="btStatus" style="font-family:var(--mono);font-size:11.5px;margin-top:10px;min-height:16px"></div>
 
@@ -238,11 +238,11 @@ footer a{color:var(--neon);text-decoration:none}
         </div>
         <div id="btLista" style="display:flex;flex-direction:column;gap:5px;max-height:340px;overflow-y:auto;padding-right:4px"></div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="btBaixarBtn" style="flex:1;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;border:none;border-radius:9px;padding:13px;font-family:var(--font);font-size:14px;font-weight:800;cursor:pointer">⬇ Baixar em HD</button>
+          <button id="btBaixarBtn" style="flex:1;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;border:none;border-radius:9px;padding:13px;font-family:var(--font);font-size:14px;font-weight:800;cursor:pointer">⬇ Baixar na melhor qualidade</button>
           <button id="btCancelarBtn" style="display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;border-radius:9px;padding:13px 18px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">Parar</button>
         </div>
       </div>
-      <div class="hint" style="margin-top:14px">Cada Short sai em <strong style="color:var(--text)">HD com o título original</strong>. Aqui <strong style="color:var(--text)">não</strong> passa pelo BlueMetadata — é o modo rápido. Pra repostar sem ser flagged, use o modo normal.</div>
+      <div class="hint" style="margin-top:14px">Cada vídeo sai com o <strong style="color:var(--text)">título original</strong>, na melhor qualidade que a rede oferece (YouTube 1080p · TikTok 1080p · Instagram 720p — teto do próprio Instagram). Aqui <strong style="color:var(--text)">não</strong> passa pelo BlueMetadata — é o modo rápido. Pra repostar sem ser flagged, use o modo normal.</div>
     </div>
 
     <!-- TABS modo URL / modo UPLOAD -->

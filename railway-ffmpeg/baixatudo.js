@@ -63,8 +63,15 @@ const POT_ARGS = process.env.BGUTIL_POT_BASE_URL ? ['--plugin-dirs', '/root/.con
 // android_vr/ios ("does not support cookies") e sobra zero formato. Por isso a
 // listagem tolera cookie ausente — e funciona melhor sem ele.
 // O yt-dlp exige o cabeçalho Netscape; sem ele o arquivo é rejeitado inteiro.
-function cookiesDoJob(dir) {
-  const bruto = process.env.BAIXATUDO_COOKIES || '';
+function cookiesDoJob(dir, plataforma) {
+  // UMA ENV POR REDE: queimar o cookie do Instagram não pode derrubar a
+  // listagem do YouTube nem a do TikTok. Nenhuma delas é a do BaixaBlue.
+  const porRede = {
+    youtube: process.env.BAIXATUDO_COOKIES,
+    tiktok: process.env.BAIXATUDO_TIKTOK_COOKIES,
+    instagram: process.env.BAIXATUDO_IG_COOKIES,
+  };
+  const bruto = (plataforma ? porRede[plataforma] : process.env.BAIXATUDO_COOKIES) || '';
   if (!bruto || bruto.length < 50) return null;
   try {
     let conteudo = bruto.replace(/\r\n?/g, '\n');
@@ -97,24 +104,57 @@ function rodar(cmd, args, { timeoutMs = 180000 } = {}) {
   });
 }
 
-// Aceita @handle, /channel/UC..., /c/nome, /user/nome — devolve a ABA /shorts.
-// Usar a aba oficial evita o erro que a Virais já cometeu: lá o corte era por
-// DURAÇÃO e os Shorts de 91-180s foram descartados. Aqui o próprio YouTube diz
-// o que é Short.
+// Resolve o link do PERFIL nas 3 plataformas → { plataforma, url }.
+// YouTube: usa a ABA /shorts (lista oficial). Isso evita o erro que a Virais já
+// cometeu — lá o corte era por DURAÇÃO e Shorts de 91-180s foram descartados.
+// TikTok/Instagram: a própria página do perfil já é a lista de vídeos.
 function urlDoCanal(bruto) {
+  const r = resolverPerfil(bruto);
+  return r ? r.url : null;   // compat: quem só quer a URL
+}
+
+function resolverPerfil(bruto) {
   const u = String(bruto || '').trim();
   if (!u) return null;
-  if (/^@[A-Za-z0-9._-]+$/.test(u)) return `https://www.youtube.com/${u}/shorts`;
-  let m = u.match(/youtube\.com\/(@[A-Za-z0-9._-]+)/i);
-  if (m) return `https://www.youtube.com/${m[1]}/shorts`;
+
+  // ── TikTok ──
+  let m = u.match(/tiktok\.com\/@([A-Za-z0-9._-]+)/i);
+  if (m) return { plataforma: 'tiktok', perfil: '@' + m[1], url: `https://www.tiktok.com/@${m[1]}` };
+
+  // ── Instagram (perfil, não post) ──
+  m = u.match(/instagram\.com\/(?!p\/|reel\/|reels\/|stories\/)([A-Za-z0-9._]+)/i);
+  if (m) return { plataforma: 'instagram', perfil: '@' + m[1], url: `https://www.instagram.com/${m[1]}/` };
+
+  // ── YouTube ──
+  if (/^@[A-Za-z0-9._-]+$/.test(u)) return { plataforma: 'youtube', perfil: u, url: `https://www.youtube.com/${u}/shorts` };
+  m = u.match(/youtube\.com\/(@[A-Za-z0-9._-]+)/i);
+  if (m) return { plataforma: 'youtube', perfil: m[1], url: `https://www.youtube.com/${m[1]}/shorts` };
   m = u.match(/youtube\.com\/(channel\/UC[A-Za-z0-9_-]{20,})/i);
-  if (m) return `https://www.youtube.com/${m[1]}/shorts`;
+  if (m) return { plataforma: 'youtube', perfil: m[1], url: `https://www.youtube.com/${m[1]}/shorts` };
   m = u.match(/youtube\.com\/((?:c|user)\/[A-Za-z0-9._-]+)/i);
-  if (m) return `https://www.youtube.com/${m[1]}/shorts`;
+  if (m) return { plataforma: 'youtube', perfil: m[1], url: `https://www.youtube.com/${m[1]}/shorts` };
+
   return null;
 }
 
-function amigavel(msg) {
+// Monta a URL do vídeo a partir do que o yt-dlp devolveu na listagem. O
+// download precisa da URL COMPLETA (no TikTok o id sozinho não basta — o link
+// carrega o @perfil).
+function urlDoVideo(plataforma, entrada, perfil) {
+  if (entrada.url && /^https?:\/\//.test(entrada.url)) return entrada.url;
+  if (plataforma === 'youtube') return `https://www.youtube.com/shorts/${entrada.id}`;
+  if (plataforma === 'tiktok') return `https://www.tiktok.com/${perfil}/video/${entrada.id}`;
+  if (plataforma === 'instagram') return `https://www.instagram.com/reel/${entrada.id}/`;
+  return null;
+}
+
+// Thumbnail: no YouTube dá pra montar por id; nas outras vem do próprio yt-dlp.
+function thumbDe(plataforma, entrada) {
+  if (plataforma === 'youtube') return `https://i.ytimg.com/vi/${entrada.id}/hqdefault.jpg`;
+  return entrada.thumbnail || entrada.thumbnails?.[0]?.url || null;
+}
+
+function amigavel(msg, plataforma) {
   // Mensagem SEM jargão: quem lê é criador, não operador. O diagnóstico
   // técnico (motor fora, cookie etc) vive no /baixatudo-health.
   if (/Sign in to confirm|not a bot/i.test(msg)) return { status: 503, error: 'bot_check', detail: 'O YouTube pediu verificação agora. Tenta de novo em alguns minutos.' };
@@ -123,7 +163,12 @@ function amigavel(msg) {
   if (/Requested format is not available|No video formats found/i.test(msg)) {
     return { status: 422, error: 'sem_hd', detail: 'Esse Short não tem versão HD disponível no YouTube.' };
   }
-  if (/does not have|not found|Unable to recognize|Unable to download webpage/i.test(msg)) return { status: 404, error: 'canal_nao_encontrado', detail: 'Não achei esse canal — confere o link, ou ele não tem Shorts públicos.' };
+  if (/login required|requested content is not available|rate.?limit reached|Restricted Video|You need to log in/i.test(msg)) {
+    return { status: 503, error: 'perfil_bloqueado', detail: (plataforma === 'instagram'
+      ? 'O Instagram exigiu login pra ler esse perfil. Perfis públicos costumam funcionar — se persistir, me avisa.'
+      : 'A rede exigiu login pra ler esse perfil agora. Tenta de novo em alguns minutos.') };
+  }
+  if (/does not have|not found|Unable to recognize|Unable to download webpage|Unable to extract/i.test(msg)) return { status: 404, error: 'canal_nao_encontrado', detail: 'Não achei esse perfil — confere o link, ou ele não tem vídeos públicos.' };
   if (/private|unavailable|removed|age.?restricted/i.test(msg)) return { status: 404, error: 'indisponivel', detail: 'Esse vídeo está privado, foi removido ou tem restrição.' };
   if (/timeout/i.test(msg)) return { status: 504, error: 'timeout', detail: 'Demorou demais. Tenta de novo.' };
   return { status: 500, error: 'falhou', detail: msg.slice(0, 200) };
@@ -144,7 +189,7 @@ router.get('/baixatudo-health', async (req, res) => {
   cors(res);
   const dir = novoDir('btsaude');
   try {
-    const cookies = cookiesDoJob(dir);
+    const cookies = cookiesDoJob(dir, 'youtube');
     const args = [...POT_ARGS, '--flat-playlist', '--dump-single-json',
       '--playlist-end', '1', '--no-warnings', '--force-ipv4', '--socket-timeout', '20'];
     if (cookies) args.push('--cookies', cookies);
@@ -168,13 +213,18 @@ router.get('/baixatudo-health', async (req, res) => {
 // --flat-playlist: só metadata, não baixa vídeo nenhum. Rápido e sem custo.
 router.post('/baixatudo-list', async (req, res) => {
   cors(res);
-  const canal = urlDoCanal(req.body && req.body.channel_url);
-  if (!canal) return res.status(400).json({ error: 'canal_invalido', detail: 'Cole o link do canal (ex: youtube.com/@nomedocanal).' });
+  const alvo = resolverPerfil(req.body && req.body.channel_url);
+  if (!alvo) {
+    return res.status(400).json({
+      error: 'canal_invalido',
+      detail: 'Cole o link do perfil: youtube.com/@canal, tiktok.com/@perfil ou instagram.com/perfil.',
+    });
+  }
 
   const limite = Math.min(parseInt((req.body && req.body.limite) || TETO_SHORTS, 10) || TETO_SHORTS, TETO_SHORTS);
   const dir = novoDir('btlist');
   try {
-    const cookies = cookiesDoJob(dir);
+    const cookies = cookiesDoJob(dir, alvo.plataforma);
     const args = [
       ...POT_ARGS,
       '--flat-playlist', '--dump-single-json',
@@ -183,42 +233,44 @@ router.post('/baixatudo-list', async (req, res) => {
       '--socket-timeout', '20',
     ];
     if (cookies) args.push('--cookies', cookies);
-    args.push(canal);
+    args.push(alvo.url);
 
-    const { saida } = await rodar('yt-dlp', args, { timeoutMs: 90000 });
+    // Perfil grande demora mais que canal do YouTube — o dono aceitou abrir mão
+    // de um pouco de tempo em troca de pegar tudo.
+    const { saida } = await rodar('yt-dlp', args, { timeoutMs: 240000 });
     const dados = JSON.parse(saida);
-    const shorts = (Array.isArray(dados.entries) ? dados.entries : [])
+
+    const itens = (Array.isArray(dados.entries) ? dados.entries : [])
       .filter((e) => e && e.id)
       .map((e) => ({
         id: e.id,
-        titulo: e.title || 'Short',
+        titulo: (e.title || e.description || '').toString().trim().slice(0, 120) || alvo.plataforma,
+        url: urlDoVideo(alvo.plataforma, e, alvo.perfil),
         duracao: e.duration || null,
         views: e.view_count || null,
-        // hqdefault existe pra TODO vídeo. O oardefault (vertical de Short) só
-        // existe em parte deles — dava dezenas de 404 no console do dono.
-        thumb: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
-      }));
+        thumb: thumbDe(alvo.plataforma, e),
+      }))
+      .filter((x) => x.url);
 
     limpar(dir);
     return res.status(200).json({
-      canal: dados.channel || dados.uploader || dados.title || 'Canal',
-      canal_url: canal,
-      total: shorts.length,
-      teto_atingido: shorts.length >= limite,
-      shorts,
+      plataforma: alvo.plataforma,
+      canal: dados.channel || dados.uploader || dados.title || alvo.perfil,
+      canal_url: alvo.url,
+      total: itens.length,
+      teto_atingido: itens.length >= limite,
+      shorts: itens,
     });
   } catch (e) {
     limpar(dir);
     const m = String(e.message || '');
-    console.error('[baixatudo-list]', m.slice(0, 250));
-    const f = amigavel(m);
-    return res.status(f.status).json({ error: f.error, detail: f.detail });
+    console.error('[baixatudo-list]', alvo.plataforma, m.slice(0, 250));
+    const f = amigavel(m, alvo.plataforma);
+    return res.status(f.status).json({ error: f.error, detail: f.detail, plataforma: alvo.plataforma });
   }
 });
-
-// ── BAIXAR UM SHORT EM HD ─────────────────────────────────────────────────
 
 module.exports = router;
 // helpers puros expostos pros testes (o router segue sendo o export principal —
 // express Router é função, então pendurar propriedade não afeta o app.use)
-module.exports._interno = { urlDoCanal, amigavel, TETO_SHORTS, TETO_SIMULTANEO };
+module.exports._interno = { urlDoCanal, resolverPerfil, urlDoVideo, amigavel, TETO_SHORTS, TETO_SIMULTANEO };
