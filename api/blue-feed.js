@@ -3,6 +3,26 @@ const { cacheGetOrSet, cacheDel } = require('./_helpers/cache');
 const { checkBan } = require('./_helpers/checkBan');
 const { dbRetry } = require('./_helpers/db');
 
+// ── JANELA DE TESTE do vídeo novo (fix 2026-08-03) ─────────────────────────
+// A descoberta exigia piso de views (80 no feed, 100 no Descobrir). Só que
+// vídeo nasce com 0 views e a ÚNICA porta pra conseguir as primeiras era
+// justamente a descoberta → deadlock: conteúdo novo só era visto por quem já
+// seguia o criador (média de 1,5 follows por perfil = ninguém).
+// Medido no banco em 03/08: 47 dos 110 vídeos ativos (43%) estavam invisíveis.
+// Agora todo vídeo publicado nos últimos 7 dias entra na roda mesmo sem o
+// piso — é a "fase de teste" que o schema já previa (test_views/test_phase) e
+// que nunca tinha sido ligada. Passada a janela, o piso volta a valer e só
+// sobrevive o que engajou.
+// Sintaxe `and=(or(...))` (e não `or=`) de propósito: o caminho FRESH também
+// usa `or=` pro cursor de paginação, e dois `or=` na mesma query se atropelam.
+// Os 4 formatos foram testados contra o banco de produção antes deste commit.
+const JANELA_TESTE_MS = 7 * 24 * 60 * 60 * 1000;
+function pisoOuNovo(minViews) {
+  if (!minViews || minViews <= 0) return '';
+  const desde = encodeURIComponent(new Date(Date.now() - JANELA_TESTE_MS).toISOString());
+  return `&and=(or(views.gte.${minViews},created_at.gte.${desde}))`;
+}
+
 // Wrapper minimo: retry+circuit-breaker em fetches criticos ao Supabase.
 // So joga pro retry em 5xx/network (client errors 4xx nao disparam o breaker).
 async function fetchDb(url, init) {
@@ -740,10 +760,11 @@ module.exports = async function handler(req, res) {
         segVids = segVids.slice(0, nSeg);
       }
       // 2) descoberta: NÃO seguidos com 80+ views (score primeiro = qualidade)
+      //    OU publicados na JANELA DE TESTE (ver JANELA_TESTE_MS abaixo).
       const excl = [...new Set([...following, ...blocked, ...(uid ? [uid] : [])])];
       const notIn = excl.length ? `&user_id=not.in.(${excl.join(',')})` : '';
       const wantExp = Math.max(fLimit - segVids.length, fLimit - nSeg);
-      const eR = await fetch(`${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${notIn}&views=gte.80&order=score.desc.nullslast,views.desc.nullslast&limit=${wantExp + 1}&offset=${expOff}&select=${F2}`, { headers: h });
+      const eR = await fetch(`${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${notIn}${pisoOuNovo(80)}&order=score.desc.nullslast,views.desc.nullslast&limit=${wantExp + 1}&offset=${expOff}&select=${F2}`, { headers: h });
       let expVids = eR.ok ? await eR.json() : [];
       const expHasMore = expVids.length > wantExp;
       expVids = expVids.slice(0, wantExp);
@@ -1138,8 +1159,10 @@ module.exports = async function handler(req, res) {
     // ═══════════════════════════════════════════════════════════════════════
     // min_views (opcional): o Descobrir do app manda 100 — só vídeo validado
     // aparece na vitrine (user 2026-07-24). Sem o param, feed normal intacto.
+    // Agora com JANELA DE TESTE: vídeo recém-publicado entra mesmo sem o piso,
+    // senão não teria como conseguir a primeira view (ver pisoOuNovo).
     const minViews = parseInt(req.query.min_views) || 0;
-    const minViewsQ = minViews > 0 ? `&views=gte.${minViews}` : '';
+    const minViewsQ = pisoOuNovo(minViews);
     let url = `${SU}/rest/v1/blue_videos?status=eq.active&video_url=neq.null${excludeSelf}${minViewsQ}&order=created_at.desc,id.desc&limit=${limit * 3}&select=${FEED_FIELDS}`;
     if (cur.ts) {
       // encodeURIComponent obrigatorio: created_at vem do banco com +00:00 e
