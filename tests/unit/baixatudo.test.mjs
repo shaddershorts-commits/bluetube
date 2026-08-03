@@ -152,23 +152,29 @@ test('cookies do BaixaTudo são PRÓPRIOS — não herdam os do BaixaBlue', () =
     'não pode cair na env do BaixaBlue: cookie do lote queimar não pode derrubar o download avulso');
 });
 
+const FONTE_API = readFileSync(new URL('../../api/baixatudo.js', import.meta.url), 'utf8');
+
+test('nenhum byte de mídia passa pelo container compartilhado', () => {
+  assert.doesNotMatch(FONTE, /baixatudo-video/,
+    'o Railway só lista: se voltar rota de download, a mídia volta a atravessar o container do BaixaBlue');
+  assert.match(FONTE, /baixatudo-list/, 'a listagem tem que continuar aqui');
+});
+
 test('o DOWNLOAD usa Cobalt, não yt-dlp direto', () => {
-  const trecho = FONTE.slice(FONTE.indexOf("router.get('/baixatudo-video'"));
-  assert.doesNotMatch(trecho, /rodar\('yt-dlp'/,
-    'yt-dlp direto bate em n-challenge/PO Token nesta imagem — o download é do Cobalt');
-  assert.match(trecho, /pedirAoCobalt/, 'deve pedir o link ao Cobalt');
+  assert.match(FONTE_API, /COBALT_API_URL/, 'o motor é o Cobalt self-hosted');
+  assert.doesNotMatch(FONTE_API, /yt-dlp/,
+    'yt-dlp direto bate em n-challenge/PO Token nesta imagem e só entrega 360p');
 });
 
 test('pede 1080 antes de 720 e nunca aceita menos', () => {
-  const trecho = FONTE.slice(FONTE.indexOf("router.get('/baixatudo-video'"));
-  const m = trecho.match(/for \(const q of \[([^\]]+)\]/);
+  const m = FONTE_API.match(/for \(const q of \[([^\]]+)\]/);
   assert.ok(m, 'cascata de qualidade não encontrada');
   const qualidades = m[1].replace(/['\s]/g, '').split(',');
   assert.deepEqual(qualidades, ['1080', '720'], 'a cascata deve ser 1080 → 720, sem degrau abaixo de HD');
 });
 
 test('pede h264 ao Cobalt (entrega direta, sem transcode)', () => {
-  assert.match(FONTE, /youtubeVideoCodec:\s*'h264'/, 'vp9/av1 forçariam transcode e matariam a velocidade');
+  assert.match(FONTE_API, /youtubeVideoCodec:\s*'h264'/, 'vp9/av1 forçariam transcode e matariam a velocidade');
 });
 
 test('o módulo isolado não importa nada do server.js', () => {

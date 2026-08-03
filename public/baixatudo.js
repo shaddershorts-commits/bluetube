@@ -13,7 +13,10 @@
 (function () {
   'use strict';
 
-  var RAILWAY_BASE = 'https://bluetube-production.up.railway.app/baixatudo-video';
+  // O download NÃO passa pelo nosso servidor: pedimos o link HD à nossa API
+  // (que fala com o Cobalt self-hosted) e o navegador baixa direto do túnel.
+  // Assim o container compartilhado do BaixaBlue não vê um byte de mídia.
+  var API_LINK = '/api/baixatudo?action=link&id=';
   var lista = [];        // shorts listados
   var baixando = false;
   var cancelar = false;
@@ -181,13 +184,22 @@
       var venceu = false;
       for (var tentativa = 0; tentativa < 3 && !venceu && !cancelar; tentativa++) {
         try {
-          var url = RAILWAY_BASE + '?id=' + encodeURIComponent(s.id) + '&nome=' + encodeURIComponent(s.titulo);
-          var r = await fetch(url);
-          if (r.status === 429) {                       // servidor ocupado: espera e repete
+          // 1) nossa API pede o link HD ao Cobalt
+          var token = localStorage.getItem('bt_token') || '';
+          var rl = await fetch(API_LINK + encodeURIComponent(s.id), {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var dl = await rl.json().catch(function () { return {}; });
+          if (rl.status === 429) {
             statusItem(i, '⏳ fila', '#7d92b8');
             await new Promise(function (res) { setTimeout(res, 4000); });
             continue;
           }
+          if (!rl.ok || !dl.url) throw new Error(dl.error || 'sem link');
+
+          // 2) o navegador baixa direto do túnel (nosso servidor fica fora)
+          statusItem(i, '⬇ ' + (dl.qualidade || 'HD') + 'p', '#fbbf24');
+          var r = await fetch(dl.url);
           if (!r.ok) throw new Error('http ' + r.status);
           var blob = await r.blob();
           if (blob.size < 1024) throw new Error('vazio');
