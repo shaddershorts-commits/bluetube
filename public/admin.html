@@ -735,8 +735,11 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <!-- BAIXATUDO (2026-08-03) — saúde própria, sem depender do health do BaixaBlue -->
     <div class="section" id="baixatudoSection">
       <div class="section-header">
-        <div class="section-title">⚡ BaixaTudo <span class="section-subtitle">— motores, fila e cache</span></div>
-        <button onclick="loadBaixaTudoHealth()" style="font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.2);border-radius:6px;padding:5px 12px;cursor:pointer">Verificar agora</button>
+        <div class="section-title">⚡ Downloads <span class="section-subtitle">— dá pra baixar? e por quais caminhos</span></div>
+        <div style="display:flex;gap:6px">
+          <button onclick="loadVeredito()" style="font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:6px;padding:5px 12px;cursor:pointer">Dá pra baixar?</button>
+          <button onclick="loadBaixaTudoHealth()" style="font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.2);border-radius:6px;padding:5px 12px;cursor:pointer">Motores do BaixaTudo</button>
+        </div>
       </div>
       <div id="baixatudoHealth" style="font-family:var(--mono);font-size:12px;color:var(--dim);padding:6px 0">Clique em "Verificar agora".</div>
     </div>
@@ -1942,6 +1945,38 @@ async function triggerEmailMarketing(){
 async function loadModeration(){loadModeracaoAvancada();}
 
 // ── BAIXATUDO: saúde própria (não compartilha nada com o health do BaixaBlue)
+// ── "DÁ PRA BAIXAR?" — a pergunta que importa, respondida primeiro ────────
+// 04/08: o card antigo listava 6 provedores e 4 vermelhos, e a leitura natural
+// era "está tudo quebrado" — enquanto os downloads saíam em 1080p. Provedor é
+// camada de RESERVA; basta uma. Agora o veredito vem no topo, grande, e as
+// camadas viram detalhe de quem quer olhar.
+async function loadVeredito(){
+  const box=document.getElementById('baixatudoHealth');
+  box.innerHTML='<span style="color:var(--dim)">⏳ testando os caminhos de download…</span>';
+  try{
+    const r=await fetch('/api/audit-baixablue');
+    const d=await r.json().catch(()=>({}));
+    const v=d.veredito||{};
+    const ok=!!v.da_pra_baixar;
+    const rede=d.diagnostico_rede;
+    const linhas=(d.results||[]).filter(x=>x.provider!=='railway_media').map(x=>{
+      const m=x.status==='ok'?'✅':(x.status==='skip'?'⏭':'❌');
+      const cor=x.status==='ok'?'var(--green)':'var(--dim)';
+      return `&nbsp;&nbsp;<span style="color:${cor}">${m} ${x.provider}</span>`+
+             (x.amostra_kb?` <span style="color:var(--dim)">${x.amostra_kb} KB</span>`:'')+
+             (x.error?` <span style="color:var(--dim)">— ${String(x.error).slice(0,60)}</span>`:'');
+    }).join('<br>');
+    box.innerHTML=
+      `<div style="font-size:15px;font-weight:700;color:${ok?'var(--green)':'var(--red)'};margin-bottom:4px">`+
+        `${ok?'✅ Dá pra baixar':'🚨 NÃO dá pra baixar'}</div>`+
+      `<div style="color:var(--dim);margin-bottom:10px">${v.resumo||''}</div>`+
+      `<div style="color:var(--dim);font-size:11px;margin-bottom:4px">camadas de reserva: ${v.camadas_de_reserva||'?'} · vídeo testado: ${d.test_video_id||'?'}</div>`+
+      linhas+
+      (rede?`<div style="margin-top:10px;padding:8px 10px;border-radius:6px;background:rgba(150,190,230,.05);color:var(--dim);font-size:11px">`+
+        `🌐 ${rede.status==='ok'?'IP do container consegue puxar mídia':'IP do container bloqueado pelo Google (esperado — não é queda)'}</div>`:'');
+  }catch(e){box.innerHTML='<span style="color:var(--red)">✕ erro de conexão</span>';}
+}
+
 async function loadBaixaTudoHealth(){
   const box=document.getElementById('baixatudoHealth');
   box.innerHTML='<span style="color:var(--dim)">⏳ testando motores…</span>';

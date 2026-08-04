@@ -318,8 +318,13 @@ module.exports = async function handler(req, res) {
   // Log cada resultado
   await Promise.all(results.map(logResult));
 
-  // Detecta providers com 2+ falhas consecutivas (incluindo essa)
-  const failuresEsteRun = results.filter(r => r.status === 'fail').map(r => r.provider);
+  // Detecta providers com 2+ falhas consecutivas (incluindo essa).
+  // railway_media fica de fora: ele é diagnóstico de rede e é vermelho por
+  // natureza (Google bloqueia IP de datacenter). Alertar por ele todo dia
+  // treinaria o dono a ignorar o alerta — que é como um alarme morre.
+  const failuresEsteRun = results
+    .filter(r => r.status === 'fail' && r.provider !== 'railway_media')
+    .map(r => r.provider);
   const alertas = [];
   for (const provider of failuresEsteRun) {
     const consec = await getConsecutiveFailures(provider);
@@ -344,14 +349,39 @@ module.exports = async function handler(req, res) {
     }).catch((e) => console.error('[audit-baixablue] email falhou:', e.message));
   }
 
+  // ── VEREDITO DO PRODUTO (vem PRIMEIRO, de propósito) ────────────────────
+  // Lição de 04/08: eu devolvi "4 de 6 provedores vermelhos" e o dono
+  // concluiu, com razão, que o sistema estava quebrado — quando na verdade os
+  // downloads estavam saindo em 1080p. Provedor é CAMADA DE RESERVA: a cadeia
+  // precisa de UMA funcionando. A pergunta que importa é "dá pra baixar?", e
+  // ela tem que estar no topo da resposta, não escondida numa contagem.
+  const entregam = results.filter((r) => r.status === 'ok' && r.provider !== 'railway_media');
+  const daPraBaixar = entregam.length > 0;
+  const veredito = {
+    da_pra_baixar: daPraBaixar,
+    resumo: daPraBaixar
+      ? `Downloads funcionando (${entregam.length} caminho(s) entregando bytes: ${entregam.map((r) => r.provider).join(', ')}).`
+      : 'NENHUM caminho está entregando bytes — os downloads devem estar falhando pro usuário.',
+    camadas_de_reserva: `${entregam.length} de ${results.filter((r) => r.provider !== 'railway_media').length}`,
+  };
+
+  // railway_media não é um provedor: é um diagnóstico de rede. O Google
+  // bloqueia IP de datacenter na mídia — isso é permanente e esperado, não
+  // uma falha nova. Fica separado pra não contaminar a contagem.
+  const diagnosticoRede = results.find((r) => r.provider === 'railway_media');
+
   return res.status(200).json({
     ok: true,
+    veredito,
     duracao_ms: Date.now() - startTs,
     test_video_id: TEST_VIDEO_ID,
+    diagnostico_rede: diagnosticoRede
+      ? { ...diagnosticoRede, nota: 'Esperado ficar vermelho: o Google bloqueia IP de datacenter. Não indica queda.' }
+      : null,
     results,
     alertas,
-    healthy_providers: results.filter(r => r.status === 'ok').length,
-    failed_providers: results.filter(r => r.status === 'fail').length,
+    healthy_providers: entregam.length,
+    failed_providers: results.filter((r) => r.status === 'fail' && r.provider !== 'railway_media').length,
   });
 };
 

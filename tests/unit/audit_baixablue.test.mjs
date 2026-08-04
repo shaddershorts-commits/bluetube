@@ -62,6 +62,30 @@ test('provedor sem chave configurada não vira falso verde', () => {
   }
 });
 
+// ── REGRESSÃO 04/08: o painel assustou sem informar ────────────────────────
+// Devolvi "4 de 6 vermelhos" e o dono concluiu que o sistema estava quebrado —
+// enquanto os downloads saíam em 1080p. Provedor é camada de RESERVA: basta
+// uma entregando. A resposta tem que dizer isso antes de qualquer contagem.
+test('a resposta diz PRIMEIRO se dá pra baixar', () => {
+  assert.match(FONTE, /da_pra_baixar/, 'o veredito do produto tem que existir');
+  const i = FONTE.indexOf('veredito,');
+  const j = FONTE.indexOf('results,', i);
+  assert.ok(i > 0 && j > i, 'o veredito precisa vir ANTES da lista de provedores na resposta');
+});
+
+test('basta UM caminho entregando pra considerar que dá pra baixar', () => {
+  const bloco = FONTE.slice(FONTE.indexOf('const entregam ='), FONTE.indexOf('const veredito'));
+  assert.match(bloco, /entregam\.length > 0/, 'a cadeia precisa de um só, não de todos');
+});
+
+test('o diagnóstico de rede não conta como provedor caído', () => {
+  // railway_media é vermelho por natureza (Google bloqueia datacenter).
+  // Contar ele como falha inflava o pânico e treinaria o dono a ignorar alerta.
+  assert.match(FONTE, /r\.provider !== 'railway_media'/, 'precisa sair da contagem');
+  const alerta = FONTE.slice(FONTE.indexOf('const failuresEsteRun'), FONTE.indexOf('const alertas'));
+  assert.match(alerta, /!== 'railway_media'/, 'e não pode disparar email todo dia');
+});
+
 test('o resultado de cada checagem é gravado pra dar histórico', () => {
   assert.match(FONTE, /download_health_log/, 'sem histórico não dá pra ver degradação chegando');
   assert.match(FONTE, /getConsecutiveFailures/, 'alerta só depois de N falhas evita alarme por soluço');
