@@ -2564,7 +2564,7 @@ app.get('/cookies-health', async (req, res) => {
     '--no-playlist',
     '--no-warnings',
     '--socket-timeout', '15',
-    '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+    '--extractor-args', 'youtube:player_client=visionos,android_vr',
     TEST_URL,
   ];
 
@@ -2682,13 +2682,13 @@ async function ytdlpFallbackStream(req, res, ytUrl, filename) {
       // (single file, sem merge), depois separados (precisa ffmpeg merge),
       // depois qualquer best disponível. Alguns clients só retornam format 18
       // (360p mp4 combinado), o seletor velho rejeitava.
-      '-f', 'best[ext=mp4][height<=720]/best[height<=720]/bv*+ba/best',
+      '-f', 'bv*[height<=720][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=720]+ba/best[ext=mp4][height<=720]/best[height<=720]/bv*+ba/best',
       '--merge-output-format', 'mp4',
       '--no-playlist',
       '--no-warnings',
       '--no-check-certificate',
       '--force-ipv4',
-      '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+      '--extractor-args', 'youtube:player_client=visionos,android_vr',
       '-o', outputFile,
       ytUrl
     ];
@@ -3149,13 +3149,16 @@ app.post('/youtube-process', async (req, res) => {
       // Agora: tenta MP4 combinado <=1080 -> DASH <=1080 -> best [2026-05-19]
       const ytArgs = [
         ...POT_CLI_ARGS,
-        '-f', 'best[ext=mp4][height<=1080]/best[height<=1080]/bv*[height<=1080]+ba/bv*+ba/best',
+        // 04/08: com os clients consertados, o DASH real voltou a aparecer.
+        // Prioriza avc1+mp4a de proposito — AV1/Opus quebra em Premiere,
+        // player nativo do Windows e iPhone antigo.
+        '-f', 'bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=1080]+ba/best[ext=mp4][height<=1080]/best[height<=1080]/bv*+ba/best',
         '--merge-output-format', 'mp4',
         '--no-playlist',
         '--no-warnings',
         '--no-check-certificate',
         '--force-ipv4',
-        '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+        '--extractor-args', 'youtube:player_client=visionos,android_vr',
         '-o', inFilePattern,
         youtube_url
       ];
@@ -3422,7 +3425,7 @@ app.post('/download-youtube', async (req, res) => {
   const q = String(quality || '720');
   let format;
   if (q === 'max' || q === 'best' || q === '1080') {
-    format = 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/bv+ba/b';
+    format = 'bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/bv+ba/b';
   } else if (q === '720') {
     format = 'bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv+ba/b';
   } else if (q === '480') {
@@ -3436,7 +3439,7 @@ app.post('/download-youtube', async (req, res) => {
   // Player clients ordenados pelos que MENOS triggam bot-check em IPs datacenter
   // em 2026: tv_embedded, android_vr, android_testsuite, ios.
   // Removidos web_safari + android_creator (triggam bot-check no Railway).
-  const extractorArgs = 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios';
+  const extractorArgs = 'youtube:player_client=visionos,android_vr';
   const jobCookies = writeJobCookies(dir);
 
   try {
@@ -3726,14 +3729,14 @@ async function bluelensDownloadChain(youtubeUrl, dir, log) {
         const ytArgs = [
           ...POT_CLI_ARGS,
           '--cookies', jobCookies,
-          '-f', 'best[ext=mp4][height<=720]/best[height<=720]/best',
+          '-f', 'bv*[height<=720][vcodec^=avc1]+ba[acodec^=mp4a]/bv*[height<=720]+ba/best[ext=mp4][height<=720]/best[height<=720]/best',
           '--merge-output-format', 'mp4',
           '--no-playlist',
           '--no-warnings',
           '--no-check-certificate',
           '--force-ipv4',
           '--socket-timeout', '30',
-          '--extractor-args', 'youtube:player_client=tv_embedded,android_vr,android_testsuite,ios',
+          '--extractor-args', 'youtube:player_client=visionos,android_vr',
           '-o', candidateFile,
           youtubeUrl,
         ];
