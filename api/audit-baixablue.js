@@ -25,9 +25,39 @@ const COBALT_KEY = process.env.COBALT_API_KEY;
 const RAILWAY_FFMPEG_URL = process.env.RAILWAY_FFMPEG_URL;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
-const TEST_VIDEO_ID = 'dQw4w9WgXcQ';
+// ⚠️ LIÇÃO DE 03/08: o vigia usava SÓ o dQw4w9WgXcQ — que é justamente o
+// vídeo com tratamento especial no Google e funciona quando todo o resto
+// falha. Resultado: 5 provedores "verdes" com o Cobalt caído há semanas e o
+// download de produção levando 45s. Vigia que testa a exceção não vale nada.
+// Agora: pool variado (Shorts + vídeo comum), sorteado por hora do dia pra
+// cobrir casos diferentes ao longo do tempo.
+const POOL_VIDEOS = [
+  'NW0dJ9ejxKE',  // Short vertical
+  'eR4FtXPLxuE',  // Short vertical
+  'poUrVmuTt6E',  // Short vertical
+  '9bZkp7q19f0',  // vídeo comum
+  'kJQP7kiw5Fk',  // vídeo comum
+];
+const TEST_VIDEO_ID = POOL_VIDEOS[new Date().getUTCHours() % POOL_VIDEOS.length];
 const TEST_VIDEO_URL = 'https://www.youtube.com/watch?v=' + TEST_VIDEO_ID;
 const TIMEOUT_MS = 30000;
+
+// ⚠️ LIÇÃO 2: "o provedor respondeu" ≠ "o download funciona". O Cobalt
+// devolvia URL e era marcado OK enquanto os bytes não vinham. Agora todo
+// provedor precisa ENTREGAR BYTES pra passar. 256 KB é suficiente e barato.
+const AMOSTRA_BYTES = 262144;
+async function entregaBytes(url) {
+  try {
+    const r = await fetch(url, {
+      headers: { Range: 'bytes=0-' + (AMOSTRA_BYTES - 1), 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!r.ok) return { ok: false, motivo: 'http ' + r.status };
+    const b = Buffer.from(await r.arrayBuffer());
+    if (b.length < 10000) return { ok: false, motivo: 'só ' + b.length + ' bytes' };
+    return { ok: true, kb: Math.round(b.length / 1024) };
+  } catch (e) { return { ok: false, motivo: String(e.message).slice(0, 60) }; }
+}
 
 const supaH = SUPABASE_SERVICE_KEY ? {
   apikey: SUPABASE_SERVICE_KEY,
@@ -49,10 +79,15 @@ async function testCobalt() {
     const duration_ms = Date.now() - t0;
     if (!r.ok) return { provider: 'cobalt', status: 'fail', error: `HTTP ${r.status}`, duration_ms };
     const d = await r.json();
-    if (d.status === 'tunnel' || d.status === 'redirect' || d.url) {
-      return { provider: 'cobalt', status: 'ok', duration_ms };
+    if (!d.url) {
+      return { provider: 'cobalt', status: 'fail', error: `sem url: ${(d.error?.code || d.status || 'unknown')}`, duration_ms };
     }
-    return { provider: 'cobalt', status: 'fail', error: `unexpected response: ${(d.error?.code || d.status || 'unknown')}`, duration_ms };
+    // devolveu link — mas ENTREGA? (era exatamente aqui que o falso verde nascia)
+    const amostra = await entregaBytes(d.url);
+    if (!amostra.ok) {
+      return { provider: 'cobalt', status: 'fail', error: 'link sem bytes: ' + amostra.motivo, duration_ms: Date.now() - t0 };
+    }
+    return { provider: 'cobalt', status: 'ok', duration_ms: Date.now() - t0, amostra_kb: amostra.kb };
   } catch (e) {
     return { provider: 'cobalt', status: 'fail', error: e.message, duration_ms: Date.now() - t0 };
   }
@@ -62,10 +97,11 @@ async function testRailwayYtdlp() {
   if (!RAILWAY_FFMPEG_URL) return { provider: 'railway_ytdlp', status: 'fail', error: 'RAILWAY_FFMPEG_URL nao configurada', duration_ms: 0 };
   const t0 = Date.now();
   try {
-    // /health do Railway nao baixa — testa que o servico esta vivo +
-    // versao yt-dlp. Falha se servico down. Pra teste real de download,
-    // usariamos /youtube-hq mas isso gasta recursos do Railway. Health
-    // check basico atende safety.
+    // ⚠️ LIÇÃO 3: antes isto só perguntava "o serviço está vivo?", o que
+    // sempre dava verde. O que quebra de verdade é OUTRA coisa: o Google
+    // devolve 403 pro IP de datacenter na hora de puxar a mídia (medido em
+    // 03/08 — residencial 206, Railway 502/403). O teste de saúde do Railway
+    // que importa é esse, e ele roda logo abaixo em testRailwayMedia().
     const url = RAILWAY_FFMPEG_URL.replace(/\/$/, '') + '/health';
     const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     const duration_ms = Date.now() - t0;
@@ -95,9 +131,14 @@ async function testYtstream() {
     const duration_ms = Date.now() - t0;
     if (!r.ok) return { provider: 'ytstream', status: 'fail', error: `HTTP ${r.status}`, duration_ms };
     const d = await r.json();
-    // Schema valido tem adaptiveFormats, formats, ou videoId
     if (d.adaptiveFormats || d.formats || d.videoId) {
-      return { provider: 'ytstream', status: 'ok', duration_ms };
+      const fmt = [...(d.adaptiveFormats || []), ...(d.formats || [])].find((f) => f.url);
+      if (!fmt) return { provider: 'ytstream', status: 'fail', error: 'schema ok mas sem url', duration_ms };
+      const amostra = await entregaBytes(fmt.url);
+      if (!amostra.ok) {
+        return { provider: 'ytstream', status: 'fail', error: 'link sem bytes: ' + amostra.motivo, duration_ms: Date.now() - t0 };
+      }
+      return { provider: 'ytstream', status: 'ok', duration_ms: Date.now() - t0, amostra_kb: amostra.kb };
     }
     const topKeys = Object.keys(d).slice(0, 5).join(',');
     return { provider: 'ytstream', status: 'fail', error: `schema desconhecido (keys: ${topKeys})`, duration_ms };
@@ -121,11 +162,49 @@ async function testYoutubeMedia() {
     if (!r.ok) return { provider: 'youtube_media', status: 'fail', error: `HTTP ${r.status}`, duration_ms };
     const d = await r.json();
     if (d.videos?.items?.length || d.title) {
-      return { provider: 'youtube_media', status: 'ok', duration_ms };
+      const item = (d.videos?.items || []).find((x) => x.url);
+      if (!item) return { provider: 'youtube_media', status: 'fail', error: 'sem url baixável', duration_ms };
+      const amostra = await entregaBytes(item.url);
+      if (!amostra.ok) {
+        return { provider: 'youtube_media', status: 'fail', error: 'link sem bytes: ' + amostra.motivo, duration_ms: Date.now() - t0 };
+      }
+      return { provider: 'youtube_media', status: 'ok', duration_ms: Date.now() - t0, amostra_kb: amostra.kb };
     }
     return { provider: 'youtube_media', status: 'fail', error: 'sem videos retornados', duration_ms };
   } catch (e) {
     return { provider: 'youtube_media', status: 'fail', error: e.message, duration_ms: Date.now() - t0 };
+  }
+}
+
+// O IP do Railway consegue puxar mídia do googlevideo? Este é o teste que
+// teria explicado o download de 45s: o provedor entrega o link, mas o
+// container leva 403 e a cadeia inteira desce até o yt-dlp.
+async function testRailwayMedia() {
+  if (!RAILWAY_FFMPEG_URL || !RAPIDAPI_KEY) {
+    return { provider: 'railway_media', status: 'skip', error: 'sem RAILWAY_FFMPEG_URL ou RAPIDAPI_KEY', duration_ms: 0 };
+  }
+  const t0 = Date.now();
+  try {
+    const r = await fetch(`https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${TEST_VIDEO_ID}`, {
+      headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com' },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!r.ok) return { provider: 'railway_media', status: 'skip', error: 'provedor fora, nao da pra testar', duration_ms: Date.now() - t0 };
+    const d = await r.json();
+    const fmt = [...(d.adaptiveFormats || []), ...(d.formats || [])].find((f) => f.url);
+    if (!fmt) return { provider: 'railway_media', status: 'skip', error: 'sem url pra testar', duration_ms: Date.now() - t0 };
+
+    const proxy = RAILWAY_FFMPEG_URL.replace(/\/$/, '') + '/proxy-download?url=' + encodeURIComponent(fmt.url) + '&filename=t.mp4';
+    const pr = await fetch(proxy, { headers: { Range: 'bytes=0-' + (AMOSTRA_BYTES - 1) }, signal: AbortSignal.timeout(TIMEOUT_MS + 30000) });
+    const b = Buffer.from(await pr.arrayBuffer());
+    const duration_ms = Date.now() - t0;
+    if (b.length < 10000) {
+      return { provider: 'railway_media', status: 'fail', duration_ms,
+        error: 'IP do container bloqueado pelo Google: ' + b.toString().slice(0, 90) };
+    }
+    return { provider: 'railway_media', status: 'ok', duration_ms, amostra_kb: Math.round(b.length / 1024) };
+  } catch (e) {
+    return { provider: 'railway_media', status: 'fail', error: String(e.message).slice(0, 100), duration_ms: Date.now() - t0 };
   }
 }
 
@@ -233,6 +312,7 @@ module.exports = async function handler(req, res) {
     testYtstream(),
     testYoutubeMedia(),
     testInvidious(),
+    testRailwayMedia(),
   ]);
 
   // Log cada resultado
