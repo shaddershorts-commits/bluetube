@@ -5,7 +5,7 @@
 
 import * as act from '../core/actions.js';
 import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
-import { TEXT_FONTS, TEXT_SIZES } from '../core/schema.js';
+import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
 import { modeloPorId, estiloDaPalavra } from '../core/caption-styles.js';
@@ -1507,16 +1507,21 @@ export function mountEditor(root, store, opts = {}) {
     const chunks = [];
     mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const lay = timeline.getLayout?.();
-    // faixa NOVA embaixo das existentes; sem áudio nenhum, usa a primeira
+    // faixa NOVA embaixo das existentes; sem áudio nenhum, usa a primeira.
+    // Teto = MAX_AUDIO_LANE (o mesmo clamp do reducer — senão o fantasma
+    // desenhava numa faixa que o clipe final não podia ocupar).
     const temAudio = store.getState().audio_clips.some(a => a.active !== false);
+    // ⚠️ play() ANTES de ler o t0: com a agulha parada no FIM, o play rebobina
+    // pra 0 — ler o t0 antes fazia a narração da cena inicial cair no fim da
+    // timeline (revisão adversarial: "assistiu até o fim e clicou 🎙")
+    player.play?.();
     rec = {
       mr, stream, chunks,
       t0: player.getTime(),
-      lane: temAudio && lay ? lay.audioLanes : 0,
+      lane: temAudio && lay ? Math.min(MAX_AUDIO_LANE, lay.audioLanes) : 0,
       elapsed: 0, lastTick: performance.now(), pausado: false, timer: 0,
     };
     mr.start(250);
-    player.play?.();   // narrar vendo a cena (CapCut); pausar a gravação pausa junto
     $('#beRecPill').style.display = 'flex';
     $('#beRecPause').textContent = '⏸';
     $('#beRecVoice')?.classList.add('gravando');
@@ -1556,18 +1561,39 @@ export function mountEditor(root, store, opts = {}) {
     });
     r.stream.getTracks().forEach(t => t.stop());
     if (!blob.size || r.elapsed < 0.4) return toast('Gravação vazia — nada foi adicionado', true);
+    const file = new File([blob], 'locucao-' + Date.now() + '.webm', { type: 'audio/webm' });
+    // upload com UMA retentativa; se falhar de vez, a gravação NÃO se perde:
+    // baixa o .webm no computador do usuário (narrou 5 minutos num take bom =
+    // não pode evaporar por um soluço de rede)
+    let media = null;
+    for (let tentativa = 1; tentativa <= 2 && !media; tentativa++) {
+      try {
+        importShow('locução (' + fmtRec(r.elapsed) + ')', 1, 1);
+        media = await uploadMedia(file, 'audio', importProg);
+      } catch (e) {
+        if (tentativa === 2) {
+          importModal().style.display = 'none';
+          try {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = file.name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+            toast('Upload falhou — a gravação foi BAIXADA no seu computador. Importe o arquivo pra usar na timeline.', true);
+          } catch {
+            toast('Não consegui salvar a locução: ' + e.message, true);
+          }
+          return;
+        }
+      }
+    }
     try {
-      importShow('locução (' + fmtRec(r.elapsed) + ')', 1, 1);
-      const file = new File([blob], 'locucao-' + Date.now() + '.webm', { type: 'audio/webm' });
-      const media = await uploadMedia(file, 'audio', importProg);
       // webm de gravação pode reportar duração ruim mesmo com o hack — o
       // relógio da gravação é a verdade de fallback
       if (!isFinite(media.duration) || media.duration <= 0) media.duration = r.elapsed;
       store.dispatch(act.addAudioClip({ ...media, filename: 'Locução', start: r.t0, lane: r.lane }));
       syncWaveRegistry(store.getState());
       toast('🎙 Locução adicionada na timeline ✓');
-    } catch (e) {
-      toast('Não consegui salvar a locução: ' + e.message, true);
     } finally {
       importModal().style.display = 'none';
     }

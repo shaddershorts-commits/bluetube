@@ -108,6 +108,45 @@ test('imagem e texto tambem sobrevivem ao video chegar depois', () => {
   assert.equal(s.texts.length, 1, 'o texto ficou');
 });
 
+test('CLIPE COMPOSTO sobrevive ao video chegar depois (achado da revisao)', () => {
+  const store = createStore();
+  store.dispatch(act.addAudioClip({ url: 'https://x/loc.webm', filename: 'Locução', duration: 6, start: 0 }));
+  store.dispatch(act.addText({ content: 'legenda', start_sec: 0, end_sec: 3 }));
+  const s0 = store.getState();
+  store.dispatch(act.setMultiSelect([
+    { type: 'audio', id: s0.audio_clips[0].id }, { type: 'text', id: s0.texts[0].id },
+  ]));
+  store.dispatch(act.createCompound());
+  const comAgrupado = store.getState();
+  assert.equal(comAgrupado.compounds.length, 1, 'agrupou');
+  const stubs = comAgrupado.clips.filter(c => c.compound_id != null).length;
+  assert.equal(stubs, 1, 'o composto tem stub na faixa principal');
+
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 30, width: 1080, height: 1920, size_bytes: 1 }));
+  const s = store.getState();
+  assert.equal(s.compounds.length, 1, 'o COMPOSTO nao pode sumir');
+  assert.equal(s.compounds[0].audio_clips.length, 1, 'com a locucao dentro');
+  assert.equal(s.clips.filter(c => c.compound_id != null).length, 1, 'e o stub voltou pra timeline');
+  assert.equal(s.clips.filter(c => c.compound_id == null).length, 1, 'mais o video novo');
+  const ids = s.clips.map(c => c.id);
+  assert.equal(new Set(ids).size, ids.length, 'sem id repetido: ' + ids.join(','));
+});
+
+test('video novo NAO nasce mudo por volume herdado de projeto sem principal', () => {
+  const store = createStore();
+  store.dispatch(act.setVolume('video', 0));       // usuario mutou antes
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 10, width: 1080, height: 1920, size_bytes: 1 }));
+  assert.equal(store.getState().volumes.video, 1, 'o canal do principal volta a 1');
+});
+
+test('trocar o arquivo de um projeto que JA tinha video preserva o volume ajustado', () => {
+  const store = createStore();
+  store.dispatch(act.setVideo({ url: 'a', path: 'p', filename: 'a.mp4', duration: 10, width: 1080, height: 1920, size_bytes: 1 }));
+  store.dispatch(act.setVolume('video', 0.3));
+  store.dispatch(act.setVideo({ url: 'b', path: 'p', filename: 'b.mp4', duration: 10, width: 1080, height: 1920, size_bytes: 1 }));
+  assert.equal(store.getState().volumes.video, 0.3, 'ajuste consciente do usuario fica');
+});
+
 test('ids nao colidem depois do video chegar (next_* preservados)', () => {
   const store = createStore();
   store.dispatch(act.addAudioClip({ url: 'https://x/a.webm', filename: 'a', duration: 3 }));

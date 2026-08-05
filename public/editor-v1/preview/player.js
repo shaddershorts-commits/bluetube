@@ -186,19 +186,31 @@ export function createPlayer(videoEl, opts, store) {
         const el = new Audio();
         el.preload = 'auto';
         // CORS ANTES do src: sem isso o Web Audio (Aprimorar áudio) silencia a
-        // mídia. Se o servidor do arquivo não mandar o header, recarrega SEM
-        // CORS e o clipe fica sem prévia de efeito — mas nunca sem som.
+        // mídia. O fallback pra "sem CORS" só entra quando o erro PODE ser
+        // CORS (http cross-origin, 2ª falha seguida) — a revisão pegou que a
+        // versão anterior matava a prévia PRA SEMPRE em qualquer soluço de
+        // rede, inclusive em blob: (que nunca é problema de CORS).
         el.crossOrigin = 'anonymous';
-        const semCors = () => {
-          el.removeEventListener('error', semCors);
+        const aoErrar = () => {
           const e = pool.get(a.id);
           if (!e || e.el !== el) return;
+          const podeSerCors = /^https?:/i.test(url) && !url.startsWith(location.origin);
+          e.fxErros = (e.fxErros || 0) + 1;
+          if (!podeSerCors || e.fxErros === 1) {
+            // blob:/mesma origem nunca é CORS; e a 1ª falha http pode ser um
+            // soluço transitório — tenta de novo AINDA com CORS
+            setTimeout(() => { try { el.load(); } catch {} }, 400);
+            return;
+          }
+          // 2ª falha seguida em http cross-origin: recarrega sem CORS
+          // (som volta; a prévia de efeito deste clipe fica indisponível)
+          el.removeEventListener('error', aoErrar);
           const el2 = new Audio();
           el2.preload = 'auto';
           el2.src = url;
           pool.set(a.id, { el: el2, url, fxIndisponivel: true });
         };
-        el.addEventListener('error', semCors);
+        el.addEventListener('error', aoErrar);
         el.src = url;
         entry = { el, url };
         pool.set(a.id, entry);
@@ -407,6 +419,9 @@ export function createPlayer(videoEl, opts, store) {
     getDisplayEl: () => disp(),           // shell aplica transform no elemento ativo
     // sonda/diagnóstico: a cadeia do Aprimorar áudio de um clipe (null = sem)
     fxDebug: (audioId) => fxMotor.debug(pool.get(audioId)),
+    // prévia de efeito indisponível (arquivo sem CORS)? A UI avisa em vez de
+    // deixar o checkbox mentir com o som inalterado
+    fxIndisponivel: (audioId) => !!pool.get(audioId)?.fxIndisponivel,
     // ── TRANSIÇÃO DE VERDADE (2026-07-29) ──────────────────────────────────
     // A primeira versão desenhava uma camada POR CIMA do vídeo: dava pra ver
     // um brilho ou uma tarja, mas "Deslizar" não deslizava nada — o vídeo que

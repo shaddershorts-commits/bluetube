@@ -32,15 +32,24 @@ export function reduce(state, action) {
       // principal é recriada — o resto é conteúdo do usuário e fica.
       for (const k of ['texts', 'next_text_id', 'audio_clips', 'next_audio_id',
                        'overlays', 'next_overlay_id', 'media', 'next_media_id',
+                       'compounds', 'next_compound_id',
                        'extra_overlay_lanes', 'extra_audio_lanes',
                        'hidden_overlay_lanes', 'hidden_audio_lanes', 'volumes']) {
         if (state[k] !== undefined) next[k] = state[k];
       }
-      if (video?.duration > 0) {
-        next.clips = [createFullClip(next, video.duration)];
-        next.next_clip_id = 2;
-        next.selected_clip_id = null;
-      }
+      // o volume da faixa principal volta a 1 quando o projeto NAO tinha video
+      // (herdar volume 0 de um video antigo removido = video novo mudo)
+      if (!state.video) next.volumes = { ...next.volumes, video: 1 };
+      // compostos preservados precisam dos SEUS stubs na faixa principal —
+      // sem o stub {id, compound_id} o compound vira orfao invisivel
+      const stubs = (state.clips || []).filter(c => c.compound_id != null);
+      let nid = 1;
+      const clips = [];
+      if (video?.duration > 0) clips.push(createFullClip({ ...next, next_clip_id: nid++ }, video.duration));
+      for (const s2 of stubs) clips.push({ ...s2, id: nid++ });
+      next.clips = clips;
+      next.next_clip_id = nid;
+      next.selected_clip_id = null;
       next.created_at = state.created_at || new Date().toISOString();
       return touch(next);
     }
