@@ -20,7 +20,11 @@ export function createAutosave(store, onStatus) {
   async function saveNow() {
     if (inFlight) { queued = true; return; }
     const state = store.getState();
-    if (!state.video) return; // nada pra salvar ainda
+    // projeto SEM vídeo também salva: dá pra começar só pela locução/áudio
+    // (o backend aceita video_url null no insert e no update)
+    const temConteudo = state.video || state.audio_clips?.length ||
+      state.texts?.length || state.overlays?.length || state.media?.length;
+    if (!temConteudo) return; // nada pra salvar ainda
     inFlight = true;
     status('saving');
     try {

@@ -611,9 +611,11 @@ export function mountEditor(root, store, opts = {}) {
           const sp = ac.speed ?? 1;
           $('#beAudioSpeed').value = speedToSlider(sp); $('#beAudioSpeedVal').textContent = fmtSpeed(sp);
         }
-        syncAudioFxPanel(ac);
       }
     } else { filledAudioId = null; }
+    // o botão 🎚 vive na toolbar (sempre visível): sincroniza com o áudio
+    // selecionado, ou mostra "selecione um clipe" quando não há
+    syncAudioFxPanel(state.audio_clips.find(a => a.id === state.selected_audio_id) || null);
     if (showOv) {
       const ov = state.overlays.find(o => o.id === state.selected_overlay_id);
       if (ov && filledOvId !== ov.id) {
@@ -1486,7 +1488,8 @@ export function mountEditor(root, store, opts = {}) {
 
   async function iniciarLocucao() {
     if (rec) return pararLocucao();
-    if (!store.getState().video) return toast('Adicione uma mídia antes de gravar a locução', true);
+    // grava COM ou SEM mídia no projeto (user 2026-07-29): dá pra começar um
+    // projeto pela narração e montar o vídeo por cima depois
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1504,10 +1507,12 @@ export function mountEditor(root, store, opts = {}) {
     const chunks = [];
     mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const lay = timeline.getLayout?.();
+    // faixa NOVA embaixo das existentes; sem áudio nenhum, usa a primeira
+    const temAudio = store.getState().audio_clips.some(a => a.active !== false);
     rec = {
       mr, stream, chunks,
       t0: player.getTime(),
-      lane: lay ? lay.audioLanes : 0,   // faixa NOVA embaixo das existentes
+      lane: temAudio && lay ? lay.audioLanes : 0,
       elapsed: 0, lastTick: performance.now(), pausado: false, timer: 0,
     };
     mr.start(250);
@@ -1572,30 +1577,47 @@ export function mountEditor(root, store, opts = {}) {
   $('#beRecPause').addEventListener('click', pausarLocucao);
   $('#beRecStop').addEventListener('click', pararLocucao);
 
-  // ── APRIMORAR ÁUDIO (flags por clipe; render aplica no arquivo) ──
+  // ── APRIMORAR ÁUDIO (botão da toolbar; popover no hover; motor no player) ──
   function syncAudioFxPanel(ac) {
+    const semAlvo = !ac;
+    $('#beFxSemAlvo').style.display = semAlvo ? 'block' : 'none';
     for (const cb of $('#beAudioFxPop').querySelectorAll('[data-fx]')) {
-      cb.checked = ac[cb.dataset.fx] === true;
+      cb.checked = !semAlvo && ac[cb.dataset.fx] === true;
+      cb.disabled = semAlvo;
     }
-    $('#beFxVozIntRow').style.display = ac.fx_voz ? 'flex' : 'none';
-    const int = Math.round(ac.fx_voz_int ?? 75);
+    $('#beFxVozIntRow').style.display = (!semAlvo && ac.fx_voz) ? 'flex' : 'none';
+    const int = Math.round(ac?.fx_voz_int ?? 75);
     if (document.activeElement !== $('#beFxVozInt')) $('#beFxVozInt').value = int;
     $('#beFxVozIntVal').textContent = int;
-    const todos = ac.fx_ruido && ac.fx_voz && ac.fx_norm;
-    const algum = ac.fx_ruido || ac.fx_voz || ac.fx_norm;
+    const algum = !semAlvo && (ac.fx_ruido || ac.fx_voz || ac.fx_norm);
     $('#beAudioFxBtn').classList.toggle('ativo', !!algum);
-    $('#beAudioFxBtn').textContent = todos ? '🎚 Aprimorar áudio ✓' : '🎚 Aprimorar áudio';
+  }
+  // hover abre as opções (com folga pra atravessar do botão pro popover).
+  // No TOUCH não existe hover: o clique no botão também abre o popover (além
+  // de ligar tudo), e tocar fora fecha.
+  {
+    const wrap = $('#beFxWrap'); const pop = $('#beAudioFxPop');
+    let fecha = 0;
+    wrap.addEventListener('mouseenter', () => { clearTimeout(fecha); pop.style.display = 'flex'; });
+    wrap.addEventListener('mouseleave', () => {
+      clearTimeout(fecha);
+      fecha = setTimeout(() => { pop.style.display = 'none'; }, 250);
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (pop.style.display !== 'none' && !wrap.contains(e.target)) pop.style.display = 'none';
+    });
   }
   // botão geral: liga TUDO; se já está tudo ligado, desliga tudo (pedido do user)
   $('#beAudioFxBtn').addEventListener('click', () => {
     const st = store.getState();
     const ac = st.audio_clips.find(a => a.id === st.selected_audio_id);
-    if (!ac) return;
+    if (!ac) return toast('Selecione um clipe de áudio na timeline primeiro', true);
     const todos = ac.fx_ruido && ac.fx_voz && ac.fx_norm;
     store.dispatch(act.setAudioFx(ac.id, todos
       ? { fx_ruido: false, fx_voz: false, fx_norm: false }
       : { fx_ruido: true, fx_voz: true, fx_norm: true }));
-    toast(todos ? 'Efeitos de áudio desligados' : 'Todos os efeitos de áudio ligados ✓ (valem no vídeo exportado)');
+    $('#beAudioFxPop').style.display = 'flex';   // touch não tem hover: mostra o resultado
+    toast(todos ? 'Efeitos de áudio desligados' : 'Todos os efeitos de áudio ligados ✓');
   });
   $('#beAudioFxPop').addEventListener('change', (e) => {
     const cb = e.target.closest('[data-fx]'); if (!cb) return;
@@ -2535,25 +2557,7 @@ function buildTemplate() {
 
     <div id="bePropsAudio" class="be-props-stack" style="display:none">
       <div class="be-side-title" id="beAudioPanelTitle">♪ Áudio</div>
-      <div class="be-dim">Duração: <span id="beAudioClipDur">–</span> · corte com ✂, arraste pra mover</div>
-
-      <!-- APRIMORAR ÁUDIO (2026-07-29, prints do CapCut): o botão liga/desliga
-           TUDO; as caixas escolhem efeito a efeito. Aplicado no export. -->
-      <div class="be-audiofx">
-        <button type="button" id="beAudioFxBtn" class="be-tool-btn" title="Clique: liga/desliga todos os efeitos">🎚 Aprimorar áudio</button>
-        <div id="beAudioFxPop" class="be-glass be-audiofx-pop">
-          <div class="be-audiofx-tit">Aprimorar áudio</div>
-          <label class="be-audiofx-row"><input type="checkbox" id="beFxRuido" data-fx="fx_ruido"/> Reduzir ruído <span class="be-fx-gema">💎</span></label>
-          <label class="be-audiofx-row"><input type="checkbox" id="beFxVoz" data-fx="fx_voz"/> Aprimorar voz <span class="be-fx-gema">💎</span></label>
-          <div id="beFxVozIntRow" class="be-audiofx-int" style="display:none">
-            <span>Intensidade</span>
-            <input id="beFxVozInt" type="range" min="0" max="100" step="1" value="75"/>
-            <output id="beFxVozIntVal">75</output>
-          </div>
-          <label class="be-audiofx-row"><input type="checkbox" id="beFxNorm" data-fx="fx_norm"/> Normalizar nível de volume <span class="be-fx-gema">💎</span></label>
-          <div class="be-dim">Normaliza o volume do clipe pra um nível-alvo. Os efeitos são aplicados no vídeo exportado.</div>
-        </div>
-      </div>
+      <div class="be-dim">Duração: <span id="beAudioClipDur">–</span> · corte com ✂, arraste pra mover · efeitos no botão 🎚 da barra</div>
       <label class="be-slider-label">Volume <input id="beVolSelected" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <label class="be-slider-label">Velocidade <b id="beAudioSpeedVal">1.00x</b>
         <input id="beAudioSpeed" type="range" min="-100" max="200" step="1" value="0"/>
@@ -2642,6 +2646,24 @@ function buildTemplate() {
       <span class="be-toolbar-sep"></span>
       <button id="beAddText2" class="be-tool-btn" title="Adicionar texto no cursor">＋ Texto</button>
       <button id="beRecVoice" class="be-tool-btn" title="Gravar locução — a gravação entra na timeline a partir do cursor">🎙 Locução</button>
+      <!-- APRIMORAR ÁUDIO (user 2026-07-29): botão AO LADO do Locução; passar
+           o mouse abre as opções; CLICAR liga/desliga todos os efeitos -->
+      <span class="be-fx-wrap" id="beFxWrap">
+        <button id="beAudioFxBtn" class="be-tool-btn" title="Aprimorar áudio do clipe selecionado — clique liga/desliga tudo, passe o mouse pra escolher">🎚</button>
+        <div id="beAudioFxPop" class="be-glass be-audiofx-pop" style="display:none">
+          <div class="be-audiofx-tit">Aprimorar áudio</div>
+          <div id="beFxSemAlvo" class="be-dim" style="display:none">Selecione um clipe de áudio na timeline.</div>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxRuido" data-fx="fx_ruido"/> Reduzir ruído <span class="be-fx-gema">💎</span></label>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxVoz" data-fx="fx_voz"/> Aprimorar voz <span class="be-fx-gema">💎</span></label>
+          <div id="beFxVozIntRow" class="be-audiofx-int" style="display:none">
+            <span>Intensidade</span>
+            <input id="beFxVozInt" type="range" min="0" max="100" step="1" value="75"/>
+            <output id="beFxVozIntVal">75</output>
+          </div>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxNorm" data-fx="fx_norm"/> Normalizar nível de volume <span class="be-fx-gema">💎</span></label>
+          <div class="be-dim">Normaliza o volume do clipe selecionado para um nível-alvo.</div>
+        </div>
+      </span>
       <button id="beGroupBtn" class="be-tool-btn" title="Agrupar selecionados em clipe composto (Alt+G)">⧉ Agrupar</button>
       <span class="be-toolbar-spacer"></span>
       <button id="beZoomOut" class="be-icon-btn" title="Zoom - (Ctrl -)">−</button>

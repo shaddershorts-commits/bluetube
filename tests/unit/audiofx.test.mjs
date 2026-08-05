@@ -84,3 +84,35 @@ test('sem start/lane o comportamento antigo continua (0 e faixa automatica)', ()
   assert.equal(a.start, 0);
   assert.equal(a.lane, undefined);
 });
+
+// ── SET_VIDEO nao pode APAGAR o que ja esta na timeline (bug do user) ──
+
+test('gravar locucao SEM video e depois adicionar o video PRESERVA a locucao', () => {
+  const store = createStore();
+  store.dispatch(act.addAudioClip({ url: 'https://x/loc.webm', filename: 'Locução', duration: 8, start: 2, lane: 0 }));
+  assert.equal(store.getState().audio_clips.length, 1, 'gravou sem video');
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 30, width: 1080, height: 1920, size_bytes: 1 }));
+  const s = store.getState();
+  assert.equal(s.audio_clips.length, 1, 'a locucao NAO sumiu');
+  assert.equal(s.audio_clips[0].start, 2, 'e continua onde estava');
+  assert.equal(s.clips.length, 1, 'o video entrou na faixa principal');
+});
+
+test('imagem e texto tambem sobrevivem ao video chegar depois', () => {
+  const store = createStore();
+  store.dispatch(act.addImageOverlay({ url: 'i.png', width: 10, height: 10 }, 0));
+  store.dispatch(act.addText({ content: 'titulo', start_sec: 0, end_sec: 3 }));
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 30, width: 1080, height: 1920, size_bytes: 1 }));
+  const s = store.getState();
+  assert.equal(s.overlays.length, 1, 'a imagem ficou');
+  assert.equal(s.texts.length, 1, 'o texto ficou');
+});
+
+test('ids nao colidem depois do video chegar (next_* preservados)', () => {
+  const store = createStore();
+  store.dispatch(act.addAudioClip({ url: 'https://x/a.webm', filename: 'a', duration: 3 }));
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 30, width: 1080, height: 1920, size_bytes: 1 }));
+  store.dispatch(act.addAudioClip({ url: 'https://x/b.webm', filename: 'b', duration: 3 }));
+  const ids = store.getState().audio_clips.map(a => a.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids unicos: ' + ids.join(','));
+});

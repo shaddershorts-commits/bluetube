@@ -25,6 +25,17 @@ export function reduce(state, action) {
     case A.SET_VIDEO: {
       const video = action.video;
       const next = { ...createInitialState(), nome_projeto: state.nome_projeto, project_id: state.project_id, video };
+      // ⚠️ PRESERVA o que já está na timeline. Definir o vídeo principal
+      // RESETAVA o projeto inteiro: quem importava um áudio/imagem (ou gravava
+      // uma locução) e depois adicionava o vídeo via TUDO sumir (user
+      // 2026-07-29: "tentei adicionar outra, sumiu a anterior"). Só a faixa
+      // principal é recriada — o resto é conteúdo do usuário e fica.
+      for (const k of ['texts', 'next_text_id', 'audio_clips', 'next_audio_id',
+                       'overlays', 'next_overlay_id', 'media', 'next_media_id',
+                       'extra_overlay_lanes', 'extra_audio_lanes',
+                       'hidden_overlay_lanes', 'hidden_audio_lanes', 'volumes']) {
+        if (state[k] !== undefined) next[k] = state[k];
+      }
       if (video?.duration > 0) {
         next.clips = [createFullClip(next, video.duration)];
         next.next_clip_id = 2;

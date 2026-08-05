@@ -6,6 +6,7 @@
 // - cada audio_clip ganha um Audio() próprio, agendado por start/source_in/out.
 
 import { timelineToSource, totalDuration, playableDuration, segmentAt, timelineSegments, effectiveAudioClips, mediaUrlFor, clipSpeed, segSpeed, audioTimelineDur } from '../core/selectors.js';
+import { criarMotorFx } from './audio-fx.js';
 
 // opts.primaryUrl(): url preferida do video PRINCIPAL. opts.bufferEl: 2º <video>.
 export function createPlayer(videoEl, opts, store) {
@@ -15,6 +16,8 @@ export function createPlayer(videoEl, opts, store) {
   let lastTick = 0;
   const listeners = new Set();
   const pool = new Map(); // audio_clip.id -> { el, url }
+  // motor do "Aprimorar áudio": cadeia Web Audio por clipe (preview REAL)
+  const fxMotor = criarMotorFx();
 
   // double buffer: els[active] mostra, els[1-active] pré-carrega
   const els = [videoEl, opts?.bufferEl].filter(Boolean);
@@ -182,6 +185,20 @@ export function createPlayer(videoEl, opts, store) {
         entry?.el.pause?.();
         const el = new Audio();
         el.preload = 'auto';
+        // CORS ANTES do src: sem isso o Web Audio (Aprimorar áudio) silencia a
+        // mídia. Se o servidor do arquivo não mandar o header, recarrega SEM
+        // CORS e o clipe fica sem prévia de efeito — mas nunca sem som.
+        el.crossOrigin = 'anonymous';
+        const semCors = () => {
+          el.removeEventListener('error', semCors);
+          const e = pool.get(a.id);
+          if (!e || e.el !== el) return;
+          const el2 = new Audio();
+          el2.preload = 'auto';
+          el2.src = url;
+          pool.set(a.id, { el: el2, url, fxIndisponivel: true });
+        };
+        el.addEventListener('error', semCors);
         el.src = url;
         entry = { el, url };
         pool.set(a.id, entry);
@@ -202,6 +219,7 @@ export function createPlayer(videoEl, opts, store) {
       const dur = audioTimelineDur(a);
       const inside = t >= a.start - 0.02 && t < a.start + dur;
       el.volume = Math.min(1, a.volume ?? 1);
+      fxMotor.sync(entry, a);   // Aprimorar áudio: cadeia real no preview
       el.playbackRate = sp;
       if (inside) {
         const local = a.source_in + (t - a.start) * sp;
@@ -341,6 +359,7 @@ export function createPlayer(videoEl, opts, store) {
     d.volume = Math.min(1, state.volumes?.video ?? 1);
     playing = true;
     lastTick = 0;
+    fxMotor.retomar();   // gesto de play destrava o AudioContext suspenso
     if (segmentAt(state, virtualTime)) d.play().catch(() => {});
     syncAudios(virtualTime);
     rafId = requestAnimationFrame(tick);
@@ -386,6 +405,8 @@ export function createPlayer(videoEl, opts, store) {
     getDuration: () => playableDuration(store.getState()),
     getSourceTime: () => timelineToSource(store.getState(), virtualTime),
     getDisplayEl: () => disp(),           // shell aplica transform no elemento ativo
+    // sonda/diagnóstico: a cadeia do Aprimorar áudio de um clipe (null = sem)
+    fxDebug: (audioId) => fxMotor.debug(pool.get(audioId)),
     // ── TRANSIÇÃO DE VERDADE (2026-07-29) ──────────────────────────────────
     // A primeira versão desenhava uma camada POR CIMA do vídeo: dava pra ver
     // um brilho ou uma tarja, mas "Deslizar" não deslizava nada — o vídeo que
@@ -432,6 +453,7 @@ export function createPlayer(videoEl, opts, store) {
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     destroy() {
       pause();
+      fxMotor.destruir();
       for (const [, e] of pool) { e.el.pause(); e.el.removeAttribute('src'); }
       pool.clear();
       listeners.clear();
