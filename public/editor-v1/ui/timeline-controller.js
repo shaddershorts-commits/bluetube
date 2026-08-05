@@ -13,7 +13,7 @@ import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 import * as clip from './clipboard.js';
 
-export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged, onGerarLegenda }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
@@ -93,12 +93,15 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       multiIds: new Set((state.multi_selected || []).map(x => x.type + ':' + x.id)),
     };
   }
+  // fantasma da LOCUÇÃO em gravação (desenho puro, fora do store)
+  let recGhost = null;
   function draw() {
     renderer.draw({
       layout: layoutNow(),
       playhead: player.getTime(),
       fsm,
       snapIndicator,
+      recGhost,
       thumbs,
       wave,
       videoWave,
@@ -331,10 +334,25 @@ export function createTimelineController({ canvas, store, player, onEditText, on
 
   // menu do ÁUDIO
   function showAudioMenu(x, y, hit) {
+    const a = store.getState().audio_clips.find(k => k.id === hit.audioId) || {};
+    const marca = (on) => on ? '✓ ' : '';
+    const fxTodos = a.fx_ruido && a.fx_voz && a.fx_norm;
     buildMenu(x, y, [
       { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
       { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
       { label: 'Dividir no cursor', hint: 'Ctrl B', fn: () => store.dispatch(act.splitAudioAt(player.getTime())) },
+      { sep: true },
+      // pedido do user (2026-07-29): efeitos e legenda pelo botão direito
+      { label: '🎚 Aprimorar áudio', sub: [
+        { label: (fxTodos ? '✓ ' : '') + 'Ativar todos', fn: () => store.dispatch(act.setAudioFx(hit.audioId, fxTodos
+            ? { fx_ruido: false, fx_voz: false, fx_norm: false }
+            : { fx_ruido: true, fx_voz: true, fx_norm: true })) },
+        { label: marca(a.fx_ruido) + 'Reduzir ruído 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_ruido: !a.fx_ruido })) },
+        { label: marca(a.fx_voz) + 'Aprimorar voz 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_voz: !a.fx_voz })) },
+        { label: marca(a.fx_norm) + 'Normalizar volume 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_norm: !a.fx_norm })) },
+      ] },
+      { label: '💬 Gerar legenda deste áudio', fn: () => onGerarLegenda?.(hit.audioId) },
+      { sep: true },
       { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteAudioClip(hit.audioId)) },
     ]);
   }
@@ -558,6 +576,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     // a posição da agulha, não o lugar onde o usuário soltou o card.
     tempoDoX: (x) => xToTime(vp, x),
     setJuncaoSelecionada(i) { juncaoSel = i; draw(); },
+    setRecGhost(g) { recGhost = g; draw(); },
     // rolagem vertical das faixas (barra e roda ficam na shell)
     rolarY,
     getScrollY: () => vp.scrollY || 0,

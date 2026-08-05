@@ -59,6 +59,12 @@ export function mountEditor(root, store, opts = {}) {
     // camada fantasma do arrasto: redesenha os cabecalhos SEM passar pelo store
     // (lambda de proposito — syncTrackHeaders so existe mais abaixo no arquivo)
     onLanesChanged: () => syncTrackHeaders(),
+    // botão direito no áudio → "Gerar legenda deste áudio": seleciona o clipe
+    // e dispara a mesma geração do painel (que prioriza o áudio do editor)
+    onGerarLegenda: (audioId) => {
+      store.dispatch(act.selectAudioClip(audioId));
+      generateCaptions();
+    },
   });
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
@@ -605,6 +611,7 @@ export function mountEditor(root, store, opts = {}) {
           const sp = ac.speed ?? 1;
           $('#beAudioSpeed').value = speedToSlider(sp); $('#beAudioSpeedVal').textContent = fmtSpeed(sp);
         }
+        syncAudioFxPanel(ac);
       }
     } else { filledAudioId = null; }
     if (showOv) {
@@ -1468,6 +1475,140 @@ export function mountEditor(root, store, opts = {}) {
 
   $('#beAspect').addEventListener('change', (e) => store.dispatch(act.setAspect(e.target.value)));
 
+  // ── LOCUÇÃO (2026-07-29): grava o microfone direto na timeline ────────────
+  // Ao clicar, a faixa já COMEÇA a nascer (fantasma vermelho crescendo em
+  // tempo real na área de áudio) e o vídeo toca junto pra narrar em sincronia.
+  // Parar = sobe a gravação e vira um clipe de áudio exatamente onde o
+  // fantasma estava. O fantasma é desenho puro: o projeto só muda no fim
+  // (1 undo), e cancelar no meio não deixa rastro.
+  let rec = null;   // { mr, stream, chunks, t0, lane, elapsed, lastTick, pausado, timer }
+  const fmtRec = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+  async function iniciarLocucao() {
+    if (rec) return pararLocucao();
+    if (!store.getState().video) return toast('Adicione uma mídia antes de gravar a locução', true);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return toast('Sem acesso ao microfone — libere a permissão no navegador', true);
+    }
+    let mr;
+    try {
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+      mr = new MediaRecorder(stream, { mimeType: mime });
+    } catch (e) {
+      stream.getTracks().forEach(t => t.stop());
+      return toast('Este navegador não suporta gravação de áudio', true);
+    }
+    const chunks = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const lay = timeline.getLayout?.();
+    rec = {
+      mr, stream, chunks,
+      t0: player.getTime(),
+      lane: lay ? lay.audioLanes : 0,   // faixa NOVA embaixo das existentes
+      elapsed: 0, lastTick: performance.now(), pausado: false, timer: 0,
+    };
+    mr.start(250);
+    player.play?.();   // narrar vendo a cena (CapCut); pausar a gravação pausa junto
+    $('#beRecPill').style.display = 'flex';
+    $('#beRecPause').textContent = '⏸';
+    $('#beRecVoice')?.classList.add('gravando');
+    rec.timer = setInterval(() => {
+      if (!rec || rec.pausado) return;
+      const agora = performance.now();
+      rec.elapsed += (agora - rec.lastTick) / 1000;
+      rec.lastTick = agora;
+      const el = $('#beRecTime'); if (el) el.textContent = fmtRec(rec.elapsed);
+      timeline.setRecGhost?.({ t0: rec.t0, dur: rec.elapsed, lane: rec.lane });
+    }, 200);
+  }
+
+  function pausarLocucao() {
+    if (!rec) return;
+    rec.pausado = !rec.pausado;
+    try { rec.pausado ? rec.mr.pause() : rec.mr.resume(); } catch {}
+    if (rec.pausado) { player.pause?.(); }
+    else { rec.lastTick = performance.now(); player.play?.(); }
+    $('#beRecPause').textContent = rec.pausado ? '▶' : '⏸';
+    $('#beRecPill').classList.toggle('pausada', rec.pausado);
+  }
+
+  async function pararLocucao() {
+    if (!rec) return;
+    const r = rec; rec = null;
+    clearInterval(r.timer);
+    player.pause?.();
+    $('#beRecPill').style.display = 'none';
+    $('#beRecPill').classList.remove('pausada');
+    $('#beRecVoice')?.classList.remove('gravando');
+    timeline.setRecGhost?.(null);
+    const blob = await new Promise((res) => {
+      const junta = () => res(new Blob(r.chunks, { type: 'audio/webm' }));
+      r.mr.onstop = junta;
+      try { r.mr.state === 'inactive' ? junta() : r.mr.stop(); } catch { junta(); }
+    });
+    r.stream.getTracks().forEach(t => t.stop());
+    if (!blob.size || r.elapsed < 0.4) return toast('Gravação vazia — nada foi adicionado', true);
+    try {
+      importShow('locução (' + fmtRec(r.elapsed) + ')', 1, 1);
+      const file = new File([blob], 'locucao-' + Date.now() + '.webm', { type: 'audio/webm' });
+      const media = await uploadMedia(file, 'audio', importProg);
+      // webm de gravação pode reportar duração ruim mesmo com o hack — o
+      // relógio da gravação é a verdade de fallback
+      if (!isFinite(media.duration) || media.duration <= 0) media.duration = r.elapsed;
+      store.dispatch(act.addAudioClip({ ...media, filename: 'Locução', start: r.t0, lane: r.lane }));
+      syncWaveRegistry(store.getState());
+      toast('🎙 Locução adicionada na timeline ✓');
+    } catch (e) {
+      toast('Não consegui salvar a locução: ' + e.message, true);
+    } finally {
+      importModal().style.display = 'none';
+    }
+  }
+
+  $('#beRecVoice').addEventListener('click', iniciarLocucao);
+  $('#beRecPause').addEventListener('click', pausarLocucao);
+  $('#beRecStop').addEventListener('click', pararLocucao);
+
+  // ── APRIMORAR ÁUDIO (flags por clipe; render aplica no arquivo) ──
+  function syncAudioFxPanel(ac) {
+    for (const cb of $('#beAudioFxPop').querySelectorAll('[data-fx]')) {
+      cb.checked = ac[cb.dataset.fx] === true;
+    }
+    $('#beFxVozIntRow').style.display = ac.fx_voz ? 'flex' : 'none';
+    const int = Math.round(ac.fx_voz_int ?? 75);
+    if (document.activeElement !== $('#beFxVozInt')) $('#beFxVozInt').value = int;
+    $('#beFxVozIntVal').textContent = int;
+    const todos = ac.fx_ruido && ac.fx_voz && ac.fx_norm;
+    const algum = ac.fx_ruido || ac.fx_voz || ac.fx_norm;
+    $('#beAudioFxBtn').classList.toggle('ativo', !!algum);
+    $('#beAudioFxBtn').textContent = todos ? '🎚 Aprimorar áudio ✓' : '🎚 Aprimorar áudio';
+  }
+  // botão geral: liga TUDO; se já está tudo ligado, desliga tudo (pedido do user)
+  $('#beAudioFxBtn').addEventListener('click', () => {
+    const st = store.getState();
+    const ac = st.audio_clips.find(a => a.id === st.selected_audio_id);
+    if (!ac) return;
+    const todos = ac.fx_ruido && ac.fx_voz && ac.fx_norm;
+    store.dispatch(act.setAudioFx(ac.id, todos
+      ? { fx_ruido: false, fx_voz: false, fx_norm: false }
+      : { fx_ruido: true, fx_voz: true, fx_norm: true }));
+    toast(todos ? 'Efeitos de áudio desligados' : 'Todos os efeitos de áudio ligados ✓ (valem no vídeo exportado)');
+  });
+  $('#beAudioFxPop').addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-fx]'); if (!cb) return;
+    const id = store.getState().selected_audio_id; if (id == null) return;
+    store.dispatch(act.setAudioFx(id, { [cb.dataset.fx]: cb.checked }));
+  });
+  $('#beFxVozInt').addEventListener('input', (e) => {
+    const id = store.getState().selected_audio_id; if (id == null) return;
+    $('#beFxVozIntVal').textContent = e.target.value;
+    store.dispatch({ ...act.setAudioFx(id, { fx_voz_int: parseInt(e.target.value, 10) }), gestureId: 'fxint-' + id });
+  });
+  $('#beFxVozInt').addEventListener('change', () => store.endGesture());
+
   // ── audio destacado (Ctrl+Shift+S) ──
   $('#beDetachAudio').addEventListener('click', () => {
     store.dispatch(act.detachAudio());
@@ -2056,6 +2197,13 @@ export function mountEditor(root, store, opts = {}) {
   function desmontar() {
     if (desmontado) return;
     desmontado = true;
+    // gravação em curso não pode sobreviver ao desmonte (mic ficaria aberto)
+    if (rec) {
+      clearInterval(rec.timer);
+      try { rec.mr.stop(); } catch {}
+      rec.stream.getTracks().forEach(t => t.stop());
+      rec = null;
+    }
     detachResizers();
     detachShortcuts();
     document.removeEventListener('visibilitychange', flushOnHide);
@@ -2388,6 +2536,24 @@ function buildTemplate() {
     <div id="bePropsAudio" class="be-props-stack" style="display:none">
       <div class="be-side-title" id="beAudioPanelTitle">♪ Áudio</div>
       <div class="be-dim">Duração: <span id="beAudioClipDur">–</span> · corte com ✂, arraste pra mover</div>
+
+      <!-- APRIMORAR ÁUDIO (2026-07-29, prints do CapCut): o botão liga/desliga
+           TUDO; as caixas escolhem efeito a efeito. Aplicado no export. -->
+      <div class="be-audiofx">
+        <button type="button" id="beAudioFxBtn" class="be-tool-btn" title="Clique: liga/desliga todos os efeitos">🎚 Aprimorar áudio</button>
+        <div id="beAudioFxPop" class="be-glass be-audiofx-pop">
+          <div class="be-audiofx-tit">Aprimorar áudio</div>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxRuido" data-fx="fx_ruido"/> Reduzir ruído <span class="be-fx-gema">💎</span></label>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxVoz" data-fx="fx_voz"/> Aprimorar voz <span class="be-fx-gema">💎</span></label>
+          <div id="beFxVozIntRow" class="be-audiofx-int" style="display:none">
+            <span>Intensidade</span>
+            <input id="beFxVozInt" type="range" min="0" max="100" step="1" value="75"/>
+            <output id="beFxVozIntVal">75</output>
+          </div>
+          <label class="be-audiofx-row"><input type="checkbox" id="beFxNorm" data-fx="fx_norm"/> Normalizar nível de volume <span class="be-fx-gema">💎</span></label>
+          <div class="be-dim">Normaliza o volume do clipe pra um nível-alvo. Os efeitos são aplicados no vídeo exportado.</div>
+        </div>
+      </div>
       <label class="be-slider-label">Volume <input id="beVolSelected" type="range" min="0" max="2" step="0.05" value="1"/></label>
       <label class="be-slider-label">Velocidade <b id="beAudioSpeedVal">1.00x</b>
         <input id="beAudioSpeed" type="range" min="-100" max="200" step="1" value="0"/>
@@ -2458,6 +2624,15 @@ function buildTemplate() {
       <button id="beCompoundExit" class="be-tool-btn">← Sair do clipe</button>
       <span id="beCompoundName" class="be-dim"></span>
     </div>
+
+    <!-- pill de GRAVAÇÃO (liquid glass): aparece flutuando sobre a timeline
+         enquanto a locução grava; a faixa vai nascendo em tempo real -->
+    <div id="beRecPill" class="be-glass be-rec-pill" style="display:none">
+      <span class="be-rec-dot"></span>
+      <span id="beRecTime" class="be-rec-time">0:00</span>
+      <button type="button" id="beRecPause" title="Pausar gravação">⏸</button>
+      <button type="button" id="beRecStop" title="Parar e colocar na timeline">⏹</button>
+    </div>
     <div class="be-toolbar">
       <button id="beSplit" class="be-tool-btn" title="Dividir no cursor (Ctrl+B)">✂ Dividir</button>
       <button id="beDelLeft" class="be-tool-btn" title="Apagar antes do cursor (Q)">⇤ Apagar antes</button>
@@ -2466,6 +2641,7 @@ function buildTemplate() {
       <button id="beDelClip" class="be-tool-btn" title="Excluir cena selecionada (Delete)">🗑 Excluir</button>
       <span class="be-toolbar-sep"></span>
       <button id="beAddText2" class="be-tool-btn" title="Adicionar texto no cursor">＋ Texto</button>
+      <button id="beRecVoice" class="be-tool-btn" title="Gravar locução — a gravação entra na timeline a partir do cursor">🎙 Locução</button>
       <button id="beGroupBtn" class="be-tool-btn" title="Agrupar selecionados em clipe composto (Alt+G)">⧉ Agrupar</button>
       <span class="be-toolbar-spacer"></span>
       <button id="beZoomOut" class="be-icon-btn" title="Zoom - (Ctrl -)">−</button>

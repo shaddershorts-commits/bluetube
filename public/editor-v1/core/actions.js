@@ -33,6 +33,8 @@ export const A = {
   DELETE_AUDIO_CLIP: 'DELETE_AUDIO_CLIP',
   SET_AUDIO_VOLUME: 'SET_AUDIO_VOLUME',
   SELECT_AUDIO_CLIP: 'SELECT_AUDIO_CLIP',
+  // Aprimorar áudio (2026-07-29): reduzir ruído / aprimorar voz / normalizar
+  SET_AUDIO_FX: 'SET_AUDIO_FX',
   // camadas (overlays)
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
   SET_ITEM_LANE: 'SET_ITEM_LANE',
@@ -113,6 +115,7 @@ export const UNDOABLE = {
   [A.MOVE_AUDIO]: U,
   [A.DELETE_AUDIO_CLIP]: U,
   [A.SET_AUDIO_VOLUME]: U,
+  [A.SET_AUDIO_FX]: U,
   [A.CONVERT_TO_OVERLAY]: U,
   [A.TRIM_OVERLAY]: U,
   [A.SPLIT_OVERLAY]: U,
@@ -178,6 +181,8 @@ export const trimAudio = (audioId, edge, value) => ({ type: A.TRIM_AUDIO, audioI
 export const moveAudio = (audioId, start) => ({ type: A.MOVE_AUDIO, audioId, start });
 export const deleteAudioClip = (audioId) => ({ type: A.DELETE_AUDIO_CLIP, audioId });
 export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, audioId, value });
+// patch = { fx_ruido?, fx_voz?, fx_voz_int?, fx_norm? } — Aprimorar áudio
+export const setAudioFx = (audioId, patch) => ({ type: A.SET_AUDIO_FX, audioId, patch });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
 export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline

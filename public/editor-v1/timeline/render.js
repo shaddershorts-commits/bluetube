@@ -88,7 +88,7 @@ function desenharRegua(ctx, layout, W) {
   ctx.restore();
 }
 
-function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, videoWave, dpr }) {
+function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, recGhost, thumbs, wave, videoWave, dpr }) {
   // A altura do BITMAP tem que ser a altura do ELEMENTO. Quando o conteudo
   // passava disso, o canvas era desenhado mais alto e o navegador ESPREMIA a
   // imagem pra caber — tudo aparecia achatado e o clique caia deslocado do que
@@ -461,6 +461,30 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(mx, my, mw, mh);
     ctx.setLineDash([]);
+  }
+
+  // ── LOCUÇÃO gravando: a faixa nasce em TEMPO REAL (fantasma pulsante) ──
+  // Desenho puro (nada no store): o clipe de verdade só entra ao parar.
+  if (recGhost && recGhost.dur > 0) {
+    const AH = layout.audioTrackH || METRICS.AUDIO_TRACK_H;
+    const gx = timeToX(layout.vp, recGhost.t0);
+    const gw = Math.max(5, recGhost.dur * layout.vp.pxPerSec);
+    const gy = layout.yAudio + (recGhost.lane || 0) * (AH + 2);
+    const pulso = 0.55 + 0.25 * Math.sin(Date.now() / 260);
+    ctx.save();
+    roundRect(ctx, gx, gy, gw, AH, 4);
+    ctx.fillStyle = `rgba(255,71,87,${(pulso * 0.5).toFixed(3)})`;
+    ctx.fill();
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = `rgba(255,71,87,${pulso.toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('● Gravando…', gx + 6, gy + AH / 2);
+    ctx.restore();
   }
 
   // ── regua POR CIMA das faixas (a rolagem passa conteudo por baixo dela) ──

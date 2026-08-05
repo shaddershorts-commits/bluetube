@@ -7,7 +7,9 @@ export const MAX_VIDEO_MB = 500;
 export const MAX_AUDIO_MB = 50;
 export const MAX_IMAGE_MB = 20;
 const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
-const AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac'];
+// audio/webm e ogg: é o que o MediaRecorder produz — a LOCUÇÃO gravada no
+// próprio editor chegava aqui e era rejeitada como "formato inválido"
+const AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/ogg'];
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /**
@@ -46,7 +48,7 @@ function validate(file, kind) {
     ? /\.(mp4|mov|webm)$/i.test(file.name)
     : kind === 'image'
       ? /\.(png|jpg|jpeg|webp|gif)$/i.test(file.name)
-      : /\.(mp3|wav|m4a|aac)$/i.test(file.name);
+      : /\.(mp3|wav|m4a|aac|webm|ogg)$/i.test(file.name);
   if (!types.includes(file.type) && !extOk) {
     const msg = kind === 'video' ? 'Formato inválido. Use MP4, MOV ou WebM.'
       : kind === 'image' ? 'Formato inválido. Use PNG, JPG, WebP ou GIF.'
@@ -123,11 +125,22 @@ export function probeAudio(file) {
     const url = URL.createObjectURL(file);
     const to = setTimeout(() => { cleanup(); reject(new Error('Não consegui ler o áudio')); }, 15000);
     function cleanup() { clearTimeout(to); URL.revokeObjectURL(url); }
-    a.onloadedmetadata = () => {
+    function finish() {
       const meta = { duration: a.duration };
       cleanup();
       if (!meta.duration || !isFinite(meta.duration)) reject(new Error('Duração inválida'));
       else resolve(meta);
+    }
+    a.onloadedmetadata = () => {
+      if (!isFinite(a.duration) || a.duration === 0) {
+        // webm do MediaRecorder (a LOCUÇÃO gravada no editor) reporta Infinity
+        // até um seek além do fim forçar o cálculo — mesmo hack do probeVideo
+        a.ondurationchange = () => { if (isFinite(a.duration) && a.duration > 0) finish(); };
+        a.currentTime = 1e7;
+        setTimeout(() => { if (isFinite(a.duration) && a.duration > 0) finish(); }, 3000);
+      } else {
+        finish();
+      }
     };
     a.onerror = () => { cleanup(); reject(new Error('Formato de áudio não suportado')); };
     a.src = url;

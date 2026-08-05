@@ -181,6 +181,11 @@ export function normalizeLoadedState(raw) {
       volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
       ...(typeof a.speed === 'number' ? { speed: clamp(a.speed, 0.1, 100) } : {}),
       lane: Number.isInteger(a.lane) && a.lane >= 0 ? Math.min(MAX_AUDIO_LANE, a.lane) : null,
+      // Aprimorar áudio: sem copiar aqui, reabrir o projeto apagaria os
+      // efeitos em silêncio (a MESMA classe de bug do grade do Retoque)
+      ...(a.fx_ruido === true ? { fx_ruido: true } : {}),
+      ...(a.fx_voz === true ? { fx_voz: true, fx_voz_int: clamp(Math.round(a.fx_voz_int ?? 75), 0, 100) } : {}),
+      ...(a.fx_norm === true ? { fx_norm: true } : {}),
       active: a.active !== false,
     })) : [];
   if (!s.audio_clips.length && raw.audio_extra?.url && raw.audio_extra?.duration > 0) {

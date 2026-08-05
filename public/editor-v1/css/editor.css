@@ -297,6 +297,65 @@ body {
 /* o buffer (pré-carregando o próximo take) fica escondido até o swap */
 .be-preview-frame video.be-buffering { visibility: hidden; }
 
+/* ── LIQUID GLASS: vidro translúcido com blur (pedido do user 2026-07-29) ── */
+.be-glass {
+  background: rgba(10, 25, 47, .55);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(130, 190, 255, .28);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+
+/* ── LOCUÇÃO: pill de gravação flutuando sobre a timeline ── */
+.be-timeline-area { position: relative; }
+.be-rec-pill {
+  position: absolute; top: 34px; right: 14px; z-index: 45;
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+}
+.be-rec-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: #ff4757;
+  animation: beRecDot 1.1s ease-in-out infinite;
+}
+.be-rec-pill.pausada .be-rec-dot { animation: none; opacity: .45; }
+@keyframes beRecDot {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, .5); }
+  50% { transform: scale(1.25); box-shadow: 0 0 0 7px rgba(255, 71, 87, 0); }
+}
+.be-rec-time { font-family: var(--mono); font-size: 12px; font-weight: 800; color: #ffb3bb; min-width: 34px; }
+.be-rec-pill button {
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(130, 190, 255, .25);
+  border-radius: 7px; color: var(--text); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 5px 8px;
+}
+.be-rec-pill button:hover { background: rgba(255, 71, 87, .25); border-color: #ff4757; }
+#beRecVoice.gravando {
+  color: #ff4757; border-color: #ff4757;
+  animation: beRecBtn 1.2s ease-in-out infinite;
+}
+@keyframes beRecBtn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, .35); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 71, 87, 0); }
+}
+
+/* ── APRIMORAR ÁUDIO (popover liquid glass, prints do CapCut) ── */
+.be-audiofx { position: relative; display: flex; flex-direction: column; gap: 8px; }
+#beAudioFxBtn.ativo { color: var(--neon); border-color: var(--neon); }
+.be-audiofx-pop { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
+.be-audiofx-tit { font-weight: 800; font-size: 13px; }
+.be-audiofx-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; cursor: pointer; user-select: none;
+}
+.be-audiofx-row input { accent-color: #22c1dc; width: 15px; height: 15px; }
+.be-fx-gema { font-size: 11px; }
+.be-audiofx-int {
+  display: flex; align-items: center; gap: 8px; font-size: 11.5px;
+  padding-left: 22px; color: var(--text-sec);
+}
+.be-audiofx-int input { flex: 1; }
+.be-audiofx-int output { font-family: var(--mono); font-size: 11px; min-width: 24px; text-align: right; }
+
 /* janelinha de zoom do preview (canto inferior direito, como no CapCut) */
 .be-pvzoom {
   position: absolute; right: 8px; bottom: 8px; z-index: 60;

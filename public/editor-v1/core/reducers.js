@@ -636,7 +636,11 @@ export function reduce(state, action) {
         id: state.next_audio_id, kind: 'extra',
         url: m.url, filename: m.filename || 'áudio',
         media_duration: m.duration,
-        start: 0, source_in: 0, source_out: m.duration,
+        // start/lane opcionais: a LOCUÇÃO gravada cai exatamente onde o
+        // fantasma da gravação estava (posição da agulha + faixa nova)
+        start: Math.max(0, Number(m.start) || 0),
+        ...(Number.isInteger(m.lane) && m.lane >= 0 ? { lane: Math.min(MAX_AUDIO_LANE, m.lane) } : {}),
+        source_in: 0, source_out: m.duration,
         volume: 1, active: true,
       };
       return touch({
@@ -646,6 +650,26 @@ export function reduce(state, action) {
         selected_audio_id: clip.id,
         selected_clip_id: null, selected_text_id: null,
       });
+    }
+
+    case A.SET_AUDIO_FX: {
+      // Aprimorar áudio (print do CapCut): reduzir ruído / aprimorar voz (com
+      // intensidade) / normalizar volume. Flags por CLIPE — aplicadas no
+      // arquivo exportado (afftdn / eq+compressor / dynaudnorm no Railway).
+      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      if (idx < 0) return state;
+      const a = state.audio_clips[idx];
+      const p = action.patch || {};
+      const next = { ...a };
+      if (p.fx_ruido != null) next.fx_ruido = !!p.fx_ruido;
+      if (p.fx_voz != null) next.fx_voz = !!p.fx_voz;
+      if (p.fx_norm != null) next.fx_norm = !!p.fx_norm;
+      if (p.fx_voz_int != null) next.fx_voz_int = clamp(Math.round(Number(p.fx_voz_int) || 0), 0, 100);
+      if (next.fx_ruido === a.fx_ruido && next.fx_voz === a.fx_voz &&
+          next.fx_norm === a.fx_norm && next.fx_voz_int === a.fx_voz_int) return state;
+      const audio_clips = state.audio_clips.slice();
+      audio_clips[idx] = next;
+      return touch({ ...state, audio_clips });
     }
 
     case A.DETACH_AUDIO: {

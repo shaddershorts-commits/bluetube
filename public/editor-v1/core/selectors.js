@@ -393,6 +393,10 @@ export function exportPayload(state) {
       source_out: round3(a.source_out),
       volume: a.volume ?? 1,
       speed: Math.round(clipSpeed(a) * 1000) / 1000, // atempo no Railway
+      // Aprimorar áudio (aplicado na cadeia do render)
+      ...(a.fx_ruido ? { fx_ruido: true } : {}),
+      ...(a.fx_voz ? { fx_voz: true, fx_voz_int: Math.round(a.fx_voz_int ?? 75) } : {}),
+      ...(a.fx_norm ? { fx_norm: true } : {}),
     })),
     // camadas overlay (render: filter overlay + scale + enable window)
     overlays: effectiveOverlays(state).map(o => ({

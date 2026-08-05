@@ -2060,6 +2060,39 @@ function animExpr(anim, startSec, endSec) {
     `1.08-((${ent}-0.6)/0.4)*0.080))`;
   return { alpha, escala, deslocY: null };
 }
+// ── APRIMORAR ÁUDIO + velocidade (2026-07-29) ───────────────────────────────
+// O editor manda flags por clipe de áudio: fx_ruido (afftdn), fx_voz (eq de
+// presença + compressor, intensidade 0..100) e fx_norm (dynaudnorm). E o
+// `speed` do payload NUNCA era aplicado aqui — áudio acelerado no editor saía
+// no ritmo errado no arquivo. Devolve a lista de filtros pra cadeia do clipe.
+function atempoChain(s) {
+  // atempo aceita 0.5..100 por instância; velocidades menores viram cadeia
+  const out = [];
+  let r = Number(s);
+  if (!Number.isFinite(r) || r <= 0) return out;
+  while (r < 0.5) { out.push('atempo=0.5'); r *= 2; }
+  while (r > 100) { out.push('atempo=100'); r /= 100; }
+  if (Math.abs(r - 1) > 0.001) out.push(`atempo=${r.toFixed(4)}`);
+  return out;
+}
+function filtrosDeAudioFx(a) {
+  const out = [];
+  if (!a || typeof a !== 'object') return out;
+  out.push(...atempoChain(a.speed));
+  if (a.fx_ruido === true) out.push('afftdn=nr=12:nf=-30');
+  if (a.fx_voz === true) {
+    const k = Math.min(1, Math.max(0, (Number(a.fx_voz_int) || 75) / 100));
+    out.push('highpass=f=75');
+    out.push(`equalizer=f=3000:t=q:w=1:g=${(k * 5).toFixed(1)}`);
+    out.push(`acompressor=threshold=-18dB:ratio=${(2 + k * 2).toFixed(1)}:attack=20:release=250:makeup=${(1 + k * 1.2).toFixed(2)}`);
+  }
+  // loudnorm (EBU R128) e nao dynaudnorm: a sonda mediu que o dynaudnorm mal
+  // levantava locucao gravada baixa (+4.5dB em -48dB); o loudnorm leva pro
+  // NIVEL-ALVO de verdade (-16 LUFS, padrao de fala em redes sociais)
+  if (a.fx_norm === true) out.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  return out;
+}
+
 // ── CORREÇÃO DE COR (Retoque) ────────────────────────────────────────────────
 // Ate 29/07 o grade existia SO no preview: o payload nem carregava os valores e
 // o arquivo exportado saia sem nenhum ajuste. Agora o editor manda `grade_render`
@@ -2525,7 +2558,12 @@ async function processEditV0(jobId, p) {
         args.push('-i', mediaPath);
         const delayMs = Math.round((a.start ?? 0) * 1000);
         const lbl = `ac${i}`;
-        fc.push(`[${inputIdx}:a]atrim=${(a.source_in ?? 0).toFixed(3)}:${a.source_out.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(a.volume ?? 1).toFixed(2)},adelay=${delayMs}|${delayMs}[${lbl}]`);
+        // velocidade + Aprimorar áudio entram ANTES do volume/adelay: o
+        // atempo muda a duração (o delay é sobre o tempo da timeline) e o
+        // normalizador deve trabalhar no som já limpo
+        const fxA = filtrosDeAudioFx(a);
+        const fxStr = fxA.length ? ',' + fxA.join(',') : '';
+        fc.push(`[${inputIdx}:a]atrim=${(a.source_in ?? 0).toFixed(3)}:${a.source_out.toFixed(3)},asetpts=PTS-STARTPTS${fxStr},volume=${(a.volume ?? 1).toFixed(2)},adelay=${delayMs}|${delayMs}[${lbl}]`);
         aLabels.push(lbl);
         inputIdx++;
       }
