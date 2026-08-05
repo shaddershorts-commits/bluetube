@@ -230,6 +230,10 @@
       "schedule": "0 10 * * 3"
     },
     {
+      "path": "/api/blue-reengajar",
+      "schedule": "0 22 * * *"
+    },
+    {
       "path": "/api/email-sequence?audience=free",
       "schedule": "0 10 * * 4"
     },
