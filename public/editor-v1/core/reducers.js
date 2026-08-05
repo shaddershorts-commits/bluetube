@@ -463,9 +463,17 @@ export function reduce(state, action) {
       // limpa QUALQUER seleção (clip/texto/áudio/overlay). Antes o clique no
       // vazio chamava selectClip(null), que dava no-op quando o selecionado era
       // texto/overlay (selected_clip_id já era null) — a camada não desmarcava.
-      if (state.selected_clip_id == null && state.selected_text_id == null &&
+      //
+      // ⚠️ multi_selected TAMBÉM entra aqui (bug reportado 2026-07-29: "aperto
+      // W/Q sem NENHUMA faixa selecionada e ele corta TUDO"). A raiz era esta:
+      // Ctrl+A ou marquee enchia multi_selected, clicar no vazio limpava só os
+      // selected_* — a multi-seleção ficava VIVA E INVISÍVEL, e Q/W/Delete
+      // agiam sobre ela. "Limpar seleção" tem que limpar a seleção INTEIRA.
+      const semMulti = !state.multi_selected?.length;
+      if (semMulti && state.selected_clip_id == null && state.selected_text_id == null &&
           state.selected_audio_id == null && state.selected_overlay_id == null) return state;
-      return { ...state, selected_clip_id: null, selected_text_id: null, selected_audio_id: null, selected_overlay_id: null };
+      return { ...state, selected_clip_id: null, selected_text_id: null,
+               selected_audio_id: null, selected_overlay_id: null, multi_selected: [] };
     }
 
     case A.DELETE_RANGE_LEFT: {
@@ -673,22 +681,40 @@ export function reduce(state, action) {
     }
 
     case A.SET_AUDIO_FX: {
-      // Aprimorar áudio (print do CapCut): reduzir ruído / aprimorar voz (com
-      // intensidade) / normalizar volume. Flags por CLIPE — aplicadas no
-      // arquivo exportado (afftdn / eq+compressor / dynaudnorm no Railway).
-      const idx = state.audio_clips.findIndex(a => a.id === action.audioId);
+      // Aprimorar áudio: reduzir ruído / aprimorar voz (com intensidade) /
+      // normalizar volume. As MESMAS flags valem pros três lugares onde áudio
+      // pode viver, porque pro usuário é sempre "o áudio disto aqui":
+      //   alvo 'audio' → clipe de áudio solto
+      //   alvo 'clip'  → cena de vídeo (áudio embutido) OU clipe composto
+      //                  (cascateia pro áudio de dentro no export)
+      // Um modelo só evita o buraco que o user pegou: efeito que existia pro
+      // áudio solto e não existia pro vídeo nem pro composto.
+      const aplicar = (item) => {
+        const p = action.patch || {};
+        const n = { ...item };
+        if (p.fx_ruido != null) n.fx_ruido = !!p.fx_ruido;
+        if (p.fx_voz != null) n.fx_voz = !!p.fx_voz;
+        if (p.fx_norm != null) n.fx_norm = !!p.fx_norm;
+        if (p.fx_voz_int != null) n.fx_voz_int = clamp(Math.round(Number(p.fx_voz_int) || 0), 0, 100);
+        const igual = n.fx_ruido === item.fx_ruido && n.fx_voz === item.fx_voz &&
+                      n.fx_norm === item.fx_norm && n.fx_voz_int === item.fx_voz_int;
+        return igual ? null : n;
+      };
+      if (action.alvo === 'clip') {
+        const i = state.clips.findIndex(c => c.id === action.id);
+        if (i < 0) return state;
+        const novo = aplicar(state.clips[i]);
+        if (!novo) return state;
+        const clips = state.clips.slice();
+        clips[i] = novo;
+        return touch({ ...state, clips });
+      }
+      const idx = state.audio_clips.findIndex(a => a.id === action.id);
       if (idx < 0) return state;
-      const a = state.audio_clips[idx];
-      const p = action.patch || {};
-      const next = { ...a };
-      if (p.fx_ruido != null) next.fx_ruido = !!p.fx_ruido;
-      if (p.fx_voz != null) next.fx_voz = !!p.fx_voz;
-      if (p.fx_norm != null) next.fx_norm = !!p.fx_norm;
-      if (p.fx_voz_int != null) next.fx_voz_int = clamp(Math.round(Number(p.fx_voz_int) || 0), 0, 100);
-      if (next.fx_ruido === a.fx_ruido && next.fx_voz === a.fx_voz &&
-          next.fx_norm === a.fx_norm && next.fx_voz_int === a.fx_voz_int) return state;
+      const novo = aplicar(state.audio_clips[idx]);
+      if (!novo) return state;
       const audio_clips = state.audio_clips.slice();
-      audio_clips[idx] = next;
+      audio_clips[idx] = novo;
       return touch({ ...state, audio_clips });
     }
 

@@ -3,7 +3,7 @@
 // Modulo puro: sem DOM/canvas. Toda posicao visual nasce aqui — render e
 // hittest consomem o MESMO layout (nunca calculam por conta propria).
 
-import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur, audioLaneMap, playableDuration } from '../core/selectors.js';
+import { timelineSegments, totalDuration, mainTrackItems, audioTimelineDur, overlayTimelineDur, audioLaneMap, playableDuration, compoundTemAudio } from '../core/selectors.js';
 import { MAX_LANE } from '../core/schema.js';
 
 export const METRICS = {
@@ -127,6 +127,10 @@ export function computeLayout(state, vp, hint = null) {
       isCompound: it.isCompound,
       compoundId: it.clip.compound_id || null,
       compoundName: comp?.name || null,
+      // o bloco composto precisa MOSTRAR que tem som (user 2026-07-29: "sai
+      // áudio normalmente, mas não consta visualmente e o editor acha que não
+      // tem áudio")
+      compoundAudio: it.isCompound ? compoundTemAudio(state, it.clip.compound_id) : false,
       // take extra: thumbs do principal nao valem — render mostra slab+nome
       mediaId: it.clip.media_id ?? null,
       mediaName: it.clip.media_id != null

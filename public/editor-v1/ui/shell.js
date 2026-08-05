@@ -4,7 +4,7 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
@@ -98,6 +98,7 @@ export function mountEditor(root, store, opts = {}) {
   let transArrastando = null;    // id sendo arrastado pra timeline
   let audioLibTab = 'musicas';   // musicas | efeitos | favoritos
   let audioLibQuery = '';
+  let audioLibCat = null;        // categoria filtrada (null = todas)
   let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
   let filledAudioId = null;
   let filledOvId = null;
@@ -194,16 +195,22 @@ export function mountEditor(root, store, opts = {}) {
     } catch (e) {}
     const state = store.getState();
     const t = player.getTime();
-    const it = mainTrackItems(state).find(x => t >= x.tStart && t < x.tEnd);
-    const clip = it?.clip;
-    const scale = clip?.scale ?? 1;
-    const opacity = clip?.opacity ?? 1;
-    const sx = clip?.mirrored ? -scale : scale;   // Espelhar = inverte no eixo X
+    // ⚠️ MESMO RESOLVEDOR DO EXPORT (propriedadeDaCena): o preview lia do
+    // BLOCO (mainTrackItems) e o export lia do SUB-CLIPE — exatamente opostos.
+    // Resultado: máscara/retoque aplicados no composto sumiam no arquivo, e
+    // aplicados numa cena de dentro não apareciam na tela. Agora os dois usam
+    // a mesma regra: valor da cena vence, na falta herda do bloco.
+    const seg = segmentAt(state, t);
+    const dono = (campo) => propriedadeDaCena(state, seg, campo);
+    const clip = seg?.clip;
+    const scale = dono('scale') ?? 1;
+    const opacity = dono('opacity') ?? 1;
+    const sx = dono('mirrored') ? -scale : scale;   // Espelhar = inverte no eixo X
     // POSIÇÃO da cena no quadro (mover o vídeo, como no CapCut) — fração do
     // próprio quadro a partir do centro
-    const px = (clip?.pos_x ?? 0) * 100, py = (clip?.pos_y ?? 0) * 100;
+    const px = (dono('pos_x') ?? 0) * 100, py = (dono('pos_y') ?? 0) * 100;
     const mover = (px || py) ? `translate(${px.toFixed(2)}%, ${py.toFixed(2)}%) ` : '';
-    const tf = (scale !== 1 || clip?.mirrored || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
+    const tf = (scale !== 1 || dono('mirrored') || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
     // aplica no elemento ATIVO do double-buffer (pode ter trocado no swap)
     const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
     if (el.style.transform !== tf) el.style.transform = tf;
@@ -212,7 +219,7 @@ export function mountEditor(root, store, opts = {}) {
     // MÁSCARA da cena (WYSIWYG — o Railway aplica igual no export):
     // círculo = radial-gradient (suavizar nativo); retângulo = SVG com rx
     // (cantos) + feGaussianBlur (suavizar). Coordenadas em % do quadro.
-    const maskCss = maskCssFor(clip?.mask);
+    const maskCss = maskCssFor(dono('mask'));
     if (el.style.webkitMaskImage !== maskCss) {
       el.style.webkitMaskImage = maskCss;
       el.style.maskImage = maskCss;
@@ -281,8 +288,8 @@ export function mountEditor(root, store, opts = {}) {
   function aplicarGrade() {
     const state = store.getState();
     const t = player.getTime();
-    const it = mainTrackItems(state).find(x => t >= x.tStart && t < x.tEnd);
-    const g = it?.clip?.grade;
+    // mesmo resolvedor do export: cena vence, herda do bloco composto
+    const g = propriedadeDaCena(state, segmentAt(state, t), 'grade');
     const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
     const sig = JSON.stringify(g || null);
     if (sig !== _gradeSig) {
@@ -613,9 +620,9 @@ export function mountEditor(root, store, opts = {}) {
         }
       }
     } else { filledAudioId = null; }
-    // o botão 🎚 vive na toolbar (sempre visível): sincroniza com o áudio
-    // selecionado, ou mostra "selecione um clipe" quando não há
-    syncAudioFxPanel(state.audio_clips.find(a => a.id === state.selected_audio_id) || null);
+    // o botão 🎚 vive na toolbar (sempre visível): sincroniza com o ÁUDIO DA
+    // SELEÇÃO (clipe de áudio, cena com som ou composto)
+    syncAudioFxPanel(alvoDoFx(state));
     if (showOv) {
       const ov = state.overlays.find(o => o.id === state.selected_overlay_id);
       if (ov && filledOvId !== ov.id) {
@@ -1416,8 +1423,45 @@ export function mountEditor(root, store, opts = {}) {
         box.innerHTML = '<div class="be-dim">' + (r.message || 'Nada encontrado.') + '</div>';
         return;
       }
+      // ── AGRUPADO POR CATEGORIA (user 2026-07-29: "escolhi as categorias ao
+      // adicionar cada faixa, mas no editor não está organizado por
+      // categoria"). As categorias saem DOS PRÓPRIOS DADOS — nada cravado no
+      // código pra envelhecer quando o admin criar uma categoria nova.
       box.innerHTML = '';
-      items.forEach(it => box.appendChild(audioResultRow(it, false)));
+      const porCat = new Map();
+      for (const it of items) {
+        const cat = (it.category || 'Geral').trim() || 'Geral';
+        if (!porCat.has(cat)) porCat.set(cat, []);
+        porCat.get(cat).push(it);
+      }
+      const cats = [...porCat.keys()].sort((a, b) => a.localeCompare(b, 'pt'));
+      // filtro de categoria (só aparece quando há mais de uma)
+      if (cats.length > 1) {
+        const chips = document.createElement('div');
+        chips.className = 'be-audiolib-cats';
+        const fazChip = (nome, valor) => {
+          const b = document.createElement('button');
+          b.className = 'be-audiolib-cat' + (audioLibCat === valor ? ' active' : '');
+          b.textContent = nome;
+          b.addEventListener('click', () => { audioLibCat = valor; renderAudioLib(); });
+          return b;
+        };
+        chips.appendChild(fazChip('Todas', null));
+        for (const c of cats) chips.appendChild(fazChip(c, c));
+        box.appendChild(chips);
+      }
+      const visiveis = audioLibCat ? cats.filter(c => c === audioLibCat) : cats;
+      if (!visiveis.length) {
+        box.appendChild(Object.assign(document.createElement('div'),
+          { className: 'be-dim', textContent: 'Nada nesta categoria.' }));
+      }
+      for (const cat of visiveis) {
+        const h = document.createElement('div');
+        h.className = 'be-audiolib-catnome';
+        h.textContent = cat + ' · ' + porCat.get(cat).length;
+        box.appendChild(h);
+        for (const it of porCat.get(cat)) box.appendChild(audioResultRow(it, false));
+      }
     } catch (e) {
       box.innerHTML = '<div class="be-dim">Biblioteca ainda não conectada. Use ＋ Importar por enquanto.</div>';
     }
@@ -1604,7 +1648,33 @@ export function mountEditor(root, store, opts = {}) {
   $('#beRecStop').addEventListener('click', pararLocucao);
 
   // ── APRIMORAR ÁUDIO (botão da toolbar; popover no hover; motor no player) ──
-  function syncAudioFxPanel(ac) {
+  // O ALVO é "o áudio da seleção atual", venha ele de onde vier: clipe de
+  // áudio solto, cena de vídeo com áudio embutido, ou clipe composto. Sem
+  // esse alvo genérico a feature ficava só pro áudio solto — foi exatamente o
+  // que o usuário pegou ("tem que funcionar em vídeo com áudio" / "no composto
+  // o editor acha que não tem áudio").
+  function alvoDoFx(state) {
+    if (state.selected_audio_id != null) {
+      const a = state.audio_clips.find(x => x.id === state.selected_audio_id);
+      if (a) return { alvo: 'audio', id: a.id, item: a, rotulo: a.filename || 'áudio' };
+    }
+    if (state.selected_clip_id != null) {
+      const c = state.clips.find(x => x.id === state.selected_clip_id);
+      if (c) {
+        // composto: as flags moram no stub e cascateiam pro áudio de dentro
+        if (c.compound_id != null) {
+          if (!compoundTemAudio(state, c.compound_id)) return null;
+          return { alvo: 'clip', id: c.id, item: c, rotulo: 'clipe composto' };
+        }
+        // cena de vídeo: só faz sentido se ela ainda tem áudio
+        if (!c.muted && !state.audio_detached) return { alvo: 'clip', id: c.id, item: c, rotulo: 'áudio da cena' };
+      }
+    }
+    return null;
+  }
+
+  function syncAudioFxPanel(alvo) {
+    const ac = alvo?.item || null;
     const semAlvo = !ac;
     $('#beFxSemAlvo').style.display = semAlvo ? 'block' : 'none';
     for (const cb of $('#beAudioFxPop').querySelectorAll('[data-fx]')) {
@@ -1635,25 +1705,25 @@ export function mountEditor(root, store, opts = {}) {
   }
   // botão geral: liga TUDO; se já está tudo ligado, desliga tudo (pedido do user)
   $('#beAudioFxBtn').addEventListener('click', () => {
-    const st = store.getState();
-    const ac = st.audio_clips.find(a => a.id === st.selected_audio_id);
-    if (!ac) return toast('Selecione um clipe de áudio na timeline primeiro', true);
-    const todos = ac.fx_ruido && ac.fx_voz && ac.fx_norm;
-    store.dispatch(act.setAudioFx(ac.id, todos
+    const alvo = alvoDoFx(store.getState());
+    if (!alvo) return toast('Selecione na timeline um áudio, uma cena com som ou um clipe composto', true);
+    const a = alvo.item;
+    const todos = a.fx_ruido && a.fx_voz && a.fx_norm;
+    store.dispatch(act.setAudioFx(alvo.alvo, alvo.id, todos
       ? { fx_ruido: false, fx_voz: false, fx_norm: false }
       : { fx_ruido: true, fx_voz: true, fx_norm: true }));
     $('#beAudioFxPop').style.display = 'flex';   // touch não tem hover: mostra o resultado
-    toast(todos ? 'Efeitos de áudio desligados' : 'Todos os efeitos de áudio ligados ✓');
+    toast(todos ? 'Efeitos de áudio desligados' : `Efeitos ligados no ${alvo.rotulo} ✓`);
   });
   $('#beAudioFxPop').addEventListener('change', (e) => {
     const cb = e.target.closest('[data-fx]'); if (!cb) return;
-    const id = store.getState().selected_audio_id; if (id == null) return;
-    store.dispatch(act.setAudioFx(id, { [cb.dataset.fx]: cb.checked }));
+    const alvo = alvoDoFx(store.getState()); if (!alvo) return;
+    store.dispatch(act.setAudioFx(alvo.alvo, alvo.id, { [cb.dataset.fx]: cb.checked }));
   });
   $('#beFxVozInt').addEventListener('input', (e) => {
-    const id = store.getState().selected_audio_id; if (id == null) return;
+    const alvo = alvoDoFx(store.getState()); if (!alvo) return;
     $('#beFxVozIntVal').textContent = e.target.value;
-    store.dispatch({ ...act.setAudioFx(id, { fx_voz_int: parseInt(e.target.value, 10) }), gestureId: 'fxint-' + id });
+    store.dispatch({ ...act.setAudioFx(alvo.alvo, alvo.id, { fx_voz_int: parseInt(e.target.value, 10) }), gestureId: 'fxint-' + alvo.alvo + alvo.id });
   });
   $('#beFxVozInt').addEventListener('change', () => store.endGesture());
 

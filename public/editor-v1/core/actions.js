@@ -181,8 +181,11 @@ export const trimAudio = (audioId, edge, value) => ({ type: A.TRIM_AUDIO, audioI
 export const moveAudio = (audioId, start) => ({ type: A.MOVE_AUDIO, audioId, start });
 export const deleteAudioClip = (audioId) => ({ type: A.DELETE_AUDIO_CLIP, audioId });
 export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, audioId, value });
-// patch = { fx_ruido?, fx_voz?, fx_voz_int?, fx_norm? } — Aprimorar áudio
-export const setAudioFx = (audioId, patch) => ({ type: A.SET_AUDIO_FX, audioId, patch });
+// Aprimorar áudio. `alvo` diz ONDE o áudio mora:
+//   'audio' = clipe de áudio solto · 'clip' = cena de vídeo (áudio embutido)
+//             ou clipe COMPOSTO (cascateia pro áudio de dentro)
+// patch = { fx_ruido?, fx_voz?, fx_voz_int?, fx_norm? }
+export const setAudioFx = (alvo, id, patch) => ({ type: A.SET_AUDIO_FX, alvo, id, patch });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
 export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline

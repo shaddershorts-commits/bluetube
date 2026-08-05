@@ -2327,9 +2327,16 @@ async function processEditV0(jobId, p) {
       // cena com áudio REMOVIDO (c.muted, "Remover áudio desta cena"): não
       // extrai — cai direto no silêncio do mesmo tamanho (mantém alinhamento)
       if (!c.muted) try {
+        // "Aprimorar áudio" da CENA (áudio embutido no vídeo) entra aqui, na
+        // extração do áudio DAQUELE clipe — é o único ponto onde ainda dá pra
+        // saber de quem era o som (depois vira um concat só)
+        const fxCena = filtrosDeAudioFx({ fx_ruido: c.fx_ruido, fx_voz: c.fx_voz,
+                                          fx_voz_int: c.fx_voz_int, fx_norm: c.fx_norm });
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
-          '-i', srcFor(c), '-vn', '-c:a', 'aac', '-b:a', '128k', out,
+          '-i', srcFor(c), '-vn',
+          ...(fxCena.length ? ['-af', fxCena.join(',')] : []),
+          '-c:a', 'aac', '-b:a', '128k', out,
         ]);
         ok = fs.existsSync(out);
       } catch(e) { ok = false; /* fonte pode nao ter trilha de audio */ }
@@ -2488,9 +2495,17 @@ async function processEditV0(jobId, p) {
           fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF}[${scaled}]`);
           fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
         } else {
-          // escala + velocidade (setpts/sp) + posição central em pct
+          // ⚠️ CAMADA DE VÍDEO PREENCHE CORTANDO (2026-07-29): era
+          // `scale=W:-2`, que deixa a altura seguir a proporção da FONTE — um
+          // vídeo 16:9 virava uma faixa no meio do quadro 9:16 (as "bordas
+          // pretas" que o usuário viu). A caixa da camada tem a proporção do
+          // QUADRO e o vídeo preenche cortando o excedente, igual à faixa
+          // principal (crop_center) e igual ao object-fit:cover do preview.
+          const scaleH = Math.max(2, Math.round(scaleW * ((p.output_height || 1920) / (p.output_width || 1080))));
           const spF = sp !== 1 ? `/${sp}` : '';
-          fc.push(`[${idx}:v]scale=${scaleW}:-2,setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
+          fc.push(`[${idx}:v]scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
+                  `crop=${scaleW}:${scaleH},setsar=1,` +
+                  `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
           fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
         }
       } else {

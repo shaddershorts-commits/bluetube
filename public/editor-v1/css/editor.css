@@ -297,6 +297,20 @@ body {
 /* o buffer (pré-carregando o próximo take) fica escondido até o swap */
 .be-preview-frame video.be-buffering { visibility: hidden; }
 
+/* ── biblioteca de áudio agrupada por CATEGORIA ── */
+.be-audiolib-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.be-audiolib-cat {
+  background: none; border: 1px solid var(--blue-border); border-radius: 999px;
+  color: var(--text-sec); font-size: 10.5px; font-weight: 700;
+  padding: 3px 9px; cursor: pointer; white-space: nowrap;
+}
+.be-audiolib-cat:hover { background: var(--blue-dim); color: var(--text); }
+.be-audiolib-cat.active { background: var(--blue-dim); border-color: var(--neon); color: var(--neon); }
+.be-audiolib-catnome {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-sec); margin: 10px 0 3px; font-weight: 800;
+}
+
 /* ── LIQUID GLASS: vidro translúcido com blur (pedido do user 2026-07-29) ── */
 .be-glass {
   background: rgba(10, 25, 47, .55);

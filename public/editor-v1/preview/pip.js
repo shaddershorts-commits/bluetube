@@ -17,8 +17,15 @@ export function createPip(container, videoSrcEl, store, player) {
     // imagem (PNG/sticker com transparência) usa <img>; camada de vídeo usa <video>
     const el = document.createElement(kind === 'image' ? 'img' : 'video');
     if (kind !== 'image') { el.muted = true; el.playsInline = true; el.preload = 'auto'; }
+    // ⚠️ object-fit por TIPO (bug 2026-07-29: "corto o vídeo, movo pra cima e
+    // ele aparece com bordas pretas — não é pra mudar NADA no vídeo"):
+    //  · VÍDEO: `cover`, igual à faixa principal (que também corta pra
+    //    preencher). Virar camada não pode reenquadrar a cena sozinho.
+    //  · IMAGEM: `contain` — um sticker/PNG tem proporção PRÓPRIA e cortá-lo
+    //    seria destruir o desenho.
     el.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;' +
-      'border:1.5px dashed rgba(169,127,238,0);border-radius:6px;object-fit:contain;' +
+      'border:1.5px dashed rgba(169,127,238,0);border-radius:6px;' +
+      'object-fit:' + (kind === 'image' ? 'contain' : 'cover') + ';' +
       'transform-origin:center;touch-action:none;';
     el.dataset.ovId = ovId;
     el.dataset.kind = kind || 'video';
@@ -92,6 +99,11 @@ export function createPip(container, videoSrcEl, store, player) {
       el.style.left = (ov.x_pct * 100) + '%';
       el.style.top = (ov.y_pct * 100) + '%';
       el.style.width = (ov.scale * 100) + '%';
+      // a caixa da camada de VÍDEO tem a proporção do QUADRO (largura% e
+      // altura% do mesmo palco): com object-fit:cover o vídeo preenche
+      // cortando o excedente — exatamente o que a faixa principal faz.
+      // Imagem fica com altura automática pra manter a proporção dela.
+      if (kind !== 'image') el.style.height = (ov.scale * 100) + '%';
       el.style.transform = `translate(-50%,-50%) rotate(${ov.rotation || 0}deg)`;
       // z compartilhado com os textos do overlay.js: lane MAIOR = na frente
       el.style.zIndex = String(10 + (ov.lane || 1));

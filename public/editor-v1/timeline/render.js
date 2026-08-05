@@ -226,6 +226,26 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, recGhost, th
       ctx.fillStyle = '#fff';
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText('⧉ ' + (c.compoundName || 'Clipe composto') + ' (2x clique abre)', cx0 + 6, c.y + 3);
+      // faixa de ÁUDIO do composto: sem isto o bloco parecia mudo e o usuário
+      // (e a UI) achavam que não havia som pra tratar
+      if (c.compoundAudio) {
+        const fh = 11;
+        ctx.fillStyle = 'rgba(6, 40, 24, .9)';
+        ctx.fillRect(cx0, c.y + c.h - fh, cw, fh);
+        ctx.fillStyle = 'rgba(34,197,94,.95)';
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillText('♪ áudio', cx0 + 5, c.y + c.h - fh + 2);
+        // ondinha simbólica: o conteúdo real está dentro do composto
+        ctx.strokeStyle = 'rgba(34,197,94,.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = cx0 + 48; x < cx0 + cw - 4; x += 3) {
+          const amp = (fh / 2 - 2) * (0.35 + 0.65 * Math.abs(Math.sin(x * 0.35)));
+          ctx.moveTo(x, c.y + c.h - fh / 2 - amp);
+          ctx.lineTo(x, c.y + c.h - fh / 2 + amp);
+        }
+        ctx.stroke();
+      }
       ctx.restore();
     }
     roundRect(ctx, cx0, c.y, cw, c.h, 6);

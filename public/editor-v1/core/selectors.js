@@ -82,6 +82,27 @@ export function timelineSegments(state) {
   return segs;
 }
 
+/** DONO CANÔNICO de uma propriedade da cena.
+ *
+ *  Máscara, Retoque e Aprimorar áudio podem ser aplicados na cena OU no BLOCO
+ *  COMPOSTO que a contém. O composto vive em `state.clips` como um stub
+ *  {id, compound_id}, e as cenas de dentro vivem em `compounds[].clips` — dois
+ *  mapeamentos paralelos. Sem um resolvedor único, quem lê pelo sub-clipe
+ *  (exportPayload, preview) NUNCA enxergava o que foi aplicado no bloco: era a
+ *  raiz de "máscara em clipe composto não funciona" (user 2026-07-29).
+ *
+ *  Regra: o valor DA CENA vence; na falta dele, herda o do bloco. Assim
+ *  aplicar no composto vale pra tudo dentro, e ajustar uma cena específica
+ *  continua sobrescrevendo.
+ */
+export function propriedadeDaCena(state, seg, campo) {
+  const doSub = seg?.clip?.[campo];
+  if (doSub !== undefined && doSub !== null) return doSub;
+  if (seg?.compoundId == null) return undefined;
+  const stub = (state.clips || []).find(c => c.compound_id === seg.compoundId);
+  return stub ? stub[campo] : undefined;
+}
+
 /** velocidade efetiva de um seg (composto multiplica a velocidade interna). */
 export const segSpeed = (seg) => seg.effSpeed || clipSpeed(seg.clip);
 
@@ -195,12 +216,33 @@ export function effectiveAudioClips(state) {
     const off = offs.get(comp.id);
     if (off == null) continue;
     const cs = compoundSpeedOf(state, comp.id);
+    // "Aprimorar áudio" aplicado NO COMPOSTO vale pro áudio de dentro dele:
+    // pro usuário o composto é UMA faixa, e o áudio dela é este. O stub do
+    // composto guarda as flags (é o que a UI consegue selecionar).
+    const stub = (state.clips || []).find(c => c.compound_id === comp.id) || {};
+    const fxDoComposto = {
+      ...(stub.fx_ruido ? { fx_ruido: true } : {}),
+      ...(stub.fx_voz ? { fx_voz: true, fx_voz_int: stub.fx_voz_int } : {}),
+      ...(stub.fx_norm ? { fx_norm: true } : {}),
+    };
     for (const a of (comp.audio_clips || []).filter(x => x.active !== false)) {
       // velocidade do composto acelera o audio interno junto (user 2026-07-20)
-      out.push({ ...a, id: 'c' + comp.id + '_' + a.id, start: off + a.start / cs, speed: clipSpeed(a) * cs, _compound: true });
+      out.push({ ...a, ...fxDoComposto, id: 'c' + comp.id + '_' + a.id, start: off + a.start / cs, speed: clipSpeed(a) * cs, _compound: true });
     }
   }
   return out;
+}
+
+/** O composto tem áudio próprio (interno) OU vídeo com áudio embutido?
+ *  A timeline usa isto pra MOSTRAR que o bloco composto tem som — o usuário
+ *  reportou (2026-07-29) que "o composto não consta que tem áudio, e por isso
+ *  o editor acha que não dá pra usar os efeitos". */
+export function compoundTemAudio(state, compoundId) {
+  const comp = (state.compounds || []).find(k => k.id === compoundId);
+  if (!comp) return false;
+  if ((comp.audio_clips || []).some(a => a.active !== false)) return true;
+  // vídeo interno com áudio embutido (não removido cena a cena)
+  return (comp.clips || []).some(c => c.active !== false && !c.muted);
 }
 
 /** Overlays efetivos (soltos + dos compostos, offsets absolutos).
@@ -335,27 +377,40 @@ export function textsAt(state, t) {
  *  A validacao do backend: clips efetivos ordenados por source_in, totalDur >= 0.5. */
 export function exportPayload(state) {
   // compostos sao ACHATADOS no export (timelineSegments ja expande)
-  const clips = timelineSegments(state).map(seg => ({
+  const clips = timelineSegments(state).map(seg => {
+    // ⚠️ HERANÇA DO BLOCO COMPOSTO: máscara, Retoque e Aprimorar áudio podem
+    // ter sido aplicados NO COMPOSTO. Ler direto de seg.clip (o sub-clipe)
+    // ignorava tudo isso — era a raiz de "máscara em clipe composto não vai".
+    const dono = (campo) => propriedadeDaCena(state, seg, campo);
+    const mask = dono('mask');
+    const grade = dono('grade');
+    return {
     source_in: round3(seg.clip.source_in),
     source_out: round3(seg.clip.source_out),
     // multi-take: Railway baixa cada fonte distinta (null = video principal)
     media_url: seg.clip.media_id != null ? mediaUrlFor(state, seg.clip) : null,
     // aba Vídeo > Básico (escala/opacidade da cena) — Railway aplica no render
-    scale: Math.round((seg.clip.scale ?? 1) * 100) / 100,
-    opacity: Math.round((seg.clip.opacity ?? 1) * 100) / 100,
-    speed: Math.round(clipSpeed(seg.clip) * 1000) / 1000, // aba Velocidade
+    scale: Math.round((dono('scale') ?? 1) * 100) / 100,
+    opacity: Math.round((dono('opacity') ?? 1) * 100) / 100,
+    speed: Math.round(segSpeed(seg) * 1000) / 1000, // velocidade EFETIVA (composto multiplica)
     // menu Editar: congelar / reverso / espelhar (Railway aplica no render)
     ...(seg.clip.frozen ? { frozen: true, freeze_src: round3(seg.clip.freeze_src || 0), freeze_dur: round3(clipTimelineDur(seg.clip)) } : {}),
-    ...(seg.clip.reversed ? { reversed: true } : {}),
-    ...(seg.clip.mirrored ? { mirrored: true } : {}),
-    ...(seg.clip.muted ? { muted: true } : {}),          // áudio removido da cena
-    ...(seg.clip.mask ? { mask: seg.clip.mask } : {}),    // máscara (Railway aplica)
+    ...(dono('reversed') ? { reversed: true } : {}),
+    ...(dono('mirrored') ? { mirrored: true } : {}),
+    ...(dono('muted') ? { muted: true } : {}),          // áudio removido da cena
+    // Aprimorar áudio da CENA (áudio embutido no vídeo) — o render aplica na
+    // extração do áudio deste clipe
+    ...(dono('fx_ruido') ? { fx_ruido: true } : {}),
+    ...(dono('fx_voz') ? { fx_voz: true, fx_voz_int: Math.round(dono('fx_voz_int') ?? 75) } : {}),
+    ...(dono('fx_norm') ? { fx_norm: true } : {}),
+    ...(mask ? { mask } : {}),                           // máscara (Railway aplica)
     // CORREÇÃO DE COR: o payload NÃO levava o grade — os 15 controles do
     // Retoque morriam no preview e o arquivo saía sem nenhum deles. Vai o
     // estado cru (pra reabrir o projeto) e os números prontos pro render.
-    ...(seg.clip.grade ? { grade: seg.clip.grade } : {}),
-    ...(seg.clip.grade && paramsRender(seg.clip.grade) ? { grade_render: paramsRender(seg.clip.grade) } : {}),
-  }));
+    ...(grade ? { grade } : {}),
+    ...(grade && paramsRender(grade) ? { grade_render: paramsRender(grade) } : {}),
+    };
+  });
   return {
     version: 1,
     project_id: state.project_id,
