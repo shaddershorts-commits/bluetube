@@ -6,14 +6,15 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
-import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
+import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, MIN_TEXT_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
-import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap } from './selectors.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan } from './selectors.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
 import { laneDestino, repelirStart, reordenarLanes, laneKind, laneDestinoAudio, repelirStartAudio } from './lanes.js';
 import { animValida } from './text-anim.js';
+import { ressincronizar, ancorar } from './caption-sync.js';
 
 export function reduce(state, action) {
   switch (action.type) {
@@ -576,8 +577,15 @@ export function reduce(state, action) {
           if (k === 'texto' || k === 'livre') { laneLeg = l; break; }
         }
       }
+      // ÂNCORA: cada bloco guarda onde a fala está DENTRO do arquivo. É o que
+      // deixa a legenda seguir a fala quando o user corta o vídeo depois de
+      // gerar (ver caption-sync.js). O plano vem pronto de quem transcreveu.
+      const plano = captionAudioPlan(semLegendas);
       for (const c of (action.caps || [])) {
-        texts.push(buildText({ ...c, caption: true, lane: laneLeg }, id++));
+        const bloco = buildText({ ...c, caption: true, lane: laneLeg }, id++);
+        // quem transcreveu já sabe o tempo de arquivo de cada palavra; só quando
+        // não vier (legenda antiga/importada) a âncora é deduzida do plano.
+        texts.push(bloco.src_in != null ? bloco : (plano ? ancorar(bloco, plano) : bloco));
       }
       const sel = state.texts.some(t => t.id === state.selected_text_id && t.caption)
         ? null : state.selected_text_id;
@@ -644,7 +652,12 @@ export function reduce(state, action) {
       if (idx < 0) return state;
       const tx = state.texts[idx];
       const t = action.t;
-      if (t <= tx.start_sec + MIN_CLIP_DURATION || t >= tx.end_sec - MIN_CLIP_DURATION) return state;
+      // Texto NÃO é mídia: não precisa dos 0,1s de folga que protegem o corte
+      // de vídeo. Com MIN_CLIP_DURATION aqui, uma legenda palavra-a-palavra
+      // (0,25s típicos do Whisper) só podia ser cortada numa janela de 0,05s —
+      // ~2px na tela. Na prática o user apertava Ctrl+B e NADA acontecia
+      // ("não consigo cortar", teste de 2026-08-05).
+      if (t <= tx.start_sec + MIN_TEXT_DURATION || t >= tx.end_sec - MIN_TEXT_DURATION) return state;
       const left = { ...tx, end_sec: t };
       const right = { ...tx, id: state.next_text_id, start_sec: t };
       const texts = state.texts.flatMap(x => x.id === tx.id ? [left, right] : [x]);
@@ -1057,6 +1070,73 @@ export function reduce(state, action) {
       return touch({ ...state, texts });
     }
 
+    case A.CUT_SILENCE: {
+      // CORTAR RESPIROS — as falas detectadas viram pedaços colados, dentro de
+      // UM clipe composto (o usuário abre com 2 cliques pra ajustar depois).
+      //
+      // Por que um dispatch só: fazer N splits + N deletes seria 2N dispatches,
+      // N passos de Ctrl+Z (o usuário apertaria 80 vezes pra desfazer) e cada
+      // split re-varre a timeline inteira — a aba travaria durante a edição.
+      const falas = (action.falas || [])
+        .filter(f => f && f.out - f.in >= MIN_CLIP_DURATION)
+        .sort((a, b) => a.in - b.in);
+      if (!falas.length) return state;
+
+      if (action.alvo === 'audio') {
+        // ÁUDIO: cada fala vira um clipe na MESMA faixa, encostado no anterior
+        const i0 = state.audio_clips.findIndex(a => a.id === action.id);
+        if (i0 < 0) return state;
+        const base = state.audio_clips[i0];
+        const laneBase = base.lane;
+        let nid = state.next_audio_id;
+        let cursor = base.start;
+        const pedacos = falas.map(f => {
+          const ini = Math.max(base.source_in, f.in);
+          const fim = Math.min(base.source_out, f.out);
+          if (fim - ini < MIN_CLIP_DURATION) return null;
+          const p = { ...base, id: nid++, source_in: ini, source_out: fim, start: cursor,
+                      ...(laneBase != null ? { lane: laneBase } : {}) };
+          cursor += (fim - ini) / clipSpeed(base);
+          return p;
+        }).filter(Boolean);
+        if (!pedacos.length) return state;
+        const audio_clips = [...state.audio_clips.filter(a => a.id !== base.id), ...pedacos];
+        return touch({ ...state, audio_clips, next_audio_id: nid, selected_audio_id: pedacos[0].id });
+      }
+
+      // VÍDEO: o vídeo acompanha o corte (é o pedido — "vai cortar os respiros
+      // e trazer a próxima fala pra mais perto"). Os pedaços entram num
+      // COMPOSTO, que é o que o usuário abre depois pra ajustar.
+      const iC = state.clips.findIndex(c => c.id === action.id);
+      if (iC < 0) return state;
+      const orig = state.clips[iC];
+      if (orig.compound_id != null) return state;   // já é composto: nada a fazer
+      let nc = state.next_clip_id;
+      const subs = falas.map(f => {
+        const ini = Math.max(orig.source_in, f.in);
+        const fim = Math.min(orig.source_out, f.out);
+        if (fim - ini < MIN_CLIP_DURATION) return null;
+        return { ...orig, id: nc++, source_in: ini, source_out: fim, compound_id: undefined };
+      }).filter(Boolean);
+      if (!subs.length) return state;
+      const comp = {
+        id: state.next_compound_id,
+        name: 'Sem respiros',
+        clips: subs.map(s => { const { compound_id, ...resto } = s; return resto; }),
+        texts: [], audio_clips: [], overlays: [],
+      };
+      const stub = { id: nc++, compound_id: comp.id, active: true };
+      const clips = state.clips.slice();
+      clips[iC] = stub;
+      return touch({
+        ...state, clips,
+        compounds: [...(state.compounds || []), comp],
+        next_compound_id: state.next_compound_id + 1,
+        next_clip_id: nc,
+        selected_clip_id: stub.id,
+      });
+    }
+
     case A.REORDER_LANES: {
       // arrastar o cabecalho/olhinho de uma camada pra posicao de outra.
       // reordenarLanes devolve o MESMO state quando nada muda (sem undo fantasma).
@@ -1395,7 +1475,24 @@ export function reduce(state, action) {
 }
 
 function touch(state) {
-  return { ...state, updated_at: new Date().toISOString() };
+  return { ...sincronizarLegendas(state), updated_at: new Date().toISOString() };
+}
+
+/** PONTO DE ESTRANGULAMENTO da legenda (user 2026-08-05).
+ *
+ *  Toda ação que mexe na timeline passa por `touch`. Em vez de espalhar
+ *  "re-sincroniza aqui" por SPLIT_CLIP, DELETE_CLIP, TRIM, MOVE, SET_SPEED,
+ *  GROUP, CUT_SILENCE… (uma lista que ia esquecer um caso e quebrar meses
+ *  depois), a lei mora num lugar só: a legenda é derivada da âncora, e a
+ *  âncora é derivada da mão do user. Ver core/caption-sync.js.
+ *
+ *  Projeto sem legenda ancorada sai daqui na primeira linha — custo zero. */
+function sincronizarLegendas(state) {
+  if (!state.texts?.some(t => t.caption === true && t.src_in != null)) return state;
+  const plano = captionAudioPlan(state);
+  const r = ressincronizar(state.texts, plano, state._cap_sig);
+  if (!r.mudou && r.sig === state._cap_sig) return state;
+  return { ...state, texts: r.texts, _cap_sig: r.sig };
 }
 
 /** Q/W numa FAIXA DE ÁUDIO selecionada: trima a parte à esquerda ('left') ou à
@@ -1579,6 +1676,13 @@ function buildText(p, id) {
     lane: clampLane(p.lane, TEXT_DEFAULT_LANE),
     active: true,
   };
+  // ÂNCORA da legenda (tempo DENTRO do arquivo de áudio) — ver caption-sync.js
+  if (Number.isFinite(p.src_in)) {
+    text.src_in = Math.max(0, p.src_in);
+    text.src_out = Number.isFinite(p.src_out) && p.src_out > p.src_in
+      ? p.src_out : text.src_in + (text.end_sec - text.start_sec);
+    if (p.src_url) text.src_url = p.src_url;
+  }
   if (text.end_sec <= text.start_sec) text.end_sec = text.start_sec + 1;
   return text;
 }

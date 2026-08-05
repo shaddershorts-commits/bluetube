@@ -15,6 +15,10 @@ export const TEXT_FONTS = ['Anton', 'Bebas Neue', 'Oswald'];
 export const TRANSITION_TYPES = ['cut', 'fade'];
 
 export const MIN_CLIP_DURATION = 0.1; // segundos — reducers nunca deixam menor
+// Texto não decodifica mídia: pode ser bem mais curto que um clipe. Uma legenda
+// palavra-a-palavra tem ~0,25s, e exigir 0,1s de cada lado tornava o corte
+// impossível na prática (janela de 2px). 0,03s ainda é visível e clicável.
+export const MIN_TEXT_DURATION = 0.03;
 export const MAX_UNDO = 100;
 
 // ── CAMADAS (CapCut): lane = prioridade de composicao ──

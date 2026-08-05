@@ -10,7 +10,7 @@ export function createExporter(store) {
   let polling = 0;
   let active = false;
 
-  async function start({ onProgress, onDone, onError, output_width, output_height } = {}) {
+  async function start({ onProgress, onDone, onError, output_width, output_height, audio_only } = {}) {
     const state = store.getState();
     if (!canExport(state)) { onError?.('Adicione um vídeo com pelo menos 0,5s de duração.'); return; }
     if (active) return;
@@ -28,6 +28,8 @@ export function createExporter(store) {
         payload.output_width = output_width;
         payload.output_height = output_height;
       }
+      // "Exportar só o áudio" (marcado no modal): o render entrega .m4a
+      if (audio_only) payload.audio_only = true;
       const r = await api.exportV0(projectId, payload);
       if (!r.ok) throw new Error(r.error || 'Falha ao iniciar export');
       onProgress?.(2, 'Na fila…');

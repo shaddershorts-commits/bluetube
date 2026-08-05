@@ -2093,6 +2093,117 @@ function filtrosDeAudioFx(a) {
   return out;
 }
 
+// ── TRANSFORMAÇÕES DA CENA: velocidade, espelho, escala, posição, opacidade ──
+// (2026-08-05) O payload manda essas cinco desde sempre — e o motor ignorava
+// TODAS. O preview mostrava o vídeo acelerado, espelhado, com zoom e meio
+// transparente; o arquivo exportado saía cru. Pior no `speed`: sem ele a cena
+// exportada tinha OUTRA DURAÇÃO, e todo o áudio depois dela desalinhava.
+//
+// Regra do projeto: efeito no preview exige o equivalente no render. Aqui o
+// equivalente é medido pelo que o preview faz em CSS no elemento de vídeo
+// (ui/shell.js: transform translate+scale, opacity), pra dar o mesmo resultado.
+//
+// SÓ NÚMEROS atravessam: nada que venha do cliente entra como string de filtro.
+const num = (v, def, min, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+};
+
+/** Velocidade efetiva da cena (1 = normal). */
+function velocidadeDaCena(c) {
+  return num(c?.speed, 1, 0.1, 100);
+}
+
+/** Duração que a cena OCUPA na timeline (é o que o arquivo tem que mostrar). */
+function duracaoDaCena(c) {
+  if (c?.frozen === true) return num(c.freeze_dur, 3, 0.05, 3600);
+  const bruta = Math.max(0, (c.source_out - c.source_in));
+  return bruta / velocidadeDaCena(c);
+}
+
+/**
+ * Filtros de vídeo da cena, na ordem em que o CSS do preview os aplica.
+ * @param {object} c clipe do payload
+ * @param {number} W largura final    @param {number} H altura final
+ */
+function filtrosDaCena(c, W, H) {
+  const out = [];
+  if (!c || typeof c !== 'object') return out;
+
+  // 1. ESPELHAR — no preview é scale(-1,1); o deslocamento NÃO espelha junto
+  //    (no CSS o translate é aplicado depois), então hflip vem antes.
+  if (c.mirrored === true) out.push('hflip');
+
+  // 2. ESCALA + POSIÇÃO — zoom a partir do CENTRO do quadro, como no preview.
+  //    Maior que 1 recorta de volta pro quadro; menor que 1 sobra preto em
+  //    volta (o mesmo que o CSS mostra sobre o fundo do palco).
+  const s = num(c.scale, 1, 0.05, 10);
+  const dx = Math.round(num(c.pos_x, 0, -1.5, 1.5) * W);
+  const dy = Math.round(num(c.pos_y, 0, -1.5, 1.5) * H);
+  //    Um caminho só pros três casos (maior, menor e deslocado): a cena é
+  //    posta numa TELA PRETA grande o bastante pro deslocamento caber, e o
+  //    quadro final é a JANELA que se olha dessa tela. Ramificar em "cresce =
+  //    recorta / diminui = preenche" deixava o movimento sem pra onde ir
+  //    quando a escala era 1 — mover não movia nada no arquivo.
+  if (Math.abs(s - 1) > 0.001 || dx || dy) {
+    const par = (n) => Math.max(2, Math.round(n / 2) * 2);
+    const sw = par(W * s);
+    const sh = par(H * s);
+    const cw = par(Math.max(W, sw) + 2 * Math.abs(dx));
+    const ch = par(Math.max(H, sh) + 2 * Math.abs(dy));
+    out.push(`scale=${sw}:${sh}`);
+    out.push(`pad=${cw}:${ch}:${Math.round((cw - sw) / 2)}:${Math.round((ch - sh) / 2)}:black`);
+    out.push(`crop=${W}:${H}:${Math.round((cw - W) / 2 - dx)}:${Math.round((ch - H) / 2 - dy)}`);
+    out.push('setsar=1');
+  }
+
+  // 3. OPACIDADE — a faixa principal compõe sobre PRETO, e "50% sobre preto"
+  //    é exatamente multiplicar os canais por 0,5.
+  const op = num(c.opacity, 1, 0, 1);
+  if (op < 0.999) {
+    const k = op.toFixed(3);
+    out.push(`colorchannelmixer=rr=${k}:gg=${k}:bb=${k}`);
+  }
+
+  // 4. VELOCIDADE — por último: mexe no TEMPO, não na imagem.
+  const v = velocidadeDaCena(c);
+  if (Math.abs(v - 1) > 0.001) out.push(`setpts=PTS/${v.toFixed(4)}`);
+
+  return out;
+}
+
+/** Inverte um clipe JÁ CORTADO, em pedaços, e devolve no MESMO caminho.
+ *  Pedaço de 3s a 1080×1920/30fps ≈ 90 quadros crus — cabe folgado; o clipe
+ *  inteiro na memória, não. */
+const REV_PEDACO = 3;
+async function inverterClipe(arquivo, dir, tag, dur) {
+  const partes = Math.max(1, Math.ceil(dur / REV_PEDACO));
+  if (partes === 1) {
+    const tmp = path.join(dir, `${tag}_r.mp4`);
+    await run('ffmpeg', ['-y', '-i', arquivo, '-vf', 'reverse', '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', tmp]);
+    fs.renameSync(tmp, arquivo);
+    return;
+  }
+  const pedacos = [];
+  for (let k = 0; k < partes; k++) {
+    const p = path.join(dir, `${tag}_${k}.mp4`);
+    await run('ffmpeg', ['-y', '-ss', String(k * REV_PEDACO), '-t', String(REV_PEDACO),
+      '-i', arquivo, '-vf', 'reverse', '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-force_key_frames', 'expr:gte(t,0)', p]);
+    if (fs.existsSync(p)) pedacos.push(p);
+  }
+  if (!pedacos.length) return;             // falhou: fica o clipe original
+  const lista = path.join(dir, `${tag}_lista.txt`);
+  // ordem CONTRÁRIA: o último pedaço do clipe é o primeiro do resultado
+  fs.writeFileSync(lista, pedacos.reverse().map(p => `file '${path.basename(p)}'`).join('\n'));
+  const saida = path.join(dir, `${tag}_final.mp4`);
+  await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', lista,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', saida]);
+  if (fs.existsSync(saida)) fs.renameSync(saida, arquivo);
+}
+
 // ── CORREÇÃO DE COR (Retoque) ────────────────────────────────────────────────
 // Ate 29/07 o grade existia SO no preview: o payload nem carregava os valores e
 // o arquivo exportado saia sem nenhum ajuste. Agora o editor manda `grade_render`
@@ -2216,9 +2327,29 @@ async function processEditV0(jobId, p) {
       // CLIPE — depois do concat não dá mais pra saber de quem era o ajuste.
       // Antes o Retoque não chegava no arquivo de jeito nenhum.
       const fGrade = filtrosDoGrade(c.grade_render);
+      // CONGELAR QUADRO: a cena é UM frame parado por freeze_dur segundos.
+      // Não é trim — é uma imagem em loop; por isso sai do caminho normal.
+      if (c.frozen === true) {
+        const durF = duracaoDaCena(c);
+        const still = path.join(dir, `freeze_${i}.png`);
+        await run('ffmpeg', ['-y', '-ss', String(num(c.freeze_src, 0, 0, 86400)),
+          '-i', srcFor(c), '-frames:v', '1', still]);
+        const vfF = [...(multiSource ? [normVf] : []), ...fGrade,
+          ...filtrosDaCena({ ...c, speed: 1 }, NORM_W, NORM_H)].filter(Boolean);
+        await run('ffmpeg', [
+          '-y', '-loop', '1', '-t', String(durF), '-i', still,
+          '-vf', [...vfF, `fps=30`].join(','), '-r', '30', '-pix_fmt', 'yuv420p',
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-force_key_frames', 'expr:gte(t,0)', '-an', out,
+        ]);
+        clipFiles.push({ path: out, duration: durF });
+        continue;
+      }
       const vfPartes = [
         ...(multiSource ? [normVf] : []),
         ...fGrade,
+        // velocidade/espelho/escala/posição/opacidade da cena
+        ...filtrosDaCena(c, NORM_W, NORM_H),
       ].filter(Boolean);
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
@@ -2232,7 +2363,14 @@ async function processEditV0(jobId, p) {
         '-an', // pass1 sem audio (audio mux na fase final)
         out,
       ]);
-      clipFiles.push({ path: out, duration: dur });
+      // REVERSO: o filtro `reverse` guarda o clipe INTEIRO na memória. Rodar
+      // direto num clipe longo derruba o container por OOM — então o clipe já
+      // cortado é fatiado, cada pedaço é invertido e eles voltam na ordem
+      // contrária. Memória fica presa ao tamanho do PEDAÇO, não do clipe.
+      if (c.reversed === true) {
+        await inverterClipe(out, dir, `rev_${i}`, duracaoDaCena(c));
+      }
+      clipFiles.push({ path: out, duration: duracaoDaCena(c) });
     }
     if (clipFiles.length === 0) throw new Error('Nenhum clip valido apos trim');
 
@@ -2323,15 +2461,24 @@ async function processEditV0(jobId, p) {
       const out = path.join(dir, `audio_${i}.aac`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
+      // duração na TIMELINE: com velocidade (ou quadro congelado) ela é
+      // diferente da duração do trecho no arquivo. O silêncio de reserva e o
+      // alinhamento de tudo que vem depois dependem DESTA, não da bruta.
+      const durLinha = duracaoDaCena(c);
       let ok = false;
-      // cena com áudio REMOVIDO (c.muted, "Remover áudio desta cena"): não
-      // extrai — cai direto no silêncio do mesmo tamanho (mantém alinhamento)
-      if (!c.muted) try {
+      // cena com áudio REMOVIDO (c.muted, "Remover áudio desta cena") ou quadro
+      // CONGELADO (não há som num frame parado): cai direto no silêncio do
+      // mesmo tamanho (mantém alinhamento)
+      if (!c.muted && c.frozen !== true) try {
         // "Aprimorar áudio" da CENA (áudio embutido no vídeo) entra aqui, na
         // extração do áudio DAQUELE clipe — é o único ponto onde ainda dá pra
-        // saber de quem era o som (depois vira um concat só)
+        // saber de quem era o som (depois vira um concat só).
+        // `speed` entra junto (atempo): sem isso a imagem acelerava e o som
+        // não, e a cena seguinte começava fora do lugar.
         const fxCena = filtrosDeAudioFx({ fx_ruido: c.fx_ruido, fx_voz: c.fx_voz,
-                                          fx_voz_int: c.fx_voz_int, fx_norm: c.fx_norm });
+                                          fx_voz_int: c.fx_voz_int, fx_norm: c.fx_norm,
+                                          speed: velocidadeDaCena(c) });
+        if (c.reversed === true) fxCena.unshift('areverse');
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
           '-i', srcFor(c), '-vn',
@@ -2344,7 +2491,7 @@ async function processEditV0(jobId, p) {
         // silêncio do mesmo tamanho: mantém o áudio dos próximos clips no lugar
         try {
           await run('ffmpeg', [
-            '-y', '-f', 'lavfi', '-t', String(dur),
+            '-y', '-f', 'lavfi', '-t', String(durLinha),
             '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
             '-c:a', 'aac', '-b:a', '128k', out,
           ]);
@@ -2382,7 +2529,8 @@ async function processEditV0(jobId, p) {
     // Volumes
     const volV = p.volumes?.video ?? 1;
     const volA = p.volumes?.audio_extra ?? 1;
-    const finalPath = path.join(dir, 'output.mp4');
+    // exportar SÓ ÁUDIO entrega .m4a (contêiner de áudio) em vez de mp4
+    const finalPath = path.join(dir, p.audio_only === true ? 'output.m4a' : 'output.mp4');
     const args = ['-y', '-threads', '1'];
     args.push('-i', concatPath);                     // input 0: video base
     const fc = [];                                   // filter_complex parts
@@ -2599,27 +2747,41 @@ async function processEditV0(jobId, p) {
     }
 
     if (aLabels.length > 1) {
-      fc.push(`[${aLabels.map(l => l).join('][')}]amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0[aout]`);
+      // ⚠️ normalize=0 é OBRIGATÓRIO: sem ele o amix DIVIDE cada entrada pelo
+      // número de entradas. Com música + narração + áudio do vídeo o som já
+      // saía a 1/3; com o "cortar respiros" (que produz muitos pedaços) o
+      // arquivo sairia praticamente mudo. Os volumes por faixa já foram
+      // aplicados acima — o mixer não pode reequilibrar por conta própria.
+      fc.push(`[${aLabels.map(l => l).join('][')}]amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0:normalize=0[amixed]`);
+      // teto de segurança contra clipping (a soma pode passar de 0 dBFS)
+      fc.push(`[amixed]alimiter=limit=0.97[aout]`);
     } else if (aLabels.length === 1) {
       fc.push(`[${aLabels[0]}]anull[aout]`);
     }
 
     args.push('-filter_complex', fc.join(';'));
-    args.push('-map', `[${vLabel}]`);
+    // SÓ ÁUDIO (opção do modal de export): não mapeia vídeo e entrega .m4a —
+    // serve pra quem quer o podcast/narração já editada e com os efeitos
+    const soAudio = p.audio_only === true && aLabels.length > 0;
+    if (!soAudio) args.push('-map', `[${vLabel}]`);
     if (aLabels.length) args.push('-map', '[aout]');
-    args.push(
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-      '-c:a', 'aac', '-b:a', '128k',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      '-shortest',
-      finalPath,
-    );
+    if (soAudio) {
+      args.push('-vn', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', finalPath);
+    } else {
+      args.push(
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        '-shortest',
+        finalPath,
+      );
+    }
     await run('ffmpeg', args);
 
     // 7. Upload
     update('uploading', 92);
-    const outputPath = `editor/v0/${jobId}/output.mp4`;
+    const outputPath = `editor/v0/${jobId}/output.${soAudio ? 'm4a' : 'mp4'}`;
     const outputUrl = await uploadToSupabase(finalPath, outputPath, p.supabase_url, p.supabase_key);
 
     update('done', 100, { output_url: outputUrl });

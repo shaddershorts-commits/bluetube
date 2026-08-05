@@ -200,7 +200,12 @@ test('exportPayload espelha contrato edit-v0', () => {
   store.dispatch(act.addText({ content: 'X', start_sec: 1, end_sec: 3 }));
   const p = exportPayload(store.getState());
   assert.equal(p.clips.length, 1);
-  assert.deepEqual(p.clips[0], { source_in: 20, source_out: 60, media_url: null, scale: 1, opacity: 1, speed: 1 });
+  // pos_x/pos_y entraram em 2026-08-05: o preview movia a cena no quadro e o
+  // payload não levava — o arquivo exportado saía com o vídeo no lugar antigo
+  assert.deepEqual(p.clips[0], {
+    source_in: 20, source_out: 60, media_url: null,
+    scale: 1, opacity: 1, pos_x: 0, pos_y: 0, speed: 1,
+  });
   assert.equal(p.texts.length, 1);
   assert.ok(p.texts[0].x_pct >= 0 && p.texts[0].x_pct <= 1);
   assert.ok(canExport(store.getState()));

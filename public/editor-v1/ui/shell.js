@@ -4,10 +4,13 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
+import { arquivoParaTimeline } from '../core/caption-sync.js';
+import { detectarFala, resumoDoCorte } from '../core/silencio.js';
+import { scanAudio } from '../preview/audio-scan.js';
 import { modeloPorId, estiloDaPalavra } from '../core/caption-styles.js';
 import { createCaptionsPanel } from './captions-panel.js';
 import { formatTime } from '../timeline/layout.js';
@@ -1521,6 +1524,85 @@ export function mountEditor(root, store, opts = {}) {
 
   $('#beAspect').addEventListener('change', (e) => store.dispatch(act.setAspect(e.target.value)));
 
+  // ── CORTAR RESPIROS (2026-07-29) ─────────────────────────────────────────
+  // Analisa o áudio DE VERDADE (decodifica → RMS → piso adaptativo →
+  // histerese, tudo em core/silencio.js), remove os trechos sem fala e entrega
+  // um CLIPE COMPOSTO já sem respiros — que o usuário abre com 2 cliques pra
+  // ajustar. Serve pro áudio solto E pro vídeo com áudio (aí o vídeo acompanha
+  // o corte, "trazendo a próxima fala pra mais perto").
+  let respAbort = null;
+  function respirosMostrar(msg, pct, t0) {
+    $('#beRespirosPop').style.display = 'flex';
+    $('#beRespirosMsg').textContent = msg;
+    const p = Math.round(Math.max(0, Math.min(1, pct)) * 100);
+    $('#beRespirosBar').style.width = p + '%';
+    $('#beRespirosPct').textContent = p + '%';
+    if (t0) $('#beRespirosTempo').textContent = Math.round((Date.now() - t0) / 1000) + 's';
+  }
+  async function cortarRespiros() {
+    if (respAbort) return;                       // já rodando
+    const st = store.getState();
+    // alvo: áudio selecionado > cena selecionada > cena sob a agulha
+    let alvo = null;
+    if (st.selected_audio_id != null) {
+      const a = st.audio_clips.find(x => x.id === st.selected_audio_id);
+      if (a) alvo = { tipo: 'audio', id: a.id, url: a.kind === 'video' ? st.video?.url : a.url, item: a };
+    }
+    if (!alvo) {
+      const c = st.selected_clip_id != null
+        ? st.clips.find(x => x.id === st.selected_clip_id)
+        : (mainTrackItems(st).find(x => player.getTime() >= x.tStart && player.getTime() < x.tEnd)?.clip);
+      if (c && c.compound_id == null) {
+        alvo = { tipo: 'clip', id: c.id, url: c.media_id != null ? mediaUrlFor(st, c) : st.video?.url, item: c };
+      } else if (c) {
+        return toast('Este bloco já é um clipe composto — abra com 2 cliques pra ajustar dentro dele', true);
+      }
+    }
+    if (!alvo || !alvo.url) return toast('Selecione o áudio ou a cena que você quer limpar', true);
+
+    const t0 = Date.now();
+    respAbort = new AbortController();
+    const relogio = setInterval(() => {
+      $('#beRespirosTempo').textContent = Math.round((Date.now() - t0) / 1000) + 's';
+    }, 500);
+    try {
+      respirosMostrar('Analisando o áudio…', 0.02, t0);
+      const { samples, sr } = await scanAudio(alvo.url, {
+        signal: respAbort.signal,
+        onProgress: (p) => respirosMostrar('Analisando o áudio…', p * 0.9, t0),
+      });
+      respirosMostrar('Procurando as pausas…', 0.94, t0);
+      // deixa o navegador pintar antes da conta pesada
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const faixaIni = alvo.item.source_in ?? 0;
+      const faixaFim = alvo.item.source_out ?? (samples.length / sr);
+      const r = detectarFala(samples, sr);
+      const falas = r.falas
+        .map(f => ({ in: Math.max(faixaIni, f.in), out: Math.min(faixaFim, f.out) }))
+        .filter(f => f.out - f.in > 0.05);
+      const res = resumoDoCorte({ ...r, duracao: faixaFim - faixaIni,
+        removido: Math.max(0, (faixaFim - faixaIni) - falas.reduce((s, f) => s + (f.out - f.in), 0)) });
+      if (!falas.length) { toast('Não encontrei fala nesta mídia — nada foi cortado', true); return; }
+      if (res.respiros === 0 || res.removidoSeg < 0.2) {
+        toast('Nenhum respiro pra cortar — o áudio já está justo ✓');
+        return;
+      }
+      respirosMostrar('Montando o clipe…', 0.99, t0);
+      store.dispatch(act.cutSilence(alvo.tipo, alvo.id, falas));
+      syncWaveRegistry(store.getState());
+      requestAnimationFrame(() => timeline.draw());
+      toast(`✂ ${res.respiros} respiros cortados · ${res.removidoSeg}s a menos (${res.ganhoPct}%) — 2 cliques no bloco pra ajustar`);
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Não consegui analisar o áudio: ' + e.message, true);
+    } finally {
+      clearInterval(relogio);
+      respAbort = null;
+      $('#beRespirosPop').style.display = 'none';
+    }
+  }
+  $('#beCutSilence').addEventListener('click', cortarRespiros);
+  $('#beRespirosCancel').addEventListener('click', () => { respAbort?.abort(); });
+
   // ── LOCUÇÃO (2026-07-29): grava o microfone direto na timeline ────────────
   // Ao clicar, a faixa já COMEÇA a nascer (fantasma vermelho crescendo em
   // tempo real na área de áudio) e o vídeo toca junto pra narrar em sincronia.
@@ -1831,18 +1913,21 @@ export function mountEditor(root, store, opts = {}) {
     showExportStep('beExportProgress');
     $('#beExportBar').style.width = '0%';
     $('#beExportLabel').textContent = 'Preparando…';
+    const soAudio = !!$('#beExportAudioOnly')?.checked;
+    const ext = soAudio ? '.m4a' : '.mp4';
     exporter.start({
-      output_width: dims.w, output_height: dims.h,
+      output_width: dims.w, output_height: dims.h, audio_only: soAudio,
       onProgress: (pct, label) => {
         $('#beExportBar').style.width = pct + '%';
         $('#beExportLabel').textContent = `${label} ${pct}%`;
       },
       onDone: (url) => {
         showExportStep('beExportDone');
+        // só-áudio não tem o que mostrar em vídeo: o <video> vira player de som
         $('#beExportPreview').src = url;
         const link = $('#beExportLink');
-        link.href = url; link.setAttribute('download', fname + '.mp4');
-        downloadAs(url, fname + '.mp4'); // já cai na pasta de Downloads
+        link.href = url; link.setAttribute('download', fname + ext);
+        downloadAs(url, fname + ext); // já cai na pasta de Downloads
       },
       onError: (msg) => {
         showExportStep('beExportError');
@@ -1913,16 +1998,10 @@ export function mountEditor(root, store, opts = {}) {
   let lastCaptionKey = null;    // url transcrita (invalidar quando a fonte muda)
   let lastCaptionLang = '';     // idioma detectado pelo Whisper (regras de escrita)
 
-  // file-time (dentro do arquivo transcrito) -> tempo VIRTUAL da timeline,
-  // via os segmentos do plano. null se a fala caiu num trecho cortado.
-  function fileToTimeline(ft, segments) {
-    for (const s of segments) {
-      if (ft >= s.fileIn - 1e-6 && ft <= s.fileOut + 1e-6) {
-        return s.tStart + (ft - s.fileIn);
-      }
-    }
-    return null;
-  }
+  // file-time -> tempo VIRTUAL da timeline. O mapa mora em core/caption-sync.js
+  // (mesmo usado pela re-sincronia do reducer): tinha DUAS cópias da conta e a
+  // daqui ignorava velocidade — clipe em 2x jogava a legenda pro dobro do tempo.
+  const fileToTimeline = arquivoParaTimeline;
 
   function aplicarLegendas(mode) {
     const words = lastCaptionWords || [];
@@ -1949,7 +2028,9 @@ export function mountEditor(root, store, opts = {}) {
       if (ts == null) continue;
       const te = fileToTimeline(c.end, segments);
       const dur = te != null && te > ts ? te - ts : Math.max(0.25, c.end - c.start);
-      caps.push({ text: c.text, start: ts, end: ts + dur });
+      // src_* = ÂNCORA: onde a fala está dentro do arquivo. Guardar isso é o que
+      // permite re-sincronizar a legenda quando o user edita o vídeo depois.
+      caps.push({ text: c.text, start: ts, end: ts + dur, src_in: c.start, src_out: c.end });
     }
     if (!caps.length) return 0;
 
@@ -1961,6 +2042,7 @@ export function mountEditor(root, store, opts = {}) {
     // com videos longos (300+ palavras = 300 dispatches na versao antiga)
     store.dispatch(act.setCaptions(caps.map((c, i) => ({
       content: c.text, start_sec: c.start, end_sec: c.end,
+      src_in: c.src_in, src_out: c.src_out, src_url: lastCaptionPlan.url,
       x_pct: 0.5, y_pct, ...estiloDaPalavra(tpl, i),
     }))));
     return caps.length;
@@ -2725,6 +2807,15 @@ function buildTemplate() {
       <span id="beCompoundName" class="be-dim"></span>
     </div>
 
+    <!-- CORTAR RESPIROS: painel de processamento (liquid glass) com progresso
+         REAL e tempo decorrido — o user pediu pra ver o tempo se demorar -->
+    <div id="beRespirosPop" class="be-glass be-respiros-pop" style="display:none">
+      <div class="be-respiros-tit"><span class="be-respiros-ia">🤖</span> <span id="beRespirosMsg">Analisando o áudio…</span></div>
+      <div class="be-progress"><i id="beRespirosBar"></i></div>
+      <div class="be-respiros-info"><span id="beRespirosPct">0%</span> · <span id="beRespirosTempo">0s</span></div>
+      <button type="button" id="beRespirosCancel" class="be-tool-btn">Cancelar</button>
+    </div>
+
     <!-- pill de GRAVAÇÃO (liquid glass): aparece flutuando sobre a timeline
          enquanto a locução grava; a faixa vai nascendo em tempo real -->
     <div id="beRecPill" class="be-glass be-rec-pill" style="display:none">
@@ -2760,6 +2851,7 @@ function buildTemplate() {
           <div class="be-dim">Normaliza o volume do clipe selecionado para um nível-alvo.</div>
         </div>
       </span>
+      <button id="beCutSilence" class="be-tool-btn" title="Cortar respiros com IA — remove as pausas sem fala e aproxima a próxima frase">✂🤖 Respiros</button>
       <button id="beGroupBtn" class="be-tool-btn" title="Agrupar selecionados em clipe composto (Alt+G)">⧉ Agrupar</button>
       <span class="be-toolbar-spacer"></span>
       <button id="beZoomOut" class="be-icon-btn" title="Zoom - (Ctrl -)">−</button>
@@ -2799,6 +2891,12 @@ function buildTemplate() {
           </label>
           <label class="be-export-field">Taxa de quadros
             <select disabled><option>30 fps</option></select>
+          </label>
+          <!-- exportar SÓ O ÁUDIO (pedido do user): entrega .m4a com a mixagem
+               e os efeitos aplicados, sem vídeo -->
+          <label class="be-export-somaudio">
+            <input type="checkbox" id="beExportAudioOnly"/>
+            <span>Exportar <b>só o áudio</b> (.m4a)</span>
           </label>
           <div class="be-dim" id="beExportEst"></div>
           <div class="be-dim">O arquivo baixa direto pra sua pasta de Downloads.</div>

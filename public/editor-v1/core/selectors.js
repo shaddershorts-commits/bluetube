@@ -263,8 +263,12 @@ export function effectiveOverlays(state) {
 }
 
 /** Plano de transcricao pra legendas automaticas: escolhe a fonte de audio
- *  REAL do projeto e devolve { url, segments:[{tStart,fileIn,fileOut}] } onde
- *  tStart e tempo VIRTUAL e fileIn/fileOut sao tempos DENTRO do arquivo (url).
+ *  REAL do projeto e devolve { url, segments:[{tStart,fileIn,fileOut,speed}] }
+ *  onde tStart e tempo VIRTUAL e fileIn/fileOut sao tempos DENTRO do arquivo.
+ *
+ *  `speed` NAO e enfeite: com o clipe em 2x, 1s de arquivo passa em 0,5s de
+ *  timeline. Sem ele a legenda ficava com o dobro do atraso a cada segundo de
+ *  fala (teste do user 2026-08-05). Quem usa o plano e caption-sync.js.
  *  Prioridade (user 2026-07-20):
  *   1) audio proprio do editor (kind 'extra') — a narracao gravada por ele
  *   2) audio do video, SE nao foi separado/removido
@@ -281,7 +285,10 @@ export function captionAudioPlan(state) {
       const url = urlOf(a);
       if (!url) continue;
       if (!byUrl.has(url)) byUrl.set(url, []);
-      byUrl.get(url).push({ tStart: a.start, fileIn: a.source_in, fileOut: a.source_out });
+      byUrl.get(url).push({
+        tStart: a.start, fileIn: a.source_in, fileOut: a.source_out,
+        speed: clipSpeed(a),
+      });
     }
     let best = null, bestCov = -1;
     for (const [url, segments] of byUrl) {
@@ -297,7 +304,10 @@ export function captionAudioPlan(state) {
   if (!state.audio_detached && state.video?.url) {
     const segs = timelineSegments(state)
       .filter(s => s.clip.media_id == null)  // takes tem audio proprio, fora do escopo
-      .map(s => ({ tStart: s.tStart, fileIn: s.clip.source_in, fileOut: s.clip.source_out }));
+      .map(s => ({
+        tStart: s.tStart, fileIn: s.clip.source_in, fileOut: s.clip.source_out,
+        speed: s.effSpeed || 1,
+      }));
     return segs.length ? { url: state.video.url, segments: segs } : null;
   }
   // 3) audio do video ja separado mas ainda presente
@@ -392,6 +402,10 @@ export function exportPayload(state) {
     // aba Vídeo > Básico (escala/opacidade da cena) — Railway aplica no render
     scale: Math.round((dono('scale') ?? 1) * 100) / 100,
     opacity: Math.round((dono('opacity') ?? 1) * 100) / 100,
+    // POSIÇÃO da cena no quadro: o preview move o vídeo (translate) e o payload
+    // não levava — mover no editor não movia nada no arquivo exportado
+    pos_x: Math.round((dono('pos_x') ?? 0) * 1000) / 1000,
+    pos_y: Math.round((dono('pos_y') ?? 0) * 1000) / 1000,
     speed: Math.round(segSpeed(seg) * 1000) / 1000, // velocidade EFETIVA (composto multiplica)
     // menu Editar: congelar / reverso / espelhar (Railway aplica no render)
     ...(seg.clip.frozen ? { frozen: true, freeze_src: round3(seg.clip.freeze_src || 0), freeze_dur: round3(clipTimelineDur(seg.clip)) } : {}),

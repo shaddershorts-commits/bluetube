@@ -47,6 +47,8 @@ export const A = {
   REORDER_LANES: 'REORDER_LANES',
   // arrasto diagonal: tempo E camada num dispatch so (ver reducer)
   MOVE_ITEM_TO: 'MOVE_ITEM_TO',
+  // Cortar respiros: remove os trechos sem fala e junta o resto (1 undo)
+  CUT_SILENCE: 'CUT_SILENCE',
   OVERLAY_TO_CLIP: 'OVERLAY_TO_CLIP',
   TRIM_OVERLAY: 'TRIM_OVERLAY',
   SPLIT_OVERLAY: 'SPLIT_OVERLAY',
@@ -127,6 +129,7 @@ export const UNDOABLE = {
   [A.TOGGLE_LANE_VIS]: U,
   [A.REORDER_LANES]: U,
   [A.MOVE_ITEM_TO]: U,
+  [A.CUT_SILENCE]: U,
   [A.OVERLAY_TO_CLIP]: U,
   [A.DELETE_OVERLAY]: U,
   [A.SET_VOLUME]: U,
@@ -199,6 +202,10 @@ export const reorderLanes = (kind, de, para) => ({ type: A.REORDER_LANES, kind, 
 // + trocar de camada) o repelir olhava a camada que o item estava DEIXANDO e
 // jogava o item pra um tempo errado. laneAlvo null = mantem a camada atual.
 export const moveItemTo = (itemType, id, start, laneAlvo) => ({ type: A.MOVE_ITEM_TO, itemType, id, start, laneAlvo });
+// CORTAR RESPIROS. alvo: 'clip' (cena de vídeo — o vídeo acompanha o corte) ou
+// 'audio'. falas = [{in,out}] em segundos DA FONTE, vindas de core/silencio.js.
+// UM dispatch = UM undo: N respiros não podem virar N passos de Ctrl+Z.
+export const cutSilence = (alvo, id, falas) => ({ type: A.CUT_SILENCE, alvo, id, falas });
 export const overlayToClip = (overlayId, atT) => ({ type: A.OVERLAY_TO_CLIP, overlayId, atT });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
 export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });
