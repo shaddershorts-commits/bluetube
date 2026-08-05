@@ -224,7 +224,33 @@ async function sendBatch(ctx, res, bucket) {
   ].join('&');
 
   const rR = await fetch(`${SU}/rest/v1/checkout_recovery?${qs}`, { headers: h });
-  const rows = rR.ok ? await rR.json() : [];
+  const rowsBrutas = rR.ok ? await rR.json() : [];
+
+  // ── UMA PESSOA, UM EMAIL POR ETAPA (04/08) ──────────────────────────────
+  // A trava contra repetição era por SESSÃO: cada linha checava a própria
+  // coluna. Quem clica em assinar mais de uma vez gera uma sessão por clique
+  // — e recebia um email por sessão. Caso real: 4 sessões em 4 minutos (duas
+  // com 1 segundo de diferença, ou seja duplo-clique) = 4 emails idênticos.
+  // Agora agrupamos por email: envia UMA vez e marca TODAS as linhas
+  // pendentes daquela pessoa, então as irmãs não disparam nas próximas etapas.
+  const porEmail = new Map();
+  for (const r of rowsBrutas) {
+    const chave = String(r.email || '').toLowerCase();
+    if (!porEmail.has(chave)) porEmail.set(chave, []);
+    porEmail.get(chave).push(r);
+  }
+  const rows = [];
+  for (const [, grupo] of porEmail) {
+    // representante = sessão MAIS RECENTE (dados mais atuais de plano/valor)
+    grupo.sort((a, b) => new Date(b.session_created_at) - new Date(a.session_created_at));
+    const principal = grupo[0];
+    principal._irmas = grupo.map((g) => g.id);   // todas as linhas a marcar junto
+    rows.push(principal);
+  }
+  const colapsadas = rowsBrutas.length - rows.length;
+  if (colapsadas > 0) {
+    console.log(`[checkout-recovery send-${bucket}] ${colapsadas} sessão(ões) duplicada(s) colapsada(s) — ${rows.length} pessoa(s) receberão 1 email cada`);
+  }
 
   if (!rows.length) {
     return res.status(200).json({
@@ -301,7 +327,10 @@ async function sendBatch(ctx, res, bucket) {
         };
         if (config.markExpired) patch.status = 'expired';
 
-        await fetch(`${SU}/rest/v1/checkout_recovery?id=eq.${row.id}`, {
+        // Marca TODAS as linhas dessa pessoa, não só a que gerou o email —
+        // é isso que impede as sessões irmãs de dispararem na próxima etapa.
+        const ids = (row._irmas && row._irmas.length ? row._irmas : [row.id]);
+        await fetch(`${SU}/rest/v1/checkout_recovery?id=in.(${ids.join(',')})`, {
           method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' },
           body: JSON.stringify(patch),
         });

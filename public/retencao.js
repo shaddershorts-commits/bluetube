@@ -21,6 +21,49 @@
     full: { de: 'R$ 29,99', por: 'R$ 14,99' },
   };
 
+  // ── QUEM JÁ TEM DESCONTO NÃO PODE RECEBER A MESMA OFERTA ──────────────────
+  // Furo real (04/08): a tela oferecia "50% off" pra quem já pagava metade
+  // (cupom de afiliado). Oferecer o que a pessoa já tem faz a oferta inteira
+  // parecer mentira. Pra esse caso a mensagem certa é o INVERSO: cancelar
+  // significa PERDER o desconto — voltar custa o preço cheio.
+  function montarPerda(dados) {
+    var step2 = $('cancelStep2');
+    if (!step2) return false;
+    var ehMaster = dados.plano === 'master';
+    var cor = ehMaster ? '#fbbf24' : 'var(--neon, #00aaff)';
+    var grad = ehMaster ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : 'linear-gradient(135deg,var(--blue-500,#1a6bff),var(--neon,#00aaff))';
+    var fmt = function (v) {
+      return (dados.moeda === 'BRL' ? 'R$ ' : dados.moeda + ' ') + Number(v).toFixed(2).replace('.', ',');
+    };
+
+    step2.innerHTML =
+      '<video id="retVideo" preload="none" playsinline' +
+      ' style="width:100%;max-height:220px;border-radius:14px;background:#000;border:1px solid ' + (ehMaster ? 'rgba(251,191,36,.35)' : 'rgba(0,170,255,.3)') + ';margin-bottom:14px"' +
+      ' onerror="this.style.display=\'none\'">' +
+      '  <source src="/blublu-ultima-chance.mp4" type="video/mp4"/>' +
+      '</video>' +
+      '<div style="font-size:17px;font-weight:800;margin-bottom:6px">Você tem um preço que não volta.</div>' +
+      '<div style="font-family:var(--font-mono,monospace);font-size:12.5px;color:var(--text-secondary,#9db8d8);margin-bottom:16px;line-height:1.6">' +
+      'Hoje você paga <strong style="color:' + cor + '">' + fmt(dados.valor_atual) + '</strong> por mês — metade do preço, com desconto permanente. ' +
+      'Se cancelar, esse desconto <strong style="color:#ff7a5a">acaba</strong>: voltar depois custa <strong style="color:#ff7a5a">' + fmt(dados.valor_cheio) + '</strong>.' +
+      '</div>' +
+      '<div style="background:' + (ehMaster ? 'rgba(251,191,36,.07)' : 'rgba(0,170,255,.06)') + ';border:1px solid ' + (ehMaster ? 'rgba(251,191,36,.35)' : 'rgba(0,170,255,.2)') + ';border-radius:12px;padding:18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+      '  <div><div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,#6b87a8)">SEU PREÇO HOJE</div>' +
+      '  <div style="font-size:28px;font-weight:900;color:' + cor + '">' + fmt(dados.valor_atual) + '<span style="font-size:13px;font-weight:700">/mês</span></div></div>' +
+      '  <div style="font-size:20px;color:var(--text-dim,#6b87a8)">→</div>' +
+      '  <div style="text-align:right"><div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,#6b87a8)">SE VOLTAR DEPOIS</div>' +
+      '  <div style="font-size:28px;font-weight:900;color:#ff7a5a">' + fmt(dados.valor_cheio) + '<span style="font-size:13px;font-weight:700">/mês</span></div></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px">' +
+      '  <button onclick="closeCancelModal&&closeCancelModal()" style="flex:1.4;background:' + grad + ';border:none;border-radius:10px;padding:14px;font-family:var(--font-display,sans-serif);font-size:13px;font-weight:800;color:' + (ehMaster ? '#0a1020' : '#fff') + ';cursor:pointer">Manter meu preço</button>' +
+      '  <button onclick="finalCancel()" style="flex:1;background:rgba(255,80,80,0.08);border:1px solid rgba(255,80,80,0.25);border-radius:10px;padding:14px;font-family:var(--font-mono,monospace);font-size:12px;color:#ff7a5a;cursor:pointer">Cancelar mesmo assim</button>' +
+      '</div>';
+
+    var v = $('retVideo');
+    if (v) { try { v.play().catch(function () {}); } catch (e) {} }
+    return true;
+  }
+
   function montarOferta() {
     var step2 = $('cancelStep2');
     if (!step2) return false;
@@ -64,7 +107,21 @@
   var confirmAntigo = window.confirmCancelStep2;
   window.confirmCancelStep2 = function () {
     if (typeof confirmAntigo === 'function') confirmAntigo();   // faz o show/hide dos steps
-    montarOferta();                                             // e a gente troca o conteúdo
+    montarOferta();                                             // desenha algo na hora (sem espera em branco)
+
+    // ...e pergunta ao servidor se essa pessoa JÁ tem desconto. Se tiver,
+    // troca pela tela de PERDA. A oferta aparece primeiro porque a consulta
+    // leva ~1s; trocar depois é melhor que deixar a tela vazia esperando.
+    try {
+      var token = localStorage.getItem('bt_token') || '';
+      if (!token) return;
+      fetch('/api/retencao-50?action=status', { headers: { Authorization: 'Bearer ' + token } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (d && d.ok && d.ja_tem_desconto) montarPerda(d);
+        })
+        .catch(function () {});                                  // falhou? segue a oferta normal
+    } catch (e) {}
   };
 
   // ── aceitar = aplicar DE VERDADE na Stripe (o antigo era alert de mentira)

@@ -44,10 +44,16 @@ async function stripeCall(path, method, params) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // GET ?action=status → consulta SOMENTE LEITURA: a pessoa já tem desconto?
+  // Nasceu de um furo real (04/08): a tela de cancelamento oferecia "50% off"
+  // pra QUEM JÁ PAGAVA METADE (cupom de afiliado). Além de absurdo, fazia a
+  // oferta parecer falsa. Agora o front pergunta antes de montar a tela.
+  const soConsulta = req.method === 'GET' && String(req.query?.action || '') === 'status';
+  if (req.method !== 'POST' && !soConsulta) return res.status(405).json({ error: 'Method not allowed' });
 
   const { SU, SK, AK, STRIPE } = cfg();
   if (!SU || !SK || !STRIPE) return res.status(500).json({ error: 'config incompleta' });
@@ -89,6 +95,19 @@ module.exports = async function handler(req, res) {
       || (s.d.discounts || []).some((x) => x?.coupon?.percent_off >= 50 && x?.coupon?.duration === 'forever');
     const valorCheio = (s.d.items?.data?.[0]?.price?.unit_amount || 0) / 100;
     const moeda = (s.d.currency || sub.currency || 'brl').toUpperCase();
+
+    // Consulta pura: devolve o retrato e sai sem tocar em nada.
+    if (soConsulta) {
+      return res.status(200).json({
+        ok: true,
+        plano: sub.plan,
+        ja_tem_desconto: !!jaTem,
+        // o que ela paga hoje x o que passaria a pagar se cancelasse e voltasse
+        valor_atual: jaTem ? valorCheio / 2 : valorCheio,
+        valor_cheio: valorCheio,
+        moeda,
+      });
+    }
 
     if (jaTem) {
       return res.status(200).json({ ok: true, ja_tinha: true, valor_novo: valorCheio / 2, moeda });
