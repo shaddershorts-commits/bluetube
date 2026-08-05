@@ -706,19 +706,15 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       // affiliate.js com email é código morto pra pagos (caso guri/Luiz).
       // Aqui é o único ponto vivo pós-criação da comissão: busca a comissão
       // recém-criada deste assinante e notifica o afiliado. AWAITED.
-      try {
-        const cm = await fetch(`${SUPABASE_URL}/rest/v1/affiliate_commissions?subscriber_email=eq.${encodeURIComponent(email)}&plan=eq.${plan}&created_at=gte.${new Date(Date.now() - 10 * 60 * 1000).toISOString()}&order=created_at.desc&limit=1&select=affiliate_id,commission_amount`, { headers: supaHeaders });
-        const comm = cm.ok ? (await cm.json())[0] : null;
-        if (comm) {
-          const afR = await fetch(`${SUPABASE_URL}/rest/v1/affiliates?id=eq.${comm.affiliate_id}&select=email,name,total_full,total_master`, { headers: supaHeaders });
-          const aff = afR.ok ? (await afR.json())[0] : null;
-          if (aff) {
-            const { enviarEmailComissao } = require('./_helpers/affiliate-comissao-email.js');
-            const envio = await enviarEmailComissao(aff, { subscriber: email, plan, commission_amount: comm.commission_amount });
-            console.log('[webhook] email comissao afiliado:', JSON.stringify(envio));
-          }
-        }
-      } catch (e) { console.error('[webhook] email comissao falhou:', e.message); }
+      // ⚠️ O EMAIL DE COMISSAO NAO PODE SAIR DAQUI (mudanca de 04/08).
+      // Ficava neste ponto lendo commission_amount ANTES do
+      // applyCommissionCorrection rodar (~60 linhas abaixo). O auth.js cria a
+      // comissao sobre o PRECO DE TABELA; a correcao ajusta pro valor REAL
+      // pago. Com o cupom de 50% dos afiliados isso virou visivel: caso
+      // Daniel/invectgames — email prometeu R$ 27,00 (89,99 x 30%) e o saldo
+      // ficou R$ 13,50 (44,99 x 30%), que e o correto. O dinheiro no banco
+      // sempre esteve certo; quem mentia era o email.
+      // Agora o envio acontece DEPOIS da correcao, com o valor final.
       try {
         // Fonte 1 (primaria): affiliate_ref salvo no subscribers (cookie venceu no signup)
         const subRef = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=affiliate_ref`, { headers: supaHeaders });
@@ -784,6 +780,24 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
         } else {
           console.log(`⏳ Commission queued for retry: ${aff.email} ← ${email} (${plan})`);
         }
+
+        // ── EMAIL DE COMISSAO — agora com o valor JA CORRIGIDO ──────────────
+        // Comissao flaggada como suspeita nao dispara email: primeiro o dono
+        // revisa. Se a correcao caiu na fila de retry, o valor final ainda nao
+        // existe — melhor nao mandar email nenhum do que mandar valor errado
+        // de novo (foi o erro que estamos consertando).
+        try {
+          if (result.ok && !result.flagged) {
+            const valorFinal = result.correctedAmount;
+            const { enviarEmailComissao } = require('./_helpers/affiliate-comissao-email.js');
+            const envio = await enviarEmailComissao(aff, {
+              subscriber: email, plan, commission_amount: valorFinal,
+            });
+            console.log('[webhook] email comissao afiliado (valor corrigido R$' + valorFinal + '):', JSON.stringify(envio));
+          } else {
+            console.log(`[webhook] email comissao NAO enviado (${result.flagged ? 'flaggada p/ revisao' : 'correcao na fila'}) — ${aff.email} ← ${email}`);
+          }
+        } catch (e) { console.error('[webhook] email comissao falhou:', e.message); }
       } catch(e) { console.error('Commission correction error:', e.message); }
     }).catch(() => {}).finally(() => clearTimeout(convTimer));
 
