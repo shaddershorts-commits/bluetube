@@ -24,7 +24,13 @@
 //   - depois de 45 dias parado, para de tentar (respeita quem foi embora)
 //   - `?dry=1` simula sem enviar nada (usar sempre antes de soltar)
 
-const JANELAS = [3, 7, 14, 30];
+// Janela CONTÍNUA (corrigido 04/08): a 1ª versão exigia bater o dia EXATO
+// (3, 7, 14 ou 30). Quem estivesse fora há 4, 5 ou 6 dias não recebia nada —
+// e como o cron roda diário, a maioria das pessoas caía justamente nos dias
+// não cobertos. Deu `candidatos: 0` no primeiro teste real.
+// Agora é faixa contínua e o espaçamento fica por conta do CAP_DIAS: uma
+// pessoa parada há 20 dias recebe hoje e só volta a receber daqui a 7.
+const MIN_DIAS = 3;
 const CAP_DIAS = 7;      // silêncio mínimo entre dois reengajamentos
 const DESISTIR_DIAS = 45;
 
@@ -63,12 +69,19 @@ module.exports = async function handler(req, res) {
       const ultima = p.status_updated_at ? new Date(p.status_updated_at).getTime() : 0;
       if (!ultima) continue;
       const diasFora = Math.floor((agora - ultima) / 864e5);
-      if (diasFora < 3 || diasFora > DESISTIR_DIAS) continue;
-      // só nas janelas escolhidas (evita mandar todo santo dia)
-      if (!JANELAS.some((j) => diasFora === j || (j === 30 && diasFora > 30 && diasFora % 15 === 0))) continue;
+      if (diasFora < MIN_DIAS || diasFora > DESISTIR_DIAS) continue;
       fila.push({ ...p, diasFora, ultima });
     }
-    if (!fila.length) return res.status(200).json({ ok: true, candidatos: 0, enviados: 0, dry });
+    if (!fila.length) {
+      // devolve o diagnóstico mesmo quando não há fila — sem isso, um zero
+      // não distingue "ninguém elegível" de "nenhum aparelho registrado"
+      return res.status(200).json({
+        ok: true, dry, com_push: alvos.length, perfis: perfis.length,
+        em_silencio: emSilencio.size, candidatos: 0, enviados: 0,
+        dias_fora: perfis.map((p) => (p.status_updated_at
+          ? Math.floor((agora - new Date(p.status_updated_at).getTime()) / 864e5) : null)).filter((d) => d != null).sort((a, b) => a - b),
+      });
+    }
 
     // ── monta a mensagem de cada um com DADO REAL ────────────────────────
     const montar = async (u) => {
