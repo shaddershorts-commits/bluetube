@@ -121,6 +121,86 @@ test('full e master entram', async () => {
   }
 });
 
+// ═══ REGRESSÃO 06/08: o 403 que barrava TODO assinante ═══════════════════
+// Eu pedi a coluna `name` no SELECT de subscribers. Ela NÃO EXISTE: o
+// PostgREST devolve 400, o `sub` vira null, o plano cai pra 'free' e o
+// assinante leva 403. É a armadilha que já estava registrada como regra da
+// casa — nunca adicionar campo a SELECT sem confirmar o schema.
+
+test('o SELECT de subscribers só pede colunas que existem', () => {
+  const CONFIRMADAS = new Set(['plan', 'plan_expires_at', 'is_manual', 'email', 'currency',
+    'cancel_at_period_end', 'coupon_applied', 'coupon_discount', 'affiliate_ref', 'amount_paid',
+    'billing_period', 'trial_origin', 'created_at', 'virais_daily_alert', 'stripe_subscription_id']);
+  const selects = [...FONTE.matchAll(/subscribers\?[^`'"]*select=([\w,]+)/g)].map((m) => m[1]);
+  assert.ok(selects.length > 0, 'nenhum SELECT de subscribers encontrado');
+  for (const sel of selects) {
+    for (const col of sel.split(',')) {
+      assert.ok(CONFIRMADAS.has(col),
+        `pede "${col}" em subscribers — se a coluna não existir, o 400 derruba o plano pra free e o assinante leva 403`);
+    }
+  }
+});
+
+test('o nome vem do AUTH, não de uma coluna inventada', () => {
+  assert.match(FONTE, /user_metadata\?\.name \|\| usuario\?\.user_metadata\?\.full_name/,
+    'o nome tem que sair do usuário autenticado, que não depende de schema do subscribers');
+  const i = FONTE.indexOf('subscribers?email=');
+  const bloco = FONTE.slice(i, i + 200);
+  assert.doesNotMatch(bloco, /,name/, 'a coluna name não existe em subscribers');
+});
+
+test('falha ao ler o plano não vira acesso liberado (falha SEGURA)', async () => {
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/auth/v1/user')) return { ok: true, json: async () => ({ email: 'a@b.c' }) };
+    if (u.includes('/rest/v1/subscribers')) return { ok: false, status: 400, json: async () => ({ message: 'column does not exist' }) };
+    return { ok: true, json: async () => ({}) };
+  };
+  const res = resFalso();
+  await handler({ method: 'POST', headers: {}, body: { token: 't', mensagem: 'oi' } }, res);
+  assert.equal(res._status, 403, 'consulta quebrada tem que NEGAR, nunca liberar');
+});
+
+// ═══ CONVERSA SALVA ══════════════════════════════════════════════════════
+
+test('a conversa fica salva no servidor (continua em outro aparelho)', async () => {
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/auth/v1/user')) return { ok: true, json: async () => ({ email: 'a@b.c' }) };
+    if (u.includes('/rest/v1/subscribers')) return { ok: true, json: async () => [{ plan: 'master' }] };
+    if (u.includes('blublu_suporte_logs')) {
+      return { ok: true, json: async () => [{ pergunta: 'como baixo?', resposta: 'Abre /baixaBlue' }] };
+    }
+    return { ok: true, json: async () => ({}) };
+  };
+  const res = resFalso();
+  await handler({ method: 'POST', headers: {}, body: { token: 't', acao: 'historico', mensagem: '.' } }, res);
+  assert.equal(res._status, 200);
+  assert.equal(res._json.conversa.length, 2, 'pergunta e resposta viram dois balões');
+  assert.equal(res._json.conversa[0].papel, 'voce');
+  assert.equal(res._json.conversa[1].papel, 'blublu');
+});
+
+test('histórico indisponível abre conversa nova em vez de quebrar', async () => {
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/auth/v1/user')) return { ok: true, json: async () => ({ email: 'a@b.c' }) };
+    if (u.includes('/rest/v1/subscribers')) return { ok: true, json: async () => [{ plan: 'master' }] };
+    if (u.includes('blublu_suporte_logs')) throw new Error('supabase fora');
+    return { ok: true, json: async () => ({}) };
+  };
+  const res = resFalso();
+  await handler({ method: 'POST', headers: {}, body: { token: 't', acao: 'historico', mensagem: '.' } }, res);
+  assert.equal(res._status, 200);
+  assert.deepEqual(res._json.conversa, []);
+});
+
+test('o front busca a conversa salva ao abrir', () => {
+  assert.match(FRONT, /acao: 'historico'/, 'precisa pedir o histórico');
+  assert.match(FRONT, /async function carregarConversa/);
+  assert.match(FRONT, /if \(historico\.length\) return;/, 'não recarrega por cima de conversa em andamento');
+});
+
 test('o plano vai no prompt (não ensina a usar o que a pessoa não tem)', () => {
   assert.match(FONTE, /## COM QUEM VOCÊ ESTÁ FALANDO AGORA/);
   assert.match(FONTE, /plano === 'full'[\s\S]{0,300}é do Master/,
@@ -191,8 +271,14 @@ test('mensagem e histórico têm teto (custo e prompt injection por volume)', ()
 });
 
 test('o log de auditoria não bloqueia a resposta', () => {
-  const i = FONTE.indexOf('blublu_suporte_logs');
-  const bloco = FONTE.slice(i - 200, i + 700);
+  // ⚠️ ancorar na GRAVAÇÃO. Existem duas menções à tabela (ler o histórico e
+  // gravar o log); indexOf sem cuidado pega a leitura e o teste falha por
+  // motivo errado.
+  const i = FONTE.indexOf("method: 'POST',\n      headers: { apikey: SK");
+  const alt = FONTE.indexOf('Prefer: \'return=minimal\'');
+  const inicio = i > 0 ? i : alt;
+  assert.ok(inicio > 0, 'gravação do log não encontrada');
+  const bloco = FONTE.slice(inicio - 400, inicio + 700);
   assert.match(bloco, /\.catch\(\(\) => \{\}\)/,
     'falha ao gravar log não pode derrubar a resposta do usuário');
 });

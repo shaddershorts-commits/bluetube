@@ -219,14 +219,46 @@
     }
   }
 
+  // Traz a conversa salva do servidor. Fica no servidor (não no navegador) pra
+  // a pessoa continuar de onde parou mesmo trocando de aparelho.
+  async function carregarConversa() {
+    if (historico.length) return;                 // já tem conversa nesta sessão
+    try {
+      var token = localStorage.getItem('bt_token') || '';
+      if (!token) return;
+      var r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token, acao: 'historico', mensagem: '.' }),
+      });
+      var d = await r.json().catch(function () { return {}; });
+      if (!d.ok || !d.conversa || !d.conversa.length) return false;
+
+      var box = $('bspMsgs');
+      if (box) box.innerHTML = '';
+      d.conversa.forEach(function (m) {
+        addMsg(m.papel === 'blublu' ? 'ele' : 'eu', m.texto);
+        historico.push(m);
+      });
+      if (historico.length > 24) historico = historico.slice(-24);
+      return true;
+    } catch (e) { return false; }
+  }
+
   function abrir() {
     estilo();
     montarOverlay();
     $('bspOv').classList.add('on');
     document.body.style.overflow = 'hidden';
+
     if (!historico.length) {
-      addMsg('ele', 'Opa. Sou o Blublu — aqui eu te ensino a usar o BlueTube na prática.\n\nPergunta do jeito que vier: "como faço X", "pra que serve Y", "qual o caminho pra Z". Se travar em alguma tela, me diz onde que eu te tiro de lá.');
+      var saudacao = addMsg('ele', 'Opa. Sou o Blublu — aqui eu te ensino a usar o BlueTube na prática.\n\nPergunta do jeito que vier: "como faço X", "pra que serve Y", "qual o caminho pra Z". Se travar em alguma tela, me diz onde que eu te tiro de lá.');
       pintarSugestoes();
+      // se existir conversa salva, ela substitui a saudação
+      carregarConversa().then(function (tinha) {
+        if (tinha) { var s = $('bspSug'); if (s) s.innerHTML = ''; }
+        else if (saudacao && !historico.length) { /* mantém a saudação */ }
+      });
     }
     setTimeout(function () { var i = $('bspIn'); if (i) i.focus(); }, 120);
   }

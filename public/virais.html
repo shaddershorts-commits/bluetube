@@ -1645,8 +1645,24 @@ function nsRaioX(e, youtubeId){
 // TIKTOK VIRAIS (2026-06-24) — toggle, fetch, render, download
 // ════════════════════════════════════════════════════════════════════════════
 let _tkMode = false; // false=YouTube view (default), true=TikTok view
-let _tkPeriod = '24h';
+// 06/08 (pedido do dono): abre já em 30 dias. A janela curta mostrava pouca
+// coisa e dava impressão de acervo vazio; 30d entrega volume de cara.
+let _tkPeriod = '30d';
 let _tkSort = 'recent'; // 'recent' (default — user 2026-07-25), 'likes' ou 'views'
+
+// 06/08 (pedido do dono): a cada ENTRADA na view do TikTok, embaralha os
+// vídeos — o acervo é o mesmo, mas a ordem muda e dá sensação de novo.
+// Vale só na entrada: se a pessoa escolher "Likes" ou "Views" de propósito,
+// embaralhar seria atropelar o que ela pediu.
+let _tkEmbaralhar = false;
+function tkShuffle(lista){
+  const a = lista.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 let _tkOffset = 0; // paginação: offset atual na chamada listar
 let _tkTotal = 0;  // total no banco pra exibir "X de Y"
 const _tkPageSize = 100;
@@ -1702,6 +1718,7 @@ function tkToggleView(e){
 
 function tkEnterTiktok(){
   _tkMode = true;
+  _tkEmbaralhar = true;   // entrou = ordem nova (ver tkShuffle)
   // Esconde elementos do feed YouTube + botões YouTube-only
   // (notificações email diário + nichos secretos = exclusivos YouTube)
   const ytElements = ['grid','historico-paginacao','dateFilterWarn','btnDailyAlert','btnNichosSecretos'];
@@ -1785,7 +1802,11 @@ async function tkListar(){
       empty.style.display = 'block';
       return;
     }
-    grid.innerHTML = items.map((v, i) => tkMkCard(v, i + 1)).join('');
+    // Embaralha só na entrada (ver _tkEmbaralhar). Consome a flag: a próxima
+    // carga — trocar período, ordenar, "carregar mais" — vem na ordem real.
+    const paraTela = _tkEmbaralhar ? tkShuffle(items) : items;
+    _tkEmbaralhar = false;
+    grid.innerHTML = paraTela.map((v, i) => tkMkCard(v, i + 1)).join('');
     _tkOffset = items.length;
     tkAtualizarPaginacao(d.has_more);
   }catch(e){

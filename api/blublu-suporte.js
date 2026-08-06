@@ -177,20 +177,30 @@ module.exports = async function handler(req, res) {
   if (!mensagem) return res.status(400).json({ error: 'mensagem_vazia' });
 
   // ── quem é (mesmo portão da Comunidade: assinante vivo) ──────────────────
-  let email = null;
+  let email = null, nome = '';
   try {
     const u = await fetch(`${SU}/auth/v1/user`, {
       headers: { apikey: AK, Authorization: 'Bearer ' + token },
       signal: AbortSignal.timeout(8000),
     });
-    if (u.ok) email = (await u.json())?.email || null;
+    if (u.ok) {
+      const usuario = await u.json();
+      email = usuario?.email || null;
+      // nome vem do AUTH, não do subscribers — ver comentário abaixo
+      const bruto = usuario?.user_metadata?.name || usuario?.user_metadata?.full_name || '';
+      nome = String(bruto).trim().split(' ')[0] || '';
+    }
   } catch (e) {}
   if (!email) return res.status(401).json({ error: 'token_invalido' });
 
-  let plano = 'free', nome = '';
+  let plano = 'free';
   try {
+    // ⚠️ NÃO adicionar campo aqui sem conferir o schema. A coluna `name` NÃO
+    // existe em subscribers: pedir ela devolvia 400, o sub virava null, o
+    // plano caía pra 'free' e TODO assinante levava 403 (bug de 06/08).
+    // Campos confirmados: plan, plan_expires_at, is_manual.
     const s = await fetch(
-      `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at,is_manual,name&limit=1`,
+      `${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=plan,plan_expires_at,is_manual&limit=1`,
       { headers: { apikey: SK, Authorization: 'Bearer ' + SK }, signal: AbortSignal.timeout(8000) }
     );
     const sub = s.ok ? (await s.json())[0] : null;
@@ -198,11 +208,33 @@ module.exports = async function handler(req, res) {
       const manual = sub.is_manual === true;
       const naoVenceu = !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date();
       plano = (sub.plan && sub.plan !== 'free' && (manual || naoVenceu)) ? sub.plan : 'free';
-      nome = (sub.name || '').split(' ')[0] || '';
     }
   } catch (e) {}
   if (plano !== 'full' && plano !== 'master') {
     return res.status(403).json({ error: 'plano_necessario' });
+  }
+
+  // ── CONVERSA SALVA (06/08) ───────────────────────────────────────────────
+  // A conversa fica no servidor, não no navegador: a pessoa fecha a aba, troca
+  // de celular, e continua de onde parou. Ordena por data e devolve na ordem
+  // cronológica pra tela remontar o diálogo.
+  if (String(body.acao || '') === 'historico') {
+    try {
+      const hr = await fetch(
+        `${SU}/rest/v1/blublu_suporte_logs?email=eq.${encodeURIComponent(email)}&order=criado_em.desc&limit=${MAX_TURNOS}&select=pergunta,resposta,criado_em`,
+        { headers: { apikey: SK, Authorization: 'Bearer ' + SK }, signal: AbortSignal.timeout(8000) }
+      );
+      const linhas = hr.ok ? await hr.json() : [];
+      const conversa = [];
+      for (const l of linhas.reverse()) {
+        if (l.pergunta) conversa.push({ papel: 'voce', texto: l.pergunta });
+        if (l.resposta) conversa.push({ papel: 'blublu', texto: l.resposta });
+      }
+      return res.status(200).json({ ok: true, conversa });
+    } catch (e) {
+      // histórico é conforto, não requisito: falhou, abre conversa nova
+      return res.status(200).json({ ok: true, conversa: [] });
+    }
   }
 
   // ── contexto de quem está perguntando ────────────────────────────────────
