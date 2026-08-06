@@ -51,12 +51,30 @@ export function pisoDeRuido(niveis, p = 0.10) {
 }
 
 export const PADRAO = {
-  margemDb: 8,        // quanto acima do piso já conta como fala
-  tetoDb: -45,        // nunca aceitar como fala algo abaixo disso
-  minSilencio: 0.35,  // buraco menor que isso NÃO é respiro (é ritmo da frase)
+  // ⚠️ O PARÂMETRO QUE FAZ A FEATURE EXISTIR (user 2026-08-05: "motor amador,
+  // fachada"). O limiar tem que cair ENTRE O RESPIRO E A FALA. Ancorado só no
+  // piso de ruído, ele ficava ABAIXO do respiro — e aí o respiro contava como
+  // fala. Como sobrava menos silêncio contínuo do que `minSilencio` de cada
+  // lado dele, o trecho nunca fechava: a gravação inteira virava UM bloco de
+  // fala, zero corte, e a tela ainda dizia "o áudio já está justo ✓".
+  // Fala varia ~14 dB dentro da frase; respiro fica 20 dB ou mais abaixo do
+  // pico. 18 dB é a linha que separa os dois sem picotar a frase.
+  quedaFala: 18,
+  margemDb: 6,        // e nunca abaixo do chiado da sala
+  tetoDb: -50,        // piso absoluto do limiar (gravação muito limpa)
+  // Silêncio contínuo que fecha um trecho de fala. Era 0,35s — mais longo que
+  // os pedaços de sala em volta de um respiro, que é como o respiro emendava
+  // as duas frases numa só. `folga` + `colaSe` devolvem o ritmo depois.
+  minSilencio: 0.18,
   minFala: 0.15,      // trecho de fala menor que isso é ruído solto
-  folga: 0.08,        // respiro deixado antes/depois pra não comer o fonema
-  colaSe: 0.12,       // duas falas separadas por menos que isso viram uma
+  folga: 0.06,        // respiro deixado antes/depois pra não comer o fonema
+  colaSe: 0.10,       // duas falas separadas por menos que isso viram uma
+  // ILHA DE RESPIRO: bloco curto e MUITO mais baixo que a fala de verdade.
+  // Existe porque quando respiro e vale de sílaba têm o mesmo nível, nível
+  // sozinho não decide — quem decide é o contraste com o resto da gravação.
+  quedaMin: 10,       // dB abaixo do pico da voz pra sequer ser candidata a respiro
+  modMin: 5,          // dB de sobe-e-desce que separa sílaba de sopro
+  ilhaMax: 0.9,       // só descarta ilha CURTA (frase falada baixo não é respiro)
 };
 
 /**
@@ -79,11 +97,13 @@ export function detectarFala(samples, sr, opts = {}) {
     // silêncio/chiado do começo ao fim. Não há o que separar por contraste,
     // então quem decide é o nível ABSOLUTO. (Sem este ramo, chiado uniforme
     // virava "fala" porque estava 6 dB acima do próprio pico dele.)
-    limiar = pico >= o.tetoDb ? piso - 1 : pico + 1;
+    limiar = pico >= -45 ? piso - 1 : pico + 1;
   } else {
-    // com dinâmica: acima do piso de ruído, mas nunca acima do que o áudio
-    // alcança — senão gravação baixinha viraria "tudo silêncio"
-    limiar = Math.min(Math.max(piso + o.margemDb, o.tetoDb), pico - 6);
+    // COM DINÂMICA: o limiar desce a partir da FALA (pico − quedaFala), não
+    // sobe a partir do chiado. É o que põe a linha acima do respiro. O piso
+    // de ruído só entra como travessão de segurança, pra sala barulhenta não
+    // ser confundida com voz.
+    limiar = Math.max(pico - o.quedaFala, piso + o.margemDb, o.tetoDb);
   }
 
   // ── histerese: 2 quadros acima abrem; só fecha após minSilencio abaixo ──
@@ -112,7 +132,42 @@ export function detectarFala(samples, sr, opts = {}) {
   // passaria por "fala" de 0,15s. Fragmento se mede pelo que foi DETECTADO,
   // não pelo que a folga inflou.
   const reais = falas.filter(f => f.out - f.in >= o.minFala);
-  const comFolga = reais.map(f => ({
+
+  // ── ILHA DE RESPIRO ─────────────────────────────────────────────────────
+  // Quando o respiro tem o mesmo nível de um vale de sílaba, o limiar sozinho
+  // não separa os dois — os dois passam. O que os separa é o CONTRASTE com o
+  // resto: um respiro é um bloco CURTO e muito mais baixo que a fala de
+  // verdade. Frase falada baixinho não cai aqui porque é longa.
+  const fatiaDe = (f) => niveis.slice(
+    Math.max(0, Math.floor(f.in / hop)),
+    Math.min(niveis.length, Math.ceil(f.out / hop)));
+  const comNivel = reais.map(f => {
+    const fatia = fatiaDe(f);
+    return {
+      ...f,
+      db: percentil(fatia, 0.5),
+      // MODULAÇÃO: o quanto o nível sobe e desce DENTRO do bloco. Fala tem
+      // sílaba (sobe e desce uns 10 dB); respiro é sopro plano (2-3 dB).
+      // É esta medida que salva o caso em que respiro e vale de sílaba estão
+      // no mesmo nível — aí o volume não decide nada e a forma decide.
+      mod: percentil(fatia, 0.9) - percentil(fatia, 0.15),
+      alto: percentil(fatia, 0.9),
+    };
+  });
+  // Referência = o quanto a voz ALCANÇA nesta gravação (não a média dela: a
+  // média já fica 7-10 dB abaixo do pico, e medir contra ela tornava o
+  // travessão apertado demais pra pegar respiro nenhum).
+  const refFala = Math.max(pico, ...comNivel.map(x => x.alto), DB_MIN);
+  // Descarta só com AS DUAS provas: baixo E sem sílaba. Uma frase falada
+  // baixinho tem sílaba e sobrevive — apagar uma palavra do usuário seria
+  // muito pior do que deixar um respiro passar.
+  const ehRespiro = (f) =>
+    (f.out - f.in) <= o.ilhaMax &&
+    f.db < refFala - o.quedaMin &&
+    f.mod < o.modMin;
+  const semIlha = comNivel.filter(f => !ehRespiro(f));
+
+  const comFolga = (semIlha.length ? semIlha : comNivel).map(f => ({
     in: Math.max(0, f.in - o.folga),
     out: Math.min(duracao, f.out + o.folga),
   }));

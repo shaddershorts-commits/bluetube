@@ -1052,6 +1052,17 @@ export function mountEditor(root, store, opts = {}) {
   $('#bePvZoomIn')?.addEventListener('click', () => setZoomPreview(pvZoom * 1.25));
   $('#bePvZoomOut')?.addEventListener('click', () => setZoomPreview(pvZoom / 1.25));
   $('#bePvZoomFit')?.addEventListener('click', () => setZoomPreview(1));
+  // DOIS CLIQUES = VOLTA AO 100% (user 2026-08-05: "pra voltar pro 100% é bem
+  // difícil"). Achar de novo o botão ⤢ depois de aproximar e arrastar dá
+  // trabalho; dois cliques em qualquer lugar da imagem desfazem tudo.
+  // Só quando há zoom: com 100% o duplo-clique não pode roubar nada de quem
+  // já usa duplo-clique (texto do preview abre pra editar).
+  frame?.addEventListener('dblclick', (e) => {
+    if (Math.abs(pvZoom - 1) < 0.001 && !pvPanX && !pvPanY) return;
+    if (e.target.closest('.be-text-overlay, button, input, .be-pvzoom')) return;
+    e.preventDefault();
+    setZoomPreview(1);      // zera o pan junto (regra do próprio setZoomPreview)
+  });
 
   // ── fullscreen do preview (tecla F) com barra de tempo ──
   function toggleFullscreen() {
@@ -1584,7 +1595,12 @@ export function mountEditor(root, store, opts = {}) {
         removido: Math.max(0, (faixaFim - faixaIni) - falas.reduce((s, f) => s + (f.out - f.in), 0)) });
       if (!falas.length) { toast('Não encontrei fala nesta mídia — nada foi cortado', true); return; }
       if (res.respiros === 0 || res.removidoSeg < 0.2) {
-        toast('Nenhum respiro pra cortar — o áudio já está justo ✓');
+        // ⚠️ HONESTIDADE: esta mensagem dizia "o áudio já está justo ✓" e o
+        // usuário lia como sucesso — enquanto o detector tinha falhado e não
+        // cortado nada (teste de 2026-08-05). Agora ela diz o que foi MEDIDO,
+        // e não dá parabéns por um trabalho que não aconteceu.
+        toast(`Nada foi cortado: não encontrei pausa acima de 0,2s nos ${
+          Math.round(faixaFim - faixaIni)}s analisados`, true);
         return;
       }
       respirosMostrar('Montando o clipe…', 0.99, t0);

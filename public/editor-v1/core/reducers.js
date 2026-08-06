@@ -482,6 +482,11 @@ export function reduce(state, action) {
       // (fix 2026-07-21: antes só funcionava em vídeo — user pegou).
       // multi-seleção: corta TUDO que estiver selecionado (mesma correção do W)
       if (state.multi_selected?.length) return trimMultiRange(state, action.t, 'left');
+      // SEM NADA SELECIONADO = a timeline INTEIRA (user 2026-08-05: "sem
+      // marcar é recortar absolutamente tudo... pode clipe composto, muitas
+      // camadas, qualquer coisa"). Antes daqui só a faixa principal era
+      // cortada e áudio/texto/camada ficavam intactos.
+      if (semSelecao(state)) return trimMultiRange(state, action.t, 'left', tudoDaTimeline(state));
       if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'left');
       // CapCut "Q" (fix 2026-07-20): age SÓ no clip SELECIONADO — trima a
       // parte à ESQUERDA do playhead DENTRO dele. O comportamento antigo
@@ -511,6 +516,8 @@ export function reduce(state, action) {
       // que guarda o ÚLTIMO item clicado. Resultado: selecionava várias
       // camadas, apertava W e só a última era cortada.
       if (state.multi_selected?.length) return trimMultiRange(state, action.t, 'right');
+      // SEM NADA SELECIONADO = a timeline INTEIRA (ver DELETE_RANGE_LEFT)
+      if (semSelecao(state)) return trimMultiRange(state, action.t, 'right', tudoDaTimeline(state));
       // ÁUDIO selecionado: W trima a parte à DIREITA do playhead dentro dele
       if (state.selected_audio_id != null) return trimAudioRange(state, action.t, 'right');
       // CapCut "W": espelho do Q — trima a parte à DIREITA do playhead
@@ -1576,8 +1583,30 @@ function trimCompound(state, compoundId, tRel, side) {
   return touch({ ...state, compounds });
 }
 
-function trimMultiRange(state, t, side) {
-  const sel = state.multi_selected || [];
+/** Nada selecionado em lugar nenhum — nem item, nem multi-seleção. */
+function semSelecao(state) {
+  return !state.multi_selected?.length &&
+    state.selected_clip_id == null && state.selected_audio_id == null &&
+    state.selected_text_id == null && state.selected_overlay_id == null;
+}
+
+/** TUDO que existe na timeline, no formato da multi-seleção.
+ *  Serve pro Q/W sem seleção: em vez de um segundo algoritmo "corta tudo"
+ *  (que ia divergir do primeiro na primeira mudança), a timeline inteira
+ *  entra pelo MESMO caminho já testado da multi-seleção — um dispatch, um
+ *  undo, e as mesmas regras de duração mínima pra cada tipo de faixa.
+ *  Composto entra como UNIDADE (mainTrackItems), que é como o usuário o vê. */
+function tudoDaTimeline(state) {
+  return [
+    ...mainTrackItems(state).map(i => ({ type: 'clip', id: i.clip.id })),
+    ...(state.audio_clips || []).filter(a => a.active !== false).map(a => ({ type: 'audio', id: a.id })),
+    ...(state.overlays || []).filter(o => o.active !== false).map(o => ({ type: 'overlay', id: o.id })),
+    ...(state.texts || []).filter(x => x.active !== false).map(x => ({ type: 'text', id: x.id })),
+  ];
+}
+
+function trimMultiRange(state, t, side, selExplicita) {
+  const sel = selExplicita || state.multi_selected || [];
   if (!sel.length) return state;
   const dir = side === 'left' ? 'left' : 'right';
   const itens = mainTrackItems(state);
