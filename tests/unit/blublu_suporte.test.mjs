@@ -303,6 +303,21 @@ test('o portão de cada ferramenta bate com o código da página', () => {
   }
 });
 
+test('BlueTendências é Master — o portão dela mora no backend, não no HTML', () => {
+  // Aqui a página é uma landing pra todo mundo; quem barra é o api. Testar o
+  // HTML como nas outras daria verde numa informação errada — e foi exatamente
+  // esse o erro: o conhecimento listava BlueTendências como Full.
+  const BT = readFileSync(new URL('../../api/bluetendencias.js', import.meta.url), 'utf8');
+  assert.match(BT, /plan === 'master'/, 'o backend deixou de exigir master?');
+  const i = CONHECIMENTO_1L.indexOf('BlueTendências — em');
+  assert.ok(i > 0, 'BlueTendências sumiu do conhecimento');
+  assert.match(CONHECIMENTO_1L.slice(i, i + 120), /exclusiva Master/);
+  // e não pode aparecer na linha do Full
+  const p = CONHECIMENTO_1L.indexOf('- **Full**');
+  assert.ok(!CONHECIMENTO_1L.slice(p, CONHECIMENTO_1L.indexOf('- **Master**')).includes('BlueTendências'),
+    'listar ferramenta de Master no plano Full manda o assinante procurar botão que não abre');
+});
+
 test('proíbe deflexão: não pode dizer que não sabe o que está no conhecimento', () => {
   assert.match(PERSONALIDADE_TXT, /Nunca diga "não\s*\n?\s*tenho essa lista aqui"/,
     'o caso real foi ele deflitir uma pergunta de idiomas que ele sabia responder');
@@ -316,6 +331,16 @@ test('proíbe o menu de fechamento e o despejo de manual (o que soa pré-program
   assert.match(PERSONALIDADE_TXT, /Nunca despeje o bloco inteiro/,
     'ele sabe muito de cada ferramenta; sem essa trava ele responde com o manual inteiro');
   assert.match(PERSONALIDADE_TXT, /responda a pergunta que foi feita, com o dado exato/i);
+});
+
+test('"me explica tudo" não pode terminar cortado no meio da palavra', () => {
+  // Aconteceu no smoke: com teto de 900 a resposta morria em "reconstru".
+  // Duas travas — o teto subiu E existe instrução pra dar mapa em vez de
+  // catálogo, que é o que evita chegar perto do teto.
+  const teto = Number((FONTE.match(/const MAX_TOKENS = (\d+)/) || [])[1]);
+  assert.ok(teto >= 1100, `teto de ${teto} tokens já cortou resposta no meio`);
+  assert.match(PERSONALIDADE_TXT, /QUANDO PEDIREM "ME EXPLICA TUDO"/);
+  assert.match(PERSONALIDADE_TXT, /UMA linha por ferramenta/);
 });
 
 test('proíbe inventar funcionalidade, prometer resultado e citar concorrente', () => {
