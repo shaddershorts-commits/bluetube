@@ -223,6 +223,101 @@ test('todas as rotas que ele ensina existem de verdade na toolbar', () => {
   }
 });
 
+// ═══ PRECISÃO DO CONHECIMENTO (06/08) ════════════════════════════════════
+// O dono reclamou de duas coisas no mesmo dia: (1) ele deflete pergunta que
+// SABE responder ("não tenho a lista aqui") e (2) responde em bloco de manual.
+// A causa da (1) é conhecimento raso; a da (2) é instrução. Os testes abaixo
+// travam as duas — e a veracidade do que ele ensina, que é o pior defeito.
+
+const CONHECIMENTO_TXT = FONTE.slice(
+  FONTE.indexOf('const CONHECIMENTO'), FONTE.indexOf('const PERSONALIDADE'));
+const PERSONALIDADE_TXT = FONTE.slice(
+  FONTE.indexOf('const PERSONALIDADE'), FONTE.indexOf('module.exports'));
+// O texto é quebrado em 78 colunas pra caber na tela, então "Bahasa\nIndonesia"
+// existe mas um includes() cru não acha. Compara sempre nesta versão achatada.
+const CONHECIMENTO_1L = CONHECIMENTO_TXT.replace(/\s+/g, ' ');
+
+test('a lista de idiomas do roteiro é a MESMA da tela (não desatualiza)', () => {
+  const INDEX = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8');
+  const bloco = INDEX.slice(INDEX.indexOf('id="langSelect"'), INDEX.indexOf('</select>', INDEX.indexOf('id="langSelect"')));
+  const idiomas = [...bloco.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(idiomas.length >= 10, `só achei ${idiomas.length} idiomas no select`);
+  for (const idioma of idiomas) {
+    assert.ok(CONHECIMENTO_1L.includes(idioma),
+      `a tela oferece "${idioma}" e o Blublu não sabe — foi assim que ele respondeu "não tenho a lista"`);
+  }
+  assert.ok(CONHECIMENTO_1L.includes(`**${idiomas.length}**`),
+    `o total de idiomas mudou pra ${idiomas.length}; o conhecimento precisa dizer o número certo`);
+});
+
+test('sabe os limites REAIS do BlueClean, que é o que ele checa antes de mandar processar', () => {
+  const BC = readFileSync(new URL('../../api/blueclean.js', import.meta.url), 'utf8');
+  const limite = (BC.match(/const LIMIT\s*=\s*(\d+)/) || [])[1];
+  const segundos = (BC.match(/max_seconds:\s*(\d+)/) || [])[1];
+  assert.ok(limite && segundos, 'não consegui ler os limites do api/blueclean.js');
+  assert.ok(CONHECIMENTO_1L.includes(`**${limite} limpezas`), `o limite virou ${limite}/mês`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${segundos} segundos**`), `o teto virou ${segundos}s`);
+  // as três ferramentas de marcação e a janela de tempo — a dica que mais muda resultado
+  for (const t of ['Caixa', 'Círculo', 'Pincel', 'Começa aqui', 'Termina aqui']) {
+    assert.ok(CONHECIMENTO_1L.includes(t), `não ensina "${t}", que existe na tela do BlueClean`);
+  }
+});
+
+test('sabe o que o Adaptar roteiro entrega (2 versões, 2 títulos, ajuste com IA)', () => {
+  for (const item of ['Casual', 'Apelativa', '2 títulos', 'Pedir ajuste com IA', 'Tradução Fiel']) {
+    assert.ok(CONHECIMENTO_1L.includes(item), `não sabe explicar "${item}"`);
+  }
+});
+
+test('não ensina o que não existe em produção', () => {
+  // O "Advogado YPP" vive na branch bluescore-v2 e NUNCA foi pra main. Estava
+  // escrito no conhecimento como se existisse: suporte inventando tela.
+  const BS = readFileSync(new URL('../../public/blueScore.html', import.meta.url), 'utf8');
+  if (!/Advogado/i.test(BS)) {
+    assert.ok(!/Advogado YPP/i.test(CONHECIMENTO_1L),
+      'ensina o Advogado YPP, que não existe em main — mandar o assinante procurar tela inexistente é o pior defeito');
+  }
+});
+
+test('o portão de cada ferramenta bate com o código da página', () => {
+  const paginas = [
+    ['baixaBlue.html', 'BaixaBlue', 'master'],
+    ['blueVoice.html', 'BlueVoice', 'master'],
+    ['blueLens.html', 'BlueLens', 'full'],
+    ['blueScore.html', 'BlueScore', 'full'],
+  ];
+  for (const [arquivo, nome, esperado] of paginas) {
+    const html = readFileSync(new URL('../../public/' + arquivo, import.meta.url), 'utf8');
+    // ⚠️ o portão do Full é `plan !== 'full' && plan !== 'master'`, que CONTÉM
+    // a string do portão do Master. Testar só por "!== 'master'" dá falso
+    // positivo em toda página Full — checar o do Full primeiro.
+    const aceitaFull = /plan !== 'full'/.test(html);
+    const soMaster = !aceitaFull && /plan !== 'master'/.test(html);
+    assert.equal(soMaster, esperado === 'master',
+      `${arquivo} mudou de portão — o conhecimento do Blublu sobre ${nome} ficou mentiroso`);
+    const i = CONHECIMENTO_1L.indexOf(nome + ' — em');
+    assert.ok(i > 0, `${nome} sumiu do conhecimento`);
+    const cabecalho = CONHECIMENTO_1L.slice(i, i + 160);
+    assert.match(cabecalho, esperado === 'master' ? /Master/ : /Full e Master/,
+      `${nome} é ${esperado} e o cabeçalho não diz isso`);
+  }
+});
+
+test('proíbe deflexão: não pode dizer que não sabe o que está no conhecimento', () => {
+  assert.match(PERSONALIDADE_TXT, /Nunca diga "não\s*\n?\s*tenho essa lista aqui"/,
+    'o caso real foi ele deflitir uma pergunta de idiomas que ele sabia responder');
+  assert.match(PERSONALIDADE_TXT, /fingir que não sabe pra se\s*\n?proteger/,
+    'o erro mais comum é o oposto de inventar: se esconder');
+});
+
+test('proíbe o menu de fechamento e o despejo de manual (o que soa pré-programado)', () => {
+  assert.match(PERSONALIDADE_TXT, /Terminar toda mensagem com um menu/,
+    '"Quer que eu te explique A ou B?" em toda resposta é a marca do chat de script');
+  assert.match(PERSONALIDADE_TXT, /Nunca despeje o bloco inteiro/,
+    'ele sabe muito de cada ferramenta; sem essa trava ele responde com o manual inteiro');
+  assert.match(PERSONALIDADE_TXT, /responda a pergunta que foi feita, com o dado exato/i);
+});
+
 test('proíbe inventar funcionalidade, prometer resultado e citar concorrente', () => {
   const i = FONTE.indexOf('const PERSONALIDADE');
   const p = FONTE.slice(i, FONTE.indexOf('module.exports'));

@@ -144,7 +144,7 @@ h1 .grad{background:linear-gradient(100deg,#7fe3ff,#00d4ff 40%,#1a6bff);-webkit-
     <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');pickFile(event.dataTransfer.files[0])">
       <div class="ic">🎬</div>
       <div class="t">Arraste ou clique para escolher</div>
-      <div class="s">MP4, MOV, WebM · até 60s · máx 200MB</div>
+      <div class="s">MP4, MOV, WebM · até 35s · máx 200MB</div>
     </div>
     <input type="file" id="fileInput" accept="video/*" style="display:none" onchange="pickFile(this.files[0])"/>
     <div class="pills">
