@@ -101,6 +101,108 @@ module.exports = async function handler(req, res) {
   }
 
   // ── STATUS DA CONTA ─────────────────────────────────────────────────────
+  // ── PROGRAMA DE MONETIZAÇÃO POR MARCOS (06/08/2026) ────────────────────
+  // 100 seguidores  → link de produto nos vídeos
+  // 1.000           → lives com link + doações
+  // 10.000          → convite pro Programa de Parceria Blue (paga por view)
+  //
+  // CONTINGÊNCIA: as tabelas do programa (sql/blue_monetizacao_programa.sql)
+  // podem AINDA não ter sido criadas. Nesse caso o endpoint continua
+  // devolvendo os marcos e a contagem de seguidores — a tela nunca quebra,
+  // só o botão de aplicar fica indisponível com aviso honesto. Endpoint que
+  // depende de tabela nova precisa saber viver sem ela até o SQL rodar.
+  const MARCOS = [
+    { id: 'produto',  min: 100,   titulo: 'Link de produto nos vídeos',
+      desc: 'Divulgue produtos com link direto nos seus vídeos e ganhe por indicação.' },
+    { id: 'lives',    min: 1000,  titulo: 'Lives com link e doações',
+      desc: 'Faça lives com link fixado e receba doações do seu público em tempo real.' },
+    { id: 'parceria', min: 10000, titulo: 'Programa de Parceria Blue',
+      desc: 'Convite para ganhar por visualização, com repasse mensal direto na sua conta.' },
+  ];
+
+  if (action === 'programa-status' || (req.method === 'POST' && (action === 'programa-aplicar' || action === 'programa-avisar'))) {
+    const token = req.method === 'GET' ? req.query.token : req.body?.token;
+    const u = await getUser(token);
+    if (!u) return res.status(401).json({ error: 'Login necessário' });
+    const uid = u.id || u.user_id;
+
+    // seguidores reais (fonte única: blue_follows)
+    let seguidores = 0;
+    try {
+      const fR = await fetch(`${SU}/rest/v1/blue_follows?following_id=eq.${uid}&select=id`, {
+        headers: { ...h, Prefer: 'count=exact', Range: '0-0' },
+      });
+      seguidores = parseInt(((fR.headers.get('content-range') || '').split('/')[1] || '0'), 10) || 0;
+    } catch (e) { /* segue com 0 — melhor mostrar 0 que quebrar a tela */ }
+
+    // estado das candidaturas/avisos (some silenciosamente se a tabela não existe)
+    let aplicacoes = [], avisos = [], tabelaPronta = true;
+    try {
+      const [aR, avR] = await Promise.all([
+        fetch(`${SU}/rest/v1/blue_programa_aplicacoes?user_id=eq.${uid}&select=marco,status,created_at`, { headers: h }),
+        fetch(`${SU}/rest/v1/blue_programa_avisos?user_id=eq.${uid}&select=marco`, { headers: h }),
+      ]);
+      if (aR.ok) aplicacoes = await aR.json(); else tabelaPronta = false;
+      if (avR.ok) avisos = await avR.json();
+    } catch (e) { tabelaPronta = false; }
+
+    // ── POST aplicar ──
+    if (action === 'programa-aplicar') {
+      const marco = MARCOS.find((m) => m.id === req.body?.marco);
+      if (!marco) return res.status(400).json({ error: 'marco inválido' });
+      if (seguidores < marco.min) {
+        return res.status(400).json({ error: `Você precisa de ${marco.min} seguidores para essa etapa.`, seguidores });
+      }
+      if (!tabelaPronta) return res.status(503).json({ error: 'Programa em configuração. Tenta de novo em breve.' });
+      const jaTem = aplicacoes.find((a) => a.marco === marco.id);
+      if (jaTem) return res.status(200).json({ ok: true, ja: jaTem.status });
+      const iR = await fetch(`${SU}/rest/v1/blue_programa_aplicacoes`, {
+        method: 'POST', headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ user_id: uid, marco: marco.id, seguidores }),
+      });
+      if (!iR.ok) return res.status(500).json({ error: 'não deu pra registrar. tenta de novo.' });
+      // avisa o dono do Blue que tem candidatura nova
+      await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+        method: 'POST', headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          user_id: uid, tipo: 'programa',
+          titulo: 'Candidatura enviada ✅',
+          mensagem: `Recebemos sua inscrição em "${marco.titulo}". Damos retorno em breve.`,
+          dados: { marco: marco.id, seguidores },
+        }),
+      }).catch(() => null);
+      return res.status(200).json({ ok: true, status: 'em_analise' });
+    }
+
+    // ── POST avisar quando atingir ──
+    if (action === 'programa-avisar') {
+      const marco = MARCOS.find((m) => m.id === req.body?.marco);
+      if (!marco) return res.status(400).json({ error: 'marco inválido' });
+      if (!tabelaPronta) return res.status(503).json({ error: 'Programa em configuração. Tenta de novo em breve.' });
+      await fetch(`${SU}/rest/v1/blue_programa_avisos`, {
+        method: 'POST', headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ user_id: uid, marco: marco.id }),
+      }).catch(() => null);
+      return res.status(200).json({ ok: true, avisar: true });
+    }
+
+    // ── GET status ──
+    const porMarco = MARCOS.map((m) => {
+      const ap = aplicacoes.find((a) => a.marco === m.id);
+      const querAviso = !!avisos.find((a) => a.marco === m.id);
+      const atingiu = seguidores >= m.min;
+      return {
+        ...m,
+        atingiu,
+        faltam: atingiu ? 0 : m.min - seguidores,
+        progresso: Math.min(100, Math.round((seguidores / m.min) * 100)),
+        status: ap?.status || null,          // em_analise | aprovado | recusado
+        aviso_ativo: querAviso,
+      };
+    });
+    return res.status(200).json({ ok: true, seguidores, marcos: porMarco, programa_pronto: tabelaPronta });
+  }
+
   if (action === 'status') {
     const user = await getUser(req.query.token);
     if (!user) return res.status(401).json({ error: 'Token inválido' });
