@@ -172,6 +172,12 @@ export function createPlayer(videoEl, opts, store) {
     b.load();
   }
 
+  /** Só quem vai passar pelo Web Audio precisa de CORS: o clipe com algum
+   *  "Aprimorar áudio" ligado. Sem efeito, o <audio> toca direto. */
+  function precisaCors(a) {
+    return a?.fx_ruido === true || a?.fx_voz === true || a?.fx_norm === true;
+  }
+
   function syncPool() {
     const state = store.getState();
     const clips = effectiveAudioClips(state);
@@ -181,38 +187,54 @@ export function createPlayer(videoEl, opts, store) {
       const url = a.kind === 'video' ? primaryUrl() : a.url;
       if (!url) continue;
       let entry = pool.get(a.id);
-      if (!entry || entry.url !== url) {
+      // ligou um efeito num clipe que nasceu sem CORS: refaz o elemento COM
+      // CORS (é o único jeito — crossOrigin depois do src não vale nada)
+      const trocarPorCors = entry && !entry.comCors && precisaCors(a) && !entry.corsFalhou;
+      if (!entry || entry.url !== url || trocarPorCors) {
         entry?.el.pause?.();
         const el = new Audio();
         el.preload = 'auto';
-        // CORS ANTES do src: sem isso o Web Audio (Aprimorar áudio) silencia a
-        // mídia. O fallback pra "sem CORS" só entra quando o erro PODE ser
-        // CORS (http cross-origin, 2ª falha seguida) — a revisão pegou que a
-        // versão anterior matava a prévia PRA SEMPRE em qualquer soluço de
-        // rede, inclusive em blob: (que nunca é problema de CORS).
-        el.crossOrigin = 'anonymous';
+        // ⚠️ SOM PRIMEIRO, EFEITO DEPOIS (user 2026-08-05: "adicionei uma
+        // música e ficou mudo").
+        //
+        // O Web Audio precisa de CORS pra tocar a mídia sem silenciar, então
+        // eu marcava crossOrigin='anonymous' em TODA faixa. Só que arquivo de
+        // outra origem SEM o cabeçalho é RECUSADO pelo navegador: a música
+        // falhava, falhava de novo e só voltava no recuo — segundos de mudo
+        // num arquivo que tocaria de primeira sem CORS nenhum.
+        //
+        // Agora o CORS só entra quando o clipe REALMENTE precisa (efeito
+        // ligado, ver `precisaCors`). Ouvir uma música — o caminho comum — não
+        // paga mais o risco de uma feature que a maioria nem usa.
+        if (precisaCors(a)) el.crossOrigin = 'anonymous';
+        const comCors = precisaCors(a);
         const aoErrar = () => {
           const e = pool.get(a.id);
           if (!e || e.el !== el) return;
-          const podeSerCors = /^https?:/i.test(url) && !url.startsWith(location.origin);
           e.fxErros = (e.fxErros || 0) + 1;
+          // só faz sentido culpar o CORS se ele foi pedido
+          const podeSerCors = comCors && /^https?:/i.test(url) && !url.startsWith(location.origin);
           if (!podeSerCors || e.fxErros === 1) {
-            // blob:/mesma origem nunca é CORS; e a 1ª falha http pode ser um
-            // soluço transitório — tenta de novo AINDA com CORS
+            // 1ª falha pode ser soluço de rede: tenta de novo do mesmo jeito
             setTimeout(() => { try { el.load(); } catch {} }, 400);
             return;
           }
-          // 2ª falha seguida em http cross-origin: recarrega sem CORS
-          // (som volta; a prévia de efeito deste clipe fica indisponível)
+          // 2ª falha seguida com CORS pedido: recarrega SEM ele. Som intacto
+          // sempre vence prévia de efeito. `corsFalhou` impede o vaivém.
           el.removeEventListener('error', aoErrar);
           const el2 = new Audio();
           el2.preload = 'auto';
           el2.src = url;
-          pool.set(a.id, { el: el2, url, fxIndisponivel: true });
+          pool.set(a.id, { el: el2, url, fxIndisponivel: true, corsFalhou: true, comCors: false });
+          // O elemento novo nasce PARADO. Sem este empurrão ele só tocaria no
+          // próximo tick — e se a troca aconteceu com o projeto tocando, o
+          // usuário ouve um buraco (ou silêncio pra sempre, se o tick não vier).
+          el2.addEventListener('loadeddata', () => syncAudios(virtualTime), { once: true });
+          setTimeout(() => syncAudios(virtualTime), 0);
         };
         el.addEventListener('error', aoErrar);
         el.src = url;
-        entry = { el, url };
+        entry = { el, url, comCors, corsFalhou: pool.get(a.id)?.corsFalhou };
         pool.set(a.id, entry);
       }
     }
@@ -422,6 +444,21 @@ export function createPlayer(videoEl, opts, store) {
     // prévia de efeito indisponível (arquivo sem CORS)? A UI avisa em vez de
     // deixar o checkbox mentir com o som inalterado
     fxIndisponivel: (audioId) => !!pool.get(audioId)?.fxIndisponivel,
+    // ESTADO REAL de cada faixa de áudio. Os elementos da piscina vivem FORA do
+    // DOM, então nenhuma sonda conseguia responder "por que ficou mudo?" —
+    // olhar `document.querySelectorAll('audio')` não os enxerga.
+    audioDebug: () => [...pool].map(([id, e]) => ({
+      id, url: e.url,
+      readyState: e.el.readyState,      // 0 = não carregou nada
+      networkState: e.el.networkState,  // 3 = NO_SOURCE
+      paused: e.el.paused, muted: e.el.muted, volume: e.el.volume,
+      currentTime: e.el.currentTime,
+      crossOrigin: e.el.crossOrigin,
+      erro: e.el.error ? e.el.error.code : null,
+      fxErros: e.fxErros || 0,
+      fxIndisponivel: !!e.fxIndisponivel,
+      comCadeiaFx: !!e._fx,
+    })),
     // ── TRANSIÇÃO DE VERDADE (2026-07-29) ──────────────────────────────────
     // A primeira versão desenhava uma camada POR CIMA do vídeo: dava pra ver
     // um brilho ou uma tarja, mas "Deslizar" não deslizava nada — o vídeo que

@@ -113,10 +113,13 @@ export function ressincronizar(texts, plano, sigAnterior) {
 
     if (planoMudou) {
       if (ini == null) {
-        // a fala está num trecho removido: some da tela, mas guarda a âncora
-        if (t.active === false) return t;
-        mudou = true;
-        return { ...t, active: false };
+        // ⚠️ A FALA SUMIU DO CORTE — E A LEGENDA FICA ONDE ESTÁ.
+        // Antes ela era desativada (some da tela). Ficava parecendo que o
+        // editor tinha quebrado: o user cortava o vídeo e as legendas depois
+        // do corte evaporavam sem aviso (relato de 2026-08-05). Esconder o
+        // trabalho de alguém por conta própria é sempre a pior opção — ela
+        // continua visível, e quem apaga é o dono dela.
+        return t;
       }
       const fim = arquivoParaTimeline(t.src_out, segs);
       const dur = fim != null && fim > ini

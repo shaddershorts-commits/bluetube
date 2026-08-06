@@ -80,19 +80,22 @@ test('o user corta o vídeo: a legenda anda junto com a fala', () => {
   assert.ok(Math.abs(r.texts[0].end_sec - 4.4) < 1e-9);
 });
 
-test('fala que caiu no trecho removido some da tela mas guarda a âncora', () => {
+test('fala que caiu no trecho removido NÃO some da tela', () => {
+  // esconder a legenda sozinho parecia bug ("cortei o vídeo e as legendas
+  // evaporaram"). Ela fica visível, no lugar, e quem apaga é o dono dela.
   const antes = [legenda({ start_sec: 1.5, end_sec: 1.8, src_in: 1.5, src_out: 1.8 })];
   const r = ressincronizar(antes, planoCortado, assinaturaDoPlano(planoSimples));
-  assert.equal(r.texts[0].active, false);
-  assert.equal(r.texts[0].src_in, 1.5, 'a âncora sobrevive: desfazer o corte traz a legenda de volta');
+  assert.notEqual(r.texts[0].active, false, 'nunca desativar a legenda do usuário');
+  assert.equal(r.texts[0].src_in, 1.5, 'a âncora sobrevive');
+  assert.equal(r.texts[0].start_sec, 1.5, 'e ela não é teleportada pra lugar nenhum');
 });
 
-test('desfazer o corte reativa a legenda no lugar certo', () => {
+test('desfazer o corte recoloca a legenda no lugar certo', () => {
   const some = ressincronizar(
     [legenda({ start_sec: 1.5, end_sec: 1.8, src_in: 1.5, src_out: 1.8 })],
     planoCortado, assinaturaDoPlano(planoSimples));
   const volta = ressincronizar(some.texts, planoSimples, some.sig);
-  assert.equal(volta.texts[0].active, true);
+  assert.notEqual(volta.texts[0].active, false);
   assert.equal(volta.texts[0].start_sec, 1.5);
 });
 
