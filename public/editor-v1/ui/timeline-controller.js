@@ -7,7 +7,7 @@ import { xToTime, computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '..
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
 import { createRenderer, setImageRedraw } from '../timeline/render.js';
-import { cutPoints, totalDuration, audioLaneMap } from '../core/selectors.js';
+import { cutPoints, totalDuration, audioLaneMap, cenaTemAudio, propriedadeDaCena } from '../core/selectors.js';
 import { MAX_LANE } from '../core/schema.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
@@ -332,25 +332,40 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     if (o) store.dispatch(act.setItemLane('overlay', id, (o.lane || 1) + dir));
   }
 
+  /** Submenu "Aprimorar áudio" — UM lugar só, usado pela faixa de áudio E pela
+   *  cena de vídeo (user 2026-08-07: "ao clicar com o botão direito numa faixa
+   *  de vídeo não aparece as opções de ajustar o áudio").
+   *
+   *  ⚠️ Estas chamadas estavam com a assinatura ANTIGA de `setAudioFx` (id,
+   *  patch) depois que ela virou (alvo, id, patch): o menu abria, o usuário
+   *  clicava e NADA acontecia — nem erro. Duplicar a lista foi o que deixou o
+   *  erro sobreviver; agora existe uma cópia só.
+   *  @param {'audio'|'clip'} alvo */
+  function subMenuFx(alvo, id, item) {
+    const it = item || {};
+    const marca = (on) => on ? '✓ ' : '';
+    const todos = it.fx_ruido && it.fx_voz && it.fx_norm;
+    const põe = (patch) => store.dispatch(act.setAudioFx(alvo, id, patch));
+    return [{ label: '🎚 Aprimorar áudio', sub: [
+      { label: marca(todos) + 'Ativar todos', fn: () => põe(todos
+          ? { fx_ruido: false, fx_voz: false, fx_norm: false }
+          : { fx_ruido: true, fx_voz: true, fx_norm: true }) },
+      { label: marca(it.fx_ruido) + 'Reduzir ruído 💎', fn: () => põe({ fx_ruido: !it.fx_ruido }) },
+      { label: marca(it.fx_voz) + 'Aprimorar voz 💎', fn: () => põe({ fx_voz: !it.fx_voz }) },
+      { label: marca(it.fx_norm) + 'Normalizar volume 💎', fn: () => põe({ fx_norm: !it.fx_norm }) },
+    ] }];
+  }
+
   // menu do ÁUDIO
   function showAudioMenu(x, y, hit) {
     const a = store.getState().audio_clips.find(k => k.id === hit.audioId) || {};
-    const marca = (on) => on ? '✓ ' : '';
-    const fxTodos = a.fx_ruido && a.fx_voz && a.fx_norm;
     buildMenu(x, y, [
       { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
       { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
       { label: 'Dividir no cursor', hint: 'Ctrl B', fn: () => store.dispatch(act.splitAudioAt(player.getTime())) },
       { sep: true },
       // pedido do user (2026-07-29): efeitos e legenda pelo botão direito
-      { label: '🎚 Aprimorar áudio', sub: [
-        { label: (fxTodos ? '✓ ' : '') + 'Ativar todos', fn: () => store.dispatch(act.setAudioFx(hit.audioId, fxTodos
-            ? { fx_ruido: false, fx_voz: false, fx_norm: false }
-            : { fx_ruido: true, fx_voz: true, fx_norm: true })) },
-        { label: marca(a.fx_ruido) + 'Reduzir ruído 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_ruido: !a.fx_ruido })) },
-        { label: marca(a.fx_voz) + 'Aprimorar voz 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_voz: !a.fx_voz })) },
-        { label: marca(a.fx_norm) + 'Normalizar volume 💎', fn: () => store.dispatch(act.setAudioFx(hit.audioId, { fx_norm: !a.fx_norm })) },
-      ] },
+      ...subMenuFx('audio', hit.audioId, a),
       { label: '💬 Gerar legenda deste áudio', fn: () => onGerarLegenda?.(hit.audioId) },
       { sep: true },
       { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteAudioClip(hit.audioId)) },
@@ -359,6 +374,18 @@ export function createTimelineController({ canvas, store, player, onEditText, on
 
   function showClipMenu(x, y, hit) {
     const atT = player.getTime();
+    const st = store.getState();
+    const cena = st.clips.find(c => c.id === hit.clipId);
+    // "A opção deve aparecer em vídeos que tenham áudio": cena muda, ou vídeo
+    // com o áudio já separado, não ganha o submenu — seria botão que não faz
+    // nada. Os valores atuais vêm do DONO da propriedade (cena ou composto),
+    // o mesmo resolvedor que o preview e o export usam.
+    const temSom = cenaTemAudio(st, cena);
+    const donoFx = {
+      fx_ruido: propriedadeDaCena(st, { clip: cena }, 'fx_ruido'),
+      fx_voz: propriedadeDaCena(st, { clip: cena }, 'fx_voz'),
+      fx_norm: propriedadeDaCena(st, { clip: cena }, 'fx_norm'),
+    };
     const items = [
       { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
       { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
@@ -375,6 +402,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         { label: '◀ Reverso', fn: () => toggleFx(hit.clipId, 'reversed') },
         { label: '⇄ Espelhar', fn: () => toggleFx(hit.clipId, 'mirrored') },
       ] },
+      ...(temSom ? subMenuFx('clip', hit.clipId, donoFx) : []),
     ];
     buildMenu(x, y, items);
   }

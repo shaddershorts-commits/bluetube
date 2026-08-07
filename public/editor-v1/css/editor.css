@@ -382,6 +382,9 @@ body {
 /* ── APRIMORAR ÁUDIO: botão na toolbar + popover no hover (liquid glass) ── */
 .be-fx-wrap { position: relative; display: inline-flex; }
 #beAudioFxBtn.ativo { color: var(--neon); border-color: var(--neon); }
+/* o SVG herda a cor do botão (inclusive o neon do estado ativo) */
+.be-fx-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 9px; }
+.be-fx-btn svg { display: block; }
 .be-audiofx-pop {
   position: absolute; top: calc(100% + 8px); left: 0; width: 252px; z-index: 90;
   padding: 10px 12px; display: flex; flex-direction: column; gap: 9px;

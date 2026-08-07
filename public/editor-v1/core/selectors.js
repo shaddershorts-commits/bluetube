@@ -233,6 +233,18 @@ export function effectiveAudioClips(state) {
   return out;
 }
 
+/** Esta CENA tem som? (user 2026-08-07: "a opção deve aparecer em vídeos que
+ *  tenham áudio"). Serve pro menu de botão direito não oferecer "Aprimorar
+ *  áudio" onde não há o que aprimorar — botão que não faz nada é pior que
+ *  botão ausente. */
+export function cenaTemAudio(state, clip) {
+  if (!clip) return false;
+  if (clip.compound_id != null) return compoundTemAudio(state, clip.compound_id);
+  if (clip.muted === true) return false;      // "Remover áudio desta cena"
+  if (clip.media_id != null) return true;     // take importado traz a trilha dele
+  return !state.audio_detached;               // principal: só se o som ainda está nele
+}
+
 /** O composto tem áudio próprio (interno) OU vídeo com áudio embutido?
  *  A timeline usa isto pra MOSTRAR que o bloco composto tem som — o usuário
  *  reportou (2026-07-29) que "o composto não consta que tem áudio, e por isso

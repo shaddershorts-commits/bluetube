@@ -2852,7 +2852,22 @@ function buildTemplate() {
       <!-- APRIMORAR ÁUDIO (user 2026-07-29): botão AO LADO do Locução; passar
            o mouse abre as opções; CLICAR liga/desliga todos os efeitos -->
       <span class="be-fx-wrap" id="beFxWrap">
-        <button id="beAudioFxBtn" class="be-tool-btn" title="Aprimorar áudio do clipe selecionado — clique liga/desliga tudo, passe o mouse pra escolher">🎚</button>
+        <!-- ÍCONE EM SVG, não emoji (user 2026-08-07: "tá péssimo, parecendo
+             uma cruz"). O 🎚 é desenhado pela fonte do SISTEMA e no Windows
+             vira um retângulo/cruz sem sentido. SVG desenha igual em todo
+             lugar: alto-falante + o brilho da IA ao lado. A cor vem do próprio
+             botão (currentColor), então ele acende junto com a borda quando
+             algum efeito está ligado.
+             ⚠️ NADA de crase aqui dentro: este bloco é um template literal e
+             uma crase no comentário fecha a string (foi o que quebrou o mount). -->
+        <button id="beAudioFxBtn" class="be-tool-btn be-fx-btn" title="Aprimorar áudio com IA — clique liga/desliga tudo, passe o mouse pra escolher">
+          <svg viewBox='0 0 24 24' width='18' height='18' fill='none' aria-hidden='true'>
+            <path d='M3.5 9.5h2.6L10 6.2v11.6l-3.9-3.3H3.5V9.5Z' fill='currentColor'/>
+            <path d='M12.6 9.4a3.6 3.6 0 0 1 0 5.2' stroke='currentColor' stroke-width='1.7' stroke-linecap='round'/>
+            <path d='M15.1 7.1a7 7 0 0 1 0 9.8' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' opacity='.55'/>
+            <path d='M19.6 3.6l.75 2.05 2.05.75-2.05.75-.75 2.05-.75-2.05-2.05-.75 2.05-.75.75-2.05Z' fill='currentColor'/>
+          </svg>
+        </button>
         <div id="beAudioFxPop" class="be-glass be-audiofx-pop" style="display:none">
           <div class="be-audiofx-tit">Aprimorar áudio</div>
           <div id="beFxSemAlvo" class="be-dim" style="display:none">Selecione um clipe de áudio na timeline.</div>
