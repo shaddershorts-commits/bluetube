@@ -524,8 +524,16 @@ async function carregarMinhas() {
     }).join('');
     document.getElementById('historySection').style.display = 'block';
   } catch (e) {
-    // histórico é conforto: falhou, a pessoa ainda consegue pedir análise
+    // Falhou é diferente de vazio. Se a lista some calada, a pessoa acha que
+    // perdeu a análise e pede de novo, gastando cota. Mostra o estado.
     console.warn('[bluescore] histórico:', e.message);
+    const box = document.getElementById('historyList');
+    if (box && !box.innerHTML) {
+      box.innerHTML = '<div class="hist-item"><div class="hist-rede">⚠️</div>' +
+        '<div class="hist-info"><div class="hist-nome">Não consegui carregar suas análises agora</div>' +
+        '<div class="hist-meta">Elas não se perderam. Clica em ↻ Atualizar daqui a pouco.</div></div></div>';
+      document.getElementById('historySection').style.display = 'block';
+    }
   }
 }
 

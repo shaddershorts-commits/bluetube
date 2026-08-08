@@ -171,7 +171,20 @@ module.exports = async function handler(req, res) {
       const pR = await fetch(
         `${SU}/rest/v1/bluescore_pedidos?status=in.(na_fila,em_analise)&order=criado_em.asc&select=*`,
         { headers: h });
-      const pendentes = pR.ok ? await pR.json() : [];
+      // ⚠️ Fila vazia e fila QUEBRADA não podem se parecer. Se a consulta
+      // falhar (tabela ausente, coluna errada), devolver [] mostraria
+      // "fila vazia 🎉" enquanto gente espera análise. Falha alto.
+      if (!pR.ok) {
+        const t = await pR.text().catch(() => '');
+        console.error('[bluescore] fila', pR.status, t.slice(0, 200));
+        return res.status(500).json({
+          error: 'fila_indisponivel',
+          detalhe: pR.status === 404 || /does not exist|PGRST205/i.test(t)
+            ? 'A tabela bluescore_pedidos ainda não existe — rode sql/bluescore_pedidos.sql no Supabase.'
+            : `Banco respondeu ${pR.status}.`,
+        });
+      }
+      const pendentes = await pR.json();
       const eR = await fetch(
         `${SU}/rest/v1/bluescore_pedidos?status=in.(entregue,recusado)&order=atualizado_em.desc&limit=20&select=id,email,nome,rede,perfil_handle,perfil_url,status,criado_em,entregue_em,laudo`,
         { headers: h });
@@ -278,7 +291,15 @@ module.exports = async function handler(req, res) {
     const r = await fetch(
       `${SU}/rest/v1/bluescore_pedidos?user_id=eq.${userId}&order=criado_em.desc&limit=50&select=id,rede,perfil_url,perfil_handle,status,motivo_recusa,salvo,criado_em,entregue_em,laudo`,
       { headers: h });
-    const linhas = r.ok ? await r.json() : [];
+    // Mesma regra da fila do admin: "não tenho análises" e "não consegui
+    // buscar" são coisas diferentes. Dizer que não tem, quando tem, faria a
+    // pessoa pedir de novo e gastar cota à toa.
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      console.error('[bluescore] meus', r.status, t.slice(0, 200));
+      return res.status(503).json({ error: 'historico_indisponivel' });
+    }
+    const linhas = await r.json();
     return res.status(200).json({
       ok: true,
       // a lista não carrega o laudo inteiro: só o suficiente pro card

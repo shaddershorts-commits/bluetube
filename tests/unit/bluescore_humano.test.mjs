@@ -241,6 +241,28 @@ test('o SELECT de subscribers só pede coluna que existe', () => {
 
 // ═══ ADMIN ═══════════════════════════════════════════════════════════════
 
+test('fila quebrada NÃO se parece com fila vazia', async () => {
+  // Achado no smoke do preview: sem a tabela, o admin via "fila vazia 🎉"
+  // enquanto gente esperava análise. Erro de banco tem que gritar.
+  globalThis.fetch = async () => ({ ok: false, status: 404, text: async () => 'PGRST205 relation does not exist' });
+  const res = resFalso();
+  await handler({ method: 'POST', headers: { authorization: 'Bearer segredo' }, body: { action: 'fila' } }, res);
+  assert.equal(res._status, 500);
+  assert.equal(res._json.error, 'fila_indisponivel');
+  assert.match(res._json.detalhe, /bluescore_pedidos/, 'a mensagem tem que dizer o que fazer');
+});
+
+test('histórico do usuário também falha alto em vez de dizer "não tem nada"', async () => {
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/auth/v1/user')) return { ok: true, json: async () => ({ id: 'u1', email: 'a@b.c' }) };
+    return { ok: false, status: 500, text: async () => 'boom' };
+  };
+  const res = resFalso();
+  await handler({ method: 'POST', headers: {}, body: { action: 'meus', token: 't' } }, res);
+  assert.equal(res._status, 503, 'lista vazia por engano faz a pessoa pedir de novo e gastar cota');
+});
+
 test('ação de admin sem o segredo é 401', async () => {
   for (const acao of ['fila', 'laudo_salvar', 'laudo_enviar', 'recusar']) {
     const { res } = await chamar({ action: acao, id: 'x' });
