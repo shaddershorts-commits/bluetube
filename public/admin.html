@@ -11,6 +11,26 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--display);min-height:100vh}
 
+/* BLUESCORE — formulário do laudo */
+.bs-bloco{border:1px solid rgba(0,170,255,.12);border-radius:12px;padding:14px 16px;margin-top:14px;background:rgba(0,170,255,.02)}
+.bs-legenda{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bs-grid4{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.bs-grid-pilar{display:grid;grid-template-columns:110px 1fr;gap:10px;margin-bottom:9px}
+.bs-campo{display:flex;flex-direction:column;gap:5px;min-width:0}
+.bs-campo>span{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.bs-campo input,.bs-textarea,.bs-linha input,.bs-linha textarea,.bs-linha select{width:100%;background:rgba(2,8,23,.85);border:1px solid rgba(0,170,255,.15);border-radius:8px;padding:9px 11px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none}
+.bs-campo input:focus,.bs-textarea:focus,.bs-linha input:focus,.bs-linha textarea:focus{border-color:rgba(0,170,255,.45)}
+.bs-textarea{resize:vertical;line-height:1.55}
+.bs-linha{border:1px solid rgba(0,170,255,.1);border-radius:10px;padding:11px;margin-bottom:9px;background:rgba(2,8,23,.35);display:flex;flex-direction:column;gap:8px}
+.bs-linha-topo{display:flex;gap:8px;align-items:center}
+.bs-add{font-family:var(--mono);font-size:10.5px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.22);border-radius:6px;padding:4px 10px;cursor:pointer}
+.bs-del{background:none;border:none;color:var(--red);font-size:15px;cursor:pointer;padding:0 4px;flex-shrink:0}
+.bs-item{display:flex;align-items:center;gap:12px;background:rgba(0,170,255,.03);border:1px solid rgba(0,170,255,.12);border-radius:10px;padding:11px 14px;margin-bottom:8px}
+.bs-item-info{flex:1;min-width:0}
+.bs-item-nome{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bs-item-meta{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px}
+@media(max-width:720px){.bs-grid4{grid-template-columns:1fr}.bs-grid-pilar{grid-template-columns:1fr}}
+
 /* LOGIN */
 .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 50% 0%,rgba(0,90,255,0.1) 0%,transparent 60%)}
 .login-box{background:var(--card);border:1px solid rgba(0,170,255,0.2);border-radius:20px;padding:40px;width:100%;max-width:360px;text-align:center;position:relative;overflow:hidden}
@@ -729,6 +749,110 @@ tr:hover td{background:rgba(0,170,255,0.02)}
     <div class="section" id="bluescoreStats" style="display:none">
       <div class="section-header">
         <div class="section-title">📊 BlueScore — Análises realizadas <span class="section-subtitle">— últimas 30 dias</span></div>
+      </div>
+    </div>
+
+    <!-- BLUESCORE: FILA DE ANÁLISES HUMANAS (2026-08-06) -->
+    <div class="section" id="bluescoreFila">
+      <div class="section-header">
+        <div class="section-title">
+          🎓 BlueScore — Fila de análises
+          <span class="section-subtitle">— perfis esperando seu laudo</span>
+          <span id="bsFilaBadge" style="display:none;font-family:var(--mono);font-size:11px;font-weight:700;background:var(--red);color:#fff;border-radius:100px;padding:2px 9px;margin-left:8px">0</span>
+        </div>
+        <button class="action-btn" onclick="bsCarregarFila()">↻ Atualizar</button>
+      </div>
+      <div id="bsFilaLista"><div class="loading-txt">Clique em atualizar pra carregar a fila.</div></div>
+      <div style="font-size:13px;font-weight:700;margin:18px 0 8px;color:var(--dim)">Últimas entregues</div>
+      <div id="bsRecentes"><div class="loading-txt">—</div></div>
+    </div>
+
+    <!-- BLUESCORE: FORMULÁRIO DO LAUDO -->
+    <div id="bsLaudoModal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(2,8,23,0.94);backdrop-filter:blur(12px);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+      <div style="background:#0a1628;border:1px solid rgba(0,170,255,.25);border-radius:18px;padding:26px;width:100%;max-width:760px;margin:20px auto">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px">
+          <div style="min-width:0">
+            <div style="font-family:var(--display);font-size:18px;font-weight:800" id="bsLaudoTitulo">Laudo</div>
+            <a id="bsLaudoLink" href="#" target="_blank" rel="noopener" style="font-family:var(--mono);font-size:11px;color:var(--neon);word-break:break-all">—</a>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px" id="bsLaudoUser">—</div>
+          </div>
+          <button onclick="bsFecharLaudo()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer;line-height:1">✕</button>
+        </div>
+
+        <!-- NOTA + CANAL -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">Nota geral e identificação</div>
+          <div class="bs-grid4">
+            <label class="bs-campo"><span>Nota (0–100) *</span><input id="bsNota" type="number" min="0" max="100" oninput="bsPreverFaixa()"/></label>
+            <label class="bs-campo"><span>Faixa</span><input id="bsFaixa" type="text" placeholder="preenche sozinho"/></label>
+            <label class="bs-campo"><span>Nome do canal/perfil</span><input id="bsCanalNome" type="text"/></label>
+            <label class="bs-campo"><span>Foto (URL, opcional)</span><input id="bsCanalFoto" type="text"/></label>
+            <label class="bs-campo"><span>Seguidores</span><input id="bsCanalSeg" type="text" placeholder="412 mil"/></label>
+            <label class="bs-campo"><span>Publicações</span><input id="bsCanalPub" type="text" placeholder="318"/></label>
+          </div>
+        </div>
+
+        <!-- MÉTRICAS -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">Métricas — texto livre, some da página se ficar vazio</div>
+          <div class="bs-grid4">
+            <label class="bs-campo"><span>Média de views</span><input id="bsMetViews" type="text" placeholder="412K"/></label>
+            <label class="bs-campo"><span>Engajamento</span><input id="bsMetEng" type="text" placeholder="3,1%"/></label>
+            <label class="bs-campo"><span>Consistência</span><input id="bsMetCons" type="text" placeholder="Alta"/></label>
+            <label class="bs-campo"><span>Tendência</span><input id="bsMetTend" type="text" placeholder="Crescendo"/></label>
+          </div>
+        </div>
+
+        <!-- PILARES -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">Os 3 pilares — deixa tudo em 0 pra esconder o bloco</div>
+          <div class="bs-grid-pilar">
+            <label class="bs-campo"><span>Performance</span><input id="bsPilPerf" type="number" min="0" max="100" value="0"/></label>
+            <label class="bs-campo"><span>Comentário</span><input id="bsPilPerfDesc" type="text"/></label>
+          </div>
+          <div class="bs-grid-pilar">
+            <label class="bs-campo"><span>Risco</span><input id="bsPilRisco" type="number" min="0" max="100" value="0"/></label>
+            <label class="bs-campo"><span>Comentário</span><input id="bsPilRiscoDesc" type="text"/></label>
+          </div>
+          <div class="bs-grid-pilar">
+            <label class="bs-campo"><span>Comportamento</span><input id="bsPilComp" type="number" min="0" max="100" value="0"/></label>
+            <label class="bs-campo"><span>Comentário</span><input id="bsPilCompDesc" type="text"/></label>
+          </div>
+        </div>
+
+        <!-- DIAGNÓSTICO -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">Diagnóstico * — é o texto que abre a página pro usuário</div>
+          <textarea id="bsResumo" rows="5" class="bs-textarea" placeholder="Fala direto com a pessoa: o que está segurando o canal e qual é a maior oportunidade."></textarea>
+        </div>
+
+        <!-- PONTOS -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">O que eu vi no perfil <button class="bs-add" onclick="bsAddPonto()">+ ponto</button></div>
+          <div id="bsPontos"></div>
+        </div>
+
+        <!-- RECOMENDAÇÕES -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">O que ajustar, em ordem <button class="bs-add" onclick="bsAddRec()">+ recomendação</button></div>
+          <div id="bsRecs"></div>
+        </div>
+
+        <!-- VÍDEOS -->
+        <div class="bs-bloco">
+          <div class="bs-legenda">Vídeos comentados <button class="bs-add" onclick="bsAddVideo()">+ vídeo</button></div>
+          <div id="bsVideos"></div>
+        </div>
+
+        <div id="bsLaudoMsg" style="font-family:var(--mono);font-size:12px;min-height:18px;margin:10px 0;color:var(--dim)"></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center">
+          <button onclick="bsRecusar()" style="font-family:var(--mono);font-size:11px;color:var(--red);background:rgba(255,122,90,.08);border:1px solid rgba(255,122,90,.25);border-radius:8px;padding:10px 16px;cursor:pointer">✕ Não dá pra analisar</button>
+          <div style="display:flex;gap:10px">
+            <button onclick="bsSalvarRascunho()" style="font-family:var(--mono);font-size:12px;color:var(--dim);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.2);border-radius:8px;padding:11px 20px;cursor:pointer">💾 Salvar rascunho</button>
+            <button onclick="bsEnviar()" style="font-family:var(--display);font-size:14px;font-weight:700;color:#fff;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:8px;padding:11px 26px;cursor:pointer;box-shadow:0 0 20px rgba(0,170,255,.3)">✓ Enviar pro usuário</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1549,6 +1673,8 @@ async function loadData(){
     // Saques panel roda em paralelo — nao bloqueia UI principal se falhar
     loadSaquesAdminPanel().catch(()=>{});
     loadViraisAdminPanel().catch(()=>{});
+    // Fila do BlueScore: carrega sozinha pro badge aparecer sem você procurar
+    bsCarregarFila().catch(()=>{});
 
     // Show dashboard
     document.getElementById('loginScreen').style.display='none';
@@ -4554,6 +4680,228 @@ async function markOrphanDirect(){
     msgEl.textContent = `❌ ${e.message}`;
     msgEl.style.color = '#f87171';
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BLUESCORE — FILA DE ANÁLISES HUMANAS (2026-08-06)
+// O usuário pede pelo site, cai aqui, e você preenche o laudo. Só o botão
+// "Enviar" avisa a pessoa (sininho + email); rascunho é silencioso.
+// ═══════════════════════════════════════════════════════════════════════════
+const BS_REDES = { youtube:'▶️ YouTube', tiktok:'🎵 TikTok', instagram:'📸 Instagram' };
+let _bsPedido = null;   // pedido aberto no formulário
+
+async function bsApi(acao, extra){
+  const r = await fetch('/api/bluescore', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${adminKey}` },
+    body: JSON.stringify(Object.assign({ action: acao }, extra || {}))
+  });
+  let d = {};
+  try { d = await r.json(); } catch(e){}
+  if(!r.ok) throw new Error(d.detalhe || d.error || `HTTP ${r.status}`);
+  return d;
+}
+
+function bsData(iso){
+  if(!iso) return '';
+  return new Date(iso).toLocaleString('pt-BR',{ day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+async function bsCarregarFila(){
+  const lista = document.getElementById('bsFilaLista');
+  const rec = document.getElementById('bsRecentes');
+  lista.innerHTML = '<div class="loading-txt">Carregando…</div>';
+  try {
+    const d = await bsApi('fila');
+    const badge = document.getElementById('bsFilaBadge');
+    badge.textContent = d.total_pendentes;
+    badge.style.display = d.total_pendentes > 0 ? 'inline-block' : 'none';
+
+    lista.innerHTML = (d.pendentes || []).length
+      ? d.pendentes.map(p => `
+        <div class="bs-item">
+          <div class="bs-item-info">
+            <div class="bs-item-nome">${BS_REDES[p.rede]||p.rede} · ${p.perfil_handle || p.perfil_url}</div>
+            <div class="bs-item-meta">${p.nome || p.email} · ${p.plano} · pedido ${bsData(p.criado_em)}${p.status==='em_analise' ? ' · 📝 rascunho salvo' : ''}</div>
+          </div>
+          <button class="action-btn" onclick='bsAbrirLaudo(${JSON.stringify(p.id)})'>${p.status==='em_analise' ? 'Continuar' : 'Analisar'}</button>
+        </div>`).join('')
+      : '<div class="loading-txt">Fila vazia. 🎉</div>';
+
+    rec.innerHTML = (d.recentes || []).length
+      ? d.recentes.map(p => `
+        <div class="bs-item" style="opacity:.72">
+          <div class="bs-item-info">
+            <div class="bs-item-nome">${BS_REDES[p.rede]||p.rede} · ${p.perfil_handle || p.perfil_url}</div>
+            <div class="bs-item-meta">${p.nome || p.email} · ${p.status === 'recusado' ? 'recusado' : 'nota ' + (p.laudo?.nota ?? '—')} · ${bsData(p.entregue_em || p.criado_em)}</div>
+          </div>
+        </div>`).join('')
+      : '<div class="loading-txt">—</div>';
+  } catch(e){
+    lista.innerHTML = `<div class="loading-txt" style="color:var(--red)">Erro: ${e.message}</div>`;
+  }
+}
+
+// ── FORMULÁRIO ───────────────────────────────────────────────────────────
+function bsPreverFaixa(){
+  const n = Number(document.getElementById('bsNota').value) || 0;
+  document.getElementById('bsFaixa').value =
+    n >= 80 ? '🚀 Alta confiança' : n >= 60 ? '✅ Boa performance' :
+    n >= 40 ? '⚠ Atenção necessária' : '🔴 Precisa de ajuste';
+}
+
+function bsLinhaPonto(p){
+  p = p || {};
+  return `<div class="bs-linha" data-bs="ponto">
+    <div class="bs-linha-topo">
+      <select data-f="tipo" style="max-width:130px">
+        <option value="pos"${p.tipo==='pos'?' selected':''}>✅ Bom</option>
+        <option value="warn"${!p.tipo||p.tipo==='warn'?' selected':''}>⚠️ Atenção</option>
+        <option value="neg"${p.tipo==='neg'?' selected':''}>❌ Problema</option>
+      </select>
+      <input data-f="titulo" type="text" placeholder="Título curto" value="${(p.titulo||'').replace(/"/g,'&quot;')}"/>
+      <button class="bs-del" onclick="this.closest('.bs-linha').remove()">✕</button>
+    </div>
+    <textarea data-f="texto" rows="2" placeholder="Explica o que você viu">${p.texto||''}</textarea>
+  </div>`;
+}
+function bsLinhaRec(r){
+  r = r || {};
+  return `<div class="bs-linha" data-bs="rec">
+    <div class="bs-linha-topo">
+      <input data-f="acao" type="text" placeholder="Ação concreta" value="${(r.acao||'').replace(/"/g,'&quot;')}"/>
+      <select data-f="impacto" style="max-width:120px">
+        <option value="alto"${r.impacto==='alto'?' selected':''}>Alto</option>
+        <option value="medio"${!r.impacto||r.impacto==='medio'?' selected':''}>Médio</option>
+        <option value="baixo"${r.impacto==='baixo'?' selected':''}>Baixo</option>
+      </select>
+      <button class="bs-del" onclick="this.closest('.bs-linha').remove()">✕</button>
+    </div>
+    <textarea data-f="porque" rows="2" placeholder="Por que isso muda o jogo">${r.porque||''}</textarea>
+  </div>`;
+}
+function bsLinhaVideo(v){
+  v = v || {};
+  return `<div class="bs-linha" data-bs="video">
+    <div class="bs-linha-topo">
+      <input data-f="url" type="text" placeholder="Link do vídeo" value="${(v.url||'').replace(/"/g,'&quot;')}"/>
+      <input data-f="titulo" type="text" placeholder="Título (opcional)" value="${(v.titulo||'').replace(/"/g,'&quot;')}"/>
+      <button class="bs-del" onclick="this.closest('.bs-linha').remove()">✕</button>
+    </div>
+    <textarea data-f="observacao" rows="3" placeholder="Sua observação sobre este vídeo">${v.observacao||''}</textarea>
+  </div>`;
+}
+const bsAddPonto = () => document.getElementById('bsPontos').insertAdjacentHTML('beforeend', bsLinhaPonto());
+const bsAddRec   = () => document.getElementById('bsRecs').insertAdjacentHTML('beforeend', bsLinhaRec());
+const bsAddVideo = () => document.getElementById('bsVideos').insertAdjacentHTML('beforeend', bsLinhaVideo());
+
+function bsColetarLinhas(containerId){
+  return [...document.getElementById(containerId).querySelectorAll('.bs-linha')].map(el => {
+    const o = {};
+    el.querySelectorAll('[data-f]').forEach(c => { o[c.dataset.f] = c.value.trim(); });
+    return o;
+  });
+}
+
+async function bsAbrirLaudo(id){
+  try {
+    const d = await bsApi('fila');
+    _bsPedido = (d.pendentes || []).find(p => p.id === id);
+    if(!_bsPedido) return toast('Pedido não está mais na fila');
+  } catch(e){ return toast('Erro: ' + e.message); }
+
+  const p = _bsPedido, l = p.laudo || {};
+  document.getElementById('bsLaudoTitulo').textContent = `${BS_REDES[p.rede]||p.rede} · ${p.perfil_handle || 'perfil'}`;
+  const link = document.getElementById('bsLaudoLink');
+  link.href = p.perfil_url; link.textContent = p.perfil_url;
+  document.getElementById('bsLaudoUser').textContent = `${p.nome || '(sem nome)'} · ${p.email} · plano ${p.plano} · pedido em ${bsData(p.criado_em)}`;
+
+  const set = (id, v) => { document.getElementById(id).value = v == null ? '' : v; };
+  set('bsNota', l.nota || ''); set('bsFaixa', l.classificacao_label || '');
+  set('bsCanalNome', l.canal?.nome || p.perfil_handle || '');
+  set('bsCanalFoto', l.canal?.foto); set('bsCanalSeg', l.canal?.seguidores); set('bsCanalPub', l.canal?.publicacoes);
+  set('bsMetViews', l.metricas?.media_views); set('bsMetEng', l.metricas?.engajamento);
+  set('bsMetCons', l.metricas?.consistencia); set('bsMetTend', l.metricas?.tendencia);
+  set('bsPilPerf', l.pilares?.performance || 0); set('bsPilPerfDesc', l.pilares?.performance_desc);
+  set('bsPilRisco', l.pilares?.risco || 0);      set('bsPilRiscoDesc', l.pilares?.risco_desc);
+  set('bsPilComp', l.pilares?.comportamento || 0); set('bsPilCompDesc', l.pilares?.comportamento_desc);
+  set('bsResumo', l.resumo);
+
+  document.getElementById('bsPontos').innerHTML = (l.pontos || []).map(bsLinhaPonto).join('') || bsLinhaPonto();
+  document.getElementById('bsRecs').innerHTML   = (l.recomendacoes || []).map(bsLinhaRec).join('') || bsLinhaRec();
+  document.getElementById('bsVideos').innerHTML = (l.videos || []).map(bsLinhaVideo).join('') || bsLinhaVideo();
+  document.getElementById('bsLaudoMsg').textContent = '';
+  if(!l.classificacao_label) bsPreverFaixa();
+
+  document.getElementById('bsLaudoModal').style.display = 'flex';
+}
+
+function bsFecharLaudo(){
+  document.getElementById('bsLaudoModal').style.display = 'none';
+  _bsPedido = null;
+}
+
+function bsMontarLaudo(){
+  const val = id => document.getElementById(id).value.trim();
+  const num = id => Number(document.getElementById(id).value) || 0;
+  return {
+    nota: num('bsNota'),
+    classificacao_label: val('bsFaixa'),
+    canal: { nome: val('bsCanalNome'), foto: val('bsCanalFoto'), seguidores: val('bsCanalSeg'), publicacoes: val('bsCanalPub') },
+    metricas: { media_views: val('bsMetViews'), engajamento: val('bsMetEng'), consistencia: val('bsMetCons'), tendencia: val('bsMetTend') },
+    pilares: {
+      performance: num('bsPilPerf'), performance_desc: val('bsPilPerfDesc'),
+      risco: num('bsPilRisco'), risco_desc: val('bsPilRiscoDesc'),
+      comportamento: num('bsPilComp'), comportamento_desc: val('bsPilCompDesc'),
+    },
+    resumo: val('bsResumo'),
+    pontos: bsColetarLinhas('bsPontos').filter(p => p.titulo || p.texto),
+    recomendacoes: bsColetarLinhas('bsRecs').filter(r => r.acao),
+    videos: bsColetarLinhas('bsVideos').filter(v => v.url || v.titulo || v.observacao),
+  };
+}
+
+function bsMsg(texto, cor){
+  const el = document.getElementById('bsLaudoMsg');
+  el.textContent = texto;
+  el.style.color = cor || 'var(--dim)';
+}
+
+async function bsSalvarRascunho(){
+  if(!_bsPedido) return;
+  bsMsg('Salvando…');
+  try {
+    await bsApi('laudo_salvar', { id: _bsPedido.id, laudo: bsMontarLaudo() });
+    bsMsg('💾 Rascunho salvo. O usuário NÃO foi avisado.', 'var(--green)');
+    bsCarregarFila();
+  } catch(e){ bsMsg('❌ ' + e.message, 'var(--red)'); }
+}
+
+async function bsEnviar(){
+  if(!_bsPedido) return;
+  const laudo = bsMontarLaudo();
+  if(!laudo.nota) return bsMsg('❌ Falta a nota.', 'var(--red)');
+  if(!laudo.resumo) return bsMsg('❌ Falta o diagnóstico.', 'var(--red)');
+  if(!confirm(`Enviar a análise pra ${_bsPedido.email}?\n\nEle recebe email e notificação no sininho. Não dá pra desfazer o aviso.`)) return;
+
+  bsMsg('Enviando…');
+  try {
+    const d = await bsApi('laudo_enviar', { id: _bsPedido.id, laudo });
+    bsMsg(`✅ Entregue. Sininho: ${d.sininho ? 'ok' : 'falhou'} · Email: ${d.email ? 'ok' : 'falhou'}`, 'var(--green)');
+    setTimeout(() => { bsFecharLaudo(); bsCarregarFila(); }, 1800);
+  } catch(e){ bsMsg('❌ ' + e.message, 'var(--red)'); }
+}
+
+async function bsRecusar(){
+  if(!_bsPedido) return;
+  const motivo = prompt('O que você diz pra pessoa? (ela recebe essa frase no sininho)',
+    'Não consegui abrir esse perfil — confere se o link está certo e se a conta é pública.');
+  if(!motivo) return;
+  try {
+    await bsApi('recusar', { id: _bsPedido.id, motivo });
+    bsMsg('Pedido recusado e usuário avisado.', 'var(--green)');
+    setTimeout(() => { bsFecharLaudo(); bsCarregarFila(); }, 1200);
+  } catch(e){ bsMsg('❌ ' + e.message, 'var(--red)'); }
 }
 
 </script>

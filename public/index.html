@@ -1340,7 +1340,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div style="position:absolute;top:12px;right:12px;font-size:9px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700">NOVO</div>
         <div class="feat-icon">📊</div>
         <div class="feat-title" style="color:var(--gold)">BlueScore — Análise Algorítmica</div>
-        <div class="feat-desc">Descubra o nível de confiança que o YouTube tem no seu canal. Score 0-100 com diagnóstico IA e recomendações acionáveis.</div>
+        <div class="feat-desc">Um ex-funcionário do suporte do YouTube analisa seu canal à mão e devolve nota 0-100, diagnóstico escrito e comentários vídeo a vídeo. YouTube, TikTok e Instagram.</div>
       </div>
       <div class="feat-card"><div class="feat-icon">🔥</div><div class="feat-title">Shorts virais em tempo real</div><div class="feat-desc">Monitore os vídeos explodindo agora por país e nicho. Surfe o hype antes que todo mundo descubra.</div></div>
       <div class="feat-card"><div class="feat-icon">⬇️</div><div class="feat-title">Download HD sem marca d'água</div><div class="feat-desc">Baixe qualquer vídeo do TikTok, Instagram e YouTube em alta qualidade para reutilizar legalmente.</div></div>
@@ -5648,6 +5648,10 @@ function exportScriptAsImage(scriptId){
 </script>
 
 <script src="/toolbar.js" defer></script>
+<!-- Sininho do site. Lê a mesma caixa do app /blue (blue_notificacoes) — foi
+     preciso quando o BlueScore virou análise humana: a pessoa fecha a página e
+     precisa de um lugar aqui pra saber que o laudo ficou pronto. -->
+<script src="/sininho.js" defer></script>
 <script src="/support-chat.js" defer></script>
 <!-- Blublu no ajuste de roteiro. Arquivo próprio de propósito: nada de chat
      entra no <script> inline, que é onde vivem fbq()/ttq() do pixel. -->

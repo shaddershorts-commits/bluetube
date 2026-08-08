@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BlueScore — Confiança Algorítmica · BlueTube Master</title>
+<title>BlueScore — Análise de canal por especialista · BlueTube</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
@@ -39,40 +39,70 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:0 auto}
 
 /* HERO */
-.hero{text-align:center;margin-bottom:48px}
+.hero{text-align:center;margin-bottom:32px}
 .hero-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--neon);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
 .score-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:var(--neon);border-radius:50%;color:#000;font-size:9px;font-weight:800;flex-shrink:0}
 .hero h1{font-size:clamp(36px,6vw,58px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;margin-bottom:14px}
 .hero h1 span{background:linear-gradient(135deg,#00aaff,#60cfff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero-sub{font-size:15px;color:var(--text-sec);max-width:520px;margin:0 auto;line-height:1.6}
+.hero-sub{font-size:15px;color:var(--text-sec);max-width:560px;margin:0 auto;line-height:1.6}
+
+/* CREDENCIAL — o que dá peso à análise */
+.cred{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(251,191,36,.07),rgba(0,170,255,.04));border:1px solid rgba(251,191,36,.22);border-radius:16px;padding:16px 20px;margin:0 auto 32px;max-width:620px}
+.cred-selo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#92400e,#fbbf24);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;box-shadow:0 0 18px rgba(251,191,36,.25)}
+.cred-txt{font-size:13px;color:var(--text-sec);line-height:1.55}
+.cred-txt strong{color:var(--text);font-weight:700}
 
 /* INPUT CARD */
-.input-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:28px;margin-bottom:32px;backdrop-filter:blur(20px)}
+.input-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:28px;margin-bottom:24px;backdrop-filter:blur(20px)}
 .input-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
 .input-row{display:flex;gap:10px}
-.url-input{flex:1;background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:all .2s}
+.url-input{flex:1;background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none;transition:all .2s;min-width:0}
 .url-input::placeholder{color:var(--text-dim)}
 .url-input:focus{border-color:rgba(0,170,255,.5);background:rgba(0,170,255,.08)}
 .btn-analyze{background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 0 28px rgba(0,170,255,.3)}
 .btn-analyze:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(0,170,255,.5)}
 .btn-analyze:disabled{opacity:.5;cursor:not-allowed;transform:none}
-.input-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:10px}
-.input-hint a{color:var(--neon);text-decoration:none}
+.input-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6}
+.redes-linha{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.rede-chip{font-family:var(--mono);font-size:10.5px;color:var(--text-sec);background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:100px;padding:5px 12px}
 
-/* LOADING */
-#loadingSection{display:none;text-align:center;padding:48px 0}
+/* ESPERA */
+#waitSection{display:none;text-align:center;padding:12px 0 40px}
 .loading-orb{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,rgba(0,80,255,.3),rgba(0,170,255,.15));border:2px solid rgba(0,170,255,.3);margin:0 auto 24px;display:flex;align-items:center;justify-content:center;animation:pulse-orb 2s ease-in-out infinite}
 @keyframes pulse-orb{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(0,170,255,.3)}50%{transform:scale(1.08);box-shadow:0 0 0 20px rgba(0,170,255,0)}}
-.loading-steps{display:flex;flex-direction:column;gap:8px;max-width:300px;margin:20px auto 0}
-.loading-step{font-family:var(--mono);font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;transition:all .4s}
+.loading-steps{display:flex;flex-direction:column;gap:9px;max-width:340px;margin:20px auto 0;text-align:left}
+.loading-step{font-family:var(--mono);font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:9px;transition:all .4s}
 .loading-step.active{color:var(--neon)}
 .loading-step.done{color:var(--green)}
 .step-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.wait-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:32px 28px;backdrop-filter:blur(20px);max-width:620px;margin:0 auto}
+.wait-title{font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:12px}
+.wait-sub{font-size:14px;color:var(--text-sec);line-height:1.65;margin-bottom:22px}
+.wait-avisos{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.wait-aviso{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--text-sec);background:rgba(0,170,255,.05);border:1px solid var(--blue-border);border-radius:100px;padding:8px 14px}
+
+/* HISTÓRICO */
+#historySection{display:none;margin-bottom:28px}
+.hist-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.hist-title{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase}
+.hist-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--blue-border);border-radius:14px;padding:14px 16px;margin-bottom:9px;backdrop-filter:blur(20px);transition:border-color .2s}
+.hist-item.clicavel{cursor:pointer}
+.hist-item.clicavel:hover{border-color:rgba(0,170,255,.45)}
+.hist-rede{width:34px;height:34px;border-radius:10px;background:rgba(0,170,255,.07);border:1px solid var(--blue-border);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.hist-info{flex:1;min-width:0}
+.hist-nome{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);margin-top:3px}
+.hist-chip{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:100px;padding:4px 11px;white-space:nowrap;flex-shrink:0}
+.chip-fila{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--gold)}
+.chip-analise{background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.3);color:var(--neon)}
+.chip-pronta{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:var(--green)}
+.chip-recusada{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#fca5a5}
+.hist-nota{font-size:19px;font-weight:800;letter-spacing:-.5px;flex-shrink:0;min-width:34px;text-align:right}
+.btn-salvar{background:none;border:none;font-size:16px;cursor:pointer;padding:4px;opacity:.35;transition:opacity .2s;flex-shrink:0}
+.btn-salvar.on{opacity:1}
 
 /* RESULTS */
 #resultsSection{display:none}
-
-/* SCORE CARD */
 .score-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:32px;margin-bottom:20px;backdrop-filter:blur(20px);text-align:center;position:relative;overflow:hidden}
 .score-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -20%,rgba(0,170,255,.08),transparent 60%);pointer-events:none}
 .channel-info{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:28px}
@@ -81,7 +111,6 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .channel-name{font-size:18px;font-weight:700;letter-spacing:-.3px}
 .channel-meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:2px}
 
-/* SCORE GAUGE */
 .gauge-wrap{position:relative;width:200px;height:110px;margin:0 auto 20px}
 .gauge-svg{width:200px;height:110px}
 .gauge-bg{fill:none;stroke:rgba(0,170,255,.1);stroke-width:16;stroke-linecap:round}
@@ -90,15 +119,13 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .gauge-score{font-size:52px;font-weight:800;letter-spacing:-2px;line-height:1}
 .gauge-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 
-/* CLASSIFICATION */
 .score-class{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:100px;font-weight:700;font-size:14px;margin-bottom:8px;letter-spacing:-.2px}
 .score-class.low{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#ef4444}
 .score-class.moderate{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--gold)}
 .score-class.good{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);color:#22c55e}
 .score-class.high{background:rgba(0,170,255,.12);border:1px solid rgba(0,170,255,.3);color:var(--neon)}
-.score-disclaimer{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px}
+.assinatura{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);margin-top:14px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.18);border-radius:100px;padding:7px 15px;line-height:1.4;text-align:left}
 
-/* PILLARS */
 .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
 .pillar-card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:20px;backdrop-filter:blur(20px)}
 .pillar-name{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
@@ -107,7 +134,6 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .pillar-fill{height:100%;border-radius:100px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
 .pillar-desc{font-size:12px;color:var(--text-sec);line-height:1.5}
 
-/* INSIGHTS */
 .insights-card{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:24px;margin-bottom:20px;backdrop-filter:blur(20px)}
 .section-title{font-size:16px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .insight-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid rgba(0,170,255,.06)}
@@ -116,27 +142,29 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .insight-icon.pos{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.2)}
 .insight-icon.neg{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
 .insight-icon.warn{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2)}
-.insight-text{flex:1}
+.insight-text{flex:1;min-width:0}
 .insight-title{font-size:13px;font-weight:600;margin-bottom:3px;letter-spacing:-.1px}
-.insight-desc{font-size:12px;color:var(--text-sec);line-height:1.5}
+.insight-desc{font-size:12px;color:var(--text-sec);line-height:1.5;white-space:pre-wrap}
 
-/* RECS */
 .rec-item{display:flex;gap:12px;padding:12px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.08);border-radius:12px;margin-bottom:8px}
 .rec-num{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#1a6bff,var(--neon));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0}
 .rec-text{font-size:13px;color:var(--text-sec);line-height:1.5}
-.rec-text strong{color:var(--text);font-weight:600}
 
-/* METRICS GRID */
 .metrics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}
 .metric-box{background:var(--card);border:1px solid var(--blue-border);border-radius:14px;padding:16px;backdrop-filter:blur(20px)}
 .metric-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
 .metric-value{font-size:22px;font-weight:800;letter-spacing:-.5px}
-.metric-sub{font-size:11px;color:var(--text-sec);margin-top:2px}
 
-/* ERROR */
-.error-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:14px;padding:16px 20px;font-family:var(--mono);font-size:12px;color:#fca5a5;margin-bottom:20px}
+/* VÍDEOS COMENTADOS */
+.vid-item{display:flex;gap:12px;padding:14px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:14px;margin-bottom:10px}
+.vid-num{width:26px;height:26px;border-radius:8px;background:rgba(0,170,255,.12);border:1px solid var(--blue-border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--neon);flex-shrink:0}
+.vid-body{flex:1;min-width:0}
+.vid-titulo{font-size:13.5px;font-weight:600;margin-bottom:4px;letter-spacing:-.1px}
+.vid-link{font-family:var(--mono);font-size:10.5px;color:var(--neon);text-decoration:none;word-break:break-all}
+.vid-obs{font-size:12.5px;color:var(--text-sec);line-height:1.6;margin-top:8px;white-space:pre-wrap}
 
-/* LOCKED */
+.error-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:14px;padding:16px 20px;font-family:var(--mono);font-size:12px;color:#fca5a5;margin-bottom:20px;line-height:1.6}
+
 .locked-overlay{background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:60px 40px;text-align:center;backdrop-filter:blur(20px)}
 .locked-icon{font-size:48px;margin-bottom:20px}
 .locked-title{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
@@ -144,22 +172,17 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 .btn-upgrade{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#92400e,#fbbf24);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none;transition:all .25s}
 .btn-upgrade:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(251,191,36,.3)}
 
-/* AI BADGE */
-.ai-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--neon);background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.15);border-radius:100px;padding:4px 10px;margin-left:8px}
-
-/* TRAJECTORY */
-.traj-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,170,255,.06)}
-.traj-row:last-child{border-bottom:none}
-.traj-bar-wrap{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden}
-.traj-bar-fill{height:100%;border-radius:100px}
-.traj-label{font-family:var(--mono);font-size:11px;color:var(--text-sec);min-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.traj-views{font-family:var(--mono);font-size:11px;color:var(--text-dim);min-width:52px;text-align:right}
-
 @media(max-width:640px){
   nav{padding:12px 16px}
+  main{padding:92px 16px 48px}
   .input-row{flex-direction:column}
   .pillars{grid-template-columns:1fr}
   .metrics-grid{grid-template-columns:1fr}
+  .cred{flex-direction:column;text-align:center}
+}
+@media(prefers-reduced-motion:reduce){
+  .loading-orb{animation:none}
+  .gauge-fill,.pillar-fill{transition:none}
 }
 </style>
 <script src="/_ref-tracker.js" defer></script>
@@ -174,15 +197,13 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
     <div><span>BlueTube</span><span class="logo-sub">CRIADOR VIRAL</span></div>
   </a>
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-    <a href="/" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">📝 Roteiros</a>
-    <a href="/virais" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🔥 Virais</a>
-    <a href="/blueVoice" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">🎙️ BlueVoice</a>
-    <a href="/blueScore" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s">📊 BlueScore</a>
-    <a href="/baixaBlue" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap;transition:all .2s" onmouseover="this.style.color='#00aaff';this.style.borderColor='rgba(0,170,255,.35)'" onmouseout="this.style.color='rgba(255,255,255,.5)';this.style.borderColor='rgba(0,170,255,.12)'">⬇️ BaixaBlue</a>
-    <span class="master-badge" style="margin-left:2px">👑 Master</span>
+    <a href="/" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap">📝 Roteiros</a>
+    <a href="/virais" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap">🔥 Virais</a>
+    <a href="/blueLens" style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.12);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap">🔍 BlueLens</a>
+    <a href="/blueScore" style="font-family:monospace;font-size:10px;color:var(--neon,#00aaff);background:rgba(0,170,255,.15);border:1px solid rgba(0,170,255,.4);border-radius:7px;padding:5px 10px;text-decoration:none;white-space:nowrap">📊 BlueScore</a>
+    <span class="master-badge">👑 Full &amp; Master</span>
   </div>
-    <a href="/" class="btn-back">← Voltar</a>
-  </div>
+  <a href="/" class="btn-back">← Voltar</a>
 </nav>
 
 <main>
@@ -190,59 +211,86 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
   <div class="hero">
     <div class="hero-eyebrow">
       <span class="score-icon">B</span>
-      BlueScore Engine · Exclusivo Master
+      BlueScore · análise feita por gente
     </div>
     <h1>Confiança<br><span>Algorítmica</span></h1>
-    <p class="hero-sub">Estimativa probabilística de como o algoritmo do YouTube enxerga um canal — baseada em dados reais de performance, comportamento e padrões de conteúdo.</p>
+    <p class="hero-sub">Cola o link do seu canal ou perfil. Um especialista analisa à mão, vídeo a vídeo, e te devolve um laudo com nota, diagnóstico e o que ajustar primeiro.</p>
   </div>
+
+  <!-- CREDENCIAL -->
+  <div class="cred">
+    <div class="cred-selo">🎓</div>
+    <div class="cred-txt">
+      Quem analisa é um <strong>ex-funcionário do suporte do YouTube</strong>, hoje no time do BlueTube.
+      Não é robô nem nota automática — é o olhar de quem trabalhou dentro da plataforma vendo o seu perfil.
+    </div>
+  </div>
+
+  <div id="errorBox" class="error-box" style="display:none"></div>
 
   <!-- INPUT -->
   <div class="input-card" id="inputSection">
-    <div class="input-label">Link do canal ou vídeo</div>
+    <div class="input-label">Link do canal ou perfil</div>
     <div class="input-row">
       <input class="url-input" id="urlInput" type="text"
-        placeholder="youtube.com/c/seucanal · youtube.com/@handle · youtube.com/watch?v=..."
-        onkeydown="if(event.key==='Enter')analyze()"/>
-      <button class="btn-analyze" id="btnAnalyze" onclick="analyze()">
+        placeholder="youtube.com/@seucanal · tiktok.com/@voce · instagram.com/voce"
+        onkeydown="if(event.key==='Enter')pedirAnalise()"/>
+      <button class="btn-analyze" id="btnAnalyze" onclick="pedirAnalise()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        Analisar
+        Pedir análise
       </button>
     </div>
-    <div class="input-hint">Funciona com canais, vídeos e handles (@). Dados analisados: últimos 10 vídeos públicos.</div>
-  <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Análises hoje:</div>
-    <div id="usageBadge" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--neon)">— / 3</div>
-    <div id="usageBar" style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:100px;max-width:80px;overflow:hidden">
-      <div id="usageBarFill" style="height:100%;background:var(--neon);border-radius:100px;width:0%;transition:width .4s ease"></div>
+    <div class="redes-linha">
+      <span class="rede-chip">▶️ YouTube</span>
+      <span class="rede-chip">🎵 TikTok</span>
+      <span class="rede-chip">📸 Instagram</span>
+    </div>
+    <div class="input-hint">
+      Cola o link do <b>perfil</b>, não de um vídeo. O perfil precisa estar público.
+      <span id="cotaHint"></span>
     </div>
   </div>
-  </div>
 
-  <!-- LOADING -->
-  <div id="loadingSection">
+  <!-- ESPERA -->
+  <div id="waitSection">
     <div class="loading-orb">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00aaff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     </div>
-    <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:6px">Analisando canal…</div>
-    <div style="font-size:13px;color:var(--text-sec);margin-bottom:20px">Coletando e processando dados do YouTube</div>
-    <div class="loading-steps">
-      <div class="loading-step" id="step1"><div class="step-dot"></div>Identificando canal</div>
-      <div class="loading-step" id="step2"><div class="step-dot"></div>Coletando vídeos recentes</div>
-      <div class="loading-step" id="step3"><div class="step-dot"></div>Calculando métricas de performance</div>
-      <div class="loading-step" id="step4"><div class="step-dot"></div>Gerando diagnóstico com IA</div>
-      <div class="loading-step" id="step5"><div class="step-dot"></div>Construindo BlueScore</div>
+    <div class="loading-steps" id="waitSteps">
+      <div class="loading-step" id="wstep1"><div class="step-dot"></div>Recebendo o perfil</div>
+      <div class="loading-step" id="wstep2"><div class="step-dot"></div>Conferindo se está público</div>
+      <div class="loading-step" id="wstep3"><div class="step-dot"></div>Enviando pros especialistas</div>
+      <div class="loading-step" id="wstep4"><div class="step-dot"></div>Entrando na fila de análise</div>
+    </div>
+    <div class="wait-card" id="waitCard" style="display:none;margin-top:28px">
+      <div class="wait-title">Seu perfil está com os especialistas 🔍</div>
+      <div class="wait-sub">
+        A análise de <b id="waitPerfil">—</b> entrou na fila. Nossos especialistas em
+        <b>YouTube, TikTok e Instagram</b> vão avaliar à mão — sem robô, sem nota automática.<br><br>
+        Pode fechar a página: <b>a gente te avisa assim que a análise ficar pronta.</b>
+      </div>
+      <div class="wait-avisos">
+        <span class="wait-aviso">✉️ Aviso por email</span>
+        <span class="wait-aviso">🔔 Aviso no sininho do site</span>
+      </div>
     </div>
   </div>
 
-  <!-- RESULTS -->
-  <div id="resultsSection">
-    <div id="errorBox" class="error-box" style="display:none"></div>
+  <!-- HISTÓRICO -->
+  <div id="historySection">
+    <div class="hist-head">
+      <div class="hist-title">Suas análises</div>
+      <button onclick="carregarMinhas()" style="background:none;border:none;font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer">↻ Atualizar</button>
+    </div>
+    <div id="historyList"></div>
+  </div>
 
-    <!-- SCORE PRINCIPAL -->
-    <div class="score-card" id="scoreCard">
+  <!-- RESULTADO -->
+  <div id="resultsSection">
+    <div class="score-card">
       <div class="channel-info">
         <div class="channel-thumb-placeholder" id="channelThumb">📺</div>
-        <div>
+        <div style="text-align:left">
           <div class="channel-name" id="channelName">—</div>
           <div class="channel-meta" id="channelMeta">—</div>
         </div>
@@ -250,11 +298,8 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 
       <div class="gauge-wrap">
         <svg class="gauge-svg" viewBox="0 0 200 110">
-          <!-- Background arc (semicircle) -->
           <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" stroke-dasharray="251" stroke-dashoffset="0"/>
-          <!-- Fill arc -->
-          <path class="gauge-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100"
-            stroke-dasharray="251" stroke-dashoffset="251"/>
+          <path class="gauge-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" stroke-dasharray="251" stroke-dashoffset="251"/>
         </svg>
         <div class="gauge-number">
           <div class="gauge-score" id="gaugeScore" style="color:var(--neon)">—</div>
@@ -263,988 +308,406 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
       </div>
 
       <div id="scoreClass" class="score-class">—</div>
-      <div class="score-disclaimer">⚠ Estimativa probabilística — não é um dado oficial do YouTube</div>
+      <div><span class="assinatura">🎓 Análise assinada por um ex-funcionário do suporte do YouTube · <span id="dataEntrega">—</span></span></div>
     </div>
 
-    <!-- MÉTRICAS RÁPIDAS -->
-    <div class="metrics-grid" id="metricsGrid" style="display:none">
-      <div class="metric-box">
-        <div class="metric-label">Média de views</div>
-        <div class="metric-value" id="mAvgViews">—</div>
-        <div class="metric-sub" id="mAvgViewsSub">por vídeo recente</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Taxa de engajamento</div>
-        <div class="metric-value" id="mEngagement">—</div>
-        <div class="metric-sub" id="mEngagementSub">likes+comments / views</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Consistência</div>
-        <div class="metric-value" id="mConsistency">—</div>
-        <div class="metric-sub">frequência de postagem</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-label">Tendência</div>
-        <div class="metric-value" id="mTrend">—</div>
-        <div class="metric-sub" id="mTrendSub">últimos 30 dias</div>
-      </div>
-    </div>
+    <div class="metrics-grid" id="metricsGrid" style="display:none"></div>
 
-    <!-- 3 PILARES -->
     <div class="pillars" id="pillarsSection" style="display:none">
       <div class="pillar-card">
         <div class="pillar-name">Performance · 45%</div>
         <div class="pillar-score" id="p1Score">—</div>
         <div class="pillar-bar"><div class="pillar-fill" id="p1Bar" style="width:0%"></div></div>
-        <div class="pillar-desc" id="p1Desc">Análise de views, engajamento e crescimento recente.</div>
+        <div class="pillar-desc" id="p1Desc">—</div>
       </div>
       <div class="pillar-card">
         <div class="pillar-name">Risco de Conteúdo · 35%</div>
         <div class="pillar-score" id="p2Score">—</div>
         <div class="pillar-bar"><div class="pillar-fill" id="p2Bar" style="width:0%"></div></div>
-        <div class="pillar-desc" id="p2Desc">Padrões que podem limitar a distribuição algorítmica.</div>
+        <div class="pillar-desc" id="p2Desc">—</div>
       </div>
       <div class="pillar-card">
         <div class="pillar-name">Comportamento · 20%</div>
         <div class="pillar-score" id="p3Score">—</div>
         <div class="pillar-bar"><div class="pillar-fill" id="p3Bar" style="width:0%"></div></div>
-        <div class="pillar-desc" id="p3Desc">Frequência, consistência e variação de performance.</div>
+        <div class="pillar-desc" id="p3Desc">—</div>
       </div>
     </div>
 
-    <!-- TRAJETÓRIA -->
-    <div class="insights-card" id="trajectorySection" style="display:none">
-      <div class="section-title">📈 Trajetória dos últimos vídeos</div>
-      <div id="trajectoryList"></div>
+    <div class="insights-card" id="summarySection" style="display:none;background:rgba(0,170,255,.04);border-color:rgba(0,170,255,.2)">
+      <div class="section-title">🧠 Diagnóstico</div>
+      <div style="font-size:15px;line-height:1.7;color:var(--text);white-space:pre-wrap" id="summaryText"></div>
     </div>
 
-    <!-- YTP COMPLIANCE -->
-    <div class="insights-card" id="ytpSection" style="display:none;border-color:rgba(251,191,36,.2);background:rgba(251,191,36,.03)">
-      <div class="section-title">📋 Conformidade com YouTube Partner Program</div>
-      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-        <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">COMPLIANCE SCORE</div>
-          <div style="font-size:32px;font-weight:800;letter-spacing:-1px" id="ytpScore">—</div>
-        </div>
-        <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">STATUS</div>
-          <div style="font-size:14px;font-weight:700" id="ytpStatus">—</div>
-        </div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:13px;color:var(--text-sec);line-height:1.5" id="ytpNotes"></div>
-        </div>
-      </div>
+    <div class="insights-card" id="pontosSection" style="display:none">
+      <div class="section-title">🔎 O que eu vi no seu perfil</div>
+      <div id="pontosList"></div>
     </div>
 
-    <!-- RISK FLAGS -->
-    <div class="insights-card" id="riskSection" style="display:none;border-color:rgba(239,68,68,.15)">
-      <div class="section-title">🚨 Alertas de Risco Detectados</div>
-      <div id="riskList"></div>
-    </div>
-
-    <!-- INSIGHTS IA -->
-    <div class="insights-card" id="insightsSection" style="display:none">
-      <div class="section-title">
-        🧠 Diagnóstico
-        <span class="ai-badge">✦ IA</span>
-      </div>
-      <div id="insightsList"></div>
-    </div>
-
-    <!-- RECOMENDAÇÕES -->
     <div class="insights-card" id="recsSection" style="display:none">
-      <div class="section-title">⚡ Recomendações acionáveis</div>
+      <div class="section-title">⚡ O que ajustar, em ordem</div>
       <div id="recsList"></div>
     </div>
 
-    <!-- SUMMARY EXECUTIVO -->
-    <div class="insights-card" id="summarySection" style="display:none;background:rgba(0,170,255,.04);border-color:rgba(0,170,255,.2);text-align:center;padding:24px 32px">
-      <div style="font-size:13px;font-family:var(--mono);color:var(--neon);margin-bottom:10px;letter-spacing:.06em">DIAGNÓSTICO EXECUTIVO</div>
-      <div style="font-size:16px;line-height:1.6;color:var(--text);font-weight:500;max-width:600px;margin:0 auto" id="summaryText"></div>
+    <div class="insights-card" id="videosSection" style="display:none">
+      <div class="section-title">🎬 Vídeos que eu comentei</div>
+      <div id="videosList"></div>
     </div>
 
-    <!-- NOVO SCAN -->
-    <div style="text-align:center;margin-top:24px">
-      <button onclick="reset()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--neon)'" onmouseout="this.style.borderColor='var(--blue-border)'">
-        ↩ Analisar outro canal
-      </button>
+    <div style="text-align:center;margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button onclick="voltarPraLista()" style="background:none;border:1px solid var(--blue-border);border-radius:10px;padding:12px 28px;color:var(--text-sec);font-family:var(--font);font-size:14px;cursor:pointer">↩ Minhas análises</button>
+      <button id="btnSalvarResultado" onclick="alternarSalvoAtual()" style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px 28px;color:var(--gold);font-family:var(--font);font-size:14px;cursor:pointer">🔖 Salvar análise</button>
     </div>
   </div>
-
 </main>
 
 <script>
-// ── PERSISTÊNCIA DE ESTADO (24h) ──────────────────────────────────────────────
-const _TTL=24*60*60*1000;
-function _save(k,v){try{localStorage.setItem(k,JSON.stringify({v,ts:Date.now()}))}catch(e){}}
-function _load(k){try{const r=localStorage.getItem(k);if(!r)return null;const o=JSON.parse(r);if(Date.now()-o.ts>_TTL){localStorage.removeItem(k);return null;}return o.v;}catch(e){return null;}}
+// ═══════════════════════════════════════════════════════════════════════════
+// BlueScore — análise HUMANA (2026-08-06)
+// A nota não é mais calculada aqui: o usuário pede, entra na fila, e o laudo
+// vem pronto do admin. Esta tela só pede, acompanha e exibe.
+// ═══════════════════════════════════════════════════════════════════════════
+const TOKEN = localStorage.getItem('bt_token');
+const PLANO = localStorage.getItem('bt_plan');
+const REDES = { youtube:{ nome:'YouTube', emoji:'▶️' }, tiktok:{ nome:'TikTok', emoji:'🎵' }, instagram:{ nome:'Instagram', emoji:'📸' } };
 
-// Restaura último canal ao carregar
-(function(){
-  const saved = _load('bt_bluescore_url');
-  if(saved){
-    const inp = document.querySelector('input[type=text],input[type=url],#channelInput,#urlInput,#channelUrl');
-    if(inp && !inp.value) inp.value = saved;
-  }
-})();
+let _pedidoAtual = null;   // objeto do pedido aberto no resultado
 
-const token = localStorage.getItem('bt_token');
-const plan = localStorage.getItem('bt_plan');
+document.addEventListener('mousemove', e => {
+  const g = document.getElementById('glow');
+  if (g) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; }
+});
 
-// Verificação de plano — Full e Master tem acesso
-if (!token || (plan !== 'full' && plan !== 'master')) {
+// ── PORTÃO: Full e Master ────────────────────────────────────────────────
+if (!TOKEN || (PLANO !== 'full' && PLANO !== 'master')) {
   document.getElementById('inputSection').innerHTML = `
     <div class="locked-overlay">
       <div class="locked-icon">🔒</div>
-      <div class="locked-title">Assine para usar o BlueScore</div>
+      <div class="locked-title">Assine para pedir sua análise</div>
       <div class="locked-sub">
-        O BlueScore analisa a confiança algorítmica do seu canal com base em dados reais.<br>
+        Um especialista analisa seu canal à mão e te devolve nota, diagnóstico e o que ajustar primeiro.<br>
         Disponível nos planos <b>Full</b> e <b>Master</b>.
       </div>
       <a href="/#plans" class="btn-upgrade">⚡ Ver planos →</a>
     </div>`;
 }
 
-// ── USAGE BADGE ──────────────────────────────────────────────────────────────
-function updateUsageBadge(count) {
-  const el = document.getElementById('usageBadge');
-  const fill = document.getElementById('usageBarFill');
-  if (!el) return;
-  const remaining = Math.max(0, 3 - count);
-  el.textContent = count + ' / 3';
-  el.style.color = remaining === 0 ? 'var(--red)' : remaining === 1 ? 'var(--gold)' : 'var(--neon)';
-  if (fill) fill.style.width = (count / 3 * 100) + '%';
-  if (fill) fill.style.background = remaining === 0 ? 'var(--red)' : remaining === 1 ? 'var(--gold)' : 'var(--neon)';
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Inicializa badge com uso do dia atual
-(function initUsage() {
-  const today = new Date().toISOString().split('T')[0];
-  const data = JSON.parse(localStorage.getItem('bs_daily_' + today) || '{"count":0,"channels":[]}');
-  updateUsageBadge(data.count);
-})();
+function erro(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { el.style.display = 'none'; }, 9000);
+}
 
-// ── MOUSE GLOW ────────────────────────────────────────────────────────────────
-document.addEventListener('mousemove', e => {
-  const g = document.getElementById('glow');
-  g.style.left = e.clientX + 'px';
-  g.style.top = e.clientY + 'px';
-});
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-const fmtNum = n => {
-  if (!n) return '0';
-  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
-  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
-  if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
-  return n.toString();
+// Erros do backend viram frase de gente. Sem isso o usuário lê "rede_nao_suportada".
+const MENSAGENS = {
+  login_obrigatorio: 'Entra na sua conta pra pedir a análise.',
+  token_invalido: 'Sua sessão expirou. Recarrega a página e entra de novo.',
+  plano_necessario: 'A análise é dos planos Full e Master.',
+  url_obrigatoria: 'Cola o link do seu canal ou perfil.',
+  rede_nao_suportada: 'Por enquanto analisamos YouTube, TikTok e Instagram. Cola o link de um desses.',
+  limite_diario: 'Você já pediu 2 análises hoje. Amanhã libera de novo.',
+  falha_ao_registrar: 'Não consegui registrar seu pedido. Tenta de novo em instantes.',
+  nao_encontrado: 'Não achei essa análise na sua conta.',
 };
 
-function setStep(n) {
-  for (let i = 1; i <= 5; i++) {
-    const el = document.getElementById('step' + i);
-    if (i < n) { el.classList.remove('active'); el.classList.add('done'); el.querySelector('.step-dot').textContent = '✓'; }
-    else if (i === n) { el.classList.add('active'); el.classList.remove('done'); }
-    else { el.classList.remove('active','done'); }
-  }
+async function api(acao, extra) {
+  const r = await fetch('/api/bluescore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action: acao, token: TOKEN }, extra || {})),
+  });
+  let d = {};
+  try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(MENSAGENS[d.error] || d.detalhe || 'Deu ruim aqui. Tenta de novo.');
+  return d;
 }
 
-// ── EXTRACT IDs FROM URL ──────────────────────────────────────────────────────
-function parseYouTubeInput(url) {
-  url = url.trim();
-  // Video ID
-  let m = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
-  if (m) return { type: 'video', id: m[1] };
-  // Channel handle @
-  m = url.match(/@([a-zA-Z0-9_.-]+)/);
-  if (m) return { type: 'handle', id: m[1] };
-  // Channel ID
-  m = url.match(/channel\/([UC][a-zA-Z0-9_-]+)/);
-  if (m) return { type: 'channelId', id: m[1] };
-  // Custom URL /c/
-  m = url.match(/\/c\/([a-zA-Z0-9_.-]+)/);
-  if (m) return { type: 'handle', id: m[1] };
-  // Bare handle or channel name
-  if (/^[a-zA-Z0-9_.-]+$/.test(url)) return { type: 'handle', id: url };
-  return null;
+// ── PEDIR ────────────────────────────────────────────────────────────────
+const PASSOS = ['wstep1','wstep2','wstep3','wstep4'];
+function marcarPasso(i) {
+  PASSOS.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('active', idx === i);
+    el.classList.toggle('done', idx < i);
+  });
 }
 
-// ── MAIN ANALYZE ──────────────────────────────────────────────────────────────
-async function analyze() {
-  const url = document.getElementById('urlInput').value.trim();
-  if (!url) return;
+async function pedirAnalise() {
+  const url = (document.getElementById('urlInput').value || '').trim();
+  if (!url) return erro('Cola o link do seu canal ou perfil.');
 
-  const parsed = parseYouTubeInput(url);
-  if (!parsed) {
-    showError('Link inválido. Cole um link de canal ou vídeo do YouTube.');
-    return;
-  }
-
-  // Verificar limite diário (3 análises/dia por conta Master)
-  const today = new Date().toISOString().split('T')[0];
-  const usageKey = 'bs_daily_' + today;
-  const usageData = JSON.parse(localStorage.getItem(usageKey) || '{"count":0,"channels":[]}');
-  const channelKey = (parsed.id || url).toLowerCase().replace(/[^a-z0-9]/g,'').slice(0, 30);
-  const alreadyAnalyzed = usageData.channels.includes(channelKey);
-
-  if (!alreadyAnalyzed && usageData.count >= 3) {
-    showError('Limite de 3 análises de canais diferentes por dia atingido. Volte amanhã para analisar novos canais.');
-    return;
-  }
-
-  // UI: loading
   document.getElementById('inputSection').style.display = 'none';
-  document.getElementById('loadingSection').style.display = 'block';
+  document.getElementById('historySection').style.display = 'none';
   document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('waitSection').style.display = 'block';
+  document.getElementById('waitCard').style.display = 'none';
   document.getElementById('btnAnalyze').disabled = true;
 
-  setStep(1);
+  // A animação é curta de propósito: o trabalho de verdade é humano e leva
+  // tempo, então prometer "processando" por muito tempo seria teatro.
+  marcarPasso(0);
+  const animacao = [500, 850, 700].reduce((p, ms, i) => p.then(() => new Promise(r => setTimeout(() => { marcarPasso(i + 1); r(); }, ms))), Promise.resolve());
 
   try {
-    // 1. Verifica se o backend está atualizado
-    const testR = await fetch('/api/auth?action=bluescore-channel&type=handle&id=test123');
-    const testText = await testR.text();
-    if (testText.startsWith('A server') || testText.includes('<!DOCTYPE')) {
-      throw new Error('Serviço temporariamente indisponível. Aguarde o deploy completo e tente novamente.');
+    const [d] = await Promise.all([api('pedir', { url }), animacao]);
+    marcarPasso(PASSOS.length);
+    document.getElementById('waitPerfil').textContent = url.replace(/^https?:\/\/(www\.)?/, '');
+    document.getElementById('waitCard').style.display = 'block';
+    if (d.ja_existia) {
+      document.getElementById('waitCard').querySelector('.wait-title').textContent = 'Essa análise já está na fila 👀';
     }
-
-    // 2. Resolve channel ID
-    const channelData = await resolveChannel(parsed);
-    if (!channelData) throw new Error('Canal não encontrado. Verifique o link e tente novamente.');
-    setStep(2);
-
-    // 2. Fetch recent videos
-    const videos = await fetchRecentVideos(channelData.channelId);
-    if (!videos || videos.length === 0) throw new Error('Nenhum vídeo público encontrado neste canal.');
-    setStep(3);
-
-    // 3. Calculate score
-    const scoreData = calculateBlueScore(videos, channelData);
-    setStep(4);
-
-    // 4. AI diagnosis
-    const aiInsights = await generateAIDiagnosis(scoreData, channelData, videos);
-    setStep(5);
-    await sleep(600);
-
-    // 5. Render
-    renderResults(scoreData, channelData, videos, aiInsights);
-
-    // Registrar uso diário
-    if (!alreadyAnalyzed) {
-      usageData.count++;
-      usageData.channels.push(channelKey);
-      localStorage.setItem(usageKey, JSON.stringify(usageData));
-    }
-    updateUsageBadge(usageData.count);
-
-  } catch(e) {
-    console.error('BlueScore error:', e);
-    showError(e.message || 'Erro ao analisar canal. Tente novamente.');
+    setTimeout(carregarMinhas, 1200);
+  } catch (e) {
+    document.getElementById('waitSection').style.display = 'none';
+    document.getElementById('inputSection').style.display = 'block';
+    document.getElementById('historySection').style.display = 'block';
+    erro(e.message);
   } finally {
-    document.getElementById('loadingSection').style.display = 'none';
     document.getElementById('btnAnalyze').disabled = false;
   }
 }
 
-// ── RESOLVE CHANNEL ───────────────────────────────────────────────────────────
-async function safeJson(r) {
-  const text = await r.text();
-  try { return JSON.parse(text); }
-  catch(e) {
-    console.error('Resposta não-JSON:', text.slice(0, 200));
-    throw new Error('Erro de comunicação com o servidor. Tente novamente.');
-  }
+// ── HISTÓRICO ────────────────────────────────────────────────────────────
+const CHIPS = {
+  na_fila:    { classe:'chip-fila',     texto:'⏳ Na fila' },
+  em_analise: { classe:'chip-analise',  texto:'🔍 Analisando' },
+  entregue:   { classe:'chip-pronta',   texto:'✅ Pronta' },
+  recusado:   { classe:'chip-recusada', texto:'✕ Não deu' },
+};
+const COR_NOTA = n => n >= 80 ? '#00aaff' : n >= 60 ? '#22c55e' : n >= 40 ? '#fbbf24' : '#ef4444';
+
+function dataCurta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-async function resolveChannel(parsed) {
-  const r = await fetch(`/api/auth?action=bluescore-channel&type=${parsed.type}&id=${encodeURIComponent(parsed.id)}`);
-  const d = await safeJson(r);
-  if (!r.ok) throw new Error(d.error || 'Canal não encontrado. Verifique o link.');
-  return d;
-}
-
-async function fetchRecentVideos(channelId) {
-  const r = await fetch(`/api/auth?action=bluescore-videos&channelId=${encodeURIComponent(channelId)}`);
-  const d = await safeJson(r);
-  if (!r.ok) throw new Error(d.error || 'Erro ao buscar vídeos do canal.');
-  return d.videos || [];
-}
-
-// ── SHORTS DETECTION + CALIBRATION ───────────────────────────────────────────
-// Detecta canal de Shorts: se 60%+ dos últimos 20 vídeos têm duração < 65s
-function detectShortsChannel(videos) {
-  if (!videos?.length) return false;
-  const recent = videos.slice(0, Math.min(20, videos.length));
-  const withDuration = recent.filter(v => typeof v.duration === 'number' && v.duration > 0);
-  if (!withDuration.length) return false;
-  const shortsCount = withDuration.filter(v => v.duration < 65).length;
-  return (shortsCount / withDuration.length) >= 0.6;
-}
-
-// Score de views por faixa calibrado para Shorts (não penaliza canal pequeno)
-function shortsViewsScore(avgViews) {
-  if (avgViews < 1000)    return 20;
-  if (avgViews < 5000)    return 40;
-  if (avgViews < 10000)   return 60;
-  if (avgViews < 30000)   return 65;
-  if (avgViews < 70000)   return 75;
-  if (avgViews < 100000)  return 85;
-  if (avgViews < 500000)  return 88;
-  if (avgViews < 1000000) return 93;
-  return 98;
-}
-
-function shortsFaixa(avgViews) {
-  if (avgViews < 10000)   return 'Iniciante';
-  if (avgViews < 100000)  return 'Crescendo';
-  if (avgViews < 1000000) return 'Estabelecido';
-  return 'Viral';
-}
-
-// Engine de score dedicado a canais de Shorts
-function calculateShortsScore(videos, channel) {
-  const v = videos;
-  const N = v.length;
-  if (N === 0) return null;
-
-  // Métricas base
-  const avgViews    = v.reduce((s,x) => s + x.views, 0) / N;
-  const avgLikes    = v.reduce((s,x) => s + x.likes, 0) / N;
-  const avgComments = v.reduce((s,x) => s + x.comments, 0) / N;
-  const avgEngRate  = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
-
-  // Tendência: primeira metade vs segunda metade
-  const half     = Math.floor(N / 2);
-  const recentAvg = v.slice(0, half || 1).reduce((s,x) => s + x.views, 0) / (half || 1);
-  const olderAvg  = v.slice(half).reduce((s,x) => s + x.views, 0) / (N - half || 1);
-  const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
-
-  // Consistência: coeficiente de variação das views
-  const stdDev = Math.sqrt(v.reduce((s,x) => s + Math.pow(x.views - avgViews, 2), 0) / N);
-  const cv     = avgViews > 0 ? stdDev / avgViews : 1;
-
-  // Frequência: dias entre vídeos
-  const sortedDates = v.map(x => new Date(x.publishedAt)).sort((a,b) => b - a);
-  let avgDaysBetween = 7;
-  if (sortedDates.length > 1) {
-    const diffs = [];
-    for (let i = 0; i < sortedDates.length - 1; i++) {
-      diffs.push((sortedDates[i] - sortedDates[i+1]) / (1000*60*60*24));
-    }
-    avgDaysBetween = diffs.reduce((s,x) => s + x, 0) / diffs.length;
-  }
-
-  // Consistência diária: posts nos últimos 7 dias
-  const now = Date.now();
-  const last7d = v.filter(x => (now - new Date(x.publishedAt).getTime()) <= 7*24*60*60*1000).length;
-
-  // ── COMPONENTES (0-100 cada) ──
-  // 1. Views (faixas Shorts)
-  const viewsScore = shortsViewsScore(avgViews);
-
-  // 2. Engajamento (Shorts: 1%+ bom, 3%+ excelente)
-  let engScore;
-  if      (avgEngRate < 0.5) engScore = 25;
-  else if (avgEngRate < 1)   engScore = 50;
-  else if (avgEngRate < 2)   engScore = 70;
-  else if (avgEngRate < 3)   engScore = 85;
-  else if (avgEngRate < 5)   engScore = 95;
-  else                       engScore = 100;
-
-  // 3. Frequência (Shorts: 1/dia ideal)
-  let freqScore;
-  if      (avgDaysBetween <= 1)  freqScore = 100;
-  else if (avgDaysBetween <= 2)  freqScore = 90;
-  else if (avgDaysBetween <= 3)  freqScore = 75;
-  else if (avgDaysBetween <= 7)  freqScore = 60;
-  else if (avgDaysBetween <= 14) freqScore = 40;
-  else                           freqScore = 20;
-
-  // 4. Crescimento (proxy: trendRatio de views — aproximação, sem histórico de inscritos)
-  let growthScore;
-  if      (trendRatio >= 1.5)  growthScore = 100;
-  else if (trendRatio >= 1.2)  growthScore = 85;
-  else if (trendRatio >= 1.05) growthScore = 75;
-  else if (trendRatio >= 0.9)  growthScore = 60;
-  else if (trendRatio >= 0.7)  growthScore = 40;
-  else                         growthScore = 20;
-
-  // 5. Consistência (CV baixo = uniforme)
-  let consistScore;
-  if      (cv < 0.4) consistScore = 100;
-  else if (cv < 0.7) consistScore = 85;
-  else if (cv < 1)   consistScore = 70;
-  else if (cv < 1.5) consistScore = 50;
-  else               consistScore = 30;
-
-  // ── SCORE FINAL PONDERADO ──
-  // Pesos Shorts: views 20%, engajamento 35%, frequência 20%, crescimento 15%, consistência 10%
-  let finalScore =
-    viewsScore   * 0.20 +
-    engScore     * 0.35 +
-    freqScore    * 0.20 +
-    growthScore  * 0.15 +
-    consistScore * 0.10;
-
-  // ── PENALIDADES DE AUTENTICIDADE (só canais pequenos <100K subs) ──
-  // Em canais grandes, "baixa conversão subs/views" e "distribuição bimodal"
-  // são padrões NATURAIS do ecossistema Shorts (algoritmo amplifica virais
-  // pontuais, views crescem mais rápido que subs porque impacta não-inscritos).
-  // Esses sinais só são fraude em canais pequenos tentando inflar números.
-  const totalViews = channel?.totalViews || 0;
-  const subs       = channel?.subscribers || 0;
-  const subRatio   = totalViews > 0 ? (subs / totalViews) * 100 : 1;
-  const isSmallChannel = subs < 100_000;
-
-  // (A) Conversão subs/views baixa (canal de recorte/compilação)
-  let conversionPenalty = 0;
-  let conversionFlag = null;
-  if (isSmallChannel && totalViews > 10000) {
-    if (subRatio < 0.15) { conversionPenalty = 25; conversionFlag = 'conversion_very_low'; }
-    else if (subRatio < 0.3) { conversionPenalty = 15; conversionFlag = 'conversion_low'; }
-    else if (subRatio < 0.5) { conversionPenalty = 8;  conversionFlag = 'conversion_moderate'; }
-  }
-
-  // (B) Distribuição bimodal (spike + flop = padrão de compilação)
-  const sortedViewsDesc = [...v].map(x => x.views).sort((a,b) => b-a);
-  const median = sortedViewsDesc[Math.floor(sortedViewsDesc.length / 2)] || 0;
-  const bigs   = v.filter(x => median > 0 && x.views > median * 10).length;
-  const tinys  = v.filter(x => median > 0 && x.views < median / 10).length;
-  const bimodalPenalty = (isSmallChannel && bigs >= 2 && tinys >= 2) ? 12 : 0;
-  const bimodalFlag = bimodalPenalty > 0 ? 'bimodal_distribution' : null;
-
-  finalScore -= (conversionPenalty + bimodalPenalty);
-
-  // ── BÔNUS ──
-  // Vídeo viral (>10x a média): +5
-  const maxViews   = Math.max(...v.map(x => x.views));
-  const viralBonus = (avgViews > 0 && maxViews > avgViews * 10) ? 5 : 0;
-  // Consistência diária (5+ posts em 7 dias): +3
-  const dailyBonus = (last7d >= 5) ? 3 : 0;
-  // Crescimento acelerado (>20%): +5 (proxy por tendência de views)
-  const growthBonus = (trendRatio >= 1.2) ? 5 : 0;
-
-  finalScore += viralBonus + dailyBonus + growthBonus;
-
-  // (C) Floor por tamanho de canal — só se for canal LEGÍTIMO (sem penalidade de conversão)
-  // 12M subs é prova incontestável de qualidade que os outros sinais não capturam
-  let sizeFloor = 0;
-  let sizeFloorApplied = false;
-  if (conversionPenalty === 0) {
-    if      (subs >= 10_000_000) sizeFloor = 90;
-    else if (subs >=  5_000_000) sizeFloor = 85;
-    else if (subs >=  1_000_000) sizeFloor = 78;
-    else if (subs >=    500_000) sizeFloor = 72;
-    else if (subs >=    100_000) sizeFloor = 65;
-    if (sizeFloor > 0 && finalScore < sizeFloor) {
-      finalScore = sizeFloor;
-      sizeFloorApplied = true;
-    }
-  }
-
-  // (D) Bônus extra pra faixa Viral legítima
-  const faixa = shortsFaixa(avgViews);
-  const viralFaixaBonus = (faixa === 'Viral' && conversionPenalty === 0) ? 3 : 0;
-  finalScore += viralFaixaBonus;
-
-  // NENHUMA penalização dura por views baixas — Shorts novos são naturalmente pequenos.
-
-  finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
-
-  const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
-  const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' }[classification];
-
-  // Top 3 vídeos por views
-  const topVideos = [...v].sort((a,b) => b.views - a.views).slice(0, 3);
-
-  // Risk flags enviados para a IA comentar no diagnóstico
-  const scoreRiskFlags = [];
-  if (conversionFlag) scoreRiskFlags.push({ flag: conversionFlag, severity: conversionPenalty >= 20 ? 'high' : 'medium', detail: `Conversão subs/views: ${subRatio.toFixed(3)}% (saudável é 1-5%)` });
-  if (bimodalFlag)    scoreRiskFlags.push({ flag: bimodalFlag, severity: 'high', detail: `${bigs} vídeos com spike viral e ${tinys} vídeos com performance muito baixa — padrão clássico de recorte` });
-  if (sizeFloorApplied) scoreRiskFlags.push({ flag: 'established_channel_floor', severity: 'low', detail: `Canal consolidado com ${fmtNum(subs)} inscritos — floor de qualidade aplicado` });
-
-  return {
-    score: finalScore,
-    classification,
-    classLabel,
-    isShorts: true,
-    faixa,
-    penalties: { conversion: conversionPenalty, bimodal: bimodalPenalty, total: conversionPenalty + bimodalPenalty },
-    bonuses: { viral: viralBonus, daily: dailyBonus, growth: growthBonus, viralFaixa: viralFaixaBonus, sizeFloor: sizeFloorApplied ? sizeFloor : 0, total: viralBonus + dailyBonus + growthBonus + viralFaixaBonus },
-    scoreRiskFlags,
-    pillars: {
-      performance: { score: Math.round(viewsScore * 0.55 + growthScore * 0.45), desc: `Média ${fmtNum(Math.round(avgViews))} views/Short · Faixa ${faixa}` },
-      risk:        { score: Math.round(engScore * 0.7 + consistScore * 0.3),    desc: `Engajamento ${avgEngRate.toFixed(2)}% · Consistência ${cv < 0.5 ? 'alta ✓' : cv < 1 ? 'média' : 'baixa ⚠'}` },
-      behavior:    { score: Math.round(freqScore),                                desc: `Postagem a cada ~${Math.round(avgDaysBetween)} dias · ${last7d} posts em 7 dias` },
-    },
-    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween, last7d },
-    components: { viewsScore, engScore, freqScore, growthScore, consistScore },
-    trendScore: growthScore, viewsScore, engScore,
-    topVideos,
-  };
-}
-
-// ── SCORE ENGINE ──────────────────────────────────────────────────────────────
-function calculateBlueScore(videos, channel) {
-  // Canal de Shorts? Usa engine calibrada.
-  if (detectShortsChannel(videos)) {
-    return calculateShortsScore(videos, channel);
-  }
-  const v = videos;
-  const N = v.length;
-  if (N === 0) return null;
-
-  // Médias
-  const avgViews = v.reduce((s,x) => s + x.views, 0) / N;
-  const avgLikes = v.reduce((s,x) => s + x.likes, 0) / N;
-  const avgComments = v.reduce((s,x) => s + x.comments, 0) / N;
-  const avgEngRate = avgViews > 0 ? ((avgLikes + avgComments) / avgViews) * 100 : 0;
-
-  // Tendência: compara primeira metade vs segunda metade
-  const half = Math.floor(N / 2);
-  const recentAvg = v.slice(0, half || 1).reduce((s,x) => s + x.views, 0) / (half || 1);
-  const olderAvg = v.slice(half).reduce((s,x) => s + x.views, 0) / (N - half || 1);
-  const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
-
-  // Consistência: desvio padrão de views
-  const stdDev = Math.sqrt(v.reduce((s,x) => s + Math.pow(x.views - avgViews, 2), 0) / N);
-  const cv = avgViews > 0 ? stdDev / avgViews : 1; // coeficiente de variação (menor = mais consistente)
-
-  // Frequência: dias entre vídeos
-  const sortedDates = v.map(x => new Date(x.publishedAt)).sort((a,b) => b-a);
-  let avgDaysBetween = 7;
-  if (sortedDates.length > 1) {
-    const diffs = [];
-    for (let i = 0; i < sortedDates.length - 1; i++) {
-      diffs.push((sortedDates[i] - sortedDates[i+1]) / (1000*60*60*24));
-    }
-    avgDaysBetween = diffs.reduce((s,x) => s+x, 0) / diffs.length;
-  }
-
-  // PILAR 1: Performance (0-100)
-  let perf = 0;
-  // Views score (log scale, 1K=20, 10K=40, 100K=60, 1M=80, 10M=100)
-  const viewsScore = Math.min(100, Math.max(0, (Math.log10(Math.max(avgViews, 1)) / 7) * 100));
-  // Engagement score (>2% excelente, >0.5% bom, <0.1% ruim)
-  const engScore = Math.min(100, Math.max(0, avgEngRate < 0.1 ? 10 : avgEngRate < 0.5 ? 30 : avgEngRate < 1 ? 55 : avgEngRate < 2 ? 75 : avgEngRate < 5 ? 90 : 100));
-  // Trend score
-  const trendScore = trendRatio >= 1.5 ? 100 : trendRatio >= 1.1 ? 75 : trendRatio >= 0.9 ? 55 : trendRatio >= 0.7 ? 35 : 15;
-  perf = viewsScore * 0.5 + engScore * 0.3 + trendScore * 0.2;
-
-  // PILAR 2: Risco de conteúdo (0-100 onde 100 = baixo risco = bom)
-  let risk = 70; // base score
-  // Penaliza alta variação (sinal de inconsistência de qualidade)
-  if (cv > 2) risk -= 25;
-  else if (cv > 1.5) risk -= 15;
-  else if (cv > 1) risk -= 8;
-  // Bônus por engajamento sólido
-  if (avgEngRate > 1) risk += 15;
-  else if (avgEngRate > 0.5) risk += 8;
-  // Penaliza views muito baixos (possível limitação algorítmica)
-  if (avgViews < 100) risk -= 30;
-  else if (avgViews < 500) risk -= 15;
-  risk = Math.min(100, Math.max(0, risk));
-
-  // PILAR 3: Comportamento (0-100)
-  let behavior = 50;
-  // Frequência ótima: 2-7 dias
-  if (avgDaysBetween <= 7 && avgDaysBetween >= 1) behavior += 30;
-  else if (avgDaysBetween <= 14) behavior += 15;
-  else if (avgDaysBetween <= 30) behavior += 5;
-  else behavior -= 10;
-  // Consistência (baixo CV = mais consistente)
-  if (cv < 0.5) behavior += 20;
-  else if (cv < 1) behavior += 10;
-  else behavior -= 5;
-  behavior = Math.min(100, Math.max(0, behavior));
-
-  // SCORE FINAL PONDERADO
-  const raw = perf * 0.45 + risk * 0.35 + behavior * 0.20;
-
-  // Ajustes não-lineares
-  let finalScore = raw;
-  // Penalização forte se engajamento muito baixo
-  if (avgEngRate < 0.1 && avgViews < 1000) finalScore *= 0.7;
-  // Bônus se tudo está bem
-  if (perf > 70 && risk > 75 && behavior > 65) finalScore = Math.min(100, finalScore * 1.08);
-
-  finalScore = Math.round(Math.min(100, Math.max(1, finalScore)));
-
-  // Classificação
-  const classification = finalScore >= 80 ? 'high' : finalScore >= 60 ? 'good' : finalScore >= 40 ? 'moderate' : 'low';
-  const classLabel = { high: '🚀 Alta Confiança', good: '✅ Boa Performance', moderate: '⚠ Atenção Necessária', low: '🔴 Baixa Confiança' };
-
-  return {
-    score: finalScore,
-    classification,
-    classLabel: classLabel[classification],
-    isShorts: false,
-    pillars: {
-      performance: { score: Math.round(perf), desc: `Views médias ${fmtNum(avgViews)} · Engajamento ${avgEngRate.toFixed(2)}%` },
-      risk: { score: Math.round(risk), desc: `Variação de performance ${cv < 0.5 ? 'baixa ✓' : cv < 1 ? 'moderada' : 'alta ⚠'}` },
-      behavior: { score: Math.round(behavior), desc: `Postagem a cada ~${Math.round(avgDaysBetween)} dias` },
-    },
-    metrics: { avgViews, avgLikes, avgComments, avgEngRate, trendRatio, cv, avgDaysBetween },
-    trendScore, viewsScore, engScore,
-    topVideos: [...v].sort((a,b) => b.views - a.views).slice(0, 3),
-  };
-}
-
-// ── AI DIAGNOSIS ──────────────────────────────────────────────────────────────
-async function generateAIDiagnosis(scoreData, channelData, videos) {
+async function carregarMinhas() {
+  if (!TOKEN) return;
   try {
-    const r = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'bluescore-ai',
-        channelData, videos, scoreData,
-        isShorts: !!scoreData.isShorts,
-        faixa: scoreData.faixa || null
-      })
-    });
-    if (!r.ok) throw new Error('AI indisponível');
-    const data = await safeJson(r);
-    if (data.error) throw new Error(data.error);
-    return data;
-  } catch(e) {
-    console.log('AI fallback:', e.message);
-    return generateRuleBasedInsights(scoreData);
-  }
-}
+    const d = await api('meus');
+    const restam = Math.max(0, (d.limite_dia || 2) - (d.usadas_hoje || 0));
+    const hint = document.getElementById('cotaHint');
+    if (hint) hint.textContent = ` · ${restam} de ${d.limite_dia} análises disponíveis hoje.`;
 
-function generateRuleBasedInsights(s) {
-  const m = s.metrics;
-  const insights = [];
-  const recs = [];
+    const lista = d.pedidos || [];
+    const box = document.getElementById('historyList');
+    if (!lista.length) { document.getElementById('historySection').style.display = 'none'; return; }
 
-  if (m.trendRatio > 1.2) insights.push({ type:'pos', title:'Crescimento detectado', desc:'Seus vídeos mais recentes estão superando a média histórica — sinal positivo de momentum algorítmico.' });
-  else if (m.trendRatio < 0.8) insights.push({ type:'neg', title:'Queda de performance', desc:'Vídeos recentes estão abaixo da média — o algoritmo pode estar reduzindo a distribuição.' });
-
-  if (m.avgEngRate > 1) insights.push({ type:'pos', title:'Engajamento acima da média', desc:`${m.avgEngRate.toFixed(2)}% de engajamento é um sinal forte de qualidade percebida pelo algoritmo.` });
-  else if (m.avgEngRate < 0.3) insights.push({ type:'neg', title:'Engajamento baixo', desc:'Baixo engajamento reduz a confiança do algoritmo na qualidade do conteúdo.' });
-
-  if (m.cv > 1.5) insights.push({ type:'warn', title:'Alta variação de views', desc:'Views muito inconsistentes sugerem conteúdo sem identidade clara — o algoritmo prefere canais previsíveis.' });
-  else insights.push({ type:'pos', title:'Performance consistente', desc:'Variação baixa nas views indica que o algoritmo tem boa previsibilidade sobre seu conteúdo.' });
-
-  if (m.avgDaysBetween <= 7) insights.push({ type:'pos', title:'Frequência de postagem saudável', desc:'Postagem regular mantém o canal ativo no radar do algoritmo.' });
-  else if (m.avgDaysBetween > 21) insights.push({ type:'warn', title:'Baixa frequência de postagem', desc:'Intervalos longos entre vídeos podem reduzir a distribuição algorítmica.' });
-
-  recs.push('Mantenha uma frequência mínima de 1-2 vídeos por semana para manter o canal ativo no algoritmo.');
-  recs.push('Foque nos primeiros 30 segundos — retenção inicial é o principal fator de distribuição.');
-  if (m.avgEngRate < 0.5) recs.push('Inclua calls-to-action claros nos primeiros 60 segundos para aumentar engajamento.');
-  if (m.cv > 1) recs.push('Padronize o formato dos vídeos — consistência ajuda o algoritmo a identificar e distribuir seu conteúdo.');
-
-  return { insights, recommendations: recs, summary: `Canal com BlueScore ${s.score}/100 — ${s.classLabel}.` };
-}
-
-// ── RENDER ────────────────────────────────────────────────────────────────────
-function renderResults(scoreData, channelData, videos, aiData) {
-  document.getElementById('resultsSection').style.display = 'block';
-
-  // Channel info
-  document.getElementById('channelName').textContent = channelData.title;
-  document.getElementById('channelMeta').textContent = `${fmtNum(channelData.subscribers)} inscritos · ${channelData.videoCount} vídeos`;
-  if (channelData.thumbnail) {
-    document.getElementById('channelThumb').outerHTML = `<img class="channel-thumb" id="channelThumb" src="${channelData.thumbnail}" onerror="this.outerHTML='<div class=channel-thumb-placeholder id=channelThumb>📺</div>'"/>`;
-  }
-
-  // Gauge animation
-  const score = scoreData.score;
-  const colorMap = { low:'#ef4444', moderate:'#fbbf24', good:'#22c55e', high:'#00aaff' };
-  const color = colorMap[scoreData.classification];
-  const offset = 251 - (score / 100) * 251;
-  setTimeout(() => {
-    const fill = document.getElementById('gaugeFill');
-    fill.style.strokeDashoffset = offset;
-    fill.style.stroke = color;
-    document.getElementById('gaugeScore').style.color = color;
-  }, 100);
-
-  // Animate number
-  let current = 0;
-  const target = score;
-  const interval = setInterval(() => {
-    current = Math.min(target, current + Math.ceil((target - current) / 8) || 1);
-    document.getElementById('gaugeScore').textContent = current;
-    if (current >= target) clearInterval(interval);
-  }, 40);
-
-  // Classification
-  const sc = document.getElementById('scoreClass');
-  sc.textContent = scoreData.classLabel;
-  sc.className = 'score-class ' + scoreData.classification;
-
-  // ── SHORTS BADGE + FAIXA (injetado dinamicamente) ─────────────────────────
-  {
-    const existingBadge = document.getElementById('shortsBadgeRow');
-    if (existingBadge) existingBadge.remove();
-    if (scoreData.isShorts) {
-      const faixaColors = { 'Iniciante':'#fbbf24', 'Crescendo':'#00aaff', 'Estabelecido':'#22c55e', 'Viral':'#7c3aed' };
-      const faixaColor = faixaColors[scoreData.faixa] || '#00aaff';
-      const bonusTotal = scoreData.bonuses?.total || 0;
-      const bonusParts = [];
-      if (scoreData.bonuses?.viral)      bonusParts.push('🔥 Viral +5');
-      if (scoreData.bonuses?.daily)      bonusParts.push('📅 Diário +3');
-      if (scoreData.bonuses?.growth)     bonusParts.push('📈 Crescimento +5');
-      if (scoreData.bonuses?.viralFaixa) bonusParts.push('⭐ Faixa Viral +3');
-      if (scoreData.bonuses?.sizeFloor)  bonusParts.push(`🏆 Canal estabelecido (floor ${scoreData.bonuses.sizeFloor})`);
-      const penaltyTotal = scoreData.penalties?.total || 0;
-      const penaltyParts = [];
-      if (scoreData.penalties?.conversion) penaltyParts.push(`⚠️ Baixa conversão -${scoreData.penalties.conversion}`);
-      if (scoreData.penalties?.bimodal)    penaltyParts.push(`📊 Distribuição bimodal -${scoreData.penalties.bimodal}`);
-      const badgeHtml = `<div id="shortsBadgeRow" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px">
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#c9b6ff">🎬 Canal de Shorts detectado</span>
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:${faixaColor}18;border:1px solid ${faixaColor}55;font-family:var(--mono);font-size:11px;font-weight:700;color:${faixaColor}">Faixa: ${scoreData.faixa}</span>
-        ${bonusTotal > 0 ? `<span title="${bonusParts.join(' · ')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#22c55e">⭐ Bônus +${bonusTotal}</span>` : ''}
-        ${penaltyTotal > 0 ? `<span title="${penaltyParts.join(' · ')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#ef4444">⚠️ Penalidades -${penaltyTotal}</span>` : ''}
-        ${scoreData.bonuses?.sizeFloor ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.35);font-family:var(--mono);font-size:11px;font-weight:700;color:#00aaff">🏆 Canal estabelecido</span>` : ''}
-      </div>`;
-      sc.insertAdjacentHTML('afterend', badgeHtml);
-    }
-  }
-
-  // Metrics
-  const m = scoreData.metrics;
-  document.getElementById('mAvgViews').textContent = fmtNum(Math.round(m.avgViews));
-  document.getElementById('mEngagement').textContent = m.avgEngRate.toFixed(2) + '%';
-  document.getElementById('mEngagementSub').textContent = m.avgEngRate > 1 ? '✅ Acima da média' : m.avgEngRate > 0.3 ? 'Na média' : '⚠ Abaixo da média';
-  document.getElementById('mConsistency').textContent = m.cv < 0.5 ? 'Alta' : m.cv < 1 ? 'Moderada' : 'Baixa';
-  document.getElementById('mTrend').textContent = m.trendRatio > 1.15 ? '📈 Crescendo' : m.trendRatio < 0.85 ? '📉 Caindo' : '➡ Estável';
-  document.getElementById('mTrendSub').textContent = `${m.trendRatio > 1 ? '+' : ''}${Math.round((m.trendRatio - 1) * 100)}% vs período anterior`;
-  document.getElementById('metricsGrid').style.display = 'grid';
-
-  // Pillars
-  const pillarColors = {
-    performance: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
-    risk: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
-    behavior: score => score >= 70 ? '#22c55e' : score >= 45 ? '#fbbf24' : '#ef4444',
-  };
-  ['performance','risk','behavior'].forEach((key, i) => {
-    const n = i + 1;
-    const p = scoreData.pillars[key];
-    document.getElementById(`p${n}Score`).textContent = p.score + '/100';
-    document.getElementById(`p${n}Score`).style.color = pillarColors[key](p.score);
-    document.getElementById(`p${n}Desc`).textContent = p.desc;
-    setTimeout(() => {
-      document.getElementById(`p${n}Bar`).style.width = p.score + '%';
-      document.getElementById(`p${n}Bar`).style.background = pillarColors[key](p.score);
-    }, 300 + i * 150);
-  });
-  document.getElementById('pillarsSection').style.display = 'grid';
-
-  // Trajectory
-  const maxViews = Math.max(...videos.map(v => v.views), 1);
-  document.getElementById('trajectoryList').innerHTML = videos.slice(0, 8).map(v => {
-    const pct = (v.views / maxViews) * 100;
-    const col = pct > 70 ? '#22c55e' : pct > 40 ? '#00aaff' : '#fbbf24';
-    return `<div class="traj-row">
-      <div class="traj-label" title="${v.title}">${v.title.slice(0,28)}${v.title.length>28?'…':''}</div>
-      <div class="traj-bar-wrap"><div class="traj-bar-fill" style="width:${pct}%;background:${col};transition:width 1s ease"></div></div>
-      <div class="traj-views">${fmtNum(v.views)}</div>
-    </div>`;
-  }).join('');
-  document.getElementById('trajectorySection').style.display = 'block';
-  setTimeout(() => {
-    document.querySelectorAll('.traj-bar-fill').forEach(b => b.style.width = b.style.width);
-  }, 200);
-
-  // YTP Compliance badge
-  if (aiData?.ytpCompliance) {
-    const ytp = aiData.ytpCompliance;
-    const ytpColors = { aprovado:'#22c55e', atenção:'#fbbf24', risco:'#ef4444' };
-    const ytpIcons = { aprovado:'✅', atenção:'⚠️', risco:'🚨' };
-    const ytpEl = document.getElementById('ytpSection');
-    if (ytpEl) {
-      ytpEl.style.display = 'block';
-      document.getElementById('ytpScore').textContent = ytp.score + '/100';
-      document.getElementById('ytpScore').style.color = ytpColors[ytp.status] || '#fbbf24';
-      document.getElementById('ytpStatus').textContent = ytpIcons[ytp.status] + ' ' + (ytp.status || '').toUpperCase();
-      document.getElementById('ytpStatus').style.color = ytpColors[ytp.status] || '#fbbf24';
-      document.getElementById('ytpNotes').textContent = ytp.notes || '';
-    }
-  }
-
-  // Risk Flags
-  if (aiData?.riskFlags?.length) {
-    const sevColors = { high:'#ef4444', medium:'#fbbf24', low:'#00aaff' };
-    const sevIcons = { high:'🚨', medium:'⚠️', low:'ℹ️' };
-    document.getElementById('riskList').innerHTML = aiData.riskFlags.map(f => `
-      <div class="insight-item" style="border-left:3px solid ${sevColors[f.severity]||'#fbbf24'};padding-left:14px;margin-left:-4px">
-        <div class="insight-icon warn" style="background:${sevColors[f.severity]}18;border-color:${sevColors[f.severity]}40">${sevIcons[f.severity]||'⚠️'}</div>
-        <div class="insight-text">
-          <div class="insight-title" style="color:${sevColors[f.severity]}">${f.title}</div>
-          <div class="insight-desc">${f.desc}</div>
+    box.innerHTML = lista.map(p => {
+      const rede = REDES[p.rede] || REDES.youtube;
+      const chip = CHIPS[p.status] || CHIPS.na_fila;
+      const pronta = p.status === 'entregue';
+      const nome = p.canal_nome || p.perfil_handle || p.perfil_url.replace(/^https?:\/\/(www\.)?/, '');
+      const sub = p.status === 'recusado' && p.motivo_recusa
+        ? esc(p.motivo_recusa)
+        : `${rede.nome} · pedida em ${dataCurta(p.criado_em)}${pronta ? ' · entregue ' + dataCurta(p.entregue_em) : ''}`;
+      return `<div class="hist-item ${pronta ? 'clicavel' : ''}" ${pronta ? `onclick="abrirAnalise('${esc(p.id)}')"` : ''}>
+        <div class="hist-rede">${rede.emoji}</div>
+        <div class="hist-info">
+          <div class="hist-nome">${esc(nome)}</div>
+          <div class="hist-meta">${sub}</div>
         </div>
-      </div>`).join('');
-    document.getElementById('riskSection').style.display = 'block';
-  }
-
-  // AI Insights
-  if (aiData?.insights?.length) {
-    const iconMap = { pos:'✅', neg:'❌', warn:'⚠️' };
-    document.getElementById('insightsList').innerHTML = aiData.insights.map(ins => `
-      <div class="insight-item">
-        <div class="insight-icon ${ins.type}">${iconMap[ins.type] || '•'}</div>
-        <div class="insight-text">
-          <div class="insight-title">${ins.title}</div>
-          <div class="insight-desc">${ins.desc}</div>
-        </div>
-      </div>`).join('');
-    document.getElementById('insightsSection').style.display = 'block';
-  }
-
-  // Recommendations — agora com prioridade, ação e impacto
-  if (aiData?.recommendations?.length) {
-    const impactColors = { high:'#22c55e', medium:'#fbbf24', low:'#00aaff' };
-    const impactLabels = { high:'Alto impacto', medium:'Médio impacto', low:'Baixo impacto' };
-    document.getElementById('recsList').innerHTML = aiData.recommendations.map((rec, i) => {
-      const isObj = typeof rec === 'object';
-      const action = isObj ? rec.action : rec;
-      const why = isObj ? rec.why : '';
-      const impact = isObj ? rec.impact : 'medium';
-      return `<div class="rec-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px;width:100%">
-          <div class="rec-num">${i+1}</div>
-          <div class="rec-text" style="font-weight:600;color:var(--text)">${action}</div>
-          ${impact ? `<span style="margin-left:auto;font-size:10px;font-family:var(--mono);color:${impactColors[impact]||'#fbbf24'};background:${impactColors[impact]||'#fbbf24'}18;padding:2px 8px;border-radius:100px;white-space:nowrap">${impactLabels[impact]||''}</span>` : ''}
-        </div>
-        ${why ? `<div style="font-size:12px;color:var(--text-sec);padding-left:32px;line-height:1.5">${why}</div>` : ''}
+        ${pronta && p.nota != null ? `<div class="hist-nota" style="color:${COR_NOTA(p.nota)}">${p.nota}</div>` : ''}
+        <span class="hist-chip ${chip.classe}">${chip.texto}</span>
+        ${pronta ? `<button class="btn-salvar ${p.salvo ? 'on' : ''}" title="${p.salvo ? 'Remover dos salvos' : 'Salvar análise'}" onclick="event.stopPropagation();alternarSalvo('${esc(p.id)}',${!p.salvo},this)">🔖</button>` : ''}
       </div>`;
     }).join('');
-    document.getElementById('recsSection').style.display = 'block';
-  }
-
-  // Summary final
-  if (aiData?.summary) {
-    const sumEl = document.getElementById('summarySection');
-    if (sumEl) {
-      sumEl.style.display = 'block';
-      document.getElementById('summaryText').textContent = aiData.summary;
-    }
-  }
-
-  // ── TOP 3 VÍDEOS ────────────────────────────────────────────────────────
-  {
-    const existing = document.getElementById('topVideosInjected');
-    if (existing) existing.remove();
-    const top = scoreData.topVideos || [];
-    if (top.length) {
-      const rowsHtml = top.map((v, i) => {
-        const rank = ['🥇','🥈','🥉'][i] || (i+1);
-        const thumb = v.thumbnail || '';
-        return `<div style="display:flex;gap:12px;align-items:center;padding:10px;background:rgba(0,170,255,.04);border:1px solid rgba(0,170,255,.1);border-radius:12px;margin-bottom:8px">
-          <div style="font-size:20px;width:28px;text-align:center">${rank}</div>
-          ${thumb ? `<img src="${thumb}" style="width:64px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" onerror="this.style.display='none'"/>` : ''}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(v.title||'').replace(/"/g,'&quot;')}">${(v.title||'Sem título').slice(0, 60)}${(v.title||'').length > 60 ? '…' : ''}</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px">👁 ${fmtNum(v.views)} · ❤ ${fmtNum(v.likes)} · 💬 ${fmtNum(v.comments)}</div>
-          </div>
-        </div>`;
-      }).join('');
-      const block = `<div id="topVideosInjected" style="background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:24px;margin-bottom:20px;backdrop-filter:blur(20px)">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:14px;text-transform:uppercase;letter-spacing:.1em">🏆 Top 3 vídeos do canal</div>
-        ${rowsHtml}
-      </div>`;
-      document.getElementById('resultsSection').insertAdjacentHTML('beforeend', block);
-    }
-  }
-
-  // ── FEEDBACK BUTTONS (aprendizado da IA) ────────────────────────────────
-  {
-    const existing = document.getElementById('feedbackInjected');
-    if (existing) existing.remove();
-    if (aiData?.analise_id) {
-      window._currentAnaliseId = aiData.analise_id;
-      const fb = `<div id="feedbackInjected" style="background:var(--card);border:1px solid var(--blue-border);border-radius:20px;padding:20px 24px;margin-bottom:20px;backdrop-filter:blur(20px);text-align:center">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:.1em">Essa análise foi útil?</div>
-        <div id="feedbackButtons" style="display:flex;gap:10px;justify-content:center">
-          <button onclick="sendBluescoreFeedback(true)" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);border-radius:12px;padding:10px 20px;font-family:var(--mono);font-size:13px;font-weight:700;color:#22c55e;cursor:pointer;transition:all .2s">👍 Sim, ajudou</button>
-          <button onclick="sendBluescoreFeedback(false)" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;padding:10px 20px;font-family:var(--mono);font-size:13px;font-weight:700;color:#ef4444;cursor:pointer;transition:all .2s">👎 Não ajudou</button>
-        </div>
-      </div>`;
-      document.getElementById('resultsSection').insertAdjacentHTML('beforeend', fb);
-    }
-  }
-
-  // Scroll to results
-  document.getElementById('resultsSection').scrollIntoView({ behavior:'smooth', block:'start' });
-}
-
-// ── BLUESCORE FEEDBACK ────────────────────────────────────────────────────
-async function sendBluescoreFeedback(util) {
-  const analiseId = window._currentAnaliseId;
-  if (!analiseId) return;
-  const box = document.getElementById('feedbackButtons');
-  if (!box) return;
-  box.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">Enviando…</div>';
-  try {
-    await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'bluescore-feedback', analise_id: analiseId, util })
-    });
-    box.innerHTML = util
-      ? '<div style="font-family:var(--mono);font-size:12px;color:#22c55e">✓ Obrigado! A IA vai aprender com seu feedback.</div>'
-      : '<div style="font-family:var(--mono);font-size:12px;color:#fbbf24">Entendido. Vamos melhorar.</div>';
+    document.getElementById('historySection').style.display = 'block';
   } catch (e) {
-    box.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:#ef4444">Erro ao enviar feedback.</div>';
+    // histórico é conforto: falhou, a pessoa ainda consegue pedir análise
+    console.warn('[bluescore] histórico:', e.message);
   }
 }
 
-// ── UTILS ─────────────────────────────────────────────────────────────────────
-function showError(msg) {
-  document.getElementById('loadingSection').style.display = 'none';
-  document.getElementById('resultsSection').style.display = 'block';
-  const eb = document.getElementById('errorBox');
-  eb.textContent = '⚠ ' + msg;
-  eb.style.display = 'block';
-  // Hide all result sections
-  ['metricsGrid','pillarsSection','trajectorySection','insightsSection','recsSection','scoreCard'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+async function alternarSalvo(id, salvo, botao) {
+  try {
+    await api('salvar', { id, salvo });
+    if (botao) {
+      botao.classList.toggle('on', salvo);
+      botao.title = salvo ? 'Remover dos salvos' : 'Salvar análise';
+    }
+    if (_pedidoAtual && _pedidoAtual.id === id) _pedidoAtual.salvo = salvo;
+  } catch (e) { erro(e.message); }
+}
+
+function alternarSalvoAtual() {
+  if (!_pedidoAtual) return;
+  const novo = !_pedidoAtual.salvo;
+  alternarSalvo(_pedidoAtual.id, novo).then(() => {
+    const b = document.getElementById('btnSalvarResultado');
+    b.textContent = novo ? '🔖 Análise salva' : '🔖 Salvar análise';
   });
 }
 
-function reset() {
+function voltarPraLista() {
   document.getElementById('resultsSection').style.display = 'none';
   document.getElementById('inputSection').style.display = 'block';
-  document.getElementById('urlInput').value = '';
-  document.getElementById('urlInput').focus();
-  // Re-show all sections for next run
-  ['metricsGrid','pillarsSection','trajectorySection','insightsSection','recsSection','scoreCard'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = '';
-  });
+  document.getElementById('historySection').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  carregarMinhas();
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// Salva URL ao digitar
-document.addEventListener('input', function(e){
-  if(e.target && (e.target.type==='text'||e.target.type==='url')&&e.target.id!=='search'){
-    _save('bt_bluescore_url', e.target.value);
-  }
-});
-
-// ── COMUNICAÇÃO COM O SHELL ───────────────────────────────────────────────────
-// Notifica o shell pai quando o plano muda, para mostrar a toolbar
-function _notifyShellPlan(plan){
-  try{ window.parent.postMessage({type:'bt-plan',plan}, '*'); }catch(e){}
-}
-// Troca de ferramenta via shell (não faz navegação se estiver em iframe)
-function _switchTool(name){
-  try{
-    if(window.parent !== window){
-      window.parent.postMessage({type:'bt-switch',tool:name}, '*');
-    } else {
-      const map={roteiros:'/',virais:'/virais',voice:'/blueVoice',score:'/blueScore',baixa:'/baixaBlue'};
-      if(map[name]) window.location.href = map[name];
+// ── ABRIR UMA ANÁLISE ────────────────────────────────────────────────────
+async function abrirAnalise(id) {
+  try {
+    const d = await api('ver', { id });
+    if (!d.pedido || d.pedido.status !== 'entregue' || !d.pedido.laudo) {
+      return erro('Essa análise ainda não ficou pronta.');
     }
-  }catch(e){ window.location.href='/'; }
+    _pedidoAtual = d.pedido;
+    renderizar(d.pedido);
+  } catch (e) { erro(e.message); }
 }
 
+function renderizar(pedido) {
+  const l = pedido.laudo || {};
+  document.getElementById('inputSection').style.display = 'none';
+  document.getElementById('waitSection').style.display = 'none';
+  document.getElementById('historySection').style.display = 'none';
+  document.getElementById('resultsSection').style.display = 'block';
+
+  const rede = REDES[pedido.rede] || REDES.youtube;
+
+  // Cabeçalho do canal
+  const nome = l.canal?.nome || pedido.perfil_handle || 'Seu perfil';
+  document.getElementById('channelName').textContent = nome;
+  const partes = [rede.emoji + ' ' + rede.nome];
+  if (l.canal?.seguidores) partes.push(l.canal.seguidores + ' seguidores');
+  if (l.canal?.publicacoes) partes.push(l.canal.publicacoes + ' publicações');
+  document.getElementById('channelMeta').textContent = partes.join(' · ');
+  if (l.canal?.foto) {
+    document.getElementById('channelThumb').outerHTML =
+      `<img class="channel-thumb" id="channelThumb" src="${esc(l.canal.foto)}" alt="" onerror="this.outerHTML='<div class=&quot;channel-thumb-placeholder&quot; id=&quot;channelThumb&quot;>📺</div>'"/>`;
+  }
+
+  // Medidor
+  const nota = Number(l.nota) || 0;
+  const cor = COR_NOTA(nota);
+  setTimeout(() => {
+    const fill = document.getElementById('gaugeFill');
+    fill.style.strokeDashoffset = 251 - (nota / 100) * 251;
+    fill.style.stroke = cor;
+    document.getElementById('gaugeScore').style.color = cor;
+  }, 100);
+  let atual = 0;
+  const timer = setInterval(() => {
+    atual = Math.min(nota, atual + Math.ceil((nota - atual) / 8) || 1);
+    document.getElementById('gaugeScore').textContent = atual;
+    if (atual >= nota) clearInterval(timer);
+  }, 40);
+
+  const sc = document.getElementById('scoreClass');
+  sc.textContent = l.classificacao_label || '';
+  sc.className = 'score-class ' + (l.classificacao || 'good');
+  document.getElementById('dataEntrega').textContent = pedido.entregue_em
+    ? new Date(pedido.entregue_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+
+  // Métricas — só as que ele preencheu
+  const M = [
+    ['Média de views', l.metricas?.media_views],
+    ['Engajamento', l.metricas?.engajamento],
+    ['Consistência', l.metricas?.consistencia],
+    ['Tendência', l.metricas?.tendencia],
+  ].filter(([, v]) => v);
+  const grid = document.getElementById('metricsGrid');
+  if (M.length) {
+    grid.innerHTML = M.map(([rot, val]) =>
+      `<div class="metric-box"><div class="metric-label">${esc(rot)}</div><div class="metric-value">${esc(val)}</div></div>`).join('');
+    grid.style.display = 'grid';
+  } else { grid.style.display = 'none'; }
+
+  // Pilares — só aparecem se ele deu alguma nota
+  const P = l.pilares || {};
+  const temPilar = (P.performance || P.risco || P.comportamento);
+  if (temPilar) {
+    [['p1', P.performance, P.performance_desc], ['p2', P.risco, P.risco_desc], ['p3', P.comportamento, P.comportamento_desc]]
+      .forEach(([pre, val, desc], i) => {
+        const n = Number(val) || 0;
+        const c = n >= 70 ? '#22c55e' : n >= 45 ? '#fbbf24' : '#ef4444';
+        document.getElementById(pre + 'Score').textContent = n + '/100';
+        document.getElementById(pre + 'Score').style.color = c;
+        document.getElementById(pre + 'Desc').textContent = desc || '';
+        setTimeout(() => {
+          document.getElementById(pre + 'Bar').style.width = n + '%';
+          document.getElementById(pre + 'Bar').style.background = c;
+        }, 300 + i * 150);
+      });
+    document.getElementById('pillarsSection').style.display = 'grid';
+  } else { document.getElementById('pillarsSection').style.display = 'none'; }
+
+  mostrar('summarySection', !!l.resumo, () => { document.getElementById('summaryText').textContent = l.resumo; });
+
+  const ICONE = { pos:'✅', neg:'❌', warn:'⚠️' };
+  mostrar('pontosSection', !!(l.pontos || []).length, () => {
+    document.getElementById('pontosList').innerHTML = l.pontos.map(p => `
+      <div class="insight-item">
+        <div class="insight-icon ${esc(p.tipo)}">${ICONE[p.tipo] || '•'}</div>
+        <div class="insight-text">
+          <div class="insight-title">${esc(p.titulo)}</div>
+          <div class="insight-desc">${esc(p.texto)}</div>
+        </div>
+      </div>`).join('');
+  });
+
+  const IMPACTO = { alto:['#22c55e','Alto impacto'], medio:['#fbbf24','Médio impacto'], baixo:['#00aaff','Baixo impacto'] };
+  mostrar('recsSection', !!(l.recomendacoes || []).length, () => {
+    document.getElementById('recsList').innerHTML = l.recomendacoes.map((r, i) => {
+      const [cor2, rot] = IMPACTO[r.impacto] || IMPACTO.medio;
+      return `<div class="rec-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div class="rec-num">${i + 1}</div>
+          <div class="rec-text" style="font-weight:600;color:var(--text);flex:1">${esc(r.acao)}</div>
+          <span style="font-size:10px;font-family:var(--mono);color:${cor2};background:${cor2}18;padding:2px 8px;border-radius:100px;white-space:nowrap">${rot}</span>
+        </div>
+        ${r.porque ? `<div style="font-size:12px;color:var(--text-sec);padding-left:32px;line-height:1.55;white-space:pre-wrap">${esc(r.porque)}</div>` : ''}
+      </div>`;
+    }).join('');
+  });
+
+  mostrar('videosSection', !!(l.videos || []).length, () => {
+    document.getElementById('videosList').innerHTML = l.videos.map((v, i) => `
+      <div class="vid-item">
+        <div class="vid-num">${i + 1}</div>
+        <div class="vid-body">
+          ${v.titulo ? `<div class="vid-titulo">${esc(v.titulo)}</div>` : ''}
+          ${v.url ? `<a class="vid-link" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.url)}</a>` : ''}
+          ${v.observacao ? `<div class="vid-obs">${esc(v.observacao)}</div>` : ''}
+        </div>
+      </div>`).join('');
+  });
+
+  const b = document.getElementById('btnSalvarResultado');
+  b.textContent = pedido.salvo ? '🔖 Análise salva' : '🔖 Salvar análise';
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function mostrar(id, condicao, preencher) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (condicao) { preencher(); el.style.display = 'block'; }
+  else { el.style.display = 'none'; }
+}
+
+// ── ENTRADA ──────────────────────────────────────────────────────────────
+// ?pedido=<id> vem do link do email e do sininho: abre o laudo direto.
+(function iniciar() {
+  if (!TOKEN) return;
+  const alvo = new URLSearchParams(location.search).get('pedido');
+  if (alvo) { abrirAnalise(alvo); carregarMinhas(); return; }
+  carregarMinhas();
+})();
 </script>
 <script src="/toolbar.js" defer></script>
 </body>

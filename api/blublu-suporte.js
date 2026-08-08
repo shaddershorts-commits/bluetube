@@ -126,16 +126,21 @@ prefere não mostrar a chutar.
 O botão "Baixar" de um resultado manda direto pro BaixaBlue (que é Master).
 
 **📊 BlueScore — em /blueScore** (Full e Master)
-Mede a **Confiança Algorítmica** de um canal do YouTube. Aceita link de canal,
-@handle ou até link de um vídeo — ele acha o canal. Analisa os **últimos 10
-vídeos públicos**. Limite: **3 canais diferentes por dia**.
-O que sai: uma nota geral + 4 métricas (média de views, taxa de engajamento,
-consistência de postagem, tendência dos últimos 30 dias) + 3 pilares com peso
-— **Performance 45%**, **Risco de Conteúdo 35%**, **Comportamento 20%** — mais
-a trajetória vídeo a vídeo e um diagnóstico escrito com dicas do que corrigir.
-"Risco de Conteúdo" olha padrões que costumam limitar distribuição (título
-repetitivo demais, engajamento fora do padrão do próprio canal, pico isolado
-de views).
+⚠️ MUDOU EM 06/08/2026: **não é mais nota automática, é análise HUMANA.**
+A pessoa cola o link do **perfil** (YouTube, TikTok ou Instagram) e o pedido
+entra numa fila. Quem analisa é um **ex-funcionário do suporte do YouTube**,
+hoje no time do BlueTube — à mão, vídeo a vídeo. Nada de IA nem fórmula.
+Limite: **2 pedidos por dia** por conta (a cota vira à meia-noite de Brasília).
+**Não existe prazo prometido** — quando fica pronta, a pessoa recebe **email**
+e **aviso no sininho** do site. Pode fechar a página, não perde nada.
+O laudo traz: nota de 0 a 100 com a faixa, métricas do perfil, os 3 pilares
+(Performance, Risco de Conteúdo, Comportamento), o diagnóstico escrito, o que
+ajustar em ordem de impacto, e **comentários vídeo a vídeo**.
+As análises ficam guardadas na conta — dá pra reabrir quando quiser e marcar
+as favoritas no 🔖.
+Se perguntarem "quanto tempo demora": seja honesto, não tem prazo fixo; a
+pessoa é avisada assim que ficar pronta. Se o pedido voltar recusado, o motivo
+vem escrito no aviso — quase sempre perfil privado ou link errado.
 
 **🚀 BlueTendências — em /bluetendencias** (**exclusiva Master** — Free e Full
 veem só a página de apresentação)
@@ -245,6 +250,16 @@ A cota reseta na renovação da assinatura, não no dia 1.
 
 **"Quero clonar outra voz"**
 É 1 voz por conta. Precisa apagar a atual antes de criar outra.
+
+**"Pedi o BlueScore e não veio nada" / "quanto tempo demora?"**
+Não é instantâneo e nunca mais vai ser: quem analisa é uma pessoa. Não tem
+prazo prometido. O aviso chega por email e no 🔔 do site. Se a pessoa acha que
+travou, manda ela olhar a lista "Suas análises" na própria página — o estado
+aparece lá (⏳ Na fila · 🔍 Analisando · ✅ Pronta).
+
+**"Colei o link do vídeo no BlueScore"**
+Ele quer o **perfil**, não um vídeo solto. E o perfil precisa estar público —
+privado volta recusado.
 
 **"O BlueLens não achou nada" / "procurei pelo nome do vídeo"**
 O BlueLens não busca por título, tema nem legenda — só por IMAGEM, quadro a
