@@ -51,7 +51,10 @@ function extrairHandle(url, rede) {
   if (rede === 'youtube') {
     if ((m = u.match(/@([A-Za-z0-9_.-]+)/))) return '@' + m[1];
     if ((m = u.match(/\/(?:c|user)\/([A-Za-z0-9_.-]+)/i))) return m[1];
-    if ((m = u.match(/\/channel\/(UC[A-Za-z0-9_-]+)/i))) return m[1];
+    // /channel/UCxxxx é ID, não nome. Devolver ele fazia a fila mostrar
+    // "UCwWJxujawMclRdihmkbgryQ" e o formulário nascer com esse lixo no campo
+    // "Nome do canal". Sem handle, o display cai pra URL, que ao menos é
+    // clicável e diz de quem é.
   } else if (rede === 'tiktok') {
     if ((m = u.match(/@([A-Za-z0-9_.]+)/))) return '@' + m[1];
   } else if (rede === 'instagram') {

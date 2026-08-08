@@ -4818,7 +4818,10 @@ async function bsAbrirLaudo(id){
 
   const set = (id, v) => { document.getElementById(id).value = v == null ? '' : v; };
   set('bsNota', l.nota || ''); set('bsFaixa', l.classificacao_label || '');
-  set('bsCanalNome', l.canal?.nome || p.perfil_handle || '');
+  // Só prefixa o nome quando é @handle de verdade. ID de canal (UCxxxx) não é
+  // nome — nasceria no campo e você teria que apagar antes de escrever.
+  const handleLegivel = (p.perfil_handle || '').startsWith('@') ? p.perfil_handle : '';
+  set('bsCanalNome', l.canal?.nome || handleLegivel);
   set('bsCanalFoto', l.canal?.foto); set('bsCanalSeg', l.canal?.seguidores); set('bsCanalPub', l.canal?.publicacoes);
   set('bsMetViews', l.metricas?.media_views); set('bsMetEng', l.metricas?.engajamento);
   set('bsMetCons', l.metricas?.consistencia); set('bsMetTend', l.metricas?.tendencia);

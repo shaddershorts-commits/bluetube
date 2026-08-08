@@ -43,9 +43,17 @@ test('não confunde domínio parecido com o de verdade', () => {
 
 test('tira o @ do link pra fila ter nome legível', () => {
   assert.equal(T.extrairHandle('https://www.youtube.com/@XiroRanks/shorts', 'youtube'), '@XiroRanks');
-  assert.equal(T.extrairHandle('https://youtube.com/channel/UCabc123', 'youtube'), 'UCabc123');
   assert.equal(T.extrairHandle('https://www.tiktok.com/@khaby.lame', 'tiktok'), '@khaby.lame');
   assert.equal(T.extrairHandle('https://instagram.com/leomessi', 'instagram'), '@leomessi');
+  assert.equal(T.extrairHandle('https://youtube.com/c/MeuCanal', 'youtube'), 'MeuCanal');
+});
+
+test('ID de canal não é nome: /channel/UCxxx não vira "handle"', () => {
+  // Caso real do primeiro teste do dono: a fila mostrava
+  // "UCwWJxujawMclRdihmkbgryQ" e o campo "Nome do canal" nascia com esse lixo.
+  assert.equal(T.extrairHandle('https://www.youtube.com/channel/UCwWJxujawMclRdihmkbgryQ/', 'youtube'), null);
+  // e o admin só prefixa o nome quando o handle é @ de verdade
+  assert.match(ADMIN, /startsWith\('@'\) \? p\.perfil_handle : ''/);
 });
 
 // ═══ LAUDO ═══════════════════════════════════════════════════════════════
