@@ -848,7 +848,8 @@ tr:hover td{background:rgba(0,170,255,0.02)}
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center">
           <button onclick="bsRecusar()" style="font-family:var(--mono);font-size:11px;color:var(--red);background:rgba(255,122,90,.08);border:1px solid rgba(255,122,90,.25);border-radius:8px;padding:10px 16px;cursor:pointer">✕ Não dá pra analisar</button>
-          <div style="display:flex;gap:10px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="bsVerPrevia()" style="font-family:var(--mono);font-size:12px;color:var(--yellow);background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.28);border-radius:8px;padding:11px 20px;cursor:pointer">👁 Ver como o usuário vai ver</button>
             <button onclick="bsSalvarRascunho()" style="font-family:var(--mono);font-size:12px;color:var(--dim);background:rgba(150,190,230,.06);border:1px solid rgba(150,190,230,.2);border-radius:8px;padding:11px 20px;cursor:pointer">💾 Salvar rascunho</button>
             <button onclick="bsEnviar()" style="font-family:var(--display);font-size:14px;font-weight:700;color:#fff;background:linear-gradient(135deg,#1a6bff,var(--neon));border:none;border-radius:8px;padding:11px 26px;cursor:pointer;box-shadow:0 0 20px rgba(0,170,255,.3)">✓ Enviar pro usuário</button>
           </div>
@@ -4868,6 +4869,27 @@ function bsMsg(texto, cor){
   const el = document.getElementById('bsLaudoMsg');
   el.textContent = texto;
   el.style.color = cor || 'var(--dim)';
+}
+
+// Abre a página REAL do usuário numa aba nova, com o laudo que está no
+// formulário agora. Passa pelo backend antes pra sofrer a mesma normalização
+// da entrega — prévia que mostra o texto cru mentiria sobre o resultado.
+// localStorage (e não sessionStorage) porque a aba nova precisa enxergar.
+async function bsVerPrevia(){
+  if(!_bsPedido) return;
+  bsMsg('Montando a prévia…');
+  try {
+    const d = await bsApi('previa', { laudo: bsMontarLaudo() });
+    localStorage.setItem('bs_previa', JSON.stringify({
+      laudo: d.laudo, falta: d.falta,
+      rede: _bsPedido.rede, perfil_url: _bsPedido.perfil_url, perfil_handle: _bsPedido.perfil_handle,
+      entregue_em: new Date().toISOString(),
+    }));
+    const aba = window.open('/blueScore?previa=1', '_blank');
+    if(!aba) return bsMsg('❌ O navegador bloqueou a aba. Libera o popup deste site.', 'var(--red)');
+    bsMsg(d.falta ? `👁 Prévia aberta — mas ainda falta: ${d.falta}` : '👁 Prévia aberta na outra aba. Nada foi gravado.',
+      d.falta ? 'var(--yellow)' : 'var(--green)');
+  } catch(e){ bsMsg('❌ ' + e.message, 'var(--red)'); }
 }
 
 async function bsSalvarRascunho(){

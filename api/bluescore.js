@@ -164,7 +164,7 @@ module.exports = async function handler(req, res) {
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
   const ehAdmin = !!ADMIN_SECRET &&
     (req.headers.authorization || '') === 'Bearer ' + ADMIN_SECRET;
-  const ACOES_ADMIN = ['fila', 'laudo_salvar', 'laudo_enviar', 'recusar'];
+  const ACOES_ADMIN = ['fila', 'laudo_salvar', 'laudo_enviar', 'recusar', 'previa'];
 
   if (ACOES_ADMIN.includes(acao)) {
     if (!ehAdmin) return res.status(401).json({ error: 'nao_autorizado' });
@@ -198,6 +198,16 @@ module.exports = async function handler(req, res) {
         recentes: recentes.map((r) => ({ ...r, laudo: r.laudo ? { nota: r.laudo.nota } : null })),
         total_pendentes: pendentes.length,
       });
+    }
+
+    // ── PRÉVIA ─────────────────────────────────────────────────────────────
+    // Devolve o laudo passando pela MESMA normalização da entrega, sem gravar
+    // nada. Se a prévia usasse o texto cru do formulário, você veria uma coisa
+    // e o usuário receberia outra (a nota é limitada a 0–100, a faixa é
+    // derivada, linha vazia some). Prévia que mente é pior que prévia nenhuma.
+    if (acao === 'previa') {
+      const laudo = normalizarLaudo(body.laudo);
+      return res.status(200).json({ ok: true, laudo, falta: laudoEstaPronto(laudo) });
     }
 
     const id = String(body.id || '');

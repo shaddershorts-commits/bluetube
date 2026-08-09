@@ -113,7 +113,7 @@ function carregar(env) {
   // devolve as funções que os onclick da página chamam
   const fn = new Function(...nomes, codigo + `
     ; return { pedirAnalise, carregarMinhas, abrirAnalise, renderizar, voltarPraLista,
-               alternarSalvo, alternarSalvoAtual, esc, erro };`);
+               alternarSalvo, alternarSalvoAtual, abrirPrevia, esc, erro };`);
   return fn(...nomes.map((n) => env[n]));
 }
 
@@ -169,6 +169,40 @@ test('conteúdo do laudo é escapado — aspas e tag não viram HTML', () => {
   assert.ok(!html.includes('<img src=x'), 'tag do laudo não pode virar elemento');
   assert.match(html, /&lt;img/);
   assert.match(html, /&quot;10&quot;/);
+});
+
+test('a prévia do admin usa a MESMA renderização da página do usuário', () => {
+  const env = ambiente();
+  env.localStorage._d.bs_previa = JSON.stringify({
+    laudo: LAUDO_COMPLETO.laudo, rede: 'youtube', perfil_handle: '@x',
+  });
+  const api = carregar(env);
+  api.abrirPrevia();
+  // se caísse num renderizador próprio, o dia que alguém mexesse na página
+  // real a prévia passaria a mentir
+  assert.equal(env.document._els.get('channelName').textContent, 'Canal X');
+  assert.match(env.document._els.get('videosList').innerHTML, /corta 3s do começo/);
+  assert.match(env.document._els.get('previaAviso').innerHTML, /PRÉVIA/);
+  assert.match(env.document._els.get('previaAviso').innerHTML, /Nada foi gravado/);
+  assert.equal(env.document._els.get('btnSalvarResultado').style.display, 'none',
+    'botão de salvar é do usuário, não faz sentido na prévia');
+});
+
+test('prévia avisa quando o laudo ainda não pode ser enviado', () => {
+  const env = ambiente();
+  env.localStorage._d.bs_previa = JSON.stringify({
+    laudo: { nota: 40, resumo: '' }, falta: 'falta o diagnóstico', rede: 'tiktok',
+  });
+  const api = carregar(env);
+  api.abrirPrevia();
+  assert.match(env.document._els.get('previaAviso').innerHTML, /falta o diagnóstico/);
+});
+
+test('prévia sem dados no localStorage não quebra a página', () => {
+  const env = ambiente();
+  const api = carregar(env);
+  api.abrirPrevia();
+  assert.match(env.document._els.get('inputSection').innerHTML, /Prévia não encontrada/);
 });
 
 test('?pedido=<id> do email abre o laudo direto', async () => {

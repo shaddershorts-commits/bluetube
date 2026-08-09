@@ -287,6 +287,7 @@ main{position:relative;z-index:2;padding:100px 24px 60px;max-width:860px;margin:
 
   <!-- RESULTADO -->
   <div id="resultsSection">
+    <div id="previaAviso" style="display:none"></div>
     <div class="score-card">
       <div class="channel-info">
         <div class="channel-thumb-placeholder" id="channelThumb">📺</div>
@@ -708,11 +709,57 @@ function mostrar(id, condicao, preencher) {
   else { el.style.display = 'none'; }
 }
 
+// ── PRÉVIA DO ADMIN ──────────────────────────────────────────────────────
+// Abre a página EXATAMENTE como o usuário vai ver, sem nada gravado e sem
+// aviso nenhum disparado. Reusa a mesma renderizar() de propósito: uma prévia
+// com código próprio deixaria de refletir a página de verdade no primeiro
+// ajuste que alguém fizesse só num dos dois lados.
+function abrirPrevia() {
+  let dados = null;
+  try { dados = JSON.parse(localStorage.getItem('bs_previa') || 'null'); } catch (e) {}
+  if (!dados || !dados.laudo) {
+    document.getElementById('inputSection').innerHTML =
+      '<div class="locked-overlay"><div class="locked-icon">👁</div>' +
+      '<div class="locked-title">Prévia não encontrada</div>' +
+      '<div class="locked-sub">Volta no admin, abre o laudo e clica em "Ver como o usuário vai ver".</div></div>';
+    return;
+  }
+  renderizar({
+    id: 'previa',
+    rede: dados.rede || 'youtube',
+    perfil_url: dados.perfil_url || '',
+    perfil_handle: dados.perfil_handle || '',
+    status: 'entregue',
+    salvo: false,
+    entregue_em: dados.entregue_em || new Date().toISOString(),
+    laudo: dados.laudo,
+  });
+
+  const aviso = document.getElementById('previaAviso');
+  aviso.style.display = 'block';
+  aviso.style.cssText = 'display:block;background:linear-gradient(135deg,rgba(251,191,36,.14),rgba(0,170,255,.05));' +
+    'border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:14px 18px;margin-bottom:18px;' +
+    'font-family:var(--mono);font-size:12px;color:var(--gold);line-height:1.65;text-align:center';
+  aviso.innerHTML = '👁 <b>PRÉVIA</b> — é exatamente assim que o usuário vai ver.<br>' +
+    'Nada foi gravado e nenhum aviso foi enviado. Fecha esta aba e volta pro admin pra ajustar.' +
+    (dados.falta ? '<br><span style="color:#fca5a5">⚠ Ainda falta: ' + esc(dados.falta) + ' — não dá pra enviar assim.</span>' : '');
+
+  // Os botões do rodapé são do usuário; na prévia eles não fazem sentido.
+  const btnSalvar = document.getElementById('btnSalvarResultado');
+  const btnVoltar = btnSalvar && btnSalvar.previousElementSibling;
+  if (btnSalvar) btnSalvar.style.display = 'none';
+  if (btnVoltar) { btnVoltar.textContent = '✕ Fechar prévia'; btnVoltar.onclick = () => window.close(); }
+}
+
 // ── ENTRADA ──────────────────────────────────────────────────────────────
 // ?pedido=<id> vem do link do email e do sininho: abre o laudo direto.
 (function iniciar() {
+  const q = new URLSearchParams(location.search);
+  // A prévia vem ANTES do portão: ela não depende de login nem de plano, e o
+  // navegador do admin pode nem ter sessão do site aberta.
+  if (q.get('previa') === '1') return abrirPrevia();
   if (!TOKEN) return;
-  const alvo = new URLSearchParams(location.search).get('pedido');
+  const alvo = q.get('pedido');
   if (alvo) { abrirAnalise(alvo); carregarMinhas(); return; }
   carregarMinhas();
 })();

@@ -278,6 +278,37 @@ test('ação de admin sem o segredo é 401', async () => {
   }
 });
 
+test('a prévia normaliza igual à entrega e NÃO grava nada', async () => {
+  const escritas = [];
+  globalThis.fetch = async (url, opts) => {
+    if ((opts?.method || 'GET') !== 'GET') escritas.push(String(url));
+    return { ok: true, json: async () => [] };
+  };
+  const res = resFalso();
+  await handler({ method: 'POST', headers: { authorization: 'Bearer segredo' },
+    body: { action: 'previa', laudo: { nota: 250, resumo: 'texto', pontos: [{ titulo: '' }] } } }, res);
+  assert.equal(res._status, 200);
+  assert.equal(res._json.laudo.nota, 100, 'a prévia tem que sofrer o mesmo corte da entrega');
+  assert.equal(res._json.laudo.classificacao, 'high');
+  assert.equal(res._json.laudo.pontos.length, 0, 'linha vazia some na entrega — some na prévia também');
+  assert.equal(escritas.length, 0, 'prévia que grava deixa de ser prévia');
+});
+
+test('prévia também é ação de admin (não vaza laudo de ninguém)', async () => {
+  const { res } = await chamar({ action: 'previa', laudo: { nota: 50 } });
+  assert.equal(res._status, 401);
+});
+
+test('o admin abre a prévia na página REAL, não numa cópia', () => {
+  assert.match(ADMIN, /bsVerPrevia/);
+  assert.match(ADMIN, /\/blueScore\?previa=1/, 'a prévia tem que ser a página de verdade');
+  assert.match(ADMIN, /localStorage\.setItem\('bs_previa'/,
+    'sessionStorage não atravessa aba nova de forma confiável');
+  const i = ADMIN.indexOf('async function bsVerPrevia');
+  assert.match(ADMIN.slice(i, i + 700), /bsApi\('previa'/,
+    'passar pelo backend é o que garante que a prévia não minta');
+});
+
 test('não dá pra entregar laudo pela metade', async () => {
   const { res } = await chamar(
     { action: 'laudo_enviar', id: 'p1', laudo: { nota: 0, resumo: '' } },
