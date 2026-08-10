@@ -1,6 +1,8 @@
 // api/email-marketing.js — Automated email marketing with sequence rotation
 // Cron: 0 10 * * 2,5 (Tuesday & Friday 10am)
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const { signToken } = require('./_helpers/unsub-token');
 
 module.exports = async function handler(req, res) {
@@ -8,6 +10,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'email-marketing')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

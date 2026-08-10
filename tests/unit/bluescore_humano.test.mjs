@@ -299,6 +299,45 @@ test('prévia também é ação de admin (não vaza laudo de ninguém)', async (
   assert.equal(res._status, 401);
 });
 
+test('dá pra ver a página de uma análise JÁ ENTREGUE', async () => {
+  // O link do email (/blueScore?pedido=X) exige a sessão do usuário, então o
+  // dono não conseguia rever o que entregou. Sem isso, o pedido "ver a página
+  // final entregue ao usuário" fica sem resposta.
+  globalThis.fetch = async () => ({ ok: true, json: async () => [{ id: 'p1', status: 'entregue', laudo: { nota: 80 } }] });
+  const res = resFalso();
+  await handler({ method: 'POST', headers: { authorization: 'Bearer segredo' },
+    body: { action: 'abrir', id: 'p1' } }, res);
+  assert.equal(res._status, 200);
+  assert.equal(res._json.pedido.laudo.nota, 80, 'tem que vir o laudo INTEIRO, não só a nota');
+});
+
+test('abrir também é ação de admin', async () => {
+  const { res } = await chamar({ action: 'abrir', id: 'p1' });
+  assert.equal(res._status, 401);
+});
+
+test('o botão de ver a página está na LINHA da fila, não escondido no formulário', () => {
+  // Primeira versão só tinha o botão dentro do modal do laudo: era preciso
+  // abrir o formulário pra descobrir que existia, e pra análise entregue não
+  // existia botão nenhum.
+  assert.match(ADMIN, /bsPreviaSalva/);
+  // ⚠️ ancorar na DEFINIÇÃO da função. "bsCarregarFila" aparece 6 vezes no
+  // arquivo (botão, loadData, chamadas pós-ação); split genérico pegava o
+  // trecho entre as duas primeiras e não continha o botão.
+  const listas = ADMIN.split('async function bsCarregarFila')[1] || '';
+  assert.match(listas, /👁 Ver página/, 'a linha da fila precisa do botão');
+  assert.match(ADMIN, /bsApi\('abrir'/);
+  // e o atalho no topo, senão a seção some no meio da página gigante
+  assert.match(ADMIN, /id="bsAtalho"/);
+});
+
+test('a prévia de análise entregue não mente dizendo que nada foi enviado', () => {
+  const i = PAGINA.indexOf('function abrirPrevia');
+  const bloco = PAGINA.slice(i, i + 2600);
+  assert.match(bloco, /dados\.entregue/);
+  assert.match(bloco, /já foi entregue/);
+});
+
 test('o admin abre a prévia na página REAL, não numa cópia', () => {
   assert.match(ADMIN, /bsVerPrevia/);
   assert.match(ADMIN, /\/blueScore\?previa=1/, 'a prévia tem que ser a página de verdade');

@@ -183,9 +183,21 @@ test('a prévia do admin usa a MESMA renderização da página do usuário', () 
   assert.equal(env.document._els.get('channelName').textContent, 'Canal X');
   assert.match(env.document._els.get('videosList').innerHTML, /corta 3s do começo/);
   assert.match(env.document._els.get('previaAviso').innerHTML, /PRÉVIA/);
-  assert.match(env.document._els.get('previaAviso').innerHTML, /Nada foi gravado/);
+  assert.match(env.document._els.get('previaAviso').innerHTML, /Nada foi enviado ainda/);
   assert.equal(env.document._els.get('btnSalvarResultado').style.display, 'none',
     'botão de salvar é do usuário, não faz sentido na prévia');
+});
+
+test('prévia de análise JÁ ENTREGUE não diz que nada foi enviado', () => {
+  const env = ambiente();
+  env.localStorage._d.bs_previa = JSON.stringify({
+    laudo: LAUDO_COMPLETO.laudo, rede: 'youtube', entregue: true,
+  });
+  const api = carregar(env);
+  api.abrirPrevia();
+  const aviso = env.document._els.get('previaAviso').innerHTML;
+  assert.match(aviso, /já foi entregue/);
+  assert.ok(!/Nada foi enviado ainda/.test(aviso), 'seria mentira: o usuário já recebeu');
 });
 
 test('prévia avisa quando o laudo ainda não pode ser enviado', () => {

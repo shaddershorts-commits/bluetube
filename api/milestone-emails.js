@@ -1,11 +1,16 @@
 // api/milestone-emails.js — Cron: 0 9 * * * (daily 9am)
 // Sends milestone emails at 10, 50, 100 roteiros
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const { signToken } = require('./_helpers/unsub-token');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'milestone-emails')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

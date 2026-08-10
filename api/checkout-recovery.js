@@ -24,6 +24,8 @@
 //   - Unsub via _helpers/unsub-token.js scope=all
 //   - Logs em payment_logs (igual payment-monitor.js)
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const { signToken } = require('./_helpers/unsub-token');
 
 const FROM = 'BlueTube <bluetubeoficial@bluetubeviral.com>';
@@ -51,6 +53,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'checkout-recovery')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

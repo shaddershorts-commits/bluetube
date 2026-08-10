@@ -184,6 +184,12 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <span class="admin-tag">ADMIN</span>
     </div>
     <div class="topbar-right">
+      <!-- Atalho pra fila do BlueScore: a seção fica no meio de uma página de
+           4 mil linhas e sem isso ninguém acha. Só aparece quando tem pedido. -->
+      <a id="bsAtalho" href="#bluescoreFila" onclick="document.getElementById('bluescoreFila').scrollIntoView({behavior:'smooth'})"
+         style="display:none;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:6px 12px;text-decoration:none">
+        🎓 BlueScore <span id="bsAtalhoNum">0</span> na fila
+      </a>
       <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.2);border-radius:8px;padding:6px 12px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span id="onlineCount">—</span> online agora
@@ -4717,6 +4723,11 @@ async function bsCarregarFila(){
     const badge = document.getElementById('bsFilaBadge');
     badge.textContent = d.total_pendentes;
     badge.style.display = d.total_pendentes > 0 ? 'inline-block' : 'none';
+    const atalho = document.getElementById('bsAtalho');
+    if (atalho) {
+      document.getElementById('bsAtalhoNum').textContent = d.total_pendentes;
+      atalho.style.display = d.total_pendentes > 0 ? 'inline-flex' : 'none';
+    }
 
     lista.innerHTML = (d.pendentes || []).length
       ? d.pendentes.map(p => `
@@ -4725,6 +4736,7 @@ async function bsCarregarFila(){
             <div class="bs-item-nome">${BS_REDES[p.rede]||p.rede} · ${p.perfil_handle || p.perfil_url}</div>
             <div class="bs-item-meta">${p.nome || p.email} · ${p.plano} · pedido ${bsData(p.criado_em)}${p.status==='em_analise' ? ' · 📝 rascunho salvo' : ''}</div>
           </div>
+          ${p.status==='em_analise' ? `<button class="action-btn" style="color:var(--yellow);border-color:rgba(251,191,36,.3)" onclick='bsPreviaSalva(${JSON.stringify(p.id)})' title="Ver a página como o usuário vai receber">👁 Ver página</button>` : ''}
           <button class="action-btn" onclick='bsAbrirLaudo(${JSON.stringify(p.id)})'>${p.status==='em_analise' ? 'Continuar' : 'Analisar'}</button>
         </div>`).join('')
       : '<div class="loading-txt">Fila vazia. 🎉</div>';
@@ -4736,6 +4748,7 @@ async function bsCarregarFila(){
             <div class="bs-item-nome">${BS_REDES[p.rede]||p.rede} · ${p.perfil_handle || p.perfil_url}</div>
             <div class="bs-item-meta">${p.nome || p.email} · ${p.status === 'recusado' ? 'recusado' : 'nota ' + (p.laudo?.nota ?? '—')} · ${bsData(p.entregue_em || p.criado_em)}</div>
           </div>
+          ${p.status === 'entregue' ? `<button class="action-btn" style="color:var(--yellow);border-color:rgba(251,191,36,.3)" onclick='bsPreviaSalva(${JSON.stringify(p.id)})' title="Ver a página exatamente como o usuário recebeu">👁 Ver página</button>` : ''}
         </div>`).join('')
       : '<div class="loading-txt">—</div>';
   } catch(e){
@@ -4869,6 +4882,25 @@ function bsMsg(texto, cor){
   const el = document.getElementById('bsLaudoMsg');
   el.textContent = texto;
   el.style.color = cor || 'var(--dim)';
+}
+
+// Abre a página de um pedido JÁ GRAVADO (rascunho ou entregue), direto da
+// linha da fila — sem precisar abrir o formulário. É o "ver a página final
+// entregue ao usuário": o link do email não serve pra isso porque exige a
+// sessão dele.
+async function bsPreviaSalva(id){
+  try {
+    const d = await bsApi('abrir', { id });
+    const p = d.pedido;
+    if(!p?.laudo) return toast('Esse pedido ainda não tem laudo preenchido.');
+    localStorage.setItem('bs_previa', JSON.stringify({
+      laudo: p.laudo, falta: null, rede: p.rede,
+      perfil_url: p.perfil_url, perfil_handle: p.perfil_handle,
+      entregue_em: p.entregue_em || new Date().toISOString(),
+      entregue: p.status === 'entregue',
+    }));
+    if(!window.open('/blueScore?previa=1', '_blank')) toast('O navegador bloqueou a aba. Libera o popup deste site.');
+  } catch(e){ toast('Erro: ' + e.message); }
 }
 
 // Abre a página REAL do usuário numa aba nova, com o laudo que está no

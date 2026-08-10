@@ -20,6 +20,8 @@
 //   - Filtro plano: full/master ativos NUNCA recebem sequencia free
 //   - Filtro recovery: users em checkout_recovery pendente NAO recebem
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const { signToken } = require('./_helpers/unsub-token');
 const { signTrialToken } = require('./_helpers/trial-token');
 const { FREE_TEMPLATES, FULL_TEMPLATES } = require('./_helpers/email-templates-library');
@@ -115,6 +117,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'email-sequence')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

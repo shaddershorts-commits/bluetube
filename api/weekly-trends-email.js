@@ -1,11 +1,16 @@
 // api/weekly-trends-email.js — Cron: 0 8 * * 1 (Monday 8am)
 // Generates weekly trends via AI and emails all active users
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const { signToken } = require('./_helpers/unsub-token');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'weekly-trends-email')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

@@ -13,6 +13,8 @@
 // Espelha as proteções do email-campanha.js: throttle 150ms (10/s do Resend),
 // log em email_campanhas, unsubscribe em todos.
 
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const SITE = 'https://www.bluetubeviral.com';
 
 const unsub = (email) => `${SITE}/api/unsubscribe?token=${Buffer.from(email).toString('base64url')}`;
@@ -127,6 +129,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'blublu-emails')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

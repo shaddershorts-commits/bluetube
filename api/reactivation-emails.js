@@ -3,6 +3,8 @@
 // to avoid inbox-duplicate spam detection.
 
 // ── 3 VARIAÇÕES DE COPY — rotacionadas para evitar duplicata visual ──
+const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+
 const VARIANTS = [
   {
     subject: 'Enquanto você estava fora, {todayScripts} criadores postaram hoje 👀',
@@ -53,6 +55,9 @@ function renderEmail(variant, todayScripts) {
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
+  if (barrarSeDesligado(res, 'reactivation-emails')) return;
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;

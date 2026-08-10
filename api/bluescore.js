@@ -164,7 +164,7 @@ module.exports = async function handler(req, res) {
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
   const ehAdmin = !!ADMIN_SECRET &&
     (req.headers.authorization || '') === 'Bearer ' + ADMIN_SECRET;
-  const ACOES_ADMIN = ['fila', 'laudo_salvar', 'laudo_enviar', 'recusar', 'previa'];
+  const ACOES_ADMIN = ['fila', 'laudo_salvar', 'laudo_enviar', 'recusar', 'previa', 'abrir'];
 
   if (ACOES_ADMIN.includes(acao)) {
     if (!ehAdmin) return res.status(401).json({ error: 'nao_autorizado' });
@@ -212,6 +212,18 @@ module.exports = async function handler(req, res) {
 
     const id = String(body.id || '');
     if (!id) return res.status(400).json({ error: 'id_obrigatorio' });
+
+    // ── ABRIR ──────────────────────────────────────────────────────────────
+    // Um pedido específico, com o laudo inteiro. Serve pra você espiar a
+    // página de uma análise JÁ ENTREGUE — que você não consegue ver pelo link
+    // do usuário, porque aquele link exige a sessão dele.
+    if (acao === 'abrir') {
+      const r = await fetch(`${SU}/rest/v1/bluescore_pedidos?id=eq.${id}&select=*`, { headers: h });
+      if (!r.ok) return res.status(500).json({ error: 'falha_ao_ler' });
+      const pedido = (await r.json())[0];
+      if (!pedido) return res.status(404).json({ error: 'pedido_nao_encontrado' });
+      return res.status(200).json({ ok: true, pedido });
+    }
 
     // ── RECUSAR ────────────────────────────────────────────────────────────
     // Link quebrado, perfil privado, conta com 2 vídeos. Devolve a cota

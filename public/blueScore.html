@@ -740,9 +740,14 @@ function abrirPrevia() {
   aviso.style.cssText = 'display:block;background:linear-gradient(135deg,rgba(251,191,36,.14),rgba(0,170,255,.05));' +
     'border:1px solid rgba(251,191,36,.4);border-radius:14px;padding:14px 18px;margin-bottom:18px;' +
     'font-family:var(--mono);font-size:12px;color:var(--gold);line-height:1.65;text-align:center';
-  aviso.innerHTML = '👁 <b>PRÉVIA</b> — é exatamente assim que o usuário vai ver.<br>' +
-    'Nada foi gravado e nenhum aviso foi enviado. Fecha esta aba e volta pro admin pra ajustar.' +
-    (dados.falta ? '<br><span style="color:#fca5a5">⚠ Ainda falta: ' + esc(dados.falta) + ' — não dá pra enviar assim.</span>' : '');
+  aviso.innerHTML = dados.entregue
+    // já entregue: dizer "nada foi gravado" aqui seria mentira e te faria
+    // achar que dá pra mexer sem consequência
+    ? '👁 <b>PRÉVIA</b> — esta análise <b>já foi entregue</b> ao usuário.<br>' +
+      'É exatamente a página que ele está vendo.'
+    : '👁 <b>PRÉVIA</b> — é exatamente assim que o usuário vai ver.<br>' +
+      'Nada foi enviado ainda. Fecha esta aba e volta pro admin pra ajustar.' +
+      (dados.falta ? '<br><span style="color:#fca5a5">⚠ Ainda falta: ' + esc(dados.falta) + ' — não dá pra enviar assim.</span>' : '');
 
   // Os botões do rodapé são do usuário; na prévia eles não fazem sentido.
   const btnSalvar = document.getElementById('btnSalvarResultado');
