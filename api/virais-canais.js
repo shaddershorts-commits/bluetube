@@ -75,6 +75,30 @@ const LANG_BY_CODE = {
   'pl-PL': { flag: '🇵🇱', label: 'Polski',    pais: 'PL', idioma: 'other' },
 };
 
+// ── GATILHOS DE ALERTA (2026-08-11) ─────────────────────────────────────────
+// O assinante Master escolhe QUANDO quer ser avisado. Dá pra medir isso sem
+// histórico nenhum: virais_banco já tem `publicado_em` e `views`, então
+// "100 mil em menos de 5 horas" é views >= 100000 com idade <= 5h.
+//
+// O aviso na hora vai pro SININHO, que não custa nada. Email por evento seria
+// inviável: medi ~29 vídeos/dia batendo a r1, e 29 × 19 Masters = ~550
+// emails/dia contra um teto de 200/dia. O email é só o resumo das 7:30.
+const REGRAS = {
+  r1: { views: 100000,  horas: 5,   rotulo: '100 mil views em menos de 5 horas' },
+  r2: { views: 1000000, horas: 72,  rotulo: '1 milhão de views em até 3 dias' },
+  r3: { views: 5000000, horas: 168, rotulo: '5 milhões de views em até 7 dias' },
+};
+
+// O que a tela mostra. Fica aqui pra rótulo e limite morarem num lugar só —
+// mudar o número no backend sem mudar o texto da tela seria mentira pro user.
+const REGRAS_PUBLICAS = Object.entries(REGRAS).map(([id, r]) => ({
+  id, rotulo: r.rotulo, views: r.views, horas: r.horas,
+}));
+
+// Teto por rodada. Se o acervo receber um pico anormal, é melhor avisar de
+// menos que despejar 200 notificações de uma vez na cara da pessoa.
+const MAX_VIDEOS_POR_REGRA = 8;
+
 // ── HELPERS DE AUTH ─────────────────────────────────────────────────────────
 function assertAdmin(req) {
   const auth = (req.headers && req.headers.authorization) || '';
@@ -98,7 +122,7 @@ async function getSubscriberByEmail(email) {
     // MESMOS campos que get-plan le, pra garantir paridade total na resolucao
     // do plano. NAO inclui `name` (coluna pode nao existir em subscribers,
     // PostgREST retorna 400 e zera resposta inteira — bug encontrado em prod).
-    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,plan_expires_at,is_manual,virais_daily_alert&limit=1`, { headers: HDR });
+    const r = await fetch(`${SU}/rest/v1/subscribers?email=eq.${encodeURIComponent(email)}&select=email,plan,plan_expires_at,is_manual,virais_daily_alert,virais_alert_gatilhos&limit=1`, { headers: HDR });
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
       console.error('[virais-canais] subscribers SELECT falhou:', r.status, errText.slice(0, 200));
@@ -238,6 +262,7 @@ module.exports = async function handler(req, res) {
       case 'toggle-daily-alert':  return await toggleDailyAlert(req, res);
       case 'alert-status':        return await alertStatus(req, res);
       case 'daily-alert-master':  return await dailyAlertMaster(req, res);
+      case 'alertas-gatilho':     return await alertasGatilho(req, res);
       default:                    return res.status(400).json({ error: 'action_invalida' });
     }
   } catch (e) {
@@ -577,13 +602,134 @@ async function toggleDailyAlert(req, res) {
     });
   }
 
-  const r = await supaPatch(`subscribers?email=eq.${encodeURIComponent(user.email)}`, {
+  // ── GATILHOS (2026-08-11) ────────────────────────────────────────────────
+  // Master escolhe quando quer ser avisado. Full e quem não mandar nada segue
+  // com o resumo das 7:30 — ninguém perde o que já tinha.
+  const patch = {
     virais_daily_alert: !!enable,
     updated_at: new Date().toISOString(),
-  });
+  };
+  if (Array.isArray(req.body?.gatilhos)) {
+    if (planoEfetivo !== 'master') {
+      return res.status(403).json({
+        error: 'gatilhos_master',
+        message: 'Escolher quando ser avisado é exclusivo do plano Master.',
+      });
+    }
+    const validos = req.body.gatilhos.filter((g) => REGRAS[g]);
+    // Desligar o alerta zera os gatilhos: deixar marcação órfã faria o cron
+    // avisar quem tinha desligado.
+    patch.virais_alert_gatilhos = enable ? validos : [];
+  } else if (!enable) {
+    patch.virais_alert_gatilhos = [];
+  }
+
+  const r = await supaPatch(`subscribers?email=eq.${encodeURIComponent(user.email)}`, patch);
   if (!r.ok) return res.status(500).json({ error: 'patch_failed' });
 
-  return res.status(200).json({ ok: true, virais_daily_alert: !!enable });
+  return res.status(200).json({
+    ok: true,
+    virais_daily_alert: !!enable,
+    gatilhos: patch.virais_alert_gatilhos ?? null,
+  });
+}
+
+// ── ACTION: alertas-gatilho (cron) ──────────────────────────────────────────
+// Varre o acervo procurando vídeo que bateu cada gatilho e avisa NO SININHO
+// quem pediu aquela regra. Zero email aqui, de propósito.
+//
+// A tabela virais_alertas_enviados existe pra não repetir: sem ela, um vídeo
+// dentro da janela de 5h seria anunciado de novo a cada rodada.
+async function alertasGatilho(req, res) {
+  if (!HDR) return res.status(500).json({ error: 'sem_supabase' });
+  const agora = Date.now();
+
+  // Quem quer ser avisado, e de quê. Só Master vivo.
+  const inscritos = await supaSelect(
+    `subscribers?plan=eq.master&virais_daily_alert=eq.true&virais_alert_gatilhos=not.is.null` +
+    `&or=(is_manual.is.true,plan_expires_at.is.null,plan_expires_at.gt.${new Date().toISOString()})` +
+    `&select=email,virais_alert_gatilhos`
+  );
+  if (!inscritos?.length) return res.status(200).json({ ok: true, inscritos: 0, avisos: 0 });
+
+  // Regras que alguém realmente pediu — não vale varrer o acervo por regra que
+  // ninguém marcou.
+  const pedidas = new Set();
+  for (const s of inscritos) for (const g of (s.virais_alert_gatilhos || [])) if (REGRAS[g]) pedidas.add(g);
+  if (!pedidas.size) return res.status(200).json({ ok: true, inscritos: inscritos.length, avisos: 0 });
+
+  let avisos = 0;
+  const porRegra = {};
+
+  for (const regra of pedidas) {
+    const R = REGRAS[regra];
+    const desde = new Date(agora - R.horas * 3600000).toISOString();
+    const videos = await supaSelect(
+      `virais_banco?ativo=eq.true&views=gte.${R.views}&publicado_em=gte.${desde}` +
+      `&select=youtube_id,titulo,views,publicado_em,url&order=views.desc&limit=${MAX_VIDEOS_POR_REGRA}`
+    ) || [];
+    porRegra[regra] = videos.length;
+    if (!videos.length) continue;
+
+    const querem = inscritos.filter((s) => (s.virais_alert_gatilhos || []).includes(regra));
+    for (const sub of querem) {
+      for (const v of videos) {
+        // Já avisei esta pessoa sobre este vídeo nesta regra?
+        const ja = await supaSelect(
+          `virais_alertas_enviados?email=eq.${encodeURIComponent(sub.email)}` +
+          `&youtube_id=eq.${encodeURIComponent(v.youtube_id)}&regra=eq.${regra}&select=email&limit=1`
+        );
+        if (ja?.length) continue;
+
+        // Marca ANTES de avisar: se o aviso falhar, o pior caso é a pessoa
+        // não receber. Marcar depois arriscaria avisar duas vezes, que é pior.
+        const marcou = await supaPost('virais_alertas_enviados',
+          { email: sub.email, youtube_id: v.youtube_id, regra },
+          { prefer: 'return=minimal' });
+        if (!marcou.ok) continue;
+
+        const uid = await userIdPorEmail(sub.email);
+        if (!uid) continue;
+        const horas = Math.max(1, Math.round((agora - new Date(v.publicado_em).getTime()) / 3600000));
+        await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+          method: 'POST', headers: { ...HDR, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            user_id: uid, tipo: 'virais',
+            titulo: '🔥 ' + fmtViews(v.views) + ' views em ' + horas + 'h',
+            mensagem: String(v.titulo || '').slice(0, 120),
+            dados: { youtube_id: v.youtube_id, regra, url: '/virais?v=' + v.youtube_id },
+          }),
+        }).catch(() => {});
+        avisos++;
+      }
+    }
+  }
+
+  // Faxina: passada a janela mais longa, a linha não deduplica mais nada.
+  fetch(`${SU}/rest/v1/virais_alertas_enviados?criado_em=lt.${new Date(agora - 10 * 86400000).toISOString()}`,
+    { method: 'DELETE', headers: HDR }).catch(() => {});
+
+  return res.status(200).json({ ok: true, inscritos: inscritos.length, avisos, por_regra: porRegra });
+}
+
+// O sininho é indexado por user_id do auth, e subscribers só guarda email.
+const _cacheUid = new Map();
+async function userIdPorEmail(email) {
+  if (_cacheUid.has(email)) return _cacheUid.get(email);
+  try {
+    const r = await fetch(`${SU}/auth/v1/admin/users?filter=${encodeURIComponent(email)}&per_page=1`,
+      { headers: { apikey: SK, Authorization: 'Bearer ' + SK } });
+    const d = r.ok ? await r.json() : null;
+    const uid = d?.users?.[0]?.id || null;
+    _cacheUid.set(email, uid);
+    return uid;
+  } catch { return null; }
+}
+
+function fmtViews(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'K';
+  return String(n);
 }
 
 // ── ACTION: alert-status (qualquer user logado, pra UI saber estado) ────────
@@ -606,6 +752,8 @@ async function alertStatus(req, res) {
     ok: true,
     plan: resolverPlanoEfetivo(sub),
     virais_daily_alert: !!sub.virais_daily_alert,
+    gatilhos: Array.isArray(sub.virais_alert_gatilhos) ? sub.virais_alert_gatilhos : [],
+    regras: REGRAS_PUBLICAS,
     _debug: {
       raw_plan: sub.plan,
       is_manual: sub.is_manual,

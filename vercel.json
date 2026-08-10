@@ -256,6 +256,10 @@
     {
       "path": "/api/virais-canais?action=daily-alert-master",
       "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/virais-canais?action=alertas-gatilho",
+      "schedule": "0 * * * *"
     }
   ],
   "headers": [

@@ -1324,6 +1324,7 @@ if (typeof token !== 'undefined' && token){
 }
 
 // ── DAILY ALERT (Master) ─────────────────────────────────────────────────
+let _alertGatilhos = [], _alertRegras = [];
 let _alertCurrentState = false;
 // Inicializa plano lendo localStorage SINCRONO (sync com /api só refina depois).
 // Evita modal abrir como "free" enquanto sync async ainda nao rodou.
@@ -1345,6 +1346,8 @@ async function syncDailyAlertState(){
     const d = await r.json();
     console.log('[daily-alert] backend retornou:', d);
     _alertCurrentState = !!d.virais_daily_alert;
+    _alertGatilhos = Array.isArray(d.gatilhos) ? d.gatilhos : [];
+    _alertRegras = Array.isArray(d.regras) ? d.regras : [];
     // Plano vem do BACKEND (fonte de verdade) — sobrescreve qualquer fallback
     if (d.plan) _alertUserPlan = d.plan;
     updateDailyAlertButton();
@@ -1398,7 +1401,29 @@ function renderDailyAlertAction(){
   const wrap = document.getElementById('damActionWrap');
   if (!wrap) return;
 
-  if (_alertUserPlan === 'master' || _alertUserPlan === 'full'){
+  // ── MASTER: escolhe QUANDO ser avisado (2026-08-11) ────────────────────
+  // O Full segue com o resumo das 7:30, igual antes — ninguém perde nada.
+  if (_alertUserPlan === 'master'){
+    const marcados = new Set(_alertGatilhos || []);
+    const linhas = (_alertRegras || []).map(r => `
+      <label style="display:flex;align-items:flex-start;gap:10px;text-align:left;background:rgba(0,170,255,.05);border:1px solid ${marcados.has(r.id)?'rgba(0,170,255,.45)':'rgba(0,170,255,.15)'};border-radius:10px;padding:11px 13px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" class="damGat" value="${r.id}" ${marcados.has(r.id)?'checked':''} style="margin-top:2px;width:16px;height:16px;accent-color:#00aaff;cursor:pointer">
+        <span style="font-size:13px;color:#e8f4ff;line-height:1.45">${r.rotulo}</span>
+      </label>`).join('');
+    wrap.innerHTML = `
+      <div style="font-family:monospace;font-size:10.5px;color:#7d92b8;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;text-align:left">Me avise quando um vídeo bater</div>
+      ${linhas}
+      <div style="font-size:11px;color:#7d92b8;font-family:monospace;line-height:1.6;margin:10px 0 14px;text-align:left">
+        O aviso chega na hora no 🔔 do site.<br>
+        ${_alertCurrentState ? 'O resumo dos 5 maiores continua chegando por email às 7:30.' : 'Ligando, você também passa a receber o resumo das 7:30 por email.'}
+      </div>
+      <button onclick="salvarGatilhos()" id="damConfirmBtn" style="background:linear-gradient(135deg,#22c55e,#10b981);border:none;border-radius:10px;padding:13px 30px;font-weight:800;color:#fff;cursor:pointer;font-size:14px;box-shadow:0 4px 12px rgba(34,197,94,.3)">${_alertCurrentState ? '✓ Salvar' : '✓ Ativar notificações'}</button>
+      ${_alertCurrentState ? '<div style="margin-top:10px"><button onclick="confirmDailyAlert(false)" style="background:none;border:none;color:#7d92b8;font-family:monospace;font-size:11px;cursor:pointer;text-decoration:underline">Desativar tudo</button></div>' : ''}
+    `;
+    return;
+  }
+
+  if (_alertUserPlan === 'full'){
     if (_alertCurrentState){
       // Master JA ativo → mostra estado + botao desativar
       wrap.innerHTML = `
@@ -1445,6 +1470,13 @@ function closeDailyAlertModal(){
   _alertModalOpen = false;
 }
 
+// Lê o que a pessoa marcou no popup e salva. Marcar nada e salvar é um pedido
+// legítimo de "me avise só no resumo diário" — não é erro.
+function salvarGatilhos(){
+  _alertGatilhos = [...document.querySelectorAll('.damGat:checked')].map(c => c.value);
+  confirmDailyAlert(true);
+}
+
 async function confirmDailyAlert(enable){
   const tk = localStorage.getItem('bt_token') || ((typeof token !== 'undefined' && token) ? token : '');
   const status = document.getElementById('damStatus');
@@ -1461,7 +1493,7 @@ async function confirmDailyAlert(enable){
     const r = await fetch('/api/virais-canais?action=toggle-daily-alert', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: tk, enable: !!enable }),
+      body: JSON.stringify({ token: tk, enable: !!enable, gatilhos: enable ? _alertGatilhos : [] }),
     });
     const d = await r.json().catch(()=>({}));
     if (r.status === 403 && d.error === 'plano_master_necessario'){
