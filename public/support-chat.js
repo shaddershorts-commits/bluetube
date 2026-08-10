@@ -15,6 +15,8 @@
 
   // ── CONFIG ──────────────────────────────────────────────────────────────
   const TOKEN_KEY = 'bt_token';
+  const TIPOS_OK = ['image/png','image/jpeg','image/webp','image/gif'];
+  const MAX_PRINT = 5 * 1024 * 1024;
   const SUPABASE_JS_CDN = 'https://esm.sh/@supabase/supabase-js@2.45.4?bundle';
   // Supabase URL + anon_key vêm do backend /api/support-chat?action=config (não hardcode).
   let SUPABASE_URL = null;
@@ -41,6 +43,7 @@
     unread: 0,
     sb: null,           // Supabase client
     realtimeCh: null,   // canal Realtime
+    print: null,        // print escolhido, esperando o envio
     loading: false,
     sending: false,
   };
@@ -135,6 +138,27 @@
     }
     .bt-msg-time { font-size: 10px; color: rgba(232,244,255,.4); margin-top: 4px; font-family: monospace; }
     .bt-from-user .bt-msg-time { text-align: right; }
+    /* selo de visto: ✓ entregue, ✓✓ azul lido */
+    .bt-selo { margin-left: 3px; letter-spacing: -1px; }
+    .bt-selo.bt-lido { color: #00aaff; }
+    .bt-print {
+      max-width: 220px; max-height: 260px; border-radius: 12px; cursor: zoom-in;
+      display: block; object-fit: cover; border: 1px solid rgba(0,170,255,.2);
+    }
+    .bt-from-user .bt-print { margin-left: auto; }
+    .bt-anexo-btn {
+      width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer;
+      background: rgba(255,255,255,.06); color: rgba(232,244,255,.75); font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .bt-anexo-btn:hover { background: rgba(0,170,255,.15); color: #00aaff; }
+    .bt-previa {
+      display: none; align-items: center; gap: 10px; margin-bottom: 8px; padding: 8px;
+      background: rgba(0,170,255,.06); border: 1px solid rgba(0,170,255,.18); border-radius: 10px;
+    }
+    .bt-previa img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }
+    .bt-previa span { flex: 1; font-size: 11px; color: rgba(232,244,255,.6); font-family: monospace; }
+    .bt-previa button { background: none; border: none; color: #ff7a5a; cursor: pointer; font-size: 15px; }
 
     .bt-empty {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -204,7 +228,14 @@
       </div>
       <div class="bt-messages" id="bt-msgs"></div>
       <div class="bt-input-area">
+        <div class="bt-previa" id="bt-previa">
+          <img id="bt-previa-img" alt=""/>
+          <span id="bt-previa-txt">print anexado</span>
+          <button type="button" id="bt-previa-x" title="Remover">✕</button>
+        </div>
         <div class="bt-input-row">
+          <input type="file" id="bt-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none"/>
+          <button class="bt-anexo-btn" id="bt-anexo" title="Anexar print" aria-label="Anexar print">📎</button>
           <textarea class="bt-input" id="bt-input" placeholder="Escreva sua mensagem…" rows="1"></textarea>
           <button class="bt-send-btn" id="bt-send" aria-label="Enviar">
             <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
@@ -228,6 +259,49 @@
       input.style.height = Math.min(100, input.scrollHeight) + 'px';
     });
     sendBtn.addEventListener('click', sendMessage);
+
+    // ── PRINT ──────────────────────────────────────────────────────────────
+    const file = modal.querySelector('#bt-file');
+    modal.querySelector('#bt-anexo').addEventListener('click', () => file.click());
+    file.addEventListener('change', () => { if (file.files?.[0]) escolherPrint(file.files[0]); file.value = ''; });
+    modal.querySelector('#bt-previa-x').addEventListener('click', limparPrint);
+    // Ctrl+V direto na conversa: é como a maioria das pessoas manda print.
+    input.addEventListener('paste', (ev) => {
+      const item = [...(ev.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      const f = item.getAsFile();
+      if (f) { ev.preventDefault(); escolherPrint(f); }
+    });
+  }
+
+  // Print escolhido fica em espera até o envio: assim a pessoa pode escrever
+  // uma legenda junto, e desistir sem ter subido nada.
+  function escolherPrint(f) {
+    if (!TIPOS_OK.includes(f.type)) return alert('Manda uma imagem (PNG, JPG, WEBP ou GIF).');
+    if (f.size > MAX_PRINT) return alert('Essa imagem passa de 5 MB. Manda uma menor.');
+    state.print = f;
+    const box = document.getElementById('bt-previa');
+    document.getElementById('bt-previa-img').src = URL.createObjectURL(f);
+    document.getElementById('bt-previa-txt').textContent = (f.size / 1024).toFixed(0) + ' KB';
+    box.style.display = 'flex';
+  }
+
+  function limparPrint() {
+    state.print = null;
+    const box = document.getElementById('bt-previa');
+    if (box) box.style.display = 'none';
+  }
+
+  // Sobe DIRETO pro storage com URL assinada — o arquivo não passa pela Vercel.
+  async function subirPrint(f) {
+    const r = await api('/api/support-chat', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'upload-url', mime: f.type, bytes: f.size }),
+    });
+    if (!r?.ok || !r.upload_url) throw new Error(r?.detalhe || 'Não consegui preparar o envio do print.');
+    const up = await fetch(r.upload_url, { method: 'PUT', headers: { 'Content-Type': f.type }, body: f });
+    if (!up.ok) throw new Error('Falha ao enviar o print.');
+    return r.path;
   }
 
   // Detecta se há outros elementos fixed bottom-right (Blublu) e desloca o botão pra esquerda
@@ -324,8 +398,24 @@
   }
 
   // ── REALTIME (Supabase WebSocket) ───────────────────────────────────────
+  // Config guardada no navegador por 7 dias. Sem isso, o sinal de presença
+  // (que roda em toda página) pediria a config à Vercel a cada carregamento —
+  // e o custo do recurso seria maior que o recurso.
+  const CFG_CACHE = 'bt_sup_cfg';
+  const CFG_TTL = 7 * 86400000;
+
   async function fetchSupabaseConfig() {
     if (SUPABASE_URL && SUPABASE_ANON_KEY) return true;
+    try {
+      const bruto = localStorage.getItem(CFG_CACHE);
+      if (bruto) {
+        const c = JSON.parse(bruto);
+        if (c.url && c.key && Date.now() - c.ts < CFG_TTL) {
+          SUPABASE_URL = c.url; SUPABASE_ANON_KEY = c.key;
+          return true;
+        }
+      }
+    } catch (_) {}
     try {
       const r = await fetch('/api/support-chat?action=config', {
         headers: { 'Authorization': 'Bearer ' + getToken() },
@@ -335,8 +425,46 @@
       if (!d.ok || !d.supabase_url || !d.anon_key) return false;
       SUPABASE_URL = d.supabase_url;
       SUPABASE_ANON_KEY = d.anon_key;
+      try { localStorage.setItem(CFG_CACHE, JSON.stringify({ url: SUPABASE_URL, key: SUPABASE_ANON_KEY, ts: Date.now() })); } catch (_) {}
       return true;
     } catch (_) { return false; }
+  }
+
+  // ── SINAL DE VIDA (pra você ver quem está online) ────────────────────────
+  // Escreve DIRETO no Supabase, sem passar pela Vercel: uma função serverless
+  // a cada 2 minutos por usuário seria custo recorrente por um recurso que só
+  // você usa. Assim o custo marginal é zero.
+  // Só dispara com aba visível — quem deixou o site aberto num segundo plano
+  // não está "online" de verdade.
+  const PING_MS = 120000;
+  let ultimoPing = 0;
+
+  async function pingPresenca() {
+    const tok = getToken();
+    if (!tok) return;
+    if (document.hidden) return;
+    if (Date.now() - ultimoPing < PING_MS) return;
+    ultimoPing = Date.now();
+    if (!(await fetchSupabaseConfig())) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/support_presenca`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + tok,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify({ visto_em: new Date().toISOString() }),
+      });
+    } catch (_) { /* presença é conforto: falhou, ninguém percebe */ }
+  }
+
+  function iniciarPresenca() {
+    if (!getToken()) return;
+    pingPresenca();
+    setInterval(pingPresenca, PING_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pingPresenca(); });
   }
 
   async function loadSupabaseSDK() {
@@ -350,11 +478,18 @@
         auth: { persistSession: false, autoRefreshToken: false },
         realtime: { params: { eventsPerSecond: 5 } },
       });
-      // Autentica o client com o JWT do user pra RLS funcionar nos channels
+      // ⚠️ AQUI MORAVA O BUG DO "não chega em tempo real" (corrigido 10/08/2026).
+      // O código antigo chamava auth.setSession({access_token, refresh_token: tok})
+      // passando o token de ACESSO como refresh token. Isso falha, o client fica
+      // anônimo, e como a RLS de support_messages exige auth.uid(), o Postgres
+      // não entrega evento NENHUM — a mensagem só aparecia ao reabrir o popup
+      // (aí quem lê é o backend, com service key, que ignora RLS).
+      //
+      // realtime.setAuth() é o caminho certo: autoriza o SOCKET, que é quem
+      // precisa do JWT pra receber postgres_changes.
       const tok = getToken();
-      if (tok && state.sb.auth?.setSession) {
-        try { await state.sb.auth.setSession({ access_token: tok, refresh_token: tok }); }
-        catch (_) {}
+      if (tok && state.sb.realtime?.setAuth) {
+        try { state.sb.realtime.setAuth(tok); } catch (_) {}
       }
       return state.sb;
     } catch (e) {
@@ -391,6 +526,21 @@
             }
           }
         )
+        // UPDATE = o admin abriu e leu. É o que acende o segundo ✓ na hora,
+        // sem a pessoa precisar recarregar pra descobrir que foi lida.
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'support_messages', filter: 'thread_id=eq.' + state.thread.id },
+          (payload) => {
+            const m = payload.new;
+            if (!m) return;
+            const i = state.messages.findIndex(x => x.id === m.id);
+            if (i >= 0 && state.messages[i].read_at !== m.read_at) {
+              state.messages[i] = Object.assign({}, state.messages[i], { read_at: m.read_at });
+              renderMessages();
+            }
+          }
+        )
         .subscribe();
     } catch (e) {
       console.warn('[support-chat] subscribe err:', e.message);
@@ -422,12 +572,25 @@
       `;
       return;
     }
-    box.innerHTML = state.messages.map(m => `
+    box.innerHTML = state.messages.map(m => {
+      const meu = m.sender === 'user';
+      // Selo só nas MINHAS mensagens: ✓ entregue, ✓✓ azul quando o suporte leu.
+      // Nas mensagens do outro lado o selo não significa nada.
+      const selo = meu
+        ? `<span class="bt-selo ${m.read_at ? 'bt-lido' : ''}">${m.read_at ? '✓✓' : '✓'}</span>`
+        : '';
+      const print = m.image_url
+        ? `<img class="bt-print" src="${escapeHtml(m.image_url)}" alt="Print enviado" loading="lazy"
+             onclick="window.open(this.src,'_blank','noopener')"/>`
+        : '';
+      const texto = m.content ? `<div class="bt-msg-bubble">${escapeHtml(m.content)}</div>` : '';
+      return `
       <div class="bt-msg bt-from-${m.sender}">
-        <div class="bt-msg-bubble">${escapeHtml(m.content)}</div>
-        <div class="bt-msg-time">${fmtTime(m.created_at)}</div>
-      </div>
-    `).join('');
+        ${print}
+        ${texto}
+        <div class="bt-msg-time">${fmtTime(m.created_at)} ${selo}</div>
+      </div>`;
+    }).join('');
     box.scrollTop = box.scrollHeight;
   }
 
@@ -506,6 +669,7 @@
     injectStyles();
     buildDOM();
     adjustPositionToAvoidConflict();
+    iniciarPresenca(); // sinal de vida pro admin — escreve direto no Supabase
     // Badge: 1 query no carregamento (sem polling)
     try {
       state.unread = await fetchUnreadCount();

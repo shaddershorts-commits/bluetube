@@ -3356,7 +3356,7 @@ async function openAdminChatPopup(threadId){
 function closeAdminChatPopup(){
   const popup=document.getElementById('adminChatPopup');
   if(popup)popup.style.display='none';
-  if(_supportRtCh&&_supportSb){try{_supportSb.removeChannel(_supportRtCh);}catch(_){}_supportRtCh=null;}
+  pararSupportPoll();
   _supportActiveThreadId=null;
   loadSupportThreads();
 }
@@ -3364,7 +3364,7 @@ function closeAdminChatPopup(){
 function renderAdminChatPopup(thread,messages){
   const closed=thread.status==='closed';
   document.getElementById('adminChatPopupUser').textContent=thread.user_name||thread.user_email||'?';
-  document.getElementById('adminChatPopupMeta').textContent=(thread.user_email||'')+(thread.user_plan?' · '+thread.user_plan:'');
+  document.getElementById('adminChatPopupMeta').innerHTML=(thread.user_email||'')+(thread.user_plan?' · '+thread.user_plan:'')+' · '+supPresenca(thread.presenca);
   const msgsBox=document.getElementById('adminChatPopupMessages');
   msgsBox.innerHTML=messages.map(m=>renderSupportMsg(m)).join('')||'<div style="text-align:center;color:var(--dim);font-size:12px;margin:auto">Sem mensagens.</div>';
   msgsBox.scrollTop=msgsBox.scrollHeight;
@@ -3373,7 +3373,14 @@ function renderAdminChatPopup(thread,messages){
     inputArea.innerHTML='<div style="text-align:center;color:var(--dim);font-size:11px;font-family:var(--mono);padding:6px">🔒 Conversa fechada</div>';
   }else{
     inputArea.innerHTML=`
+      <div id="adminPrevia" style="display:none;align-items:center;gap:10px;margin-bottom:8px;padding:8px;background:rgba(0,170,255,.06);border:1px solid rgba(0,170,255,.18);border-radius:10px">
+        <img id="adminPreviaImg" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px">
+        <span id="adminPreviaTxt" style="flex:1;font-size:11px;color:var(--dim);font-family:var(--mono)"></span>
+        <button type="button" onclick="adminLimparPrint()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px">✕</button>
+      </div>
       <div style="display:flex;gap:8px;align-items:flex-end">
+        <input type="file" id="adminPrintFile" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="adminEscolherPrint(this.files[0]);this.value=''">
+        <button onclick="document.getElementById('adminPrintFile').click()" title="Anexar print" style="width:38px;height:38px;flex-shrink:0;border-radius:50%;border:none;background:rgba(255,255,255,.06);color:rgba(232,244,255,.75);font-size:16px;cursor:pointer">📎</button>
         <textarea id="adminPopupReplyInput" rows="1" placeholder="Resposta…" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(0,170,255,.2);border-radius:10px;padding:10px 12px;color:#fff;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:100px;outline:none" oninput="this.style.height='auto';this.style.height=Math.min(100,this.scrollHeight)+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSupportReply()}"></textarea>
         <button onclick="sendSupportReply()" style="width:38px;height:38px;border-radius:50%;border:none;background:linear-gradient(135deg,#00aaff,#0078ff);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Enviar"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
       </div>
@@ -3388,10 +3395,57 @@ function renderAdminChatPopup(thread,messages){
 function renderSupportMsg(m){
   const isAdmin=m.sender==='admin';
   const time=m.created_at?new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
-  return `<div style="display:flex;flex-direction:column;max-width:80%;align-self:${isAdmin?'flex-end':'flex-start'}">
-    <div style="padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.45;color:#fff;word-wrap:break-word;white-space:pre-wrap;background:${isAdmin?'linear-gradient(135deg,#0078ff,#00aaff)':'rgba(255,255,255,.06)'};border:${isAdmin?'none':'1px solid rgba(255,255,255,.1)'};border-bottom-${isAdmin?'right':'left'}-radius:4px">${escapeHtml(m.content)}</div>
-    <div style="font-size:10px;color:var(--dim);margin-top:4px;font-family:var(--mono);text-align:${isAdmin?'right':'left'}">${time}</div>
+  // Selo só nas SUAS mensagens: ✓ entregue, ✓✓ azul quando o usuário leu.
+  const selo=isAdmin?`<span style="margin-left:3px;letter-spacing:-1px;color:${m.read_at?'#00aaff':'inherit'}">${m.read_at?'✓✓':'✓'}</span>`:'';
+  const print=m.image_url?`<img src="${escapeHtml(m.image_url)}" alt="Print" loading="lazy" onclick="window.open(this.src,'_blank','noopener')" style="max-width:220px;max-height:260px;border-radius:12px;cursor:zoom-in;display:block;object-fit:cover;border:1px solid rgba(0,170,255,.25);${isAdmin?'margin-left:auto;':''}">`:'';
+  const texto=m.content?`<div style="padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.45;color:#fff;word-wrap:break-word;white-space:pre-wrap;background:${isAdmin?'linear-gradient(135deg,#0078ff,#00aaff)':'rgba(255,255,255,.06)'};border:${isAdmin?'none':'1px solid rgba(255,255,255,.1)'};border-bottom-${isAdmin?'right':'left'}-radius:4px">${escapeHtml(m.content)}</div>`:'';
+  return `<div data-msg="${m.id}" style="display:flex;flex-direction:column;gap:5px;max-width:80%;align-self:${isAdmin?'flex-end':'flex-start'}">
+    ${print}${texto}
+    <div style="font-size:10px;color:var(--dim);font-family:var(--mono);text-align:${isAdmin?'right':'left'}">${time}${selo}</div>
   </div>`;
+}
+
+// Quanto tempo faz que a pessoa deu sinal de vida. Só você vê isso.
+function supPresenca(p){
+  if(!p||!p.visto_em) return '<span style="color:var(--dim)">nunca visto</span>';
+  if(p.online) return '<span style="color:var(--green)">🟢 online agora</span>';
+  const min=Math.floor((Date.now()-new Date(p.visto_em).getTime())/60000);
+  if(min<60) return `<span style="color:var(--dim)">visto há ${min} min</span>`;
+  const h=Math.floor(min/60);
+  if(h<24) return `<span style="color:var(--dim)">visto há ${h}h</span>`;
+  const d=Math.floor(h/24);
+  return `<span style="color:var(--dim)">visto há ${d}d</span>`;
+}
+
+// ── PRINT DO ADMIN ────────────────────────────────────────────────────────
+let _adminPrint=null;
+const ADMIN_TIPOS_OK=['image/png','image/jpeg','image/webp','image/gif'];
+
+function adminEscolherPrint(f){
+  if(!f)return;
+  if(!ADMIN_TIPOS_OK.includes(f.type))return toast('Manda imagem (PNG, JPG, WEBP ou GIF)');
+  if(f.size>5*1024*1024)return toast('Imagem acima de 5 MB');
+  _adminPrint=f;
+  document.getElementById('adminPreviaImg').src=URL.createObjectURL(f);
+  document.getElementById('adminPreviaTxt').textContent=(f.size/1024).toFixed(0)+' KB';
+  document.getElementById('adminPrevia').style.display='flex';
+}
+
+function adminLimparPrint(){
+  _adminPrint=null;
+  const b=document.getElementById('adminPrevia');
+  if(b)b.style.display='none';
+}
+
+// Sobe direto pro storage com URL assinada — o arquivo não passa pela Vercel.
+async function adminSubirPrint(f){
+  const r=await fetch('/api/support-chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},
+    body:JSON.stringify({action:'upload-url',mime:f.type,bytes:f.size})});
+  const d=await r.json();
+  if(!d.ok||!d.upload_url)throw new Error(d.detalhe||'falha ao preparar o print');
+  const up=await fetch(d.upload_url,{method:'PUT',headers:{'Content-Type':f.type},body:f});
+  if(!up.ok)throw new Error('falha ao enviar o print');
+  return d.path;
 }
 
 async function sendSupportReply(){
@@ -3399,10 +3453,12 @@ async function sendSupportReply(){
   const inp=document.getElementById('adminPopupReplyInput')||document.getElementById('supportReplyInput');
   if(!inp||!_supportActiveThreadId)return;
   const content=inp.value.trim();
-  if(!content)return;
+  if(!content&&!_adminPrint)return;
   inp.disabled=true;
   try{
-    const r=await fetch('/api/support-chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'admin-reply',thread_id:_supportActiveThreadId,content})});
+    let image_path=null;
+    if(_adminPrint)image_path=await adminSubirPrint(_adminPrint);
+    const r=await fetch('/api/support-chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${adminKey}`},body:JSON.stringify({action:'admin-reply',thread_id:_supportActiveThreadId,content,image_path})});
     const d=await r.json();
     if(!d.ok){alert('Erro: '+(d.error||'?'));return;}
     inp.value='';
@@ -3429,25 +3485,46 @@ async function closeSupportThread(threadId){
 }
 
 // Realtime admin: subscribe na thread aberta pra receber novas msgs do user em tempo real
-async function subscribeSupportRealtime(threadId){
-  if(_supportRtCh){try{_supportSb.removeChannel(_supportRtCh);}catch(_){}_supportRtCh=null;}
-  try{
-    if(!_supportSb){
-      const cfgR=await fetch('/api/support-chat?action=config',{headers:{'Authorization':`Bearer ${adminKey}`}});
-      const cfg=await cfgR.json();
-      if(!cfg.ok)return;
-      const mod=await import('https://esm.sh/@supabase/supabase-js@2.45.4?bundle');
-      _supportSb=mod.createClient(cfg.supabase_url,cfg.anon_key,{auth:{persistSession:false,autoRefreshToken:false}});
-    }
-    _supportRtCh=_supportSb.channel('admin-support-'+threadId)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'support_messages',filter:'thread_id=eq.'+threadId},(payload)=>{
-        const m=payload.new;
-        if(!m||m.sender!=='user'||threadId!==_supportActiveThreadId)return;
-        const box=document.getElementById('adminChatPopupMessages')||document.getElementById('supportMessages');
-        if(box){box.insertAdjacentHTML('beforeend',renderSupportMsg(m));box.scrollTop=box.scrollHeight;}
-      })
-      .subscribe();
-  }catch(e){console.warn('[admin support rt]',e.message);}
+// ⚠️ POR QUE AQUI É POLLING E NÃO REALTIME (10/08/2026)
+// A versão antiga assinava postgres_changes com a chave ANÔNIMA e sem sessão.
+// Só que Realtime respeita RLS, e a policy de support_messages exige
+// auth.uid() — anônimo enxerga zero linhas, então NENHUM evento chegava. Era
+// por isso que a mensagem só aparecia depois de fechar e reabrir o popup.
+//
+// Não dá pra consertar autenticando: o admin não tem JWT de usuário, e mandar
+// a service key pro navegador seria entregar o banco inteiro. Então: polling,
+// só enquanto o popup está aberto e a aba visível. É UMA pessoa usando — o
+// custo é irrelevante e funciona sempre.
+let _supportPoll=null;
+
+function subscribeSupportRealtime(threadId){
+  pararSupportPoll();
+  const tick=async()=>{
+    if(document.hidden||threadId!==_supportActiveThreadId)return;
+    try{
+      const r=await fetch('/api/support-chat?action=admin-thread&thread_id='+threadId,{headers:{'Authorization':`Bearer ${adminKey}`}});
+      const d=await r.json();
+      if(!d.ok||threadId!==_supportActiveThreadId)return;
+      const box=document.getElementById('adminChatPopupMessages');
+      if(!box)return;
+      // Só repinta se mudou algo (mensagem nova OU selo de visto) — repintar
+      // à toa mataria a rolagem e o texto selecionado.
+      const assinatura=(d.messages||[]).map(m=>m.id+':'+(m.read_at?1:0)).join(',');
+      if(assinatura===box.dataset.assinatura)return;
+      const coladoNoFim=box.scrollHeight-box.scrollTop-box.clientHeight<60;
+      box.dataset.assinatura=assinatura;
+      box.innerHTML=(d.messages||[]).map(m=>renderSupportMsg(m)).join('');
+      if(coladoNoFim)box.scrollTop=box.scrollHeight;
+      const meta=document.getElementById('adminChatPopupMeta');
+      if(meta&&d.thread)meta.innerHTML=(d.thread.user_email||'')+(d.thread.user_plan?' · '+d.thread.user_plan:'')+' · '+supPresenca(d.thread.presenca);
+    }catch(_){/* rede caiu: o próximo tick tenta de novo */}
+  };
+  _supportPoll=setInterval(tick,5000);
+  document.addEventListener('visibilitychange',tick);
+}
+
+function pararSupportPoll(){
+  if(_supportPoll){clearInterval(_supportPoll);_supportPoll=null;}
 }
 
 // ── AFFILIATE LEVEL MANAGEMENT ───────────────────────────────────────────
