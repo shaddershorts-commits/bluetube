@@ -627,11 +627,43 @@ async function toggleDailyAlert(req, res) {
   const r = await supaPatch(`subscribers?email=eq.${encodeURIComponent(user.email)}`, patch);
   if (!r.ok) return res.status(500).json({ error: 'patch_failed' });
 
+  // ── SEM DESPEJO NA ESTREIA ───────────────────────────────────────────────
+  // O teste de ponta a ponta pegou isto: ao ativar, o acervo INTEIRO que já
+  // estava dentro das janelas virava notificação de uma vez — 21 avisos no
+  // primeiro clique, de vídeos que a pessoa talvez já tenha visto.
+  // Então marcamos o que já existe como "conhecido", em silêncio. A pessoa só
+  // é avisada do que cruzar o limite DEPOIS de ela ligar, que é o que ela
+  // pediu ao escolher o gatilho.
+  if (patch.virais_alert_gatilhos?.length) {
+    await semearJanelaAtual(user.email, patch.virais_alert_gatilhos).catch(() => {});
+  }
+
   return res.status(200).json({
     ok: true,
     virais_daily_alert: !!enable,
     gatilhos: patch.virais_alert_gatilhos ?? null,
   });
+}
+
+// Marca como já-avisado tudo que está na janela AGORA, sem notificar nada.
+// É o que faz a estreia ser silenciosa em vez de um despejo de 21 avisos.
+async function semearJanelaAtual(email, gatilhos) {
+  const agora = Date.now();
+  const linhas = [];
+  for (const g of gatilhos) {
+    const R = REGRAS[g];
+    if (!R) continue;
+    const desde = new Date(agora - R.horas * 3600000).toISOString();
+    const videos = await supaSelect(
+      `virais_banco?ativo=eq.true&views=gte.${R.views}&publicado_em=gte.${desde}&select=youtube_id&limit=200`
+    ) || [];
+    for (const v of videos) linhas.push({ email, youtube_id: v.youtube_id, regra: g });
+  }
+  if (!linhas.length) return 0;
+  // ignore-duplicates: reativar não pode estourar na chave primária
+  await supaPost('virais_alertas_enviados', linhas,
+    { prefer: 'resolution=ignore-duplicates,return=minimal' });
+  return linhas.length;
 }
 
 // ── ACTION: alertas-gatilho (cron) ──────────────────────────────────────────
