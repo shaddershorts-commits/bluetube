@@ -953,7 +953,45 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
     // GUARDRAIL is_manual (2026-07-15): conta gerida manualmente pelo admin
     // NUNCA sofre refund/cancel automático — mesma regra das outras 2 camadas
     // anti-zumbi (audit cron e defesa tempo-real). Só alerta o admin.
-    if (subs[0].plan === 'free' && subs[0].is_manual && (invoice.amount_paid || 0) > 0) {
+    // ── GUARDA ANTI-FALSO-ZUMBI (10/08/2026 — caso kevembeserra) ──────────
+    // "Zumbi pagante" é quem RENOVA enquanto o banco diz free. A PRIMEIRA
+    // fatura de uma assinatura nova NÃO é isso: quem faz o upgrade é o
+    // `checkout.session.completed`, e o Stripe entrega os dois eventos quase
+    // juntos, sem garantia de ordem. Quando este aqui ganha a corrida, o banco
+    // ainda diz 'free' e a blindagem cancelava + estornava um cliente novo e
+    // legítimo. Aconteceu em 10/08 às 20:35:20 — a assinatura viveu 5 segundos.
+    //
+    // A camada anti-zumbi de tempo real (customer.subscription.updated) já
+    // tinha essa guarda desde junho, com o comentário "previne refund de
+    // checkout em andamento". A B2 era a única sem.
+    const plangratis = subs[0].plan === 'free' && (invoice.amount_paid || 0) > 0;
+    let assinaturaNova = invoice.billing_reason === 'subscription_create';
+    if (plangratis && !assinaturaNova && subscriptionId) {
+      // billing_reason mudou de lugar entre versões da API (foi o que causou o
+      // bug dahlia). Idade da assinatura é o critério que não depende disso.
+      try {
+        const sR = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+          headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+        });
+        if (sR.ok) {
+          const s = await sR.json();
+          const idadeSeg = Math.floor(Date.now() / 1000) - (Number(s.created) || 0);
+          if (idadeSeg < 600) assinaturaNova = true;
+        }
+      } catch (e) { console.error('[B2] falha ao medir idade da sub:', e.message); }
+    }
+    if (plangratis && assinaturaNova) {
+      console.log(`[B2] ${subs[0].email}: assinatura NOVA (${invoice.billing_reason}) com plan=free — corrida com o checkout, NÃO é zumbi. Nenhum cancel/refund.`);
+      notifyStripe(`ℹ️ [B2] Falso zumbi evitado — ${subs[0].email}`, [
+        ['Cliente', subs[0].email],
+        ['Valor', `R$${((invoice.amount_paid || 0) / 100).toFixed(2)}`],
+        ['Sub', subscriptionId],
+        ['Motivo', `Primeira fatura (${invoice.billing_reason}) — o upgrade vem pelo checkout.session.completed`],
+        ['Ação', 'Nenhuma. Antes desta guarda, isto virava cancel + refund.'],
+      ]).catch(() => {});
+    }
+
+    if (!assinaturaNova && subs[0].plan === 'free' && subs[0].is_manual && (invoice.amount_paid || 0) > 0) {
       console.warn(`⚠️ [B2] pagamento de conta is_manual com plan=free: ${subs[0].email} — SEM ação automática (admin decide)`);
       await notifyStripe(`⚠️ Pagamento recebido de conta manual free — ${subs[0].email}`, [
         ['Cliente', subs[0].email],
@@ -964,7 +1002,7 @@ async function processarEvento(event, { SUPABASE_URL, SUPABASE_KEY }) {
       ]).catch(() => {});
       return;
     }
-    if (subs[0].plan === 'free' && (invoice.amount_paid || 0) > 0) {
+    if (!assinaturaNova && subs[0].plan === 'free' && (invoice.amount_paid || 0) > 0) {
       console.warn(`🚨 [B2] ZUMBI PAGANTE: ${subs[0].email} pagou R$${(invoice.amount_paid/100).toFixed(2)} mas plan=free. Auto-corrigindo.`);
       const STRIPE_SECRET_B2 = process.env.STRIPE_SECRET_KEY;
       try {

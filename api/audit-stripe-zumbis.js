@@ -75,7 +75,19 @@ module.exports = async function handler(req, res) {
         const stripeStatus = stripeSub.status; // active | trialing | past_due | canceled | unpaid | incomplete
 
         // CASO A — plan free no DB MAS active no Stripe = ZUMBI PAGANTE (cobrar sem dar acesso)
-        if (sub.plan === 'free' && (stripeStatus === 'active' || stripeStatus === 'trialing' || stripeStatus === 'past_due')) {
+        //
+        // GUARDA DE IDADE (10/08/2026, mesma família do caso kevembeserra):
+        // assinatura recém-criada com plan=free no banco quase sempre é o
+        // upgrade do checkout que ainda não pousou — não é zumbi. E aqui o
+        // engano custa caro: este cron chama refund-and-cancel sozinho, até 5
+        // por rodada. Se depois da janela ela ainda estiver free, aí sim entra
+        // no relatório e você decide.
+        const idadeSubSeg = Math.floor(Date.now() / 1000) - (Number(stripeSub.created) || 0);
+        const recemCriada = idadeSubSeg < 1800; // 30 min
+        if (sub.plan === 'free' && recemCriada &&
+            (stripeStatus === 'active' || stripeStatus === 'trialing')) {
+          console.log(`[audit] ${sub.email}: sub criada há ${idadeSubSeg}s — jovem demais pra ser zumbi, pulando`);
+        } else if (sub.plan === 'free' && (stripeStatus === 'active' || stripeStatus === 'trialing' || stripeStatus === 'past_due')) {
           zumbis_pagantes.push({
             email: sub.email,
             plan_db: sub.plan,
