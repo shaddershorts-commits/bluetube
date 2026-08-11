@@ -1217,8 +1217,72 @@ tr:hover td{background:rgba(0,170,255,0.02)}
         </div>
       </div>
       <div id="igvHealth" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px;min-height:14px">Carregando status…</div>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Adicionar Reel (vídeo a vídeo)</label>
+
+      <!-- ══ RÉPLICA — o caminho novo. Sem login, imagem hospedada por nós ══ -->
+      <div style="margin-bottom:16px;padding:14px;border:1px solid rgba(255,61,158,.35);border-radius:10px;background:rgba(255,61,158,.05)">
+        <label style="display:block;font-size:11px;color:#ff77c0;margin-bottom:4px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">📌 Replicar Reel — recomendado</label>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.6">
+          Cole o link e clique em <b>Capturar</b>. Eu tento ler a página pública <b>sem cookie e sem login</b> — se der, preencho; se não der, tudo bem, <b>você digita e o que você digita sempre vence</b> (você viu o número na tela, eu não).
+          A imagem é <b>baixada e hospedada no nosso servidor</b>, então o card nunca quebra quando a URL da Meta expirar — e depois de salvo eu <b>nunca mais</b> consulto o Instagram por causa desse Reel.
+        </div>
+        <input id="igvRepUrl" class="plan-input" style="width:100%;font-family:var(--mono);font-size:12px;margin-bottom:10px" placeholder="https://www.instagram.com/reel/CODIGO/  ← link do Reel (obrigatório)"/>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Views (aceita "12,4 mi")</div>
+            <input id="igvRepViews" class="plan-input" style="width:100%;font-size:12px" placeholder="12,4 mi"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Likes</div>
+            <input id="igvRepLikes" class="plan-input" style="width:100%;font-size:12px" placeholder="1,2 mi"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Comentários</div>
+            <input id="igvRepComments" class="plan-input" style="width:100%;font-size:12px" placeholder="8.400"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Medido em (vai no card)</div>
+            <input id="igvRepMedidoEm" type="date" class="plan-input" style="width:100%;font-size:12px"/>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">@autor</div>
+            <input id="igvRepAutor" class="plan-input" style="width:100%;font-size:12px" placeholder="nomedoperfil"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Nome do autor</div>
+            <input id="igvRepAutorNome" class="plan-input" style="width:100%;font-size:12px" placeholder="Fulano da Silva"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Nicho (opcional)</div>
+            <input id="igvRepNicho" class="plan-input" style="width:100%;font-size:12px" placeholder="humor, pets, futebol…"/>
+          </div>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Título / legenda (é o texto do card)</div>
+          <textarea id="igvRepTitulo" class="plan-input" rows="2" style="width:100%;font-size:12px;resize:vertical" placeholder="O que aparece escrito no card"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:10px">
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Imagem — só se a captura automática não trouxer (cole o link DIRETO do .jpg/.png)</div>
+            <input id="igvRepImagemUrl" class="plan-input" style="width:100%;font-family:var(--mono);font-size:11px" placeholder="https://…/imagem.jpg"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:3px">…ou envie um arquivo</div>
+            <input id="igvRepArquivo" type="file" accept="image/*" style="font-size:11px;color:var(--dim);max-width:200px"/>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="action-btn" onclick="igvRepCapturar()">🔍 Capturar e pré-visualizar</button>
+          <button class="action-btn" id="igvRepSalvarBtn" disabled style="background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff;font-weight:700;border:none;opacity:.45;cursor:not-allowed" onclick="igvRepSalvar()">💾 Salvar réplica</button>
+          <button class="action-btn" onclick="igvRepLimpar()">↺ Limpar</button>
+        </div>
+        <div id="igvRepMsg" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;min-height:14px;line-height:1.6"></div>
+        <div id="igvRepPrevia" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--blue-border);border-radius:8px;background:rgba(0,0,0,.25)"></div>
+      </div>
+
+      <div style="margin-bottom:14px;padding-top:12px;border-top:1px solid var(--blue-border)">
+        <label style="display:block;font-size:11px;color:var(--dim);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em">Adicionar Reel (via conta logada — precisa de cookies válidos)</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input id="igvNewUrl" class="plan-input" style="flex:1;min-width:280px;font-family:var(--mono);font-size:12px" placeholder="https://www.instagram.com/reel/CODIGO/"/>
           <button class="action-btn" style="background:linear-gradient(135deg,#ff3d9e,#ff77c0);color:#fff;font-weight:700;border:none" onclick="igvAddReel()">+ Adicionar Reel</button>
@@ -1247,7 +1311,8 @@ tr:hover td{background:rgba(0,170,255,0.02)}
       <div style="font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Últimos Reels no acervo</div>
       <div class="table-wrap" id="igvVideosTable"><div class="loading-txt">Carregando…</div></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;line-height:1.5">
-        💡 Blindagem: o banco é a fonte da verdade — se a conta descartável cair, os Reels já coletados continuam aparecendo normalmente pro usuário; só as métricas param de atualizar (o status acima avisa). Cookies via env <code>IG_COOKIES_B64</code>.
+        💡 Blindagem: o banco é a fonte da verdade — se a conta descartável cair, os Reels já coletados continuam aparecendo normalmente pro usuário; só as métricas param de atualizar (o status acima avisa). Cookies via env <code>IG_COOKIES_B64</code>.<br>
+        📌 <b>Réplica</b> é o caminho que não depende de nada disso: captura sem login, imagem hospedada no nosso storage e registro <b>congelado</b> (o cron de métricas pula ele). Status <code>OK_MODO_REPLICA</code> = sem cookies e sem perfis, só réplicas — funcionando como planejado. Precisa de <code>sql/instagram_replica.sql</code> rodado uma vez.
       </div>
     </div>
 
@@ -2366,6 +2431,9 @@ function igvApi(action){ return `/api/instagram-virais?action=${action}&admin_se
 function igvFmt(n){ n=parseInt(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
 
 async function igvLoad(){
+  // "Medido em" nasce com a data de hoje: o dono está olhando o número AGORA
+  const dt=document.getElementById('igvRepMedidoEm');
+  if(dt && !dt.value) dt.value=new Date().toISOString().slice(0,10);
   igvLoadHealth(); igvLoadPerfis(); igvLoadVideos();
 }
 
@@ -2374,9 +2442,230 @@ async function igvLoadHealth(){
   try{
     const r=await fetch('/api/instagram-virais?action=health');
     const d=await r.json();
-    const cor = d.status==='OK' ? 'var(--green)' : 'var(--red)';
-    el.innerHTML = `Status: <b style="color:${cor}">${d.status}</b> · ${d.total_videos} Reels no acervo · ${d.perfis_ativos} perfis ativos · métricas atrasadas (48h+): ${d.metricas_atrasadas_48h} · erros de refresh: ${d.videos_com_erro_recente} · cookies: ${d.cookies_configurados?'✓':'✗ FALTANDO'}`;
+    const cor = (d.status==='OK'||d.status==='OK_MODO_REPLICA') ? 'var(--green)' : 'var(--red)';
+    const rep = (d.replicas||0) ? ` · <b style="color:#ff77c0">${d.replicas} réplicas</b> (congeladas — não consultam o IG)` : '';
+    el.innerHTML = `Status: <b style="color:${cor}">${d.status}</b> · ${d.total_videos} Reels no acervo${rep} · ${d.perfis_ativos} perfis ativos · métricas atrasadas (48h+): ${d.metricas_atrasadas_48h} · erros de refresh: ${d.videos_com_erro_recente} · cookies: ${d.cookies_configurados?'✓':'✗ FALTANDO'}`;
   }catch(e){ el.textContent='Erro ao carregar status: '+e.message; }
+}
+
+// ── RÉPLICA de Reel — captura sem login, imagem hospedada por nós ────────────
+// Fluxo obrigatório: Capturar (prévia) → conferir na tela → Salvar.
+// O botão Salvar só destrava quando a prévia veio COM imagem nossa, porque
+// card sem imagem é card morto.
+let _igvRepPrevia = null;      // resultado da última captura aprovada
+let _igvRepImgNaPrevia = null; // estado dos campos de imagem quando a prévia rodou
+
+function igvRepCampos(){
+  const g = id => (document.getElementById(id)||{}).value || '';
+  return {
+    url: g('igvRepUrl').trim(),
+    views: g('igvRepViews').trim(),
+    likes: g('igvRepLikes').trim(),
+    comments: g('igvRepComments').trim(),
+    medido_em: g('igvRepMedidoEm').trim(),
+    autor: g('igvRepAutor').trim(),
+    autor_nome: g('igvRepAutorNome').trim(),
+    nicho: g('igvRepNicho').trim(),
+    titulo: g('igvRepTitulo').trim(),
+    imagem_url: g('igvRepImagemUrl').trim()
+  };
+}
+
+function igvRepDestravarSalvar(on){
+  const b=document.getElementById('igvRepSalvarBtn'); if(!b) return;
+  b.disabled=!on; b.style.opacity=on?'1':'.45'; b.style.cursor=on?'pointer':'not-allowed';
+}
+
+// Arquivo → data URL. Teto de 2,5MB: em base64 vira ~3,4MB e o body da Vercel
+// estoura em 4,5MB. Melhor barrar aqui com motivo claro do que dar 413 mudo.
+function igvRepLerArquivo(){
+  const inp=document.getElementById('igvRepArquivo');
+  const f=inp && inp.files && inp.files[0];
+  if(!f) return Promise.resolve(null);
+  if(!/^image\//.test(f.type)) return Promise.reject(new Error(`"${f.name}" não é imagem (${f.type||'tipo desconhecido'})`));
+  if(f.size > 2.5*1024*1024) return Promise.reject(new Error(`"${f.name}" tem ${(f.size/1048576).toFixed(1)}MB — o limite de envio é 2,5MB. Use o campo de URL da imagem, ou reduza o arquivo.`));
+  return new Promise((ok,err)=>{
+    const r=new FileReader();
+    r.onload=()=>ok(String(r.result||''));
+    r.onerror=()=>err(new Error('não consegui ler o arquivo do seu computador'));
+    r.readAsDataURL(f);
+  });
+}
+
+async function igvRepChamar(extra, opts){
+  const c=igvRepCampos();
+  if(!c.url) throw new Error('Cole o link do Reel primeiro.');
+  const arquivo = (opts && opts.semArquivo) ? null : await igvRepLerArquivo();
+  const body = Object.assign({}, c, extra || {});
+  if(arquivo) body.imagem_base64 = arquivo;
+  const r = await fetch(igvApi('replicar'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  let d; try{ d=await r.json(); }catch(_){ throw new Error('resposta inválida do servidor (HTTP '+r.status+')'); }
+  return { r, d };
+}
+
+async function igvRepCapturar(){
+  const msg=document.getElementById('igvRepMsg');
+  msg.style.color='var(--dim)'; msg.textContent='Lendo a página pública (sem login)… pode falhar, é normal.';
+  igvRepDestravarSalvar(false); _igvRepPrevia=null; _igvRepImgNaPrevia=null;
+  let r,d;
+  try{ ({r,d} = await igvRepChamar({preview:true})); }
+  catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; return; }
+  if(!r.ok || !d.ok){
+    msg.style.color='var(--red)';
+    msg.innerHTML='✗ '+escapeHtml(d.error||('HTTP '+r.status)) + igvRepAvisosHtml(d.avisos);
+    if(d.capturado) igvRepMostrarPrevia(d.capturado, d);
+    return;
+  }
+  igvRepPreencherVazios(d.capturado);
+  igvRepMostrarPrevia(d.capturado, d);
+  if(d.falta_imagem){
+    msg.style.color='#fbbf24';
+    msg.innerHTML='⚠ '+escapeHtml(d.aviso_imagem||'Sem imagem.')+' Depois de informar a imagem, clique em <b>Capturar</b> de novo.'+igvRepAvisosHtml(d.avisos);
+    igvRepDestravarSalvar(false);
+    return;
+  }
+  _igvRepPrevia=d.capturado;
+  // Marca o estado dos campos de imagem NO MOMENTO da prévia: se nada mudar
+  // depois disso, o Salvar reusa a imagem que você já viu (que já está no
+  // nosso storage) em vez de rebaixar de fora — o que você aprovou é o que vai.
+  _igvRepImgNaPrevia = {
+    url: (document.getElementById('igvRepImagemUrl').value||'').trim(),
+    arquivo: (document.getElementById('igvRepArquivo').files[0]||{}).name || ''
+  };
+  // Prévia com página ilegível NÃO pode sair verde: verde diz "li e deu certo".
+  // A parede de login responde HTTP 200, então sem esse aviso o dono acharia
+  // que a legenda em branco (ou digitada por ele) veio de uma leitura bem
+  // sucedida.
+  if(d.capturado && d.capturado.pagina_ilegivel){
+    msg.style.color='#fbbf24';
+    msg.innerHTML='⚠ Prévia pronta, mas <b>NÃO consegui ler a página do Instagram</b> (parede de login). Nada foi capturado — confira e digite o que faltar antes de salvar.'+igvRepAvisosHtml(d.avisos);
+  }else{
+    msg.style.color='var(--green)';
+    msg.innerHTML='✓ Prévia pronta — <b>confira aí embaixo</b> e clique em Salvar réplica.'+igvRepAvisosHtml(d.avisos);
+  }
+  igvRepDestravarSalvar(true);
+}
+
+// Preenche SÓ o que está vazio: nunca sobrescreve o que o dono digitou
+function igvRepPreencherVazios(cap){
+  if(!cap) return;
+  const par=[['igvRepTitulo','titulo'],['igvRepAutor','autor'],['igvRepAutorNome','autor_nome'],
+             ['igvRepViews','views'],['igvRepLikes','likes'],['igvRepComments','comments']];
+  par.forEach(([id,campo])=>{
+    const el=document.getElementById(id);
+    if(el && !String(el.value||'').trim() && cap[campo]!==null && cap[campo]!==undefined && cap[campo]!==''){
+      el.value=String(cap[campo]);
+      el.style.borderColor='rgba(255,119,192,.6)';   // amarelado = veio da captura
+      el.title='Preenchido pela captura automática — corrija se estiver errado';
+    }
+  });
+  const dt=document.getElementById('igvRepMedidoEm');
+  if(dt && !dt.value) dt.value=new Date().toISOString().slice(0,10);
+}
+
+function igvRepAvisosHtml(avisos){
+  if(!avisos || !avisos.length) return '';
+  return '<div style="margin-top:6px;color:var(--dim);font-size:10px;line-height:1.6">'+
+    avisos.map(a=>'· '+escapeHtml(a)).join('<br>')+'</div>';
+}
+
+function igvRepMostrarPrevia(cap, d){
+  const box=document.getElementById('igvRepPrevia'); if(!box||!cap) return;
+  box.style.display='block';
+  // TRÊS estados de verdade, não dois. Antes existia só "captura" e "vazio", e
+  // o "não consegui ler" (parede de login com HTTP 200) se disfarçava de um
+  // deles — o dono não tinha como saber que o campo veio de uma página que o
+  // sistema não conseguiu ler.
+  const selo = o => o==='manual' ? '<span style="color:#4ade80">você</span>'
+    : (o==='automatico'||o==='capturado') ? '<span style="color:#fbbf24">capturado</span>'
+    : o==='ilegivel' ? '<span style="color:#f87171;font-weight:600">não consegui ler</span>'
+    : '<span style="color:#64748b">vazio</span>';
+  const or = cap.origem||{};
+  const num = n => (n===null||n===undefined) ? '—' : igvFmt(n);
+  // Sem métrica medida o backend manda medido_em null — e aí não existe
+  // "medido em" nenhum pra mostrar.
+  const dataBr = d && d.medido_em ? new Date(d.medido_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
+  const ilegivelBanner = cap.pagina_ilegivel
+    ? '<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);color:#fca5a5;font-size:11px;line-height:1.6">'
+      + '<b>⚠ NÃO CONSEGUI LER ESSA PÁGINA</b> (parede de login do Instagram — ela responde HTTP 200 fingindo ser o post).<br>'
+      + 'Nada abaixo foi capturado. Só vale o que <b>você</b> digitar — nenhum texto da Meta virou legenda.</div>'
+    : '';
+  // Métrica ausente fica AUSENTE: o card não mostra views se views não foi
+  // medida, e "medido em" só acompanha número que foi realmente medido.
+  const temViews = cap.views!==null && cap.views!==undefined;
+  const temLikes = cap.likes!==null && cap.likes!==undefined;
+  const noCard = temViews
+    ? `▶ ${igvFmt(cap.views)}${dataBr?` · medido em ${dataBr}`:''}`
+    : temLikes
+      ? `❤ ${igvFmt(cap.likes)}${dataBr?` · medido em ${dataBr}`:''} <span style="color:#fbbf24">(sem views — o card NÃO mostra views)</span>`
+      : '<span style="color:#f87171">sem número nenhum — o card sai sem métrica (não publicamos 0)</span>';
+  const img = cap.imagem_url
+    ? `<img src="${escapeHtml(cap.imagem_url)}" alt="" style="width:110px;aspect-ratio:9/16;object-fit:cover;border-radius:8px;background:#000"/>`
+    : `<div style="width:110px;aspect-ratio:9/16;border-radius:8px;background:rgba(239,68,68,.12);border:1px dashed rgba(239,68,68,.5);display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:#f87171;padding:6px">SEM IMAGEM<br>card morto</div>`;
+  box.innerHTML = `
+    <div style="font-size:10px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Prévia — é isso que vai pro card</div>
+    ${ilegivelBanner}
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${img}
+      <div style="flex:1;min-width:220px;font-size:12px;line-height:1.7">
+        <div><b>${escapeHtml(cap.titulo||'(sem legenda)')}</b> ${selo(or.titulo)}</div>
+        <div style="color:var(--dim)">@${escapeHtml(cap.autor||'?')} · ${escapeHtml(cap.autor_nome||'—')} ${selo(or.autor)}</div>
+        <div style="margin-top:6px;font-family:var(--mono);font-size:11px">
+          ▶ ${num(cap.views)} ${selo(or.views)} · ❤ ${num(cap.likes)} ${selo(or.likes)} · 💬 ${num(cap.comments)} ${selo(or.comments)}
+        </div>
+        <div style="color:var(--dim);font-size:11px">no card: <b>${noCard}</b></div>
+        ${cap.nicho?`<div style="color:var(--dim);font-size:11px">nicho: ${escapeHtml(cap.nicho)}</div>`:''}
+        <div style="margin-top:6px;font-size:10px;color:var(--dim);word-break:break-all">
+          imagem: ${cap.imagem_fonte?escapeHtml(cap.imagem_fonte):'—'}${cap.imagem_bytes?' · '+(cap.imagem_bytes/1024).toFixed(0)+' KB':''}
+          ${cap.imagem_url?'<br>hospedada em: '+escapeHtml(cap.imagem_url.split('?')[0]):''}
+        </div>
+        <div style="margin-top:6px;font-size:10px;color:var(--dim)">clique do card → ${escapeHtml(cap.video_url||'')}</div>
+      </div>
+    </div>`;
+}
+
+async function igvRepSalvar(){
+  const msg=document.getElementById('igvRepMsg');
+  if(!_igvRepPrevia){ msg.style.color='var(--red)'; msg.textContent='Capture e confira a prévia antes de salvar.'; return; }
+  msg.style.color='var(--dim)'; msg.textContent='Salvando (baixando a imagem e gravando)…';
+  // pular_captura:true — salva EXATAMENTE o que você aprovou na tela, sem
+  // consultar o Instagram de novo (a captura poderia trazer outro resultado).
+  // A imagem já hospedada por nós vira a fonte, a não ser que você tenha
+  // trocado o campo de imagem depois da prévia.
+  const extra = { preview:false, pular_captura:true };
+  const urlAgora = (document.getElementById('igvRepImagemUrl').value||'').trim();
+  const arqAgora = (document.getElementById('igvRepArquivo').files[0]||{}).name || '';
+  const base = _igvRepImgNaPrevia || {url:'',arquivo:''};
+  const mudouImagem = (urlAgora !== base.url) || (arqAgora !== base.arquivo);
+  const opts = {};
+  if(!mudouImagem && _igvRepPrevia.imagem_url){
+    // Nada mudou: reusa a imagem já hospedada por nós. Baixar de novo de fora
+    // podia falhar agora e ter funcionado na prévia — salvar tem que ser fiel.
+    extra.imagem_url = _igvRepPrevia.imagem_url;
+    opts.semArquivo = true;
+  }
+  let r,d;
+  try{ ({r,d} = await igvRepChamar(extra, opts)); }
+  catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; return; }
+  if(!r.ok || !d.ok){
+    msg.style.color='var(--red)';
+    msg.innerHTML='✗ '+escapeHtml(d.error||('HTTP '+r.status))+igvRepAvisosHtml(d.avisos);
+    return;
+  }
+  msg.style.color='var(--green)';
+  msg.innerHTML=`✓ Réplica salva — <b>${escapeHtml(d.video.shortcode)}</b> já está na aba Instagram da Virais, com imagem nossa e congelada.`+igvRepAvisosHtml(d.avisos);
+  igvRepLimpar(true);
+  igvLoadVideos(); igvLoadHealth();
+}
+
+function igvRepLimpar(mantemMsg){
+  ['igvRepUrl','igvRepViews','igvRepLikes','igvRepComments','igvRepAutor','igvRepAutorNome','igvRepNicho','igvRepTitulo','igvRepImagemUrl']
+    .forEach(id=>{ const el=document.getElementById(id); if(el){ el.value=''; el.style.borderColor=''; el.title=''; } });
+  const f=document.getElementById('igvRepArquivo'); if(f) f.value='';
+  const p=document.getElementById('igvRepPrevia'); if(p){ p.style.display='none'; p.innerHTML=''; }
+  if(!mantemMsg){ const m=document.getElementById('igvRepMsg'); if(m){ m.textContent=''; } }
+  _igvRepPrevia=null; _igvRepImgNaPrevia=null;
+  igvRepDestravarSalvar(false);
 }
 
 async function igvAddReel(){
@@ -2456,16 +2745,30 @@ async function igvLoadVideos(){
     const d=await r.json();
     const items=d.items||[];
     if(!items.length){ el.innerHTML='<div class="empty-state">Nenhum Reel no acervo ainda. Cole uma URL acima pra começar.</div>'; return; }
-    el.innerHTML='<table><thead><tr><th>Reel</th><th>Autor</th><th>Views</th><th>Likes</th><th>Fonte</th><th></th></tr></thead><tbody>'+
-      items.map(v=>`<tr>
-        <td style="font-family:var(--mono);font-size:11px"><a href="${v.video_url}" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">${v.shortcode}</a></td>
-        <td style="font-size:12px">@${v.author_handle||'?'}</td>
+    el.innerHTML='<table><thead><tr><th>Reel</th><th>Autor</th><th>Views</th><th>Likes</th><th>Medido em</th><th>Imagem</th><th>Fonte</th><th></th></tr></thead><tbody>'+
+      items.map(v=>{
+        // author_handle/shortcode vêm do Instagram = texto de TERCEIRO. Escapar.
+        const sc=escapeHtml(v.shortcode||'');
+        const medido = v.metrics_measured_at ? new Date(v.metrics_measured_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'})
+          : (v.fonte==='replica' ? '—' : '<span style="color:var(--dim)">ao vivo</span>');
+        // Thumb hospedada por nós? Se for URL da Meta, ela EXPIRA — sinalizar.
+        const nossa = /supabase\.co|bluetubeviral\.com/i.test(v.thumbnail_url||'');
+        const img = !v.thumbnail_url ? '<span style="color:var(--red)">✗ sem</span>'
+          : nossa ? '<span style="color:var(--green)">✓ nossa</span>'
+          : '<span style="color:#fbbf24" title="URL da Meta — expira em dias. Replique esse Reel pra hospedar a imagem.">⚠ Meta</span>';
+        const fonte = v.fonte==='replica' ? '<span style="color:#ff77c0">📌 réplica</span>'
+          : v.fonte==='perfil' ? '📥 @'+escapeHtml(v.source_profile||'') : '✋ manual';
+        return `<tr>
+        <td style="font-family:var(--mono);font-size:11px"><a href="${escapeHtml(v.video_url||'')}" target="_blank" rel="noopener" style="color:var(--neon);text-decoration:none">${sc}</a></td>
+        <td style="font-size:12px">@${escapeHtml(v.author_handle||'?')}</td>
         <td style="font-family:var(--mono)">${igvFmt(v.views_count)}</td>
         <td style="font-family:var(--mono)">${igvFmt(v.likes_count)}</td>
-        <td style="font-size:11px;color:var(--dim)">${v.fonte==='perfil'?'📥 @'+(v.source_profile||''):'✋ manual'}</td>
-        <td><button class="action-btn" style="color:var(--red)" onclick="igvRemover('${v.shortcode}')">🗑</button></td>
-      </tr>`).join('')+'</tbody></table>'+
-      `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px">${d.total} no total — mostrando os 15 mais recentes</div>`;
+        <td style="font-family:var(--mono);font-size:11px">${medido}</td>
+        <td style="font-size:11px">${img}</td>
+        <td style="font-size:11px;color:var(--dim)">${fonte}</td>
+        <td><button class="action-btn" style="color:var(--red)" onclick="igvRemover('${sc.replace(/'/g,'')}')">🗑</button></td>
+      </tr>`;}).join('')+'</tbody></table>'+
+      `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px">${d.total} no total — mostrando os 15 mais recentes${d.schema_replica_pendente?' · <span style="color:#fbbf24">⚠ rode sql/instagram_replica.sql — as colunas da réplica ainda não existem</span>':''}</div>`;
   }catch(e){ el.innerHTML='<div class="empty-state">Erro: '+e.message+'</div>'; }
 }
 
