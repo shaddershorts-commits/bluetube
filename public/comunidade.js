@@ -254,6 +254,7 @@
     <div class="cbt-panel${S.pageMode ? ' cbt-page' : ''}" id="cbtPanel" role="${S.pageMode ? 'main' : 'dialog'}" aria-label="Comunidade BlueTube">
       <div class="cbt-head">
         <div class="cbt-title">🏛️ Comunidade BlueTube<small>exclusiva de assinantes</small></div>
+        <button class="cbt-mini" id="cbtAmigosBtn" style="height:34px" title="Amigos" onclick="window.ComunidadeAmigos&&ComunidadeAmigos.abrir()">🤝 <span class="cbt-nbadge" data-cba-badge></span></button>
         <div class="cbt-me" id="cbtMe" title="Você">?</div>
         <button class="cbt-x" onclick="ComunidadeBT.close()" aria-label="Fechar">✕</button>
       </div>
@@ -266,6 +267,7 @@
           <div class="cbt-brand">🏛️ Comunidade<small>EXCLUSIVA DE ASSINANTES</small></div>
           <button class="cbt-snav" data-tab="dicas" onclick="ComunidadeBT.setTab('dicas')">💡 Dicas<span class="cbt-nbadge" data-nb="dicas"></span></button>
           <button class="cbt-snav on" data-tab="comunidade" onclick="ComunidadeBT.setTab('comunidade')">🏛️ Comunidade<span class="cbt-nbadge" data-nb="comunidade"></span></button>
+          <button class="cbt-snav" id="cbtAmigosNav" onclick="window.ComunidadeAmigos&&ComunidadeAmigos.abrir()">🤝 Amigos<span class="cbt-nbadge" data-cba-badge></span></button>
           <a class="cbt-swa" href="javascript:void(0)" onclick="ComunidadeBT.whats()">💬 Grupo no WhatsApp</a>
           <div class="cbt-sideme" id="cbtSideMe" style="cursor:default"></div>
         </aside>
@@ -362,7 +364,9 @@
   // Sino: badges de novidades nas abas (some ao abrir a aba)
   function updateBadges() {
     const u = S.me?.unseen || {};
-    document.querySelectorAll('.cbt-nbadge').forEach((el) => {
+    // Só os badges das ABAS. O badge de amigos ([data-cba-badge]) é do
+    // comunidade-amigos.js — se entrasse aqui, seria zerado a cada render.
+    document.querySelectorAll('.cbt-nbadge[data-nb]').forEach((el) => {
       const n = u[el.dataset.nb] || 0;
       el.textContent = n > 99 ? '99+' : String(n);
       el.style.display = n > 0 ? 'inline-block' : 'none';
@@ -445,6 +449,14 @@
     if (w) { w.style.display = w.style.display === 'none' ? 'block' : 'none'; if (w.style.display === 'block') $('cbtText')?.focus(); }
   }
 
+  // Botão de amizade — mora em /comunidade-amigos.js (arquivo dedicado). Se
+  // esse script não carregou, o feed segue funcionando sem o botão.
+  function amigoBtn(p) {
+    try {
+      return (p.mine || !window.ComunidadeAmigos) ? '' : (ComunidadeAmigos.botao({ name: p.author?.name, mine: p.mine, amizade: p.amizade }) || '');
+    } catch (e) { return ''; }
+  }
+
   function cardHtml(p) {
     const a = p.author || {};
     const av = avHtml(a);
@@ -470,7 +482,7 @@
     return `<div class="cbt-card${p.pinned ? ' pin' : ''}" id="post-${p.id}">
       ${train}
       <div class="cbt-prow">${av}<div><div class="cbt-pname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${p.pinned ? ' 📌' : ''}</div>
-      <div class="cbt-ptime">${timeAgo(p.created_at)}${p.edited_at ? ' · editado' : ''}</div></div>${menu}</div>
+      <div class="cbt-ptime">${timeAgo(p.created_at)}${p.edited_at ? ' · editado' : ''}</div></div>${amigoBtn(p)}${menu}</div>
       ${p.content ? `<div class="cbt-content" id="pc-${p.id}">${esc(p.content)}</div>` : ''}
       ${media ? `<div class="cbt-media${imgs > 1 ? ' g2' : ''}">${media}</div>` : ''}
       <div class="cbt-abar">
@@ -497,7 +509,10 @@
     const media = S.media.filter((m) => m.url).map((m) => ({ type: m.type, url: m.url, thumb: m.thumb || null }));
     const { ok, d } = await api('post-create', { body: { tab: S.tab, content: text, media, youtube: yt || undefined } });
     S.sending = false;
-    if (!ok) { if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; } if (d.needs_profile) return editProfile(); return toast('❌ ' + (d.error || 'Erro ao publicar.')); }
+    // needs_profile (428) chamava editProfile(), função que NÃO existe neste
+    // arquivo — resquício do diálogo de nome/foto removido. Dava
+    // ReferenceError e o usuário ficava sem feedback nenhum.
+    if (!ok) { if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; } if (d.needs_profile) return toast('⚠️ Seu perfil da Comunidade ainda não terminou de ser criado. Recarregue a página.'); return toast('❌ ' + (d.error || 'Erro ao publicar.')); }
     S.media = [];
     toast('✅ Publicado!');
     loadFeed(true);
@@ -768,6 +783,14 @@
     openEmoji, addEmoji, openGif, searchGif, sendGif,
     pick, rmMedia,
     more: () => loadFeed(false),
+    // Superfície usada pelo comunidade-amigos.js (arquivo dedicado):
+    // `call` reusa o mesmo fetch autenticado, `me` é o portão Full/Master já
+    // resolvido pelo backend, `toast`/`esc` evitam duplicar utilitário.
+    call: (action, opts) => api(action, opts),
+    me: () => S.me,
+    toast,
+    esc,
+    refresh: () => loadFeed(true),
     light: (u) => { $('cbtLightImg').src = u; $('cbtLight').classList.add('on'); },
     whats: () => { try { window.joinCommunity ? joinCommunity() : window.open(WHATSAPP_URL, '_blank'); } catch (e) { window.open(WHATSAPP_URL, '_blank'); } },
   };
