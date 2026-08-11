@@ -15,7 +15,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const SITE = 'https://bluetubeviral.com';
+// ⚠️ COM www. MEDIDO em 11/08/2026: bluetubeviral.com responde 307 e manda pra
+// www.bluetubeviral.com — ou seja, o site VIVE no www. O sitemap listava as 28
+// URLs sem www, então cada uma que o Google buscasse batia num redirecionamento
+// antes de chegar no conteúdo: rastreamento desperdiçado e sinal contraditório
+// sobre qual versão indexar (a home ainda por cima declarava canonical no apex).
+const SITE = 'https://www.bluetubeviral.com';
 const SUPPORTED_LANGS = ['pt', 'en', 'es']; // expandir conforme rolar backfill
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
 
@@ -26,6 +31,15 @@ const MAIN_PAGES = [
   { path: '/blue',        lastmod: '2026-05-17', changefreq: 'weekly',  priority: '0.8' },
   { path: '/blueEditor',  lastmod: '2026-04-20', changefreq: 'monthly', priority: '0.7' },
   { path: '/baixaBlue',   lastmod: '2026-05-15', changefreq: 'monthly', priority: '0.7' },
+  // As 6 abaixo existem e respondem 200, mas NUNCA estiveram no sitemap — o
+  // Google não tinha por onde descobri-las. São as páginas de ferramenta, que
+  // é justamente o que a gente quer que apareça em busca de intenção.
+  { path: '/blueVoice',      lastmod: '2026-08-11', changefreq: 'monthly', priority: '0.8' },
+  { path: '/blueScore',      lastmod: '2026-08-11', changefreq: 'monthly', priority: '0.8' },
+  { path: '/blueLens',       lastmod: '2026-08-11', changefreq: 'monthly', priority: '0.7' },
+  { path: '/virais',         lastmod: '2026-08-11', changefreq: 'daily',   priority: '0.8' },
+  { path: '/blueClean',      lastmod: '2026-08-11', changefreq: 'monthly', priority: '0.8' },
+  { path: '/bluetendencias', lastmod: '2026-08-11', changefreq: 'weekly',  priority: '0.7' },
   { path: '/desafio',     lastmod: '2026-05-17', changefreq: 'weekly',  priority: '0.7' },
   { path: '/afiliado',    lastmod: '2026-04-20', changefreq: 'monthly', priority: '0.7' },
   { path: '/pioneiros',   lastmod: '2026-04-20', changefreq: 'monthly', priority: '0.6' },
@@ -60,9 +74,13 @@ function getPostLangs(slug) {
 }
 
 // URL canonica de cada idioma pra um post
+// Sem .html: MEDIDO que /blog/posts/x.html responde 308 e manda pra
+// /blog/posts/x (cleanUrls). Listar a URL que redireciona faz o Google gastar
+// duas idas pra ver um post — e foi parte das 8 páginas "com redirecionamento"
+// que o Search Console reportou como não indexadas.
 function postUrl(slug, lang) {
-  if (lang === 'pt') return `${SITE}/blog/posts/${slug}.html`;
-  return `${SITE}/${lang}/blog/posts/${slug}.html`;
+  if (lang === 'pt') return `${SITE}/blog/posts/${slug}`;
+  return `${SITE}/${lang}/blog/posts/${slug}`;
 }
 
 // Gera bloco <url> com hreflang cross-link de TODAS as línguas existentes
