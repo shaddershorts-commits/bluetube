@@ -175,8 +175,13 @@ const plano = (p) => (p === 'mod' ? 'mod' : p === 'master' ? 'master' : 'full');
 // lista de nomes só é buscada quando há alguém — sala vazia não paga chamada.
 async function estadoDaSala(ctx, comNomes) {
   const r = await rpc('ListRooms', { names: [SALA] }, ctx);
-  if (!r.ok) return { ok: false };
-  const sala = (r.d && Array.isArray(r.d.rooms) && r.d.rooms[0]) || null;
+  // ⚠️ ListRooms falhando NÃO é motivo pra dizer que a sala caiu. Aqui havia um
+  // `if (!r.ok) return { ok: false }` que contradizia, uma linha acima, o
+  // comentário logo abaixo: um 503 dele — rate-limit ou soluço do LiveKit
+  // Cloud — apagava o recurso inteiro da página com o ListParticipants sadio
+  // do lado, reportando gente ACTIVE. Medido com twirp falso.
+  // Ele é só um palpite barato agora; quem decide é o ListParticipants.
+  const sala = (r.ok && r.d && Array.isArray(r.d.rooms) && r.d.rooms[0]) || null;
   const nLista = sala ? Number(campo(sala, 'num_participants', 'numParticipants') || 0) : 0;
 
   // ⚠️ NÃO confie no ListRooms pra dizer que a sala está vazia. MEDIDO na prova
@@ -192,10 +197,16 @@ async function estadoDaSala(ctx, comNomes) {
   // Agora o ListParticipants é sempre consultado. Ele é a fonte da verdade —
   // custa uma chamada a mais numa sala vazia, e vale.
   const p = await rpc('ListParticipants', { room: SALA }, ctx);
+  // Só agora dá pra dizer que caiu: as DUAS fontes falharam.
+  if (!p.ok && !r.ok) return { ok: false };
   const n = nLista;
   // Contagem boa e lista ruim não é motivo pra dizer que a sala caiu: devolve o
   // número (que é o que o contador usa) e uma lista vazia.
-  if (!p.ok || !p.d || !Array.isArray(p.d.participants)) return { ok: true, n, pessoas: [], identidades: [] };
+  // Contagem boa e lista ruim é ESTADO DEGRADADO, e vai marcado: sem a lista
+  // não dá pra saber quem já está dentro, e o teto lá embaixo usa exatamente
+  // isso pra não barrar quem só deu F5. Devolver identidades:[] calado fazia o
+  // sistema tratar "não sei quem está lá" como "não tem ninguém lá".
+  if (!p.ok || !p.d || !Array.isArray(p.d.participants)) return { ok: true, n, pessoas: [], identidades: [], listaOk: false };
 
   const vivos = p.d.participants.filter((x) => {
     const e = x && x.state;
@@ -204,7 +215,14 @@ async function estadoDaSala(ctx, comNomes) {
   });
   return {
     ok: true,
-    n: Math.max(n, vivos.length),
+    // ⚠️ NÃO use Math.max(n, vivos.length) aqui. Era o que estava escrito, e
+    // desfazia na linha seguinte o filtro de fantasmas feito logo acima: com o
+    // ListRooms dizendo 10 e só 7 vivos, o máximo devolve 10 e um novato leva
+    // "a sala está cheia" com sete pessoas dentro. O ListRooms é justamente a
+    // fonte que este arquivo já aprendeu a não acreditar (veja o comentário na
+    // consulta). Quem foi filtrado manda no número.
+    n: vivos.length,
+    listaOk: true,
     identidades: vivos.map((x) => String(x.identity || '')),
     pessoas: vivos.map((x) => {
       const meta = lerMeta(x.metadata);
@@ -337,7 +355,12 @@ module.exports = async function handler(req, res) {
       // Cheio é cheio — MENOS pra quem já está lá dentro e só está reentrando
       // (aba recarregada, celular que caiu): essa pessoa já ocupa a vaga dela,
       // e recusar seria trancar alguém pra fora da própria conversa.
-      if (!jaEstou && st.n >= MAX_PESSOAS) {
+      // Sem a lista, `jaEstou` é sempre falso — não porque a pessoa não esteja
+      // dentro, mas porque não dá pra saber. Aplicar o teto nesse estado tranca
+      // pra fora justamente quem já estava na sala e só deu F5. Na dúvida entre
+      // deixar entrar um a mais e expulsar alguém que já estava conversando, o
+      // erro barato é o primeiro: o SFU ainda segura o teto de verdade.
+      if (st.listaOk !== false && !jaEstou && st.n >= MAX_PESSOAS) {
         return res.status(403).json({ error: 'A sala está cheia (' + MAX_PESSOAS + ' pessoas).', cheia: true, n: st.n, max: MAX_PESSOAS });
       }
 
@@ -356,10 +379,17 @@ module.exports = async function handler(req, res) {
       // não impede a entrada, porque o LiveKit cria a sala no join de qualquer
       // jeito — sala sem prazo é melhor que sala fechada.
       //
-      // ⚠️ `max_participants` NÃO é um portão. MEDIDO em 11/08 contra esta conta:
-      // sala criada com max_participants=2 aceitou o TERCEIRO participante — o
-      // handshake passou e os três ficaram na sala. Ele vai junto porque é a
-      // intenção declarada (e vale em self-hosted), mas o teto de verdade são
+      // ⚠️ `max_participants` é um portão FROUXO, não um portão firme. A regra
+      // medida contra esta conta (11/08) é max + 2: max=2 aceitou 4, max=4
+      // aceitou 6, max=10 aceitou 12, e sem declarar entraram 18 de 18.
+      //
+      // (A leitura anterior aqui dizia "NÃO é um portão". Ela veio de um caso
+      // único — max=2 aceitou o terceiro — que era compatível com as duas
+      // hipóteses. A varredura da faixa inteira desempatou. Fica registrado
+      // porque a diferença importa: o pior caso é 12 numa sala de 10, não
+      // ilimitado.)
+      //
+      // Entre 10 e 12 quem segura são
       // duas camadas NOSSAS: a contagem logo acima (sem cache) e, pra corrida
       // de dois pedidos no mesmo instante, o desempate no navegador — quem
       // ficou além do teto se retira sozinho (checarLotacao em

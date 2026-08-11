@@ -610,11 +610,12 @@ test('o teto de 10 é cobrado no backend, e sem cache', () => {
   assert.match(API, /st\.n >= MAX_PESSOAS[\s\S]{0,200}cheia: true/, 'a contagem antes de assinar o crachá');
   assert.match(API, /const st = await estadoDaSala\(LK, true\);\s*\n\s*if \(!st\.ok\)/,
     'a contagem do teto não pode vir do cache do contador — cache é enfeite de tela, não decisão');
-  // O max_participants continua sendo mandado, mas NÃO é o portão: medido em
-  // 11/08 contra esta conta, sala criada com teto 2 aceitou o terceiro.
+  // O max_participants é mandado e É cobrado, com folga de 2 (medido na faixa
+  // toda em 11/08: 2→4, 4→6, 10→12, sem limite→18 de 18). Entre 10 e 12 quem
+  // segura são as camadas nossas.
   assert.match(API, /max_participants: MAX_PESSOAS/);
-  assert.match(API, /`max_participants` NÃO é um portão/,
-    'quem ler este arquivo depois não pode achar que o SFU está segurando o teto');
+  assert.match(API, /portão FROUXO/,
+    'quem ler este arquivo depois precisa saber que o SFU segura em max+2 — nem firme nem ausente');
 });
 
 test('corrida de entrada: quem furou o teto se retira sozinho, e só ele', async () => {

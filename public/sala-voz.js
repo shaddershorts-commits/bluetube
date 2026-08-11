@@ -795,6 +795,21 @@
       // que a luzinha do microfone apaga. Os laços saem junto: um Room morto
       // ainda emitindo 'Disconnected' chamaria sair() de novo, em laço.
       try { if (sala) { if (typeof sala.removeAllListeners === 'function') sala.removeAllListeners(); sala.disconnect(); } } catch (e) {}
+      // ⚠️ Os <audio> dos outros NÃO saem sozinhos aqui. O removeAllListeners()
+      // acima é deliberado — um Room morto emitindo 'Disconnected' chamaria
+      // sair() em laço — mas ele silencia justamente o TrackUnsubscribed que
+      // faria a limpeza, e o disconnect() logo depois é quem dispararia esse
+      // evento. Resultado medido: a limpeza virava no-op e sobrava um <audio>
+      // morto POR PARTICIPANTE a cada entra-e-sai, cada um segurando um stream.
+      // Por isso a varredura é à mão, e não por evento: depender de um laço que
+      // a gente mesmo desligou é como o vazamento nasceu.
+      try {
+        var mortos = document.querySelectorAll('[data-svz-audio]');
+        for (var i = 0; i < mortos.length; i++) {
+          try { mortos[i].pause(); mortos[i].srcObject = null; } catch (_) {}
+          mortos[i].remove();
+        }
+      } catch (e) {}
       S.pessoas = new Map();
       S.falando = new Set();
       S.qualidade = new Map();
