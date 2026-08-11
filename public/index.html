@@ -5524,8 +5524,13 @@ async function deleteMyAccount(){
     const d=await r.json();
     if(d.ok){
       localStorage.clear();
-      toast('✅ Conta deletada. Redirecionando...');
+      // O redirecionamento vem PRIMEIRO de propósito. Ele é a ação; a mensagem
+      // é enfeite. Na ordem antiga o toast estourava (não existia) e levava o
+      // redirecionamento junto: a conta era apagada e a pessoa ficava presa
+      // numa tela com cara de logada, sem aviso nenhum. Enfeite nunca mais
+      // decide se a ação acontece.
       setTimeout(()=>window.location.href='/',2000);
+      toast('✅ Conta deletada. Redirecionando...');
     }else{toast('Erro: '+(d.error||'Falha'));}
   }catch(e){toast('Erro: '+e.message);}
 }
@@ -5651,6 +5656,12 @@ function exportScriptAsImage(scriptId){
 <!-- Sininho do site. Lê a mesma caixa do app /blue (blue_notificacoes) — foi
      preciso quando o BlueScore virou análise humana: a pessoa fecha a página e
      precisa de um lugar aqui pra saber que o laudo ficou pronto. -->
+<!-- toast(): a home chamava em 6 lugares e não definia em nenhum. Cada chamada
+     era um ReferenceError — o pior deles apagava a conta e engolia o
+     redirecionamento. Arquivo próprio porque ele injeta o próprio CSS. -->
+<script src="/toast.js?v=20260811a" defer></script>
+<!-- O som ganhou entrou()/saiu() pra sala de voz: fica na versão "b", que tem os
+     timbres. Servir o "a" aqui entregaria o arquivo velho por 4h. -->
 <script src="/som-notificacao.js?v=20260811b" defer></script>
 <script src="/sininho.js?v=20260811a" defer></script>
 <script src="/support-chat.js?v=20260811b" defer></script>
