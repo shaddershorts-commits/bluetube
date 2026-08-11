@@ -377,14 +377,32 @@ module.exports = async function handler(req, res) {
       // Data de entrada e contagem de posts, em paralelo. NENHUMA delas pode
       // derrubar o perfil: são enfeite, a identidade é o essencial. Por isso
       // cada uma cai pra null/0 sozinha, sem contaminar a resposta inteira.
-      const [rPerfil, rPosts, linha] = await Promise.all([
+      const [rPerfil, rPosts, linha, rAmigos, rLista] = await Promise.all([
         fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${alvoId}&select=created_at`, { headers: H }),
-        fetch(`${SU}/rest/v1/community_posts?user_id=eq.${alvoId}&select=id`, { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } }),
+        fetch(`${SU}/rest/v1/community_posts?user_id=eq.${alvoId}&deleted=eq.false&select=id`, { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } }),
         souEu ? Promise.resolve(null) : linhaDoPar(alvoId),
+        // Amigos aceitos: conta os DOIS lados do par (a linha é única por par,
+        // mas eu tanto posso ser o lado A quanto o B).
+        fetch(`${SU}/rest/v1/community_friendships?or=(user_a.eq.${alvoId},user_b.eq.${alvoId})&status=eq.${AM.STATUS.ACEITO}&select=user_a`, { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } }),
+        // Os posts da pessoa — é o que faz a página valer a visita. Sem eles o
+        // perfil é uma carteira de identidade; com eles é a pessoa.
+        fetch(`${SU}/rest/v1/community_posts?user_id=eq.${alvoId}&deleted=eq.false&order=created_at.desc&limit=20&select=*`, { headers: H }),
       ]);
 
       let desde = null;
       try { if (rPerfil.ok) desde = ((await rPerfil.json())[0] || {}).created_at || null; } catch (e) {}
+      // O total vem no cabeçalho content-range ("0-0/42"): a contagem não paga o
+      // download das linhas. null = "não sei", que a tela distingue de zero.
+      const contarDoCabecalho = (r) => {
+        try {
+          if (!r || !r.ok) return null;
+          const n = parseInt(String(r.headers.get('content-range') || '').split('/')[1], 10);
+          return Number.isFinite(n) ? n : null;
+        } catch (e) { return null; }
+      };
+      const amigos = contarDoCabecalho(rAmigos);
+      let lista = [];
+      try { if (rLista.ok) lista = await rLista.json(); } catch (e) {}
       let posts = null;
       // O total vem no cabeçalho content-range ("0-0/42"), não no corpo: assim
       // a contagem não paga o download de todas as linhas. null = "não sei",
@@ -402,6 +420,16 @@ module.exports = async function handler(req, res) {
         eu: souEu,
         desde,
         posts,
+        amigos,
+        // Mesma forma do feed, pra página do perfil poder reusar o desenho do
+        // card sem traduzir nada. author vai junto porque o card espera.
+        lista: (lista || []).map((x) => ({
+          id: x.id, tab: x.tab, content: x.content, media: x.media || [], pinned: !!x.pinned,
+          likes_count: x.likes_count || 0, comments_count: x.comments_count || 0,
+          created_at: x.created_at, edited_at: x.edited_at || null,
+          mine: souEu,
+          author: pubPerfil(alvo),
+        })),
         amizade: souEu ? null : AM.estadoParaMim(linha, meId),
       });
     }

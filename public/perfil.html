@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Perfil — Comunidade BlueTube</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="Perfil de um criador na Comunidade BlueTube.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--font-display:'Syne',sans-serif;--font-mono:'DM Mono',monospace;--font-sans:'Inter',system-ui,sans-serif;--neon:#00aaff;--text-primary:#e8f0fb;--text-secondary:#8aa0bd;--text-dim:#5f7590}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 36%,#020817 72%) fixed #020817;color:var(--text-primary);font-family:var(--font-sans);min-height:100vh;overflow-x:hidden}
+
+/* barra de topo — o voltar é a peça mais importante numa página de destino */
+.pf-top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;padding:11px 16px;background:rgba(2,8,23,.72);backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%);border-bottom:1px solid rgba(0,170,255,.09)}
+.pf-back{display:flex;align-items:center;gap:8px;color:var(--text-secondary);text-decoration:none;font-family:var(--font-mono);font-size:12px;padding:8px 14px;background:rgba(10,22,40,.5);border:1px solid rgba(0,170,255,.16);border-radius:100px;transition:all .2s}
+.pf-back:hover{color:#fff;border-color:rgba(0,170,255,.45);box-shadow:0 0 18px rgba(0,170,255,.15)}
+.pf-topnome{font-family:var(--font-display);font-weight:800;font-size:15px;letter-spacing:-.3px;opacity:0;transition:opacity .2s}
+.pf-topnome.on{opacity:1}
+.pf-logo{margin-left:auto;font-weight:800;font-size:15px;letter-spacing:-.4px;color:#fff;text-decoration:none;font-family:var(--font-display)}
+.pf-logo span{color:var(--neon)}
+
+.pf-wrap{max-width:640px;margin:0 auto;padding-bottom:60px}
+
+/* CAPA — a faixa que dá a cara da página. A cor sai do nome da pessoa, então
+   cada perfil tem a sua e ninguém precisa subir imagem nenhuma. */
+.pf-capa{height:150px;position:relative;overflow:hidden;background:#0a1830}
+.pf-capa::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(2,8,23,.55) 100%)}
+@media(max-width:520px){.pf-capa{height:118px}}
+
+.pf-cab{padding:0 18px;position:relative}
+.pf-avlinha{display:flex;align-items:flex-end;justify-content:space-between;margin-top:-46px;margin-bottom:12px;gap:12px}
+.pf-av{width:104px;height:104px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:40px;font-family:var(--font-display);border:4px solid #020817;background:#0a1830;flex:0 0 auto}
+.pf-av img{width:100%;height:100%;object-fit:cover}
+.pf-av.mod{box-shadow:0 0 0 3px #fbbf24,0 0 26px rgba(251,191,36,.4)}
+.pf-av.pmaster{box-shadow:0 0 0 3px #fbbf24,0 0 26px rgba(251,191,36,.45)}
+.pf-av.pfull{box-shadow:0 0 0 3px var(--neon),0 0 24px rgba(0,170,255,.4)}
+@media(max-width:520px){.pf-av{width:84px;height:84px;font-size:32px;border-width:3px}.pf-avlinha{margin-top:-38px}}
+
+.pf-acao{padding-bottom:6px}
+.pf-nome{font-family:var(--font-display);font-weight:800;font-size:24px;letter-spacing:-.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.2}
+.pf-selo{font-family:var(--font-mono);font-size:9.5px;font-weight:700;padding:3px 9px;border-radius:100px;background:rgba(251,191,36,.14);color:#fbbf24;border:1px solid rgba(251,191,36,.32);letter-spacing:.5px}
+.pf-selo.full{background:rgba(0,170,255,.1);color:#00c4ff;border-color:rgba(0,170,255,.28)}
+.pf-arroba{font-family:var(--font-mono);font-size:13px;color:var(--text-dim);margin-top:3px}
+.pf-desde{font-family:var(--font-mono);font-size:12px;color:var(--text-dim);margin-top:12px;display:flex;align-items:center;gap:6px}
+
+.pf-nums{display:flex;gap:22px;margin:14px 0 4px;font-family:var(--font-mono);font-size:12.5px;color:var(--text-dim)}
+.pf-nums b{font-family:var(--font-display);font-size:15px;color:var(--text-primary);font-variant-numeric:tabular-nums;margin-right:5px}
+
+/* ABA — uma só por enquanto, mas com a estrutura pronta pra crescer */
+.pf-abas{display:flex;border-bottom:1px solid rgba(0,170,255,.1);margin-top:16px}
+.pf-aba{flex:1;text-align:center;padding:14px 0;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);cursor:default;position:relative}
+.pf-aba.on{color:var(--text-primary)}
+.pf-aba.on::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:58px;height:3px;border-radius:3px;background:var(--neon)}
+
+/* POSTS */
+.pf-lista{padding:0 0 8px}
+.pf-post{padding:16px 18px;border-bottom:1px solid rgba(0,170,255,.07)}
+.pf-post:hover{background:rgba(0,170,255,.02)}
+.pf-ph{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px}
+.pf-ph b{font-family:var(--font-display);font-size:14px;color:var(--text-primary);font-weight:700}
+.pf-txt{font-size:15px;line-height:1.62;color:#dbe7f7;white-space:pre-wrap;word-break:break-word}
+.pf-mid{margin-top:11px;border-radius:13px;overflow:hidden;border:1px solid rgba(0,170,255,.12)}
+.pf-mid img,.pf-mid video{width:100%;display:block;max-height:520px;object-fit:cover;background:#020817}
+.pf-yt{position:relative;padding-top:56.25%}
+.pf-yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.pf-pe{display:flex;gap:18px;margin-top:11px;font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim)}
+.pf-tag{display:inline-block;font-family:var(--font-mono);font-size:9.5px;padding:2px 8px;border-radius:100px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.28);margin-bottom:8px}
+
+.pf-msg{padding:54px 24px;text-align:center;font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.8}
+.pf-btn{display:inline-block;margin-top:16px;background:rgba(0,170,255,.09);border:1px solid rgba(0,170,255,.26);color:#00c4ff;font-family:var(--font-mono);font-size:12px;padding:9px 18px;border-radius:100px;cursor:pointer;text-decoration:none}
+.pf-btn:hover{background:rgba(0,170,255,.17)}
+
+/* esqueleto de carregamento: a página nasce com forma, não com vazio */
+.pf-sk{background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));background-size:200% 100%;animation:pfSk 1.3s ease-in-out infinite;border-radius:8px}
+@keyframes pfSk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.pf-sk{animation:none}}
+</style>
+</head>
+<body>
+<header class="pf-top">
+  <a class="pf-back" href="/comunidade">← Comunidade</a>
+  <span class="pf-topnome" id="pfTopNome"></span>
+  <a class="pf-logo" href="/">Blue<span>Tube</span></a>
+</header>
+
+<main class="pf-wrap" id="pfMain">
+  <div class="pf-capa" id="pfCapa"></div>
+  <div class="pf-cab">
+    <div class="pf-avlinha">
+      <div class="pf-av pf-sk" id="pfAv" style="border-radius:50%"></div>
+      <div class="pf-acao" id="pfAcao"></div>
+    </div>
+    <div class="pf-sk" style="width:170px;height:24px" id="pfSk1"></div>
+  </div>
+  <div id="pfCorpo"></div>
+</main>
+
+<!-- O comunidade.js entra por causa do ComunidadeBT.call (token, sessão) e o
+     de amigos por causa do botão de amizade — um só lugar decide como ele se
+     comporta. Ambos são no-op aqui: nenhum dos dois monta feed sozinho. -->
+<script src="/comunidade.js?v=10"></script>
+<script src="/comunidade-amigos.js?v=4"></script>
+<script src="/toast.js?v=20260811a"></script>
+<script src="/perfil-pagina.js?v=1"></script>
+</body>
+</html>

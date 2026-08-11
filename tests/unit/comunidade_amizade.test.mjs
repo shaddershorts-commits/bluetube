@@ -779,6 +779,8 @@ test('ESTILO: o ?v= subiu junto (cache de 4h da Vercel)', () => {
 // pra pedir amizade a quem tivesse post visível no feed naquele instante.
 // ═══════════════════════════════════════════════════════════════════════════
 const PERFILJS = readFileSync(new URL('../../public/comunidade-perfil.js', import.meta.url), 'utf8');
+const PAGINAJS = readFileSync(new URL('../../public/perfil-pagina.js', import.meta.url), 'utf8');
+const PERFILHTML = readFileSync(new URL('../../public/perfil.html', import.meta.url), 'utf8');
 const COMJS = readFileSync(new URL('../../public/comunidade.js', import.meta.url), 'utf8');
 const API = readFileSync(new URL('../../api/community.js', import.meta.url), 'utf8');
 
@@ -793,24 +795,6 @@ test('PERFIL: o nome escapado NUNCA entra em atributo executável', () => {
   assert.equal(/onclick="[^"]*\$\{esc\(a\.name\)/.test(COMJS), false,
     'nome de usuário foi parar dentro de um onclick');
   assert.match(COMJS, /data-cbp-name="\$\{esc\(a\.name\)\}"/, 'o nome tem que ir escapado');
-});
-
-test('PERFIL: o CSS entra no arranque, não ao abrir (a lição da pílula)', () => {
-  assert.match(PERFILJS, /function garantirEstilo\(\)/);
-  const i = PERFILJS.indexOf('window.ComunidadePerfil = {');
-  assert.match(PERFILJS.slice(Math.max(0, i - 400), i), /\n\s*garantirEstilo\(\);/,
-    'o estilo voltou a depender de alguém abrir o painel');
-});
-
-test('PERFIL: erro é estado próprio, com motivo e retentativa', () => {
-  assert.match(PERFILJS, /S\.erro = r\.status === 404/, 'todo erro virou a mesma mensagem');
-  assert.match(PERFILJS, /data-cbp-act="retentar"/, 'sem retentativa, um blip vira beco sem saída');
-  assert.equal(/Carregando…'\s*;\s*return;\s*}\s*$/m.test(PERFILJS), false);
-});
-
-test('PERFIL: contagem desconhecida NÃO vira 0 na tela', () => {
-  assert.match(PERFILJS, /typeof d\.posts === 'number'\) \? String\(d\.posts\) : '—'/,
-    'posts null viraria 0 — afirmar "nenhum post" sem ter medido é o defeito que já pegamos duas vezes');
 });
 
 test('PERFIL (API): banido não tem perfil acessível pra quem não é moderador', () => {
@@ -831,7 +815,7 @@ test('PERFIL (API): o uuid do alvo não vaza — a busca é por display_name', (
 
 test('PERFIL (API): enfeite que falha não derruba a identidade', () => {
   const i = API.indexOf("if (action === 'perfil')");
-  const bloco = API.slice(i, i + 2200);
+  const bloco = API.slice(i, i + 3600);
   // desde/posts são try/catch próprios: uma consulta ruim não pode zerar o perfil.
   assert.match(bloco, /let desde = null;/);
   assert.match(bloco, /let posts = null;/);
@@ -850,7 +834,7 @@ test('PERFIL: a chamada usa o envelope que o api() entende ({qs} ou {body})', ()
   // O api() do comunidade.js só lê opts.qs e opts.body. Passar { name } direto
   // faz o parâmetro NUNCA sair do navegador: o servidor procura por undefined
   // e responde 404 "Não achei esse perfil" — apareceu exatamente assim na tela.
-  const chamadas = [...PERFILJS.matchAll(/api\(\s*'([^']+)'\s*,\s*\{([^}]*)/g)];
+  const chamadas = [...PAGINAJS.matchAll(/(?:api|bt\.call)\(\s*'([^']+)'\s*,\s*\{([^}]*)/g)];
   assert.ok(chamadas.length, 'nenhuma chamada de api() encontrada');
   for (const [, acao, args] of chamadas) {
     assert.ok(/\b(qs|body)\s*:/.test(args),
@@ -861,4 +845,55 @@ test('PERFIL: a chamada usa o envelope que o api() entende ({qs} ou {body})', ()
 test('PERFIL: o nome vai codificado na URL (nome com espaço/acento existe)', () => {
   assert.match(PERFILJS, /encodeURIComponent\(nome\)/,
     'nome sem encode quebra a querystring em quem tiver espaço ou & no display_name');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O PERFIL É PÁGINA, NÃO MODAL
+// A primeira entrega foi modal e o pedido era página ("ao clicar é pra ir
+// para uma nova página de perfil"). Estes testes guardam o formato.
+// ═══════════════════════════════════════════════════════════════════════════
+test('PÁGINA: clicar no feed NAVEGA, não abre modal', () => {
+  assert.match(PERFILJS, /location\.href = url\(nome\)/,
+    'o clique voltou a abrir algo na própria página em vez de navegar');
+  assert.equal(/cbp-ov|role="dialog"/.test(PERFILJS), false,
+    'o modal voltou — o perfil tem que ser página própria');
+  assert.match(PERFILJS, /'\/perfil\?u=' \+ encodeURIComponent\(nome\)/);
+});
+
+test('PÁGINA: ctrl/cmd-clique continua abrindo em nova aba', () => {
+  assert.match(PERFILJS, /metaKey \|\| e\.ctrlKey/,
+    'sequestrar o ctrl-clique tira da pessoa o "abrir em outra aba", que ela espera de um nome clicável');
+});
+
+test('PÁGINA: existe /perfil.html e ele carrega o motor e o de amigos', () => {
+  assert.match(PERFILHTML, /perfil-pagina\.js\?v=/, 'a página não carrega o motor dela');
+  assert.match(PERFILHTML, /comunidade\.js\?v=/, 'sem o comunidade.js não há token nem sessão');
+  assert.match(PERFILHTML, /comunidade-amigos\.js\?v=/, 'o botão de amizade vem do módulo de amigos');
+});
+
+test('PÁGINA: tem capa, avatar grande e volta pra Comunidade', () => {
+  assert.match(PERFILHTML, /pf-capa/, 'sumiu a capa — é o que dá cara de perfil');
+  assert.match(PERFILHTML, /pf-av\b/, 'sumiu o avatar grande');
+  assert.match(PERFILHTML, /href="\/comunidade"/, 'página de destino sem volta é beco sem saída');
+});
+
+test('PÁGINA: lista os posts da pessoa (é o que faz valer a visita)', () => {
+  assert.match(PAGINAJS, /function postHtml\(/);
+  assert.match(PAGINAJS, /d\.lista \|\| \[\]/, 'a página não lê a lista de posts que a API manda');
+});
+
+test('PÁGINA: iframe só com id de YouTube validado', () => {
+  const i = PAGINAJS.indexOf('function midiaHtml');
+  const bloco = PAGINAJS.slice(i, i + 700);
+  assert.match(bloco, /\[A-Za-z0-9_-\]\{6,15\}/,
+    'id de vídeo sem validação entrando em src de iframe é porta aberta');
+  assert.ok(/https/.test(bloco) && bloco.includes('test(m.url)'), 'url de mídia sem checar https');
+});
+
+test('PÁGINA (API): o perfil devolve amigos e a lista de posts', () => {
+  const i = API.indexOf("if (action === 'perfil')");
+  const bloco = API.slice(i, i + 3600);
+  assert.match(bloco, /amigos,/, 'a contagem de amigos não sai da API');
+  assert.match(bloco, /lista: \(lista \|\| \[\]\)/, 'os posts não saem da API');
+  assert.match(bloco, /deleted=eq\.false/, 'post apagado apareceria no perfil');
 });
