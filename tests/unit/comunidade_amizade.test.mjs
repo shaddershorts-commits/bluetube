@@ -972,8 +972,10 @@ test('URL: o perfil vive em /nome, não numa querystring', () => {
   assert.match(PAGINAJS, /URLSearchParams\(location\.search\)\.get\('u'\)/,
     'sumiu a segunda via ?u= — quem tiver nome igual ao de uma página real fica sem perfil');
   const V = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
-  const r = (V.rewrites || []).find((x) => x.destination === '/perfil.html');
+  const r = (V.rewrites || []).find((x) => x.destination === '/perfil' || x.destination === '/perfil.html');
   assert.ok(r, 'sem a reescrita, /nome dá 404');
+  // path-to-regexp: chaves no padrão fazem ele deixar de casar por inteiro.
+  assert.equal(/[{}]/.test(r.source), false, 'quantificador com chaves quebra a reescrita — foi o 404 de 11/08');
   assert.equal((V.rewrites || []).indexOf(r), (V.rewrites || []).length - 1,
     'a reescrita do perfil tem que ser a ÚLTIMA, senão engole rotas reais');
 });
