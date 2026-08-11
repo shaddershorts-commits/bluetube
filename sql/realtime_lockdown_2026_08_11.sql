@@ -1,67 +1,70 @@
--- realtime_lockdown_2026_08_11.sql
+-- realtime_lockdown_2026_08_11.sql  (v2)
 --
--- FECHA OS CANAIS DE TEMPO REAL (chamadas e presença).
+-- FECHA OS CANAIS DE TEMPO REAL (campainha e sinalização de chamada).
 --
--- O que foi encontrado (teste real, 11/08):
---   Dois clientes ANÔNIMOS, usando só a chave pública que está dentro do APK,
---   entraram no MESMO canal `ring-<uid>` e trocaram mensagem entre si.
---   Nenhuma credencial de usuário foi necessária.
+-- O que foi encontrado (teste real, 11/08): dois clientes ANÔNIMOS, só com a
+-- chave pública do APK, entraram no MESMO canal `ring-` e trocaram mensagem.
+-- Nomes previsíveis (`ring-<uid>`, `call-<id>`) => dava pra tocar o telefone
+-- de qualquer um e entrar na sinalização de uma chamada (escutar a ligação).
 --
--- Por que isso é grave — os canais têm nome PREVISÍVEL:
---   `ring-<user_id>`  → dá pra tocar o telefone de qualquer usuário fingindo
---                       ser outra pessoa, e dá pra ver quem está ligando pra ele.
---   `call-<call_id>`  → é por onde passam SDP e ICE do WebRTC. Quem entra no
---                       canal pode responder antes do destinatário e assumir a
---                       ponta da chamada. Na prática: escutar a ligação.
+-- Como o Supabase autoriza canal: a checagem por policy só roda em canais
+-- PRIVADOS (private: true no app). Canal público não é checado. Por isso este
+-- SQL anda de mãos dadas com a mudança no app que marca os canais como
+-- privados — um sem o outro não protege.
 --
--- Causa: o cliente Realtime do app é criado com a chave anon e
--- `persistSession: false`, então NUNCA manda o token do usuário; e o projeto
--- está sem Realtime Authorization, que é o padrão do Supabase (canal de
--- broadcast aceita qualquer apikey válida).
+-- ⚠️ ORDEM (importa e é o oposto do que parece):
+--   1º) rodar ESTE SQL. O app ATUAL usa canais públicos, que não passam por
+--       policy — então rodar isto NÃO quebra o app atual.
+--   2º) publicar o app com os canais privados. A partir daí a proteção vale
+--       pros aparelhos atualizados. (Se o app privado chegar ANTES do SQL, as
+--       chamadas dele falhariam ao entrar no canal — por isso SQL primeiro.)
 --
--- O conserto tem DUAS metades e as duas são obrigatórias:
---   (a) este SQL, que passa a exigir identidade nos canais;
---   (b) a mudança no app (src/lib/supabase.js + telas de chamada) que passa a
---       mandar o JWT do usuário no Realtime via setAuth().
---
--- ⚠️ ORDEM IMPORTA: rodar este SQL ANTES do app atualizado derruba as chamadas
--- (o app antigo não manda token e vai ser barrado). Publique o app primeiro,
--- espere ele chegar nos aparelhos, e só então rode este script.
+-- ── correção sobre a v1 ────────────────────────────────────────────────────
+-- A v1 checava a chamada com EXISTS direto na blue_calls. Mas blue_calls tem
+-- FORCE ROW LEVEL SECURITY e nenhuma policy pra 'authenticated' — ou seja, o
+-- usuário logado não enxerga NENHUMA linha dela. O EXISTS daria sempre falso e
+-- NINGUÉM entraria no canal da chamada: derrubaria todas as chamadas. A v2
+-- primeiro dá a cada um o direito de ver as PRÓPRIAS chamadas.
 
--- Realtime Authorization: a partir daqui, entrar num canal é uma operação
--- verificada por policy na tabela realtime.messages.
+-- 1) cada um enxerga as próprias chamadas (pré-requisito da checagem abaixo).
+--    Não vaza nada de terceiros: só linhas onde você é uma das pontas. A API
+--    continua usando a service key (que ignora RLS), então nada muda pra ela.
+ALTER TABLE public.blue_calls ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "blue_calls_select_own" ON public.blue_calls;
+CREATE POLICY "blue_calls_select_own" ON public.blue_calls
+  FOR SELECT TO authenticated
+  USING (caller_id = (SELECT auth.uid()) OR callee_id = (SELECT auth.uid()));
+
+-- 2) Realtime Authorization.
 ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
 
--- ── OUVIR (entrar no canal) ───────────────────────────────────────────────
+-- OUVIR (entrar no canal):
+--   - `ring-<meu uid>`: só o dono escuta a própria campainha;
+--   - `call-<id>`: só as duas pontas da chamada.
 DROP POLICY IF EXISTS "blue_realtime_listen" ON realtime.messages;
 CREATE POLICY "blue_realtime_listen" ON realtime.messages
   FOR SELECT TO authenticated
   USING (
-    -- meu próprio canal de campainha, e só o meu
-    realtime.topic() = 'ring-' || auth.uid()::text
-    OR
-    -- canal da chamada: só quem é uma das duas pontas dela
-    EXISTS (
+    realtime.topic() = 'ring-' || (SELECT auth.uid())::text
+    OR EXISTS (
       SELECT 1 FROM public.blue_calls c
       WHERE realtime.topic() = 'call-' || c.id::text
-        AND (c.caller_id = auth.uid() OR c.callee_id = auth.uid())
+        AND (c.caller_id = (SELECT auth.uid()) OR c.callee_id = (SELECT auth.uid()))
     )
   );
 
--- ── FALAR (publicar no canal) ─────────────────────────────────────────────
--- Repare que `ring-` NÃO aparece aqui: nenhum aparelho publica campainha.
--- Quem toca é o servidor, em api/blue-calls.js, com a service key (que ignora
--- RLS). Assim ninguém consegue fazer o telefone de outra pessoa tocar sem
--- passar pela API — que exige token e registra a chamada no banco.
+-- FALAR (publicar no canal): só na sinalização da chamada, e só as duas
+-- pontas. `ring-` NÃO aparece aqui de propósito: nenhum aparelho publica
+-- campainha — quem toca é o servidor (api/blue-calls.js, com service key, que
+-- ignora RLS). Assim ninguém faz o telefone de outro tocar sem passar pela API.
 DROP POLICY IF EXISTS "blue_realtime_send" ON realtime.messages;
 CREATE POLICY "blue_realtime_send" ON realtime.messages
   FOR INSERT TO authenticated
   WITH CHECK (
-    -- na sinalização da chamada, só as duas pontas falam
     EXISTS (
       SELECT 1 FROM public.blue_calls c
       WHERE realtime.topic() = 'call-' || c.id::text
-        AND (c.caller_id = auth.uid() OR c.callee_id = auth.uid())
+        AND (c.caller_id = (SELECT auth.uid()) OR c.callee_id = (SELECT auth.uid()))
     )
   );
 
