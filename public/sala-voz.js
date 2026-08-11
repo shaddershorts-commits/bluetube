@@ -347,6 +347,21 @@
           // presenceState ainda vem vazio e isso zerava o contador e (antes da
           // carência do mesh) matava todos os peers. O evento 'sync' chega
           // sozinho em seguida, com o estado de verdade.
+          //
+          // MAS: numa sala VAZIA o 'sync' pode nunca chegar — não há estado de
+          // presença pra sincronizar. Como entrar() esperava esse evento antes
+          // de liberar, a PRIMEIRA pessoa nunca conseguia entrar, e a sala
+          // ficava vazia pra sempre (impasse de origem, achado em 11/08).
+          //
+          // Estar SUBSCRIBED já é resposta suficiente: o estado do canal é
+          // autoritativo a partir daqui, e "vazio" é um estado válido. Isso
+          // libera o portão sem chamar sincronizar(), que continua sendo
+          // trabalho do evento 'sync' quando ele existir.
+          if (!S.sincronizou) {
+            S.sincronizou = true;
+            var fila = S.aguardandoSync.splice(0);
+            for (var i = 0; i < fila.length; i++) { try { fila[i](); } catch (e) {} }
+          }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           S.sub = 'erro'; pintar();
         } else if (status === 'CLOSED') {
