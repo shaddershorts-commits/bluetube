@@ -56,14 +56,16 @@ main{position:relative;z-index:1}
 <!-- "Como usar?" — agente de suporte do Blublu. Arquivo isolado: não chama
      nenhuma função do comunidade.js, só injeta a entrada acima das abas. -->
 <script src="/blublu-suporte.js?v=20260811a" defer></script>
-<!-- Sala de voz ao vivo (só áudio, P2P). Mesmo padrão: arquivo isolado, injeta
-     a entrada logo ABAIXO de Dicas (nas abas no mobile, na lateral no desktop).
+<!-- Sala de voz ao vivo (só áudio, transporte LiveKit). Mesmo padrão: arquivo
+     isolado, injeta a entrada logo ABAIXO de Dicas (nas abas no mobile, na
+     lateral no desktop). O cliente do LiveKit vem por CDN e SÓ no clique de
+     entrar — quem só passa pela Comunidade não baixa 1,2MB de WebRTC.
      O ?v= é obrigatório — a Vercel cacheia .js por 4h e sem versão nova o
      deploy não chega no navegador de ninguém. Mexeu no arquivo, sobe a versão. -->
 <!-- Timbres da sala (BTSom.entrou/saiu). Mesmo arquivo do sininho da home, então
      quem passou por lá já tem no cache. Vem ANTES do sala-voz.js; se falhar, a
      sala funciona igual, só sem som (ver a função som() lá dentro). -->
 <script src="/som-notificacao.js?v=20260811b" defer></script>
-<script src="/sala-voz.js?v=20260811j" defer></script>
+<script src="/sala-voz.js?v=20260811lk1" defer></script>
 </body>
 </html>

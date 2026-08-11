@@ -1,42 +1,58 @@
 // tests/unit/sala_voz_presenca.test.mjs — node --test
 //
-// A sala de voz da Comunidade NÃO usa a presence do Realtime. Foi medido em
-// 11/08/2026 com dois clientes reais do @supabase/supabase-js (anon+JWT do
-// usuário e service key) contra este projeto: os dois ficam SUBSCRIBED, o
-// track() devolve 'ok' e nenhum evento 'sync'/'join'/'leave' chega — nem entre
-// dois clientes no mesmo canal. Broadcast entrega normalmente nos dois casos.
-// Em produção isso apareceu como o dono entrando pelo celular e pelo
-// computador e cada aparelho vendo uma sala só com ele mesmo.
+// A sala de voz da Comunidade TROCOU DE TRANSPORTE (11/08/2026): saiu o P2P
+// mesh com sinalização por Supabase Realtime, entrou o LiveKit (SFU gerenciado).
 //
-// Quem está na sala passou a ser o BATIMENTO por broadcast. Este arquivo trava:
+// Por que a troca, em uma frase: o transporte antigo tinha uma classe inteira de
+// defeito — "a lista de participantes discorda da conexão de voz" — e ela nos
+// derrubou cinco vezes. Foi medido em bancada que o send() do SDK do Supabase
+// devolve 'ok' com o WebSocket morto (escape HTTP), que a lista piscava, e que o
+// código destruía a conexão de voz de quem sumia da lista: 4 RTCPeerConnection
+// numa sala de 2 pessoas. Consertado o mesh, no navegador do dono continuou sem
+// áudio. Reconexão/renegociação/TURN é justamente o que um SFU resolve.
 //
-//  0. A presença por batimento: chegada, batimento perdido que NÃO derruba,
-//     ausência sustentada que derruba, 'tchau' na hora, resposta imediata ao
-//     "cheguei", prazo longo pra quem bloqueia a tela, e as guardas contra
-//     tempestade / lista envenenada.
-//  1. BUG "0 pessoas · 1 falando" sem nenhum card: a pessoa SEMPRE se vê e
-//     SEMPRE é contada, venha da rede o que vier.
-//  2. Coerência do rodapé: falando NUNCA pode passar de pessoas.
-//  3. Timbres de entrada/saída (som-notificacao.js) com teto anti-rajada.
-//  4. Confirmação antes de sair, dispensável por Esc e clique fora.
-//  5. A entrada tem o MESMO peso visual do "🏛️ Comunidade" (.cbt-snav).
-//  6. Aviso ao navegar: link do site pergunta no painel, fechar aba pergunta no
-//     beforeunload — e nada disso existe fora da sala.
+// OS TESTES DO TRANSPORTE ANTIGO FORAM APAGADOS DE PROPÓSITO. Batimento, censo,
+// ticket HMAC, geração de negociação, orçamento de reconstrução, 'opa',
+// carência de sumiço, medidor com AudioContext — nada disso existe mais. Manter
+// teste de código que não existe é ruído que ensina a ignorar o vermelho.
 //
-// Os testes de sala-voz.js rodam o ARQUIVO DE VERDADE dentro de um DOM falso e
-// mexem no estado interno — não são asserções de texto sobre o código. A UI
-// (WebRTC, socket, microfone) fica de fora: nenhum deles participa da contagem.
+// O que este arquivo trava agora:
+//
+//  0. TRANSPORTE: a lista de pessoas VEM do LiveKit; quem fala vem do indicador
+//     do LiveKit; o microfone só é pedido DEPOIS do clique e é solto ao sair;
+//     e as duas opções do Room que carregam defeito conhecido
+//     (disconnectOnPageLeave / stopMicTrackOnMute) estão do lado certo.
+//  1. A CASCA, item por item, continua de pé: contador antes de entrar sem
+//     microfone, modal de duas portas, painel com cards, sons, confirmação de
+//     saída, aviso ao navegar, medidas do botão iguais às do .cbt-snav.
+//  2. PORTÃO E TETO continuam NOSSOS, no backend: crachá só depois de checar
+//     plano, teto de 10 cobrado na contagem E no max_participants da sala.
+//  3. Estado degradado é MARCADO: LiveKit fora do ar vira "sala indisponível
+//     agora", não uma sala que parece normal e falha no clique.
+//  4. Coerência do rodapé: falando NUNCA pode passar de pessoas.
+//  5. Timbres de entrada/saída (som-notificacao.js) com teto anti-rajada.
+//  6. O 403 da presença do SUPORTE (support-chat.js) — vizinho de arquivo, nada
+//     a ver com a sala; continua aqui porque continua valendo.
+//
+// Os testes de sala-voz.js rodam o ARQUIVO DE VERDADE dentro de um DOM falso,
+// com um LiveKit falso no lugar do SDK. Não são asserções de texto sobre o
+// código, exceto onde a garantia é justamente "esta linha não pode voltar".
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import crypto from 'node:crypto';
 import vm from 'node:vm';
 
+const require = createRequire(import.meta.url);
 const SALA = readFileSync(new URL('../../public/sala-voz.js', import.meta.url), 'utf8');
 const SOM = readFileSync(new URL('../../public/som-notificacao.js', import.meta.url), 'utf8');
 const HTML = readFileSync(new URL('../../public/comunidade.html', import.meta.url), 'utf8');
+const API = readFileSync(new URL('../../api/sala-voz.js', import.meta.url), 'utf8');
 const SQL_FIX = readFileSync(new URL('../../sql/support_presenca_fix_403.sql', import.meta.url), 'utf8');
 const SUPORTE = readFileSync(new URL('../../public/support-chat.js', import.meta.url), 'utf8');
 const CBT = readFileSync(new URL('../../public/comunidade.js', import.meta.url), 'utf8');
+const backend = require('../../api/sala-voz.js');
 
 // ─── DOM mínimo ────────────────────────────────────────────────────────────
 // Só o suficiente pro arquivo carregar e pintar. Nada aqui simula rede.
@@ -79,13 +95,8 @@ function domFalso() {
     _disparar: (ev, e) => (ouvintes[ev] || []).forEach((f) => f(e || {})),
     _registrar: (no) => { if (no.id) nos.set(no.id, no); return no; },
   };
-  function PeerFalso() {
-    this.connectionState = 'new'; this.iceConnectionState = 'new';
-    this.addTrack = () => {}; this.close = () => {}; this.getSenders = () => [];
-    this.createOffer = async () => ({}); this.setLocalDescription = async () => {};
-    this.addTransceiver = () => {};
-  }
-  // Os ouvintes de window passaram a ser GRAVADOS: o aviso ao navegar mora no
+  function PeerFalso() {}
+  // Os ouvintes de window são GRAVADOS: o aviso ao navegar mora no
   // beforeunload, e sem poder disparar o evento não dá pra provar nem que ele
   // pergunta dentro da sala nem que ele CALA fora dela.
   const ouvintesW = {};
@@ -93,8 +104,7 @@ function domFalso() {
     addEventListener: (ev, fn) => { (ouvintesW[ev] = ouvintesW[ev] || []).push(fn); },
     removeEventListener: () => {},
     PointerEvent: function () {},
-    RTCPeerConnection: PeerFalso,
-    AudioContext: function () {},
+    RTCPeerConnection: PeerFalso,     // o entrar() confere que o navegador fala WebRTC
     location: {
       href: 'https://bluetubeviral.com/comunidade',
       origin: 'https://bluetubeviral.com',
@@ -107,11 +117,11 @@ function domFalso() {
   window.document = document;
   const ctx = {
     window, document, console, URL,
-    RTCPeerConnection: PeerFalso,   // o mesh usa o global cru
     setTimeout, clearTimeout, setInterval, clearInterval,
     Map, Set, Promise, Date, Math, JSON, String, Number, Array, Object, Boolean,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-    navigator: { mediaDevices: {} },
+    // Microfone existe no aparelho — quem PEDE é o LiveKit, e só depois do clique.
+    navigator: { mediaDevices: { getUserMedia: async () => ({}) } },
     fetch: async () => ({ ok: false, status: 0, json: async () => ({}) }),
     MutationObserver: function () { this.observe = () => {}; this.disconnect = () => {}; },
   };
@@ -126,15 +136,27 @@ function link(href, attrs = {}) {
   return a;
 }
 
-// A caixa de confirmação vive dentro do dock, que o DOM falso não constrói
-// (innerHTML aqui é só uma string). Registra os nós à mão pra exercitar a
-// pergunta de verdade, sem simular HTML.
-function registrarConfirmacao(document) {
+// O modal e o painel são montados com innerHTML — string, no DOM falso. Registra
+// os nós à mão pra exercitar a interface de verdade (montarModal/montarDock saem
+// na primeira linha quando o nó já existe).
+// `semConfirmacao` reproduz o painel de um cache ANTIGO, de antes da caixa de
+// confirmação existir: o dock está lá, a pergunta não. É um caso real (a Vercel
+// cacheia .js por 4h) e a regra dele é dura — navegar não pode ficar refém.
+function registrarUI(document, opcoes = {}) {
   const criar = (id) => document._registrar(Object.assign(document.createElement('div'), { id }));
-  return {
-    conf: criar('svzConf'), tit: criar('svzConfTit'),
-    sub: criar('svzConfSub'), ok: criar('svzBSairSim'),
+  const nos = {
+    dlg: criar('svzDlg'), dlgSub: criar('svzDlgSub'), dlgQuem: criar('svzDlgQuem'),
+    dlgErro: criar('svzDlgErro'), bEntrar: criar('svzBEntrar'), bMudo: criar('svzBMudo'),
+    dock: criar('svzDock'), dockSub: criar('svzDockSub'), grid: criar('svzGrid'),
+    bMudar: criar('svzBMudar'), nota: criar('svzNota'),
   };
+  if (!opcoes.semConfirmacao) {
+    Object.assign(nos, {
+      conf: criar('svzConf'), tit: criar('svzConfTit'),
+      sub: criar('svzConfSub'), ok: criar('svzBSairSim'),
+    });
+  }
+  return nos;
 }
 
 function carregarSala() {
@@ -145,819 +167,599 @@ function carregarSala() {
   return { SV, S: SV._estado(), I: SV._interno, document, ctx };
 }
 
-// Coloca a pessoa "dentro da sala", exatamente como entrar() faz depois do
-// "cheguei" sair com 'ok' — sem microfone, sem socket, sem WebRTC.
-function entrarNaSala(S, I) {
-  S.cfg = {
-    ticket: 'TICKET-DONO', expira_em: Date.now() + 3600000, canal: 'x', max: 10,
-    me: { id: 'u-dono', nome: 'Dono', avatar: null, plano: 'master', mod: false },
+// ─── LiveKit falso ─────────────────────────────────────────────────────────
+// Só a superfície que a sala usa. `linha` é a ordem real dos acontecimentos —
+// é ela que prova que o microfone vem DEPOIS de conectar, nunca antes.
+function livekitFalso() {
+  const linha = [];
+  const RoomEvent = {
+    ParticipantConnected: 'participantConnected',
+    ParticipantDisconnected: 'participantDisconnected',
+    TrackMuted: 'trackMuted', TrackUnmuted: 'trackUnmuted',
+    TrackSubscribed: 'trackSubscribed', TrackUnsubscribed: 'trackUnsubscribed',
+    LocalTrackPublished: 'localTrackPublished',
+    ParticipantMetadataChanged: 'participantMetadataChanged',
+    ParticipantNameChanged: 'participantNameChanged',
+    ActiveSpeakersChanged: 'activeSpeakersChanged',
+    ConnectionQualityChanged: 'connectionQualityChanged',
+    ConnectionStateChanged: 'connectionStateChanged',
+    Reconnecting: 'reconnecting', Reconnected: 'reconnected',
+    AudioPlaybackStatusChanged: 'audioPlaybackChanged',
+    MediaDevicesError: 'mediaDevicesError',
+    Disconnected: 'disconnected',
   };
-  S.sessao = 'u-dono~ab12';
-  S.entrouEm = Date.now();
-  S.entrei = true;
-  I.registrarMinhaIdentidade();
-  I.garantirEuNaLista();
+  const ConnectionState = { Connected: 'connected', Reconnecting: 'reconnecting', Disconnected: 'disconnected' };
+  const DisconnectReason = { CLIENT_INITIATED: 1, DUPLICATE_IDENTITY: 2, SERVER_SHUTDOWN: 3, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5 };
+  const Track = { Source: { Microphone: 'microphone' } };
+  const AudioPresets = { speech: { maxBitrate: 24000 } };
+
+  function participante(identity, nome, extra = {}) {
+    return Object.assign({
+      identity, name: nome,
+      metadata: JSON.stringify({ a: '', p: 'full' }),
+      isMicrophoneEnabled: true,
+      joinedAt: new Date(1000),
+    }, extra);
+  }
+
+  class RoomFalso {
+    constructor(opts) {
+      this.opts = opts || {};
+      this._h = {};
+      this.state = 'disconnected';
+      this.canPlaybackAudio = true;
+      this.remoteParticipants = new Map();
+      this.micErro = null;
+      this.desconectado = false;
+      const room = this;
+      this.localParticipant = participante('u-dono', 'Dono', {
+        metadata: JSON.stringify({ a: '', p: 'master' }),
+        isMicrophoneEnabled: false,
+        async setMicrophoneEnabled(v) {
+          linha.push('mic:' + v);
+          if (room.micErro) throw room.micErro;
+          this.isMicrophoneEnabled = v;
+        },
+        getTrackPublication: () => room.pubMic || null,
+      });
+    }
+    on(ev, fn) { (this._h[ev] = this._h[ev] || []).push(fn); return this; }
+    removeAllListeners() { linha.push('laços removidos'); this._h = {}; return this; }
+    emitir(ev, ...a) { (this._h[ev] || []).forEach((f) => f(...a)); }
+    async connect(url, token) { linha.push('connect'); this.url = url; this.token = token; this.state = 'connected'; }
+    disconnect() { linha.push('disconnect'); this.desconectado = true; this.state = 'disconnected'; }
+    startAudio() { linha.push('startAudio'); return Promise.resolve(); }
+  }
+  return { LK: { Room: RoomFalso, RoomEvent, ConnectionState, DisconnectReason, Track, AudioPresets }, linha, participante };
 }
 
-// Canal de mentira que ANOTA o que foi mandado. É o que sobrou de "simular
-// rede": a sala só fala broadcast agora, então gravar send() cobre presença,
-// saída e sinalização de uma vez.
-function canalFalso() {
-  const enviados = [];
-  return {
-    enviados,
-    send: ({ event, payload }) => { enviados.push({ event, payload }); return 'ok'; },
-    eventos: (nome) => enviados.filter((m) => m.event === nome),
+// Respostas do nosso backend, por ação. Sem isto o entrar() nem chega no SFU.
+function ligarApi(ctx, mapa) {
+  const chamadas = [];
+  ctx.fetch = async (url, opts) => {
+    const acao = String(url).split('action=')[1] || '';
+    chamadas.push({ acao, corpo: JSON.parse((opts && opts.body) || '{}') });
+    const r = mapa[acao] || { status: 200, d: { ok: true, n: 0, pessoas: [], max: 10 } };
+    return { ok: r.status < 400, status: r.status, json: async () => r.d };
   };
+  return chamadas;
 }
 
-// Canal de pé, sem censo em curso: é o estado em que a varredura pode agir.
-function canalDePe(S) {
-  const c = canalFalso();
-  S.canal = c;
-  S.sub = 'on';
-  S.censoAte = 0;
-  return c;
-}
+const CONFIG_OK = { status: 200, d: { ok: true, sala: 'sala-voz-comunidade', max: 10, me: { id: 'u-dono', nome: 'Dono', avatar: null, plano: 'master', mod: false }, indisponivel: false } };
+const ENTRAR_OK = { status: 200, d: { ok: true, url: 'wss://sfu.exemplo/x', sala: 'sala-voz-comunidade', token: 'CRACHA', max: 10, me: CONFIG_OK.d.me, n: 0 } };
 
-// Um batimento chegando de outra pessoa.
-function batimento(chave, extra = {}) {
-  return Object.assign({ k: chave, t: 'T-' + chave, m: 0, j: Date.now(), z: 0, novo: 0 }, extra);
+// Põe a pessoa dentro da sala pelo caminho de verdade: backend, SDK, Room.
+async function entrarNaSala(ctx, SV, S, extras = {}) {
+  const { LK, linha } = livekitFalso();
+  S.LK = LK;
+  S.cfg = CONFIG_OK.d;
+  const chamadas = ligarApi(ctx, Object.assign({
+    config: CONFIG_OK, entrar: ENTRAR_OK, contar: { status: 200, d: { ok: true, n: 1, pessoas: [], max: 10 } },
+  }, extras));
+  await SV.entrar(false);
+  return { LK, linha, chamadas, sala: S.sala };
 }
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ═══ 0 — PRESENÇA POR BATIMENTO ══════════════════════════════════════════
+// ═══ 0 — TRANSPORTE: a lista É a conexão ═════════════════════════════════
+// O defeito que nos derrubou cinco vezes era "a lista discorda da conexão".
+// Ele não pode mais existir: não há lista nossa a sincronizar — a lista é lida
+// do Room a cada evento.
 
-test('batimento de alguém novo põe a pessoa na sala', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  assert.equal(I.contarPresentes(), 2, 'era exatamente o que a presence não entregava');
-  assert.equal(S.presentes.get('u2~zz').ticket, 'T-u2~zz');
+test('a lista de pessoas vem do LiveKit (local + remotos), com nome e plano do crachá', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, LK } = await entrarNaSala(ctx, SV, S);
+  sala.remoteParticipants.set('u2', LK.Room && null);   // placeholder trocado abaixo
+  sala.remoteParticipants.clear();
+  const ana = { identity: 'u2', name: 'Ana', metadata: JSON.stringify({ a: 'https://cdn/x.png', p: 'master' }), isMicrophoneEnabled: true, joinedAt: new Date(2000) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
+
+  assert.equal(I.contarPresentes(), 2, 'era exatamente o que a presence/batimento não entregava');
+  const pe = S.pessoas.get('u2');
+  assert.equal(pe.nome, 'Ana');
+  assert.equal(pe.plano, 'master', 'plano vem do metadata que o SERVIDOR assinou');
+  assert.equal(pe.avatar, 'https://cdn/x.png');
+  assert.equal(pe.mudo, false);
+  assert.ok(S.pessoas.has('u-dono'), 'e eu sempre me vejo — era o bug "0 pessoas · 1 falando"');
+  I.pararPolling();
 });
 
-test('batimento PERDIDO não derruba ninguém — só a ausência sustentada', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-
-  // Broadcast é fire-and-forget: três batimentos seguidos podem sumir.
-  S.presentes.get('u2~zz').visto = Date.now() - 12000;
-  I.varrer();
-  assert.equal(I.contarPresentes(), 2, 'perder pacote não pode expulsar quem está falando');
-
-  // Ausência sustentada (além do prazo) sim.
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  assert.equal(I.contarPresentes(), 1, 'quem parou de bater tem que sair da lista');
-});
-
-// ═══ AS DUAS VIDAS: a lista e a conexão ═════════════════════════════════
-// Reprodução do teste real do dono (11/08): celular + computador no MESMO
-// Wi-Fi, "conexões: 4" numa sala de DUAS pessoas, todas closed. A bancada
-// isolou a cadeia: o socket de um lado cai (o escape HTTP do SDK também), o
-// batimento dele some, e o outro lado — que nunca caiu — o expira em 14,03s e
-// chama destruirPeer() + esquecerPar(). O canal do caído só volta ~8s depois da
-// rede (backoff do SDK), ele reanuncia, o mesh reconstrói: ~22s por ciclo,
-// 4 ciclos = 4 conexões. E como esquecerPar() zerava S.tentativas, o teto de
-// MAX_TENTATIVAS nunca chegava: reconstrução infinita.
-
-// Um peer de mentira com o estado que importa (é o pc que decide se há voz).
-function peerFalso(estado) {
-  return {
-    pc: { close: () => {}, connectionState: estado, onicecandidate: null, ontrack: null, onconnectionstatechange: null },
-    audio: null, remoto: null, g: 1, desde: Date.now(), tDesc: null, ouvi: 0, conectouEm: Date.now(),
-  };
-}
-
-test('socket do outro cai: ele sai da LISTA mas a VOZ sobrevive', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.peers.set('u2~zz', peerFalso('connected'));   // áudio fluindo nos dois sentidos
-
-  // 15s sem batimento: é exatamente o instante em que o dono perdia a voz.
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-
-  assert.equal(S.peers.has('u2~zz'), true,
-    'destruir a conexão de quem só perdeu o socket é O defeito: 4 conexões pra 2 pessoas');
-  assert.equal(S.presentes.get('u2~zz').ausente > 0, true, 'mas a lista dele marca que oscilou');
-  assert.equal(I.contarPresentes(), 2, 'e ele continua contado: eu ainda o ESTOU ouvindo');
-
-  // Mesmo muito depois da carência: conexão viva não tem prazo.
-  S.presentes.get('u2~zz').visto = Date.now() - 600000;
-  I.varrer();
-  assert.equal(S.peers.has('u2~zz'), true, 'conexão viva não expira por relógio de lista');
-});
-
-test('sem voz pra proteger, a ausência sustentada tira da lista como sempre', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.peers.delete('u2~zz');            // nunca abriu peer (é o caso do observador)
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), false,
-    'sem conexão nenhuma a proteger, a lista volta a ser a única prova');
-});
-
-test('peer em formação ganha a carência do apagão de canal, e ela vence', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.peers.set('u2~zz', peerFalso('connecting'));   // negociando quando o socket caiu
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  // ICE é P2P: uma negociação em curso pode fechar sozinha mesmo com o canal
-  // fora. Medido: apagão de 45s deixou o canal fora 48,26s. Por isso a carência.
-  assert.equal(S.peers.has('u2~zz'), true, 'matar negociação em curso reinicia tudo do zero à toa');
-  assert.equal(I.contarPresentes(), 1, 'mas ele NÃO é anunciado como presente: não há voz nem batimento');
-
-  // Vencida a carência sem nunca ter virado voz, aí sim desiste.
-  S.presentes.get('u2~zz').ausente = Date.now() - 46000;
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), false);
-  assert.equal(S.peers.has('u2~zz'), false, 'peer que nunca carregou áudio não fica pendurado pra sempre');
-});
-
-test('voltar a bater limpa a marca de ausência sem reconstruir a conexão', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  const peer = peerFalso('connected');
-  S.peers.set('u2~zz', peer);
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  assert.equal(S.presentes.get('u2~zz').ausente > 0, true);
-
-  // O canal dele voltou (~8s depois da rede, por causa do backoff do SDK).
-  I.aoBatimento(batimento('u2~zz'));
-  assert.equal(S.presentes.get('u2~zz').ausente, 0, 'quem voltou a bater voltou pra lista');
-  assert.equal(S.peers.get('u2~zz'), peer,
-    'e continua sendo O MESMO peer: reconstruir na volta era o que multiplicava conexão');
-});
-
-test('o orçamento de reconstruções NÃO é zerado por sumiço da lista', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.tentativas.set('u2~zz', 2);        // já gastou 2 das 3
-  // Ciclo de sumiço-e-volta, que era o que comprava reconstruções infinitas.
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  I.aoBatimento(batimento('u2~zz'));
-  assert.equal(S.tentativas.get('u2~zz'), 2,
-    'esquecerPar() zerando o teto fazia MAX_TENTATIVAS nunca chegar — rebuild eterno');
-});
-
-test('ausente não me expulsa da sala cheia (nem ocupa vaga no desempate)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  // 10 verificados que entraram antes de mim, mas TODOS oscilando: eu seria o
-  // 11º e me retiraria sozinho por causa de gente que talvez nem esteja lá.
-  for (let i = 0; i < 10; i++) {
-    S.ids.set('T-v' + i + '~x', { id: 'v' + i, nome: 'V' + i, avatar: null, plano: 'full' });
-    S.presentes.set('v' + i + '~x', { ticket: 'T-v' + i + '~x', mudo: 0, entrou: 1000 + i, visto: 0, ausente: Date.now() });
-  }
-  I.checarLotacao();
-  assert.equal(S.entrei, true, 'perder a vaga por oscilação de socket dos outros seria expulsão por ruído');
-});
-
-// ═══ RECONEXÃO: reaproveitar o que continua bom ══════════════════════════
-// Mídia é P2P e NÃO passa pelo Realtime: uma conexão de voz atravessa o apagão
-// do canal sem nem saber que ele caiu. Refazer o mesh inteiro na volta do
-// socket era o que multiplicava conexão.
-
-test('socket volta: conexão boa é REAPROVEITADA, só a quebrada é mexida', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.ids.set('T-boa~zz', { id: 'ub', nome: 'Boa', avatar: null, plano: 'full' });
-  S.ids.set('T-a-ruim~zz', { id: 'ur', nome: 'Ruim', avatar: null, plano: 'full' });
-  S.presentes.set('boa~zz', { ticket: 'T-boa~zz', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
-  S.presentes.set('a-ruim~zz', { ticket: 'T-a-ruim~zz', mudo: 0, entrou: 2, visto: Date.now(), ausente: 0 });
-  const boa = peerFalso('connected');
-  const ruim = peerFalso('failed');
-  S.peers.set('boa~zz', boa);
-  S.peers.set('a-ruim~zz', ruim);
-
-  I.revisarPeers();
-
-  assert.equal(S.peers.get('boa~zz'), boa,
-    'renegociar quem já está entregando áudio é justamente o que fazia 4 conexões pra 2 pessoas');
-  assert.equal(S.peers.has('a-ruim~zz'), false, 'a que falhou de verdade tem que ser refeita');
-  assert.equal(c.eventos('opa').length, 1, 'e o lado que não oferta pede a oferta do outro');
-});
-
-test('oferta perdida no apagão é REPETIDA antes de gastar orçamento', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  const p = peerFalso('connecting');
-  p.pc.signalingState = 'have-local-offer';       // minha oferta está de pé
-  p.pc.localDescription = { type: 'offer', sdp: 'v=0' };
-  S.peers.set('u2~zz', p);
-
-  assert.equal(I.reenviarOferta('u2~zz'), true);
-  const sdps = c.eventos('sdp');
-  assert.equal(sdps.length, 1, 'broadcast não tem replay: a mensagem do apagão simplesmente sumiu');
-  assert.equal(sdps[0].payload.tipo, 'offer');
-  assert.equal(sdps[0].payload.g, p.g, 'repetir a MESMA oferta não muda a geração nem cria peer');
-  assert.equal(S.peers.get('u2~zz'), p, 'e não destrói nada');
-  assert.equal((S.tentativas.get('u2~zz') || 0), 0, 'o caminho barato não pode custar orçamento');
-
-  // Sem oferta pendente não há o que repetir — aí sim os caminhos caros valem.
-  p.pc.signalingState = 'stable';
-  assert.equal(I.reenviarOferta('u2~zz'), false);
-});
-
-// ═══ REPARO POR SINAL DA PRÓPRIA CONEXÃO ════════════════════════════════
-// "faixa recebida: audio · ended · muted=true" com "analisadores: 5, todos rms
-// 0.00000": conexão que se diz 'connected' e não entrega um pacote. Quem manda
-// reparar é a faixa, nunca a lista.
-
-test('conexão que nunca entregou áudio é reparada (e a que entregou, não)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.presentes.set('a-mudo~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
-  const p = peerFalso('connected');
-  p.ouvi = 0;                        // a faixa nunca desmutou: rms 0.00000
-  S.peers.set('a-mudo~zz', p);
-  assert.equal(I.ouvindo(p), false);
-
-  I.repararPorAudio('a-mudo~zz', 'teste');
-  assert.equal(c.eventos('opa').length, 1, 'conectado e mudo é defeito, não silêncio');
-
-  // Throttle: um par teimoso não pode virar reparo em loop.
-  I.repararPorAudio('a-mudo~zz', 'teste');
-  assert.equal(c.eventos('opa').length, 1, 'sem throttle o reparo vira o próprio loop que ele conserta');
-
-  // E quem JÁ entregou áudio não é reparado por silêncio: com DTX (usedtx=1) o
-  // silêncio corta o fluxo, e mutar depois de ter falado é normal.
-  const bom = peerFalso('connected');
-  bom.ouvi = Date.now();
-  assert.equal(I.ouvindo(bom), true);
-});
-
-// O sinal de áudio é INDIRETO: navegador que não dispara 'unmute', pessoa que
-// entrou muda, DTX cortando o fluxo. Por isso ele pode insistir no caminho
-// barato, mas NUNCA destruir — derrubar uma conexão possivelmente boa por causa
-// dele seria repetir exatamente o defeito que este conserto existe pra matar.
-test('reparo por áudio tem teto e NUNCA destrói a conexão', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.presentes.set('a-mudo~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
-  const peer = peerFalso('connected');
-  S.peers.set('a-mudo~zz', peer);
-  for (let i = 0; i < 8; i++) {
-    const reg = S.reparoAudio.get('a-mudo~zz') || { n: 0 };
-    S.reparoAudio.set('a-mudo~zz', { quando: 0, n: reg.n });   // vence o throttle
-    I.repararPorAudio('a-mudo~zz', 'teste');
-  }
-  assert.equal(c.eventos('opa').length, 3, 'insiste no barato até o teto e para');
-  assert.equal(S.peers.get('a-mudo~zz'), peer, 'e não derruba: o sinal pode estar errado');
-  assert.equal(S.semRota.has('a-mudo~zz'), false, 'nem desiste do par por um sinal indireto');
-  assert.equal((S.tentativas.get('a-mudo~zz') || 0), 0, 'orçamento de reconstrução é de outro dono');
-});
-
-test('quem entrou MUDO não é confundido com conexão quebrada', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  // "Entrar mudo (só ouvir)" é um dos dois botões do modal: sem esta guarda,
-  // metade das entradas viraria alvo de reparo pra sempre.
-  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: true, entrou: 1, visto: Date.now(), ausente: 0 });
-  const p = peerFalso('connected');
-  p.conectouEm = Date.now() - 60000;   // conectado faz um minuto, sem um pacote
-  p.ouvi = 0;
-  S.peers.set('a-x~zz', p);
-  assert.equal(I.ouvindo(p), false, 'de fato não chegou áudio — e está certo assim');
-});
-
-test('faixa viva e não muda vale como prova de áudio (sem depender do evento)', () => {
-  const { I } = carregarSala();
-  const p = peerFalso('connected');
-  p.ouvi = 0;
-  p.remoto = { getAudioTracks: () => [{ readyState: 'live', muted: true }] };
-  assert.equal(I.ouvindo(p), false, 'faixa muda não prova nada');
-  p.remoto = { getAudioTracks: () => [{ readyState: 'live', muted: false }] };
-  assert.equal(I.ouvindo(p), true, 'nem todo navegador dispara unmute de faixa remota');
-  assert.ok(p.ouvi > 0, 'e a prova LATCHA: com DTX o silêncio corta o fluxo e isso é normal');
-});
-
-test('conexão que falhou de par AUSENTE não é reconstruída (não há com quem)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: 0, ausente: Date.now() });
-  S.peers.set('a-x~zz', peerFalso('failed'));
-  const c = canalDePe(S);
-  I.revisarPeers();                        // é quem chama recuperar() no 'failed'
-  assert.equal(S.peers.has('a-x~zz'), false, 'a conexão morta é desfeita');
-  assert.equal((S.tentativas.get('a-x~zz') || 0), 0,
-    'mas sem gastar orçamento: o socket do outro está fora, a oferta não chegaria');
-  assert.equal(c.eventos('opa').length, 0, 'e sem cutucar um socket que não existe');
-});
-
-test('reparo por áudio não cutuca par ausente (a mensagem não chegaria)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: 0, ausente: Date.now() });
-  S.peers.set('a-x~zz', peerFalso('connected'));
-  I.repararPorAudio('a-x~zz', 'teste');
-  assert.equal(c.eventos('opa').length, 0);
-});
-
-test('reparo não age em par que já desistimos (semRota) nem fora da sala', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
-  S.peers.set('a-x~zz', peerFalso('connected'));
-  S.semRota.add('a-x~zz');
-  I.repararPorAudio('a-x~zz', 'teste');
-  assert.equal(c.eventos('opa').length, 0, 'a nota "sem conexão direta" tem que ficar estável');
-  S.semRota.delete('a-x~zz');
-  S.entrei = false;
-  I.repararPorAudio('a-x~zz', 'teste');
-  assert.equal(c.eventos('opa').length, 0, 'observador não negocia áudio com ninguém');
-});
-
-// ═══ O send() QUE MENTE ═════════════════════════════════════════════════
-// Medido: com o WebSocket morto o SDK escapa por HTTP e devolve 'ok' (9 de 9
-// sondas). Quando o HTTP também morre — o console do dono — ele pendura 10s
-// (DEFAULT_TIMEOUT) antes de falhar, e o enviarFirme repetia 3x: 30s por
-// candidato ICE. A espera passou a ser nossa.
-
-test('envio que pendura desiste no nosso prazo, não nos 10s do SDK', async () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  S.canal = { send: () => new Promise(() => {}) };   // nunca resolve: HTTP também fora
-  S.sub = 'on';
-  const t0 = Date.now();
-  const ok = await I.enviar('bat', { k: S.sessao });
-  const levou = Date.now() - t0;
-  assert.equal(ok, false, 'o reenvio precisa saber que não foi');
-  assert.ok(levou < 5000, `esperou ${levou}ms — o ponto era não pendurar 10s por mensagem`);
-});
-
-// A REPRODUÇÃO DO CONSOLE DO DONO, ponta a ponta.
-// Sala de 2 (celular + computador, mesmo Wi-Fi). O socket de A cai — e o escape
-// HTTP do SDK também, que foi o ERR_CONNECTION_TIMED_OUT no /api/broadcast.
-// B nunca caiu, então a lista de B nunca congela e a varredura dele roda o
-// tempo todo. Antes: B expirava A em 14,0s e destruía a conexão; A voltava ~8s
-// depois da rede (backoff) e o mesh reconstruía. ~22s por ciclo, 4 ciclos =
-// "conexões: 4" numa sala de duas pessoas.
-test('sala de 2 com apagão de socket de um lado: UMA conexão, não quatro', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);          // eu sou B, o lado que nunca cai
-  canalDePe(S);
-  S.ids.set('T-a~zz', { id: 'ua', nome: 'A', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('a~zz'));
-  const conexao = peerFalso('connected');
-  S.peers.set('a~zz', conexao);           // voz fluindo nos dois sentidos
-
-  const t0 = Date.now();
-  // Apagão de 28s (o medido pra uma queda de rede de 20s: 20s fora + backoff do
-  // SDK). A varredura de B roda a cada batimento — 7 voltas.
-  for (let i = 1; i <= 7; i++) {
-    S.presentes.get('a~zz').visto = t0 - i * 4000;
-    I.varrer();
-  }
-  assert.equal(S.peers.get('a~zz'), conexao, 'a conexão tem que ATRAVESSAR o apagão inteira');
-  assert.equal(S.presentes.get('a~zz').ausente > 0, true, 'a lista dele marca oscilação');
-  assert.equal(I.contarPresentes(), 2, 'e ele continua contado: eu ainda o ouço');
-
-  // O canal de A volta e ele reanuncia.
-  I.aoBatimento(batimento('a~zz', { novo: 1 }));
-  assert.equal(S.presentes.get('a~zz').ausente, 0);
-  assert.equal(S.peers.get('a~zz'), conexao, 'MESMA conexão: nada foi reconstruído');
-  assert.equal(S.peers.size, 1, 'era exatamente aqui que nasciam as 4 conexões');
-  assert.equal((S.tentativas.get('a~zz') || 0), 0, 'e nenhum orçamento foi gasto');
-
-  // Três ciclos iguais (foi o que o relatório contou): continua UMA conexão.
-  for (let ciclo = 0; ciclo < 3; ciclo++) {
-    for (let i = 1; i <= 7; i++) {
-      S.presentes.get('a~zz').visto = Date.now() - i * 4000;
-      I.varrer();
-    }
-    I.aoBatimento(batimento('a~zz', { novo: 1 }));
-  }
-  assert.equal(S.peers.size, 1, 'conexões: 4 pra 2 pessoas era o sintoma — agora é 1');
-  assert.equal(S.peers.get('a~zz'), conexao);
-});
-
-test('quem bloqueia a tela avisa e ganha prazo longo (não é expulso)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento(batimento('u2~zz', { z: 1 }));
-  // Aba de fundo no Chrome bate 1x por MINUTO: com o prazo normal (14s) a
-  // pessoa cairia da sala só por guardar o celular no bolso.
-  S.presentes.get('u2~zz').visto = Date.now() - 65000;
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), true, 'tela apagada não é sair da sala');
-  S.presentes.get('u2~zz').visto = Date.now() - 101000;
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), false, 'mas o prazo longo é prazo, não licença eterna');
-});
-
-test('eu mesmo NUNCA expiro da minha lista', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.presentes.get(S.sessao).visto = Date.now() - 600000;
-  I.varrer();
-  assert.equal(I.contarPresentes(), 1, 'quem está com o microfone aberto não some do próprio painel');
-});
-
-test('lista CONGELA com o canal fora do ar (socket caído ≠ sala vazia)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento(batimento('u2~zz'));
-  S.presentes.get('u2~zz').visto = Date.now() - 60000;
-  S.sub = 'erro';
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), true, 'sem canal não chega batimento de ninguém: apagar a sala seria mentir');
-  assert.equal(I.listaConfiavel(), false, 'e o mesh não pode podar peer nenhum nesse estado');
-  S.sub = 'on';
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), false);
-});
-
-test('durante o censo ninguém expira (é a volta da tela bloqueada)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento(batimento('u2~zz'));
-  S.presentes.get('u2~zz').visto = Date.now() - 60000;   // ninguém bateu enquanto congelado
-  S.censoAte = Date.now() + 1500;                        // acabei de perguntar
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), true, 'a sala inteira sumiria antes da primeira resposta chegar');
-  assert.equal(I.listaConfiavel(), false);
-});
-
-test("'tchau' tira a pessoa na hora, sem esperar prazo", () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento(batimento('u2~zz'));
+test('quem sai some na hora, sem prazo nenhum de expiração', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const ana = { identity: 'u2', name: 'Ana', metadata: '{}', isMicrophoneEnabled: true, joinedAt: new Date(2000) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
   assert.equal(I.contarPresentes(), 2);
-  I.aoTchau({ k: 'u2~zz' });
-  assert.equal(I.contarPresentes(), 1, 'saída limpa não pode deixar fantasma por 14s');
+
+  sala.remoteParticipants.delete('u2');
+  sala.emitir('participantDisconnected', ana);
+  assert.equal(I.contarPresentes(), 1, 'saída é evento do SFU, não ausência de batimento');
+  assert.equal(S.falando.has('u2'), false, 'e quem saiu não pode continuar "falando"');
+  I.pararPolling();
 });
 
-test('"cheguei" faz os outros responderem NA HORA (e uma vez só)', async () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  // Dez chegadas no mesmo instante: se cada uma virasse uma resposta, uma sala
-  // cheia entrando junto viraria tempestade.
-  for (let i = 0; i < 10; i++) I.aoBatimento(batimento('u' + i + '~zz', { novo: 1 }));
-  await esperar(600);
-  const bats = c.eventos('bat');
-  assert.equal(bats.length, 1, 'resposta ao censo tem jitter e throttle');
-  assert.equal(bats[0].payload.k, S.sessao);
-  assert.equal(bats[0].payload.t, 'TICKET-DONO', 'a resposta é um batimento de verdade, com ticket');
+test('metadata forjável não existe mais: nome/foto/plano vêm do crachá', () => {
+  // O ticket HMAC morreu porque a defesa mudou de lugar, não porque sumiu: o
+  // participante NÃO recebe canUpdateOwnMetadata, então ele não reescreve quem é.
+  assert.match(API, /canUpdateOwnMetadata:\s*false/, 'sem isto o participante reescreve o próprio nome/plano');
+  assert.match(API, /canPublishSources:\s*\['microphone'\]/, 'só áudio — e quem impõe é o servidor, não o navegador');
+  assert.match(API, /canPublishData:\s*false/);
+  assert.doesNotMatch(SALA, /action=verificar|'verificar'/, 'o resolvedor de tickets alheios não faz mais sentido');
 });
 
-test('observador não bate — só escuta e pergunta', async () => {
-  const { S, I } = carregarSala();
-  const c = canalDePe(S);
-  S.cfg = { ticket: 'T', canal: 'x', max: 10, me: { id: 'u9', nome: 'X' }, expira_em: Date.now() + 3600000 };
-  S.sessao = 'u9~ob';
-  S.entrei = false;
-  I.aoBatimento(batimento('u2~zz', { novo: 1 }));
-  await esperar(600);
-  assert.equal(c.eventos('bat').length, 0, 'quem não entrou não pode aparecer pra ninguém');
-  I.pedirCenso();
-  const ois = c.eventos('oi');
-  assert.equal(ois.length, 1, 'mas ele PERGUNTA: é assim que o contador da entrada nasce cheio');
-  assert.equal(ois[0].payload.k, '', 'sem chave e sem ticket: pergunta, não presença');
-});
+test('quem fala vem do indicador do LiveKit — e nunca passa de quem está na sala', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const ana = { identity: 'u2', name: 'Ana', metadata: '{}', isMicrophoneEnabled: true, joinedAt: new Date(2000) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
 
-test('mutar manda batimento, não "cheguei", e não reescreve a hora de entrada', () => {
-  const { SV, S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  const entrouEm = S.entrouEm;
-  S.stream = { getAudioTracks: () => [{ enabled: true }], getTracks: () => [] };
-  SV.mudo();
-  const bats = c.eventos('bat');
-  assert.equal(c.eventos('oi').length, 0, 'clicar em Mudo não pode fazer a sala inteira responder');
-  assert.equal(bats.length, 1);
-  assert.equal(bats[0].payload.m, 1);
-  assert.equal(bats[0].payload.j, entrouEm,
-    'mutar reescrevendo a hora de entrada faria quem muta ser o expulso da sala cheia');
-  assert.equal(S.presentes.get(S.sessao).entrou, entrouEm);
-});
-
-test('a hora de entrada de um par não é reescrita por batimento posterior', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento(batimento('u2~zz', { j: 1000 }));
-  I.aoBatimento(batimento('u2~zz', { j: 9999999999999 }));
-  assert.equal(S.presentes.get('u2~zz').entrou, 1000, 'a ordem de chegada é o desempate da sala cheia');
-});
-
-test('batimento com a MINHA chave é ignorado (ninguém me reescreve)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento({ k: S.sessao, t: 'TICKET-FORJADO', m: 1, j: 1 });
-  assert.equal(S.presentes.get(S.sessao).ticket, 'TICKET-DONO');
-  assert.equal(S.presentes.get(S.sessao).mudo, false);
-  I.aoTchau({ k: S.sessao });
-  assert.equal(I.contarPresentes(), 1, 'nem um "tchau" forjado me tira da minha própria sala');
-});
-
-test('a lista tem teto: canal aberto não vira despejo de chaves inventadas', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  for (let i = 0; i < 200; i++) I.aoBatimento(batimento('lixo' + i + '~x'));
-  assert.ok(S.presentes.size <= 16, `lista sem teto (${S.presentes.size} registros)`);
-  assert.ok(S.presentes.has(S.sessao), 'e o meu registro não pode ser empurrado pra fora por lixo');
-});
-
-test('batimento sem ticket não entra na lista', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  I.aoBatimento({ k: 'u2~zz', m: 0, j: Date.now() });
-  I.aoBatimento({ k: 'u3~zz', t: '', m: 0, j: Date.now() });
-  assert.equal(I.contarPresentes(), 1, 'sem ticket não há como o servidor dizer quem é: não é participante');
-});
-
-test("sair manda 'tchau' com o canal ainda vivo", () => {
-  const { SV, S, I, document } = carregarSala();
-  registrarConfirmacao(document);
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  SV.sair('');
-  const tchaus = c.eventos('tchau');
-  assert.equal(tchaus.length, 1, 'sem tchau a pessoa fica fantasma até expirar na sala que deixou');
-  assert.equal(tchaus[0].payload.k, 'u-dono~ab12', 'e tem que sair ANTES de a sessão ser zerada');
-  assert.equal(S.entrei, false);
-});
-
-// O teto de 10 continua valendo, mas quem me EXPULSA da conversa tem que ser
-// gente verificada. Com presença por broadcast qualquer um despeja batimento
-// com ticket desconhecido — sem esse cuidado, encher o canal de lixo tiraria
-// pessoas de verdade da sala.
-test('enxurrada de batimentos desconhecidos NÃO me expulsa da sala', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  for (let i = 0; i < 14; i++) I.aoBatimento(batimento('lixo' + i + '~x', { j: 1 }));
-  assert.equal(S.entrei, true, 'sair por causa de tickets que ninguém confirmou seria expulsão por spam');
-  assert.ok(S.presentes.has(S.sessao));
-});
-
-test('mas o teto de 10 continua valendo entre gente verificada', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  // 10 verificados que entraram ANTES de mim: eu sou o 11º e me retiro sozinho.
-  for (let i = 0; i < 10; i++) {
-    S.ids.set('T-v' + i + '~x', { id: 'v' + i, nome: 'V' + i, avatar: null, plano: 'full' });
-    I.aoBatimento(batimento('v' + i + '~x', { j: 1000 + i }));
-  }
-  assert.equal(S.entrei, false, 'sala cheia: quem chegou por último se retira, em vez de furar o limite');
-});
-
-test('bloquear a tela manda o último batimento marcado', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  I.suspender();
-  const bats = c.eventos('bat');
-  assert.equal(bats.length, 1, "'freeze'/'visibilitychange' disparam antes do congelamento: dá tempo de avisar");
-  assert.equal(bats[0].payload.z, 1, 'sem esse aviso os outros me expulsam em 14s por sumiço');
-});
-
-// ═══ BUG 1 — a pessoa TEM que se ver e ser contada ═══════════════════════
-
-test('sala vazia: o dono entra, se conta e ganha o próprio card', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-
-  assert.equal(I.contarPresentes(), 1, 'era o "0 pessoas" do painel');
-  assert.ok(S.presentes.has(S.sessao), 'o próprio registro tem que existir localmente');
-
-  const card = I.cardHTML(S.sessao, S.presentes.get(S.sessao));
-  assert.match(card, /Você/, 'o card do próprio usuário sumia da grade');
-  assert.doesNotMatch(card, /não verificado/, 'eu nunca sou fantasma pra mim mesmo');
-});
-
-test('o card mostra a conexão oscilando em vez de sumir com quem se ouve', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.peers.set('u2~zz', peerFalso('connected'));
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-
-  const card = I.cardHTML('u2~zz', S.presentes.get('u2~zz'));
-  assert.match(card, /svz-p oscila|oscila/, 'o card tem que dizer que o sinal dela oscila');
-  assert.match(card, /continua ouvindo/, 'e que o áudio segue — é a informação que importa');
-  assert.doesNotMatch(card, /caiu/, 'oscilar não é ter caído: a voz está chegando');
-  assert.match(card, /Ana/);
-
-  // Eu nunca oscilo pra mim mesmo.
-  assert.doesNotMatch(I.cardHTML(S.sessao, S.presentes.get(S.sessao)), /oscila/);
-});
-
-test('sala silenciosa não apaga quem está nela', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  // Sala de uma pessoa só: NADA chega pelo canal, nunca. Era exatamente aqui
-  // que a presence deixava a pessoa com "0 pessoas · 1 falando".
-  canalDePe(S);
-  I.varrer();
-  assert.equal(I.contarPresentes(), 1, 'zerou a contagem de quem está com o mic aberto');
-  assert.ok(S.presentes.has(S.sessao));
-});
-
-test('sala com os outros: eu continuo na lista junto com eles', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  I.varrer();
-  assert.equal(I.contarPresentes(), 2);
-  assert.ok(S.presentes.has(S.sessao), 'a lista dos outros não pode me apagar da minha');
-});
-
-// ═══ BUG 1c — a lista congelada não pode cegar a poda do mesh ════════════
-// O mesh derruba peer de quem saiu da lista. Se ele podasse com a lista
-// CONGELADA (socket caído, censo em curso), uma oscilação de rede derrubaria o
-// áudio de quem não saiu — exatamente o que a carência sempre existiu pra
-// evitar. O sinal é o listaConfiavel(), e ele é conservador de propósito.
-
-test('mesh NÃO poda peer enquanto a lista está congelada', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  // Peer que nunca conectou: não há voz pra proteger, então é a lista que manda.
-  const peer = { pc: { close: () => {}, connectionState: 'connecting' }, audio: null, g: 1, desde: Date.now(), tDesc: null };
-  S.peers.set('u2~zz', peer);          // par que já não está mais na lista
-  S.sumido.set('u2~zz', Date.now() - 60000);   // carência já vencida
-  S.sub = 'erro';                              // socket piscou
-  I.mesh();
-  assert.equal(S.peers.has('u2~zz'), true, 'derrubar áudio por oscilação de rede é o defeito, não o conserto');
-  assert.equal(I.listaConfiavel(), false);
-  // Com a lista confiável de novo, o par que realmente saiu tem que cair.
-  S.sub = 'on';
-  I.mesh();
-  assert.equal(S.peers.has('u2~zz'), false, 'peer de quem saiu não pode ficar pendurado pra sempre');
-});
-
-// A REGRA NOVA, e a que este conserto inteiro existe pra impor: mesmo com a
-// lista confiável, mesmo com a carência vencida, mesmo o par tendo sumido do
-// registro — conexão que está ENTREGANDO ÁUDIO não é derrubada por decisão de
-// lista. No teste real do dono foram 4 RTCPeerConnection numa sala de 2 pessoas
-// porque o sumiço do batimento destruía a voz de quem só tinha perdido o socket.
-test('mesh NUNCA poda peer com voz viva, mesmo com a lista confiável', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.peers.set('u2~zz', {
-    pc: { close: () => {}, connectionState: 'connected' },
-    audio: null, g: 1, desde: Date.now(), tDesc: null,
-  });
-  S.sumido.set('u2~zz', Date.now() - 600000);   // carência vencida faz 10 minutos
-  assert.equal(I.listaConfiavel(), true, 'lista confiável: é o pior caso pro peer');
-  I.mesh();
-  assert.equal(S.peers.has('u2~zz'), true, 'a conexão é fato; a lista é boato');
-  assert.equal(I.vozViva('u2~zz'), true);
-});
-
-test("'disconnected' conta como voz viva (oscila e volta sozinho)", () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  const estados = {
-    connected: true, completed: true, disconnected: true,
-    new: false, connecting: false, failed: false, closed: false,
-  };
-  Object.keys(estados).forEach((est) => {
-    S.peers.set('u2~zz', { pc: { close: () => {}, connectionState: est }, audio: null, g: 1, desde: Date.now(), tDesc: null });
-    assert.equal(I.vozViva('u2~zz'), estados[est], `vozViva('${est}') divergiu`);
-  });
-  S.peers.delete('u2~zz');
-  assert.equal(I.vozViva('u2~zz'), false, 'sem peer não há voz');
-});
-
-test("'disconnected' NÃO ganha proteção sem prazo (só quem entrega ganha)", () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
-  S.peers.set('u2~zz', peerFalso('disconnected'));
-  S.presentes.get('u2~zz').visto = Date.now() - 15000;
-  I.varrer();
-  assert.equal(S.peers.has('u2~zz'), true, 'oscilação de verdade cabe na carência');
-  // Se um navegador segurasse 'disconnected' pra sempre, quem foi embora nunca
-  // sairia da lista. A carência é o teto disso.
-  S.presentes.get('u2~zz').ausente = Date.now() - 46000;
-  I.varrer();
-  assert.equal(S.presentes.has('u2~zz'), false, "'disconnected' eterno não pode virar presença eterna");
-  assert.equal(I.vozEntregando('u2~zz'), false);
-});
-
-test('lista confiável é canal de pé E fora de censo', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  canalDePe(S);
-  assert.equal(I.listaConfiavel(), true);
-  S.censoAte = Date.now() + 1000;
-  assert.equal(I.listaConfiavel(), false, 'durante o censo a lista ainda está se formando');
-  S.censoAte = 0; S.sub = 'off';
-  assert.equal(I.listaConfiavel(), false);
-});
-
-test('entrar recoloca a lista em quarentena (nada expira antes de responder)', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  I.anunciar();
-  assert.ok(S.censoAte > Date.now(), 'sem quarentena, a volta da tela bloqueada apagaria a sala');
-  assert.equal(I.listaConfiavel(), false);
-  assert.equal(c.eventos('oi').length, 1, 'anunciar é o "cheguei": pergunta e se apresenta na mesma mensagem');
-  assert.equal(c.eventos('oi')[0].payload.novo, 1, 'sem o pedido, os outros só apareceriam no próximo ciclo');
-  I.pararBatimento();   // o relógio do batimento seguraria o processo de teste
-});
-
-test('falha no `verificar` não me transforma em fantasma', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  // Simula o pior caso: o servidor recusou até o MEU ticket.
-  S.ids.delete('TICKET-DONO');
-  S.ruins.set('TICKET-DONO', Date.now());
-  assert.equal(I.fantasma(S.presentes.get(S.sessao), S.sessao), false);
-  assert.equal(I.contarPresentes(), 1, 'a pessoa sumia do próprio painel');
-  // e a regra continua valendo pros outros
-  assert.equal(I.fantasma({ ticket: 'TICKET-DONO' }, 'outra~chave'), true);
-});
-
-// ═══ BUG 1b — coerência: falando <= pessoas ══════════════════════════════
-
-test('"0 pessoas · 1 falando" é impossível: falando é subconjunto de presentes', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  S.falando.add(S.sessao);
+  sala.emitir('activeSpeakersChanged', [ana, sala.localParticipant]);
+  assert.equal(I.contarFalando(), 2);
   assert.ok(I.contarFalando() <= I.contarPresentes());
 
-  // medidor sobrevivendo a quem já saiu da presence (o caso que gerava o
-  // número mentiroso): não pode contar como "falando".
-  S.falando.add('u9~fantasma');
+  // Alguém que já saiu não pode ficar piscando no rodapé.
+  sala.remoteParticipants.delete('u2');
+  sala.emitir('participantDisconnected', ana);
+  assert.equal(I.contarFalando(), 1, '"0 pessoas · 1 falando" era literalmente isto');
+  assert.ok(I.contarFalando() <= I.contarPresentes());
+  I.pararPolling();
+});
+
+test('"0 pessoas · 1 falando" é impossível — inclusive num estado rasgado', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const ana = { identity: 'u2', name: 'Ana', metadata: '{}', isMicrophoneEnabled: true, joinedAt: new Date(2000) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
+  sala.emitir('activeSpeakersChanged', [ana]);
   assert.equal(I.contarFalando(), 1);
-  assert.ok(I.contarFalando() <= I.contarPresentes());
 
-  // e nem quando NINGUÉM está presente
-  S.presentes.clear(); S.entrei = false;
-  assert.equal(I.contarPresentes(), 0);
-  assert.equal(I.contarFalando(), 0, 'era literalmente o "0 pessoas · 1 falando"');
+  // Saí, mas o último ActiveSpeakers ainda está na memória e a lista de pessoas
+  // passa a vir do backend: é aqui que o número mentiroso nascia.
+  SV.sair('');
+  S.falando.add('u2');
+  S.pessoas.set('u2', { eu: false, nome: 'Ana', avatar: null, plano: 'full', mudo: false, entrou: 2 });
+  assert.equal(I.contarFalando(), 0, 'fora da sala não existe "falando"');
+  assert.ok(I.contarFalando() <= I.contarPresentes(), 'falando é subconjunto de presentes, sempre');
+  I.pararPolling();
 });
 
-test('fantasma não conta como falando', () => {
-  const { S, I } = carregarSala();
-  entrarNaSala(S, I);
-  S.presentes.set('u3~qq', { ticket: 'T-RUIM', mudo: 0, entrou: Date.now() });
-  S.ruins.set('T-RUIM', Date.now());
-  S.falando.add('u3~qq');
-  assert.equal(I.contarPresentes(), 1);
-  assert.equal(I.contarFalando(), 0);
+test('não sobrou medidor de fala nosso (AudioContext deu dois bugs)', () => {
+  const codigo = SALA.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(codigo, /AudioContext|createAnalyser|getByteTimeDomainData/,
+    'limiar fixo 3,5x acima da voz do dono e contexto fechado lendo 0.00000: dois bugs, um medidor');
+  assert.match(SALA, /ActiveSpeakersChanged/, 'quem sabe quem fala é o SFU, que já tem o áudio');
 });
 
-// ═══ MELHORIA 3 — timbres de entrar/sair ════════════════════════════════
+test('não sobrou transporte P2P nenhum no arquivo', () => {
+  const codigo = SALA.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  for (const morto of ['new RTCPeerConnection', 'createOffer', 'setRemoteDescription',
+    'addIceCandidate', 'iceServers', 'supabase-js', "'bat'", "'tchau'", "'opa'"]) {
+    assert.ok(!codigo.includes(morto), 'sobrou ' + morto + ' — o transporte antigo não pode voltar pela porta dos fundos');
+  }
+});
+
+// ═══ AS DUAS OPÇÕES DO ROOM QUE CARREGAM DEFEITO CONHECIDO ═══════════════
+
+test('disconnectOnPageLeave:false — tela apagada não é sair (defeito 11)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  assert.equal(sala.opts.disconnectOnPageLeave, false,
+    'o padrão do SDK desconecta no pagehide — e no iPhone pagehide dispara quando a TELA APAGA');
+  // E a nossa própria regra do pagehide continua: sem beforeunload, é suspensão.
+  ctx.window._disparar('pagehide', { persisted: false });
+  assert.equal(sala.desconectado, false, 'guardar o celular no bolso não pode derrubar a conversa');
+  assert.equal(S.entrei, true);
+  assert.equal(S.suspenso, true, 'só marca o estado — e o painel diz isso');
+  I.pararPolling();
+});
+
+test('stopMicTrackOnMute:false — mutar não derruba a faixa (desmutar é instantâneo)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, linha } = await entrarNaSala(ctx, SV, S);
+  assert.equal(sala.opts.stopMicTrackOnMute, false);
+  assert.equal(sala.opts.audioCaptureDefaults.echoCancellation, true, 'sem isto a sala vira microfonia');
+  assert.equal(sala.opts.audioCaptureDefaults.channelCount, 1, 'voz é mono: estéreo só dobra o upload');
+  assert.equal(sala.opts.publishDefaults.dtx, true);
+
+  await SV.mudo();
+  assert.equal(S.mudo, true);
+  assert.equal(linha[linha.length - 1], 'mic:false', 'mudo é a faixa silenciada, não uma renegociação');
+  I.pararPolling();
+});
+
+// ═══ MICROFONE: só depois do clique, e solto ao sair ══════════════════════
+
+test('o microfone é pedido DEPOIS de conectar — nunca antes do clique', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { linha, chamadas } = await entrarNaSala(ctx, SV, S);
+  assert.deepEqual(linha.slice(0, 2), ['connect', 'mic:true'],
+    'pedir microfone antes de saber se a pessoa entra é o defeito que o modal existe pra evitar');
+  assert.ok(chamadas.some((c) => c.acao === 'entrar'), 'e o crachá vem do NOSSO backend, com portão de plano');
+  I.pararPolling();
+});
+
+test('"entrar mudo" captura e silencia (não entra sem microfone)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { config: CONFIG_OK, entrar: ENTRAR_OK, contar: { status: 200, d: { ok: true, n: 0, pessoas: [] } } });
+  await SV.entrar(true);
+  assert.equal(S.entrei, true);
+  assert.equal(S.mudo, true);
+  assert.equal(S.sala.localParticipant.isMicrophoneEnabled, false);
+  I.pararPolling();
+});
+
+test('microfone bloqueado NÃO custa a entrada inteira — entra ouvindo, marcado', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { config: CONFIG_OK, entrar: ENTRAR_OK, contar: { status: 200, d: { ok: true, n: 0, pessoas: [] } } });
+  // O Room falso recusa o microfone, como um navegador com permissão negada.
+  const RoomOriginal = LK.Room;
+  LK.Room = function (o) { const r = new RoomOriginal(o); r.micErro = Object.assign(new Error('x'), { name: 'NotAllowedError' }); return r; };
+  await SV.entrar(true);
+  assert.equal(S.entrei, true, 'quem clicou em "entrar mudo (só ouvir)" queria justamente OUVIR');
+  assert.equal(S.semMic, true);
+  assert.match(nos.nota.textContent, /só ouvindo/, 'e o painel diz a verdade em vez de mostrar um mudo que mente');
+  I.pararPolling();
+});
+
+test('sair desliga a sala (o que solta o microfone) e limpa tudo', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, linha } = await entrarNaSala(ctx, SV, S);
+  SV.sair('');
+  assert.equal(sala.desconectado, true, 'disconnect() é o que solta a faixa local — a luzinha do mic apaga aí');
+  assert.ok(linha.indexOf('laços removidos') < linha.lastIndexOf('disconnect'),
+    'os laços saem ANTES: um Room morto emitindo Disconnected chamaria sair() em laço');
+  assert.equal(S.entrei, false);
+  assert.equal(S.sala, null);
+  assert.equal(S.pessoas.size, 0);
+  I.pararPolling();
+});
+
+test('queda inesperada avisa o motivo em vez de sumir em silêncio', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, LK } = await entrarNaSala(ctx, SV, S);
+  sala.emitir('disconnected', LK.DisconnectReason.DUPLICATE_IDENTITY);
+  assert.equal(S.entrei, false);
+  const toast = document.getElementById('svzToast');
+  assert.match(toast.textContent, /outra aba ou aparelho/);
+  I.pararPolling();
+});
+
+test('autoplay barrado vira aviso + um toque na tela libera (e o laço se remove)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, linha } = await entrarNaSala(ctx, SV, S);
+  sala.canPlaybackAudio = false;
+  sala.emitir('audioPlaybackChanged');
+  const toast = document.getElementById('svzToast');
+  assert.match(toast.textContent, /Toque na tela/);
+  document._disparar('pointerdown', {});
+  await esperar(10);
+  assert.ok(linha.includes('startAudio'), 'o primeiro toque tem que soltar o áudio de todo mundo de uma vez');
+  I.pararPolling();
+});
+
+// ═══ 1 — A CASCA, item por item ══════════════════════════════════════════
+
+test('o contador aparece ANTES de entrar, sem microfone e sem ocupar vaga', async () => {
+  const { S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  S.cfg = CONFIG_OK.d;
+  const chamadas = ligarApi(ctx, {
+    contar: { status: 200, d: { ok: true, n: 3, max: 10, pessoas: [{ nome: 'Ana', avatar: null, plano: 'full' }] } },
+  });
+  await I.atualizarContagem(true);
+  assert.equal(I.contarPresentes(), 3, 'o número tem que existir sem ninguém entrar na sala');
+  assert.deepEqual(chamadas.map((c) => c.acao), ['contar'], 'e sem tocar no SFU pelo navegador');
+  assert.equal(S.LK, null, 'nem o SDK de mídia é baixado só pra contar');
+  assert.equal(S.sala, null);
+  I.pararPolling();
+});
+
+test('contagem velha volta a ser "toque pra ver quem está" (não anuncia sala de horas atrás)', async () => {
+  const { S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { contar: { status: 200, d: { ok: true, n: 4, max: 10, pessoas: [] } } });
+  await I.atualizarContagem(true);
+  assert.equal(I.contagemFresca(), true);
+  assert.equal(I.contarPresentes(), 4);
+  S.contadoEm = Date.now() - 10 * 60 * 1000;
+  assert.equal(I.contagemFresca(), false);
+  assert.equal(I.contarPresentes(), 0, 'badge congelado com pontinho verde convida pra uma sala que pode estar vazia');
+  I.pararPolling();
+});
+
+test('falha de rede na contagem não apaga uma contagem boa que ainda está fresca', async () => {
+  const { S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { contar: { status: 200, d: { ok: true, n: 5, max: 10, pessoas: [] } } });
+  await I.atualizarContagem(true);
+  ctx.fetch = async () => { throw new Error('rede'); };
+  await I.atualizarContagem(true);
+  assert.equal(I.contarPresentes(), 5, 'um engasgo de rede não é prova de que a sala esvaziou');
+  I.pararPolling();
+});
+
+test('o modal mostra quem está lá, com nome escapado', async () => {
+  const { S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { contar: { status: 200, d: { ok: true, n: 1, max: 10, pessoas: [{ nome: '<img src=x>', avatar: null, plano: 'full' }] } } });
+  await I.atualizarContagem(true);
+  assert.match(nos.dlgQuem.innerHTML, /&lt;img src=x&gt;/, 'nome de outra pessoa nunca vira HTML');
+  assert.doesNotMatch(nos.dlgQuem.innerHTML, /<img src=x>/);
+  I.pararPolling();
+});
+
+test('o card do painel escapa nome e foto, e marca o meu como "Você"', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const mau = { identity: 'u9', name: '"><script>x</script>', metadata: JSON.stringify({ a: 'javascript:alert(1)', p: 'full' }), isMicrophoneEnabled: false, joinedAt: new Date(3000) };
+  sala.remoteParticipants.set('u9', mau);
+  sala.emitir('participantConnected', mau);
+
+  const card = I.cardHTML('u9', S.pessoas.get('u9'));
+  assert.doesNotMatch(card, /<script>/, 'nome vindo da rede nunca vira tag');
+  assert.doesNotMatch(card, /javascript:/, 'foto que não é https não vira src');
+  assert.match(card, /svz-mic/, 'quem está mudo ganha o 🔇');
+  assert.match(I.cardHTML('u-dono', S.pessoas.get('u-dono')), /Você/, 'o card do próprio usuário sumia da grade');
+  I.pararPolling();
+});
+
+test('o rodapé conta pessoas e falando, e eu apareço primeiro na grade', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const ana = { identity: 'u2', name: 'Ana', metadata: '{}', isMicrophoneEnabled: true, joinedAt: new Date(500) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
+  sala.emitir('activeSpeakersChanged', [ana]);
+  assert.match(nos.dockSub.textContent, /2 pessoas • 1 falando/);
+  assert.equal(I.listaOrdenada()[0][0], 'u-dono', 'mesmo tendo entrado depois, eu venho primeiro: card não pula de lugar');
+  I.pararPolling();
+});
+
+test('rede ruim MARCA o card, mas não some com ninguém', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const ana = { identity: 'u2', name: 'Ana', metadata: '{}', isMicrophoneEnabled: true, joinedAt: new Date(2000) };
+  sala.remoteParticipants.set('u2', ana);
+  sala.emitir('participantConnected', ana);
+
+  sala.emitir('connectionQualityChanged', 'poor', ana);
+  assert.match(I.cardHTML('u2', S.pessoas.get('u2')), /oscila/);
+  assert.match(nos.nota.textContent, /oscilando/);
+  assert.equal(I.contarPresentes(), 2, 'sinal ruim não é ter saído: quem sai, sai por evento');
+
+  sala.emitir('connectionQualityChanged', 'lost', ana);
+  assert.match(I.cardHTML('u2', S.pessoas.get('u2')), /caiu/);
+  assert.equal(I.contarPresentes(), 2);
+  I.pararPolling();
+});
+
+test('reconexão é do LiveKit — a sala só marca o estado', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  sala.emitir('reconnecting');
+  assert.equal(S.conn, 'instavel');
+  assert.match(nos.nota.textContent, /instável/);
+  assert.equal(S.entrei, true, 'oscilar não é sair: era isto que a versão anterior errava');
+  sala.emitir('reconnected');
+  assert.equal(S.conn, 'on');
+  I.pararPolling();
+});
+
+// ═══ 2 — PORTÃO E TETO continuam NOSSOS, no backend ══════════════════════
+
+test('o crachá só é assinado DEPOIS do portão de plano', () => {
+  const iPortao = API.indexOf("if (!paying && !isMod) return res.status(403)");
+  const iCracha = API.indexOf('crachaParticipante({ id: userId');
+  assert.ok(iPortao > 0 && iCracha > iPortao,
+    'assinar antes de checar plano entregaria a sala pra quem sabe o endereço do endpoint');
+  assert.match(API, /if \(!userId\) return res\.status\(401\)/);
+});
+
+test('o teto de 10 é cobrado no backend, e sem cache', () => {
+  const I = backend.__interno;
+  assert.equal(I.MAX_PESSOAS, 10);
+  assert.match(API, /st\.n >= MAX_PESSOAS[\s\S]{0,200}cheia: true/, 'a contagem antes de assinar o crachá');
+  assert.match(API, /const st = await estadoDaSala\(LK, true\);\s*\n\s*if \(!st\.ok\)/,
+    'a contagem do teto não pode vir do cache do contador — cache é enfeite de tela, não decisão');
+  // O max_participants continua sendo mandado, mas NÃO é o portão: medido em
+  // 11/08 contra esta conta, sala criada com teto 2 aceitou o terceiro.
+  assert.match(API, /max_participants: MAX_PESSOAS/);
+  assert.match(API, /`max_participants` NÃO é um portão/,
+    'quem ler este arquivo depois não pode achar que o SFU está segurando o teto');
+});
+
+test('corrida de entrada: quem furou o teto se retira sozinho, e só ele', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  // Eu entrei por ÚLTIMO numa sala que já tinha 10 (a contagem do servidor e a
+  // do outro pedido cruzaram). O max_participants do LiveKit não segura isso.
+  S.pessoas.get('u-dono').entrou = 99999;
+  for (let i = 0; i < 10; i++) S.pessoas.set('v' + i, { eu: false, nome: 'V' + i, avatar: null, plano: 'full', mudo: false, entrou: 1000 + i });
+  I.checarLotacao();
+  assert.equal(S.entrei, false, 'furar o teto e travar é pior que recusar');
+  assert.equal(sala.desconectado, true);
+
+  // E o inverso: quem chegou ANTES não sai por causa de quem chegou depois.
+  const outra = carregarSala();
+  registrarUI(outra.document);
+  await entrarNaSala(outra.ctx, outra.SV, outra.S);
+  outra.S.pessoas.get('u-dono').entrou = 1;
+  for (let i = 0; i < 10; i++) outra.S.pessoas.set('v' + i, { eu: false, nome: 'V' + i, avatar: null, plano: 'full', mudo: false, entrou: 5000 + i });
+  outra.I.checarLotacao();
+  assert.equal(outra.S.entrei, true, 'o desempate é por ordem de chegada, igual em todo navegador');
+  assert.deepEqual(outra.I.ordemDeChegada()[0], 'u-dono');
+  I.pararPolling(); outra.I.pararPolling();
+});
+
+test('o crachá é HS256 de verdade, curto, e não carrega o segredo', () => {
+  const I = backend.__interno;
+  const chave = 'APIfake', segredo = 'segredo-de-teste-32-bytes-aqui!!';
+  const t = I.crachaParticipante({ id: 'u1', nome: 'Ana', avatar: 'https://cdn/a.png', plano: 'master' }, chave, segredo);
+  const [c, p, s] = t.split('.');
+  const esperado = crypto.createHmac('sha256', segredo).update(c + '.' + p).digest('base64url');
+  assert.equal(s, esperado, 'assinatura tem que fechar com o segredo — é o que o LiveKit valida');
+  const corpo = JSON.parse(Buffer.from(p, 'base64url').toString());
+  assert.equal(corpo.iss, chave);
+  assert.equal(corpo.sub, 'u1', 'identity é o user_id: é ele que impede a pessoa de se passar por outra');
+  assert.equal(corpo.video.roomJoin, true);
+  assert.equal(corpo.video.canUpdateOwnMetadata, false);
+  assert.deepEqual(corpo.video.canPublishSources, ['microphone'], 'só áudio: sem vídeo e sem tela');
+  assert.equal(corpo.exp - corpo.nbf, I.TTL_CRACHA_S + 10, 'validade curta');
+  assert.ok(corpo.nbf < Math.floor(Date.now() / 1000), 'nbf com folga: relógio de lambda atrasado recusaria o crachá novo');
+  assert.ok(!t.includes(segredo) && !JSON.stringify(corpo).includes(segredo), 'o segredo NUNCA vai pro navegador');
+});
+
+test('o crachá de admin não é o de participante (e vice-versa)', () => {
+  const I = backend.__interno;
+  const admin = JSON.parse(Buffer.from(I.crachaAdmin('k', 's').split('.')[1], 'base64url').toString());
+  assert.equal(admin.video.roomAdmin, true);
+  assert.equal(admin.video.roomJoin, undefined, 'crachá de admin não entra na sala');
+  const part = JSON.parse(Buffer.from(I.crachaParticipante({ id: 'u', nome: 'n', plano: 'full' }, 'k', 's').split('.')[1], 'base64url').toString());
+  assert.equal(part.video.roomAdmin, undefined,
+    'e crachá de participante NÃO faz operação de admin — medido: dá 401 "permissions denied"');
+});
+
+test('a leitura do LiveKit aceita o snake_case que esta conta devolve (medido)', () => {
+  const I = backend.__interno;
+  assert.equal(I.campo({ num_participants: 3 }, 'num_participants', 'numParticipants'), 3);
+  assert.equal(I.campo({ numParticipants: 4 }, 'num_participants', 'numParticipants'), 4,
+    'aceita os dois: se a serialização do LiveKit mudar de lado, o contador não zera');
+  assert.deepEqual(I.lerMeta(JSON.stringify({ a: 'https://cdn/a.png', p: 'master' })), { avatar: 'https://cdn/a.png', plano: 'master' });
+  assert.deepEqual(I.lerMeta('lixo{'), { avatar: null, plano: 'full' }, 'metadata quebrada não pode derrubar a listagem');
+  assert.equal(I.lerMeta(JSON.stringify({ a: 'javascript:alert(1)', p: 'x' })).avatar, null);
+  assert.equal(I.baseHttp('wss://x.livekit.cloud/'), 'https://x.livekit.cloud');
+});
+
+test('o front NÃO decide plano nem teto sozinho — ele obedece o servidor', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, {
+    entrar: { status: 403, d: { error: 'cheia', cheia: true, n: 10, max: 10 } },
+    contar: { status: 200, d: { ok: true, n: 10, pessoas: [] } },
+  });
+  await SV.entrar(false);
+  assert.equal(S.entrei, false, 'sala cheia é recusa do servidor, não sugestão');
+  assert.equal(S.sala, null, 'e nem Room é aberto: a vaga nunca chega a ser ocupada');
+  assert.match(nos.dlgErro.innerHTML, /cheia/);
+  I.pararPolling();
+});
+
+test('sessão duplicada barra, mas oferece tomar a vaga de volta', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { entrar: { status: 409, d: { error: 'x', jaEstou: true } }, contar: { status: 200, d: { ok: true, n: 1, pessoas: [] } } });
+  await SV.entrar(false);
+  assert.equal(S.entrei, false);
+  assert.match(nos.dlgErro.innerHTML, /svzBAssumir/,
+    'aba que fechou no tranco fica segundos pendurada no SFU: sem saída, a pessoa vê "outra aba" olhando pra uma aba só');
+  assert.match(API, /jaEstou && !b\.assumir/, 'e quem decide é o servidor, não o navegador');
+  I.pararPolling();
+});
+
+// ═══ 3 — ESTADO DEGRADADO É MARCADO ══════════════════════════════════════
+
+test('LiveKit fora do ar: a entrada DIZ "sala indisponível agora"', async () => {
+  const { S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  let rotulo = '';
+  const entrada = document.createElement('div');
+  entrada.querySelector = () => ({ textContent: '' });
+  entrada.setAttribute = (k, v) => { if (k === 'aria-label') rotulo = v; };
+  document.querySelectorAll = (sel) => (sel === '.svz-entrada' ? [entrada] : []);
+  S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { contar: { status: 200, d: { ok: true, n: 0, pessoas: [], indisponivel: true } } });
+  await I.atualizarContagem(true);
+  assert.match(rotulo, /sala indisponível agora/, 'fingir que está tudo bem e falhar no clique é o pior dos dois');
+  assert.equal(nos.bEntrar.disabled, true, 'e os botões do modal não podem convidar pra um lugar que não existe');
+  I.pararPolling();
+});
+
+test('SDK que não carrega de CDN nenhuma também é "indisponível", não erro mudo', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  S.cfg = CONFIG_OK.d;
+  ligarApi(ctx, { entrar: ENTRAR_OK, contar: { status: 200, d: { ok: true, n: 0, pessoas: [] } } });
+  // S.LK fica null e o import dinâmico não existe neste contexto: é exatamente
+  // o caso de "as duas CDNs fora do ar".
+  await SV.entrar(false);
+  assert.equal(S.entrei, false);
+  assert.equal(S.conn, 'erro');
+  assert.match(nos.dlgErro.innerHTML, /indispon/i);
+  I.pararPolling();
+});
+
+test('são DUAS CDNs, em ordem, e com versão fixada', () => {
+  assert.match(SALA, /cdn\.jsdelivr\.net\/npm\/livekit-client@\d+\.\d+\.\d+/, 'a primeira é um arquivo só, autocontido');
+  assert.match(SALA, /esm\.sh\/livekit-client@\d+\.\d+\.\d+/, 'a segunda é a reserva');
+  assert.doesNotMatch(SALA, /livekit-client@latest|livekit-client@\^/, 'SDK de mídia que muda sozinho é sala que quebra sozinha');
+});
+
+test('o SDK só é baixado no clique (quem passa pela Comunidade não paga 1,2MB)', () => {
+  assert.match(SALA, /function carregarSDK/);
+  const ligar = SALA.slice(SALA.indexOf('async function ligar()'), SALA.indexOf("document.addEventListener('visibilitychange'"));
+  assert.doesNotMatch(ligar, /carregarSDK/, 'carregar o SDK no load da página custa 1,2MB pra quem nem vai entrar');
+  assert.match(SALA.slice(SALA.indexOf('async function entrar(')), /var LK = await carregarSDK\(\)/);
+});
+
+// ═══ 5 — timbres de entrar/sair ══════════════════════════════════════════
 
 function carregarSom() {
   const ouvintes = {};
@@ -1023,7 +825,6 @@ test('depois do gesto, entrar e sair são timbres distintos e ambos tocam', () =
 test('rajada de entradas não vira metralhadora', () => {
   const { BTSom, document } = carregarSom();
   document._disparar('click');
-  // 10 chegadas no mesmo instante: só as primeiras podem soar.
   let tocou = 0;
   for (let i = 0; i < 10; i++) if (BTSom.entrou()) tocou++;
   assert.equal(tocou, 1, 'o mesmo timbre tem intervalo mínimo');
@@ -1035,13 +836,16 @@ test('rajada de entradas não vira metralhadora', () => {
 test('desligar o som no localStorage cala os timbres novos também', () => {
   const ctx = carregarSom();
   ctx.document._disparar('click');
-  // simula a preferência 'off' trocando o leitor por baixo é frágil;
-  // o alternar() é a porta pública e faz exatamente isso.
   ctx.BTSom.alternar();                    // liga -> 'off'
   assert.equal(ctx.BTSom.entrou(), false, 'som desligado tem que valer pra entrar/sair');
 });
 
-// ═══ MELHORIA 4 — confirmação antes de sair ═════════════════════════════
+test('a sala continua funcionando se o som não carregar', () => {
+  assert.match(SALA, /if \(window\.BTSom && typeof window\.BTSom\[nome\] === 'function'\)/,
+    'BTSom é opcional: um bipe não pode derrubar a sala');
+});
+
+// ═══ confirmação antes de sair ═══════════════════════════════════════════
 
 test('o botão Sair pede confirmação em vez de sair na hora', () => {
   assert.match(SALA, /\$\('svzBSair'\)\.addEventListener\('click', abrirConfirmacaoSaida\)/,
@@ -1064,11 +868,8 @@ test('Esc e clique fora dispensam a confirmação', () => {
     'clicar nos próprios botões não pode fechar a pergunta');
 });
 
-test('saída programática (sala cheia, ticket vencido) NÃO pede confirmação', () => {
-  // sair() continua sendo a porta direta; só o BOTÃO passa pela pergunta.
-  assert.match(SALA, /sair\('A sala encheu bem na hora/);
-  assert.match(SALA, /sair\('Sua sessão da Comunidade expirou/);
-  assert.match(SALA, /function sair\(motivo\)[\s\S]{0,2000}fecharConfirmacaoSaida\(\)/,
+test('saída programática (queda, sala cheia) NÃO pede confirmação', () => {
+  assert.match(SALA, /function sair\(motivo\)[\s\S]{0,2600}fecharConfirmacaoSaida\(\)/,
     'sair() tem que limpar a pergunta que ficou aberta');
 });
 
@@ -1085,12 +886,7 @@ test('comunidade.html carrega o som ANTES da sala e com ?v= novo', () => {
   assert.match(HTML, /sala-voz\.js\?v=[a-z0-9]+/, 'o .js precisa de ?v= (Vercel cacheia 4h)');
 });
 
-test('sala continua funcionando se o som não carregar', () => {
-  assert.match(SALA, /if \(window\.BTSom && typeof window\.BTSom\[nome\] === 'function'\)/,
-    'BTSom é opcional: um bipe não pode derrubar a sala');
-});
-
-// ═══ BUG 2 — 403 da presença do suporte ═════════════════════════════════
+// ═══ BUG 2 — 403 da presença do suporte (vizinho, não é da sala) ═════════
 
 test('o SQL adiciona a policy de SELECT que o ON CONFLICT exige', () => {
   assert.match(SQL_FIX, /create policy presenca_select_own on support_presenca\s+for select to authenticated using \(auth\.uid\(\) = user_id\)/,
@@ -1120,15 +916,13 @@ test('o front tolera o SQL ainda não ter rodado e para de poluir o console', ()
     'sessão vencida não pode queimar 24h de presença');
 });
 
-// ═══ MELHORIA 5 — a entrada não pode competir com o "Como usar?" ═════════
+// ═══ a entrada não pode competir com o "Como usar?" ══════════════════════
 // Ela era um cartão de vidro grande, com brilho e ícone de 40px, e roubava o
 // olho do "Como usar?" (o destaque da página). Virou irmã do item de navegação
 // "🏛️ Comunidade" que fica logo abaixo dela. O teste compara as MEDIDAS REAIS
 // dos dois arquivos: se alguém mexer no .cbt-snav do comunidade.js e esquecer
 // da sala, isto quebra — que é exatamente o serviço que ele presta.
 
-// A folha da sala é montada com concatenação de strings; aqui ela volta a ser
-// CSS pra poder ser lida por regra, não por texto solto.
 function cssDaSala() {
   return SALA.slice(SALA.indexOf("var CSS = ''"), SALA.indexOf('function estilo'))
     .split('\n').map((l) => l.trim()).filter((l) => !l.startsWith('//')).join('')
@@ -1149,8 +943,6 @@ function props(regra, css) {
 test('a entrada tem as MESMAS medidas do botão "🏛️ Comunidade" (.cbt-snav)', () => {
   const alvo = props('.cbt-snav', CBT);
   const nossa = props('.svz-entrada', cssDaSala());
-  // As medidas que definem tamanho e peso. Se qualquer uma divergir, um dos
-  // dois botões ficou maior que o outro na tela.
   ['padding', 'border-radius', 'gap', 'font-size', 'font-weight', 'font-family',
     'color', 'background', 'border', 'display', 'align-items', 'text-align', 'transition',
   ].forEach((k) => {
@@ -1168,7 +960,6 @@ test('nada de vidro, brilho e ícone gigante na entrada', () => {
   assert.ok(!e['box-shadow'], 'o brilho era metade do problema');
   assert.ok(!e['backdrop-filter'], 'vidro é receita de cartão, não de item de menu');
   assert.equal(props('.svz-ico', css).flex, '0 0 auto', 'o ícone não pode voltar a ter 40px');
-  // Ter gente na sala muda a COR, como o .cbt-snav.on — não o tamanho da caixa.
   assert.deepEqual(Object.keys(props('.svz-entrada.tem-gente', css)), ['color']);
 });
 
@@ -1181,22 +972,21 @@ test('a legenda some do desenho mas NÃO some da informação', () => {
   assert.match(SALA, /setAttribute\('aria-label', 'Sala de voz ao vivo — ' \+ texto\)/);
 });
 
-test('a entrada continua sendo pintada com a legenda invisível', () => {
-  const { S, I, ctx } = carregarSala();
-  const entrada = ctx.document.createElement('div');
+test('a entrada continua sendo pintada com a legenda invisível', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const entrada = document.createElement('div');
   let rotulo = null;
   entrada.setAttribute = (k, v) => { if (k === 'aria-label') rotulo = v; };
   entrada.querySelector = () => ({ textContent: '' });
-  ctx.document.querySelectorAll = (sel) => (sel === '.svz-entrada' ? [entrada] : []);
-  entrarNaSala(S, I);
-  canalDePe(S);
-  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  I.aoBatimento(batimento('u2~zz'));
+  document.querySelectorAll = (sel) => (sel === '.svz-entrada' ? [entrada] : []);
+  await entrarNaSala(ctx, SV, S);
   assert.match(entrada.title || '', /^Sala de voz ao vivo — /);
   assert.match(rotulo || '', /você está na sala/, 'o aria-label carrega o estado, não um rótulo fixo');
+  I.pararPolling();
 });
 
-// ═══ MELHORIA 6 — aviso ao navegar ══════════════════════════════════════
+// ═══ aviso ao navegar ════════════════════════════════════════════════════
 // Estando na sala, clicar em qualquer link encerrava a conversa em silêncio.
 // Duas camadas: link do site vira a mesma pergunta do painel; fechar aba /
 // digitar outra URL cai no beforeunload nativo. E — a parte que mais importa —
@@ -1204,7 +994,7 @@ test('a entrada continua sendo pintada com a legenda invisível', () => {
 
 test('link interno pergunta ANTES de navegar, no painel (não no confirm())', () => {
   const { S, I, document } = carregarSala();
-  const nos = registrarConfirmacao(document);
+  const nos = registrarUI(document);
   S.entrei = true;
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
   assert.ok(nos.conf.classList.contains('on'), 'a pergunta tem que aparecer');
@@ -1213,63 +1003,61 @@ test('link interno pergunta ANTES de navegar, no painel (não no confirm())', ()
   assert.equal(I.destino(), 'https://bluetubeviral.com/blue', 'o link fica guardado esperando o sim');
 });
 
-test('confirmar sai da sala DIREITO e só então navega', () => {
-  const { SV, S, I, document, ctx } = carregarSala();
-  registrarConfirmacao(document);
-  let micParado = 0;
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
-  S.stream = { getTracks: () => [{ stop: () => { micParado++; } }], getAudioTracks: () => [] };
+test('confirmar sai da sala DIREITO e só então navega', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
   SV.sair('');                       // é o que o botão de confirmar chama
-  assert.equal(c.eventos('tchau').length, 1, "sem 'tchau' a pessoa vira fantasma na sala que deixou");
-  assert.equal(micParado, 1, 'o microfone tem que ser solto antes da página trocar');
+  assert.equal(sala.desconectado, true, 'a sala tem que ser desligada antes de a página trocar');
   assert.equal(S.entrei, false);
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/blue', 'e aí sim navega');
   assert.equal(I.destino(), null, 'o destino não pode ficar armado pra próxima saída');
+  I.pararPolling();
 });
 
-test('desistir da pergunta esquece o link (não navega depois, do nada)', () => {
-  const { SV, S, I, document, ctx } = carregarSala();
-  registrarConfirmacao(document);
-  entrarNaSala(S, I);
+test('desistir da pergunta esquece o link (não navega depois, do nada)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  await entrarNaSala(ctx, SV, S);
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
-  // É onde Esc e o clique fora desembocam (ver 'Esc e clique fora dispensam').
   I.fecharConfirmacao();
   assert.equal(I.destino(), null, 'desistir mata o link junto com a pergunta');
   SV.sair('');
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/comunidade',
     'a página não pode trocar sozinha depois que a pessoa disse que ficava');
+  I.pararPolling();
 });
 
-test('sem a caixa de pergunta, navegar não trava — só sai da sala e vai', () => {
-  const { S, I, ctx } = carregarSala();   // de propósito: NADA registrado
-  entrarNaSala(S, I);
-  const c = canalDePe(S);
+test('sem a caixa de pergunta, navegar não trava — só sai da sala e vai', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document, { semConfirmacao: true });   // painel de um cache antigo
+  const { sala } = await entrarNaSala(ctx, SV, S);
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
-  assert.equal(c.eventos('tchau').length, 1, 'saiu da sala direito mesmo sem ter onde perguntar');
+  assert.equal(sala.desconectado, true, 'saiu da sala direito mesmo sem ter onde perguntar');
   assert.equal(S.entrei, false);
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/blue',
     'uma página que não deixa a pessoa sair seria pior que o defeito original');
+  I.pararPolling();
 });
 
 test('a pergunta desminimiza o painel (senão ela não cabe nele)', () => {
   const { S, I, document } = carregarSala();
-  registrarConfirmacao(document);
-  const dock = document._registrar(Object.assign(document.createElement('div'), { id: 'svzDock' }));
-  dock.classList.add('mini');
+  const nos = registrarUI(document);
+  nos.dock.classList.add('mini');
   S.entrei = true;
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
-  assert.equal(dock.classList.contains('mini'), false,
+  assert.equal(nos.dock.classList.contains('mini'), false,
     'no dock minimizado a pergunta teria a altura do cabeçalho');
 });
 
-test('saída pelo botão Sair não navega pra lugar nenhum', () => {
-  const { SV, S, I, document, ctx } = carregarSala();
-  registrarConfirmacao(document);
-  entrarNaSala(S, I);
+test('saída pelo botão Sair não navega pra lugar nenhum', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  await entrarNaSala(ctx, SV, S);
   SV.sair('');
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/comunidade');
+  I.pararPolling();
 });
 
 test('a regra do que é "sair da página" cobre os casos em que perguntar é errado', () => {
@@ -1317,23 +1105,48 @@ test('o conserto do defeito 11 continua de pé (tela apagada ≠ sair)', () => {
   const { S, ctx } = carregarSala();
   const beforeunload = SALA.slice(SALA.indexOf("window.addEventListener('beforeunload'"),
     SALA.indexOf("window.addEventListener('pagehide'"));
-  // Fora da sala o beforeunload segue despedindo NA HORA, como sempre fez.
   assert.match(beforeunload, /\} else \{\s*despedir\(\);\s*\}/,
     'sem sala aberta não há o que perguntar: despede direto');
-  // Dentro da sala ele NÃO pode mais despedir: a pessoa pode responder "ficar",
-  // e desligar o microfone de quem ficou seria trocar de defeito.
   const ramoDentroDaSala = beforeunload.slice(
     beforeunload.indexOf('if (S.entrei) {'), beforeunload.indexOf('} else {'));
   assert.ok(ramoDentroDaSala.length > 0, 'o beforeunload perdeu o ramo de dentro da sala');
   assert.doesNotMatch(ramoDentroDaSala, /despedir\(\)/,
     'cancelar a saída não pode deixar a pessoa na sala com o microfone morto');
-  // O sinal que o pagehide espera continua sendo armado e desarmado igual.
   assert.match(beforeunload, /S\.saindoDeVerdade = true;/);
   assert.match(beforeunload, /setTimeout\(function \(\) \{ S\.saindoDeVerdade = false; \}, 4000\);/);
   assert.match(SALA, /if \(S\.saindoDeVerdade && !e\.persisted\) \{ despedir\(\); return; \}/,
     'quem despede na saída de verdade é o pagehide — essa regra É o defeito 11');
-  assert.match(SALA, /window\.addEventListener\('pagehide'[\s\S]{0,240}suspender\(\);/,
+  assert.match(SALA, /window\.addEventListener\('pagehide'[\s\S]{0,320}suspender\(\);/,
     "'pagehide' sem o sinal continua sendo suspensão, não saída");
   ctx.window._disparar('beforeunload', { preventDefault() {}, returnValue: undefined });
   assert.equal(S.saindoDeVerdade, true, 'o sinal que o pagehide espera não pode ter sumido');
+});
+
+test('fechar a aba de verdade desliga a sala sem reentrar no sair()', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala, linha } = await entrarNaSala(ctx, SV, S);
+  ctx.window._disparar('beforeunload', { preventDefault() {}, returnValue: undefined });
+  ctx.window._disparar('pagehide', { persisted: false });
+  assert.equal(sala.desconectado, true, 'saída confirmada solta o microfone na hora');
+  assert.equal(S.sala, null);
+  assert.ok(linha.indexOf('laços removidos') < linha.lastIndexOf('disconnect'),
+    'os laços saem antes do disconnect: senão o Disconnected do SDK chama sair() numa página que já morreu');
+  I.pararPolling();
+});
+
+test('trocar de aba não derruba ninguém da conversa', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  document.hidden = true;
+  document._disparar('visibilitychange', {});
+  assert.equal(S.entrei, true, 'sair da chamada porque trocou de aba seria péssimo');
+  assert.equal(sala.desconectado, false);
+  assert.equal(S.suspenso, true);
+  document.hidden = false;
+  document._disparar('visibilitychange', {});
+  await esperar(10);
+  assert.equal(S.suspenso, false, 'e voltar limpa a marca');
+  I.pararPolling();
 });
