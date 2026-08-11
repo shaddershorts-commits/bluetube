@@ -475,6 +475,18 @@ module.exports = async function handler(req, res) {
       const amigos = contarDoCabecalho(rAmigos);
       let lista = [];
       try { if (rLista.ok) lista = await rLista.json(); } catch (e) {}
+
+      // Quais destes EU já curti. Sem isso o coração nasce sempre apagado e a
+      // pessoa curte de novo o que já tinha curtido — o clique vira descurtir
+      // e parece que o botão está quebrado.
+      let curtidos = [];
+      try {
+        const ids = (lista || []).map((x) => x.id).filter(Boolean);
+        if (ids.length) {
+          const rl = await fetch(`${SU}/rest/v1/community_likes?user_id=eq.${userId}&post_id=in.(${ids.join(',')})&select=post_id`, { headers: H });
+          if (rl.ok) curtidos = (await rl.json()).map((l) => l.post_id);
+        }
+      } catch (e) {}
       let posts = null;
       // O total vem no cabeçalho content-range ("0-0/42"), não no corpo: assim
       // a contagem não paga o download de todas as linhas. null = "não sei",
@@ -504,6 +516,7 @@ module.exports = async function handler(req, res) {
           id: x.id, tab: x.tab, content: x.content, media: x.media || [], pinned: !!x.pinned,
           likes_count: x.likes_count || 0, comments_count: x.comments_count || 0,
           created_at: x.created_at, edited_at: x.edited_at || null,
+          liked: curtidos.indexOf(x.id) >= 0,
           mine: souEu,
           author: pubPerfil(alvo),
         })),

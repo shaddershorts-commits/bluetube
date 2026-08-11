@@ -979,3 +979,43 @@ test('URL: o perfil vive em /nome, não numa querystring', () => {
   assert.equal((V.rewrites || []).indexOf(r), (V.rewrites || []).length - 1,
     'a reescrita do perfil tem que ser a ÚLTIMA, senão engole rotas reais');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CABEÇALHO DUPLICADO e INTERAÇÃO NO PERFIL
+// ═══════════════════════════════════════════════════════════════════════════
+test('CABEÇALHO: pintar() SUBSTITUI o bloco, não empilha cópia', () => {
+  // Visto na tela: salvar a bio chamava carregar() -> pintar() de novo, e o
+  // appendChild puro duplicava o perfil inteiro. Só sumia dando F5.
+  const P = readFileSync(new URL('../../public/perfil-pagina.js', import.meta.url), 'utf8');
+  assert.match(P, /getElementById\('pfCabExtra'\)/,
+    'o bloco do cabeçalho voltou a ser anônimo — não dá pra reaproveitar, então empilha');
+  assert.match(P, /if \(extra\) extra\.innerHTML = '';/, 'não limpa o bloco antes de repintar');
+  // appendChild só pode existir DENTRO do else (primeira criação).
+  assert.equal((P.match(/cab\.appendChild\(extra\)/g) || []).length, 1,
+    'mais de um appendChild do cabeçalho — é assim que a duplicata volta');
+});
+
+test('PERFIL: dá pra CURTIR sem sair da página', () => {
+  const P = readFileSync(new URL('../../public/perfil-pagina.js', import.meta.url), 'utf8');
+  assert.match(P, /data-curtir=/, 'o post do perfil não tem botão de curtir');
+  assert.match(P, /call\('like-toggle'/, 'não usa a mesma ação da Comunidade');
+  // Reverter o palpite quando o servidor recusa é o que impede número mentiroso.
+  assert.match(P, /botao\.classList\.toggle\('on', estava\);/,
+    'sem desfazer o palpite, um erro deixa na tela um número que não existe no banco');
+});
+
+test('PERFIL: dá pra COMENTAR sem sair da página', () => {
+  const P = readFileSync(new URL('../../public/perfil-pagina.js', import.meta.url), 'utf8');
+  assert.match(P, /call\('comments'/, 'não carrega os comentários');
+  assert.match(P, /call\('comment-create'/, 'não dá pra escrever comentário');
+  assert.match(P, /st\.erro = 'Não deu pra carregar os comentários\.'/,
+    'falha virando lista vazia diria "nenhum comentário" quando a consulta quebrou');
+});
+
+test('PERFIL (API): o estado de curtida vem junto dos posts', () => {
+  const i = API.indexOf("if (action === 'perfil')");
+  const bloco = API.slice(i, i + 5200);
+  assert.match(bloco, /community_likes\?user_id=eq/,
+    'sem saber o que eu já curti, o coração nasce apagado e o clique vira descurtir');
+  assert.match(bloco, /liked: curtidos\.indexOf\(x\.id\) >= 0/);
+});

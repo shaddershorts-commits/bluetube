@@ -106,7 +106,11 @@
       + (p.edited_at ? ' · editado' : '') + '</div>'
       + (p.content ? '<div class="pf-txt">' + esc(p.content) + '</div>' : '')
       + mid
-      + '<div class="pf-pe"><span>❤ ' + esc(fmt(p.likes_count)) + '</span><span>💬 ' + esc(fmt(p.comments_count)) + '</span></div>'
+      + '<div class="pf-pe">'
+        + '<button class="pf-acaobtn' + (p.liked ? ' on' : '') + '" data-curtir="' + esc(p.id) + '">❤ <span data-n>' + esc(String(p.likes_count || 0)) + '</span></button>'
+        + '<button class="pf-acaobtn" data-comentar="' + esc(p.id) + '">💬 <span data-ncom="' + esc(p.id) + '">' + esc(String(p.comments_count || 0)) + '</span></button>'
+      + '</div>'
+      + '<div class="pf-coms" data-coms="' + esc(p.id) + '" style="display:none"></div>'
       + '</article>';
   }
 
@@ -211,6 +215,124 @@
     });
   }
 
+
+  // ── CURTIR E COMENTAR, aqui dentro ─────────────────────────────────────────
+  // O perfil não podia ser vitrine só de olhar: quem chega pelo perfil de
+  // alguém quer reagir ali, não voltar pro feed pra procurar o mesmo post.
+  // Reusa as ações da Comunidade (like-toggle, comments, comment-create), então
+  // o que vale lá vale aqui — inclusive o portão de plano, que é do servidor.
+  var comentarios = {};
+
+  async function curtir(id, botao) {
+    if (!id || botao.dataset.ocupado) return;
+    botao.dataset.ocupado = '1';
+    // Pinta ANTES da resposta: curtida que demora meio segundo pra acender
+    // parece quebrada, e a pessoa clica de novo — o que descurte.
+    var estava = botao.classList.contains('on');
+    var span = botao.querySelector('[data-n]');
+    var n = parseInt(span.textContent, 10) || 0;
+    botao.classList.toggle('on', !estava);
+    span.textContent = String(Math.max(0, n + (estava ? -1 : 1)));
+
+    var r;
+    try { r = await BT().call('like-toggle', { body: { post_id: id } }); }
+    catch (e) { r = { ok: false, d: {} }; }
+    botao.dataset.ocupado = '';
+    if (!r.ok) {
+      // Desfaz o palpite. Número na tela que não bate com o banco é pior que
+      // demora, porque a pessoa acredita nele.
+      botao.classList.toggle('on', estava);
+      span.textContent = String(n);
+      return toast('❌ ' + ((r.d && r.d.error) || 'Não deu pra curtir agora.'));
+    }
+    if (r.d && typeof r.d.likes_count === 'number') span.textContent = String(r.d.likes_count);
+    if (r.d && typeof r.d.liked === 'boolean') botao.classList.toggle('on', r.d.liked);
+  }
+
+  function comentarioHtml(c) {
+    var a = c.author || {};
+    return '<div class="pf-com">'
+      + '<div class="pf-comh"><b data-cbp-name="' + esc(a.name) + '">' + esc(a.name) + '</b>'
+      + (a.mod ? '<span class="pf-selo" style="font-size:8.5px;padding:2px 6px">MOD</span>' : '')
+      + '<span>' + esc(quando(c.created_at)) + '</span></div>'
+      + '<div class="pf-comt">' + esc(c.content) + '</div>'
+      + '</div>';
+  }
+
+  function pintarComentarios(id) {
+    var caixa = document.querySelector('[data-coms="' + id + '"]');
+    if (!caixa) return;
+    var st = comentarios[id] || {};
+    if (!st.aberto) { caixa.innerHTML = ''; caixa.style.display = 'none'; return; }
+    caixa.style.display = 'block';
+    var itens = st.itens;
+    caixa.innerHTML =
+      (st.carregando ? '<div class="pf-comvazio">Carregando…</div>'
+        : st.erro ? '<div class="pf-comvazio">' + esc(st.erro) + '</div>'
+          : (itens && itens.length) ? itens.map(comentarioHtml).join('')
+            : '<div class="pf-comvazio">Nenhum comentário ainda. Seja o primeiro.</div>')
+      + '<div class="pf-comnovo">'
+      + '<input type="text" maxlength="500" placeholder="Escreva um comentário…" data-com-txt="' + id + '">'
+      + '<button class="pf-b" data-com-enviar="' + id + '">Enviar</button>'
+      + '</div>';
+  }
+
+  async function abrirComentarios(id) {
+    var st = comentarios[id] || (comentarios[id] = {});
+    if (st.aberto) { st.aberto = false; return pintarComentarios(id); }
+    st.aberto = true; st.carregando = true; st.erro = null;
+    pintarComentarios(id);
+    var r;
+    try { r = await BT().call('comments', { qs: '&post_id=' + encodeURIComponent(id) }); }
+    catch (e) { r = { ok: false, d: {} }; }
+    st.carregando = false;
+    // Falha vira ERRO na tela, não lista vazia. "Nenhum comentário" quando a
+    // consulta quebrou é mentira — o mesmo defeito que apareceu nas amizades.
+    if (!r.ok) st.erro = 'Não deu pra carregar os comentários.';
+    else st.itens = (r.d && r.d.comments) || [];
+    pintarComentarios(id);
+  }
+
+  async function enviarComentario(id) {
+    var campo = document.querySelector('[data-com-txt="' + id + '"]');
+    var botao = document.querySelector('[data-com-enviar="' + id + '"]');
+    if (!campo || !botao) return;
+    var txt = (campo.value || '').trim();
+    if (!txt) return;
+    botao.disabled = true; botao.textContent = 'Enviando…';
+    var r;
+    try { r = await BT().call('comment-create', { body: { post_id: id, content: txt } }); }
+    catch (e) { r = { ok: false, d: {} }; }
+    botao.disabled = false; botao.textContent = 'Enviar';
+    if (!r.ok) return toast('❌ ' + ((r.d && r.d.error) || 'Não deu pra comentar agora.'));
+    campo.value = '';
+    // Recarrega do servidor em vez de inserir um palpite: o comentário que
+    // aparece é o que existe de verdade, com id e autor certos.
+    comentarios[id].aberto = false;
+    await abrirComentarios(id);
+    var cont = document.querySelector('[data-ncom="' + id + '"]');
+    if (cont) cont.textContent = String((parseInt(cont.textContent, 10) || 0) + 1);
+  }
+
+  document.addEventListener('click', function (e) {
+    var alvo = e.target && e.target.closest ? e.target.closest('[data-curtir],[data-comentar],[data-com-enviar]') : null;
+    if (!alvo) return;
+    e.preventDefault();
+    var id;
+    if ((id = alvo.getAttribute('data-curtir'))) return curtir(id, alvo);
+    if ((id = alvo.getAttribute('data-comentar'))) return abrirComentarios(id);
+    if ((id = alvo.getAttribute('data-com-enviar'))) return enviarComentario(id);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var t = e.target;
+    if (t && t.getAttribute && t.getAttribute('data-com-txt')) {
+      e.preventDefault();
+      enviarComentario(t.getAttribute('data-com-txt'));
+    }
+  });
+
   // ── Desenho da página ──────────────────────────────────────────────────────
   function pintarErro(msg, comRetentar) {
     $('pfAv').style.display = 'none';
@@ -286,8 +408,18 @@
 
     atual = d;
     var cab = document.querySelector('.pf-cab');
-    var extra = document.createElement('div');
 
+    // ⚠️ SUBSTITUI, não acrescenta. Aqui havia um appendChild puro: cada
+    // salvamento de bio chamava carregar() -> pintar() de novo e EMPILHAVA
+    // outra cópia do cabeçalho inteiro. O dono viu o perfil duplicado na tela
+    // e só voltou ao normal depois de atualizar a página.
+    var extra = document.getElementById('pfCabExtra');
+    if (extra) extra.innerHTML = '';
+    else {
+      extra = document.createElement('div');
+      extra.id = 'pfCabExtra';
+      cab.appendChild(extra);
+    }
     // Link: rel="noopener noreferrer nofollow" porque o destino é escolhido por
     // outra pessoa. Sem noopener, a página de destino ganha referência à nossa
     // aba e pode trocá-la por uma tela de login falsa.
@@ -314,7 +446,6 @@
           + (d.bio || d.link ? '✏️ Editar bio e link' : '✏️ Escrever uma bio') + '</button></div>'
         : '')
       + '<div id="pfEditor"></div>';
-    cab.appendChild(extra);
 
     var be = $('pfEditar');
     if (be) be.addEventListener('click', abrirEditor);
