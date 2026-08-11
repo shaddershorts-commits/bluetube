@@ -157,6 +157,10 @@ function registrarUI(document, opcoes = {}) {
     dlgErro: criar('svzDlgErro'), bEntrar: criar('svzBEntrar'), bMudo: criar('svzBMudo'),
     dock: criar('svzDock'), dockSub: criar('svzDockSub'), grid: criar('svzGrid'),
     bMudar: criar('svzBMudar'), nota: criar('svzNota'),
+    // salas privadas
+    dlgTit: criar('svzDlgTit'), dockTit: criar('svzDockTit'), dono: criar('svzDono'),
+    salas: criar('svzSalas'), salasLista: criar('svzSalasLista'), bCriar: criar('svzBCriar'),
+    criarBox: criar('svzCriarBox'), senhaBox: criar('svzSenhaBox'), senha: criar('svzSenha'),
   };
   if (!opcoes.semConfirmacao) {
     Object.assign(nos, {
@@ -615,9 +619,20 @@ test('o crachá só é assinado DEPOIS do portão de plano', () => {
 test('o teto de 10 é cobrado no backend, e sem cache', () => {
   const I = backend.__interno;
   assert.equal(I.MAX_PESSOAS, 10);
-  assert.match(API, /st\.n >= MAX_PESSOAS[\s\S]{0,200}cheia: true/, 'a contagem antes de assinar o crachá');
-  assert.match(API, /const st = await estadoDaSala\(LK, true\);\s*\n\s*if \(!st\.ok\)/,
+  // `nAgora` é o st.n menos quem a varredura acabou de remover — a contagem
+  // continua sendo feita ANTES de assinar o crachá, e continua sendo ela que
+  // recusa. O desconto existe pra não dizer "cheia" no instante em que uma
+  // vaga foi aberta.
+  assert.match(API, /const nAgora = Math\.max\(0, st\.n - limpeza\.removidos\.length\)/);
+  assert.match(API, /nAgora >= MAX_PESSOAS[\s\S]{0,200}cheia: true/, 'a contagem antes de assinar o crachá');
+  // O segundo argumento virou a SALA (as privadas), mas a garantia é a mesma:
+  // o teto relê o estado direto do LiveKit, sem passar pelo cache do contador.
+  assert.match(API, /const st = await estadoDaSala\(LK, nomeSala\);\s*\n\s*if \(!st\.ok\)/,
     'a contagem do teto não pode vir do cache do contador — cache é enfeite de tela, não decisão');
+  const iEntrar = API.indexOf("if (action === 'entrar')");
+  const iCracha2 = API.indexOf('crachaParticipante({ id: userId');
+  assert.equal(API.slice(iEntrar, iCracha2).includes('lerCache('), false,
+    'o caminho do entrar não pode encostar no cache do contador');
   // O max_participants é mandado e É cobrado, com folga de 2 (medido na faixa
   // toda em 11/08: 2→4, 4→6, 10→12, sem limite→18 de 18). Entre 10 e 12 quem
   // segura são as camadas nossas.
@@ -683,8 +698,10 @@ test('a leitura do LiveKit aceita o snake_case que esta conta devolve (medido)',
   assert.equal(I.campo({ num_participants: 3 }, 'num_participants', 'numParticipants'), 3);
   assert.equal(I.campo({ numParticipants: 4 }, 'num_participants', 'numParticipants'), 4,
     'aceita os dois: se a serialização do LiveKit mudar de lado, o contador não zera');
-  assert.deepEqual(I.lerMeta(JSON.stringify({ a: 'https://cdn/a.png', p: 'master' })), { avatar: 'https://cdn/a.png', plano: 'master' });
-  assert.deepEqual(I.lerMeta('lixo{'), { avatar: null, plano: 'full' }, 'metadata quebrada não pode derrubar a listagem');
+  // `manda` entrou com as salas privadas: é quem manda na sala, carimbado por
+  // nós no crachá. Ausente vira null — participante comum.
+  assert.deepEqual(I.lerMeta(JSON.stringify({ a: 'https://cdn/a.png', p: 'master' })), { avatar: 'https://cdn/a.png', plano: 'master', manda: null });
+  assert.deepEqual(I.lerMeta('lixo{'), { avatar: null, plano: 'full', manda: null }, 'metadata quebrada não pode derrubar a listagem');
   assert.equal(I.lerMeta(JSON.stringify({ a: 'javascript:alert(1)', p: 'x' })).avatar, null);
   assert.equal(I.baseHttp('wss://x.livekit.cloud/'), 'https://x.livekit.cloud');
 });
@@ -861,7 +878,37 @@ test('o botão Sair pede confirmação em vez de sair na hora', () => {
     'clique no Sair não pode mais chamar sair() direto');
   assert.match(SALA, /id="svzBSairSim"/, 'precisa do botão que confirma');
   assert.match(SALA, /id="svzBFicar"/, 'precisa da saída rápida da pergunta');
-  assert.match(SALA, /\$\('svzBSairSim'\)\.addEventListener\('click', function \(\) \{ sair\(''\); \}\)/);
+  // O "sim" passou a atender mais de uma pergunta (a expulsão também usa esta
+  // caixa), então ele chama `confirmar()` em vez de sair() direto. A garantia
+  // que importa continua sendo COMPORTAMENTO, e é ela que este teste checa:
+  // sem nada pendente, confirmar É sair.
+  assert.match(SALA, /\$\('svzBSairSim'\)\.addEventListener\('click', confirmar\)/);
+});
+
+test('confirmar SEM ação pendente continua sendo sair da sala', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  await entrarNaSala(ctx, SV, S);
+  assert.equal(S.entrei, true);
+  I.confirmar();
+  assert.equal(S.entrei, false, 'a caixa ganhou outros usos, mas o padrão dela não pode mudar');
+  I.pararPolling();
+});
+
+test('confirmar COM ação pendente roda a ação e NÃO sai da sala', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  await entrarNaSala(ctx, SV, S);
+  let rodou = 0;
+  I.perguntar({ tit: 'x', sub: 'y', ok: 'z' }, () => { rodou++; });
+  I.confirmar();
+  assert.equal(rodou, 1, 'a ação pendente é o que o "sim" executa');
+  assert.equal(S.entrei, true, 'expulsar alguém não pode me tirar da sala junto');
+  // E ela é de UM uso só: um segundo "sim" cai no padrão (sair), não repete.
+  I.confirmar();
+  assert.equal(rodou, 1);
+  assert.equal(S.entrei, false);
+  I.pararPolling();
 });
 
 test('a confirmação usa o painel, nunca o confirm() do navegador', () => {
@@ -871,7 +918,7 @@ test('a confirmação usa o painel, nunca o confirm() do navegador', () => {
 });
 
 test('Esc e clique fora dispensam a confirmação', () => {
-  assert.match(SALA, /e\.key === 'Escape' && confirmacaoAberta\(\)/);
+  assert.match(SALA, /if \(confirmacaoAberta\(\)\) \{ e\.preventDefault\(\); fecharConfirmacaoSaida\(\); \}/);
   assert.match(SALA, /window\.PointerEvent \? 'pointerdown' : 'mousedown'/);
   assert.match(SALA, /if \(caixa && caixa\.contains\(e\.target\)\) return;/,
     'clicar nos próprios botões não pode fechar a pergunta');
@@ -1308,10 +1355,120 @@ test('MODAL: não diz "a sala está vazia" quando a contagem não chegou', () =>
 });
 
 test('MODAL: sem contagem fresca, não desenha rosto nenhum', () => {
-  const i = SALA.indexOf('var lista = S.entrei ? Array.from(S.pessoas.values())');
+  const i = SALA.indexOf('var lista = alvo ? []');
   assert.notEqual(i, -1);
-  assert.match(SALA.slice(i, i + 220), /contagemFresca\(\) \? \(S\.foraNomes \|\| \[\]\) : \[\]/,
+  assert.match(SALA.slice(i, i + 260), /contagemFresca\(\) \? \(S\.foraNomes \|\| \[\]\) : \[\]/,
     'voltaria a desenhar 4 rostos embaixo da frase que diz que a sala está vazia');
+});
+
+// ═══ SALAS PRIVADAS: a entrada de ponta a ponta, no arquivo de verdade ═══
+// As regras (senha, expulsos, hierarquia) moram no backend e estão travadas em
+// tests/unit/sala_voz_privadas.test.mjs. O que se prova AQUI é a fiação: o que
+// o servidor respondeu vira estado, e o estado vira tela.
+
+test('SALA PRIVADA: entrar leva a senha digitada e guarda o papel que o servidor deu', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.senhaBox.style.display = '';        // a sala escolhida pede senha
+  nos.senha.value = 'abre-te-sesamo';
+  S.escolhida = 'sv-abc123def456';
+  const { chamadas } = await entrarNaSala(ctx, SV, S, {
+    entrar: {
+      status: 200,
+      d: Object.assign({}, ENTRAR_OK.d, {
+        sala: 'sv-abc123def456', privada: true, titulo: 'Papo de edição', papel: 'dono', comSenha: true,
+      }),
+    },
+  });
+  const pedido = chamadas.find((c) => c.acao === 'entrar').corpo;
+  assert.equal(pedido.sala, 'sv-abc123def456', 'sem isto a pessoa entraria na sala pública achando que entrou na privada');
+  assert.equal(pedido.senha, 'abre-te-sesamo');
+  assert.equal(S.papel, 'dono', 'o papel vem do SERVIDOR, nunca do navegador');
+  assert.equal(S.naSala.titulo, 'Papo de edição');
+  assert.equal(nos.senha.value, '', 'a senha some do campo assim que serve');
+  assert.match(nos.dockTit.textContent, /🔒 Papo de edição/, 'o painel diz em qual sala a pessoa está');
+  assert.equal(nos.dono.style.display, '', 'o dono vê os comandos da sala dele');
+  I.pararPolling();
+});
+
+test('SALA PRIVADA: quem NÃO manda não vê comando nenhum no painel', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  S.escolhida = 'sv-abc123def456';
+  await entrarNaSala(ctx, SV, S, {
+    entrar: { status: 200, d: Object.assign({}, ENTRAR_OK.d, { sala: 'sv-abc123def456', privada: true, titulo: 'Papo', papel: null }) },
+  });
+  assert.equal(S.papel, null);
+  assert.equal(nos.dono.style.display, 'none');
+  S.pessoas.set('outro', { eu: false, nome: 'Bruno', avatar: null, plano: 'full', mudo: false, entrou: 1, manda: null });
+  assert.equal(I.cardHTML('outro', S.pessoas.get('outro')).includes('data-svz-cmd'), false,
+    'botão de expulsar que não expulsa é pior que botão nenhum');
+  I.pararPolling();
+});
+
+test('SALA PRIVADA: a varredura é pedida quando alguém CHEGA, e só por quem manda', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  S.escolhida = 'sv-abc123def456';
+  const { sala, chamadas } = await entrarNaSala(ctx, SV, S, {
+    entrar: { status: 200, d: Object.assign({}, ENTRAR_OK.d, { sala: 'sv-abc123def456', privada: true, titulo: 'Papo', papel: 'dono' }) },
+  });
+  const antes = chamadas.filter((c) => c.acao === 'guardar').length;
+  sala.emitir('participantConnected', {});
+  await esperar(5);
+  const depois = chamadas.filter((c) => c.acao === 'guardar');
+  assert.equal(depois.length, antes + 1, 'é este pedido que tira quem voltou com o crachá guardado');
+  assert.equal(depois[depois.length - 1].corpo.sala, 'sv-abc123def456');
+
+  // O mesmo evento, sem papel nenhum: ninguém pergunta nada.
+  const outra = carregarSala();
+  registrarUI(outra.document);
+  const r2 = await entrarNaSala(outra.ctx, outra.SV, outra.S, {
+    entrar: { status: 200, d: Object.assign({}, ENTRAR_OK.d, { sala: 'sv-abc123def456', privada: true, papel: null }) },
+  });
+  r2.sala.emitir('participantConnected', {});
+  await esperar(5);
+  assert.equal(r2.chamadas.filter((c) => c.acao === 'guardar').length, 0);
+  I.pararPolling(); outra.I.pararPolling();
+});
+
+test('SALA PRIVADA: senha errada devolve o campo em vez de sumir com a tela', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  S.escolhida = 'sv-abc123def456';
+  S.salas = [{ slug: 'sv-abc123def456', titulo: 'Papo', dono: 'Bruno', comSenha: true, liberado: true, n: 2 }];
+  S.salasOk = true;
+  ligarApi(ctx, {
+    entrar: { status: 401, d: { error: 'Senha errada.', pedeSenha: true, restam: 4 } },
+    contar: { status: 200, d: { ok: true, n: 2, pessoas: [] } },
+  });
+  await SV.entrar(false);
+  assert.equal(S.entrei, false);
+  assert.equal(S.sala, null, 'nenhum Room é aberto com senha errada');
+  assert.match(nos.dlgErro.innerHTML, /Senha errada/);
+  assert.equal(I.acharSala('sv-abc123def456').liberado, false,
+    'a lista aprende que a sala pede senha — o campo aparece em vez de a pessoa errar de novo às cegas');
+  I.pararPolling();
+});
+
+test('SALA PRIVADA: sala encerrada no meio do caminho volta pra pública', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  nos.dlg.classList.add('on');
+  const { LK } = livekitFalso();
+  S.LK = LK; S.cfg = CONFIG_OK.d;
+  S.escolhida = 'sv-abc123def456';
+  ligarApi(ctx, {
+    entrar: { status: 410, d: { error: 'Essa sala foi encerrada pelo dono.', encerrada: true } },
+    salas: { status: 200, d: { ok: true, salas: [], podeCriar: true, aberta: { slug: 'sala-voz-comunidade', n: 0 } } },
+  });
+  await SV.entrar(false);
+  assert.equal(S.entrei, false);
+  assert.equal(S.escolhida, 'sala-voz-comunidade', 'o botão não pode ficar apontando pra uma porta que não existe mais');
+  I.pararPolling();
 });
 
 test('A reescrita de /nome NÃO pode aceitar ponto (arquivo virando HTML)', () => {

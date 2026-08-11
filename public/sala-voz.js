@@ -100,7 +100,9 @@
   // barato: se algum navegador emitir os eventos de chegada dos antigos, a sala
   // não vira metralhadora.
   var SILENCIO_ENTRADA = 2000;
-  // Os dois textos da MESMA caixa de confirmação (ver montarDock).
+  // Os textos da MESMA caixa de confirmação (ver montarDock). Ela atende mais
+  // de uma pergunta de propósito: duas caixas parecidas em momentos parecidos
+  // é como se ensina alguém a clicar em "sim" sem ler.
   var PERGUNTA_SAIR = {
     tit: 'Sair da sala de voz?',
     sub: 'seu microfone fecha e a conversa segue sem você',
@@ -111,6 +113,8 @@
     sub: 'continuar vai encerrar a conversa: seu microfone fecha e a sala segue sem você',
     ok: 'Continuar',
   };
+  // A sala pública. O nome tem que bater com o SALA do api/sala-voz.js.
+  var SALA_ABERTA = 'sala-voz-comunidade';
 
   // ── estado ────────────────────────────────────────────────────────────────
   var S = {
@@ -132,6 +136,20 @@
     indisponivel: false,   // LiveKit fora do ar / sem credencial no servidor
     tPoll: null, tIdle: null, promessaConfig: null, promessaSDK: null,
     silenciarAte: 0,
+
+    // ── SALAS PRIVADAS ────────────────────────────────────────────────────
+    // `escolhida` é a sala que os botões do modal vão abrir (a pública por
+    // padrão). `naSala` é onde eu ESTOU — os dois são diferentes de propósito:
+    // dá pra estar numa sala e olhar a lista das outras.
+    escolhida: SALA_ABERTA,
+    naSala: null,          // { slug, titulo, privada, papel, comSenha }
+    papel: null,           // 'dono' | 'mod' | 'co' | null — o meu, na sala em que estou
+    salas: [],             // lista do action=salas
+    salasEm: 0, salasOk: false, buscandoSalas: false,
+    semTabela: false,      // o SQL das salas privadas ainda não foi rodado
+    podeCriar: false,
+    criando: false,        // o formulário de criar sala está aberto
+    menuDe: null,          // identity de quem está com o menu de comando aberto
   };
 
   // ── utilidades ────────────────────────────────────────────────────────────
@@ -302,6 +320,63 @@
     + 'padding:11px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:88vw;opacity:0;'
     + 'pointer-events:none;transition:opacity .3s;text-align:center}'
     + '.svz-toast.on{opacity:1}'
+
+    // ── lista de salas (dentro do modal de entrada) ────────────────────────
+    // A lista fica ABAIXO dos botões de entrar, não acima: quem abre a sala de
+    // voz quase sempre quer a sala aberta, e empurrar a decisão "em qual sala?"
+    // pra frente do caminho comum encareceria o caso de 9 em 10.
+    + '.svz-salas{margin-top:20px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}'
+    + '.svz-salastit{font-family:var(--font-mono,monospace);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#5f7590;margin-bottom:9px}'
+    + '.svz-sala{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;margin-bottom:7px;'
+    + 'background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:9px 11px;transition:all .16s}'
+    + '.svz-sala:hover{background:rgba(0,170,255,.07);border-color:rgba(0,170,255,.24)}'
+    + '.svz-sala.on{background:rgba(0,170,255,.1);border-color:rgba(0,170,255,.45);box-shadow:0 0 16px rgba(0,170,255,.12)}'
+    + '.svz-sala b{display:block;font-family:var(--cbt-sans,Inter,sans-serif);font-weight:600;font-size:13px;color:#e8f0fb;'
+    + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    + '.svz-sala small{display:block;font-family:var(--font-mono,monospace);font-size:9.5px;color:#7d92b8;margin-top:2px}'
+    + '.svz-sala .svz-salaico{flex:0 0 auto;font-size:15px}'
+    + '.svz-sala .svz-salatxt{flex:1;min-width:0}'
+    + '.svz-salan{flex:0 0 auto;font-family:var(--font-mono,monospace);font-size:10px;font-weight:700;color:#02121f;'
+    + 'background:linear-gradient(135deg,#00d0ff,#00a2ff);border-radius:100px;padding:2px 8px}'
+    + '.svz-salan.vazia{background:rgba(255,255,255,.09);color:#7d92b8}'
+    // Expulso não vê a porta como se ela abrisse: o card fica apagado e diz
+    // por quê. Descobrir só no clique seria humilhação com passo extra.
+    + '.svz-sala.barrada{opacity:.45;cursor:not-allowed}'
+    + '.svz-sala.barrada:hover{background:rgba(255,255,255,.035);border-color:rgba(255,255,255,.08)}'
+    + '.svz-criar{display:flex;align-items:center;gap:8px;width:100%;justify-content:center;background:none;cursor:pointer;'
+    + 'border:1px dashed rgba(0,170,255,.32);border-radius:13px;padding:10px;color:#5fe3ff;'
+    + 'font-family:var(--font-display,Syne,sans-serif);font-weight:700;font-size:12.5px;transition:all .16s}'
+    + '.svz-criar:hover{background:rgba(0,170,255,.07);border-color:rgba(0,170,255,.6)}'
+    + '.svz-campo{width:100%;box-sizing:border-box;background:rgba(2,10,24,.7);border:1px solid rgba(255,255,255,.14);border-radius:12px;'
+    + 'padding:11px 13px;color:#e8f0fb;font-family:var(--cbt-sans,Inter,sans-serif);font-size:13.5px;margin-top:8px}'
+    + '.svz-campo:focus{outline:none;border-color:rgba(0,170,255,.6);box-shadow:0 0 0 3px rgba(0,170,255,.12)}'
+    + '.svz-campo::placeholder{color:#5f7590}'
+    + '.svz-dica{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590;line-height:1.6;margin-top:7px}'
+
+    // ── comando da sala (dentro do painel) ─────────────────────────────────
+    // O ⋯ mora no card da pessoa, não numa lista separada de "membros": a ação
+    // é sobre AQUELE rosto, e afastar o comando do rosto é como se expulsa a
+    // pessoa errada.
+    + '.svz-cmd{position:absolute;left:5px;top:5px;width:20px;height:20px;padding:0;border:none;border-radius:7px;cursor:pointer;'
+    + 'background:rgba(2,10,24,.72);color:#c7d5ea;font-size:12px;line-height:20px;text-align:center;opacity:0;transition:opacity .15s}'
+    + '.svz-p:hover .svz-cmd,.svz-cmd:focus,.svz-cmd.on{opacity:1}'
+    + '@media(hover:none){.svz-cmd{opacity:1}}'   // no celular não existe hover
+    // `fixed`, não `absolute`: a grade de cards tem overflow-y:auto, e um menu
+    // absoluto dentro dela nasceria cortado pela própria rolagem.
+    + '.svz-menu{position:fixed;z-index:9035;min-width:172px;background:#0b1729;border:1px solid rgba(0,170,255,.28);border-radius:13px;'
+    + 'padding:5px;box-shadow:0 16px 44px rgba(0,0,0,.6)}'
+    + '.svz-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;cursor:pointer;'
+    + 'border-radius:9px;padding:9px 10px;color:#c7d5ea;font-family:var(--cbt-sans,Inter,sans-serif);font-size:12.5px}'
+    + '.svz-menu button:hover{background:rgba(0,170,255,.1);color:#fff}'
+    + '.svz-menu button.perigo{color:#ff9b8f}'
+    + '.svz-menu button.perigo:hover{background:rgba(255,60,60,.16);color:#fff}'
+    + '.svz-menu .svz-menutit{padding:7px 10px 5px;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7590;'
+    + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    // Coroa de quem manda, no card. Fica no canto oposto ao 🔇 pra os dois não
+    // se empilharem no mesmo canto quando a pessoa é dona E está muda.
+    + '.svz-coroa{position:absolute;right:6px;bottom:6px;font-size:10px}'
+    + '.svz-dhead .svz-lock{font-size:11px;color:#ffd977}'
+
     + '@media(prefers-reduced-motion:reduce){.svz-entrada.tem-gente .svz-ponto{animation:none}.svz-entrada:hover{transform:none}}';
 
   function estilo() {
@@ -406,6 +481,56 @@
     if (S.tPoll) { clearInterval(S.tPoll); S.tPoll = null; }
   }
 
+  // ── SALAS PRIVADAS: a lista ───────────────────────────────────────────────
+  // Perguntada quando o modal ABRE, não num relógio. Lista de salas não muda a
+  // cada segundo, e relógio que pergunta sozinho é exatamente o que encareceu a
+  // Vercel neste projeto antes (BLUE_REALTIME_ENABLED). Dentro da sala ela não
+  // é perguntada nenhuma vez.
+  var VALIDADE_SALAS = 15000;
+
+  function acharSala(slug) {
+    for (var i = 0; i < S.salas.length; i++) if (S.salas[i].slug === slug) return S.salas[i];
+    return null;
+  }
+
+  function buscarSalas(forcar) {
+    if (S.buscandoSalas) return Promise.resolve(false);
+    if (!forcar && S.salasOk && Date.now() - S.salasEm < VALIDADE_SALAS) return Promise.resolve(true);
+    S.buscandoSalas = true;
+    return api('salas').then(function (r) {
+      S.buscandoSalas = false;
+      if (!r.ok || !r.d || !r.d.ok) return false;
+      S.salas = Array.isArray(r.d.salas) ? r.d.salas : [];
+      S.semTabela = !!r.d.semTabela;
+      S.podeCriar = !!r.d.podeCriar;
+      S.salasOk = true;
+      S.salasEm = Date.now();
+      // A sala escolhida pode ter sido encerrada enquanto o modal estava
+      // aberto. Voltar pra pública é melhor que deixar o botão de entrar
+      // apontando pra uma porta que não existe mais.
+      if (S.escolhida !== SALA_ABERTA && !acharSala(S.escolhida)) escolher(SALA_ABERTA);
+      pintarModal();
+      return true;
+    }).catch(function () { S.buscandoSalas = false; return false; });
+  }
+
+  // Trocar de sala escolhida limpa a senha digitada: senha de uma sala nunca
+  // pode ser mandada pra outra por descuido de tela.
+  function escolher(slug) {
+    S.escolhida = slug;
+    var c = $('svzSenha');
+    if (c) c.value = '';
+    limparErroModal();
+  }
+
+  // Quantas pessoas na sala ESCOLHIDA (que não é necessariamente a que estou).
+  function nDaEscolhida() {
+    if (S.entrei && S.naSala && S.naSala.slug === S.escolhida) return S.pessoas.size;
+    if (S.escolhida === SALA_ABERTA) return contagemFresca() ? S.foraN : 0;
+    var a = acharSala(S.escolhida);
+    return a ? (a.n || 0) : 0;
+  }
+
   // ── a lista de pessoas, vinda do LiveKit ──────────────────────────────────
   // Não existe mais lista NOSSA a sincronizar com a conexão: a lista É a
   // conexão. Toda mudança (chegou, saiu, mutou) é um evento do Room, e a gente
@@ -425,6 +550,10 @@
       nome: String((p && p.name) || '').slice(0, 32) || 'criador',
       avatar: foto,
       plano: meta.p === 'mod' ? 'mod' : (meta.p === 'master' ? 'master' : 'full'),
+      // Quem manda na sala, carimbado pelo servidor no crachá (e reescrito por
+      // ele na promoção). O participante não recebe canUpdateOwnMetadata, então
+      // ninguém se promove sozinho mexendo no próprio navegador.
+      manda: meta.h === 'dono' ? 'dono' : (meta.h === 'co' ? 'co' : null),
       // O meu mudo é o MEU botão (intenção), o dos outros é o que o SFU diz.
       mudo: eu ? !!S.mudo : !(p && p.isMicrophoneEnabled),
       entrou: quando,
@@ -504,6 +633,28 @@
     }
   }
 
+  // ── A VARREDURA, pedida daqui ─────────────────────────────────────────────
+  // Quem chama é o navegador de quem MANDA na sala, e só quando alguém chega.
+  // O servidor é que tem o crachá de admin — este lado só avisa "chegou gente,
+  // confere". Freio de 4s porque três pessoas entrando juntas geram três
+  // eventos, e três pedidos iguais fariam o mesmo trabalho três vezes.
+  var VARREDURA_FREIO_MS = 4000;
+  var varreuEm = 0;
+  function pedirVarredura() {
+    if (!S.entrei || !S.papel || !S.naSala) return;      // quem não manda, não varre
+    var agora = Date.now();
+    if (agora - varreuEm < VARREDURA_FREIO_MS) return;
+    varreuEm = agora;
+    api('guardar', { sala: S.naSala.slug }).then(function (r) {
+      var quantos = (r.d && r.d.removidos) || 0;
+      if (quantos > 0) {
+        aviso(quantos === 1
+          ? 'Uma pessoa expulsa tentou voltar e foi removida.'
+          : quantos + ' pessoas expulsas tentaram voltar e foram removidas.');
+      }
+    }).catch(function () {});
+  }
+
   // ── eventos do Room ───────────────────────────────────────────────────────
   function ligarEventos(sala, LK) {
     var E = LK.RoomEvent;
@@ -513,6 +664,16 @@
       if (Date.now() > S.silenciarAte) som('entrou');
       checarLotacao();
       pintar();
+      // ⚠️ AQUI ESTÁ O FECHO DO BURACO. Um crachá vale 2h e o LiveKit renova
+      // sozinho: quem foi expulso e guardou o token consegue reconectar DIRETO
+      // no SFU, sem passar pelo nosso portão. Ninguém do lado de cá saberia —
+      // exceto por este evento, que chega de graça pelo socket do LiveKit.
+      // O navegador de quem manda na sala pede a varredura, e o servidor
+      // (que é quem tem o crachá de admin) remove de novo.
+      // Só quem manda chama, e só quando alguém chega: não existe relógio
+      // perguntando de tempos em tempos — polling foi o que encareceu a Vercel
+      // neste projeto antes.
+      pedirVarredura();
     });
 
     sala.on(E.ParticipantDisconnected, function () {
@@ -717,13 +878,42 @@
       pintarModal(); pintar(); return;
     }
 
-    // 2) o crachá. O portão de plano e o teto de 10 são cobrados AQUI, no
-    //    servidor: quem não é Full/Master não recebe token e não entra.
-    var r = await api('entrar', assumir ? { assumir: 1 } : null);
+    // 2) o crachá. O portão de plano, o teto de 10, a SENHA e a lista de
+    //    expulsos são cobrados AQUI, no servidor: quem não passa não recebe
+    //    token e não entra — nem sabendo o endereço do endpoint.
+    var campoSenha = $('svzSenha');
+    var pedido = { sala: S.escolhida };
+    if (assumir) pedido.assumir = 1;
+    if (campoSenha && $('svzSenhaBox') && $('svzSenhaBox').style.display !== 'none') pedido.senha = campoSenha.value || '';
+    var r = await api('entrar', pedido);
     if (!r.ok || !r.d || !r.d.ok || !r.d.token || !r.d.url) {
       S.entrando = false;
       var d = r.d || {};
       if (d.jaEstou) { erroDuplicado(mudo); pintarModal(); return; }
+      // ── recusas das salas privadas ──────────────────────────────────────
+      if (d.pedeSenha) {
+        // A sala pode ter ganhado senha depois que a lista foi carregada: se o
+        // campo nem estava na tela, ele aparece agora em vez de a pessoa levar
+        // um "senha errada" sem nunca ter visto onde digitar.
+        var s = acharSala(S.escolhida);
+        if (s) { s.comSenha = true; s.liberado = false; }
+        erroModal(d.error || 'Essa sala pede senha.');
+        pintarModal();
+        if (campoSenha) { campoSenha.value = ''; try { campoSenha.focus(); } catch (e) {} }
+        return;
+      }
+      if (d.expulso || d.travado) {
+        var sx = acharSala(S.escolhida);
+        if (sx && d.expulso) sx.expulso = true;
+        erroModal(d.error || 'Você não pode entrar nessa sala agora.');
+        pintarModal(); return;
+      }
+      if (d.sumiu || d.encerrada) {
+        erroModal(d.error || 'Essa sala não existe mais.');
+        escolher(SALA_ABERTA);
+        buscarSalas(true);
+        return;
+      }
       if (d.cheia) {
         // A contagem que o servidor acabou de fazer é mais nova que a nossa.
         S.foraN = Number(d.n || MAX); S.foraOk = true; S.contadoEm = Date.now();
@@ -742,6 +932,19 @@
     }
     if (r.d.max) MAX = r.d.max;
     if (r.d.me) S.cfg = Object.assign({}, S.cfg || {}, { me: r.d.me });
+    // QUEM MANDA nesta sala, dito pelo servidor. Ele é a única fonte disso: o
+    // navegador não decide papel nenhum, só desenha o que o servidor mandou —
+    // e toda ação de comando é autorizada de novo lá, no clique.
+    S.naSala = {
+      slug: r.d.sala || S.escolhida,
+      titulo: r.d.titulo || null,
+      privada: !!r.d.privada,
+      comSenha: !!r.d.comSenha,
+    };
+    S.papel = r.d.papel || null;
+    // A senha some da tela assim que serviu. Campo de senha preenchido numa aba
+    // esquecida aberta é senha guardada em lugar nenhum bom.
+    if (campoSenha) campoSenha.value = '';
 
     // 3) a sala. `disconnectOnPageLeave:false` é o que impede o SDK de nos
     //    desconectar quando a tela do celular apaga (era o defeito 11).
@@ -947,6 +1150,14 @@
     S.suspenso = false;
     S.semMic = false;
     S.silenciarAte = 0;
+    // Saí: não mando mais em nada. Deixar `papel` pendurado desenharia botão de
+    // expulsar numa sala em que eu nem estou.
+    S.naSala = null;
+    S.papel = null;
+    fecharMenu();
+    // A lista de salas envelheceu (eu acabei de sair de uma delas): a próxima
+    // abertura do modal pergunta de novo em vez de mostrar o número de antes.
+    S.salasOk = false;
     fecharConfirmacaoSaida();
     fecharDock();
     pintar();
@@ -1138,19 +1349,59 @@
     ov.addEventListener('click', function (e) { if (e.target === ov) fecharModal(); });
     ov.innerHTML =
       '<div class="svz-dlgbox" role="dialog" aria-modal="true" aria-label="Entrar na sala de voz">'
-      + '<div class="svz-dlgtit">🎙️ Entrar na sala de voz</div>'
+      + '<div class="svz-dlgtit" id="svzDlgTit">🎙️ Entrar na sala de voz</div>'
       + '<div class="svz-dlgsub" id="svzDlgSub"></div>'
       + '<div class="svz-quem" id="svzDlgQuem"></div>'
+      // A senha mora FORA do bloco que é redesenhado (#svzSalasLista): se ela
+      // nascesse lá dentro, qualquer repintura no meio da digitação apagaria o
+      // que a pessoa escreveu — e repintura acontece a cada evento da sala.
+      + '<div id="svzSenhaBox" style="display:none">'
+      + '<input class="svz-campo" id="svzSenha" type="password" autocomplete="off" placeholder="senha da sala" maxlength="40">'
+      + '</div>'
       + '<div id="svzDlgErro"></div>'
       + '<div class="svz-dlgbtns">'
       + '<button class="svz-b pri" id="svzBEntrar">🎤 Entrar com microfone ligado</button>'
       + '<button class="svz-b sec" id="svzBMudo">🔇 Entrar mudo (só ouvir)</button>'
       + '<button class="svz-b gh" id="svzBCancelar">Agora não</button>'
-      + '</div></div>';
+      + '</div>'
+      + '<div class="svz-salas" id="svzSalas" style="display:none">'
+      + '<div class="svz-salastit">salas da comunidade</div>'
+      + '<div id="svzSalasLista"></div>'
+      + '<button class="svz-criar" id="svzBCriar">➕ Criar minha sala</button>'
+      // Mesmo motivo da senha: o formulário de criar não pode viver dentro do
+      // bloco redesenhado, senão o nome digitado some sozinho.
+      + '<div id="svzCriarBox" style="display:none">'
+      + '<input class="svz-campo" id="svzNovoTit" type="text" maxlength="40" placeholder="nome da sala (ex: papo de edição)">'
+      + '<input class="svz-campo" id="svzNovaSenha" type="password" autocomplete="new-password" maxlength="40" placeholder="senha (opcional — em branco, entra qualquer assinante)">'
+      + '<div class="svz-dica">Você é o dono: pode expulsar, silenciar, escolher co-anfitriões e encerrar a sala quando quiser.</div>'
+      + '<div class="svz-dlgbtns">'
+      + '<button class="svz-b pri" id="svzBCriarOk">Criar sala</button>'
+      + '<button class="svz-b gh" id="svzBCriarNao">Cancelar</button>'
+      + '</div></div>'
+      + '</div>'
+      + '</div>';
     document.body.appendChild(ov);
     $('svzBEntrar').addEventListener('click', function () { entrar(false); });
     $('svzBMudo').addEventListener('click', function () { entrar(true); });
     $('svzBCancelar').addEventListener('click', fecharModal);
+    // Enter na senha entra: pedir pra digitar e depois procurar o botão é um
+    // passo a mais em cima de um campo que já diz o que fazer.
+    $('svzSenha').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); entrar(false); }
+    });
+    // Delegação: a lista é redesenhada inteira a cada busca, então laço por
+    // card viraria laço empilhado. Um só, no container que não é redesenhado.
+    $('svzSalasLista').addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-svz-sala]') : null;
+      if (!b || b.disabled) return;
+      escolher(b.getAttribute('data-svz-sala'));
+      pintarModal();
+      var c = $('svzSenha');
+      if (c && $('svzSenhaBox') && $('svzSenhaBox').style.display !== 'none') { try { c.focus(); } catch (err) {} }
+    });
+    $('svzBCriar').addEventListener('click', function () { S.criando = true; pintarModal(); var t = $('svzNovoTit'); if (t) try { t.focus(); } catch (e) {} });
+    $('svzBCriarNao').addEventListener('click', function () { S.criando = false; limparErroModal(); pintarModal(); });
+    $('svzBCriarOk').addEventListener('click', criarSala);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && $('svzDlg') && $('svzDlg').classList.contains('on')) fecharModal();
     });
@@ -1165,7 +1416,12 @@
     // Esta é exatamente a tela em que a sala mentiu na versão anterior: "quem
     // está lá" tem que ser perguntado na HORA da abertura, não herdado do
     // último ciclo. Custa uma chamada.
-    Promise.resolve(garantirConfig()).then(function () { atualizarContagem(true); });
+    Promise.resolve(garantirConfig()).then(function () {
+      atualizarContagem(true);
+      // A lista de salas vem junto — e só aqui. Ela não tem relógio próprio:
+      // ninguém precisa saber de salas enquanto não está escolhendo uma.
+      buscarSalas(true);
+    });
   }
 
   function fecharModal() {
@@ -1203,14 +1459,79 @@
 
   function limparErroModal() { var e = $('svzDlgErro'); if (e) e.innerHTML = ''; }
 
+  // ── UI: a lista de salas dentro do modal ──────────────────────────────────
+  // O card da sala pública é montado à mão porque ela não tem linha na lista do
+  // servidor: ela é a casa, não uma sala de alguém.
+  function cardSalaHTML(sala) {
+    var aberta = sala.slug === SALA_ABERTA;
+    var n = aberta ? (contagemFresca() ? S.foraN : 0) : (sala.n || 0);
+    var sel = S.escolhida === sala.slug;
+    var barrada = !!sala.expulso;
+    var legenda = aberta ? 'todo assinante entra'
+      : (sala.minha ? 'sua sala' : 'sala de ' + sala.dono)
+      + (sala.comSenha ? ' · pede senha' : '')
+      + (sala.papel === 'co' ? ' · você é co-anfitrião' : '');
+    return '<button class="svz-sala' + (sel ? ' on' : '') + (barrada ? ' barrada' : '') + '"'
+      + ' data-svz-sala="' + esc(sala.slug) + '"' + (barrada ? ' disabled' : '') + '>'
+      + '<span class="svz-salaico">' + (aberta ? '🔊' : sala.comSenha ? '🔒' : '🎙️') + '</span>'
+      + '<span class="svz-salatxt"><b>' + esc(aberta ? 'Sala aberta da Comunidade' : sala.titulo) + '</b>'
+      + '<small>' + esc(barrada ? 'você foi removido desta sala' : legenda) + '</small></span>'
+      + '<span class="svz-salan' + (n ? '' : ' vazia') + '">' + n + '</span>'
+      + '</button>';
+  }
+
+  function pintarListaSalas() {
+    var box = $('svzSalas');
+    if (!box) return;
+    // Enquanto o SQL das salas privadas não foi rodado, a seção inteira não
+    // existe. Botão que dá erro no clique é pior que botão que não aparece.
+    if (S.semTabela || !S.salasOk) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    var lista = $('svzSalasLista');
+    if (lista) {
+      var htm = cardSalaHTML({ slug: SALA_ABERTA });
+      for (var i = 0; i < S.salas.length; i++) htm += cardSalaHTML(S.salas[i]);
+      lista.innerHTML = htm;
+    }
+    var bc = $('svzBCriar');
+    // Uma sala aberta por pessoa: quem já tem some com o botão em vez de levar
+    // um "você já tem uma sala" depois de digitar o nome.
+    if (bc) bc.style.display = (S.podeCriar && !S.criando) ? '' : 'none';
+    var cx = $('svzCriarBox');
+    if (cx) cx.style.display = S.criando ? '' : 'none';
+  }
+
   function pintarModal() {
     var d = $('svzDlg');
     if (!d || !d.classList.contains('on')) return;
-    var n = contarPresentes();
+    // A sala ESCOLHIDA manda em tudo desta tela. `null` é a pública.
+    var alvo = S.escolhida === SALA_ABERTA ? null : acharSala(S.escolhida);
+    var n = nDaEscolhida();
     var cheia = n >= MAX;
     var fora = S.conn === 'erro' || S.indisponivel;
+    var barrada = !!(alvo && alvo.expulso);
+    // Quem já passou pela senha (ou manda na sala) não digita de novo — e volta
+    // a digitar assim que o dono trocar a senha, porque aí `liberado` cai.
+    var pedeSenha = !!(alvo && alvo.comSenha && !alvo.liberado && !barrada);
+
+    var tit = $('svzDlgTit');
+    if (tit) tit.textContent = alvo ? ((alvo.comSenha ? '🔒 ' : '🎙️ ') + alvo.titulo) : '🎙️ Entrar na sala de voz';
+
+    var cx = $('svzSenhaBox');
+    if (cx) cx.style.display = pedeSenha ? '' : 'none';
+
+    pintarListaSalas();
+
     var sub = $('svzDlgSub');
-    if (sub) {
+    if (sub && alvo) {
+      sub.textContent = barrada ? 'Você foi removido desta sala. Fale com quem manda nela.'
+        : fora ? 'A sala de voz está indisponível agora. Tenta de novo em instantes.'
+          : S.entrando ? 'conectando…'
+            : cheia ? 'Essa sala está cheia (' + MAX + ' de ' + MAX + '). Espera alguém sair.'
+              : (alvo.minha ? 'Sua sala' : 'Sala de ' + alvo.dono)
+                + ' · ' + (n === 0 ? 'ninguém dentro agora' : n === 1 ? '1 pessoa dentro' : n + ' pessoas dentro')
+                + (pedeSenha ? ' · digite a senha pra entrar' : '');
+    } else if (sub) {
       sub.textContent = fora ? 'A sala de voz está indisponível agora. Tenta de novo em instantes.'
         : S.entrando ? 'conectando…'
           : cheia ? 'A sala está cheia (' + MAX + ' de ' + MAX + '). Espera alguém sair.'
@@ -1232,17 +1553,50 @@
       // outro navegador.
       // Mesma guarda: sem ela o modal desenhava 4 rostos embaixo de uma frase
       // dizendo que a sala estava vazia.
-      var lista = S.entrei ? Array.from(S.pessoas.values())
-        : (contagemFresca() ? (S.foraNomes || []) : []);
+      // Numa sala PRIVADA os rostos não aparecem antes de entrar: o servidor
+      // manda só o número. Quem está numa sala com senha não é informação de
+      // quem está do lado de fora dela.
+      var lista = alvo ? []
+        : (S.entrei ? Array.from(S.pessoas.values())
+          : (contagemFresca() ? (S.foraNomes || []) : []));
       lista.forEach(function (pe) {
         htm += '<div class="svz-mini">' + avatarHTML(pe) + '<span>' + esc(pe.nome) + '</span></div>';
       });
       quem.innerHTML = htm;
     }
     var b1 = $('svzBEntrar'), b2 = $('svzBMudo');
-    if (b1) b1.disabled = S.entrando || cheia || fora;
-    if (b2) b2.disabled = S.entrando || cheia || fora;
+    var travado = S.entrando || cheia || fora || barrada;
+    if (b1) b1.disabled = travado;
+    if (b2) b2.disabled = travado;
     if (b1) b1.textContent = S.entrando ? 'entrando…' : '🎤 Entrar com microfone ligado';
+  }
+
+  // ── criar minha sala ──────────────────────────────────────────────────────
+  function criarSala() {
+    var t = $('svzNovoTit'), s = $('svzNovaSenha'), ok = $('svzBCriarOk');
+    var titulo = t ? String(t.value || '').trim() : '';
+    if (titulo.length < 2) { erroModal('Dê um nome à sala (pelo menos 2 letras).'); return; }
+    var senha = s ? String(s.value || '') : '';
+    if (senha && senha.length < 4) { erroModal('A senha precisa ter pelo menos 4 caracteres — ou deixe em branco.'); return; }
+    if (ok) { ok.disabled = true; ok.textContent = 'criando…'; }
+    limparErroModal();
+    api('criar', { titulo: titulo, senha: senha }).then(function (r) {
+      if (ok) { ok.disabled = false; ok.textContent = 'Criar sala'; }
+      if (!r.ok || !r.d || !r.d.ok) {
+        erroModal((r.d && r.d.error) || 'Não deu pra criar a sala agora. Tenta de novo.');
+        return;
+      }
+      S.criando = false;
+      if (t) t.value = '';
+      if (s) s.value = '';
+      aviso(r.d.jaTinha ? 'Você já tinha uma sala aberta — é essa aqui.' : '✅ Sala criada. Ela já aparece pra Comunidade.');
+      // Relê a lista (a sala nova entra nela) e já deixa escolhida: quem criou
+      // quer entrar, não procurar o que acabou de criar.
+      buscarSalas(true).then(function () { escolher(r.d.slug); pintarModal(); });
+    }).catch(function () {
+      if (ok) { ok.disabled = false; ok.textContent = 'Criar sala'; }
+      erroModal('Não consegui falar com o servidor agora. Tenta de novo.');
+    });
   }
 
   // ── UI: painel da sala ────────────────────────────────────────────────────
@@ -1258,18 +1612,30 @@
     var d = document.createElement('div');
     d.className = 'svz-dock'; d.id = 'svzDock';
     d.innerHTML =
-      '<div class="svz-dhead"><div><b>🎙️ Sala de voz</b><small id="svzDockSub">—</small></div>'
+      '<div class="svz-dhead"><div><b id="svzDockTit">🎙️ Sala de voz</b><small id="svzDockSub">—</small></div>'
       + '<button class="svz-dmin" id="svzBMin" aria-label="Minimizar">—</button></div>'
       + '<div class="svz-grid" id="svzGrid"></div>'
       + '<div class="svz-ctrl">'
       + '<button class="svz-b sec" id="svzBMudar">🎤 Mudo</button>'
       + '<button class="svz-b sair" id="svzBSair">Sair</button>'
       + '</div>'
+      // Comandos do dono: fora da linha do "Mudo/Sair" de propósito. Encerrar a
+      // sala e sair da sala são coisas MUITO diferentes e não podem ficar
+      // encostadas uma na outra num painel que no celular tem a largura da tela.
+      + '<div class="svz-ctrl" id="svzDono" style="display:none">'
+      + '<button class="svz-b gh" id="svzBSenha">🔑 Senha</button>'
+      + '<button class="svz-b gh" id="svzBEncerrar">⛔ Encerrar sala</button>'
+      + '</div>'
       + '<div class="svz-nota" id="svzNota"></div>'
       + '<div class="svz-conf" id="svzConf" role="alertdialog" aria-label="Confirmar saída da sala">'
       + '<div class="svz-confbox">'
       + '<div class="svz-conftit" id="svzConfTit">' + PERGUNTA_SAIR.tit + '</div>'
       + '<div class="svz-confsub" id="svzConfSub">' + PERGUNTA_SAIR.sub + '</div>'
+      // Campo opcional: é o que permite trocar a senha da sala aqui dentro em
+      // vez de num prompt() do navegador. prompt() trava a thread — o mesmo
+      // motivo que tirou o confirm() daqui — e no meio de uma conversa por voz
+      // isso é áudio engasgando pra todo mundo.
+      + '<input class="svz-campo" id="svzConfCampo" style="display:none" maxlength="40">'
       + '<div class="svz-confbtns">'
       + '<button class="svz-b sec" id="svzBFicar">Ficar</button>'
       + '<button class="svz-b sair" id="svzBSairSim">' + PERGUNTA_SAIR.ok + '</button>'
@@ -1279,8 +1645,69 @@
     $('svzBMudar').addEventListener('click', alternarMudo);
     $('svzBSair').addEventListener('click', abrirConfirmacaoSaida);
     $('svzBFicar').addEventListener('click', fecharConfirmacaoSaida);
-    $('svzBSairSim').addEventListener('click', function () { sair(''); });
+    $('svzBSairSim').addEventListener('click', confirmar);
+    // Enter no campo confirma: pedir pra digitar e depois procurar o botão é um
+    // passo a mais em cima de um campo que já diz o que fazer.
+    $('svzConfCampo').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
+    });
+    $('svzBSenha').addEventListener('click', trocarSenha);
+    $('svzBEncerrar').addEventListener('click', pedirEncerramento);
+    // Delegação no painel: a grade de cards é redesenhada inteira a cada
+    // evento da sala, então laço por botão viraria laço empilhado.
+    $('svzGrid').addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-svz-cmd]') : null;
+      if (!b) return;
+      e.stopPropagation();
+      var id = b.getAttribute('data-svz-cmd');
+      if (S.menuDe === id) return fecharMenu();     // segundo toque fecha
+      abrirMenu(id, b);
+    });
     ligarLacosConfirmacao();
+  }
+
+  // ── comandos do dono da sala ──────────────────────────────────────────────
+  function trocarSenha() {
+    if (!S.naSala) return;
+    perguntar({
+      tit: 'Trocar a senha da sala',
+      sub: 'em branco, a sala fica aberta a qualquer assinante. Quem já está dentro CONTINUA dentro — pra tirar alguém, use o expulsar.',
+      ok: 'Salvar',
+      campo: { tipo: 'password', dica: 'nova senha (ou em branco pra tirar)' },
+    }, function (nova) {
+      nova = String(nova == null ? '' : nova);
+      if (nova && (nova.length < 4 || nova.length > 40)) { aviso('A senha precisa ter de 4 a 40 caracteres.'); return; }
+      api('sala-editar', { sala: S.naSala.slug, senha: nova }).then(function (r) {
+        if (!r.ok || !r.d || !r.d.ok) { aviso((r.d && r.d.error) || 'Não deu pra trocar a senha agora.'); return; }
+        S.naSala.comSenha = !!r.d.comSenha;
+        S.salasOk = false;
+        // O aviso vem do servidor e diz a verdade inteira: senha nova fecha a
+        // PORTA, não esvazia a sala. Prometer o contrário seria construir por
+        // cima do buraco medido em vez de resolvê-lo.
+        aviso(r.d.aviso || (r.d.comSenha ? 'Senha trocada.' : 'Senha removida.'));
+        pintar();
+      }).catch(function () { aviso('Não consegui falar com o servidor agora.'); });
+    });
+  }
+
+  function pedirEncerramento() {
+    if (!S.naSala) return;
+    perguntar({
+      tit: 'Encerrar a sala?',
+      sub: 'todo mundo sai agora e a sala some da lista — dá pra criar outra depois',
+      ok: 'Encerrar',
+    }, function () {
+      api('encerrar', { sala: S.naSala.slug }).then(function (r) {
+        if (!r.ok || !r.d || !r.d.ok) { aviso((r.d && r.d.error) || 'Não deu pra encerrar agora.'); return; }
+        S.salasOk = false;
+        escolher(SALA_ABERTA);
+        // O DeleteRoom derruba todo mundo, inclusive a mim: o evento
+        // Disconnected chega e o sair() acontece por ele. Este aqui é a rede
+        // pro caso de o SFU não confirmar (`esvaziou` falso).
+        if (!r.d.esvaziou) sair('Sala encerrada.');
+        else aviso('Sala encerrada.');
+      }).catch(function () { aviso('Não consegui falar com o servidor agora.'); });
+    });
   }
 
   // ── UI: confirmação de saída ──────────────────────────────────────────────
@@ -1298,6 +1725,11 @@
   var lacosConfirmacao = false;
   var guardaNavegacao = false;
   var destinoPendente = null;   // link esperando o "continuar" da pessoa
+  // Ação esperando o "sim". Quando é nula, o botão de confirmar faz o que
+  // sempre fez: sair da sala. Ela existe porque a caixa passou a atender também
+  // a expulsão — e continuar sendo UMA caixa é o ponto: duas parecidas em
+  // momentos parecidos ensinam a clicar em "sim" sem ler.
+  var acaoPendente = null;
 
   function confirmacaoAberta() {
     var c = $('svzConf');
@@ -1312,6 +1744,20 @@
 
   function mostrarConfirmacao(p) {
     textoConfirmacao(p);
+    // O campo só existe quando a pergunta pede um: "Sair?" não tem o que
+    // digitar, e um campo vazio ali só atrasaria o dedo.
+    var campo = $('svzConfCampo');
+    if (campo) {
+      if (p.campo) {
+        campo.style.display = '';
+        campo.type = p.campo.tipo || 'text';
+        campo.placeholder = p.campo.dica || '';
+        campo.value = '';
+      } else {
+        campo.style.display = 'none';
+        campo.value = '';
+      }
+    }
     // A pergunta é um inset:0 DENTRO do dock: com o dock minimizado ela teria
     // a altura do cabeçalho e sairia por cima de si mesma. Pelo botão Sair isso
     // nunca acontecia (ele some no mini), mas a pergunta de navegação nasce de
@@ -1323,12 +1769,47 @@
     if (b) { try { b.focus(); } catch (e) {} }   // Enter confirma, Esc desiste
   }
 
+  // O "sim" da caixa. Sem ação pendente ele faz o que sempre fez — sair da
+  // sala, lendo o destinoPendente lá dentro quando a pergunta veio de um link.
+  function confirmar() {
+    var fn = acaoPendente;
+    if (fn) {
+      var campo = $('svzConfCampo');
+      // O valor é lido ANTES do fechamento: fecharConfirmacaoSaida() limpa o
+      // campo, e sem esta cópia a senha nova chegaria vazia no servidor.
+      var valor = (campo && campo.style.display !== 'none') ? String(campo.value || '') : null;
+      acaoPendente = null;
+      fecharConfirmacaoSaida();
+      fn(valor);
+      return;
+    }
+    sair('');
+  }
+
+  // Pergunta genérica: mesmo vidro, outro texto, outra ação no "sim".
+  function perguntar(pergunta, aoConfirmar) {
+    var c = $('svzConf');
+    if (!c) {
+      // Painel antigo em cache, sem a caixa. Sem campo, a ação não fica refém
+      // de uma pergunta que não existe: faz direto, e o servidor ainda
+      // autoriza. COM campo é o oposto — seguir com o valor vazio significaria,
+      // por exemplo, REMOVER a senha da sala porque a caixa não carregou.
+      if (pergunta.campo) { aviso('Atualize a página (F5) pra fazer isso.'); return; }
+      aoConfirmar(null);
+      return;
+    }
+    destinoPendente = null;
+    acaoPendente = aoConfirmar;
+    mostrarConfirmacao(pergunta);
+  }
+
   function abrirConfirmacaoSaida() {
     var c = $('svzConf');
     // Painel antigo em cache sem a confirmação: sair continua funcionando. Um
     // botão de sair que não sai seria pior que sair sem perguntar.
     if (!c) { sair(''); return; }
     destinoPendente = null;          // esta pergunta não navega pra lugar nenhum
+    acaoPendente = null;             // e não carrega ação de outro clique
     mostrarConfirmacao(PERGUNTA_SAIR);
   }
 
@@ -1337,6 +1818,7 @@
   // microfone solto, dock fechado) e só DEPOIS a página troca.
   function abrirConfirmacaoNavegacao(destino) {
     destinoPendente = destino;
+    acaoPendente = null;             // navegar é sair; o "sim" é o sair() de sempre
     var c = $('svzConf');
     // Sem painel (dock de um cache antigo) a navegação NÃO pode ficar refém: o
     // pior defeito possível aqui seria uma página que não deixa a pessoa sair.
@@ -1347,6 +1829,7 @@
 
   function fecharConfirmacaoSaida() {
     destinoPendente = null;          // desistiu: o link some junto com a pergunta
+    acaoPendente = null;             // e a ação também — "sim" só vale respondido
     var c = $('svzConf');
     if (c) c.classList.remove('on');
   }
@@ -1359,12 +1842,21 @@
     if (lacosConfirmacao) return;
     lacosConfirmacao = true;
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && confirmacaoAberta()) { e.preventDefault(); fecharConfirmacaoSaida(); }
+      if (e.key !== 'Escape') return;
+      // O menu de comando fecha PRIMEIRO: ele nasce por cima da caixa, e um Esc
+      // que fechasse a caixa por baixo deixaria o menu órfão na tela.
+      if (S.menuDe) { e.preventDefault(); fecharMenu(); return; }
+      if (confirmacaoAberta()) { e.preventDefault(); fecharConfirmacaoSaida(); }
     });
     // pointerdown em captura: fecha antes do clique chegar em qualquer coisa,
     // então encostar fora nunca aciona outra ação por engano.
     var foraEv = window.PointerEvent ? 'pointerdown' : 'mousedown';
     document.addEventListener(foraEv, function (e) {
+      if (S.menuDe) {
+        var m = $('svzMenu');
+        var noBotao = e.target && e.target.closest && e.target.closest('[data-svz-cmd]');
+        if (!noBotao && !(m && m.contains(e.target))) fecharMenu();
+      }
       if (!confirmacaoAberta()) return;
       var c = $('svzConf');
       var caixa = c && c.querySelector('.svz-confbox');
@@ -1454,11 +1946,26 @@
     var falando = contarFalando();
     var sub = $('svzDockSub');
     if (sub) sub.textContent = n + (n === 1 ? ' pessoa' : ' pessoas') + ' • ' + falando + ' falando';
+    // O nome da sala no cabeçalho: sem ele, quem está em duas conversas
+    // diferentes ao longo do dia não sabe em qual está.
+    var dt = $('svzDockTit');
+    if (dt) {
+      dt.textContent = (S.naSala && S.naSala.privada)
+        ? ((S.naSala.comSenha ? '🔒 ' : '🎙️ ') + S.naSala.titulo)
+        : '🎙️ Sala de voz';
+    }
+    // Comandos do dono só pra quem é dono DESTA sala (o moderador do site tem
+    // os mesmos, e é o servidor que confirma no clique).
+    var dono = $('svzDono');
+    if (dono) dono.style.display = (S.naSala && S.naSala.privada && (S.papel === 'dono' || S.papel === 'mod')) ? '' : 'none';
     var grid = $('svzGrid');
     if (grid) {
       var htm = '';
       listaOrdenada().forEach(function (e) { htm += cardHTML(e[0], e[1]); });
       grid.innerHTML = htm;
+      // A grade acabou de ser trocada: o botão que estava com o menu aberto não
+      // existe mais, então o menu ficaria pendurado apontando pro nada.
+      if (S.menuDe && !S.pessoas.has(S.menuDe)) fecharMenu();
     }
     var bm = $('svzBMudar');
     if (bm) {
@@ -1483,6 +1990,23 @@
     }
   }
 
+  // ── QUEM MANDA EM QUEM ────────────────────────────────────────────────────
+  // A MESMA régua do servidor (api/sala-voz.js: `forca`), repetida aqui porque
+  // a tela precisa saber se desenha o ⋯. Ela não AUTORIZA nada: toda ação é
+  // checada de novo no servidor, no clique. Se as duas discordarem, quem clicou
+  // leva um "você não manda nessa pessoa aqui" — chato, mas não é brecha.
+  function forcaDe(papel) {
+    return papel === 'mod' ? 3 : papel === 'dono' ? 2 : papel === 'co' ? 1 : 0;
+  }
+  // Moderador do site entra nas salas dos outros carimbado como 'co' no crachá
+  // (é o que faz a coroa aparecer). O meu papel de verdade vem do servidor em
+  // S.papel, e é ele que vale pra mim.
+  function possoMexerEm(identity, pe) {
+    if (!S.papel || !S.entrei) return false;
+    if (souEu(identity) || (pe && pe.eu)) return false;    // sobre mim, o botão é "Sair"
+    return forcaDe(S.papel) > forcaDe(pe && pe.manda);
+  }
+
   // Card: nome e foto vêm SEMPRE do crachá que o servidor assinou (identity,
   // name e metadata do LiveKit), escapados. Participante não recebe
   // canUpdateOwnMetadata, então ninguém reescreve quem é.
@@ -1504,7 +2028,101 @@
       + avatarHTML(pe)
       + '<div class="svz-nome">' + esc(eu ? 'Você' : pe.nome) + '</div>'
       + (pe.mudo ? '<span class="svz-mic">🔇</span>' : '')
+      + (pe.manda === 'dono' ? '<span class="svz-coroa" title="dono da sala">👑</span>'
+        : pe.manda === 'co' ? '<span class="svz-coroa" title="co-anfitrião">⭐</span>' : '')
+      + (possoMexerEm(identity, pe)
+        ? '<button class="svz-cmd" data-svz-cmd="' + esc(identity) + '" aria-label="Comandos para ' + esc(pe.nome) + '">⋯</button>'
+        : '')
       + '</div>';
+  }
+
+  // ── UI: o menu de comando de uma pessoa ───────────────────────────────────
+  // Ele nasce e morre a cada abertura: menu que fica no documento guardando o
+  // nome de alguém que já saiu da sala é como se expulsa a pessoa errada.
+  function fecharMenu() {
+    S.menuDe = null;
+    var m = $('svzMenu');
+    if (m) m.remove();
+    var dock = $('svzDock');
+    if (dock) dock.querySelectorAll('.svz-cmd.on').forEach(function (b) { b.classList.remove('on'); });
+  }
+
+  function abrirMenu(identity, botao) {
+    fecharMenu();
+    var pe = S.pessoas.get(identity);
+    if (!pe || !possoMexerEm(identity, pe)) return;
+    S.menuDe = identity;
+    botao.classList.add('on');
+    var m = document.createElement('div');
+    m.className = 'svz-menu';
+    m.id = 'svzMenu';
+    // Só o dono (e o moderador) mexe em co-anfitrião — o co-anfitrião comanda a
+    // conversa, não a hierarquia dela.
+    var podePromover = S.papel === 'dono' || S.papel === 'mod';
+    m.innerHTML = '<div class="svz-menutit">' + esc(pe.nome) + '</div>'
+      + '<button data-svz-acao="silenciar">🔇 Silenciar microfone</button>'
+      + (podePromover
+        ? (pe.manda === 'co'
+          ? '<button data-svz-acao="rebaixar">⭐ Tirar co-anfitrião</button>'
+          : '<button data-svz-acao="promover">⭐ Tornar co-anfitrião</button>')
+        : '')
+      + '<button class="perigo" data-svz-acao="expulsar">🚪 Expulsar da sala</button>';
+    document.body.appendChild(m);
+    // Posiciona colado no botão, mas dentro da tela: no celular o painel encosta
+    // na borda, e um menu de 172px sairia pela direita.
+    try {
+      var r = botao.getBoundingClientRect();
+      var larg = 180;
+      m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - larg - 8)) + 'px';
+      var altura = m.offsetHeight || 150;
+      m.style.top = (r.bottom + altura + 8 > window.innerHeight ? Math.max(8, r.top - altura - 6) : r.bottom + 6) + 'px';
+    } catch (e) {}
+    m.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-svz-acao]') : null;
+      if (!b) return;
+      var acao = b.getAttribute('data-svz-acao');
+      fecharMenu();
+      if (acao === 'expulsar') return pedirExpulsao(identity, pe.nome);
+      if (acao === 'silenciar') return comandar('silenciar', identity, 'Microfone de ' + pe.nome + ' fechado.');
+      if (acao === 'promover') return comandar('papel', identity, pe.nome + ' agora é co-anfitrião.', { papel: 'co' });
+      if (acao === 'rebaixar') return comandar('papel', identity, pe.nome + ' não é mais co-anfitrião.', { papel: null });
+    });
+  }
+
+  // Uma porta só pra todos os comandos: a resposta do servidor é a verdade, e
+  // o que ele recusar aparece com as palavras dele.
+  function comandar(acao, identity, sucesso, extra) {
+    if (!S.naSala) return Promise.resolve(false);
+    var corpo = Object.assign({ sala: S.naSala.slug, alvo: identity }, extra || {});
+    return api(acao, corpo).then(function (r) {
+      if (!r.ok || !r.d || !r.d.ok) {
+        aviso((r.d && r.d.error) || 'Não deu pra fazer isso agora. Tenta de novo.');
+        return false;
+      }
+      // O servidor avisa quando fez pela metade (registrou a expulsão mas o SFU
+      // não confirmou a saída). Esconder isso faria quem clicou achar que
+      // resolveu enquanto a pessoa continua ouvindo.
+      aviso(r.d.aviso || sucesso);
+      sincronizar(); pintar();
+      return true;
+    }).catch(function () {
+      aviso('Não consegui falar com o servidor agora. Tenta de novo.');
+      return false;
+    });
+  }
+
+  // Expulsar não tem desfazer fácil e é sobre OUTRA pessoa: passa pela mesma
+  // caixa de confirmação do sair, com o texto dela. Uma caixa só, de novo de
+  // propósito — duas parecidas ensinam a clicar em "sim" sem ler.
+  function pedirExpulsao(identity, nome) {
+    abrirDock();
+    var c = $('svzConf');
+    if (!c) { comandar('expulsar', identity, 'Pessoa removida da sala.'); return; }
+    perguntar({
+      tit: 'Expulsar ' + nome + '?',
+      sub: 'ela sai da conversa agora e não consegue voltar por 12 horas',
+      ok: 'Expulsar',
+    }, function () { comandar('expulsar', identity, nome + ' foi removido da sala.'); });
   }
 
   // Fala muda muitas vezes por minuto: só troca classe, não repinta a grade.
@@ -1648,9 +2266,26 @@
       saiDaPagina: saiDaPagina,
       abrirConfirmacaoNavegacao: abrirConfirmacaoNavegacao,
       fecharConfirmacao: fecharConfirmacaoSaida,
+      confirmar: confirmar,
+      perguntar: perguntar,
       destino: function () { return destinoPendente; },
       pintar: pintar,
       pararPolling: pararPolling,
+      // salas privadas
+      buscarSalas: buscarSalas,
+      acharSala: acharSala,
+      escolher: escolher,
+      nDaEscolhida: nDaEscolhida,
+      cardSalaHTML: cardSalaHTML,
+      pintarListaSalas: pintarListaSalas,
+      possoMexerEm: possoMexerEm,
+      forcaDe: forcaDe,
+      abrirMenu: abrirMenu,
+      fecharMenu: fecharMenu,
+      pedirVarredura: pedirVarredura,
+      comandar: comandar,
+      pedirExpulsao: pedirExpulsao,
+      criarSala: criarSala,
     },
   };
 
