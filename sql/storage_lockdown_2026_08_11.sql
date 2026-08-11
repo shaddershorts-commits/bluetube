@@ -77,3 +77,15 @@ SELECT policyname, cmd, roles::text
 FROM pg_policies
 WHERE schemaname = 'storage' AND tablename = 'objects'
 ORDER BY policyname;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- ROLLBACK DE EMERGÊNCIA — se depois disto algum UPLOAD do app parar de
+-- funcionar, cole e rode SÓ o bloco abaixo pra voltar ao estado anterior
+-- (upload liberado pra logado). A enumeração reabre, mas o app volta na hora.
+-- Depois me chama que eu investigo o caso específico.
+--
+--   CREATE POLICY "blue_videos_rollback" ON storage.objects
+--     FOR ALL TO authenticated
+--     USING (bucket_id = 'blue-videos')
+--     WITH CHECK (bucket_id = 'blue-videos');
+-- ─────────────────────────────────────────────────────────────────────────
