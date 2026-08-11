@@ -160,10 +160,14 @@ exception when duplicate_object then null; end $$;
 create unique index if not exists uq_cvroom_dono_aberta
   on community_voice_rooms (owner_id) where aberta;
 
+-- Coluna nova em bases que já tinham a tabela (idempotência de verdade).
+-- ⚠️ ANTES do índice que a usa: numa base que já tivesse a tabela sem esta
+-- coluna, o `create index` estouraria antes do `alter` — e o arquivo pararia no
+-- meio, que é exatamente o cenário que a RLS lá em cima existe pra sobreviver.
+alter table community_voice_rooms add column if not exists ultima_entrada timestamptz;
+
 create index if not exists idx_cvroom_abertas on community_voice_rooms (aberta, ultima_entrada desc nulls last);
 
--- Coluna nova em bases que já tinham a tabela (idempotência de verdade)
-alter table community_voice_rooms add column if not exists ultima_entrada timestamptz;
 -- "Quem está expulso desta sala AGORA" e "quem é co-anfitrião" são as duas
 -- perguntas que a API faz a cada entrada.
 create index if not exists idx_cvmemb_expulso on community_voice_members (room_id, expulso_ate);

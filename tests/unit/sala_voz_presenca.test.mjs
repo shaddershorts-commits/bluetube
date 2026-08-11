@@ -127,6 +127,10 @@ function domFalso() {
     setInterval: () => 0,
     clearInterval: () => {},
     Map, Set, Promise, Date, Math, JSON, String, Number, Array, Object, Boolean,
+    // O chat empacota e desempacota as mensagens do canal de dados com estes
+    // dois. Eles são padrão em todo navegador que fala WebRTC — mas o vm nasce
+    // sem nada, e sem eles as mensagens sumiriam em silêncio dentro do try.
+    TextEncoder, TextDecoder,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     // Microfone existe no aparelho — quem PEDE é o LiveKit, e só depois do clique.
     navigator: { mediaDevices: { getUserMedia: async () => ({}) } },
@@ -157,6 +161,10 @@ function registrarUI(document, opcoes = {}) {
     dlgErro: criar('svzDlgErro'), bEntrar: criar('svzBEntrar'), bMudo: criar('svzBMudo'),
     dock: criar('svzDock'), dockSub: criar('svzDockSub'), grid: criar('svzGrid'),
     bMudar: criar('svzBMudar'), nota: criar('svzNota'),
+    // chat
+    bChat: criar('svzBChat'), chat: criar('svzChat'), msgs: criar('svzMsgs'),
+    msgIn: criar('svzMsgIn'), bGif: criar('svzBGif'), palEmj: criar('svzPalEmj'),
+    palGif: criar('svzPalGif'), emjGrid: criar('svzEmjGrid'), gifGrid: criar('svzGifGrid'),
     // salas privadas
     dlgTit: criar('svzDlgTit'), dockTit: criar('svzDockTit'), dono: criar('svzDono'),
     salas: criar('svzSalas'), salasLista: criar('svzSalasLista'), bCriar: criar('svzBCriar'),
@@ -198,6 +206,7 @@ function livekitFalso() {
     Reconnecting: 'reconnecting', Reconnected: 'reconnected',
     AudioPlaybackStatusChanged: 'audioPlaybackChanged',
     MediaDevicesError: 'mediaDevicesError',
+    DataReceived: 'dataReceived',
     Disconnected: 'disconnected',
   };
   const ConnectionState = { Connected: 'connected', Reconnecting: 'reconnecting', Disconnected: 'disconnected' };
@@ -233,7 +242,13 @@ function livekitFalso() {
           this.isMicrophoneEnabled = v;
         },
         getTrackPublication: () => room.pubMic || null,
+        // Chat: guarda o que foi publicado no canal de dados, já decodificado.
+        publishData(bytes, opts) {
+          room.publicados.push({ txt: new TextDecoder().decode(bytes), opts: opts || {} });
+          return Promise.resolve();
+        },
       });
+      this.publicados = [];
     }
     on(ev, fn) { (this._h[ev] = this._h[ev] || []).push(fn); return this; }
     removeAllListeners() { linha.push('laços removidos'); this._h = {}; return this; }
@@ -320,8 +335,22 @@ test('metadata forjável não existe mais: nome/foto/plano vêm do crachá', () 
   // participante NÃO recebe canUpdateOwnMetadata, então ele não reescreve quem é.
   assert.match(API, /canUpdateOwnMetadata:\s*false/, 'sem isto o participante reescreve o próprio nome/plano');
   assert.match(API, /canPublishSources:\s*\['microphone'\]/, 'só áudio — e quem impõe é o servidor, não o navegador');
-  assert.match(API, /canPublishData:\s*false/);
   assert.doesNotMatch(SALA, /action=verificar|'verificar'/, 'o resolvedor de tickets alheios não faz mais sentido');
+});
+
+test('CHAT: o canal de dados foi LIGADO, e a identidade continua vindo do crachá', () => {
+  // `canPublishData` nasceu false ("o que não é usado não precisa ser
+  // permitido") e virou true quando ganhou uso: o chat de texto da sala. O que
+  // NÃO pode mudar junto é de onde vem o autor — o texto é dado sujo do
+  // navegador de outra pessoa, o autor é o participante assinado pelo SFU.
+  assert.match(API, /canPublishData:\s*true/);
+  assert.match(API, /canUpdateOwnMetadata:\s*false/);
+  const receber = SALA.slice(SALA.indexOf('function receberDados'), SALA.indexOf('// ── UI do chat'));
+  assert.match(receber, /var dados = dadosDe\(participante, false\);/,
+    'nome/foto do chat saem do PARTICIPANTE; tirar do payload traria de volta a identidade forjável');
+  assert.equal(/d\.(nome|name|avatar|autor)/.test(receber), false,
+    'nada do autor pode ser lido do corpo da mensagem');
+  assert.match(receber, /if \(!quem\) return;/, 'sem autor assinado, não existe mensagem');
 });
 
 test('quem fala vem do indicador do LiveKit — e nunca passa de quem está na sala', async () => {
@@ -1469,6 +1498,188 @@ test('SALA PRIVADA: sala encerrada no meio do caminho volta pra pública', async
   assert.equal(S.entrei, false);
   assert.equal(S.escolhida, 'sala-voz-comunidade', 'o botão não pode ficar apontando pra uma porta que não existe mais');
   I.pararPolling();
+});
+
+// ═══ CHAT DE TEXTO DA SALA ═══════════════════════════════════════════════
+// Ele anda pelo canal de dados do LiveKit — o mesmo socket da voz. Não passa
+// pelo nosso servidor, então não custa invocação nem linha no banco; em troca é
+// efêmero. O que se prova aqui é a fronteira: TEXTO é dado sujo, AUTOR não.
+
+function chegou(sala, quem, conteudo) {
+  sala.emitir('dataReceived', new TextEncoder().encode(JSON.stringify({ v: 1, c: conteudo })), quem, null, 'chat');
+}
+
+test('CHAT: mensagem que chega vira card com o autor do CRACHÁ, não do payload', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala, LK } = await entrarNaSala(ctx, SV, S);
+  S.chatAberto = true;
+  // O payload tenta se passar por outra pessoa. O SFU diz quem mandou.
+  sala.emitir('dataReceived',
+    new TextEncoder().encode(JSON.stringify({ v: 1, c: 'oi', nome: 'Moderador', avatar: 'https://x/y.png' })),
+    { identity: 'u2', name: 'Bruno', metadata: JSON.stringify({ a: '', p: 'full' }) }, null, 'chat');
+  assert.equal(S.msgs.length, 1);
+  assert.equal(S.msgs[0].nome, 'Bruno', 'o nome do corpo da mensagem não pode virar identidade');
+  assert.equal(S.msgs[0].autor, 'u2');
+  assert.match(nos.msgs.innerHTML, /Bruno/);
+  assert.equal(nos.msgs.innerHTML.includes('Moderador'), false);
+  I.pararPolling();
+});
+
+test('CHAT: o texto é escapado — HTML de outra pessoa não vira HTML', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  S.chatAberto = true;
+  chegou(sala, { identity: 'u2', name: '<b>Bruno</b>', metadata: '{}' }, '<img src=x onerror=alert(1)>');
+  assert.equal(nos.msgs.innerHTML.includes('<img'), false, 'era XSS na cara de quem só entrou pra conversar');
+  assert.equal(nos.msgs.innerHTML.includes('<b>Bruno'), false, 'nem o nome escapa da escapada');
+  assert.match(nos.msgs.innerHTML, /&lt;img/);
+  I.pararPolling();
+});
+
+test('CHAT: link vira link clicável, mas em aba nova (senão a guarda de saída dispara)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  S.chatAberto = true;
+  chegou(sala, { identity: 'u2', name: 'Bruno', metadata: '{}' }, 'olha https://youtu.be/abc?a=1&b=2 aqui');
+  assert.match(nos.msgs.innerHTML, /<a href="https:\/\/youtu\.be\/abc\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">/);
+  // target="_blank" faz a guarda de navegação NÃO perguntar nada: a página
+  // desta aba continua viva e a conversa segue.
+  assert.equal(I.saiDaPagina({ getAttribute: (k) => (k === 'target' ? '_blank' : k === 'href' ? 'https://youtu.be/abc' : null), href: 'https://youtu.be/abc' }, {}), false);
+  I.pararPolling();
+});
+
+test('CHAT: só GIF do GIPHY vira imagem — "[gif]" de outro domínio é descartado', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  S.chatAberto = true;
+  chegou(sala, { identity: 'u2', name: 'Bruno', metadata: '{}' }, '[gif]https://media.giphy.com/media/abc/200.gif');
+  assert.equal(S.msgs.length, 1);
+  assert.match(nos.msgs.innerHTML, /<img src="https:\/\/media\.giphy\.com\/media\/abc\/200\.gif"/);
+  chegou(sala, { identity: 'u2', name: 'Bruno', metadata: '{}' }, '[gif]https://site-do-mal/rastreador.gif');
+  assert.equal(S.msgs.length, 1, 'imagem de domínio qualquer é pedido HTTP pra fora, feito por quem só leu o chat');
+  I.pararPolling();
+});
+
+test('CHAT: enxurrada de uma pessoa é cortada por QUEM RECEBE', async () => {
+  // O freio não pode viver no navegador de quem manda: um navegador adulterado
+  // não obedece freio nenhum do lado dele.
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const bruno = { identity: 'u2', name: 'Bruno', metadata: '{}' };
+  for (let i = 0; i < 30; i++) chegou(sala, bruno, 'spam ' + i);
+  assert.ok(S.msgs.length <= 6, 'passou ' + S.msgs.length + ' mensagens de uma rajada de 30');
+  // E a pessoa do lado continua conseguindo falar: o freio é por autor.
+  chegou(sala, { identity: 'u3', name: 'Ana', metadata: '{}' }, 'oi');
+  assert.equal(S.msgs[S.msgs.length - 1].nome, 'Ana', 'quem não inundou não pode ser calado junto');
+  I.pararPolling();
+});
+
+test('CHAT: payload quebrado, gigante ou sem autor não derruba a sala', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  const bruno = { identity: 'u2', name: 'Bruno', metadata: '{}' };
+  sala.emitir('dataReceived', new TextEncoder().encode('não é json'), bruno, null, 'chat');
+  sala.emitir('dataReceived', new TextEncoder().encode(JSON.stringify({ v: 1, c: 'x'.repeat(5000) })), bruno, null, 'chat');
+  sala.emitir('dataReceived', new TextEncoder().encode(JSON.stringify({ v: 1, c: 'oi' })), null, null, 'chat');
+  sala.emitir('dataReceived', new TextEncoder().encode(JSON.stringify({ v: 1, c: 'oi' })), bruno, null, 'outro-topico');
+  assert.equal(S.msgs.length, 0, 'nenhuma dessas quatro pode virar mensagem');
+  assert.equal(S.entrei, true, 'e nenhuma delas pode derrubar quem está na sala');
+  I.pararPolling();
+});
+
+test('CHAT: o histórico tem teto (aba aberta a tarde inteira não vira vazamento)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  for (let i = 0; i < 300; i++) {
+    chegou(sala, { identity: 'u' + i, name: 'P' + i, metadata: '{}' }, 'msg ' + i);
+  }
+  assert.ok(S.msgs.length <= 100, 'sobraram ' + S.msgs.length);
+  assert.match(S.msgs[S.msgs.length - 1].texto, /msg 299/, 'e o que sobra é o FIM da conversa, não o começo');
+  I.pararPolling();
+});
+
+test('CHAT: o que eu mando aparece pra mim (o SFU não devolve a própria mensagem)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  S.chatAberto = true;
+  nos.msgIn.value = '  bom dia a todos  ';
+  I.enviarTexto();
+  assert.equal(sala.publicados.length, 1);
+  assert.deepEqual(JSON.parse(sala.publicados[0].txt), { v: 1, c: 'bom dia a todos' });
+  assert.equal(sala.publicados[0].opts.reliable, true, 'mensagem perdida em silêncio é pior que atrasada');
+  assert.equal(sala.publicados[0].opts.topic, 'chat');
+  assert.equal(S.msgs.length, 1);
+  assert.equal(S.msgs[0].eu, true);
+  assert.equal(nos.msgIn.value, '', 'o campo esvazia depois de mandar');
+  I.pararPolling();
+});
+
+test('CHAT: mensagem vazia não vai, e "[gif]" digitado à mão continua sendo TEXTO', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  nos.msgIn.value = '   ';
+  I.enviarTexto();
+  assert.equal(sala.publicados.length, 0);
+  nos.msgIn.value = '[gif]https://site-do-mal/x.gif';
+  I.enviarTexto();
+  assert.equal(S.msgs[0].gif, null, 'o prefixo é convenção nossa; texto de gente que começa com ele é texto');
+  assert.match(S.msgs[0].texto, /^\[gif\]/);
+  I.pararPolling();
+});
+
+test('CHAT: escrever segura o relógio de inatividade (quem conversa por escrito está ali)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  await entrarNaSala(ctx, SV, S);
+  const trecho = SALA.slice(SALA.indexOf('function enviarTexto'), SALA.indexOf('function enviarGif'));
+  assert.match(trecho, /inatReiniciar\(true\)/,
+    'sem isto a pessoa digitando seria derrubada por "5 minutos sem falar"');
+  I.pararPolling();
+});
+
+test('CHAT: não lidas contam com o chat fechado e zeram ao abrir', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  const nos = registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  assert.equal(S.chatAberto, false, 'o chat nasce fechado — o painel é da conversa por voz');
+  chegou(sala, { identity: 'u2', name: 'Bruno', metadata: '{}' }, 'oi');
+  chegou(sala, { identity: 'u3', name: 'Ana', metadata: '{}' }, 'opa');
+  assert.equal(S.naoLidas, 2);
+  assert.match(nos.bChat.innerHTML, /<b>2<\/b>/);
+  I.alternarChat();
+  assert.equal(S.naoLidas, 0);
+  assert.equal(nos.bChat.innerHTML.includes('<b>'), false);
+  I.pararPolling();
+});
+
+test('CHAT: sair apaga a conversa (ela é da sala, não da pessoa)', async () => {
+  const { SV, S, I, ctx, document } = carregarSala();
+  registrarUI(document);
+  const { sala } = await entrarNaSala(ctx, SV, S);
+  chegou(sala, { identity: 'u2', name: 'Bruno', metadata: '{}' }, 'segredo do grupo');
+  assert.equal(S.msgs.length, 1);
+  SV.sair('');
+  // `length`, e não deepEqual: o array nasce DENTRO do vm, então o protótipo
+  // dele é de outro realm e o deepStrictEqual reprova dois [] iguais.
+  assert.equal(S.msgs.length, 0, 'a próxima sala não pode abrir com o papo da anterior dentro');
+  assert.equal(S.naoLidas, 0);
+  assert.equal(S.chatAberto, false);
+  I.pararPolling();
+});
+
+test('CHAT: sem chave do GIPHY, o botão de GIF nem aparece', () => {
+  assert.match(API, /gifs: !!process\.env\.GIPHY_API_KEY/, 'a chave nunca chega no navegador — só o sim/não');
+  assert.match(SALA, /if \(S\.gifsLigados\) \$\('svzBGif'\)\.style\.display = '';/);
+  assert.match(SALA, /api\/community\?action=gif-search/, 'reusa o proxy da Comunidade em vez de abrir outro caminho');
 });
 
 test('A reescrita de /nome NÃO pode aceitar ponto (arquivo virando HTML)', () => {

@@ -122,14 +122,10 @@
   .cbt-pname{font-weight:700;font-size:13.5px;color:#fff;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .cbt-modbadge{background:linear-gradient(135deg,#fbbf24,#d97706);color:#1a1200;font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.5px}
   .cbt-ptime{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590}
-  .cbt-menu{margin-left:auto;position:relative}
-  .cbt-menu>button{background:none;border:none;color:#5f7590;font-size:17px;cursor:pointer;padding:4px 8px;border-radius:8px}
-  .cbt-menu>button:hover{background:rgba(255,255,255,.06);color:#fff}
-  .cbt-dd{position:absolute;right:0;top:28px;background:rgba(10,24,48,.85);backdrop-filter:var(--cbt-blur);-webkit-backdrop-filter:var(--cbt-blur);border:1px solid rgba(0,170,255,.22);border-radius:14px;min-width:170px;z-index:5;display:none;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
-  .cbt-dd.on{display:block}
-  .cbt-dd button{display:block;width:100%;background:none;border:none;color:#c7d5ea;font-size:12.5px;text-align:left;padding:10px 14px;cursor:pointer}
-  .cbt-dd button:hover{background:rgba(0,170,255,.1)}
-  .cbt-dd button.danger{color:#f87171}
+  /* O menu ⋯ mudou de casa (comunidade-menu.js) e levou o CSS dele junto. O
+     que fica aqui é só o encaixe do botão na linha do post — o desenho do
+     dropdown é de lá, pra não existirem dois donos do mesmo componente. */
+  .cbt-prow .cmn-b{margin-left:auto}
   .cbt-content{font-family:var(--cbt-sans);font-size:14.5px;line-height:1.6;color:#dce8f8;white-space:pre-wrap;word-break:break-word}
   .cbt-media{margin-top:10px;display:grid;gap:6px;border-radius:12px;overflow:hidden}
   .cbt-media.g2{grid-template-columns:1fr 1fr}
@@ -151,6 +147,9 @@
   .cbt-c .cbt-av{width:30px;height:30px;flex:0 0 30px;font-size:12px}
   .cbt-cbody{flex:1;min-width:0}
   .cbt-cname{font-size:12px;font-weight:700;color:#fff;display:flex;gap:6px;align-items:center}
+  /* O ⋯ do comentário vai pra ponta direita da linha do nome. Sem o
+     margin-left:auto ele fica colado no horário, e o dedo erra entre os dois. */
+  .cbt-cname .cmn-b{margin-left:auto;font-size:14px;padding:2px 6px}
   .cbt-ctext{font-family:var(--cbt-sans);font-size:13.5px;color:#c7d5ea;line-height:1.5;white-space:pre-wrap;word-break:break-word}
   .cbt-cdel{background:none;border:none;color:#5f7590;font-size:10px;cursor:pointer;padding:2px 4px}
   .cbt-cdel:hover{color:#f87171}
@@ -296,7 +295,6 @@
     $('cbtMediaFile').addEventListener('change', onMediaPick);
     if (!S.pageMode) document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) ComunidadeBT.close(); });
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('.cbt-menu')) document.querySelectorAll('.cbt-dd.on').forEach((d) => d.classList.remove('on'));
       if (!e.target.closest('.cbt-float') && !e.target.closest('[data-float]')) hideFloats();
     });
   }
@@ -305,6 +303,9 @@
   async function open(opts = {}) {
     S.pageMode = !!opts.page;
     mount();
+    // Os handlers do ⋯ são registrados na abertura, não no arranque do arquivo:
+    // o comunidade-menu.js é um <script> separado e pode chegar depois deste.
+    ligarMenu();
     S.open = true;
     $('cbtOv')?.classList.add('on'); $('cbtPanel').classList.add('on');
     if (!S.pageMode) document.body.style.overflow = 'hidden';
@@ -460,21 +461,38 @@
     } catch (e) { return ''; }
   }
 
+  // Ponte pro menu ⋯. Ela existe pra que a ausência do script (cache velho,
+  // bloqueador) custe só o menu, nunca o feed inteiro.
+  function menuDe(item) {
+    try { return (window.ComunidadeMenu && ComunidadeMenu.botao(item)) || ''; } catch (e) { return ''; }
+  }
+
+  // As ações que o menu NÃO executa sozinho: elas já existem aqui e já são
+  // autorizadas de novo no servidor. O menu só devolve o clique.
+  function ligarMenu() {
+    try {
+      if (!window.ComunidadeMenu) return;
+      ComunidadeMenu.aoAcionar({
+        editar: (i) => editPost(i.id),
+        apagar: (i) => (i.tipo === 'post' ? delPost(i.id) : delComment(i.postId, i.id)),
+        fixar: (i) => (i.tipo === 'post' ? pin(i.id) : pinComment(i.postId, i.id)),
+        banir: (i) => i.autorId && ban(i.autorId),
+      });
+    } catch (e) {}
+  }
+
   function cardHtml(p) {
     const a = p.author || {};
     const av = avHtml(a);
     const mine = p.mine, mod = S.me?.is_moderator;
     // Post fixado de Dicas = treinamento oficial (tratamento dourado)
     const train = (p.tab === 'dicas' && p.pinned) ? '<div class="cbt-train">🎓 TREINAMENTO OFICIAL BLUETUBE</div>' : '';
-    let menu = '';
-    if (mine || mod) {
-      menu = `<div class="cbt-menu"><button onclick="this.nextElementSibling.classList.toggle('on');event.stopPropagation()">⋮</button><div class="cbt-dd">
-        ${(mine || mod) ? `<button onclick="ComunidadeBT.editPost('${p.id}')">✏️ Editar</button>` : ''}
-        ${mod ? `<button onclick="ComunidadeBT.pin('${p.id}')">📌 ${p.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
-        ${(mine || mod) ? `<button class="danger" onclick="ComunidadeBT.delPost('${p.id}')">🗑️ Apagar</button>` : ''}
-        ${(mod && !mine && p.author_id) ? `<button class="danger" onclick="ComunidadeBT.ban('${p.author_id}')">🚫 Banir usuário</button>` : ''}
-      </div></div>`;
-    }
+    // O ⋯ mora em /comunidade-menu.js (arquivo dedicado). Se esse script não
+    // carregou, o feed segue funcionando sem o menu — igual à pílula de amigo.
+    const menu = menuDe({
+      tipo: 'post', id: p.id, nome: a.name, meu: !!mine, mod: !!mod,
+      fixado: !!p.pinned, autorId: p.author_id, link: '/comunidade#post-' + p.id,
+    });
     const media = (p.media || []).map((m) => {
       if (m.type === 'youtube' && /^[A-Za-z0-9_-]{6,15}$/.test(m.id || '')) return `<div class="yt-embed"><iframe src="https://www.youtube.com/embed/${m.id}" title="YouTube" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
       if (m.type === 'image') return `<img src="${esc(m.url)}" loading="lazy" alt="" onclick="ComunidadeBT.light(this.src)">`;
@@ -593,13 +611,14 @@
       ? `<img class="cbt-cgif" src="${esc(c.content.slice(5))}" loading="lazy" alt="GIF">`
       : esc(c.content);
     return `<div class="cbt-c${isReply ? ' cbt-creply' : ''}${c.pinned ? ' cbt-cpinned' : ''}">${av}<div class="cbt-cbody">
-      <div class="cbt-cname" data-cbp-name="${esc(a.name)}" title="Ver perfil de ${esc(a.name)}">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
+      <div class="cbt-cname" data-cbp-name="${esc(a.name)}" title="Ver perfil de ${esc(a.name)}">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span>${menuDe({
+        tipo: 'comentario', id: c.id, postId, nome: a.name, meu: !!c.mine, mod: !!mod,
+        fixado: !!c.pinned, podeFixar: !isReply, link: '/comunidade#post-' + postId,
+      })}</div>
       <div class="cbt-ctext">${body}</div>
       <div class="cbt-cact">
         <button class="cbt-cbtn${c.liked ? ' liked' : ''}" id="cl-${c.id}" onclick="ComunidadeBT.likeComment('${c.id}')">${c.liked ? '❤️' : '🤍'} <span>${c.likes_count || 0}</span></button>
         ${!isReply ? `<button class="cbt-cbtn" onclick="ComunidadeBT.toggleReply('${c.id}')">↩ Responder</button>` : ''}
-        ${(mod && !isReply) ? `<button class="cbt-cbtn" onclick="ComunidadeBT.pinComment('${postId}','${c.id}')">📌 ${c.pinned ? 'Desafixar' : 'Fixar'}</button>` : ''}
-        ${(c.mine || mod) ? `<button class="cbt-cbtn danger" onclick="ComunidadeBT.delComment('${postId}','${c.id}')">apagar</button>` : ''}
       </div>
       ${!isReply ? `<div class="cbt-replybox" id="rb-${c.id}" style="display:none">${cinputHtml('ri-' + c.id, postId, c.id)}</div>` : ''}
     </div></div>`;

@@ -382,12 +382,26 @@
     if (!u.avatar) av.style.background = 'hsl(' + h + ',60%,38%)';
 
     // Botão de amizade — quem desenha é o módulo de amigos, sempre.
+    // O ⋯ vem junto, do comunidade-menu.js: até aqui a página de perfil não
+    // tinha NENHUMA ação além de "adicionar" — nem copiar o link dela, nem
+    // denunciar quem estivesse fora da linha.
     var acao = $('pfAcao');
     if (acao) {
+      var menu = '';
+      try {
+        if (window.ComunidadeMenu) {
+          menu = ComunidadeMenu.botao({
+            tipo: 'perfil', id: u.name, nome: u.name, meu: !!d.eu,
+            link: '/' + encodeURIComponent(u.name),
+          }) || '';
+        }
+      } catch (e) {}
       if (d.eu) {
-        acao.innerHTML = '<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim)">esse é você 👋</span>';
+        acao.innerHTML = '<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim)">esse é você 👋</span>' + menu;
       } else if (window.ComunidadeAmigos && ComunidadeAmigos.botao) {
-        acao.innerHTML = ComunidadeAmigos.botao({ name: u.name, mine: false, amizade: d.amizade }) || '';
+        acao.innerHTML = (ComunidadeAmigos.botao({ name: u.name, mine: false, amizade: d.amizade }) || '') + menu;
+      } else {
+        acao.innerHTML = menu;
       }
     }
 

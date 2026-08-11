@@ -150,6 +150,16 @@
     podeCriar: false,
     criando: false,        // o formulário de criar sala está aberto
     menuDe: null,          // identity de quem está com o menu de comando aberto
+
+    // ── CHAT DE TEXTO ─────────────────────────────────────────────────────
+    // EFÊMERO por desenho: o que foi dito antes de eu entrar não existe pra
+    // mim, e nada disso é gravado em lugar nenhum. As mensagens viajam pelo
+    // socket que o LiveKit já mantém aberto — não custam invocação na Vercel
+    // nem linha no banco.
+    msgs: [],              // { id, autor, nome, avatar, plano, manda, texto, gif, eu, em }
+    chatAberto: false,
+    naoLidas: 0,
+    gifsLigados: false,
   };
 
   // ── utilidades ────────────────────────────────────────────────────────────
@@ -377,6 +387,56 @@
     + '.svz-coroa{position:absolute;right:6px;bottom:6px;font-size:10px}'
     + '.svz-dhead .svz-lock{font-size:11px;color:#ffd977}'
 
+    // ── chat de texto da sala ──────────────────────────────────────────────
+    // Ele ABRE por cima do próprio painel, e a grade de rostos encolhe em vez
+    // de sumir: quem está conversando por voz precisa continuar vendo quem
+    // fala enquanto lê. Painel de 340px não comporta as duas coisas inteiras.
+    + '.svz-dock.comchat .svz-grid{max-height:20vh}'
+    // `relative` porque as paletas (emoji/GIF) são absolutas e precisam nascer
+    // logo acima do campo de escrever — e não do rodapé do painel, onde ficam
+    // os botões de Mudo e Sair.
+    + '.svz-chat{display:none;position:relative;flex-direction:column;border-top:1px solid rgba(255,255,255,.07)}'
+    + '.svz-dock.comchat .svz-chat{display:flex}'
+    + '.svz-dock.mini .svz-chat{display:none}'
+    + '.svz-msgs{display:flex;flex-direction:column;gap:9px;padding:12px 15px;max-height:30vh;overflow-y:auto;overflow-anchor:none}'
+    + '.svz-m{display:flex;gap:8px;align-items:flex-start}'
+    + '.svz-m .svz-ava{width:26px;height:26px;flex:0 0 26px;font-size:12px;border-width:1.5px}'
+    + '.svz-mtxt{min-width:0;flex:1}'
+    + '.svz-mnome{font-family:var(--font-mono,monospace);font-size:9.5px;color:#7d92b8;margin-bottom:2px}'
+    + '.svz-mnome b{color:#5fe3ff;font-weight:700}'
+    + '.svz-mcorpo{font-family:var(--cbt-sans,Inter,sans-serif);font-size:12.5px;color:#e8f0fb;line-height:1.5;'
+    + 'word-break:break-word;overflow-wrap:anywhere}'
+    + '.svz-mcorpo a{color:#5fe3ff}'
+    + '.svz-mcorpo img{max-width:150px;border-radius:10px;display:block;margin-top:3px}'
+    + '.svz-vazio{font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590;line-height:1.6;padding:4px 0}'
+    + '.svz-comp{display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.06)}'
+    + '.svz-comp input{flex:1;min-width:0;background:rgba(2,10,24,.7);border:1px solid rgba(255,255,255,.12);border-radius:100px;'
+    + 'padding:9px 13px;color:#e8f0fb;font-family:var(--cbt-sans,Inter,sans-serif);font-size:12.5px}'
+    + '.svz-comp input:focus{outline:none;border-color:rgba(0,170,255,.55)}'
+    + '.svz-comp input::placeholder{color:#5f7590}'
+    + '.svz-ib{flex:0 0 auto;background:none;border:none;cursor:pointer;color:#7d92b8;font-size:15px;padding:4px 5px;line-height:1;border-radius:8px}'
+    + '.svz-ib:hover{color:#fff;background:rgba(0,170,255,.1)}'
+    + '.svz-ib.env{color:#5fe3ff;font-size:16px}'
+    // O 💬 do cabeçalho, com a bolinha de não lidas
+    + '.svz-dchat{position:relative;background:none;border:none;color:#7d92b8;font-size:15px;cursor:pointer;padding:4px 7px;line-height:1}'
+    + '.svz-dchat:hover,.svz-dchat.on{color:#00d0ff}'
+    + '.svz-dchat b{position:absolute;top:-1px;right:-1px;min-width:14px;height:14px;border-radius:100px;padding:0 3px;'
+    + 'background:linear-gradient(135deg,#00d0ff,#00a2ff);color:#02121f;font-family:var(--font-mono,monospace);'
+    + 'font-size:8.5px;font-weight:700;line-height:14px;text-align:center}'
+    // paletas (emoji e GIF) — nascem por cima do chat, dentro do painel
+    + '.svz-pal{display:none;position:absolute;left:10px;right:10px;bottom:52px;z-index:3;background:#0b1729;'
+    + 'border:1px solid rgba(0,170,255,.28);border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.6);padding:8px}'
+    + '.svz-pal.on{display:block}'
+    + '.svz-emj{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;max-height:150px;overflow-y:auto}'
+    + '.svz-emj button{background:none;border:none;cursor:pointer;font-size:17px;padding:4px;border-radius:7px;line-height:1}'
+    + '.svz-emj button:hover{background:rgba(0,170,255,.14)}'
+    + '.svz-gifq{display:flex;gap:6px;margin-bottom:7px}'
+    + '.svz-gifq input{flex:1;min-width:0;background:rgba(2,10,24,.7);border:1px solid rgba(255,255,255,.12);border-radius:9px;'
+    + 'padding:7px 10px;color:#e8f0fb;font-family:var(--cbt-sans,Inter,sans-serif);font-size:12px}'
+    + '.svz-gifgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;max-height:180px;overflow-y:auto}'
+    + '.svz-gifgrid img{width:100%;border-radius:8px;cursor:pointer;display:block}'
+    + '.svz-gifgrid img:hover{outline:2px solid #00d0ff}'
+
     + '@media(prefers-reduced-motion:reduce){.svz-entrada.tem-gente .svz-ponto{animation:none}.svz-entrada:hover{transform:none}}';
 
   function estilo() {
@@ -401,6 +461,7 @@
         if (!r.ok || !r.d || !r.d.ok) return S.cfg;
         S.cfg = r.d;
         if (r.d.max) MAX = r.d.max;
+        S.gifsLigados = !!r.d.gifs;
         if (r.d.indisponivel) { S.indisponivel = true; S.conn = 'erro'; }
         return S.cfg;
       }).catch(function () { S.promessaConfig = null; return S.cfg; });
@@ -655,6 +716,244 @@
     }).catch(function () {});
   }
 
+  // ══ CHAT DE TEXTO DA SALA ═══════════════════════════════════════════════
+  //
+  // Ele anda pelo canal de dados do LiveKit — o MESMO socket que já carrega a
+  // voz. Não passa pelo nosso servidor: não custa invocação na Vercel, não
+  // escreve no banco, e chega na hora. O preço disso é ser EFÊMERO: o que foi
+  // dito antes de você entrar não existe pra você, e a tela diz isso em vez de
+  // deixar a pessoa achar que perdeu mensagem.
+  //
+  // ⚠️ A REGRA QUE NÃO PODE CAIR: o TEXTO vem do navegador de outra pessoa —
+  // é dado sujo, escapado sempre. O AUTOR não vem de lá: quem assina quem
+  // mandou é o SFU, pelo `participant` do evento, cuja identidade/nome/foto
+  // saem do crachá que NÓS assinamos. Foi exatamente essa separação que matou
+  // a identidade forjável da versão P2P antiga.
+  var MSG_MAX = 500;
+  var HISTORICO_MAX = 100;
+  // Freio de enxurrada, aplicado em QUEM RECEBE. Um navegador adulterado pode
+  // despejar mensagem sem parar, e ele não obedece freio nenhum do lado dele —
+  // então quem se protege é este lado. 6 mensagens em 4s de uma mesma pessoa e
+  // o resto dela é descartado até acalmar.
+  var FLOOD_N = 6, FLOOD_MS = 4000;
+  var fluxo = new Map();       // identity -> { n, desde }
+  var GIF_OK = /^https:\/\/[a-z0-9.-]*giphy\.com\/[^\s"'<>]+$/i;
+  var EMOJIS = ['😀', '😂', '🤣', '😊', '😍', '😎', '🥳', '🤯', '😅', '😢', '😡', '🤔', '👀', '🙏', '💪', '👏',
+    '🙌', '🤝', '👍', '👎', '❤️', '💙', '🔥', '⭐', '✨', '⚡', '👑', '🚀', '🎯', '🎉', '💰', '📈',
+    '🏆', '✅', '❌', '💡', '🎬', '📌', '🧠', '💥'];
+
+  function inundando(identity) {
+    var agora = Date.now();
+    var f = fluxo.get(identity);
+    if (!f || agora - f.desde > FLOOD_MS) { fluxo.set(identity, { n: 1, desde: agora }); return false; }
+    f.n++;
+    return f.n > FLOOD_N;
+  }
+
+  function guardarMsg(m) {
+    S.msgs.push(m);
+    // Histórico com teto: uma sala aberta a tarde inteira não pode virar um
+    // array que só cresce dentro de uma aba que ninguém recarrega.
+    if (S.msgs.length > HISTORICO_MAX) S.msgs.splice(0, S.msgs.length - HISTORICO_MAX);
+  }
+
+  // Manda pelo canal de dados. `reliable` porque mensagem de chat perdida em
+  // silêncio é pior que mensagem atrasada.
+  function publicar(conteudo) {
+    if (!S.entrei || !S.sala) return false;
+    try {
+      var lp = S.sala.localParticipant;
+      if (!lp || !lp.publishData) return false;
+      var bytes = new TextEncoder().encode(JSON.stringify({ v: 1, c: conteudo }));
+      var r = lp.publishData(bytes, { reliable: true, topic: 'chat' });
+      if (r && r.catch) r.catch(function () {});
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // O que EU mandei não volta pra mim pelo SFU — quem põe na tela é isto.
+  function souAutorLocal() {
+    var eu = (S.cfg && S.cfg.me) || {};
+    var meuCard = S.pessoas.get(eu.id) || {};
+    return {
+      autor: eu.id || 'eu', nome: 'Você', avatar: eu.avatar || meuCard.avatar || null,
+      plano: meuCard.plano || (eu.plano === 'master' ? 'master' : 'full'),
+      manda: meuCard.manda || null, eu: true,
+    };
+  }
+
+  function enviarTexto() {
+    var campo = $('svzMsgIn');
+    if (!campo) return;
+    var txt = String(campo.value || '').trim().slice(0, MSG_MAX);
+    if (!txt) return;
+    // Ninguém manda "[gif]…" na mão e vira imagem: o prefixo é convenção
+    // NOSSA, e texto de gente que começa com ele é texto, não GIF.
+    if (!publicar(txt)) { aviso('Não consegui enviar agora — a sala está reconectando.'); return; }
+    campo.value = '';
+    guardarMsg(Object.assign(souAutorLocal(), { id: 'l' + Date.now() + Math.random(), texto: txt, gif: null, em: Date.now() }));
+    fecharPaletas();
+    pintarChat();
+    // Digitar é sinal de que a pessoa está ali: o relógio de inatividade não
+    // pode derrubar quem está conversando por escrito.
+    inatReiniciar(true);
+  }
+
+  function enviarGif(url) {
+    if (!GIF_OK.test(String(url || ''))) return;
+    if (!publicar('[gif]' + url)) { aviso('Não consegui enviar agora — a sala está reconectando.'); return; }
+    guardarMsg(Object.assign(souAutorLocal(), { id: 'l' + Date.now() + Math.random(), texto: '', gif: url, em: Date.now() }));
+    fecharPaletas();
+    pintarChat();
+    inatReiniciar(true);
+  }
+
+  // Chegou dado pelo socket. Tudo aqui é desconfiança: payload pode ser lixo,
+  // pode ser gigante, pode ser enxurrada. Nada disso pode derrubar a sala.
+  function receberDados(payload, participante, kind, topic) {
+    try {
+      if (topic && topic !== 'chat') return;
+      var quem = participante && participante.identity;
+      if (!quem) return;                       // sem autor assinado, não existe mensagem
+      if (inundando(quem)) return;
+      var cru = new TextDecoder().decode(payload);
+      if (cru.length > MSG_MAX * 4) return;    // payload absurdo nem é lido
+      var d = JSON.parse(cru);
+      if (!d || typeof d.c !== 'string') return;
+      var conteudo = d.c.slice(0, MSG_MAX);
+      if (!conteudo) return;
+      // O autor sai do PARTICIPANTE (crachá assinado por nós), nunca do corpo.
+      var dados = dadosDe(participante, false);
+      var gif = null;
+      var texto = conteudo;
+      if (conteudo.indexOf('[gif]') === 0) {
+        var u = conteudo.slice(5);
+        if (!GIF_OK.test(u)) return;           // "GIF" de outro domínio não entra
+        gif = u; texto = '';
+      }
+      guardarMsg({
+        id: quem + ':' + Date.now() + Math.random(), autor: quem, nome: dados.nome,
+        avatar: dados.avatar, plano: dados.plano, manda: dados.manda,
+        texto: texto, gif: gif, eu: false, em: Date.now(),
+      });
+      if (!S.chatAberto) { S.naoLidas++; }
+      pintarChat();
+    } catch (e) { /* mensagem quebrada é mensagem ignorada, não sala derrubada */ }
+  }
+
+  // ── UI do chat ────────────────────────────────────────────────────────────
+  // `seguro` JÁ vem escapado: <, >, " e ' viraram entidades, então o que sobra
+  // não consegue fechar o atributo href nem abrir tag nenhuma.
+  function linkificar(seguro) {
+    return seguro.replace(/https?:\/\/[^\s<>"']+/g, function (u) {
+      return '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + u + '</a>';
+    });
+  }
+
+  function msgHTML(m) {
+    var corpo = m.gif
+      ? '<img src="' + esc(m.gif) + '" alt="GIF" loading="lazy">'
+      : linkificar(esc(m.texto));
+    return '<div class="svz-m">' + avatarHTML(m)
+      + '<div class="svz-mtxt"><div class="svz-mnome"><b>' + esc(m.nome) + '</b>'
+      + (m.manda === 'dono' ? ' 👑' : m.manda === 'co' ? ' ⭐' : '') + '</div>'
+      + '<div class="svz-mcorpo">' + corpo + '</div></div></div>';
+  }
+
+  function pintarChat() {
+    var b = $('svzBChat');
+    if (b) {
+      b.innerHTML = '💬' + (S.naoLidas && !S.chatAberto ? '<b>' + (S.naoLidas > 9 ? '9+' : S.naoLidas) + '</b>' : '');
+      b.classList.toggle('on', S.chatAberto);
+      b.setAttribute('aria-label', S.naoLidas && !S.chatAberto ? S.naoLidas + ' mensagens novas' : 'Chat da sala');
+    }
+    var d = $('svzDock');
+    if (d) d.classList.toggle('comchat', S.chatAberto);
+    if (!S.chatAberto) return;
+    var lista = $('svzMsgs');
+    if (!lista) return;
+    // "Estava no fim" tem que ser medido ANTES de trocar o conteúdo: quem
+    // subiu pra reler algo não pode ser jogado pro rodapé a cada mensagem nova.
+    var noFim = (lista.scrollHeight - lista.scrollTop - lista.clientHeight) < 40;
+    if (!S.msgs.length) {
+      lista.innerHTML = '<div class="svz-vazio">Ninguém escreveu nada ainda. O chat é só desta conversa: o que foi dito antes de você entrar não aparece aqui, e nada fica guardado depois.</div>';
+      return;
+    }
+    var htm = '';
+    for (var i = 0; i < S.msgs.length; i++) htm += msgHTML(S.msgs[i]);
+    lista.innerHTML = htm;
+    if (noFim) { try { lista.scrollTop = lista.scrollHeight; } catch (e) {} }
+  }
+
+  function alternarChat() {
+    S.chatAberto = !S.chatAberto;
+    if (S.chatAberto) {
+      S.naoLidas = 0;
+      var d = $('svzDock');
+      if (d) d.classList.remove('mini');       // chat aberto num painel minimizado não caberia
+    } else fecharPaletas();
+    pintarChat();
+    if (S.chatAberto) {
+      var c = $('svzMsgIn');
+      if (c) { try { c.focus(); } catch (e) {} }
+      var l = $('svzMsgs');
+      if (l) { try { l.scrollTop = l.scrollHeight; } catch (e) {} }
+    }
+  }
+
+  function fecharPaletas() {
+    ['svzPalEmj', 'svzPalGif'].forEach(function (id) { var p = $(id); if (p) p.classList.remove('on'); });
+  }
+
+  function abrirEmoji() {
+    var p = $('svzPalEmj');
+    if (!p) return;
+    var abrindo = !p.classList.contains('on');
+    fecharPaletas();
+    if (!abrindo) return;
+    var g = $('svzEmjGrid');
+    // Montada uma vez só: 40 botões redesenhados a cada abertura é trabalho
+    // repetido por nada.
+    if (g && !g.innerHTML) {
+      g.innerHTML = EMOJIS.map(function (e) { return '<button data-svz-emj="' + esc(e) + '">' + e + '</button>'; }).join('');
+    }
+    p.classList.add('on');
+  }
+
+  function abrirGif() {
+    var p = $('svzPalGif');
+    if (!p) return;
+    var abrindo = !p.classList.contains('on');
+    fecharPaletas();
+    if (!abrindo) return;
+    p.classList.add('on');
+    buscarGif();
+    var q = $('svzGifQ');
+    if (q) { try { q.focus(); } catch (e) {} }
+  }
+
+  // O GIPHY é o MESMO proxy da Comunidade (api/community.js?action=gif-search):
+  // a chave fica no servidor e nunca aparece aqui. Reusar em vez de abrir um
+  // segundo caminho pra mesma coisa.
+  function buscarGif() {
+    var grid = $('svzGifGrid');
+    if (!grid) return;
+    var termo = ($('svzGifQ') && $('svzGifQ').value || '').trim();
+    grid.innerHTML = '<div class="svz-vazio">Carregando…</div>';
+    var t = '';
+    try { t = localStorage.getItem('bt_token') || ''; } catch (e) {}
+    fetch('/api/community?action=gif-search&token=' + encodeURIComponent(t) + '&q=' + encodeURIComponent(termo))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var lista = (d && d.gifs) || [];
+        if (!lista.length) { grid.innerHTML = '<div class="svz-vazio">Nenhum GIF encontrado.</div>'; return; }
+        grid.innerHTML = lista.filter(function (g) { return GIF_OK.test(g.url || ''); }).map(function (g) {
+          return '<img src="' + esc(g.preview || g.url) + '" loading="lazy" alt="" data-svz-gif="' + esc(g.url) + '">';
+        }).join('');
+      })
+      .catch(function () { grid.innerHTML = '<div class="svz-vazio">Não consegui buscar GIFs agora.</div>'; });
+  }
+
   // ── eventos do Room ───────────────────────────────────────────────────────
   function ligarEventos(sala, LK) {
     var E = LK.RoomEvent;
@@ -740,6 +1039,12 @@
       try { if (faixa && faixa.detach) faixa.detach().forEach(function (el) { el.remove(); }); } catch (e) {}
       sincronizar(); pintar();
     });
+    // CHAT: tudo que chega por aqui é dado sujo — menos o AUTOR, que vem
+    // assinado pelo SFU no `participante`. Ver receberDados().
+    sala.on(E.DataReceived, function (payload, participante, kind, topic) {
+      receberDados(payload, participante, kind, topic);
+    });
+
     sala.on(E.LocalTrackPublished, function () { sincronizar(); pintar(); });
     sala.on(E.ParticipantMetadataChanged, function () { sincronizar(); pintar(); });
     sala.on(E.ParticipantNameChanged, function () { sincronizar(); pintar(); });
@@ -1154,6 +1459,13 @@
     // expulsar numa sala em que eu nem estou.
     S.naSala = null;
     S.papel = null;
+    // O chat morre com a conversa. Ele é efêmero por desenho — deixar as
+    // mensagens na memória faria a próxima sala abrir com o papo da anterior
+    // dentro, com nome e foto de gente que não está lá.
+    S.msgs = [];
+    S.naoLidas = 0;
+    S.chatAberto = false;
+    fluxo.clear();
     fecharMenu();
     // A lista de salas envelheceu (eu acabei de sair de uma delas): a próxima
     // abertura do modal pergunta de novo em vez de mostrar o número de antes.
@@ -1613,8 +1925,22 @@
     d.className = 'svz-dock'; d.id = 'svzDock';
     d.innerHTML =
       '<div class="svz-dhead"><div><b id="svzDockTit">🎙️ Sala de voz</b><small id="svzDockSub">—</small></div>'
+      + '<button class="svz-dchat" id="svzBChat" aria-label="Chat da sala">💬</button>'
       + '<button class="svz-dmin" id="svzBMin" aria-label="Minimizar">—</button></div>'
       + '<div class="svz-grid" id="svzGrid"></div>'
+      // ── chat de texto ────────────────────────────────────────────────────
+      + '<div class="svz-chat" id="svzChat">'
+      + '<div class="svz-msgs" id="svzMsgs"></div>'
+      + '<div class="svz-pal" id="svzPalEmj"><div class="svz-emj" id="svzEmjGrid"></div></div>'
+      + '<div class="svz-pal" id="svzPalGif">'
+      + '<div class="svz-gifq"><input id="svzGifQ" placeholder="Buscar GIF…" maxlength="60"><button class="svz-ib" id="svzBGifOk">🔎</button></div>'
+      + '<div class="svz-gifgrid" id="svzGifGrid"></div></div>'
+      + '<div class="svz-comp">'
+      + '<button class="svz-ib" id="svzBEmj" aria-label="Emoji">😊</button>'
+      + '<button class="svz-ib" id="svzBGif" style="display:none" aria-label="GIF">GIF</button>'
+      + '<input id="svzMsgIn" maxlength="500" placeholder="escreva pra sala…" autocomplete="off">'
+      + '<button class="svz-ib env" id="svzBEnv" aria-label="Enviar">➤</button>'
+      + '</div></div>'
       + '<div class="svz-ctrl">'
       + '<button class="svz-b sec" id="svzBMudar">🎤 Mudo</button>'
       + '<button class="svz-b sair" id="svzBSair">Sair</button>'
@@ -1653,6 +1979,33 @@
     });
     $('svzBSenha').addEventListener('click', trocarSenha);
     $('svzBEncerrar').addEventListener('click', pedirEncerramento);
+    // ── chat ──────────────────────────────────────────────────────────────
+    $('svzBChat').addEventListener('click', alternarChat);
+    $('svzBEnv').addEventListener('click', enviarTexto);
+    $('svzMsgIn').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); enviarTexto(); }
+    });
+    $('svzBEmj').addEventListener('click', abrirEmoji);
+    $('svzBGif').addEventListener('click', abrirGif);
+    $('svzBGifOk').addEventListener('click', buscarGif);
+    $('svzGifQ').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); buscarGif(); }
+    });
+    // Delegação nas duas paletas: 40 emojis e 24 GIFs redesenhados a cada
+    // busca virariam 64 laços empilhados por abertura.
+    $('svzEmjGrid').addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-svz-emj]') : null;
+      if (!b) return;
+      var campo = $('svzMsgIn');
+      if (campo) { campo.value = (campo.value || '') + b.getAttribute('data-svz-emj'); try { campo.focus(); } catch (err) {} }
+    });
+    $('svzGifGrid').addEventListener('click', function (e) {
+      var g = e.target && e.target.closest ? e.target.closest('[data-svz-gif]') : null;
+      if (g) enviarGif(g.getAttribute('data-svz-gif'));
+    });
+    // O botão de GIF só existe se a chave do GIPHY estiver configurada — mesma
+    // regra da Comunidade. Sem chave, ele nem aparece.
+    if (S.gifsLigados) $('svzBGif').style.display = '';
     // Delegação no painel: a grade de cards é redesenhada inteira a cada
     // evento da sala, então laço por botão viraria laço empilhado.
     $('svzGrid').addEventListener('click', function (e) {
@@ -2141,6 +2494,7 @@
     pintarEntrada();
     pintarModal();
     pintarSala();
+    pintarChat();
   }
 
   // ── ligar ─────────────────────────────────────────────────────────────────
@@ -2286,6 +2640,15 @@
       comandar: comandar,
       pedirExpulsao: pedirExpulsao,
       criarSala: criarSala,
+      // chat
+      enviarTexto: enviarTexto,
+      enviarGif: enviarGif,
+      receberDados: receberDados,
+      alternarChat: alternarChat,
+      pintarChat: pintarChat,
+      msgHTML: msgHTML,
+      linkificar: linkificar,
+      buscarGif: buscarGif,
     },
   };
 

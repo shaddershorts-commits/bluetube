@@ -45,6 +45,7 @@
     bluescore: '📊', mensagem: '💬', comentario: '💭',
     curtida: '❤️', seguidor: '👤', verificacao: '✓', assinatura: '⚡',
     amizade: '🤝', // pedido de amizade / pedido aceito na Comunidade
+    denuncia: '🚩', // denúncia do menu ⋯ chegando pro moderador
   };
 
   function estilo() {

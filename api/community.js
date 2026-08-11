@@ -750,6 +750,80 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, banned: rows[0].banned });
     }
 
+    // ── DENUNCIAR ────────────────────────────────────────────────────────────
+    // O ⋯ só existia pra AUTOR e moderador: quem via algo errado não tinha o
+    // que fazer além de fechar a aba. Agora tem.
+    //
+    // ⚠️ A linha na tabela NÃO é o produto. Denúncia que ninguém lê é botão
+    // falso — o produto é a notificação que chega no sininho do moderador na
+    // hora, já com o nome de quem foi denunciado e o começo do conteúdo. A
+    // tabela é o histórico e o anti-spam.
+    if (action === 'denunciar' && req.method === 'POST') {
+      const tipos = ['post', 'comentario', 'perfil'];
+      const motivos = { spam: 'spam ou propaganda', ofensa: 'ofensa ou ataque pessoal', improprio: 'conteúdo impróprio', outro: 'outro motivo' };
+      const tipo = tipos.includes(b.tipo) ? b.tipo : null;
+      const alvo = clean(b.alvo, 80);
+      const motivo = Object.prototype.hasOwnProperty.call(motivos, b.motivo) ? b.motivo : null;
+      if (!tipo || !alvo || !motivo) return res.status(400).json({ error: 'Denúncia inválida.' });
+
+      // Quem é o dono do conteúdo sai daqui, do SERVIDOR — nunca do que o
+      // navegador mandou. Senão dava pra denunciar A escrevendo o nome de B.
+      let alvoUser = null;
+      let trecho = '';
+      let alvoNome = '';
+      if (tipo === 'post' || tipo === 'comentario') {
+        const tab = tipo === 'post' ? 'community_posts' : 'community_comments';
+        const r = await fetch(`${SU}/rest/v1/${tab}?id=eq.${encodeURIComponent(alvo)}&select=user_id,content`, { headers: H });
+        const row = r.ok ? (await r.json())[0] : null;
+        if (!row) return res.status(404).json({ error: 'Isso não existe mais.' });
+        alvoUser = row.user_id;
+        trecho = clean(row.content, 90);
+      } else {
+        const p = await acharPorNome(alvo);
+        if (!p) return res.status(404).json({ error: 'Perfil não encontrado.' });
+        alvoUser = p.user_id;
+        alvoNome = p.display_name;
+      }
+      if (String(alvoUser).toLowerCase() === meId) {
+        return res.status(400).json({ error: 'Isso é seu — pra apagar, use o próprio menu.' });
+      }
+      if (!alvoNome) {
+        const perfis = await perfisPorIds([alvoUser]);
+        alvoNome = (perfis[String(alvoUser).toLowerCase()] || {}).display_name || 'alguém';
+      }
+
+      const ins = await fetch(`${SU}/rest/v1/community_reports`, {
+        method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+        body: JSON.stringify({ reporter_id: userId, alvo_tipo: tipo, alvo_id: alvo, alvo_user_id: alvoUser, motivo }),
+      });
+      // 409 = o índice único pegou: essa pessoa já denunciou esse alvo. Isso é
+      // SUCESSO na tela. Dizer "você já denunciou" transformaria o botão numa
+      // sonda — e repetir a notificação ensinaria o moderador a ignorar o sino.
+      if (ins.status === 409) return res.status(200).json({ ok: true, repetida: true });
+      if (!ins.ok) return res.status(500).json({ error: 'Não deu pra enviar agora. Tenta de novo.' });
+
+      // AWAIT obrigatório: em serverless, promise não aguardada antes do res é
+      // descartada (foi o bug dos 28 follows → 0 avisos).
+      try {
+        const mr = await fetch(`${SU}/rest/v1/community_profiles?is_moderator=eq.true&select=user_id&limit=5`, { headers: H });
+        const mods = mr.ok ? await mr.json() : [];
+        const onde = tipo === 'perfil' ? 'o perfil de' : tipo === 'post' ? 'um post de' : 'um comentário de';
+        await Promise.all(mods.map((m) => fetch(`${SU}/rest/v1/blue_notificacoes`, {
+          method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            user_id: m.user_id, tipo: 'denuncia',
+            titulo: '🚩 Denúncia na Comunidade',
+            mensagem: `${profile?.display_name || 'Alguém'} denunciou ${onde} ${alvoNome} — ${motivos[motivo]}${trecho ? `: “${trecho}”` : ''}`,
+            // Sem url a notificação nasce como texto morto (sininho.js só põe a
+            // classe .link quando há url).
+            dados: { url: '/comunidade', kind: 'denuncia', alvo_tipo: tipo, alvo_id: alvo, motivo },
+          }),
+        }).catch(() => null)));
+      } catch (e) { /* a denúncia já está gravada; o aviso é o extra */ }
+
+      return res.status(200).json({ ok: true });
+    }
+
     // ── LIKE-TOGGLE ──────────────────────────────────────────────────────────
     if (action === 'like-toggle') {
       const postId = String(b.post_id || '');

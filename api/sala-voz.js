@@ -216,8 +216,15 @@ function slugNovo() {
 //     Ou seja: isto barra o desatento, não o adulterado. Quem segura de verdade
 //     é o navegador dos OUTROS, que recusa assinar faixa que não seja áudio
 //     (public/sala-voz.js) — é lá que a banda de todo mundo é protegida.
-//   · canPublishData: false — não existe chat de dados aqui; o que não é usado
-//     não precisa ser permitido.
+//   · canPublishData: true — o CHAT DE TEXTO da sala. Ele nasceu desligado
+//     ("o que não é usado não precisa ser permitido") e foi ligado quando
+//     passou a ter uso. As mensagens não passam por este servidor: vão pelo
+//     socket que o SFU já mantém aberto, então não custam invocação nenhuma na
+//     Vercel nem linha no banco. Em troca, elas são EFÊMERAS — o que foi dito
+//     antes de você entrar não existe pra você, e a tela diz isso.
+//     ⚠️ O TEXTO vem do navegador de outra pessoa e é dado sujo; o AUTOR não.
+//     Quem assina quem mandou é o SFU, com a identidade deste crachá — por isso
+//     nome e foto no chat saem do participante, nunca do conteúdo da mensagem.
 //   · canUpdateOwnMetadata: false — é o que faz nome/foto/plano serem fato e
 //     não boato. Era esse o trabalho do ticket HMAC da versão anterior.
 //   · `h` no metadata é QUEM MANDA na sala ('dono' | 'co'). Ele fica no crachá,
@@ -237,7 +244,7 @@ function crachaParticipante(pessoa, key, secret) {
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      canPublishData: false,
+      canPublishData: true,
       canUpdateOwnMetadata: false,
       canPublishSources: ['microphone'],
     },
@@ -557,6 +564,10 @@ module.exports = async function handler(req, res) {
         // O front já nasce sabendo que a sala está fora do ar, sem precisar
         // errar um clique pra descobrir.
         indisponivel: semLiveKit,
+        // Mesmo portão do GIF da Comunidade (api/community.js): sem chave
+        // configurada, o botão de GIF do chat nem aparece — em vez de aparecer
+        // e devolver lista vazia.
+        gifs: !!process.env.GIPHY_API_KEY,
       });
     }
 
