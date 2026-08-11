@@ -1327,6 +1327,15 @@
       // 'sync', a entrada continuaria dizendo "você está na sala".
       S.presentes.delete(S.sessao);
       som('saiu');
+      // A chave de presença MORRE junto com a sessão. Ela era criada uma vez
+      // e reusada pra sempre — então, ao entrar de novo, a pessoa tentava se
+      // anunciar com uma chave que o servidor ainda tinha registrada da vez
+      // anterior, e o track() falhava com "Falhou ao anunciar sua entrada".
+      // Batia com o sintoma: as primeiras entradas passavam, e depois de
+      // algumas idas e vindas parava de funcionar (achado em 11/08).
+      // Zerar aqui faz a próxima entrada nascer com chave nova e limpa.
+      S.sessao = null;
+      limparCanal();
     }
     S.mudo = false;
     S.suspenso = false;
