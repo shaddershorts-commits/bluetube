@@ -86,3 +86,42 @@ test('ROBOTS: o Googlebot continua LIBERADO (não quebrar o que funciona)', () =
     'alguém bloqueou o site inteiro no robots.txt');
   assert.match(r, /Disallow:\s*\/api\//, 'o bloqueio de /api/ sumiu');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ONDA 1 do item 10: título, meta description e schema. Tudo dentro do <head>,
+// nada visível — o conteúdo (H1, 150-300 palavras, FAQ) ficou pra depois
+// porque mexe no que a pessoa VÊ numa página que é ferramenta interativa.
+// ═══════════════════════════════════════════════════════════════════════════
+test('SEO: toda ferramenta tem meta description', () => {
+  // 6 das 10 não tinham NENHUMA (medido 11/08) — aí o Google escolhe sozinho
+  // o trecho que aparece na busca.
+  for (const f of FERRAMENTAS.concat('index')) {
+    const html = ler(f + '.html');
+    const m = html.match(/<meta name="description" content="([^"]+)"/i);
+    assert.ok(m, `${f}.html sem meta description`);
+    assert.ok(m[1].length >= 80, `${f}.html: descrição curta demais (${m[1].length})`);
+  }
+});
+
+test('SEO: o título lidera com a palavra-chave, não com a marca', () => {
+  // A regra do diagnóstico: palavra-chave na frente, marca no fim. Título que
+  // começa com o nome da ferramenta gasta o espaço mais valioso com o termo
+  // que ninguém busca.
+  for (const f of FERRAMENTAS.concat('index')) {
+    const t = (ler(f + '.html').match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+    assert.ok(t.length > 10, `${f}.html sem título`);
+    assert.equal(/^(BlueVoice|BlueScore|BlueLens|BaixaBlue|BlueClean|BlueTendências|BlueEditor|BlueTube|Virais)\b/.test(t.trim()) && f !== 'blue',
+      false, `${f}.html: o título ainda começa pela marca — "${t}"`);
+  }
+});
+
+test('SEO: o JSON-LD de cada ferramenta é JSON válido', () => {
+  // Schema quebrado não é ignorado em silêncio: vira erro no Search Console.
+  for (const f of FERRAMENTAS.concat('index')) {
+    const m = ler(f + '.html').match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+    assert.ok(m, `${f}.html sem dados estruturados`);
+    const o = JSON.parse(m[1]);
+    assert.equal(o['@type'], 'WebApplication');
+    assert.ok(String(o.url).startsWith(WWW), `${f}.html: url do schema fora do domínio canônico`);
+  }
+});
